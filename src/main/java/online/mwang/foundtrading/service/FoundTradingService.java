@@ -35,8 +35,8 @@ public class FoundTradingService {
     public Page<FoundTradingRecord> listFound(FoundTradingQuery query) {
         Page<FoundTradingRecord> page = new Page<>(query.getPageIndex(), query.getPageSize());
         QueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<>();
-        queryWrapper.like("code", query.getCode());
-        queryWrapper.like("name", query.getName());
+//        queryWrapper.like("code", query.getCode());
+//        queryWrapper.like("name", query.getName());
         return foundTradingMapper.selectPage(page, queryWrapper);
     }
 }
