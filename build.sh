@@ -11,4 +11,4 @@ docker tag $APP $REGISTER/$NS/$APP
 docker push $REGISTER/$NS/$APP
 
 # kubectl set image sts/$APP $APP=$REGISTER/$NS/$APP --record
-kubectl delete pod ${APP}-0
+# kubectl delete pod ${APP}-0
