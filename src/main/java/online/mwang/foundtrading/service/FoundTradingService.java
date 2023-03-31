@@ -1,5 +1,6 @@
 package online.mwang.foundtrading.service;
 
+import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import online.mwang.foundtrading.bean.FoundTradingRecord;
@@ -32,11 +33,16 @@ public class FoundTradingService {
         return foundTradingMapper.deleteById(id);
     }
 
-    public Page<FoundTradingRecord> listFound(FoundTradingQuery query) {
-        Page<FoundTradingRecord> page = new Page<>(query.getPageIndex(), query.getPageSize());
+    public JSONObject listFound(FoundTradingQuery query) {
+        Page<FoundTradingRecord> page = new Page<>(query.getCurrent(), query.getPageSize());
         QueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<>();
 //        queryWrapper.like("code", query.getCode());
 //        queryWrapper.like("name", query.getName());
-        return foundTradingMapper.selectPage(page, queryWrapper);
+        final Page<FoundTradingRecord> pageRes = foundTradingMapper.selectPage(page, queryWrapper);
+        final JSONObject res = new JSONObject();
+        res.put("data", pageRes.getRecords());
+        res.put("total", pageRes.getTotal());
+        res.put("success", true);
+        return res;
     }
 }
