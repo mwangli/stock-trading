@@ -1,6 +1,6 @@
 package online.mwang.foundtrading.controller;
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.alibaba.fastjson.JSONObject;
 import online.mwang.foundtrading.bean.FoundTradingRecord;
 import online.mwang.foundtrading.bean.query.FoundTradingQuery;
 import online.mwang.foundtrading.service.FoundTradingService;
@@ -37,7 +37,7 @@ public class FoundTradingController {
     }
 
     @GetMapping
-    public Page<FoundTradingRecord> listFound(FoundTradingQuery query) {
+    public JSONObject listFound(FoundTradingQuery query) {
         return foundTradingService.listFound(query);
     }
 }

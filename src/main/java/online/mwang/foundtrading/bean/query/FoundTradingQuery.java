@@ -12,7 +12,7 @@ import lombok.Data;
 @Data
 public class FoundTradingQuery {
 
-    private Integer pageIndex;
+    private Integer current;
 
     private Integer pageSize;
 
