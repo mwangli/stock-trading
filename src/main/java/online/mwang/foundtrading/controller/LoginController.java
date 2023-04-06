@@ -6,10 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.param.LoginParam;
 import org.springframework.core.io.FileSystemResourceLoader;
 import org.springframework.core.io.Resource;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.io.BufferedReader;
 import java.io.FileInputStream;
@@ -24,7 +21,6 @@ import java.io.InputStreamReader;
 @Slf4j
 @RestController
 public class LoginController {
-
 
     @PostMapping("/login/account")
     public JSONObject login(@RequestBody LoginParam param) {
@@ -53,7 +49,9 @@ public class LoginController {
         BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(resource.getFile())));
         final StringBuilder stringBuilder = new StringBuilder();
         String s;
-        while ((s = reader.readLine()) != null) stringBuilder.append(s);
+        while ((s = reader.readLine()) != null) {
+            stringBuilder.append(s);
+        }
         return JSONObject.parseObject(stringBuilder.toString());
     }
 }
