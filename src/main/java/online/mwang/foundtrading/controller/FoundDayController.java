@@ -2,7 +2,7 @@ package online.mwang.foundDay.controller;
 
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import online.mwang.foundDay.service.FoundDayService;
+import online.mwang.foundtrading.service.FoundDayService;
 import online.mwang.foundtrading.bean.FoundDayRecord;
 import online.mwang.foundtrading.bean.query.FoundDayQuery;
 import org.springframework.beans.factory.annotation.Autowired;
