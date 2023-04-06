@@ -1,0 +1,73 @@
+# 声明StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: found-trading
+  labels:
+    app: found-trading
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: found-trading
+  serviceName: found-trading
+  template:
+    metadata:
+      labels:
+        app: found-trading
+    spec:
+      imagePullSecrets:
+      - name: mwangli-docker-secret
+      containers:
+      - image: registry-vpc.cn-shenzhen.aliyuncs.com/mwangli/found-trading:latest
+        imagePullPolicy: Always
+        name: found-trading
+        readinessProbe:
+           initialDelaySeconds: 2
+           httpGet:
+            port: 8080
+            path: /foundTrading
+        livenessProbe:
+           initialDelaySeconds: 2
+           httpGet:
+            port: 8080
+            path: /test
+        env:
+        - name: REDIS_HOST
+          value: redis-svc.default.svc
+        - name: REDIS_PASS
+          value: Root.123456
+        - name: MYSQL_HOST
+          value: mysql-svc.default.svc
+        - name: MYSQL_PASS
+          value: Root.123456
+        ports:
+        - containerPort: 8080
+---
+# 声明Service服务
+apiVersion: v1
+kind: Service
+metadata:
+  name: found-trading-svc
+  labels:
+    app: found-trading
+spec:
+  type: NodePort
+  selector:
+    app: found-trading
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+    nodePort: 8080
+---
+# 镜像仓库密钥
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: eyJhdXRocyI6eyJyZWdpc3RyeS12cGMuY24tc2hlbnpoZW4uYWxpeXVuY3MuY29tIjp7InVzZXJuYW1lIjoibGltaW5nd2FuZzA2IiwicGFzc3dvcmQiOiJEa25oZnJlMXN0IiwiYXV0aCI6ImJHbHRhVzVuZDJGdVp6QTJPa1JyYm1obWNtVXhjM1E9In19fQ==
+metadata:
+  name: mwangli-docker-secret
+  namespace: default
+
