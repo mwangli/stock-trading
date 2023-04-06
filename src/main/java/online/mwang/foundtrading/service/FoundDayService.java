@@ -1,4 +1,4 @@
-package online.mwang.foundDay.service;
+package online.mwang.foundtrading.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -35,8 +35,8 @@ public class FoundDayService {
     public Page<FoundDayRecord> listFound(FoundDayQuery query) {
         Page<FoundDayRecord> page = new Page<>(query.getPageIndex(), query.getPageSize());
         QueryWrapper<FoundDayRecord> queryWrapper = new QueryWrapper<>();
-        queryWrapper.like("code", query.getCode());
-        queryWrapper.like("name", query.getName());
+//        queryWrapper.like("code", query.getCode());
+//        queryWrapper.like("name", query.getName());
         return foundDayMapper.selectPage(page, queryWrapper);
     }
 }
