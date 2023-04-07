@@ -59,6 +59,9 @@ public class LoginController {
             }
             user = JSONObject.parseObject(stringBuilder.toString());
         }
-        return user;
+        JSONObject res = new JSONObject();
+        res.put("success", true);
+        res.put("data", user);
+        return res;
     }
 }
