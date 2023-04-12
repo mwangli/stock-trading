@@ -18,6 +18,11 @@ public class Response<T> {
     private String errorMessage;
     private Integer showType;
 
+
+    public static <T> Response<T> success() {
+        return new Response<>(true, null, 0, "success", 0);
+    }
+
     public static <T> Response<T> success(T data) {
         return new Response<>(true, data, 0, "success", 0);
     }
