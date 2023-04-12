@@ -3,7 +3,7 @@ package online.mwang.foundtrading.interceptor;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.base.Response;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -23,13 +23,13 @@ import java.io.PrintWriter;
 public class LoginInterceptor implements HandlerInterceptor {
 
     @Resource
-    private RedisTemplate<String, String> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         final String token = request.getHeader("token");
         log.info("token is {}", token);
-        final String redisToken = redisTemplate.opsForValue().get(token);
+        final String redisToken = stringRedisTemplate.opsForValue().get(token);
         if (redisToken != null) {
             return true;
         } else {
