@@ -33,7 +33,7 @@ public class LoginInterceptor implements HandlerInterceptor {
         if (redisToken != null) {
             return true;
         } else {
-            returnJson(response, Response.fail(1001, "invalid token"));
+            returnJson(response, Response.fail(1001, "登录失效,请重新登录。"));
             return false;
         }
     }
@@ -42,7 +42,7 @@ public class LoginInterceptor implements HandlerInterceptor {
         response.setCharacterEncoding("UTF-8");
         response.setContentType("application/json; charset=utf-8");
         try (PrintWriter writer = response.getWriter()) {
-            writer.print(JSONObject.toJSONString(response));
+            writer.print(JSONObject.toJSONString(result));
         } catch (Exception e) {
             log.error(e.getMessage());
         }
