@@ -18,7 +18,6 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.text.SimpleDateFormat;
-import java.util.Calendar;
 import java.util.Date;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
@@ -37,7 +36,7 @@ public class LoginController {
     private static final Random RANDOM = new Random();
     private static final String USERNAME = "admin";
     private static final String SDF = "MMdd";
-    private static final Integer TOKEN_LENGTH = 18;
+    private static final Integer TOKEN_LENGTH = 32;
     private static final Integer TOKEN_EXPIRE_MINUTES = 30;
 
     @Resource
@@ -46,7 +45,6 @@ public class LoginController {
     @PostMapping("/login/account")
     public Response<String> login(@RequestBody LoginParam param) {
         log.info("username is {}, password is {}", param.getUsername(), param.getPassword());
-        final Calendar calendar = Calendar.getInstance();
         final String monthDate = new SimpleDateFormat(SDF).format(new Date());
         final String reverseDate = new StringBuilder(monthDate).reverse().toString();
         if (USERNAME.equalsIgnoreCase(param.getUsername()) && reverseDate.equals(param.getPassword())) {
@@ -54,7 +52,7 @@ public class LoginController {
             stringRedisTemplate.opsForValue().set(token, "", TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
             return Response.success(token);
         } else {
-            return Response.fail(1101, "username or pass incorrect!");
+            return Response.fail(1101, "用户名或密码错误!");
         }
     }
 
