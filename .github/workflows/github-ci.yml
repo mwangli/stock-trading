@@ -34,5 +34,4 @@ jobs:
           host: 112.74.187.216
           user: root
           pass: Dknhfre1st
-          port: 22
           script: kubectl set image sts/$APP $APP=$REGISTER/$NS/$APP --record
