@@ -13,16 +13,20 @@ jobs:
       run: mvn package
     # 构建镜像
     - name: docker-build
+      env:
+        APP: found-trading
+        REGISTER: registry.cn-shenzhen.aliyuncs.com
+        NS: mwangli
+        USER: limingwang06
+        PASS: Dknhfre1st
       run: |
-        APP=found-trading
-        REGISTER=registry.cn-shenzhen.aliyuncs.com
-        NS=mwangli
-        USER=limingwang06
-        PASS=Dknhfre1st
-        HOST=112.74.187.216
-        docker build -t $APP -f Dockerfile .
-        docker login --username=$USER --password=$PASS $REGISTER
-        docker tag $APP $REGISTER/$NS/$APP
-        docker push $REGISTER/$NS/$APP
-        ssh root@$HOST kubectl set image sts/$APP $APP=$REGISTER/$NS/$APP --record
-        Dknhfre1st
+#        APP=found-trading
+#        REGISTER=registry.cn-shenzhen.aliyuncs.com
+#        NS=mwangli
+#        USER=limingwang06
+#        PASS=Dknhfre1st
+#        HOST=112.74.187.216
+        docker build -t ${APP} -f Dockerfile .
+        docker login --username=${USER} --password=${PASS} ${REGISTER}
+        docker tag ${APP} ${REGISTER}/${NS}/{$APP}
+        docker push ${REGISTER}/${NS}/{$APP}
