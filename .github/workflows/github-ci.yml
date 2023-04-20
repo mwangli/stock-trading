@@ -26,11 +26,11 @@ jobs:
 #           docker push ${REGISTER}/${NS}/${APP}
       # 重启服务
       - id: ssh-bar
-          uses: invi5H/ssh-action@v1
-          with:
-            NAME: bar
-            SSH_HOST: 112.74.187.216
-            SSH_PORT: 22
-            SSH_USER: root
-            SSH_KEY: ${{ secrets.PRIVATE_KEY }}
-          - run: ssh ${{ steps.ssh-foo.outputs.SERVER }} kubectl get pod -A
+        uses: invi5H/ssh-action@v1
+        with:
+          NAME: bar
+          SSH_HOST: 112.74.187.216
+          SSH_PORT: 22
+          SSH_USER: root
+          SSH_KEY: ${{ secrets.PRIVATE_KEY }}
+      - run: ssh ${{ steps.ssh-foo.outputs.SERVER }} kubectl get pod -A
