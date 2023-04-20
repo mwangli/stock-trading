@@ -1,0 +1,23 @@
+name: deploy
+
+on: [ push ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: git-checkout
+    - uses: actions/checkout@v3
+    - name: mvn-package
+      run: mvn package
+    - name: docker-build
+      run: |
+        APP=found-trading
+        REGISTER=registry.cn-shenzhen.aliyuncs.com
+        NS=mwangli
+        USER=limingwang06
+        PASS=Dknhfre1st
+        docker build -t $APP -f Dockerfile .
+        docker login --username=$USER --password=$PASS $REGISTER
+        docker tag $APP $REGISTER/$NS/$APP
+        docker push $REGISTER/$NS/$APP
