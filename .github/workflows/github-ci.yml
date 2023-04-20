@@ -32,4 +32,4 @@ jobs:
           # Private SSH key to authenticate
           key: ${{ secrets.PRIVATE_KEY }}
           # Command to execute, Bash syntax
-          command: kubectel get pod
+          command: pwd && ls
