@@ -14,16 +14,11 @@ jobs:
       - name: mvn-build
         run: |
           mvn clean compile package
-          /usr/bin/docker info
           APP=found-trading
           REGISTER=registry-vpc.cn-shenzhen.aliyuncs.com
           NS=mwangli
-          USER=limingwang06
-          PASS=Dknhfre1st
-          echo $PASS
-          ls ./
           /usr/bin/docker build -t $APP -f Dockerfile .
-          /usr/bin/docker login --username=$USER --password=$PASS $REGISTER
+          /usr/bin/docker login --username=${{REGISTRY_USERNAME}} --password=${{REGISTRY_PASSWORD}} $REGISTER
           /usr/bin/docker tag $APP $REGISTER/$NS/$APP
           /usr/bin/docker push $REGISTER/$NS/$APP
         
