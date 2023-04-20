@@ -20,6 +20,8 @@ jobs:
           NS=mwangli
           USER=limingwang06
           PASS=Dknhfre1st
+          echo $PASS
+          ls ./
           /usr/bin/docker build -t $APP -f Dockerfile .
           /usr/bin/docker login --username=$USER --password=$PASS $REGISTER
           /usr/bin/docker tag $APP $REGISTER/$NS/$APP
