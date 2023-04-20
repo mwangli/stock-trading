@@ -30,5 +30,6 @@ jobs:
           KEY: ${{ secrets.PRIVATE_KEY }}
           HOST: 112.74.187.216
         run: |
-          mkdir -p ~/.ssh/ && echo "$KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+          mkdir -p ~/.ssh/ && echo $KEY > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+          cat ~/.ssh/id_rsa
           ssh -o StrictHostKeyChecking=no root@$HOST kubectl get pod -A
