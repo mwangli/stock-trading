@@ -6,24 +6,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-#      # 拉取代码
-#      - uses: actions/checkout@v3
-#      # 打包文件
-#      - name: mvn-package
-#        run: mvn package
-#      # 构建镜像
-#      - name: docker-build
-#        env:
-#          APP: test
-#          REGISTER: registry.cn-shenzhen.aliyuncs.com
-#          NS: mwangli
-#          USER: limingwang06
-#          PASS: Dknhfre1st
-#        run: |
-#           docker build -t $APP -f Dockerfile .
-#           docker login --username=$USER --password=$PASS $REGISTER
-#           docker tag $APP $REGISTER/$NS/$APP
-#           docker push $REGISTER/$NS/$APP
+      # 拉取代码
+      - uses: actions/checkout@v3
+      # 打包文件
+      - name: mvn-package
+        run: mvn package
+      # 构建镜像
+      - name: docker-build
+        env:
+          APP: test
+          REGISTER: registry.cn-shenzhen.aliyuncs.com
+          NS: mwangli
+          USER: limingwang06
+          PASS: Dknhfre1st
+        run: |
+           docker build -t $APP -f Dockerfile .
+           docker login --username=$USER --password=$PASS $REGISTER
+           docker tag $APP $REGISTER/$NS/$APP
+           docker push $REGISTER/$NS/$APP
       # 重启服务
       - uses: cross-the-world/ssh-pipeline@master
         with:
@@ -31,4 +31,4 @@ jobs:
           user: root
           pass: Dknhfre1st
           port: 22
-          script: kubectl get pod -A
+          script: kubectl set image sts/$APP $APP=$REGISTER/$NS/$APP --record
