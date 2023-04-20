@@ -14,7 +14,7 @@ jobs:
       # 构建镜像
       - name: docker-build
         env:
-          APP: test
+          APP: found-trading
           REGISTER: registry.cn-shenzhen.aliyuncs.com
           NS: mwangli
           USER: limingwang06
@@ -26,6 +26,10 @@ jobs:
            docker push $REGISTER/$NS/$APP
       # 重启服务
       - uses: cross-the-world/ssh-pipeline@master
+        env:
+          APP: found-trading
+          REGISTER: registry.cn-shenzhen.aliyuncs.com
+          NS: mwangli
         with:
           host: 112.74.187.216
           user: root
