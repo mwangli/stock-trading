@@ -11,6 +11,6 @@ jobs:
       - name: mvn package
         run: |
           pwd
-          dcoker info
+          /usr/bin/docker info
           java -version
           ls /home/runner/
