@@ -6,19 +6,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-
     - uses: actions/checkout@v3
-
     - name: mvn-package
       run: mvn package
-
     - name: docker-build
       env:
-        APP: found-trading
-        REGISTER: registry.cn-shenzhen.aliyuncs.com
-        NS: mwangli
-        USER: limingwang06
-        PASS: Dknhfre1st
+#        APP: found-trading
+#        REGISTER: registry.cn-shenzhen.aliyuncs.com
+#        NS: mwangli
+#        USER: limingwang06
+#        PASS: Dknhfre1st
       run: |
 #        APP=found-trading
 #        REGISTER=registry.cn-shenzhen.aliyuncs.com
