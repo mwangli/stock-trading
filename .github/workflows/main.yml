@@ -6,13 +6,21 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Docker Setup Buildx
-        uses: docker/setup-buildx-action@v2.5.0
-      - name: test 
+      # 拉取代码
+      - name: Checkout Code
+        uses: actions/checkout@v2
+      # JDK环境
+      - name: SetUP JDK
+      - uses: actions/setup-java@v1
+        with:
+          java-version: 1.8
+      # Docker环境
+      - name: SetUP Docker
+        uses: docker/setup-buildx-action@v1
+      # 验证环境
+      - name: test-env
         run: |
-          pwd
-          ls .
-          ls ../
-          /usr/bin/docker info
           java -version
-          ls /home/runner/
+          mvn -version
+          dcoker -version
+        
