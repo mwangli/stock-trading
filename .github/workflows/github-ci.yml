@@ -25,9 +25,12 @@ jobs:
 #           docker tag ${APP} ${REGISTER}/${NS}/${APP}
 #           docker push ${REGISTER}/${NS}/${APP}
       # 重启服务
-      - name: SSH-Remote-Server
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: 112.74.187.216
-          password: Dknhfre1st
-          script: kubectl get pod -A
+      - id: ssh-bar
+          uses: invi5H/ssh-action@v1
+          with:
+            NAME: bar
+            SSH_HOST: 112.74.187.216
+            SSH_PORT: 22
+            SSH_USER: root
+            SSH_KEY: ${{ secrets.PRIVATE_KEY }}
+          - run: ssh ${{ steps.ssh-foo.outputs.SERVER }} kubectl get pod -A
