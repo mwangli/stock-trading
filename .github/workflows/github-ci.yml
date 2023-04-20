@@ -20,48 +20,15 @@ jobs:
 #          USER: limingwang06
 #          PASS: Dknhfre1st
 #        run: |
-#           docker build -t ${APP} -f Dockerfile .
-#           docker login --username=${USER} --password=${PASS} ${REGISTER}
-#           docker tag ${APP} ${REGISTER}/${NS}/${APP}
-#           docker push ${REGISTER}/${NS}/${APP}
+#           docker build -t $APP -f Dockerfile .
+#           docker login --username=$USER --password=$PASS $REGISTER
+#           docker tag $APP $REGISTER/$NS/$APP
+#           docker push $REGISTER/$NS/$APP
       # 重启服务
-#      - name: test
-#        run: |
-#           echo ${{ secrets.PRIVATE_KEY }}
-#           echo ${{ secrets.REGISTRY_USERNAME }}
-#           echo ${{ secrets.RESIGTRY_PASSWORD }}
-      - uses: kevin-leptons/ssh_action@v1
+      - uses: cross-the-world/ssh-pipeline@master
         with:
-          # URI refers to remote host like `user@host`
-          host: root@112.74.187.216
-          # Private SSH key to authenticate
-          key: |
-            -----BEGIN RSA PRIVATE KEY-----
-            MIIEpQIBAAKCAQEA/wf6L7pWgW86lhL9iRwPu8yP2bm/fOjlKfrnTpWYbVObX48y
-            soMvEFgWdh+ljzSvrL5KiFZsdOjX1kJbyC2bZpzByFMFai11sXGuv4ZUteilUYl2
-            bFge21VpvFtp/ayJlOGFmziMxNhGpk5q0A9pAT0QzpNUX7dxXgPPEZ5JUgIhTPfx
-            oJWCgs9g1JEfiUBuEgkhhp8BwFmk0djYH0sN1uEFYrUZu5Zk+w8s2LfXATfjm1rW
-            XqvRN2pvXByvRtLd/5KeEQkAIOj7zSWMJooWYIe6AdLR+n+PxVG9ctnAInsHl4mW
-            iMkzLbkxUB67pBqSh3CCZiKLa2r6+ofCedTuswIDAQABAoIBAQD0B7gYL19THxGa
-            RLWhmt5bPxRuq9RVO6z8jH8ErRRbmGLV/3ntYqWIKCHmCcYrz6hBzRwYdUn2XE8b
-            UAfu9eT7PQgYHYjS3oj9r+Acl/c60VBPQw+0AGYWThaNC5PSDmTftyRXMLdSK/j+
-            bY67Y+OAMeSBJmzX4fpykYZ0P1e9RS+FuYwNCa3pvb91lIPK8VB2uqGR6GsvDyTY
-            vPNm+9GOx0jp/qB1kRd/kaEDf0s6TtzNsqxQ3I5ldgjHjE0MTw4kbCtfYqif10Qu
-            u11k8twEujaQNdvZe2d57kMcWN9LdHqvlOPkMdHTMB5W9Dqn1LL+guWd7bqVggCQ
-            BB5adh6xAoGBAP+RXLBmHM/xVzozM9x2zRzDybTaMx4m2n25mgPhusYh4LHh9XAx
-            LYl6vbBPNPqPf1wgPpC+S3AFYVys1GTi/ZWet6Ya9nnBbAIRPxQMHb9XdoyKTQ82
-            JvdYuaPRcRwmKxgXDY8o5UwGX19QJrPU2nZOhC5MdsMorDgZ4fTaBVidAoGBAP92
-            YgWoRyBmfhC4KO3/3x3mv82NVLBm16YaawPfchXX9WD2CNj78qmtqOLC120+k92j
-            qGZ/uQqvAjrnsfQ3+QA41ut4o9Z7UD/7X5s3vbqFuQcVYfeT/YpNXaEgjj1nlmD9
-            N2AHeBsoa6+yNyLTbNcthp86LUUsbdNaglv8yXuPAoGAeUcF8T/D1Hn2psu9hJVr
-            6IaQpZ4WO+y8KoV1LPplo7hX5JIR4tezgFYaxhwQTAbkrVcv2Yg0TEiBV3U8pVOC
-            ewoCpHSPGmBLXP/KKz1EsJRU0YSf5OQRwbb9AVxWjMEgGiJ2cMU7asRrZdOnShds
-            RFAmMcJfaWVXtJezvnnnp5ECgYEAwHOSzOhFDSepeTcDvqiwkXowrM34KxyPAVeN
-            n1FKRSJ4fR9c8vp7iVCGlq5qVKZ8BtEwIGfAI0hMycuayH0SXRR09NfhtccYYdsh
-            33FSwZ3UEn4NW9JlgzddffFktuW+6Dpa6UE3Pl5pIeeEmfvlVwW5EWNmj2I1KrBY
-            3KvHrgkCgYEA1jZHd6lWljJLs5UR8laHekOJpkoJgRc4UraD0XQ6Qe6+s3Jbc4g4
-            KCsnLFRlYopr+H8LxTPfCBr1ctfRAM6RhwX2bt0RQAZwgbGFuiyHXyGCsasieyI5
-            2SE7lIoRXK7JAx9mqbiKLoKn0+tQVCSEmkmvhPAIbbQ1noqUU/l6TPY=
-            -----END RSA PRIVATE KEY-----
-          # Command to execute, Bash syntax
-          command: pwd && ls
+          host: 112.74.187.216
+          user: root
+          pass: Dknhfre1st
+          port: 22
+          script: pwd
