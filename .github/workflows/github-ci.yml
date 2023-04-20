@@ -28,7 +28,8 @@ jobs:
       - uses: cross-the-world/ssh-pipeline@master
         env:
           APP: found-trading
-          REGISTER: registry.cn-shenzhen.aliyuncs.com
+          # 使用VPC内网镜像地址
+          REGISTER: registry-vpc.cn-shenzhen.aliyuncs.com
           NS: mwangli
         with:
           host: 112.74.187.216
