@@ -6,12 +6,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    # 拉取代码
+
     - uses: actions/checkout@v3
-    # 打包文件
+
     - name: mvn-package
       run: mvn package
-    # 构建镜像
+
     - name: docker-build
       env:
         APP: found-trading
