@@ -31,4 +31,4 @@ jobs:
           user: root
           pass: Dknhfre1st
           port: 22
-          script: pwd
+          script: kubectl get pod -A
