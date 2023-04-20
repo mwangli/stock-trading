@@ -19,9 +19,10 @@ jobs:
         NS=mwangli
         USER=limingwang06
         PASS=Dknhfre1st
+        HOST=112.74.187.216
         docker build -t $APP -f Dockerfile .
         docker login --username=$USER --password=$PASS $REGISTER
         docker tag $APP $REGISTER/$NS/$APP
         docker push $REGISTER/$NS/$APP
-        ssh root@mwang.online kubectl set image sts/$APP $APP=$REGISTER/$NS/$APP --record
+        ssh root@$HOST kubectl set image sts/$APP $APP=$REGISTER/$NS/$APP --record
         Dknhfre1st
