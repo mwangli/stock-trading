@@ -25,7 +25,9 @@ jobs:
 #           docker tag ${APP} ${REGISTER}/${NS}/${APP}
 #           docker push ${REGISTER}/${NS}/${APP}
       # 重启服务
-      - name: restart-app
-        env:
-          HOST: limingwang06
-        run: ssh root@112.74.187.216 kubectl get pod -A
+      - name: SSH Remote Commands
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: 112.74.187.216
+          password: Dknhfre1st
+          script: kubectl get pod -A
