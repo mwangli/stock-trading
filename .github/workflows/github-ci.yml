@@ -26,7 +26,7 @@ jobs:
 #           docker push ${REGISTER}/${NS}/${APP}
       # 重启服务
       - name: test
-        run: echo ${REGISTRY_PASSWORD}
+        run: echo ${{REGISTRY_PASSWORD}}
       - uses: kevin-leptons/ssh_action@v1
         with:
           # URI refers to remote host like `user@host`
