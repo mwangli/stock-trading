@@ -1,0 +1,49 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  DOCKER_HUB_URL: swr.cn-east-2.myhuaweicloud.com
+  MY_HUB_URL: 172.19.125.179:5000
+  DOCKER_HUB_ORG: foxess
+  PROJECT_NAME: foxess.welwitschia
+before_script:
+  - chmod +x ./welwitschia/mvnw
+
+build-job:
+  stage: build
+  script:
+    - cd ./welwitschia
+    - mvn --version
+    - mvn clean package --settings /usr/local/apache-maven-3.8.1/conf/settings.xml
+    - cd ..
+
+docker-job:
+  stage: deploy
+  script:
+    - echo "docker build for test"
+    - cd ./welwitschia
+    - mvn clean package --settings /usr/local/apache-maven-3.8.1/conf/settings.xml
+    - cd ..
+    - docker build -t  $PROJECT_NAME:latest .
+    - echo $CI_COMMIT_BRANCH
+    - docker tag $PROJECT_NAME:latest $MY_HUB_URL/$PROJECT_NAME:latest
+    - docker push $MY_HUB_URL/$PROJECT_NAME:latest
+#  rules:
+#    - allow_failure: false
+
+#如果有版本，则推送到hub
+prod-deploy:
+  stage: deploy
+  script:
+    - echo "docker build for prod"
+    - cd ./welwitschia
+    - mvn clean package --settings /usr/local/apache-maven-3.8.1/conf/settings.xml
+    - cd ..
+    - docker build -t  $PROJECT_NAME:latest .
+    - docker tag $PROJECT_NAME:latest $DOCKER_HUB_URL/$DOCKER_HUB_ORG/$PROJECT_NAME:$CI_COMMIT_TAG
+    - docker push $DOCKER_HUB_URL/$DOCKER_HUB_ORG/$PROJECT_NAME:$CI_COMMIT_TAG
+    - docker image rm $DOCKER_HUB_URL/$DOCKER_HUB_ORG/$PROJECT_NAME:$CI_COMMIT_TAG -f
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: on_success
