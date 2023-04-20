@@ -10,7 +10,7 @@ jobs:
     - name: mvn-package
       run: mvn package
     - name: docker-build
-      env:
+#      env:
 #        APP: found-trading
 #        REGISTER: registry.cn-shenzhen.aliyuncs.com
 #        NS: mwangli
