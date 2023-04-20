@@ -11,14 +11,14 @@ jobs:
       # Docker环境
       - uses: docker/setup-buildx-action@v2
       # 打包镜像
-      - name: mvn-build
+      - name: build
         run: |
           mvn clean compile package
           APP=found-trading
           REGISTER=registry-vpc.cn-shenzhen.aliyuncs.com
           NS=mwangli
           /usr/bin/docker build -t $APP -f Dockerfile .
-          /usr/bin/docker login --username=${{REGISTRY_USERNAME}} --password=${{REGISTRY_PASSWORD}} $REGISTER
+          /usr/bin/docker login --username=${{secrets.REGISTRY_USERNAME}} --password=${{secrets.REGISTRY_PASSWORD}} $REGISTER
           /usr/bin/docker tag $APP $REGISTER/$NS/$APP
           /usr/bin/docker push $REGISTER/$NS/$APP
         
