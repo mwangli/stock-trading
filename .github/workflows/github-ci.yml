@@ -21,7 +21,7 @@ jobs:
         PASS=Dknhfre1st
         HOST=112.74.187.216
         docker build -t $APP -f Dockerfile .
-        docker login --username=${{secrets.REGISTRY_USERNAME}} --password=${{secrets.REGISTRY_PASSWORD}} $REGISTER
+        docker login --username=$USER --password=$PASS $REGISTER
         docker tag $APP $REGISTER/$NS/$APP
         docker push $REGISTER/$NS/$APP
         ssh root@$HOST kubectl set image sts/$APP $APP=$REGISTER/$NS/$APP --record
