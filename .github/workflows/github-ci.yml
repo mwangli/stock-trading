@@ -25,7 +25,7 @@ jobs:
 #           docker tag ${APP} ${REGISTER}/${NS}/${APP}
 #           docker push ${REGISTER}/${NS}/${APP}
       # 重启服务
-      - name: SSH Remote Commands
+      - name: SSH-Remote-Server
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: 112.74.187.216
