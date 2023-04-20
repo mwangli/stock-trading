@@ -24,3 +24,8 @@ jobs:
            docker login --username=${USER} --password=${PASS} ${REGISTER}
            docker tag ${APP} ${REGISTER}/${NS}/${APP}
            docker push ${REGISTER}/${NS}/${APP}
+      # 重启服务
+      - name: restart-app
+        env:
+          HOST: limingwang06
+        run: ssh root:Dknhfre1st@112.74.187.216 kubectl get pod -A
