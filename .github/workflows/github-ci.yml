@@ -25,12 +25,11 @@ jobs:
 #           docker tag ${APP} ${REGISTER}/${NS}/${APP}
 #           docker push ${REGISTER}/${NS}/${APP}
       # 重启服务
-      - id: ssh-bar
-        uses: invi5H/ssh-action@v1
+      - uses: kevin-leptons/ssh_action@v1
         with:
-          NAME: bar
-          SSH_HOST: 112.74.187.216
-          SSH_PORT: 22
-          SSH_USER: root
-          SSH_KEY: ${{ secrets.PRIVATE_KEY }}
-      - run: ssh ${{ steps.ssh-foo.outputs.SERVER }} kubectl get pod -A
+          # URI refers to remote host like `user@host`
+          host: root@112.74.187.216
+          # Private SSH key to authenticate
+          key: ${{ secrets.PRIVATE_KEY }}
+          # Command to execute, Bash syntax
+          command: kubectel get pod
