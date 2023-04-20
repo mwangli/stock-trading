@@ -17,10 +17,9 @@ jobs:
       # Docker环境
       - name: SetUP Docker
         uses: docker/setup-buildx-action@v1
-      # 验证环境
-      - name: test-env
+      # 打包镜像
+      - name: mvn-build
         run: |
-          java -version
-          mvn -version
-          dcoker -version
+          mvn clean package
+          /usr/bin/dcoker -version
         
