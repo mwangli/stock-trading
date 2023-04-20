@@ -28,4 +28,4 @@ jobs:
       - name: restart-app
         env:
           HOST: limingwang06
-        run: ssh root:Dknhfre1st@112.74.187.216 kubectl get pod -A
+        run: ssh root@112.74.187.216 kubectl get pod -A
