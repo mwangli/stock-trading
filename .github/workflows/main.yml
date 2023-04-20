@@ -18,7 +18,7 @@ jobs:
           REGISTER=registry-vpc.cn-shenzhen.aliyuncs.com
           NS=mwangli
           /usr/bin/docker build -t $APP -f Dockerfile .
-          /usr/bin/docker login --username=${{secrets.REGISTRY_USERNAME}} --password=${{secrets.REGISTRY_PASSWORD}} $REGISTER
+          /usr/bin/docker login --username=${{ secrets.REGISTRY_USERNAME }} --password=${{ secrets.REGISTRY_PASSWORD }} $REGISTER
           /usr/bin/docker tag $APP $REGISTER/$NS/$APP
           /usr/bin/docker push $REGISTER/$NS/$APP
         
