@@ -25,14 +25,10 @@ jobs:
            docker tag $APP $REGISTER/$NS/$APP
            docker push $REGISTER/$NS/$APP
       # 重启服务
-      - uses: cross-the-world/ssh-pipeline@master
-        env:
-          APP: found-trading
-          # 使用VPC内网镜像地址
-          REGISTER: registry-vpc.cn-shenzhen.aliyuncs.com
-          NS: mwangli
-        with:
-          host: 112.74.187.216
-          user: root
-          pass: Dknhfre1st
-          script: kubectl set image sts/$APP $APP=$REGISTER/$NS/$APP --record
+      - name: deploy-app
+          env:
+            KEY: ${{ secrets.PRIVATE_KEY }}
+            HOST: 112.74.187.216
+          run: |
+            mkdir -p ~/.ssh/ && echo "$KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+            ssh -o StrictHostKeyChecking=no root@HOST kubectl get pod -A
