@@ -16,6 +16,6 @@ public class TestController {
 
     @GetMapping("test")
     public String test() {
-        return "test:v1.2.3";
+        return "test:v1.2.4";
     }
 }
