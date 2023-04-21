@@ -29,7 +29,7 @@ public class TestController {
     @SneakyThrows
     @GetMapping("test")
     public String test() {
-        return "test:v2.3";
+        return "test:v2.4";
     }
 
     @SneakyThrows
