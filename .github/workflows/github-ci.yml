@@ -33,7 +33,7 @@ jobs:
         uses: MrSquaare/ssh-setup-action@v2
         with:
           host: 112.74.187.216
-          private-key: KEY
+          private-key: $KEY
       - name: ssh-cmd
         run: |
           ssh root@112.74.187.216 kubectl get pod
