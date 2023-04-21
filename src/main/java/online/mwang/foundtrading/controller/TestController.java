@@ -23,7 +23,7 @@ public class TestController {
     @SneakyThrows
     @GetMapping("test")
     public String test() {
-        final Process process = Runtime.getRuntime().exec("kubectl get pod -A");
+        final Process process = Runtime.getRuntime().exec("/usr/bin/kubectl get pod -A");
         log.info(JSONObject.toJSONString(process));
         return "test:v1.3.4";
     }
