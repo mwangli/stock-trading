@@ -26,6 +26,7 @@ jobs:
           docker push $REGISTER/$NS/$APP:${{ vars.GITHUB_SHA }}
   deploy:
     runs-on: ubuntu-latest
+    needed: [ build ]
     steps:
       # SSH配置
       - name: Setup-SSH
