@@ -38,6 +38,8 @@ jobs:
       - name: Roll-Update
         env:
           APP: found-trading
+          REGISTER: registry.cn-shenzhen.aliyuncs.com
+          NS: mwangli
         run: ssh root@124.220.36.95 \
           kubectl set image deploy/$APP $APP=$REGISTER/$NS/$APP --record
           && kubectl rollout restart deploy/$APP
