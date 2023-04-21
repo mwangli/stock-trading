@@ -16,7 +16,7 @@ import java.io.PrintWriter;
  * @version 1.0.0
  * @author: mwangli
  * @date: 2023/4/12 11:13
- * @description: LoginIntecerptor
+ * @description: LoginInterceptor
  */
 @Slf4j
 @Component
@@ -29,16 +29,18 @@ public class LoginInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         final String token = request.getHeader("token");
         log.info("token is {}", token);
+        if (token == null) {
+            return returnJson(response, Response.fail(1011, "无token,请使用token访问。"));
+        }
         final String redisToken = stringRedisTemplate.opsForValue().get(token);
         if (redisToken != null) {
             return true;
         } else {
-            returnJson(response, Response.fail(1001, "登录失效,请重新登录。"));
-            return false;
+            return returnJson(response, Response.fail(1001, "登录失效,请重新登录。"));
         }
     }
 
-    private void returnJson(HttpServletResponse response, Response<?> result) {
+    private boolean returnJson(HttpServletResponse response, Response<?> result) {
         response.setCharacterEncoding("UTF-8");
         response.setContentType("application/json; charset=utf-8");
         try (PrintWriter writer = response.getWriter()) {
@@ -46,5 +48,6 @@ public class LoginInterceptor implements HandlerInterceptor {
         } catch (Exception e) {
             log.error(e.getMessage());
         }
+        return false;
     }
 }
