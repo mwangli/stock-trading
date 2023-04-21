@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: test
-        run: echo ${{ vars.GITHUB_SHA }}
+        run: echo $GITHUB_SHA
 #      # 拉取代码
 #      - uses: actions/checkout@v3
 #      # 打包文件
