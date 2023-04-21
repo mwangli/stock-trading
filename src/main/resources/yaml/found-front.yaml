@@ -1,6 +1,7 @@
 # 声明StatefulSet
 apiVersion: apps/v1
-kind: StatefulSet
+#kind: StatefulSet
+kind: Deployment
 metadata:
   name: found-front
   labels:
@@ -10,18 +11,24 @@ spec:
   selector:
     matchLabels:
       app: found-front
-  serviceName: found-front
+  # serviceName: found-front
   template:
     metadata:
       labels:
         app: found-front
     spec:
       imagePullSecrets:
-      - name: mwangli-docker-secret
+      - name: registry-secret
       containers:
-      - image: registry-vpc.cn-shenzhen.aliyuncs.com/mwangli/found-front
+      - image: registry.cn-shenzhen.aliyuncs.com/mwangli/found-front
         imagePullPolicy: Always
         name: found-front
+        readinessProbe:
+           # initialDelaySeconds: 10
+           # periodSeconds: 3
+          httpGet:
+            port: 80
+            path: /
         ports:
         - containerPort: 80
         volumeMounts:
@@ -50,10 +57,11 @@ data:
     server_name  localhost;
     location / {
         root   /usr/share/nginx/html;
-        index  index.html index.htm;
+        index  index.html;
+        try_files $uri $uri/ /index.html;
     }
-     location ^~/api/  {
-        proxy_pass http://mwang.online:8080/;
+     location /api  {
+        proxy_pass http://found-trading-svc:8080/;
     }
    }
 ---
@@ -72,14 +80,13 @@ spec:
   - port: 80
     protocol: TCP
     targetPort: 80
-    nodePort: 8000
+    nodePort: 80
 ---
 # 镜像仓库密钥
 apiVersion: v1
 kind: Secret
 type: kubernetes.io/dockerconfigjson
 data:
-  .dockerconfigjson: eyJhdXRocyI6eyJyZWdpc3RyeS12cGMuY24tc2hlbnpoZW4uYWxpeXVuY3MuY29tIjp7InVzZXJuYW1lIjoibGltaW5nd2FuZzA2IiwicGFzc3dvcmQiOiJEa25oZnJlMXN0IiwiYXV0aCI6ImJHbHRhVzVuZDJGdVp6QTJPa1JyYm1obWNtVXhjM1E9In19fQ==
+  .dockerconfigjson: eyJhdXRocyI6eyJyZWdpc3RyeS5jbi1zaGVuemhlbi5hbGl5dW5jcy5jb20iOnsidXNlcm5hbWUiOiJsaW1pbmd3YW5nMDYiLCJwYXNzd29yZCI6IkRrbmhmcmUxc3QiLCJhdXRoIjoiYkdsdGFXNW5kMkZ1WnpBMk9rUnJibWhtY21VeGMzUT0ifX19
 metadata:
-  name: mwangli-docker-secret
-  namespace: default
+  name: registry-secret

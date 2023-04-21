@@ -19,6 +19,13 @@ spec:
       containers:
       - image: redis
         name: redis-server
+        resources:
+          #limits:
+          #  cpu: 100m
+          #  memory: 2000Mi
+          requests:
+          #  cpu: 100m
+            memory: 100Mi
         command:
           - redis-server
           - "/etc/redis/redis.conf"
@@ -105,4 +112,3 @@ spec:
     protocol: TCP
     targetPort: 6379
     nodePort: 6379
-
