@@ -32,10 +32,14 @@ jobs:
       - name: Setup-SSH
         uses: MrSquaare/ssh-setup-action@v2
         with:
-          host: 112.74.187.216
+          host: 124.220.36.95
           private-key: ${{ secrets.PRIVATE_KEY }}
       # 应用更新
       - name: Roll-Update
         env:
           APP: found-trading
-        run: ssh root@112.74.187.216 kubectl rollout restart deploy/$APP
+          REGISTER: registry.cn-shenzhen.aliyuncs.com
+          NS: mwangli
+        run: ssh root@124.220.36.95 \
+             set image sts/$APP $APP=$REGISTER/$NS/$APP --record
+             kubectl rollout restart deploy/$APP
