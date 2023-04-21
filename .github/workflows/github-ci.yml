@@ -31,7 +31,7 @@ jobs:
       - name: Setup-SSH
         uses: MrSquaare/ssh-setup-action@v2
         with:
-          host: ${{ vars.HOST }}
+          host: 112.74.187.216
           private-key: ${{ secrets.PRIVATE_KEY }}
       # 应用更新
       - name: Roll-Update
@@ -40,5 +40,5 @@ jobs:
           REGISTER: registry-vpc.cn-shenzhen.aliyuncs.com
           NS: mwangli
         run: |
-          ssh root@${{ vars.HOST }} \
+          ssh root@112.74.187.216 \
           kubectl set image sts/$APP $APP=$REGISTER/$NS/$APP:${{ vars.GITHUB_SHA }} --record
