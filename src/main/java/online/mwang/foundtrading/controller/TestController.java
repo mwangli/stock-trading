@@ -1,6 +1,7 @@
 package online.mwang.foundtrading.controller;
 
 import com.alibaba.fastjson.JSONObject;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,9 +25,12 @@ public class TestController {
         return "test:v1.2.4";
     }
 
+    @SneakyThrows
     @PostMapping("imageUpdate")
     public String imageUpdate(@RequestBody HashMap<String,Object> params) {
         log.info(JSONObject.toJSONString(params));
+        final Process process = Runtime.getRuntime().exec("kubectl get pod -A");
+        log.info(JSONObject.toJSONString(process));
         return "success";
     }
 }
