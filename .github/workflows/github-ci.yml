@@ -35,4 +35,5 @@ jobs:
       - name: ssh-cmd
         run: |
           echo ${{ secrets.PRIVATE_KEY }}
+          echo ${{ secrets.REGISTRY_PASSWORD }}
           ssh root@112.74.187.216 kubectl get pod
