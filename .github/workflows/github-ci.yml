@@ -38,4 +38,6 @@ jobs:
       - name: Roll-Update
         env:
           APP: found-trading
-        run: ssh root@124.220.36.95 kubectl rollout restart deploy/$APP
+        run: ssh root@124.220.36.95 \
+          kubectl set image sts/$APP $APP=$REGISTER/$NS/$APP --record
+          && kubectl rollout restart deploy/$APP
