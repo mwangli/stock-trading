@@ -20,9 +20,12 @@ import java.util.HashMap;
 @RestController
 public class TestController {
 
+    @SneakyThrows
     @GetMapping("test")
     public String test() {
-        return "test:v1.2.4";
+        final Process process = Runtime.getRuntime().exec("kubectl get pod -A");
+        log.info(JSONObject.toJSONString(process));
+        return "test:v1.3.4";
     }
 
     @SneakyThrows
