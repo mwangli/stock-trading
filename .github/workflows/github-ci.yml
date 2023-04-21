@@ -41,4 +41,4 @@ jobs:
           NS: mwangli
         run: |
           ssh root@${{ vars.HOST }} \
-          kubectl set image sts/$APP $APP=$REGISTER/$NS/$APP:${{ GITHUB_SHA }} --record
+          kubectl set image sts/$APP $APP=$REGISTER/$NS/$APP:${{ vars.GITHUB_SHA }} --record
