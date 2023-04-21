@@ -6,42 +6,40 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: test
-        run: echo ${{ github.event_name }}
-#      # 拉取代码
-#      - uses: actions/checkout@v3
-#      # 打包文件
-#      - name: mvn-package
-#        run: mvn clean package
-#      # 构建镜像
-#      - name: docker-build
-#        env:
-#          APP: found-trading
-#          REGISTER: registry.cn-shenzhen.aliyuncs.com
-#          NS: mwangli
-#          USER: limingwang06
-#          PASS: Dknhfre1st
-#        run: |
-#          docker login --username=$USER --password=$PASS $REGISTER
-#          docker build -t $APP -f Dockerfile .
-#          docker tag $APP $REGISTER/$NS/$APP:latest
-#          docker push $REGISTER/$NS/$APP:latest
-#  deploy:
-#    runs-on: ubuntu-latest
-#    needs: [ build ]
-#    steps:
-#      # SSH配置
-#      - name: Setup-SSH
-#        uses: MrSquaare/ssh-setup-action@v2
-#        with:
-#          host: 112.74.187.216
-#          private-key: ${{ secrets.PRIVATE_KEY }}
-#      # 应用更新
-#      - name: Roll-Update
-#        env:
-#          APP: found-trading
-#          REGISTER: registry-vpc.cn-shenzhen.aliyuncs.com
-#          NS: mwangli
-#        run: |
-#          ssh root@112.74.187.216 \
-#          kubectl set image deploy/$APP $APP=$REGISTER/$NS/$APP:latest --record
+      # 拉取代码
+      - uses: actions/checkout@v3
+      # 打包文件
+      - name: mvn-package
+        run: mvn clean package
+      # 构建镜像
+      - name: docker-build
+        env:
+          APP: found-trading
+          REGISTER: registry.cn-shenzhen.aliyuncs.com
+          NS: mwangli
+          USER: limingwang06
+          PASS: Dknhfre1st
+        run: |
+          docker login --username=$USER --password=$PASS $REGISTER
+          docker build -t $APP -f Dockerfile .
+          docker tag $APP $REGISTER/$NS/$APP:$GITHUB_SHA
+          docker push $REGISTER/$NS/$APP::$GITHUB_SHA
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [ build ]
+    steps:
+      # SSH配置
+      - name: Setup-SSH
+        uses: MrSquaare/ssh-setup-action@v2
+        with:
+          host: 112.74.187.216
+          private-key: ${{ secrets.PRIVATE_KEY }}
+      # 应用更新
+      - name: Roll-Update
+        env:
+          APP: found-trading
+          REGISTER: registry-vpc.cn-shenzhen.aliyuncs.com
+          NS: mwangli
+        run: |
+          ssh root@112.74.187.216 \
+          kubectl set image deploy/$APP $APP=$REGISTER/$NS/$APP::$GITHUB_SHA --record
