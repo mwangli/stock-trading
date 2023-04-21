@@ -17,9 +17,9 @@ public class WebConfig implements WebMvcConfigurer {
     private LoginInterceptor loginInterceptor;
 
     private static final String[] IGNORE_URLS = new String[]{
-            "test",
-            "imageUpdate",
-            "login/account"
+            "/test",
+            "i/mageUpdate",
+            "/login/account"
     };
 
     @Override
