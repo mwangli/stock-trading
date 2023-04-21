@@ -28,12 +28,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup-SSH
+        env:
+          KEY: ${{ secrets.PRIVATE_KEY }}
         uses: MrSquaare/ssh-setup-action@v2
         with:
           host: 112.74.187.216
-          private-key: ${{ secrets.PRIVATE_KEY }}
+          private-key: KEY
       - name: ssh-cmd
         run: |
-          echo ${{ secrets.PRIVATE_KEY }}
-          echo ${{ secrets.REGISTRY_PASSWORD }}
           ssh root@112.74.187.216 kubectl get pod
