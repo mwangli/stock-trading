@@ -17,12 +17,12 @@ public class WebConfig implements WebMvcConfigurer {
     private LoginInterceptor loginInterceptor;
 
     private static final String[] IGNORE_URLS = new String[]{
-            "/test",
-            "/imageUpdate"
+            "test",
+            "imageUpdate"
     };
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-//        registry.addInterceptor(loginInterceptor).excludePathPatterns(IGNORE_URLS);
+        registry.addInterceptor(loginInterceptor).excludePathPatterns(IGNORE_URLS);
     }
 }
