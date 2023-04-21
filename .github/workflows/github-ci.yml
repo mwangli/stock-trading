@@ -23,7 +23,7 @@ jobs:
           docker login --username=$USER --password=$PASS $REGISTER
           docker build -t $APP -f Dockerfile .
           docker tag $APP $REGISTER/$NS/$APP:$GITHUB_SHA
-          docker push $REGISTER/$NS/$APP::$GITHUB_SHA
+          docker push $REGISTER/$NS/$APP:$GITHUB_SHA
   deploy:
     runs-on: ubuntu-latest
     needs: [ build ]
@@ -42,4 +42,4 @@ jobs:
           NS: mwangli
         run: |
           ssh root@112.74.187.216 \
-          kubectl set image deploy/$APP $APP=$REGISTER/$NS/$APP::$GITHUB_SHA --record
+          kubectl set image deploy/$APP $APP=$REGISTER/$NS/$APP:$GITHUB_SHA --record
