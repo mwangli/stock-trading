@@ -6,44 +6,41 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: test
+      # 拉取代码
+      - uses: actions/checkout@v3
+      # 打包文件
+      - name: mvn-package
+        run: mvn clean package
+      # 构建镜像
+      - name: docker-build
+        env:
+          APP: found-trading
+          REGISTER: registry.cn-shenzhen.aliyuncs.com
+          NS: mwangli
+          USER: limingwang06
+          PASS: Dknhfre1st
         run: |
-          echo $GITHUB_SHORT_SHA
-          echo $GITHUB_SHA
-          echo $GITHUB_SHA_SHORT
-#      # 拉取代码
-#      - uses: actions/checkout@v3
-#      # 打包文件
-#      - name: mvn-package
-#        run: mvn clean package
-#      # 构建镜像
-#      - name: docker-build
-#        env:
-#          APP: found-trading
-#          REGISTER: registry.cn-shenzhen.aliyuncs.com
-#          NS: mwangli
-#          USER: limingwang06
-#          PASS: Dknhfre1st
-#        run: |
-#          docker login --username=$USER --password=$PASS $REGISTER
-#          docker build -t $APP -f Dockerfile .
-#          docker tag $APP $REGISTER/$NS/$APP:$GITHUB_SHA_SHORT
-#          docker push $REGISTER/$NS/$APP:$GITHUB_SHA_SHORT
-#  deploy:
-#    runs-on: ubuntu-latest
-#    needs: [ build ]
-#    steps:
-#      # SSH配置
-#      - name: Setup-SSH
-#        uses: MrSquaare/ssh-setup-action@v2
-#        with:
-#          host: 124.220.36.95
-#          private-key: ${{ secrets.PRIVATE_KEY }}
-#      # 应用更新 && kubectl rollout restart deploy/$APP
-#      - name: Roll-Update
-#        env:
-#          APP: found-trading
-#          REGISTER: registry.cn-shenzhen.aliyuncs.com
-#          NS: mwangli
-#        run: ssh root@124.220.36.95 kubectl set image deploy/$APP $APP=$REGISTER/$NS/$APP:$GITHUB_SHA_SHORT --record
+          docker login --username=$USER --password=$PASS $REGISTER
+          docker build -t $APP -f Dockerfile .
+          docker tag $APP $REGISTER/$NS/$APP
+          docker push $REGISTER/$NS/$APP
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [ build ]
+    steps:
+      # SSH配置
+      - name: Setup-SSH
+        uses: MrSquaare/ssh-setup-action@v2
+        with:
+          host: 124.220.36.95
+          private-key: ${{ secrets.PRIVATE_KEY }}
+      # 应用更新
+      - name: Roll-Update
+        env:
+          APP: found-trading
+          REGISTER: registry.cn-shenzhen.aliyuncs.com
+          NS: mwangli
+        run: ssh root@124.220.36.95 \
+          kubectl set image deploy/$APP $APP=$REGISTER/$NS/$APP --record
+          && kubectl rollout restart deploy/$APP
 
