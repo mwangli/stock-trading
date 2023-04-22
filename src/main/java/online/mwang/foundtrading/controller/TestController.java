@@ -3,6 +3,7 @@ package online.mwang.foundtrading.controller;
 import com.alibaba.fastjson.JSONObject;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.foundtrading.utils.CommandUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -36,8 +37,7 @@ public class TestController {
     @PostMapping("imageUpdate")
     public String imageUpdate(@RequestBody HashMap<String, Object> params) {
         log.info(JSONObject.toJSONString(params));
-        final Process process = Runtime.getRuntime().exec("kubectl get pod -A");
-        log.info(JSONObject.toJSONString(process));
+        CommandUtils.run("kubectl get pod");
         return "success";
     }
 
