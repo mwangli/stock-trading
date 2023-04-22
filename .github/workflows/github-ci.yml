@@ -24,19 +24,12 @@ jobs:
           docker build -t $APP -f Dockerfile .
           docker tag $APP $REGISTER/$NS/$APP
           docker push $REGISTER/$NS/$APP
-  deploy:
-    runs-on: ubuntu-latest
-    needs: [ build ]
-    steps:
-      # SSH配置
-      - name: Setup-SSH
-        uses: MrSquaare/ssh-setup-action@v2
+      # 滚动更新
+      - uses: matheusvanzan/sshpass-action@v2
         with:
           host: 124.220.36.95
-          private-key: ${{ secrets.PRIVATE_KEY }}
-      # 应用更新
-      - name: Roll-Update
-        env:
-          APP: found-trading
-        run: ssh root@124.220.36.95 kubectl rollout restart deploy/$APP
+          user: root
+          pass: Dknhfre1st
+          run: kubectl rollout restart deploy found-trading
+
 
