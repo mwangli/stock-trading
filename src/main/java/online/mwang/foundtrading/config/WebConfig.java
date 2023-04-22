@@ -18,7 +18,7 @@ public class WebConfig implements WebMvcConfigurer {
 
     private static final String[] IGNORE_URLS = new String[]{
             "/test",
-            "i/mageUpdate",
+            "/imageUpdate",
             "/login/account"
     };
 
