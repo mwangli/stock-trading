@@ -4,17 +4,18 @@ import com.alibaba.fastjson.JSONObject;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.utils.CommandUtils;
-import org.apache.http.HttpEntity;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.util.EntityUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.CookieManager;
+import java.net.HttpCookie;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.HashMap;
 
 /**
@@ -44,15 +45,34 @@ public class TestController {
 
     @SneakyThrows
     public static void main(String[] args) {
-        CloseableHttpClient httpClient = HttpClientBuilder.create().build();
-        HttpGet httpGet = new HttpGet("http://test:8080/test");
-        while (true) {
-            CloseableHttpResponse response = httpClient.execute(httpGet);
-            // 从响应模型中获取响应实体
-            final HttpEntity entity = response.getEntity();
-            System.out.println("响应内容为:" + EntityUtils.toString(entity));
-            Thread.sleep(1000);
-        }
+
+        final CookieManager cookieManager = new CookieManager();
+        cookieManager.getCookieStore().add(URI.create("weixin.citicsinfo.com"),
+                new HttpCookie("H5Token", "NajcI750M9zeg2w7O0TaQe4bMcj8Q1zdNdj6Ee51M2D7Aa15O1T6g2waMcz2Mc22"));
+
+        HttpClient client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_2)
+                .connectTimeout(Duration.ofSeconds(5))
+                .followRedirects(HttpClient.Redirect.ALWAYS)
+//                .cookieHandler(cookieManager)
+                .build();
+
+//        HttpRequest getRequest = HttpRequest.newBuilder()
+//                .GET()
+//                .uri(URI.create("http://www.flydean.com"))
+//                .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36")
+//                .build();
+
+
+        HttpRequest postRequest = HttpRequest.newBuilder()
+                .POST(HttpRequest.BodyPublishers.ofString("c.funcno=20001&c.version=1&c.stock_code=000001&c.market=SH&c.start=240&c.cfrom=H5&c.tfrom=PC&c.CHANNEL="))
+                .uri(URI.create("https://weixin.citicsinfo.com/reqxml?action=1230"))
+                .build();
+
+
+        HttpResponse<String> response = client.send(postRequest, HttpResponse.BodyHandlers.ofString());
+        String responseBody = response.body();
+        log.info(responseBody);
     }
 
 }
