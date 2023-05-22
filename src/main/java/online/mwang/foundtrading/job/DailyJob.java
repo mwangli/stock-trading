@@ -2,18 +2,23 @@ package online.mwang.foundtrading.job;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.DailyPrice;
+import online.mwang.foundtrading.bean.FoundDayRecord;
+import online.mwang.foundtrading.bean.FoundTradingRecord;
 import online.mwang.foundtrading.bean.StockInfo;
+import online.mwang.foundtrading.mapper.FoundDayMapper;
+import online.mwang.foundtrading.mapper.FoundTradingMapper;
 import online.mwang.foundtrading.mapper.StockInfoMapper;
 import online.mwang.foundtrading.utils.RequestUtils;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -30,24 +35,94 @@ import java.util.List;
 
 public class DailyJob {
 
-    private final RequestUtils requestUtils;
-
-    private final StockInfoMapper StockInfoMapper;
-
     private static long count = 0L;
+    private final RequestUtils requestUtils;
+    private final StockInfoMapper StockInfoMapper;
+    private final FoundTradingMapper foundTradingMapper;
+    private final FoundDayMapper foundDayMapper;
+    private final RedisTemplate<String, String> redisTemplate;
 
-    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
-    public void getData() {
+    // 更新每日价格数据
+    @Scheduled(cron = "9 9 9 * * *")
+//    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
+    public void updateDate() {
         for (int i = 1; i <= 20; i++) {
             listPage500(i);
         }
     }
 
+    // 选出待出售股票
+    @Scheduled(cron = "9 9 9 * * *")
+//    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
+    public void getSold() {
+        String token = redisTemplate.opsForValue().get("token");
+        if (token == null) return;
+        long timeMillis = System.currentTimeMillis();
+        String param = "action=117&StartPos=0&MaxCount=20&reqno=" + timeMillis
+                + "&intacttoserver=%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&token=" + token + "&MobileCode=13278828091&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
+        JSONArray dataList = requestUtils.request2(param);
+        for (int i = 1; i < dataList.size(); i++) {
+            String data = dataList.getString(i);
+            String[] split = data.split("\\|");
+            String name = split[0];
+            double number = Double.parseDouble(split[1]);
+            if (number <= 0) continue;
+            String code = split[9];
+            Double price = Double.parseDouble(split[4]);
+            Double amount = Double.parseDouble(split[8]);
+            // 查询买入时间
+            FoundTradingRecord selectRecord = foundTradingMapper.selectOne(new QueryWrapper<FoundTradingRecord>().eq("code", code).eq("sold", "0"));
+            if (selectRecord == null) {
+                // 写入数据
+                FoundTradingRecord record = new FoundTradingRecord();
+                record.setCode(code);
+                record.setName(name);
+                record.setBuyPrice(price);
+                record.setBuyNumber(number);
+                record.setBuyAmount(amount);
+                Date now = new Date();
+                record.setBuyDate(now);
+                record.setSold("0");
+                record.setCreateTime(now);
+                record.setUpdateTime(now);
+                foundTradingMapper.insert(record);
+            } else {
+                // 更新数据
+                FoundDayRecord dayRecord = new FoundDayRecord();
+                dayRecord.setCode(code);
+                dayRecord.setName(name);
+                SimpleDateFormat format = new SimpleDateFormat("yyyyMMdd");
+                dayRecord.setBuyDate(format.format(selectRecord.getBuyDate()));
+                dayRecord.setBuyNumber(selectRecord.getBuyNumber());
+                dayRecord.setBuyPrice(selectRecord.getBuyPrice());
+                dayRecord.setBuyAmount(selectRecord.getBuyAmount());
+                Date now = new Date();
+                dayRecord.setTodayDate(format.format(now));
+                dayRecord.setTodayPrice(price);
+                double todayAmount = price * selectRecord.getBuyNumber();
+                dayRecord.setTodayAmount(todayAmount);
+                double income = todayAmount - selectRecord.getBuyAmount();
+                dayRecord.setExpectedIncome(income);
+                dayRecord.setCreateTime(now);
+                dayRecord.setUpdateTime(now);
+                int dateDiff = diffDate(selectRecord.getBuyDate(), now);
+                double incomeRate = dateDiff == 0 ? 0 : income / dateDiff;
+                dayRecord.setDailyIncomeRate(incomeRate);
+                try {
+                    foundDayMapper.insert(dayRecord);
+                } catch (DuplicateKeyException e) {
+                    log.warn("数据已存在！");
+                }
+            }
+        }
+    }
+
     public void listPage500(int page) {
         // 请求数据
-        String pram = "c.funcno=21000&c.version=1&c.sort=1&c.order=0&c.type=0:2:9:18&c.curPage=" + page + "&c.rowOfPage=500&c.field=1:2:22:23:24:3:8:16:21:31&c.cfrom=H5&c.tfrom=PC&c.CHANNEL=";
+        String pram = "c.funcno=21000&c.version=1&c.sort=1&c.order=0&c.type=0:2:9:18&c.curPage=" + page
+                + "&c.rowOfPage=500&c.field=1:2:22:23:24:3:8:16:21:31&c.cfrom=H5&c.tfrom=PC&c.CHANNEL=";
         final JSONArray results = requestUtils.request(pram);
-        log.info(JSON.toJSONString(results));
+//        log.info(JSON.toJSONString(results));
         final ArrayList<StockInfo> stockInfos = new ArrayList<>();
         // 解析数据
         for (int i = 0; i < results.size(); i++) {
@@ -76,21 +151,21 @@ public class DailyJob {
                 StockInfoMapper.insert(info);
                 log.info("保存第{}条数据：{}", count++, info);
             } catch (DuplicateKeyException e) {
-                log.error("数据已存在：{}", info);
+                log.warn("数据已存在：{}", info);
             }
             // 更新历史价格
             updateDailyPrice(info.getCode(), info.getMarket());
         }
     }
 
-
     public void updateDailyPrice(String code, String market) {
         // 获取历史数据
-        String param = "c.funcno=20009&c.version=1&c.stock_code=" + code + "&c.market=" + market + "&c.type=day&c.count=20&c.cfrom=H5&c.tfrom=PC&c.CHANNEL=";
+        String param = "c.funcno=20009&c.version=1&c.stock_code=" +
+                code + "&c.market=" + market + "&c.type=day&c.count=20&c.cfrom=H5&c.tfrom=PC&c.CHANNEL=";
         final JSONArray results = requestUtils.request(param);
         // 解析数据
         final ArrayList<DailyPrice> prices = new ArrayList<>();
-        if (results.size() > 12) {
+        if (results.size() >= 11) {
             for (int i = results.size() - 11; i < results.size(); i++) {
                 final String s = results.getString(i);
                 final String[] split = s.split(",");
@@ -105,13 +180,14 @@ public class DailyJob {
             stockInfo.setCode(code);
             stockInfo.setPrices(JSONObject.toJSONString(prices));
             stockInfo.setUpdateTime(new Date());
-            // 计算并更新得分
+            // 计算日增长率曲线
             final List<Double> rateList = getRateList(prices);
             stockInfo.setIncreaseRate(JSONObject.toJSONString(rateList));
+            // 计算得分
             final Double score = getScore(rateList);
             stockInfo.setScore(score);
             StockInfoMapper.update(stockInfo, new QueryWrapper<StockInfo>().eq("code", code));
-            log.info("更新历史价格：{}-{}-{}", market, code, score);
+            log.info("更新历史价格：{} {} {}", market, code, score);
         } else {
             log.warn("历史价格少于11条，丢弃该数据");
         }
@@ -124,7 +200,7 @@ public class DailyJob {
             final Double oldPrice = prices.get(i - 1).getPrice();
             final double dailyIncreaseRate = (price - oldPrice) / oldPrice;
             // 增长率乘100方便计算，否则数值太小
-            rateList.add(Double.parseDouble(String.format("%.4f", dailyIncreaseRate*100)));
+            rateList.add(Double.parseDouble(String.format("%.4f", dailyIncreaseRate * 100)));
         }
         return rateList;
     }
@@ -141,9 +217,16 @@ public class DailyJob {
         for (Double price : rateList) {
             sum += Math.pow((price - avg), 2);
         }
-        final double sqrt = Math.sqrt(sum / rateList.size());
-        final double score = sqrt;
+        double sqrt = Math.sqrt(sum / rateList.size());
+        sqrt = sqrt > 10 ? 10 : sqrt;
+        final double score = fixSum * (1 - (sqrt / 10));
         log.info("数据：{}， 日增长率总和：{}, 平均值：{}，方差：{}，得分：{}", rateList, fixSum, avg, sqrt, score);
         return score;
     }
+
+    public int diffDate(Date date1, Date date2) {
+        long spent = date2.getTime() - date1.getTime();
+        return (int) (spent / (1000 * 60 * 60 * 24));
+    }
+
 }

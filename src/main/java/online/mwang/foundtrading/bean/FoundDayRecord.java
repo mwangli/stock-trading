@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.Date;
 
 /**
  * @version 1.0.0
@@ -22,5 +23,25 @@ public class FoundDayRecord {
 
     private String name;
 
-    private BigDecimal todayAmount;
+    private String buyDate;
+
+    private Double buyNumber;
+
+    private Double buyPrice;
+
+    private Double buyAmount;
+
+    private String todayDate;
+
+    private Double todayPrice;
+
+    private Double todayAmount;
+
+    private Double expectedIncome;
+
+    private Double dailyIncomeRate;
+
+    private Date createTime;
+
+    private Date updateTime;
 }
