@@ -154,11 +154,11 @@ public class DailyJob {
                 log.warn("数据已存在：{}", info);
             }
             // 更新历史价格
-            updateDailyPrice(info.getCode(), info.getMarket(),info.getPrice());
+            updateDailyPrice(info.getCode(), info.getMarket(), info.getPrice());
         }
     }
 
-    public void updateDailyPrice(String code, String market,Double price) {
+    public void updateDailyPrice(String code, String market, Double price) {
         // 获取历史数据
         String param = "c.funcno=20009&c.version=1&c.stock_code=" +
                 code + "&c.market=" + market + "&c.type=day&c.count=20&c.cfrom=H5&c.tfrom=PC&c.CHANNEL=";
@@ -182,7 +182,7 @@ public class DailyJob {
             stockInfo.setUpdateTime(new Date());
             // 计算日增长率曲线
             SimpleDateFormat format = new SimpleDateFormat("yyyyMMdd");
-            DailyPrice dailyPrice = new DailyPrice(format.format(new Date()),price);
+            DailyPrice dailyPrice = new DailyPrice(format.format(new Date()), price);
             prices.add(dailyPrice);
             final List<Double> rateList = getRateList(prices);
             stockInfo.setIncreaseRate(JSONObject.toJSONString(rateList));
@@ -209,7 +209,7 @@ public class DailyJob {
     }
 
     // 获取最近10个交易日天的日增长率，用以计算增长的稳定性和增长率总和
-    // 稳定性用方差来衡量,绝对值为求和计算
+    // 稳定性用方差来衡量,增长率总和体现增长幅度
     // 增长的天数越多，日增长率总和越大，方差越小，增长波动越小，代表稳定增长，评分越高
     public Double getScore(List<Double> rateList) {
         // 计算和与平均值
@@ -229,7 +229,7 @@ public class DailyJob {
 
     public int diffDate(Date date1, Date date2) {
         long spent = date2.getTime() - date1.getTime();
-        return (int) (spent / (1000 * 60 * 60 * 24));
+        return (int) Math.ceil(spent * 1.0 / (1000 * 60 * 60 * 24));
     }
 
 }
