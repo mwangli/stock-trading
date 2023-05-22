@@ -1,8 +1,11 @@
 package online.mwang.foundtrading.bean;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import io.swagger.models.auth.In;
 import lombok.Data;
+import org.springframework.data.annotation.Id;
 
-import java.math.BigDecimal;
 import java.util.Date;
 
 /**
@@ -14,31 +17,42 @@ import java.util.Date;
 @Data
 public class FoundTradingRecord {
 
+    @TableId(type = IdType.AUTO)
     private Long id;
 
     private String code;
 
     private String name;
 
-    private BigDecimal buyAmount;
+    private Double buyAmount;
+
+    private Double buyPrice;
+
+    private Double buyNumber;
 
     private Date buyDate;
 
-    private BigDecimal saleAmount;
+    private Double saleAmount;
+
+    private Double salePrice;
+
+    private Double saleNumber;
 
     private Date saleDate;
 
-    private BigDecimal accountAmount;
+    private Double accountAmount;
 
     private Date accountDate;
 
-    private BigDecimal expectedIncome;
+    private Double expectedIncome;
 
-    private BigDecimal expectedIncomeRate;
+    private Double expectedIncomeRate;
 
-    private BigDecimal realIncome;
+    private Double realIncome;
 
-    private BigDecimal realIncomeRate;
+    private Double realIncomeRate;
+
+    private String sold;
 
     private Date createTime;
 
