@@ -15,6 +15,7 @@ import online.mwang.foundtrading.mapper.StockInfoMapper;
 import online.mwang.foundtrading.utils.RequestUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -40,7 +41,7 @@ public class DailyJob {
     private final StockInfoMapper StockInfoMapper;
     private final FoundTradingMapper foundTradingMapper;
     private final FoundDayMapper foundDayMapper;
-    private final RedisTemplate<String, String> redisTemplate;
+    private final StringRedisTemplate redisTemplate;
 
     // 更新每日价格数据
     @Scheduled(cron = "9 9 9 * * *")
@@ -55,7 +56,7 @@ public class DailyJob {
     @Scheduled(cron = "9 9 9 * * *")
 //    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
     public void getSold() {
-        String token = redisTemplate.opsForValue().get("token");
+        String token = redisTemplate.opsForValue().get("requestToken");
         if (token == null) return;
         long timeMillis = System.currentTimeMillis();
         String param = "action=117&StartPos=0&MaxCount=20&reqno=" + timeMillis
