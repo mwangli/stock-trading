@@ -73,7 +73,7 @@ public class DailyJob {
             // 查询买入时间
             FoundTradingRecord selectRecord = foundTradingMapper.selectOne(new QueryWrapper<FoundTradingRecord>().eq("code", code).eq("sold", "0"));
             if (selectRecord == null) {
-                // 写入数据
+                // 写入交易数据
                 FoundTradingRecord record = new FoundTradingRecord();
                 record.setCode(code);
                 record.setName(name);
@@ -87,7 +87,7 @@ public class DailyJob {
                 record.setUpdateTime(now);
                 foundTradingMapper.insert(record);
             } else {
-                // 更新数据
+                // 更新每日数据
                 FoundDayRecord dayRecord = new FoundDayRecord();
                 dayRecord.setCode(code);
                 dayRecord.setName(name);
@@ -154,24 +154,24 @@ public class DailyJob {
                 log.warn("数据已存在：{}", info);
             }
             // 更新历史价格
-            updateDailyPrice(info.getCode(), info.getMarket());
+            updateDailyPrice(info.getCode(), info.getMarket(),info.getPrice());
         }
     }
 
-    public void updateDailyPrice(String code, String market) {
+    public void updateDailyPrice(String code, String market,Double price) {
         // 获取历史数据
         String param = "c.funcno=20009&c.version=1&c.stock_code=" +
                 code + "&c.market=" + market + "&c.type=day&c.count=20&c.cfrom=H5&c.tfrom=PC&c.CHANNEL=";
         final JSONArray results = requestUtils.request(param);
         // 解析数据
         final ArrayList<DailyPrice> prices = new ArrayList<>();
-        if (results.size() >= 11) {
-            for (int i = results.size() - 11; i < results.size(); i++) {
+        if (results.size() >= 10) {
+            for (int i = results.size() - 10; i < results.size(); i++) {
                 final String s = results.getString(i);
                 final String[] split = s.split(",");
                 final String date = split[0].replaceAll("\\[", "");
-                final String price = split[1];
-                final double v = Double.parseDouble(price);
+                final String price1 = split[1];
+                final double v = Double.parseDouble(price1);
                 final DailyPrice dailyPrice = new DailyPrice(date, v / 100);
                 prices.add(dailyPrice);
             }
@@ -181,6 +181,9 @@ public class DailyJob {
             stockInfo.setPrices(JSONObject.toJSONString(prices));
             stockInfo.setUpdateTime(new Date());
             // 计算日增长率曲线
+            SimpleDateFormat format = new SimpleDateFormat("yyyyMMdd");
+            DailyPrice dailyPrice = new DailyPrice(format.format(new Date()),price);
+            prices.add(dailyPrice);
             final List<Double> rateList = getRateList(prices);
             stockInfo.setIncreaseRate(JSONObject.toJSONString(rateList));
             // 计算得分
