@@ -55,4 +55,16 @@ public class RequestUtils {
         final JSONObject res = JSONObject.parseObject(responseBody);
         return res.getJSONArray("GRID0");
     }
+
+    @SneakyThrows
+    public JSONObject request3(String formParam) {
+        HttpRequest postRequest = HttpRequest.newBuilder()
+                .POST(HttpRequest.BodyPublishers.ofString(formParam))
+                .uri(URI.create("https://weixin.citicsinfo.com/reqxml"))
+                .build();
+        HttpResponse<String> response = client.send(postRequest, HttpResponse.BodyHandlers.ofString());
+        String responseBody = response.body();
+        log.info(responseBody);
+        return JSONObject.parseObject(responseBody);
+    }
 }

@@ -13,8 +13,7 @@ import online.mwang.foundtrading.mapper.FoundDayMapper;
 import online.mwang.foundtrading.mapper.FoundTradingMapper;
 import online.mwang.foundtrading.mapper.StockInfoMapper;
 import online.mwang.foundtrading.utils.RequestUtils;
-import org.springframework.dao.DuplicateKeyException;
-import org.springframework.data.redis.core.RedisTemplate;
+import online.mwang.foundtrading.utils.SleepUtils;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -43,50 +42,53 @@ public class DailyJob {
     private final FoundDayMapper foundDayMapper;
     private final StringRedisTemplate redisTemplate;
 
-    // 更新每日价格数据
-    @Scheduled(cron = "9 9 9 * * *")
-//    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
-    public void updateDate() {
-        for (int i = 1; i <= 20; i++) {
-            listPage500(i);
-        }
+    // 每日任务处理
+    @Scheduled(cron = "0 30 9 * * *")
+    public void runJob() {
+        // 卖出旧股
+        sold();
+        // 买入新股
+        buy();
     }
 
-    // 选出待出售股票
-    @Scheduled(cron = "9 9 9 * * *")
-//    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
-    public void getSold() {
+    // 每隔半小时更新Token
+//    @Scheduled(fixedRate = 1000 * 60 * 60)
+    public void refreshToken() {
+        final long timeMillis = System.currentTimeMillis();
+        String pram = "action=100&modulus_id=2&MobileType=3&accounttype=ZJACCOUNT&MobileCode=13278828091&account=880008900626&password=b1c265324bf105446f0c04e6a98793cf0fea4779be3015861f4b67dbd6fad8eb2f63eced0a33ed88acc47c812aed5eb2b569850b01a9e707cfafd5bd55bfd8ed244b56bffc5fa13f8082525d81fdee750591ac894c6f71df39e98a0f9d766212cd8e52656c76ad2ae095af060fd7e0f3a7c44f2a0fd57c0598106632f600f1e6&signkey=51cfce1626c7cb087b940a0c224f2caa&CheckCode=7911&CheckToken=RBGsPvW1JuqsFeyiE%2FCL%2Bk7v3wsuMpFOn94D&NECaptchaValidate=CN31_GzA5NJRga1zBca48hhocaG18e1m9fCh81PrR8198Zk1IyBgn9jdx60-YM5MeDroeucjwdrnuoEFNQWm7oBzXiWL1kVc7St49wez5HvlLLJoPIbaYn79POLSpyHpQAUHyxAUdWrHBFBKxGtqYQ_QSm5r9cD0wD5NlyW4vJUZeWXR9dg.zisENlCoOS.y_I5LKAVvObbK0FXfCJgytMi.j-PBzRQ-VG7nJugjHYf12f1cQ5HGXMGQOlv82gWbCMjRNDE9A_FPgfV2wyo9LlyoHx6Z9CBxKXkaHU9S8CYzsqkE0nyNB7unEBDxBKVH45_xfRK98gqJQCqjrG5k-sMDRTJR9rR2KVeuhOvRRA-NS4HJlE0Imzfg9nqGgzGUoxM6tTNSEYJN8_2akMO.ioBvtFNhWx9DTKEly.V5AJV_rK05vuKv976iWZ7__eKoAiMbFpTJyLtuBvtq.Wb4wNNSm.5nIW7RCGRGYdDXlrM8P8Fq9CYXVVTd-NRlnF6c3&captchaId=d7a0e925d21e41df9680622ac96778b0&code=&maxcount=100&reqno="
+                + timeMillis + "&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
+        final JSONObject result = requestUtils.request3(pram);
+        final String newToken = result.getString("TOKEN");
+        redisTemplate.opsForValue().set("requestToken", newToken);
+    }
+
+    public void sold() {
         String token = redisTemplate.opsForValue().get("requestToken");
-        if (token == null) return;
+        if (token == null) {
+            return;
+        }
         long timeMillis = System.currentTimeMillis();
         String param = "action=117&StartPos=0&MaxCount=20&reqno=" + timeMillis
-                + "&intacttoserver=%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&token=" + token + "&MobileCode=13278828091&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
+                + "&intacttoserver=%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&token=" + token
+                + "&MobileCode=13278828091&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
         JSONArray dataList = requestUtils.request2(param);
+        double maxRate = Double.MIN_VALUE;
+        FoundDayRecord maxRateRecord = null;
         for (int i = 1; i < dataList.size(); i++) {
             String data = dataList.getString(i);
             String[] split = data.split("\\|");
             String name = split[0];
             double number = Double.parseDouble(split[1]);
-            if (number <= 0) continue;
-            String code = split[9];
+            if (number <= 0) {
+                continue;
+            }
             Double price = Double.parseDouble(split[4]);
-            Double amount = Double.parseDouble(split[8]);
+            String code = split[9];
+            String accountType = split[15];
             // 查询买入时间
             FoundTradingRecord selectRecord = foundTradingMapper.selectOne(new QueryWrapper<FoundTradingRecord>().eq("code", code).eq("sold", "0"));
             if (selectRecord == null) {
-                // 写入交易数据
-                FoundTradingRecord record = new FoundTradingRecord();
-                record.setCode(code);
-                record.setName(name);
-                record.setBuyPrice(price);
-                record.setBuyNumber(number);
-                record.setBuyAmount(amount);
-                Date now = new Date();
-                record.setBuyDate(now);
-                record.setSold("0");
-                record.setCreateTime(now);
-                record.setUpdateTime(now);
-                foundTradingMapper.insert(record);
+                log.error("未查询到买入记录，请检查程序代码");
             } else {
                 // 更新每日数据
                 FoundDayRecord dayRecord = new FoundDayRecord();
@@ -100,20 +102,119 @@ public class DailyJob {
                 Date now = new Date();
                 dayRecord.setTodayDate(format.format(now));
                 dayRecord.setTodayPrice(price);
-                double todayAmount = price * selectRecord.getBuyNumber();
+                double todayAmount = price * selectRecord.getBuyNumber() + 5;
                 dayRecord.setTodayAmount(todayAmount);
                 double income = todayAmount - selectRecord.getBuyAmount();
                 dayRecord.setExpectedIncome(income);
                 dayRecord.setCreateTime(now);
                 dayRecord.setUpdateTime(now);
                 int dateDiff = diffDate(selectRecord.getBuyDate(), now);
-                double incomeRate = dateDiff == 0 ? 0 : income / dateDiff;
+                double incomeRate = dateDiff == 0 ? 0 : income / selectRecord.getBuyAmount() / dateDiff * 100;
                 dayRecord.setDailyIncomeRate(incomeRate);
-                try {
-                    foundDayMapper.insert(dayRecord);
-                } catch (DuplicateKeyException e) {
-                    log.warn("数据已存在！");
+                foundDayMapper.insert(dayRecord);
+                if (incomeRate > maxRate) {
+                    maxRateRecord = dayRecord;
                 }
+            }
+        }
+        // 卖出最高收益的股票
+        if (maxRateRecord == null) {
+            log.error("获取最高收益股票异常，请检查程序代码");
+        } else {
+            // 返回合同编号
+            final String saleNo = buySale("S", maxRateRecord.getCode(), maxRateRecord.getTodayPrice(),
+                    maxRateRecord.getBuyNumber(), maxRateRecord.getAccountType());
+            // 等待一分钟后查询卖出结果
+            SleepUtils.second(60);
+            if (queryStatus(saleNo)) {
+                final FoundTradingRecord foundTradingRecord = new FoundTradingRecord();
+                foundTradingRecord.setCode(maxRateRecord.getCode());
+                foundTradingRecord.setSalePrice(maxRateRecord.getTodayPrice());
+                foundTradingRecord.setSaleNumber(maxRateRecord.getBuyNumber());
+                foundTradingRecord.setSaleAmount(maxRateRecord.getTodayAmount());
+                foundTradingRecord.setSaleDate(new Date());
+                foundTradingRecord.setRealIncome(maxRateRecord.getExpectedIncome());
+                foundTradingRecord.setRealIncomeRate(maxRateRecord.getDailyIncomeRate());
+                foundTradingRecord.setSold("1");
+                foundTradingMapper.update(foundTradingRecord, new QueryWrapper<FoundTradingRecord>().eq("code", hashCode()));
+                log.info("成功卖出股票{}-{}, 卖出金额为{}, 收益为{}，日收益率为{}", maxRateRecord.getCode(), maxRateRecord.getName(),
+                        maxRateRecord.getTodayAmount(), maxRateRecord.getExpectedIncome(), maxRateRecord.getDailyIncomeRate());
+            } else {
+                // 如果交易不成功，撤单后重新计算卖出
+                log.info("卖出交易不成功，进行撤单操作");
+            }
+        }
+    }
+
+    public String buySale(String type, String code, Double price, Double number, String accountType) {
+        // 请求数据
+        String token = redisTemplate.opsForValue().get("requestToken");
+        if (token==null) return "";
+        final long timeMillis = System.currentTimeMillis();
+        String pram = "action=110&PriceType=0&Direction=" + type + "&StockCode=" + code
+                + "&Price=" + price + "&Volume=" + number + "&WTAccount=880008900626&WTAccountType=" + accountType
+                + "&ProPrice=&op_station=4%7C+%7C+%7C+%7C+%7C+%7C+%7C%7C+&reqno=" + timeMillis
+                + "&intacttoserver=%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&token=" + token + "&MobileCode=13278828091&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
+        final JSONObject result = requestUtils.request3(pram);
+        final String newToken = result.getString("TOKEN");
+        redisTemplate.opsForValue().set("requestToken", newToken);
+        return result.getString("ANSWERNO");
+    }
+
+    public boolean queryStatus(String answerNo) {
+        // 请求数据
+        final long timeMillis = System.currentTimeMillis();
+        final String token = redisTemplate.opsForValue().get("requestToken");
+        String pram = "MobileCode=13278828091&&CHANNEL=&Token=" + token + "&Reqno=" + timeMillis
+                + "&ReqlinkType=1&newindex=1&action=113&StartPos=0&MaxCount=20&intacttoserver=@ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&cfrom=H5&tfrom=PC";
+        final JSONArray results = requestUtils.request2(pram);
+        // 解析数据
+        boolean res = false;
+        for (int i = 1; i < results.size(); i++) {
+            final String result = results.getString(i);
+            final String[] split = result.split("\\|");
+            final String status = split[2];
+            final String answerNo1 = split[8];
+            if (answerNo1.equals(answerNo) && "已成".equals(status)) {
+                res = true;
+                break;
+            }
+        }
+        return res;
+    }
+
+    public void buy() {
+        //  更新每日数据
+        for (int i = 1; i <= 20; i++) {
+            listPage500(i);
+        }
+        // 选择得分最高的一组买入
+        final List<StockInfo> bestList = StockInfoMapper.slectBest();
+        for (StockInfo best : bestList) {
+            log.info("best:{}", best);
+            String accountType = "SH".equals(best.getMarket()) ? "SHACCOUNT" : "SZACCOUNT";
+            double buyNumber = 100.00;
+            final String buyNo = buySale("B", best.getCode(), best.getPrice(), buyNumber, accountType);
+            // 等待10秒后后查询卖出结果
+            SleepUtils.second(10);
+            if (queryStatus(buyNo)) {
+                final FoundTradingRecord record = new FoundTradingRecord();
+                record.setCode(best.getCode());
+                record.setName(best.getName());
+                record.setAccountType(accountType);
+                record.setBuyNumber(buyNumber);
+                record.setBuyAmount(best.getPrice() * buyNumber + 5);
+                final Date now = new Date();
+                record.setBuyDate(now);
+                record.setSold("0");
+                record.setCreateTime(now);
+                record.setUpdateTime(now);
+                foundTradingMapper.insert(record);
+                log.info("成功买入股票{}-{}, 买入价格{}，买入数量{}，买入金额{}", record.getCode(), record.getName(),
+                        record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
+            } else {
+                // 如果交易不成功，撤单后重新计算卖出
+                log.info("买入交易不成功，进行撤单操作");
             }
         }
     }
@@ -123,7 +224,6 @@ public class DailyJob {
         String pram = "c.funcno=21000&c.version=1&c.sort=1&c.order=0&c.type=0:2:9:18&c.curPage=" + page
                 + "&c.rowOfPage=500&c.field=1:2:22:23:24:3:8:16:21:31&c.cfrom=H5&c.tfrom=PC&c.CHANNEL=";
         final JSONArray results = requestUtils.request(pram);
-//        log.info(JSON.toJSONString(results));
         final ArrayList<StockInfo> stockInfos = new ArrayList<>();
         // 解析数据
         for (int i = 0; i < results.size(); i++) {
@@ -147,19 +247,44 @@ public class DailyJob {
             stockInfos.add(stockInfo);
         }
         // 保存数据
+        final List<String> codes = StockInfoMapper.selectCodes();
         for (StockInfo info : stockInfos) {
-            try {
+            if (!codes.contains(info.getCode())) {
                 StockInfoMapper.insert(info);
-                log.info("保存第{}条数据：{}", count++, info);
-            } catch (DuplicateKeyException e) {
-                log.warn("数据已存在：{}", info);
+                log.info("保存数据{}：{}", count++, info);
+            } else {
+                log.info("修改数据{}：{}-{}", count++, info.getCode(), info.getName());
             }
             // 更新历史价格
             updateDailyPrice(info.getCode(), info.getMarket(), info.getPrice());
         }
     }
 
+
     public void updateDailyPrice(String code, String market, Double price) {
+        final StockInfo selectedInfo = StockInfoMapper.selectOne(new QueryWrapper<StockInfo>().eq("code", code));
+        final List<DailyPrice> prices;
+        if (selectedInfo.getPrices() == null) {
+            prices = getPrices(code, market);
+            updatePrices(code, prices);
+        } else {
+            final String selectedInfoPrices = selectedInfo.getPrices();
+            prices = JSONObject.parseArray(selectedInfoPrices, DailyPrice.class);
+            final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd");
+            final String date = dateFormat.format(new Date());
+            if (prices.stream().noneMatch(p -> p.getDate().equals(date))) {
+                final DailyPrice dailyPrice = new DailyPrice(date, price);
+                prices.add(dailyPrice);
+                if (prices.size() > 11) {
+                    prices.remove(0);
+                }
+                // 更新历史价格
+                updatePrices(code, prices);
+            }
+        }
+    }
+
+    public List<DailyPrice> getPrices(String code, String market) {
         // 获取历史数据
         String param = "c.funcno=20009&c.version=1&c.stock_code=" +
                 code + "&c.market=" + market + "&c.type=day&c.count=20&c.cfrom=H5&c.tfrom=PC&c.CHANNEL=";
@@ -176,25 +301,25 @@ public class DailyJob {
                 final DailyPrice dailyPrice = new DailyPrice(date, v / 100);
                 prices.add(dailyPrice);
             }
-            // 更新历史价格
-            final StockInfo stockInfo = new StockInfo();
-            stockInfo.setCode(code);
-            stockInfo.setPrices(JSONObject.toJSONString(prices));
-            stockInfo.setUpdateTime(new Date());
-            // 计算日增长率曲线
-            SimpleDateFormat format = new SimpleDateFormat("yyyyMMdd");
-            DailyPrice dailyPrice = new DailyPrice(format.format(new Date()), price);
-            prices.add(dailyPrice);
-            final List<Double> rateList = getRateList(prices);
-            stockInfo.setIncreaseRate(JSONObject.toJSONString(rateList));
-            // 计算得分
-            final Double score = getScore(rateList);
-            stockInfo.setScore(score);
-            StockInfoMapper.update(stockInfo, new QueryWrapper<StockInfo>().eq("code", code));
-            log.info("更新历史价格：{} {} {}", market, code, score);
         } else {
-            log.warn("历史价格少于11条，丢弃该数据");
+            log.warn("历史数据不足10条，丢弃该数据。");
         }
+        return prices;
+    }
+
+    public void updatePrices(String code, List<DailyPrice> prices) {
+        // 更新历史价格
+        final StockInfo stockInfo = new StockInfo();
+        stockInfo.setCode(code);
+        stockInfo.setPrices(JSONObject.toJSONString(prices));
+        stockInfo.setUpdateTime(new Date());
+        // 计算日增长率曲线
+        final List<Double> rateList = getRateList(prices);
+        stockInfo.setIncreaseRate(JSONObject.toJSONString(rateList));
+        // 计算得分
+        final Double score = getScore(rateList);
+        stockInfo.setScore(score);
+        StockInfoMapper.update(stockInfo, new QueryWrapper<StockInfo>().eq("code", code));
     }
 
     public List<Double> getRateList(List<DailyPrice> prices) {
@@ -213,6 +338,9 @@ public class DailyJob {
     // 稳定性用方差来衡量,增长率总和体现增长幅度
     // 增长的天数越多，日增长率总和越大，方差越小，增长波动越小，代表稳定增长，评分越高
     public Double getScore(List<Double> rateList) {
+        if (rateList.isEmpty()) {
+            return 0.0;
+        }
         // 计算和与平均值
         final double fixSum = rateList.stream().reduce(Double::sum).orElse(0.0);
         final double avg = fixSum / rateList.size();
@@ -224,7 +352,7 @@ public class DailyJob {
         double sqrt = Math.sqrt(sum / rateList.size());
         sqrt = sqrt > 10 ? 10 : sqrt;
         final double score = fixSum * (1 - (sqrt / 10));
-        log.info("数据：{}， 日增长率总和：{}, 平均值：{}，方差：{}，得分：{}", rateList, fixSum, avg, sqrt, score);
+        log.info("增长率总和:{},方差:{},得分:{}", String.format("%.4f", fixSum), String.format("%.4f", sqrt), String.format("%.4f", score));
         return score;
     }
 
