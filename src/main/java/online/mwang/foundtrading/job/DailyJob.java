@@ -42,7 +42,7 @@ public class DailyJob {
     private final StringRedisTemplate redisTemplate;
 
     // 每日任务处理
-//    @Scheduled(cron = "0 30 9 * * *"
+//    @Scheduled(cron = "0 30 9 * * *")
     @Scheduled(fixedRate = 1000 * 60 * 60)
     public void runJob() {
         // 卖出旧股
