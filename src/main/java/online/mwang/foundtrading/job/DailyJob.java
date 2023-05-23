@@ -34,7 +34,7 @@ import java.util.List;
 
 public class DailyJob {
 
-    private static long count = 0L;
+    private static long BUY_RETRY_TIMES = 3;
     private final RequestUtils requestUtils;
     private final StockInfoMapper StockInfoMapper;
     private final FoundTradingMapper foundTradingMapper;
@@ -42,31 +42,28 @@ public class DailyJob {
     private final StringRedisTemplate redisTemplate;
 
     // 每日任务处理
-//    @Scheduled(cron = "0 30 9 * * *")
-    @Scheduled(fixedRate = 1000 * 60 * 60)
+    @Scheduled(cron = "0 10 9 * * *")
+//    @Scheduled(fixedRate = 1000 * 60 * 60)
     public void runJob() {
         // 卖出旧股
-        sold();
+        sold(1);
         // 买入新股
         buy();
     }
 
     // 每隔半小时更新Token
-//    @Scheduled(fixedRate = 1000 * 60 * 60)
+    @Scheduled(fixedRate = 1000 * 60 * 25)
     public void refreshToken() {
-        final long timeMillis = System.currentTimeMillis();
-        String pram = "action=100&modulus_id=2&MobileType=3&accounttype=ZJACCOUNT&MobileCode=13278828091&account=880008900626&password=b1c265324bf105446f0c04e6a98793cf0fea4779be3015861f4b67dbd6fad8eb2f63eced0a33ed88acc47c812aed5eb2b569850b01a9e707cfafd5bd55bfd8ed244b56bffc5fa13f8082525d81fdee750591ac894c6f71df39e98a0f9d766212cd8e52656c76ad2ae095af060fd7e0f3a7c44f2a0fd57c0598106632f600f1e6&signkey=51cfce1626c7cb087b940a0c224f2caa&CheckCode=7911&CheckToken=RBGsPvW1JuqsFeyiE%2FCL%2Bk7v3wsuMpFOn94D&NECaptchaValidate=CN31_GzA5NJRga1zBca48hhocaG18e1m9fCh81PrR8198Zk1IyBgn9jdx60-YM5MeDroeucjwdrnuoEFNQWm7oBzXiWL1kVc7St49wez5HvlLLJoPIbaYn79POLSpyHpQAUHyxAUdWrHBFBKxGtqYQ_QSm5r9cD0wD5NlyW4vJUZeWXR9dg.zisENlCoOS.y_I5LKAVvObbK0FXfCJgytMi.j-PBzRQ-VG7nJugjHYf12f1cQ5HGXMGQOlv82gWbCMjRNDE9A_FPgfV2wyo9LlyoHx6Z9CBxKXkaHU9S8CYzsqkE0nyNB7unEBDxBKVH45_xfRK98gqJQCqjrG5k-sMDRTJR9rR2KVeuhOvRRA-NS4HJlE0Imzfg9nqGgzGUoxM6tTNSEYJN8_2akMO.ioBvtFNhWx9DTKEly.V5AJV_rK05vuKv976iWZ7__eKoAiMbFpTJyLtuBvtq.Wb4wNNSm.5nIW7RCGRGYdDXlrM8P8Fq9CYXVVTd-NRlnF6c3&captchaId=d7a0e925d21e41df9680622ac96778b0&code=&maxcount=100&reqno="
-                + timeMillis + "&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
-        final JSONObject result = requestUtils.request3(pram);
-        final String newToken = result.getString("TOKEN");
-        redisTemplate.opsForValue().set("requestToken", newToken);
+        cancelOrder("");
     }
 
-    public void sold() {
-        String token = redisTemplate.opsForValue().get("requestToken");
-        if (token == null) {
+    public void sold(int times) {
+        if (times > BUY_RETRY_TIMES) {
+            log.error("卖出股票失败，请检查程序代码！");
             return;
         }
+        log.info("第{}次尝试卖出股票---------", times);
+        String token = redisTemplate.opsForValue().get("requestToken");
         long timeMillis = System.currentTimeMillis();
         String param = "action=117&StartPos=0&MaxCount=20&reqno=" + timeMillis
                 + "&intacttoserver=%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&token=" + token
@@ -78,7 +75,7 @@ public class DailyJob {
             String data = dataList.getString(i);
             String[] split = data.split("\\|");
             String name = split[0];
-            String accountType = split[14];
+//            String accountType = split[14];
             double number = Double.parseDouble(split[1]);
             if (number <= 0) {
                 continue;
@@ -93,7 +90,7 @@ public class DailyJob {
                 FoundTradingRecord record = new FoundTradingRecord();
                 record.setCode(code);
                 record.setName(name);
-                record.setAccountType(accountType);
+//                record.setAccountType(accountType);
                 record.setBuyPrice(price);
                 record.setBuyNumber(number);
                 record.setBuyAmount(price * number + 5);
@@ -121,36 +118,54 @@ public class DailyJob {
         }
         // 卖出最高收益的股票
         if (maxRateRecord == null) {
-            log.error("获取最高收益股票异常，请检查程序代码");
+            log.warn("无法获取最高收益股票，无法进行卖出交易");
         } else {
-            log.info("最佳卖出股票{}", maxRateRecord);
+            log.info("最佳卖出股票{}-{}，买入金额{}，卖出金额{}，收益{}，收益率{}", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getBuyAmount(),
+                    maxRateRecord.getSaleAmount(), maxRateRecord.getRealIncome(), String.format("%.4f", maxRateRecord.getRealIncomeRate()));
             // 返回合同编号
-            final String saleNo = buySale("S", maxRateRecord.getCode(), maxRateRecord.getSalePrice(),
-                    maxRateRecord.getBuyNumber(), maxRateRecord.getAccountType());
-            // 等待一分钟后查询卖出结果
-            SleepUtils.second(60);
-            if (queryStatus(saleNo)) {
-                maxRateRecord.setSaleDate(new Date());
-                maxRateRecord.setSold("1");
-                foundTradingMapper.updateById(maxRateRecord);
-                log.info("成功卖出股票{}-{}, 卖出金额为{}, 收益为{}，日收益率为{}", maxRateRecord.getCode(), maxRateRecord.getName(),
-                        maxRateRecord.getSaleAmount(), maxRateRecord.getRealIncome(), maxRateRecord.getRealIncomeRate());
+            final String saleNo = buySale("S", maxRateRecord.getCode(), maxRateRecord.getSalePrice(), maxRateRecord.getBuyNumber());
+            if (saleNo == null) {
+                log.info("第{}次尝试卖出失败---------", times++);
+                sold(times);
             } else {
-                // 如果交易不成功，撤单后重新计算卖出
-                log.info("卖出交易不成功，进行撤单操作");
+                // 等待一分钟后查询卖出结果
+                log.info("等待一分钟后查询卖出交易结果...");
+                SleepUtils.second(60);
+                if (queryStatus(saleNo)) {
+                    maxRateRecord.setSaleDate(new Date());
+                    maxRateRecord.setSold("1");
+                    foundTradingMapper.updateById(maxRateRecord);
+                    log.info("成功卖出股票{}-{}, 卖出金额为{}, 收益为{}，日收益率为{}", maxRateRecord.getCode(), maxRateRecord.getName(),
+                            maxRateRecord.getSaleAmount(), maxRateRecord.getRealIncome(), maxRateRecord.getRealIncomeRate());
+                } else {
+                    // 如果交易不成功，撤单后重新计算卖出
+                    log.info("卖出交易不成功，进行撤单操作");
+                    cancelOrder(saleNo);
+                    log.info("第{}次尝试卖出失败---------", times++);
+                    sold(times);
+                }
             }
         }
     }
 
-    public String buySale(String type, String code, Double price, Double number, String accountType) {
+    public void cancelOrder(String answerNo) {
+        String token = redisTemplate.opsForValue().get("requestToken");
+        final long timeMillis = System.currentTimeMillis();
+        String param = "action=111&ContactID=" + answerNo + "&op_station=4%7C+%7C+%7C+%7C+%7C+%7C+%7C%7C+&reqno=" + timeMillis
+                + "&intacttoserver=%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&token=" + token + "&MobileCode=13278828091&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
+        final JSONObject result = requestUtils.request3(param);
+        final String newToken = result.getString("TOKEN");
+        redisTemplate.opsForValue().set("requestToken", newToken);
+    }
+
+    public String buySale(String type, String code, Double price, Double number) {
         // 请求数据
         String token = redisTemplate.opsForValue().get("requestToken");
         final long timeMillis = System.currentTimeMillis();
-        String pram = "action=110&PriceType=0&Direction=" + type + "&StockCode=" + code
-                + "&Price=" + price + "&Volume=" + number + "&WTAccount=880008900626&WTAccountType=" + accountType
-                + "&ProPrice=&op_station=4%7C+%7C+%7C+%7C+%7C+%7C+%7C%7C+&reqno=" + timeMillis
-                + "&intacttoserver=%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&token=" + token + "&MobileCode=13278828091&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
-        final JSONObject result = requestUtils.request3(pram);
+        String param = "action=110&PriceType=0&Direction=" + type + "&StockCode=" + code
+                + "&Price=" + price + "&Volume=" + number + "&WTAccount=&WTAccountType=&ProPrice=&op_station=4%7C+%7C+%7C+%7C+%7C+%7C+%7C%7C+&reqno="
+                + timeMillis + "&intacttoserver=%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&token=" + token + "&MobileCode=13278828091&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
+        final JSONObject result = requestUtils.request3(param);
         final String newToken = result.getString("TOKEN");
         redisTemplate.opsForValue().set("requestToken", newToken);
         return result.getString("ANSWERNO");
@@ -186,32 +201,43 @@ public class DailyJob {
         log.info("每日数据更新完成！");
         // 选择得分最高的一组买入
         final List<StockInfo> bestList = StockInfoMapper.slectBest();
-        for (StockInfo best : bestList) {
-            log.info("best:{}", best);
-            String accountType = "SH".equals(best.getMarket()) ? "SHACCOUNT" : "SZACCOUNT";
+        for (int i = 0; i < bestList.size(); i++) {
+            StockInfo best = bestList.get(i);
+            log.info("尝试买入第{}支股票{}-{},评分{}日增长率{}", i + 1, best.getCode(), best.getName(), best.getScore(), best.getIncreaseRate());
+//            String accountType = "SH".equals(best.getMarket()) ? "SHACCOUNT" : "SZACCOUNT";
             double buyNumber = 100.00;
-            final String buyNo = buySale("B", best.getCode(), best.getPrice(), buyNumber, accountType);
-            // 等待10秒后后查询卖出结果
-            SleepUtils.second(10);
-            if (queryStatus(buyNo)) {
-                final FoundTradingRecord record = new FoundTradingRecord();
-                record.setCode(best.getCode());
-                record.setName(best.getName());
-                record.setAccountType(accountType);
-                record.setBuyNumber(buyNumber);
-                record.setBuyAmount(best.getPrice() * buyNumber + 5);
-                final Date now = new Date();
-                record.setBuyDate(now);
-                record.setSold("0");
-                record.setCreateTime(now);
-                record.setUpdateTime(now);
-                foundTradingMapper.insert(record);
-                log.info("成功买入股票{}-{}, 买入价格{}，买入数量{}，买入金额{}", record.getCode(), record.getName(),
-                        record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
-                break;
+            final String buyNo = buySale("B", best.getCode(), best.getPrice(), buyNumber);
+            if (buyNo == null) {
+                log.info("无法买入当前股票，尝试买入下一股票");
             } else {
-                // 如果交易不成功，撤单后重新计算卖出
-                log.info("买入交易不成功，进行撤单操作");
+                // 等待10秒后后查询买入结果
+                log.info("等待10秒后查询买入结果...");
+                SleepUtils.second(10);
+                if (queryStatus(buyNo)) {
+                    final FoundTradingRecord record = new FoundTradingRecord();
+                    record.setCode(best.getCode());
+                    record.setName(best.getName());
+//                record.setAccountType(accountType);
+                    record.setBuyNumber(buyNumber);
+                    record.setBuyAmount(best.getPrice() * buyNumber + 5);
+                    final Date now = new Date();
+                    record.setBuyDate(now);
+                    record.setSold("0");
+                    record.setCreateTime(now);
+                    record.setUpdateTime(now);
+                    foundTradingMapper.insert(record);
+                    log.info("成功买入股票{}-{}, 买入价格{}，买入数量{}，买入金额{}", record.getCode(), record.getName(),
+                            record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
+                    break;
+                } else {
+                    // 如果交易不成功，撤单后重新计算卖出
+                    log.info("当前买入交易不成功，进行撤单操作");
+                    cancelOrder(buyNo);
+//                    i--;
+                }
+            }
+            if (i + 1 == bestList.size()) {
+                log.error("买入股票失败，请检查程序！");
             }
         }
     }
@@ -248,7 +274,7 @@ public class DailyJob {
         for (StockInfo info : stockInfos) {
             if (!codes.contains(info.getCode())) {
                 StockInfoMapper.insert(info);
-                log.info("保存数据{}：{}", count++, info);
+                log.info("保存数据：{}", info);
             }
             // 更新历史价格
             updateDailyPrice(info.getCode(), info.getMarket(), info.getPrice());
