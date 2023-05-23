@@ -6,7 +6,6 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.DailyPrice;
-import online.mwang.foundtrading.bean.FoundDayRecord;
 import online.mwang.foundtrading.bean.FoundTradingRecord;
 import online.mwang.foundtrading.bean.StockInfo;
 import online.mwang.foundtrading.mapper.FoundDayMapper;
@@ -43,7 +42,8 @@ public class DailyJob {
     private final StringRedisTemplate redisTemplate;
 
     // 每日任务处理
-    @Scheduled(cron = "0 30 9 * * *")
+//    @Scheduled(cron = "0 30 9 * * *"
+    @Scheduled(fixedRate = 1000 * 60 * 60)
     public void runJob() {
         // 卖出旧股
         sold();
@@ -72,48 +72,50 @@ public class DailyJob {
                 + "&intacttoserver=%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&token=" + token
                 + "&MobileCode=13278828091&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
         JSONArray dataList = requestUtils.request2(param);
-        double maxRate = Double.MIN_VALUE;
-        FoundDayRecord maxRateRecord = null;
+        double maxRate = -100.00;
+        FoundTradingRecord maxRateRecord = null;
         for (int i = 1; i < dataList.size(); i++) {
             String data = dataList.getString(i);
             String[] split = data.split("\\|");
             String name = split[0];
+            String accountType = split[14];
             double number = Double.parseDouble(split[1]);
             if (number <= 0) {
                 continue;
             }
             Double price = Double.parseDouble(split[4]);
             String code = split[9];
-            String accountType = split[15];
             // 查询买入时间
             FoundTradingRecord selectRecord = foundTradingMapper.selectOne(new QueryWrapper<FoundTradingRecord>().eq("code", code).eq("sold", "0"));
             if (selectRecord == null) {
-                log.error("未查询到买入记录，请检查程序代码");
+                log.info("未查询到买入记录，新增交易记录");
+                // 写入交易数据
+                FoundTradingRecord record = new FoundTradingRecord();
+                record.setCode(code);
+                record.setName(name);
+                record.setAccountType(accountType);
+                record.setBuyPrice(price);
+                record.setBuyNumber(number);
+                record.setBuyAmount(price * number + 5);
+                Date now = new Date();
+                record.setBuyDate(now);
+                record.setSold("0");
+                record.setCreateTime(now);
+                record.setUpdateTime(now);
+                foundTradingMapper.insert(record);
             } else {
                 // 更新每日数据
-                FoundDayRecord dayRecord = new FoundDayRecord();
-                dayRecord.setCode(code);
-                dayRecord.setName(name);
-                SimpleDateFormat format = new SimpleDateFormat("yyyyMMdd");
-                dayRecord.setBuyDate(format.format(selectRecord.getBuyDate()));
-                dayRecord.setBuyNumber(selectRecord.getBuyNumber());
-                dayRecord.setBuyPrice(selectRecord.getBuyPrice());
-                dayRecord.setBuyAmount(selectRecord.getBuyAmount());
-                Date now = new Date();
-                dayRecord.setTodayDate(format.format(now));
-                dayRecord.setTodayPrice(price);
-                double todayAmount = price * selectRecord.getBuyNumber() + 5;
-                dayRecord.setTodayAmount(todayAmount);
-                double income = todayAmount - selectRecord.getBuyAmount();
-                dayRecord.setExpectedIncome(income);
-                dayRecord.setCreateTime(now);
-                dayRecord.setUpdateTime(now);
-                int dateDiff = diffDate(selectRecord.getBuyDate(), now);
+                double saleAmount = price * selectRecord.getBuyNumber() + 5;
+                double income = saleAmount - selectRecord.getBuyAmount();
+                int dateDiff = diffDate(selectRecord.getBuyDate(), new Date());
                 double incomeRate = dateDiff == 0 ? 0 : income / selectRecord.getBuyAmount() / dateDiff * 100;
-                dayRecord.setDailyIncomeRate(incomeRate);
-                foundDayMapper.insert(dayRecord);
                 if (incomeRate > maxRate) {
-                    maxRateRecord = dayRecord;
+                    selectRecord.setSalePrice(price);
+                    selectRecord.setSaleNumber(selectRecord.getBuyAmount());
+                    selectRecord.setSaleAmount(saleAmount);
+                    selectRecord.setRealIncome(income);
+                    selectRecord.setRealIncomeRate(incomeRate);
+                    maxRateRecord = selectRecord;
                 }
             }
         }
@@ -121,24 +123,18 @@ public class DailyJob {
         if (maxRateRecord == null) {
             log.error("获取最高收益股票异常，请检查程序代码");
         } else {
+            log.info("最佳卖出股票{}", maxRateRecord);
             // 返回合同编号
-            final String saleNo = buySale("S", maxRateRecord.getCode(), maxRateRecord.getTodayPrice(),
+            final String saleNo = buySale("S", maxRateRecord.getCode(), maxRateRecord.getSalePrice(),
                     maxRateRecord.getBuyNumber(), maxRateRecord.getAccountType());
             // 等待一分钟后查询卖出结果
             SleepUtils.second(60);
             if (queryStatus(saleNo)) {
-                final FoundTradingRecord foundTradingRecord = new FoundTradingRecord();
-                foundTradingRecord.setCode(maxRateRecord.getCode());
-                foundTradingRecord.setSalePrice(maxRateRecord.getTodayPrice());
-                foundTradingRecord.setSaleNumber(maxRateRecord.getBuyNumber());
-                foundTradingRecord.setSaleAmount(maxRateRecord.getTodayAmount());
-                foundTradingRecord.setSaleDate(new Date());
-                foundTradingRecord.setRealIncome(maxRateRecord.getExpectedIncome());
-                foundTradingRecord.setRealIncomeRate(maxRateRecord.getDailyIncomeRate());
-                foundTradingRecord.setSold("1");
-                foundTradingMapper.update(foundTradingRecord, new QueryWrapper<FoundTradingRecord>().eq("code", hashCode()));
+                maxRateRecord.setSaleDate(new Date());
+                maxRateRecord.setSold("1");
+                foundTradingMapper.updateById(maxRateRecord);
                 log.info("成功卖出股票{}-{}, 卖出金额为{}, 收益为{}，日收益率为{}", maxRateRecord.getCode(), maxRateRecord.getName(),
-                        maxRateRecord.getTodayAmount(), maxRateRecord.getExpectedIncome(), maxRateRecord.getDailyIncomeRate());
+                        maxRateRecord.getSaleAmount(), maxRateRecord.getRealIncome(), maxRateRecord.getRealIncomeRate());
             } else {
                 // 如果交易不成功，撤单后重新计算卖出
                 log.info("卖出交易不成功，进行撤单操作");
@@ -149,7 +145,6 @@ public class DailyJob {
     public String buySale(String type, String code, Double price, Double number, String accountType) {
         // 请求数据
         String token = redisTemplate.opsForValue().get("requestToken");
-        if (token==null) return "";
         final long timeMillis = System.currentTimeMillis();
         String pram = "action=110&PriceType=0&Direction=" + type + "&StockCode=" + code
                 + "&Price=" + price + "&Volume=" + number + "&WTAccount=880008900626&WTAccountType=" + accountType
@@ -188,6 +183,7 @@ public class DailyJob {
         for (int i = 1; i <= 20; i++) {
             listPage500(i);
         }
+        log.info("每日数据更新完成！");
         // 选择得分最高的一组买入
         final List<StockInfo> bestList = StockInfoMapper.slectBest();
         for (StockInfo best : bestList) {
@@ -212,6 +208,7 @@ public class DailyJob {
                 foundTradingMapper.insert(record);
                 log.info("成功买入股票{}-{}, 买入价格{}，买入数量{}，买入金额{}", record.getCode(), record.getName(),
                         record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
+                break;
             } else {
                 // 如果交易不成功，撤单后重新计算卖出
                 log.info("买入交易不成功，进行撤单操作");
@@ -252,8 +249,6 @@ public class DailyJob {
             if (!codes.contains(info.getCode())) {
                 StockInfoMapper.insert(info);
                 log.info("保存数据{}：{}", count++, info);
-            } else {
-                log.info("修改数据{}：{}-{}", count++, info.getCode(), info.getName());
             }
             // 更新历史价格
             updateDailyPrice(info.getCode(), info.getMarket(), info.getPrice());
