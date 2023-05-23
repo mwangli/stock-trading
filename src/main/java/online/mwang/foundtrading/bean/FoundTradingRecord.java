@@ -2,9 +2,7 @@ package online.mwang.foundtrading.bean;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
-import io.swagger.models.auth.In;
 import lombok.Data;
-import org.springframework.data.annotation.Id;
 
 import java.util.Date;
 
@@ -24,6 +22,8 @@ public class FoundTradingRecord {
 
     private String name;
 
+    private String accountType;
+
     private Double buyAmount;
 
     private Double buyPrice;
@@ -39,14 +39,6 @@ public class FoundTradingRecord {
     private Double saleNumber;
 
     private Date saleDate;
-
-    private Double accountAmount;
-
-    private Date accountDate;
-
-    private Double expectedIncome;
-
-    private Double expectedIncomeRate;
 
     private Double realIncome;
 

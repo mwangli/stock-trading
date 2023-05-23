@@ -3,6 +3,9 @@ package online.mwang.foundtrading.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import online.mwang.foundtrading.bean.StockInfo;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
 
 /**
  * @version 1.0.0
@@ -12,4 +15,10 @@ import org.apache.ibatis.annotations.Mapper;
  */
 @Mapper
 public interface StockInfoMapper extends BaseMapper<StockInfo> {
+
+    @Select("select code from stock_info")
+    List<String> selectCodes();
+
+    @Select("select * from stock_info where price < 13 and price > 9 order by score desc")
+    List<StockInfo> slectBest();
 }
