@@ -19,6 +19,6 @@ public interface StockInfoMapper extends BaseMapper<StockInfo> {
     @Select("select code from stock_info")
     List<String> selectCodes();
 
-    @Select("select * from stock_info where price < 13 and price > 9 order by score desc")
+    @Select("select * from stock_info where price < 13 and price > 8 order by score desc limit 0,10")
     List<StockInfo> slectBest();
 }

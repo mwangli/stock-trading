@@ -26,7 +26,6 @@ public class RequestUtils {
             .version(HttpClient.Version.HTTP_2)
             .connectTimeout(Duration.ofSeconds(5))
             .followRedirects(HttpClient.Redirect.ALWAYS)
-//                .cookieHandler(cookieManager)
             .build();
 
 
