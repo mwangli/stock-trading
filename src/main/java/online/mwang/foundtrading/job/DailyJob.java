@@ -95,6 +95,7 @@ public class DailyJob {
                 stockInfoService.update(null, new UpdateWrapper<StockInfo>().lambda().set(StockInfo::getPermission, "1").eq(StockInfo::getCode, info.getCode()));
             }
         });
+        log.info("刷新购买权限任务执行完毕！");
     }
 
     public void sold(int times) {
