@@ -22,7 +22,7 @@ import java.time.Duration;
 @Component
 public class RequestUtils {
 
-    private HttpClient client = HttpClient.newBuilder()
+    private final HttpClient client = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_2)
             .connectTimeout(Duration.ofSeconds(5))
             .followRedirects(HttpClient.Redirect.ALWAYS)
@@ -50,7 +50,7 @@ public class RequestUtils {
                 .build();
         HttpResponse<String> response = client.send(postRequest, HttpResponse.BodyHandlers.ofString());
         String responseBody = response.body();
-        log.info(responseBody);
+//        log.info(responseBody);
         final JSONObject res = JSONObject.parseObject(responseBody);
         return res.getJSONArray("GRID0");
     }

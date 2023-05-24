@@ -1,4 +1,4 @@
-package online.mwang.foundtrading.bean;
+package online.mwang.foundtrading.bean.po;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -10,10 +10,10 @@ import java.util.Date;
  * @version 1.0.0
  * @author: mwangli
  * @date: 2023/3/20 11:00
- * @description: FoundDayAmount
+ * @description: FoundTradingRecord
  */
 @Data
-public class FoundDayRecord {
+public class FoundTradingRecord {
 
     @TableId(type = IdType.AUTO)
     private Long id;
@@ -24,23 +24,27 @@ public class FoundDayRecord {
 
     private String accountType;
 
-    private String buyDate;
-
-    private Double buyNumber;
+    private Double buyAmount;
 
     private Double buyPrice;
 
-    private Double buyAmount;
+    private Double buyNumber;
 
-    private String todayDate;
+    private Date buyDate;
 
-    private Double todayPrice;
+    private Double saleAmount;
 
-    private Double todayAmount;
+    private Double salePrice;
 
-    private Double expectedIncome;
+    private Double saleNumber;
 
-    private Double dailyIncomeRate;
+    private Date saleDate;
+
+    private Double realIncome;
+
+    private Double realIncomeRate;
+
+    private String sold;
 
     private Date createTime;
 

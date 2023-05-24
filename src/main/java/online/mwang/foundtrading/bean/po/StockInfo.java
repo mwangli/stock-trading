@@ -1,4 +1,4 @@
-package online.mwang.foundtrading.bean;
+package online.mwang.foundtrading.bean.po;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;

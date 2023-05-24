@@ -1,4 +1,4 @@
-package online.mwang.foundtrading.bean;
+package online.mwang.foundtrading.bean.po;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
