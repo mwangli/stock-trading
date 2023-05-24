@@ -42,9 +42,10 @@ public class DailyJob {
     private final StringRedisTemplate redisTemplate;
 
     // 每日任务处理
-    @Scheduled(cron = "0 10 9 * * *")
-//    @Scheduled(fixedRate = 1000 * 60 * 60)
+//    @Scheduled(cron = "0 10 9 * * *")
+    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
     public void runJob() {
+        log.info("执行每日任务...");
         // 卖出旧股
         sold(1);
         // 买入新股
