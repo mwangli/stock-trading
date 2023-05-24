@@ -28,6 +28,7 @@ public class StockInfo {
     private String prices;
     private String increaseRate;
     private Double score;
+    private String permission;
     private Date createTime;
     private Date updateTime;
 }
