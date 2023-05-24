@@ -54,20 +54,25 @@ public class DailyJob {
     @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
     public void refreshToken() {
         cancelOrder("");
+        log.info("刷新Token任务执行完毕！");
     }
 
     // 开盘时间买入 9:30
     @Scheduled(cron = "0 30 9 * * *")
 //    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
     public void runBuyJob() {
+        log.info("开始执行买入任务====================================");
         buy(0);
+        log.info("买入任务执行完毕====================================");
     }
 
     // 收盘时间卖出 14:30
     @Scheduled(cron = "0 10 10 * * *")
 //    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
     public void runSoldJob() {
+        log.info("开始执行卖出任务====================================");
         sold(0);
+        log.info("卖出任务执行完毕====================================");
     }
 
     // 更新股票交易权限，每月执行一次
