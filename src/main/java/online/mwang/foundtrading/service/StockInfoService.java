@@ -1,7 +1,7 @@
 package online.mwang.foundtrading.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
-import online.mwang.foundtrading.bean.po.FoundTradingRecord;
+import online.mwang.foundtrading.bean.po.StockInfo;
 import org.springframework.stereotype.Service;
 
 /**
@@ -11,5 +11,5 @@ import org.springframework.stereotype.Service;
  * @description: FoundTradingService
  */
 @Service
-public interface FoundTradingService extends IService<FoundTradingRecord> {
+public interface StockInfoService extends IService<StockInfo> {
 }

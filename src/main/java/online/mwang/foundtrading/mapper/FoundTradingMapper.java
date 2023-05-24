@@ -1,8 +1,11 @@
 package online.mwang.foundtrading.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import online.mwang.foundtrading.bean.FoundTradingRecord;
+import online.mwang.foundtrading.bean.po.FoundTradingRecord;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
 
 /**
  * @version 1.0.0
@@ -12,4 +15,7 @@ import org.apache.ibatis.annotations.Mapper;
  */
 @Mapper
 public interface FoundTradingMapper extends BaseMapper<FoundTradingRecord> {
+
+    @Select("select code from found_trading_record where sold = '0'")
+    List<String> selectCodes();
 }
