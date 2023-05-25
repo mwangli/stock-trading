@@ -14,6 +14,7 @@ import online.mwang.foundtrading.bean.po.FoundTradingRecord;
 import online.mwang.foundtrading.bean.po.StockInfo;
 import online.mwang.foundtrading.service.FoundTradingService;
 import online.mwang.foundtrading.service.StockInfoService;
+import online.mwang.foundtrading.utils.DateUtils;
 import online.mwang.foundtrading.utils.RequestUtils;
 import online.mwang.foundtrading.utils.SleepUtils;
 import org.springframework.core.io.ClassPathResource;
@@ -92,27 +93,42 @@ public class DailyJob {
         log.info("更新权限任务执行结束====================================");
     }
 
+
+    public String buildParams(Map<String, Object> paramMap) {
+        paramMap.put("cfrom", "H5");
+        paramMap.put("tfrom", "PC");
+        paramMap.put("newindex", "1");
+        paramMap.put("MobileCode", "13278828091");
+        paramMap.put("intacttoserver", "%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC");
+        StringBuilder stringBuilder = new StringBuilder();
+        paramMap.forEach((k, v) -> stringBuilder.append(k).append("=").append(v).append("&"));
+        return stringBuilder.toString();
+    }
+
     public void flushPermission() {
         List<StockInfo> dataList = getDataList();
         dataList.forEach(info -> {
-            // 请求数据
             String token = redisTemplate.opsForValue().get("requestToken");
             final long timeMillis = System.currentTimeMillis();
-            String param = "action=110&PriceType=0&Direction=B&StockCode=" + info.getCode()
-                    + "&Price=" + info.getPrice() + "&Volume=100&WTAccount=&WTAccountType=&ProPrice=&op_station=4%7C+%7C+%7C+%7C+%7C+%7C+%7C%7C+&reqno="
-                    + timeMillis + "&intacttoserver=%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&token=" + token + "&MobileCode=13278828091&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
-            final JSONObject result = requestUtils.request3(param);
+            HashMap<String, Object> paramMap = new HashMap<>();
+            paramMap.put("action", "110");
+            paramMap.put("PriceType", 0);
+            paramMap.put("Direction", "B");
+            paramMap.put("StockCode", info.getCode());
+            paramMap.put("Price", info.getPrice());
+            paramMap.put("Volume", 100);
+            paramMap.put("reqno", timeMillis);
+            paramMap.put("token", token);
+            final JSONObject result = requestUtils.request3(buildParams(paramMap));
             final String newToken = result.getString("TOKEN");
             redisTemplate.opsForValue().set("requestToken", newToken);
             final String errorNo = result.getString("ERRORNO");
             final StockInfo stockInfo = new StockInfo();
             if ("-57".equals(errorNo)) {
                 stockInfo.setPermission("1");
-            } else {
-                stockInfo.setPermission("0");
+                log.info("修改当前股票[{}-{}]交易权限", info.getCode(), info.getName());
+                stockInfoService.update(stockInfo, new UpdateWrapper<StockInfo>().lambda().eq(StockInfo::getCode, info.getCode()));
             }
-            log.info("修改当前股票[{}-{}]交易权限", info.getCode(), info.getName());
-            stockInfoService.update(stockInfo, new UpdateWrapper<StockInfo>().lambda().eq(StockInfo::getCode, info.getCode()));
         });
         log.info("刷新交易权限任务执行完毕！");
     }
@@ -125,10 +141,16 @@ public class DailyJob {
         log.info("第{}次尝试卖出股票---------", times + 1);
         String token = redisTemplate.opsForValue().get("requestToken");
         long timeMillis = System.currentTimeMillis();
-        String param = "action=117&StartPos=0&MaxCount=20&reqno=" + timeMillis
-                + "&intacttoserver=%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&token=" + token
-                + "&MobileCode=13278828091&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
-        JSONArray dataList = requestUtils.request2(param);
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", "117");
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", "20");
+        paramMap.put("reqno", timeMillis);
+        paramMap.put("token", token);
+        paramMap.put("Volume", 100);
+        paramMap.put("reqno", timeMillis);
+        paramMap.put("token", token);
+        JSONArray dataList = requestUtils.request2(buildParams(paramMap));
         double maxRate = -100.00;
         FoundTradingRecord maxRateRecord = null;
         for (int i = 1; i < dataList.size(); i++) {
@@ -148,7 +170,7 @@ public class DailyJob {
             // 查询买入时间
             FoundTradingRecord selectRecord = foundTradingService.getOne(new QueryWrapper<FoundTradingRecord>().eq("code", code).eq("sold", "0"));
             if (selectRecord == null) {
-                log.info("当前股票[{}-{}]未查询到买入记录, 同步最近一个月的交易数据", code, name);
+                log.info("当前股票[{}-{}]未查询到买入记录,开始同步最近一个月订单", code, name);
                 syncBuySaleRecord();
             } else {
                 if (availableNumber == 0) {
@@ -185,8 +207,8 @@ public class DailyJob {
                 sold(times + 1);
             } else {
                 // 等待一分钟后查询卖出结果
-                log.info("等待30秒后查询卖出交易结果...");
-                SleepUtils.second(30);
+                log.info("等待20秒后查询卖出交易结果...");
+                SleepUtils.second(20);
                 if (queryStatus(saleNo)) {
                     maxRateRecord.setSaleDate(new Date());
                     maxRateRecord.setSold("1");
@@ -267,8 +289,12 @@ public class DailyJob {
     public void cancelOrder(String answerNo) {
         String token = redisTemplate.opsForValue().get("requestToken");
         final long timeMillis = System.currentTimeMillis();
-        String param = "action=111&ContactID=" + answerNo + "&op_station=4%7C+%7C+%7C+%7C+%7C+%7C+%7C%7C+&reqno=" + timeMillis
-                + "&intacttoserver=%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&token=" + token + "&MobileCode=13278828091&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", "111");
+        paramMap.put("ContactID", answerNo);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        String param = buildParams(paramMap);
         final JSONObject result = requestUtils.request3(param);
         final String newToken = result.getString("TOKEN");
         redisTemplate.opsForValue().set("requestToken", newToken);
@@ -277,9 +303,14 @@ public class DailyJob {
     public void cancelAllOrder() {
         String token = redisTemplate.opsForValue().get("requestToken");
         final long timeMillis = System.currentTimeMillis();
-        String param = "action=152&StartPos=0&MaxCount=20&op_station=4%7C+%7C+%7C+%7C+%7C+%7C+%7C%7C+&reqno=" + timeMillis
-                + "&intacttoserver=%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&token=" + token + "&MobileCode=13278828091&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
-        JSONArray result = requestUtils.request2(param);
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 152);
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", 20);
+        paramMap.put("op_station", 4);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        JSONArray result = requestUtils.request2(buildParams(paramMap));
         for (int i = 1; i < result.size(); i++) {
             String string = result.getString(i);
             String[] split = string.split("\\|");
@@ -292,16 +323,20 @@ public class DailyJob {
     }
 
     public String buySale(String type, String code, Double price, Double number) {
-        // 请求数据
         String token = redisTemplate.opsForValue().get("requestToken");
         final long timeMillis = System.currentTimeMillis();
-        String param = "action=110&PriceType=0&Direction=" + type + "&StockCode=" + code
-                + "&Price=" + price + "&Volume=" + number + "&WTAccount=&WTAccountType=&ProPrice=&op_station=4%7C+%7C+%7C+%7C+%7C+%7C+%7C%7C+&reqno="
-                + timeMillis + "&intacttoserver=%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&token=" + token + "&MobileCode=13278828091&newindex=1&cfrom=H5&tfrom=PC&CHANNEL=";
-        final JSONObject result = requestUtils.request3(param);
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 110);
+        paramMap.put("PriceType", 0);
+        paramMap.put("Direction", type);
+        paramMap.put("StockCode", code);
+        paramMap.put("Price", price);
+        paramMap.put("Volume", number);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        final JSONObject result = requestUtils.request3(buildParams(paramMap));
         final String newToken = result.getString("TOKEN");
         redisTemplate.opsForValue().set("requestToken", newToken);
-
 
         return result.getString("ANSWERNO");
     }
@@ -310,9 +345,14 @@ public class DailyJob {
         // 请求数据
         final long timeMillis = System.currentTimeMillis();
         final String token = redisTemplate.opsForValue().get("requestToken");
-        String pram = "MobileCode=13278828091&&CHANNEL=&Token=" + token + "&Reqno=" + timeMillis
-                + "&ReqlinkType=1&newindex=1&action=114&StartPos=0&MaxCount=20&intacttoserver=@ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&cfrom=H5&tfrom=PC";
-        final JSONArray results = requestUtils.request2(pram);
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 114);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", 20);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        final JSONArray results = requestUtils.request2(buildParams(paramMap));
         // 解析数据
         for (int i = 1; i < results.size(); i++) {
             final String result = results.getString(i);
@@ -327,13 +367,57 @@ public class DailyJob {
         return false;
     }
 
+
+    // 获取每日最新价格数据
+    public List<StockInfo> getDataList() {
+        //  更新每日数据
+        final List<StockInfo> stockInfos = new ArrayList<>();
+        for (int i = 1; i <= 20; i++) {
+            // 请求数据
+            HashMap<String, Object> paramMap = new HashMap<>();
+            paramMap.put("c.funcno", 21000);
+            paramMap.put("c.version", 1);
+            paramMap.put("c.sort", 1);
+            paramMap.put("c.order", 0);
+            paramMap.put("c.type", "0:2:9:18");
+            paramMap.put("c.curPage", i);
+            paramMap.put("c.rowOfPage", 500);
+            paramMap.put("c.field", "1:2:22:23:24:3:8:16:21:31");
+            paramMap.put("c.cfrom", "H5");
+            paramMap.put("c.tfrom", "PC");
+            final JSONArray results = requestUtils.request(buildParams(paramMap));
+            // 解析数据
+            for (int j = 0; j < results.size(); j++) {
+                final String s = results.getString(j);
+                final String[] split = s.split(",");
+                final String increase = split[0].replaceAll("\\[", "");
+                final double increasePercent = Double.parseDouble(increase) * 100;
+                final Double price = Double.parseDouble(split[1]);
+                final String name = split[2].replaceAll("\"", "");
+                final String market = split[3].replaceAll("\"", "");
+                final String code = split[4].replaceAll("\"", "");
+                final Date now = new Date();
+                final StockInfo stockInfo = new StockInfo();
+                stockInfo.setName(name);
+                stockInfo.setCode(code);
+                stockInfo.setMarket(market);
+                stockInfo.setIncrease(increasePercent);
+                stockInfo.setPrice(price);
+                stockInfo.setCreateTime(now);
+                stockInfo.setUpdateTime(now);
+                stockInfo.setPermission("0");
+                stockInfos.add(stockInfo);
+            }
+        }
+        return stockInfos;
+    }
+
     @SneakyThrows
     public void syncBuySaleRecord() {
         // 请求数据
         final JSONArray historyOrder = getLastMonthOrder();
         final JSONArray todayOrder = getTodayOrder();
         historyOrder.addAll(todayOrder);
-        final SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyyMMddHHmmss");
         for (int i = 0; i < historyOrder.size(); i++) {
             final JSONObject order = historyOrder.getJSONObject(i);
             final String date = order.getString("date");
@@ -348,7 +432,7 @@ public class DailyJob {
             if ("买入".equals(type)) {
                 // 查询买入订单信息是否存在
                 final LambdaQueryWrapper<FoundTradingRecord> lambdaQueryWrapper = new QueryWrapper<FoundTradingRecord>().lambda()
-                        .eq(FoundTradingRecord::getCode, code).eq(FoundTradingRecord::getBuyNo, answerNo);
+                        .eq(FoundTradingRecord::getCode, code).like(FoundTradingRecord::getBuyNo, answerNo);
                 final FoundTradingRecord selectedOrder = foundTradingService.getOne(lambdaQueryWrapper);
                 if (selectedOrder == null) {
                     log.info("当前股票[{}-{}]买入记录不存在，新增买入记录", name, code);
@@ -364,7 +448,7 @@ public class DailyJob {
                         record.setBuyNumber(number);
                         final double amount = price * number;
                         record.setBuyAmount(amount + getPeeAmount(amount));
-                        final Date buyDate = simpleDateFormat.parse(dateString);
+                        final Date buyDate = DateUtils.dateTimeFormat.parse(dateString);
                         record.setBuyDate(buyDate);
                         record.setBuyNo(answerNo);
                         record.setSold("0");
@@ -377,9 +461,9 @@ public class DailyJob {
                         selectedRecord.setBuyNumber(number + selectedRecord.getBuyNumber());
                         final double amount = price * selectedRecord.getBuyNumber();
                         selectedRecord.setBuyAmount(amount + getPeeAmount(amount));
-                        final Date buyDate = simpleDateFormat.parse(dateString);
+                        final Date buyDate = DateUtils.dateTimeFormat.parse(dateString);
                         selectedRecord.setBuyDate(buyDate);
-                        selectedRecord.setBuyNo(answerNo);
+                        selectedRecord.setBuyNo(selectedRecord.getBuyNo() + "," + answerNo);
                         final Date now = new Date();
                         selectedRecord.setUpdateTime(now);
                         foundTradingService.updateById(selectedRecord);
@@ -402,7 +486,7 @@ public class DailyJob {
                     record.setSaleNumber(number);
                     final double amount = price * number;
                     record.setSaleAmount(amount - getPeeAmount(amount));
-                    final Date saleDate = simpleDateFormat.parse(dateString);
+                    final Date saleDate = DateUtils.dateTimeFormat.parse(dateString);
                     record.setSaleDate(saleDate);
                     record.setSold("1");
                     record.setSaleNo(answerNo);
@@ -428,7 +512,7 @@ public class DailyJob {
         log.info("共获取到{}条新数据。", stockInfos.size());
         // 获取已经存在的所有数据
         List<StockInfo> list = stockInfoService.list();
-        List<StockInfo> updateData = updateList(stockInfos, list);
+        List<StockInfo> updateData = mergeDataList(stockInfos, list);
         log.info("待更新{}条数据。", updateData.size());
         //  缓存更新后的数据，防止数据丢失
         redisTemplate.opsForValue().set("dataList", JSON.toJSONString(updateData), 8, TimeUnit.HOURS);
@@ -458,44 +542,9 @@ public class DailyJob {
         }
     }
 
-    // 获取每日最新价格数据
-    public List<StockInfo> getDataList() {
-        //  更新每日数据
-        final List<StockInfo> stockInfos = new ArrayList<>();
-        for (int i = 1; i <= 20; i++) {
-            // 请求数据
-            String pram = "c.funcno=21000&c.version=1&c.sort=1&c.order=0&c.type=0:2:9:18&c.curPage=" + i
-                    + "&c.rowOfPage=500&c.field=1:2:22:23:24:3:8:16:21:31&c.cfrom=H5&c.tfrom=PC&c.CHANNEL=";
-            final JSONArray results = requestUtils.request(pram);
-            // 解析数据
-            for (int j = 0; j < results.size(); j++) {
-                final String s = results.getString(j);
-                final String[] split = s.split(",");
-                final String increase = split[0].replaceAll("\\[", "");
-                final double increasePercent = Double.parseDouble(increase) * 100;
-                final Double price = Double.parseDouble(split[1]);
-                final String name = split[2].replaceAll("\"", "");
-                final String market = split[3].replaceAll("\"", "");
-                final String code = split[4].replaceAll("\"", "");
-                final Date now = new Date();
-                final StockInfo stockInfo = new StockInfo();
-                stockInfo.setName(name);
-                stockInfo.setCode(code);
-                stockInfo.setMarket(market);
-                stockInfo.setIncrease(increasePercent);
-                stockInfo.setPrice(price);
-                stockInfo.setCreateTime(now);
-                stockInfo.setUpdateTime(now);
-                stockInfo.setPermission("0");
-                stockInfos.add(stockInfo);
-            }
-        }
-        return stockInfos;
-    }
 
     // 合并新老数据
-    public List<StockInfo> updateList(List<StockInfo> newInfos, List<StockInfo> stockInfos) {
-        final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd");
+    public List<StockInfo> mergeDataList(List<StockInfo> newInfos, List<StockInfo> stockInfos) {
         ArrayList<StockInfo> list = new ArrayList<>();
         newInfos.forEach(info -> {
             // 假设为新数据
@@ -507,7 +556,7 @@ public class DailyJob {
                     selectedInfo.setPrices(JSON.toJSONString(prices));
                 }
                 List<DailyPrice> prices = JSONObject.parseArray(selectedInfo.getPrices(), DailyPrice.class);
-                final String date = dateFormat.format(new Date());
+                final String date = DateUtils.dateFormat.format(new Date());
                 // 剔除今天的数据(一天内价格多次更新)
                 List<DailyPrice> dailyPrices = prices.stream().filter(p -> !p.getDate().equals(date)).collect(Collectors.toList());
                 final DailyPrice dailyPrice = new DailyPrice(date, info.getPrice());
@@ -536,9 +585,16 @@ public class DailyJob {
     // 获取历史价格曲线
     public List<DailyPrice> getHistoryPrices(String code, String market) {
         // 获取历史数据
-        String param = "c.funcno=20009&c.version=1&c.stock_code=" +
-                code + "&c.market=" + market + "&c.type=day&c.count=20&c.cfrom=H5&c.tfrom=PC&c.CHANNEL=";
-        final JSONArray results = requestUtils.request(param);
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("c.funcno", 20009);
+        paramMap.put("c.version", 1);
+        paramMap.put("c.stock_code", code);
+        paramMap.put("c.market", market);
+        paramMap.put("c.type", "day");
+        paramMap.put("c.count", "20");
+        paramMap.put("c.cfrom", "H5");
+        paramMap.put("c.tfrom", "PC");
+        final JSONArray results = requestUtils.request(buildParams(paramMap));
         // 解析数据
         final ArrayList<DailyPrice> prices = new ArrayList<>();
         if (results.size() >= 10) {
@@ -578,18 +634,26 @@ public class DailyJob {
         final String end = simpleDateFormat.format(calendar.getTime());
         calendar.add(Calendar.MONTH, -1);
         final String start = simpleDateFormat.format(calendar.getTime());
-        log.info("end:{}", end);
-        String pram = "MobileCode=13278828091&&CHANNEL=&Token=" + token + "&Reqno=" + timeMillis
-                + "&ReqlinkType=1&newindex=1&action=115&StartPos=0&MaxCount=100&BeginDate=" + start
-                + "&EndDate=" + end + "&intacttoserver=@ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&cfrom=H5&tfrom=PC";
-        final JSONArray results = requestUtils.request2(pram);
-        // 解析数据:  日期|委托编号|市场类型|股东帐号|代码|名称|买卖方向|价格|数量|成交金额|流水号|时间|备注|日期|委托编号|市场类型|股东帐号|代码|名称|买卖方向|价格|数量|成交金额|流水号|时间|备注|
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 115);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", 100);
+        paramMap.put("BeginDate", start);
+        paramMap.put("EndDate", end);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        final JSONArray results = requestUtils.request2(buildParams(paramMap));
         final JSONArray jsonArray = new JSONArray();
         for (int i = 1; i < results.size(); i++) {
             final String result = results.getString(i);
             final String[] split = result.split("\\|");
             final String date = split[0];
             final String answerNo = split[1];
+            if ("0".equals(answerNo)) {
+                // 合同编号为0非买卖信息，跳过处理
+                continue;
+            }
             final String code = split[4];
             final String name = split[5];
             final String type = split[6];
@@ -615,9 +679,14 @@ public class DailyJob {
         // 请求数据
         final long timeMillis = System.currentTimeMillis();
         final String token = redisTemplate.opsForValue().get("requestToken");
-        String pram = "MobileCode=13278828091&&CHANNEL=&Token=" + token + "&Reqno=" + timeMillis
-                + "&ReqlinkType=1&newindex=1&action=114&StartPos=0&MaxCount=20&intacttoserver=@ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC&cfrom=H5&tfrom=PC";
-        final JSONArray results = requestUtils.request2(pram);
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 114);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", 100);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        final JSONArray results = requestUtils.request2(buildParams(paramMap));
         // 解析数据:  名称|买卖方向|数量|价格|成交金额|代码|合同编号|成交编号|股东帐号|市场类型|日期|时间|成交状态|
         final JSONArray jsonArray = new JSONArray();
         for (int i = 1; i < results.size(); i++) {

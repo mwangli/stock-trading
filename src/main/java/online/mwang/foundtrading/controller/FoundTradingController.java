@@ -1,7 +1,9 @@
 package online.mwang.foundtrading.controller;
 
-import com.alibaba.fastjson.JSONObject;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import online.mwang.foundtrading.bean.base.Response;
 import online.mwang.foundtrading.bean.po.FoundTradingRecord;
 import online.mwang.foundtrading.bean.query.FoundTradingQuery;
 import online.mwang.foundtrading.service.FoundTradingService;
@@ -9,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * @version 1.0.0
@@ -40,14 +43,16 @@ public class FoundTradingController {
     }
 
     @GetMapping
-    public JSONObject listFound(FoundTradingQuery query) {
+    public Response<List<FoundTradingRecord>> listFound(FoundTradingQuery query) {
         Page<FoundTradingRecord> page = new Page<>(query.getCurrent(), query.getPageSize());
-        Page<FoundTradingRecord> pageResult = foundTradingService.page(page);
-        List<FoundTradingRecord> records = pageResult.getRecords();
-        final JSONObject res = new JSONObject();
-        res.put("data", pageResult.getRecords());
-        res.put("total", pageResult.getTotal());
-        res.put("success", true);
-        return res;
+        LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda();
+        queryWrapper.like(!Objects.isNull(query.getCode()), FoundTradingRecord::getCode, query.getCode());
+        queryWrapper.like(!Objects.isNull(query.getName()), FoundTradingRecord::getCode, query.getName());
+        queryWrapper.like(!Objects.isNull(query.getBuyDate()), FoundTradingRecord::getBuyDate, query.getBuyDate());
+        queryWrapper.like(!Objects.isNull(query.getSalDate()), FoundTradingRecord::getSaleDate, query.getSalDate());
+        queryWrapper.eq(!Objects.isNull(query.getHoldDays()), FoundTradingRecord::getHoldDays, query.getHoldDays());
+        queryWrapper.eq(!Objects.isNull(query.getSold()), FoundTradingRecord::getSold, query.getSold());
+        Page<FoundTradingRecord> pageResult = foundTradingService.page(page, queryWrapper);
+        return Response.success(pageResult.getRecords(), pageResult.getTotal());
     }
 }
