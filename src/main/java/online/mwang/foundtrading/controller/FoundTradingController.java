@@ -52,7 +52,7 @@ public class FoundTradingController {
                 .like(ObjectUtils.isNotNull(query.getSalDate()), FoundTradingRecord::getSaleDate, query.getSalDate())
                 .eq(ObjectUtils.isNotNull(query.getHoldDays()), FoundTradingRecord::getHoldDays, query.getHoldDays())
                 .eq(ObjectUtils.isNotNull(query.getSold()), FoundTradingRecord::getSold, query.getSold())
-                .orderBy(ObjectUtils.isNotNull(query.getSortKey()), "ascend".equals(query.getSortOrder()), FoundTradingRecord.getOrder(query.getSortKey()));
+                .orderBy(true, "ascend".equals(query.getSortOrder()), FoundTradingRecord.getOrder(query.getSortKey()));
         Page<FoundTradingRecord> pageResult = foundTradingService.page(page, queryWrapper);
         return Response.success(pageResult.getRecords(), pageResult.getTotal());
     }

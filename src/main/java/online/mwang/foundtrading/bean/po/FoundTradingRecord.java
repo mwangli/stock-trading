@@ -56,7 +56,7 @@ public class FoundTradingRecord {
     private Date updateTime;
 
     public static SFunction<FoundTradingRecord, Object> getOrder(String key) {
-        if (key == null) return FoundTradingRecord::getId;
+        if (key == null) return FoundTradingRecord::getUpdateTime;
         switch (key) {
             case "buyDate":
                 return FoundTradingRecord::getBuyDate;
