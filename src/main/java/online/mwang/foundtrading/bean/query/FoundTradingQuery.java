@@ -19,4 +19,12 @@ public class FoundTradingQuery {
     private String name;
 
     private String code;
+
+    private String buyDate;
+
+    private String salDate;
+
+    private Integer holdDays;
+
+    private String sold;
 }

@@ -9,6 +9,9 @@ import java.util.Date;
 
 public class DateUtils {
 
+    public static final SimpleDateFormat dateTimeFormat = new SimpleDateFormat("yyyyMMddHHmmss");
+    public static final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd");
+
     public static void main(String[] args) throws Exception {
         StringBuilder stringBuffer = new StringBuilder();
         Calendar calendar = Calendar.getInstance();
@@ -34,5 +37,9 @@ public class DateUtils {
         System.out.println(stringBuffer);
         BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(new FileOutputStream("date.txt"));
         bufferedOutputStream.write(stringBuffer.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static String format1(Date date) {
+        return date == null ? "" : dateFormat.format(date);
     }
 }
