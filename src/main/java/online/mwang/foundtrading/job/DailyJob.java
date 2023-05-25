@@ -206,7 +206,7 @@ public class DailyJob {
         final List<StockInfo> dataList = getUpdateData();
         // 选择有交易权限合适价格区间的数据，按评分排序分组
         final List<StockInfo> filterList = dataList.stream()
-                .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= 6 && s.getPrice() <= 7.8)
+                .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= 8 && s.getPrice() <= 12)
                 .sorted(Comparator.comparing(StockInfo::getScore).reversed())
                 .collect(Collectors.toList());
         // 在得分高的一组中随机选择一支买入
