@@ -13,7 +13,7 @@ public class DateUtils {
         StringBuilder stringBuffer = new StringBuilder();
         Calendar calendar = Calendar.getInstance();
         calendar.setTime(new Date());
-        calendar.add(Calendar.DATE, -5);
+        calendar.add(Calendar.MONTH, -1);
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyyMMdd");
         int count = 1;
         while (count <= 1000) {
@@ -32,7 +32,7 @@ public class DateUtils {
             calendar.add(Calendar.DATE, 1);
         }
         System.out.println(stringBuffer);
-        BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(new FileOutputStream("json/date.txt"));
+        BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(new FileOutputStream("date.txt"));
         bufferedOutputStream.write(stringBuffer.toString().getBytes(StandardCharsets.UTF_8));
     }
 }

@@ -63,7 +63,7 @@ public class RequestUtils {
                 .build();
         HttpResponse<String> response = client.send(postRequest, HttpResponse.BodyHandlers.ofString());
         String responseBody = response.body();
-//        log.info(responseBody);
+        log.info(responseBody);
         return JSONObject.parseObject(responseBody);
     }
 }

@@ -22,27 +22,29 @@ public class FoundTradingRecord {
 
     private String name;
 
-    private String accountType;
+    private Date buyDate;
 
-    private Double buyAmount;
+    private String buyNo;
 
     private Double buyPrice;
 
     private Double buyNumber;
 
-    private Date buyDate;
+    private Double buyAmount;
 
-    private Double saleAmount;
+    private Date saleDate;
+
+    private String saleNo;
 
     private Double salePrice;
 
     private Double saleNumber;
 
-    private Date saleDate;
+    private Double saleAmount;
 
-    private Double realIncome;
+    private Double income;
 
-    private Double realIncomeRate;
+    private Double dailyIncomeRate;
 
     private String sold;
 
