@@ -69,8 +69,8 @@ public class DailyJob {
     }
 
     // 收盘时间卖出 14:30
-//    @Scheduled(cron = "0 0 10 * * *")
-    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
+    @Scheduled(cron = "0 0 10 * * *")
+//    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
     public void runSoldJob() {
         log.info("开始执行卖出任务====================================");
         sold(0);
@@ -79,6 +79,7 @@ public class DailyJob {
 
     // 同步股票交易记录，每月执行一次
     @Scheduled(cron = "0 0 15 15 * *")
+//    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
     public void runSyncJob() {
         log.info("同步订单任务执行开始====================================");
         syncBuySaleRecord();
@@ -87,6 +88,7 @@ public class DailyJob {
 
     // 更新股票交易权限，每月执行一次
     @Scheduled(cron = "0 0 8 1 * *")
+//    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
     public void runFlushJob() {
         log.info("更新权限任务执行开始====================================");
         flushPermission();
@@ -459,8 +461,8 @@ public class DailyJob {
                     } else {
                         selectedRecord.setBuyPrice(price);
                         selectedRecord.setBuyNumber(number + selectedRecord.getBuyNumber());
-                        final double amount = price * selectedRecord.getBuyNumber();
-                        selectedRecord.setBuyAmount(amount + getPeeAmount(amount));
+                        final double amount = price * number;
+                        selectedRecord.setBuyAmount(selectedRecord.getBuyAmount() + amount + getPeeAmount(amount));
                         final Date buyDate = DateUtils.dateTimeFormat.parse(dateString);
                         selectedRecord.setBuyDate(buyDate);
                         selectedRecord.setBuyNo(selectedRecord.getBuyNo() + "," + answerNo);
