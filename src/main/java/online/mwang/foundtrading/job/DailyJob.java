@@ -69,8 +69,8 @@ public class DailyJob {
     }
 
     // 收盘时间卖出 14:30
-    @Scheduled(cron = "0 0 10 * * *")
-//    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
+//    @Scheduled(cron = "0 0 10 * * *")
+    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
     public void runSoldJob() {
         log.info("开始执行卖出任务====================================");
         sold(0);

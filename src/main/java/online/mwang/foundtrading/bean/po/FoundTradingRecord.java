@@ -2,6 +2,7 @@ package online.mwang.foundtrading.bean.po;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import lombok.Data;
 
 import java.util.Date;
@@ -53,4 +54,32 @@ public class FoundTradingRecord {
     private Date createTime;
 
     private Date updateTime;
+
+    public static SFunction<FoundTradingRecord, Object> getOrder(String key) {
+        if (key == null) return FoundTradingRecord::getId;
+        switch (key) {
+            case "buyDate":
+                return FoundTradingRecord::getBuyDate;
+            case "buyPrice":
+                return FoundTradingRecord::getBuyPrice;
+            case "buyAmount":
+                return FoundTradingRecord::getBuyAmount;
+            case "saleDate":
+                return FoundTradingRecord::getSaleDate;
+            case "salePrice":
+                return FoundTradingRecord::getSalePrice;
+            case "saleAmount":
+                return FoundTradingRecord::getSaleAmount;
+            case "income":
+                return FoundTradingRecord::getIncome;
+            case "sold":
+                return FoundTradingRecord::getSold;
+            case "holdDays":
+                return FoundTradingRecord::getHoldDays;
+            case "dailyIncomeRate":
+                return FoundTradingRecord::getDailyIncomeRate;
+            default:
+                return FoundTradingRecord::getUpdateTime;
+        }
+    }
 }
