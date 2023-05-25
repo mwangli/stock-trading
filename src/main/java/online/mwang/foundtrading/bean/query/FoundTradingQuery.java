@@ -27,4 +27,8 @@ public class FoundTradingQuery {
     private Integer holdDays;
 
     private String sold;
+
+    private String sortKey;
+
+    private String sortOrder;
 }

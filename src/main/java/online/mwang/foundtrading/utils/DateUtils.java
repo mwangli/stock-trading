@@ -42,4 +42,21 @@ public class DateUtils {
     public static String format1(Date date) {
         return date == null ? "" : dateFormat.format(date);
     }
+
+    public static String camelToUnderline(String str) {
+        if (str == null || "".equals(str.trim())) {
+            return "";
+        }
+        int len = str.length();
+        StringBuilder sb = new StringBuilder(len);
+        for (int i = 0; i < len; i++) {
+            char c = str.charAt(i);
+            if (Character.isUpperCase(c)) {
+                sb.append("_").append(Character.toLowerCase(c));
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
 }

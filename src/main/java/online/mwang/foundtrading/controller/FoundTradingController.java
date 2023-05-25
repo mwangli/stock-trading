@@ -2,6 +2,7 @@ package online.mwang.foundtrading.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import online.mwang.foundtrading.bean.base.Response;
 import online.mwang.foundtrading.bean.po.FoundTradingRecord;
@@ -11,7 +12,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * @version 1.0.0
@@ -45,13 +45,14 @@ public class FoundTradingController {
     @GetMapping
     public Response<List<FoundTradingRecord>> listFound(FoundTradingQuery query) {
         Page<FoundTradingRecord> page = new Page<>(query.getCurrent(), query.getPageSize());
-        LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda();
-        queryWrapper.like(!Objects.isNull(query.getCode()), FoundTradingRecord::getCode, query.getCode());
-        queryWrapper.like(!Objects.isNull(query.getName()), FoundTradingRecord::getCode, query.getName());
-        queryWrapper.like(!Objects.isNull(query.getBuyDate()), FoundTradingRecord::getBuyDate, query.getBuyDate());
-        queryWrapper.like(!Objects.isNull(query.getSalDate()), FoundTradingRecord::getSaleDate, query.getSalDate());
-        queryWrapper.eq(!Objects.isNull(query.getHoldDays()), FoundTradingRecord::getHoldDays, query.getHoldDays());
-        queryWrapper.eq(!Objects.isNull(query.getSold()), FoundTradingRecord::getSold, query.getSold());
+        LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda()
+                .like(ObjectUtils.isNotNull(query.getCode()), FoundTradingRecord::getCode, query.getCode())
+                .like(ObjectUtils.isNotNull(query.getName()), FoundTradingRecord::getCode, query.getName())
+                .like(ObjectUtils.isNotNull(query.getBuyDate()), FoundTradingRecord::getBuyDate, query.getBuyDate())
+                .like(ObjectUtils.isNotNull(query.getSalDate()), FoundTradingRecord::getSaleDate, query.getSalDate())
+                .eq(ObjectUtils.isNotNull(query.getHoldDays()), FoundTradingRecord::getHoldDays, query.getHoldDays())
+                .eq(ObjectUtils.isNotNull(query.getSold()), FoundTradingRecord::getSold, query.getSold())
+                .orderBy(ObjectUtils.isNotNull(query.getSortKey()), "ascend".equals(query.getSortOrder()), FoundTradingRecord.getOrder(query.getSortKey()));
         Page<FoundTradingRecord> pageResult = foundTradingService.page(page, queryWrapper);
         return Response.success(pageResult.getRecords(), pageResult.getTotal());
     }
