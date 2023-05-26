@@ -86,16 +86,16 @@ public class DailyJob {
         log.info("更新账户余额任务执行结束====================================");
     }
 
-    // 同步股票交易记录，每月执行一次
-    @Scheduled(cron = "0 0 15 15 * ?")
+    // 同步股票交易记录，每十天执行一次
+    @Scheduled(cron = "0 0 15 1/10 * ?")
     public void runSyncJob() {
         log.info("同步订单任务执行开始====================================");
         syncBuySaleRecord();
         log.info("同步订单执行结束====================================");
     }
 
-    // 更新股票交易权限，每月执行一次
-    @Scheduled(cron = "0 0 12 1 * ?")
+    // 更新股票交易权限，每半月月执行一次
+    @Scheduled(cron = "0 0 12 1,15 * ?")
     public void runFlushJob() {
         log.info("更新权限任务执行开始====================================");
         flushPermission();
