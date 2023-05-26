@@ -152,12 +152,10 @@ public class DailyJob {
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", "117");
         paramMap.put("StartPos", 0);
-        paramMap.put("MaxCount", "20");
+        paramMap.put("MaxCount", 20);
         paramMap.put("reqno", timeMillis);
         paramMap.put("token", token);
         paramMap.put("Volume", 100);
-        paramMap.put("reqno", timeMillis);
-        paramMap.put("token", token);
         JSONArray dataList = requestUtils.request2(buildParams(paramMap));
         double maxRate = -100.00;
         FoundTradingRecord maxRateRecord = null;
@@ -218,8 +216,11 @@ public class DailyJob {
                 log.info("等待20秒后查询卖出交易结果...");
                 SleepUtils.second(20);
                 if (queryStatus(saleNo)) {
-                    maxRateRecord.setSaleDate(new Date());
                     maxRateRecord.setSold("1");
+                    maxRateRecord.setSaleNo(saleNo);
+                    final Date now = new Date();
+                    maxRateRecord.setSaleDate(now);
+                    maxRateRecord.setUpdateTime(now);
                     foundTradingService.updateById(maxRateRecord);
                     // 更新账户资金
                     queryAccountAmount();
@@ -278,6 +279,7 @@ public class DailyJob {
                 record.setName(best.getName());
                 record.setBuyPrice(best.getPrice());
                 record.setBuyNumber(buyNumber);
+                record.setBuyNo(buyNo);
                 final double amount = best.getPrice() * buyNumber;
                 record.setBuyAmount(amount + getPeeAmount(amount));
                 final Date now = new Date();
