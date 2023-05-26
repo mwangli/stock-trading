@@ -15,5 +15,5 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class Point {
     private String x;
-    private String y;
+    private Double y;
 }
