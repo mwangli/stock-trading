@@ -11,23 +11,24 @@ import java.util.Date;
 /**
  * @version 1.0.0
  * @author: mwangli
- * @date: 2023/5/22 11:00
- * @description: StockInfo
+ * @date: 2023/5/26 09:36
+ * @description: AccountInfo
  */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class StockInfo {
+public class AccountInfo {
+
     @TableId(type = IdType.AUTO)
     private Long id;
-    private String name;
-    private String code;
-    private String market;
-    private Double price;
-    private String prices;
-    private String increaseRate;
-    private Double score;
-    private String permission;
+
+    private Double availableAmount;
+
+    private Double usedAmount;
+
+    private Double totalAmount;
+
     private Date createTime;
+
     private Date updateTime;
 }

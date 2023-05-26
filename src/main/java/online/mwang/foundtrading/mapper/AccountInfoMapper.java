@@ -1,7 +1,7 @@
 package online.mwang.foundtrading.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import online.mwang.foundtrading.bean.po.StockInfo;
+import online.mwang.foundtrading.bean.po.AccountInfo;
 import org.apache.ibatis.annotations.Mapper;
 
 /**
@@ -11,5 +11,5 @@ import org.apache.ibatis.annotations.Mapper;
  * @description: StockInfoMapper
  */
 @Mapper
-public interface StockInfoMapper extends BaseMapper<StockInfo> {
+public interface AccountInfoMapper extends BaseMapper<AccountInfo> {
 }
