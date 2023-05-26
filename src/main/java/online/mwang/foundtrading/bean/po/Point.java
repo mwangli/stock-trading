@@ -16,4 +16,11 @@ import lombok.NoArgsConstructor;
 public class Point {
     private String x;
     private Double y;
+    private String z;
+    private String t;
+
+    public Point(String x, Double y) {
+        this.x = x;
+        this.y = y;
+    }
 }
