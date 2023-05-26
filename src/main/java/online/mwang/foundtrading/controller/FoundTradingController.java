@@ -31,8 +31,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FoundTradingController {
 
-    private FoundTradingService foundTradingService;
-    private AccountInfoMapper accountInfoMapper;
+    private final FoundTradingService foundTradingService;
+    private final AccountInfoMapper accountInfoMapper;
 
     @PostMapping
     public Boolean createFound(@RequestBody FoundTradingRecord foundTradingRecord) {
@@ -82,17 +82,17 @@ public class FoundTradingController {
         // 查询账户金额
         accountInfoMapper.selectList(new QueryWrapper<AccountInfo>().lambda().orderByDesc(AccountInfo::getUpdateTime)).stream().findFirst().ifPresent(data::setAccountInfo);
         // 查询收益列表
-        data.setIncomeList(sortedSoldList.stream().limit(10).map(o -> new Point(DateUtils.dateFormat.format(o.getSaleDate()), o.getIncome().toString())).sorted(Comparator.comparing(Point::getX)).collect(Collectors.toList()));
+        data.setIncomeList(sortedSoldList.stream().limit(10).map(o -> new Point(o.getId().toString(), o.getIncome())).sorted(Comparator.comparing(Point::getX)).collect(Collectors.toList()));
         // 查询收益率列表
-        data.setRateList(sortedSoldList.stream().limit(10).map(o -> new Point(DateUtils.dateFormat.format(o.getSaleDate()), String.format("%.4f",o.getIncome()/o.getBuyAmount()))).sorted(Comparator.comparing(Point::getX)).collect(Collectors.toList()));
+        data.setRateList(sortedSoldList.stream().limit(10).map(o -> new Point(DateUtils.dateFormat.format(o.getSaleDate()), o.getIncome()/o.getBuyAmount())).sorted(Comparator.comparing(Point::getX)).collect(Collectors.toList()));
         // 查询日收益率列表
-        data.setDailyRateList(sortedSoldList.stream().limit(10).map(o -> new Point(DateUtils.dateFormat.format(o.getSaleDate()), o.getDailyIncomeRate().toString())).sorted(Comparator.comparing(Point::getX)).collect(Collectors.toList()));
+        data.setDailyRateList(sortedSoldList.stream().limit(10).map(o -> new Point(DateUtils.dateFormat.format(o.getSaleDate()), o.getDailyIncomeRate())).sorted(Comparator.comparing(Point::getX)).collect(Collectors.toList()));
         // 收益排行
-        data.setIncomeOrder(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getIncome).reversed()).limit(7).map(o->new Point(o.getCode()+o.getName(),o.getIncome().toString())).collect(Collectors.toList()));
+        data.setIncomeOrder(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getIncome).reversed()).limit(7).map(o->new Point(o.getCode()+o.getName(),o.getIncome())).collect(Collectors.toList()));
         // 日收益率牌型
-        data.setDailyRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getDailyIncomeRate).reversed()).limit(7).map(o->new Point(o.getCode()+o.getName(),o.getDailyIncomeRate().toString())).collect(Collectors.toList()));
+        data.setDailyRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getDailyIncomeRate).reversed()).limit(7).map(o->new Point(o.getCode()+o.getName(),o.getDailyIncomeRate())).collect(Collectors.toList()));
         // 持有天數排行
-        data.setHoldDaysList(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getHoldDays).reversed()).limit(7).map(o->new Point(o.getCode()+o.getName(),o.getHoldDays().toString())).collect(Collectors.toList()));
+        data.setHoldDaysList(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getHoldDays).reversed()).limit(7).map(o->new Point(o.getCode()+o.getName(),Double.valueOf(o.getHoldDays()))).collect(Collectors.toList()));
         return Response.success(data);
     }
 }
