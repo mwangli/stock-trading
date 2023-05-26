@@ -32,6 +32,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FoundTradingController {
 
+    private final static Integer LIMIT_SIZE = 15;
     private final FoundTradingService foundTradingService;
     private final AccountInfoMapper accountInfoMapper;
 
@@ -69,7 +70,7 @@ public class FoundTradingController {
     public Response<AnalysisData> analysis() {
         final AnalysisData data = new AnalysisData();
         // 获取所有已卖出的股票，按更新时间倒序
-        final List<FoundTradingRecord> sortedSoldList = foundTradingService.list(new QueryWrapper<FoundTradingRecord>().lambda().eq(FoundTradingRecord::getSold, "1"));
+        final List<FoundTradingRecord> sortedSoldList = foundTradingService.list(new QueryWrapper<FoundTradingRecord>().lambda().eq(FoundTradingRecord::getSold, "1").orderByDesc(true, FoundTradingRecord.getOrder("")));
         // 获取最近收益金额
         sortedSoldList.stream().findFirst().ifPresent(o -> data.setIncome(o.getIncome()));
         // 获取上次收益金额
@@ -85,11 +86,11 @@ public class FoundTradingController {
         // 查询账户金额
         accountInfoMapper.selectList(new QueryWrapper<AccountInfo>().lambda().orderByDesc(AccountInfo::getUpdateTime)).stream().findFirst().ifPresent(data::setAccountInfo);
         // 查询收益列表
-        data.setIncomeList(sortedSoldList.stream().limit(10).map(o -> new Point(o.getId().toString(), o.getIncome(), o.getCode(), o.getName())).sorted(Comparator.comparing(Point::getX)).collect(Collectors.toList()));
+        data.setIncomeList(sortedSoldList.stream().limit(LIMIT_SIZE).sorted(Comparator.comparing(FoundTradingRecord::getUpdateTime)).map(o -> new Point(o.getId().toString(), o.getIncome(), o.getCode(), o.getName())).collect(Collectors.toList()));
         // 查询收益率列表
-        data.setRateList(sortedSoldList.stream().limit(10).map(o -> new Point(o.getId().toString(), o.getIncomeRate())).sorted(Comparator.comparing(Point::getX)).collect(Collectors.toList()));
+        data.setRateList(sortedSoldList.stream().limit(LIMIT_SIZE).sorted(Comparator.comparing(FoundTradingRecord::getUpdateTime)).map(o -> new Point(o.getId().toString(), o.getIncomeRate())).collect(Collectors.toList()));
         // 查询日收益率列表
-        data.setDailyRateList(sortedSoldList.stream().limit(10).map(o -> new Point(o.getId().toString(), o.getDailyIncomeRate())).sorted(Comparator.comparing(Point::getX)).collect(Collectors.toList()));
+        data.setDailyRateList(sortedSoldList.stream().limit(LIMIT_SIZE).sorted(Comparator.comparing(FoundTradingRecord::getUpdateTime)).map(o -> new Point(o.getId().toString(), o.getDailyIncomeRate())).collect(Collectors.toList()));
         // 获取平均收益率
         data.setAvgRate(sortedSoldList.stream().mapToDouble(FoundTradingRecord::getIncomeRate).average().orElse(0.0));
         // 获取平均日收益率
@@ -99,14 +100,14 @@ public class FoundTradingController {
         // 收益率排行
         data.setRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getIncomeRate).reversed()).limit(7).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getIncomeRate())).collect(Collectors.toList()));
         // 日收益率排行
-        data.setDailyRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getDailyIncomeRate).reversed()).limit(7).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getIncome(), o.getDailyIncomeRate().toString(),o.getHoldDays().toString() )).collect(Collectors.toList()));
+        data.setDailyRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getDailyIncomeRate).reversed()).limit(7).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getIncome(), o.getDailyIncomeRate().toString(), o.getHoldDays().toString())).collect(Collectors.toList()));
         // 持有天數分组统计列表
         ArrayList<Point> holdDaysCountList = new ArrayList<>();
         sortedSoldList.stream().collect(Collectors.groupingBy(FoundTradingRecord::getHoldDays, Collectors.summarizingInt(o -> 1))).forEach((k, v) -> holdDaysCountList.add(new Point(k.toString(), (double) v.getSum())));
         data.setHoldDaysList(holdDaysCountList.stream().sorted(Comparator.comparingDouble(Point::getY)).collect(Collectors.toList()));
         data.setHoldDaysList(holdDaysCountList.stream().sorted(Comparator.comparingDouble(Point::getY)).collect(Collectors.toList()));
         // 测试
-        data.setTest(Arrays.asList(1,2,3,4,5,6,7));
+        data.setTest(Arrays.asList(1, 2, 3, 4, 5, 6, 7));
         return Response.success(data);
     }
 }
