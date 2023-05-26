@@ -37,7 +37,7 @@ public class RequestUtils {
                 .build();
         HttpResponse<String> response = client.send(postRequest, HttpResponse.BodyHandlers.ofString());
         String responseBody = response.body();
-        log.info(responseBody);
+//        log.info(responseBody);
         final JSONObject res = JSONObject.parseObject(responseBody);
         final JSONObject data = res.getJSONObject("BINDATA");
         return data.getJSONArray("results");
