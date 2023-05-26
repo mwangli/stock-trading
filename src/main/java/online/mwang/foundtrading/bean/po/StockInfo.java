@@ -23,7 +23,6 @@ public class StockInfo {
     private String name;
     private String code;
     private String market;
-    private Double increase;
     private Double price;
     private String prices;
     private String increaseRate;

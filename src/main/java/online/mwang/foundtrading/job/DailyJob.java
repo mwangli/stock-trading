@@ -9,9 +9,11 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.foundtrading.bean.po.AccountInfo;
 import online.mwang.foundtrading.bean.po.DailyPrice;
 import online.mwang.foundtrading.bean.po.FoundTradingRecord;
 import online.mwang.foundtrading.bean.po.StockInfo;
+import online.mwang.foundtrading.mapper.AccountInfoMapper;
 import online.mwang.foundtrading.service.FoundTradingService;
 import online.mwang.foundtrading.service.StockInfoService;
 import online.mwang.foundtrading.utils.DateUtils;
@@ -50,6 +52,7 @@ public class DailyJob {
     private final RequestUtils requestUtils;
     private final StockInfoService stockInfoService;
     private final FoundTradingService foundTradingService;
+    private final AccountInfoMapper accountInfoMapper;
     private final StringRedisTemplate redisTemplate;
 
     // 每隔25分钟刷新Token
@@ -59,27 +62,32 @@ public class DailyJob {
         log.info("刷新Token任务执行完毕！");
     }
 
-    // 开盘时间买入 9:30
-    @Scheduled(cron = "0 0,15,30 9 * * *")
-//    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
+    // 交易日开盘时间买入 9:30
+    @Scheduled(cron = "0 0,15,30 9 ? * MON-FRI")
     public void runBuyJob() {
         log.info("开始执行买入任务====================================");
         buy(0);
         log.info("买入任务执行完毕====================================");
     }
 
-    // 收盘时间卖出 14:30
-    @Scheduled(cron = "0 0 10 * * *")
-//    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
+    // 交易日收盘时间卖出 14:30
+    @Scheduled(cron = "0 0 10 ? * MON-FRI")
     public void runSoldJob() {
         log.info("开始执行卖出任务====================================");
         sold(0);
         log.info("卖出任务执行完毕====================================");
     }
 
+    // 更新账户余额，交易时间段内每小时执行一次
+    @Scheduled(cron = "0 0 9-15 ? * MON-FRI")
+    public void runAccountJob() {
+        log.info("更新账户余额任务执行开始====================================");
+        queryAccountAmount();
+        log.info("更新账户余额任务执行结束====================================");
+    }
+
     // 同步股票交易记录，每月执行一次
-    @Scheduled(cron = "0 0 15 15 * *")
-//    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
+    @Scheduled(cron = "0 0 15 15 * ?")
     public void runSyncJob() {
         log.info("同步订单任务执行开始====================================");
         syncBuySaleRecord();
@@ -87,14 +95,12 @@ public class DailyJob {
     }
 
     // 更新股票交易权限，每月执行一次
-    @Scheduled(cron = "0 0 8 1 * *")
-//    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
+    @Scheduled(cron = "0 0 12 1 * ?")
     public void runFlushJob() {
         log.info("更新权限任务执行开始====================================");
         flushPermission();
         log.info("更新权限任务执行结束====================================");
     }
-
 
     public String buildParams(Map<String, Object> paramMap) {
         paramMap.put("cfrom", "H5");
@@ -215,6 +221,8 @@ public class DailyJob {
                     maxRateRecord.setSaleDate(new Date());
                     maxRateRecord.setSold("1");
                     foundTradingService.updateById(maxRateRecord);
+                    // 更新账户资金
+                    queryAccountAmount();
                     log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{}，日收益率为:{}", maxRateRecord.getCode(), maxRateRecord.getName(),
                             maxRateRecord.getSaleAmount(), maxRateRecord.getIncome(), maxRateRecord.getDailyIncomeRate());
                 } else {
@@ -238,6 +246,8 @@ public class DailyJob {
         cancelAllOrder();
         //  更新每日数据
         final List<StockInfo> dataList = getUpdateData();
+        // 查询账户可用资金
+//        final AccountInfo accountInfo = queryAccountAmount();
         // 选择有交易权限合适价格区间的数据，按评分排序分组
         final List<StockInfo> filterList = dataList.stream()
                 .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= 8 && s.getPrice() <= 12)
@@ -276,8 +286,10 @@ public class DailyJob {
                 record.setCreateTime(now);
                 record.setUpdateTime(now);
                 foundTradingService.save(record);
-                // 买入成功后，保存数据
+                // 买入成功后，保存交易数据
                 saveDate();
+                // 更新账户资金
+                queryAccountAmount();
                 log.info("成功买入股票[{}-{}], 买入价格:{}，买入数量:{}，买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
             } else {
                 // 如果交易不成功，撤单后再次尝试卖出
@@ -300,6 +312,34 @@ public class DailyJob {
         final JSONObject result = requestUtils.request3(param);
         final String newToken = result.getString("TOKEN");
         redisTemplate.opsForValue().set("requestToken", newToken);
+    }
+
+    // 查询账户资金
+    public AccountInfo queryAccountAmount() {
+        String token = redisTemplate.opsForValue().get("requestToken");
+        final long timeMillis = System.currentTimeMillis();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 116);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        String param = buildParams(paramMap);
+        final JSONArray jsonArray = requestUtils.request2(param);
+        final String string = jsonArray.getString(1);
+        // 币种|余额|可取|可用|总资产|证券|基金|冻结资金|资产|资金账户|币种代码|账号主副标志|
+        final String[] split = string.split("\\|");
+        final Double availableAmount = Double.parseDouble(split[3]);
+        final Double totalAmount = Double.parseDouble(split[4]);
+        final Double usedAmount = Double.parseDouble(split[5]);
+        final AccountInfo accountInfo = new AccountInfo();
+        accountInfo.setAvailableAmount(availableAmount);
+        accountInfo.setUsedAmount(usedAmount);
+        accountInfo.setTotalAmount(totalAmount);
+        final Date now = new Date();
+        accountInfo.setCreateTime(now);
+        accountInfo.setUpdateTime(now);
+        accountInfoMapper.insert(accountInfo);
+        return accountInfo;
     }
 
     public void cancelAllOrder() {
@@ -403,7 +443,6 @@ public class DailyJob {
                 stockInfo.setName(name);
                 stockInfo.setCode(code);
                 stockInfo.setMarket(market);
-                stockInfo.setIncrease(increasePercent);
                 stockInfo.setPrice(price);
                 stockInfo.setCreateTime(now);
                 stockInfo.setUpdateTime(now);

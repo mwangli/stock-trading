@@ -12,10 +12,4 @@ import org.apache.ibatis.annotations.Mapper;
  */
 @Mapper
 public interface StockInfoMapper extends BaseMapper<StockInfo> {
-
-//    @Select("select code from stock_info")
-//    List<String> selectCodes();
-//
-//    @Select("select * from stock_info where price <= 12 and price >= 8 order by score desc limit 0 ,30")
-//    List<StockInfo> selectBest();
 }
