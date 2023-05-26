@@ -45,6 +45,8 @@ public class FoundTradingRecord {
 
     private Double income;
 
+    private Double incomeRate;
+
     private Integer holdDays;
 
     private Double dailyIncomeRate;

@@ -20,8 +20,14 @@ public class AnalysisData {
     private Double totalIncome;
     // 平均收益
     private Double avgIncome;
+    // 收益率
+    private Double incomeRate;
+    // 平均收益率
+    private Double avgRate;
     // 日收益率
     private Double dailyIncomeRate;
+    // 平均日收益率
+    private Double avgDailyRate;
     // 账户金额
     private AccountInfo accountInfo;
     // 收益列表
@@ -32,8 +38,11 @@ public class AnalysisData {
     private List<Point> dailyRateList;
     // 收益排行
     private List<Point> incomeOrder;
-    // 日收益率排行
-    private List<Point> dailyRateOrder;
+    // 收益排行
+    private List<Point> rateOrder;
     // 持有天数
     private List<Point> holdDaysList;
+    // 日收益率排行
+    private List<Point> dailyRateOrder;
+    private List<Integer> test;
 }

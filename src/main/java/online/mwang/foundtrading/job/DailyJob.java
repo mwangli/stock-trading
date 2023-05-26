@@ -187,12 +187,14 @@ public class DailyJob {
                     double saleAmount = amount - getPeeAmount(amount);
                     double income = saleAmount - selectRecord.getBuyAmount();
                     int dateDiff = diffDate(selectRecord.getBuyDate(), new Date());
-                    double incomeRate = income / selectRecord.getBuyAmount() / dateDiff * 100;
-                    if (incomeRate > maxRate) {
+                    double incomeRate = income / selectRecord.getBuyAmount() * 100;
+                    double dailyIncomeRate = incomeRate / dateDiff;
+                    if (dailyIncomeRate > maxRate) {
                         selectRecord.setSalePrice(price);
                         selectRecord.setSaleNumber(selectRecord.getBuyAmount());
                         selectRecord.setSaleAmount(saleAmount);
                         selectRecord.setIncome(income);
+                        selectRecord.setIncomeRate(incomeRate);
                         selectRecord.setHoldDays(dateDiff);
                         selectRecord.setDailyIncomeRate(incomeRate);
                         maxRateRecord = selectRecord;
