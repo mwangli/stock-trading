@@ -32,6 +32,7 @@ import java.util.stream.Collectors;
 public class FoundTradingController {
 
     private final static Integer LIMIT_SIZE = 15;
+    private final static String ASCEND = "ascend";
     private final FoundTradingService foundTradingService;
     private final AccountInfoMapper accountInfoMapper;
 
@@ -60,7 +61,7 @@ public class FoundTradingController {
                 .like(ObjectUtils.isNotNull(query.getSalDate()), FoundTradingRecord::getSaleDate, query.getSalDate())
                 .eq(ObjectUtils.isNotNull(query.getHoldDays()), FoundTradingRecord::getHoldDays, query.getHoldDays())
                 .eq(ObjectUtils.isNotNull(query.getSold()), FoundTradingRecord::getSold, query.getSold())
-                .orderBy(true, "ascend".equals(query.getSortOrder()), FoundTradingRecord.getOrder(query.getSortKey()));
+                .orderBy(true, ASCEND.equals(query.getSortOrder()), FoundTradingRecord.getOrder(query.getSortKey()));
         Page<FoundTradingRecord> pageResult = foundTradingService.page(page, queryWrapper);
         return Response.success(pageResult.getRecords(), pageResult.getTotal());
     }
@@ -102,7 +103,7 @@ public class FoundTradingController {
         data.setDailyRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getDailyIncomeRate).reversed()).limit(7).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getDailyIncomeRate())).collect(Collectors.toList()));
         // 持有天數分组统计列表
         ArrayList<Point> holdDaysCountList = new ArrayList<>();
-        sortedSoldList.stream().collect(Collectors.groupingBy(FoundTradingRecord::getHoldDays, Collectors.summarizingInt(o -> 1))).forEach((k, v) -> holdDaysCountList.add(new Point("持有天数" + k.toString(), (double) v.getSum())));
+        sortedSoldList.stream().collect(Collectors.groupingBy(FoundTradingRecord::getHoldDays, Collectors.summarizingInt(o -> 1))).forEach((k, v) -> holdDaysCountList.add(new Point("天数" + k.toString(), (double) v.getSum())));
         data.setHoldDaysList(holdDaysCountList.stream().sorted(Comparator.comparingDouble(Point::getY).reversed()).collect(Collectors.toList()));
         return Response.success(data);
     }

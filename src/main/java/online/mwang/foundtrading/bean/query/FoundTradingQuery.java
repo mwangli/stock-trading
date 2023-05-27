@@ -1,6 +1,7 @@
 package online.mwang.foundtrading.bean.query;
 
 import lombok.Data;
+import online.mwang.foundtrading.bean.base.BaseQuery;
 
 /**
  * @version 1.0.0
@@ -10,11 +11,7 @@ import lombok.Data;
  */
 
 @Data
-public class FoundTradingQuery {
-
-    private Integer current;
-
-    private Integer pageSize;
+public class FoundTradingQuery extends BaseQuery {
 
     private String name;
 
@@ -27,8 +24,4 @@ public class FoundTradingQuery {
     private Integer holdDays;
 
     private String sold;
-
-    private String sortKey;
-
-    private String sortOrder;
 }

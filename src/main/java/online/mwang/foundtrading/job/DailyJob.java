@@ -19,6 +19,8 @@ import online.mwang.foundtrading.service.StockInfoService;
 import online.mwang.foundtrading.utils.DateUtils;
 import online.mwang.foundtrading.utils.RequestUtils;
 import online.mwang.foundtrading.utils.SleepUtils;
+import org.quartz.Job;
+import org.quartz.JobExecutionContext;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -31,7 +33,6 @@ import java.io.InputStreamReader;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -44,7 +45,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class DailyJob {
+public class DailyJob implements Job {
 
     private static final long BUY_RETRY_TIMES = 3;
     private static final long SOLD_RETRY_TIMES = 3;
@@ -55,6 +56,12 @@ public class DailyJob {
     private final FoundTradingService foundTradingService;
     private final AccountInfoMapper accountInfoMapper;
     private final StringRedisTemplate redisTemplate;
+
+    @Override
+    public void execute(JobExecutionContext jobExecutionContext) {
+        refreshToken();
+    }
+
 
     // 每隔25分钟刷新Token
     @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
@@ -235,6 +242,10 @@ public class DailyJob {
                     foundTradingService.updateById(maxRateRecord);
                     // 更新账户资金
                     queryAccountAmount();
+                    // 增加股票交易次数
+                    StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, maxRateRecord.getCode()));
+                    stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
+                    stockInfoService.updateById(stockInfo);
                     log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{}，日收益率为:{}", maxRateRecord.getCode(), maxRateRecord.getName(),
                             maxRateRecord.getSaleAmount(), maxRateRecord.getIncome(), maxRateRecord.getDailyIncomeRate());
                 } else {
@@ -265,7 +276,7 @@ public class DailyJob {
             return;
         }
         //  更新每日数据
-        final List<StockInfo> dataList = getUpdateData();
+        final List<StockInfo> dataList = updateDataPrice();
         // 查询账户可用资金
 //        final AccountInfo accountInfo = queryAccountAmount();
         // 选择有交易权限合适价格区间的数据，按评分排序分组
@@ -308,9 +319,13 @@ public class DailyJob {
                 record.setUpdateTime(now);
                 foundTradingService.save(record);
                 // 买入成功后，保存交易数据
-                saveDate();
+                saveDate(dataList);
                 // 更新账户资金
                 queryAccountAmount();
+                // 增加股票交易次数
+                StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, best.getCode()));
+                stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
+                stockInfoService.updateById(stockInfo);
                 log.info("成功买入股票[{}-{}], 买入价格:{}，买入数量:{}，买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
             } else {
                 // 如果交易不成功，撤单后再次尝试卖出
@@ -464,6 +479,7 @@ public class DailyJob {
                 stockInfo.setName(name);
                 stockInfo.setCode(code);
                 stockInfo.setMarket(market);
+                stockInfo.setIncrease(increasePercent);
                 stockInfo.setPrice(price);
                 stockInfo.setCreateTime(now);
                 stockInfo.setUpdateTime(now);
@@ -568,7 +584,7 @@ public class DailyJob {
     }
 
     @SneakyThrows
-    public List<StockInfo> getUpdateData() {
+    public List<StockInfo> updateDataPrice() {
         log.info("开始获取每日价格数据......");
         List<StockInfo> stockInfos = getDataList();
         log.info("共获取到{}条新数据。", stockInfos.size());
@@ -577,15 +593,12 @@ public class DailyJob {
         List<StockInfo> updateData = mergeDataList(stockInfos, list);
         log.info("待更新{}条数据。", updateData.size());
         //  缓存更新后的数据，防止数据丢失
-        redisTemplate.opsForValue().set("dataList", JSON.toJSONString(updateData), 8, TimeUnit.HOURS);
+//        redisTemplate.opsForValue().set("dataList", JSON.toJSONString(updateData), 4, TimeUnit.HOURS);
         return updateData;
     }
 
     @SneakyThrows
-    public void saveDate() {
-        log.info("开始更新数据库......");
-        final String dataListString = redisTemplate.opsForValue().get("dataList");
-        final List<StockInfo> dataList = JSON.parseArray(dataListString, StockInfo.class);
+    public void saveDate(List<StockInfo> dataList) {
         if (dataList != null) {
             // 多线程写入数据库
             CountDownLatch countDownLatch = new CountDownLatch(5);
@@ -603,7 +616,6 @@ public class DailyJob {
             log.info("数据库更新完成......");
         }
     }
-
 
     // 合并新老数据
     public List<StockInfo> mergeDataList(List<StockInfo> newInfos, List<StockInfo> stockInfos) {
@@ -628,6 +640,7 @@ public class DailyJob {
                 }
                 selectedInfo.setUpdateTime(new Date());
                 selectedInfo.setPrice(info.getPrice());
+                selectedInfo.setIncrease(info.getIncrease());
                 selectedInfo.setPrices(JSON.toJSONString(dailyPrices));
                 StockInfo stockInfo = setIncreaseRateAndScore(selectedInfo, prices);
                 list.add(stockInfo);
@@ -842,4 +855,5 @@ public class DailyJob {
         }
         return dateMap;
     }
+
 }
