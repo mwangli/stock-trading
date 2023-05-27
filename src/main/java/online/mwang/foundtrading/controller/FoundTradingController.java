@@ -16,7 +16,6 @@ import online.mwang.foundtrading.service.FoundTradingService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -103,11 +102,8 @@ public class FoundTradingController {
         data.setDailyRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getDailyIncomeRate).reversed()).limit(7).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getDailyIncomeRate())).collect(Collectors.toList()));
         // 持有天數分组统计列表
         ArrayList<Point> holdDaysCountList = new ArrayList<>();
-        sortedSoldList.stream().collect(Collectors.groupingBy(FoundTradingRecord::getHoldDays, Collectors.summarizingInt(o -> 1))).forEach((k, v) -> holdDaysCountList.add(new Point(k.toString(), (double) v.getSum())));
-        data.setHoldDaysList(holdDaysCountList.stream().sorted(Comparator.comparingDouble(Point::getY)).collect(Collectors.toList()));
-        data.setHoldDaysList(holdDaysCountList.stream().sorted(Comparator.comparingDouble(Point::getY)).collect(Collectors.toList()));
-        // 测试
-        data.setTest(Arrays.asList(1, 2, 3, 4, 5, 6, 7));
+        sortedSoldList.stream().collect(Collectors.groupingBy(FoundTradingRecord::getHoldDays, Collectors.summarizingInt(o -> 1))).forEach((k, v) -> holdDaysCountList.add(new Point("持有天数" + k.toString(), (double) v.getSum())));
+        data.setHoldDaysList(holdDaysCountList.stream().sorted(Comparator.comparingDouble(Point::getY).reversed()).collect(Collectors.toList()));
         return Response.success(data);
     }
 }
