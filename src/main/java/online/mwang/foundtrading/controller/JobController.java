@@ -45,16 +45,21 @@ public class JobController {
     @SneakyThrows
     @PostMapping()
     public Response<Integer> createJob(@RequestBody QuartzJob job) {
+        if (!CronExpression.isValidExpression(job.getCron())) {
+            throw new RuntimeException("非法的cron表达式");
+        }
         startJob(job);
         return Response.success(jobMapper.insert(job));
     }
 
     @SneakyThrows
     public void startJob(QuartzJob job) {
-        Class<Job> clazz = (Class<Job>) Class.forName(job.getClassName());
-        JobDetail jobDetail = JobBuilder.newJob(clazz).withIdentity(job.getName()).build();
-        CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
-        scheduler.scheduleJob(jobDetail, cronTrigger);
+        if (!CronExpression.isValidExpression(job.getCron())) {
+            Class<Job> clazz = (Class<Job>) Class.forName(job.getClassName());
+            JobDetail jobDetail = JobBuilder.newJob(clazz).withIdentity(job.getName()).build();
+            CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
+            scheduler.scheduleJob(jobDetail, cronTrigger);
+        }
     }
 
     @SneakyThrows
@@ -63,7 +68,7 @@ public class JobController {
         Class<Job> clazz = (Class<Job>) Class.forName(job.getClassName());
         JobDetail jobDetail = JobBuilder.newJob(clazz).withIdentity(job.getClassName()).build();
         Trigger trigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).startNow().build();
-        scheduler.scheduleJob(jobDetail,trigger);
+        scheduler.scheduleJob(jobDetail, trigger);
     }
 
     @SneakyThrows
