@@ -38,6 +38,7 @@ public class LoginController {
     private static final String SDF = "MMdd";
     private static final Integer TOKEN_LENGTH = 32;
     private static final Integer TOKEN_EXPIRE_MINUTES = 30;
+    private static final Integer TOKEN_EXPIRE_HOURS = 4;
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
@@ -49,7 +50,7 @@ public class LoginController {
         final String reverseDate = new StringBuilder(monthDate).reverse().toString();
         if (USERNAME.equalsIgnoreCase(param.getUsername()) && reverseDate.equals(param.getPassword())) {
             final String token = generateToken(TOKEN_LENGTH);
-            stringRedisTemplate.opsForValue().set(token, "", TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+            stringRedisTemplate.opsForValue().set(token, "", TOKEN_EXPIRE_HOURS, TimeUnit.HOURS);
             return Response.success(token);
         } else {
             return Response.fail(1101, "用户名或密码错误!");

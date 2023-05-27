@@ -11,17 +11,19 @@ import online.mwang.foundtrading.bean.base.BaseQuery;
  */
 
 @Data
-public class FoundTradingQuery extends BaseQuery {
+public class StockInfoQuery extends BaseQuery {
 
     private String name;
 
     private String code;
 
-    private String buyDate;
+    private String market;
 
-    private String salDate;
+    private String permission;
 
-    private Integer holdDays;
+    private Integer buySaleCount;
 
-    private String sold;
+    private Double priceLow;
+
+    private Double priceHigh;
 }
