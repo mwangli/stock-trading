@@ -86,7 +86,7 @@ public class FoundTradingController {
         // 查询账户金额
         accountInfoMapper.selectList(new QueryWrapper<AccountInfo>().lambda().orderByDesc(AccountInfo::getUpdateTime)).stream().findFirst().ifPresent(data::setAccountInfo);
         // 查询收益列表
-        data.setIncomeList(sortedSoldList.stream().limit(LIMIT_SIZE).sorted(Comparator.comparing(FoundTradingRecord::getUpdateTime)).map(o -> new Point(o.getId().toString(), o.getIncome(), o.getCode(), o.getName())).collect(Collectors.toList()));
+        data.setIncomeList(sortedSoldList.stream().limit(LIMIT_SIZE).sorted(Comparator.comparing(FoundTradingRecord::getUpdateTime)).map(o -> new Point(o.getId().toString(), o.getIncome())).collect(Collectors.toList()));
         // 查询收益率列表
         data.setRateList(sortedSoldList.stream().limit(LIMIT_SIZE).sorted(Comparator.comparing(FoundTradingRecord::getUpdateTime)).map(o -> new Point(o.getId().toString(), o.getIncomeRate())).collect(Collectors.toList()));
         // 查询日收益率列表
@@ -98,9 +98,9 @@ public class FoundTradingController {
         // 收益排行
         data.setIncomeOrder(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getIncome).reversed()).limit(7).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getIncome())).collect(Collectors.toList()));
         // 收益率排行
-        data.setRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getIncomeRate).reversed()).limit(7).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getIncomeRate())).collect(Collectors.toList()));
+        data.setRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getIncomeRate).reversed()).limit(10).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getIncome(), o.getIncomeRate().toString(), o.getHoldDays().toString(), o.getDailyIncomeRate().toString())).collect(Collectors.toList()));
         // 日收益率排行
-        data.setDailyRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getDailyIncomeRate).reversed()).limit(7).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getIncome(), o.getDailyIncomeRate().toString(), o.getHoldDays().toString())).collect(Collectors.toList()));
+        data.setDailyRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(FoundTradingRecord::getDailyIncomeRate).reversed()).limit(7).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getDailyIncomeRate())).collect(Collectors.toList()));
         // 持有天數分组统计列表
         ArrayList<Point> holdDaysCountList = new ArrayList<>();
         sortedSoldList.stream().collect(Collectors.groupingBy(FoundTradingRecord::getHoldDays, Collectors.summarizingInt(o -> 1))).forEach((k, v) -> holdDaysCountList.add(new Point(k.toString(), (double) v.getSum())));
