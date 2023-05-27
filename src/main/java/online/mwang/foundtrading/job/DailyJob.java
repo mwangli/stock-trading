@@ -19,11 +19,8 @@ import online.mwang.foundtrading.service.StockInfoService;
 import online.mwang.foundtrading.utils.DateUtils;
 import online.mwang.foundtrading.utils.RequestUtils;
 import online.mwang.foundtrading.utils.SleepUtils;
-import org.quartz.Job;
-import org.quartz.JobExecutionContext;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
@@ -45,7 +42,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class DailyJob implements Job {
+public class DailyJob {
 
     private static final long BUY_RETRY_TIMES = 3;
     private static final long SOLD_RETRY_TIMES = 3;
@@ -57,21 +54,16 @@ public class DailyJob implements Job {
     private final AccountInfoMapper accountInfoMapper;
     private final StringRedisTemplate redisTemplate;
 
-    @Override
-    public void execute(JobExecutionContext jobExecutionContext) {
-        refreshToken();
-    }
-
 
     // 每隔25分钟刷新Token
-    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
+//    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
     public void refreshToken() {
         cancelOrder("");
         log.info("刷新Token任务执行完毕！");
     }
 
     // 交易日开盘时间买入 9:30
-    @Scheduled(cron = "0 0,15,30 9 ? * MON-FRI")
+//    @Scheduled(cron = "0 0,15,30 9 ? * MON-FRI")
     public void runBuyJob() {
         log.info("开始执行买入任务====================================");
         buy(0);
@@ -79,7 +71,7 @@ public class DailyJob implements Job {
     }
 
     // 交易日收盘时间卖出 14:30
-    @Scheduled(cron = "0 0 10,11,14 ? * MON-FRI")
+//    @Scheduled(cron = "0 0 10,11,14 ? * MON-FRI")
     public void runSoldJob() {
         log.info("开始执行卖出任务====================================");
         sold(0);
@@ -87,7 +79,7 @@ public class DailyJob implements Job {
     }
 
     // 更新账户余额，交易时间段内每小时执行一次
-    @Scheduled(cron = "0 0 9-15 ? * MON-FRI")
+//    @Scheduled(cron = "0 0 9-15 ? * MON-FRI")
     public void runAccountJob() {
         log.info("更新账户余额任务执行开始====================================");
         queryAccountAmount();
@@ -95,7 +87,7 @@ public class DailyJob implements Job {
     }
 
     // 同步股票交易记录，每十天执行一次
-    @Scheduled(cron = "0 0 15 1/10 * ?")
+//    @Scheduled(cron = "0 0 15 1/10 * ?")
     public void runSyncJob() {
         log.info("同步订单任务执行开始====================================");
         syncBuySaleRecord();
@@ -103,7 +95,7 @@ public class DailyJob implements Job {
     }
 
     // 更新股票交易权限，每半月月执行一次
-    @Scheduled(cron = "0 0 12 1,15 * ?")
+//    @Scheduled(cron = "0 0 12 1,15 * ?")
     public void runFlushJob() {
         log.info("更新权限任务执行开始====================================");
         flushPermission();
@@ -592,8 +584,6 @@ public class DailyJob implements Job {
         List<StockInfo> list = stockInfoService.list();
         List<StockInfo> updateData = mergeDataList(stockInfos, list);
         log.info("待更新{}条数据。", updateData.size());
-        //  缓存更新后的数据，防止数据丢失
-//        redisTemplate.opsForValue().set("dataList", JSON.toJSONString(updateData), 4, TimeUnit.HOURS);
         return updateData;
     }
 
@@ -816,7 +806,7 @@ public class DailyJob implements Job {
         final double priceAvg = priceSum / priceList.size();
         double sum = 0;
         for (Double price : priceList) {
-            sum += Math.pow((price - priceAvg), 2);
+            sum += Math.pow((price - priceAvg), 3);
         }
         double sqrt = Math.sqrt(sum / priceList.size());
         sqrt = sqrt > 2 ? 2 : sqrt;

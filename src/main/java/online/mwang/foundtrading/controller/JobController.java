@@ -1,14 +1,18 @@
 package online.mwang.foundtrading.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.foundtrading.job.JobManager;
-import org.quartz.CronExpression;
-import org.quartz.SchedulerException;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import online.mwang.foundtrading.bean.base.BaseQuery;
+import online.mwang.foundtrading.bean.base.Response;
+import online.mwang.foundtrading.bean.po.QuartzJob;
+import online.mwang.foundtrading.mapper.QuartzJobMapper;
+import org.quartz.*;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * @version 1.0.0
@@ -18,66 +22,79 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @Slf4j
 @RestController
-@RequestMapping("/job")
+@RequestMapping("job")
+@RequiredArgsConstructor
 public class JobController {
 
-    @Autowired
-    private JobManager jobManager;
+    private final Scheduler scheduler;
+    private final QuartzJobMapper jobMapper;
 
-
-    //  获取定时器信息
-    @GetMapping()
-    public String getJob(String name, String group) {
-        String info = null;
-        try {
-            info = jobManager.getJobInfo(name, group);
-        } catch (SchedulerException e) {
-            e.printStackTrace();
-        }
-        return info;
+    @SneakyThrows
+    public static void main(String[] args) {
+        String s = "online.mwang.foundtrading.job.RunTokenJob";
+        Class<?> aClass = Class.forName(s);
     }
 
+    @SneakyThrows
+    @GetMapping()
+    public Response<List<QuartzJob>> listJob(@RequestBody BaseQuery query) {
+        Page<QuartzJob> jobPage = jobMapper.selectPage(Page.of(query.getCurrent(), query.getPageSize()), new QueryWrapper<>());
+        return Response.success(jobPage.getRecords(), jobPage.getTotal());
+    }
+
+    @SneakyThrows
     @PostMapping()
-    public boolean modifyJob(String name, String group, String time) {
-        boolean flag = true;
-        if (!CronExpression.isValidExpression(time)) {
+    public Response<Integer> createJob(@RequestBody QuartzJob job) {
+        startJob(job);
+        return Response.success(jobMapper.insert(job));
+    }
+
+    @SneakyThrows
+    public void startJob(QuartzJob job) {
+        Class<Job> clazz = (Class<Job>) Class.forName(job.getClassName());
+        JobDetail jobDetail = JobBuilder.newJob(clazz).withIdentity(job.getName()).build();
+        CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
+        scheduler.scheduleJob(jobDetail, cronTrigger);
+    }
+
+    @SneakyThrows
+    @PostMapping("run")
+    public void runNow(@RequestBody QuartzJob job) {
+        Class<Job> clazz = (Class<Job>) Class.forName(job.getClassName());
+        JobDetail jobDetail = JobBuilder.newJob(clazz).withIdentity(job.getClassName()).build();
+        Trigger trigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).startNow().build();
+        scheduler.scheduleJob(jobDetail,trigger);
+    }
+
+    @SneakyThrows
+    @PutMapping()
+    public Response<Integer> modifyJob(@RequestBody QuartzJob job) {
+        if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");
         }
-        try {
-            flag = jobManager.modifyJob(name, group, time);
-        } catch (SchedulerException e) {
-            e.printStackTrace();
-        }
-        return flag;
+        CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getName())).build();
+        scheduler.rescheduleJob(TriggerKey.triggerKey(job.getName()), cronTrigger);
+        return Response.success(jobMapper.updateById(job));
     }
 
-    // @Description: 启动所有定时器
-    @PostMapping("/start")
-    public void startQuartzJob() {
-        try {
-            jobManager.startJob();
-        } catch (SchedulerException e) {
-            e.printStackTrace();
-        }
+    @SneakyThrows
+    @DeleteMapping()
+    public Response<Integer> deleteJob(@RequestBody QuartzJob job) {
+        scheduler.deleteJob(JobKey.jobKey(job.getName()));
+        return Response.success(jobMapper.updateById(job));
     }
 
-    // 暂停指定 定时器
-    @PostMapping(value = "/pause")
-    public void pauseQuartzJob(String name, String group) {
-        try {
-            jobManager.pauseJob(name, group);
-        } catch (SchedulerException e) {
-            e.printStackTrace();
-        }
+    @SneakyThrows
+    @PostMapping(value = "pause")
+    public Response<Integer> pauseJob(@RequestBody QuartzJob job) {
+        scheduler.pauseJob(JobKey.jobKey(job.getName()));
+        return Response.success(jobMapper.updateById(job));
     }
 
-    // 删除指定定时器
-    @PostMapping(value = "/delete")
-    public void deleteJob(String name, String group) {
-        try {
-            jobManager.deleteJob(name, group);
-        } catch (SchedulerException e) {
-            e.printStackTrace();
-        }
+    @SneakyThrows
+    @PostMapping(value = "resume")
+    public Response<Integer> resumeJob(@RequestBody QuartzJob job) {
+        scheduler.pauseJob(JobKey.jobKey(job.getName()));
+        return Response.success(jobMapper.updateById(job));
     }
 }
