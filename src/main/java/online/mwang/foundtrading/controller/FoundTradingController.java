@@ -53,7 +53,6 @@ public class FoundTradingController {
 
     @GetMapping
     public Response<List<FoundTradingRecord>> listFound(FoundTradingQuery query) {
-        Page<FoundTradingRecord> page = new Page<>(query.getCurrent(), query.getPageSize());
         LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda()
                 .like(ObjectUtils.isNotNull(query.getCode()), FoundTradingRecord::getCode, query.getCode())
                 .like(ObjectUtils.isNotNull(query.getName()), FoundTradingRecord::getCode, query.getName())
@@ -62,7 +61,7 @@ public class FoundTradingController {
                 .eq(ObjectUtils.isNotNull(query.getHoldDays()), FoundTradingRecord::getHoldDays, query.getHoldDays())
                 .eq(ObjectUtils.isNotNull(query.getSold()), FoundTradingRecord::getSold, query.getSold())
                 .orderBy(true, ASCEND.equals(query.getSortOrder()), FoundTradingRecord.getOrder(query.getSortKey()));
-        Page<FoundTradingRecord> pageResult = foundTradingService.page(page, queryWrapper);
+        Page<FoundTradingRecord> pageResult = foundTradingService.page(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
         return Response.success(pageResult.getRecords(), pageResult.getTotal());
     }
 
