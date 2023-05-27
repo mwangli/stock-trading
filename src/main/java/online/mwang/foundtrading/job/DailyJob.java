@@ -23,6 +23,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -71,7 +72,7 @@ public class DailyJob {
     }
 
     // 交易日收盘时间卖出 14:30
-    @Scheduled(cron = "0 0 10 ? * MON-FRI")
+    @Scheduled(cron = "0 0 10,11,14 ? * MON-FRI")
     public void runSoldJob() {
         log.info("开始执行卖出任务====================================");
         sold(0);
@@ -147,6 +148,14 @@ public class DailyJob {
             return;
         }
         log.info("第{}次尝试卖出股票---------", times + 1);
+        // 检查今天是否有卖出记录，防止重复卖出
+        LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda().eq(FoundTradingRecord::getSold, "1")
+                .eq((o) -> DateUtils.dateFormat.format(o.getSaleDate()), DateUtils.dateFormat.format(new Date()));
+        List<FoundTradingRecord> hasSold = foundTradingService.list(queryWrapper);
+        if (!CollectionUtils.isEmpty(hasSold)) {
+            log.warn("今天已经有卖出记录了，无需重复卖出!");
+            return;
+        }
         String token = redisTemplate.opsForValue().get("requestToken");
         long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -247,6 +256,14 @@ public class DailyJob {
         log.info("第{}次尝试买入股票---------", times + 1);
         // 买入之前先去撤销所有未成功订单
         cancelAllOrder();
+        // 检查今天是否有买入记录，防止重复买入
+        LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda().eq(FoundTradingRecord::getSold, "0")
+                .eq((o) -> DateUtils.dateFormat.format(o.getBuyDate()), DateUtils.dateFormat.format(new Date()));
+        List<FoundTradingRecord> hasBuy = foundTradingService.list(queryWrapper);
+        if (!CollectionUtils.isEmpty(hasBuy)) {
+            log.warn("今天已经有买入记录了，无需重复买入!");
+            return;
+        }
         //  更新每日数据
         final List<StockInfo> dataList = getUpdateData();
         // 查询账户可用资金
