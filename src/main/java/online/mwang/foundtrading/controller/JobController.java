@@ -12,6 +12,7 @@ import online.mwang.foundtrading.bean.po.QuartzJob;
 import online.mwang.foundtrading.bean.query.QuartzJobQuery;
 import online.mwang.foundtrading.mapper.QuartzJobMapper;
 import org.quartz.*;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Date;
@@ -33,6 +34,7 @@ public class JobController {
     private final static String ASCEND = "ascend";
     private final Scheduler scheduler;
     private final QuartzJobMapper jobMapper;
+    private final StringRedisTemplate redisTemplate;
 
     @SneakyThrows
     @GetMapping()
@@ -53,7 +55,9 @@ public class JobController {
         if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");
         }
-        startJob(job);
+        JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName()).build();
+        CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
+        scheduler.scheduleJob(jobDetail, cronTrigger);
         job.setStatus("1");
         job.setCreateTime(new Date());
         job.setUpdateTime(new Date());
@@ -61,19 +65,10 @@ public class JobController {
     }
 
     @SneakyThrows
-    public void startJob(QuartzJob job) {
-        if (!CronExpression.isValidExpression(job.getCron())) {
-            JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName()).build();
-            CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
-            scheduler.scheduleJob(jobDetail, cronTrigger);
-        }
-    }
-
-    @SneakyThrows
     @PostMapping("run")
     public Response<?> runNow(@RequestBody QuartzJob job) {
         Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
-        JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName()).build();
+        JobDetail jobDetail = scheduler.getJobDetail(JobKey.jobKey(job.getName()));
         scheduler.scheduleJob(jobDetail, trigger);
         return Response.success();
     }
@@ -109,8 +104,12 @@ public class JobController {
     @SneakyThrows
     @PostMapping(value = "/resume")
     public Response<Integer> resumeJob(@RequestBody QuartzJob job) {
-        scheduler.pauseJob(JobKey.jobKey(job.getName()));
+        scheduler.resumeJob(JobKey.jobKey(job.getName()));
         job.setStatus("1");
         return Response.success(jobMapper.updateById(job));
+    }
+
+    public static void main(String[] args) {
+
     }
 }

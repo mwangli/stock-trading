@@ -3,6 +3,7 @@ package online.mwang.foundtrading.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import online.mwang.foundtrading.bean.po.StockInfo;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Select;
 
 /**
  * @version 1.0.0
@@ -12,4 +13,7 @@ import org.apache.ibatis.annotations.Mapper;
  */
 @Mapper
 public interface StockInfoMapper extends BaseMapper<StockInfo> {
+
+    @Select("select * from stock_info where code = #{code}")
+    StockInfo selectByCode(String code);
 }

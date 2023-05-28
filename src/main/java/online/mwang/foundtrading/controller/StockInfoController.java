@@ -64,9 +64,9 @@ public class StockInfoController {
             List<DailyPrice> dailyPrices = JSON.parseArray(o.getPrices(), DailyPrice.class);
             List<Point> pointList = dailyPrices.stream().map(p -> new Point(p.getDate(), p.getPrice())).collect(Collectors.toList());
             o.setPricesList(pointList);
-//           JSON.parseArray(o.getPrices(),Double.class);
-//            List<Point> pointList = jsonArray.stream().map(o -> new Point(o.getDate(), o.getPrice())).collect(Collectors.toList());
-//            o.setPricesList(pointList);
+            List<DailyPrice> rateList = JSON.parseArray(o.getIncreaseRate(), DailyPrice.class);
+            List<Point> ratePoints = rateList.stream().map(p -> new Point(p.getDate(), p.getPrice())).collect(Collectors.toList());
+            o.setIncreaseRateList(ratePoints);
         }).collect(Collectors.toList());
         return Response.success(collect, pageResult.getTotal());
     }

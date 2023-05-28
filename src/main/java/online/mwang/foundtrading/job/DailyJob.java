@@ -14,6 +14,7 @@ import online.mwang.foundtrading.bean.po.DailyPrice;
 import online.mwang.foundtrading.bean.po.FoundTradingRecord;
 import online.mwang.foundtrading.bean.po.StockInfo;
 import online.mwang.foundtrading.mapper.AccountInfoMapper;
+import online.mwang.foundtrading.mapper.StockInfoMapper;
 import online.mwang.foundtrading.service.FoundTradingService;
 import online.mwang.foundtrading.service.StockInfoService;
 import online.mwang.foundtrading.utils.DateUtils;
@@ -44,15 +45,19 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DailyJob {
 
-    private static final long BUY_RETRY_TIMES = 3;
-    private static final long SOLD_RETRY_TIMES = 3;
-    private static final long BUY_RETRY_LIMIT = 10;
+    private static final int BUY_RETRY_TIMES = 3;
+    private static final int SOLD_RETRY_TIMES = 3;
+    private static final int BUY_RETRY_LIMIT = 10;
+    private static final int HISTORY_PRICE_LIMIT = 30;
+    // 方差技基数，体现价格波动容忍度
+    private static final double BASE_NUMBER = 5;
     private static HashMap<String, Integer> dateMap;
     private final RequestUtils requestUtils;
     private final StockInfoService stockInfoService;
     private final FoundTradingService foundTradingService;
     private final AccountInfoMapper accountInfoMapper;
     private final StringRedisTemplate redisTemplate;
+    private final StockInfoMapper stockInfoMapper;
 
 
     // 每隔25分钟刷新Token
@@ -149,7 +154,7 @@ public class DailyJob {
         log.info("第{}次尝试卖出股票---------", times + 1);
         // 检查今天是否有卖出记录，防止重复卖出
         LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda().eq(FoundTradingRecord::getSold, "1")
-                .eq((o) -> DateUtils.dateFormat.format(o.getSaleDate()), DateUtils.dateFormat.format(new Date()));
+                .eq((o) -> DateUtils.dateFormat.format(o.getSaleDateString()), DateUtils.dateFormat.format(new Date()));
         List<FoundTradingRecord> hasSold = foundTradingService.list(queryWrapper);
         if (!CollectionUtils.isEmpty(hasSold)) {
             log.warn("今天已经有卖出记录了，无需重复卖出!");
@@ -261,7 +266,7 @@ public class DailyJob {
         cancelAllOrder();
         // 检查今天是否有买入记录，防止重复买入
         LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda().eq(FoundTradingRecord::getSold, "0")
-                .eq((o) -> DateUtils.dateFormat.format(o.getBuyDate()), DateUtils.dateFormat.format(new Date()));
+                .eq(FoundTradingRecord::getBuyDateString, DateUtils.dateFormat.format(new Date()));
         List<FoundTradingRecord> hasBuy = foundTradingService.list(queryWrapper);
         if (!CollectionUtils.isEmpty(hasBuy)) {
             log.warn("今天已经有买入记录了，无需重复买入!");
@@ -269,6 +274,8 @@ public class DailyJob {
         }
         //  更新每日数据
         final List<StockInfo> dataList = updateDataPrice();
+        log.info("dataLis:{}", dataList);
+        saveDate(dataList);
         // 查询账户可用资金
 //        final AccountInfo accountInfo = queryAccountAmount();
         // 选择有交易权限合适价格区间的数据，按评分排序分组
@@ -277,9 +284,9 @@ public class DailyJob {
                 .sorted(Comparator.comparing(StockInfo::getScore).reversed())
                 .collect(Collectors.toList());
         // 在得分高的一组中随机选择一支买入
-        List<StockInfo> limitList = filterList.stream().skip(times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
+        List<StockInfo> limitList = filterList.stream().skip((long) times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
         List<String> buyCodes = foundTradingService.list().stream().filter(s -> "0".equals(s.getSold())).map(FoundTradingRecord::getCode).collect(Collectors.toList());
-        StockInfo best = limitList.get(new Random().nextInt(10));
+        StockInfo best = limitList.get(new Random().nextInt(BUY_RETRY_LIMIT));
         if (buyCodes.contains(best.getCode())) {
             log.info("当前股票[{}-{}]已经持有，尝试买入下一股票", best.getCode(), best.getName());
             buy(times + 1);
@@ -476,6 +483,7 @@ public class DailyJob {
                 stockInfo.setCreateTime(now);
                 stockInfo.setUpdateTime(now);
                 stockInfo.setPermission("0");
+                stockInfo.setBuySaleCount(0);
                 stockInfos.add(stockInfo);
             }
         }
@@ -588,7 +596,53 @@ public class DailyJob {
     }
 
     @SneakyThrows
+    public void updateHistoryPrice() {
+        log.info("开始更新股票历史价格数据......");
+        List<StockInfo> stockInfos = getDataList();
+        stockInfos.forEach(s -> {
+            List<DailyPrice> historyPrices = getHistoryPrices(s.getCode(), s.getMarket());
+            List<DailyPrice> rateList = getRateList(historyPrices);
+            StockInfo selectedInfo = stockInfoMapper.selectByCode(s.getCode());
+            if (selectedInfo == null) {
+                s.setPrices(JSON.toJSONString(historyPrices));
+                s.setIncreaseRate(JSON.toJSONString(rateList));
+                stockInfoService.save(setIncreaseRateAndScore(s, historyPrices));
+            } else {
+                selectedInfo.setPrices(JSON.toJSONString(historyPrices));
+                s.setIncreaseRate(JSON.toJSONString(rateList));
+                selectedInfo.setUpdateTime(new Date());
+                selectedInfo.setPrice(s.getPrice());
+                s.setIncreaseRate(JSON.toJSONString(rateList));
+                stockInfoService.updateById(selectedInfo);
+            }
+            log.info("更新股票[{}-{}],历史价格{}", s.getCode(), s.getName(), historyPrices);
+        });
+        log.info("更新股票历史价格数据完成");
+    }
+
+    @SneakyThrows
+    public void updateNowPrice() {
+        log.info("开始更新股票实时价格数据......");
+        List<StockInfo> stockInfos = getDataList();
+        stockInfos.forEach(s -> {
+            StockInfo stockInfo = stockInfoMapper.selectByCode(s.getCode());
+            if (stockInfo == null) {
+                stockInfoMapper.insert(s);
+                log.info("当前股票信息不存在，写入新数据");
+            } else {
+                stockInfo.setPrice(s.getPrice());
+                stockInfo.setIncrease(s.getIncrease());
+                stockInfo.setUpdateTime(new Date());
+                stockInfoMapper.updateById(stockInfo);
+            }
+        });
+        log.info("更新股票实时价格数据完成");
+    }
+
+
+    @SneakyThrows
     public void saveDate(List<StockInfo> dataList) {
+        log.info("开始写入数据库......");
         if (dataList != null) {
             // 多线程写入数据库
             CountDownLatch countDownLatch = new CountDownLatch(5);
@@ -662,28 +716,29 @@ public class DailyJob {
         final JSONArray results = requestUtils.request(buildParams(paramMap));
         // 解析数据
         final ArrayList<DailyPrice> prices = new ArrayList<>();
-        if (results.size() >= 10) {
-            for (int i = results.size() - 10; i < results.size(); i++) {
+        if (results.size() >= HISTORY_PRICE_LIMIT) {
+            for (int i = results.size() - HISTORY_PRICE_LIMIT; i < results.size(); i++) {
                 final String s = results.getString(i);
                 final String[] split = s.split(",");
                 final String date = split[0].replaceAll("\\[", "");
-                final String price1 = split[4];
+                final String price1 = split[1];
                 final double v = Double.parseDouble(price1);
                 final DailyPrice dailyPrice = new DailyPrice(date, v / 100);
                 prices.add(dailyPrice);
             }
         } else {
-            log.warn("历史数据不足10条，丢弃该数据。");
+            log.warn("历史数据不足{}条，丢弃该数据。", HISTORY_PRICE_LIMIT);
         }
         return prices;
     }
 
     // 根据历史价格计算日增长率曲线和得分
     public StockInfo setIncreaseRateAndScore(StockInfo info, List<DailyPrice> prices) {
-        final List<Double> rateList = getRateList(prices);
+        final List<DailyPrice> rateList = getRateList(prices);
         info.setIncreaseRate(JSONObject.toJSONString(rateList));
         List<Double> priceList = prices.stream().map(DailyPrice::getPrice).collect(Collectors.toList());
-        final Double score = getScore(priceList, rateList);
+        List<Double> rateValueList = rateList.stream().map(DailyPrice::getPrice).collect(Collectors.toList());
+        final Double score = getScore(priceList, rateValueList);
         info.setScore(score);
         return info;
     }
@@ -779,15 +834,16 @@ public class DailyJob {
         return jsonArray;
     }
 
-    // 计算日增长率曲线
-    public List<Double> getRateList(List<DailyPrice> prices) {
-        final ArrayList<Double> rateList = new ArrayList<>();
+    // 计算价格日增长率曲线
+    public List<DailyPrice> getRateList(List<DailyPrice> prices) {
+        final ArrayList<DailyPrice> rateList = new ArrayList<>();
         for (int i = 1; i < prices.size(); i++) {
             final Double price = prices.get(i).getPrice();
             final Double oldPrice = prices.get(i - 1).getPrice();
             final double dailyIncreaseRate = oldPrice == 0 ? 0 : (price - oldPrice) / oldPrice;
             // 增长率乘100方便计算，否则数值太小
-            rateList.add(Double.parseDouble(String.format("%.4f", dailyIncreaseRate * 100)));
+            double increaseRate = Double.parseDouble(String.format("%.4f", dailyIncreaseRate * 100));
+            rateList.add(new DailyPrice(prices.get(i).getDate(), increaseRate));
         }
         return rateList;
     }
@@ -806,18 +862,18 @@ public class DailyJob {
         final double priceAvg = priceSum / priceList.size();
         double sum = 0;
         for (Double price : priceList) {
-            sum += Math.pow((price - priceAvg), 3);
+            sum += Math.pow((price - priceAvg), 2);
         }
         double sqrt = Math.sqrt(sum / priceList.size());
         sqrt = sqrt > 2 ? 2 : sqrt;
-        return fixSum * (1 - sqrt / 2);
+        return fixSum * (1 - sqrt / BASE_NUMBER);
     }
 
     // 计算交易日期差
     public int diffDate(Date date1, Date date2) {
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyyMMdd");
         HashMap<String, Integer> dateMap = getDateMap();
-        Integer from = dateMap.get(simpleDateFormat.format(date1));
+        Integer from = dateMap.get(DateUtils.dateFormat.format(date1));
         Integer to = dateMap.get(simpleDateFormat.format(date2));
         return Math.max(to - from, 1);
     }
