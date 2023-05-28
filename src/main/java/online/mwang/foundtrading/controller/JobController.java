@@ -66,7 +66,6 @@ public class JobController {
             JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName()).build();
             CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
             scheduler.scheduleJob(jobDetail, cronTrigger);
-            scheduler.start();
         }
     }
 
@@ -76,17 +75,6 @@ public class JobController {
         Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
         JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName()).build();
         scheduler.scheduleJob(jobDetail, trigger);
-//        Trigger.TriggerState triggerState = scheduler.getTriggerState(trigger.getKey());
-//        SleepUtils.second(2);
-//        Trigger.TriggerState triggerState2 = scheduler.getTriggerState(trigger.getKey());
-//        Class<?> aClass = Class.forName(job.getClassName());
-
-//        Method[] declaredMethods = Class.forName(job.getClassName()).getDeclaredMethods();
-//        for (Method method : declaredMethods) {
-//            if (method.getName().equals("execute")){
-//                method.invoke()
-//            }
-//        }
         return Response.success();
     }
 
