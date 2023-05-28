@@ -1,5 +1,6 @@
 package online.mwang.foundtrading.controller;
 
+import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
@@ -7,7 +8,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.base.Response;
+import online.mwang.foundtrading.bean.po.DailyPrice;
 import online.mwang.foundtrading.bean.po.FoundTradingRecord;
+import online.mwang.foundtrading.bean.po.Point;
 import online.mwang.foundtrading.bean.po.StockInfo;
 import online.mwang.foundtrading.bean.query.StockInfoQuery;
 import online.mwang.foundtrading.job.DailyJob;
@@ -57,7 +60,15 @@ public class StockInfoController {
                 .le(ObjectUtils.isNotNull(query.getPriceHigh()), StockInfo::getPrice, query.getPriceHigh())
                 .orderBy(true, ASCEND.equals(query.getSortOrder()), StockInfo.getOrder(query.getSortKey()));
         Page<StockInfo> pageResult = stockInfoService.page(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
-        return Response.success(pageResult.getRecords(), pageResult.getTotal());
+        List<StockInfo> collect = pageResult.getRecords().stream().peek(o -> {
+            List<DailyPrice> dailyPrices = JSON.parseArray(o.getPrices(), DailyPrice.class);
+            List<Point> pointList = dailyPrices.stream().map(p -> new Point(p.getDate(), p.getPrice())).collect(Collectors.toList());
+            o.setPricesList(pointList);
+//           JSON.parseArray(o.getPrices(),Double.class);
+//            List<Point> pointList = jsonArray.stream().map(o -> new Point(o.getDate(), o.getPrice())).collect(Collectors.toList());
+//            o.setPricesList(pointList);
+        }).collect(Collectors.toList());
+        return Response.success(collect, pageResult.getTotal());
     }
 
     @GetMapping("sync")
