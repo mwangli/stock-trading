@@ -3,6 +3,7 @@ package online.mwang.foundtrading.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
+import com.baomidou.mybatisplus.core.toolkit.StringUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -32,12 +33,14 @@ public class JobController {
 
 
     private final static String ASCEND = "ascend";
+    private final static String REQUEST_TOKEN = "requestToken";
     private final Scheduler scheduler;
     private final QuartzJobMapper jobMapper;
     private final StringRedisTemplate redisTemplate;
 
     public static void main(String[] args) {
-
+        String s = "5vzAnk3@7A09-C27B846MXYggh";
+        System.out.println(s.length());
     }
 
     @SneakyThrows
@@ -71,6 +74,11 @@ public class JobController {
     @SneakyThrows
     @PostMapping("run")
     public Response<?> runNow(@RequestBody QuartzJob job) {
+        // 更新Token
+        String token = job.getToken();
+        if (StringUtils.isNotBlank(token) && token.length() > 20) {
+            redisTemplate.opsForValue().set(REQUEST_TOKEN, token);
+        }
         Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
         JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).build();
         scheduler.scheduleJob(jobDetail, trigger);
