@@ -19,13 +19,14 @@ public class QuartzJob {
     private String cron;
     private String status;
     private String deleted;
+    private Integer sort;
     private Date createTime;
     private Date updateTime;
     @TableField(exist = false)
     private String token;
 
     public static SFunction<QuartzJob, Object> getOrder(String key) {
-        if (key == null) return QuartzJob::getId;
+        if (key == null) return QuartzJob::getSort;
         switch (key) {
             case "status":
                 return QuartzJob::getStatus;
@@ -34,7 +35,7 @@ public class QuartzJob {
             case "updateTime":
                 return QuartzJob::getUpdateTime;
             default:
-                return QuartzJob::getId;
+                return QuartzJob::getSort;
         }
     }
 }

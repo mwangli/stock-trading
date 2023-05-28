@@ -45,11 +45,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DailyJob {
 
-    private static final int BUY_RETRY_TIMES = 3;
-    private static final int SOLD_RETRY_TIMES = 3;
+    private static final int BUY_RETRY_TIMES = 5;
+    private static final int SOLD_RETRY_TIMES = 5;
     private static final int BUY_RETRY_LIMIT = 10;
     private static final int HISTORY_PRICE_LIMIT = 30;
-    // 方差技基数，体现价格波动容忍度
+    // 方差基数，体现价格波动容忍度
     private static final double BASE_NUMBER = 5;
     private static HashMap<String, Integer> dateMap;
     private final RequestUtils requestUtils;
@@ -79,7 +79,7 @@ public class DailyJob {
 //    @Scheduled(cron = "0 0 10,11,14 ? * MON-FRI")
     public void runSoldJob() {
         log.info("开始执行卖出任务====================================");
-        sold(0);
+        sale(0);
         log.info("卖出任务执行完毕====================================");
     }
 
@@ -146,7 +146,7 @@ public class DailyJob {
         log.info("刷新交易权限任务执行完毕！");
     }
 
-    public void sold(int times) {
+    public void sale(int times) {
         if (times >= SOLD_RETRY_TIMES) {
             log.error("{}次尝试卖出股票失败，请检查程序代码！", times);
             return;
@@ -154,7 +154,7 @@ public class DailyJob {
         log.info("第{}次尝试卖出股票---------", times + 1);
         // 检查今天是否有卖出记录，防止重复卖出
         LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda().eq(FoundTradingRecord::getSold, "1")
-                .eq((o) -> DateUtils.dateFormat.format(o.getSaleDateString()), DateUtils.dateFormat.format(new Date()));
+                .eq(FoundTradingRecord::getSaleDateString, DateUtils.dateFormat.format(new Date()));
         List<FoundTradingRecord> hasSold = foundTradingService.list(queryWrapper);
         if (!CollectionUtils.isEmpty(hasSold)) {
             log.warn("今天已经有卖出记录了，无需重复卖出!");
@@ -225,11 +225,11 @@ public class DailyJob {
             final String saleNo = buySale("S", maxRateRecord.getCode(), maxRateRecord.getSalePrice(), maxRateRecord.getBuyNumber());
             if (saleNo == null) {
                 log.info("第{}次尝试卖出失败---------", times + 1);
-                sold(times + 1);
+                sale(times + 1);
             } else {
                 // 等待一分钟后查询卖出结果
-                log.info("等待20秒后查询卖出交易结果...");
-                SleepUtils.second(20);
+                log.info("等待10秒后查询卖出交易结果...");
+                SleepUtils.second(10);
                 if (queryStatus(saleNo)) {
                     maxRateRecord.setSold("1");
                     maxRateRecord.setSaleNo(saleNo);
@@ -250,7 +250,7 @@ public class DailyJob {
                     log.info("卖出交易不成功，进行撤单操作");
                     cancelOrder(saleNo);
                     log.info("第{}次尝试卖出失败---------", times + 1);
-                    sold(times + 1);
+                    sale(times + 1);
                 }
             }
         }
@@ -274,8 +274,8 @@ public class DailyJob {
         }
         //  更新每日数据
         final List<StockInfo> dataList = updateDataPrice();
-        log.info("dataLis:{}", dataList);
-        saveDate(dataList);
+//        log.info("dataLis:{}", dataList);
+//        saveDate(dataList);
         // 查询账户可用资金
 //        final AccountInfo accountInfo = queryAccountAmount();
         // 选择有交易权限合适价格区间的数据，按评分排序分组
@@ -634,6 +634,7 @@ public class DailyJob {
                 stockInfo.setIncrease(s.getIncrease());
                 stockInfo.setUpdateTime(new Date());
                 stockInfoMapper.updateById(stockInfo);
+                log.info("更新股票[{}-{}]实时价格信息，修改数据", stockInfo.getCode(), stockInfo.getName());
             }
         });
         log.info("更新股票实时价格数据完成");
@@ -679,7 +680,7 @@ public class DailyJob {
                 List<DailyPrice> dailyPrices = prices.stream().filter(p -> !p.getDate().equals(date)).collect(Collectors.toList());
                 final DailyPrice dailyPrice = new DailyPrice(date, info.getPrice());
                 dailyPrices.add(dailyPrice);
-                if (prices.size() > 11) {
+                if (prices.size() > HISTORY_PRICE_LIMIT) {
                     prices.remove(0);
                 }
                 selectedInfo.setUpdateTime(new Date());

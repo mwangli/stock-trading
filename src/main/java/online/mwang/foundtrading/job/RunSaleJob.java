@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-public class RunSoldJob implements Job {
+public class RunSaleJob implements Job {
 
     private final DailyJob job;
 

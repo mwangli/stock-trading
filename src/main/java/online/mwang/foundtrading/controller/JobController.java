@@ -51,7 +51,7 @@ public class JobController {
                 .like(ObjectUtils.isNotNull(query.getClassName()), QuartzJob::getClassName, query.getClassName())
                 .like(ObjectUtils.isNotNull(query.getCron()), QuartzJob::getCron, query.getCron())
                 .eq(ObjectUtils.isNotNull(query.getStatus()), QuartzJob::getStatus, query.getStatus())
-                .orderBy(true, ASCEND.equals(query.getSortOrder()), QuartzJob.getOrder(query.getSortKey()));
+                .orderBy(true, true, QuartzJob.getOrder(query.getSortKey()));
         Page<QuartzJob> jobPage = jobMapper.selectPage(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
         return Response.success(jobPage.getRecords(), jobPage.getTotal());
     }
@@ -74,11 +74,6 @@ public class JobController {
     @SneakyThrows
     @PostMapping("run")
     public Response<?> runNow(@RequestBody QuartzJob job) {
-        // 更新Token
-        String token = job.getToken();
-        if (StringUtils.isNotBlank(token) && token.length() > 20) {
-            redisTemplate.opsForValue().set(REQUEST_TOKEN, token);
-        }
         Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
         JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).build();
         scheduler.scheduleJob(jobDetail, trigger);
@@ -88,6 +83,11 @@ public class JobController {
     @SneakyThrows
     @PutMapping()
     public Response<Integer> modifyJob(@RequestBody QuartzJob job) {
+        // 更新Token
+        String token = job.getToken();
+        if (StringUtils.isNotBlank(token) && token.length() > 20) {
+            redisTemplate.opsForValue().set(REQUEST_TOKEN, token);
+        }
         if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");
         }
@@ -100,6 +100,7 @@ public class JobController {
     @SneakyThrows
     @DeleteMapping()
     public Response<Integer> deleteJob(@RequestBody QuartzJob job) {
+        if (job.getId() <= 13) return Response.success();
         scheduler.deleteJob(JobKey.jobKey(job.getName()));
         return Response.success(jobMapper.deleteById(job.getId()));
     }
