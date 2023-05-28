@@ -38,11 +38,6 @@ public class JobController {
     private final QuartzJobMapper jobMapper;
     private final StringRedisTemplate redisTemplate;
 
-    public static void main(String[] args) {
-        String s = "5vzAnk3@7A09-C27B846MXYggh";
-        System.out.println(s.length());
-    }
-
     @SneakyThrows
     @GetMapping()
     public Response<List<QuartzJob>> listJob(QuartzJobQuery query) {
@@ -91,7 +86,7 @@ public class JobController {
         if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");
         }
-        CronTrigger cronTrigger = TriggerBuilder.newTrigger().withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
+        CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
         scheduler.rescheduleJob(TriggerKey.triggerKey(job.getName()), cronTrigger);
         job.setUpdateTime(new Date());
         return Response.success(jobMapper.updateById(job));
