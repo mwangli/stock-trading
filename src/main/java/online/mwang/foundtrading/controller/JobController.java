@@ -36,6 +36,10 @@ public class JobController {
     private final QuartzJobMapper jobMapper;
     private final StringRedisTemplate redisTemplate;
 
+    public static void main(String[] args) {
+
+    }
+
     @SneakyThrows
     @GetMapping()
     public Response<List<QuartzJob>> listJob(QuartzJobQuery query) {
@@ -68,7 +72,7 @@ public class JobController {
     @PostMapping("run")
     public Response<?> runNow(@RequestBody QuartzJob job) {
         Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
-        JobDetail jobDetail = scheduler.getJobDetail(JobKey.jobKey(job.getName()));
+        JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).build();
         scheduler.scheduleJob(jobDetail, trigger);
         return Response.success();
     }
@@ -84,7 +88,6 @@ public class JobController {
         job.setUpdateTime(new Date());
         return Response.success(jobMapper.updateById(job));
     }
-
 
     @SneakyThrows
     @DeleteMapping()
@@ -107,9 +110,5 @@ public class JobController {
         scheduler.resumeJob(JobKey.jobKey(job.getName()));
         job.setStatus("1");
         return Response.success(jobMapper.updateById(job));
-    }
-
-    public static void main(String[] args) {
-
     }
 }
