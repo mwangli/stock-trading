@@ -1,6 +1,7 @@
 package online.mwang.foundtrading.bean.po;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import lombok.Data;
@@ -20,6 +21,8 @@ public class QuartzJob {
     private String deleted;
     private Date createTime;
     private Date updateTime;
+    @TableField(exist = false)
+    private String token;
 
     public static SFunction<QuartzJob, Object> getOrder(String key) {
         if (key == null) return QuartzJob::getId;

@@ -32,10 +32,9 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
             JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName()).build();
             CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
             scheduler.scheduleJob(jobDetail, cronTrigger);
-            if (job.getStatus().equals("0")) {
+            if ("0".equals(job.getStatus())) {
                 scheduler.pauseJob(JobKey.jobKey(job.getName()));
             }
-            log.info("加载定时任务:{}", job.getName());
         }
         log.info("Quartz定时任务加载完毕.......");
     }
