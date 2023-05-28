@@ -56,8 +56,8 @@ public class FoundTradingController {
         LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda()
                 .like(ObjectUtils.isNotNull(query.getCode()), FoundTradingRecord::getCode, query.getCode())
                 .like(ObjectUtils.isNotNull(query.getName()), FoundTradingRecord::getCode, query.getName())
-                .like(ObjectUtils.isNotNull(query.getBuyDate()), FoundTradingRecord::getBuyDate, query.getBuyDate())
-                .like(ObjectUtils.isNotNull(query.getSalDate()), FoundTradingRecord::getSaleDate, query.getSalDate())
+                .likeLeft(ObjectUtils.isNotNull(query.getBuyDate()), FoundTradingRecord::getBuyDate, query.getBuyDate())
+                .eq((ObjectUtils.isNotNull(query.getSalDate())), FoundTradingRecord::getSaleDate, query.getSalDate())
                 .eq(ObjectUtils.isNotNull(query.getHoldDays()), FoundTradingRecord::getHoldDays, query.getHoldDays())
                 .eq(ObjectUtils.isNotNull(query.getSold()), FoundTradingRecord::getSold, query.getSold())
                 .orderBy(true, ASCEND.equals(query.getSortOrder()), FoundTradingRecord.getOrder(query.getSortKey()));

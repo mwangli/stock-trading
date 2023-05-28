@@ -41,7 +41,7 @@ public class StockInfo {
     private Date updateTime;
 
     public static SFunction<StockInfo, Object> getOrder(String key) {
-        if (key == null) return StockInfo::getUpdateTime;
+        if (key == null) return StockInfo::getScore;
         switch (key) {
             case "market":
                 return StockInfo::getMarket;
@@ -56,7 +56,7 @@ public class StockInfo {
             case "buySaleCount":
                 return StockInfo::getBuySaleCount;
             default:
-                return StockInfo::getUpdateTime;
+                return StockInfo::getScore;
         }
     }
 }

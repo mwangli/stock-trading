@@ -25,6 +25,8 @@ public class FoundTradingRecord {
 
     private Date buyDate;
 
+    private String buyDateString;
+
     private String buyNo;
 
     private Double buyPrice;
@@ -34,6 +36,8 @@ public class FoundTradingRecord {
     private Double buyAmount;
 
     private Date saleDate;
+
+    private String saleDateString;
 
     private String saleNo;
 
