@@ -634,7 +634,7 @@ public class DailyJob {
                 stockInfo.setIncrease(s.getIncrease());
                 stockInfo.setUpdateTime(new Date());
                 stockInfoMapper.updateById(stockInfo);
-                log.info("更新股票[{}-{}]实时价格信息，修改数据", stockInfo.getCode(), stockInfo.getName());
+
             }
         });
         log.info("更新股票实时价格数据完成");
