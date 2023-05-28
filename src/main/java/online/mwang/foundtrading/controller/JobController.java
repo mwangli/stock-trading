@@ -14,6 +14,7 @@ import online.mwang.foundtrading.mapper.QuartzJobMapper;
 import org.quartz.*;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -53,6 +54,9 @@ public class JobController {
             throw new RuntimeException("非法的cron表达式");
         }
         startJob(job);
+        job.setStatus("1");
+        job.setCreateTime(new Date());
+        job.setUpdateTime(new Date());
         return Response.success(jobMapper.insert(job));
     }
 
@@ -62,6 +66,7 @@ public class JobController {
             JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName()).build();
             CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
             scheduler.scheduleJob(jobDetail, cronTrigger);
+            scheduler.start();
         }
     }
 
@@ -91,8 +96,9 @@ public class JobController {
         if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");
         }
-        CronTrigger cronTrigger = TriggerBuilder.newTrigger().withSchedule(CronScheduleBuilder.cronSchedule(job.getName())).build();
+        CronTrigger cronTrigger = TriggerBuilder.newTrigger().withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
         scheduler.rescheduleJob(TriggerKey.triggerKey(job.getName()), cronTrigger);
+        job.setUpdateTime(new Date());
         return Response.success(jobMapper.updateById(job));
     }
 
@@ -101,7 +107,7 @@ public class JobController {
     @DeleteMapping()
     public Response<Integer> deleteJob(@RequestBody QuartzJob job) {
         scheduler.deleteJob(JobKey.jobKey(job.getName()));
-        return Response.success(jobMapper.updateById(job));
+        return Response.success(jobMapper.deleteById(job.getId()));
     }
 
     @SneakyThrows
