@@ -96,6 +96,7 @@ public class DailyJob {
     public void runSyncJob() {
         log.info("同步订单任务执行开始====================================");
         syncBuySaleRecord();
+        syncBuySaleCount();
         log.info("同步订单执行结束====================================");
     }
 
@@ -235,6 +236,7 @@ public class DailyJob {
                     maxRateRecord.setSaleNo(saleNo);
                     final Date now = new Date();
                     maxRateRecord.setSaleDate(now);
+                    maxRateRecord.setSaleDateString(DateUtils.dateFormat.format(now));
                     maxRateRecord.setUpdateTime(now);
                     foundTradingService.updateById(maxRateRecord);
                     // 更新账户资金
@@ -313,6 +315,7 @@ public class DailyJob {
                 record.setBuyAmount(amount + getPeeAmount(amount));
                 final Date now = new Date();
                 record.setBuyDate(now);
+                record.setBuyDateString(DateUtils.dateFormat.format(now));
                 record.setSold("0");
                 record.setCreateTime(now);
                 record.setUpdateTime(now);
@@ -581,6 +584,18 @@ public class DailyJob {
                 }
             }
         }
+    }
+
+    @SneakyThrows
+    public void syncBuySaleCount() {
+        List<FoundTradingRecord> list = foundTradingService.list();
+        Map<String, IntSummaryStatistics> collect = list.stream().collect(Collectors.groupingBy(FoundTradingRecord::getCode, Collectors.summarizingInt((o) -> o.getSold().equals("1") ? 2 : 1)));
+        collect.forEach((code, accumulate) -> {
+            StockInfo stockInfo = new StockInfo();
+            stockInfo.setBuySaleCount((int) accumulate.getSum());
+            stockInfoService.update(stockInfo, new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, code));
+            log.info("同步股票[{}]交易次数", code);
+        });
     }
 
     @SneakyThrows

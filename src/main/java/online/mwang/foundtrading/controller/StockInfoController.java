@@ -9,20 +9,16 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.base.Response;
 import online.mwang.foundtrading.bean.po.DailyPrice;
-import online.mwang.foundtrading.bean.po.FoundTradingRecord;
 import online.mwang.foundtrading.bean.po.Point;
 import online.mwang.foundtrading.bean.po.StockInfo;
 import online.mwang.foundtrading.bean.query.StockInfoQuery;
 import online.mwang.foundtrading.job.DailyJob;
-import online.mwang.foundtrading.service.FoundTradingService;
 import online.mwang.foundtrading.service.StockInfoService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.IntSummaryStatistics;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -40,13 +36,6 @@ public class StockInfoController {
     private final static String ASCEND = "ascend";
     private final DailyJob dailyJob;
     private final StockInfoService stockInfoService;
-    private final FoundTradingService FoundTradingService;
-
-    @GetMapping("refresh")
-    public Response<Void> refreshStockInfo() {
-        dailyJob.saveDate(dailyJob.updateDataPrice());
-        return Response.success();
-    }
 
     @GetMapping
     public Response<List<StockInfo>> listStockInfo(StockInfoQuery query) {
@@ -69,18 +58,5 @@ public class StockInfoController {
             o.setIncreaseRateList(ratePoints);
         }).collect(Collectors.toList());
         return Response.success(collect, pageResult.getTotal());
-    }
-
-    @GetMapping("sync")
-    public Response<Void> syncBuySaleCount() {
-        List<FoundTradingRecord> list = FoundTradingService.list();
-        Map<String, IntSummaryStatistics> collect = list.stream().collect(Collectors.groupingBy(FoundTradingRecord::getCode, Collectors.summarizingInt((o) -> o.getSold().equals("1") ? 2 : 1)));
-        collect.forEach((code, accumulate) -> {
-            StockInfo stockInfo = new StockInfo();
-            stockInfo.setBuySaleCount((int) accumulate.getSum());
-            stockInfoService.update(stockInfo, new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, code));
-            log.info("同步股票[{}]交易次数", code);
-        });
-        return Response.success();
     }
 }
