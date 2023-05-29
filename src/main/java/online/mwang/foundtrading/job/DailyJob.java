@@ -354,11 +354,10 @@ public class DailyJob {
     public List<StockInfo> calculateScore(List<StockInfo> dataList) {
         List<StockInfo> stockInfos = stockInfoService.list();
         stockInfos.forEach(info -> dataList.stream().filter(s -> s.getCode().equals(info.getCode())).findFirst().ifPresent(p -> {
+            Double nowPrice = p.getPrice();
             List<DailyItem> priceList = JSON.parseArray(p.getPrices(), DailyItem.class);
             List<DailyItem> rateList = JSON.parseArray(p.getIncreaseRate(), DailyItem.class);
-            Double prePrice = priceList.get(priceList.size() - 1).getItem();
-            Double nowPrice = p.getPrice();
-            Double score = handleScore(nowPrice, priceList, rateList, prePrice);
+            Double score = handleScore(nowPrice, priceList, rateList);
             info.setScore(score);
             info.setPrice(p.getPrice());
             info.setIncrease(p.getIncrease());
@@ -662,12 +661,11 @@ public class DailyJob {
                 Double nowPrice = newInfo.getPrice();
                 List<DailyItem> priceList = JSON.parseArray(p.getPrices(), DailyItem.class);
                 List<DailyItem> rateList = JSON.parseArray(p.getIncreaseRate(), DailyItem.class);
-                Double prePrice = priceList.get(priceList.size() - 1).getItem();
-                Double score = handleScore(nowPrice, priceList, rateList, prePrice);
+                Double score = handleScore(nowPrice, priceList, rateList);
+                p.setScore(score);
                 p.setPrice(newInfo.getPrice());
                 p.setIncrease(newInfo.getIncrease());
                 p.setUpdateTime(new Date());
-                p.setScore(score);
                 saveList.add(p);
                 exist.set(true);
             });
@@ -685,15 +683,19 @@ public class DailyJob {
         log.info("更新股票实时价格数据完成");
     }
 
-
-    private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList, Double prePrice) {
-        double increaseRate = (nowPrice - prePrice) / prePrice;
-        priceList.add(new DailyItem(DateUtils.dateFormat.format(new Date()), nowPrice));
-        rateList.add(new DailyItem(DateUtils.dateFormat.format(new Date()), increaseRate));
-        List<Double> prices = priceList.stream().map(DailyItem::getItem).collect(Collectors.toList());
-        List<Double> rates = rateList.stream().map(DailyItem::getItem).collect(Collectors.toList());
-        return getScore(prices, rates);
+    private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList) {
+        if (priceList != null && priceList.size() > 0) {
+            Double prePrice = priceList.get(priceList.size() - 1).getItem();
+            double increaseRate = (nowPrice - prePrice) / prePrice;
+            priceList.add(new DailyItem(DateUtils.dateFormat.format(new Date()), nowPrice));
+            rateList.add(new DailyItem(DateUtils.dateFormat.format(new Date()), increaseRate));
+            List<Double> prices = priceList.stream().map(DailyItem::getItem).collect(Collectors.toList());
+            List<Double> rates = rateList.stream().map(DailyItem::getItem).collect(Collectors.toList());
+            return getScoreBuyList(prices, rates);
+        }
+        return 0.0;
     }
+
 
     @SneakyThrows
     public void saveDate(List<StockInfo> dataList) {
@@ -744,17 +746,6 @@ public class DailyJob {
             prices.add(dailyItem);
         }
         return prices;
-    }
-
-    // 根据历史价格计算日增长率曲线和得分
-    public StockInfo setIncreaseRateAndScore(StockInfo info, List<DailyItem> prices) {
-        final List<DailyItem> rateList = getRateList(prices);
-        info.setIncreaseRate(JSONObject.toJSONString(rateList));
-        List<Double> priceList = prices.stream().map(DailyItem::getItem).collect(Collectors.toList());
-        List<Double> rateValueList = rateList.stream().map(DailyItem::getItem).collect(Collectors.toList());
-        final Double score = getScore(priceList, rateValueList);
-        info.setScore(score);
-        return info;
     }
 
     // 获取最近一个月的成交订单订单
@@ -866,7 +857,7 @@ public class DailyJob {
 // 价格稳定性用方差来衡量,增长率总和体现增长幅度
 // 增长率总和，乘以占比系数(index/size)，离当前时间越近,趋近于1，离当前时间越远，系数趋近于0
 // 增长的天数越多，日增长率总和越大，价格方差越小，增长波动越小，代表稳定增长，评分越高
-    public Double getScore(List<Double> priceList, List<Double> rateList) {
+    public Double getScoreBuyList(List<Double> priceList, List<Double> rateList) {
         if (priceList.isEmpty() || rateList.isEmpty()) {
             return 0.0;
         }
