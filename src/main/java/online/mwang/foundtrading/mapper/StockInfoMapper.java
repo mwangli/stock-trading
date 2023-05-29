@@ -5,6 +5,8 @@ import online.mwang.foundtrading.bean.po.StockInfo;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.List;
+
 /**
  * @version 1.0.0
  * @author: mwangli
@@ -16,4 +18,7 @@ public interface StockInfoMapper extends BaseMapper<StockInfo> {
 
     @Select("select * from stock_info where code = #{code}")
     StockInfo selectByCode(String code);
+
+    @Select("select id, code from stock_info")
+    List<StockInfo> listIdAndCode();
 }
