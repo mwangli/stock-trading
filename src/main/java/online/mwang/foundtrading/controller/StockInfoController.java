@@ -8,7 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.base.Response;
-import online.mwang.foundtrading.bean.po.DailyPrice;
+import online.mwang.foundtrading.bean.po.DailyItem;
 import online.mwang.foundtrading.bean.po.Point;
 import online.mwang.foundtrading.bean.po.StockInfo;
 import online.mwang.foundtrading.bean.query.StockInfoQuery;
@@ -50,11 +50,11 @@ public class StockInfoController {
                 .orderBy(true, ASCEND.equals(query.getSortOrder()), StockInfo.getOrder(query.getSortKey()));
         Page<StockInfo> pageResult = stockInfoService.page(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
         List<StockInfo> collect = pageResult.getRecords().stream().peek(o -> {
-            List<DailyPrice> dailyPrices = JSON.parseArray(o.getPrices(), DailyPrice.class);
-            List<Point> pointList = dailyPrices.stream().map(p -> new Point(p.getDate(), p.getPrice())).collect(Collectors.toList());
+            List<DailyItem> dailyItems = JSON.parseArray(o.getPrices(), DailyItem.class);
+            List<Point> pointList = dailyItems.stream().map(p -> new Point(p.getDate(), p.getItem())).collect(Collectors.toList());
             o.setPricesList(pointList);
-            List<DailyPrice> rateList = JSON.parseArray(o.getIncreaseRate(), DailyPrice.class);
-            List<Point> ratePoints = rateList.stream().map(p -> new Point(p.getDate(), p.getPrice())).collect(Collectors.toList());
+            List<DailyItem> rateList = JSON.parseArray(o.getIncreaseRate(), DailyItem.class);
+            List<Point> ratePoints = rateList.stream().map(p -> new Point(p.getDate(), p.getItem())).collect(Collectors.toList());
             o.setIncreaseRateList(ratePoints);
         }).collect(Collectors.toList());
         return Response.success(collect, pageResult.getTotal());

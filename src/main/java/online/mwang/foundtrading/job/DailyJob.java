@@ -5,13 +5,12 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.po.AccountInfo;
-import online.mwang.foundtrading.bean.po.DailyPrice;
+import online.mwang.foundtrading.bean.po.DailyItem;
 import online.mwang.foundtrading.bean.po.FoundTradingRecord;
 import online.mwang.foundtrading.bean.po.StockInfo;
 import online.mwang.foundtrading.mapper.AccountInfoMapper;
@@ -62,6 +61,7 @@ public class DailyJob {
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int HISTORY_PRICE_LIMIT = 30;
     private static final int UPDATE_THREAD_SIZE = 10;
+    private static final int UPDATE_BATCH_SIZE = 500;
     private static final int REQUEST_THREAD_SIZE = 20;
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
@@ -72,6 +72,11 @@ public class DailyJob {
     private final AccountInfoMapper accountInfoMapper;
     private final StringRedisTemplate redisTemplate;
     private final StockInfoMapper stockInfoMapper;
+    private final ExecutorService threadPool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+
+    public static void main(String[] args) {
+        System.out.println(4500 / 500);
+    }
 
     // 每隔25分钟刷新Token
 //    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
@@ -132,32 +137,20 @@ public class DailyJob {
         return stringBuilder.toString();
     }
 
+    @SneakyThrows
     public void flushPermission() {
-        List<StockInfo> dataList = getDataList();
-        dataList.forEach(info -> {
-            String token = redisTemplate.opsForValue().get("requestToken");
-            final long timeMillis = System.currentTimeMillis();
-            HashMap<String, Object> paramMap = new HashMap<>();
-            paramMap.put("action", "110");
-            paramMap.put("PriceType", 0);
-            paramMap.put("Direction", "B");
-            paramMap.put("StockCode", info.getCode());
-            paramMap.put("Price", info.getPrice());
-            paramMap.put("Volume", 100);
-            paramMap.put("reqno", timeMillis);
-            paramMap.put("token", token);
-            final JSONObject result = requestUtils.request3(buildParams(paramMap));
-            final String newToken = result.getString("TOKEN");
-            redisTemplate.opsForValue().set("requestToken", newToken);
-            final String errorNo = result.getString("ERRORNO");
-            final StockInfo stockInfo = new StockInfo();
-            if ("-57".equals(errorNo)) {
-                stockInfo.setPermission("1");
-                log.info("修改当前股票[{}-{}]交易权限", info.getCode(), info.getName());
-                stockInfoService.update(stockInfo, new UpdateWrapper<StockInfo>().lambda().eq(StockInfo::getCode, info.getCode()));
+        // 此处不能使用多线程处理，因为每次请求会使上一个Token失效
+        List<StockInfo> filterList = stockInfoService.list().stream().filter(s -> "1".equals(s.getPermission())).collect(Collectors.toList());
+        filterList.forEach(info -> {
+            JSONObject res = buySale(BUY_TYPE_OP, info.getCode(), 1000.0, 100.0);
+            final String errorNo = res.getString("ERRORNO");
+            if (!errorNo.equals("-57")) {
+                info.setPermission("0");
             }
         });
-        log.info("刷新交易权限任务执行完毕！");
+        saveDate(filterList);
+        // 取消所有提交的订单
+        cancelAllOrder(10);
     }
 
     public void sale(int times) {
@@ -236,7 +229,8 @@ public class DailyJob {
             log.info("最佳卖出股票[{}-{}]，买入金额:{}，卖出金额:{}，收益:{}，日收益率:{}", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getBuyAmount(),
                     maxRateRecord.getSaleAmount(), maxRateRecord.getIncome(), String.format("%.4f", maxRateRecord.getDailyIncomeRate()));
             // 返回合同编号
-            final String saleNo = buySale("S", maxRateRecord.getCode(), maxRateRecord.getSalePrice(), maxRateRecord.getBuyNumber());
+            JSONObject res = buySale(SALE_TYPE_OP, maxRateRecord.getCode(), maxRateRecord.getSalePrice(), maxRateRecord.getBuyNumber());
+            String saleNo = res.getString("ANSWERNO");
             if (saleNo == null) {
                 log.info("第{}次尝试卖出失败---------", times + 1);
                 sale(times + 1);
@@ -278,7 +272,7 @@ public class DailyJob {
         }
         log.info("第{}次尝试买入股票---------", times + 1);
         // 撤销所有未成功订单，回收可用资金
-        cancelAllOrder();
+        cancelAllOrder(1);
         // 更新账户可用资金
         final Double availableAmount = updateAccountAmount().getAvailableAmount();
         // 计算可买入股票价格区间
@@ -291,10 +285,10 @@ public class DailyJob {
         }
         //  获取实时价格
         final List<StockInfo> dataList = getDataList();
-        //  计算得分 TODO
-        final List<StockInfo> stockInfos = dataList;
+        // 计算得分
+        List<StockInfo> stockInfos = calculateScore(dataList);
         // 选择有交易权限合适价格区间的数据，按评分排序分组
-        final List<StockInfo> limitList = stockInfos.stream().skip((long) times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
+        final List<StockInfo> limitList = stockInfos.stream().filter(s -> s.getPermission().equals("1")).skip((long) times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
         // 在得分高的一组中随机选择一支买入
         List<String> buyCodes = foundTradingService.list().stream().filter(s -> "0".equals(s.getSold())).map(FoundTradingRecord::getCode).collect(Collectors.toList());
         StockInfo best = limitList.get(new Random().nextInt(BUY_RETRY_LIMIT));
@@ -305,8 +299,17 @@ public class DailyJob {
         log.info("尝试买入最佳股票[{}-{}],价格:{},评分:{}，日增长率曲线:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore(), best.getIncreaseRate());
         final int maxBuyNumber = (int) (availableAmount / best.getPrice());
         final int buyNumber = (maxBuyNumber / 100) * 100;
-        final String buyNo = buySale(BUY_TYPE_OP, best.getCode(), best.getPrice(), (double) buyNumber);
+        JSONObject res = buySale(BUY_TYPE_OP, best.getCode(), best.getPrice(), (double) buyNumber);
+        String buyNo = res.getString("ANSWERNO");
         if (buyNo == null) {
+            List<String> errorCodes = Arrays.asList("-61", "-64", "-1");
+            String errorNo = res.getString("ERRORNO");
+            if (errorCodes.contains(errorNo)) {
+                log.info("当前股票[{}-{}]没有交易权限,更新权限数据", best.getCode(), best.getName());
+                StockInfo stockInfo = stockInfoMapper.selectByCode(best.getCode());
+                stockInfo.setPermission("0");
+                stockInfoMapper.updateById(stockInfo);
+            }
             log.info("无法买入当前股票，尝试买入下一组组股票");
             buy(times + 1);
         } else {
@@ -348,13 +351,21 @@ public class DailyJob {
         }
     }
 
-//    public List<StockInfo> setScores(List<StockInfo> stockInfos List<StockInfo> dataList) {
-//        stockInfos.forEach(info -> {
-//
-//        });
-//    });
-//        return stockInfos;
-//}
+    public List<StockInfo> calculateScore(List<StockInfo> dataList) {
+        List<StockInfo> stockInfos = stockInfoService.list();
+        stockInfos.forEach(info -> dataList.stream().filter(s -> s.getCode().equals(info.getCode())).findFirst().ifPresent(p -> {
+            List<DailyItem> priceList = JSON.parseArray(p.getPrices(), DailyItem.class);
+            List<DailyItem> rateList = JSON.parseArray(p.getIncreaseRate(), DailyItem.class);
+            Double prePrice = priceList.get(priceList.size() - 1).getItem();
+            Double nowPrice = p.getPrice();
+            Double score = handleScore(nowPrice, priceList, rateList, prePrice);
+            info.setScore(score);
+            info.setPrice(p.getPrice());
+            info.setIncrease(p.getIncrease());
+            info.setUpdateTime(new Date());
+        }));
+        return stockInfos;
+    }
 
     public void cancelOrder(String answerNo) {
         String token = redisTemplate.opsForValue().get("requestToken");
@@ -398,29 +409,33 @@ public class DailyJob {
         return accountInfo;
     }
 
-    public void cancelAllOrder() {
-        String token = redisTemplate.opsForValue().get("requestToken");
-        final long timeMillis = System.currentTimeMillis();
-        HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", 152);
-        paramMap.put("StartPos", 0);
-        paramMap.put("MaxCount", 20);
-        paramMap.put("op_station", 4);
-        paramMap.put("token", token);
-        paramMap.put("reqno", timeMillis);
-        JSONArray result = requestUtils.request2(buildParams(paramMap));
-        for (int i = 1; i < result.size(); i++) {
-            String string = result.getString(i);
-            String[] split = string.split("\\|");
-            String code = split[0];
-            String name = split[1];
-            String answerNo = split[8];
-            log.info("撤销当前股票[{}-{}]未成功订单", code, name);
-            cancelOrder(answerNo);
+    public void cancelAllOrder(int pageSize) {
+        for (int i = 0; i < pageSize; i++) {
+            String token = redisTemplate.opsForValue().get("requestToken");
+            final long timeMillis = System.currentTimeMillis();
+            HashMap<String, Object> paramMap = new HashMap<>();
+            paramMap.put("action", 152);
+            paramMap.put("StartPos", i * 500);
+            paramMap.put("MaxCount", 500);
+            paramMap.put("op_station", 4);
+            paramMap.put("token", token);
+            paramMap.put("reqno", timeMillis);
+            JSONArray result = requestUtils.request2(buildParams(paramMap));
+            if (result != null && result.size() > 1) {
+                for (int j = 1; i < result.size(); j++) {
+                    String string = result.getString(j);
+                    String[] split = string.split("\\|");
+                    String code = split[0];
+                    String name = split[1];
+                    String answerNo = split[8];
+                    log.info("撤销当前股票[{}-{}]订单", code, name);
+                    cancelOrder(answerNo);
+                }
+            }
         }
     }
 
-    public String buySale(String type, String code, Double price, Double number) {
+    public JSONObject buySale(String type, String code, Double price, Double number) {
         String token = redisTemplate.opsForValue().get("requestToken");
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -435,8 +450,7 @@ public class DailyJob {
         final JSONObject result = requestUtils.request3(buildParams(paramMap));
         final String newToken = result.getString("TOKEN");
         redisTemplate.opsForValue().set("requestToken", newToken);
-
-        return result.getString("ANSWERNO");
+        return result;
     }
 
     public boolean queryStatus(String answerNo) {
@@ -465,12 +479,11 @@ public class DailyJob {
         return false;
     }
 
-
     // 获取每日最新价格数据
     public List<StockInfo> getDataList() {
         //  更新每日数据
         final List<StockInfo> stockInfos = new ArrayList<>();
-        for (int i = 1; i <= 20; i++) {
+        for (int i = 1; i <= 10; i++) {
             // 请求数据
             HashMap<String, Object> paramMap = new HashMap<>();
             paramMap.put("c.funcno", 21000);
@@ -617,37 +630,24 @@ public class DailyJob {
         });
     }
 
-//    @SneakyThrows
-//    public List<StockInfo> updateDataPrice() {
-//        log.info("开始获取每日价格数据......");
-//        List<StockInfo> stockInfos = getDataList();
-//        log.info("共获取到{}条新数据。", stockInfos.size());
-//        // 获取已经存在的所有数据
-//        List<StockInfo> list = stockInfoService.list();
-//        List<StockInfo> updateData = mergeDataList(stockInfos, list);
-//        log.info("待更新{}条数据。", updateData.size());
-//        return updateData;
-//    }
-
     @SneakyThrows
     public void updateHistoryPrice() {
-        log.info("开始获取股票历史价格数据......");
         final List<StockInfo> stockInfos = stockInfoService.list();
         final CountDownLatch countDownLatch = new CountDownLatch(stockInfos.size());
-        final ExecutorService fixedThreadPool = Executors.newFixedThreadPool(REQUEST_THREAD_SIZE);
         // 多线程请求数据
-        stockInfos.forEach(s -> fixedThreadPool.submit(() -> {
-            List<DailyPrice> historyPrices = getHistoryPrices(s.getCode());
-            List<DailyPrice> rateList = getRateList(historyPrices);
+        ArrayList<StockInfo> saveList = new ArrayList<>();
+        stockInfos.forEach(s -> threadPool.submit(() -> {
+            List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
+            List<DailyItem> rateList = getRateList(historyPrices);
             s.setPrices(JSON.toJSONString(historyPrices));
             s.setIncreaseRate(JSON.toJSONString(rateList));
             s.setUpdateTime(new Date());
+            saveList.add(s);
+            log.info("第{}个任务完成，获取到股票[{}-{}]历史价格数据", stockInfos.size() - countDownLatch.getCount() + 1, s.getCode(), s.getName());
             countDownLatch.countDown();
         }));
         countDownLatch.await();
-        log.info("共获取到{}条股票历史价格数据", stockInfos.size());
-        saveDate(stockInfos);
-        log.info("更新股票历史价格数据完成");
+        saveDate(saveList);
     }
 
     @SneakyThrows
@@ -657,94 +657,101 @@ public class DailyJob {
         final List<StockInfo> dataList = stockInfoService.list();
         final ArrayList<StockInfo> saveList = new ArrayList<>();
         newInfos.forEach(newInfo -> {
-            AtomicBoolean exsit = new AtomicBoolean(false);
+            AtomicBoolean exist = new AtomicBoolean(false);
             dataList.stream().filter(s -> s.getCode().equals(newInfo.getCode())).findFirst().ifPresent(p -> {
-                // 历史价格数据和日增长率
-                final Double nowPrice = newInfo.getPrice();
-                final List<DailyPrice> dailyPrices = JSON.parseArray(p.getPrices(), DailyPrice.class);
-                final List<DailyPrice> increaseRate = JSON.parseArray(p.getIncreaseRate(), DailyPrice.class);
-                final DailyPrice preDailyPrice = dailyPrices.get(dailyPrices.size() - 1);
-                final Double prePrice = preDailyPrice.getPrice();
-                final double nowIncreaseRate = (nowPrice - prePrice) / prePrice;
-                dailyPrices.add(new DailyPrice(DateUtils.dateFormat.format(new Date()), nowPrice));
-                increaseRate.add(new DailyPrice(DateUtils.dateFormat.format(new Date()), nowIncreaseRate));
-                // 计算得分
-                final List<Double> priceList = dailyPrices.stream().map(DailyPrice::getPrice).collect(Collectors.toList());
-                final List<Double> rateList = increaseRate.stream().map(DailyPrice::getPrice).collect(Collectors.toList());
-                final Double score = getScore(priceList, rateList);
-                p.setScore(score);
+                Double nowPrice = newInfo.getPrice();
+                List<DailyItem> priceList = JSON.parseArray(p.getPrices(), DailyItem.class);
+                List<DailyItem> rateList = JSON.parseArray(p.getIncreaseRate(), DailyItem.class);
+                Double prePrice = priceList.get(priceList.size() - 1).getItem();
+                Double score = handleScore(nowPrice, priceList, rateList, prePrice);
+                p.setPrice(newInfo.getPrice());
+                p.setIncrease(newInfo.getIncrease());
                 p.setUpdateTime(new Date());
+                p.setScore(score);
                 saveList.add(p);
-                exsit.set(true);
+                exist.set(true);
             });
-            if (!exsit.get()) {
-////                newInfo.
-//                    new
-                log.info("新增数据:{}", newInfo);
+            if (!exist.get()) {
+                Date now = new Date();
+                newInfo.setCreateTime(now);
+                newInfo.setUpdateTime(now);
+                newInfo.setPermission("1");
+                newInfo.setBuySaleCount(0);
+                newInfo.setScore(0.0);
+                saveList.add(newInfo);
             }
         });
         saveDate(saveList);
         log.info("更新股票实时价格数据完成");
     }
 
+
+    private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList, Double prePrice) {
+        double increaseRate = (nowPrice - prePrice) / prePrice;
+        priceList.add(new DailyItem(DateUtils.dateFormat.format(new Date()), nowPrice));
+        rateList.add(new DailyItem(DateUtils.dateFormat.format(new Date()), increaseRate));
+        List<Double> prices = priceList.stream().map(DailyItem::getItem).collect(Collectors.toList());
+        List<Double> rates = rateList.stream().map(DailyItem::getItem).collect(Collectors.toList());
+        return getScore(prices, rates);
+    }
+
     @SneakyThrows
     public void saveDate(List<StockInfo> dataList) {
         log.info("开始更新数据库......");
         if (CollectionUtils.isNotEmpty(dataList)) {
-// 多线程批量更新更新数据库
-            final CountDownLatch countDownLatch = new CountDownLatch(UPDATE_THREAD_SIZE + 1);
-            final int pageSize = dataList.size() / UPDATE_THREAD_SIZE;
-            final ExecutorService fixedThreadPool = Executors.newFixedThreadPool(UPDATE_THREAD_SIZE);
-            for (int i = 0; i <= UPDATE_THREAD_SIZE; i++) {
+            // 多线程批量更新数据库
+            int pages = dataList.size() / UPDATE_BATCH_SIZE + 1;
+            CountDownLatch countDownLatch = new CountDownLatch(pages);
+            log.info("共{}条数据, 分{}页进行批量更新,每页{}条数据", dataList.size(), pages, UPDATE_BATCH_SIZE);
+            for (int i = 1; i <= pages; i++) {
                 int finalI = i;
-                fixedThreadPool.submit(() -> {
-                    final List<StockInfo> saveList = dataList.stream().skip(finalI * pageSize).limit(pageSize).collect(Collectors.toList());
+                threadPool.submit(() -> {
+                    long startIndex = (long) (finalI - 1) * UPDATE_BATCH_SIZE;
+                    final List<StockInfo> saveList = dataList.stream().skip(startIndex).limit(UPDATE_BATCH_SIZE).collect(Collectors.toList());
                     stockInfoService.saveOrUpdateBatch(saveList);
+                    long endIndex = startIndex + UPDATE_BATCH_SIZE;
+                    endIndex = Math.min(endIndex, dataList.size());
+                    log.info("第{}个任务处理完成，任务更新范围[{},{}]内,共 {}条数", pages - countDownLatch.getCount() + 1, startIndex, endIndex, endIndex - startIndex);
                     countDownLatch.countDown();
-                    log.info("任务{}更新数据{}条。", Thread.currentThread().getName(), saveList.size());
                 });
             }
             countDownLatch.await();
-            fixedThreadPool.shutdown();
             log.info("数据库更新完成......");
         }
     }
 
     // 获取历史价格曲线
-    public List<DailyPrice> getHistoryPrices(String code) {
+    public List<DailyItem> getHistoryPrices(String code) {
         // 获取历史数据
         HashMap<String, Object> paramMap = new HashMap<>(10);
         paramMap.put("c.funcno", 20009);
         paramMap.put("c.version", 1);
         paramMap.put("c.stock_code", code);
-//        paramMap.put("c.market", market);
         paramMap.put("c.type", "day");
         paramMap.put("c.count", "20");
         paramMap.put("c.cfrom", "H5");
         paramMap.put("c.tfrom", "PC");
         final JSONArray results = requestUtils.request(buildParams(paramMap));
-// 解析数据
-        final ArrayList<DailyPrice> prices = new ArrayList<>();
-        if (results.size() >= HISTORY_PRICE_LIMIT) {
-            for (int i = results.size() - HISTORY_PRICE_LIMIT; i < results.size(); i++) {
-                final String s = results.getString(i);
-                final String[] split = s.split(",");
-                final String date = split[0].replaceAll("\\[", "");
-                final String price1 = split[1];
-                final double v = Double.parseDouble(price1);
-                final DailyPrice dailyPrice = new DailyPrice(date, v / 100);
-                prices.add(dailyPrice);
-            }
+        final ArrayList<DailyItem> prices = new ArrayList<>();
+        int startIndex = results.size() >= HISTORY_PRICE_LIMIT ? results.size() - HISTORY_PRICE_LIMIT : 0;
+        for (int i = startIndex; i < results.size(); i++) {
+            final String s = results.getString(i);
+            final String[] split = s.split(",");
+            final String date = split[0].replaceAll("\\[", "");
+            final String price1 = split[1];
+            final double v = Double.parseDouble(price1);
+            final DailyItem dailyItem = new DailyItem(date, v / 100);
+            prices.add(dailyItem);
         }
         return prices;
     }
 
     // 根据历史价格计算日增长率曲线和得分
-    public StockInfo setIncreaseRateAndScore(StockInfo info, List<DailyPrice> prices) {
-        final List<DailyPrice> rateList = getRateList(prices);
+    public StockInfo setIncreaseRateAndScore(StockInfo info, List<DailyItem> prices) {
+        final List<DailyItem> rateList = getRateList(prices);
         info.setIncreaseRate(JSONObject.toJSONString(rateList));
-        List<Double> priceList = prices.stream().map(DailyPrice::getPrice).collect(Collectors.toList());
-        List<Double> rateValueList = rateList.stream().map(DailyPrice::getPrice).collect(Collectors.toList());
+        List<Double> priceList = prices.stream().map(DailyItem::getItem).collect(Collectors.toList());
+        List<Double> rateValueList = rateList.stream().map(DailyItem::getItem).collect(Collectors.toList());
         final Double score = getScore(priceList, rateValueList);
         info.setScore(score);
         return info;
@@ -842,15 +849,15 @@ public class DailyJob {
     }
 
     // 计算价格日增长率曲线
-    public List<DailyPrice> getRateList(List<DailyPrice> prices) {
-        final ArrayList<DailyPrice> rateList = new ArrayList<>();
+    public List<DailyItem> getRateList(List<DailyItem> prices) {
+        final ArrayList<DailyItem> rateList = new ArrayList<>();
         for (int i = 1; i < prices.size(); i++) {
-            final Double price = prices.get(i).getPrice();
-            final Double oldPrice = prices.get(i - 1).getPrice();
+            final Double price = prices.get(i).getItem();
+            final Double oldPrice = prices.get(i - 1).getItem();
             final double dailyIncreaseRate = oldPrice == 0 ? 0 : (price - oldPrice) / oldPrice;
             // 增长率乘100方便计算，否则数值太小
             double increaseRate = Double.parseDouble(String.format("%.4f", dailyIncreaseRate * 100));
-            rateList.add(new DailyPrice(prices.get(i).getDate(), increaseRate));
+            rateList.add(new DailyItem(prices.get(i).getDate(), increaseRate));
         }
         return rateList;
     }
