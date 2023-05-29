@@ -6,17 +6,18 @@ import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import online.mwang.foundtrading.bean.base.Response;
-import online.mwang.foundtrading.bean.po.AccountInfo;
-import online.mwang.foundtrading.bean.po.AnalysisData;
-import online.mwang.foundtrading.bean.po.FoundTradingRecord;
-import online.mwang.foundtrading.bean.po.Point;
+import online.mwang.foundtrading.bean.po.*;
 import online.mwang.foundtrading.bean.query.FoundTradingQuery;
+import online.mwang.foundtrading.job.DailyJob;
 import online.mwang.foundtrading.mapper.AccountInfoMapper;
+import online.mwang.foundtrading.mapper.StockInfoMapper;
 import online.mwang.foundtrading.service.FoundTradingService;
+import online.mwang.foundtrading.service.StockInfoService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -35,6 +36,9 @@ public class FoundTradingController {
     private final static String ASCEND = "ascend";
     private final FoundTradingService foundTradingService;
     private final AccountInfoMapper accountInfoMapper;
+    private final StockInfoService stockInfoService;
+    private final StockInfoMapper stockInfoMapper;
+    private final DailyJob dailyJob;
 
     @PostMapping
     public Boolean createFound(@RequestBody FoundTradingRecord foundTradingRecord) {
@@ -104,6 +108,23 @@ public class FoundTradingController {
         ArrayList<Point> holdDaysCountList = new ArrayList<>();
         sortedSoldList.stream().collect(Collectors.groupingBy(FoundTradingRecord::getHoldDays, Collectors.summarizingInt(o -> 1))).forEach((k, v) -> holdDaysCountList.add(new Point("天数" + k.toString(), (double) v.getSum())));
         data.setHoldDaysList(holdDaysCountList.stream().sorted(Comparator.comparingDouble(Point::getY).reversed()).collect(Collectors.toList()));
+        // 获取期望持仓日收益率排行
+        data.setExpectList(getExpectedIncome());
         return Response.success(data);
+    }
+
+    public List<FoundTradingRecord> getExpectedIncome() {
+        final List<FoundTradingRecord> recordList = foundTradingService.list(new LambdaQueryWrapper<FoundTradingRecord>().eq(true, FoundTradingRecord::getSold, "0"));
+        return recordList.stream().peek(record -> {
+            final StockInfo stockInfo = stockInfoMapper.selectByCode(record.getCode());
+            record.setName(record.getCode().concat("-").concat(record.getName()));
+            record.setSalePrice(stockInfo.getPrice());
+            final double amount = record.getBuyNumber() * record.getSalePrice();
+            final double saleAmount = amount + dailyJob.getPeeAmount(amount);
+            record.setIncome(saleAmount - record.getBuyAmount());
+            record.setIncomeRate(record.getIncome() / record.getBuyAmount());
+            record.setHoldDays(dailyJob.diffDate(record.getBuyDate(), new Date()));
+            record.setDailyIncomeRate(record.getIncomeRate() / record.getHoldDays());
+        }).sorted(Comparator.comparing(FoundTradingRecord::getDailyIncomeRate).reversed()).collect(Collectors.toList());
     }
 }
