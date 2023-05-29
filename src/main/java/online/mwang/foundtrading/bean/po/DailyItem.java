@@ -13,8 +13,7 @@ import lombok.NoArgsConstructor;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class DailyPrice {
-
+public class DailyItem {
     private String date;
-    private Double price;
+    private Double item;
 }
