@@ -6,6 +6,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +24,6 @@ import online.mwang.foundtrading.utils.SleepUtils;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.util.CollectionUtils;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -31,6 +31,8 @@ import java.io.InputStreamReader;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -45,12 +47,24 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DailyJob {
 
+    // 方差基数，体现价格波动容忍度
+    private static final double PRICE_BASE_NUMBER = 5;
+    // 最大持股数量，限制可买入股票的最大价格
+    private static final int MAX_HOLD_NUMBER = 100;
+    private static final int MIN_HOLD_NUMBER = 100;
+    // 最低价格系数，保证可买入股票价格不会过低
+    private static final double LOW_PRICE_PERCENT = 0.8;
+    // 最低价格限制，资金不足时不买入低价股
+    private static final double LOW_PRICE_LIMIT = 5.0;
     private static final int BUY_RETRY_TIMES = 5;
     private static final int SOLD_RETRY_TIMES = 5;
     private static final int BUY_RETRY_LIMIT = 10;
+    private static final int WAIT_TIME_SECONDS = 10;
     private static final int HISTORY_PRICE_LIMIT = 30;
-    // 方差基数，体现价格波动容忍度
-    private static final double BASE_NUMBER = 5;
+    private static final int UPDATE_THREAD_SIZE = 10;
+    private static final int REQUEST_THREAD_SIZE = 20;
+    private static final String BUY_TYPE_OP = "B";
+    private static final String SALE_TYPE_OP = "S";
     private static HashMap<String, Integer> dateMap;
     private final RequestUtils requestUtils;
     private final StockInfoService stockInfoService;
@@ -59,12 +73,11 @@ public class DailyJob {
     private final StringRedisTemplate redisTemplate;
     private final StockInfoMapper stockInfoMapper;
 
-
     // 每隔25分钟刷新Token
 //    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
     public void refreshToken() {
         cancelOrder("");
-        log.info("刷新Token任务执行完毕！");
+        log.info("刷新Token任务执行完毕。");
     }
 
     // 交易日开盘时间买入 9:30
@@ -77,7 +90,7 @@ public class DailyJob {
 
     // 交易日收盘时间卖出 14:30
 //    @Scheduled(cron = "0 0 10,11,14 ? * MON-FRI")
-    public void runSoldJob() {
+    public void runSaleJob() {
         log.info("开始执行卖出任务====================================");
         sale(0);
         log.info("卖出任务执行完毕====================================");
@@ -87,7 +100,7 @@ public class DailyJob {
 //    @Scheduled(cron = "0 0 9-15 ? * MON-FRI")
     public void runAccountJob() {
         log.info("更新账户余额任务执行开始====================================");
-        queryAccountAmount();
+        updateAccountAmount();
         log.info("更新账户余额任务执行结束====================================");
     }
 
@@ -240,7 +253,7 @@ public class DailyJob {
                     maxRateRecord.setUpdateTime(now);
                     foundTradingService.updateById(maxRateRecord);
                     // 更新账户资金
-                    queryAccountAmount();
+                    updateAccountAmount();
                     // 增加股票交易次数
                     StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, maxRateRecord.getCode()));
                     stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
@@ -264,52 +277,49 @@ public class DailyJob {
             return;
         }
         log.info("第{}次尝试买入股票---------", times + 1);
-        // 买入之前先去撤销所有未成功订单
+        // 撤销所有未成功订单，回收可用资金
         cancelAllOrder();
-        // 检查今天是否有买入记录，防止重复买入
-        LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda().eq(FoundTradingRecord::getSold, "0")
-                .eq(FoundTradingRecord::getBuyDateString, DateUtils.dateFormat.format(new Date()));
-        List<FoundTradingRecord> hasBuy = foundTradingService.list(queryWrapper);
-        if (!CollectionUtils.isEmpty(hasBuy)) {
-            log.warn("今天已经有买入记录了，无需重复买入!");
+        // 更新账户可用资金
+        final Double availableAmount = updateAccountAmount().getAvailableAmount();
+        // 计算可买入股票价格区间
+        final double highPrice = availableAmount / MIN_HOLD_NUMBER;
+        final double lowPrice = (availableAmount / MAX_HOLD_NUMBER) * LOW_PRICE_PERCENT;
+        log.info("当前可用资金{}元, 可买入价格区间[{},{}]", availableAmount, lowPrice, highPrice);
+        if (lowPrice < LOW_PRICE_LIMIT) {
+            log.info("可用资金资金不足，取消购买任务！");
             return;
         }
-        //  更新每日数据
-        final List<StockInfo> dataList = updateDataPrice();
-//        log.info("dataLis:{}", dataList);
-//        saveDate(dataList);
-        // 查询账户可用资金
-//        final AccountInfo accountInfo = queryAccountAmount();
+        //  获取实时价格
+        final List<StockInfo> dataList = getDataList();
+        //  计算得分 TODO
+        final List<StockInfo> stockInfos = dataList;
         // 选择有交易权限合适价格区间的数据，按评分排序分组
-        final List<StockInfo> filterList = dataList.stream()
-                .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= 8 && s.getPrice() <= 12)
-                .sorted(Comparator.comparing(StockInfo::getScore).reversed())
-                .collect(Collectors.toList());
+        final List<StockInfo> limitList = stockInfos.stream().skip((long) times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
         // 在得分高的一组中随机选择一支买入
-        List<StockInfo> limitList = filterList.stream().skip((long) times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
         List<String> buyCodes = foundTradingService.list().stream().filter(s -> "0".equals(s.getSold())).map(FoundTradingRecord::getCode).collect(Collectors.toList());
         StockInfo best = limitList.get(new Random().nextInt(BUY_RETRY_LIMIT));
         if (buyCodes.contains(best.getCode())) {
-            log.info("当前股票[{}-{}]已经持有，尝试买入下一股票", best.getCode(), best.getName());
+            log.info("当前股票[{}-{}]已经持有，尝试买入下一组股票", best.getCode(), best.getName());
             buy(times + 1);
         }
         log.info("尝试买入最佳股票[{}-{}],价格:{},评分:{}，日增长率曲线:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore(), best.getIncreaseRate());
-        String accountType = "SH".equals(best.getMarket()) ? "SHACCOUNT" : "SZACCOUNT";
-        double buyNumber = 100.00;
-        final String buyNo = buySale("B", best.getCode(), best.getPrice(), buyNumber);
+        final int maxBuyNumber = (int) (availableAmount / best.getPrice());
+        final int buyNumber = (maxBuyNumber / 100) * 100;
+        final String buyNo = buySale(BUY_TYPE_OP, best.getCode(), best.getPrice(), (double) buyNumber);
         if (buyNo == null) {
-            log.info("无法买入当前股票，尝试买入下一股票");
+            log.info("无法买入当前股票，尝试买入下一组组股票");
             buy(times + 1);
         } else {
             // 等待10秒后后查询买入结果
-            log.info("等待10秒后查询买入结果...");
-            SleepUtils.second(30);
+            log.info("等待{}秒后查询买入结果...", WAIT_TIME_SECONDS);
+            SleepUtils.second(WAIT_TIME_SECONDS);
             if (queryStatus(buyNo)) {
+                // 买入成功后，保存交易数据
                 final FoundTradingRecord record = new FoundTradingRecord();
                 record.setCode(best.getCode());
                 record.setName(best.getName());
                 record.setBuyPrice(best.getPrice());
-                record.setBuyNumber(buyNumber);
+                record.setBuyNumber((double) buyNumber);
                 record.setBuyNo(buyNo);
                 final double amount = best.getPrice() * buyNumber;
                 record.setBuyAmount(amount + getPeeAmount(amount));
@@ -320,15 +330,15 @@ public class DailyJob {
                 record.setCreateTime(now);
                 record.setUpdateTime(now);
                 foundTradingService.save(record);
-                // 买入成功后，保存交易数据
-                saveDate(dataList);
                 // 更新账户资金
-                queryAccountAmount();
-                // 增加股票交易次数
+                updateAccountAmount();
+                // 更新交易次数
                 StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, best.getCode()));
                 stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
                 stockInfoService.updateById(stockInfo);
                 log.info("成功买入股票[{}-{}], 买入价格:{}，买入数量:{}，买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
+                // 保存评分数据
+                saveDate(dataList);
             } else {
                 // 如果交易不成功，撤单后再次尝试卖出
                 log.info("当前买入交易不成功，撤单后尝试买入下一股票");
@@ -337,6 +347,14 @@ public class DailyJob {
             }
         }
     }
+
+//    public List<StockInfo> setScores(List<StockInfo> stockInfos List<StockInfo> dataList) {
+//        stockInfos.forEach(info -> {
+//
+//        });
+//    });
+//        return stockInfos;
+//}
 
     public void cancelOrder(String answerNo) {
         String token = redisTemplate.opsForValue().get("requestToken");
@@ -352,8 +370,8 @@ public class DailyJob {
         redisTemplate.opsForValue().set("requestToken", newToken);
     }
 
-    // 查询账户资金
-    public AccountInfo queryAccountAmount() {
+    // 更新账户资金
+    public AccountInfo updateAccountAmount() {
         String token = redisTemplate.opsForValue().get("requestToken");
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -476,20 +494,21 @@ public class DailyJob {
                 final String name = split[2].replaceAll("\"", "");
                 final String market = split[3].replaceAll("\"", "");
                 final String code = split[4].replaceAll("\"", "");
-                final Date now = new Date();
+//                final Date now = new Date();
                 final StockInfo stockInfo = new StockInfo();
                 stockInfo.setName(name);
                 stockInfo.setCode(code);
                 stockInfo.setMarket(market);
                 stockInfo.setIncrease(increasePercent);
                 stockInfo.setPrice(price);
-                stockInfo.setCreateTime(now);
-                stockInfo.setUpdateTime(now);
-                stockInfo.setPermission("0");
-                stockInfo.setBuySaleCount(0);
+//                stockInfo.setCreateTime(now);
+//                stockInfo.setUpdateTime(now);
+//                stockInfo.setPermission("0");
+//                stockInfo.setBuySaleCount(0);
                 stockInfos.add(stockInfo);
             }
         }
+        log.info("共获取到{}条新数据。", stockInfos.size());
         return stockInfos;
     }
 
@@ -598,139 +617,113 @@ public class DailyJob {
         });
     }
 
-    @SneakyThrows
-    public List<StockInfo> updateDataPrice() {
-        log.info("开始获取每日价格数据......");
-        List<StockInfo> stockInfos = getDataList();
-        log.info("共获取到{}条新数据。", stockInfos.size());
-        // 获取已经存在的所有数据
-        List<StockInfo> list = stockInfoService.list();
-        List<StockInfo> updateData = mergeDataList(stockInfos, list);
-        log.info("待更新{}条数据。", updateData.size());
-        return updateData;
-    }
+//    @SneakyThrows
+//    public List<StockInfo> updateDataPrice() {
+//        log.info("开始获取每日价格数据......");
+//        List<StockInfo> stockInfos = getDataList();
+//        log.info("共获取到{}条新数据。", stockInfos.size());
+//        // 获取已经存在的所有数据
+//        List<StockInfo> list = stockInfoService.list();
+//        List<StockInfo> updateData = mergeDataList(stockInfos, list);
+//        log.info("待更新{}条数据。", updateData.size());
+//        return updateData;
+//    }
 
     @SneakyThrows
     public void updateHistoryPrice() {
-        log.info("开始更新股票历史价格数据......");
-        List<StockInfo> stockInfos = getDataList();
-        stockInfos.forEach(s -> {
-            List<DailyPrice> historyPrices = getHistoryPrices(s.getCode(), s.getMarket());
+        log.info("开始获取股票历史价格数据......");
+        final List<StockInfo> stockInfos = stockInfoService.list();
+        final CountDownLatch countDownLatch = new CountDownLatch(stockInfos.size());
+        final ExecutorService fixedThreadPool = Executors.newFixedThreadPool(REQUEST_THREAD_SIZE);
+        // 多线程请求数据
+        stockInfos.forEach(s -> fixedThreadPool.submit(() -> {
+            List<DailyPrice> historyPrices = getHistoryPrices(s.getCode());
             List<DailyPrice> rateList = getRateList(historyPrices);
-            StockInfo selectedInfo = stockInfoMapper.selectByCode(s.getCode());
-            if (selectedInfo == null) {
-                s.setPrices(JSON.toJSONString(historyPrices));
-                s.setIncreaseRate(JSON.toJSONString(rateList));
-                stockInfoService.save(setIncreaseRateAndScore(s, historyPrices));
-            } else {
-                selectedInfo.setPrices(JSON.toJSONString(historyPrices));
-                s.setIncreaseRate(JSON.toJSONString(rateList));
-                selectedInfo.setUpdateTime(new Date());
-                selectedInfo.setPrice(s.getPrice());
-                s.setIncreaseRate(JSON.toJSONString(rateList));
-                stockInfoService.updateById(selectedInfo);
-            }
-            log.info("更新股票[{}-{}],历史价格{}", s.getCode(), s.getName(), historyPrices);
-        });
+            s.setPrices(JSON.toJSONString(historyPrices));
+            s.setIncreaseRate(JSON.toJSONString(rateList));
+            s.setUpdateTime(new Date());
+            countDownLatch.countDown();
+        }));
+        countDownLatch.await();
+        log.info("共获取到{}条股票历史价格数据", stockInfos.size());
+        saveDate(stockInfos);
         log.info("更新股票历史价格数据完成");
     }
 
     @SneakyThrows
     public void updateNowPrice() {
         log.info("开始更新股票实时价格数据......");
-        List<StockInfo> stockInfos = getDataList();
-        stockInfos.forEach(s -> {
-            StockInfo stockInfo = stockInfoMapper.selectByCode(s.getCode());
-            if (stockInfo == null) {
-                stockInfoMapper.insert(s);
-                log.info("当前股票信息不存在，写入新数据");
-            } else {
-                stockInfo.setPrice(s.getPrice());
-                stockInfo.setIncrease(s.getIncrease());
-                stockInfo.setUpdateTime(new Date());
-                stockInfoMapper.updateById(stockInfo);
-
+        List<StockInfo> newInfos = getDataList();
+        final List<StockInfo> dataList = stockInfoService.list();
+        final ArrayList<StockInfo> saveList = new ArrayList<>();
+        newInfos.forEach(newInfo -> {
+            AtomicBoolean exsit = new AtomicBoolean(false);
+            dataList.stream().filter(s -> s.getCode().equals(newInfo.getCode())).findFirst().ifPresent(p -> {
+                // 历史价格数据和日增长率
+                final Double nowPrice = newInfo.getPrice();
+                final List<DailyPrice> dailyPrices = JSON.parseArray(p.getPrices(), DailyPrice.class);
+                final List<DailyPrice> increaseRate = JSON.parseArray(p.getIncreaseRate(), DailyPrice.class);
+                final DailyPrice preDailyPrice = dailyPrices.get(dailyPrices.size() - 1);
+                final Double prePrice = preDailyPrice.getPrice();
+                final double nowIncreaseRate = (nowPrice - prePrice) / prePrice;
+                dailyPrices.add(new DailyPrice(DateUtils.dateFormat.format(new Date()), nowPrice));
+                increaseRate.add(new DailyPrice(DateUtils.dateFormat.format(new Date()), nowIncreaseRate));
+                // 计算得分
+                final List<Double> priceList = dailyPrices.stream().map(DailyPrice::getPrice).collect(Collectors.toList());
+                final List<Double> rateList = increaseRate.stream().map(DailyPrice::getPrice).collect(Collectors.toList());
+                final Double score = getScore(priceList, rateList);
+                p.setScore(score);
+                p.setUpdateTime(new Date());
+                saveList.add(p);
+                exsit.set(true);
+            });
+            if (!exsit.get()) {
+////                newInfo.
+//                    new
+                log.info("新增数据:{}", newInfo);
             }
         });
+        saveDate(saveList);
         log.info("更新股票实时价格数据完成");
     }
 
-
     @SneakyThrows
     public void saveDate(List<StockInfo> dataList) {
-        log.info("开始写入数据库......");
-        if (dataList != null) {
-            // 多线程写入数据库
-            CountDownLatch countDownLatch = new CountDownLatch(5);
-            final int pageSize = 1000;
-            final int cores = Runtime.getRuntime().availableProcessors();
-            for (int i = 0; i < cores; i++) {
+        log.info("开始更新数据库......");
+        if (CollectionUtils.isNotEmpty(dataList)) {
+// 多线程批量更新更新数据库
+            final CountDownLatch countDownLatch = new CountDownLatch(UPDATE_THREAD_SIZE + 1);
+            final int pageSize = dataList.size() / UPDATE_THREAD_SIZE;
+            final ExecutorService fixedThreadPool = Executors.newFixedThreadPool(UPDATE_THREAD_SIZE);
+            for (int i = 0; i <= UPDATE_THREAD_SIZE; i++) {
                 int finalI = i;
-                new Thread(() -> {
-                    List<StockInfo> saveList = dataList.stream().skip((long) finalI * pageSize).limit(pageSize).collect(Collectors.toList());
+                fixedThreadPool.submit(() -> {
+                    final List<StockInfo> saveList = dataList.stream().skip(finalI * pageSize).limit(pageSize).collect(Collectors.toList());
                     stockInfoService.saveOrUpdateBatch(saveList);
                     countDownLatch.countDown();
-                }).start();
+                    log.info("任务{}更新数据{}条。", Thread.currentThread().getName(), saveList.size());
+                });
             }
             countDownLatch.await();
+            fixedThreadPool.shutdown();
             log.info("数据库更新完成......");
         }
     }
 
-    // 合并新老数据
-    public List<StockInfo> mergeDataList(List<StockInfo> newInfos, List<StockInfo> stockInfos) {
-        ArrayList<StockInfo> list = new ArrayList<>();
-        newInfos.forEach(info -> {
-            // 假设为新数据
-            AtomicBoolean isNewData = new AtomicBoolean(true);
-            // 数据已经存在则更新最新价格
-            stockInfos.stream().filter(s -> s.getCode().equals(info.getCode())).findFirst().ifPresent(selectedInfo -> {
-                if (selectedInfo.getPrices() == null || selectedInfo.getPrices().equals("[]")) {
-                    List<DailyPrice> prices = getHistoryPrices(selectedInfo.getCode(), selectedInfo.getMarket());
-                    selectedInfo.setPrices(JSON.toJSONString(prices));
-                }
-                List<DailyPrice> prices = JSONObject.parseArray(selectedInfo.getPrices(), DailyPrice.class);
-                final String date = DateUtils.dateFormat.format(new Date());
-                // 剔除今天的数据(一天内价格多次更新)
-                List<DailyPrice> dailyPrices = prices.stream().filter(p -> !p.getDate().equals(date)).collect(Collectors.toList());
-                final DailyPrice dailyPrice = new DailyPrice(date, info.getPrice());
-                dailyPrices.add(dailyPrice);
-                if (prices.size() > HISTORY_PRICE_LIMIT) {
-                    prices.remove(0);
-                }
-                selectedInfo.setUpdateTime(new Date());
-                selectedInfo.setPrice(info.getPrice());
-                selectedInfo.setIncrease(info.getIncrease());
-                selectedInfo.setPrices(JSON.toJSONString(dailyPrices));
-                StockInfo stockInfo = setIncreaseRateAndScore(selectedInfo, prices);
-                list.add(stockInfo);
-                isNewData.set(false);
-            });
-            // 数据不存在则获取历史价格
-            if (isNewData.get()) {
-                List<DailyPrice> prices = getHistoryPrices(info.getCode(), info.getMarket());
-                info.setPrices(JSON.toJSONString(prices));
-                StockInfo stockInfo = setIncreaseRateAndScore(info, prices);
-                list.add(stockInfo);
-            }
-        });
-        return list;
-    }
-
     // 获取历史价格曲线
-    public List<DailyPrice> getHistoryPrices(String code, String market) {
+    public List<DailyPrice> getHistoryPrices(String code) {
         // 获取历史数据
-        HashMap<String, Object> paramMap = new HashMap<>();
+        HashMap<String, Object> paramMap = new HashMap<>(10);
         paramMap.put("c.funcno", 20009);
         paramMap.put("c.version", 1);
         paramMap.put("c.stock_code", code);
-        paramMap.put("c.market", market);
+//        paramMap.put("c.market", market);
         paramMap.put("c.type", "day");
         paramMap.put("c.count", "20");
         paramMap.put("c.cfrom", "H5");
         paramMap.put("c.tfrom", "PC");
         final JSONArray results = requestUtils.request(buildParams(paramMap));
-        // 解析数据
+// 解析数据
         final ArrayList<DailyPrice> prices = new ArrayList<>();
         if (results.size() >= HISTORY_PRICE_LIMIT) {
             for (int i = results.size() - HISTORY_PRICE_LIMIT; i < results.size(); i++) {
@@ -742,8 +735,6 @@ public class DailyJob {
                 final DailyPrice dailyPrice = new DailyPrice(date, v / 100);
                 prices.add(dailyPrice);
             }
-        } else {
-            log.warn("历史数据不足{}条，丢弃该数据。", HISTORY_PRICE_LIMIT);
         }
         return prices;
     }
@@ -761,7 +752,7 @@ public class DailyJob {
 
     // 获取最近一个月的成交订单订单
     public JSONArray getLastMonthOrder() {
-        // 请求数据
+// 请求数据
         final long timeMillis = System.currentTimeMillis();
         final String token = redisTemplate.opsForValue().get("requestToken");
         final SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyyMMdd");
@@ -812,7 +803,7 @@ public class DailyJob {
 
     // 获取今日成交订单
     public JSONArray getTodayOrder() {
-        // 请求数据
+// 请求数据
         final long timeMillis = System.currentTimeMillis();
         final String token = redisTemplate.opsForValue().get("requestToken");
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -823,7 +814,7 @@ public class DailyJob {
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
         final JSONArray results = requestUtils.request2(buildParams(paramMap));
-        // 解析数据:  名称|买卖方向|数量|价格|成交金额|代码|合同编号|成交编号|股东帐号|市场类型|日期|时间|成交状态|
+// 解析数据:  名称|买卖方向|数量|价格|成交金额|代码|合同编号|成交编号|股东帐号|市场类型|日期|时间|成交状态|
         final JSONArray jsonArray = new JSONArray();
         for (int i = 1; i < results.size(); i++) {
             final String result = results.getString(i);
@@ -865,14 +856,18 @@ public class DailyJob {
     }
 
     // 获取最近10个交易日天的日增长率，用以计算增长的稳定性和增长率总和
-    // 价格稳定性用方差来衡量,增长率总和体现增长幅度
-    // 增长的天数越多，日增长率总和越大，价格方差越小，增长波动越小，代表稳定增长，评分越高
+// 价格稳定性用方差来衡量,增长率总和体现增长幅度
+// 增长率总和，乘以占比系数(index/size)，离当前时间越近,趋近于1，离当前时间越远，系数趋近于0
+// 增长的天数越多，日增长率总和越大，价格方差越小，增长波动越小，代表稳定增长，评分越高
     public Double getScore(List<Double> priceList, List<Double> rateList) {
         if (priceList.isEmpty() || rateList.isEmpty()) {
             return 0.0;
         }
-        // 计算日增长率平均值
-        final double fixSum = rateList.stream().reduce(Double::sum).orElse(0.0);
+        // 计算日增长率平均值总和
+        double sumRate = 0;
+        for (int i = 0; i < rateList.size(); i++) {
+            sumRate += rateList.get(i) * ((double) i / rateList.size());
+        }
         // 计算价格方差
         Double priceSum = priceList.stream().reduce(Double::sum).orElse(0.0);
         final double priceAvg = priceSum / priceList.size();
@@ -880,9 +875,15 @@ public class DailyJob {
         for (Double price : priceList) {
             sum += Math.pow((price - priceAvg), 2);
         }
+        // 方差
         double sqrt = Math.sqrt(sum / priceList.size());
-        sqrt = sqrt > 2 ? 2 : sqrt;
-        return fixSum * (1 - sqrt / BASE_NUMBER);
+        // 价格波动系数(1 - sqrt / PRICE_BASE_NUMBER)
+        // 方差范围限制，确保价格波动系数不为负数
+        // 方差越趋向于0，价格波动系数越趋向于1，说明价格越稳定，得分越高
+        // 方越趋向于 PRICE_BASE_NUMBER(价格波动容忍度)，
+        // 价格波动系数越趋向于0，说明价格波动越大，得分越低
+        sqrt = Math.min(sqrt, PRICE_BASE_NUMBER);
+        return sumRate * (1 - sqrt / PRICE_BASE_NUMBER);
     }
 
     // 计算交易日期差
