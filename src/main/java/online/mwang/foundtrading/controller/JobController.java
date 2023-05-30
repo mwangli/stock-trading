@@ -86,8 +86,11 @@ public class JobController {
         if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");
         }
-        CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
-        scheduler.rescheduleJob(TriggerKey.triggerKey(job.getName()), cronTrigger);
+        final QuartzJob quartzJob = jobMapper.selectById(job.getId());
+        if (!quartzJob.getCron().equals(job.getCron())){
+            CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
+            scheduler.rescheduleJob(TriggerKey.triggerKey(job.getName()), cronTrigger);
+        }
         job.setUpdateTime(new Date());
         return Response.success(jobMapper.updateById(job));
     }

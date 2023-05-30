@@ -1,9 +1,6 @@
 package online.mwang.foundtrading.job;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.quartz.Job;
-import org.quartz.JobExecutionContext;
 import org.springframework.stereotype.Component;
 
 /**
@@ -12,18 +9,14 @@ import org.springframework.stereotype.Component;
  * @date: 2023/3/20 13:22
  * @description: FoundTradingMapper
  */
-@Slf4j
 @Component
 @RequiredArgsConstructor
-public class RunSyncJob implements Job {
+public class RunSyncJob extends BaseJob {
 
     private final DailyJob job;
 
     @Override
-    public void execute(JobExecutionContext jobExecutionContext) {
-        final long start = System.currentTimeMillis();
+    public void run() {
         job.runSyncJob();
-        final long end = System.currentTimeMillis();
-        log.info("任务执行耗时{}秒。", (end - start) / 1000);
     }
 }
