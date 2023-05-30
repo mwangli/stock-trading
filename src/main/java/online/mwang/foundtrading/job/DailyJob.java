@@ -9,14 +9,12 @@ import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.foundtrading.bean.po.AccountInfo;
-import online.mwang.foundtrading.bean.po.DailyItem;
-import online.mwang.foundtrading.bean.po.TradingRecord;
-import online.mwang.foundtrading.bean.po.StockInfo;
+import online.mwang.foundtrading.bean.po.*;
 import online.mwang.foundtrading.mapper.AccountInfoMapper;
+import online.mwang.foundtrading.mapper.ScoreStrategyMapper;
 import online.mwang.foundtrading.mapper.StockInfoMapper;
-import online.mwang.foundtrading.service.TradingRecordService;
 import online.mwang.foundtrading.service.StockInfoService;
+import online.mwang.foundtrading.service.TradingRecordService;
 import online.mwang.foundtrading.utils.DateUtils;
 import online.mwang.foundtrading.utils.RequestUtils;
 import online.mwang.foundtrading.utils.SleepUtils;
@@ -46,8 +44,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DailyJob {
 
-    // 方差基数，体现价格波动容忍度
-    private static final double PRICE_BASE_NUMBER = 10;
     // 最大持股数量，限制可买入股票的最大价格
     private static final int MAX_HOLD_NUMBER = 100;
     private static final int MIN_HOLD_NUMBER = 100;
@@ -59,12 +55,13 @@ public class DailyJob {
     private static final int SOLD_RETRY_TIMES = 5;
     private static final int BUY_RETRY_LIMIT = 10;
     private static final int WAIT_TIME_SECONDS = 10;
-    private static final int HISTORY_PRICE_LIMIT = 30;
-    private static final int UPDATE_THREAD_SIZE = 10;
+    private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
-    private static final int REQUEST_THREAD_SIZE = 20;
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
+    private static final String KEY_PRE_RATE_FACTOR = "preRateFactor";
+    private static final String KEY_PRICE_TOLERANCE = "priceTolerance";
+    private static final String KEY_HISTORY_LIMIT = "historyLimit";
     private static HashMap<String, Integer> dateMap;
     private final RequestUtils requestUtils;
     private final StockInfoService stockInfoService;
@@ -72,6 +69,7 @@ public class DailyJob {
     private final AccountInfoMapper accountInfoMapper;
     private final StringRedisTemplate redisTemplate;
     private final StockInfoMapper stockInfoMapper;
+    private final ScoreStrategyMapper strategyMapper;
     private final ExecutorService threadPool =
             Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
@@ -346,6 +344,9 @@ public class DailyJob {
                 record.setSold("0");
                 record.setCreateTime(now);
                 record.setUpdateTime(now);
+                // 保存选股策略ID
+                ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
+                record.setStrategyId(strategy == null ? 0 : strategy.getId());
                 tradingRecordService.save(record);
                 // 更新账户资金
                 updateAccountAmount();
@@ -770,7 +771,7 @@ public class DailyJob {
 //            prices.add(new DailyItem(date.concat("-1"), Double.parseDouble(price1) / 100));
 //            prices.add(new DailyItem(date.concat("-2"), Double.parseDouble(price2) / 100));
 //            prices.add(new DailyItem(date.concat("-3"), Double.parseDouble(price3) / 100));
-            prices.add(new DailyItem(date.substring(4), Double.parseDouble(price1) / 100));
+            prices.add(new DailyItem(date, Double.parseDouble(price1) / 100));
         }
         return prices;
     }
@@ -888,21 +889,36 @@ public class DailyJob {
         if (priceList.isEmpty() || rateList.isEmpty()) {
             return 0.0;
         }
+        // 获取策略默认值
+        double preRateFactor = 0.5;
+        int priceTolerance = 5;
+        int historyLimit = 50;
+        ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
+        if (strategy != null) {
+            String params = strategy.getParams();
+            JSONObject jsonParam = JSON.parseObject(params);
+            preRateFactor = jsonParam.getDouble(KEY_PRE_RATE_FACTOR);
+            priceTolerance = jsonParam.getInteger(KEY_PRICE_TOLERANCE);
+            historyLimit = jsonParam.getInteger(KEY_HISTORY_LIMIT);
+        }
+        List<Double> limitPriceList = priceList.stream().skip(priceList.size() - historyLimit).limit(historyLimit).collect(Collectors.toList());
+        List<Double> limitRateList = rateList.stream().skip(rateList.size() - historyLimit).limit(historyLimit).collect(Collectors.toList());
         // 计算日增长率平均值总和
         double sumRate = 0;
-        final int size = rateList.size();
+        final int size = limitRateList.size();
         for (int i = 1; i <= size; i++) {
             // 修改前期数据对得分的影响，保证系数范围在[0.5,1]之间
+            // 数值越小，前期数据对得分影响越低
             // 有常数阶和线性阶两种，可供调试
-//            final double f = ((double) i / size) * 0.5 + 0.5;
-            final double f = 1;
-            sumRate += rateList.get(i - 1) * f;
+            final double f = ((double) i / size) * preRateFactor + (1 - preRateFactor);
+//            final double f = 1;
+            sumRate += limitRateList.get(i - 1) * f;
         }
         // 计算价格方差
-        Double priceSum = priceList.stream().reduce(Double::sum).orElse(0.0);
-        final double priceAvg = priceSum / priceList.size();
+        Double priceSum = limitPriceList.stream().reduce(Double::sum).orElse(0.0);
+        final double priceAvg = priceSum / limitPriceList.size();
         double sum = 0;
-        for (Double price : priceList) {
+        for (Double price : limitPriceList) {
             sum += Math.pow((price - priceAvg), 2);
         }
         // 方差
@@ -912,8 +928,8 @@ public class DailyJob {
         // 方差越趋向于0，价格波动系数越趋向于1，说明价格越稳定，得分越高
         // 方越趋向于 PRICE_BASE_NUMBER(价格波动容忍度)，
         // 价格波动系数越趋向于0，说明价格波动越大，得分越低
-        sqrt = Math.min(sqrt, PRICE_BASE_NUMBER);
-        return sumRate * (1 - sqrt / PRICE_BASE_NUMBER);
+        sqrt = Math.min(sqrt, priceTolerance);
+        return sumRate * (1 - sqrt / priceTolerance);
     }
 
     // 计算交易日期差

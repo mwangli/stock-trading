@@ -30,15 +30,15 @@ public class StrategyController {
     @PostMapping("choose")
     public Boolean choose(@RequestBody ScoreStrategy strategy) {
         cancelChoose();
-        strategy.setStatus("1");
-        return strategyService.updateById(strategy);
+        strategy.setStatus(1);
+        return strategyService.update(strategy, new QueryWrapper<ScoreStrategy>().lambda().eq(ScoreStrategy::getId, strategy.getId()));
     }
 
     private void cancelChoose() {
         // 取消选中
         final List<ScoreStrategy> oldChooseList = strategyService.list(new LambdaQueryWrapper<ScoreStrategy>().eq(ScoreStrategy::getStatus, "1"));
         oldChooseList.forEach(o -> {
-            o.setStatus("0");
+            o.setStatus(0);
             strategyService.updateById(o);
         });
     }
@@ -48,8 +48,8 @@ public class StrategyController {
         final Date now = new Date();
         strategy.setCreateTime(now);
         strategy.setUpdateTime(now);
-        strategy.setDeleted("1");
-        if ("1".equals(strategy.getStatus())) {
+        strategy.setDeleted(1);
+        if (strategy.getStatus() == 1) {
             cancelChoose();
         }
         return strategyService.save(strategy);
@@ -57,12 +57,14 @@ public class StrategyController {
 
     @PutMapping
     public Boolean update(@RequestBody ScoreStrategy strategy) {
+        if (strategy.getStatus() == 1) cancelChoose();
+        strategy.setUpdateTime(new Date());
         return strategyService.updateById(strategy);
     }
 
     @DeleteMapping()
     public Boolean delete(@RequestBody ScoreStrategy strategy) {
-        strategy.setDeleted("0");
+        strategy.setDeleted(1);
         return strategyService.updateById(strategy);
     }
 
