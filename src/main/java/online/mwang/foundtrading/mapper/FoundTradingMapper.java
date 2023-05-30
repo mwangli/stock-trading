@@ -1,7 +1,7 @@
 package online.mwang.foundtrading.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import online.mwang.foundtrading.bean.po.FoundTradingRecord;
+import online.mwang.foundtrading.bean.po.TradingRecord;
 import org.apache.ibatis.annotations.Mapper;
 
 /**
@@ -11,5 +11,5 @@ import org.apache.ibatis.annotations.Mapper;
  * @description: FoundTradingMapper
  */
 @Mapper
-public interface FoundTradingMapper extends BaseMapper<FoundTradingRecord> {
+public interface FoundTradingMapper extends BaseMapper<TradingRecord> {
 }

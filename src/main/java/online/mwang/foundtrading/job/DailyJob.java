@@ -11,11 +11,11 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.po.AccountInfo;
 import online.mwang.foundtrading.bean.po.DailyItem;
-import online.mwang.foundtrading.bean.po.FoundTradingRecord;
+import online.mwang.foundtrading.bean.po.TradingRecord;
 import online.mwang.foundtrading.bean.po.StockInfo;
 import online.mwang.foundtrading.mapper.AccountInfoMapper;
 import online.mwang.foundtrading.mapper.StockInfoMapper;
-import online.mwang.foundtrading.service.FoundTradingService;
+import online.mwang.foundtrading.service.TradingRecordService;
 import online.mwang.foundtrading.service.StockInfoService;
 import online.mwang.foundtrading.utils.DateUtils;
 import online.mwang.foundtrading.utils.RequestUtils;
@@ -68,7 +68,7 @@ public class DailyJob {
     private static HashMap<String, Integer> dateMap;
     private final RequestUtils requestUtils;
     private final StockInfoService stockInfoService;
-    private final FoundTradingService foundTradingService;
+    private final TradingRecordService tradingRecordService;
     private final AccountInfoMapper accountInfoMapper;
     private final StringRedisTemplate redisTemplate;
     private final StockInfoMapper stockInfoMapper;
@@ -174,9 +174,9 @@ public class DailyJob {
         }
         log.info("第{}次尝试卖出股票---------", times + 1);
         // 检查今天是否有卖出记录，防止重复卖出
-        LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda().eq(FoundTradingRecord::getSold, "1")
-                .eq(FoundTradingRecord::getSaleDateString, DateUtils.dateFormat.format(new Date()));
-        List<FoundTradingRecord> hasSold = foundTradingService.list(queryWrapper);
+        LambdaQueryWrapper<TradingRecord> queryWrapper = new QueryWrapper<TradingRecord>().lambda().eq(TradingRecord::getSold, "1")
+                .eq(TradingRecord::getSaleDateString, DateUtils.dateFormat.format(new Date()));
+        List<TradingRecord> hasSold = tradingRecordService.list(queryWrapper);
         if (!CollectionUtils.isEmpty(hasSold)) {
             log.warn("今天已经有卖出记录了，无需重复卖出!");
             return;
@@ -192,7 +192,7 @@ public class DailyJob {
         paramMap.put("Volume", 100);
         JSONArray dataList = requestUtils.request2(buildParams(paramMap));
         double maxRate = -100.00;
-        FoundTradingRecord maxRateRecord = null;
+        TradingRecord maxRateRecord = null;
         for (int i = 1; i < dataList.size(); i++) {
             String data = dataList.getString(i);
             String[] split = data.split("\\|");
@@ -208,7 +208,7 @@ public class DailyJob {
             double availableNumber = Double.parseDouble(split[2]);
             double price = Double.parseDouble(split[4]);
             // 查询买入时间
-            FoundTradingRecord selectRecord = foundTradingService.getOne(new QueryWrapper<FoundTradingRecord>().eq("code", code).eq("sold", "0"));
+            TradingRecord selectRecord = tradingRecordService.getOne(new QueryWrapper<TradingRecord>().eq("code", code).eq("sold", "0"));
             if (selectRecord == null) {
                 log.info("当前股票[{}-{}]未查询到买入记录,开始同步最近一个月订单", code, name);
                 syncBuySaleRecord();
@@ -259,7 +259,7 @@ public class DailyJob {
                     maxRateRecord.setSaleDate(now);
                     maxRateRecord.setSaleDateString(DateUtils.dateFormat.format(now));
                     maxRateRecord.setUpdateTime(now);
-                    foundTradingService.updateById(maxRateRecord);
+                    tradingRecordService.updateById(maxRateRecord);
                     // 更新账户资金
                     updateAccountAmount();
                     // 增加股票交易次数
@@ -304,7 +304,7 @@ public class DailyJob {
         // 选择有交易权限合适价格区间的数据，按评分排序分组
         final List<StockInfo> limitList = stockInfos.stream().filter(s -> s.getPermission().equals("1")).skip((long) times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
         // 在得分高的一组中随机选择一支买入
-        List<String> buyCodes = foundTradingService.list().stream().filter(s -> "0".equals(s.getSold())).map(FoundTradingRecord::getCode).collect(Collectors.toList());
+        List<String> buyCodes = tradingRecordService.list().stream().filter(s -> "0".equals(s.getSold())).map(TradingRecord::getCode).collect(Collectors.toList());
         StockInfo best = limitList.get(new Random().nextInt(BUY_RETRY_LIMIT));
         if (buyCodes.contains(best.getCode())) {
             log.info("当前股票[{}-{}]已经持有，尝试买入下一组股票", best.getCode(), best.getName());
@@ -332,7 +332,7 @@ public class DailyJob {
             SleepUtils.second(WAIT_TIME_SECONDS);
             if (queryStatus(buyNo)) {
                 // 买入成功后，保存交易数据
-                final FoundTradingRecord record = new FoundTradingRecord();
+                final TradingRecord record = new TradingRecord();
                 record.setCode(best.getCode());
                 record.setName(best.getName());
                 record.setBuyPrice(best.getPrice());
@@ -346,7 +346,7 @@ public class DailyJob {
                 record.setSold("0");
                 record.setCreateTime(now);
                 record.setUpdateTime(now);
-                foundTradingService.save(record);
+                tradingRecordService.save(record);
                 // 更新账户资金
                 updateAccountAmount();
                 // 更新交易次数
@@ -557,17 +557,17 @@ public class DailyJob {
             final String dateString = date + (time.length() < 6 ? ("0" + time) : time);
             if ("买入".equals(type)) {
                 // 查询买入订单信息是否存在
-                final LambdaQueryWrapper<FoundTradingRecord> lambdaQueryWrapper = new QueryWrapper<FoundTradingRecord>().lambda()
-                        .eq(FoundTradingRecord::getCode, code).like(FoundTradingRecord::getBuyNo, answerNo);
-                final FoundTradingRecord selectedOrder = foundTradingService.getOne(lambdaQueryWrapper);
+                final LambdaQueryWrapper<TradingRecord> lambdaQueryWrapper = new QueryWrapper<TradingRecord>().lambda()
+                        .eq(TradingRecord::getCode, code).like(TradingRecord::getBuyNo, answerNo);
+                final TradingRecord selectedOrder = tradingRecordService.getOne(lambdaQueryWrapper);
                 if (selectedOrder == null) {
                     log.info("当前股票[{}-{}]买入记录不存在，新增买入记录", name, code);
                     // 合并多个买入订单
-                    final LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda()
-                            .eq(FoundTradingRecord::getCode, code).eq(FoundTradingRecord::getSold, "0");
-                    final FoundTradingRecord selectedRecord = foundTradingService.getOne(queryWrapper);
+                    final LambdaQueryWrapper<TradingRecord> queryWrapper = new QueryWrapper<TradingRecord>().lambda()
+                            .eq(TradingRecord::getCode, code).eq(TradingRecord::getSold, "0");
+                    final TradingRecord selectedRecord = tradingRecordService.getOne(queryWrapper);
                     if (selectedRecord == null) {
-                        final FoundTradingRecord record = new FoundTradingRecord();
+                        final TradingRecord record = new TradingRecord();
                         record.setCode(code);
                         record.setName(name);
                         record.setBuyPrice(price);
@@ -581,7 +581,7 @@ public class DailyJob {
                         final Date now = new Date();
                         record.setCreateTime(now);
                         record.setUpdateTime(now);
-                        foundTradingService.save(record);
+                        tradingRecordService.save(record);
                     } else {
                         selectedRecord.setBuyPrice(price);
                         selectedRecord.setBuyNumber(number + selectedRecord.getBuyNumber());
@@ -593,21 +593,21 @@ public class DailyJob {
                         selectedRecord.setBuyNo(selectedRecord.getBuyNo() + "," + answerNo);
                         final Date now = new Date();
                         selectedRecord.setUpdateTime(now);
-                        foundTradingService.updateById(selectedRecord);
+                        tradingRecordService.updateById(selectedRecord);
                     }
 
                 }
             }
             if ("卖出".equals(type)) {
                 // 查询卖出订单信息是否存在
-                final LambdaQueryWrapper<FoundTradingRecord> lambdaQueryWrapper = new QueryWrapper<FoundTradingRecord>().lambda()
-                        .eq(FoundTradingRecord::getCode, code).eq(FoundTradingRecord::getSaleNo, answerNo);
-                final FoundTradingRecord selectedOrder = foundTradingService.getOne(lambdaQueryWrapper);
+                final LambdaQueryWrapper<TradingRecord> lambdaQueryWrapper = new QueryWrapper<TradingRecord>().lambda()
+                        .eq(TradingRecord::getCode, code).eq(TradingRecord::getSaleNo, answerNo);
+                final TradingRecord selectedOrder = tradingRecordService.getOne(lambdaQueryWrapper);
                 if (selectedOrder == null) {
                     log.info("当前股票[{}-{}]卖出记录不存在，新增卖出记录", name, code);
-                    final LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda()
-                            .eq(FoundTradingRecord::getCode, code).eq(FoundTradingRecord::getSold, "0");
-                    final FoundTradingRecord record = foundTradingService.getOne(queryWrapper);
+                    final LambdaQueryWrapper<TradingRecord> queryWrapper = new QueryWrapper<TradingRecord>().lambda()
+                            .eq(TradingRecord::getCode, code).eq(TradingRecord::getSold, "0");
+                    final TradingRecord record = tradingRecordService.getOne(queryWrapper);
                     if (record == null) {
                         log.error("当前股票[{}-{}]没有查询到买入记录，卖出记录同步失败！", name, code);
                         return;
@@ -633,7 +633,7 @@ public class DailyJob {
                     record.setIncomeRate(incomeRate);
                     final double dailyIncomeRate = incomeRate / dateDiff;
                     record.setDailyIncomeRate(dailyIncomeRate);
-                    foundTradingService.update(record, queryWrapper);
+                    tradingRecordService.update(record, queryWrapper);
                 }
             }
         }
@@ -641,8 +641,8 @@ public class DailyJob {
 
     @SneakyThrows
     public void syncBuySaleCount() {
-        List<FoundTradingRecord> list = foundTradingService.list();
-        Map<String, IntSummaryStatistics> collect = list.stream().collect(Collectors.groupingBy(FoundTradingRecord::getCode, Collectors.summarizingInt((o) -> "1".equals(o.getSold()) ? 2 : 1)));
+        List<TradingRecord> list = tradingRecordService.list();
+        Map<String, IntSummaryStatistics> collect = list.stream().collect(Collectors.groupingBy(TradingRecord::getCode, Collectors.summarizingInt((o) -> "1".equals(o.getSold()) ? 2 : 1)));
         collect.forEach((code, accumulate) -> {
             StockInfo stockInfo = new StockInfo();
             stockInfo.setBuySaleCount((int) accumulate.getSum());
