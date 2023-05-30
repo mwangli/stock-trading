@@ -120,9 +120,9 @@ public class FoundTradingController {
             record.setName(record.getCode().concat("-").concat(record.getName()));
             record.setSalePrice(stockInfo.getPrice());
             final double amount = record.getBuyNumber() * record.getSalePrice();
-            final double saleAmount = amount + dailyJob.getPeeAmount(amount);
+            final double saleAmount = amount - dailyJob.getPeeAmount(amount);
             record.setIncome(saleAmount - record.getBuyAmount());
-            record.setIncomeRate(record.getIncome() / record.getBuyAmount());
+            record.setIncomeRate(record.getIncome() / record.getBuyAmount() * 100);
             record.setHoldDays(dailyJob.diffDate(record.getBuyDate(), new Date()));
             record.setDailyIncomeRate(record.getIncomeRate() / record.getHoldDays());
         }).sorted(Comparator.comparing(FoundTradingRecord::getDailyIncomeRate).reversed()).collect(Collectors.toList());
