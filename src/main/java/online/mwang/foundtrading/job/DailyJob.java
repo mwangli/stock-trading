@@ -890,19 +890,21 @@ public class DailyJob {
             return 0.0;
         }
         // 获取策略默认值
-        double preRateFactor = 0.5;
-        int priceTolerance = 5;
-        int historyLimit = 50;
+        StrategyParams strategyParams = new StrategyParams(0.5, 5, 50);
         ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
         if (strategy != null) {
-            String params = strategy.getParams();
-            JSONObject jsonParam = JSON.parseObject(params);
-            preRateFactor = jsonParam.getDouble(KEY_PRE_RATE_FACTOR);
-            priceTolerance = jsonParam.getInteger(KEY_PRICE_TOLERANCE);
-            historyLimit = jsonParam.getInteger(KEY_HISTORY_LIMIT);
+            try {
+                String params = strategy.getParams();
+                strategyParams = JSON.parseObject(params, StrategyParams.class);
+            } catch (Exception e) {
+                log.warn("策略参数解析异常，使用默认策略参数{}", strategyParams);
+            }
         }
-        List<Double> limitPriceList = priceList.stream().skip(priceList.size() - historyLimit).limit(historyLimit).collect(Collectors.toList());
-        List<Double> limitRateList = rateList.stream().skip(rateList.size() - historyLimit).limit(historyLimit).collect(Collectors.toList());
+        Double preRateFactor = strategyParams.getPreRateFactor();
+        Integer priceTolerance = strategyParams.getPriceTolerance();
+        Integer historyLimit = strategyParams.getHistoryLimit();
+        List<Double> limitPriceList = priceList.stream().skip(priceList.size() > historyLimit ? priceList.size() - historyLimit : 0).limit(historyLimit).collect(Collectors.toList());
+        List<Double> limitRateList = rateList.stream().skip(rateList.size() > historyLimit ? rateList.size() - historyLimit : 0).limit(historyLimit).collect(Collectors.toList());
         // 计算日增长率平均值总和
         double sumRate = 0;
         final int size = limitRateList.size();

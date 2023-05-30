@@ -101,7 +101,8 @@ public class JobController {
     public Response<Integer> deleteJob(@RequestBody QuartzJob job) {
         if (job.getId() <= 13) return Response.success();
         scheduler.deleteJob(JobKey.jobKey(job.getName()));
-        return Response.success(jobMapper.deleteById(job.getId()));
+        job.setDeleted("0");
+        return Response.success(jobMapper.updateById(job));
     }
 
     @SneakyThrows
