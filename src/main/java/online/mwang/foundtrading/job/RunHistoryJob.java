@@ -17,6 +17,6 @@ public class RunHistoryJob extends BaseJob {
 
     @Override
     public void run() {
-        job.updateHistoryPrice();
+        job.runHistoryJob();
     }
 }

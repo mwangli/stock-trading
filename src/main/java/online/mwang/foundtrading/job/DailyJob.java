@@ -59,7 +59,7 @@ public class DailyJob {
     private static final int SOLD_RETRY_TIMES = 5;
     private static final int BUY_RETRY_LIMIT = 10;
     private static final int WAIT_TIME_SECONDS = 10;
-    private static final int HISTORY_PRICE_LIMIT = 30;
+    private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_THREAD_SIZE = 10;
     private static final int UPDATE_BATCH_SIZE = 500;
     private static final int REQUEST_THREAD_SIZE = 20;
@@ -104,6 +104,23 @@ public class DailyJob {
         log.info("更新账户余额任务执行开始====================================");
         updateAccountAmount();
         log.info("更新账户余额任务执行结束====================================");
+    }
+
+
+    // 更新股票实时价格，交易日每天上午八点执行
+//    @Scheduled(cron = "0 0 8 ? * MON-FRI")
+    public void runNowJob() {
+        log.info("更新股票实时价格任务执行开始====================================");
+        updateNowPrice();
+        log.info("更新股票实时价格任务执行结束====================================");
+    }
+
+    // 更新股票历史价格，交易日每天下午三点执行
+//    @Scheduled(cron = "0 0 15 ? * MON-FRI")
+    public void runHistoryJob() {
+        log.info("更新股票历史价格任务执行开始====================================");
+        updateHistoryPrice();
+        log.info("更新股票历史价格任务执行结束====================================");
     }
 
     // 同步股票交易记录，每十天执行一次
@@ -338,7 +355,7 @@ public class DailyJob {
                 stockInfoService.updateById(stockInfo);
                 log.info("成功买入股票[{}-{}], 买入价格:{}，买入数量:{}，买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
                 // 保存评分数据
-                saveDate(dataList);
+                saveDate(stockInfos);
             } else {
                 // 如果交易不成功，撤单后再次尝试卖出
                 log.info("当前买入交易不成功，撤单后尝试买入下一股票");
@@ -572,6 +589,7 @@ public class DailyJob {
                         selectedRecord.setBuyAmount(selectedRecord.getBuyAmount() + amount + getPeeAmount(amount));
                         final Date buyDate = DateUtils.dateTimeFormat.parse(dateString);
                         selectedRecord.setBuyDate(buyDate);
+                        selectedRecord.setBuyDateString(date);
                         selectedRecord.setBuyNo(selectedRecord.getBuyNo() + "," + answerNo);
                         final Date now = new Date();
                         selectedRecord.setUpdateTime(now);
@@ -590,6 +608,10 @@ public class DailyJob {
                     final LambdaQueryWrapper<FoundTradingRecord> queryWrapper = new QueryWrapper<FoundTradingRecord>().lambda()
                             .eq(FoundTradingRecord::getCode, code).eq(FoundTradingRecord::getSold, "0");
                     final FoundTradingRecord record = foundTradingService.getOne(queryWrapper);
+                    if (record == null) {
+                        log.error("当前股票[{}-{}]没有查询到买入记录，卖出记录同步失败！", name, code);
+                        return;
+                    }
                     record.setSalePrice(price);
                     number = number < 0 ? -number : number;
                     record.setSaleNumber(number);
@@ -597,6 +619,7 @@ public class DailyJob {
                     record.setSaleAmount(amount - getPeeAmount(amount));
                     final Date saleDate = DateUtils.dateTimeFormat.parse(dateString);
                     record.setSaleDate(saleDate);
+                    record.setSaleDateString(date);
                     record.setSold("1");
                     record.setSaleNo(answerNo);
                     final Date now = new Date();
@@ -606,8 +629,10 @@ public class DailyJob {
                     record.setIncome(income);
                     int dateDiff = diffDate(record.getBuyDate(), record.getSaleDate());
                     record.setHoldDays(dateDiff);
-                    double incomeRate = income / record.getBuyAmount() / dateDiff * 100;
-                    record.setDailyIncomeRate(incomeRate);
+                    double incomeRate = income / record.getBuyAmount() * 100;
+                    record.setIncomeRate(incomeRate);
+                    final double dailyIncomeRate = incomeRate / dateDiff;
+                    record.setDailyIncomeRate(dailyIncomeRate);
                     foundTradingService.update(record, queryWrapper);
                 }
             }
@@ -617,13 +642,13 @@ public class DailyJob {
     @SneakyThrows
     public void syncBuySaleCount() {
         List<FoundTradingRecord> list = foundTradingService.list();
-        Map<String, IntSummaryStatistics> collect = list.stream().collect(Collectors.groupingBy(FoundTradingRecord::getCode, Collectors.summarizingInt((o) -> o.getSold().equals("1") ? 2 : 1)));
+        Map<String, IntSummaryStatistics> collect = list.stream().collect(Collectors.groupingBy(FoundTradingRecord::getCode, Collectors.summarizingInt((o) -> "1".equals(o.getSold()) ? 2 : 1)));
         collect.forEach((code, accumulate) -> {
             StockInfo stockInfo = new StockInfo();
             stockInfo.setBuySaleCount((int) accumulate.getSum());
             stockInfoService.update(stockInfo, new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, code));
-            log.info("同步股票[{}]交易次数", code);
         });
+        log.info("共同步{}条股票交易记录", collect.size());
     }
 
     @SneakyThrows
@@ -639,7 +664,10 @@ public class DailyJob {
             s.setIncreaseRate(JSON.toJSONString(rateList));
             s.setUpdateTime(new Date());
             saveList.add(s);
-            log.info("第{}个任务完成，获取到股票[{}-{}]历史价格数据", stockInfos.size() - countDownLatch.getCount() + 1, s.getCode(), s.getName());
+            final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
+            if (finishNums % 100 == 0) {
+                log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
+            }
             countDownLatch.countDown();
         }));
         countDownLatch.await();
@@ -648,7 +676,6 @@ public class DailyJob {
 
     @SneakyThrows
     public void updateNowPrice() {
-        log.info("开始更新股票实时价格数据......");
         List<StockInfo> newInfos = getDataList();
         final List<StockInfo> dataList = stockInfoService.list();
         final ArrayList<StockInfo> saveList = new ArrayList<>();
@@ -677,7 +704,6 @@ public class DailyJob {
             }
         });
         saveDate(saveList);
-        log.info("更新股票实时价格数据完成");
     }
 
     private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList) {
@@ -710,7 +736,7 @@ public class DailyJob {
                     stockInfoService.saveOrUpdateBatch(saveList);
                     long endIndex = startIndex + UPDATE_BATCH_SIZE;
                     endIndex = Math.min(endIndex, dataList.size());
-                    log.info("第{}个任务处理完成，任务更新范围[{},{}]内,共 {}条数", pages - countDownLatch.getCount() + 1, startIndex, endIndex, endIndex - startIndex);
+                    log.info("第{}个数据更新任务处理完成，任务更新范围[{},{}]内,共{}条数", pages - countDownLatch.getCount() + 1, startIndex, endIndex, endIndex - startIndex);
                     countDownLatch.countDown();
                 });
             }
@@ -738,9 +764,13 @@ public class DailyJob {
             final String[] split = s.split(",");
             final String date = split[0].replaceAll("\\[", "");
             final String price1 = split[1];
-            final double v = Double.parseDouble(price1);
-            final DailyItem dailyItem = new DailyItem(date, v / 100);
-            prices.add(dailyItem);
+            final String price2 = split[2];
+            final String price3 = split[3];
+            final String price4 = split[4].replaceAll("]", "");
+//            prices.add(new DailyItem(date.concat("-1"), Double.parseDouble(price1) / 100));
+//            prices.add(new DailyItem(date.concat("-2"), Double.parseDouble(price2) / 100));
+//            prices.add(new DailyItem(date.concat("-3"), Double.parseDouble(price3) / 100));
+            prices.add(new DailyItem(date.substring(4), Double.parseDouble(price1) / 100));
         }
         return prices;
     }
@@ -860,8 +890,11 @@ public class DailyJob {
         }
         // 计算日增长率平均值总和
         double sumRate = 0;
-        for (int i = 0; i < rateList.size(); i++) {
-            sumRate += rateList.get(i) * ((double) i / rateList.size());
+        final int size = rateList.size();
+        for (int i = 1; i <= size; i++) {
+            // 修改前期数据对得分的影响，保证系数范围在[0.5,1]之间
+            final double f = ((double) i / size) * 0.5 + 0.5;
+            sumRate += rateList.get(i - 1) * f;
         }
         // 计算价格方差
         Double priceSum = priceList.stream().reduce(Double::sum).orElse(0.0);

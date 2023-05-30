@@ -17,6 +17,6 @@ public class RunNowJob extends BaseJob {
 
     @Override
     public void run() {
-        job.updateNowPrice();
+        job.runNowJob();
     }
 }
