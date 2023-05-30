@@ -72,11 +72,8 @@ public class DailyJob {
     private final AccountInfoMapper accountInfoMapper;
     private final StringRedisTemplate redisTemplate;
     private final StockInfoMapper stockInfoMapper;
-    private final ExecutorService threadPool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-
-    public static void main(String[] args) {
-        System.out.println(4500 / 500);
-    }
+    private final ExecutorService threadPool =
+            Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
     // 每隔25分钟刷新Token
 //    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
@@ -853,10 +850,10 @@ public class DailyJob {
         return rateList;
     }
 
-     // 获取最近10个交易日天的日增长率，用以计算增长的稳定性和增长率总和
-     // 价格稳定性用方差来衡量,增长率总和体现增长幅度
-     // 增长率总和，乘以占比系数(index/size)，离当前时间越近,趋近于1，离当前时间越远，系数趋近于0
-     // 增长的天数越多，日增长率总和越大，价格方差越小，增长波动越小，代表稳定增长，评分越高
+    // 获取最近10个交易日天的日增长率，用以计算增长的稳定性和增长率总和
+    // 价格稳定性用方差来衡量,增长率总和体现增长幅度
+    // 增长率总和，乘以占比系数(index/size)，离当前时间越近,趋近于1，离当前时间越远，系数趋近于0
+    // 增长的天数越多，日增长率总和越大，价格方差越小，增长波动越小，代表稳定增长，评分越高
     public Double getScoreBuyList(List<Double> priceList, List<Double> rateList) {
         if (priceList.isEmpty() || rateList.isEmpty()) {
             return 0.0;
