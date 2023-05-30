@@ -11,12 +11,12 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @RequiredArgsConstructor
-public class UpdateHistoryPriceJob extends BaseJob {
+public class RunNowJob extends BaseJob {
 
     private final DailyJob job;
 
     @Override
     public void run() {
-        job.updateHistoryPrice();
+        job.updateNowPrice();
     }
 }
