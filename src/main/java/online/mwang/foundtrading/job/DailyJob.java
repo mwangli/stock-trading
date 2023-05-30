@@ -47,7 +47,7 @@ import java.util.stream.Collectors;
 public class DailyJob {
 
     // 方差基数，体现价格波动容忍度
-    private static final double PRICE_BASE_NUMBER = 5;
+    private static final double PRICE_BASE_NUMBER = 10;
     // 最大持股数量，限制可买入股票的最大价格
     private static final int MAX_HOLD_NUMBER = 100;
     private static final int MIN_HOLD_NUMBER = 100;
@@ -59,7 +59,7 @@ public class DailyJob {
     private static final int SOLD_RETRY_TIMES = 5;
     private static final int BUY_RETRY_LIMIT = 10;
     private static final int WAIT_TIME_SECONDS = 10;
-    private static final int HISTORY_PRICE_LIMIT = 100;
+    private static final int HISTORY_PRICE_LIMIT = 30;
     private static final int UPDATE_THREAD_SIZE = 10;
     private static final int UPDATE_BATCH_SIZE = 500;
     private static final int REQUEST_THREAD_SIZE = 20;
@@ -714,7 +714,7 @@ public class DailyJob {
             rateList.add(new DailyItem(DateUtils.dateFormat.format(new Date()), increaseRate));
             List<Double> prices = priceList.stream().map(DailyItem::getItem).collect(Collectors.toList());
             List<Double> rates = rateList.stream().map(DailyItem::getItem).collect(Collectors.toList());
-            return getScoreBuyList(prices, rates);
+            return getScoreByList(prices, rates);
         }
         return 0.0;
     }
@@ -884,7 +884,7 @@ public class DailyJob {
     // 价格稳定性用方差来衡量,增长率总和体现增长幅度
     // 增长率总和，乘以占比系数(index/size)，离当前时间越近,趋近于1，离当前时间越远，系数趋近于0
     // 增长的天数越多，日增长率总和越大，价格方差越小，增长波动越小，代表稳定增长，评分越高
-    public Double getScoreBuyList(List<Double> priceList, List<Double> rateList) {
+    public Double getScoreByList(List<Double> priceList, List<Double> rateList) {
         if (priceList.isEmpty() || rateList.isEmpty()) {
             return 0.0;
         }
@@ -893,7 +893,9 @@ public class DailyJob {
         final int size = rateList.size();
         for (int i = 1; i <= size; i++) {
             // 修改前期数据对得分的影响，保证系数范围在[0.5,1]之间
-            final double f = ((double) i / size) * 0.5 + 0.5;
+            // 有常数阶和线性阶两种，可供调试
+//            final double f = ((double) i / size) * 0.5 + 0.5;
+            final double f = 1;
             sumRate += rateList.get(i - 1) * f;
         }
         // 计算价格方差

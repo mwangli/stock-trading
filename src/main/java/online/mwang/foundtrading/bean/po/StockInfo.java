@@ -29,16 +29,25 @@ public class StockInfo {
     private Double increase;
     private Double price;
     private String prices;
-    @TableField(exist = false)
-    private List<Point> pricesList;
     private String increaseRate;
-    @TableField(exist = false)
-    private List<Point> increaseRateList;
     private Double score;
     private String permission;
     private Integer buySaleCount;
     private Date createTime;
     private Date updateTime;
+
+    @TableField(exist = false)
+    private List<DailyItem> pricesList;
+    @TableField(exist = false)
+    private Double maxPrice;
+    @TableField(exist = false)
+    private Double minPrice;
+    @TableField(exist = false)
+    private List<DailyItem> increaseRateList;
+    @TableField(exist = false)
+    private Double maxIncrease;
+    @TableField(exist = false)
+    private Double minIncrease;
 
     public static SFunction<StockInfo, Object> getOrder(String key) {
         if (key == null) return StockInfo::getScore;

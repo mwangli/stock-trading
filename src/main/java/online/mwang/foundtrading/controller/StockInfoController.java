@@ -9,7 +9,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.base.Response;
 import online.mwang.foundtrading.bean.po.DailyItem;
-import online.mwang.foundtrading.bean.po.Point;
 import online.mwang.foundtrading.bean.po.StockInfo;
 import online.mwang.foundtrading.bean.query.StockInfoQuery;
 import online.mwang.foundtrading.job.DailyJob;
@@ -50,12 +49,18 @@ public class StockInfoController {
                 .orderBy(true, ASCEND.equals(query.getSortOrder()), StockInfo.getOrder(query.getSortKey()));
         Page<StockInfo> pageResult = stockInfoService.page(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
         List<StockInfo> collect = pageResult.getRecords().stream().peek(o -> {
-            List<DailyItem> dailyItems = JSON.parseArray(o.getPrices(), DailyItem.class);
-            List<Point> pointList = dailyItems.stream().map(p -> new Point(p.getDate(), p.getItem())).collect(Collectors.toList());
-            o.setPricesList(pointList);
+            List<DailyItem> priceList = JSON.parseArray(o.getPrices(), DailyItem.class);
+            final double maxPrice = priceList.stream().mapToDouble(DailyItem::getItem).max().orElse(0.0);
+            final double minPrice = priceList.stream().mapToDouble(DailyItem::getItem).min().orElse(0.0);
+            o.setPricesList(priceList);
+            o.setMaxPrice(Math.ceil(maxPrice));
+            o.setMinPrice(Math.floor(minPrice));
             List<DailyItem> rateList = JSON.parseArray(o.getIncreaseRate(), DailyItem.class);
-            List<Point> ratePoints = rateList.stream().map(p -> new Point(p.getDate(), p.getItem())).collect(Collectors.toList());
-            o.setIncreaseRateList(ratePoints);
+            final double maxRate = rateList.stream().mapToDouble(DailyItem::getItem).max().orElse(0.0);
+            final double minRate = rateList.stream().mapToDouble(DailyItem::getItem).min().orElse(0.0);
+            o.setIncreaseRateList(rateList);
+            o.setMaxIncrease(maxRate);
+            o.setMinIncrease(minRate);
         }).collect(Collectors.toList());
         return Response.success(collect, pageResult.getTotal());
     }
