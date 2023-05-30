@@ -14,7 +14,7 @@ import java.util.Date;
  * @description: FoundTradingRecord
  */
 @Data
-public class FoundTradingRecord {
+public class TradingRecord {
 
     @TableId(type = IdType.AUTO)
     private Long id;
@@ -61,31 +61,31 @@ public class FoundTradingRecord {
 
     private Date updateTime;
 
-    public static SFunction<FoundTradingRecord, Object> getOrder(String key) {
-        if (key == null) return FoundTradingRecord::getUpdateTime;
+    public static SFunction<TradingRecord, Object> getOrder(String key) {
+        if (key == null) return TradingRecord::getUpdateTime;
         switch (key) {
             case "buyDate":
-                return FoundTradingRecord::getBuyDate;
+                return TradingRecord::getBuyDate;
             case "buyPrice":
-                return FoundTradingRecord::getBuyPrice;
+                return TradingRecord::getBuyPrice;
             case "buyAmount":
-                return FoundTradingRecord::getBuyAmount;
+                return TradingRecord::getBuyAmount;
             case "saleDate":
-                return FoundTradingRecord::getSaleDate;
+                return TradingRecord::getSaleDate;
             case "salePrice":
-                return FoundTradingRecord::getSalePrice;
+                return TradingRecord::getSalePrice;
             case "saleAmount":
-                return FoundTradingRecord::getSaleAmount;
+                return TradingRecord::getSaleAmount;
             case "income":
-                return FoundTradingRecord::getIncome;
+                return TradingRecord::getIncome;
             case "sold":
-                return FoundTradingRecord::getSold;
+                return TradingRecord::getSold;
             case "holdDays":
-                return FoundTradingRecord::getHoldDays;
+                return TradingRecord::getHoldDays;
             case "dailyIncomeRate":
-                return FoundTradingRecord::getDailyIncomeRate;
+                return TradingRecord::getDailyIncomeRate;
             default:
-                return FoundTradingRecord::getUpdateTime;
+                return TradingRecord::getUpdateTime;
         }
     }
 }

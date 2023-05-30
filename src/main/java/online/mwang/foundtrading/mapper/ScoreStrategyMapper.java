@@ -1,15 +1,15 @@
 package online.mwang.foundtrading.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import online.mwang.foundtrading.bean.po.TradingRecord;
+import online.mwang.foundtrading.bean.po.ScoreStrategy;
 import org.apache.ibatis.annotations.Mapper;
 
 /**
  * @version 1.0.0
  * @author: mwangli
- * @date: 2023/3/20 13:22
- * @description: FoundTradingMapper
+ * @date: 2023/5/22 11:13
+ * @description: StockInfoMapper
  */
 @Mapper
-public interface FoundTradingMapper extends BaseMapper<TradingRecord> {
+public interface ScoreStrategyMapper extends BaseMapper<ScoreStrategy> {
 }

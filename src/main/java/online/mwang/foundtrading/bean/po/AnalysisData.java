@@ -45,5 +45,5 @@ public class AnalysisData {
     // 日收益率排行
     private List<Point> dailyRateOrder;
     // 期望持仓日收益率排行
-    private List<FoundTradingRecord> expectList;
+    private List<TradingRecord> expectList;
 }
