@@ -90,6 +90,7 @@ public class JobController {
         if (!quartzJob.getCron().equals(job.getCron())){
             CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
             scheduler.rescheduleJob(TriggerKey.triggerKey(job.getName()), cronTrigger);
+            job.setStatus("1");
         }
         job.setUpdateTime(new Date());
         return Response.success(jobMapper.updateById(job));
