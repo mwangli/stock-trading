@@ -12,6 +12,7 @@ import online.mwang.foundtrading.bean.base.BaseQuery;
 @Data
 public class StrategyQuery extends BaseQuery {
     private String name;
+    private String params;
     private String description;
     private String status;
 }

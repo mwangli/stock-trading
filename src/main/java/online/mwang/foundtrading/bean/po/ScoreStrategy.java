@@ -3,6 +3,7 @@ package online.mwang.foundtrading.bean.po;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import lombok.Data;
 
 import java.util.Date;
@@ -22,7 +23,22 @@ public class ScoreStrategy {
     private String params;
     private String description;
     private Integer status;
+    private Integer sort;
     private Integer deleted;
     private Date createTime;
     private Date updateTime;
+
+    public static SFunction<ScoreStrategy, Object> getOrder(String key) {
+        if (key == null) return ScoreStrategy::getSort;
+        switch (key) {
+            case "status":
+                return ScoreStrategy::getStatus;
+            case "createTime":
+                return ScoreStrategy::getCreateTime;
+            case "updateTime":
+                return ScoreStrategy::getUpdateTime;
+            default:
+                return ScoreStrategy::getSort;
+        }
+    }
 }

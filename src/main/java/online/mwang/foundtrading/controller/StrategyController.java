@@ -25,6 +25,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class StrategyController {
 
+    private final static String ASCEND = "ascend";
+    private final static String DESCEND = "descend";
     private final ScoreStrategyService strategyService;
 
     @PostMapping("choose")
@@ -64,7 +66,7 @@ public class StrategyController {
 
     @DeleteMapping()
     public Boolean delete(@RequestBody ScoreStrategy strategy) {
-        strategy.setDeleted(1);
+            strategy.setDeleted(0);
         return strategyService.updateById(strategy);
     }
 
@@ -72,9 +74,10 @@ public class StrategyController {
     public Response<List<ScoreStrategy>> list(StrategyQuery query) {
         LambdaQueryWrapper<ScoreStrategy> queryWrapper = new QueryWrapper<ScoreStrategy>().lambda()
                 .like(ObjectUtils.isNotNull(query.getName()), ScoreStrategy::getName, query.getName())
+                .like(ObjectUtils.isNotNull(query.getParams()), ScoreStrategy::getParams, query.getParams())
                 .eq((ObjectUtils.isNotNull(query.getStatus())), ScoreStrategy::getStatus, query.getStatus())
                 .eq(ScoreStrategy::getDeleted, "1")
-                .orderByDesc(true, ScoreStrategy::getUpdateTime);
+                .orderBy(true, !DESCEND.equals(query.getSortOrder()), ScoreStrategy.getOrder(query.getSortKey()));
         Page<ScoreStrategy> pageResult = strategyService.page(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
         return Response.success(pageResult.getRecords(), pageResult.getTotal());
     }
