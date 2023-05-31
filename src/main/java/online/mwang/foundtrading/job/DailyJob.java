@@ -912,7 +912,7 @@ public class DailyJob {
             // 修改前期数据对得分的影响，保证系数范围在[0.5,1]之间
             // 数值越小，前期数据对得分影响越低
             // 有常数阶和线性阶两种，可供调试
-            final double f = ((double) i / size) * preRateFactor + (1 - preRateFactor);
+            final double f = ((double) i / size) * (1 - preRateFactor) + preRateFactor;
 //            final double f = 1;
             sumRate += limitRateList.get(i - 1) * f;
         }
