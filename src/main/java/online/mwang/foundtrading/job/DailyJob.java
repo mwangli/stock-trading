@@ -300,7 +300,9 @@ public class DailyJob {
         // 计算得分
         List<StockInfo> stockInfos = calculateScore(dataList);
         // 选择有交易权限合适价格区间的数据，按评分排序分组
-        final List<StockInfo> limitList = stockInfos.stream().filter(s -> s.getPermission().equals("1")).skip((long) times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
+        final List<StockInfo> limitList = stockInfos.stream()
+                .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= lowPrice && s.getPrice() <= highPrice)
+                .skip((long) times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
         // 在得分高的一组中随机选择一支买入
         List<String> buyCodes = tradingRecordService.list().stream().filter(s -> "0".equals(s.getSold())).map(TradingRecord::getCode).collect(Collectors.toList());
         StockInfo best = limitList.get(new Random().nextInt(BUY_RETRY_LIMIT));
@@ -912,7 +914,7 @@ public class DailyJob {
             // 修改前期数据对得分的影响，保证系数范围在[0.5,1]之间
             // 数值越小，前期数据对得分影响越低
             // 有常数阶和线性阶两种，可供调试
-            final double f = ((double) i / size) * preRateFactor + (1 - preRateFactor);
+            final double f = ((double) i / size) * (1 - preRateFactor) + preRateFactor;
 //            final double f = 1;
             sumRate += limitRateList.get(i - 1) * f;
         }
