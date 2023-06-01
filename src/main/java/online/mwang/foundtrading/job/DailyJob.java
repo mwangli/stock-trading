@@ -76,7 +76,7 @@ public class DailyJob {
     // 每隔25分钟刷新Token
 //    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
     public void refreshToken() {
-        cancelOrder("");
+        buySale(SALE_TYPE_OP, "", 0.0, 0.0);
         log.info("刷新Token任务执行完毕。");
     }
 
