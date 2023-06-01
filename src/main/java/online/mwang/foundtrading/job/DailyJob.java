@@ -326,7 +326,7 @@ public class DailyJob {
 //                stockInfo.setUpdateTime(new Date());
 //                stockInfoMapper.updateById(stockInfo);
 //            }
-            log.info("无法买入当前股票，尝试买入下一组组股票");
+            log.info("无法买入当前股票，尝试买入下一组股票");
             buy(times + 1);
         } else {
             // 等待10秒后后查询买入结果
