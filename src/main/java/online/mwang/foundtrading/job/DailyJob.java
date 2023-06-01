@@ -152,15 +152,16 @@ public class DailyJob {
     @SneakyThrows
     public void flushPermission() {
         // 此处不能使用多线程处理，因为每次请求会使上一个Token失效
-        List<StockInfo> filterList = stockInfoService.list().stream().filter(s -> "1".equals(s.getPermission())).collect(Collectors.toList());
-        filterList.forEach(info -> {
+        stockInfoMapper.resetPermission();
+        List<StockInfo> stockInfos = stockInfoService.list();
+        stockInfos.forEach(info -> {
             JSONObject res = buySale(BUY_TYPE_OP, info.getCode(), 1000.0, 100.0);
             final String errorNo = res.getString("ERRORNO");
             if (!errorNo.equals("-57")) {
                 info.setPermission("0");
             }
         });
-        saveDate(filterList);
+        saveDate(stockInfos);
         // 取消所有提交的订单
         cancelAllOrder(10);
     }
@@ -316,14 +317,15 @@ public class DailyJob {
         JSONObject res = buySale(BUY_TYPE_OP, best.getCode(), best.getPrice(), (double) buyNumber);
         String buyNo = res.getString("ANSWERNO");
         if (buyNo == null) {
-            List<String> errorCodes = Arrays.asList("-61", "-64", "-1");
-            String errorNo = res.getString("ERRORNO");
-            if (errorCodes.contains(errorNo)) {
-                log.info("当前股票[{}-{}]没有交易权限,更新权限数据", best.getCode(), best.getName());
-                StockInfo stockInfo = stockInfoMapper.selectByCode(best.getCode());
-                stockInfo.setPermission("0");
-                stockInfoMapper.updateById(stockInfo);
-            }
+//            List<String> errorCodes = Arrays.asList("-64", "-1");
+//            String errorNo = res.getString("ERRORNO");
+//            if (errorCodes.contains(errorNo)) {
+//                log.info("当前股票[{}-{}]没有交易权限,更新权限数据", best.getCode(), best.getName());
+//                StockInfo stockInfo = stockInfoMapper.selectByCode(best.getCode());
+//                stockInfo.setPermission("0");
+//                stockInfo.setUpdateTime(new Date());
+//                stockInfoMapper.updateById(stockInfo);
+//            }
             log.info("无法买入当前股票，尝试买入下一组组股票");
             buy(times + 1);
         } else {
