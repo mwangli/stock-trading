@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import online.mwang.foundtrading.bean.po.StockInfo;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -21,4 +22,7 @@ public interface StockInfoMapper extends BaseMapper<StockInfo> {
 
     @Select("select id, code from stock_info")
     List<StockInfo> listIdAndCode();
+
+    @Update("update stock_info set permission = '1'")
+    void resetPermission();
 }

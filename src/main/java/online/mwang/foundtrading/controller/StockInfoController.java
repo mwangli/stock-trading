@@ -11,7 +11,6 @@ import online.mwang.foundtrading.bean.base.Response;
 import online.mwang.foundtrading.bean.po.DailyItem;
 import online.mwang.foundtrading.bean.po.StockInfo;
 import online.mwang.foundtrading.bean.query.StockInfoQuery;
-import online.mwang.foundtrading.job.DailyJob;
 import online.mwang.foundtrading.service.StockInfoService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,7 +32,6 @@ import java.util.stream.Collectors;
 public class StockInfoController {
 
     private final static String ASCEND = "ascend";
-    private final DailyJob dailyJob;
     private final StockInfoService stockInfoService;
 
     @GetMapping
