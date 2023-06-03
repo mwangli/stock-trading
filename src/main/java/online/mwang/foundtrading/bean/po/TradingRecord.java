@@ -63,6 +63,8 @@ public class TradingRecord {
 
     private Long strategyId;
 
+    private String strategyName;
+
     public static SFunction<TradingRecord, Object> getOrder(String key) {
         if (key == null) return TradingRecord::getUpdateTime;
         switch (key) {

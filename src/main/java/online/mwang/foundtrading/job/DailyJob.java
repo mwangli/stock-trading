@@ -352,6 +352,7 @@ public class DailyJob {
                 // 保存选股策略ID
                 ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
                 record.setStrategyId(strategy == null ? 0 : strategy.getId());
+                record.setStrategyName(strategy == null ? "默认策略" : strategy.getName());
                 tradingRecordService.save(record);
                 // 更新账户资金
                 updateAccountAmount();
@@ -965,8 +966,15 @@ public class DailyJob {
             }
             String[] split = stringBuilder.toString().split(",");
             dateMap = new HashMap<>();
-            for (int i = 0; i < split.length; i++) {
-                dateMap.put(split[i], i);
+            int index = 0;
+            for (String dateString : split) {
+                String[] split1 = dateString.split("-");
+                int weekDay = Integer.parseInt(split1[1]);
+                // 非交易日 不计算日期差
+                if (weekDay >= 1 && weekDay <= 5) {
+                    index++;
+                }
+                dateMap.put(split1[0], index);
             }
         }
         return dateMap;
