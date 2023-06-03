@@ -231,6 +231,7 @@ public class DailyJob {
                         selectRecord.setIncomeRate(incomeRate);
                         selectRecord.setHoldDays(dateDiff);
                         selectRecord.setDailyIncomeRate(incomeRate);
+                        maxRate = dailyIncomeRate;
                         maxRateRecord = selectRecord;
                     }
                 }
