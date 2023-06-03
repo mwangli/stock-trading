@@ -210,7 +210,7 @@ public class DailyJob {
             TradingRecord selectRecord = tradingRecordService.getOne(new QueryWrapper<TradingRecord>().eq("code", code).eq("sold", "0"));
             if (selectRecord == null) {
                 log.info("当前股票[{}-{}]未查询到买入记录,开始同步最近一个月订单", code, name);
-                syncBuySaleRecord();
+                threadPool.submit(this::syncBuySaleRecord);
             } else {
                 if (availableNumber == 0) {
                     log.info("当前股票[{}-{}]可卖出数量为0，请检查订单或者非交易时间段！", code, name);
@@ -222,6 +222,7 @@ public class DailyJob {
                     int dateDiff = diffDate(selectRecord.getBuyDate(), new Date());
                     double incomeRate = income / selectRecord.getBuyAmount() * 100;
                     double dailyIncomeRate = incomeRate / dateDiff;
+                    log.info("当前股票[{}-{}]，买入金额:{}，卖出金额:{}，收益:{}元，日收益率:{}%", selectRecord.getCode(), selectRecord.getName(), selectRecord.getBuyAmount(), saleAmount, income, dailyIncomeRate);
                     if (dailyIncomeRate > maxRate) {
                         selectRecord.setSalePrice(price);
                         selectRecord.setSaleNumber(selectRecord.getBuyAmount());
