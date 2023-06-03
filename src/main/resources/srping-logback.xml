@@ -1,36 +1,18 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8"?>
 <configuration scan="true">
-    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <include resource="org/springframework/boot/logging/logback/defaults.xml" />
+    <property name="LOG_FILE"
+              value="${LOG_FILE:-${LOG_PATH:-${LOG_TEMP:-${java.io.tmpdir:-/tmp}}/}spring.log}" />
+    <include resource="org/springframework/boot/logging/logback/file-appender.xml" />
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n
-            </pattern>
+            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            <charset>utf8</charset>
         </encoder>
+        <filter class="online.mwang.foundtrading.filter.LogFilter"></filter>
     </appender>
-    <!-- 将日志写入日志文件 -->
-    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
-        <!-- 写到自己项目的 logs.test.log-->
-        <!--        <file>${catalina.base}/logs/test.log</file>-->
-        <file>../logs/test.log</file>
-        <append>true</append><!-- 日志追加 -->
-        <encoder>
-            <pattern>%d{HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n
-            </pattern>
-        </encoder>
-    </appender>
-    <!-- 将日志写入数据库 -->
-    <!--    <appender name="DB-CLASSIC-MYSQL-POOL" class="ch.qos.logback.classic.db.DBAppender">-->
-    <!--        <connectionSource class="ch.qos.logback.core.db.DataSourceConnectionSource">-->
-    <!--            <dataSource class="com.alibaba.druid.pool.DruidDataSource">-->
-    <!--                <driverClassName>com.mysql.jdbc.Driver</driverClassName>-->
-    <!--                <url>jdbc:mysql://localhost:3306/log</url>-->
-    <!--                <username>sa</username>-->
-    <!--                <password>123456</password>-->
-    <!--            </dataSource>-->
-    <!--        </connectionSource>-->
-    <!--    </appender>-->
     <root level="INFO">
-        <appender-ref ref="STDOUT"/>
-        <appender-ref ref="FILE"/>
-        <!--        <appender-ref ref="DB-CLASSIC-MYSQL-POOL" />-->
+        <appender-ref ref="FILE" />
+        <appender-ref ref="CONSOLE" />
     </root>
 </configuration>
