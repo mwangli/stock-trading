@@ -14,7 +14,7 @@ public class LogsAppender extends AppenderBase<ILoggingEvent> {
 
     @Resource
     private final WebSocketServer webSocketServer;
-    private final Integer LOG_BUFFER_SIZE = 200;
+    private final Integer LOG_BUFFER_SIZE = 100;
     private LinkedList<String> logsBuffer = new LinkedList<>();
 
     public LogsAppender(WebSocketServer webSocketServer) {
