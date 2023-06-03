@@ -88,6 +88,8 @@ public class TradingRecord {
                 return TradingRecord::getHoldDays;
             case "dailyIncomeRate":
                 return TradingRecord::getDailyIncomeRate;
+            case "strategyName":
+                return TradingRecord::getBuyDateString;
             default:
                 return TradingRecord::getUpdateTime;
         }
