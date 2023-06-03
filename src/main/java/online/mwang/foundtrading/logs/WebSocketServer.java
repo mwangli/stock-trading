@@ -9,6 +9,7 @@ import javax.websocket.OnClose;
 import javax.websocket.OnOpen;
 import javax.websocket.Session;
 import javax.websocket.server.ServerEndpoint;
+import java.util.LinkedList;
 import java.util.Random;
 
 @Component
@@ -19,6 +20,9 @@ public class WebSocketServer {
     private Session session;
 
     private Integer sessionId;
+
+    private final Integer LOG_BUFFER_SIZE = 80;
+    private LinkedList<String> logsBuffer = new LinkedList<>();
 
     /**
      * 连接建立成功调用的方法
@@ -56,8 +60,12 @@ public class WebSocketServer {
      */
     @SneakyThrows
     public void sendMessage(String message) {
+        logsBuffer.add(message);
+        if (logsBuffer.size() >= LOG_BUFFER_SIZE) {
+            logsBuffer.removeFirst();
+        }
         if (session.isOpen()) {
-            this.session.getBasicRemote().sendText(message);
+            this.session.getBasicRemote().sendText(String.join("\r\n", logsBuffer));
         }
     }
 }
