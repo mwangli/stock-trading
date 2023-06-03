@@ -1,42 +1,40 @@
 package online.mwang.foundtrading.logs;
 
-import ch.qos.logback.classic.LoggerContext;
 import lombok.SneakyThrows;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 import javax.websocket.OnClose;
 import javax.websocket.OnOpen;
 import javax.websocket.Session;
 import javax.websocket.server.ServerEndpoint;
-import java.util.Random;
 
+@Slf4j
 @Component
 @ServerEndpoint("/webSocket")
 public class WebSocketServer {
 
-    //与某个客户端的连接会话，需要通过它来给客户端发送数据
-    private Session session;
+    private static ApplicationContext applicationContext;
 
-    private Integer sessionId;
+    private String sessionId;
+
+    //解决无法注入mapper问题
+    public static void setApplicationContext(ApplicationContext applicationContext) {
+        WebSocketServer.applicationContext = applicationContext;
+    }
 
     /**
      * 连接建立成功调用的方法
      */
     @OnOpen
+    @SneakyThrows
     public void onOpen(Session session) {
-        this.session = session;
-        this.sessionId = (new Random()).nextInt(100000);
-        LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
-        // 第二步：获取日志对象 （日志是有继承关系的，关闭上层，下层如果没有特殊说明也会关闭）
-        ch.qos.logback.classic.Logger rootLogger = lc.getLogger("root");
-        LogsAppender logsAppender = new LogsAppender(this);
-        logsAppender.setContext(lc);
-        // 自定义Appender设置name
-        logsAppender.setName("LogsAppender" + sessionId);
-        logsAppender.start();
-        rootLogger.addAppender(logsAppender);
-        System.out.println("注入成功");
+        LogsAppender logsAppender = applicationContext.getBean(LogsAppender.class);
+        long sessionId = System.currentTimeMillis();
+        this.sessionId = String.valueOf(sessionId);
+        logsAppender.sessions.put(this.sessionId, session);
+        log.info("建立连接");
     }
 
     /**
@@ -44,18 +42,8 @@ public class WebSocketServer {
      */
     @OnClose
     public void onClose() {
-        LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
-        ch.qos.logback.classic.Logger rootLogger = lc.getLogger("root");
-        // 通过name移除Appender
-        rootLogger.detachAppender("LogsAppender" + sessionId);
-        System.out.println("--------移除成功--------");
-    }
-
-    /**
-     * 服务器主动发送消息
-     */
-    @SneakyThrows
-    public void sendMessage(String message) {
-        this.session.getBasicRemote().sendText(message);
+        LogsAppender logsAppender = applicationContext.getBean(LogsAppender.class);
+        logsAppender.sessions.remove(this.sessionId);
+        log.info("连接关闭");
     }
 }
