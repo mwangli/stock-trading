@@ -15,10 +15,7 @@ import online.mwang.foundtrading.service.TradingRecordService;
 import online.mwang.foundtrading.service.StockInfoService;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -126,5 +123,8 @@ public class TradingRecordController {
             record.setHoldDays(dailyJob.diffDate(record.getBuyDate(), new Date()));
             record.setDailyIncomeRate(record.getIncomeRate() / record.getHoldDays());
         }).sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).collect(Collectors.toList());
+//        Calendar instance = Calendar.getInstance();
     }
+
+
 }
