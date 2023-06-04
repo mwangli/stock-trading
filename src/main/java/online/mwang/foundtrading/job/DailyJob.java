@@ -57,6 +57,7 @@ public class DailyJob {
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
+    private static final int THREAD_POOL_NUMBERS = 10;
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
     private static HashMap<String, Integer> dateMap;
@@ -67,8 +68,7 @@ public class DailyJob {
     private final StringRedisTemplate redisTemplate;
     private final StockInfoMapper stockInfoMapper;
     private final ScoreStrategyMapper strategyMapper;
-    private final ExecutorService threadPool =
-            Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2 + 1);
+    private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
 
     // 每隔25分钟刷新Token
 //    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
