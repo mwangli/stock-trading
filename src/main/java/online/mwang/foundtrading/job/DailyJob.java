@@ -71,7 +71,7 @@ public class DailyJob {
     private final StockInfoMapper stockInfoMapper;
     private final ScoreStrategyMapper strategyMapper;
     private final ExecutorService threadPool =
-            Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+            Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2 + 1);
 
     // 每隔25分钟刷新Token
 //    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
