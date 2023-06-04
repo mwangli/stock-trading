@@ -33,8 +33,8 @@ public class LogsAppender extends AppenderBase<ILoggingEvent> {
         }
         // 向所有的会话发送缓存日志
         for (Session session : sessions.values()) {
-            session.getBasicRemote().sendText(String.join("\r\n", logsBuffer));
-//            session.getBasicRemote().sendText(logs);
+//            session.getBasicRemote().sendText(String.join("\r\n", logsBuffer));
+            session.getBasicRemote().sendText(logs);
         }
     }
 
