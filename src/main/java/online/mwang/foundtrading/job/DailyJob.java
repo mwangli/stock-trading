@@ -59,9 +59,6 @@ public class DailyJob {
     private static final int UPDATE_BATCH_SIZE = 500;
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
-    private static final String KEY_PRE_RATE_FACTOR = "preRateFactor";
-    private static final String KEY_PRICE_TOLERANCE = "priceTolerance";
-    private static final String KEY_HISTORY_LIMIT = "historyLimit";
     private static HashMap<String, Integer> dateMap;
     private final RequestUtils requestUtils;
     private final StockInfoService stockInfoService;
