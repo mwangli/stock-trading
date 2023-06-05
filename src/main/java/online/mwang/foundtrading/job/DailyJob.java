@@ -47,6 +47,8 @@ public class DailyJob {
     // 最大持股数量，限制可买入股票的最大价格
     private static final int MAX_HOLD_NUMBER = 100;
     private static final int MIN_HOLD_NUMBER = 100;
+    // 最大持仓股票数量
+    private static final int MAX_HOLD_STOCKS = 6;
     // 最低价格系数，保证可买入股票价格不会过低
     private static final double LOW_PRICE_PERCENT = 0.8;
     // 最低价格限制，资金不足时不买入低价股
@@ -293,7 +295,15 @@ public class DailyJob {
         // 撤销所有未成功订单，回收可用资金
         cancelAllOrder(1);
         // 更新账户可用资金
-        final Double availableAmount = updateAccountAmount().getAvailableAmount();
+        final Double totalAvailableAmount = updateAccountAmount().getAvailableAmount();
+        // 查询持仓股票数量
+        final long holdCount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().count();
+        final long needCount = MAX_HOLD_STOCKS - holdCount;
+        if (needCount <= 0) {
+            log.info("持仓股票数量已达到最大值:{}，无需购买", MAX_HOLD_STOCKS);
+        }
+        // 计算此次可用资金
+        double availableAmount = totalAvailableAmount / needCount;
         // 计算可买入股票价格区间
         final double highPrice = availableAmount / MIN_HOLD_NUMBER;
         final double lowPrice = (availableAmount / MAX_HOLD_NUMBER) * LOW_PRICE_PERCENT;
@@ -434,8 +444,8 @@ public class DailyJob {
         return accountInfo;
     }
 
-    public void cancelAllOrder(int pageSize) {
-        for (int i = 0; i < pageSize; i++) {
+    public void cancelAllOrder(int pages) {
+        for (int i = 0; i < pages; i++) {
             String token = redisTemplate.opsForValue().get("requestToken");
             final long timeMillis = System.currentTimeMillis();
             HashMap<String, Object> paramMap = new HashMap<>();
