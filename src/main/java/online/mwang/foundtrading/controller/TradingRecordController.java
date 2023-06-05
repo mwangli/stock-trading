@@ -15,10 +15,7 @@ import online.mwang.foundtrading.service.TradingRecordService;
 import online.mwang.foundtrading.service.StockInfoService;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -60,7 +57,8 @@ public class TradingRecordController {
         LambdaQueryWrapper<TradingRecord> queryWrapper = new QueryWrapper<TradingRecord>().lambda()
                 .like(ObjectUtils.isNotNull(query.getCode()), TradingRecord::getCode, query.getCode())
                 .like(ObjectUtils.isNotNull(query.getName()), TradingRecord::getCode, query.getName())
-                .likeLeft(ObjectUtils.isNotNull(query.getBuyDate()), TradingRecord::getBuyDate, query.getBuyDate())
+                .like(ObjectUtils.isNotNull(query.getStrategyName()), TradingRecord::getStrategyName, query.getStrategyName())
+                .eq(ObjectUtils.isNotNull(query.getBuyDate()), TradingRecord::getBuyDateString, query.getBuyDate())
                 .eq((ObjectUtils.isNotNull(query.getSalDate())), TradingRecord::getSaleDate, query.getSalDate())
                 .eq(ObjectUtils.isNotNull(query.getHoldDays()), TradingRecord::getHoldDays, query.getHoldDays())
                 .eq(ObjectUtils.isNotNull(query.getSold()), TradingRecord::getSold, query.getSold())
@@ -126,5 +124,8 @@ public class TradingRecordController {
             record.setHoldDays(dailyJob.diffDate(record.getBuyDate(), new Date()));
             record.setDailyIncomeRate(record.getIncomeRate() / record.getHoldDays());
         }).sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).collect(Collectors.toList());
+//        Calendar instance = Calendar.getInstance();
     }
+
+
 }

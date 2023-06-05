@@ -63,6 +63,8 @@ public class TradingRecord {
 
     private Long strategyId;
 
+    private String strategyName;
+
     public static SFunction<TradingRecord, Object> getOrder(String key) {
         if (key == null) return TradingRecord::getUpdateTime;
         switch (key) {
@@ -86,6 +88,8 @@ public class TradingRecord {
                 return TradingRecord::getHoldDays;
             case "dailyIncomeRate":
                 return TradingRecord::getDailyIncomeRate;
+            case "strategyName":
+                return TradingRecord::getBuyDateString;
             default:
                 return TradingRecord::getUpdateTime;
         }
