@@ -292,10 +292,6 @@ public class DailyJob {
             return;
         }
         log.info("第{}次尝试买入股票---------", times + 1);
-        // 撤销所有未成功订单，回收可用资金
-        cancelAllOrder(1);
-        // 更新账户可用资金
-        final Double totalAvailableAmount = updateAccountAmount().getAvailableAmount();
         // 查询持仓股票数量
         final long holdCount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().count();
         final long needCount = MAX_HOLD_STOCKS - holdCount;
@@ -303,6 +299,10 @@ public class DailyJob {
             log.info("持仓股票数量已达到最大值:{}，无需购买!", MAX_HOLD_STOCKS);
             return;
         }
+        // 撤销所有未成功订单，回收可用资金
+        cancelAllOrder(1);
+        // 更新账户可用资金
+        final Double totalAvailableAmount = updateAccountAmount().getAvailableAmount();
         // 计算此次可用资金
         double availableAmount = totalAvailableAmount / needCount;
         // 计算可买入股票价格区间
