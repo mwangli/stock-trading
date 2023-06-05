@@ -300,7 +300,8 @@ public class DailyJob {
         final long holdCount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().count();
         final long needCount = MAX_HOLD_STOCKS - holdCount;
         if (needCount <= 0) {
-            log.info("持仓股票数量已达到最大值:{}，无需购买", MAX_HOLD_STOCKS);
+            log.info("持仓股票数量已达到最大值:{}，无需购买!", MAX_HOLD_STOCKS);
+            return;
         }
         // 计算此次可用资金
         double availableAmount = totalAvailableAmount / needCount;
