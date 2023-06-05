@@ -57,11 +57,9 @@ public class DailyJob {
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
+    private static final int THREAD_POOL_NUMBERS = 10;
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
-    private static final String KEY_PRE_RATE_FACTOR = "preRateFactor";
-    private static final String KEY_PRICE_TOLERANCE = "priceTolerance";
-    private static final String KEY_HISTORY_LIMIT = "historyLimit";
     private static HashMap<String, Integer> dateMap;
     private final RequestUtils requestUtils;
     private final StockInfoService stockInfoService;
@@ -70,8 +68,7 @@ public class DailyJob {
     private final StringRedisTemplate redisTemplate;
     private final StockInfoMapper stockInfoMapper;
     private final ScoreStrategyMapper strategyMapper;
-    private final ExecutorService threadPool =
-            Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+    private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
 
     // 每隔25分钟刷新Token
 //    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
@@ -238,6 +235,7 @@ public class DailyJob {
                         selectRecord.setIncomeRate(incomeRate);
                         selectRecord.setHoldDays(dateDiff);
                         selectRecord.setDailyIncomeRate(incomeRate);
+                        maxRate = dailyIncomeRate;
                         maxRateRecord = selectRecord;
                     }
                 }
@@ -334,7 +332,7 @@ public class DailyJob {
 //                stockInfo.setUpdateTime(new Date());
 //                stockInfoMapper.updateById(stockInfo);
 //            }
-            log.info("无法买入当前股票，尝试买入下一组组股票");
+            log.info("无法买入当前股票，尝试买入下一组股票");
             buy(times + 1);
         } else {
             // 等待10秒后后查询买入结果
@@ -359,6 +357,7 @@ public class DailyJob {
                 // 保存选股策略ID
                 ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
                 record.setStrategyId(strategy == null ? 0 : strategy.getId());
+                record.setStrategyName(strategy == null ? "默认策略" : strategy.getName());
                 tradingRecordService.save(record);
                 // 更新账户资金
                 updateAccountAmount();
@@ -972,8 +971,15 @@ public class DailyJob {
             }
             String[] split = stringBuilder.toString().split(",");
             dateMap = new HashMap<>();
-            for (int i = 0; i < split.length; i++) {
-                dateMap.put(split[i], i);
+            int index = 0;
+            for (String dateString : split) {
+                String[] split1 = dateString.split("-");
+                int weekDay = Integer.parseInt(split1[1]);
+                // 非交易日 不计算日期差
+                if (weekDay >= 1 && weekDay <= 5) {
+                    index++;
+                }
+                dateMap.put(split1[0], index);
             }
         }
         return dateMap;

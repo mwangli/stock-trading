@@ -23,15 +23,18 @@ public class DateUtils {
             int weekDay = calendar.get(Calendar.DAY_OF_WEEK);
             Date date = calendar.getTime();
             String format = simpleDateFormat.format(date);
-            if (weekDay == 1 || weekDay == 7) {
-                System.out.println(weekDay);
-                System.out.println(date);
-
-            } else {
-                stringBuffer.append(format).append(",");
-                if (count % 20 == 0) stringBuffer.append("\r\n");
-                count++;
-            }
+//            if (weekDay == 1 || weekDay == 7) {
+//                System.out.println(weekDay);
+//                System.out.println(date);
+//
+//            } else {
+//                stringBuffer.append(format).append(",");
+//                if (count % 20 == 0) stringBuffer.append("\r\n");
+//                count++;
+//            }
+            stringBuffer.append(format).append("-") .append(weekDay-1)  .append(",");
+            if (count % 20 == 0) stringBuffer.append("\r\n");
+            count++;
             calendar.add(Calendar.DATE, 1);
         }
         System.out.println(stringBuffer);

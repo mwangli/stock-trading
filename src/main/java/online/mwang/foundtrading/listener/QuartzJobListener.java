@@ -5,7 +5,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.po.QuartzJob;
-import online.mwang.foundtrading.controller.JobController;
 import online.mwang.foundtrading.mapper.QuartzJobMapper;
 import org.quartz.*;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -20,13 +19,11 @@ import java.util.List;
 public class QuartzJobListener implements ApplicationListener<ApplicationReadyEvent> {
 
     private final QuartzJobMapper jobMapper;
-    private final JobController jobController;
     private final Scheduler scheduler;
 
     @Override
     @SneakyThrows
     public void onApplicationEvent(ApplicationReadyEvent event) {
-        log.info("开始加载Quartz定时任务.......");
         try {
             List<QuartzJob> jobs = jobMapper.selectList(new QueryWrapper<>());
             for (QuartzJob job : jobs) {
@@ -40,6 +37,6 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
         } catch (Exception e) {
             log.error(e.getMessage());
         }
-        log.info("Quartz定时任务加载完毕.......");
+        log.info("Quartz定时任务加载完成。");
     }
 }

@@ -24,4 +24,6 @@ public class FoundTradingQuery extends BaseQuery {
     private Integer holdDays;
 
     private String sold;
+
+    private String strategyName;
 }
