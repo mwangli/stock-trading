@@ -373,10 +373,8 @@ public class DailyJob {
                 // 更新账户资金
                 updateAccountAmount();
                 // 更新交易次数
-                StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, best.getCode()));
-                stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
-                stockInfoService.updateById(stockInfo);
-                log.info("成功买入股票[{}-{}], 买入价格:{}，买入数量:{}，买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
+                stockInfos.stream().filter(s -> s.getCode().equals(best.getCode())).forEach(s -> s.setBuySaleCount(s.getBuySaleCount() + 1));
+//              log.info("成功买入股票[{}-{}], 买入价格:{}，买入数量:{}，买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
                 // 保存评分数据
                 saveDate(stockInfos);
             } else {
