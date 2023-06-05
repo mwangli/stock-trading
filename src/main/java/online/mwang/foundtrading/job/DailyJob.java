@@ -258,6 +258,7 @@ public class DailyJob {
                 final Double lastPrice = getLastPrice(maxRateRecord.getCode());
                 maxRateRecord.setSalePrice(lastPrice);
                 if (lastPrice >= nowPrice) {
+                    priceFallCount = 0;
                     log.info("最佳卖出股票[{}-{}]，当前价格：{}，等待最佳卖出时机", maxRateRecord.getCode(), maxRateRecord.getName(), lastPrice);
                 } else {
                     priceFallCount++;
@@ -370,6 +371,7 @@ public class DailyJob {
             final Double lastPrice = getLastPrice(best.getCode());
             best.setPrice(lastPrice);
             if (lastPrice <= nowPrice) {
+                priceUpCount = 0;
                 log.info("最佳买入股票[{}-{}]，当前价格：{}，等待最佳买入时机", best.getCode(), best.getName(), lastPrice);
             } else {
                 priceUpCount++;
