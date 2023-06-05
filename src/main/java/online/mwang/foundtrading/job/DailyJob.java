@@ -196,7 +196,7 @@ public class DailyJob {
         paramMap.put("token", token);
         paramMap.put("Volume", 100);
         JSONArray dataList = requestUtils.request2(buildParams(paramMap));
-        double maxRate = -100.00;
+        double maxDailyRate = -100.00;
         TradingRecord maxRateRecord = null;
         for (int i = 1; i < dataList.size(); i++) {
             String data = dataList.getString(i);
@@ -229,15 +229,15 @@ public class DailyJob {
                     double incomeRate = income / selectRecord.getBuyAmount() * 100;
                     double dailyIncomeRate = incomeRate / dateDiff;
                     log.info("当前股票[{}-{}]，买入金额:{}，卖出金额:{}，收益:{}元，日收益率:{}%", selectRecord.getCode(), selectRecord.getName(), selectRecord.getBuyAmount(), saleAmount, income, dailyIncomeRate);
-                    if (dailyIncomeRate > maxRate) {
+                    if (dailyIncomeRate > maxDailyRate) {
                         selectRecord.setSalePrice(price);
                         selectRecord.setSaleNumber(selectRecord.getBuyAmount());
                         selectRecord.setSaleAmount(saleAmount);
                         selectRecord.setIncome(income);
                         selectRecord.setIncomeRate(incomeRate);
                         selectRecord.setHoldDays(dateDiff);
-                        selectRecord.setDailyIncomeRate(incomeRate);
-                        maxRate = dailyIncomeRate;
+                        selectRecord.setDailyIncomeRate(dailyIncomeRate);
+                        maxDailyRate = dailyIncomeRate;
                         maxRateRecord = selectRecord;
                     }
                 }
