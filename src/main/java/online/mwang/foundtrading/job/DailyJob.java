@@ -84,6 +84,7 @@ public class DailyJob {
 //    @Scheduled(cron = "0 0,15,30 9 ? * MON-FRI")
     public void runBuyJob() {
         log.info("开始执行买入任务====================================");
+        refreshToken();
         buy(0);
         log.info("买入任务执行完毕====================================");
     }
@@ -92,6 +93,7 @@ public class DailyJob {
 //    @Scheduled(cron = "0 0 10,11,14 ? * MON-FRI")
     public void runSaleJob() {
         log.info("开始执行卖出任务====================================");
+        refreshToken();
         sale(0);
         log.info("卖出任务执行完毕====================================");
     }
@@ -100,6 +102,7 @@ public class DailyJob {
 //    @Scheduled(cron = "0 0 9-15 ? * MON-FRI")
     public void runAccountJob() {
         log.info("更新账户余额任务执行开始====================================");
+        refreshToken();
         updateAccountAmount();
         log.info("更新账户余额任务执行结束====================================");
     }
@@ -109,6 +112,7 @@ public class DailyJob {
 //    @Scheduled(cron = "0 0 8 ? * MON-FRI")
     public void runNowJob() {
         log.info("更新股票实时价格任务执行开始====================================");
+        refreshToken();
         updateNowPrice();
         log.info("更新股票实时价格任务执行结束====================================");
     }
@@ -117,6 +121,7 @@ public class DailyJob {
 //    @Scheduled(cron = "0 0 15 ? * MON-FRI")
     public void runHistoryJob() {
         log.info("更新股票历史价格任务执行开始====================================");
+        refreshToken();
         updateHistoryPrice();
         log.info("更新股票历史价格任务执行结束====================================");
     }
@@ -125,6 +130,7 @@ public class DailyJob {
 //    @Scheduled(cron = "0 0 15 1/10 * ?")
     public void runSyncJob() {
         log.info("同步订单任务执行开始====================================");
+        refreshToken();
         syncBuySaleRecord();
         syncBuySaleCount();
         log.info("同步订单执行结束====================================");
@@ -134,6 +140,7 @@ public class DailyJob {
 //    @Scheduled(cron = "0 0 12 1,15 * ?")
     public void runFlushJob() {
         log.info("更新权限任务执行开始====================================");
+        refreshToken();
         flushPermission();
         log.info("更新权限任务执行结束====================================");
     }
