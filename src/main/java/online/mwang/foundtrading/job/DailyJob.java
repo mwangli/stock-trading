@@ -305,6 +305,7 @@ public class DailyJob {
                     // 如果交易不成功，撤单后重新计算卖出
                     log.info("卖出交易不成功，进行撤单操作");
                     cancelOrder(saleNo);
+                    SleepUtils.second(WAIT_TIME_SECONDS);
                     log.info("第{}次尝试卖出失败---------", times + 1);
                     sale(times + 1);
                 }
@@ -445,6 +446,7 @@ public class DailyJob {
                 // 如果交易不成功，撤单后再次尝试卖出
                 log.info("当前买入交易不成功，撤单后尝试买入下一股票");
                 cancelOrder(buyNo);
+                SleepUtils.second(WAIT_TIME_SECONDS);
                 buy(times + 1);
             }
         }
