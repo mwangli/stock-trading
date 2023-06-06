@@ -344,9 +344,13 @@ public class DailyJob {
         // 撤销所有未成功订单，回收可用资金
         cancelAllOrder(1);
         // 更新账户可用资金
-        final Double totalAvailableAmount = updateAccountAmount().getAvailableAmount();
+        final AccountInfo accountInfo = updateAccountAmount();
+        final Double totalAvailableAmount = accountInfo.getAvailableAmount();
+        final Double totalAmount = accountInfo.getTotalAmount();
+        final double maxAmount = totalAmount / MAX_HOLD_STOCKS;
         // 计算此次可用资金
         double availableAmount = totalAvailableAmount / needCount;
+        availableAmount= Math.min(availableAmount, maxAmount);
         // 计算可买入股票价格区间
         final double highPrice = availableAmount / MIN_HOLD_NUMBER;
         final double lowPrice = (availableAmount / MAX_HOLD_NUMBER) * LOW_PRICE_PERCENT;
