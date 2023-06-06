@@ -270,6 +270,7 @@ public class DailyJob {
                         break;
                     }
                 } else {
+                    priceFallCount = 0;
                     timesCount++;
                     log.info("最佳卖出股票[{}-{}]，当前价格：{}，等待最佳卖出时机", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getSalePrice());
                 }
@@ -390,6 +391,7 @@ public class DailyJob {
                     break;
                 }
             } else {
+                priceUpCount = 0;
                 timesCount++;
                 log.info("最佳买入股票[{}-{}]，当前价格：{}，等待最佳买入时机", best.getCode(), best.getName(), lastPrice);
             }
