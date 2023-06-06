@@ -53,8 +53,8 @@ public class DailyJob {
     private static final double LOW_PRICE_PERCENT = 0.8;
     // 最低价格限制，资金不足时不买入低价股
     private static final double LOW_PRICE_LIMIT = 5.0;
-    private static final int BUY_RETRY_TIMES = 5;
-    private static final int SOLD_RETRY_TIMES = 5;
+    private static final int BUY_RETRY_TIMES = 3;
+    private static final int SOLD_RETRY_TIMES = 3;
     private static final int PRICE_UP_LIMIT = 3;
     private static final int PRICE_FALL_LIMIT = 3;
     private static final int BUY_RETRY_LIMIT = 10;
@@ -253,7 +253,7 @@ public class DailyJob {
             // 等待最佳卖出时机
             int priceFallCount = 0;
             int timesCount = 0;
-            while (timesCount < 60) {
+            while (timesCount < 36) {
                 SleepUtils.second(5);
                 final Double nowPrice = maxRateRecord.getSalePrice();
                 final Double lastPrice = getLastPrice(maxRateRecord.getCode());
@@ -372,7 +372,7 @@ public class DailyJob {
         // 等待最佳买入时机
         int priceUpCount = 0;
         int timesCount = 0;
-        while (timesCount < 60) {
+        while (timesCount < 36) {
             SleepUtils.second(5);
             final Double nowPrice = best.getPrice();
             final Double lastPrice = getLastPrice(best.getCode());
@@ -438,7 +438,7 @@ public class DailyJob {
                 updateAccountAmount();
                 // 更新交易次数
                 stockInfos.stream().filter(s -> s.getCode().equals(best.getCode())).forEach(s -> s.setBuySaleCount(s.getBuySaleCount() + 1));
-//              log.info("成功买入股票[{}-{}], 买入价格:{}，买入数量:{}，买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
+                log.info("成功买入股票[{}-{}], 买入价格:{}，买入数量:{}，买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
                 // 保存评分数据
                 saveDate(stockInfos);
             } else {
