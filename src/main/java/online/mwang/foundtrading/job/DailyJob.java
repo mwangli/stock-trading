@@ -350,7 +350,7 @@ public class DailyJob {
         final double maxAmount = totalAmount / MAX_HOLD_STOCKS;
         // 计算此次可用资金
         double availableAmount = totalAvailableAmount / needCount;
-        availableAmount= Math.min(availableAmount, maxAmount);
+        availableAmount = Math.min(availableAmount, maxAmount);
         // 计算可买入股票价格区间
         final double highPrice = availableAmount / MIN_HOLD_NUMBER;
         final double lowPrice = (availableAmount / MAX_HOLD_NUMBER) * LOW_PRICE_PERCENT;
@@ -366,6 +366,7 @@ public class DailyJob {
         // 选择有交易权限合适价格区间的数据，按评分排序分组
         final List<StockInfo> limitList = stockInfos.stream()
                 .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= lowPrice && s.getPrice() <= highPrice)
+                .sorted(Comparator.comparingDouble(StockInfo::getScore))
                 .skip((long) times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
         // 在得分高的一组中随机选择一支买入
         List<String> buyCodes = tradingRecordService.list().stream().filter(s -> "0".equals(s.getSold())).map(TradingRecord::getCode).collect(Collectors.toList());
