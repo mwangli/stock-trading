@@ -355,10 +355,10 @@ public class DailyJob {
         final double highPrice = availableAmount / MIN_HOLD_NUMBER;
         final double lowPrice = (availableAmount / MAX_HOLD_NUMBER) * LOW_PRICE_PERCENT;
         log.info("当前可用资金{}元, 可买入价格区间[{},{}]", availableAmount, lowPrice, highPrice);
-        if (lowPrice < LOW_PRICE_LIMIT) {
-            log.info("可用资金资金不足，取消购买任务！");
-            return;
-        }
+//        if (lowPrice < LOW_PRICE_LIMIT) {
+//            log.info("可用资金资金不足，取消购买任务！");
+//            return;
+//        }
         //  获取实时价格
         final List<StockInfo> dataList = getDataList();
         // 计算得分
@@ -375,7 +375,7 @@ public class DailyJob {
             log.info("当前股票[{}-{}]已经持有，尝试买入下一组股票", best.getCode(), best.getName());
             buy(times + 1);
         }
-        log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}，日增长率曲线:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore(), best.getIncreaseRate());
+        log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore());
         // 等待最佳买入时机
 //        int priceUpCount = 0;
 //        int timesCount = 0;
@@ -463,9 +463,10 @@ public class DailyJob {
         List<StockInfo> stockInfos = stockInfoService.list();
         stockInfos.forEach(info -> dataList.stream().filter(s -> s.getCode().equals(info.getCode())).findFirst().ifPresent(p -> {
             Double nowPrice = p.getPrice();
-            List<DailyItem> priceList = JSON.parseArray(p.getPrices(), DailyItem.class);
-            List<DailyItem> rateList = JSON.parseArray(p.getIncreaseRate(), DailyItem.class);
+            List<DailyItem> priceList = JSON.parseArray(info.getPrices(), DailyItem.class);
+            List<DailyItem> rateList = JSON.parseArray(info.getIncreaseRate(), DailyItem.class);
             Double score = handleScore(nowPrice, priceList, rateList);
+            log.info("score:{}", score);
             info.setScore(score);
             info.setPrice(p.getPrice());
             info.setIncrease(p.getIncrease());
