@@ -367,10 +367,10 @@ public class DailyJob {
         final double highPrice = availableAmount / MIN_HOLD_NUMBER;
         final double lowPrice = (availableAmount / MAX_HOLD_NUMBER) * LOW_PRICE_PERCENT;
         log.info("当前可用资金{}元, 可买入价格区间[{},{}]", availableAmount, lowPrice, highPrice);
-//        if (lowPrice < LOW_PRICE_LIMIT) {
-//            log.info("可用资金资金不足，取消购买任务！");
-//            return;
-//        }
+        if (lowPrice < LOW_PRICE_LIMIT) {
+            log.info("可用资金资金不足，取消购买任务！");
+            return;
+        }
         //  获取实时价格
         final List<StockInfo> dataList = getDataList();
         // 计算得分
