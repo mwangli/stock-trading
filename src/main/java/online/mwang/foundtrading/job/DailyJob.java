@@ -796,18 +796,18 @@ public class DailyJob {
         ArrayList<StockInfo> saveList = new ArrayList<>();
         stockInfos.forEach(s -> threadPool.submit(() -> {
             List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
-            if (historyPrices == null) {
-                log.error("获取股票[{}-{}]历史价格数据是失败!", s.getCode(), s.getName());
-            }
+//            if (historyPrices == null) {
+//                log.error("获取股票[{}-{}]历史价格数据是失败!", s.getCode(), s.getName());
+//            }
             List<DailyItem> rateList = getRateList(historyPrices);
             s.setPrices(JSON.toJSONString(historyPrices));
             s.setIncreaseRate(JSON.toJSONString(rateList));
             s.setUpdateTime(new Date());
             saveList.add(s);
-            final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
-            if (finishNums % 100 == 0) {
-                log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
-            }
+//            final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
+//            if (finishNums % 100 == 0) {
+//                log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
+//            }
             countDownLatch.countDown();
         }));
         countDownLatch.await();
