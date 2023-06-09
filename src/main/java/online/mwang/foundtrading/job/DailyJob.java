@@ -62,6 +62,7 @@ public class DailyJob {
     private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
     private static final int THREAD_POOL_NUMBERS = 10;
+    private static final int CANCEL_WAIT_TIMES = 6;
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
     private static HashMap<String, Integer> dateMap;
@@ -188,6 +189,11 @@ public class DailyJob {
             log.warn("今天已经有卖出记录了，无需重复卖出!");
             return;
         }
+        // 撤销未成功订单
+        if (!waitingCancelOrder()) {
+            log.info("存在未撤销失败订单，取消卖出任务！");
+            return;
+        }
         String token = redisTemplate.opsForValue().get("requestToken");
         long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -301,12 +307,15 @@ public class DailyJob {
                     stockInfoService.updateById(stockInfo);
                     log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{}，日收益率为:{}", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getSaleAmount(), maxRateRecord.getIncome(), maxRateRecord.getDailyIncomeRate());
                     // 卖出成功后执行买入逻辑
-                    buy(0);
+//                    buy(0);
                 } else {
                     // 如果交易不成功，撤单后重新计算卖出
                     log.info("卖出交易不成功，进行撤单操作");
-                    cancelOrder(saleNo);
-                    SleepUtils.second(WAIT_TIME_SECONDS);
+                    // 撤销未成功订单
+                    if (!waitingCancelOrder()) {
+                        log.info("存在未撤销失败订单，取消卖出任务！");
+                        return;
+                    }
                     log.info("第{}次尝试卖出失败---------", times + 1);
                     sale(times + 1);
                 }
@@ -342,7 +351,10 @@ public class DailyJob {
             return;
         }
         // 撤销所有未成功订单，回收可用资金
-        cancelAllOrder(1);
+        if (!waitingCancelOrder()) {
+            log.info("存在未撤销失败订单，取消购买任务！");
+            return;
+        }
         // 更新账户可用资金
         final AccountInfo accountInfo = updateAccountAmount();
         final Double totalAvailableAmount = accountInfo.getAvailableAmount();
@@ -452,8 +464,12 @@ public class DailyJob {
             } else {
                 // 如果交易不成功，撤单后再次尝试卖出
                 log.info("当前买入交易不成功，撤单后尝试买入下一股票");
-                cancelOrder(buyNo);
-                SleepUtils.second(WAIT_TIME_SECONDS);
+                // 撤销所有未成功订单
+                if (!waitingCancelOrder()) {
+                    log.info("存在未撤销失败订单，取消购买任务！");
+                    return;
+                }
+                log.info("第{}次尝试买入失败---------", times + 1);
                 buy(times + 1);
             }
         }
@@ -466,7 +482,6 @@ public class DailyJob {
             List<DailyItem> priceList = JSON.parseArray(info.getPrices(), DailyItem.class);
             List<DailyItem> rateList = JSON.parseArray(info.getIncreaseRate(), DailyItem.class);
             Double score = handleScore(nowPrice, priceList, rateList);
-            log.info("score:{}", score);
             info.setScore(score);
             info.setPrice(p.getPrice());
             info.setIncrease(p.getIncrease());
@@ -541,6 +556,43 @@ public class DailyJob {
                 }
             }
         }
+    }
+
+    public Boolean queryCancelStatus() {
+        String token = redisTemplate.opsForValue().get("requestToken");
+        final long timeMillis = System.currentTimeMillis();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 113);
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", 500);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        JSONArray result = requestUtils.request2(buildParams(paramMap));
+        if (result != null && result.size() > 1) {
+            for (int i = 1; i < result.size(); i++) {
+                String string = result.getString(i);
+                String[] split = string.split("\\|");
+                String code = split[0];
+                String name = split[1];
+                String answerNo = split[8];
+                log.info("当前股票[{}-{}]订单撤销失败", code, name);
+                cancelOrder(answerNo);
+            }
+        }
+        return result != null && result.size() == 1;
+    }
+
+    public Boolean waitingCancelOrder() {
+        int waitTimes = 0;
+        while (!queryCancelStatus()) {
+            SleepUtils.second(WAIT_TIME_SECONDS);
+            waitTimes++;
+            if (waitTimes >= CANCEL_WAIT_TIMES) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public JSONObject buySale(String type, String code, Double price, Double number) {
@@ -671,6 +723,7 @@ public class DailyJob {
                         record.setBuyAmount(amount + getPeeAmount(amount));
                         final Date buyDate = DateUtils.dateTimeFormat.parse(dateString);
                         record.setBuyDate(buyDate);
+                        record.setBuyDateString(date);
                         record.setBuyNo(answerNo);
                         record.setSold("0");
                         final Date now = new Date();
