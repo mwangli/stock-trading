@@ -11,11 +11,14 @@ import online.mwang.foundtrading.bean.query.FoundTradingQuery;
 import online.mwang.foundtrading.job.DailyJob;
 import online.mwang.foundtrading.mapper.AccountInfoMapper;
 import online.mwang.foundtrading.mapper.StockInfoMapper;
-import online.mwang.foundtrading.service.TradingRecordService;
 import online.mwang.foundtrading.service.StockInfoService;
+import online.mwang.foundtrading.service.TradingRecordService;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.List;
 import java.util.stream.Collectors;
 
 /**
@@ -68,10 +71,14 @@ public class TradingRecordController {
     }
 
     @GetMapping("analysis")
-    public Response<AnalysisData> analysis() {
+    public Response<AnalysisData> analysis(String startDate, String endDate) {
         final AnalysisData data = new AnalysisData();
         // 获取所有已卖出的股票，按更新时间倒序
-        final List<TradingRecord> sortedSoldList = tradingRecordService.list(new QueryWrapper<TradingRecord>().lambda().eq(TradingRecord::getSold, "1").orderByDesc(true, TradingRecord.getOrder("")));
+        LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "1")
+                .ge(startDate != null, TradingRecord::getSaleDateString, startDate)
+                .le(endDate != null, TradingRecord::getSaleDateString, endDate)
+                .orderByDesc(TradingRecord.getOrder(""));
+        final List<TradingRecord> sortedSoldList = tradingRecordService.list(queryWrapper);
         // 获取最近收益金额
         sortedSoldList.stream().findFirst().ifPresent(o -> data.setIncome(o.getIncome()));
         // 获取上次收益金额
