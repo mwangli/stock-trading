@@ -795,22 +795,17 @@ public class DailyJob {
         // 多线程请求数据
         ArrayList<StockInfo> saveList = new ArrayList<>();
         stockInfos.forEach(s -> threadPool.submit(() -> {
-            try {
-                List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
-                List<DailyItem> rateList = getRateList(historyPrices);
-                s.setPrices(JSON.toJSONString(historyPrices));
-                s.setIncreaseRate(JSON.toJSONString(rateList));
-                s.setUpdateTime(new Date());
-                saveList.add(s);
-                final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
-                if (finishNums % 100 == 0) {
-                    log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
-                }
-            } catch (Exception e) {
-                log.error("获取股票[{}-{}]历史价格数据异常:{}", s.getCode(), s.getName(), e.getStackTrace());
-            } finally {
-                countDownLatch.countDown();
+            List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
+            List<DailyItem> rateList = getRateList(historyPrices);
+            s.setPrices(JSON.toJSONString(historyPrices));
+            s.setIncreaseRate(JSON.toJSONString(rateList));
+            s.setUpdateTime(new Date());
+            saveList.add(s);
+            final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
+            if (finishNums % 100 == 0) {
+                log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
             }
+            countDownLatch.countDown();
         }));
         countDownLatch.await();
         saveDate(saveList);

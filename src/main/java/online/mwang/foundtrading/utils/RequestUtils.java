@@ -32,7 +32,7 @@ public class RequestUtils {
     @SneakyThrows
     public JSONArray request(String formParam) {
         HttpRequest postRequest = HttpRequest.newBuilder()
-               .POST(HttpRequest.BodyPublishers.ofString(formParam))
+                .POST(HttpRequest.BodyPublishers.ofString(formParam))
                 .uri(URI.create("https://weixin.citicsinfo.com/reqxml?action=1230"))
                 .build();
         HttpResponse<String> response = client.send(postRequest, HttpResponse.BodyHandlers.ofString());
@@ -40,7 +40,10 @@ public class RequestUtils {
 //        log.info(responseBody);
         final JSONObject res = JSONObject.parseObject(responseBody);
         final JSONObject data = res.getJSONObject("BINDATA");
-        return data.getJSONArray("results");
+        if (data != null && data.getJSONArray("results") != null) {
+            return data.getJSONArray("results");
+        }
+        return new JSONArray();
     }
 
     @SneakyThrows
