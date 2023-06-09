@@ -169,6 +169,7 @@ public class DailyJob {
             if (!errorNo.equals("-57")) {
                 info.setPermission("0");
             }
+            log.info("刷新当前股票[{}-{}]交易权限。", info.getCode(), info.getName());
         });
         saveDate(stockInfos);
         // 取消所有提交的订单
@@ -380,7 +381,7 @@ public class DailyJob {
                 .sorted(Comparator.comparingDouble(StockInfo::getScore).reversed())
                 .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= lowPrice && s.getPrice() <= highPrice)
                 .skip((long) times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
-        limitList.forEach(s-> System.out.println(s.getScore()));
+        limitList.forEach(s -> System.out.println(s.getScore()));
         // 在得分高的一组中随机选择一支买入
         List<String> buyCodes = tradingRecordService.list().stream().filter(s -> "0".equals(s.getSold())).map(TradingRecord::getCode).collect(Collectors.toList());
         StockInfo best = limitList.get(new Random().nextInt(BUY_RETRY_LIMIT));
