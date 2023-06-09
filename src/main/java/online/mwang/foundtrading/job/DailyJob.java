@@ -61,7 +61,7 @@ public class DailyJob {
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
-    private static final int THREAD_POOL_NUMBERS = 10;
+    private static final int THREAD_POOL_NUMBERS = 8;
     private static final int CANCEL_WAIT_TIMES = 6;
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
@@ -791,25 +791,31 @@ public class DailyJob {
     @SneakyThrows
     public void updateHistoryPrice() {
         final List<StockInfo> stockInfos = stockInfoService.list();
+        log.info("stockInfos.size():{}",stockInfos.size());
         final CountDownLatch countDownLatch = new CountDownLatch(stockInfos.size());
         // 多线程请求数据
         ArrayList<StockInfo> saveList = new ArrayList<>();
-        stockInfos.forEach(s -> threadPool.submit(() -> {
-            List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
+        stockInfos.forEach(s -> {
+            threadPool.submit(() -> {
+                List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
 //            if (historyPrices == null) {
-//                log.error("获取股票[{}-{}]历史价格数据是失败!", s.getCode(), s.getName());
+//                log.error("获取股票[{}-{}]历史价格数据失败!", s.getCode(), s.getName());
 //            }
-            List<DailyItem> rateList = getRateList(historyPrices);
-            s.setPrices(JSON.toJSONString(historyPrices));
-            s.setIncreaseRate(JSON.toJSONString(rateList));
-            s.setUpdateTime(new Date());
-            saveList.add(s);
-//            final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
-//            if (finishNums % 100 == 0) {
-//                log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
-//            }
-            countDownLatch.countDown();
-        }));
+                List<DailyItem> rateList = getRateList(historyPrices);
+                s.setPrices(JSON.toJSONString(historyPrices));
+                s.setIncreaseRate(JSON.toJSONString(rateList));
+                s.setUpdateTime(new Date());
+                saveList.add(s);
+                final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
+                if (finishNums % 100 == 0) {
+                    log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
+                }
+                countDownLatch.countDown();
+                SleepUtils.milliSecond(10);
+                log.info("saveList.size():{}",saveList.size());
+            });
+            SleepUtils.milliSecond(10);
+        });
         countDownLatch.await();
         saveDate(saveList);
     }

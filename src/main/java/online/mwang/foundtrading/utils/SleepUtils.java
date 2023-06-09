@@ -15,4 +15,10 @@ public class SleepUtils {
         } catch (InterruptedException e) {
         }
     }
+    public static final void milliSecond(long seconds) {
+        try {
+            TimeUnit.MILLISECONDS.sleep(seconds);
+        } catch (InterruptedException e) {
+        }
+    }
 }
