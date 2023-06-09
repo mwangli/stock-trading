@@ -791,7 +791,6 @@ public class DailyJob {
     @SneakyThrows
     public void updateHistoryPrice() {
         final List<StockInfo> stockInfos = stockInfoService.list();
-        log.info("stockInfos.size():{}", stockInfos.size());
         final CountDownLatch countDownLatch = new CountDownLatch(stockInfos.size());
         // 多线程请求数据
         ArrayList<StockInfo> saveList = new ArrayList<>();
