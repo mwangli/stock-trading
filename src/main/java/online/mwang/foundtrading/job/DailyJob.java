@@ -377,7 +377,7 @@ public class DailyJob {
         List<StockInfo> stockInfos = calculateScore(dataList);
         // 选择有交易权限合适价格区间的数据，按评分排序分组
         final List<StockInfo> limitList = stockInfos.stream()
-                .sorted(Comparator.comparingDouble(StockInfo::getScore))
+                .sorted(Comparator.comparingDouble(StockInfo::getScore).reversed())
                 .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= lowPrice && s.getPrice() <= highPrice)
                 .skip((long) times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
         limitList.forEach(s-> System.out.println(s.getScore()));
