@@ -796,6 +796,9 @@ public class DailyJob {
         ArrayList<StockInfo> saveList = new ArrayList<>();
         stockInfos.forEach(s -> threadPool.submit(() -> {
             List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
+            if (historyPrices == null) {
+                log.error("获取股票[{}-{}]历史价格数据是失败!", s.getCode(), s.getName());
+            }
             List<DailyItem> rateList = getRateList(historyPrices);
             s.setPrices(JSON.toJSONString(historyPrices));
             s.setIncreaseRate(JSON.toJSONString(rateList));
