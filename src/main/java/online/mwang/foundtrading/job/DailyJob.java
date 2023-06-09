@@ -164,7 +164,7 @@ public class DailyJob {
         stockInfoMapper.resetPermission();
         List<StockInfo> stockInfos = stockInfoService.list();
         stockInfos.forEach(info -> {
-            JSONObject res = buySale(BUY_TYPE_OP, info.getCode(), 1000.0, 100.0);
+            JSONObject res = buySale(SALE_TYPE_OP, info.getCode(), 1000.0, 100.0);
             final String errorNo = res.getString("ERRORNO");
             if (!errorNo.equals("-57")) {
                 info.setPermission("0");
@@ -172,7 +172,7 @@ public class DailyJob {
         });
         saveDate(stockInfos);
         // 取消所有提交的订单
-        cancelAllOrder(10);
+        cancelAllOrder();
     }
 
     public void sale(int times) {
@@ -532,43 +532,36 @@ public class DailyJob {
         return accountInfo;
     }
 
-    public void cancelAllOrder(int pages) {
-        for (int i = 0; i < pages; i++) {
-            String token = redisTemplate.opsForValue().get("requestToken");
-            final long timeMillis = System.currentTimeMillis();
-            HashMap<String, Object> paramMap = new HashMap<>();
-            paramMap.put("action", 152);
-            paramMap.put("StartPos", i * 500);
-            paramMap.put("MaxCount", 500);
-            paramMap.put("op_station", 4);
-            paramMap.put("token", token);
-            paramMap.put("reqno", timeMillis);
-            JSONArray result = requestUtils.request2(buildParams(paramMap));
-            if (result != null && result.size() > 1) {
-                for (int j = 1; i < result.size(); j++) {
-                    String string = result.getString(j);
-                    String[] split = string.split("\\|");
-                    String code = split[0];
-                    String name = split[1];
-                    String answerNo = split[8];
-                    log.info("撤销当前股票[{}-{}]订单", code, name);
-                    cancelOrder(answerNo);
-                }
+    public JSONArray listCancelOrder() {
+        String token = redisTemplate.opsForValue().get("requestToken");
+        final long timeMillis = System.currentTimeMillis();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 152);
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", 500);
+        paramMap.put("op_station", 4);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        return requestUtils.request2(buildParams(paramMap));
+    }
+
+    public void cancelAllOrder() {
+        final JSONArray result = listCancelOrder();
+        if (result != null && result.size() > 1) {
+            for (int i = 1; i < result.size(); i++) {
+                String string = result.getString(i);
+                String[] split = string.split("\\|");
+                String code = split[0];
+                String name = split[1];
+                String answerNo = split[8];
+                log.info("撤销当前股票[{}-{}]订单", code, name);
+                cancelOrder(answerNo);
             }
         }
     }
 
     public Boolean queryCancelStatus() {
-        String token = redisTemplate.opsForValue().get("requestToken");
-        final long timeMillis = System.currentTimeMillis();
-        HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", 113);
-        paramMap.put("StartPos", 0);
-        paramMap.put("MaxCount", 500);
-        paramMap.put("ReqlinkType", 1);
-        paramMap.put("token", token);
-        paramMap.put("reqno", timeMillis);
-        JSONArray result = requestUtils.request2(buildParams(paramMap));
+        final JSONArray result = listCancelOrder();
         if (result != null && result.size() > 1) {
             for (int i = 1; i < result.size(); i++) {
                 String string = result.getString(i);
