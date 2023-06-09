@@ -157,7 +157,7 @@ public class DailyJob {
         stockInfoMapper.resetPermission();
         List<StockInfo> stockInfos = stockInfoService.list();
         stockInfos.forEach(info -> {
-            JSONObject res = buySale(SALE_TYPE_OP, info.getCode(), 100.0, 100.0);
+            JSONObject res = buySale(BUY_TYPE_OP, info.getCode(), 100.0, 100.0);
             final String errorNo = res.getString("ERRORNO");
             if (!errorNo.equals("-57")) {
                 info.setPermission("0");
