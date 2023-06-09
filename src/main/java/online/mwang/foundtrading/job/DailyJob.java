@@ -187,7 +187,7 @@ public class DailyJob {
         List<TradingRecord> hasSold = tradingRecordService.list(queryWrapper);
         if (!CollectionUtils.isEmpty(hasSold)) {
             log.warn("今天已经有卖出记录了，无需重复卖出!");
-//            return;
+            return;
         }
         // 撤销未成功订单
         if (!waitingCancelOrder()) {
