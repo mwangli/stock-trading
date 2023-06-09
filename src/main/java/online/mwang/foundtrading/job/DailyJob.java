@@ -380,6 +380,7 @@ public class DailyJob {
                 .sorted(Comparator.comparingDouble(StockInfo::getScore))
                 .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= lowPrice && s.getPrice() <= highPrice)
                 .skip((long) times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
+        limitList.forEach(s-> System.out.println(s.getScore()));
         // 在得分高的一组中随机选择一支买入
         List<String> buyCodes = tradingRecordService.list().stream().filter(s -> "0".equals(s.getSold())).map(TradingRecord::getCode).collect(Collectors.toList());
         StockInfo best = limitList.get(new Random().nextInt(BUY_RETRY_LIMIT));
@@ -569,7 +570,7 @@ public class DailyJob {
                 String code = split[0];
                 String name = split[1];
                 String answerNo = split[8];
-                log.info("当前股票[{}-{}]存在失败订单", code, name);
+                log.info("当前股票[{}-{}]，撤销未成功订单", code, name);
                 cancelOrder(answerNo);
             }
         }
