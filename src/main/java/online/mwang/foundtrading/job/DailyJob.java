@@ -187,7 +187,7 @@ public class DailyJob {
         List<TradingRecord> hasSold = tradingRecordService.list(queryWrapper);
         if (!CollectionUtils.isEmpty(hasSold)) {
             log.warn("今天已经有卖出记录了，无需重复卖出!");
-            return;
+//            return;
         }
         // 撤销未成功订单
         if (!waitingCancelOrder()) {
@@ -344,7 +344,7 @@ public class DailyJob {
         }
         log.info("第{}次尝试买入股票---------", times + 1);
         // 查询持仓股票数量
-        final long holdCount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().count();
+        final long holdCount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).size();
         final long needCount = MAX_HOLD_STOCKS - holdCount;
         if (needCount <= 0) {
             log.info("持仓股票数量已达到最大值:{}，无需购买!", MAX_HOLD_STOCKS);
@@ -377,8 +377,8 @@ public class DailyJob {
         List<StockInfo> stockInfos = calculateScore(dataList);
         // 选择有交易权限合适价格区间的数据，按评分排序分组
         final List<StockInfo> limitList = stockInfos.stream()
-                .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= lowPrice && s.getPrice() <= highPrice)
                 .sorted(Comparator.comparingDouble(StockInfo::getScore))
+                .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= lowPrice && s.getPrice() <= highPrice)
                 .skip((long) times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
         // 在得分高的一组中随机选择一支买入
         List<String> buyCodes = tradingRecordService.list().stream().filter(s -> "0".equals(s.getSold())).map(TradingRecord::getCode).collect(Collectors.toList());
@@ -569,7 +569,7 @@ public class DailyJob {
                 String code = split[0];
                 String name = split[1];
                 String answerNo = split[8];
-                log.info("当前股票[{}-{}]订单撤销失败", code, name);
+                log.info("当前股票[{}-{}]存在失败订单", code, name);
                 cancelOrder(answerNo);
             }
         }
@@ -579,6 +579,7 @@ public class DailyJob {
     public Boolean waitingCancelOrder() {
         int waitTimes = 0;
         while (!queryCancelStatus()) {
+            log.info("等待订单撤销完成...");
             SleepUtils.second(WAIT_TIME_SECONDS);
             waitTimes++;
             if (waitTimes >= CANCEL_WAIT_TIMES) {
