@@ -16,6 +16,7 @@ import online.mwang.foundtrading.mapper.StockInfoMapper;
 import online.mwang.foundtrading.service.StockInfoService;
 import online.mwang.foundtrading.service.TradingRecordService;
 import online.mwang.foundtrading.utils.DateUtils;
+import online.mwang.foundtrading.utils.OCRUtils;
 import online.mwang.foundtrading.utils.RequestUtils;
 import online.mwang.foundtrading.utils.SleepUtils;
 import org.springframework.core.io.ClassPathResource;
@@ -63,12 +64,14 @@ public class DailyJob {
     private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
     private static final int THREAD_POOL_NUMBERS = 8;
+    private static final Integer TOKEN_EXPIRE_MINUTES = 30;
     private static final int CANCEL_WAIT_TIMES = 6;
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
     private static final String REQUEST_TOKEN = "requestToken";
     private static HashMap<String, Integer> dateMap;
     private final RequestUtils requestUtils;
+    private final OCRUtils ocrUtils;
     private final StockInfoService stockInfoService;
     private final TradingRecordService tradingRecordService;
     private final AccountInfoMapper accountInfoMapper;
@@ -160,8 +163,9 @@ public class DailyJob {
     }
 
     public String getCheckCodeFromMessage(String message) {
-        log.info("图片验证码：{}", message);
-        return "1234";
+        final String code = ocrUtils.execute(message);
+        log.info("识别到图片验证码：{}", code);
+        return code;
     }
 
     @SneakyThrows
@@ -191,7 +195,7 @@ public class DailyJob {
         paramMap.put("reqno", timeMillis);
         final JSONObject res = requestUtils.request3(buildParams(paramMap));
         final String token = res.getString("TOKEN");
-        redisTemplate.opsForValue().set(REQUEST_TOKEN, token, 30, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(REQUEST_TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
     }
 
     @SneakyThrows
@@ -539,7 +543,7 @@ public class DailyJob {
         String param = buildParams(paramMap);
         final JSONObject result = requestUtils.request3(param);
         final String newToken = result.getString("TOKEN");
-        redisTemplate.opsForValue().set("requestToken", newToken, 30, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set("requestToken", newToken, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
     }
 
     // 更新账户资金
@@ -641,7 +645,7 @@ public class DailyJob {
         paramMap.put("reqno", timeMillis);
         final JSONObject result = requestUtils.request3(buildParams(paramMap));
         final String newToken = result.getString("TOKEN");
-        redisTemplate.opsForValue().set("requestToken", newToken, 30, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set("requestToken", newToken, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
         return result;
     }
 

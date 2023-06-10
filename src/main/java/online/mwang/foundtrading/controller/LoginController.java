@@ -32,9 +32,7 @@ public class LoginController {
     private static final String USERNAME = "admin";
     private static final String SDF = "MMdd";
     private static final Integer TOKEN_LENGTH = 32;
-    private static final Integer TOKEN_EXPIRE_MINUTES = 30;
     private static final Integer TOKEN_EXPIRE_HOURS = 4;
-    private static JSONObject user;
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
