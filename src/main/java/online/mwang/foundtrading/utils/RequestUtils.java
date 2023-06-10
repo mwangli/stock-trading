@@ -66,7 +66,10 @@ public class RequestUtils {
         HttpRequest postRequest = HttpRequest.newBuilder()
                 .POST(HttpRequest.BodyPublishers.ofString(formParam))
                 .uri(URI.create("https://weixin.citicsinfo.com/reqxml"))
+//                .header("Content-Type","multipart/form-data")
+//                .header("content-length",  String.valueOf(HttpRequest.BodyPublishers.ofString(formParam).contentLength()))
                 .build();
+        System.out.println(postRequest);
         HttpResponse<String> response = client.send(postRequest, HttpResponse.BodyHandlers.ofString());
         String responseBody = response.body();
         log.info(responseBody);

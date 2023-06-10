@@ -82,7 +82,7 @@ public class DailyJob {
 
     // 每隔25分钟刷新Token
 //    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
-    public void refreshToken() {
+    public void runTokenJob() {
         login();
         log.info("获取Token任务执行完毕================================");
     }
@@ -159,7 +159,7 @@ public class DailyJob {
     public String getToken() {
         final String requestToken = redisTemplate.opsForValue().get(REQUEST_TOKEN);
         if (requestToken == null) login();
-        return getToken();
+        return redisTemplate.opsForValue().get(REQUEST_TOKEN);
     }
 
     public String getCheckCodeFromMessage(String message) {
@@ -182,18 +182,32 @@ public class DailyJob {
     @SneakyThrows
     public void login() {
         final List<String> checkCode = getCheckCode();
-        long timeMillis = System.currentTimeMillis();
+//        long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", "110");
-        paramMap.put("modulus_id", 2);
-        paramMap.put("accounttype", "ZJACCOUNT");
-        paramMap.put("account", "880008900626");
-        paramMap.put("password", "361b81721dad94fe2929fb403922474566aac10842dae6d6807d294487c63bc74191b4a46e2356c7ea981da3efc48a4585fb27808b60163c105fbe24a3113df77e78ee4b624b8134592ec9d3ae7f0993c79204e649502e30a065001c6600e020b4e1233c393e8ba72c77a85550ae8d8b8c228a720e52910a1dd34e3d90c478f4");
-        paramMap.put("signkey", "51cfce1626c7cb087b940a0c224f2caa");
-        paramMap.put("CheckCode", checkCode.get(0));
-        paramMap.put("CheckToken", checkCode.get(1));
-        paramMap.put("reqno", timeMillis);
-        final JSONObject res = requestUtils.request3(buildParams(paramMap));
+        paramMap.put("action", "100");
+//        paramMap.put("modulus_id", "2");
+//        paramMap.put("accounttype", "ZJACCOUNT");
+//        paramMap.put("account", "880008900626");
+//        paramMap.put("password", "9da08684daf6cda30ef11b8fecbaa568963749de0a0496e23fcfca4b9b29953e9703b1a7cc9fe9259f7ad732f2fa1bd09017ba884c0817667c458cb554dcbeb480623ad070c4d81a185dd997e45c9ab5ae655584728193759ec40e72ad7e25f833773f3e6cd0d23c16493765358adc593ce0688edccbefdd35a3355016b724fc");
+//        paramMap.put("signkey", "51cfce1626c7cb087b940a0c224f2caa");
+////        paramMap.put("CheckCode", checkCode.get(0));
+//        paramMap.put("CheckCode", "2839");
+////        paramMap.put("CheckToken", checkCode.get(1));
+//        paramMap.put("CheckToken", "RRysPvW1JuqsFu+hEPeK9E3h3wsuMpRPndgD");
+////        paramMap.put("reqno", timeMillis);
+////        paramMap.put("cfrom", "H5");
+////        paramMap.put("tfrom", "PC");
+////        paramMap.put("newindex", "1");
+//        paramMap.put("MobileCode", "13278828091");
+//        paramMap.put("NECaptchaValidate", "CN31_5zpqlIi.qVmsF5lEIYBfQyLBFyIct.QS5wXnNRLVWAdwkKUzq6IdXLx7eL4LQ-AQBe-IbiTHO-04TIVTxdZ4hAyqnJhvivPJHVKT-OCSHVNWdDmpJZrRnPc1siPnYepUN94WNDocmZaCwlKV2A1GpzSBUikdtSHWvm-CSNf9oT_7wnTrnncg2WxQMKOeP8MmzZ2Cx1ZiOsamGRCvnz4985UFKaEz.JFkyWz0b1lch1f7GtlMX.E6U7g99P--cgnERV2RXXyUU1NcxMWnIthISNaaMuOCDhE7IQiAXdEe5ZFwk.cVSApq-xgGntiw0G4AIB5e-zWr0GZ-MTFevJGc5LghSJ9ScbQhyaG1I8WzvJec90pAPFBTPQr4vTg2v7mMIzrx0YvZwRDDS7T6YScY.tT.VCrtMn67G7q4Q_rq08l9cl2qFLkij-aa6Sb2S7VhspIP4b4e5qLiMZccA_jio8SXyLozq4dGXpeHACaHnG-yeu1-9iJ6A0YLs2c3");
+//        paramMap.put("maxcount", 100);
+//        paramMap.put("CHANNEL", "");
+//        paramMap.put("code", "");
+//        paramMap.put("intacttoserver", "%ClZvbHVtZUluZm8JAAAANTI1QS00Qjc4");
+        StringBuilder stringBuilder = new StringBuilder();
+        paramMap.forEach((k, v) -> stringBuilder.append(k).append("=").append(v).append("&"));
+        System.out.println(stringBuilder);
+        final JSONObject res = requestUtils.request3(stringBuilder.toString());
         final String token = res.getString("TOKEN");
         redisTemplate.opsForValue().set(REQUEST_TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
     }
