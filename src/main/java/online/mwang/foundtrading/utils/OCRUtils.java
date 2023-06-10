@@ -13,6 +13,9 @@ import java.io.ByteArrayOutputStream;
 import java.util.Base64;
 
 /**
+ * OCR图片文字识别
+ * 支持多语言文字库
+ *
  * @version 1.0.0
  * @author: mwangli
  * @date: 2023/6/10 16:04
@@ -21,7 +24,7 @@ import java.util.Base64;
 @Component
 public class OCRUtils {
 
-    // 执行OCR图片识别
+
     @SneakyThrows
     public String execute(String base64) {
         ITesseract instance = new Tesseract();
