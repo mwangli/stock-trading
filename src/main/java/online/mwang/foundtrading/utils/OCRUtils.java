@@ -28,7 +28,7 @@ public class OCRUtils {
     @SneakyThrows
     public String execute(String base64) {
         ITesseract instance = new Tesseract();
-        final String path = new ClassPathResource("/ocr").getPath();
+        final String path = new ClassPathResource("/ocr").getFile().getAbsolutePath();
         instance.setDatapath(path);
         instance.setLanguage("eng");
         return instance.doOCR(base64ToBufferedImage(base64.split(",")[1]));
