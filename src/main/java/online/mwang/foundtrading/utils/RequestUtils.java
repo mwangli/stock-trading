@@ -39,6 +39,7 @@ public class RequestUtils {
         String responseBody = response.body();
 //        log.info(responseBody);
         final JSONObject res = JSONObject.parseObject(responseBody);
+        checkToken(res);
         final JSONObject data = res.getJSONObject("BINDATA");
         if (data != null && data.getJSONArray("results") != null) {
             return data.getJSONArray("results");
@@ -56,6 +57,7 @@ public class RequestUtils {
         String responseBody = response.body();
         log.info(responseBody);
         final JSONObject res = JSONObject.parseObject(responseBody);
+        checkToken(res);
         return res.getJSONArray("GRID0");
     }
 
@@ -68,6 +70,17 @@ public class RequestUtils {
         HttpResponse<String> response = client.send(postRequest, HttpResponse.BodyHandlers.ofString());
         String responseBody = response.body();
         log.info(responseBody);
-        return JSONObject.parseObject(responseBody);
+        final JSONObject res = JSONObject.parseObject(responseBody);
+        checkToken(res);
+        return res;
+    }
+
+    private void checkToken(JSONObject res) {
+        //"ERRORNO":"-204009"
+        final String errorNo = res.getString("ERRORNO");
+        if ("-204009".equals(errorNo)) {
+            log.info("检测到无效token，正在重新登录。");
+
+        }
     }
 }

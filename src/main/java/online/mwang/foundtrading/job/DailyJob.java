@@ -30,6 +30,7 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -65,6 +66,7 @@ public class DailyJob {
     private static final int CANCEL_WAIT_TIMES = 6;
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
+    private static final String REQUEST_TOKEN = "requestToken";
     private static HashMap<String, Integer> dateMap;
     private final RequestUtils requestUtils;
     private final StockInfoService stockInfoService;
@@ -78,8 +80,8 @@ public class DailyJob {
     // 每隔25分钟刷新Token
 //    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
     public void refreshToken() {
-        buySale(SALE_TYPE_OP, "", 0.0, 0.0);
-        log.info("刷新Token任务执行完毕。");
+        login();
+        log.info("获取Token任务执行完毕================================");
     }
 
     // 交易日开盘时间买入 9:30
@@ -151,6 +153,47 @@ public class DailyJob {
         return stringBuilder.toString();
     }
 
+    public String getToken() {
+        final String requestToken = redisTemplate.opsForValue().get(REQUEST_TOKEN);
+        if (requestToken == null) login();
+        return getToken();
+    }
+
+    public String getCheckCodeFromMessage(String message) {
+        log.info("图片验证码：{}", message);
+        return "1234";
+    }
+
+    @SneakyThrows
+    public List<String> getCheckCode() {
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", "41092");
+        final JSONObject res = requestUtils.request3(buildParams(paramMap));
+        final String checkToken = res.getString("CHECKTOKEN");
+        final String checkMessage = res.getString("MESSAGE");
+        final String checkCode = getCheckCodeFromMessage(checkMessage);
+        return Arrays.asList(checkCode, checkToken);
+    }
+
+    @SneakyThrows
+    public void login() {
+        final List<String> checkCode = getCheckCode();
+        long timeMillis = System.currentTimeMillis();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", "110");
+        paramMap.put("modulus_id", 2);
+        paramMap.put("accounttype", "ZJACCOUNT");
+        paramMap.put("account", "880008900626");
+        paramMap.put("password", "361b81721dad94fe2929fb403922474566aac10842dae6d6807d294487c63bc74191b4a46e2356c7ea981da3efc48a4585fb27808b60163c105fbe24a3113df77e78ee4b624b8134592ec9d3ae7f0993c79204e649502e30a065001c6600e020b4e1233c393e8ba72c77a85550ae8d8b8c228a720e52910a1dd34e3d90c478f4");
+        paramMap.put("signkey", "51cfce1626c7cb087b940a0c224f2caa");
+        paramMap.put("CheckCode", checkCode.get(0));
+        paramMap.put("CheckToken", checkCode.get(1));
+        paramMap.put("reqno", timeMillis);
+        final JSONObject res = requestUtils.request3(buildParams(paramMap));
+        final String token = res.getString("TOKEN");
+        redisTemplate.opsForValue().set(REQUEST_TOKEN, token, 30, TimeUnit.MINUTES);
+    }
+
     @SneakyThrows
     public void flushPermission() {
         // 此处不能使用多线程处理，因为每次请求会使上一个Token失效
@@ -159,7 +202,7 @@ public class DailyJob {
         stockInfos.forEach(info -> {
             JSONObject res = buySale(BUY_TYPE_OP, info.getCode(), 100.0, 100.0);
             final String errorNo = res.getString("ERRORNO");
-            if (!errorNo.equals("-57")) {
+            if (!"-57".equals(errorNo)) {
                 info.setPermission("0");
             }
             log.info("刷新当前股票[{}-{}]交易权限。", info.getCode(), info.getName());
@@ -188,7 +231,7 @@ public class DailyJob {
             log.info("存在未撤销失败订单，取消卖出任务！");
             return;
         }
-        String token = redisTemplate.opsForValue().get("requestToken");
+        String token = getToken();
         long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", "117");
@@ -486,7 +529,7 @@ public class DailyJob {
     }
 
     public void cancelOrder(String answerNo) {
-        String token = redisTemplate.opsForValue().get("requestToken");
+        String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", "111");
@@ -496,12 +539,12 @@ public class DailyJob {
         String param = buildParams(paramMap);
         final JSONObject result = requestUtils.request3(param);
         final String newToken = result.getString("TOKEN");
-        redisTemplate.opsForValue().set("requestToken", newToken);
+        redisTemplate.opsForValue().set("requestToken", newToken, 30, TimeUnit.MINUTES);
     }
 
     // 更新账户资金
     public AccountInfo updateAccountAmount() {
-        String token = redisTemplate.opsForValue().get("requestToken");
+        String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", 116);
@@ -528,7 +571,7 @@ public class DailyJob {
     }
 
     public JSONArray listCancelOrder() {
-        String token = redisTemplate.opsForValue().get("requestToken");
+        String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", 152);
@@ -585,7 +628,7 @@ public class DailyJob {
     }
 
     public JSONObject buySale(String type, String code, Double price, Double number) {
-        String token = redisTemplate.opsForValue().get("requestToken");
+        String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", 110);
@@ -598,14 +641,14 @@ public class DailyJob {
         paramMap.put("reqno", timeMillis);
         final JSONObject result = requestUtils.request3(buildParams(paramMap));
         final String newToken = result.getString("TOKEN");
-        redisTemplate.opsForValue().set("requestToken", newToken);
+        redisTemplate.opsForValue().set("requestToken", newToken, 30, TimeUnit.MINUTES);
         return result;
     }
 
     public boolean queryStatus(String answerNo) {
         // 请求数据
         final long timeMillis = System.currentTimeMillis();
-        final String token = redisTemplate.opsForValue().get("requestToken");
+        final String token = getToken();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", 114);
         paramMap.put("ReqlinkType", 1);
@@ -918,7 +961,7 @@ public class DailyJob {
     public JSONArray getLastMonthOrder() {
 // 请求数据
         final long timeMillis = System.currentTimeMillis();
-        final String token = redisTemplate.opsForValue().get("requestToken");
+        final String token = getToken();
         final SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyyMMdd");
         final Calendar calendar = Calendar.getInstance();
         calendar.setTime(new Date());
@@ -969,7 +1012,7 @@ public class DailyJob {
     public JSONArray getTodayOrder() {
 // 请求数据
         final long timeMillis = System.currentTimeMillis();
-        final String token = redisTemplate.opsForValue().get("requestToken");
+        final String token = getToken();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", 114);
         paramMap.put("ReqlinkType", 1);

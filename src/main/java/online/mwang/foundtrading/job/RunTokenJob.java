@@ -19,6 +19,6 @@ public class RunTokenJob extends BaseJob {
 
     @Override
     public void run() {
-        job.refreshToken();
+        job.login();
     }
 }
