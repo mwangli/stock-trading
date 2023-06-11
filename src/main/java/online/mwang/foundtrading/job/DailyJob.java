@@ -57,6 +57,7 @@ public class DailyJob {
     private static final double LOW_PRICE_LIMIT = 5.0;
     private static final int BUY_RETRY_TIMES = 3;
     private static final int SOLD_RETRY_TIMES = 3;
+    private static final int LOGIN_RETRY_TIMES = 20;
     private static final int PRICE_UP_LIMIT = 3;
     private static final int PRICE_FALL_LIMIT = 3;
     private static final int BUY_RETRY_LIMIT = 10;
@@ -80,10 +81,20 @@ public class DailyJob {
     private final ScoreStrategyMapper strategyMapper;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
 
+    public static HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
+        paramMap.put("cfrom", "H5");
+        paramMap.put("tfrom", "PC");
+        paramMap.put("newindex", "1");
+        paramMap.put("MobileCode", "13278828091");
+        paramMap.put("intacttoserver", "%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC");
+        return paramMap;
+    }
+
     // 每隔25分钟刷新Token
 //    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
     public void runTokenJob() {
-        login();
+        log.info("开始执行获取Token任务================================");
+        login(0);
         log.info("获取Token任务执行完毕================================");
     }
 
@@ -110,7 +121,6 @@ public class DailyJob {
         updateAccountAmount();
         log.info("更新账户余额任务执行结束====================================");
     }
-
 
     // 更新股票实时价格，交易日每天上午八点执行
 //    @Scheduled(cron = "0 0 8 ? * MON-FRI")
@@ -145,34 +155,23 @@ public class DailyJob {
         log.info("更新权限任务执行结束====================================");
     }
 
-    public String buildParams(Map<String, Object> paramMap) {
-        paramMap.put("cfrom", "H5");
-        paramMap.put("tfrom", "PC");
-        paramMap.put("newindex", "1");
-        paramMap.put("MobileCode", "13278828091");
-        paramMap.put("intacttoserver", "%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC");
-        StringBuilder stringBuilder = new StringBuilder();
-        paramMap.forEach((k, v) -> stringBuilder.append(k).append("=").append(v).append("&"));
-        return stringBuilder.toString();
-    }
-
     public String getToken() {
         final String requestToken = redisTemplate.opsForValue().get(REQUEST_TOKEN);
-        if (requestToken == null) login();
+        if (requestToken == null) login(0);
         return redisTemplate.opsForValue().get(REQUEST_TOKEN);
     }
 
     public String getCheckCodeFromMessage(String message) {
         final String code = ocrUtils.execute(message);
-        log.info("识别到图片验证码：{}", code);
-        return code;
+        log.info("识别到图片验证码：{}", code.trim());
+        return code.trim();
     }
 
     @SneakyThrows
     public List<String> getCheckCode() {
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", "41092");
-        final JSONObject res = requestUtils.request3(buildParams(paramMap));
+        final JSONObject res = requestUtils.request(buildParams(paramMap));
         final String checkToken = res.getString("CHECKTOKEN");
         final String checkMessage = res.getString("MESSAGE");
         final String checkCode = getCheckCodeFromMessage(checkMessage);
@@ -180,36 +179,33 @@ public class DailyJob {
     }
 
     @SneakyThrows
-    public void login() {
+    public void login(int times) {
+        if (times >= LOGIN_RETRY_TIMES) {
+            log.error("尝试{}次登陆失败，请检查程序代码", LOGIN_RETRY_TIMES);
+            return;
+        }
         final List<String> checkCode = getCheckCode();
-//        long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", "100");
-//        paramMap.put("modulus_id", "2");
-//        paramMap.put("accounttype", "ZJACCOUNT");
-//        paramMap.put("account", "880008900626");
-//        paramMap.put("password", "9da08684daf6cda30ef11b8fecbaa568963749de0a0496e23fcfca4b9b29953e9703b1a7cc9fe9259f7ad732f2fa1bd09017ba884c0817667c458cb554dcbeb480623ad070c4d81a185dd997e45c9ab5ae655584728193759ec40e72ad7e25f833773f3e6cd0d23c16493765358adc593ce0688edccbefdd35a3355016b724fc");
-//        paramMap.put("signkey", "51cfce1626c7cb087b940a0c224f2caa");
-////        paramMap.put("CheckCode", checkCode.get(0));
-//        paramMap.put("CheckCode", "2839");
-////        paramMap.put("CheckToken", checkCode.get(1));
-//        paramMap.put("CheckToken", "RRysPvW1JuqsFu+hEPeK9E3h3wsuMpRPndgD");
-////        paramMap.put("reqno", timeMillis);
-////        paramMap.put("cfrom", "H5");
-////        paramMap.put("tfrom", "PC");
-////        paramMap.put("newindex", "1");
-//        paramMap.put("MobileCode", "13278828091");
-//        paramMap.put("NECaptchaValidate", "CN31_5zpqlIi.qVmsF5lEIYBfQyLBFyIct.QS5wXnNRLVWAdwkKUzq6IdXLx7eL4LQ-AQBe-IbiTHO-04TIVTxdZ4hAyqnJhvivPJHVKT-OCSHVNWdDmpJZrRnPc1siPnYepUN94WNDocmZaCwlKV2A1GpzSBUikdtSHWvm-CSNf9oT_7wnTrnncg2WxQMKOeP8MmzZ2Cx1ZiOsamGRCvnz4985UFKaEz.JFkyWz0b1lch1f7GtlMX.E6U7g99P--cgnERV2RXXyUU1NcxMWnIthISNaaMuOCDhE7IQiAXdEe5ZFwk.cVSApq-xgGntiw0G4AIB5e-zWr0GZ-MTFevJGc5LghSJ9ScbQhyaG1I8WzvJec90pAPFBTPQr4vTg2v7mMIzrx0YvZwRDDS7T6YScY.tT.VCrtMn67G7q4Q_rq08l9cl2qFLkij-aa6Sb2S7VhspIP4b4e5qLiMZccA_jio8SXyLozq4dGXpeHACaHnG-yeu1-9iJ6A0YLs2c3");
-//        paramMap.put("maxcount", 100);
-//        paramMap.put("CHANNEL", "");
-//        paramMap.put("code", "");
-//        paramMap.put("intacttoserver", "%ClZvbHVtZUluZm8JAAAANTI1QS00Qjc4");
-        StringBuilder stringBuilder = new StringBuilder();
-        paramMap.forEach((k, v) -> stringBuilder.append(k).append("=").append(v).append("&"));
-        System.out.println(stringBuilder);
-        final JSONObject res = requestUtils.request3(stringBuilder.toString());
+        paramMap.put("modulus_id", "2");
+        paramMap.put("accounttype", "ZJACCOUNT");
+        paramMap.put("account", "880008900626");
+        paramMap.put("MobileCode", "13278828091");
+        paramMap.put("password", "9da08684daf6cda30ef11b8fecbaa568963749de0a0496e23fcfca4b9b29953e9703b1a7cc9fe9259f7ad732f2fa1bd09017ba884c0817667c458cb554dcbeb480623ad070c4d81a185dd997e45c9ab5ae655584728193759ec40e72ad7e25f833773f3e6cd0d23c16493765358adc593ce0688edccbefdd35a3355016b724fc");
+        paramMap.put("signkey", "51cfce1626c7cb087b940a0c224f2caa");
+        paramMap.put("CheckCode", checkCode.get(0));
+        paramMap.put("CheckToken", checkCode.get(1));
+//        paramMap.put("CheckCode", "4613");
+//        paramMap.put("CheckToken", "RBjhcPe3J+mqEe+gF/SI8EikjhdjepBGnZM=");
+        final JSONObject res = requestUtils.request(buildParams(paramMap));
         final String token = res.getString("TOKEN");
-        redisTemplate.opsForValue().set(REQUEST_TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+        if (token == null) {
+            log.info("第{}次登录失败，正在尝试重新登录！", ++times);
+            SleepUtils.second(1);
+            login(times);
+        } else {
+            redisTemplate.opsForValue().set(REQUEST_TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+        }
     }
 
     @SneakyThrows
@@ -388,7 +384,7 @@ public class DailyJob {
         paramMap.put("ReqlinkType", 1);
         paramMap.put("Level", 1);
         paramMap.put("UseBPrice", 1);
-        JSONObject res = requestUtils.request3(buildParams(paramMap));
+        JSONObject res = requestUtils.request(buildParams(paramMap));
         return res.getDouble("PRICE");
     }
 
@@ -554,8 +550,7 @@ public class DailyJob {
         paramMap.put("ContactID", answerNo);
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
-        String param = buildParams(paramMap);
-        final JSONObject result = requestUtils.request3(param);
+        final JSONObject result = requestUtils.request(buildParams(paramMap));
         final String newToken = result.getString("TOKEN");
         redisTemplate.opsForValue().set("requestToken", newToken, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
     }
@@ -569,8 +564,7 @@ public class DailyJob {
         paramMap.put("ReqlinkType", 1);
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
-        String param = buildParams(paramMap);
-        final JSONArray jsonArray = requestUtils.request2(param);
+        final JSONArray jsonArray = requestUtils.request2(buildParams(paramMap));
         final String string = jsonArray.getString(1);
         // 币种|余额|可取|可用|总资产|证券|基金|冻结资金|资产|资金账户|币种代码|账号主副标志|
         final String[] split = string.split("\\|");
@@ -657,7 +651,7 @@ public class DailyJob {
         paramMap.put("Volume", number);
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
-        final JSONObject result = requestUtils.request3(buildParams(paramMap));
+        final JSONObject result = requestUtils.request(buildParams(paramMap));
         final String newToken = result.getString("TOKEN");
         redisTemplate.opsForValue().set("requestToken", newToken, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
         return result;
@@ -706,7 +700,7 @@ public class DailyJob {
             paramMap.put("c.field", "1:2:22:23:24:3:8:16:21:31");
             paramMap.put("c.cfrom", "H5");
             paramMap.put("c.tfrom", "PC");
-            final JSONArray results = requestUtils.request(buildParams(paramMap));
+            final JSONArray results = requestUtils.request3(buildParams(paramMap));
             // 解析数据
             for (int j = 0; j < results.size(); j++) {
                 final String s = results.getString(j);
@@ -956,7 +950,7 @@ public class DailyJob {
         paramMap.put("c.count", "20");
         paramMap.put("c.cfrom", "H5");
         paramMap.put("c.tfrom", "PC");
-        final JSONArray results = requestUtils.request(buildParams(paramMap));
+        final JSONArray results = requestUtils.request3(buildParams(paramMap));
         final ArrayList<DailyItem> prices = new ArrayList<>();
         int startIndex = results.size() >= HISTORY_PRICE_LIMIT ? results.size() - HISTORY_PRICE_LIMIT : 0;
         for (int i = startIndex; i < results.size(); i++) {

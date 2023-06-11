@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @version 1.0.0
@@ -81,13 +82,13 @@ public class JobController {
         // 更新Token
         String token = job.getToken();
         if (StringUtils.isNotBlank(token) && token.length() > 20) {
-            redisTemplate.opsForValue().set(REQUEST_TOKEN, token);
+            redisTemplate.opsForValue().set(REQUEST_TOKEN, token, 30, TimeUnit.MINUTES);
         }
         if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");
         }
         final QuartzJob quartzJob = jobMapper.selectById(job.getId());
-        if (!quartzJob.getCron().equals(job.getCron())){
+        if (!quartzJob.getCron().equals(job.getCron())) {
             CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
             scheduler.rescheduleJob(TriggerKey.triggerKey(job.getName()), cronTrigger);
             job.setStatus("1");
