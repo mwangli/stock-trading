@@ -211,16 +211,19 @@ public class DailyJob {
     @SneakyThrows
     public void flushPermission() {
         // 此处不能使用多线程处理，因为每次请求会使上一个Token失效
-        stockInfoMapper.resetPermission();
+        List<String> errorCodes = Arrays.asList("-1", "-61", "-64");
         List<StockInfo> stockInfos = stockInfoService.list();
+        HashMap<String, String> map = new HashMap<>();
         stockInfos.forEach(info -> {
             JSONObject res = buySale(BUY_TYPE_OP, info.getCode(), 100.0, 100.0);
             final String errorNo = res.getString("ERRORNO");
-            if (!"-57".equals(errorNo)) {
+            map.put(errorNo, res.getString("ERRORMESSAGE"));
+            if (errorCodes.contains(errorNo)) {
                 info.setPermission("0");
             }
             log.info("刷新当前股票[{}-{}]交易权限。", info.getCode(), info.getName());
         });
+        log.info("错误码合集：{}", map);
         saveDate(stockInfos);
         // 取消所有提交的订单
         cancelAllOrder();
@@ -357,8 +360,6 @@ public class DailyJob {
                     stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
                     stockInfoService.updateById(stockInfo);
                     log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{}，日收益率为:{}", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getSaleAmount(), maxRateRecord.getIncome(), maxRateRecord.getDailyIncomeRate());
-                    // 卖出成功后执行买入逻辑
-//                    buy(0);
                 } else {
                     // 如果交易不成功，撤单后重新计算卖出
                     log.info("卖出交易不成功，进行撤单操作");
@@ -431,7 +432,10 @@ public class DailyJob {
                 .sorted(Comparator.comparingDouble(StockInfo::getScore).reversed())
                 .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= lowPrice && s.getPrice() <= highPrice)
                 .skip((long) times * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
-        limitList.forEach(s -> System.out.println(s.getScore()));
+        if (limitList.size() < BUY_RETRY_LIMIT) {
+            log.info("获取股票数据异常，请取消购买任务！");
+            return;
+        }
         // 在得分高的一组中随机选择一支买入
         List<String> buyCodes = tradingRecordService.list().stream().filter(s -> "0".equals(s.getSold())).map(TradingRecord::getCode).collect(Collectors.toList());
         StockInfo best = limitList.get(new Random().nextInt(BUY_RETRY_LIMIT));
