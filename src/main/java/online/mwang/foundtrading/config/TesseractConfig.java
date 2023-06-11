@@ -20,9 +20,9 @@ public class TesseractConfig {
         ITesseract instance = new Tesseract();
         // 临时存储数据文件
         Resource resource = new ClassPathResource("/ocr/eng.traineddata");
-        File tempFile = new File("/temp/eng.traineddata");
+        File tempFile = new File("/eng.traineddata");
         FileUtils.copyToFile(resource.getInputStream(), tempFile);
-        instance.setDatapath(tempFile.getParent());
+        instance.setDatapath("/");
         instance.setLanguage("eng");
         return instance;
     }
