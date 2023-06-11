@@ -73,8 +73,7 @@ public class RequestUtils {
         final String errorNo = res.getString("ERRORNO");
         if ("-204009".equals(errorNo)) {
             log.info("检测到无效token，正在重新登录。");
-            RunTokenJob runTokenJob = applicationContext.getBean(RunTokenJob.class);
-            runTokenJob.run();
+            applicationContext.getBean(RunTokenJob.class).run();
         }
     }
 }
