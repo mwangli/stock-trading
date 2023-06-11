@@ -221,10 +221,10 @@ public class DailyJob {
             if (errorCodes.contains(errorNo)) {
                 info.setPermission("0");
             }
+            stockInfoMapper.updateById(info);
             log.info("刷新当前股票[{}-{}]交易权限: {}", info.getCode(), info.getName(), info.getPermission());
         });
         log.info("交易权限错误码合集：{}", map);
-        saveDate(stockInfos);
         // 取消所有提交的订单
         cancelAllOrder();
     }
