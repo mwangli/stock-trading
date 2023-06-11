@@ -4,13 +4,15 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.client5.http.classic.methods.HttpPost;
+import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.springframework.stereotype.Component;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
+import java.util.HashMap;
 
 /**
  * @version 1.0.0
@@ -22,24 +24,37 @@ import java.time.Duration;
 @Component
 public class RequestUtils {
 
-    private final HttpClient client = HttpClient.newBuilder()
-            .version(HttpClient.Version.HTTP_2)
-            .connectTimeout(Duration.ofSeconds(5))
-            .followRedirects(HttpClient.Redirect.ALWAYS)
-            .build();
-
+    private static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
 
     @SneakyThrows
-    public JSONArray request(String formParam) {
-        HttpRequest postRequest = HttpRequest.newBuilder()
-                .POST(HttpRequest.BodyPublishers.ofString(formParam))
-                .uri(URI.create("https://weixin.citicsinfo.com/reqxml?action=1230"))
-                .build();
-        HttpResponse<String> response = client.send(postRequest, HttpResponse.BodyHandlers.ofString());
-        String responseBody = response.body();
-//        log.info(responseBody);
-        final JSONObject res = JSONObject.parseObject(responseBody);
+    public JSONObject request(String url, HashMap<String, Object> formParam) {
+        CloseableHttpClient client = HttpClients.createDefault();
+        MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
+        formParam.forEach((k, v) -> entityBuilder.addTextBody(k, String.valueOf(v)));
+        HttpPost post = new HttpPost(url);
+        post.setEntity(entityBuilder.build());
+        CloseableHttpResponse response = client.execute(post);
+        String result = EntityUtils.toString(response.getEntity());
+        log.info(result);
+        final JSONObject res = JSONObject.parseObject(result);
         checkToken(res);
+        return res;
+    }
+
+    @SneakyThrows
+    public JSONObject request(HashMap<String, Object> formParam) {
+        return request(REQUEST_URL, formParam);
+    }
+
+    @SneakyThrows
+    public JSONArray request2(HashMap<String, Object> formParam) {
+        JSONObject res = request(REQUEST_URL, formParam);
+        return res.getJSONArray("GRID0");
+    }
+
+    @SneakyThrows
+    public JSONArray request3(HashMap<String, Object> formParam) {
+        JSONObject res = request(REQUEST_URL.concat("?action=1230"), formParam);
         final JSONObject data = res.getJSONObject("BINDATA");
         if (data != null && data.getJSONArray("results") != null) {
             return data.getJSONArray("results");
@@ -47,43 +62,11 @@ public class RequestUtils {
         return new JSONArray();
     }
 
-    @SneakyThrows
-    public JSONArray request2(String formParam) {
-        HttpRequest postRequest = HttpRequest.newBuilder()
-                .POST(HttpRequest.BodyPublishers.ofString(formParam))
-                .uri(URI.create("https://weixin.citicsinfo.com/reqxml"))
-                .build();
-        HttpResponse<String> response = client.send(postRequest, HttpResponse.BodyHandlers.ofString());
-        String responseBody = response.body();
-        log.info(responseBody);
-        final JSONObject res = JSONObject.parseObject(responseBody);
-        checkToken(res);
-        return res.getJSONArray("GRID0");
-    }
-
-    @SneakyThrows
-    public JSONObject request3(String formParam) {
-        HttpRequest postRequest = HttpRequest.newBuilder()
-                .POST(HttpRequest.BodyPublishers.ofString(formParam))
-                .uri(URI.create("https://weixin.citicsinfo.com/reqxml"))
-//                .header("Content-Type","multipart/form-data")
-//                .header("content-length",  String.valueOf(HttpRequest.BodyPublishers.ofString(formParam).contentLength()))
-                .build();
-        System.out.println(postRequest);
-        HttpResponse<String> response = client.send(postRequest, HttpResponse.BodyHandlers.ofString());
-        String responseBody = response.body();
-        log.info(responseBody);
-        final JSONObject res = JSONObject.parseObject(responseBody);
-        checkToken(res);
-        return res;
-    }
-
     private void checkToken(JSONObject res) {
         //"ERRORNO":"-204009"
         final String errorNo = res.getString("ERRORNO");
         if ("-204009".equals(errorNo)) {
             log.info("检测到无效token，正在重新登录。");
-
         }
     }
 }
