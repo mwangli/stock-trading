@@ -88,14 +88,23 @@ public class DailyJob {
         return paramMap;
     }
 
-
-    // 每隔25分钟刷新Token
+    // 每隔10分钟刷新Token
 //    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
     public void runTokenJob() {
-        log.info("开始执行获取Token任务================================");
-        login(0);
-        log.info("获取Token任务执行完毕================================");
+        log.info("开始执行刷新Token任务================================");
+        buySale(SALE_TYPE_OP, "", 100.0, 100.0);
+        log.info("刷新Token任务执行完毕================================");
     }
+
+
+    // 每天登录一次
+//    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
+    public void runLoginJob() {
+        log.info("开始执行账户登录任务================================");
+        login(0);
+        log.info("账户登录任务执行完毕================================");
+    }
+
 
     // 交易日开盘时间买入 9:30
 //    @Scheduled(cron = "0 0,15,30 9 ? * MON-FRI")
