@@ -4,14 +4,17 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.foundtrading.job.RunTokenJob;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
+import javax.annotation.Resource;
 import java.util.HashMap;
 
 /**
@@ -25,6 +28,9 @@ import java.util.HashMap;
 public class RequestUtils {
 
     private static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
+
+    @Resource
+    ApplicationContext applicationContext;
 
     @SneakyThrows
     public JSONObject request(String url, HashMap<String, Object> formParam) {
@@ -67,6 +73,8 @@ public class RequestUtils {
         final String errorNo = res.getString("ERRORNO");
         if ("-204009".equals(errorNo)) {
             log.info("检测到无效token，正在重新登录。");
+            RunTokenJob runTokenJob = applicationContext.getBean(RunTokenJob.class);
+            runTokenJob.run();
         }
     }
 }
