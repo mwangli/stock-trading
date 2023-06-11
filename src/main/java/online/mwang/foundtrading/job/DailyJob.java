@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import net.sourceforge.tess4j.ITesseract;
 import online.mwang.foundtrading.bean.po.*;
 import online.mwang.foundtrading.mapper.AccountInfoMapper;
 import online.mwang.foundtrading.mapper.ScoreStrategyMapper;
@@ -16,14 +17,16 @@ import online.mwang.foundtrading.mapper.StockInfoMapper;
 import online.mwang.foundtrading.service.StockInfoService;
 import online.mwang.foundtrading.service.TradingRecordService;
 import online.mwang.foundtrading.utils.DateUtils;
-import online.mwang.foundtrading.utils.OCRUtils;
 import online.mwang.foundtrading.utils.RequestUtils;
 import online.mwang.foundtrading.utils.SleepUtils;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.text.SimpleDateFormat;
@@ -70,7 +73,7 @@ public class DailyJob {
     private static final String REQUEST_TOKEN = "requestToken";
     private static HashMap<String, Integer> dateMap;
     private final RequestUtils requestUtils;
-    private final OCRUtils ocrUtils;
+    private final ITesseract iTesseract;
     private final StockInfoService stockInfoService;
     private final TradingRecordService tradingRecordService;
     private final AccountInfoMapper accountInfoMapper;
@@ -87,6 +90,7 @@ public class DailyJob {
         paramMap.put("intacttoserver", "%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC");
         return paramMap;
     }
+
 
     // 每隔25分钟刷新Token
 //    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
@@ -159,10 +163,15 @@ public class DailyJob {
         return redisTemplate.opsForValue().get(REQUEST_TOKEN);
     }
 
+    @SneakyThrows
     public String getCheckCodeFromMessage(String message) {
-        final String code = ocrUtils.execute(message);
-        log.info("识别到图片验证码：{}", code.trim());
-        return code.trim();
+        final Base64.Decoder decoder = Base64.getDecoder();
+        byte[] bytes = decoder.decode(message.split(",")[1]);
+        ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
+        BufferedImage bufferedImage = ImageIO.read(inputStream);
+        final String code = iTesseract.doOCR(bufferedImage).trim();
+        log.info("识别到图片验证码：{}", code);
+        return code;
     }
 
     @SneakyThrows
