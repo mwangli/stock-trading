@@ -57,9 +57,7 @@ public class DailyJob {
     private static final double LOW_PRICE_LIMIT = 5.0;
     private static final int BUY_RETRY_TIMES = 3;
     private static final int SOLD_RETRY_TIMES = 3;
-    private static final int LOGIN_RETRY_TIMES = 20;
-    private static final int PRICE_UP_LIMIT = 3;
-    private static final int PRICE_FALL_LIMIT = 3;
+    private static final int LOGIN_RETRY_TIMES = 10;
     private static final int BUY_RETRY_LIMIT = 10;
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int HISTORY_PRICE_LIMIT = 100;
