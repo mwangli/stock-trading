@@ -220,8 +220,6 @@ public class DailyJob {
             map.put(errorNo, res.getString("ERRORMESSAGE"));
             if (errorCodes.contains(errorNo)) {
                 info.setPermission("0");
-            } else {
-                info.setPermission("1");
             }
             log.info("刷新当前股票[{}-{}]交易权限: {}", info.getCode(), info.getName(), info.getPermission());
         });
