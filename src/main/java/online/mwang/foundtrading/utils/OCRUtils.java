@@ -28,24 +28,31 @@ public class OCRUtils {
     @SneakyThrows
     public String execute(String base64) {
         ITesseract instance = new Tesseract();
-        final String path = new ClassPathResource("/ocr").getFile().getPath();
 
-        final String path1 = new ClassPathResource("/ocr").getPath();
+
+//        final String path = new ClassPathResource("/ocr").getFile().getPath();
+//
+//        final String path1 = new ClassPathResource("/ocr").getPath();
         final String path2 = new ClassPathResource("/ocr/eng.traineddata").getFile().getPath();
         final String path3 = new ClassPathResource("/ocr/eng.traineddata").getFile().getAbsolutePath();
         final String path4 = new ClassPathResource("/ocr/eng.traineddata").getFile().getCanonicalPath();
         final String path5 = new ClassPathResource("/ocr/eng.traineddata").getFile().getParentFile().getPath();
         final String path6 = new ClassPathResource("/ocr/eng.traineddata").getFile().getParent();
+//
+//        URL url = ResourceUtils.getURL("classpath:ocr/eng.traineddata");
+//        url.get()
+//        String path = file.getCanonicalPath();
 
-        System.out.println( path);
-        System.out.println( path1);
+
+//        System.out.println( path);
+//        System.out.println( path1);
         System.out.println( path2);
         System.out.println( path3);
         System.out.println( path4);
         System.out.println( path5);
         System.out.println( path6);
 
-        instance.setDatapath(path);
+        instance.setDatapath(path2);
         instance.setLanguage("eng");
         return instance.doOCR(base64ToBufferedImage(base64.split(",")[1]));
     }
