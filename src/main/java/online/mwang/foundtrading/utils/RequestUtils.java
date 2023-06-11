@@ -4,7 +4,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.foundtrading.job.RunTokenJob;
+import online.mwang.foundtrading.job.DailyJob;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -32,6 +32,7 @@ public class RequestUtils {
     @Resource
     ApplicationContext applicationContext;
 
+
     @SneakyThrows
     public JSONObject request(String url, HashMap<String, Object> formParam) {
         CloseableHttpClient client = HttpClients.createDefault();
@@ -43,7 +44,11 @@ public class RequestUtils {
         String result = EntityUtils.toString(response.getEntity());
         log.info(result);
         final JSONObject res = JSONObject.parseObject(result);
-        checkToken(res);
+        String token = checkResult(res);
+        if (token != null) {
+            formParam.put("token", token);
+            return request(url, formParam);
+        }
         return res;
     }
 
@@ -68,12 +73,14 @@ public class RequestUtils {
         return new JSONArray();
     }
 
-    private void checkToken(JSONObject res) {
-        //"ERRORNO":"-204009"
+    private String checkResult(JSONObject res) {
         final String errorNo = res.getString("ERRORNO");
-        if ("-204009".equals(errorNo)) {
+        if ("-204007".equals(errorNo)) {
             log.info("检测到无效token，正在重新登录。");
-            applicationContext.getBean(RunTokenJob.class).run();
+            DailyJob dailyJob = applicationContext.getBean(DailyJob.class);
+            dailyJob.login(0);
+            return dailyJob.getToken();
         }
+        return null;
     }
 }
