@@ -41,7 +41,7 @@ public class RequestUtils {
         post.setEntity(entityBuilder.build());
         CloseableHttpResponse response = client.execute(post);
         String result = EntityUtils.toString(response.getEntity());
-        log.info(result);
+//        log.info(result);
         final JSONObject res = JSONObject.parseObject(result);
         checkToken(res);
         return res;
