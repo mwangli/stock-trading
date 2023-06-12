@@ -165,7 +165,10 @@ public class DailyJob {
 
     public String getToken() {
         final String requestToken = redisTemplate.opsForValue().get(REQUEST_TOKEN);
-        if (requestToken == null) login(0);
+        if (requestToken == null) {
+            log.info("没有检测到Token，正在重新登录。");
+            login(0);
+        }
         return redisTemplate.opsForValue().get(REQUEST_TOKEN);
     }
 
@@ -220,20 +223,22 @@ public class DailyJob {
     @SneakyThrows
     public void flushPermission() {
         // 此处不能使用多线程处理，因为每次请求会使上一个Token失效
-        List<String> errorCodes = Arrays.asList("-1", "-61", "-64");
+        List<String> errorCodes = Arrays.asList("[251112]", "[251127]", "[251299]", "该股票是退市");
         List<StockInfo> stockInfos = stockInfoService.list();
-        HashMap<String, String> map = new HashMap<>();
+        final HashSet<String> set = new HashSet<>();
         stockInfos.forEach(info -> {
             JSONObject res = buySale(BUY_TYPE_OP, info.getCode(), 100.0, 100.0);
-            final String errorNo = res.getString("ERRORNO");
-            map.put(errorNo, res.getString("ERRORMESSAGE"));
-            if (errorCodes.contains(errorNo)) {
+            final String message = res.getString("ERRORMESSAGE");
+            set.add(message);
+            if (errorCodes.stream().anyMatch(message::startsWith)) {
                 info.setPermission("0");
+            } else {
+                info.setPermission("1");
             }
             stockInfoMapper.updateById(info);
             log.info("刷新当前股票[{}-{}]交易权限: {}", info.getCode(), info.getName(), info.getPermission());
         });
-        log.info("交易权限错误码合集：{}", map);
+        log.info("交易权限错误信息合集：{}", set);
         // 取消所有提交的订单
         cancelAllOrder();
     }
@@ -592,6 +597,7 @@ public class DailyJob {
         accountInfo.setCreateTime(now);
         accountInfo.setUpdateTime(now);
         accountInfoMapper.insert(accountInfo);
+        log.info("当前可用金额：{}元，持仓金额：{}元，总金额：{}元。", availableAmount, usedAmount, totalAmount);
         return accountInfo;
     }
 
@@ -604,6 +610,20 @@ public class DailyJob {
         paramMap.put("MaxCount", 500);
         paramMap.put("op_station", 4);
         paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        return requestUtils.request2(buildParams(paramMap));
+    }
+
+    public JSONArray listTodayOrder() {
+        String token = getToken();
+        final long timeMillis = System.currentTimeMillis();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 152);
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", 500);
+        paramMap.put("op_station", 4);
+        paramMap.put("token", token);
+        paramMap.put("ReqlinkType", 1);
         paramMap.put("reqno", timeMillis);
         return requestUtils.request2(buildParams(paramMap));
     }
@@ -624,19 +644,22 @@ public class DailyJob {
     }
 
     public Boolean queryCancelStatus() {
-        final JSONArray result = listCancelOrder();
+        final JSONArray result = listTodayOrder();
+        boolean res = true;
         if (result != null && result.size() > 1) {
             for (int i = 1; i < result.size(); i++) {
                 String string = result.getString(i);
                 String[] split = string.split("\\|");
                 String code = split[0];
                 String name = split[1];
-                String answerNo = split[8];
-                log.info("当前股票[{}-{}]，撤销未成功订单", code, name);
-                cancelOrder(answerNo);
+                String status = split[2];
+                if ("已报待撤".equals(status)) {
+                    log.info("当前股票[{}-{}]，存在待撤销订单", code, name);
+                    res = false;
+                }
             }
         }
-        return result != null && result.size() == 1;
+        return res;
     }
 
     public Boolean waitingCancelOrder() {
@@ -842,6 +865,7 @@ public class DailyJob {
                 }
             }
         }
+        log.info("已同步{}条订单交易记录", historyOrder.size());
     }
 
     @SneakyThrows
@@ -853,6 +877,7 @@ public class DailyJob {
             stockInfo.setBuySaleCount((int) accumulate.getSum());
             stockInfoService.update(stockInfo, new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, code));
         });
+        log.info("共同步{}条股票交易次数", collect.size());
         log.info("共同步{}条股票交易记录", collect.size());
         list.forEach(record -> {
             Double income = record.getIncome();
@@ -872,17 +897,24 @@ public class DailyJob {
         // 多线程请求数据
         ArrayList<StockInfo> saveList = new ArrayList<>();
         stockInfos.forEach(s -> threadPool.submit(() -> {
-            List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
-            List<DailyItem> rateList = getRateList(historyPrices);
-            s.setPrices(JSON.toJSONString(historyPrices));
-            s.setIncreaseRate(JSON.toJSONString(rateList));
-            s.setUpdateTime(new Date());
-            saveList.add(s);
-            final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
-            if (finishNums % 100 == 0) {
-                log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
+            try {
+                List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
+                List<DailyItem> rateList = getRateList(historyPrices);
+                s.setPrices(JSON.toJSONString(historyPrices));
+                s.setIncreaseRate(JSON.toJSONString(rateList));
+                s.setUpdateTime(new Date());
+                saveList.add(s);
+                final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
+                if (finishNums % 100 == 0) {
+                    log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                log.error("获取数据异常：{}", e.getMessage());
+            } finally {
+                countDownLatch.countDown();
             }
-            countDownLatch.countDown();
+
         }));
         countDownLatch.await();
         saveDate(saveList);
@@ -947,13 +979,19 @@ public class DailyJob {
             for (int i = 1; i <= pages; i++) {
                 int finalI = i;
                 threadPool.submit(() -> {
-                    long startIndex = (long) (finalI - 1) * UPDATE_BATCH_SIZE;
-                    final List<StockInfo> saveList = dataList.stream().skip(startIndex).limit(UPDATE_BATCH_SIZE).collect(Collectors.toList());
-                    stockInfoService.saveOrUpdateBatch(saveList);
-                    long endIndex = startIndex + UPDATE_BATCH_SIZE;
-                    endIndex = Math.min(endIndex, dataList.size());
-                    log.info("第{}个数据更新任务处理完成，任务更新范围[{},{}]内,共{}条数", pages - countDownLatch.getCount() + 1, startIndex, endIndex, endIndex - startIndex);
-                    countDownLatch.countDown();
+                    try {
+                        long startIndex = (long) (finalI - 1) * UPDATE_BATCH_SIZE;
+                        final List<StockInfo> saveList = dataList.stream().skip(startIndex).limit(UPDATE_BATCH_SIZE).collect(Collectors.toList());
+                        stockInfoService.saveOrUpdateBatch(saveList);
+                        long endIndex = startIndex + UPDATE_BATCH_SIZE;
+                        endIndex = Math.min(endIndex, dataList.size());
+                        log.info("第{}个数据更新任务处理完成，任务更新范围[{},{}]内,共{}条数", pages - countDownLatch.getCount() + 1, startIndex, endIndex, endIndex - startIndex);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        log.error("保存数据异常：{}", e.getMessage());
+                    } finally {
+                        countDownLatch.countDown();
+                    }
                 });
             }
             countDownLatch.await();
@@ -1108,12 +1146,9 @@ public class DailyJob {
         StrategyParams strategyParams = new StrategyParams(0.5, 5, 50);
         ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
         if (strategy != null) {
-            try {
-                String params = strategy.getParams();
-                strategyParams = JSON.parseObject(params, StrategyParams.class);
-            } catch (Exception e) {
-                log.warn("策略参数解析异常，使用默认策略参数{}", strategyParams);
-            }
+            String params = strategy.getParams();
+            final JSONArray paramsArray = JSON.parseArray(params);
+            strategyParams = new StrategyParams(paramsArray.getDouble(0), paramsArray.getInteger(1), paramsArray.getInteger(2));
         }
         Double preRateFactor = strategyParams.getPreRateFactor();
         Integer priceTolerance = strategyParams.getPriceTolerance();
