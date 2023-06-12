@@ -165,7 +165,10 @@ public class DailyJob {
 
     public String getToken() {
         final String requestToken = redisTemplate.opsForValue().get(REQUEST_TOKEN);
-        if (requestToken == null) login(0);
+        if (requestToken == null) {
+            log.info("没有检测到Token，正在重新登录。");
+            login(0);
+        }
         return redisTemplate.opsForValue().get(REQUEST_TOKEN);
     }
 
@@ -880,17 +883,24 @@ public class DailyJob {
         // 多线程请求数据
         ArrayList<StockInfo> saveList = new ArrayList<>();
         stockInfos.forEach(s -> threadPool.submit(() -> {
-            List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
-            List<DailyItem> rateList = getRateList(historyPrices);
-            s.setPrices(JSON.toJSONString(historyPrices));
-            s.setIncreaseRate(JSON.toJSONString(rateList));
-            s.setUpdateTime(new Date());
-            saveList.add(s);
-            final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
-            if (finishNums % 100 == 0) {
-                log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
+            try {
+                List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
+                List<DailyItem> rateList = getRateList(historyPrices);
+                s.setPrices(JSON.toJSONString(historyPrices));
+                s.setIncreaseRate(JSON.toJSONString(rateList));
+                s.setUpdateTime(new Date());
+                saveList.add(s);
+                final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
+                if (finishNums % 100 == 0) {
+                    log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                log.error("获取数据异常：{}", e.getMessage());
+            } finally {
+                countDownLatch.countDown();
             }
-            countDownLatch.countDown();
+
         }));
         countDownLatch.await();
         saveDate(saveList);
@@ -955,13 +965,19 @@ public class DailyJob {
             for (int i = 1; i <= pages; i++) {
                 int finalI = i;
                 threadPool.submit(() -> {
-                    long startIndex = (long) (finalI - 1) * UPDATE_BATCH_SIZE;
-                    final List<StockInfo> saveList = dataList.stream().skip(startIndex).limit(UPDATE_BATCH_SIZE).collect(Collectors.toList());
-                    stockInfoService.saveOrUpdateBatch(saveList);
-                    long endIndex = startIndex + UPDATE_BATCH_SIZE;
-                    endIndex = Math.min(endIndex, dataList.size());
-                    log.info("第{}个数据更新任务处理完成，任务更新范围[{},{}]内,共{}条数", pages - countDownLatch.getCount() + 1, startIndex, endIndex, endIndex - startIndex);
-                    countDownLatch.countDown();
+                    try {
+                        long startIndex = (long) (finalI - 1) * UPDATE_BATCH_SIZE;
+                        final List<StockInfo> saveList = dataList.stream().skip(startIndex).limit(UPDATE_BATCH_SIZE).collect(Collectors.toList());
+                        stockInfoService.saveOrUpdateBatch(saveList);
+                        long endIndex = startIndex + UPDATE_BATCH_SIZE;
+                        endIndex = Math.min(endIndex, dataList.size());
+                        log.info("第{}个数据更新任务处理完成，任务更新范围[{},{}]内,共{}条数", pages - countDownLatch.getCount() + 1, startIndex, endIndex, endIndex - startIndex);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        log.error("保存数据异常：{}", e.getMessage());
+                    } finally {
+                        countDownLatch.countDown();
+                    }
                 });
             }
             countDownLatch.await();
