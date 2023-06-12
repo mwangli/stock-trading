@@ -878,8 +878,7 @@ public class DailyJob {
             stockInfoService.update(stockInfo, new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, code));
         });
         log.info("共同步{}条股票交易次数", collect.size());
-        log.info("共同步{}条股票交易记录", collect.size());
-        list.forEach(record -> {
+        list.stream().filter(r -> r.getSold().equals("1")).forEach(record -> {
             Double income = record.getIncome();
             Double buyAmount = record.getBuyAmount();
             double incomeRate = income / buyAmount;
