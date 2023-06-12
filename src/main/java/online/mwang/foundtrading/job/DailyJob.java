@@ -1145,9 +1145,13 @@ public class DailyJob {
         StrategyParams strategyParams = new StrategyParams(0.5, 5, 50);
         ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
         if (strategy != null) {
-            String params = strategy.getParams();
-            final JSONArray paramsArray = JSON.parseArray(params);
-            strategyParams = new StrategyParams(paramsArray.getDouble(0), paramsArray.getInteger(1), paramsArray.getInteger(2));
+            try {
+                String params = strategy.getParams();
+                String[] split = params.split("\\|");
+                strategyParams = new StrategyParams(Double.parseDouble(split[0]), Integer.parseInt(split[1]), Integer.parseInt(split[2]));
+            } catch (Exception e) {
+                log.warn("策略参数解析异常，使用默认参数：{}", strategyParams);
+            }
         }
         Double preRateFactor = strategyParams.getPreRateFactor();
         Integer priceTolerance = strategyParams.getPriceTolerance();
