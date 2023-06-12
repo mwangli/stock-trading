@@ -223,20 +223,22 @@ public class DailyJob {
     @SneakyThrows
     public void flushPermission() {
         // 此处不能使用多线程处理，因为每次请求会使上一个Token失效
-        List<String> errorCodes = Arrays.asList("-1", "-61", "-64");
+        List<String> errorCodes = Arrays.asList("[251112]", "[251127]", "[251299]");
         List<StockInfo> stockInfos = stockInfoService.list();
-        HashMap<String, String> map = new HashMap<>();
+        final HashSet<String> set = new HashSet<>();
         stockInfos.forEach(info -> {
             JSONObject res = buySale(BUY_TYPE_OP, info.getCode(), 100.0, 100.0);
-            final String errorNo = res.getString("ERRORNO");
-            map.put(errorNo, res.getString("ERRORMESSAGE"));
-            if (errorCodes.contains(errorNo)) {
+            final String message = res.getString("ERRORMESSAGE");
+            set.add(message);
+            if (errorCodes.stream().anyMatch(message::startsWith)) {
                 info.setPermission("0");
+            } else {
+                info.setPermission("1");
             }
             stockInfoMapper.updateById(info);
             log.info("刷新当前股票[{}-{}]交易权限: {}", info.getCode(), info.getName(), info.getPermission());
         });
-        log.info("交易权限错误码合集：{}", map);
+        log.info("交易权限错误信息合集：{}", set);
         // 取消所有提交的订单
         cancelAllOrder();
     }
