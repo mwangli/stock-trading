@@ -595,6 +595,7 @@ public class DailyJob {
         accountInfo.setCreateTime(now);
         accountInfo.setUpdateTime(now);
         accountInfoMapper.insert(accountInfo);
+        log.info("当前可用金额：{}元，持仓金额：{}元，总金额：{}元。", availableAmount, usedAmount, totalAmount);
         return accountInfo;
     }
 
@@ -862,6 +863,7 @@ public class DailyJob {
                 }
             }
         }
+        log.info("已同步{}条订单交易记录", historyOrder.size());
     }
 
     @SneakyThrows
@@ -873,7 +875,7 @@ public class DailyJob {
             stockInfo.setBuySaleCount((int) accumulate.getSum());
             stockInfoService.update(stockInfo, new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, code));
         });
-        log.info("共同步{}条股票交易记录", collect.size());
+        log.info("共同步{}条股票交易次数", collect.size());
     }
 
     @SneakyThrows
