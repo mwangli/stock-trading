@@ -854,6 +854,15 @@ public class DailyJob {
             stockInfoService.update(stockInfo, new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, code));
         });
         log.info("共同步{}条股票交易记录", collect.size());
+        list.forEach(record -> {
+            Double income = record.getIncome();
+            Double buyAmount = record.getBuyAmount();
+            double incomeRate = income / buyAmount;
+            record.setIncomeRate(incomeRate);
+            double dailyRate = incomeRate / record.getHoldDays();
+            record.setDailyIncomeRate(dailyRate);
+            tradingRecordService.updateById(record);
+        });
     }
 
     @SneakyThrows
