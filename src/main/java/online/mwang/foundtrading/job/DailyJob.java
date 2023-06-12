@@ -223,7 +223,7 @@ public class DailyJob {
     @SneakyThrows
     public void flushPermission() {
         // 此处不能使用多线程处理，因为每次请求会使上一个Token失效
-        List<String> errorCodes = Arrays.asList("[251112]", "[251127]", "[251299]","该股票是退市");
+        List<String> errorCodes = Arrays.asList("[251112]", "[251127]", "[251299]", "该股票是退市");
         List<StockInfo> stockInfos = stockInfoService.list();
         final HashSet<String> set = new HashSet<>();
         stockInfos.forEach(info -> {
@@ -1136,12 +1136,9 @@ public class DailyJob {
         StrategyParams strategyParams = new StrategyParams(0.5, 5, 50);
         ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
         if (strategy != null) {
-            try {
-                String params = strategy.getParams();
-                strategyParams = JSON.parseObject(params, StrategyParams.class);
-            } catch (Exception e) {
-                log.warn("策略参数解析异常，使用默认策略参数{}", strategyParams);
-            }
+            String params = strategy.getParams();
+            final JSONArray paramsArray = JSON.parseArray(params);
+            strategyParams = new StrategyParams(paramsArray.getDouble(0), paramsArray.getInteger(1), paramsArray.getInteger(2));
         }
         Double preRateFactor = strategyParams.getPreRateFactor();
         Integer priceTolerance = strategyParams.getPriceTolerance();
