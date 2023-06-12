@@ -608,6 +608,20 @@ public class DailyJob {
         return requestUtils.request2(buildParams(paramMap));
     }
 
+    public JSONArray listTodayOrder() {
+        String token = getToken();
+        final long timeMillis = System.currentTimeMillis();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 152);
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", 500);
+        paramMap.put("op_station", 4);
+        paramMap.put("token", token);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("reqno", timeMillis);
+        return requestUtils.request2(buildParams(paramMap));
+    }
+
     public void cancelAllOrder() {
         final JSONArray result = listCancelOrder();
         if (result != null && result.size() > 1) {
@@ -624,19 +638,22 @@ public class DailyJob {
     }
 
     public Boolean queryCancelStatus() {
-        final JSONArray result = listCancelOrder();
+        final JSONArray result = listTodayOrder();
+        boolean res = true;
         if (result != null && result.size() > 1) {
             for (int i = 1; i < result.size(); i++) {
                 String string = result.getString(i);
                 String[] split = string.split("\\|");
                 String code = split[0];
                 String name = split[1];
-                String answerNo = split[8];
-                log.info("当前股票[{}-{}]，撤销未成功订单", code, name);
-                cancelOrder(answerNo);
+                String status = split[2];
+                if ("已报待撤".equals(status)) {
+                    log.info("当前股票[{}-{}]，存在待撤销订单", code, name);
+                    res = false;
+                }
             }
         }
-        return result != null && result.size() == 1;
+        return res;
     }
 
     public Boolean waitingCancelOrder() {
