@@ -881,7 +881,7 @@ public class DailyJob {
         list.stream().filter(r -> r.getSold().equals("1")).forEach(record -> {
             Double income = record.getIncome();
             Double buyAmount = record.getBuyAmount();
-            double incomeRate = income / buyAmount;
+            double incomeRate = (income * 100) / buyAmount;
             record.setIncomeRate(incomeRate);
             double dailyRate = incomeRate / record.getHoldDays();
             record.setDailyIncomeRate(dailyRate);
