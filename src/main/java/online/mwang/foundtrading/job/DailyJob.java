@@ -223,7 +223,7 @@ public class DailyJob {
     @SneakyThrows
     public void flushPermission() {
         // 此处不能使用多线程处理，因为每次请求会使上一个Token失效
-        List<String> errorCodes = Arrays.asList("[251112]", "[251127]", "[251299]");
+        List<String> errorCodes = Arrays.asList("[251112]", "[251127]", "[251299]","该股票是退市");
         List<StockInfo> stockInfos = stockInfoService.list();
         final HashSet<String> set = new HashSet<>();
         stockInfos.forEach(info -> {
