@@ -76,7 +76,7 @@ public class RequestUtils {
     private String checkResult(JSONObject res) {
         final String errorNo = res.getString("ERRORNO");
         if ("-204007".equals(errorNo)) {
-            log.info("检测到无效token，正在重新登录。");
+            log.info("检测到无效Token，正在重新登录。");
             DailyJob dailyJob = applicationContext.getBean(DailyJob.class);
             dailyJob.login(0);
             return dailyJob.getToken();
