@@ -1194,10 +1194,9 @@ public class DailyJob {
 
     // 计算交易日期差
     public int diffDate(Date date1, Date date2) {
-        SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyyMMdd");
         HashMap<String, Integer> dateMap = getDateMap();
         Integer from = dateMap.get(DateUtils.dateFormat.format(date1));
-        Integer to = dateMap.get(simpleDateFormat.format(date2));
+        Integer to = dateMap.get(DateUtils.dateFormat.format(date2));
         return Math.abs(to - from);
     }
 
