@@ -11,7 +11,6 @@ import online.mwang.foundtrading.bean.query.FoundTradingQuery;
 import online.mwang.foundtrading.job.DailyJob;
 import online.mwang.foundtrading.mapper.AccountInfoMapper;
 import online.mwang.foundtrading.mapper.StockInfoMapper;
-import online.mwang.foundtrading.service.StockInfoService;
 import online.mwang.foundtrading.service.TradingRecordService;
 import org.springframework.web.bind.annotation.*;
 
@@ -32,11 +31,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class TradingRecordController {
 
-    private final static Integer LIMIT_SIZE = 15;
     private final static String ASCEND = "ascend";
     private final TradingRecordService tradingRecordService;
     private final AccountInfoMapper accountInfoMapper;
-    private final StockInfoService stockInfoService;
     private final StockInfoMapper stockInfoMapper;
     private final DailyJob dailyJob;
 
@@ -94,11 +91,11 @@ public class TradingRecordController {
         // 查询账户金额
         accountInfoMapper.selectList(new QueryWrapper<AccountInfo>().lambda().orderByDesc(AccountInfo::getUpdateTime)).stream().findFirst().ifPresent(data::setAccountInfo);
         // 查询收益列表
-        data.setIncomeList(sortedSoldList.stream().limit(LIMIT_SIZE).sorted(Comparator.comparing(TradingRecord::getUpdateTime)).map(o -> new Point(o.getId().toString(), o.getIncome())).collect(Collectors.toList()));
+        data.setIncomeList(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getUpdateTime)).map(o -> new Point(o.getSaleDateString(), o.getIncome())).collect(Collectors.toList()));
         // 查询收益率列表
-        data.setRateList(sortedSoldList.stream().limit(LIMIT_SIZE).sorted(Comparator.comparing(TradingRecord::getUpdateTime)).map(o -> new Point(o.getId().toString(), o.getIncomeRate())).collect(Collectors.toList()));
+        data.setRateList(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getUpdateTime)).map(o -> new Point(o.getSaleDateString(), o.getIncomeRate())).collect(Collectors.toList()));
         // 查询日收益率列表
-        data.setDailyRateList(sortedSoldList.stream().limit(LIMIT_SIZE).sorted(Comparator.comparing(TradingRecord::getUpdateTime)).map(o -> new Point(o.getId().toString(), o.getDailyIncomeRate())).collect(Collectors.toList()));
+        data.setDailyRateList(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getUpdateTime)).map(o -> new Point(o.getSaleDateString(), o.getDailyIncomeRate())).collect(Collectors.toList()));
         // 获取平均收益率
         data.setAvgRate(sortedSoldList.stream().mapToDouble(TradingRecord::getIncomeRate).average().orElse(0.0));
         // 获取平均日收益率
