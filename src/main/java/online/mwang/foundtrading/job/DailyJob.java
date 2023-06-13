@@ -1198,7 +1198,7 @@ public class DailyJob {
         HashMap<String, Integer> dateMap = getDateMap();
         Integer from = dateMap.get(DateUtils.dateFormat.format(date1));
         Integer to = dateMap.get(simpleDateFormat.format(date2));
-        return Math.max(to - from, 1);
+        return Math.abs(to - from);
     }
 
     // 计算手续费，万五，最低五元
