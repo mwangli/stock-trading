@@ -24,4 +24,11 @@ public class Point {
         this.x = x;
         this.y = y;
     }
+
+
+    public Point(String x, Double y,String z) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+    }
 }
