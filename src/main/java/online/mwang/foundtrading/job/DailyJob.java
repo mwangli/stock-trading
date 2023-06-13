@@ -919,7 +919,7 @@ public class DailyJob {
         saveDate(saveList);
     }
 
-    private StrategyParams getStrategyParams(){
+    private StrategyParams getStrategyParams() {
         // 获取策略默认值
         StrategyParams strategyParams = new StrategyParams(0.5, 5, 50);
         ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
@@ -1001,7 +1001,7 @@ public class DailyJob {
                         stockInfoService.saveOrUpdateBatch(saveList);
                         long endIndex = startIndex + UPDATE_BATCH_SIZE;
                         endIndex = Math.min(endIndex, dataList.size());
-                        log.info("第{}个数据更新任务处理完成，任务更新范围[{},{}]内,共{}条数", pages - countDownLatch.getCount() + 1, startIndex, endIndex, endIndex - startIndex);
+                        log.info("第{}个数据更新任务处理完成，任务更新范围[{},{}]内,共{}条数", pages - countDownLatch.getCount() + 1, startIndex + 1, endIndex, endIndex - startIndex);
                     } catch (Exception e) {
                         e.printStackTrace();
                         log.error("保存数据异常：{}", e.getMessage());
