@@ -372,6 +372,8 @@ public class DailyJob {
                     stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
                     stockInfoService.updateById(stockInfo);
                     log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{}，日收益率为:{}", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getSaleAmount(), maxRateRecord.getIncome(), maxRateRecord.getDailyIncomeRate());
+                    // 卖出成功后执行买入任务
+                    buy(0);
                 } else {
                     // 如果交易不成功，撤单后重新计算卖出
                     log.info("卖出交易不成功，进行撤单操作");
