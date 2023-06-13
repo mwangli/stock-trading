@@ -91,11 +91,11 @@ public class TradingRecordController {
         // 查询账户金额
         accountInfoMapper.selectList(new QueryWrapper<AccountInfo>().lambda().orderByDesc(AccountInfo::getUpdateTime)).stream().findFirst().ifPresent(data::setAccountInfo);
         // 查询收益列表
-        data.setIncomeList(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getUpdateTime)).map(o -> new Point(o.getSaleDateString(), o.getIncome())).collect(Collectors.toList()));
+        data.setIncomeList(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getSaleDateString)).map(o -> new Point(o.getSaleDateString(), o.getIncome())).collect(Collectors.toList()));
         // 查询收益率列表
-        data.setRateList(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getUpdateTime)).map(o -> new Point(o.getSaleDateString(), o.getIncomeRate())).collect(Collectors.toList()));
+        data.setRateList(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getSaleDateString)).map(o -> new Point(o.getSaleDateString(), o.getIncomeRate())).collect(Collectors.toList()));
         // 查询日收益率列表
-        data.setDailyRateList(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getUpdateTime)).map(o -> new Point(o.getSaleDateString(), o.getDailyIncomeRate())).collect(Collectors.toList()));
+        data.setDailyRateList(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getSaleDateString)).map(o -> new Point(o.getSaleDateString(), o.getDailyIncomeRate())).collect(Collectors.toList()));
         // 获取平均收益率
         data.setAvgRate(sortedSoldList.stream().mapToDouble(TradingRecord::getIncomeRate).average().orElse(0.0));
         // 获取平均日收益率
