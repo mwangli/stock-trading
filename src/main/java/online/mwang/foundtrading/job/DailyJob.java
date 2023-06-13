@@ -440,7 +440,7 @@ public class DailyJob {
         //  获取实时价格
         final List<StockInfo> dataList = getDataList();
         // 计算得分
-        List<StockInfo> stockInfos = calculateScore(dataList);
+        List<StockInfo> stockInfos = calculateScore(dataList, getStrategyParams());
         // 选择有交易权限合适价格区间的数据，按评分排序分组
         final List<StockInfo> limitList = stockInfos.stream()
                 .sorted(Comparator.comparingDouble(StockInfo::getScore).reversed())
@@ -520,7 +520,7 @@ public class DailyJob {
                 record.setCreateTime(now);
                 record.setUpdateTime(now);
                 // 保存选股策略ID
-                ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
+                final ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
                 record.setStrategyId(strategy == null ? 0 : strategy.getId());
                 record.setStrategyName(strategy == null ? "默认策略" : strategy.getName());
                 tradingRecordService.save(record);
@@ -545,13 +545,13 @@ public class DailyJob {
         }
     }
 
-    public List<StockInfo> calculateScore(List<StockInfo> dataList) {
+    public List<StockInfo> calculateScore(List<StockInfo> dataList, StrategyParams params) {
         List<StockInfo> stockInfos = stockInfoService.list();
         stockInfos.forEach(info -> dataList.stream().filter(s -> s.getCode().equals(info.getCode())).findFirst().ifPresent(p -> {
             Double nowPrice = p.getPrice();
             List<DailyItem> priceList = JSON.parseArray(info.getPrices(), DailyItem.class);
             List<DailyItem> rateList = JSON.parseArray(info.getIncreaseRate(), DailyItem.class);
-            Double score = handleScore(nowPrice, priceList, rateList);
+            Double score = handleScore(nowPrice, priceList, rateList, params);
             info.setScore(score);
             info.setPrice(p.getPrice());
             info.setIncrease(p.getIncrease());
@@ -919,18 +919,35 @@ public class DailyJob {
         saveDate(saveList);
     }
 
+    private StrategyParams getStrategyParams(){
+        // 获取策略默认值
+        StrategyParams strategyParams = new StrategyParams(0.5, 5, 50);
+        ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
+        if (strategy != null) {
+            try {
+                String params = strategy.getParams();
+                String[] split = params.split("\\|");
+                strategyParams = new StrategyParams(Double.parseDouble(split[0].trim()), Integer.parseInt(split[1].trim()), Integer.parseInt(split[2].trim()));
+            } catch (Exception e) {
+                log.warn("策略参数解析异常，使用默认参数：{}", strategyParams);
+            }
+        }
+        return strategyParams;
+    }
+
     @SneakyThrows
     public void updateNowPrice() {
         List<StockInfo> newInfos = getDataList();
         final List<StockInfo> dataList = stockInfoService.list();
         final ArrayList<StockInfo> saveList = new ArrayList<>();
+        final StrategyParams params = getStrategyParams();
         newInfos.forEach(newInfo -> {
             AtomicBoolean exist = new AtomicBoolean(false);
             dataList.stream().filter(s -> s.getCode().equals(newInfo.getCode())).findFirst().ifPresent(p -> {
                 Double nowPrice = newInfo.getPrice();
                 List<DailyItem> priceList = JSON.parseArray(p.getPrices(), DailyItem.class);
                 List<DailyItem> rateList = JSON.parseArray(p.getIncreaseRate(), DailyItem.class);
-                Double score = handleScore(nowPrice, priceList, rateList);
+                Double score = handleScore(nowPrice, priceList, rateList, params);
                 p.setScore(score);
                 p.setPrice(newInfo.getPrice());
                 p.setIncrease(newInfo.getIncrease());
@@ -953,7 +970,7 @@ public class DailyJob {
         saveDate(saveList);
     }
 
-    private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList) {
+    private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList, StrategyParams params) {
         if (priceList != null && priceList.size() > 0) {
             Double prePrice = priceList.get(priceList.size() - 1).getItem();
             double increaseRate = (nowPrice - prePrice) / prePrice;
@@ -961,7 +978,7 @@ public class DailyJob {
             rateList.add(new DailyItem(DateUtils.dateFormat.format(new Date()), increaseRate));
             List<Double> prices = priceList.stream().map(DailyItem::getItem).collect(Collectors.toList());
             List<Double> rates = rateList.stream().map(DailyItem::getItem).collect(Collectors.toList());
-            return getScoreByList(prices, rates);
+            return getScoreByList(prices, rates, params);
         }
         return 0.0;
     }
@@ -1137,25 +1154,13 @@ public class DailyJob {
     // 价格稳定性用方差来衡量,增长率总和体现增长幅度
     // 增长率总和，乘以占比系数(index/size)，离当前时间越近,趋近于1，离当前时间越远，系数趋近于0
     // 增长的天数越多，日增长率总和越大，价格方差越小，增长波动越小，代表稳定增长，评分越高
-    public Double getScoreByList(List<Double> priceList, List<Double> rateList) {
+    public Double getScoreByList(List<Double> priceList, List<Double> rateList, StrategyParams params) {
         if (priceList.isEmpty() || rateList.isEmpty()) {
             return 0.0;
         }
-        // 获取策略默认值
-        StrategyParams strategyParams = new StrategyParams(0.5, 5, 50);
-        ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
-        if (strategy != null) {
-            try {
-                String params = strategy.getParams();
-                String[] split = params.split("\\|");
-                strategyParams = new StrategyParams(Double.parseDouble(split[0]), Integer.parseInt(split[1]), Integer.parseInt(split[2]));
-            } catch (Exception e) {
-                log.warn("策略参数解析异常，使用默认参数：{}", strategyParams);
-            }
-        }
-        Double preRateFactor = strategyParams.getPreRateFactor();
-        Integer priceTolerance = strategyParams.getPriceTolerance();
-        Integer historyLimit = strategyParams.getHistoryLimit();
+        Double preRateFactor = params.getPreRateFactor();
+        Integer priceTolerance = params.getPriceTolerance();
+        Integer historyLimit = params.getHistoryLimit();
         List<Double> limitPriceList = priceList.stream().skip(priceList.size() > historyLimit ? priceList.size() - historyLimit : 0).limit(historyLimit).collect(Collectors.toList());
         List<Double> limitRateList = rateList.stream().skip(rateList.size() > historyLimit ? rateList.size() - historyLimit : 0).limit(historyLimit).collect(Collectors.toList());
         // 计算日增长率平均值总和
