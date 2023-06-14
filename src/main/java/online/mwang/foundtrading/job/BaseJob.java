@@ -1,9 +1,8 @@
 package online.mwang.foundtrading.job;
 
 import lombok.extern.slf4j.Slf4j;
-import org.quartz.Job;
+import org.quartz.InterruptableJob;
 import org.quartz.JobExecutionContext;
-import org.quartz.JobExecutionException;
 
 /**
  * @version 1.0.0
@@ -12,7 +11,7 @@ import org.quartz.JobExecutionException;
  * @description: CommomJob
  */
 @Slf4j
-public abstract class BaseJob implements Job {
+public abstract class BaseJob implements InterruptableJob {
 
     /**
      * 任务执行方法
@@ -20,10 +19,15 @@ public abstract class BaseJob implements Job {
     abstract void run();
 
     @Override
-    public void execute(JobExecutionContext jobExecutionContext) throws JobExecutionException {
+    public void execute(JobExecutionContext jobExecutionContext) {
         final long start = System.currentTimeMillis();
         run();
         final long end = System.currentTimeMillis();
         log.info("任务执行耗时{}秒。", (end - start) / 1000);
+    }
+
+    @Override
+    public void interrupt() {
+        log.info("任务终止！");
     }
 }
