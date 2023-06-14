@@ -388,7 +388,7 @@ public class DailyJob {
             }
             timesCount++;
             log.info("最佳{}股票[{}-{}]，当前价格：{}，总{}次数：{}，连续{}次数：{}，总跌{}数：{}，连续{}次数{}，等待最佳{}时机...",
-                    operation, code, name, lastPrice, upperFallKey, priceTotalUpperCount, upperFallKey, priceContinueUpperCount, upperFallKey, priceTotalFallCount, upperFallKey, priceContinueFallCount, operation);
+                    operation, code, name, lastPrice, upperFallKey, priceTotalUpperCount, upperFallKey, priceContinueUpperCount, fallUpperKey, priceTotalFallCount, fallUpperKey, priceContinueFallCount, operation);
             // 总跌落10次或者连续跌落3次，代表价格上涨已达到峰值，开始卖出
             if (priceTotalFallCount > totalLimit || priceContinueFallCount > continueLimit) {
                 log.info("总跌{}数达到{}，或者连续{}次数达到{}，开始{}股票。", fallUpperKey, totalLimit, fallUpperKey, continueLimit, operation);
