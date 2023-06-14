@@ -624,6 +624,7 @@ public class DailyJob {
     }
 
     public Boolean queryCancelStatus() {
+        cancelAllOrder();
         final JSONArray result = listTodayOrder();
         boolean res = true;
         if (result != null && result.size() > 1) {
@@ -633,7 +634,7 @@ public class DailyJob {
                 String code = split[0];
                 String name = split[1];
                 String status = split[2];
-                if ("已报待撤".equals(status)) {
+                if ("已报".equals(status) || "已报待撤".equals(status)) {
                     log.info("当前股票[{}-{}]，存在待撤销订单", code, name);
                     res = false;
                 }
