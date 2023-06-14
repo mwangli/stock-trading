@@ -117,7 +117,7 @@ public class JobController {
     @SneakyThrows
     @PostMapping("/interrupt")
     public Response<Boolean> interruptJob(@RequestBody QuartzJob job) {
-        return Response.success(scheduler.interrupt(JobKey.jobKey(job.getName())));
+        return Response.success(scheduler.interrupt(job.getName()));
     }
 
     @SneakyThrows
