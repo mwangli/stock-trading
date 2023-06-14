@@ -107,7 +107,7 @@ public class JobController {
     }
 
     @SneakyThrows
-    @PostMapping(value = "/pause")
+    @PostMapping("/pause")
     public Response<Integer> pauseJob(@RequestBody QuartzJob job) {
         scheduler.pauseJob(JobKey.jobKey(job.getName()));
         job.setStatus("0");
@@ -115,13 +115,13 @@ public class JobController {
     }
 
     @SneakyThrows
-    @PostMapping(value = "/interrupt")
+    @PostMapping("/interrupt")
     public Response<Boolean> interruptJob(@RequestBody QuartzJob job) {
         return Response.success(scheduler.interrupt(JobKey.jobKey(job.getName())));
     }
 
     @SneakyThrows
-    @PostMapping(value = "/resume")
+    @PostMapping("/resume")
     public Response<Integer> resumeJob(@RequestBody QuartzJob job) {
         scheduler.resumeJob(JobKey.jobKey(job.getName()));
         job.setStatus("1");
