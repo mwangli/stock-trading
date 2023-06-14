@@ -28,8 +28,9 @@ public abstract class BaseJob implements InterruptableJob {
 
     @Override
     public void interrupt() {
+        log.info("任务终止！");
+        log.info(Thread.currentThread().getName());
         Thread.currentThread().interrupt();
 //        interrupt = true;
-        log.info("任务终止！");
     }
 }
