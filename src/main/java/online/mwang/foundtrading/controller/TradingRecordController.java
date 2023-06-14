@@ -74,7 +74,7 @@ public class TradingRecordController {
         LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "1")
                 .ge(startDate != null, TradingRecord::getSaleDateString, startDate)
                 .le(endDate != null, TradingRecord::getSaleDateString, endDate)
-                .orderByDesc(TradingRecord.getOrder(""));
+                .orderByDesc(TradingRecord::getSaleDateString);
         final List<TradingRecord> sortedSoldList = tradingRecordService.list(queryWrapper);
         // 获取最近收益金额
         sortedSoldList.stream().findFirst().ifPresent(o -> data.setIncome(o.getIncome()));
