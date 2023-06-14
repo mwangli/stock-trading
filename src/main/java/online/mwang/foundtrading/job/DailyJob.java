@@ -485,7 +485,7 @@ public class DailyJob {
         JSONObject res = buySale(BUY_TYPE_OP, best.getCode(), best.getPrice(), (double) buyNumber);
         String buyNo = res.getString("ANSWERNO");
         if (buyNo == null) {
-            log.info("无法买入当前股票，尝试买入下一组股票");
+            log.info("无法买入当前股票，尝试买入下一组股票!");
             buy(times + 1);
         } else {
             // 等待10秒后后查询买入结果
