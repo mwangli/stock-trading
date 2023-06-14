@@ -58,6 +58,11 @@ public class RequestUtils {
     }
 
     @SneakyThrows
+    public JSONObject request(HashMap<String, Object> formParam, Boolean needLog) {
+        return request(REQUEST_URL, formParam, needLog);
+    }
+
+    @SneakyThrows
     public JSONArray request2(HashMap<String, Object> formParam) {
         JSONObject res = request(REQUEST_URL, formParam, true);
         return res.getJSONArray("GRID0");

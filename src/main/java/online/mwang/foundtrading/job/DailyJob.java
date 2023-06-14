@@ -188,7 +188,7 @@ public class DailyJob {
     public List<String> getCheckCode() {
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", "41092");
-        final JSONObject res = requestUtils.request(buildParams(paramMap));
+        final JSONObject res = requestUtils.request(buildParams(paramMap), false);
         final String checkToken = res.getString("CHECKTOKEN");
         final String checkMessage = res.getString("MESSAGE");
         final String checkCode = getCheckCodeFromMessage(checkMessage);
@@ -416,7 +416,7 @@ public class DailyJob {
         paramMap.put("ReqlinkType", 1);
         paramMap.put("Level", 1);
         paramMap.put("UseBPrice", 1);
-        JSONObject res = requestUtils.request(buildParams(paramMap));
+        JSONObject res = requestUtils.request(buildParams(paramMap), false);
         return res.getDouble("PRICE");
     }
 
