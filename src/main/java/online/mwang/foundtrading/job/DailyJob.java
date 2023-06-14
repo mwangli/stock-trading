@@ -64,7 +64,7 @@ public class DailyJob {
     private static final int PriceTotalUpperLimit = 10;
     private static final int BUY_RETRY_LIMIT = 10;
     private static final int WAIT_TIME_SECONDS = 10;
-    private static final int WAIT_TIME_MINUTES = 30;
+    private static final int WAIT_TIME_MINUTES = 10;
     private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
     private static final int THREAD_POOL_NUMBERS = 8;
@@ -307,8 +307,9 @@ public class DailyJob {
             log.info("最佳卖出股票[{}-{}]，买入价格:{}，当前价格:{}，预期收益:{}，日收益率:{}", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getBuyPrice(), maxRateRecord.getSalePrice(), maxRateRecord.getIncome(), String.format("%.4f", maxRateRecord.getDailyIncomeRate()));
             // 等待最佳卖出时机
             if (!waitingBestTime(maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getSalePrice(), true)) {
-                log.info("未找到合适的卖出时机，取消卖出任务!");
-                return;
+                log.info("未找到合适的卖出时机，尝试卖出下一组股票!");
+                sale(times + 1);
+                ;
             }
             log.info("最佳卖出股票[{}-{}]，买入金额:{}，卖出金额:{}，预期收益:{}，日收益率:{}", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getBuyAmount(), maxRateRecord.getSaleAmount(), maxRateRecord.getIncome(), String.format("%.4f", maxRateRecord.getDailyIncomeRate()));
             // 返回合同编号
@@ -358,13 +359,14 @@ public class DailyJob {
         int priceTotalFallCount = 0;
         int priceContinueUpperCount = 0;
         int priceTotalUpperCount = 0;
+        int holdCount = 0;
         int timesCount = 0;
         String operation = sale ? "卖出" : "买入";
         String upperFallKey = sale ? "上涨" : "跌落";
         String fallUpperKey = sale ? "跌落" : "上涨";
         int totalLimit = sale ? PriceTotalFallLimit : PriceTotalUpperLimit;
         int continueLimit = sale ? PriceContinueFallLimit : PriceContinueUpperLimit;
-        while (timesCount < 6 * 30) {
+        while (timesCount < 6 * WAIT_TIME_MINUTES) {
             SleepUtils.second(WAIT_TIME_SECONDS);
             final Double lastPrice = getLastPrice(code);
             final boolean priceUpper = lastPrice > nowPrice;
@@ -469,8 +471,8 @@ public class DailyJob {
         log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore());
         // 等待最佳买入时机
         if (!waitingBestTime(best.getCode(), best.getName(), best.getPrice(), false)) {
-            log.info("未找到合适的买入时机，取消买入任务!");
-            return;
+            log.info("未找到合适的买入时机，尝试买入下一组股票!");
+            buy(times + 1);
         }
         final int maxBuyNumber = (int) (availableAmount / best.getPrice());
         final int buyNumber = (maxBuyNumber / 100) * 100;
