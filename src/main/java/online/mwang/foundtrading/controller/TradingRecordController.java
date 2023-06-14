@@ -126,7 +126,7 @@ public class TradingRecordController {
             record.setIncome(saleAmount - record.getBuyAmount());
             record.setIncomeRate(record.getIncome() / record.getBuyAmount() * 100);
             record.setHoldDays(dailyJob.diffDate(record.getBuyDate(), new Date()));
-            record.setDailyIncomeRate(record.getIncomeRate() / Math.min(record.getHoldDays(), 1));
+            record.setDailyIncomeRate(record.getIncomeRate() / Math.max(record.getHoldDays(), 1));
         }).sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).collect(Collectors.toList());
 //        Calendar instance = Calendar.getInstance();
     }
