@@ -376,8 +376,8 @@ public class DailyJob {
                 if (priceContinueUpperCount > 0) {
                     priceContinueUpperCount--;
                 }
-                priceContinueUpperCount++;
                 priceTotalUpperCount++;
+                priceContinueUpperCount++;
                 priceContinueFallCount = 0;
                 holdCount = 0;
             } else if (sale ? priceFall : priceUpper) {
