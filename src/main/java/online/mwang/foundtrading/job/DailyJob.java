@@ -58,17 +58,18 @@ public class DailyJob {
     private static final int BUY_RETRY_TIMES = 3;
     private static final int SOLD_RETRY_TIMES = 3;
     private static final int LOGIN_RETRY_TIMES = 10;
-    private static final int PriceContinueFallLimit = 3;
-    private static final int PriceTotalFallLimit = 10;
-    private static final int PriceContinueUpperLimit = 3;
-    private static final int PriceTotalUpperLimit = 10;
+    private static final int PRICE_CONTINUE_FALL_LIMIT = 3;
+    private static final int PRICE_TOTAL_FALL_LIMIT = 10;
+    private static final int PRICE_CONTINUE_UPPER_LIMIT = 3;
+    private static final int PRICE_TOTAL_UPPER_LIMIT = 10;
     private static final int BUY_RETRY_LIMIT = 10;
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int WAIT_TIME_MINUTES = 10;
+    private static final int HOLD_TIME_MINUTES = 5;
     private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
     private static final int THREAD_POOL_NUMBERS = 8;
-    private static final Integer TOKEN_EXPIRE_MINUTES = 30;
+    private static final int TOKEN_EXPIRE_MINUTES = 30;
     private static final int CANCEL_WAIT_TIMES = 6;
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
@@ -309,7 +310,6 @@ public class DailyJob {
             if (!waitingBestTime(maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getSalePrice(), true)) {
                 log.info("未找到合适的卖出时机，尝试卖出下一组股票!");
                 sale(times + 1);
-                ;
             }
             log.info("最佳卖出股票[{}-{}]，买入金额:{}，卖出金额:{}，预期收益:{}，日收益率:{}", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getBuyAmount(), maxRateRecord.getSaleAmount(), maxRateRecord.getIncome(), String.format("%.4f", maxRateRecord.getDailyIncomeRate()));
             // 返回合同编号
@@ -364,8 +364,8 @@ public class DailyJob {
         String operation = sale ? "卖出" : "买入";
         String upperFallKey = sale ? "上涨" : "跌落";
         String fallUpperKey = sale ? "跌落" : "上涨";
-        int totalLimit = sale ? PriceTotalFallLimit : PriceTotalUpperLimit;
-        int continueLimit = sale ? PriceContinueFallLimit : PriceContinueUpperLimit;
+        int totalLimit = sale ? PRICE_TOTAL_FALL_LIMIT : PRICE_TOTAL_UPPER_LIMIT;
+        int continueLimit = sale ? PRICE_CONTINUE_FALL_LIMIT : PRICE_CONTINUE_UPPER_LIMIT;
         while (timesCount < 6 * WAIT_TIME_MINUTES) {
             SleepUtils.second(WAIT_TIME_SECONDS);
             final Double lastPrice = getLastPrice(code);
@@ -380,11 +380,14 @@ public class DailyJob {
                 priceContinueUpperCount++;
                 priceTotalUpperCount++;
                 priceContinueFallCount = 0;
+                holdCount = 0;
             } else if (sale ? priceFall : priceUpper) {
                 priceTotalFallCount++;
                 priceContinueFallCount++;
                 priceContinueUpperCount = 0;
+                holdCount = 0;
             } else {
+                holdCount++;
                 priceContinueFallCount = 0;
                 priceContinueUpperCount = 0;
             }
@@ -393,8 +396,12 @@ public class DailyJob {
                     operation, code, name, lastPrice, upperFallKey, priceTotalUpperCount, upperFallKey, priceContinueUpperCount, fallUpperKey, priceTotalFallCount, fallUpperKey, priceContinueFallCount, operation);
             // 总跌落10次或者连续跌落3次，代表价格上涨已达到峰值，开始卖出
             if (priceTotalFallCount > totalLimit || priceContinueFallCount > continueLimit) {
-                log.info("总{}数达到{}，或者连续{}次数达到{}，开始{}股票。", fallUpperKey, totalLimit, fallUpperKey, continueLimit, operation);
+                log.info("最佳{}股票[{}-{}]，总{}数达到{}，或者连续{}次数达到{}，开始{}股票。", operation, code, name, fallUpperKey, totalLimit, fallUpperKey, continueLimit, operation);
                 return true;
+            }
+            if (holdCount > 6 * HOLD_TIME_MINUTES) {
+                log.info("最佳{}股票[{}-{}]，价格在{}分钟内无变化!", operation, code, name, HOLD_TIME_MINUTES);
+                return false;
             }
         }
         return false;
