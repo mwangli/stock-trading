@@ -323,30 +323,30 @@ public class DailyJob {
         } else {
             log.info("最佳卖出股票[{}-{}]，买入金额:{}，卖出金额:{}，收益:{}，日收益率:{}", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getBuyAmount(), maxRateRecord.getSaleAmount(), maxRateRecord.getIncome(), String.format("%.4f", maxRateRecord.getDailyIncomeRate()));
             // 等待最佳卖出时机
-            int priceFallCount = 0;
-            int timesCount = 0;
-            while (timesCount < 36) {
-                SleepUtils.second(5);
-                final Double nowPrice = maxRateRecord.getSalePrice();
-                final Double lastPrice = getLastPrice(maxRateRecord.getCode());
-                maxRateRecord.setSalePrice(lastPrice);
-                if (lastPrice > nowPrice) {
-                    priceFallCount = 0;
-                    timesCount = 0;
-                    log.info("最佳卖出股票[{}-{}]，当前价格：{}，等待最佳卖出时机", maxRateRecord.getCode(), maxRateRecord.getName(), lastPrice);
-                } else if (lastPrice < nowPrice) {
-                    priceFallCount++;
-                    timesCount = 0;
-                    if (priceFallCount >= 3) {
-                        log.info("开始卖出股票[{}-{}]，卖出价格：{}", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getSalePrice());
-                        break;
-                    }
-                } else {
-                    priceFallCount = 0;
-                    timesCount++;
-                    log.info("最佳卖出股票[{}-{}]，当前价格：{}，等待最佳卖出时机", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getSalePrice());
-                }
-            }
+//            int priceFallCount = 0;
+//            int timesCount = 0;
+//            while (timesCount < 36) {
+//                SleepUtils.second(5);
+//                final Double nowPrice = maxRateRecord.getSalePrice();
+//                final Double lastPrice = getLastPrice(maxRateRecord.getCode());
+//                maxRateRecord.setSalePrice(lastPrice);
+//                if (lastPrice > nowPrice) {
+//                    priceFallCount = 0;
+//                    timesCount = 0;
+//                    log.info("最佳卖出股票[{}-{}]，当前价格：{}，等待最佳卖出时机", maxRateRecord.getCode(), maxRateRecord.getName(), lastPrice);
+//                } else if (lastPrice < nowPrice) {
+//                    priceFallCount++;
+//                    timesCount = 0;
+//                    if (priceFallCount >= 3) {
+//                        log.info("开始卖出股票[{}-{}]，卖出价格：{}", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getSalePrice());
+//                        break;
+//                    }
+//                } else {
+//                    priceFallCount = 0;
+//                    timesCount++;
+//                    log.info("最佳卖出股票[{}-{}]，当前价格：{}，等待最佳卖出时机", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getSalePrice());
+//                }
+//            }
             // 返回合同编号
             JSONObject res = buySale(SALE_TYPE_OP, maxRateRecord.getCode(), maxRateRecord.getSalePrice(), maxRateRecord.getBuyNumber());
             String saleNo = res.getString("ANSWERNO");
@@ -388,6 +388,31 @@ public class DailyJob {
             }
         }
     }
+
+//    private Boolean waitingBestTime(TradingRecord maxRateRecord) {
+//        int priceContinueFallCount = 0;
+//        int priceTotalFallCount = 0;
+//        int priceTotalUpperCount = 0;
+//        int timesCount = 0;
+//        while (timesCount < 6 * 30) {
+//            SleepUtils.second(WAIT_TIME_SECONDS);
+//            final Double nowPrice = maxRateRecord.getSalePrice();
+//            final Double lastPrice = getLastPrice(maxRateRecord.getCode());
+//            maxRateRecord.setSalePrice(lastPrice);
+//            if (lastPrice > nowPrice) {
+//                priceTotalUpperCount++;
+//                priceContinueFallCount = 0;
+//                log.info("最佳卖出股票[{}-{}]，当前价格：{}，等待最佳卖出时机", maxRateRecord.getCode(), maxRateRecord.getName(), lastPrice);
+//            } else if (lastPrice < nowPrice) {
+//                priceTotalFallCount++;
+//                priceContinueFallCount++;
+//            } else {
+//                priceContinueFallCount = 0;
+//                timesCount++;
+//                log.info("最佳卖出股票[{}-{}]，当前价格：{}，等待最佳卖出时机", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getSalePrice());
+//            }
+//        }
+//    }
 
     // 获取持仓股票
     private Double getLastPrice(String code) {
