@@ -795,6 +795,8 @@ public class DailyJob {
                         record.setBuyDateString(date);
                         record.setBuyNo(answerNo);
                         record.setSold("0");
+                        record.setStrategyId(0L);
+                        record.setStrategyName("默认策略");
                         final Date now = new Date();
                         record.setCreateTime(now);
                         record.setUpdateTime(now);
