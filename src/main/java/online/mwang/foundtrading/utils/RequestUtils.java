@@ -15,7 +15,9 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 
 /**
  * @version 1.0.0
@@ -80,8 +82,9 @@ public class RequestUtils {
     }
 
     private String checkResult(JSONObject res) {
+        List<String> errorCodes = Arrays.asList("-204007", "-204001");
         final String errorNo = res.getString("ERRORNO");
-        if ("-204007".equals(errorNo)) {
+        if (errorCodes.contains(errorNo)) {
             log.info("检测到无效Token，正在重新登录。");
             DailyJob dailyJob = applicationContext.getBean(DailyJob.class);
             dailyJob.login();
