@@ -32,6 +32,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -896,6 +897,7 @@ public class DailyJob {
         List<String> errorCodes = Arrays.asList("[251112]", "[251127]", "[251299]", "该股票是退市");
         List<StockInfo> stockInfos = stockInfoService.list();
         final HashSet<String> set = new HashSet<>();
+        AtomicInteger count = new AtomicInteger();
         stockInfos.forEach(info -> {
             JSONObject res = buySale(BUY_TYPE_OP, info.getCode(), 100.0, 100.0);
             final String message = res.getString("ERRORMESSAGE");
@@ -906,7 +908,9 @@ public class DailyJob {
                 info.setPermission("1");
             }
             stockInfoMapper.updateById(info);
-            log.info("刷新当前股票[{}-{}]交易权限: {}", info.getCode(), info.getName(), info.getPermission());
+            if (count.incrementAndGet() % 100 == 0) {
+                log.info("已更新{}条股票交易权限记录。", count.get());
+            }
         });
         log.info("交易权限错误信息合集：{}", set);
         // 取消所有提交的订单
