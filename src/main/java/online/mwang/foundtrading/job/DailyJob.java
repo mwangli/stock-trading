@@ -199,27 +199,32 @@ public class DailyJob {
     public void login() {
         int time = 0;
         while (time++ < LOGIN_RETRY_TIMES) {
-            final List<String> checkCode = getCheckCode();
-            HashMap<String, Object> paramMap = new HashMap<>();
-            paramMap.put("action", "100");
-            paramMap.put("modulus_id", "2");
-            paramMap.put("accounttype", "ZJACCOUNT");
-            paramMap.put("account", "880008900626");
-            paramMap.put("MobileCode", "13278828091");
-            paramMap.put("password", "9da08684daf6cda30ef11b8fecbaa568963749de0a0496e23fcfca4b9b29953e9703b1a7cc9fe9259f7ad732f2fa1bd09017ba884c0817667c458cb554dcbeb480623ad070c4d81a185dd997e45c9ab5ae655584728193759ec40e72ad7e25f833773f3e6cd0d23c16493765358adc593ce0688edccbefdd35a3355016b724fc");
-            paramMap.put("signkey", "51cfce1626c7cb087b940a0c224f2caa");
-            paramMap.put("CheckCode", checkCode.get(0));
-            paramMap.put("CheckToken", checkCode.get(1));
-            final JSONObject res = requestUtils.request(buildParams(paramMap));
-            final String errorNo = res.getString("ERRORNO");
-            final String token = res.getString("TOKEN");
-            if (errorNo.equals("0")) {
-                log.info("登录成功！");
-                redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
-                return;
-            }
+            if (doLogin()) return;
             log.info("第{}次登录失败，正在尝试重新登录！", time);
         }
+    }
+
+    public Boolean doLogin() {
+        final List<String> checkCode = getCheckCode();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", "100");
+        paramMap.put("modulus_id", "2");
+        paramMap.put("accounttype", "ZJACCOUNT");
+        paramMap.put("account", "880008900626");
+        paramMap.put("MobileCode", "13278828091");
+        paramMap.put("password", "9da08684daf6cda30ef11b8fecbaa568963749de0a0496e23fcfca4b9b29953e9703b1a7cc9fe9259f7ad732f2fa1bd09017ba884c0817667c458cb554dcbeb480623ad070c4d81a185dd997e45c9ab5ae655584728193759ec40e72ad7e25f833773f3e6cd0d23c16493765358adc593ce0688edccbefdd35a3355016b724fc");
+        paramMap.put("signkey", "51cfce1626c7cb087b940a0c224f2caa");
+        paramMap.put("CheckCode", checkCode.get(0));
+        paramMap.put("CheckToken", checkCode.get(1));
+        final JSONObject res = requestUtils.request(buildParams(paramMap));
+        final String errorNo = res.getString("ERRORNO");
+        final String token = res.getString("TOKEN");
+        if (errorNo.equals("0")) {
+            log.info("登录成功！");
+            redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+            return true;
+        }
+        return false;
     }
 
     private JSONArray getHoldList() {

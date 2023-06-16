@@ -88,7 +88,7 @@ public class RequestUtils {
         if (errorCodes.contains(errorNo)) {
             log.info("检测到无效Token，正在重新登录。");
             DailyJob dailyJob = applicationContext.getBean(DailyJob.class);
-            dailyJob.login();
+            dailyJob.doLogin();
             return dailyJob.getToken();
         }
         return null;
