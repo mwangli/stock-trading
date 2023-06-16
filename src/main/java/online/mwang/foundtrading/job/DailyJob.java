@@ -300,10 +300,10 @@ public class DailyJob {
             }
             log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore());
             // 等待最佳买入时机
-            if (!waitingBestTime(best.getCode(), best.getName(), best.getPrice(), false)) {
-                log.info("未找到合适的买入时机，尝试买入下一组股票!");
-                continue;
-            }
+//            if (!waitingBestTime(best.getCode(), best.getName(), best.getPrice(), false)) {
+//                log.info("未找到合适的买入时机，尝试买入下一组股票!");
+//                continue;
+//            }
             final int maxBuyNumber = (int) (availableAmount / best.getPrice());
             final int buyNumber = (maxBuyNumber / 100) * 100;
             JSONObject res = buySale(BUY_TYPE_OP, best.getCode(), best.getPrice(), (double) buyNumber);
@@ -423,11 +423,11 @@ public class DailyJob {
                 return;
             } else {
                 log.info("最佳卖出股票[{}-{}]，买入价格:{}，当前价格:{}，预期收益:{}，日收益率:{}", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getBuyPrice(), maxRateRecord.getSalePrice(), maxRateRecord.getIncome(), String.format("%.4f", maxRateRecord.getDailyIncomeRate()));
-                // 等待最佳卖出时机
-                if (!waitingBestTime(maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getBuyPrice(), true)) {
-                    log.info("未找到合适的卖出时机，尝试卖出下一组股票!");
-                    continue;
-                }
+//                // 等待最佳卖出时机
+//                if (!waitingBestTime(maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getBuyPrice(), true)) {
+//                    log.info("未找到合适的卖出时机，尝试卖出下一组股票!");
+//                    continue;
+//                }
                 // 返回合同编号
                 JSONObject res = buySale(SALE_TYPE_OP, maxRateRecord.getCode(), maxRateRecord.getSalePrice(), maxRateRecord.getBuyNumber());
                 String saleNo = res.getString("ANSWERNO");

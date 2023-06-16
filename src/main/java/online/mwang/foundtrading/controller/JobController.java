@@ -32,9 +32,8 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class JobController {
 
-
-    private final static String ASCEND = "ascend";
     private final static String REQUEST_TOKEN = "requestToken";
+    private final static String TEMP_GROUP_NAME = "TEMP";
     private final Scheduler scheduler;
     private final QuartzJobMapper jobMapper;
     private final StringRedisTemplate redisTemplate;
@@ -70,7 +69,7 @@ public class JobController {
     @SneakyThrows
     @PostMapping("run")
     public Response<?> runNow(@RequestBody QuartzJob job) {
-        Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
+        Trigger trigger = TriggerBuilder.newTrigger().withIdentity(job.getName(), TEMP_GROUP_NAME).startNow().build();
         JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).build();
         scheduler.scheduleJob(jobDetail, trigger);
         return Response.success();
@@ -117,7 +116,9 @@ public class JobController {
     @SneakyThrows
     @PostMapping("/interrupt")
     public Response<Boolean> interruptJob(@RequestBody QuartzJob job) {
-        return Response.success(scheduler.interrupt(JobKey.jobKey(job.getName())));
+        final JobKey jobKey = JobKey.jobKey(job.getName());
+        final JobKey tempKey = JobKey.jobKey(job.getName(), TEMP_GROUP_NAME);
+        return Response.success(scheduler.interrupt(jobKey) | scheduler.interrupt(tempKey));
     }
 
     @SneakyThrows
