@@ -300,10 +300,10 @@ public class DailyJob {
             }
             log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore());
             // 等待最佳买入时机
-//            if (!waitingBestTime(best.getCode(), best.getName(), best.getPrice(), false)) {
-//                log.info("未找到合适的买入时机，尝试买入下一组股票!");
-//                buy(times + 1);
-//            }
+            if (!waitingBestTime(best.getCode(), best.getName(), best.getPrice(), false)) {
+                log.info("未找到合适的买入时机，尝试买入下一组股票!");
+                continue;
+            }
             final int maxBuyNumber = (int) (availableAmount / best.getPrice());
             final int buyNumber = (maxBuyNumber / 100) * 100;
             JSONObject res = buySale(BUY_TYPE_OP, best.getCode(), best.getPrice(), (double) buyNumber);
@@ -424,9 +424,10 @@ public class DailyJob {
             } else {
                 log.info("最佳卖出股票[{}-{}]，买入价格:{}，当前价格:{}，预期收益:{}，日收益率:{}", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getBuyPrice(), maxRateRecord.getSalePrice(), maxRateRecord.getIncome(), String.format("%.4f", maxRateRecord.getDailyIncomeRate()));
                 // 等待最佳卖出时机
-//                if (!waitingBestTime(maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getSalePrice(), true)) {
-//                    log.info("未找到合适的卖出时机，尝试卖出下一组股票!");
-//                }
+                if (!waitingBestTime(maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getBuyPrice(), true)) {
+                    log.info("未找到合适的卖出时机，尝试卖出下一组股票!");
+                    continue;
+                }
                 // 返回合同编号
                 JSONObject res = buySale(SALE_TYPE_OP, maxRateRecord.getCode(), maxRateRecord.getSalePrice(), maxRateRecord.getBuyNumber());
                 String saleNo = res.getString("ANSWERNO");
@@ -463,7 +464,7 @@ public class DailyJob {
         }
     }
 
-    private Boolean waitingBestTime(String code, String name, Double nowPrice, Boolean sale) {
+    private Boolean waitingBestTime(String code, String name, Double buyPrice, Boolean sale) {
         int priceContinueFallCount = 0;
         int priceTotalFallCount = 0;
         int priceContinueUpperCount = 0;
@@ -475,9 +476,10 @@ public class DailyJob {
         String fallUpperKey = sale ? "跌落" : "上涨";
         int totalLimit = sale ? PRICE_TOTAL_FALL_LIMIT : PRICE_TOTAL_UPPER_LIMIT;
         int continueLimit = sale ? PRICE_CONTINUE_FALL_LIMIT : PRICE_CONTINUE_UPPER_LIMIT;
+        Double nowPrice = getLastPrice(code);
         while (timesCount < 6 * WAIT_TIME_MINUTES) {
             SleepUtils.second(WAIT_TIME_SECONDS);
-            final Double lastPrice = getLastPrice(code);
+            Double lastPrice = getLastPrice(code);
             final boolean priceUpper = lastPrice > nowPrice;
             final boolean priceFall = lastPrice < nowPrice;
             nowPrice = lastPrice;
@@ -501,10 +503,10 @@ public class DailyJob {
                 priceContinueUpperCount = 0;
             }
             timesCount++;
-            log.info("最佳{}股票[{}-{}]，当前价格：{}，总{}次数：{}，连续{}次数：{}，总{}数：{}，连续{}次数{}，等待最佳{}时机...",
-                    operation, code, name, lastPrice, upperFallKey, priceTotalUpperCount, upperFallKey, priceContinueUpperCount, fallUpperKey, priceTotalFallCount, fallUpperKey, priceContinueFallCount, operation);
+            log.info("最佳{}股票[{}-{}]，买入价格：{}, 当前价格：{}，总{}次数：{}，连续{}次数：{}，总{}数：{}，连续{}次数{}，等待最佳{}时机...",
+                    operation, code, name, buyPrice, nowPrice, upperFallKey, priceTotalUpperCount, upperFallKey, priceContinueUpperCount, fallUpperKey, priceTotalFallCount, fallUpperKey, priceContinueFallCount, operation);
             // 总跌落10次或者连续跌落3次，代表价格上涨已达到峰值，开始卖出
-            if (priceTotalFallCount > totalLimit || priceContinueFallCount > continueLimit) {
+            if ((sale && (nowPrice - buyPrice > 0.1)) && (priceTotalFallCount > totalLimit || priceContinueFallCount > continueLimit)) {
                 log.info("最佳{}股票[{}-{}]，总{}数达到{}，或者连续{}次数达到{}，开始{}股票。", operation, code, name, fallUpperKey, totalLimit, fallUpperKey, continueLimit, operation);
                 return true;
             }
