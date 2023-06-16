@@ -1145,8 +1145,8 @@ public class DailyJob {
             final String answerNo = isToday ? split[6] : split[1];
             final String date = isToday ? split[10] : split[0];
             final String time = split[11];
-            if ("0".equals(answerNo)) {
-                // 合同编号为0非买卖信息，跳过处理
+            if ("0".equals(answerNo) || "799999".equals(code)) {
+                // 非买卖信息，跳过处理
                 continue;
             }
             OrderInfo orderInfo = new OrderInfo();
