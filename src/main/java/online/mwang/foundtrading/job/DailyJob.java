@@ -49,7 +49,7 @@ public class DailyJob {
     private static final int MAX_HOLD_NUMBER = 100;
     private static final int MIN_HOLD_NUMBER = 100;
     // 最大持仓股票数量
-    private static final int MAX_HOLD_STOCKS = 5;
+    private static final int MAX_HOLD_STOCKS = 10;
     // 最低价格系数，保证可买入股票价格不会过低
     private static final double LOW_PRICE_PERCENT = 0.8;
     // 最低价格限制，资金不足时不买入低价股
