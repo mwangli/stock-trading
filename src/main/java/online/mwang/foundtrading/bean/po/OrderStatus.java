@@ -7,14 +7,9 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class OrderInfo {
+public class OrderStatus {
     private String answerNo;
     private String code;
     private String name;
     private String status;
-    private String date;
-    private String time;
-    private String type;
-    private Double number;
-    private Double price;
 }
