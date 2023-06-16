@@ -30,6 +30,7 @@ import java.util.List;
 public class RequestUtils {
 
     private static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
+    private static final int RETRY_REQUEST_TIMES = 3;
 
     @Resource
     ApplicationContext applicationContext;
@@ -42,21 +43,29 @@ public class RequestUtils {
 
     @SneakyThrows
     public JSONObject request(String url, HashMap<String, Object> formParam) {
-        CloseableHttpClient client = HttpClients.createDefault();
-        MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
-        formParam.forEach((k, v) -> entityBuilder.addTextBody(k, String.valueOf(v)));
-        HttpPost post = new HttpPost(url);
-        post.setEntity(entityBuilder.build());
-        CloseableHttpResponse response = client.execute(post);
-        String result = EntityUtils.toString(response.getEntity());
-        if (logs) log.info(result);
-        final JSONObject res = JSONObject.parseObject(result);
-        String token = checkResult(res);
-        if (token != null) {
-            formParam.put("token", token);
-            return request(url, formParam);
+        int times = 0;
+        while (times++ < RETRY_REQUEST_TIMES) {
+            CloseableHttpClient client = HttpClients.createDefault();
+            MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
+            formParam.forEach((k, v) -> entityBuilder.addTextBody(k, String.valueOf(v)));
+            HttpPost post = new HttpPost(url);
+            post.setEntity(entityBuilder.build());
+            CloseableHttpResponse response = client.execute(post);
+            String result = EntityUtils.toString(response.getEntity());
+            if (logs) log.info(result);
+            final JSONObject res = JSONObject.parseObject(result);
+            String code = res.getString("ERRORNO");
+            if ("-204007".equals(code)) {
+                log.info("检测到无效token，尝试重新登录...");
+                String token = applicationContext.getBean(DailyJob.class).getToken();
+                log.info("登录后再次发起请求。");
+                formParam.put("token", token);
+                continue;
+            }
+            return res;
         }
-        return res;
+        log.info("尝试{}次请求失败，请检查程序代码", RETRY_REQUEST_TIMES);
+        return new JSONObject();
     }
 
     @SneakyThrows
@@ -81,14 +90,10 @@ public class RequestUtils {
         return new JSONArray();
     }
 
-    private String checkResult(JSONObject res) {
+    private Boolean checkToken(JSONObject res) {
         if ("100".equals(res.getString("ACTION"))) return null;
         List<String> errorCodes = Collections.singletonList("-204007");
         final String errorNo = res.getString("ERRORNO");
-        if (errorCodes.contains(errorNo)) {
-            log.info("检测到无效Token，正在重新登录。");
-            return applicationContext.getBean(DailyJob.class).getToken();
-        }
-        return null;
+        return "-204007".equals(errorNo);
     }
 }
