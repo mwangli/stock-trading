@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RunTestJob extends BaseJob2 {
+public class RunTestJob extends BaseJob {
 
     @Override
     public void run() {
