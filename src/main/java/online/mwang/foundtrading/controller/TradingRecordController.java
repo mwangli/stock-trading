@@ -62,7 +62,7 @@ public class TradingRecordController {
                 .eq((ObjectUtils.isNotNull(query.getSalDate())), TradingRecord::getSaleDate, query.getSalDate())
                 .eq(ObjectUtils.isNotNull(query.getHoldDays()), TradingRecord::getHoldDays, query.getHoldDays())
                 .eq(ObjectUtils.isNotNull(query.getSold()), TradingRecord::getSold, query.getSold())
-                .orderBy(true, ASCEND.equals(query.getSortOrder()), TradingRecord.getOrder(query.getSortKey()));
+                .orderBy(ObjectUtils.isNotNull(query.getSortOrder()), ASCEND.equals(query.getSortOrder()), TradingRecord.getOrder(query.getSortKey()));
         Page<TradingRecord> pageResult = tradingRecordService.page(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
         return Response.success(pageResult.getRecords(), pageResult.getTotal());
     }
@@ -116,17 +116,18 @@ public class TradingRecordController {
     }
 
     public List<TradingRecord> getExpectedIncome() {
-        final List<TradingRecord> recordList = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(true, TradingRecord::getSold, "0"));
-        return recordList.stream().peek(record -> {
+        return tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().peek(record -> {
             final StockInfo stockInfo = stockInfoMapper.selectByCode(record.getCode());
-            record.setName(record.getCode().concat("-").concat(record.getName()));
-            record.setSalePrice(stockInfo.getPrice());
-            final double amount = record.getBuyNumber() * record.getSalePrice();
-            final double saleAmount = amount - dailyJob.getPeeAmount(amount);
-            record.setIncome(saleAmount - record.getBuyAmount());
-            record.setIncomeRate(record.getIncome() / record.getBuyAmount() * 100);
-            record.setHoldDays(dailyJob.diffDate(record.getBuyDate(), new Date()));
-            record.setDailyIncomeRate(record.getIncomeRate() / Math.max(record.getHoldDays(), 1));
+            if (stockInfo != null) {
+                record.setName(record.getCode().concat("-").concat(record.getName()));
+                record.setSalePrice(stockInfo.getPrice());
+                final double amount = record.getBuyNumber() * record.getSalePrice();
+                final double saleAmount = amount - dailyJob.getPeeAmount(amount);
+                record.setIncome(saleAmount - record.getBuyAmount());
+                record.setIncomeRate(record.getIncome() / record.getBuyAmount() * 100);
+                record.setHoldDays(dailyJob.diffDate(record.getBuyDate(), new Date()));
+                record.setDailyIncomeRate(record.getIncomeRate() / Math.max(record.getHoldDays(), 1));
+            }
         }).sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).collect(Collectors.toList());
 //        Calendar instance = Calendar.getInstance();
     }
