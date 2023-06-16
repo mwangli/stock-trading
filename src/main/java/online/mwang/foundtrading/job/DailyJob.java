@@ -218,6 +218,7 @@ public class DailyJob {
             } else {
                 log.info("登录成功！");
                 redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+                return;
             }
         }
     }
