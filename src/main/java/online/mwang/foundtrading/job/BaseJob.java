@@ -13,6 +13,8 @@ import org.quartz.JobExecutionContext;
 @Slf4j
 public abstract class BaseJob implements InterruptableJob {
 
+    protected boolean interrupted;
+
     /**
      * 任务执行方法
      */
@@ -29,8 +31,6 @@ public abstract class BaseJob implements InterruptableJob {
     @Override
     public void interrupt() {
         log.info("任务终止！");
-        log.info(Thread.currentThread().getName());
-        Thread.currentThread().interrupt();
-//        interrupt = true;
+        interrupted = true;
     }
 }
