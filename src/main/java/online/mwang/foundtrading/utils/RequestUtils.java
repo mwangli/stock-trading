@@ -82,6 +82,7 @@ public class RequestUtils {
     }
 
     private String checkResult(JSONObject res) {
+        if ("100".equals(res.getString("ACTION"))) return null;
         List<String> errorCodes = Arrays.asList("-204007", "-204001");
         final String errorNo = res.getString("ERRORNO");
         if (errorCodes.contains(errorNo)) {
