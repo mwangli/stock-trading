@@ -51,7 +51,7 @@ public class DailyJob {
     // 最大持仓股票数量
     private static final int MAX_HOLD_STOCKS = 10;
     // 最低价格系数，保证可买入股票价格不会过低
-    private static final double LOW_PRICE_PERCENT = 0.8;
+    private static final double LOW_PRICE_PERCENT = 0.9;
     // 最低价格限制，资金不足时不买入低价股
     private static final double LOW_PRICE_LIMIT = 5.0;
     private static final int BUY_RETRY_TIMES = 3;
@@ -61,7 +61,7 @@ public class DailyJob {
     private static final int PRICE_TOTAL_FALL_LIMIT = 10;
     private static final int PRICE_CONTINUE_UPPER_LIMIT = 3;
     private static final int PRICE_TOTAL_UPPER_LIMIT = 10;
-    private static final int BUY_RETRY_LIMIT = 50;
+    private static final int BUY_RETRY_LIMIT = 20;
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int WAIT_TIME_MINUTES = 10;
     private static final int HOLD_TIME_MINUTES = 5;
@@ -72,7 +72,7 @@ public class DailyJob {
     private static final int CANCEL_WAIT_TIMES = 30;
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
-    private static final String REQUEST_TOKEN = "requestToken";
+    private static final String TOKEN = "requestToken";
     private static HashMap<String, Integer> dateMap;
     private final RequestUtils requestUtils;
     private final OcrUtils ocrUtils;
@@ -84,6 +84,16 @@ public class DailyJob {
     private final ScoreStrategyMapper strategyMapper;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
 
+    public static HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
+        if (paramMap == null) return new HashMap<>();
+        paramMap.put("cfrom", "H5");
+        paramMap.put("tfrom", "PC");
+        paramMap.put("newindex", "1");
+        paramMap.put("MobileCode", "13278828091");
+        paramMap.put("intacttoserver", "%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC");
+        return paramMap;
+    }
+
     // 每隔10分钟刷新Token
 //    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
     public void runTokenJob() {
@@ -92,7 +102,6 @@ public class DailyJob {
         log.info("刷新Token任务执行完毕================================");
     }
 
-
     // 每天登录一次
 //    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
     public void runLoginJob() {
@@ -100,7 +109,6 @@ public class DailyJob {
         login();
         log.info("账户登录任务执行完毕================================");
     }
-
 
     // 交易日开盘时间买入 9:30
 //    @Scheduled(cron = "0 0,15,30 9 ? * MON-FRI")
@@ -160,12 +168,12 @@ public class DailyJob {
     }
 
     public String getToken() {
-        final String requestToken = redisTemplate.opsForValue().get(REQUEST_TOKEN);
+        final String requestToken = redisTemplate.opsForValue().get(TOKEN);
         if (requestToken == null) {
-            log.info("没有检测到Token，正在重新登录。");
+            log.info("没有检测到Token，正在重新登录...");
             login();
         }
-        return redisTemplate.opsForValue().get(REQUEST_TOKEN);
+        return redisTemplate.opsForValue().get(TOKEN);
     }
 
     @SneakyThrows
@@ -173,15 +181,6 @@ public class DailyJob {
         String code = ocrUtils.execute(message);
         log.info("识别到图片验证码：{}", code);
         return code;
-    }
-
-    public static HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
-        paramMap.put("cfrom", "H5");
-        paramMap.put("tfrom", "PC");
-        paramMap.put("newindex", "1");
-        paramMap.put("MobileCode", "13278828091");
-        paramMap.put("intacttoserver", "%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC");
-        return paramMap;
     }
 
     @SneakyThrows
@@ -215,22 +214,12 @@ public class DailyJob {
             final String token = res.getString("TOKEN");
             if (token == null) {
                 log.info("第{}次登录失败，正在尝试重新登录！", time + 1);
-                SleepUtils.second(2);
+                SleepUtils.second(3);
             } else {
                 log.info("登录成功！");
-                redisTemplate.opsForValue().set(REQUEST_TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+                redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
             }
         }
-    }
-
-
-    private Boolean checkHasSold() {
-        // 检查今天是否有卖出记录，防止重复卖出
-        LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>()
-                .eq(TradingRecord::getSaleDateString, DateUtils.dateFormat.format(new Date()))
-                .eq(TradingRecord::getSold, "1");
-        List<TradingRecord> hasSold = tradingRecordService.list(queryWrapper);
-        return CollectionUtils.isNotEmpty(hasSold);
     }
 
     private JSONArray getHoldList() {
@@ -246,6 +235,24 @@ public class DailyJob {
         return requestUtils.request2(buildParams(paramMap));
     }
 
+    private Boolean checkSoldToday(String sold) {
+        // 检查今天是否有卖出记录，防止重复卖出
+        LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>()
+                .eq(TradingRecord::getSaleDateString, DateUtils.dateFormat.format(new Date()))
+                .eq(TradingRecord::getSold, sold);
+        List<TradingRecord> hasSold = tradingRecordService.list(queryWrapper);
+        return CollectionUtils.isNotEmpty(hasSold);
+    }
+
+    private Boolean checkBuyCode(String code) {
+        // 检查今天是否有卖出记录，防止重复卖出
+        LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>()
+                .eq(TradingRecord::getSold, "0")
+                .eq(TradingRecord::getCode, code);
+        List<TradingRecord> hasSold = tradingRecordService.list(queryWrapper);
+        return CollectionUtils.isNotEmpty(hasSold);
+    }
+
     public void buy() {
         int time = 0;
         while (time < BUY_RETRY_TIMES) {
@@ -258,11 +265,15 @@ public class DailyJob {
                 log.info("持仓股票数量已达到最大值:{}，无需购买!", MAX_HOLD_STOCKS);
                 return;
             }
+            if (checkSoldToday("0")) {
+                log.info("今天已经有买入记录了，无需重复购买！");
+                return;
+            }
             // 撤销所有未成功订单，回收可用资金
-//            if (!waitOrderStatus()) {
-//                log.info("存在未撤销失败订单，取消购买任务！");
-//                return;
-//            }
+            if (!waitOrderStatus()) {
+                log.info("存在未撤销失败订单，取消购买任务！");
+                return;
+            }
             // 更新账户可用资金
             final AccountInfo accountInfo = updateAccountAmount();
             final Double totalAvailableAmount = accountInfo.getAvailableAmount();
@@ -289,22 +300,21 @@ public class DailyJob {
                     .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= lowPrice && s.getPrice() <= highPrice)
                     .skip((long) time * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
             if (limitList.size() < BUY_RETRY_LIMIT) {
-                log.info("可买入股票不足{}条，取消购买任务！", BUY_RETRY_LIMIT);
+                log.info("可买入股票数量不足{}，取消购买任务！", BUY_RETRY_LIMIT);
                 return;
             }
             // 在得分高的一组中随机选择一支买入
             StockInfo best = limitList.get(new Random(System.currentTimeMillis()).nextInt(BUY_RETRY_LIMIT));
-            List<String> buyCodes = tradingRecordService.list().stream().filter(s -> "0".equals(s.getSold())).map(TradingRecord::getCode).collect(Collectors.toList());
-            if (buyCodes.contains(best.getCode())) {
+            if (checkBuyCode(best.getCode())) {
                 log.info("当前股票[{}-{}]已经持有，尝试买入下一组股票", best.getCode(), best.getName());
                 continue;
             }
             log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore());
             // 等待最佳买入时机
-//            if (!waitingBestTime(best.getCode(), best.getName(), best.getPrice(), false)) {
-//                log.info("未找到合适的买入时机，尝试买入下一组股票!");
-//                continue;
-//            }
+            if (!waitingBestTime(best.getCode(), best.getName(), best.getPrice(), false)) {
+                log.info("未找到合适的买入时机，尝试买入下一组股票!");
+                continue;
+            }
             final int maxBuyNumber = (int) (availableAmount / best.getPrice());
             final int buyNumber = (maxBuyNumber / 100) * 100;
             JSONObject res = buySale(BUY_TYPE_OP, best.getCode(), best.getPrice(), (double) buyNumber);
@@ -314,8 +324,12 @@ public class DailyJob {
                 continue;
             }
             // 查询买入结果
-            final String status = waitOrderStatus(buyNo);
-            if ("1".equals(status)) {
+            final Boolean success = waitOrderStatus(buyNo);
+            if (success == null) {
+                log.info("当前股票[{}-{}].订单撤销失败，取消买入任务！", best.getCode(), best.getName());
+                return;
+            }
+            if (success) {
                 // 买入成功后，保存交易数据
                 final TradingRecord record = new TradingRecord();
                 record.setCode(best.getCode());
@@ -343,14 +357,9 @@ public class DailyJob {
                 log.info("成功买入股票[{}-{}], 买入价格:{}，买入数量:{}，买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
                 // 保存评分数据
                 saveDate(stockInfos);
-            }
-            if ("0".equals(status)) {
+            } else {
                 // 如果交易不成功，撤单后再次尝试卖出
                 log.info("当前买入交易不成功，后尝试买入下一组股票。");
-            }
-            if ("-1".equals(status)) {
-                log.info("当前订单撤销失败，取消购买任务!");
-                return;
             }
         }
     }
@@ -359,19 +368,19 @@ public class DailyJob {
         int time = 0;
         while (time < SOLD_RETRY_TIMES) {
             time++;
-            log.info("第{}次尝试卖出股票。", time);
-            if (checkHasSold()) {
+            log.info("第{}次尝试卖出股票---------", time);
+            if (checkSoldToday("1")) {
                 log.info("今天已经有卖出记录了，无需重复卖出!");
                 return;
             }
             // 撤销未成功订单
-//            if (!waitOrderStatus()) {
-//                log.info("存在未撤销失败订单，取消卖出任务！");
-//                return;
-//            }
+            if (!waitOrderStatus()) {
+                log.info("存在未撤销失败订单，取消卖出任务！");
+                return;
+            }
             JSONArray dataList = getHoldList();
-            double maxDailyRate = -100.00;
-            TradingRecord maxRateRecord = null;
+            double maxDailyRate = -100.0;
+            TradingRecord best = null;
             for (int i = 1; i < dataList.size(); i++) {
                 String data = dataList.getString(i);
                 String[] split = data.split("\\|");
@@ -394,7 +403,7 @@ public class DailyJob {
                 final LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getCode, code).eq(TradingRecord::getSold, "0");
                 TradingRecord selectRecord = tradingRecordService.getOne(queryWrapper);
                 if (selectRecord == null) {
-                    log.info("当前股票[{}-{}]未查询到买入记录,开始同步最近一个月订单", code, name);
+                    log.info("当前股票[{}-{}]未查询到买入记录,开始同步订单", code, name);
                     threadPool.submit(this::syncBuySaleRecord);
                     continue;
                 }
@@ -415,54 +424,53 @@ public class DailyJob {
                     selectRecord.setHoldDays(dateDiff);
                     selectRecord.setDailyIncomeRate(dailyIncomeRate);
                     maxDailyRate = dailyIncomeRate;
-                    maxRateRecord = selectRecord;
+                    best = selectRecord;
                 }
             }
             // 卖出最高收益的股票
-            if (maxRateRecord == null) {
+            if (best == null) {
                 log.info("无可卖出股票，无法进行卖出交易！");
                 return;
+            }
+            log.info("最佳卖出股票[{}-{}]，买入价格:{}，当前价格:{}，预期收益:{}，日收益率:{}", best.getCode(), best.getName(), best.getBuyPrice(), best.getSalePrice(), best.getIncome(), String.format("%.4f", best.getDailyIncomeRate()));
+            // 等待最佳卖出时机
+            if (!waitingBestTime(best.getCode(), best.getName(), best.getBuyPrice(), true)) {
+                log.info("未找到合适的卖出时机，尝试卖出下一组股票!");
+                continue;
+            }
+            // 返回合同编号
+            JSONObject res = buySale(SALE_TYPE_OP, best.getCode(), best.getSalePrice(), best.getBuyNumber());
+            String saleNo = res.getString("ANSWERNO");
+            if (saleNo == null) {
+                log.info("当前股票[{}-{}]卖出失败，尝试买入下一组。", best.getCode(), best.getName());
+                continue;
+            }
+            // 查询卖出结果
+            final Boolean success = waitOrderStatus(saleNo);
+            if (success == null) {
+                log.info("当前股票[{}-{}]撤销订单失败，取消卖出任务！", best.getCode(), best.getName());
+                return;
+            }
+            if (success) {
+                best.setSold("1");
+                best.setSaleNo(saleNo);
+                final Date now = new Date();
+                best.setSaleDate(now);
+                best.setSaleDateString(DateUtils.dateFormat.format(now));
+                best.setUpdateTime(now);
+                tradingRecordService.updateById(best);
+                // 更新账户资金
+                updateAccountAmount();
+                // 增加股票交易次数
+                StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, best.getCode()));
+                stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
+                stockInfoService.updateById(stockInfo);
+                log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{}，日收益率为:{}。", best.getCode(), best.getName(), best.getSaleAmount(), best.getIncome(), best.getDailyIncomeRate());
             } else {
-                log.info("最佳卖出股票[{}-{}]，买入价格:{}，当前价格:{}，预期收益:{}，日收益率:{}", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getBuyPrice(), maxRateRecord.getSalePrice(), maxRateRecord.getIncome(), String.format("%.4f", maxRateRecord.getDailyIncomeRate()));
-//                // 等待最佳卖出时机
-//                if (!waitingBestTime(maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getBuyPrice(), true)) {
-//                    log.info("未找到合适的卖出时机，尝试卖出下一组股票!");
-//                    continue;
-//                }
-                // 返回合同编号
-                JSONObject res = buySale(SALE_TYPE_OP, maxRateRecord.getCode(), maxRateRecord.getSalePrice(), maxRateRecord.getBuyNumber());
-                String saleNo = res.getString("ANSWERNO");
-                if (saleNo == null) {
-                    log.info("当前股票[{}-{}]卖出失败，尝试买入下一组。", maxRateRecord.getCode(), maxRateRecord.getName());
-                    continue;
-                }
-                // 查询卖出结果
-                final String status = waitOrderStatus(saleNo);
-                if ("1".equals(status)) {
-                    maxRateRecord.setSold("1");
-                    maxRateRecord.setSaleNo(saleNo);
-                    final Date now = new Date();
-                    maxRateRecord.setSaleDate(now);
-                    maxRateRecord.setSaleDateString(DateUtils.dateFormat.format(now));
-                    maxRateRecord.setUpdateTime(now);
-                    tradingRecordService.updateById(maxRateRecord);
-                    // 更新账户资金
-                    updateAccountAmount();
-                    // 增加股票交易次数
-                    StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, maxRateRecord.getCode()));
-                    stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
-                    stockInfoService.updateById(stockInfo);
-                    log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{}，日收益率为:{}。", maxRateRecord.getCode(), maxRateRecord.getName(), maxRateRecord.getSaleAmount(), maxRateRecord.getIncome(), maxRateRecord.getDailyIncomeRate());
-                }
-                if ("0".equals(status)) {
-                    log.info("当前股票[{}-{}]卖出失败，尝试再次卖出。", maxRateRecord.getCode(), maxRateRecord.getName());
-                }
-                if ("-1".equals(status)) {
-                    log.info("当前股票[{}-{}]撤销订单失败，取消卖出任务！", maxRateRecord.getCode(), maxRateRecord.getName());
-                    return;
-                }
+                log.info("当前股票[{}-{}]卖出失败，尝试再次卖出。", best.getCode(), best.getName());
             }
         }
+
     }
 
     private Boolean waitingBestTime(String code, String name, Double buyPrice, Boolean sale) {
@@ -592,20 +600,44 @@ public class DailyJob {
         return accountInfo;
     }
 
-    public JSONArray listCancelOrder() {
-        String token = getToken();
-        final long timeMillis = System.currentTimeMillis();
-        HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", 152);
-        paramMap.put("StartPos", 0);
-        paramMap.put("MaxCount", 500);
-        paramMap.put("op_station", 4);
-        paramMap.put("token", token);
-        paramMap.put("reqno", timeMillis);
-        return requestUtils.request2(buildParams(paramMap));
+    private List<OrderInfo> arrayToList(JSONArray result) {
+        ArrayList<OrderInfo> orderList = new ArrayList<>();
+        if (result != null && result.size() > 1) {
+            for (int i = 1; i < result.size(); i++) {
+                String string = result.getString(i);
+                String[] split = string.split("\\|");
+                String code = split[0];
+                String name = split[1];
+                String status = split[2];
+                String answerNo = split[8];
+                OrderInfo orderInfo = new OrderInfo(answerNo, code, name, status);
+                orderList.add(orderInfo);
+            }
+        }
+        return orderList;
     }
 
-    public JSONArray listTodayOrder() {
+//    public List<OrderInfo> listCancelOrder() {
+//        String token = getToken();
+//        final long timeMillis = System.currentTimeMillis();
+//        HashMap<String, Object> paramMap = new HashMap<>();
+//        paramMap.put("action", 152);
+//        paramMap.put("StartPos", 0);
+//        paramMap.put("MaxCount", 500);
+//        paramMap.put("op_station", 4);
+//        paramMap.put("token", token);
+//        paramMap.put("reqno", timeMillis);
+//        JSONArray result = requestUtils.request2(buildParams(paramMap));
+//        return arrayToList(result);
+//    }
+
+//    public void cancelAllOrder() {
+//        List<OrderInfo> orderList = listCancelOrder();
+//        log.info("待撤销订单：{}", orderList);
+//        orderList.forEach(o -> cancelOrder(o.getAnswerNo()));
+//    }
+
+    public List<OrderInfo> listTodayOrder() {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -615,57 +647,53 @@ public class DailyJob {
         paramMap.put("token", token);
         paramMap.put("ReqlinkType", 1);
         paramMap.put("reqno", timeMillis);
-        return requestUtils.request2(buildParams(paramMap));
+        JSONArray result = requestUtils.request2(buildParams(paramMap));
+        return arrayToList(result);
     }
 
-    public void cancelAllOrder() {
-        final JSONArray result = listCancelOrder();
-        if (result != null && result.size() > 1) {
-            for (int i = 1; i < result.size(); i++) {
-                String string = result.getString(i);
-                String[] split = string.split("\\|");
-                String code = split[0];
-                String name = split[1];
-                String answerNo = split[8];
-                log.info("撤销当前股票[{}-{}]订单", code, name);
-                cancelOrder(answerNo);
-            }
-        }
-    }
 
     public String queryOrderStatus(String answerNo) {
-        final JSONArray result = listTodayOrder();
-        final HashMap<String, String> map = new HashMap<>();
-        if (result != null && result.size() > 1) {
-            for (int i = 1; i < result.size(); i++) {
-                String string = result.getString(i);
-                String[] split = string.split("\\|");
-                String status = split[2];
-                String answer = split[8];
-                map.put(answer, status);
-            }
-        }
-        log.info("查询到订单状态信息：{}", map);
-        if (!map.containsKey(answerNo)) {
+        List<OrderInfo> orderInfos = listTodayOrder();
+        log.info("查询到订单状态信息：{}", orderInfos);
+        Optional<OrderInfo> status = orderInfos.stream().filter(o -> o.getAnswerNo().equals(answerNo)).findFirst();
+        if (status.isEmpty()) {
             log.info("未查询到合同编号为{}的订单交易状态！", answerNo);
-            return "";
+            return null;
         }
-        return map.get(answerNo);
+        return status.get().getStatus();
     }
 
-    public String waitOrderStatus(String answerNo) {
+    public Boolean waitOrderStatus() {
+        int times = 0;
+        while (times < CANCEL_WAIT_TIMES) {
+            times++;
+            SleepUtils.second(WAIT_TIME_SECONDS);
+            List<OrderInfo> orderInfos = listTodayOrder();
+            List<String> cancelStatus = Arrays.asList("已报", "已报待撤");
+            List<OrderInfo> orderList = orderInfos.stream().filter(o -> cancelStatus.contains(o.getStatus())).collect(Collectors.toList());
+            if (orderList.size() == 0) {
+                return true;
+            } else {
+                log.info("待撤销订单：{}", orderList);
+                orderList.forEach(o -> cancelOrder(o.getAnswerNo()));
+            }
+        }
+        return false;
+    }
+
+    public Boolean waitOrderStatus(String answerNo) {
         int times = 0;
         while (times < CANCEL_WAIT_TIMES) {
             times++;
             SleepUtils.second(WAIT_TIME_SECONDS);
             final String status = queryOrderStatus(answerNo);
-            if ("".equals(status)) {
+            if (status == null) {
                 log.info("当前合同编号：{}，订单状态查询失败。", answerNo);
-                return "-1";
+                return null;
             }
             if ("已成".equals(status)) {
                 log.info("当前合同编号：{}，交易成功。", answerNo);
-                return "1";
+                return true;
             }
             if ("已报".equals(status)) {
                 log.info("当前合同编号：{}，交易不成功，进行撤单操作。", answerNo);
@@ -676,10 +704,10 @@ public class DailyJob {
             }
             if ("已撤".equals(status)) {
                 log.info("当前合同编号：{}，订单撤销完成", answerNo);
-                return "0";
+                return false;
             }
         }
-        return "-1";
+        return null;
     }
 
 
@@ -745,19 +773,18 @@ public class DailyJob {
     @SneakyThrows
     public void syncBuySaleRecord() {
         // 请求数据
-        final JSONArray historyOrder = getLastMonthOrder();
-        final JSONArray todayOrder = getTodayOrder();
-        historyOrder.addAll(todayOrder);
-        for (int i = 0; i < historyOrder.size(); i++) {
-            final JSONObject order = historyOrder.getJSONObject(i);
-            final String date = order.getString("date");
-            final String answerNo = order.getString("answerNo");
-            final String code = order.getString("code");
-            final String name = order.getString("name");
-            final String type = order.getString("type");
-            final Double price = order.getDouble("price");
-            Double number = order.getDouble("number");
-            String time = order.getString("time");
+        List<OrderInfo> lastOrders = getLastOrder();
+        List<OrderInfo> todayOrders = getTodayOrder();
+        lastOrders.addAll(todayOrders);
+        for (OrderInfo order : lastOrders) {
+            final String date = order.getDate();
+            final String time = order.getTime();
+            final String answerNo = order.getAnswerNo();
+            final String code = order.getCode();
+            final String name = order.getName();
+            final String type = order.getType();
+            final Double price = order.getPrice();
+            Double number = order.getNumber();
             final String dateString = date + (time.length() < 6 ? ("0" + time) : time);
             if ("买入".equals(type)) {
                 // 查询买入订单信息是否存在
@@ -802,7 +829,6 @@ public class DailyJob {
                         selectedRecord.setUpdateTime(now);
                         tradingRecordService.updateById(selectedRecord);
                     }
-
                 }
             }
             if ("卖出".equals(type)) {
@@ -820,7 +846,7 @@ public class DailyJob {
                         return;
                     }
                     record.setSalePrice(price);
-                    number = number < 0 ? -number : number;
+                    number = Math.abs(number);
                     record.setSaleNumber(number);
                     final double amount = price * number;
                     record.setSaleAmount(amount - getPeeAmount(amount));
@@ -844,9 +870,8 @@ public class DailyJob {
                 }
             }
         }
-        log.info("已同步{}条订单交易记录", historyOrder.size());
+        log.info("已同步{}条订单交易记录", lastOrders.size());
     }
-
 
     @SneakyThrows
     public void flushPermission() {
@@ -868,7 +893,7 @@ public class DailyJob {
         });
         log.info("交易权限错误信息合集：{}", set);
         // 取消所有提交的订单
-        cancelAllOrder();
+//        cancelAllOrder();
     }
 
     @SneakyThrows
@@ -968,6 +993,7 @@ public class DailyJob {
                 newInfo.setPrices("[]");
                 newInfo.setIncreaseRate("[]");
                 saveList.add(newInfo);
+                log.info("获取到新数据：{}", newInfo);
             }
         });
         saveDate(saveList);
@@ -1049,7 +1075,7 @@ public class DailyJob {
     }
 
     // 获取最近一个月的成交订单订单
-    public JSONArray getLastMonthOrder() {
+    public List<OrderInfo> getLastOrder() {
         final long timeMillis = System.currentTimeMillis();
         final String token = getToken();
         final Calendar calendar = Calendar.getInstance();
@@ -1067,39 +1093,11 @@ public class DailyJob {
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
         final JSONArray results = requestUtils.request2(buildParams(paramMap));
-        final JSONArray jsonArray = new JSONArray();
-        for (int i = 1; i < results.size(); i++) {
-            final String result = results.getString(i);
-            final String[] split = result.split("\\|");
-            final String date = split[0];
-            final String answerNo = split[1];
-            if ("0".equals(answerNo)) {
-                // 合同编号为0非买卖信息，跳过处理
-                continue;
-            }
-            final String code = split[4];
-            final String name = split[5];
-            final String type = split[6];
-            final String price = split[7];
-            final String number = split[8];
-            final String time = split[11];
-            final JSONObject jsonObject = new JSONObject();
-            jsonObject.put("date", date);
-            jsonObject.put("answerNo", answerNo);
-            jsonObject.put("code", code);
-            jsonObject.put("name", name);
-            jsonObject.put("type", type);
-            jsonObject.put("price", price);
-            jsonObject.put("number", number);
-            jsonObject.put("time", time);
-            jsonArray.add(jsonObject);
-        }
-        return jsonArray;
+        return arrayToOrderList(results);
     }
 
     // 获取今日成交订单
-    public JSONArray getTodayOrder() {
-// 请求数据
+    public List<OrderInfo> getTodayOrder() {
         final long timeMillis = System.currentTimeMillis();
         final String token = getToken();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -1110,8 +1108,12 @@ public class DailyJob {
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
         final JSONArray results = requestUtils.request2(buildParams(paramMap));
-// 解析数据:  名称|买卖方向|数量|价格|成交金额|代码|合同编号|成交编号|股东帐号|市场类型|日期|时间|成交状态|
-        final JSONArray jsonArray = new JSONArray();
+        return arrayToOrderList(results);
+    }
+
+    private List<OrderInfo> arrayToOrderList(JSONArray results) {
+        // 解析数据:  名称|买卖方向|数量|价格|成交金额|代码|合同编号|成交编号|股东帐号|市场类型|日期|时间|成交状态|
+        final ArrayList<OrderInfo> orderList = new ArrayList<>();
         for (int i = 1; i < results.size(); i++) {
             final String result = results.getString(i);
             final String[] split = result.split("\\|");
@@ -1123,18 +1125,22 @@ public class DailyJob {
             final String answerNo = split[6];
             final String date = split[10];
             final String time = split[11];
-            final JSONObject jsonObject = new JSONObject();
-            jsonObject.put("date", date);
-            jsonObject.put("code", code);
-            jsonObject.put("answerNo", answerNo);
-            jsonObject.put("name", name);
-            jsonObject.put("type", type);
-            jsonObject.put("price", price);
-            jsonObject.put("number", number);
-            jsonObject.put("time", time);
-            jsonArray.add(jsonObject);
+            if ("0".equals(answerNo)) {
+                // 合同编号为0非买卖信息，跳过处理
+                continue;
+            }
+            OrderInfo orderInfo = new OrderInfo();
+            orderInfo.setAnswerNo(answerNo);
+            orderInfo.setCode(code);
+            orderInfo.setName(name);
+            orderInfo.setDate(date);
+            orderInfo.setTime(time);
+            orderInfo.setType(type);
+            orderInfo.setPrice(Double.parseDouble(price));
+            orderInfo.setNumber(Double.parseDouble(number));
+            orderList.add(orderInfo);
         }
-        return jsonArray;
+        return orderList;
     }
 
     // 计算价格日增长率曲线
