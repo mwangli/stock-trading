@@ -21,7 +21,7 @@ public class RunTestJob extends BaseJob {
     @Override
     public void run() {
         while (flag) {
-            SleepUtils.second(1);
+            SleepUtils.second(2);
             log.info("执行测试任务......");
         }
     }
