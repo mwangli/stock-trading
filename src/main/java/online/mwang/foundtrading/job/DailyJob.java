@@ -197,8 +197,7 @@ public class DailyJob {
     @SneakyThrows
     public void login() {
         int time = 0;
-        while (time <= LOGIN_RETRY_TIMES) {
-            time++;
+        while (time++ < LOGIN_RETRY_TIMES) {
             final List<String> checkCode = getCheckCode();
             HashMap<String, Object> paramMap = new HashMap<>();
             paramMap.put("action", "100");
@@ -214,7 +213,7 @@ public class DailyJob {
             final String token = res.getString("TOKEN");
             if (token == null) {
                 log.info("第{}次登录失败，正在尝试重新登录！", time + 1);
-                SleepUtils.second(3);
+                SleepUtils.second(1);
             } else {
                 log.info("登录成功！");
                 redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
@@ -256,8 +255,7 @@ public class DailyJob {
 
     public void buy() {
         int time = 0;
-        while (time < BUY_RETRY_TIMES) {
-            time++;
+        while (time++ < BUY_RETRY_TIMES) {
             log.info("第{}次尝试买入股票---------", time);
             // 查询持仓股票数量
             final long holdCount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).size();
@@ -367,8 +365,7 @@ public class DailyJob {
 
     public void sale() {
         int time = 0;
-        while (time < SOLD_RETRY_TIMES) {
-            time++;
+        while (time++ < SOLD_RETRY_TIMES) {
             log.info("第{}次尝试卖出股票---------", time);
             if (checkSoldToday("1")) {
                 log.info("今天已经有卖出记录了，无需重复卖出!");
@@ -487,7 +484,7 @@ public class DailyJob {
         int totalLimit = sale ? PRICE_TOTAL_FALL_LIMIT : PRICE_TOTAL_UPPER_LIMIT;
         int continueLimit = sale ? PRICE_CONTINUE_FALL_LIMIT : PRICE_CONTINUE_UPPER_LIMIT;
         Double nowPrice = getLastPrice(code);
-        while (timesCount < 6 * WAIT_TIME_MINUTES) {
+        while (timesCount++ < 6 * WAIT_TIME_MINUTES) {
             SleepUtils.second(WAIT_TIME_SECONDS);
             Double lastPrice = getLastPrice(code);
             final boolean priceUpper = lastPrice > nowPrice;
@@ -512,7 +509,6 @@ public class DailyJob {
                 priceContinueFallCount = 0;
                 priceContinueUpperCount = 0;
             }
-            timesCount++;
             log.info("最佳{}股票[{}-{}]，买入价格：{}, 当前价格：{}，总{}次数：{}，连续{}次数：{}，总{}数：{}，连续{}次数{}，等待最佳{}时机...",
                     operation, code, name, buyPrice, nowPrice, upperFallKey, priceTotalUpperCount, upperFallKey, priceContinueUpperCount, fallUpperKey, priceTotalFallCount, fallUpperKey, priceContinueFallCount, operation);
             // 总跌落10次或者连续跌落3次，代表价格上涨已达到峰值，开始卖出
@@ -674,8 +670,7 @@ public class DailyJob {
 
     public Boolean waitOrderStatus() {
         int times = 0;
-        while (times < CANCEL_WAIT_TIMES) {
-            times++;
+        while (times++ < CANCEL_WAIT_TIMES) {
             SleepUtils.second(WAIT_TIME_SECONDS);
             List<OrderInfo> orderInfos = listTodayOrder();
             List<String> cancelStatus = Arrays.asList("已报", "已报待撤");
@@ -692,8 +687,7 @@ public class DailyJob {
 
     public Boolean waitOrderStatus(String answerNo) {
         int times = 0;
-        while (times < CANCEL_WAIT_TIMES) {
-            times++;
+        while (times++ < CANCEL_WAIT_TIMES) {
             SleepUtils.second(WAIT_TIME_SECONDS);
             final String status = queryOrderStatus(answerNo);
             if (status == null) {
