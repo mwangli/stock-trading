@@ -2,7 +2,6 @@ package online.mwang.foundtrading.job;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.foundtrading.utils.SleepUtils;
 import org.springframework.stereotype.Component;
 
 /**
@@ -18,9 +17,9 @@ public class RunTestJob extends BaseJob {
 
     @Override
     public void run() {
-        while (!super.interrupted) {
-            SleepUtils.second(2);
+//        while (!super.interrupted) {
+//            SleepUtils.second(2);
             log.info("执行测试任务......");
-        }
+//        }
     }
 }
