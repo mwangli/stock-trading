@@ -215,7 +215,7 @@ public class DailyJob {
             final String token = res.getString("TOKEN");
             if (token == null) {
                 log.info("第{}次登录失败，正在尝试重新登录！", time + 1);
-                SleepUtils.second(1);
+                SleepUtils.second(2);
             } else {
                 log.info("登录成功！");
                 redisTemplate.opsForValue().set(REQUEST_TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
@@ -248,7 +248,7 @@ public class DailyJob {
 
     public void buy() {
         int time = 0;
-        while (time <= BUY_RETRY_TIMES) {
+        while (time < BUY_RETRY_TIMES) {
             time++;
             log.info("第{}次尝试买入股票---------", time);
             // 查询持仓股票数量
@@ -357,7 +357,7 @@ public class DailyJob {
 
     public void sale() {
         int time = 0;
-        while (time <= SOLD_RETRY_TIMES) {
+        while (time < SOLD_RETRY_TIMES) {
             time++;
             log.info("第{}次尝试卖出股票。", time);
             if (checkHasSold()) {
