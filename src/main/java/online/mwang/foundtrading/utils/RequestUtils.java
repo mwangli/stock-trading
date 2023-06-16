@@ -32,7 +32,7 @@ public class RequestUtils {
     @Resource
     ApplicationContext applicationContext;
 
-    private Boolean logs;
+    private Boolean logs = false;
 
     public void setLogs(Boolean logs) {
         this.logs = logs;
