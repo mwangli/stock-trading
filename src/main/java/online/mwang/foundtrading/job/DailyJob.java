@@ -213,14 +213,12 @@ public class DailyJob {
             final JSONObject res = requestUtils.request(buildParams(paramMap));
             final String errorNo = res.getString("ERRORNO");
             final String token = res.getString("TOKEN");
-            if (!errorNo.equals("0")) {
-                log.info("第{}次登录失败，正在尝试重新登录！", time);
-                SleepUtils.second(1);
-            } else {
+            if (errorNo.equals("0")) {
                 log.info("登录成功！");
                 redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
                 return;
             }
+            log.info("第{}次登录失败，正在尝试重新登录！", time);
         }
     }
 
