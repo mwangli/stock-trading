@@ -597,24 +597,25 @@ public class DailyJob {
         return accountInfo;
     }
 
-    private List<OrderInfo> arrayToList(JSONArray result) {
-        ArrayList<OrderInfo> orderList = new ArrayList<>();
+    private List<OrderStatus> arrayToList(JSONArray result, boolean isToday) {
+//        委托日期|时间|证券代码|证券|委托类别|买卖方向|状态|委托|数量|委托编号|均价|成交|股东代码|交易类别|
+        ArrayList<OrderStatus> statusList = new ArrayList<>();
         if (result != null && result.size() > 1) {
             for (int i = 1; i < result.size(); i++) {
                 String string = result.getString(i);
                 String[] split = string.split("\\|");
-                String code = split[0];
-                String name = split[1];
-                String status = split[2];
-                String answerNo = split[8];
-                OrderInfo orderInfo = new OrderInfo(answerNo, code, name, status);
-                orderList.add(orderInfo);
+                String code = isToday ? split[0] : split[2];
+                String name = isToday ? split[1] : split[3];
+                String status = isToday ? split[2] : split[6];
+                String answerNo = isToday ? split[8] : split[9];
+                OrderStatus orderStatus = new OrderStatus(answerNo, code, name, status);
+                statusList.add(orderStatus);
             }
         }
-        return orderList;
+        return statusList;
     }
 
-    public List<OrderInfo> pageCancelOrder(int page) {
+    public List<OrderStatus> pageCancelOrder(int page) {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -625,11 +626,11 @@ public class DailyJob {
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
         JSONArray result = requestUtils.request2(buildParams(paramMap));
-        return arrayToList(result);
+        return arrayToList(result, true);
     }
 
-    public List<OrderInfo> listCancelOrder() {
-        List<OrderInfo> cancelOrders = new ArrayList<>();
+    public List<OrderStatus> listCancelOrder() {
+        List<OrderStatus> cancelOrders = new ArrayList<>();
         for (int i = 0; i < 10; i++) {
             cancelOrders.addAll(pageCancelOrder(i));
         }
@@ -637,12 +638,12 @@ public class DailyJob {
     }
 
     public void cancelAllOrder() {
-        List<OrderInfo> orderList = listCancelOrder();
+        List<OrderStatus> orderList = listCancelOrder();
         log.info("待撤销订单：{}", orderList);
         orderList.forEach(o -> cancelOrder(o.getAnswerNo()));
     }
 
-    public List<OrderInfo> listTodayOrder() {
+    public List<OrderStatus> listTodayOrder() {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -653,14 +654,28 @@ public class DailyJob {
         paramMap.put("ReqlinkType", 1);
         paramMap.put("reqno", timeMillis);
         JSONArray result = requestUtils.request2(buildParams(paramMap));
-        return arrayToList(result);
+        return arrayToList(result, true);
+    }
+
+    public List<OrderStatus> listHistoryOrder() {
+        String token = getToken();
+        final long timeMillis = System.currentTimeMillis();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 5018);
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", 100);
+        paramMap.put("token", token);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("reqno", timeMillis);
+        JSONArray result = requestUtils.request2(buildParams(paramMap));
+        return arrayToList(result, false);
     }
 
 
     public String queryOrderStatus(String answerNo) {
-        List<OrderInfo> orderInfos = listTodayOrder();
+        List<OrderStatus> orderInfos = listTodayOrder();
         log.info("查询到订单状态信息：{}", orderInfos);
-        Optional<OrderInfo> status = orderInfos.stream().filter(o -> o.getAnswerNo().equals(answerNo)).findFirst();
+        Optional<OrderStatus> status = orderInfos.stream().filter(o -> o.getAnswerNo().equals(answerNo)).findFirst();
         if (status.isEmpty()) {
             log.info("未查询到合同编号为{}的订单交易状态！", answerNo);
             return null;
@@ -672,9 +687,11 @@ public class DailyJob {
         int times = 0;
         while (times++ < CANCEL_WAIT_TIMES) {
             SleepUtils.second(WAIT_TIME_SECONDS);
-            List<OrderInfo> orderInfos = listTodayOrder();
+            List<OrderStatus> todayOrders = listTodayOrder();
+            List<OrderStatus> historyOrders = listHistoryOrder();
+            todayOrders.addAll(historyOrders);
             List<String> cancelStatus = Arrays.asList("已报", "已报待撤");
-            List<OrderInfo> orderList = orderInfos.stream().filter(o -> cancelStatus.contains(o.getStatus())).collect(Collectors.toList());
+            List<OrderStatus> orderList = todayOrders.stream().filter(o -> cancelStatus.contains(o.getStatus())).collect(Collectors.toList());
             if (orderList.size() == 0) {
                 return true;
             } else {
