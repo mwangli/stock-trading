@@ -63,8 +63,8 @@ public class DailyJob {
     private static final int PRICE_TOTAL_UPPER_LIMIT = 10;
     private static final int BUY_RETRY_LIMIT = 20;
     private static final int WAIT_TIME_SECONDS = 10;
-    private static final int WAIT_TIME_MINUTES = 10;
     private static final int HOLD_TIME_MINUTES = 5;
+    private static final int WAIT_TIME_MINUTES = 10;
     private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
     private static final int THREAD_POOL_NUMBERS = 8;
@@ -1093,7 +1093,7 @@ public class DailyJob {
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
         final JSONArray results = requestUtils.request2(buildParams(paramMap));
-        return arrayToOrderList(results);
+        return arrayToOrderList(results, false);
     }
 
     // 获取今日成交订单
@@ -1108,22 +1108,21 @@ public class DailyJob {
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
         final JSONArray results = requestUtils.request2(buildParams(paramMap));
-        return arrayToOrderList(results);
+        return arrayToOrderList(results, true);
     }
 
-    private List<OrderInfo> arrayToOrderList(JSONArray results) {
-        // 解析数据:  名称|买卖方向|数量|价格|成交金额|代码|合同编号|成交编号|股东帐号|市场类型|日期|时间|成交状态|
+    private List<OrderInfo> arrayToOrderList(JSONArray results, boolean isToday) {
         final ArrayList<OrderInfo> orderList = new ArrayList<>();
         for (int i = 1; i < results.size(); i++) {
             final String result = results.getString(i);
             final String[] split = result.split("\\|");
-            final String name = split[0];
-            final String type = split[1];
-            final String number = split[2];
-            final String price = split[3];
-            final String code = split[5];
-            final String answerNo = split[6];
-            final String date = split[10];
+            final String name = isToday ? split[0] : split[5];
+            final String type = isToday ? split[1] : split[6];
+            final String number = isToday ? split[2] : split[8];
+            final String price = isToday ? split[3] : split[7];
+            final String code = isToday ? split[5] : split[4];
+            final String answerNo = isToday ? split[6] : split[1];
+            final String date = isToday ? split[10] : split[0];
             final String time = split[11];
             if ("0".equals(answerNo)) {
                 // 合同编号为0非买卖信息，跳过处理
