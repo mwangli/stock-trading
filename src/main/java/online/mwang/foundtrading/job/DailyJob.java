@@ -211,8 +211,9 @@ public class DailyJob {
             paramMap.put("CheckCode", checkCode.get(0));
             paramMap.put("CheckToken", checkCode.get(1));
             final JSONObject res = requestUtils.request(buildParams(paramMap));
+            final String errorNo = res.getString("ERRORNO");
             final String token = res.getString("TOKEN");
-            if (token == null) {
+            if (!errorNo.equals("0")) {
                 log.info("第{}次登录失败，正在尝试重新登录！", time + 1);
                 SleepUtils.second(1);
             } else {
