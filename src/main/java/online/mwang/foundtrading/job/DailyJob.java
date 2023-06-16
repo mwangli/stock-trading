@@ -169,12 +169,18 @@ public class DailyJob {
     }
 
     public String getToken() {
-        final String requestToken = redisTemplate.opsForValue().get(TOKEN);
-        if (requestToken == null) {
+        final String token = redisTemplate.opsForValue().get(TOKEN);
+        if (token == null) {
             log.info("没有检测到Token，正在重新登录...");
-            login();
+            if (login()) return redisTemplate.opsForValue().get(TOKEN);
         }
-        return redisTemplate.opsForValue().get(TOKEN);
+        log.info("获取Token失败!");
+        return "";
+    }
+
+    public void setToken(String token) {
+        if (token == null) return;
+        redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
     }
 
     @SneakyThrows
@@ -196,23 +202,24 @@ public class DailyJob {
     }
 
     @SneakyThrows
-    public void login() {
+    public Boolean login() {
         int time = 0;
         while (time++ < LOGIN_RETRY_TIMES) {
             log.info("第{}尝试登录------", time);
             Boolean success = doLogin();
             if (success == null) {
                 log.info("登录失败！");
-                return;
+                return false;
             }
             if (success) {
                 log.info("登录成功！");
-                return;
+                return true;
             } else {
-                log.info("第{}登录失败------", time);
+                log.info("验证码错误，尝试重新登录!");
             }
         }
         log.info("尝试{}次后登录失败！请检查程序代码！", LOGIN_RETRY_TIMES);
+        return false;
     }
 
     public Boolean doLogin() {
@@ -227,11 +234,10 @@ public class DailyJob {
         paramMap.put("signkey", "51cfce1626c7cb087b940a0c224f2caa");
         paramMap.put("CheckCode", checkCode.get(0));
         paramMap.put("CheckToken", checkCode.get(1));
-        final JSONObject res = requestUtils.request(buildParams(paramMap));
-        final String errorNo = res.getString("ERRORNO");
-        final String token = res.getString("TOKEN");
+        final JSONObject result = requestUtils.request(buildParams(paramMap));
+        final String errorNo = result.getString("ERRORNO");
         if (errorNo.equals("0")) {
-            redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+            setToken(result.getString("TOKEN"));
             return true;
         }
         if (errorNo.equals("-330203")) {
@@ -242,7 +248,7 @@ public class DailyJob {
         return null;
     }
 
-    private JSONArray getHoldList() {
+    private List<TradingRecord> getHoldList() {
         String token = getToken();
         long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -252,7 +258,21 @@ public class DailyJob {
         paramMap.put("reqno", timeMillis);
         paramMap.put("token", token);
         paramMap.put("Volume", 100);
-        return requestUtils.request2(buildParams(paramMap));
+        JSONArray results = requestUtils.request2(buildParams(paramMap));
+        List<TradingRecord> dataList = new ArrayList<>();
+        if (results != null && results.size() > 1) {
+            for (int i = 1; i < results.size(); i++) {
+                String data = results.getString(i);
+                String[] split = data.split("\\|");
+                if (split[1].startsWith("0") || split[2].startsWith("0")) continue;
+                TradingRecord record = new TradingRecord();
+                record.setCode(split[9]);
+                record.setName(split[0]);
+                record.setSalePrice(Double.parseDouble(split[4]));
+                record.setSaleNumber(Double.parseDouble(split[2]));
+            }
+        }
+        return dataList;
     }
 
     private Boolean checkSoldToday(String sold) {
@@ -295,6 +315,10 @@ public class DailyJob {
             }
             // 更新账户可用资金
             final AccountInfo accountInfo = updateAccountAmount();
+            if (accountInfo == null) {
+                log.info("更新账户可用资金失败，取消购买任务");
+                return;
+            }
             final Double totalAvailableAmount = accountInfo.getAvailableAmount();
             final Double totalAmount = accountInfo.getTotalAmount();
             final double maxAmount = totalAmount / MAX_HOLD_STOCKS;
@@ -396,37 +420,20 @@ public class DailyJob {
                 log.info("存在未撤销失败订单，取消卖出任务！");
                 return;
             }
-            JSONArray dataList = getHoldList();
-            double maxDailyRate = -100.0;
+            List<TradingRecord> holdList = getHoldList();
+            double maxDailyRate = Double.MIN_VALUE;
             TradingRecord best = null;
-            for (int i = 1; i < dataList.size(); i++) {
-                String data = dataList.getString(i);
-                String[] split = data.split("\\|");
-                String code = split[9];
-                String name = split[0];
-                // 持仓数量，持仓数量为0代表该股票今日已卖出
-                double hasNumber = Double.parseDouble(split[1]);
-                if (hasNumber == 0) {
-                    log.info("当前股票[{}-{}]持有数量为0，已经卖出无需处理", code, name);
-                    continue;
-                }
-                // 可用数量，已委托订单或者不在交易时间段内会导致可用数量为0
-                double availableNumber = Double.parseDouble(split[2]);
-                if (availableNumber == 0) {
-                    log.info("当前股票[{}-{}]可卖出数量为0，请检查订单或者非交易时间段！", code, name);
-                    continue;
-                }
-                double price = Double.parseDouble(split[4]);
+            for (TradingRecord record : holdList) {
                 // 查询买入时间
-                final LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getCode, code).eq(TradingRecord::getSold, "0");
+                final LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getCode, record.getCode()).eq(TradingRecord::getSold, "0");
                 TradingRecord selectRecord = tradingRecordService.getOne(queryWrapper);
                 if (selectRecord == null) {
-                    log.info("当前股票[{}-{}]未查询到买入记录,开始同步订单", code, name);
+                    log.info("当前股票[{}-{}]未查询到买入记录,开始同步订单", record.getCode(), record.getName());
                     threadPool.submit(this::syncBuySaleRecord);
                     continue;
                 }
                 // 更新每日数据
-                final double amount = price * availableNumber;
+                final double amount = record.getSalePrice() * record.getSaleNumber();
                 double saleAmount = amount - getPeeAmount(amount);
                 double income = saleAmount - selectRecord.getBuyAmount();
                 int dateDiff = diffDate(selectRecord.getBuyDate(), new Date());
@@ -434,7 +441,7 @@ public class DailyJob {
                 double dailyIncomeRate = incomeRate / dateDiff;
                 log.info("当前股票[{}-{}]，买入金额:{}，卖出金额:{}，收益:{}元，日收益率:{}%", selectRecord.getCode(), selectRecord.getName(), selectRecord.getBuyAmount(), saleAmount, income, dailyIncomeRate);
                 if (dailyIncomeRate > maxDailyRate) {
-                    selectRecord.setSalePrice(price);
+                    selectRecord.setSalePrice(record.getSalePrice());
                     selectRecord.setSaleNumber(selectRecord.getBuyNumber());
                     selectRecord.setSaleAmount(saleAmount);
                     selectRecord.setIncome(income);
@@ -447,7 +454,7 @@ public class DailyJob {
             }
             // 卖出最高收益的股票
             if (best == null) {
-                log.info("无可卖出股票，无法进行卖出交易！");
+                log.info("当前无可卖出股票，取消卖出任务！");
                 return;
             }
             log.info("最佳卖出股票[{}-{}]，买入价格:{}，当前价格:{}，预期收益:{}，日收益率:{}", best.getCode(), best.getName(), best.getBuyPrice(), best.getSalePrice(), best.getIncome(), String.format("%.4f", best.getDailyIncomeRate()));
@@ -585,8 +592,7 @@ public class DailyJob {
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
         final JSONObject result = requestUtils.request(buildParams(paramMap));
-        final String newToken = result.getString("TOKEN");
-        redisTemplate.opsForValue().set("requestToken", newToken, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+        setToken(result.getString("TOKEN"));
     }
 
     // 更新账户资金
@@ -599,6 +605,10 @@ public class DailyJob {
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
         final JSONArray jsonArray = requestUtils.request2(buildParams(paramMap));
+        if (jsonArray == null || jsonArray.size() < 1) {
+            log.info("获取账户资金失败！");
+            return null;
+        }
         final String string = jsonArray.getString(1);
         // 币种|余额|可取|可用|总资产|证券|基金|冻结资金|资产|资金账户|币种代码|账号主副标志|
         final String[] split = string.split("\\|");
@@ -708,8 +718,8 @@ public class DailyJob {
         while (times++ < CANCEL_WAIT_TIMES) {
             SleepUtils.second(WAIT_TIME_SECONDS);
             List<OrderStatus> todayOrders = listTodayOrder();
-            List<OrderStatus> historyOrders = listHistoryOrder();
-            todayOrders.addAll(historyOrders);
+//            List<OrderStatus> historyOrders = listHistoryOrder();
+//            todayOrders.addAll(historyOrders);
             List<String> cancelStatus = Arrays.asList("已报", "已报待撤");
             List<OrderStatus> orderList = todayOrders.stream().filter(o -> cancelStatus.contains(o.getStatus())).collect(Collectors.toList());
             if (orderList.size() == 0) {
@@ -764,8 +774,7 @@ public class DailyJob {
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
         final JSONObject result = requestUtils.request(buildParams(paramMap));
-        final String newToken = result.getString("TOKEN");
-        redisTemplate.opsForValue().set("requestToken", newToken, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+        setToken(result.getString("TOKEN"));
         return result;
     }
 
