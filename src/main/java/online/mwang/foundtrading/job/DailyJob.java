@@ -188,7 +188,7 @@ public class DailyJob {
     public List<String> getCheckCode() {
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", "41092");
-        final JSONObject res = requestUtils.request(buildParams(paramMap), false);
+        final JSONObject res = requestUtils.request(buildParams(paramMap));
         final String checkToken = res.getString("CHECKTOKEN");
         final String checkMessage = res.getString("MESSAGE");
         final String checkCode = getCheckCodeFromMessage(checkMessage);
@@ -238,7 +238,7 @@ public class DailyJob {
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", "117");
         paramMap.put("StartPos", 0);
-        paramMap.put("MaxCount", 20);
+        paramMap.put("MaxCount", 500);
         paramMap.put("reqno", timeMillis);
         paramMap.put("token", token);
         paramMap.put("Volume", 100);
@@ -531,7 +531,7 @@ public class DailyJob {
         paramMap.put("ReqlinkType", 1);
         paramMap.put("Level", 1);
         paramMap.put("UseBPrice", 1);
-        JSONObject res = requestUtils.request(buildParams(paramMap), false);
+        JSONObject res = requestUtils.request(buildParams(paramMap));
         return res.getDouble("PRICE");
     }
 
@@ -608,10 +608,9 @@ public class DailyJob {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", 152);
+        paramMap.put("action", 113);
         paramMap.put("StartPos", 0);
         paramMap.put("MaxCount", 500);
-        paramMap.put("op_station", 4);
         paramMap.put("token", token);
         paramMap.put("ReqlinkType", 1);
         paramMap.put("reqno", timeMillis);
@@ -635,41 +634,22 @@ public class DailyJob {
 
     public String queryOrderStatus(String answerNo) {
         final JSONArray result = listTodayOrder();
+        final HashMap<String, String> map = new HashMap<>();
         if (result != null && result.size() > 1) {
             for (int i = 1; i < result.size(); i++) {
                 String string = result.getString(i);
                 String[] split = string.split("\\|");
                 String status = split[2];
                 String answer = split[8];
-                if (answer.equals(answerNo)) {
-                    return status;
-                }
+                map.put(answer, status);
             }
         }
-        log.info("未查询到合同编号为{}的订单交易状态！", answerNo);
-        return "";
-    }
-
-    public Boolean queryCancelStatus() {
-        final JSONArray result = listTodayOrder();
-        boolean res = true;
-        if (result != null && result.size() > 1) {
-            for (int i = 1; i < result.size(); i++) {
-                String string = result.getString(i);
-                String[] split = string.split("\\|");
-                String code = split[0];
-                String name = split[1];
-                String status = split[2];
-                if ("已报待撤".equals(status) || "已报".equals(status)) {
-                    log.info("当前股票[{}-{}]，存在待撤销订单", code, name);
-                    res = false;
-                }
-                if ("已成".equals(status)) {
-                    log.info("待撤销订单已经交易成功，开始");
-                }
-            }
+        log.info("查询到订单状态信息：{}", map);
+        if (!map.containsKey(answerNo)) {
+            log.info("未查询到合同编号为{}的订单交易状态！", answerNo);
+            return "";
         }
-        return res;
+        return map.get(answerNo);
     }
 
     public String waitOrderStatus(String answerNo) {
@@ -678,9 +658,13 @@ public class DailyJob {
             times++;
             SleepUtils.second(WAIT_TIME_SECONDS);
             final String status = queryOrderStatus(answerNo);
+            if ("".equals(status)) {
+                log.info("当前合同编号：{}，订单状态查询失败。", answerNo);
+                return "-1";
+            }
             if ("已成".equals(status)) {
                 log.info("当前合同编号：{}，交易成功。", answerNo);
-                return "0";
+                return "1";
             }
             if ("已报".equals(status)) {
                 log.info("当前合同编号：{}，交易不成功，进行撤单操作。", answerNo);

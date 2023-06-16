@@ -24,6 +24,8 @@ public class QuartzJob {
     private Date updateTime;
     @TableField(exist = false)
     private String token;
+    @TableField(exist = false)
+    private Boolean logSwitch;
 
     public static SFunction<QuartzJob, Object> getOrder(String key) {
         if (key == null) return QuartzJob::getSort;
