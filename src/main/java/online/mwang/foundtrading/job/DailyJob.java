@@ -260,18 +260,18 @@ public class DailyJob {
         paramMap.put("Volume", 100);
         JSONArray results = requestUtils.request2(buildParams(paramMap));
         List<TradingRecord> dataList = new ArrayList<>();
-        if (results != null && results.size() > 1) {
-            for (int i = 1; i < results.size(); i++) {
-                String data = results.getString(i);
-                String[] split = data.split("\\|");
-                if (split[1].startsWith("0") || split[2].startsWith("0")) continue;
-                TradingRecord record = new TradingRecord();
-                record.setCode(split[9]);
-                record.setName(split[0]);
-                record.setSalePrice(Double.parseDouble(split[4]));
-                record.setSaleNumber(Double.parseDouble(split[2]));
-            }
+        if (results == null || results.size() <= 1) return dataList;
+        for (int i = 1; i < results.size(); i++) {
+            String data = results.getString(i);
+            String[] split = data.split("\\|");
+            if (split[1].startsWith("0") || split[2].startsWith("0")) continue;
+            TradingRecord record = new TradingRecord();
+            record.setCode(split[9]);
+            record.setName(split[0]);
+            record.setSalePrice(Double.parseDouble(split[4]));
+            record.setSaleNumber(Double.parseDouble(split[2]));
         }
+
         return dataList;
     }
 
@@ -916,7 +916,7 @@ public class DailyJob {
                 }
             }
         }
-        log.info("已同步{}条订单交易记录", lastOrders.size());
+        log.info("共同步{}条订单交易记录", lastOrders.size());
     }
 
     @SneakyThrows
@@ -1162,6 +1162,7 @@ public class DailyJob {
 
     private List<OrderInfo> arrayToOrderList(JSONArray results, boolean isToday) {
         final ArrayList<OrderInfo> orderList = new ArrayList<>();
+        if (results == null || results.size() <= 1) return orderList;
         for (int i = 1; i < results.size(); i++) {
             final String result = results.getString(i);
             final String[] split = result.split("\\|");
