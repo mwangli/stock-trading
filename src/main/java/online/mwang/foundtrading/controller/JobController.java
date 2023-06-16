@@ -69,8 +69,8 @@ public class JobController {
     @SneakyThrows
     @PostMapping("run")
     public Response<?> runNow(@RequestBody QuartzJob job) {
-        Trigger trigger = TriggerBuilder.newTrigger().withIdentity(job.getName(), TEMP_GROUP_NAME).startNow().build();
-        JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).build();
+        Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
+        JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName(), TEMP_GROUP_NAME).build();
         scheduler.scheduleJob(jobDetail, trigger);
         return Response.success();
     }

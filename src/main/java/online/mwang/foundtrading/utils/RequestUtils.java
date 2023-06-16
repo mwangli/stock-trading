@@ -32,9 +32,15 @@ public class RequestUtils {
     @Resource
     ApplicationContext applicationContext;
 
+    private Boolean logs = false;
+
+
+    public void setLogs(Boolean logs) {
+        this.logs = logs;
+    }
 
     @SneakyThrows
-    public JSONObject request(String url, HashMap<String, Object> formParam, Boolean needLog) {
+    public JSONObject request(String url, HashMap<String, Object> formParam) {
         CloseableHttpClient client = HttpClients.createDefault();
         MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
         formParam.forEach((k, v) -> entityBuilder.addTextBody(k, String.valueOf(v)));
@@ -42,35 +48,31 @@ public class RequestUtils {
         post.setEntity(entityBuilder.build());
         CloseableHttpResponse response = client.execute(post);
         String result = EntityUtils.toString(response.getEntity());
-        if (needLog) log.info(result);
+        if (logs) log.info(result);
         final JSONObject res = JSONObject.parseObject(result);
         String token = checkResult(res);
         if (token != null) {
             formParam.put("token", token);
-            return request(url, formParam, needLog);
+            return request(url, formParam);
         }
         return res;
     }
 
     @SneakyThrows
     public JSONObject request(HashMap<String, Object> formParam) {
-        return request(REQUEST_URL, formParam, true);
+        return request(REQUEST_URL, formParam);
     }
 
-    @SneakyThrows
-    public JSONObject request(HashMap<String, Object> formParam, Boolean needLog) {
-        return request(REQUEST_URL, formParam, needLog);
-    }
 
     @SneakyThrows
     public JSONArray request2(HashMap<String, Object> formParam) {
-        JSONObject res = request(REQUEST_URL, formParam, true);
+        JSONObject res = request(REQUEST_URL, formParam);
         return res.getJSONArray("GRID0");
     }
 
     @SneakyThrows
     public JSONArray request3(HashMap<String, Object> formParam) {
-        JSONObject res = request(REQUEST_URL.concat("?action=1230"), formParam, false);
+        JSONObject res = request(REQUEST_URL.concat("?action=1230"), formParam);
         final JSONObject data = res.getJSONObject("BINDATA");
         if (data != null && data.getJSONArray("results") != null) {
             return data.getJSONArray("results");

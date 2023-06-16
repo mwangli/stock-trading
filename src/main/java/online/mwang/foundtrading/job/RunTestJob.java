@@ -14,24 +14,13 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RunTestJob extends BaseJob {
-
-    private boolean flag = true;
+public class RunTestJob extends BaseJob2 {
 
     @Override
     public void run() {
-        while (flag) {
+        while (!super.interrupted) {
             SleepUtils.second(2);
             log.info("执行测试任务......");
         }
-    }
-
-    @Override
-    public void interrupt() {
-        log.info("测试任务终止！");
-        log.info(Thread.currentThread().getName());
-        flag = false;
-        Thread.currentThread().interrupt();
-//        interrupt = true;
     }
 }
