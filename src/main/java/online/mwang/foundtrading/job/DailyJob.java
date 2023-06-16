@@ -199,9 +199,20 @@ public class DailyJob {
     public void login() {
         int time = 0;
         while (time++ < LOGIN_RETRY_TIMES) {
-            if (doLogin()) return;
-            log.info("第{}次登录失败，正在尝试重新登录！", time);
+            log.info("第{}尝试登录------", time);
+            Boolean success = doLogin();
+            if (success == null) {
+                log.info("登录失败！");
+                return;
+            }
+            if (success) {
+                log.info("登录成功！");
+                return;
+            } else {
+                log.info("第{}登录失败------", time);
+            }
         }
+        log.info("尝试{}次后登录失败！请检查程序代码！", LOGIN_RETRY_TIMES);
     }
 
     public Boolean doLogin() {
@@ -220,11 +231,15 @@ public class DailyJob {
         final String errorNo = res.getString("ERRORNO");
         final String token = res.getString("TOKEN");
         if (errorNo.equals("0")) {
-            log.info("登录成功！");
             redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
             return true;
         }
-        return false;
+        if (errorNo.equals("-330203")) {
+            // 验证码错误，继续尝试登录
+            return false;
+        }
+        // 其他错误直接返回
+        return null;
     }
 
     private JSONArray getHoldList() {
