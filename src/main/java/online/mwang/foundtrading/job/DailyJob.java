@@ -217,6 +217,7 @@ public class DailyJob {
                 log.info("第{}次登录失败，正在尝试重新登录！", time + 1);
                 SleepUtils.second(1);
             } else {
+                log.info("登录成功！");
                 redisTemplate.opsForValue().set(REQUEST_TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
             }
         }
