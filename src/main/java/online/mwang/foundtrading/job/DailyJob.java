@@ -617,25 +617,33 @@ public class DailyJob {
         return orderList;
     }
 
-//    public List<OrderInfo> listCancelOrder() {
-//        String token = getToken();
-//        final long timeMillis = System.currentTimeMillis();
-//        HashMap<String, Object> paramMap = new HashMap<>();
-//        paramMap.put("action", 152);
-//        paramMap.put("StartPos", 0);
-//        paramMap.put("MaxCount", 500);
-//        paramMap.put("op_station", 4);
-//        paramMap.put("token", token);
-//        paramMap.put("reqno", timeMillis);
-//        JSONArray result = requestUtils.request2(buildParams(paramMap));
-//        return arrayToList(result);
-//    }
+    public List<OrderInfo> pageCancelOrder(int page) {
+        String token = getToken();
+        final long timeMillis = System.currentTimeMillis();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 152);
+        paramMap.put("StartPos", page * 500);
+        paramMap.put("MaxCount", 500);
+        paramMap.put("op_station", 4);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        JSONArray result = requestUtils.request2(buildParams(paramMap));
+        return arrayToList(result);
+    }
 
-//    public void cancelAllOrder() {
-//        List<OrderInfo> orderList = listCancelOrder();
-//        log.info("待撤销订单：{}", orderList);
-//        orderList.forEach(o -> cancelOrder(o.getAnswerNo()));
-//    }
+    public List<OrderInfo> listCancelOrder() {
+        List<OrderInfo> cancelOrders = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            cancelOrders.addAll(pageCancelOrder(i));
+        }
+        return cancelOrders;
+    }
+
+    public void cancelAllOrder() {
+        List<OrderInfo> orderList = listCancelOrder();
+        log.info("待撤销订单：{}", orderList);
+        orderList.forEach(o -> cancelOrder(o.getAnswerNo()));
+    }
 
     public List<OrderInfo> listTodayOrder() {
         String token = getToken();
@@ -731,10 +739,8 @@ public class DailyJob {
 
     // 获取每日最新价格数据
     public List<StockInfo> getDataList() {
-        //  更新每日数据
         final List<StockInfo> stockInfos = new ArrayList<>();
         for (int i = 1; i <= 10; i++) {
-            // 请求数据
             HashMap<String, Object> paramMap = new HashMap<>();
             paramMap.put("c.funcno", 21000);
             paramMap.put("c.version", 1);
@@ -747,7 +753,6 @@ public class DailyJob {
             paramMap.put("c.cfrom", "H5");
             paramMap.put("c.tfrom", "PC");
             final JSONArray results = requestUtils.request3(buildParams(paramMap));
-            // 解析数据
             for (int j = 0; j < results.size(); j++) {
                 final String s = results.getString(j);
                 final String[] split = s.split(",");
@@ -893,7 +898,7 @@ public class DailyJob {
         });
         log.info("交易权限错误信息合集：{}", set);
         // 取消所有提交的订单
-//        cancelAllOrder();
+        cancelAllOrder();
     }
 
     @SneakyThrows
