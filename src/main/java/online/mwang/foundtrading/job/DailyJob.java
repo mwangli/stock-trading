@@ -506,7 +506,10 @@ public class DailyJob {
             log.info("最佳{}股票[{}-{}]，买入价格：{}, 当前价格：{}，总{}次数：{}，连续{}次数：{}，总{}数：{}，连续{}次数{}，等待最佳{}时机...",
                     operation, code, name, buyPrice, nowPrice, upperFallKey, priceTotalUpperCount, upperFallKey, priceContinueUpperCount, fallUpperKey, priceTotalFallCount, fallUpperKey, priceContinueFallCount, operation);
             // 总跌落10次或者连续跌落3次，代表价格上涨已达到峰值，开始卖出
-            if ((sale && (nowPrice - buyPrice > 0.1)) && (priceTotalFallCount > totalLimit || priceContinueFallCount > continueLimit)) {
+            boolean incomeCondition = nowPrice - buyPrice > 0.1;
+            boolean priceCondition = priceTotalFallCount > totalLimit || priceContinueFallCount > continueLimit;
+            boolean saleCondition = incomeCondition && priceCondition;
+            if (sale ? saleCondition : priceCondition) {
                 log.info("最佳{}股票[{}-{}]，总{}数达到{}，或者连续{}次数达到{}，开始{}股票。", operation, code, name, fallUpperKey, totalLimit, fallUpperKey, continueLimit, operation);
                 return true;
             }
