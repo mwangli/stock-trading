@@ -12,13 +12,12 @@ import online.mwang.foundtrading.bean.base.Response;
 import online.mwang.foundtrading.bean.po.QuartzJob;
 import online.mwang.foundtrading.bean.query.QuartzJobQuery;
 import online.mwang.foundtrading.mapper.QuartzJobMapper;
+import online.mwang.foundtrading.utils.RequestUtils;
 import org.quartz.*;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Date;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @version 1.0.0
@@ -31,12 +30,10 @@ import java.util.concurrent.TimeUnit;
 @RequestMapping("/job")
 @RequiredArgsConstructor
 public class JobController {
-
-    private final static String REQUEST_TOKEN = "requestToken";
     private final static String TEMP_GROUP_NAME = "TEMP";
     private final Scheduler scheduler;
     private final QuartzJobMapper jobMapper;
-    private final StringRedisTemplate redisTemplate;
+    private final RequestUtils requestUtils;
 
     @SneakyThrows
     @GetMapping()
@@ -79,9 +76,9 @@ public class JobController {
     @PutMapping()
     public Response<Integer> modifyJob(@RequestBody QuartzJob job) {
         // 更新Token
-        String token = job.getToken();
-        if (StringUtils.isNotBlank(token) && token.length() > 20) {
-            redisTemplate.opsForValue().set(REQUEST_TOKEN, token, 30, TimeUnit.MINUTES);
+        String logSwitch = job.getLogSwitch();
+        if (StringUtils.isNotBlank(logSwitch)) {
+            requestUtils.setLogs("open".equals(logSwitch));
         }
         if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");
