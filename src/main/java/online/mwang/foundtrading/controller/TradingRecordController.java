@@ -58,8 +58,8 @@ public class TradingRecordController {
                 .like(ObjectUtils.isNotNull(query.getCode()), TradingRecord::getCode, query.getCode())
                 .like(ObjectUtils.isNotNull(query.getName()), TradingRecord::getCode, query.getName())
                 .like(ObjectUtils.isNotNull(query.getStrategyName()), TradingRecord::getStrategyName, query.getStrategyName())
-                .eq(ObjectUtils.isNotNull(query.getBuyDate()), TradingRecord::getBuyDateString, query.getBuyDate())
-                .eq((ObjectUtils.isNotNull(query.getSalDate())), TradingRecord::getSaleDate, query.getSalDate())
+                .eq(ObjectUtils.isNotNull(query.getBuyDate()), TradingRecord::getBuyDateString, query.getBuyDate().replaceAll("-", ""))
+                .eq((ObjectUtils.isNotNull(query.getSalDate())), TradingRecord::getSaleDateString, query.getSalDate().replaceAll("-", ""))
                 .eq(ObjectUtils.isNotNull(query.getHoldDays()), TradingRecord::getHoldDays, query.getHoldDays())
                 .eq(ObjectUtils.isNotNull(query.getSold()), TradingRecord::getSold, query.getSold())
                 .orderBy(ObjectUtils.isNotNull(query.getSortOrder()), ASCEND.equals(query.getSortOrder()), TradingRecord.getOrder(query.getSortKey()));
