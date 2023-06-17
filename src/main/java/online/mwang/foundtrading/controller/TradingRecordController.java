@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import online.mwang.foundtrading.bean.base.Response;
 import online.mwang.foundtrading.bean.po.*;
 import online.mwang.foundtrading.bean.query.FoundTradingQuery;
@@ -12,6 +13,7 @@ import online.mwang.foundtrading.job.DailyJob;
 import online.mwang.foundtrading.mapper.AccountInfoMapper;
 import online.mwang.foundtrading.mapper.StockInfoMapper;
 import online.mwang.foundtrading.service.TradingRecordService;
+import online.mwang.foundtrading.utils.DateUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
@@ -37,6 +39,10 @@ public class TradingRecordController {
     private final StockInfoMapper stockInfoMapper;
     private final DailyJob dailyJob;
 
+    public static void main(String[] args) {
+        System.out.println(String.valueOf(null));
+    }
+
     @PostMapping
     public Boolean create(@RequestBody TradingRecord tradingRecord) {
         return tradingRecordService.save(tradingRecord);
@@ -52,14 +58,18 @@ public class TradingRecordController {
         return tradingRecordService.removeById(id);
     }
 
+    @SneakyThrows
     @GetMapping
     public Response<List<TradingRecord>> listFound(FoundTradingQuery query) {
+//        if (query.getBuyDate() != null) query.setBuyDate();
         LambdaQueryWrapper<TradingRecord> queryWrapper = new QueryWrapper<TradingRecord>().lambda()
                 .like(ObjectUtils.isNotNull(query.getCode()), TradingRecord::getCode, query.getCode())
                 .like(ObjectUtils.isNotNull(query.getName()), TradingRecord::getCode, query.getName())
                 .like(ObjectUtils.isNotNull(query.getStrategyName()), TradingRecord::getStrategyName, query.getStrategyName())
-                .eq(ObjectUtils.isNotNull(query.getBuyDate()), TradingRecord::getBuyDateString, query.getBuyDate().replaceAll("-", ""))
-                .eq((ObjectUtils.isNotNull(query.getSalDate())), TradingRecord::getSaleDateString, query.getSalDate().replaceAll("-", ""))
+                .ge(ObjectUtils.isNotNull(query.getBuyDate()), TradingRecord::getBuyDate, query.getBuyDate())
+                .le(ObjectUtils.isNotNull(query.getBuyDate()), TradingRecord::getBuyDate, DateUtils.getNextDay(query.getBuyDate()))
+                .ge((ObjectUtils.isNotNull(query.getSaleDate())), TradingRecord::getSaleDate, query.getSaleDate())
+                .le((ObjectUtils.isNotNull(query.getSaleDate())), TradingRecord::getSaleDate, DateUtils.getNextDay(query.getSaleDate()))
                 .eq(ObjectUtils.isNotNull(query.getHoldDays()), TradingRecord::getHoldDays, query.getHoldDays())
                 .eq(ObjectUtils.isNotNull(query.getSold()), TradingRecord::getSold, query.getSold())
                 .orderBy(ObjectUtils.isNotNull(query.getSortOrder()), ASCEND.equals(query.getSortOrder()), TradingRecord.getOrder(query.getSortKey()));
