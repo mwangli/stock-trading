@@ -46,6 +46,14 @@ public class DateUtils {
         return date == null ? "" : dateFormat.format(date);
     }
 
+    public static Date getNextDay(Date date) {
+        if (date == null) return null;
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        calendar.add(Calendar.DATE,1);
+        return calendar.getTime();
+    }
+
     public static String camelToUnderline(String str) {
         if (str == null || "".equals(str.trim())) {
             return "";

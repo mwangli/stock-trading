@@ -2,6 +2,9 @@ package online.mwang.foundtrading.bean.query;
 
 import lombok.Data;
 import online.mwang.foundtrading.bean.base.BaseQuery;
+import org.springframework.format.annotation.DateTimeFormat;
+
+import java.util.Date;
 
 /**
  * @version 1.0.0
@@ -17,9 +20,11 @@ public class FoundTradingQuery extends BaseQuery {
 
     private String code;
 
-    private String buyDate;
+    @DateTimeFormat(pattern = "yyyy-MM-dd")
+    private Date buyDate;
 
-    private String salDate;
+    @DateTimeFormat(pattern = "yyyy-MM-dd")
+    private Date saleDate;
 
     private Integer holdDays;
 
