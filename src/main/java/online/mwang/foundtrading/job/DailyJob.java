@@ -499,17 +499,13 @@ public class DailyJob {
     }
 
     private Boolean waitingBestTime(String code, String name, Double buyPrice, Boolean sale) {
-        int priceContinueFallCount = 0;
-        int priceTotalFallCount = 0;
-        int priceContinueUpperCount = 0;
         int priceTotalUpperCount = 0;
-        int holdCount = 0;
+        int priceTotalFallCount = 0;
         int timesCount = 0;
         String operation = sale ? "卖出" : "买入";
         String upperFallKey = sale ? "上涨" : "跌落";
         String fallUpperKey = sale ? "跌落" : "上涨";
         int totalLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
-        int continueLimit = sale ? PRICE_CONTINUE_UPPER_LIMIT : PRICE_CONTINUE_FALL_LIMIT;
         Double nowPrice = getLastPrice(code);
         while (timesCount++ < 6 * WAIT_TIME_MINUTES) {
             SleepUtils.second(WAIT_TIME_SECONDS);
@@ -519,32 +515,18 @@ public class DailyJob {
             nowPrice = lastPrice;
             if (sale ? priceUpper : priceFall) {
                 priceTotalUpperCount++;
-                priceContinueUpperCount++;
-                priceContinueFallCount = 0;
-                holdCount = 0;
-            } else if (sale ? priceFall : priceUpper) {
-                priceTotalFallCount++;
-                priceContinueFallCount++;
-                priceContinueUpperCount = 0;
-                holdCount = 0;
-            } else {
-                holdCount++;
-                priceContinueFallCount = 0;
-                priceContinueUpperCount = 0;
             }
-            log.info("最佳{}股票[{}-{}]，买入价格：{}, 当前价格：{}，总{}次数：{}，连续{}次数：{}，总{}数：{}，连续{}次数{}，等待最佳{}时机...",
-                    operation, code, name, buyPrice, nowPrice, upperFallKey, priceTotalUpperCount, upperFallKey, priceContinueUpperCount, fallUpperKey, priceTotalFallCount, fallUpperKey, priceContinueFallCount, operation);
-            // 净上涨10次或者连续上涨3次，开始卖出
+            if (sale ? priceFall : priceUpper) {
+                priceTotalFallCount++;
+            }
+            log.info("最佳{}股票[{}-{}]，买入价格：{}, 当前价格：{}，总{}次数：{}，总{}数：{}，等待最佳{}时机...", operation, code, name, buyPrice, nowPrice, upperFallKey, priceTotalUpperCount, fallUpperKey, priceTotalFallCount, operation);
+            // 总上涨10次，开始卖出
             boolean incomeCondition = nowPrice - buyPrice > 0.1;
-            boolean priceCondition = priceTotalUpperCount - priceTotalFallCount > totalLimit || priceContinueUpperCount > continueLimit;
+            boolean priceCondition = priceTotalUpperCount > totalLimit;
             boolean saleCondition = incomeCondition && priceCondition;
             if (sale ? saleCondition : priceCondition) {
-                log.info("最佳{}股票[{}-{}]，净{}数达到{}，或者连续{}次数达到{}，开始{}股票。", operation, code, name, upperFallKey, totalLimit, upperFallKey, continueLimit, operation);
+                log.info("最佳{}股票[{}-{}]，总{}数达到{}，开始{}股票。", operation, code, name, upperFallKey, totalLimit, operation);
                 return true;
-            }
-            if (holdCount > 6 * HOLD_TIME_MINUTES) {
-                log.info("最佳{}股票[{}-{}]，价格在{}分钟内无变化!", operation, code, name, HOLD_TIME_MINUTES);
-                return false;
             }
         }
         return false;
