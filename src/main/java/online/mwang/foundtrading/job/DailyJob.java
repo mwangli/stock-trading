@@ -91,7 +91,7 @@ public class DailyJob {
         paramMap.put("tfrom", "PC");
         paramMap.put("newindex", "1");
         paramMap.put("MobileCode", "13278828091");
-        paramMap.put("intacttoserver", "%40ClZvbHVtZUluZm8JAAAAN0EwOS1DMjdC");
+        paramMap.put("intacttoserver", "@ClZvbHVtZUluZm8JAAAANTI1QS00Qjc4");
         return paramMap;
     }
 
@@ -174,8 +174,7 @@ public class DailyJob {
             log.info("没有检测到Token，正在重新登录...");
             if (login()) return redisTemplate.opsForValue().get(TOKEN);
         }
-        log.info("获取Token失败!");
-        return "";
+        return token;
     }
 
     public void setToken(String token) {
