@@ -46,26 +46,19 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DailyJob {
 
-    // 最大持股数量，限制可买入股票的最大价格
-    private static final int MAX_HOLD_NUMBER = 100;
+    private static final int MAX_HOLD_NUMBER = 200;
     private static final int MIN_HOLD_NUMBER = 100;
-    // 最大持仓股票数量
-    private static final int MAX_HOLD_STOCKS = 9;
-    // 最低价格系数，保证可买入股票价格不会过低
-    private static final double LOW_PRICE_PERCENT = 0.9;
-    // 最低价格限制，资金不足时不买入低价股
+    private static final int MAX_HOLD_STOCKS = 6;
+    private static final double LOW_PRICE_PERCENT = 0.85;
     private static final double LOW_PRICE_LIMIT = 5.0;
     private static final int BUY_RETRY_TIMES = 3;
     private static final int SOLD_RETRY_TIMES = 3;
     private static final int LOGIN_RETRY_TIMES = 10;
-    private static final int PRICE_CONTINUE_FALL_LIMIT = 3;
     private static final int PRICE_TOTAL_FALL_LIMIT = 10;
-    private static final int PRICE_CONTINUE_UPPER_LIMIT = 3;
     private static final int PRICE_TOTAL_UPPER_LIMIT = 10;
     private static final int BUY_RETRY_LIMIT = 20;
     private static final int WAIT_TIME_SECONDS = 10;
-    private static final int HOLD_TIME_MINUTES = 5;
-    private static final int WAIT_TIME_MINUTES = 10;
+    private static final int WAIT_TIME_MINUTES = 20;
     private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
     private static final int THREAD_POOL_NUMBERS = 8;
