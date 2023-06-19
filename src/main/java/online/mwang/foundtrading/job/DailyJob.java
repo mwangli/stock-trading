@@ -421,7 +421,7 @@ public class DailyJob {
                 return;
             }
             List<TradingRecord> holdList = getHoldList();
-            double maxDailyRate = Double.MIN_VALUE;
+            double maxDailyRate = -100.00;
             TradingRecord best = null;
             for (TradingRecord record : holdList) {
                 // 查询买入时间

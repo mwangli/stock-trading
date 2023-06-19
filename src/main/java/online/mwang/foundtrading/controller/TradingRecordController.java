@@ -57,7 +57,6 @@ public class TradingRecordController {
     @SneakyThrows
     @GetMapping
     public Response<List<TradingRecord>> listFound(FoundTradingQuery query) {
-//        if (query.getBuyDate() != null) query.setBuyDate();
         LambdaQueryWrapper<TradingRecord> queryWrapper = new QueryWrapper<TradingRecord>().lambda()
                 .like(ObjectUtils.isNotNull(query.getCode()), TradingRecord::getCode, query.getCode())
                 .like(ObjectUtils.isNotNull(query.getName()), TradingRecord::getCode, query.getName())
