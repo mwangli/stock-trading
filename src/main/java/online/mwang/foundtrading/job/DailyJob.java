@@ -263,12 +263,13 @@ public class DailyJob {
         for (int i = 1; i < results.size(); i++) {
             String data = results.getString(i);
             String[] split = data.split("\\|");
-            if (split[1].startsWith("0") || split[2].startsWith("0")) continue;
+            if ("0.00".equals(split[1]) || "0.00".equals(split[2])) continue;
             TradingRecord record = new TradingRecord();
             record.setCode(split[9]);
             record.setName(split[0]);
             record.setSalePrice(Double.parseDouble(split[4]));
             record.setSaleNumber(Double.parseDouble(split[2]));
+            dataList.add(record);
         }
 
         return dataList;
