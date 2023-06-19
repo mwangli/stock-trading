@@ -679,7 +679,7 @@ public class DailyJob {
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", 113);
         paramMap.put("StartPos", 0);
-        paramMap.put("MaxCount", 500);
+        paramMap.put("MaxCount", 100);
         paramMap.put("token", token);
         paramMap.put("ReqlinkType", 1);
         paramMap.put("reqno", timeMillis);
