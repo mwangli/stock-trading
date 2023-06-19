@@ -39,10 +39,6 @@ public class TradingRecordController {
     private final StockInfoMapper stockInfoMapper;
     private final DailyJob dailyJob;
 
-    public static void main(String[] args) {
-        System.out.println(String.valueOf(null));
-    }
-
     @PostMapping
     public Boolean create(@RequestBody TradingRecord tradingRecord) {
         return tradingRecordService.save(tradingRecord);
@@ -72,7 +68,7 @@ public class TradingRecordController {
                 .le((ObjectUtils.isNotNull(query.getSaleDate())), TradingRecord::getSaleDate, DateUtils.getNextDay(query.getSaleDate()))
                 .eq(ObjectUtils.isNotNull(query.getHoldDays()), TradingRecord::getHoldDays, query.getHoldDays())
                 .eq(ObjectUtils.isNotNull(query.getSold()), TradingRecord::getSold, query.getSold())
-                .orderBy(ObjectUtils.isNotNull(query.getSortOrder()), ASCEND.equals(query.getSortOrder()), TradingRecord.getOrder(query.getSortKey()));
+                .orderBy(true, ASCEND.equals(query.getSortOrder()), TradingRecord.getOrder(query.getSortKey()));
         Page<TradingRecord> pageResult = tradingRecordService.page(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
         return Response.success(pageResult.getRecords(), pageResult.getTotal());
     }
