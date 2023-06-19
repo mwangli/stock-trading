@@ -1087,7 +1087,7 @@ public class DailyJob {
 //            prices.add(new DailyItem(date.concat("-1"), Double.parseDouble(price1) / 100));
 //            prices.add(new DailyItem(date.concat("-2"), Double.parseDouble(price2) / 100));
 //            prices.add(new DailyItem(date.concat("-3"), Double.parseDouble(price3) / 100));
-            prices.add(new DailyItem(date, Double.parseDouble(price1) / 100));
+            prices.add(new DailyItem(date, Double.parseDouble(price3) / 100));
         }
         return prices;
     }
