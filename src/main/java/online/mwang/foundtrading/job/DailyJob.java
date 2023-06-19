@@ -236,11 +236,11 @@ public class DailyJob {
         paramMap.put("CheckToken", checkCode.get(1));
         final JSONObject result = requestUtils.request(buildParams(paramMap));
         final String errorNo = result.getString("ERRORNO");
-        if (errorNo.equals("0")) {
+        if ("331100".equals(errorNo)) {
             setToken(result.getString("TOKEN"));
             return true;
         }
-        if (errorNo.equals("-330203")) {
+        if ("-330203".equals(errorNo)) {
             // 验证码错误，继续尝试登录
             return false;
         }
