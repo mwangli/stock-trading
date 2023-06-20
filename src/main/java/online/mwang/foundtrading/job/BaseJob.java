@@ -28,7 +28,11 @@ public abstract class BaseJob implements InterruptableJob {
     @Override
     public void execute(JobExecutionContext jobExecutionContext) {
         final long start = System.currentTimeMillis();
-        run();
+        try {
+            run();
+        } catch (RuntimeException e) {
+            log.info("任务终止成功!");
+        }
         final long end = System.currentTimeMillis();
         log.info("任务执行耗时{}秒。", (end - start) / 1000);
     }

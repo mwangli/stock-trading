@@ -529,7 +529,7 @@ public class DailyJob {
                 priceTotalFallCount++;
             }
             log.info("最佳{}股票[{}-{}]，买入价格:{}, 当前价格:{}，总{}次数:{}，总{}数:{}，等待最佳{}时机...", operation, code, name, buyPrice, nowPrice, upperFallKey, priceTotalUpperCount, fallUpperKey, priceTotalFallCount, operation);
-            // 20分钟内总共上涨10次，开始卖出
+            // 30分钟内总共上涨10次，开始卖出
             boolean priceCondition = priceTotalUpperCount >= totalLimit;
             boolean incomeCondition = nowPrice - buyPrice > 0.1;
             boolean saleCondition = incomeCondition && priceCondition;
