@@ -15,9 +15,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 
 /**
  * @version 1.0.0
@@ -88,12 +86,5 @@ public class RequestUtils {
             return data.getJSONArray("results");
         }
         return new JSONArray();
-    }
-
-    private Boolean checkToken(JSONObject res) {
-        if ("100".equals(res.getString("ACTION"))) return null;
-        List<String> errorCodes = Collections.singletonList("-204007");
-        final String errorNo = res.getString("ERRORNO");
-        return "-204007".equals(errorNo);
     }
 }
