@@ -461,7 +461,7 @@ public class DailyJob {
             }
             log.info("最佳卖出股票[{}-{}]，买入价格:{}，当前价格:{}，预期收益:{}，日收益率:{}", best.getCode(), best.getName(), best.getBuyPrice(), best.getSalePrice(), best.getIncome(), String.format("%.4f", best.getDailyIncomeRate()));
             // 等待最佳卖出时机
-            if (!waitingBestTime(best.getCode(), best.getName(), best.getBuyPrice(), true)) {
+            if (waiting && waitingBestTime(best.getCode(), best.getName(), best.getBuyPrice(), true)) {
                 log.info("未找到合适的卖出时机，尝试卖出下一组股票!");
                 continue;
             }
@@ -523,7 +523,7 @@ public class DailyJob {
             }
             log.info("最佳{}股票[{}-{}]，买入价格:{}, 当前价格:{}，总{}次数:{}，总{}数:{}，等待最佳{}时机...", operation, code, name, buyPrice, nowPrice, upperFallKey, priceTotalUpperCount, fallUpperKey, priceTotalFallCount, operation);
             // 20分钟内总共上涨10次，开始卖出
-            boolean priceCondition = priceTotalUpperCount > totalLimit;
+            boolean priceCondition = priceTotalUpperCount >= totalLimit;
             boolean incomeCondition = nowPrice - buyPrice > 0.1;
             boolean saleCondition = incomeCondition && priceCondition;
             boolean isMorning = isMorning();
