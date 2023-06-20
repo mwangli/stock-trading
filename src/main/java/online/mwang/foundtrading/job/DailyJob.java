@@ -58,7 +58,7 @@ public class DailyJob {
     private static final int PRICE_TOTAL_UPPER_LIMIT = 10;
     private static final int BUY_RETRY_LIMIT = 100;
     private static final int WAIT_TIME_SECONDS = 10;
-    private static final int WAIT_TIME_MINUTES = 20;
+    private static final int WAIT_TIME_MINUTES = 30;
     private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
     private static final int THREAD_POOL_NUMBERS = 8;
@@ -165,7 +165,7 @@ public class DailyJob {
         final String token = redisTemplate.opsForValue().get(TOKEN);
         if (token == null) {
             log.info("没有检测到Token，正在重新登录...");
-            if (login()) return redisTemplate.opsForValue().get(TOKEN);
+            login();
         }
         return token;
     }
@@ -182,7 +182,7 @@ public class DailyJob {
     @SneakyThrows
     public String getCheckCodeFromMessage(String message) {
         String code = ocrUtils.execute(message);
-        log.info("识别到图片验证码：{}", code);
+        log.info("识别到图片验证码:{}", code);
         return code;
     }
 
@@ -198,24 +198,23 @@ public class DailyJob {
     }
 
     @SneakyThrows
-    public Boolean login() {
+    public void login() {
         int time = 0;
         while (time++ < LOGIN_RETRY_TIMES) {
             log.info("第{}尝试登录------", time);
             Boolean success = doLogin();
             if (success == null) {
                 log.info("登录失败！");
-                return false;
+                return;
             }
             if (success) {
                 log.info("登录成功！");
-                return true;
+                return;
             } else {
                 log.info("验证码错误，尝试重新登录!");
             }
         }
         log.info("尝试{}次后登录失败！请检查程序代码！", LOGIN_RETRY_TIMES);
-        return false;
     }
 
     public Boolean doLogin() {
@@ -516,12 +515,13 @@ public class DailyJob {
             if (sale ? priceFall : priceUpper) {
                 priceTotalFallCount++;
             }
-            log.info("最佳{}股票[{}-{}]，买入价格：{}, 当前价格：{}，总{}次数：{}，总{}数：{}，等待最佳{}时机...", operation, code, name, buyPrice, nowPrice, upperFallKey, priceTotalUpperCount, fallUpperKey, priceTotalFallCount, operation);
+            log.info("最佳{}股票[{}-{}]，买入价格:{}, 当前价格:{}，总{}次数:{}，总{}数:{}，等待最佳{}时机...", operation, code, name, buyPrice, nowPrice, upperFallKey, priceTotalUpperCount, fallUpperKey, priceTotalFallCount, operation);
             // 20分钟内总共上涨10次，开始卖出
             boolean priceCondition = priceTotalUpperCount > totalLimit;
             boolean incomeCondition = nowPrice - buyPrice > 0.1;
-            boolean saleCondition = incomeCondition && priceCondition;
-            if (sale ? saleCondition : priceCondition) {
+            boolean isA = false;
+//            boolean saleCondition = incomeCondition && priceCondition;
+            if (sale ? incomeCondition : priceCondition) {
                 log.info("最佳{}股票[{}-{}]，总{}数达到{}，开始{}股票。", operation, code, name, upperFallKey, totalLimit, operation);
                 return true;
             }
@@ -597,7 +597,7 @@ public class DailyJob {
         accountInfo.setCreateTime(now);
         accountInfo.setUpdateTime(now);
         accountInfoMapper.insert(accountInfo);
-        log.info("当前可用金额：{}元，持仓金额：{}元，总金额：{}元。", availableAmount, usedAmount, totalAmount);
+        log.info("当前可用金额:{}元，持仓金额:{}元，总金额:{}元。", availableAmount, usedAmount, totalAmount);
         return accountInfo;
     }
 
@@ -643,7 +643,7 @@ public class DailyJob {
 
     public void cancelAllOrder() {
         List<OrderStatus> orderList = listCancelOrder();
-        log.info("待撤销订单：{}", orderList);
+        log.info("待撤销订单:{}", orderList);
         orderList.forEach(o -> cancelOrder(o.getAnswerNo()));
     }
 
@@ -678,7 +678,7 @@ public class DailyJob {
 
     public String queryOrderStatus(String answerNo) {
         List<OrderStatus> orderInfos = listTodayOrder();
-        log.info("查询到订单状态信息：{}", orderInfos);
+        log.info("查询到订单状态信息:{}", orderInfos);
         Optional<OrderStatus> status = orderInfos.stream().filter(o -> o.getAnswerNo().equals(answerNo)).findFirst();
         if (status.isEmpty()) {
             log.info("未查询到合同编号为{}的订单交易状态！", answerNo);
@@ -699,7 +699,7 @@ public class DailyJob {
             if (orderList.size() == 0) {
                 return true;
             } else {
-                log.info("待撤销订单：{}", orderList);
+                log.info("待撤销订单:{}", orderList);
                 orderList.forEach(o -> cancelOrder(o.getAnswerNo()));
             }
         }
@@ -712,22 +712,22 @@ public class DailyJob {
             SleepUtils.second(WAIT_TIME_SECONDS);
             final String status = queryOrderStatus(answerNo);
             if (status == null) {
-                log.info("当前合同编号：{}，订单状态查询失败。", answerNo);
+                log.info("当前合同编号:{}，订单状态查询失败。", answerNo);
                 return null;
             }
             if ("已成".equals(status)) {
-                log.info("当前合同编号：{}，交易成功。", answerNo);
+                log.info("当前合同编号:{}，交易成功。", answerNo);
                 return true;
             }
             if ("已报".equals(status)) {
-                log.info("当前合同编号：{}，交易不成功，进行撤单操作。", answerNo);
+                log.info("当前合同编号:{}，交易不成功，进行撤单操作。", answerNo);
                 cancelOrder(answerNo);
             }
             if ("已报待撤".equals(status)) {
-                log.info("当前合同编号：{}，等待撤单完成...", answerNo);
+                log.info("当前合同编号:{}，等待撤单完成...", answerNo);
             }
             if ("已撤".equals(status)) {
-                log.info("当前合同编号：{}，订单撤销完成", answerNo);
+                log.info("当前合同编号:{}，订单撤销完成", answerNo);
                 return false;
             }
         }
@@ -914,7 +914,7 @@ public class DailyJob {
                 log.info("已更新{}条股票交易权限记录。", count.get());
             }
         });
-        log.info("交易权限错误信息合集：{}", set);
+        log.info("交易权限错误信息合集:{}", set);
         // 取消所有提交的订单
         cancelAllOrder();
     }
@@ -960,7 +960,7 @@ public class DailyJob {
                 }
             } catch (Exception e) {
                 e.printStackTrace();
-                log.error("获取数据异常：{}", e.getMessage());
+                log.error("获取数据异常:{}", e.getMessage());
             } finally {
                 countDownLatch.countDown();
             }
@@ -980,7 +980,7 @@ public class DailyJob {
                 String[] split = params.split("\\|");
                 strategyParams = new StrategyParams(Double.parseDouble(split[0].trim()), Integer.parseInt(split[1].trim()), Integer.parseInt(split[2].trim()));
             } catch (Exception e) {
-                log.warn("策略参数解析异常，使用默认参数：{}", strategyParams);
+                log.warn("策略参数解析异常，使用默认参数:{}", strategyParams);
             }
         }
         return strategyParams;
@@ -1016,7 +1016,7 @@ public class DailyJob {
                 newInfo.setPrices("[]");
                 newInfo.setIncreaseRate("[]");
                 saveList.add(newInfo);
-                log.info("获取到新数据：{}", newInfo);
+                log.info("获取到新数据:{}", newInfo);
             }
         });
         saveDate(saveList);
@@ -1038,7 +1038,7 @@ public class DailyJob {
 
     @SneakyThrows
     public void saveDate(List<StockInfo> dataList) {
-        log.info("开始更新数据库......");
+        log.info("开始更新数据库...");
         if (CollectionUtils.isNotEmpty(dataList)) {
             // 多线程批量更新数据库
             int pages = dataList.size() / UPDATE_BATCH_SIZE + 1;
@@ -1056,14 +1056,14 @@ public class DailyJob {
                         log.info("第{}个数据更新任务处理完成，任务更新范围[{},{}]内,共{}条数", pages - countDownLatch.getCount() + 1, startIndex + 1, endIndex, endIndex - startIndex);
                     } catch (Exception e) {
                         e.printStackTrace();
-                        log.error("保存数据异常：{}", e.getMessage());
+                        log.error("保存数据异常:{}", e.getMessage());
                     } finally {
                         countDownLatch.countDown();
                     }
                 });
             }
             countDownLatch.await();
-            log.info("数据库更新完成......");
+            log.info("数据库更新完成...");
         }
     }
 
