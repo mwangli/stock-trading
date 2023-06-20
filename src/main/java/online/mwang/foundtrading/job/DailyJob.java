@@ -520,12 +520,20 @@ public class DailyJob {
             boolean priceCondition = priceTotalUpperCount > totalLimit;
             boolean incomeCondition = nowPrice - buyPrice > 0.1;
             boolean saleCondition = incomeCondition && priceCondition;
-            if (sale ? saleCondition : priceCondition) {
+            boolean isMorning = isMorning();
+            if (sale && isMorning ? saleCondition : priceCondition) {
                 log.info("最佳{}股票[{}-{}]，总{}数达到{}，开始{}股票。", operation, code, name, upperFallKey, totalLimit, operation);
                 return true;
             }
         }
         return false;
+    }
+
+    private Boolean isMorning() {
+        final Calendar calendar = Calendar.getInstance();
+        calendar.setTime(new Date());
+        final int hours = calendar.get(Calendar.HOUR_OF_DAY);
+        return hours < 12;
     }
 
     private Double getLastPrice(String code) {
