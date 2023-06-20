@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.base.Response;
 import online.mwang.foundtrading.bean.po.QuartzJob;
 import online.mwang.foundtrading.bean.query.QuartzJobQuery;
+import online.mwang.foundtrading.job.DailyJob;
 import online.mwang.foundtrading.mapper.QuartzJobMapper;
 import online.mwang.foundtrading.utils.RequestUtils;
 import org.quartz.*;
@@ -34,6 +35,7 @@ public class JobController {
     private final Scheduler scheduler;
     private final QuartzJobMapper jobMapper;
     private final RequestUtils requestUtils;
+    private final DailyJob dailyJob;
 
     @SneakyThrows
     @GetMapping()
@@ -75,7 +77,12 @@ public class JobController {
     @SneakyThrows
     @PutMapping()
     public Response<Integer> modifyJob(@RequestBody QuartzJob job) {
-        // 更新Token
+        // 取消交易等待
+        String waiting = job.getWaiting();
+        if (StringUtils.isNotBlank(waiting)) {
+            dailyJob.setWaiting("waiting".equals(waiting));
+        }
+        // 是否打开接口日志
         String logSwitch = job.getLogSwitch();
         if (StringUtils.isNotBlank(logSwitch)) {
             requestUtils.setLogs("open".equals(logSwitch));

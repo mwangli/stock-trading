@@ -78,6 +78,12 @@ public class DailyJob {
     private final ScoreStrategyMapper strategyMapper;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
 
+    private boolean waiting = true;
+
+    public void setWaiting(boolean waiting) {
+        this.waiting = waiting;
+    }
+
     public static HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
         if (paramMap == null) return new HashMap<>();
         paramMap.put("cfrom", "H5");
@@ -350,7 +356,7 @@ public class DailyJob {
             }
             log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore());
             // 等待最佳买入时机
-            if (!waitingBestTime(best.getCode(), best.getName(), best.getPrice(), false)) {
+            if (waiting && waitingBestTime(best.getCode(), best.getName(), best.getPrice(), false)) {
                 log.info("未找到合适的买入时机，尝试买入下一组股票!");
                 continue;
             }
@@ -523,10 +529,10 @@ public class DailyJob {
             boolean isMorning = isMorning();
             if (sale && isMorning ? saleCondition : priceCondition) {
                 log.info("最佳{}股票[{}-{}]，总{}数达到{}，开始{}股票。", operation, code, name, upperFallKey, totalLimit, operation);
-                return true;
+                return false;
             }
         }
-        return false;
+        return true;
     }
 
     private Boolean isMorning() {
