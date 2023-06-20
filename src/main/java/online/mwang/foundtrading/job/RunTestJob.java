@@ -26,7 +26,8 @@ public class RunTestJob extends BaseJob {
     @Override
     public void run() {
         int times = 0;
-        while (!job.interrupted && times++ < TRY_TIMES) {
+        while (times++ < TRY_TIMES) {
+            job.checkInterrupted();
             SleepUtils.second(2);
             log.info("执行测试任务......");
         }
