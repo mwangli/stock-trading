@@ -61,6 +61,7 @@ public class JobController {
         CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
         scheduler.scheduleJob(jobDetail, cronTrigger);
         job.setStatus("1");
+        job.setDeleted("1");
         job.setCreateTime(new Date());
         job.setUpdateTime(new Date());
         return Response.success(jobMapper.insert(job));
