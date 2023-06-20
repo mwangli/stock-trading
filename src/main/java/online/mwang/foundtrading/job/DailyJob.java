@@ -79,7 +79,7 @@ public class DailyJob {
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
 
     private boolean waiting = true;
-    private boolean interrupted = false;
+    public boolean interrupted = false;
 
     public void setWaiting(boolean waiting) {
         this.waiting = waiting;
