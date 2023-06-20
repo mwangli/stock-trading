@@ -516,12 +516,12 @@ public class DailyJob {
         String fallUpperKey = sale ? "跌落" : "上涨";
         int totalLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
         Double nowPrice = getLastPrice(code);
-        while (timesCount++ < 2 * WAIT_TIME_MINUTES) {
+        while (timesCount++ < WAIT_TIME_MINUTES) {
             if (interrupted) {
                 interrupted = false;
                 throw new RuntimeException("任务中断,取消任务执行！");
             }
-            SleepUtils.second(3 * WAIT_TIME_SECONDS);
+            SleepUtils.minutes(1);
             Double lastPrice = getLastPrice(code);
             final boolean priceUpper = lastPrice > nowPrice;
             final boolean priceFall = lastPrice < nowPrice;
