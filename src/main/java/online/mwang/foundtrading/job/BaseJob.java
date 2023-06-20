@@ -35,7 +35,7 @@ public abstract class BaseJob implements InterruptableJob {
 
     @Override
     public void interrupt() {
-        log.info("收到任务终止信号!");
+        log.info("正在终止任务...");
         SleepUtils.interrupted = true;
     }
 }
