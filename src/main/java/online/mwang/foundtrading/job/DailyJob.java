@@ -79,9 +79,14 @@ public class DailyJob {
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
 
     private boolean waiting = true;
+    private boolean interrupted = false;
 
     public void setWaiting(boolean waiting) {
         this.waiting = waiting;
+    }
+
+    public void setInterrupted(boolean interrupted) {
+        this.interrupted = interrupted;
     }
 
     public static HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
@@ -510,6 +515,10 @@ public class DailyJob {
         int totalLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
         Double nowPrice = getLastPrice(code);
         while (timesCount++ < 2 * WAIT_TIME_MINUTES) {
+            if (interrupted) {
+                interrupted = false;
+                throw new RuntimeException("任务中断,取消任务执行！");
+            }
             SleepUtils.second(3 * WAIT_TIME_SECONDS);
             Double lastPrice = getLastPrice(code);
             final boolean priceUpper = lastPrice > nowPrice;
