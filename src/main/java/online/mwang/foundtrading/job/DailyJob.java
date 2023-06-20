@@ -77,16 +77,7 @@ public class DailyJob {
     private final StockInfoMapper stockInfoMapper;
     private final ScoreStrategyMapper strategyMapper;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
-
     public boolean enableWaiting = true;
-    public boolean interrupted = false;
-
-    public void checkInterrupted() {
-        if (interrupted) {
-            interrupted = false;
-            throw new RuntimeException("任务终止!");
-        }
-    }
 
     public static HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
         if (paramMap == null) return new HashMap<>();
@@ -516,7 +507,6 @@ public class DailyJob {
         int totalLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
         Double nowPrice = getLastPrice(code);
         while (timesCount++ < WAIT_TIME_MINUTES) {
-            checkInterrupted();
             SleepUtils.minutes(1);
             Double lastPrice = getLastPrice(code);
             final boolean priceUpper = lastPrice > nowPrice;
