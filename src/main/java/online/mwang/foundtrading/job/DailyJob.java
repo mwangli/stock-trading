@@ -78,15 +78,14 @@ public class DailyJob {
     private final ScoreStrategyMapper strategyMapper;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
 
-    private boolean waiting = true;
+    public boolean enableWaiting = true;
     public boolean interrupted = false;
 
-    public void setWaiting(boolean waiting) {
-        this.waiting = waiting;
-    }
-
-    public void setInterrupted(boolean interrupted) {
-        this.interrupted = interrupted;
+    public void checkInterrupted() {
+        if (interrupted) {
+            interrupted = false;
+            throw new RuntimeException("任务终止!");
+        }
     }
 
     public static HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
@@ -361,7 +360,7 @@ public class DailyJob {
             }
             log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore());
             // 等待最佳买入时机
-            if (waiting && waitingBestTime(best.getCode(), best.getName(), best.getPrice(), false)) {
+            if (enableWaiting && waitingBestTime(best.getCode(), best.getName(), best.getPrice(), false)) {
                 log.info("未找到合适的买入时机，尝试买入下一组股票!");
                 continue;
             }
@@ -467,7 +466,7 @@ public class DailyJob {
             }
             log.info("最佳卖出股票[{}-{}]，买入价格:{}，当前价格:{}，预期收益:{}，日收益率:{}", best.getCode(), best.getName(), best.getBuyPrice(), best.getSalePrice(), best.getIncome(), String.format("%.4f", best.getDailyIncomeRate()));
             // 等待最佳卖出时机
-            if (waiting && waitingBestTime(best.getCode(), best.getName(), best.getBuyPrice(), true)) {
+            if (enableWaiting && waitingBestTime(best.getCode(), best.getName(), best.getBuyPrice(), true)) {
                 log.info("未找到合适的卖出时机，尝试卖出下一组股票!");
                 continue;
             }
@@ -517,10 +516,7 @@ public class DailyJob {
         int totalLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
         Double nowPrice = getLastPrice(code);
         while (timesCount++ < WAIT_TIME_MINUTES) {
-            if (interrupted) {
-                interrupted = false;
-                throw new RuntimeException("任务中断,取消任务执行！");
-            }
+            checkInterrupted();
             SleepUtils.minutes(1);
             Double lastPrice = getLastPrice(code);
             final boolean priceUpper = lastPrice > nowPrice;

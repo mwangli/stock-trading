@@ -78,14 +78,14 @@ public class JobController {
     @PutMapping()
     public Response<Integer> modifyJob(@RequestBody QuartzJob job) {
         // 取消交易等待
-        String waiting = job.getWaiting();
-        if (StringUtils.isNotBlank(waiting)) {
-            dailyJob.setWaiting("waiting".equals(waiting));
+        String enableWaiting = job.getEnableWaiting();
+        if (StringUtils.isNotBlank(enableWaiting)) {
+            dailyJob.enableWaiting = "enable".equals(enableWaiting);
         }
         // 是否打开接口日志
         String logSwitch = job.getLogSwitch();
         if (StringUtils.isNotBlank(logSwitch)) {
-            requestUtils.setLogs("open".equals(logSwitch));
+            requestUtils.logs = "open".equals(logSwitch);
         }
         if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");
