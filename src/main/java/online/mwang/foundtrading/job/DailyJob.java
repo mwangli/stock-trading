@@ -54,8 +54,8 @@ public class DailyJob {
     private static final int BUY_RETRY_TIMES = 6;
     private static final int SOLD_RETRY_TIMES = 6;
     private static final int LOGIN_RETRY_TIMES = 10;
-    private static final int PRICE_TOTAL_FALL_LIMIT = 20;
-    private static final int PRICE_TOTAL_UPPER_LIMIT = 20;
+    private static final int PRICE_TOTAL_FALL_LIMIT = 10;
+    private static final int PRICE_TOTAL_UPPER_LIMIT = 10;
     private static final int BUY_RETRY_LIMIT = 100;
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int WAIT_TIME_MINUTES = 10;
@@ -515,7 +515,9 @@ public class DailyJob {
             log.info("最佳{}股票[{}-{}]，买入价格：{}, 当前价格：{}，总{}次数：{}，总{}数：{}，等待最佳{}时机...", operation, code, name, buyPrice, nowPrice, upperFallKey, priceTotalUpperCount, fallUpperKey, priceTotalFallCount, operation);
             // 20分钟内总共上涨10次，开始卖出
             boolean priceCondition = priceTotalUpperCount > totalLimit;
-            if (priceCondition) {
+            boolean incomeCondition = nowPrice - buyPrice > 0.1;
+            boolean saleCondition = incomeCondition && priceCondition;
+            if (sale ? saleCondition : priceCondition) {
                 log.info("最佳{}股票[{}-{}]，总{}数达到{}，开始{}股票。", operation, code, name, upperFallKey, totalLimit, operation);
                 return true;
             }
