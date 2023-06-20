@@ -9,7 +9,7 @@ import lombok.SneakyThrows;
 import online.mwang.foundtrading.bean.base.Response;
 import online.mwang.foundtrading.bean.po.*;
 import online.mwang.foundtrading.bean.query.FoundTradingQuery;
-import online.mwang.foundtrading.job.DailyJob;
+import online.mwang.foundtrading.job.AllJobs;
 import online.mwang.foundtrading.mapper.AccountInfoMapper;
 import online.mwang.foundtrading.mapper.StockInfoMapper;
 import online.mwang.foundtrading.service.TradingRecordService;
@@ -37,7 +37,7 @@ public class TradingRecordController {
     private final TradingRecordService tradingRecordService;
     private final AccountInfoMapper accountInfoMapper;
     private final StockInfoMapper stockInfoMapper;
-    private final DailyJob dailyJob;
+    private final AllJobs dailyJob;
 
     @PostMapping
     public Boolean create(@RequestBody TradingRecord tradingRecord) {

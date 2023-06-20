@@ -12,12 +12,12 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RunAccountJob extends BaseJob {
+public class RunAmountJob extends BaseJob {
 
-    private final DailyJob job;
+    private final AllJobs jobs;
 
     @Override
     public void run() {
-        job.runAccountJob();
+        jobs.runAmountJob();
     }
 }

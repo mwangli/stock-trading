@@ -13,10 +13,10 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class RunFlushJob extends BaseJob {
 
-    private final DailyJob job;
+    private final AllJobs jobs;
 
     @Override
     public void run() {
-        job.runFlushJob();
+        jobs.runFlushJob();
     }
 }
