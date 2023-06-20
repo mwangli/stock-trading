@@ -83,11 +83,13 @@ public class JobController {
         String enableWaiting = job.getEnableWaiting();
         if (StringUtils.isNotBlank(enableWaiting)) {
             jobs.enableWaiting = "enable".equals(enableWaiting);
+            log.info("交易等待{}成功！", jobs.enableWaiting ? "启用" : "取消");
         }
         // 是否打开接口日志
         String logSwitch = job.getLogSwitch();
         if (StringUtils.isNotBlank(logSwitch)) {
             requestUtils.logs = "open".equals(logSwitch);
+            log.info("接口日志{}成功！", requestUtils.logs ? "打开" : "关闭");
         }
         if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");
