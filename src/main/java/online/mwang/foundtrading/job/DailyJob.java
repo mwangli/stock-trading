@@ -58,7 +58,7 @@ public class DailyJob {
     private static final int PRICE_TOTAL_UPPER_LIMIT = 10;
     private static final int BUY_RETRY_LIMIT = 100;
     private static final int WAIT_TIME_SECONDS = 10;
-    private static final int WAIT_TIME_MINUTES = 30;
+    private static final int WAIT_TIME_MINUTES = 20;
     private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
     private static final int THREAD_POOL_NUMBERS = 8;
@@ -504,8 +504,8 @@ public class DailyJob {
         String fallUpperKey = sale ? "跌落" : "上涨";
         int totalLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
         Double nowPrice = getLastPrice(code);
-        while (timesCount++ < WAIT_TIME_MINUTES) {
-            SleepUtils.minutes(1);
+        while (timesCount++ < 2 * WAIT_TIME_MINUTES) {
+            SleepUtils.second(3 * WAIT_TIME_SECONDS);
             Double lastPrice = getLastPrice(code);
             final boolean priceUpper = lastPrice > nowPrice;
             final boolean priceFall = lastPrice < nowPrice;
