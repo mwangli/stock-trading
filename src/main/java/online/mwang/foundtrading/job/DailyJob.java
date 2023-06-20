@@ -66,7 +66,7 @@ public class DailyJob {
     private static final int CANCEL_WAIT_TIMES = 30;
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
-    private static final String TOKEN = "requestToken";
+    public static final String TOKEN = "requestToken";
     private static HashMap<String, Integer> dateMap;
     private final RequestUtils requestUtils;
     private final OcrUtils ocrUtils;
@@ -173,6 +173,10 @@ public class DailyJob {
     public void setToken(String token) {
         if (token == null) return;
         redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+    }
+
+    public void clearToken() {
+        redisTemplate.opsForValue().getAndDelete(TOKEN);
     }
 
     @SneakyThrows
