@@ -79,16 +79,6 @@ public class AllJobs {
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
     public boolean enableWaiting = true;
 
-    public static HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
-        if (paramMap == null) return new HashMap<>();
-        paramMap.put("cfrom", "H5");
-        paramMap.put("tfrom", "PC");
-        paramMap.put("newindex", "1");
-        paramMap.put("MobileCode", "13278828091");
-        paramMap.put("intacttoserver", "@ClZvbHVtZUluZm8JAAAANTI1QS00Qjc4");
-        return paramMap;
-    }
-
     // 交易日开盘时间买入 9:30
 //    @Scheduled(cron = "0 0,15,30 9 ? * MON-FRI")
     public void runBuyJob() {
@@ -171,6 +161,17 @@ public class AllJobs {
         return code;
     }
 
+    public static HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
+        if (paramMap == null) return new HashMap<>();
+        paramMap.put("cfrom", "H5");
+        paramMap.put("tfrom", "PC");
+        paramMap.put("newindex", "1");
+        paramMap.put("MobileCode", "13278828091");
+        paramMap.put("intacttoserver", "@ClZvbHVtZUluZm8JAAAANTI1QS00Qjc4");
+        return paramMap;
+    }
+
+
     @SneakyThrows
     public List<String> getCheckCode() {
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -252,7 +253,6 @@ public class AllJobs {
             record.setSaleNumber(Double.parseDouble(split[2]));
             dataList.add(record);
         }
-
         return dataList;
     }
 
@@ -478,7 +478,6 @@ public class AllJobs {
                 log.info("当前股票[{}-{}]卖出失败，尝试再次卖出。", best.getCode(), best.getName());
             }
         }
-
     }
 
     private Boolean waitingBestTime(String code, String name, Double buyPrice, Boolean sale) {
@@ -563,7 +562,6 @@ public class AllJobs {
         setToken(result.getString("TOKEN"));
     }
 
-    // 更新账户资金
     public AccountInfo updateAmount() {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
@@ -596,7 +594,7 @@ public class AllJobs {
     }
 
     private List<OrderStatus> arrayToList(JSONArray result, boolean isToday) {
-//        委托日期|时间|证券代码|证券|委托类别|买卖方向|状态|委托|数量|委托编号|均价|成交|股东代码|交易类别|
+        // 委托日期|时间|证券代码|证券|委托类别|买卖方向|状态|委托|数量|委托编号|均价|成交|股东代码|交易类别|
         ArrayList<OrderStatus> statusList = new ArrayList<>();
         if (result != null && result.size() > 1) {
             for (int i = 1; i < result.size(); i++) {
@@ -1105,8 +1103,6 @@ public class AllJobs {
         paramMap.put("ReqlinkType", 1);
         paramMap.put("StartPos", 0);
         paramMap.put("MaxCount", 500);
-//        paramMap.put("BeginDate", start);
-//        paramMap.put("EndDate", end);
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
         final JSONArray results = requestUtils.request2(buildParams(paramMap));
