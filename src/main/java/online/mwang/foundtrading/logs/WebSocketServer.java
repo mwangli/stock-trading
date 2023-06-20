@@ -33,7 +33,7 @@ public class WebSocketServer {
         logsAppender.setName("LogsAppender" + sessionId);
         logsAppender.start();
         rootLogger.addAppender(logsAppender);
-        log.info("日志采集器注入完成。");
+        log.info("日志采集器注入成功。");
     }
 
     @OnClose
@@ -41,6 +41,6 @@ public class WebSocketServer {
         LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
         ch.qos.logback.classic.Logger rootLogger = lc.getLogger("root");
         rootLogger.detachAppender("LogsAppender" + sessionId);
-        System.out.println("日志采集器移除完成");
+        System.out.println("日志采集器移除成功。");
     }
 }
