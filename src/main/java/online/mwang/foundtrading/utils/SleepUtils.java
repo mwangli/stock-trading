@@ -1,5 +1,8 @@
 package online.mwang.foundtrading.utils;
 
+import lombok.SneakyThrows;
+import org.springframework.stereotype.Component;
+
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -8,17 +11,22 @@ import java.util.concurrent.TimeUnit;
  * @date: 2023/3/1 16:57
  * @description: SleepUtils
  */
+@Component
 public class SleepUtils {
-    public static final void second(long seconds) {
-        try {
-            TimeUnit.SECONDS.sleep(seconds);
-        } catch (InterruptedException e) {
-        }
+
+    @SneakyThrows
+    public static void minutes(long minutes) {
+        TimeUnit.SECONDS.sleep(minutes);
     }
-    public static final void milliSecond(long seconds) {
-        try {
-            TimeUnit.MILLISECONDS.sleep(seconds);
-        } catch (InterruptedException e) {
-        }
+
+    @SneakyThrows
+    public static void second(long seconds) {
+
+        TimeUnit.SECONDS.sleep(seconds);
+    }
+
+    @SneakyThrows
+    public static void milliSecond(long milliSecond) {
+        TimeUnit.MILLISECONDS.sleep(milliSecond);
     }
 }
