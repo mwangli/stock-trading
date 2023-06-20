@@ -16,7 +16,7 @@ public class SleepUtils {
 
     @SneakyThrows
     public static void minutes(long minutes) {
-        TimeUnit.SECONDS.sleep(minutes);
+        TimeUnit.MINUTES.sleep(minutes);
     }
 
     @SneakyThrows
