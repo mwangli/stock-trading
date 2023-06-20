@@ -44,7 +44,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class DailyJob {
+public class AllJobs {
 
     private static final int MAX_HOLD_NUMBER = 200;
     private static final int MIN_HOLD_NUMBER = 100;
@@ -89,22 +89,6 @@ public class DailyJob {
         return paramMap;
     }
 
-    // 每隔10分钟刷新Token
-//    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
-    public void runTokenJob() {
-        log.info("开始执行刷新Token任务================================");
-        buySale(SALE_TYPE_OP, "", 100.0, 100.0);
-        log.info("刷新Token任务执行完毕================================");
-    }
-
-    // 每天登录一次
-//    @Scheduled(fixedRate = 1000 * 60 * 25, initialDelay = 1000 * 60 * 5)
-    public void runLoginJob() {
-        log.info("开始执行账户登录任务================================");
-        login();
-        log.info("账户登录任务执行完毕================================");
-    }
-
     // 交易日开盘时间买入 9:30
 //    @Scheduled(cron = "0 0,15,30 9 ? * MON-FRI")
     public void runBuyJob() {
@@ -123,9 +107,9 @@ public class DailyJob {
 
     // 更新账户余额，交易时间段内每小时执行一次
 //    @Scheduled(cron = "0 0 9-15 ? * MON-FRI")
-    public void runAccountJob() {
+    public void runAmountJob() {
         log.info("更新账户余额任务执行开始====================================");
-        updateAccountAmount();
+        updateAmount();
         log.info("更新账户余额任务执行结束====================================");
     }
 
@@ -311,7 +295,7 @@ public class DailyJob {
                 return;
             }
             // 更新账户可用资金
-            final AccountInfo accountInfo = updateAccountAmount();
+            final AccountInfo accountInfo = updateAmount();
             if (accountInfo == null) {
                 log.info("更新账户可用资金失败，取消购买任务");
                 return;
@@ -391,7 +375,7 @@ public class DailyJob {
                 record.setStrategyName(strategy == null ? "默认策略" : strategy.getName());
                 tradingRecordService.save(record);
                 // 更新账户资金
-                updateAccountAmount();
+                updateAmount();
                 // 更新交易次数
                 stockInfos.stream().filter(s -> s.getCode().equals(best.getCode())).forEach(s -> s.setBuySaleCount(s.getBuySaleCount() + 1));
                 log.info("成功买入股票[{}-{}], 买入价格:{}，买入数量:{}，买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
@@ -483,7 +467,7 @@ public class DailyJob {
                 best.setUpdateTime(now);
                 tradingRecordService.updateById(best);
                 // 更新账户资金
-                updateAccountAmount();
+                updateAmount();
                 // 增加股票交易次数
                 StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, best.getCode()));
                 stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
@@ -580,7 +564,7 @@ public class DailyJob {
     }
 
     // 更新账户资金
-    public AccountInfo updateAccountAmount() {
+    public AccountInfo updateAmount() {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();

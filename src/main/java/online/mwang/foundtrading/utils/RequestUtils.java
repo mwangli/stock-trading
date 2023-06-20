@@ -4,7 +4,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.foundtrading.job.DailyJob;
+import online.mwang.foundtrading.job.AllJobs;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -48,11 +48,11 @@ public class RequestUtils {
         String code = res.getString("ERRORNO");
         if ("-204007".equals(code)) {
             log.info("检测到无效token，尝试重新登录...");
-            final DailyJob job = applicationContext.getBean(DailyJob.class);
+            final AllJobs job = applicationContext.getBean(AllJobs.class);
             job.clearToken();
             final String token = job.getToken();
             if (token != null) {
-                formParam.put(DailyJob.TOKEN, job.getToken());
+                formParam.put(AllJobs.TOKEN, job.getToken());
                 return request(url, formParam);
             }
         }
