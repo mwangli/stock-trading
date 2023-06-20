@@ -407,6 +407,7 @@ public class DailyJob {
                 log.info("成功买入股票[{}-{}], 买入价格:{}，买入数量:{}，买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
                 // 保存评分数据
                 saveDate(stockInfos);
+                return;
             } else {
                 // 如果交易不成功，撤单后再次尝试卖出
                 log.info("当前买入交易不成功，后尝试买入下一组股票。");
@@ -498,6 +499,7 @@ public class DailyJob {
                 stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
                 stockInfoService.updateById(stockInfo);
                 log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{}，日收益率为:{}。", best.getCode(), best.getName(), best.getSaleAmount(), best.getIncome(), best.getDailyIncomeRate());
+                return;
             } else {
                 log.info("当前股票[{}-{}]卖出失败，尝试再次卖出。", best.getCode(), best.getName());
             }
