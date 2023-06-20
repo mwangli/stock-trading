@@ -26,6 +26,8 @@ public class QuartzJob {
     private String token;
     @TableField(exist = false)
     private String logSwitch;
+    @TableField(exist = false)
+    private String waiting;
 
     public static SFunction<QuartzJob, Object> getOrder(String key) {
         if (key == null) return QuartzJob::getSort;
