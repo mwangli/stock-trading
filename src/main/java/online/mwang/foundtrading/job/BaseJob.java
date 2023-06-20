@@ -1,11 +1,10 @@
 package online.mwang.foundtrading.job;
 
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.foundtrading.utils.SleepUtils;
 import org.quartz.InterruptableJob;
 import org.quartz.JobExecutionContext;
 import org.springframework.stereotype.Component;
-
-import javax.annotation.Resource;
 
 /**
  * @version 1.0.0
@@ -16,9 +15,6 @@ import javax.annotation.Resource;
 @Slf4j
 @Component
 public abstract class BaseJob implements InterruptableJob {
-
-    @Resource
-    private DailyJob job;
 
     /**
      * 任务执行方法
@@ -40,6 +36,6 @@ public abstract class BaseJob implements InterruptableJob {
     @Override
     public void interrupt() {
         log.info("收到任务终止新信号!");
-        job.interrupted = true;
+        SleepUtils.interrupted = true;
     }
 }
