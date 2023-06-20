@@ -28,7 +28,6 @@ public class LoginInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         final String token = request.getHeader("token");
-//        log.info("token is {}", token);
         if (token == null) {
             return returnJson(response, Response.fail(1011, "无token,请使用token访问。"));
         }
