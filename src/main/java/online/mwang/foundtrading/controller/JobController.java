@@ -45,6 +45,7 @@ public class JobController {
                 .like(ObjectUtils.isNotNull(query.getClassName()), QuartzJob::getClassName, query.getClassName())
                 .like(ObjectUtils.isNotNull(query.getCron()), QuartzJob::getCron, query.getCron())
                 .eq(ObjectUtils.isNotNull(query.getStatus()), QuartzJob::getStatus, query.getStatus())
+                .eq(true, QuartzJob::getDeleted, "1")
                 .orderBy(true, true, QuartzJob.getOrder(query.getSortKey()));
         Page<QuartzJob> jobPage = jobMapper.selectPage(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
         return Response.success(jobPage.getRecords(), jobPage.getTotal());
@@ -103,7 +104,6 @@ public class JobController {
     @SneakyThrows
     @DeleteMapping()
     public Response<Integer> deleteJob(@RequestBody QuartzJob job) {
-        if (job.getId() <= 13) return Response.success();
         scheduler.deleteJob(JobKey.jobKey(job.getName()));
         job.setDeleted("0");
         return Response.success(jobMapper.updateById(job));
