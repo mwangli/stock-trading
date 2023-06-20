@@ -519,9 +519,8 @@ public class DailyJob {
             // 20分钟内总共上涨10次，开始卖出
             boolean priceCondition = priceTotalUpperCount > totalLimit;
             boolean incomeCondition = nowPrice - buyPrice > 0.1;
-            boolean isA = false;
-//            boolean saleCondition = incomeCondition && priceCondition;
-            if (sale ? incomeCondition : priceCondition) {
+            boolean saleCondition = incomeCondition && priceCondition;
+            if (sale ? saleCondition : priceCondition) {
                 log.info("最佳{}股票[{}-{}]，总{}数达到{}，开始{}股票。", operation, code, name, upperFallKey, totalLimit, operation);
                 return true;
             }
