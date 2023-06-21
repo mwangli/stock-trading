@@ -54,8 +54,8 @@ public class AllJobs {
     private static final int BUY_RETRY_TIMES = 4;
     private static final int SOLD_RETRY_TIMES = 4;
     private static final int LOGIN_RETRY_TIMES = 10;
-    private static final int PRICE_TOTAL_FALL_LIMIT = 10;
-    private static final int PRICE_TOTAL_UPPER_LIMIT = 10;
+    private static final int PRICE_TOTAL_FALL_LIMIT = 15;
+    private static final int PRICE_TOTAL_UPPER_LIMIT = 15;
     private static final int BUY_RETRY_LIMIT = 100;
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int WAIT_TIME_MINUTES = 30;
@@ -489,8 +489,8 @@ public class AllJobs {
         String fallUpperKey = sale ? "跌落" : "上涨";
         int totalLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
         Double nowPrice = getLastPrice(code);
-        while (timesCount++ < WAIT_TIME_MINUTES) {
-            SleepUtils.minutes(1);
+        while (timesCount++ < 2 * WAIT_TIME_MINUTES) {
+            SleepUtils.second(3 * WAIT_TIME_SECONDS);
             Double lastPrice = getLastPrice(code);
             final boolean priceUpper = lastPrice > nowPrice;
             final boolean priceFall = lastPrice < nowPrice;
