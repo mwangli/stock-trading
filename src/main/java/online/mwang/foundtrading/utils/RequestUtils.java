@@ -46,7 +46,7 @@ public class RequestUtils {
         if (logs) log.info(result);
         final JSONObject res = JSONObject.parseObject(result);
         String code = res.getString("ERRORNO");
-        if ("-204007".equals(code)) {
+        if ("-204007".equals(code) || "-204009".equals(code)) {
             log.info("检测到无效token，尝试重新登录...");
             final AllJobs job = applicationContext.getBean(AllJobs.class);
             job.clearToken();
