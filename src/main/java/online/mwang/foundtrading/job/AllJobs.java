@@ -54,8 +54,8 @@ public class AllJobs {
     private static final int BUY_RETRY_TIMES = 4;
     private static final int SOLD_RETRY_TIMES = 4;
     private static final int LOGIN_RETRY_TIMES = 10;
-    private static final int PRICE_TOTAL_FALL_LIMIT = 15;
-    private static final int PRICE_TOTAL_UPPER_LIMIT = 15;
+    private static final int PRICE_TOTAL_FALL_LIMIT = 1;
+    private static final int PRICE_TOTAL_UPPER_LIMIT = 2;
     private static final int BUY_RETRY_LIMIT = 100;
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int WAIT_TIME_MINUTES = 30;
@@ -95,7 +95,7 @@ public class AllJobs {
         log.info("卖出任务执行完毕====================================");
     }
 
-    // 更新账户余额，交易时间段内每小时执行一次
+    // 更新账户余额,交易时间段内每小时执行一次
 //    @Scheduled(cron = "0 0 9-15 ? * MON-FRI")
     public void runAmountJob() {
         log.info("更新账户余额任务执行开始====================================");
@@ -103,7 +103,7 @@ public class AllJobs {
         log.info("更新账户余额任务执行结束====================================");
     }
 
-    // 更新股票实时价格，交易日每天上午八点执行
+    // 更新股票实时价格,交易日每天上午八点执行
 //    @Scheduled(cron = "0 0 8 ? * MON-FRI")
     public void runNowJob() {
         log.info("更新股票实时价格任务执行开始====================================");
@@ -111,7 +111,7 @@ public class AllJobs {
         log.info("更新股票实时价格任务执行结束====================================");
     }
 
-    // 更新股票历史价格，交易日每天下午三点执行
+    // 更新股票历史价格,交易日每天下午三点执行
 //    @Scheduled(cron = "0 0 15 ? * MON-FRI")
     public void runHistoryJob() {
         log.info("更新股票历史价格任务执行开始====================================");
@@ -119,7 +119,7 @@ public class AllJobs {
         log.info("更新股票历史价格任务执行结束====================================");
     }
 
-    // 同步股票交易记录，每十天执行一次
+    // 同步股票交易记录,每十天执行一次
 //    @Scheduled(cron = "0 0 15 1/10 * ?")
     public void runSyncJob() {
         log.info("同步订单任务执行开始====================================");
@@ -128,7 +128,7 @@ public class AllJobs {
         log.info("同步订单执行结束====================================");
     }
 
-    // 刷新股票交易权限，每半月月执行一次
+    // 刷新股票交易权限,每半月月执行一次
 //    @Scheduled(cron = "0 0 12 1,15 * ?")
     public void runFlushJob() {
         log.info("更新权限任务执行开始====================================");
@@ -139,7 +139,7 @@ public class AllJobs {
     public String getToken() {
         final String token = redisTemplate.opsForValue().get(TOKEN);
         if (token == null) {
-            log.info("没有检测到Token，正在重新登录...");
+            log.info("没有检测到Token,正在重新登录...");
             login();
         }
         return token;
@@ -197,7 +197,7 @@ public class AllJobs {
                 log.info("登录成功！");
                 return;
             } else {
-                log.info("验证码错误，尝试重新登录!");
+                log.info("验证码错误,尝试重新登录!");
             }
         }
         log.info("尝试{}次后登录失败！请检查程序代码！", LOGIN_RETRY_TIMES);
@@ -222,7 +222,7 @@ public class AllJobs {
             return true;
         }
         if ("-330203".equals(errorNo)) {
-            // 验证码错误，继续尝试登录
+            // 验证码错误,继续尝试登录
             return false;
         }
         // 其他错误直接返回
@@ -257,7 +257,7 @@ public class AllJobs {
     }
 
     private Boolean checkSoldToday(String sold) {
-        // 检查今天是否有卖出记录，防止重复卖出
+        // 检查今天是否有交易记录,防止重复交易
         LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>()
                 .eq(TradingRecord::getSaleDateString, DateUtils.dateFormat.format(new Date()))
                 .eq(TradingRecord::getSold, sold);
@@ -266,7 +266,7 @@ public class AllJobs {
     }
 
     private Boolean checkBuyCode(String code) {
-        // 检查今天是否有卖出记录，防止重复卖出
+        // 检查今天是否有重复code,防止买入相同股票
         LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>()
                 .eq(TradingRecord::getSold, "0")
                 .eq(TradingRecord::getCode, code);
@@ -282,22 +282,22 @@ public class AllJobs {
             final long holdCount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).size();
             final long needCount = MAX_HOLD_STOCKS - holdCount;
             if (needCount <= 0) {
-                log.info("持仓股票数量已达到最大值:{}，无需购买!", MAX_HOLD_STOCKS);
+                log.info("持仓股票数量已达到最大值:{},无需购买!", MAX_HOLD_STOCKS);
                 return;
             }
             if (checkSoldToday("0")) {
-                log.info("今天已经有买入记录了，无需重复购买！");
+                log.info("今天已经有买入记录了,无需重复购买！");
                 return;
             }
-            // 撤销所有未成功订单，回收可用资金
+            // 撤销所有未成功订单,回收可用资金
             if (!waitOrderStatus()) {
-                log.info("存在未撤销失败订单，取消购买任务！");
+                log.info("存在未撤销失败订单,取消购买任务！");
                 return;
             }
             // 更新账户可用资金
             final AccountInfo accountInfo = updateAmount();
             if (accountInfo == null) {
-                log.info("更新账户可用资金失败，取消购买任务");
+                log.info("更新账户可用资金失败,取消购买任务");
                 return;
             }
             final Double totalAvailableAmount = accountInfo.getAvailableAmount();
@@ -311,32 +311,32 @@ public class AllJobs {
             final double lowPrice = (availableAmount / MAX_HOLD_NUMBER) * LOW_PRICE_PERCENT;
             log.info("当前可用资金{}元, 可买入价格区间[{},{}]", availableAmount, lowPrice, highPrice);
             if (lowPrice < LOW_PRICE_LIMIT) {
-                log.info("可用资金资金不足，取消购买任务！");
+                log.info("可用资金资金不足,取消购买任务！");
                 return;
             }
             //  获取实时价格
             final List<StockInfo> dataList = getDataList();
             // 计算得分
             List<StockInfo> stockInfos = calculateScore(dataList, getStrategyParams());
-            // 选择有交易权限合适价格区间的数据，按评分排序分组
+            // 选择有交易权限合适价格区间的数据,按评分排序分组
             final List<StockInfo> limitList = stockInfos.stream()
                     .sorted(Comparator.comparingDouble(StockInfo::getScore).reversed())
                     .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= lowPrice && s.getPrice() <= highPrice)
                     .skip((long) time * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
             if (limitList.size() < BUY_RETRY_LIMIT) {
-                log.info("可买入股票数量不足{}，取消购买任务！", BUY_RETRY_LIMIT);
+                log.info("可买入股票数量不足{},取消购买任务！", BUY_RETRY_LIMIT);
                 return;
             }
             // 在得分高的一组中随机选择一支买入
             StockInfo best = limitList.get(new Random(System.currentTimeMillis()).nextInt(BUY_RETRY_LIMIT));
             if (checkBuyCode(best.getCode())) {
-                log.info("当前股票[{}-{}]已经持有，尝试买入下一组股票", best.getCode(), best.getName());
+                log.info("当前股票[{}-{}]已经持有,尝试买入下一组股票", best.getCode(), best.getName());
                 continue;
             }
             log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore());
             // 等待最佳买入时机
             if (enableWaiting && waitingBestTime(best.getCode(), best.getName(), best.getPrice(), false)) {
-                log.info("未找到合适的买入时机，尝试买入下一组股票!");
+                log.info("未找到合适的买入时机,尝试买入下一组股票!");
                 continue;
             }
             final int maxBuyNumber = (int) (availableAmount / best.getPrice());
@@ -344,48 +344,47 @@ public class AllJobs {
             JSONObject res = buySale(BUY_TYPE_OP, best.getCode(), best.getPrice(), (double) buyNumber);
             String buyNo = res.getString("ANSWERNO");
             if (buyNo == null) {
-                log.info("当前股票[{}-{}]买入失败，尝试买入下一组股票!", best.getCode(), best.getName());
+                log.info("当前股票[{}-{}]买入失败,尝试买入下一组股票!", best.getCode(), best.getName());
                 continue;
             }
             // 查询买入结果
             final Boolean success = waitOrderStatus(buyNo);
             if (success == null) {
-                log.info("当前股票[{}-{}].订单撤销失败，取消买入任务！", best.getCode(), best.getName());
+                log.info("当前股票[{}-{}].订单撤销失败,取消买入任务！", best.getCode(), best.getName());
                 return;
             }
-            if (success) {
-                // 买入成功后，保存交易数据
-                final TradingRecord record = new TradingRecord();
-                record.setCode(best.getCode());
-                record.setName(best.getName());
-                record.setBuyPrice(best.getPrice());
-                record.setBuyNumber((double) buyNumber);
-                record.setBuyNo(buyNo);
-                final double amount = best.getPrice() * buyNumber;
-                record.setBuyAmount(amount + getPeeAmount(amount));
-                final Date now = new Date();
-                record.setBuyDate(now);
-                record.setBuyDateString(DateUtils.dateFormat.format(now));
-                record.setSold("0");
-                record.setCreateTime(now);
-                record.setUpdateTime(now);
-                // 保存选股策略ID
-                final ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
-                record.setStrategyId(strategy == null ? 0 : strategy.getId());
-                record.setStrategyName(strategy == null ? "默认策略" : strategy.getName());
-                tradingRecordService.save(record);
-                // 更新账户资金
-                updateAmount();
-                // 更新交易次数
-                stockInfos.stream().filter(s -> s.getCode().equals(best.getCode())).forEach(s -> s.setBuySaleCount(s.getBuySaleCount() + 1));
-                log.info("成功买入股票[{}-{}], 买入价格:{}，买入数量:{}，买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
-                // 保存评分数据
-                saveDate(stockInfos);
+            if (!success) {
+                // 如果交易不成功,撤单后再次尝试卖出
+                log.info("当前买入交易不成功,后尝试买入下一组股票。");
                 return;
-            } else {
-                // 如果交易不成功，撤单后再次尝试卖出
-                log.info("当前买入交易不成功，后尝试买入下一组股票。");
             }
+            // 买入成功后,保存交易数据
+            final TradingRecord record = new TradingRecord();
+            record.setCode(best.getCode());
+            record.setName(best.getName());
+            record.setBuyPrice(best.getPrice());
+            record.setBuyNumber((double) buyNumber);
+            record.setBuyNo(buyNo);
+            final double amount = best.getPrice() * buyNumber;
+            record.setBuyAmount(amount + getPeeAmount(amount));
+            final Date now = new Date();
+            record.setBuyDate(now);
+            record.setBuyDateString(DateUtils.dateFormat.format(now));
+            record.setSold("0");
+            record.setCreateTime(now);
+            record.setUpdateTime(now);
+            // 保存选股策略ID
+            final ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
+            record.setStrategyId(strategy == null ? 0 : strategy.getId());
+            record.setStrategyName(strategy == null ? "默认策略" : strategy.getName());
+            tradingRecordService.save(record);
+            // 更新账户资金
+            updateAmount();
+            // 更新交易次数
+            stockInfos.stream().filter(s -> s.getCode().equals(best.getCode())).forEach(s -> s.setBuySaleCount(s.getBuySaleCount() + 1));
+            log.info("成功买入股票[{}-{}], 买入价格:{},买入数量:{},买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
+            // 保存评分数据
+            saveDate(stockInfos);
         }
     }
 
@@ -394,12 +393,12 @@ public class AllJobs {
         while (time++ < SOLD_RETRY_TIMES) {
             log.info("第{}次尝试卖出股票---------", time);
             if (checkSoldToday("1")) {
-                log.info("今天已经有卖出记录了，无需重复卖出!");
+                log.info("今天已经有卖出记录了,无需重复卖出!");
                 return;
             }
             // 撤销未成功订单
             if (!waitOrderStatus()) {
-                log.info("存在未撤销失败订单，取消卖出任务！");
+                log.info("存在未撤销失败订单,取消卖出任务！");
                 return;
             }
             List<TradingRecord> holdList = getHoldList();
@@ -421,7 +420,7 @@ public class AllJobs {
                 int dateDiff = diffDate(selectRecord.getBuyDate(), new Date());
                 double incomeRate = income / selectRecord.getBuyAmount() * 100;
                 double dailyIncomeRate = incomeRate / dateDiff;
-                log.info("当前股票[{}-{}]，买入金额:{}，卖出金额:{}，收益:{}元，日收益率:{}%", selectRecord.getCode(), selectRecord.getName(), selectRecord.getBuyAmount(), saleAmount, income, dailyIncomeRate);
+                log.info("当前股票[{}-{}],买入金额:{},卖出金额:{},收益:{}元,日收益率:{}%", selectRecord.getCode(), selectRecord.getName(), selectRecord.getBuyAmount(), saleAmount, income, dailyIncomeRate);
                 if (dailyIncomeRate > maxDailyRate) {
                     selectRecord.setSalePrice(record.getSalePrice());
                     selectRecord.setSaleNumber(selectRecord.getBuyNumber());
@@ -436,79 +435,71 @@ public class AllJobs {
             }
             // 卖出最高收益的股票
             if (best == null) {
-                log.info("当前无可卖出股票，取消卖出任务！");
+                log.info("当前无可卖出股票,取消卖出任务！");
                 return;
             }
-            log.info("最佳卖出股票[{}-{}]，买入价格:{}，当前价格:{}，预期收益:{}，日收益率:{}", best.getCode(), best.getName(), best.getBuyPrice(), best.getSalePrice(), best.getIncome(), String.format("%.4f", best.getDailyIncomeRate()));
+            log.info("最佳卖出股票[{}-{}],买入价格:{},当前价格:{},预期收益:{},日收益率:{}", best.getCode(), best.getName(), best.getBuyPrice(), best.getSalePrice(), best.getIncome(), String.format("%.4f", best.getDailyIncomeRate()));
             // 等待最佳卖出时机
             if (enableWaiting && waitingBestTime(best.getCode(), best.getName(), best.getBuyPrice(), true)) {
-                log.info("未找到合适的卖出时机，尝试卖出下一组股票!");
+                log.info("未找到合适的卖出时机,尝试卖出下一组股票!");
                 continue;
             }
             // 返回合同编号
             JSONObject res = buySale(SALE_TYPE_OP, best.getCode(), best.getSalePrice(), best.getBuyNumber());
             String saleNo = res.getString("ANSWERNO");
             if (saleNo == null) {
-                log.info("当前股票[{}-{}]卖出失败，尝试买入下一组。", best.getCode(), best.getName());
+                log.info("当前股票[{}-{}]卖出失败,尝试卖出下一组。", best.getCode(), best.getName());
                 continue;
             }
             // 查询卖出结果
             final Boolean success = waitOrderStatus(saleNo);
             if (success == null) {
-                log.info("当前股票[{}-{}]撤销订单失败，取消卖出任务！", best.getCode(), best.getName());
+                log.info("当前股票[{}-{}]撤销订单失败,取消卖出任务！", best.getCode(), best.getName());
                 return;
             }
-            if (success) {
-                best.setSold("1");
-                best.setSaleNo(saleNo);
-                final Date now = new Date();
-                best.setSaleDate(now);
-                best.setSaleDateString(DateUtils.dateFormat.format(now));
-                best.setUpdateTime(now);
-                tradingRecordService.updateById(best);
-                // 更新账户资金
-                updateAmount();
-                // 增加股票交易次数
-                StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, best.getCode()));
-                stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
-                stockInfoService.updateById(stockInfo);
-                log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{}，日收益率为:{}。", best.getCode(), best.getName(), best.getSaleAmount(), best.getIncome(), best.getDailyIncomeRate());
+            if (!success) {
+                log.info("当前股票[{}-{}]卖出失败,尝试再次卖出。", best.getCode(), best.getName());
                 return;
-            } else {
-                log.info("当前股票[{}-{}]卖出失败，尝试再次卖出。", best.getCode(), best.getName());
             }
+            best.setSold("1");
+            best.setSaleNo(saleNo);
+            final Date now = new Date();
+            best.setSaleDate(now);
+            best.setSaleDateString(DateUtils.dateFormat.format(now));
+            best.setUpdateTime(now);
+            tradingRecordService.updateById(best);
+            // 更新账户资金
+            updateAmount();
+            // 增加股票交易次数
+            StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, best.getCode()));
+            stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
+            stockInfoService.updateById(stockInfo);
+            log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{},日收益率为:{}。", best.getCode(), best.getName(), best.getSaleAmount(), best.getIncome(), best.getDailyIncomeRate());
         }
     }
 
     private Boolean waitingBestTime(String code, String name, Double buyPrice, Boolean sale) {
-        int priceTotalUpperCount = 0;
-        int priceTotalFallCount = 0;
         int timesCount = 0;
         String operation = sale ? "卖出" : "买入";
-        String upperFallKey = sale ? "上涨" : "跌落";
-        String fallUpperKey = sale ? "跌落" : "上涨";
+        int percentLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
         int totalLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
-        Double nowPrice = getLastPrice(code);
-        while (timesCount++ < 2 * WAIT_TIME_MINUTES) {
-            SleepUtils.second(3 * WAIT_TIME_SECONDS);
-            Double lastPrice = getLastPrice(code);
-            final boolean priceUpper = lastPrice > nowPrice;
-            final boolean priceFall = lastPrice < nowPrice;
-            nowPrice = lastPrice;
-            if (sale ? priceUpper : priceFall) {
-                priceTotalUpperCount++;
-            }
-            if (sale ? priceFall : priceUpper) {
-                priceTotalFallCount++;
-            }
-            log.info("最佳{}股票[{}-{}]，买入价格:{}, 当前价格:{}，总{}次数:{}，总{}数:{}，等待最佳{}时机...", operation, code, name, buyPrice, nowPrice, upperFallKey, priceTotalUpperCount, fallUpperKey, priceTotalFallCount, operation);
-            // 30分钟内总共上涨10次，开始卖出
-            boolean priceCondition = priceTotalUpperCount >= totalLimit;
-            boolean incomeCondition = nowPrice - buyPrice > 0.1;
+        double lastPrice = getLastPrice(code);
+        double totalPercent = 0.0;
+        while (timesCount++ < WAIT_TIME_MINUTES) {
+            SleepUtils.minutes(1);
+            Double nowPrice = getLastPrice(code);
+            final double price = nowPrice - lastPrice;
+            final double pricePercent = price * 100 / nowPrice;
+            if (pricePercent > 0) totalPercent += pricePercent;
+            log.info("最佳{}股票[{}-{}],买入价格:{},上次价格:{},当前价格:{},当前增长幅度:{}%,累计增长幅度:{}%,等待最佳{}时机...",
+                    operation, code, name, buyPrice, lastPrice, nowPrice, String.format("%.4f", pricePercent), String.format("%.4f", totalPercent), operation);
+            lastPrice = nowPrice;
+            // 30分钟内，某次增长幅度达到阈值，或者总增长幅度达到阈值
+            boolean priceCondition = pricePercent >= percentLimit || totalPercent >= totalLimit;
+            boolean incomeCondition = lastPrice - buyPrice > 0.1;
             boolean saleCondition = incomeCondition && priceCondition;
-            boolean isMorning = isMorning();
-            if (sale && isMorning ? saleCondition : priceCondition) {
-                log.info("最佳{}股票[{}-{}]，总{}数达到{}，开始{}股票。", operation, code, name, upperFallKey, totalLimit, operation);
+            if (sale && isMorning() ? saleCondition : priceCondition) {
+                log.info("最佳{}股票[{}-{}],当前增长幅度达到{}%,或者累计增长幅度达到{}%,开始{}股票。", operation, code, name, percentLimit, totalLimit, operation);
                 return false;
             }
         }
@@ -589,7 +580,7 @@ public class AllJobs {
         accountInfo.setCreateTime(now);
         accountInfo.setUpdateTime(now);
         accountInfoMapper.insert(accountInfo);
-        log.info("当前可用金额:{}元，持仓金额:{}元，总金额:{}元。", availableAmount, usedAmount, totalAmount);
+        log.info("当前可用金额:{}元,持仓金额:{}元,总金额:{}元。", availableAmount, usedAmount, totalAmount);
         return accountInfo;
     }
 
@@ -704,22 +695,22 @@ public class AllJobs {
             SleepUtils.second(WAIT_TIME_SECONDS);
             final String status = queryOrderStatus(answerNo);
             if (status == null) {
-                log.info("当前合同编号:{}，订单状态查询失败。", answerNo);
+                log.info("当前合同编号:{},订单状态查询失败。", answerNo);
                 return null;
             }
             if ("已成".equals(status)) {
-                log.info("当前合同编号:{}，交易成功。", answerNo);
+                log.info("当前合同编号:{},交易成功。", answerNo);
                 return true;
             }
             if ("已报".equals(status)) {
-                log.info("当前合同编号:{}，交易不成功，进行撤单操作。", answerNo);
+                log.info("当前合同编号:{},交易不成功,进行撤单操作。", answerNo);
                 cancelOrder(answerNo);
             }
             if ("已报待撤".equals(status)) {
-                log.info("当前合同编号:{}，等待撤单完成...", answerNo);
+                log.info("当前合同编号:{},等待撤单完成...", answerNo);
             }
             if ("已撤".equals(status)) {
-                log.info("当前合同编号:{}，订单撤销完成", answerNo);
+                log.info("当前合同编号:{},订单撤销完成", answerNo);
                 return false;
             }
         }
@@ -804,7 +795,7 @@ public class AllJobs {
                         .eq(TradingRecord::getCode, code).like(TradingRecord::getBuyNo, answerNo);
                 final TradingRecord selectedOrder = tradingRecordService.getOne(lambdaQueryWrapper);
                 if (selectedOrder == null) {
-                    log.info("当前股票[{}-{}]买入记录不存在，新增买入记录", name, code);
+                    log.info("当前股票[{}-{}]买入记录不存在,新增买入记录", name, code);
                     // 合并多个买入订单
                     final LambdaQueryWrapper<TradingRecord> queryWrapper = new QueryWrapper<TradingRecord>().lambda()
                             .eq(TradingRecord::getCode, code).eq(TradingRecord::getSold, "0");
@@ -849,12 +840,12 @@ public class AllJobs {
                         .eq(TradingRecord::getCode, code).eq(TradingRecord::getSaleNo, answerNo);
                 final TradingRecord selectedOrder = tradingRecordService.getOne(lambdaQueryWrapper);
                 if (selectedOrder == null) {
-                    log.info("当前股票[{}-{}]卖出记录不存在，新增卖出记录", name, code);
+                    log.info("当前股票[{}-{}]卖出记录不存在,新增卖出记录", name, code);
                     final LambdaQueryWrapper<TradingRecord> queryWrapper = new QueryWrapper<TradingRecord>().lambda()
                             .eq(TradingRecord::getCode, code).eq(TradingRecord::getSold, "0");
                     final TradingRecord record = tradingRecordService.getOne(queryWrapper);
                     if (record == null) {
-                        log.error("当前股票[{}-{}]没有查询到买入记录，卖出记录同步失败！", name, code);
+                        log.error("当前股票[{}-{}]没有查询到买入记录,卖出记录同步失败！", name, code);
                         return;
                     }
                     record.setSalePrice(price);
@@ -887,7 +878,7 @@ public class AllJobs {
 
     @SneakyThrows
     public void flushPermission() {
-        // 此处不能使用多线程处理，因为每次请求会使上一个Token失效
+        // 此处不能使用多线程处理,因为每次请求会使上一个Token失效
         List<String> errorCodes = Arrays.asList("[251112]", "[251127]", "[251299]", "该股票是退市");
         List<StockInfo> stockInfos = stockInfoService.list();
         final HashSet<String> set = new HashSet<>();
@@ -972,7 +963,7 @@ public class AllJobs {
                 String[] split = params.split("\\|");
                 strategyParams = new StrategyParams(Double.parseDouble(split[0].trim()), Integer.parseInt(split[1].trim()), Integer.parseInt(split[2].trim()));
             } catch (Exception e) {
-                log.warn("策略参数解析异常，使用默认参数:{}", strategyParams);
+                log.warn("策略参数解析异常,使用默认参数:{}", strategyParams);
             }
         }
         return strategyParams;
@@ -1045,7 +1036,7 @@ public class AllJobs {
                         stockInfoService.saveOrUpdateBatch(saveList);
                         long endIndex = startIndex + UPDATE_BATCH_SIZE;
                         endIndex = Math.min(endIndex, dataList.size());
-                        log.info("第{}个数据更新任务处理完成，任务更新范围[{},{}]内,共{}条数", pages - countDownLatch.getCount() + 1, startIndex + 1, endIndex, endIndex - startIndex);
+                        log.info("第{}个数据更新任务处理完成,任务更新范围[{},{}]内,共{}条数", pages - countDownLatch.getCount() + 1, startIndex + 1, endIndex, endIndex - startIndex);
                     } catch (Exception e) {
                         e.printStackTrace();
                         log.error("保存数据异常:{}", e.getMessage());
@@ -1139,7 +1130,7 @@ public class AllJobs {
             final String date = isToday ? split[10] : split[0];
             final String time = split[11];
             if ("0".equals(answerNo) || "799999".equals(code)) {
-                // 非买卖信息，跳过处理
+                // 非买卖信息,跳过处理
                 continue;
             }
             OrderInfo orderInfo = new OrderInfo();
@@ -1163,17 +1154,17 @@ public class AllJobs {
             final Double price = prices.get(i).getItem();
             final Double oldPrice = prices.get(i - 1).getItem();
             final double dailyIncreaseRate = oldPrice == 0 ? 0 : (price - oldPrice) / oldPrice;
-            // 增长率乘100方便计算，否则数值太小
+            // 增长率乘100方便计算,否则数值太小
             double increaseRate = Double.parseDouble(String.format("%.4f", dailyIncreaseRate * 100));
             rateList.add(new DailyItem(prices.get(i).getDate(), increaseRate));
         }
         return rateList;
     }
 
-    // 获取最近10个交易日天的日增长率，用以计算增长的稳定性和增长率总和
+    // 获取最近10个交易日天的日增长率,用以计算增长的稳定性和增长率总和
     // 价格稳定性用方差来衡量,增长率总和体现增长幅度
-    // 增长率总和，乘以占比系数(index/size)，离当前时间越近,趋近于1，离当前时间越远，系数趋近于0
-    // 增长的天数越多，日增长率总和越大，价格方差越小，增长波动越小，代表稳定增长，评分越高
+    // 增长率总和,乘以占比系数(index/size),离当前时间越近,趋近于1,离当前时间越远,系数趋近于0
+    // 增长的天数越多,日增长率总和越大,价格方差越小,增长波动越小,代表稳定增长,评分越高
     public Double getScoreByList(List<Double> priceList, List<Double> rateList, StrategyParams params) {
         if (priceList.isEmpty() || rateList.isEmpty()) {
             return 0.0;
@@ -1187,9 +1178,9 @@ public class AllJobs {
         double sumRate = 0;
         final int size = limitRateList.size();
         for (int i = 1; i <= size; i++) {
-            // 修改前期数据对得分的影响，保证系数范围在[0.5,1]之间
-            // 数值越小，前期数据对得分影响越低
-            // 有常数阶和线性阶两种，可供调试
+            // 修改前期数据对得分的影响,保证系数范围在[0.5,1]之间
+            // 数值越小,前期数据对得分影响越低
+            // 有常数阶和线性阶两种,可供调试
             final double f = ((double) i / size) * (1 - preRateFactor) + preRateFactor;
 //            final double f = 1;
             sumRate += limitRateList.get(i - 1) * f;
@@ -1204,10 +1195,10 @@ public class AllJobs {
         // 方差
         double sqrt = Math.sqrt(sum / priceList.size());
         // 价格波动系数(1 - sqrt / PRICE_BASE_NUMBER)
-        // 方差范围限制，确保价格波动系数不为负数
-        // 方差越趋向于0，价格波动系数越趋向于1，说明价格越稳定，得分越高
-        // 方越趋向于 PRICE_BASE_NUMBER(价格波动容忍度)，
-        // 价格波动系数越趋向于0，说明价格波动越大，得分越低
+        // 方差范围限制,确保价格波动系数不为负数
+        // 方差越趋向于0,价格波动系数越趋向于1,说明价格越稳定,得分越高
+        // 方越趋向于 PRICE_BASE_NUMBER(价格波动容忍度),
+        // 价格波动系数越趋向于0,说明价格波动越大,得分越低
         sqrt = Math.min(sqrt, priceTolerance);
         return sumRate * (1 - sqrt / priceTolerance);
     }
@@ -1220,7 +1211,7 @@ public class AllJobs {
         return Math.abs(to - from);
     }
 
-    // 计算手续费，万五，最低五元
+    // 计算手续费,万五,最低五元
     public Double getPeeAmount(Double amount) {
         return Math.max(5, amount * 0.0005);
     }
