@@ -29,12 +29,14 @@ spec:
            # port: 8080
            # path: /test
         readinessProbe:
-           initialDelaySeconds: 10
-           # periodSeconds: 3
+           initialDelaySeconds: 5
+           periodSeconds: 5
            httpGet:
             port: 8080
             path: /test
         env:
+        - name: TZ
+          value: Asia/Shanghai
         - name: REDIS_HOST
           value: redis-svc:6379
         - name: REDIS_PASS

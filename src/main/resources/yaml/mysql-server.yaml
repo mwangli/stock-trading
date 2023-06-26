@@ -27,6 +27,8 @@ spec:
           #  cpu: 100m
             memory: 200Mi
         env:
+        - name: TZ
+          value: Asia/Shanghai
         - name: MYSQL_ROOT_PASSWORD
           value: Root.123456
         ports:
@@ -95,7 +97,9 @@ data:
   my.cnf: |
     ## mysql config
     [mysqld]
+    max_connect_errors=1000
     default_authentication_plugin=mysql_native_password
+    #skip-grant-tables
 ---
 # 声明Service服务
 apiVersion: v1
