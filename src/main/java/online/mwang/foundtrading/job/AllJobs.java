@@ -55,7 +55,7 @@ public class AllJobs {
     private static final int SOLD_RETRY_TIMES = 4;
     private static final int LOGIN_RETRY_TIMES = 10;
     private static final int PRICE_TOTAL_FALL_LIMIT = 1;
-    private static final int PRICE_TOTAL_UPPER_LIMIT = 2;
+    private static final int PRICE_TOTAL_UPPER_LIMIT = 1;
     private static final int BUY_RETRY_LIMIT = 100;
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int WAIT_TIME_MINUTES = 30;
@@ -388,6 +388,42 @@ public class AllJobs {
         }
     }
 
+    private TradingRecord getBestRecord() {
+        List<TradingRecord> holdList = getHoldList();
+        double maxDailyRate = -100.00;
+        TradingRecord best = null;
+        for (TradingRecord record : holdList) {
+            // 查询买入时间
+            final LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getCode, record.getCode()).eq(TradingRecord::getSold, "0");
+            TradingRecord selectRecord = tradingRecordService.getOne(queryWrapper);
+            if (selectRecord == null) {
+                log.info("当前股票[{}-{}]未查询到买入记录,开始同步订单", record.getCode(), record.getName());
+                threadPool.submit(this::syncBuySaleRecord);
+                continue;
+            }
+            // 更新每日数据
+            final double amount = record.getSalePrice() * record.getSaleNumber();
+            double saleAmount = amount - getPeeAmount(amount);
+            double income = saleAmount - selectRecord.getBuyAmount();
+            int dateDiff = diffDate(selectRecord.getBuyDate(), new Date());
+            double incomeRate = income / selectRecord.getBuyAmount() * 100;
+            double dailyIncomeRate = incomeRate / dateDiff;
+            log.info("当前股票[{}-{}],买入金额:{},卖出金额:{},收益:{}元,日收益率:{}%", selectRecord.getCode(), selectRecord.getName(), selectRecord.getBuyAmount(), saleAmount, income, dailyIncomeRate);
+            if (dailyIncomeRate > maxDailyRate) {
+                selectRecord.setSalePrice(record.getSalePrice());
+                selectRecord.setSaleNumber(selectRecord.getBuyNumber());
+                selectRecord.setSaleAmount(saleAmount);
+                selectRecord.setIncome(income);
+                selectRecord.setIncomeRate(incomeRate);
+                selectRecord.setHoldDays(dateDiff);
+                selectRecord.setDailyIncomeRate(dailyIncomeRate);
+                maxDailyRate = dailyIncomeRate;
+                best = selectRecord;
+            }
+        }
+        return best;
+    }
+
     public void sale() {
         int time = 0;
         while (time++ < SOLD_RETRY_TIMES) {
@@ -401,39 +437,8 @@ public class AllJobs {
                 log.info("存在未撤销失败订单,取消卖出任务！");
                 return;
             }
-            List<TradingRecord> holdList = getHoldList();
-            double maxDailyRate = -100.00;
-            TradingRecord best = null;
-            for (TradingRecord record : holdList) {
-                // 查询买入时间
-                final LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getCode, record.getCode()).eq(TradingRecord::getSold, "0");
-                TradingRecord selectRecord = tradingRecordService.getOne(queryWrapper);
-                if (selectRecord == null) {
-                    log.info("当前股票[{}-{}]未查询到买入记录,开始同步订单", record.getCode(), record.getName());
-                    threadPool.submit(this::syncBuySaleRecord);
-                    continue;
-                }
-                // 更新每日数据
-                final double amount = record.getSalePrice() * record.getSaleNumber();
-                double saleAmount = amount - getPeeAmount(amount);
-                double income = saleAmount - selectRecord.getBuyAmount();
-                int dateDiff = diffDate(selectRecord.getBuyDate(), new Date());
-                double incomeRate = income / selectRecord.getBuyAmount() * 100;
-                double dailyIncomeRate = incomeRate / dateDiff;
-                log.info("当前股票[{}-{}],买入金额:{},卖出金额:{},收益:{}元,日收益率:{}%", selectRecord.getCode(), selectRecord.getName(), selectRecord.getBuyAmount(), saleAmount, income, dailyIncomeRate);
-                if (dailyIncomeRate > maxDailyRate) {
-                    selectRecord.setSalePrice(record.getSalePrice());
-                    selectRecord.setSaleNumber(selectRecord.getBuyNumber());
-                    selectRecord.setSaleAmount(saleAmount);
-                    selectRecord.setIncome(income);
-                    selectRecord.setIncomeRate(incomeRate);
-                    selectRecord.setHoldDays(dateDiff);
-                    selectRecord.setDailyIncomeRate(dailyIncomeRate);
-                    maxDailyRate = dailyIncomeRate;
-                    best = selectRecord;
-                }
-            }
             // 卖出最高收益的股票
+            final TradingRecord best = getBestRecord();
             if (best == null) {
                 log.info("当前无可卖出股票,取消卖出任务！");
                 return;
