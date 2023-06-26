@@ -19,13 +19,9 @@ spec:
       containers:
       - image: redis
         name: redis-server
-        resources:
-          #limits:
-          #  cpu: 100m
-          #  memory: 2000Mi
-          requests:
-          #  cpu: 100m
-            memory: 100Mi
+        env: 
+          - name: TZ
+            value: Asia/Shanghai
         command:
           - redis-server
           - "/etc/redis/redis.conf"

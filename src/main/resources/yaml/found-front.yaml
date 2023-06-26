@@ -23,9 +23,12 @@ spec:
       - image: registry.cn-shenzhen.aliyuncs.com/mwangli/found-front
         imagePullPolicy: Always
         name: found-front
+        env:
+        - name: TZ
+          value: Asia/Shanghai
         readinessProbe:
-           # initialDelaySeconds: 10
-           # periodSeconds: 3
+          initialDelaySeconds: 3
+          periodSeconds: 3
           httpGet:
             port: 80
             path: /
@@ -59,10 +62,17 @@ data:
         root   /usr/share/nginx/html;
         index  index.html;
         try_files $uri $uri/ /index.html;
-    }
-     location /api  {
+    } 
+    location /api  {
         proxy_pass http://found-trading-svc:8080/;
     }
+
+   #lacation /ws  {
+   #   proxy_pass http://found-trading-svc:8080; 
+   #   proxy_http_version 1.1;
+   #   proxy_set_header Upgrade $http_upgrade;
+   #   proxy_set_header Connection "upgrade";
+   # }
    }
 ---
 # 声明Service服务
