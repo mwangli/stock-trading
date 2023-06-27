@@ -465,7 +465,7 @@ public class AllJobs {
             }
             if (!success) {
                 log.info("当前股票[{}-{}]卖出失败,尝试再次卖出。", best.getCode(), best.getName());
-                return;
+                continue;
             }
             best.setSold("1");
             best.setSaleNo(saleNo);
