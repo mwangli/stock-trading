@@ -139,11 +139,8 @@ public class AllJobs {
 
     public String getToken() {
         final String token = redisTemplate.opsForValue().get(TOKEN);
-        if (token == null) {
-            log.info("没有检测到Token,正在重新登录...");
-            login();
-        }
-        return token;
+        if (token == null) login();
+        return redisTemplate.opsForValue().get(TOKEN);
     }
 
     public void setToken(String token) {
@@ -387,6 +384,7 @@ public class AllJobs {
             log.info("成功买入股票[{}-{}], 买入价格:{},买入数量:{},买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
             // 保存评分数据
             saveDate(stockInfos);
+            return;
         }
     }
 
@@ -482,6 +480,7 @@ public class AllJobs {
             stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
             stockInfoService.updateById(stockInfo);
             log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{},日收益率为:{}。", best.getCode(), best.getName(), best.getSaleAmount(), best.getIncome(), best.getDailyIncomeRate());
+            return;
         }
     }
 
