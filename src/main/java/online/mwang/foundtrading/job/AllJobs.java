@@ -504,7 +504,7 @@ public class AllJobs {
             // 30分钟内，某次增长幅度达到阈值，或者总增长幅度达到阈值，或者交易时间即将结束
             boolean percentCondition = sale ? pricePercent >= percentLimit : pricePercent <= percentLimit;
             boolean totalCondition = sale ? totalPercent >= totalLimit : totalPercent <= totalLimit;
-            boolean priceCondition = percentCondition || totalCondition || isDeadLine();
+            boolean priceCondition = isDeadLine() || percentCondition || totalCondition;
             boolean incomeCondition = lastPrice - buyPrice > 0.1;
             boolean saleCondition = incomeCondition && priceCondition;
             if (sale && isMorning() ? saleCondition : priceCondition) {
