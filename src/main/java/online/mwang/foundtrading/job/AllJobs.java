@@ -46,7 +46,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AllJobs {
 
-    private static final int MAX_HOLD_NUMBER = 200;
+    private static final int MAX_HOLD_NUMBER = 100;
     private static final int MIN_HOLD_NUMBER = 100;
     private static final int MAX_HOLD_STOCKS = 6;
     private static final double LOW_PRICE_PERCENT = 0.85;
