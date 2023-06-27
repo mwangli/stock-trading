@@ -863,7 +863,7 @@ public class AllJobs {
                     final TradingRecord record = tradingRecordService.getOne(queryWrapper);
                     if (record == null) {
                         log.error("当前股票[{}-{}]没有查询到买入记录,卖出记录同步失败！", name, code);
-                        return;
+                        continue;
                     }
                     record.setSalePrice(price);
                     number = Math.abs(number);
