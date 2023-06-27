@@ -54,8 +54,8 @@ public class AllJobs {
     private static final int BUY_RETRY_TIMES = 4;
     private static final int SOLD_RETRY_TIMES = 4;
     private static final int LOGIN_RETRY_TIMES = 10;
-    private static final int PRICE_TOTAL_FALL_LIMIT = -1;
-    private static final int PRICE_TOTAL_UPPER_LIMIT = 1;
+    private static final int PRICE_TOTAL_FALL_LIMIT = -3;
+    private static final int PRICE_TOTAL_UPPER_LIMIT = 3;
     private static final int BUY_RETRY_LIMIT = 20;
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int WAIT_TIME_MINUTES = 30;
@@ -496,8 +496,9 @@ public class AllJobs {
             Double nowPrice = getLastPrice(code);
             final double price = nowPrice - lastPrice;
             final double pricePercent = price * 100 / nowPrice;
-            if (sale ? pricePercent > 0 : pricePercent < 0) totalPercent += pricePercent;
-            log.info("最佳{}股票[{}-{}],买入价格:{},上次价格:{},当前价格:{},当前增长幅度:{}%,累计增长幅度:{}%,等待最佳{}时机...",
+//            if (sale ? pricePercent > 0 : pricePercent < 0)
+            totalPercent += pricePercent;
+            log.info("最佳{}股票[{}-{}],买入价格:{},上次价格:{},当前价格:{},当前增长幅度:{}%,总增长幅度:{}%,等待最佳{}时机...",
                     operation, code, name, buyPrice, lastPrice, nowPrice, String.format("%.4f", pricePercent), String.format("%.4f", totalPercent), operation);
             lastPrice = nowPrice;
             // 30分钟内，某次增长幅度达到阈值，或者总增长幅度达到阈值
@@ -507,7 +508,7 @@ public class AllJobs {
             boolean incomeCondition = lastPrice - buyPrice > 0.1;
             boolean saleCondition = incomeCondition && priceCondition;
             if (sale && isMorning() ? saleCondition : priceCondition) {
-                log.info("最佳{}股票[{}-{}],当前增长幅度达到{}%,或者累计增长幅度达到{}%,开始{}股票。", operation, code, name, percentLimit, totalLimit, operation);
+                log.info("最佳{}股票[{}-{}],当前增长幅度达到{}%,或者总增长幅度达到{}%,开始{}股票。", operation, code, name, percentLimit, totalLimit, operation);
                 return false;
             }
         }
