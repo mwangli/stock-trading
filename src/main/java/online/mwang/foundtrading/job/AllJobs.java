@@ -259,7 +259,8 @@ public class AllJobs {
     private Boolean checkSoldToday(String sold) {
         // 检查今天是否有交易记录,防止重复交易
         LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>()
-                .eq(TradingRecord::getSaleDateString, DateUtils.dateFormat.format(new Date()))
+                .eq("0".equals(sold), TradingRecord::getBuyDateString, DateUtils.dateFormat.format(new Date()))
+                .eq("1".equals(sold), TradingRecord::getSaleDateString, DateUtils.dateFormat.format(new Date()))
                 .eq(TradingRecord::getSold, sold);
         List<TradingRecord> hasSold = tradingRecordService.list(queryWrapper);
         return CollectionUtils.isNotEmpty(hasSold);
