@@ -929,7 +929,7 @@ public class AllJobs {
             stockInfoService.update(stockInfo, new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, code));
         });
         log.info("共同步{}条股票交易次数", collect.size());
-        list.stream().filter(r -> r.getSold().equals("1")).forEach(record -> {
+        list.stream().filter(r -> "1".equals(r.getSold())).forEach(record -> {
             Double income = record.getIncome();
             Double buyAmount = record.getBuyAmount();
             double incomeRate = (income * 100) / buyAmount;
@@ -1016,10 +1016,18 @@ public class AllJobs {
                 newInfo.setPrices("[]");
                 newInfo.setIncreaseRate("[]");
                 saveList.add(newInfo);
-                log.info("获取到新数据:{}", newInfo);
+                log.info("获取到新上市股票:{}", newInfo);
             }
         });
         saveDate(saveList);
+        // 清除退市股票数据
+        final Set<String> oldCodes = dataList.stream().map(StockInfo::getCode).collect(Collectors.toSet());
+        final Set<String> newCodes = newInfos.stream().map(StockInfo::getCode).collect(Collectors.toSet());
+        oldCodes.removeAll(newCodes);
+        if (CollectionUtils.isNotEmpty(oldCodes)) {
+            log.info("清除已退市股票代码:{}", oldCodes);
+            oldCodes.forEach(stockInfoMapper::deleteByCode);
+        }
     }
 
     private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList, StrategyParams params) {
