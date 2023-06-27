@@ -356,7 +356,7 @@ public class AllJobs {
             }
             if (!success) {
                 // 如果交易不成功,撤单后再次尝试卖出
-                log.info("当前买入交易不成功,后尝试买入下一组股票。");
+                log.info("当前买入交易不成功,尝试买入下一组股票。");
                 continue;
             }
             // 买入成功后,保存交易数据
