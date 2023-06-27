@@ -501,10 +501,10 @@ public class AllJobs {
             log.info("最佳{}股票[{}-{}],买入价格:{},上次价格:{},当前价格:{},当前增长幅度:{}%,总增长幅度:{}%,等待最佳{}时机...",
                     operation, code, name, buyPrice, lastPrice, nowPrice, String.format("%.4f", pricePercent), String.format("%.4f", totalPercent), operation);
             lastPrice = nowPrice;
-            // 30分钟内，某次增长幅度达到阈值，或者总增长幅度达到阈值
+            // 30分钟内，某次增长幅度达到阈值，或者总增长幅度达到阈值，或者交易时间即将结束
             boolean percentCondition = sale ? pricePercent >= percentLimit : pricePercent <= percentLimit;
             boolean totalCondition = sale ? totalPercent >= totalLimit : totalPercent <= totalLimit;
-            boolean priceCondition = percentCondition || totalCondition;
+            boolean priceCondition = percentCondition || totalCondition || isDeadLine();
             boolean incomeCondition = lastPrice - buyPrice > 0.1;
             boolean saleCondition = incomeCondition && priceCondition;
             if (sale && isMorning() ? saleCondition : priceCondition) {
@@ -520,6 +520,14 @@ public class AllJobs {
         calendar.setTime(new Date());
         final int hours = calendar.get(Calendar.HOUR_OF_DAY);
         return hours < 12;
+    }
+
+    private Boolean isDeadLine() {
+        final Calendar calendar = Calendar.getInstance();
+        calendar.setTime(new Date());
+        final int hours = calendar.get(Calendar.HOUR_OF_DAY);
+        final int minutes = calendar.get(Calendar.MINUTE);
+        return hours >= 14 && minutes >= 50;
     }
 
     private Double getLastPrice(String code) {
