@@ -46,7 +46,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AllJobs {
 
-    private static final int MAX_HOLD_NUMBER = 100;
+    private static final int MAX_HOLD_NUMBER = 200;
     private static final int MIN_HOLD_NUMBER = 100;
     private static final int MAX_HOLD_STOCKS = 6;
     private static final double LOW_PRICE_PERCENT = 0.85;
@@ -496,8 +496,8 @@ public class AllJobs {
             Double nowPrice = getLastPrice(code);
             final double price = nowPrice - lastPrice;
             final double pricePercent = price * 100 / nowPrice;
-//            if (sale ? pricePercent > 0 : pricePercent < 0)
-            totalPercent += pricePercent;
+            if (sale ? pricePercent > 0 : pricePercent < 0)
+                totalPercent += pricePercent;
             log.info("最佳{}股票[{}-{}],买入价格:{},上次价格:{},当前价格:{},当前增长幅度:{}%,总增长幅度:{}%,等待最佳{}时机...",
                     operation, code, name, buyPrice, lastPrice, nowPrice, String.format("%.4f", pricePercent), String.format("%.4f", totalPercent), operation);
             lastPrice = nowPrice;
