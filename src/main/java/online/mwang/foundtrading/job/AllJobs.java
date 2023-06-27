@@ -62,7 +62,7 @@ public class AllJobs {
     private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
     private static final int THREAD_POOL_NUMBERS = 8;
-    private static final int TOKEN_EXPIRE_MINUTES = 60;
+    private static final int TOKEN_EXPIRE_MINUTES = 30;
     private static final int CANCEL_WAIT_TIMES = 30;
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
