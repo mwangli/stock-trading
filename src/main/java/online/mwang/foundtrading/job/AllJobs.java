@@ -49,6 +49,7 @@ public class AllJobs {
     private static final int MAX_HOLD_NUMBER = 200;
     private static final int MIN_HOLD_NUMBER = 100;
     private static final int MAX_HOLD_STOCKS = 6;
+    private static final double HIGH_PRICE_PERCENT = 0.9;
     private static final double LOW_PRICE_PERCENT = 0.85;
     private static final double LOW_PRICE_LIMIT = 5.0;
     private static final int BUY_RETRY_TIMES = 4;
@@ -308,7 +309,7 @@ public class AllJobs {
             double availableAmount = totalAvailableAmount / needCount;
             availableAmount = Math.min(availableAmount, maxAmount);
             // 计算可买入股票价格区间
-            final double highPrice = availableAmount / MIN_HOLD_NUMBER;
+            final double highPrice = (availableAmount / MIN_HOLD_NUMBER) / HIGH_PRICE_PERCENT;
             final double lowPrice = (availableAmount / MAX_HOLD_NUMBER) * LOW_PRICE_PERCENT;
             log.info("当前可用资金{}元, 可买入价格区间[{},{}]", availableAmount, lowPrice, highPrice);
             if (lowPrice < LOW_PRICE_LIMIT) {
