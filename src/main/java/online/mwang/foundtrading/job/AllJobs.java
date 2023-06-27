@@ -54,8 +54,8 @@ public class AllJobs {
     private static final int BUY_RETRY_TIMES = 4;
     private static final int SOLD_RETRY_TIMES = 4;
     private static final int LOGIN_RETRY_TIMES = 10;
-    private static final int PRICE_TOTAL_FALL_LIMIT = -3;
-    private static final int PRICE_TOTAL_UPPER_LIMIT = 3;
+    private static final double PRICE_TOTAL_FALL_LIMIT = -2.0;
+    private static final double PRICE_TOTAL_UPPER_LIMIT = 2.0;
     private static final int BUY_RETRY_LIMIT = 20;
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int WAIT_TIME_MINUTES = 30;
@@ -487,8 +487,8 @@ public class AllJobs {
     private Boolean waitingBestTime(String code, String name, Double buyPrice, Boolean sale) {
         int timesCount = 0;
         String operation = sale ? "卖出" : "买入";
-        int percentLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
-        int totalLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
+        double percentLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
+        double totalLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
         double lastPrice = getLastPrice(code);
         double totalPercent = 0.0;
         while (timesCount++ < WAIT_TIME_MINUTES) {
