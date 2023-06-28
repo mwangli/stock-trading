@@ -318,6 +318,7 @@ public class AllJobs {
             updateNowPrice();
             // 选择有交易权限合适价格区间的数据,按评分排序分组
             final LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
+            queryWrapper.eq(StockInfo::getDeleted, "1");
             queryWrapper.eq(StockInfo::getPermission, "1");
             queryWrapper.ge(StockInfo::getPrice, lowPrice);
             queryWrapper.le(StockInfo::getPrice, highPrice);
@@ -933,6 +934,7 @@ public class AllJobs {
         stockInfos.forEach(s -> threadPool.submit(() -> {
             try {
                 List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
+                if (historyPrices.size() == 0) s.setDeleted("0");
                 List<DailyItem> rateList = getRateList(historyPrices);
                 s.setPrices(JSON.toJSONString(historyPrices));
                 s.setIncreaseRate(JSON.toJSONString(rateList));
@@ -1000,16 +1002,12 @@ public class AllJobs {
                 newInfo.setScore(0.0);
                 newInfo.setPrices("[]");
                 newInfo.setIncreaseRate("[]");
+                newInfo.setDeleted("1");
                 saveList.add(newInfo);
                 log.info("获取到新上市股票:{}", newInfo);
             }
         });
         saveDate(saveList);
-        // 清除退市股票
-        if (CollectionUtils.isNotEmpty(dataList)) {
-            log.info("清除退市股票:{}", dataList);
-            dataList.forEach(d -> stockInfoMapper.deleteByCode(d.getCode()));
-        }
     }
 
     private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList, StrategyParams params) {
