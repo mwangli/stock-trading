@@ -931,26 +931,38 @@ public class AllJobs {
         final CountDownLatch countDownLatch = new CountDownLatch(stockInfos.size());
         // 多线程请求数据
         ArrayList<StockInfo> saveList = new ArrayList<>();
-        stockInfos.forEach(s -> threadPool.submit(() -> {
-            try {
-                List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
-                List<DailyItem> rateList = getRateList(historyPrices);
-                s.setPrices(JSON.toJSONString(historyPrices));
-                s.setIncreaseRate(JSON.toJSONString(rateList));
-                s.setUpdateTime(new Date());
-                saveList.add(s);
-                final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
-                if (finishNums % 100 == 0) {
-                    log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-                log.error("获取数据异常:{}", e.getMessage());
-            } finally {
-                countDownLatch.countDown();
-            }
+        // 清除退市股票
+        stockInfos.stream().filter(s -> "0".equals(s.getDeleted())).forEach(s -> {
+            log.info("清除退市股票:[{}-{}]", s.getCode(), s.getName());
+            stockInfoMapper.deleteById(s);
+        });
+        stockInfos.forEach(s -> {
+            if ("1".equals(s.getDeleted())) {
+                threadPool.submit(() -> {
+                    try {
+                        List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
+                        List<DailyItem> rateList = getRateList(historyPrices);
+                        s.setPrices(JSON.toJSONString(historyPrices));
+                        s.setIncreaseRate(JSON.toJSONString(rateList));
+                        s.setUpdateTime(new Date());
+                        saveList.add(s);
+                        final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
+                        if (finishNums % 100 == 0) {
+                            log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        log.error("获取数据异常:{}", e.getMessage());
+                    } finally {
+                        countDownLatch.countDown();
+                    }
 
-        }));
+                });
+            } else {
+                log.info("清除退市股票:[{}-{}]", s.getCode(), s.getName());
+                stockInfoMapper.deleteById(s);
+            }
+        });
         countDownLatch.await();
         saveDate(saveList);
     }
