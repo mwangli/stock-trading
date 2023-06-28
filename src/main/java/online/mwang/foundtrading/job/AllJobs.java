@@ -6,6 +6,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -313,15 +314,17 @@ public class AllJobs {
                 log.info("可用资金资金不足,取消购买任务！");
                 return;
             }
-            //  获取实时价格
-            final List<StockInfo> dataList = getDataList();
-            // 计算得分
-            List<StockInfo> stockInfos = calculateScore(dataList, getStrategyParams());
+            //  更新实时价格
+            updateNowPrice();
             // 选择有交易权限合适价格区间的数据,按评分排序分组
-            final List<StockInfo> limitList = stockInfos.stream()
-                    .sorted(Comparator.comparingDouble(StockInfo::getScore).reversed())
-                    .filter(s -> "1".equals(s.getPermission()) && s.getPrice() >= lowPrice && s.getPrice() <= highPrice)
-                    .skip((long) time * BUY_RETRY_LIMIT).limit(BUY_RETRY_LIMIT).collect(Collectors.toList());
+            final LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
+            queryWrapper.eq(StockInfo::getPermission, "1");
+            queryWrapper.ge(StockInfo::getPrice, lowPrice);
+            queryWrapper.le(StockInfo::getPrice, highPrice);
+            queryWrapper.orderByDesc(StockInfo::getScore);
+            final Page<StockInfo> page = new Page<>(time, BUY_RETRY_LIMIT);
+            final Page<StockInfo> pageResult = stockInfoMapper.selectPage(page, queryWrapper);
+            final List<StockInfo> limitList = pageResult.getRecords();
             if (limitList.size() < BUY_RETRY_LIMIT) {
                 log.info("可买入股票数量不足{},取消购买任务！", BUY_RETRY_LIMIT);
                 return;
@@ -380,10 +383,10 @@ public class AllJobs {
             // 更新账户资金
             updateAmount();
             // 更新交易次数
-            stockInfos.stream().filter(s -> s.getCode().equals(best.getCode())).forEach(s -> s.setBuySaleCount(s.getBuySaleCount() + 1));
+            final StockInfo stockInfo = stockInfoMapper.selectByCode(best.getCode());
+            stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
+            stockInfoMapper.updateById(stockInfo);
             log.info("成功买入股票[{}-{}], 买入价格:{},买入数量:{},买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
-            // 保存评分数据
-            saveDate(stockInfos);
             return;
         }
     }
@@ -488,7 +491,7 @@ public class AllJobs {
         int timesCount = 0;
         String operation = sale ? "卖出" : "买入";
         double percentLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
-        double totalLimit = sale ? 3 * PRICE_TOTAL_UPPER_LIMIT : 2 * PRICE_TOTAL_FALL_LIMIT;
+        double totalLimit = sale ? 2 * PRICE_TOTAL_UPPER_LIMIT : 2 * PRICE_TOTAL_FALL_LIMIT;
         double lastPrice = getLastPrice(code);
         double totalPercent = 0.0;
         while (timesCount++ < WAIT_TIME_MINUTES) {
@@ -933,15 +936,6 @@ public class AllJobs {
             stockInfoService.update(stockInfo, new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, code));
         });
         log.info("共同步{}条股票交易次数", collect.size());
-        list.stream().filter(r -> "1".equals(r.getSold())).forEach(record -> {
-            Double income = record.getIncome();
-            Double buyAmount = record.getBuyAmount();
-            double incomeRate = (income * 100) / buyAmount;
-            record.setIncomeRate(incomeRate);
-            double dailyRate = incomeRate / record.getHoldDays();
-            record.setDailyIncomeRate(dailyRate);
-            tradingRecordService.updateById(record);
-        });
     }
 
     @SneakyThrows
@@ -1002,8 +996,8 @@ public class AllJobs {
                 Double nowPrice = newInfo.getPrice();
                 List<DailyItem> priceList = JSON.parseArray(p.getPrices(), DailyItem.class);
                 List<DailyItem> rateList = JSON.parseArray(p.getIncreaseRate(), DailyItem.class);
-                Double score = handleScore(nowPrice, priceList, rateList, params);
-                p.setScore(score);
+//                Double score = handleScore(nowPrice, priceList, rateList, params);
+//                p.setScore(score);
                 p.setPrice(newInfo.getPrice());
                 p.setIncrease(newInfo.getIncrease());
                 p.setUpdateTime(new Date());
@@ -1023,15 +1017,6 @@ public class AllJobs {
                 log.info("获取到新上市股票:{}", newInfo);
             }
         });
-        saveDate(saveList);
-        // 清除退市股票数据
-//        final Set<String> oldCodes = dataList.stream().map(StockInfo::getCode).collect(Collectors.toSet());
-//        final Set<String> newCodes = newInfos.stream().map(StockInfo::getCode).collect(Collectors.toSet());
-//        oldCodes.removeAll(newCodes);
-//        if (CollectionUtils.isNotEmpty(oldCodes)) {
-//            log.info("清除已退市股票代码:{}", oldCodes);
-//            oldCodes.forEach(stockInfoMapper::deleteByCode);
-//        }
     }
 
     private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList, StrategyParams params) {
