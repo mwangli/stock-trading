@@ -934,11 +934,11 @@ public class AllJobs {
         stockInfos.forEach(s -> threadPool.submit(() -> {
             try {
                 List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
-                if (historyPrices.size() == 0) s.setDeleted("0");
                 List<DailyItem> rateList = getRateList(historyPrices);
                 s.setPrices(JSON.toJSONString(historyPrices));
                 s.setIncreaseRate(JSON.toJSONString(rateList));
                 s.setUpdateTime(new Date());
+                s.setDeleted(historyPrices.size() == 0 ? "0" : "1");
                 saveList.add(s);
                 final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
                 if (finishNums % 100 == 0) {
