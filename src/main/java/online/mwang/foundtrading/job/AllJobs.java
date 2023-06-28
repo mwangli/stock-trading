@@ -1008,7 +1008,7 @@ public class AllJobs {
             }
         });
         // 标记退市股票
-        if (!CollectionUtils.isNotEmpty(dataList)) {
+        if (CollectionUtils.isNotEmpty(dataList)) {
             log.info("标记退市股票:{}", dataList.stream().map(StockInfo::getCode));
             dataList.forEach(d -> d.setDeleted("0"));
             saveList.addAll(dataList);
