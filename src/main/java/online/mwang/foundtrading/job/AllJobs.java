@@ -546,21 +546,6 @@ public class AllJobs {
         return res.getDouble("PRICE");
     }
 
-    public List<StockInfo> calculateScore(List<StockInfo> dataList, StrategyParams params) {
-        List<StockInfo> stockInfos = stockInfoService.list();
-        stockInfos.forEach(info -> dataList.stream().filter(s -> s.getCode().equals(info.getCode())).findFirst().ifPresent(p -> {
-            Double nowPrice = p.getPrice();
-            List<DailyItem> priceList = JSON.parseArray(info.getPrices(), DailyItem.class);
-            List<DailyItem> rateList = JSON.parseArray(info.getIncreaseRate(), DailyItem.class);
-            Double score = handleScore(nowPrice, priceList, rateList, params);
-            info.setScore(score);
-            info.setPrice(p.getPrice());
-            info.setIncrease(p.getIncrease());
-            info.setUpdateTime(new Date());
-        }));
-        return stockInfos;
-    }
-
     public void cancelOrder(String answerNo) {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
@@ -1003,6 +988,7 @@ public class AllJobs {
                 p.setUpdateTime(new Date());
                 saveList.add(p);
                 exist.set(true);
+                dataList.remove(p);
             });
             if (!exist.get()) {
                 Date now = new Date();
@@ -1018,6 +1004,9 @@ public class AllJobs {
             }
         });
         saveDate(saveList);
+        // 清除退市股票
+        log.info("清除退市股票:{}", dataList);
+        dataList.forEach(d -> stockInfoMapper.deleteByCode(d.getCode()));
     }
 
     private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList, StrategyParams params) {
