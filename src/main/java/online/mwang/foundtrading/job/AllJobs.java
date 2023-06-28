@@ -345,7 +345,7 @@ public class AllJobs {
                 while (inTradingTimes()) {
                     SleepUtils.minutes(1);
                     Double nowPrice = getLastPrice(best.getCode());
-                    final double price = lastPrice == 0 ? 0 : nowPrice - lastPrice;
+                    final double price = nowPrice - lastPrice;
                     final double pricePercent = price * 100 / nowPrice;
                     if (pricePercent < 0) totalPercent += pricePercent;
                     log.info("最佳买入股票[{}-{}],上次价格:{},当前价格:{},当前增长幅度:{}%,总增长幅度:{}%,等待最佳买入时机...",
