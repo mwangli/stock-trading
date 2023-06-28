@@ -1025,13 +1025,13 @@ public class AllJobs {
         });
         saveDate(saveList);
         // 清除退市股票数据
-        final Set<String> oldCodes = dataList.stream().map(StockInfo::getCode).collect(Collectors.toSet());
-        final Set<String> newCodes = newInfos.stream().map(StockInfo::getCode).collect(Collectors.toSet());
-        oldCodes.removeAll(newCodes);
-        if (CollectionUtils.isNotEmpty(oldCodes)) {
-            log.info("清除已退市股票代码:{}", oldCodes);
-            oldCodes.forEach(stockInfoMapper::deleteByCode);
-        }
+//        final Set<String> oldCodes = dataList.stream().map(StockInfo::getCode).collect(Collectors.toSet());
+//        final Set<String> newCodes = newInfos.stream().map(StockInfo::getCode).collect(Collectors.toSet());
+//        oldCodes.removeAll(newCodes);
+//        if (CollectionUtils.isNotEmpty(oldCodes)) {
+//            log.info("清除已退市股票代码:{}", oldCodes);
+//            oldCodes.forEach(stockInfoMapper::deleteByCode);
+//        }
     }
 
     private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList, StrategyParams params) {
