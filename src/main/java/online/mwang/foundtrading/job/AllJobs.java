@@ -775,7 +775,8 @@ public class AllJobs {
                 stockInfo.setMarket(market);
                 stockInfo.setIncrease(increasePercent);
                 stockInfo.setPrice(price);
-                stockInfos.add(stockInfo);
+                if (stockInfos.stream().noneMatch(info -> info.getCode().equals(code)))
+                    stockInfos.add(stockInfo);
             }
         }
         log.info("共获取到{}条新数据。", stockInfos.size());
