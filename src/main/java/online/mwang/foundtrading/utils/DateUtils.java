@@ -11,6 +11,7 @@ public class DateUtils {
 
     public static final SimpleDateFormat dateTimeFormat = new SimpleDateFormat("yyyyMMddHHmmss");
     public static final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd");
+    public static final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm");
 
     public static void main(String[] args) throws Exception {
         StringBuilder stringBuffer = new StringBuilder();
