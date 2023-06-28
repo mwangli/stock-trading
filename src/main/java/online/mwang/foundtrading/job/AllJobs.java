@@ -488,7 +488,7 @@ public class AllJobs {
         int timesCount = 0;
         String operation = sale ? "卖出" : "买入";
         double percentLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
-        double totalLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
+        double totalLimit = sale ? 3 * PRICE_TOTAL_UPPER_LIMIT : 2 * PRICE_TOTAL_FALL_LIMIT;
         double lastPrice = getLastPrice(code);
         double totalPercent = 0.0;
         while (timesCount++ < WAIT_TIME_MINUTES) {
@@ -1025,13 +1025,13 @@ public class AllJobs {
         });
         saveDate(saveList);
         // 清除退市股票数据
-//        final Set<String> oldCodes = dataList.stream().map(StockInfo::getCode).collect(Collectors.toSet());
-//        final Set<String> newCodes = newInfos.stream().map(StockInfo::getCode).collect(Collectors.toSet());
-//        oldCodes.removeAll(newCodes);
-//        if (CollectionUtils.isNotEmpty(oldCodes)) {
-//            log.info("清除已退市股票代码:{}", oldCodes);
-//            oldCodes.forEach(stockInfoMapper::deleteByCode);
-//        }
+        final Set<String> oldCodes = dataList.stream().map(StockInfo::getCode).collect(Collectors.toSet());
+        final Set<String> newCodes = newInfos.stream().map(StockInfo::getCode).collect(Collectors.toSet());
+        oldCodes.removeAll(newCodes);
+        if (CollectionUtils.isNotEmpty(oldCodes)) {
+            log.info("清除已退市股票代码:{}", oldCodes);
+            oldCodes.forEach(stockInfoMapper::deleteByCode);
+        }
     }
 
     private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList, StrategyParams params) {
