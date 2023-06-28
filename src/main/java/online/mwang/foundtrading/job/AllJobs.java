@@ -1005,8 +1005,10 @@ public class AllJobs {
         });
         saveDate(saveList);
         // 清除退市股票
-        log.info("清除退市股票:{}", dataList);
-        dataList.forEach(d -> stockInfoMapper.deleteByCode(d.getCode()));
+        if (CollectionUtils.isNotEmpty(dataList)) {
+            log.info("清除退市股票:{}", dataList);
+            dataList.forEach(d -> stockInfoMapper.deleteByCode(d.getCode()));
+        }
     }
 
     private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList, StrategyParams params) {
