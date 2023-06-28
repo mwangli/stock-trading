@@ -996,8 +996,8 @@ public class AllJobs {
                 Double nowPrice = newInfo.getPrice();
                 List<DailyItem> priceList = JSON.parseArray(p.getPrices(), DailyItem.class);
                 List<DailyItem> rateList = JSON.parseArray(p.getIncreaseRate(), DailyItem.class);
-//                Double score = handleScore(nowPrice, priceList, rateList, params);
-//                p.setScore(score);
+                Double score = handleScore(nowPrice, priceList, rateList, params);
+                p.setScore(score);
                 p.setPrice(newInfo.getPrice());
                 p.setIncrease(newInfo.getIncrease());
                 p.setUpdateTime(new Date());
@@ -1017,6 +1017,7 @@ public class AllJobs {
                 log.info("获取到新上市股票:{}", newInfo);
             }
         });
+        saveDate(saveList);
     }
 
     private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList, StrategyParams params) {
