@@ -938,7 +938,6 @@ public class AllJobs {
                 s.setPrices(JSON.toJSONString(historyPrices));
                 s.setIncreaseRate(JSON.toJSONString(rateList));
                 s.setUpdateTime(new Date());
-                s.setDeleted(historyPrices.size() == 0 ? "0" : "1");
                 saveList.add(s);
                 final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
                 if (finishNums % 100 == 0) {
@@ -989,6 +988,7 @@ public class AllJobs {
                 p.setPrice(newInfo.getPrice());
                 p.setIncrease(newInfo.getIncrease());
                 p.setUpdateTime(new Date());
+                p.setDeleted("1");
                 saveList.add(p);
                 exist.set(true);
                 dataList.remove(p);
@@ -1007,6 +1007,12 @@ public class AllJobs {
                 log.info("获取到新上市股票:{}", newInfo);
             }
         });
+        // 标记退市股票
+        if (!CollectionUtils.isNotEmpty(dataList)) {
+            log.info("标记退市股票:{}", dataList.stream().map(StockInfo::getCode));
+            dataList.forEach(d -> d.setDeleted("0"));
+            saveList.addAll(dataList);
+        }
         saveDate(saveList);
     }
 
