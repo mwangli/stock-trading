@@ -931,11 +931,6 @@ public class AllJobs {
         final CountDownLatch countDownLatch = new CountDownLatch(stockInfos.size());
         // 多线程请求数据
         ArrayList<StockInfo> saveList = new ArrayList<>();
-        // 清除退市股票
-        stockInfos.stream().filter(s -> "0".equals(s.getDeleted())).forEach(s -> {
-            log.info("清除退市股票:[{}-{}]", s.getCode(), s.getName());
-            stockInfoMapper.deleteById(s);
-        });
         stockInfos.forEach(s -> {
             if ("1".equals(s.getDeleted())) {
                 threadPool.submit(() -> {
