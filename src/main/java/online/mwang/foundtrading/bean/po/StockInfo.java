@@ -35,6 +35,7 @@ public class StockInfo {
     private Integer buySaleCount;
     private Date createTime;
     private Date updateTime;
+    private String deleted;
 
     @TableField(exist = false)
     private List<DailyItem> pricesList;
