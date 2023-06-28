@@ -504,8 +504,24 @@ public class AllJobs {
         double totalPercent = 0.0;
         while (timesCount++ < WAIT_TIME_MINUTES) {
             SleepUtils.minutes(1);
+            if (sale) {
+                TradingRecord bestRecord = getBestRecord();
+                if (bestRecord == null) {
+                    log.info("最佳卖出股票获取异常");
+                    return null;
+                }
+                // 如果最佳股发生变化
+                if (!bestRecord.getCode().equals(code)) {
+                    code = bestRecord.getCode();
+                    name = bestRecord.getName();
+                    buyPrice = bestRecord.getBuyPrice();
+                    totalPercent = 0;
+                    lastPrice = 0;
+                    log.info("最佳卖出股票变化为:[{}-{}]", code, name);
+                }
+            }
             Double nowPrice = getLastPrice(code);
-            final double price = nowPrice - lastPrice;
+            final double price = lastPrice == 0 ? 0 : nowPrice - lastPrice;
             final double pricePercent = price * 100 / nowPrice;
             if (sale ? pricePercent > 0 : pricePercent < 0)
                 totalPercent += pricePercent;
@@ -520,6 +536,7 @@ public class AllJobs {
             boolean saleCondition = incomeCondition && priceCondition;
             if (sale && isMorning() ? saleCondition : priceCondition) {
                 log.info("最佳{}股票[{}-{}],当前增长幅度达到{}%,或者总增长幅度达到{}%,开始{}股票。", operation, code, name, percentLimit, totalLimit, operation);
+                if (isDeadLine()) log.info("今日交易时间即将结束，开始{}股票。", operation);
                 return lastPrice;
             }
         }
