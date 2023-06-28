@@ -47,6 +47,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AllJobs {
 
+    public static final String TOKEN = "requestToken";
     private static final int MAX_HOLD_NUMBER = 200;
     private static final int MIN_HOLD_NUMBER = 100;
     private static final int MAX_HOLD_STOCKS = 6;
@@ -68,7 +69,6 @@ public class AllJobs {
     private static final int CANCEL_WAIT_TIMES = 30;
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
-    public static final String TOKEN = "requestToken";
     private static HashMap<String, Integer> dateMap;
     private final RequestUtils requestUtils;
     private final OcrUtils ocrUtils;
@@ -80,6 +80,16 @@ public class AllJobs {
     private final ScoreStrategyMapper strategyMapper;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
     public boolean enableWaiting = true;
+
+    public static HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
+        if (paramMap == null) return new HashMap<>();
+        paramMap.put("cfrom", "H5");
+        paramMap.put("tfrom", "PC");
+        paramMap.put("newindex", "1");
+        paramMap.put("MobileCode", "13278828091");
+        paramMap.put("intacttoserver", "@ClZvbHVtZUluZm8JAAAANTI1QS00Qjc4");
+        return paramMap;
+    }
 
     // 交易日开盘时间买入 9:30
 //    @Scheduled(cron = "0 0,15,30 9 ? * MON-FRI")
@@ -159,17 +169,6 @@ public class AllJobs {
         log.info("识别到图片验证码:{}", code);
         return code;
     }
-
-    public static HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
-        if (paramMap == null) return new HashMap<>();
-        paramMap.put("cfrom", "H5");
-        paramMap.put("tfrom", "PC");
-        paramMap.put("newindex", "1");
-        paramMap.put("MobileCode", "13278828091");
-        paramMap.put("intacttoserver", "@ClZvbHVtZUluZm8JAAAANTI1QS00Qjc4");
-        return paramMap;
-    }
-
 
     @SneakyThrows
     public List<String> getCheckCode() {
@@ -338,9 +337,13 @@ public class AllJobs {
             }
             log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore());
             // 等待最佳买入时机
-            if (enableWaiting && waitingBestTime(best.getCode(), best.getName(), best.getPrice(), false)) {
-                log.info("未找到合适的买入时机,尝试买入下一组股票!");
-                continue;
+            if (enableWaiting) {
+                Double bestPrice = waitingBestTime(best.getCode(), best.getName(), best.getPrice(), false);
+                if (bestPrice == null) {
+                    log.info("未找到合适的买入时机,尝试买入下一组股票!");
+                    continue;
+                }
+                best.setPrice(bestPrice);
             }
             final int maxBuyNumber = (int) (availableAmount / best.getPrice());
             final int buyNumber = (maxBuyNumber / 100) * 100;
@@ -449,9 +452,13 @@ public class AllJobs {
             }
             log.info("最佳卖出股票[{}-{}],买入价格:{},当前价格:{},预期收益:{},日收益率:{}", best.getCode(), best.getName(), best.getBuyPrice(), best.getSalePrice(), best.getIncome(), String.format("%.4f", best.getDailyIncomeRate()));
             // 等待最佳卖出时机
-            if (enableWaiting && waitingBestTime(best.getCode(), best.getName(), best.getBuyPrice(), true)) {
-                log.info("未找到合适的卖出时机,尝试卖出下一组股票!");
-                continue;
+            if (enableWaiting) {
+                Double bestPrice = waitingBestTime(best.getCode(), best.getName(), best.getBuyPrice(), true);
+                if (bestPrice == null) {
+                    log.info("未找到合适的卖出时机,尝试卖出下一组股票!");
+                    continue;
+                }
+                best.setSalePrice(bestPrice);
             }
             // 返回合同编号
             JSONObject res = buySale(SALE_TYPE_OP, best.getCode(), best.getSalePrice(), best.getBuyNumber());
@@ -488,7 +495,7 @@ public class AllJobs {
         }
     }
 
-    private Boolean waitingBestTime(String code, String name, Double buyPrice, Boolean sale) {
+    private Double waitingBestTime(String code, String name, Double buyPrice, Boolean sale) {
         int timesCount = 0;
         String operation = sale ? "卖出" : "买入";
         double percentLimit = sale ? PRICE_TOTAL_UPPER_LIMIT : PRICE_TOTAL_FALL_LIMIT;
@@ -513,10 +520,10 @@ public class AllJobs {
             boolean saleCondition = incomeCondition && priceCondition;
             if (sale && isMorning() ? saleCondition : priceCondition) {
                 log.info("最佳{}股票[{}-{}],当前增长幅度达到{}%,或者总增长幅度达到{}%,开始{}股票。", operation, code, name, percentLimit, totalLimit, operation);
-                return false;
+                return lastPrice;
             }
         }
-        return true;
+        return null;
     }
 
     private Boolean isMorning() {
