@@ -794,7 +794,6 @@ public class AllJobs {
     // 获取每日最新价格数据
     public List<StockInfo> getDataList() {
         final List<StockInfo> stockInfos = new ArrayList<>();
-        HashMap<String, StockInfo> map = new HashMap<>();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("c.funcno", 21000);
         paramMap.put("c.version", 1);
@@ -822,12 +821,9 @@ public class AllJobs {
             stockInfo.setMarket(market);
             stockInfo.setIncrease(increasePercent);
             stockInfo.setPrice(price);
-            if (stockInfos.stream().noneMatch(info -> info.getCode().equals(code)))
-                stockInfos.add(stockInfo);
-            map.put(code, stockInfo);
+            stockInfos.add(stockInfo);
         }
         log.info("共获取到{}条新数据。", stockInfos.size());
-        log.info("共获取到{}条新数据。", map.size());
         return stockInfos;
     }
 
