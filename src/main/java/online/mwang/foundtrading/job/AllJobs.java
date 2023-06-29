@@ -795,38 +795,36 @@ public class AllJobs {
     public List<StockInfo> getDataList() {
         final List<StockInfo> stockInfos = new ArrayList<>();
         HashMap<String, StockInfo> map = new HashMap<>();
-        for (int i = 1; i <= 10; i++) {
-            HashMap<String, Object> paramMap = new HashMap<>();
-            paramMap.put("c.funcno", 21000);
-            paramMap.put("c.version", 1);
-//            paramMap.put("c.sort", 1);
-//            paramMap.put("c.order", 1);
-            paramMap.put("c.type", "0:2:9:18");
-            paramMap.put("c.curPage", i);
-            paramMap.put("c.rowOfPage", 500);
-            paramMap.put("c.field", "1:2:22:23:24:3:8:16:21:31");
-            paramMap.put("c.cfrom", "H5");
-            paramMap.put("c.tfrom", "PC");
-            final JSONArray results = requestUtils.request3(buildParams(paramMap));
-            for (int j = 0; j < results.size(); j++) {
-                final String s = results.getString(j);
-                final String[] split = s.split(",");
-                final String increase = split[0].replaceAll("\\[", "");
-                final double increasePercent = Double.parseDouble(increase) * 100;
-                final Double price = Double.parseDouble(split[1]);
-                final String name = split[2].replaceAll("\"", "");
-                final String market = split[3].replaceAll("\"", "");
-                final String code = split[4].replaceAll("\"", "");
-                final StockInfo stockInfo = new StockInfo();
-                stockInfo.setName(name);
-                stockInfo.setCode(code);
-                stockInfo.setMarket(market);
-                stockInfo.setIncrease(increasePercent);
-                stockInfo.setPrice(price);
-                if (stockInfos.stream().noneMatch(info -> info.getCode().equals(code)))
-                    stockInfos.add(stockInfo);
-                map.put(code,stockInfo);
-            }
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("c.funcno", 21000);
+        paramMap.put("c.version", 1);
+        paramMap.put("c.sort", 1);
+        paramMap.put("c.order", 1);
+        paramMap.put("c.type", "0:2:9:18");
+        paramMap.put("c.curPage", 1);
+        paramMap.put("c.rowOfPage", 5000);
+        paramMap.put("c.field", "1:2:22:23:24:3:8:16:21:31");
+        paramMap.put("c.cfrom", "H5");
+        paramMap.put("c.tfrom", "PC");
+        final JSONArray results = requestUtils.request3(buildParams(paramMap));
+        for (int j = 0; j < results.size(); j++) {
+            final String s = results.getString(j);
+            final String[] split = s.split(",");
+            final String increase = split[0].replaceAll("\\[", "");
+            final double increasePercent = Double.parseDouble(increase) * 100;
+            final Double price = Double.parseDouble(split[1]);
+            final String name = split[2].replaceAll("\"", "");
+            final String market = split[3].replaceAll("\"", "");
+            final String code = split[4].replaceAll("\"", "");
+            final StockInfo stockInfo = new StockInfo();
+            stockInfo.setName(name);
+            stockInfo.setCode(code);
+            stockInfo.setMarket(market);
+            stockInfo.setIncrease(increasePercent);
+            stockInfo.setPrice(price);
+            if (stockInfos.stream().noneMatch(info -> info.getCode().equals(code)))
+                stockInfos.add(stockInfo);
+            map.put(code, stockInfo);
         }
         log.info("共获取到{}条新数据。", stockInfos.size());
         log.info("共获取到{}条新数据。", map.size());
@@ -1039,11 +1037,11 @@ public class AllJobs {
         newInfos.forEach(newInfo -> {
             AtomicBoolean exist = new AtomicBoolean(false);
             dataList.stream().filter(s -> s.getCode().equals(newInfo.getCode())).findFirst().ifPresent(p -> {
-                Double nowPrice = newInfo.getPrice();
-                List<DailyItem> priceList = JSON.parseArray(p.getPrices(), DailyItem.class);
-                List<DailyItem> rateList = JSON.parseArray(p.getIncreaseRate(), DailyItem.class);
-                Double score = handleScore(nowPrice, priceList, rateList, params);
-                p.setScore(score);
+//                Double nowPrice = newInfo.getPrice();
+//                List<DailyItem> priceList = JSON.parseArray(p.getPrices(), DailyItem.class);
+//                List<DailyItem> rateList = JSON.parseArray(p.getIncreaseRate(), DailyItem.class);
+//                Double score = handleScore(nowPrice, priceList, rateList, params);
+//                p.setScore(score);
                 p.setPrice(newInfo.getPrice());
                 p.setIncrease(newInfo.getIncrease());
                 p.setUpdateTime(new Date());
@@ -1072,7 +1070,7 @@ public class AllJobs {
             dataList.forEach(d -> d.setDeleted("0"));
             saveList.addAll(dataList);
         }
-        saveDate(saveList);
+//        saveDate(saveList);
     }
 
     private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList, StrategyParams params) {
