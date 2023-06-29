@@ -575,7 +575,7 @@ public class AllJobs {
         return hours >= 14 && minutes >= 50;
     }
 
-    private Boolean inTradingTimes() {
+    public Boolean inTradingTimes() {
         Date now = new Date();
         String format = DateUtils.timeFormat.format(now);
         boolean inTimes1 = format.compareTo("09:30") >= 0 && format.compareTo("11:30") <= 0;
