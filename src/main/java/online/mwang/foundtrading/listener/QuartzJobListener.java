@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.po.QuartzJob;
+import online.mwang.foundtrading.job.AllJobs;
 import online.mwang.foundtrading.mapper.QuartzJobMapper;
 import org.quartz.*;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -23,6 +24,7 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
 
     private final QuartzJobMapper jobMapper;
     private final Scheduler scheduler;
+    private final AllJobs allJobs;
 
     @Override
     @SneakyThrows
@@ -36,6 +38,12 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
                 scheduler.scheduleJob(jobDetail, cronTrigger);
                 if ("0".equals(job.getStatus())) {
                     scheduler.pauseJob(JobKey.jobKey(job.getName()));
+                }
+                // 交易时间段内，自动触发买卖任务
+                if (allJobs.inTradingTimes() && (job.getClassName().endsWith("RunBuyJob") || job.getClassName().endsWith("RunSaleJob"))) {
+                    Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
+                    scheduler.scheduleJob(jobDetail, trigger);
+                    log.info("交易时间段内，自动触发买卖任务!");
                 }
             } catch (Exception e) {
                 log.info("定时任务加载异常:{}", job);
