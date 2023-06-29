@@ -1000,8 +1000,11 @@ public class AllJobs {
 
                 });
             } else {
-                log.info("清除退市股票:[{}-{}]", s.getCode(), s.getName());
-                stockInfoMapper.deleteById(s);
+                // 超过7天没有更新则认为是退市股票
+                if (System.currentTimeMillis() - s.getUpdateTime().getTime() > 1000 * 60 * 60 * 24 * 7) {
+                    log.info("清除退市股票:[{}-{}]", s.getCode(), s.getName());
+                    stockInfoMapper.deleteById(s);
+                }
             }
         });
         countDownLatch.await();
