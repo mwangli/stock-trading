@@ -440,7 +440,8 @@ public class AllJobs {
             int dateDiff = diffDate(selectRecord.getBuyDate(), new Date());
             double incomeRate = income / selectRecord.getBuyAmount() * 100;
             double dailyIncomeRate = incomeRate / dateDiff;
-            log.info("当前股票[{}-{}],买入金额:{},卖出金额:{},收益:{}元,日收益率:{}%", selectRecord.getCode(), selectRecord.getName(), selectRecord.getBuyAmount(), saleAmount, income, dailyIncomeRate);
+            log.info("当前股票[{}-{}],买入金额:{},卖出金额:{},收益:{}元,日收益率:{}%", selectRecord.getCode(), selectRecord.getName(),
+                    selectRecord.getBuyAmount(), saleAmount, income, String.format("%.4f", dailyIncomeRate));
             if (dailyIncomeRate > maxDailyRate) {
                 selectRecord.setSalePrice(record.getSalePrice());
                 selectRecord.setSaleNumber(selectRecord.getBuyNumber());
