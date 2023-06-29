@@ -456,10 +456,8 @@ public class AllJobs {
         return best;
     }
 
-    private TradingRecord waitingBestRecord() {
+    private TradingRecord waitingBestRecord(TradingRecord best) {
         double totalPercent = 0.0;
-        // 卖出最高收益的股票
-        TradingRecord best = getBestRecord();
         while (inTradingTimes()) {
             SleepUtils.minutes(1);
             TradingRecord bestRecord = getBestRecord();
@@ -518,7 +516,7 @@ public class AllJobs {
             log.info("最佳卖出股票[{}-{}],买入价格:{},当前价格:{},预期收益:{},日收益率:{}", best.getCode(), best.getName(), best.getBuyPrice(), best.getSalePrice(), best.getIncome(), String.format("%.4f", best.getDailyIncomeRate()));
             // 等待最佳卖出时机
             if (enableSaleWaiting) {
-                best = waitingBestRecord();
+                best = waitingBestRecord(best);
                 if (best == null) {
                     log.info("未找到合适的卖出时机，取消卖出任务！");
                     return;
