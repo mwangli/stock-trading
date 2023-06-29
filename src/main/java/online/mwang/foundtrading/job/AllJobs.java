@@ -982,9 +982,9 @@ public class AllJobs {
                 s.setIncreaseRate(JSON.toJSONString(rateList));
                 s.setUpdateTime(new Date());
                 saveList.add(s);
-                final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
+                final long finishNums = stockInfos.size() - countDownLatch.getCount();
                 if (finishNums % 100 == 0) {
-                    log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
+                    log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount());
                 }
             } catch (Exception e) {
                 e.printStackTrace();
