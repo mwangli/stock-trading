@@ -365,7 +365,7 @@ public class AllJobs {
             if (enableBuyWaiting) {
                 best = waitingBestPrice(best);
                 if (best == null) {
-                    log.info("未找到合适的买入时机，取消买入任务！");
+                    log.info("不在交易时间段内，取消买入任务！");
                     return;
                 }
             }
@@ -518,7 +518,7 @@ public class AllJobs {
             if (enableSaleWaiting) {
                 best = waitingBestRecord(best);
                 if (best == null) {
-                    log.info("未找到合适的卖出时机，取消卖出任务！");
+                    log.info("不在交易时间段内，取消卖出任务！");
                     return;
                 }
             }
