@@ -798,8 +798,8 @@ public class AllJobs {
             HashMap<String, Object> paramMap = new HashMap<>();
             paramMap.put("c.funcno", 21000);
             paramMap.put("c.version", 1);
-            paramMap.put("c.sort", 1);
-            paramMap.put("c.order", 1);
+//            paramMap.put("c.sort", 1);
+//            paramMap.put("c.order", 1);
             paramMap.put("c.type", "0:2:9:18");
             paramMap.put("c.curPage", i);
             paramMap.put("c.rowOfPage", 500);
