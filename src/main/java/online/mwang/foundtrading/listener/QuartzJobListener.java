@@ -40,9 +40,10 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
                     scheduler.pauseJob(JobKey.jobKey(job.getName()));
                 }
                 // 交易时间段内，自动触发买卖任务
-                if (allJobs.inTradingTimes() && (job.getClassName().endsWith("RunBuyJob") || job.getClassName().endsWith("RunSaleJob"))) {
+                if (allJobs.inTradingTimes() && (job.getClassName().contains("RunBuyJob") || job.getClassName().contains("RunSaleJob"))) {
                     Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
-                    scheduler.scheduleJob(jobDetail, trigger);
+                    JobDetail jobDetail1 = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName()).build();
+                    scheduler.scheduleJob(jobDetail1, trigger);
                     log.info("交易时间段内，自动触发买卖任务!");
                 }
             } catch (Exception e) {
