@@ -50,7 +50,7 @@ public class AllJobs {
     public static final String TOKEN = "requestToken";
     private static final int MAX_HOLD_NUMBER = 200;
     private static final int MIN_HOLD_NUMBER = 100;
-    private static final int MAX_HOLD_STOCKS = 6;
+    private static final int MAX_HOLD_STOCKS = 7;
     private static final double HIGH_PRICE_PERCENT = 0.9;
     private static final double LOW_PRICE_PERCENT = 0.85;
     private static final double LOW_PRICE_LIMIT = 5.0;
@@ -61,7 +61,6 @@ public class AllJobs {
     private static final double PRICE_TOTAL_UPPER_LIMIT = 3.0;
     private static final int BUY_RETRY_LIMIT = 20;
     private static final int WAIT_TIME_SECONDS = 10;
-    private static final int WAIT_TIME_MINUTES = 30;
     private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
     private static final int THREAD_POOL_NUMBERS = 8;
