@@ -794,37 +794,34 @@ public class AllJobs {
     // 获取每日最新价格数据
     public List<StockInfo> getDataList() {
         final List<StockInfo> stockInfos = new ArrayList<>();
-        for (int i = 1; i <= 10; i++) {
-            HashMap<String, Object> paramMap = new HashMap<>();
-            paramMap.put("c.funcno", 21000);
-            paramMap.put("c.version", 1);
-//            paramMap.put("c.sort", 1);
-//            paramMap.put("c.order", 1);
-            paramMap.put("c.type", "0:2:9:18");
-            paramMap.put("c.curPage", i);
-            paramMap.put("c.rowOfPage", 500);
-            paramMap.put("c.field", "1:2:22:23:24:3:8:16:21:31");
-            paramMap.put("c.cfrom", "H5");
-            paramMap.put("c.tfrom", "PC");
-            final JSONArray results = requestUtils.request3(buildParams(paramMap));
-            for (int j = 0; j < results.size(); j++) {
-                final String s = results.getString(j);
-                final String[] split = s.split(",");
-                final String increase = split[0].replaceAll("\\[", "");
-                final double increasePercent = Double.parseDouble(increase) * 100;
-                final Double price = Double.parseDouble(split[1]);
-                final String name = split[2].replaceAll("\"", "");
-                final String market = split[3].replaceAll("\"", "");
-                final String code = split[4].replaceAll("\"", "");
-                final StockInfo stockInfo = new StockInfo();
-                stockInfo.setName(name);
-                stockInfo.setCode(code);
-                stockInfo.setMarket(market);
-                stockInfo.setIncrease(increasePercent);
-                stockInfo.setPrice(price);
-                if (stockInfos.stream().noneMatch(info -> info.getCode().equals(code)))
-                    stockInfos.add(stockInfo);
-            }
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("c.funcno", 21000);
+        paramMap.put("c.version", 1);
+        paramMap.put("c.sort", 1);
+        paramMap.put("c.order", 1);
+        paramMap.put("c.type", "0:2:9:18");
+        paramMap.put("c.curPage", 1);
+        paramMap.put("c.rowOfPage", 5000);
+        paramMap.put("c.field", "1:2:22:23:24:3:8:16:21:31");
+        paramMap.put("c.cfrom", "H5");
+        paramMap.put("c.tfrom", "PC");
+        final JSONArray results = requestUtils.request3(buildParams(paramMap));
+        for (int j = 0; j < results.size(); j++) {
+            final String s = results.getString(j);
+            final String[] split = s.split(",");
+            final String increase = split[0].replaceAll("\\[", "");
+            final double increasePercent = Double.parseDouble(increase) * 100;
+            final Double price = Double.parseDouble(split[1]);
+            final String name = split[2].replaceAll("\"", "");
+            final String market = split[3].replaceAll("\"", "");
+            final String code = split[4].replaceAll("\"", "");
+            final StockInfo stockInfo = new StockInfo();
+            stockInfo.setName(name);
+            stockInfo.setCode(code);
+            stockInfo.setMarket(market);
+            stockInfo.setIncrease(increasePercent);
+            stockInfo.setPrice(price);
+            stockInfos.add(stockInfo);
         }
         log.info("共获取到{}条新数据。", stockInfos.size());
         return stockInfos;
@@ -973,42 +970,36 @@ public class AllJobs {
 
     @SneakyThrows
     public void updateHistoryPrice() {
-        final List<StockInfo> stockInfos = stockInfoService.list();
+        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getDeleted, "1");
+        final List<StockInfo> stockInfos = stockInfoMapper.selectList(queryWrapper);
         final CountDownLatch countDownLatch = new CountDownLatch(stockInfos.size());
-        // 多线程请求数据
         ArrayList<StockInfo> saveList = new ArrayList<>();
-        stockInfos.forEach(s -> {
-            if ("1".equals(s.getDeleted())) {
-                threadPool.submit(() -> {
-                    try {
-                        List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
-                        List<DailyItem> rateList = getRateList(historyPrices);
-                        s.setPrices(JSON.toJSONString(historyPrices));
-                        s.setIncreaseRate(JSON.toJSONString(rateList));
-                        s.setUpdateTime(new Date());
-                        saveList.add(s);
-                        final long finishNums = stockInfos.size() - countDownLatch.getCount() + 1;
-                        if (finishNums % 100 == 0) {
-                            log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount() + 1);
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        log.error("获取数据异常:{}", e.getMessage());
-                    } finally {
-                        countDownLatch.countDown();
-                    }
-
-                });
-            } else {
-                // 超过7天没有更新则认为是退市股票
-                if (System.currentTimeMillis() - s.getUpdateTime().getTime() > 1000 * 60 * 60 * 24 * 7) {
-                    log.info("清除退市股票:[{}-{}]", s.getCode(), s.getName());
-                    stockInfoMapper.deleteById(s);
+        stockInfos.forEach(s -> threadPool.submit(() -> {
+            try {
+                List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
+                List<DailyItem> rateList = getRateList(historyPrices);
+                s.setPrices(JSON.toJSONString(historyPrices));
+                s.setIncreaseRate(JSON.toJSONString(rateList));
+                s.setUpdateTime(new Date());
+                saveList.add(s);
+                final long finishNums = stockInfos.size() - countDownLatch.getCount();
+                if (finishNums % 100 == 0) {
+                    log.info("已完成{}个获取股票历史价格任务,剩余{}个任务", finishNums, countDownLatch.getCount());
                 }
+            } catch (Exception e) {
+                e.printStackTrace();
+                log.error("获取数据异常:{}", e.getMessage());
+            } finally {
+                countDownLatch.countDown();
             }
-        });
+        }));
         countDownLatch.await();
         saveDate(saveList);
+        List<StockInfo> deletedList = stockInfoMapper.selectList(new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getDeleted, "0"));
+        deletedList.forEach(d -> {
+            log.info("清除退市股票[{}-{}]", d.getCode(), d.getName());
+            stockInfoMapper.deleteByCode(d.getCode());
+        });
     }
 
     private StrategyParams getStrategyParams() {
