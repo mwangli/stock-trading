@@ -1,6 +1,7 @@
 package online.mwang.foundtrading.job;
 
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.foundtrading.bean.base.BusinessException;
 import online.mwang.foundtrading.utils.SleepUtils;
 import org.quartz.InterruptableJob;
 import org.quartz.JobExecutionContext;
@@ -26,7 +27,7 @@ public abstract class BaseJob implements InterruptableJob {
         final long start = System.currentTimeMillis();
         try {
             run();
-        } catch (RuntimeException e) {
+        } catch (BusinessException e) {
             log.info("任务终止成功!");
         }
         final long end = System.currentTimeMillis();

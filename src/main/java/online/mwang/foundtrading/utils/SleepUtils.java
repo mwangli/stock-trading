@@ -1,6 +1,7 @@
 package online.mwang.foundtrading.utils;
 
 import lombok.SneakyThrows;
+import online.mwang.foundtrading.bean.base.BusinessException;
 
 import java.util.concurrent.TimeUnit;
 
@@ -17,7 +18,7 @@ public class SleepUtils {
     public static void checkInterrupted() {
         if (interrupted) {
             interrupted = false;
-            throw new RuntimeException("任务终止!");
+            throw new BusinessException("任务终止!");
         }
     }
 
