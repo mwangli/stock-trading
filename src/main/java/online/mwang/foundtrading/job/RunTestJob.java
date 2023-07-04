@@ -22,7 +22,7 @@ public class RunTestJob extends BaseJob {
     public void run() {
         int times = 0;
         while (times++ < TRY_TIMES) {
-            SleepUtils.second(2);
+            SleepUtils.second(1);
             log.info("执行测试任务......");
         }
     }
