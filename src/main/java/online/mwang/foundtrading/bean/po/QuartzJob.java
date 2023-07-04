@@ -18,6 +18,7 @@ public class QuartzJob {
     private String className;
     private String cron;
     private String status;
+    private String running;
     private String deleted;
     private Integer sort;
     private Date createTime;
