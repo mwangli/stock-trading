@@ -48,6 +48,7 @@ public class JobController {
                 .eq(true, QuartzJob::getDeleted, "1")
                 .orderBy(true, true, QuartzJob.getOrder(query.getSortKey()));
         Page<QuartzJob> jobPage = jobMapper.selectPage(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
+        jobPage.getRecords().forEach(o -> o.setStatus("1".equals(o.getRunning()) ? "2" : o.getStatus()));
         return Response.success(jobPage.getRecords(), jobPage.getTotal());
     }
 
@@ -70,6 +71,8 @@ public class JobController {
     @SneakyThrows
     @PostMapping("run")
     public Response<?> runNow(@RequestBody QuartzJob job) {
+        job.setRunning("1");
+        jobMapper.updateById(job);
         Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
         JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName(), TEMP_GROUP_NAME).build();
         scheduler.scheduleJob(jobDetail, trigger);
@@ -123,10 +126,13 @@ public class JobController {
 
     @SneakyThrows
     @PostMapping("/interrupt")
-    public Response<Boolean> interruptJob(@RequestBody QuartzJob job) {
+    public Response<Integer> interruptJob(@RequestBody QuartzJob job) {
         final JobKey jobKey = JobKey.jobKey(job.getName());
         final JobKey tempKey = JobKey.jobKey(job.getName(), TEMP_GROUP_NAME);
-        return Response.success(scheduler.interrupt(jobKey) | scheduler.interrupt(tempKey));
+        scheduler.interrupt(jobKey);
+        scheduler.interrupt(tempKey);
+        job.setRunning("0");
+        return Response.success(jobMapper.updateById(job));
     }
 
     @SneakyThrows

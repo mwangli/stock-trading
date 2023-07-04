@@ -24,19 +24,14 @@ public class SleepUtils {
 
     @SneakyThrows
     public static void minutes(long minutes) {
-        TimeUnit.MINUTES.sleep(minutes);
-        checkInterrupted();
+        for (int i = 0; i < minutes * 60; i++) {
+            second(1);
+        }
     }
 
     @SneakyThrows
     public static void second(long seconds) {
         TimeUnit.SECONDS.sleep(seconds);
-        checkInterrupted();
-    }
-
-    @SneakyThrows
-    public static void milliSecond(long milliSecond) {
-        TimeUnit.MILLISECONDS.sleep(milliSecond);
         checkInterrupted();
     }
 }

@@ -573,11 +573,17 @@ public class AllJobs {
     }
 
     public Boolean inTradingTimes() {
-        Date now = new Date();
-        String format = DateUtils.timeFormat.format(now);
-        boolean inTimes1 = format.compareTo("09:30") >= 0 && format.compareTo("11:30") <= 0;
-        boolean inTimes2 = format.compareTo("13:00") >= 0 && format.compareTo("15:00") <= 0;
-        return inTimes1 || inTimes2;
+        return inTradingTimes1() || inTradingTimes2();
+    }
+
+    public Boolean inTradingTimes1() {
+        String format = DateUtils.timeFormat.format(new Date());
+        return format.compareTo("09:30") >= 0 && format.compareTo("11:30") <= 0;
+    }
+
+    public Boolean inTradingTimes2() {
+        String format = DateUtils.timeFormat.format(new Date());
+        return format.compareTo("13:00") >= 0 && format.compareTo("15:00") <= 0;
     }
 
     private Double getLastPrice(String code) {

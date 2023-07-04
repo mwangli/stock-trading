@@ -40,11 +40,13 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
                     scheduler.pauseJob(JobKey.jobKey(job.getName()));
                 }
                 // 交易时间段内，自动触发买卖任务
-                if (allJobs.inTradingTimes() && (job.getClassName().contains("RunBuyJob") || job.getClassName().contains("RunSaleJob"))) {
+                final boolean startJobs1 = allJobs.inTradingTimes1() && job.getName().contains("上午");
+                final boolean startJobs2 = allJobs.inTradingTimes2() && job.getName().contains("下午");
+                if (startJobs1 || startJobs2) {
                     Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
-                    JobDetail jobDetail1 = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName(),"TEMP").build();
+                    JobDetail jobDetail1 = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName(), "TEMP").build();
                     scheduler.scheduleJob(jobDetail1, trigger);
-                    log.info("交易时间段内，自动触发买卖任务!");
+                    log.info("自动触发任务:{}", job.getName());
                 }
             } catch (Exception e) {
                 log.info("定时任务{}加载异常:{}", job.getName(), e.getMessage());
