@@ -94,7 +94,7 @@ public class TradingRecordController {
         // 获取日收益率
         sortedSoldList.stream().findFirst().ifPresent(o -> data.setDailyIncomeRate(o.getDailyIncomeRate()));
         // 查询账户金额
-        accountInfoMapper.selectList(new QueryWrapper<AccountInfo>().lambda().orderByDesc(AccountInfo::getUpdateTime)).stream().findFirst().ifPresent(data::setAccountInfo);
+        accountInfoMapper.selectList(new QueryWrapper<AccountInfo>().lambda().orderByDesc(AccountInfo::getUpdateTime)).stream().findFirst().ifPresent(this::getAccountAmount);
         // 查询收益列表
         data.setIncomeList(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getSaleDateString)).map(o -> new Point(o.getSaleDateString(), o.getIncome())).collect(Collectors.toList()));
         // 查询收益率列表
@@ -136,5 +136,12 @@ public class TradingRecordController {
         }).sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).collect(Collectors.toList());
     }
 
+    public AccountInfo getAccountAmount(AccountInfo accountInfo) {
+        // 计算已用金额
+        double usedAmount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().mapToDouble(TradingRecord::getBuyAmount).sum();
+        accountInfo.setUsedAmount(usedAmount);
+        accountInfo.setTotalAmount(accountInfo.getAvailableAmount() + usedAmount);
+        return accountInfo;
+    }
 
 }
