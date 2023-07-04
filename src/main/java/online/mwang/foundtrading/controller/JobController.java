@@ -48,7 +48,6 @@ public class JobController {
                 .eq(true, QuartzJob::getDeleted, "1")
                 .orderBy(true, true, QuartzJob.getOrder(query.getSortKey()));
         Page<QuartzJob> jobPage = jobMapper.selectPage(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
-        jobPage.getRecords().forEach(o -> o.setStatus("1".equals(o.getRunning()) ? "2" : o.getStatus()));
         return Response.success(jobPage.getRecords(), jobPage.getTotal());
     }
 
