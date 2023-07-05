@@ -36,9 +36,9 @@ public class LoginController {
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
-    private static String generateToken(int length) {
+    private static String generateToken() {
         final StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < length; i++) {
+        for (int i = 0; i < TOKEN_LENGTH; i++) {
             final int c = RANDOM.nextInt('z' - '0');
             builder.append((char) ('0' + c));
         }
@@ -51,7 +51,7 @@ public class LoginController {
         final String monthDate = new SimpleDateFormat(SDF).format(new Date());
         final String reverseDate = new StringBuilder(monthDate).reverse().toString();
         if (USERNAME.equalsIgnoreCase(param.getUsername()) && reverseDate.equals(param.getPassword())) {
-            final String token = generateToken(TOKEN_LENGTH);
+            final String token = generateToken();
             stringRedisTemplate.opsForValue().set(token, "", TOKEN_EXPIRE_HOURS, TimeUnit.HOURS);
             return Response.success(token);
         } else {
