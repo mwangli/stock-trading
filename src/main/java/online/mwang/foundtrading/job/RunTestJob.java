@@ -17,11 +17,12 @@ import org.springframework.stereotype.Component;
 public class RunTestJob extends BaseJob {
 
     private static final int TRY_TIMES = 100;
+    private final AllJobs allJobs;
 
     @Override
-    public void run() {
+    public void run(String runningId) {
         int times = 0;
-        while (times++ < TRY_TIMES) {
+        while (times++ < TRY_TIMES && allJobs.checkRunningId(runningId)) {
             SleepUtils.second(1);
             log.info("执行测试任务......");
         }
