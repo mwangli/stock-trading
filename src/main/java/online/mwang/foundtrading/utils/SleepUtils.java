@@ -27,7 +27,6 @@ public class SleepUtils {
         }
     }
 
-
     @SneakyThrows
     public void second(long seconds) {
         TimeUnit.SECONDS.sleep(seconds);
