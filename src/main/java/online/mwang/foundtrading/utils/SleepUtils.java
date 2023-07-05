@@ -3,7 +3,6 @@ package online.mwang.foundtrading.utils;
 import lombok.SneakyThrows;
 import online.mwang.foundtrading.bean.base.BusinessException;
 
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -15,17 +14,18 @@ import java.util.concurrent.TimeUnit;
 public class SleepUtils {
 
     public static boolean interrupted = false;
+    public static final int MINUTE_SECONDS = 60;
 
     public static void checkInterrupted() {
         if (interrupted) {
-            CompletableFuture.runAsync(SleepUtils::resetInterrupted);
+            interrupted = false;
             throw new BusinessException("任务终止!");
         }
     }
 
     @SneakyThrows
     public static void minutes(long minutes) {
-        for (int i = 0; i < minutes * 60; i++) {
+        for (int i = 0; i < minutes * MINUTE_SECONDS; i++) {
             second(1);
         }
     }
@@ -34,11 +34,5 @@ public class SleepUtils {
     public static void second(long seconds) {
         TimeUnit.SECONDS.sleep(seconds);
         checkInterrupted();
-    }
-
-    @SneakyThrows
-    private static void resetInterrupted() {
-        TimeUnit.SECONDS.sleep(1);
-        interrupted = false;
     }
 }
