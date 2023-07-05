@@ -2,6 +2,7 @@ package online.mwang.foundtrading.job;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.foundtrading.bean.base.BusinessException;
 import online.mwang.foundtrading.bean.po.QuartzJob;
 import online.mwang.foundtrading.mapper.QuartzJobMapper;
 import org.quartz.InterruptableJob;
@@ -32,7 +33,9 @@ public abstract class BaseJob implements InterruptableJob {
     private String runningId;
 
     /**
-     * 任务执行方法
+     * 任务运行方法
+     *
+     * @param runningId 任务运行ID
      */
     abstract void run(String runningId);
 
@@ -43,7 +46,11 @@ public abstract class BaseJob implements InterruptableJob {
         setRunningStatus(jobName, "1");
         this.runningId = UUID.randomUUID().toString();
         setRunningId(runningId);
-        run(runningId);
+        try {
+            run(runningId);
+        } catch (BusinessException e) {
+            log.info("任务终止成功!");
+        }
         deleteRunningId(runningId);
         setRunningStatus(jobName, "0");
         final long end = System.currentTimeMillis();

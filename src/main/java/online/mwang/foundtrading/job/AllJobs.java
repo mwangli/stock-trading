@@ -77,6 +77,7 @@ public class AllJobs {
     private final StringRedisTemplate redisTemplate;
     private final StockInfoMapper stockInfoMapper;
     private final ScoreStrategyMapper strategyMapper;
+    private final SleepUtils sleepUtils;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
     public boolean enableSaleWaiting = true;
     public boolean enableBuyWaiting = true;
@@ -276,8 +277,8 @@ public class AllJobs {
     private StockInfo waitingBestPrice(StockInfo best, String runningId) {
         double lastPrice = getLastPrice(best.getCode());
         double totalPercent = 0.0;
-        while (inTradingTimes() && checkRunningId(runningId)) {
-            SleepUtils.minutes(1);
+        while (inTradingTimes()) {
+            sleepUtils.minutes(1, runningId);
             Double nowPrice = getLastPrice(best.getCode());
             final double price = nowPrice - lastPrice;
             final double pricePercent = price * 100 / nowPrice;
@@ -306,7 +307,7 @@ public class AllJobs {
 
     public void buy(String runningId) {
         int time = 0;
-        while (time++ < BUY_RETRY_TIMES && checkRunningId(runningId)) {
+        while (time++ < BUY_RETRY_TIMES) {
             log.info("第{}次尝试买入股票---------", time);
             // 查询持仓股票数量
             final long holdCount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).size();
@@ -460,8 +461,8 @@ public class AllJobs {
 
     private TradingRecord waitingBestRecord(TradingRecord best, String runningId) {
         double totalPercent = 0.0;
-        while (inTradingTimes() && checkRunningId(runningId)) {
-            SleepUtils.minutes(1);
+        while (inTradingTimes() ) {
+            sleepUtils.minutes(1,runningId);
             TradingRecord bestRecord = getBestRecord();
             if (bestRecord == null) {
                 log.info("最佳卖出股票获取异常");
@@ -498,7 +499,7 @@ public class AllJobs {
 
     public void sale(String runningId) {
         int time = 0;
-        while (time++ < SOLD_RETRY_TIMES && checkRunningId(runningId)) {
+        while (time++ < SOLD_RETRY_TIMES) {
             log.info("第{}次尝试卖出股票---------", time);
             if (checkSoldToday("1")) {
                 log.info("今天已经有卖出记录了,无需重复卖出!");
@@ -735,7 +736,7 @@ public class AllJobs {
     public Boolean waitOrderStatus() {
         int times = 0;
         while (times++ < CANCEL_WAIT_TIMES) {
-            SleepUtils.second(WAIT_TIME_SECONDS);
+            sleepUtils.second(WAIT_TIME_SECONDS);
             List<OrderStatus> todayOrders = listTodayOrder();
 //            List<OrderStatus> historyOrders = listHistoryOrder();
 //            todayOrders.addAll(historyOrders);
@@ -754,7 +755,7 @@ public class AllJobs {
     public Boolean waitOrderStatus(String answerNo) {
         int times = 0;
         while (times++ < CANCEL_WAIT_TIMES) {
-            SleepUtils.second(WAIT_TIME_SECONDS);
+            sleepUtils.second(WAIT_TIME_SECONDS);
             final String status = queryOrderStatus(answerNo);
             if (status == null) {
                 log.info("当前合同编号:{},订单状态查询失败。", answerNo);
