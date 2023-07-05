@@ -44,6 +44,7 @@ public abstract class BaseJob implements InterruptableJob {
         this.runningId = UUID.randomUUID().toString();
         setRunningId(runningId);
         run(runningId);
+        deleteRunningId(runningId);
         setRunningStatus(jobName, "0");
         final long end = System.currentTimeMillis();
         log.info("任务执行耗时{}秒。", (end - start) / 1000);
