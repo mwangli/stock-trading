@@ -1,11 +1,11 @@
 package online.mwang.foundtrading.utils;
 
+import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import online.mwang.foundtrading.bean.base.BusinessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.Resource;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -15,10 +15,10 @@ import java.util.concurrent.TimeUnit;
  * @description: SleepUtils
  */
 @Component
+@RequiredArgsConstructor
 public class SleepUtils {
 
-    @Resource
-    StringRedisTemplate redisTemplate;
+    private final StringRedisTemplate redisTemplate;
 
     @SneakyThrows
     public void minutes(long minutes, String runningId) {
