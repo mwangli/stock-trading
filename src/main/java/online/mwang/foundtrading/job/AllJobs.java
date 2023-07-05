@@ -51,8 +51,8 @@ public class AllJobs {
     private static final int MAX_HOLD_NUMBER = 200;
     private static final int MIN_HOLD_NUMBER = 100;
     private static final int MAX_HOLD_STOCKS = 7;
-    private static final double HIGH_PRICE_PERCENT = 0.9;
-    private static final double LOW_PRICE_PERCENT = 0.85;
+    private static final double HIGH_PRICE_PERCENT = 0.8;
+    private static final double LOW_PRICE_PERCENT = 0.8;
     private static final double LOW_PRICE_LIMIT = 5.0;
     private static final int BUY_RETRY_TIMES = 4;
     private static final int SOLD_RETRY_TIMES = 4;
@@ -332,6 +332,7 @@ public class AllJobs {
                 return;
             }
             final Double totalAvailableAmount = accountInfo.getAvailableAmount();
+
             final Double totalAmount = accountInfo.getTotalAmount();
             final double maxAmount = totalAmount / MAX_HOLD_STOCKS;
             // 计算此次可用资金
