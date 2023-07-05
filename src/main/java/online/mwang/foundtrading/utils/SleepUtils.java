@@ -19,10 +19,11 @@ import java.util.concurrent.TimeUnit;
 public class SleepUtils {
 
     private final StringRedisTemplate redisTemplate;
+    private static final int MINUTE_SECONDS = 60;
 
     @SneakyThrows
     public void minutes(long minutes, String runningId) {
-        for (int i = 0; i < 60 * minutes; i++) {
+        for (int i = 0; i < MINUTE_SECONDS * minutes; i++) {
             second(1, runningId);
         }
     }
