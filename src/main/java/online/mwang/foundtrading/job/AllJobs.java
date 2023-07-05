@@ -93,17 +93,17 @@ public class AllJobs {
 
     // 交易日开盘时间买入 9:30
 //    @Scheduled(cron = "0 0,15,30 9 ? * MON-FRI")
-    public void runBuyJob() {
+    public void runBuyJob(String runningId) {
         log.info("开始执行买入任务====================================");
-        buy();
+        buy(runningId);
         log.info("买入任务执行完毕====================================");
     }
 
     // 交易日收盘时间卖出 14:30
 //    @Scheduled(cron = "0 0 10,11,14 ? * MON-FRI")
-    public void runSaleJob() {
+    public void runSaleJob(String runningId) {
         log.info("开始执行卖出任务====================================");
-        sale();
+        sale(runningId);
         log.info("卖出任务执行完毕====================================");
     }
 
@@ -273,10 +273,10 @@ public class AllJobs {
         return CollectionUtils.isNotEmpty(hasSold);
     }
 
-    private StockInfo waitingBestPrice(StockInfo best) {
+    private StockInfo waitingBestPrice(StockInfo best, String runningId) {
         double lastPrice = getLastPrice(best.getCode());
         double totalPercent = 0.0;
-        while (inTradingTimes()) {
+        while (inTradingTimes() && checkRunningId(runningId)) {
             SleepUtils.minutes(1);
             Double nowPrice = getLastPrice(best.getCode());
             final double price = nowPrice - lastPrice;
@@ -300,9 +300,13 @@ public class AllJobs {
         return null;
     }
 
-    public void buy() {
+    public boolean checkRunningId(String runningId) {
+        return redisTemplate.opsForValue().get(runningId) != null;
+    }
+
+    public void buy(String runningId) {
         int time = 0;
-        while (time++ < BUY_RETRY_TIMES) {
+        while (time++ < BUY_RETRY_TIMES && checkRunningId(runningId)) {
             log.info("第{}次尝试买入股票---------", time);
             // 查询持仓股票数量
             final long holdCount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).size();
@@ -363,7 +367,7 @@ public class AllJobs {
             log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore());
             // 等待最佳买入时机
             if (enableBuyWaiting) {
-                best = waitingBestPrice(best);
+                best = waitingBestPrice(best, runningId);
                 if (best == null) {
                     log.info("不在交易时间段内，取消买入任务！");
                     return;
@@ -454,9 +458,9 @@ public class AllJobs {
         return best;
     }
 
-    private TradingRecord waitingBestRecord(TradingRecord best) {
+    private TradingRecord waitingBestRecord(TradingRecord best, String runningId) {
         double totalPercent = 0.0;
-        while (inTradingTimes()) {
+        while (inTradingTimes() && checkRunningId(runningId)) {
             SleepUtils.minutes(1);
             TradingRecord bestRecord = getBestRecord();
             if (bestRecord == null) {
@@ -492,9 +496,9 @@ public class AllJobs {
         return null;
     }
 
-    public void sale() {
+    public void sale(String runningId) {
         int time = 0;
-        while (time++ < SOLD_RETRY_TIMES) {
+        while (time++ < SOLD_RETRY_TIMES && checkRunningId(runningId)) {
             log.info("第{}次尝试卖出股票---------", time);
             if (checkSoldToday("1")) {
                 log.info("今天已经有卖出记录了,无需重复卖出!");
@@ -514,7 +518,7 @@ public class AllJobs {
             log.info("最佳卖出股票[{}-{}],买入价格:{},当前价格:{},预期收益:{},日收益率:{}", best.getCode(), best.getName(), best.getBuyPrice(), best.getSalePrice(), best.getIncome(), String.format("%.4f", best.getDailyIncomeRate()));
             // 等待最佳卖出时机
             if (enableSaleWaiting) {
-                best = waitingBestRecord(best);
+                best = waitingBestRecord(best, runningId);
                 if (best == null) {
                     log.info("不在交易时间段内，取消卖出任务！");
                     return;

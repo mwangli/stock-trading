@@ -16,7 +16,7 @@ public class RunHistoryJob extends BaseJob {
     private final AllJobs jobs;
 
     @Override
-    public void run() {
+    public void run(String runningId) {
         jobs.runHistoryJob();
     }
 }

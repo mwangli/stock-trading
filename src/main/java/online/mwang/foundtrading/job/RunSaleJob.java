@@ -16,7 +16,7 @@ public class RunSaleJob extends BaseJob {
     private final AllJobs jobs;
 
     @Override
-    public void run() {
-        jobs.runSaleJob();
+    public void run(String runningId) {
+        jobs.runSaleJob(runningId);
     }
 }

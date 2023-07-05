@@ -1,7 +1,6 @@
 package online.mwang.foundtrading.utils;
 
 import lombok.SneakyThrows;
-import online.mwang.foundtrading.bean.base.BusinessException;
 
 import java.util.concurrent.TimeUnit;
 
@@ -13,26 +12,13 @@ import java.util.concurrent.TimeUnit;
  */
 public class SleepUtils {
 
-    public static boolean interrupted = false;
-    public static final int MINUTE_SECONDS = 60;
-
-    public static void checkInterrupted() {
-        if (interrupted) {
-            interrupted = false;
-            throw new BusinessException("任务终止!");
-        }
-    }
-
     @SneakyThrows
     public static void minutes(long minutes) {
-        for (int i = 0; i < minutes * MINUTE_SECONDS; i++) {
-            second(1);
-        }
+        TimeUnit.MINUTES.sleep(minutes);
     }
 
     @SneakyThrows
     public static void second(long seconds) {
         TimeUnit.SECONDS.sleep(seconds);
-        checkInterrupted();
     }
 }
