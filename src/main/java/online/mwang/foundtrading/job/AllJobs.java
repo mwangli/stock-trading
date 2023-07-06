@@ -57,8 +57,8 @@ public class AllJobs {
     private static final int BUY_RETRY_TIMES = 4;
     private static final int SOLD_RETRY_TIMES = 4;
     private static final int LOGIN_RETRY_TIMES = 10;
-    private static final double PRICE_TOTAL_FALL_LIMIT = -5.0;
-    private static final double PRICE_TOTAL_UPPER_LIMIT = 5.0;
+    private static final double PRICE_TOTAL_FALL_LIMIT = -8.0;
+    private static final double PRICE_TOTAL_UPPER_LIMIT = 8.0;
     private static final int BUY_RETRY_LIMIT = 20;
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int HISTORY_PRICE_LIMIT = 100;
@@ -286,10 +286,9 @@ public class AllJobs {
             log.info("最佳买入股票[{}-{}],上次价格:{},当前价格:{},当前增长幅度:{}%,总增长幅度:{}%,等待最佳买入时机...",
                     best.getCode(), best.getName(), lastPrice, nowPrice, String.format("%.4f", pricePercent), String.format("%.4f", totalPercent));
             lastPrice = nowPrice;
-            // 30分钟内，某次增长幅度达到阈值，或者总增长幅度达到阈值，或者交易时间即将结束
-            boolean percentCondition = pricePercent <= PRICE_TOTAL_FALL_LIMIT;
+            // 3交易时间段内，总增长幅度达到阈值，或者交易时间即将结束
             boolean totalCondition = totalPercent <= PRICE_TOTAL_FALL_LIMIT;
-            boolean priceCondition = isDeadLine() || percentCondition || totalCondition;
+            boolean priceCondition = isDeadLine() || totalCondition;
             if (priceCondition) {
                 if (isDeadLine()) log.info("今日交易时间即将结束，开始买入股票。");
                 else log.info("最佳买入股票[{}-{}],当前增长幅度达到{}%,或者总增长幅度达到{}%,开始买入股票。",
@@ -462,8 +461,8 @@ public class AllJobs {
 
     private TradingRecord waitingBestRecord(TradingRecord best, String runningId) {
         double totalPercent = 0.0;
-        while (inTradingTimes() ) {
-            sleepUtils.minutes(1,runningId);
+        while (inTradingTimes()) {
+            sleepUtils.minutes(1, runningId);
             TradingRecord bestRecord = getBestRecord();
             if (bestRecord == null) {
                 log.info("最佳卖出股票获取异常");
@@ -482,10 +481,9 @@ public class AllJobs {
             best = bestRecord;
             log.info("最佳卖出股票[{}-{}],买入价格:{},上次价格:{},当前价格:{},当前增长幅度:{}%,总增长幅度:{}%,等待最佳卖出时机...",
                     best.getCode(), best.getName(), best.getBuyPrice(), lastPrice, best.getSalePrice(), String.format("%.4f", pricePercent), String.format("%.4f", totalPercent));
-            // 30分钟内，某次增长幅度达到阈值，或者总增长幅度达到阈值，或者交易时间即将结束
-            boolean percentCondition = pricePercent >= PRICE_TOTAL_UPPER_LIMIT;
+            // 交易时间段内，价格总增长幅度达到阈值，或者交易时间即将结束
             boolean totalCondition = totalPercent >= PRICE_TOTAL_UPPER_LIMIT;
-            boolean priceCondition = isDeadLine() || percentCondition || totalCondition;
+            boolean priceCondition = isDeadLine() || totalCondition;
             boolean incomeCondition = best.getSalePrice() - best.getBuyPrice() > 0.1;
             boolean saleCondition = incomeCondition && priceCondition;
             if (isMorning() ? saleCondition : priceCondition) {
