@@ -1,6 +1,7 @@
 package online.mwang.foundtrading.utils;
 
 import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONException;
 import com.alibaba.fastjson.JSONObject;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -36,27 +37,32 @@ public class RequestUtils {
 
     @SneakyThrows
     public JSONObject request(String url, HashMap<String, Object> formParam) {
-        CloseableHttpClient client = HttpClients.createDefault();
-        MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
-        formParam.forEach((k, v) -> entityBuilder.addTextBody(k, String.valueOf(v)));
-        HttpPost post = new HttpPost(url);
-        post.setEntity(entityBuilder.build());
-        CloseableHttpResponse response = client.execute(post);
-        String result = EntityUtils.toString(response.getEntity());
-        if (logs) log.info(result);
-        final JSONObject res = JSONObject.parseObject(result);
-        String code = res.getString("ERRORNO");
-        if ("-204007".equals(code) || "-204009".equals(code)) {
-            log.info("检测到无效token，尝试重新登录...");
-            final AllJobs job = applicationContext.getBean(AllJobs.class);
-            job.clearToken();
-            final String token = job.getToken();
-            if (token != null) {
-                formParam.put(AllJobs.TOKEN, job.getToken());
-                return request(url, formParam);
+        try {
+            CloseableHttpClient client = HttpClients.createDefault();
+            MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
+            formParam.forEach((k, v) -> entityBuilder.addTextBody(k, String.valueOf(v)));
+            HttpPost post = new HttpPost(url);
+            post.setEntity(entityBuilder.build());
+            CloseableHttpResponse response = client.execute(post);
+            String result = EntityUtils.toString(response.getEntity());
+            if (logs) log.info(result);
+            final JSONObject res = JSONObject.parseObject(result);
+            String code = res.getString("ERRORNO");
+            if ("-204007".equals(code) || "-204009".equals(code)) {
+                log.info("检测到无效token，尝试重新登录...");
+                final AllJobs job = applicationContext.getBean(AllJobs.class);
+                job.clearToken();
+                final String token = job.getToken();
+                if (token != null) {
+                    formParam.put(AllJobs.TOKEN, job.getToken());
+                    return request(url, formParam);
+                }
             }
+            return res;
+        } catch (JSONException e) {
+            log.error("请求数据异常，正在重新请求数据。");
+            return request(url, formParam);
         }
-        return res;
     }
 
     @SneakyThrows
