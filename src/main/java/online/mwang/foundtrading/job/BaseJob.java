@@ -50,6 +50,9 @@ public abstract class BaseJob implements InterruptableJob {
             run(runningId);
         } catch (BusinessException e) {
             log.info("任务终止成功!");
+        } catch (Exception e) {
+            log.info("任务执行异常,重新启动任务");
+            run(runningId);
         }
         deleteRunningId(runningId);
         setRunningStatus(jobName, "0");
