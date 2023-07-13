@@ -60,7 +60,7 @@ public class DevicePowerController {
 
 
     private String getV2(double v2) {
-        String res1 = "3.8KW";
+        String res1 = "H2";
         if (v2 < 8) {
             res1 = "H2";
         }
