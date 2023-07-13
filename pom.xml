@@ -19,6 +19,12 @@
     <dependencies>
 
         <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>easyexcel</artifactId>
+            <version>3.1.1</version>
+        </dependency>
+
+        <dependency>
             <groupId>com.baidu.aip</groupId>
             <artifactId>java-sdk</artifactId>
             <version>4.16.16</version>
@@ -30,11 +36,11 @@
             </exclusions>
         </dependency>
 
-<!--        <dependency>-->
-<!--            <groupId>net.sourceforge.tess4j</groupId>-->
-<!--            <artifactId>tess4j</artifactId>-->
-<!--            <version>4.5.4</version>-->
-<!--        </dependency>-->
+        <!--        <dependency>-->
+        <!--            <groupId>net.sourceforge.tess4j</groupId>-->
+        <!--            <artifactId>tess4j</artifactId>-->
+        <!--            <version>4.5.4</version>-->
+        <!--        </dependency>-->
 
         <dependency>
             <groupId>org.apache.httpcomponents.client5</groupId>
@@ -107,6 +113,11 @@
             <groupId>com.jcraft</groupId>
             <artifactId>jsch</artifactId>
             <version>0.1.54</version>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>easyexcel-core</artifactId>
+            <version>3.1.1</version>
         </dependency>
 
     </dependencies>

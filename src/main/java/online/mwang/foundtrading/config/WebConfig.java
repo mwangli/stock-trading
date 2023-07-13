@@ -19,7 +19,13 @@ public class WebConfig implements WebMvcConfigurer {
     private static final String[] IGNORE_URLS = new String[]{
             "/test",
             "/imageUpdate",
-            "/login/account"
+            "/login/account",
+            "/**/test",
+            "/**/**/swagger-ui.html",
+            "/swagger-resources/**",
+            "/webjars/**",
+            "/v2/**",
+            "/swagger-ui.html/**"
     };
 
     @Override
