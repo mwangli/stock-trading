@@ -21,20 +21,6 @@ import java.util.List;
 @RestController
 @Api(tags = "A-储能系统推荐")
 public class DevicePowerController {
-//
-//    @SneakyThrows
-//    @PostMapping("test")
-//    @ResponseBody
-//    private String readExcel(MultipartFile file) {
-//        final InputStream inputStream = file.getInputStream();
-//        EasyExcel.read(inputStream, DevicePower.class, new PageReadListener<DevicePower>(dataList -> {
-//            for (DevicePower demoData : dataList) {
-//                log.info("读取到一条数据{}", JSON.toJSONString(demoData));
-//            }
-//        })).sheet().doRead();
-//        return "success";
-//    }
-
 
     @ResponseBody
     @PostMapping("test")
