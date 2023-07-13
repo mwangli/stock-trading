@@ -20,7 +20,7 @@ public class WebConfig implements WebMvcConfigurer {
             "/test",
             "/imageUpdate",
             "/login/account",
-            "/**/test",
+            "/**/test**",
             "/**/**/swagger-ui.html",
             "/swagger-resources/**",
             "/webjars/**",
