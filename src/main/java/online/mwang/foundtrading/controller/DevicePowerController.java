@@ -1,18 +1,14 @@
 package online.mwang.foundtrading.controller;
 
-import com.alibaba.excel.EasyExcel;
-import com.alibaba.excel.read.listener.PageReadListener;
-import com.alibaba.fastjson.JSON;
-import lombok.SneakyThrows;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.po.DevicePower;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.InputStream;
 import java.util.List;
 
 /**
@@ -23,24 +19,26 @@ import java.util.List;
  */
 @Slf4j
 @RestController
+@Api(tags = "A-储能系统推荐")
 public class DevicePowerController {
+//
+//    @SneakyThrows
+//    @PostMapping("test")
+//    @ResponseBody
+//    private String readExcel(MultipartFile file) {
+//        final InputStream inputStream = file.getInputStream();
+//        EasyExcel.read(inputStream, DevicePower.class, new PageReadListener<DevicePower>(dataList -> {
+//            for (DevicePower demoData : dataList) {
+//                log.info("读取到一条数据{}", JSON.toJSONString(demoData));
+//            }
+//        })).sheet().doRead();
+//        return "success";
+//    }
 
-    @SneakyThrows
+
+    @ResponseBody
     @PostMapping("test")
-    @ResponseBody
-    private String readExcel(MultipartFile file) {
-        final InputStream inputStream = file.getInputStream();
-        EasyExcel.read(inputStream, DevicePower.class, new PageReadListener<DevicePower>(dataList -> {
-            for (DevicePower demoData : dataList) {
-                log.info("读取到一条数据{}", JSON.toJSONString(demoData));
-            }
-        })).sheet().doRead();
-        return "success";
-    }
-
-
-    @ResponseBody
-    @PostMapping("test2")
+    @ApiOperation("储能系统推荐接口")
     public String getValues(@RequestBody List<DevicePower> params) {
 //        final JSONArray power1List = params.getJSONArray("power1");
 //        final ArrayList<DevicePower> list = new ArrayList<>();
