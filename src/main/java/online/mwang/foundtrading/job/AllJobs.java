@@ -335,9 +335,9 @@ public class AllJobs {
                 log.info("更新账户可用资金失败,取消购买任务");
                 return;
             }
-            final Double totalAvailableAmount = accountInfo.getAvailableAmount();
-
-            final Double totalAmount = accountInfo.getTotalAmount();
+            final AccountInfo accountAmount = getAccountAmount(accountInfo);
+            final Double totalAvailableAmount = accountAmount.getAvailableAmount();
+            final Double totalAmount = accountAmount.getTotalAmount();
             final double maxAmount = totalAmount / MAX_HOLD_STOCKS;
             // 计算此次可用资金
             double availableAmount = totalAvailableAmount / needCount;
@@ -1313,5 +1313,13 @@ public class AllJobs {
             }
         }
         return dateMap;
+    }
+
+    public AccountInfo getAccountAmount(AccountInfo accountInfo) {
+        // 计算已用金额
+        double usedAmount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().mapToDouble(TradingRecord::getBuyAmount).sum();
+        accountInfo.setUsedAmount(usedAmount);
+        accountInfo.setTotalAmount(accountInfo.getAvailableAmount() + usedAmount);
+        return accountInfo;
     }
 }
