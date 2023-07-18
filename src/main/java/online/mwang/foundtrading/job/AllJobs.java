@@ -166,7 +166,7 @@ public class AllJobs {
 
     @SneakyThrows
     public String getCheckCodeFromMessage(String message) {
-        String code = "";
+        String code = "1234";
         try {
             code = ocrUtils.execute(message);
             log.info("识别到图片验证码:{}", code);
