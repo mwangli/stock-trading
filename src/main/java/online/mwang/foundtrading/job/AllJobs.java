@@ -293,10 +293,10 @@ public class AllJobs {
             lastPrice = nowPrice;
             // 3交易时间段内，总增长幅度达到阈值，或者交易时间即将结束
             boolean totalCondition = totalPercent <= 2 * PRICE_TOTAL_FALL_LIMIT;
-            boolean priceCondition = isDeadLine() || totalCondition;
-            if (priceCondition) {
+            if (isDeadLine() || totalCondition) {
                 if (isDeadLine()) log.info("今日交易时间即将结束，开始买入股票。");
-                else log.info("最佳买入股票[{}-{}],总增长幅度达到{}%,开始买入股票。", best.getCode(), best.getName(), 2 * PRICE_TOTAL_FALL_LIMIT);
+                else log.info("最佳买入股票[{}-{}],总增长幅度达到{}%,开始买入股票。",
+                        best.getCode(), best.getName(), 2 * PRICE_TOTAL_FALL_LIMIT);
                 best.setPrice(lastPrice);
                 return best;
             }
@@ -492,8 +492,8 @@ public class AllJobs {
             boolean saleCondition = incomeCondition && priceCondition;
             if (isMorning() ? saleCondition : priceCondition) {
                 if (isDeadLine()) log.info("今日交易时间即将结束，开始卖出股票。");
-                else log.info("最佳卖出股票[{}-{}],当前增长幅度达到{}%,或者总增长幅度达到{}%,开始卖出股票。",
-                        best.getCode(), best.getName(), PRICE_TOTAL_UPPER_LIMIT, PRICE_TOTAL_UPPER_LIMIT);
+                else log.info("最佳卖出股票[{}-{}],总增长幅度达到{}%,开始卖出股票。",
+                        best.getCode(), best.getName(), PRICE_TOTAL_UPPER_LIMIT);
                 return best;
             }
         }
