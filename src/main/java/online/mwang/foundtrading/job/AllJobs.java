@@ -57,8 +57,8 @@ public class AllJobs {
     private static final int BUY_RETRY_TIMES = 4;
     private static final int SOLD_RETRY_TIMES = 4;
     private static final int LOGIN_RETRY_TIMES = 10;
-    private static final double PRICE_TOTAL_FALL_LIMIT = -6.0;
-    private static final double PRICE_TOTAL_UPPER_LIMIT = 6.0;
+    private static final double PRICE_TOTAL_FALL_LIMIT = -5.0;
+    private static final double PRICE_TOTAL_UPPER_LIMIT = 5.0;
     private static final int BUY_RETRY_LIMIT = 20;
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int HISTORY_PRICE_LIMIT = 100;
@@ -292,12 +292,11 @@ public class AllJobs {
                     best.getCode(), best.getName(), lastPrice, nowPrice, String.format("%.4f", pricePercent), String.format("%.4f", totalPercent));
             lastPrice = nowPrice;
             // 3交易时间段内，总增长幅度达到阈值，或者交易时间即将结束
-            boolean totalCondition = totalPercent <= PRICE_TOTAL_FALL_LIMIT;
+            boolean totalCondition = totalPercent <= 2 * PRICE_TOTAL_FALL_LIMIT;
             boolean priceCondition = isDeadLine() || totalCondition;
             if (priceCondition) {
                 if (isDeadLine()) log.info("今日交易时间即将结束，开始买入股票。");
-                else log.info("最佳买入股票[{}-{}],当前增长幅度达到{}%,或者总增长幅度达到{}%,开始买入股票。",
-                        best.getCode(), best.getName(), PRICE_TOTAL_FALL_LIMIT, PRICE_TOTAL_FALL_LIMIT);
+                else log.info("最佳买入股票[{}-{}],总增长幅度达到{}%,开始买入股票。", best.getCode(), best.getName(), 2 * PRICE_TOTAL_FALL_LIMIT);
                 best.setPrice(lastPrice);
                 return best;
             }
