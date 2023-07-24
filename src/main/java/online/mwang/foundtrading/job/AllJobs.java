@@ -48,9 +48,9 @@ import java.util.stream.Collectors;
 public class AllJobs {
 
     public static final String TOKEN = "requestToken";
-    private static final int MAX_HOLD_NUMBER = 200;
+    private static final int MAX_HOLD_NUMBER = 100;
     private static final int MIN_HOLD_NUMBER = 100;
-    private static final int MAX_HOLD_STOCKS = 7;
+    private static final int MAX_HOLD_STOCKS = 10;
     private static final double HIGH_PRICE_PERCENT = 0.8;
     private static final double LOW_PRICE_PERCENT = 0.8;
     private static final double LOW_PRICE_LIMIT = 5.0;
