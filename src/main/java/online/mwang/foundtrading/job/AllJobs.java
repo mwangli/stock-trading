@@ -58,7 +58,7 @@ public class AllJobs {
     private static final int SOLD_RETRY_TIMES = 4;
     private static final int LOGIN_RETRY_TIMES = 10;
     private static final double PRICE_TOTAL_FALL_LIMIT = -5.0;
-    private static final double PRICE_TOTAL_UPPER_LIMIT = 5.0;
+    private static final double PRICE_TOTAL_UPPER_LIMIT = 6.0;
     private static final int BUY_RETRY_LIMIT = 20;
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int HISTORY_PRICE_LIMIT = 100;
