@@ -50,7 +50,7 @@ public class AllJobs {
     public static final String TOKEN = "requestToken";
     private static final int MAX_HOLD_NUMBER = 100;
     private static final int MIN_HOLD_NUMBER = 100;
-    private static final int MAX_HOLD_STOCKS = 10;
+    private static final int MAX_HOLD_STOCKS = 6;
     private static final double HIGH_PRICE_PERCENT = 0.8;
     private static final double LOW_PRICE_PERCENT = 0.8;
     private static final double LOW_PRICE_LIMIT = 5.0;
@@ -273,7 +273,7 @@ public class AllJobs {
     private Boolean checkBuyCode(String code) {
         // 检查今天是否有重复code,防止买入相同股票
         LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>()
-                .eq(TradingRecord::getSold, "0")
+//                .eq(TradingRecord::getSold, "0")
                 .eq(TradingRecord::getCode, code);
         List<TradingRecord> hasSold = tradingRecordService.list(queryWrapper);
         return CollectionUtils.isNotEmpty(hasSold);
@@ -364,7 +364,7 @@ public class AllJobs {
                 return;
             }
             // 在得分高的一组中随机选择一支买入
-            StockInfo best = limitList.get(new Random().nextInt(BUY_RETRY_LIMIT));
+            StockInfo best = limitList.get(Objects.hashCode(System.currentTimeMillis()) % BUY_RETRY_LIMIT);
             if (checkBuyCode(best.getCode())) {
                 log.info("当前股票[{}-{}]已经持有,尝试买入下一组股票", best.getCode(), best.getName());
                 continue;
