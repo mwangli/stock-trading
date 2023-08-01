@@ -3,15 +3,9 @@ spring:
     time-zone: GMT+8
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    hikari:
-      connection-timeout: 10000
-      idle-timeout: 60000
-      max-lifetime: 60000
-      maximum-pool-size: 10
-      minimum-idle: 5
+    username: root
     password: ${MYSQL_PASS}
     url: jdbc:mysql://${MYSQL_HOST}/found_trading?characterEncoding=utf-8&useSSL=false
-    username: root
   mvc:
     pathmatch:
       matching-strategy: ANT_PATH_MATCHER
@@ -29,6 +23,3 @@ spring:
         #最小空闲
         min-idle: 0
         #连接超时时间
-
-
-
