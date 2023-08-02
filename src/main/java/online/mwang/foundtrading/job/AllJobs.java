@@ -364,7 +364,7 @@ public class AllJobs {
                 return;
             }
             // 在得分高的一组中随机选择一支买入
-            StockInfo best = limitList.get(Objects.hashCode(System.currentTimeMillis()) % BUY_RETRY_LIMIT);
+            StockInfo best = limitList.get(Math.abs(Objects.hashCode(System.currentTimeMillis()) % BUY_RETRY_LIMIT));
             if (checkBuyCode(best.getCode())) {
                 log.info("当前股票[{}-{}]已经持有,尝试买入下一组股票", best.getCode(), best.getName());
                 continue;
