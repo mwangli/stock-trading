@@ -79,8 +79,8 @@ public class AllJobs {
     private final ScoreStrategyMapper strategyMapper;
     private final SleepUtils sleepUtils;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
-    public boolean enableSaleWaiting = true;
-    public boolean enableBuyWaiting = true;
+    public boolean enableSaleWaiting = false;
+    public boolean enableBuyWaiting = false;
 
     public static HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
         if (paramMap == null) return new HashMap<>();
@@ -357,8 +357,9 @@ public class AllJobs {
                     .ge(StockInfo::getPrice, lowPrice).le(StockInfo::getPrice, highPrice)
                     .orderByDesc(StockInfo::getScore);
             final Page<StockInfo> page = new Page<>(time, BUY_RETRY_LIMIT);
-            final Page<StockInfo> pageResult = stockInfoMapper.selectPage(page, queryWrapper);
-            final List<StockInfo> limitList = pageResult.getRecords();
+//            final Page<StockInfo> pageResult = stockInfoMapper.selectPage(page, queryWrapper);
+//            final List<StockInfo> limitList = pageResult.getRecords();
+            final List<StockInfo> limitList = stockInfoMapper.selectList (queryWrapper);
             if (limitList.size() < BUY_RETRY_LIMIT) {
                 log.info("可买入股票数量不足{},取消购买任务！", BUY_RETRY_LIMIT);
                 return;
