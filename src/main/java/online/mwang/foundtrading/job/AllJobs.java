@@ -359,7 +359,7 @@ public class AllJobs {
             final Page<StockInfo> page = new Page<>(time, BUY_RETRY_LIMIT);
 //            final Page<StockInfo> pageResult = stockInfoMapper.selectPage(page, queryWrapper);
 //            final List<StockInfo> limitList = pageResult.getRecords();
-            final List<StockInfo> limitList = stockInfoMapper.selectList (queryWrapper);
+            final List<StockInfo> limitList = stockInfoMapper.selectList(queryWrapper);
             if (limitList.size() < BUY_RETRY_LIMIT) {
                 log.info("可买入股票数量不足{},取消购买任务！", BUY_RETRY_LIMIT);
                 return;
@@ -728,7 +728,8 @@ public class AllJobs {
 
     public String queryOrderStatus(String answerNo) {
         List<OrderStatus> orderInfos = listTodayOrder();
-        log.info("查询到订单状态信息:{}", orderInfos);
+        log.info("查询到订单状态信息:");
+        orderInfos.forEach(o -> log.info("{}-{}:{}", o.getCode(), o.getName(), o.getStatus()));
         Optional<OrderStatus> status = orderInfos.stream().filter(o -> o.getAnswerNo().equals(answerNo)).findFirst();
         if (status.isEmpty()) {
             log.info("未查询到合同编号为{}的订单交易状态！", answerNo);
