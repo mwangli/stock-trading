@@ -6,7 +6,6 @@ import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -304,10 +303,6 @@ public class AllJobs {
         return null;
     }
 
-    public boolean checkRunningId(String runningId) {
-        return redisTemplate.opsForValue().get(runningId) != null;
-    }
-
     public void buy(String runningId) {
         int time = 0;
         while (time++ < BUY_RETRY_TIMES) {
@@ -350,22 +345,29 @@ public class AllJobs {
                 return;
             }
             //  更新实时价格
-            updateNowPrice();
+//            updateNowPrice();
+            final List<StockInfo> dataList = getDataList();
             // 选择有交易权限合适价格区间的数据,按评分排序分组
-            final LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>()
-                    .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1")
-                    .ge(StockInfo::getPrice, lowPrice).le(StockInfo::getPrice, highPrice)
-                    .orderByDesc(StockInfo::getScore);
-            final Page<StockInfo> page = new Page<>(time, BUY_RETRY_LIMIT);
+//            final LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>()
+//                    .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1")
+//                    .ge(StockInfo::getPrice, lowPrice).le(StockInfo::getPrice, highPrice)
+//                    .orderByDesc(StockInfo::getScore);
+//            final Page<StockInfo> page = new Page<>(time, BUY_RETRY_LIMIT);
 //            final Page<StockInfo> pageResult = stockInfoMapper.selectPage(page, queryWrapper);
 //            final List<StockInfo> limitList = pageResult.getRecords();
-            final List<StockInfo> limitList = stockInfoMapper.selectList(queryWrapper);
+//            final List<StockInfo> limitList = stockInfoMapper.selectList(queryWrapper);
+            final List<StockInfo> limitList = dataList.stream()
+                    .filter(s -> "1".equals(s.getDeleted()))
+                    .filter(s -> "1".equals(s.getPermission()))
+                    .filter(s -> s.getPrice() >= lowPrice)
+                    .filter(s -> s.getPrice() <= highPrice)
+                    .collect(Collectors.toList());
             if (limitList.size() < BUY_RETRY_LIMIT) {
                 log.info("可买入股票数量不足{},取消购买任务！", BUY_RETRY_LIMIT);
                 return;
             }
             // 在得分高的一组中随机选择一支买入
-            StockInfo best = limitList.get(Math.abs(Objects.hashCode(System.currentTimeMillis()) % BUY_RETRY_LIMIT));
+            StockInfo best = limitList.get(Math.abs(Objects.hashCode(System.currentTimeMillis()) % limitList.size()));
             if (checkBuyCode(best.getCode())) {
                 log.info("当前股票[{}-{}]已经持有,尝试买入下一组股票", best.getCode(), best.getName());
                 continue;
