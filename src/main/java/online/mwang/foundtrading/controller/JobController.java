@@ -84,9 +84,9 @@ public class JobController {
         // 取消交易等待
         String enableWaiting = job.getEnableWaiting();
         if (StringUtils.isNotBlank(enableWaiting)) {
-            jobs.enableSaleWaiting = "enable".equals(enableWaiting);
             jobs.enableBuyWaiting = "enable".equals(enableWaiting);
-            log.info("交易等待{}成功！", jobs.enableBuyWaiting ? "启用" : "取消");
+            jobs.enableSaleWaiting = "enable".equals(enableWaiting);
+            log.info("买入交易等待{}成功,卖出交易等待{}成功!", jobs.enableBuyWaiting ? "启用" : "取消", jobs.enableSaleWaiting ? "启用" : "取消");
         }
         // 是否打开接口日志
         String logSwitch = job.getLogSwitch();
