@@ -30,13 +30,19 @@ public class RequestUtils {
 
     private static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
 
+    private static final int RETRY_TIMES = 10;
+
     @Resource
     ApplicationContext applicationContext;
 
     public boolean logs = false;
 
     @SneakyThrows
-    public JSONObject request(String url, HashMap<String, Object> formParam) {
+    public JSONObject request(String url, HashMap<String, Object> formParam, int times) {
+        if (times > RETRY_TIMES) {
+            log.error("请求错误次数过多,请检查程序代码!");
+            return new JSONObject();
+        }
         try {
             CloseableHttpClient client = HttpClients.createDefault();
             MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
@@ -55,31 +61,31 @@ public class RequestUtils {
                 final String token = job.getToken();
                 if (token != null) {
                     formParam.put(AllJobs.TOKEN, job.getToken());
-                    return request(url, formParam);
+                    return request(url, formParam, ++times);
                 }
             }
             return res;
         } catch (JSONException e) {
             log.error("请求数据异常，正在重新请求数据。");
-            return request(url, formParam);
+            return request(url, formParam, ++times);
         }
     }
 
     @SneakyThrows
     public JSONObject request(HashMap<String, Object> formParam) {
-        return request(REQUEST_URL, formParam);
+        return request(REQUEST_URL, formParam, 0);
     }
 
 
     @SneakyThrows
     public JSONArray request2(HashMap<String, Object> formParam) {
-        JSONObject res = request(REQUEST_URL, formParam);
+        JSONObject res = request(REQUEST_URL, formParam, 0);
         return res.getJSONArray("GRID0");
     }
 
     @SneakyThrows
     public JSONArray request3(HashMap<String, Object> formParam) {
-        JSONObject res = request(REQUEST_URL.concat("?action=1230"), formParam);
+        JSONObject res = request(REQUEST_URL.concat("?action=1230"), formParam, 0);
         final JSONObject data = res.getJSONObject("BINDATA");
         if (data != null && data.getJSONArray("results") != null) {
             return data.getJSONArray("results");
