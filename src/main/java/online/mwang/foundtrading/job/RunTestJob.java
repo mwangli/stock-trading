@@ -16,14 +16,15 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class RunTestJob extends BaseJob {
 
+    private final SleepUtils sleepUtils;
     private static final int TRY_TIMES = 100;
 
     @Override
-    public void run() {
+    public void run(String runningId) {
         int times = 0;
         while (times++ < TRY_TIMES) {
-            SleepUtils.second(1);
             log.info("执行测试任务......");
+            sleepUtils.second(1, runningId);
         }
     }
 }

@@ -18,7 +18,7 @@ public class RunBuyJob extends BaseJob {
     private final AllJobs jobs;
 
     @Override
-    public void run() {
-       jobs.runBuyJob();
+    public void run(String runningId) {
+        jobs.runBuyJob(runningId);
     }
 }

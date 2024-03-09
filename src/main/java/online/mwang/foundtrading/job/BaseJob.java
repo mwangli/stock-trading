@@ -5,12 +5,14 @@ import lombok.extern.slf4j.Slf4j;
 import online.mwang.foundtrading.bean.base.BusinessException;
 import online.mwang.foundtrading.bean.po.QuartzJob;
 import online.mwang.foundtrading.mapper.QuartzJobMapper;
-import online.mwang.foundtrading.utils.SleepUtils;
 import org.quartz.InterruptableJob;
 import org.quartz.JobExecutionContext;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @version 1.0.0
@@ -25,30 +27,40 @@ public abstract class BaseJob implements InterruptableJob {
     @Resource
     private QuartzJobMapper jobMapper;
 
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    private String runningId;
+
     /**
-     * 任务执行方法
+     * 任务运行方法
+     *
+     * @param runningId 任务运行ID
      */
-    abstract void run();
+    abstract void run(String runningId);
 
     @Override
     public void execute(JobExecutionContext jobExecutionContext) {
+        final long start = System.currentTimeMillis();
         final String jobName = jobExecutionContext.getJobDetail().getKey().getName();
         setRunningStatus(jobName, "1");
-        final long start = System.currentTimeMillis();
+        this.runningId = UUID.randomUUID().toString();
+        setRunningId(runningId);
         try {
-            run();
+            run(runningId);
         } catch (BusinessException e) {
             log.info("任务终止成功!");
         }
-        final long end = System.currentTimeMillis();
+        deleteRunningId(runningId);
         setRunningStatus(jobName, "0");
+        final long end = System.currentTimeMillis();
         log.info("任务执行耗时{}秒。", (end - start) / 1000);
     }
 
     @Override
     public void interrupt() {
         log.info("正在终止任务...");
-        SleepUtils.interrupted = true;
+        deleteRunningId(runningId);
     }
 
     private void setRunningStatus(String jobName, String running) {
@@ -56,5 +68,13 @@ public abstract class BaseJob implements InterruptableJob {
         final QuartzJob quartzJob = jobMapper.selectOne(queryWrapper);
         quartzJob.setRunning(running);
         jobMapper.updateById(quartzJob);
+    }
+
+    private void setRunningId(String runningId) {
+        stringRedisTemplate.opsForValue().set(runningId, "", 2, TimeUnit.HOURS);
+    }
+
+    private void deleteRunningId(String runningId) {
+        stringRedisTemplate.opsForValue().getAndDelete(runningId);
     }
 }

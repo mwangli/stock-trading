@@ -6,7 +6,6 @@ import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -48,18 +47,18 @@ import java.util.stream.Collectors;
 public class AllJobs {
 
     public static final String TOKEN = "requestToken";
-    private static final int MAX_HOLD_NUMBER = 200;
+    private static final int MAX_HOLD_NUMBER = 100;
     private static final int MIN_HOLD_NUMBER = 100;
-    private static final int MAX_HOLD_STOCKS = 7;
-    private static final double HIGH_PRICE_PERCENT = 0.9;
-    private static final double LOW_PRICE_PERCENT = 0.85;
+    private static final int MAX_HOLD_STOCKS = 6;
+    private static final double HIGH_PRICE_PERCENT = 0.8;
+    private static final double LOW_PRICE_PERCENT = 0.8;
     private static final double LOW_PRICE_LIMIT = 5.0;
     private static final int BUY_RETRY_TIMES = 4;
     private static final int SOLD_RETRY_TIMES = 4;
     private static final int LOGIN_RETRY_TIMES = 10;
     private static final double PRICE_TOTAL_FALL_LIMIT = -5.0;
     private static final double PRICE_TOTAL_UPPER_LIMIT = 5.0;
-    private static final int BUY_RETRY_LIMIT = 20;
+    private static final int BUY_RETRY_LIMIT = 100;
     private static final int WAIT_TIME_SECONDS = 10;
     private static final int HISTORY_PRICE_LIMIT = 100;
     private static final int UPDATE_BATCH_SIZE = 500;
@@ -77,6 +76,7 @@ public class AllJobs {
     private final StringRedisTemplate redisTemplate;
     private final StockInfoMapper stockInfoMapper;
     private final ScoreStrategyMapper strategyMapper;
+    private final SleepUtils sleepUtils;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
     public boolean enableSaleWaiting = true;
     public boolean enableBuyWaiting = true;
@@ -93,17 +93,17 @@ public class AllJobs {
 
     // 交易日开盘时间买入 9:30
 //    @Scheduled(cron = "0 0,15,30 9 ? * MON-FRI")
-    public void runBuyJob() {
+    public void runBuyJob(String runningId) {
         log.info("开始执行买入任务====================================");
-        buy();
+        buy(runningId);
         log.info("买入任务执行完毕====================================");
     }
 
     // 交易日收盘时间卖出 14:30
 //    @Scheduled(cron = "0 0 10,11,14 ? * MON-FRI")
-    public void runSaleJob() {
+    public void runSaleJob(String runningId) {
         log.info("开始执行卖出任务====================================");
-        sale();
+        sale(runningId);
         log.info("卖出任务执行完毕====================================");
     }
 
@@ -165,8 +165,13 @@ public class AllJobs {
 
     @SneakyThrows
     public String getCheckCodeFromMessage(String message) {
-        String code = ocrUtils.execute(message);
-        log.info("识别到图片验证码:{}", code);
+        String code = "1234";
+        try {
+            code = ocrUtils.execute(message);
+            log.info("识别到图片验证码:{}", code);
+        } catch (Exception e) {
+            log.error("验证码识别异常!");
+        }
         return code;
     }
 
@@ -267,17 +272,17 @@ public class AllJobs {
     private Boolean checkBuyCode(String code) {
         // 检查今天是否有重复code,防止买入相同股票
         LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>()
-                .eq(TradingRecord::getSold, "0")
+//                .eq(TradingRecord::getSold, "0")
                 .eq(TradingRecord::getCode, code);
         List<TradingRecord> hasSold = tradingRecordService.list(queryWrapper);
         return CollectionUtils.isNotEmpty(hasSold);
     }
 
-    private StockInfo waitingBestPrice(StockInfo best) {
+    private StockInfo waitingBestPrice(StockInfo best, String runningId) {
         double lastPrice = getLastPrice(best.getCode());
         double totalPercent = 0.0;
         while (inTradingTimes()) {
-            SleepUtils.minutes(1);
+            sleepUtils.minutes(1, runningId);
             Double nowPrice = getLastPrice(best.getCode());
             final double price = nowPrice - lastPrice;
             final double pricePercent = price * 100 / nowPrice;
@@ -285,14 +290,12 @@ public class AllJobs {
             log.info("最佳买入股票[{}-{}],上次价格:{},当前价格:{},当前增长幅度:{}%,总增长幅度:{}%,等待最佳买入时机...",
                     best.getCode(), best.getName(), lastPrice, nowPrice, String.format("%.4f", pricePercent), String.format("%.4f", totalPercent));
             lastPrice = nowPrice;
-            // 30分钟内，某次增长幅度达到阈值，或者总增长幅度达到阈值，或者交易时间即将结束
-            boolean percentCondition = pricePercent <= PRICE_TOTAL_FALL_LIMIT;
+            // 3交易时间段内，总增长幅度达到阈值，或者交易时间即将结束
             boolean totalCondition = totalPercent <= PRICE_TOTAL_FALL_LIMIT;
-            boolean priceCondition = isDeadLine() || percentCondition || totalCondition;
-            if (priceCondition) {
+            if (isDeadLine() || totalCondition) {
                 if (isDeadLine()) log.info("今日交易时间即将结束，开始买入股票。");
-                else log.info("最佳买入股票[{}-{}],当前增长幅度达到{}%,或者总增长幅度达到{}%,开始买入股票。",
-                        best.getCode(), best.getName(), PRICE_TOTAL_FALL_LIMIT, PRICE_TOTAL_FALL_LIMIT);
+                else log.info("最佳买入股票[{}-{}],总增长幅度达到{}%,开始买入股票。",
+                        best.getCode(), best.getName(), PRICE_TOTAL_FALL_LIMIT);
                 best.setPrice(lastPrice);
                 return best;
             }
@@ -300,7 +303,7 @@ public class AllJobs {
         return null;
     }
 
-    public void buy() {
+    public void buy(String runningId) {
         int time = 0;
         while (time++ < BUY_RETRY_TIMES) {
             log.info("第{}次尝试买入股票---------", time);
@@ -326,8 +329,9 @@ public class AllJobs {
                 log.info("更新账户可用资金失败,取消购买任务");
                 return;
             }
-            final Double totalAvailableAmount = accountInfo.getAvailableAmount();
-            final Double totalAmount = accountInfo.getTotalAmount();
+            final AccountInfo accountAmount = getAccountAmount(accountInfo);
+            final Double totalAvailableAmount = accountAmount.getAvailableAmount();
+            final Double totalAmount = accountAmount.getTotalAmount();
             final double maxAmount = totalAmount / MAX_HOLD_STOCKS;
             // 计算此次可用资金
             double availableAmount = totalAvailableAmount / needCount;
@@ -347,15 +351,16 @@ public class AllJobs {
                     .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1")
                     .ge(StockInfo::getPrice, lowPrice).le(StockInfo::getPrice, highPrice)
                     .orderByDesc(StockInfo::getScore);
-            final Page<StockInfo> page = new Page<>(time, BUY_RETRY_LIMIT);
-            final Page<StockInfo> pageResult = stockInfoMapper.selectPage(page, queryWrapper);
-            final List<StockInfo> limitList = pageResult.getRecords();
+//            final Page<StockInfo> page = new Page<>(time, BUY_RETRY_LIMIT);
+//            final Page<StockInfo> pageResult = stockInfoMapper.selectPage(page, queryWrapper);
+//            final List<StockInfo> limitList = pageResult.getRecords();
+            final List<StockInfo> limitList = stockInfoMapper.selectList(queryWrapper);
             if (limitList.size() < BUY_RETRY_LIMIT) {
                 log.info("可买入股票数量不足{},取消购买任务！", BUY_RETRY_LIMIT);
                 return;
             }
-            // 在得分高的一组中随机选择一支买入
-            StockInfo best = limitList.get(new Random().nextInt(BUY_RETRY_LIMIT));
+            // 随机选择一支买入
+            StockInfo best = limitList.get(Math.abs(Objects.hashCode(System.currentTimeMillis()) % limitList.size()));
             if (checkBuyCode(best.getCode())) {
                 log.info("当前股票[{}-{}]已经持有,尝试买入下一组股票", best.getCode(), best.getName());
                 continue;
@@ -363,7 +368,7 @@ public class AllJobs {
             log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore());
             // 等待最佳买入时机
             if (enableBuyWaiting) {
-                best = waitingBestPrice(best);
+                best = waitingBestPrice(best, runningId);
                 if (best == null) {
                     log.info("不在交易时间段内，取消买入任务！");
                     return;
@@ -454,10 +459,10 @@ public class AllJobs {
         return best;
     }
 
-    private TradingRecord waitingBestRecord(TradingRecord best) {
+    private TradingRecord waitingBestRecord(TradingRecord best, String runningId) {
         double totalPercent = 0.0;
         while (inTradingTimes()) {
-            SleepUtils.minutes(1);
+            sleepUtils.minutes(1, runningId);
             TradingRecord bestRecord = getBestRecord();
             if (bestRecord == null) {
                 log.info("最佳卖出股票获取异常");
@@ -476,23 +481,22 @@ public class AllJobs {
             best = bestRecord;
             log.info("最佳卖出股票[{}-{}],买入价格:{},上次价格:{},当前价格:{},当前增长幅度:{}%,总增长幅度:{}%,等待最佳卖出时机...",
                     best.getCode(), best.getName(), best.getBuyPrice(), lastPrice, best.getSalePrice(), String.format("%.4f", pricePercent), String.format("%.4f", totalPercent));
-            // 30分钟内，某次增长幅度达到阈值，或者总增长幅度达到阈值，或者交易时间即将结束
-            boolean percentCondition = pricePercent >= PRICE_TOTAL_UPPER_LIMIT;
+            // 交易时间段内，价格总增长幅度达到阈值，或者交易时间即将结束
             boolean totalCondition = totalPercent >= PRICE_TOTAL_UPPER_LIMIT;
-            boolean priceCondition = isDeadLine() || percentCondition || totalCondition;
+            boolean priceCondition = isDeadLine() || totalCondition;
             boolean incomeCondition = best.getSalePrice() - best.getBuyPrice() > 0.1;
             boolean saleCondition = incomeCondition && priceCondition;
             if (isMorning() ? saleCondition : priceCondition) {
                 if (isDeadLine()) log.info("今日交易时间即将结束，开始卖出股票。");
-                else log.info("最佳卖出股票[{}-{}],当前增长幅度达到{}%,或者总增长幅度达到{}%,开始卖出股票。",
-                        best.getCode(), best.getName(), PRICE_TOTAL_UPPER_LIMIT, PRICE_TOTAL_UPPER_LIMIT);
+                else log.info("最佳卖出股票[{}-{}],总增长幅度达到{}%,开始卖出股票。",
+                        best.getCode(), best.getName(), PRICE_TOTAL_UPPER_LIMIT);
                 return best;
             }
         }
         return null;
     }
 
-    public void sale() {
+    public void sale(String runningId) {
         int time = 0;
         while (time++ < SOLD_RETRY_TIMES) {
             log.info("第{}次尝试卖出股票---------", time);
@@ -514,7 +518,7 @@ public class AllJobs {
             log.info("最佳卖出股票[{}-{}],买入价格:{},当前价格:{},预期收益:{},日收益率:{}", best.getCode(), best.getName(), best.getBuyPrice(), best.getSalePrice(), best.getIncome(), String.format("%.4f", best.getDailyIncomeRate()));
             // 等待最佳卖出时机
             if (enableSaleWaiting) {
-                best = waitingBestRecord(best);
+                best = waitingBestRecord(best, runningId);
                 if (best == null) {
                     log.info("不在交易时间段内，取消卖出任务！");
                     return;
@@ -719,7 +723,8 @@ public class AllJobs {
 
     public String queryOrderStatus(String answerNo) {
         List<OrderStatus> orderInfos = listTodayOrder();
-        log.info("查询到订单状态信息:{}", orderInfos);
+        log.info("查询到订单状态信息:");
+        orderInfos.forEach(o -> log.info("{}-{}:{}", o.getCode(), o.getName(), o.getStatus()));
         Optional<OrderStatus> status = orderInfos.stream().filter(o -> o.getAnswerNo().equals(answerNo)).findFirst();
         if (status.isEmpty()) {
             log.info("未查询到合同编号为{}的订单交易状态！", answerNo);
@@ -731,7 +736,7 @@ public class AllJobs {
     public Boolean waitOrderStatus() {
         int times = 0;
         while (times++ < CANCEL_WAIT_TIMES) {
-            SleepUtils.second(WAIT_TIME_SECONDS);
+            sleepUtils.second(WAIT_TIME_SECONDS);
             List<OrderStatus> todayOrders = listTodayOrder();
 //            List<OrderStatus> historyOrders = listHistoryOrder();
 //            todayOrders.addAll(historyOrders);
@@ -750,7 +755,7 @@ public class AllJobs {
     public Boolean waitOrderStatus(String answerNo) {
         int times = 0;
         while (times++ < CANCEL_WAIT_TIMES) {
-            SleepUtils.second(WAIT_TIME_SECONDS);
+            sleepUtils.second(WAIT_TIME_SECONDS);
             final String status = queryOrderStatus(answerNo);
             if (status == null) {
                 log.info("当前合同编号:{},订单状态查询失败。", answerNo);
@@ -1304,5 +1309,13 @@ public class AllJobs {
             }
         }
         return dateMap;
+    }
+
+    public AccountInfo getAccountAmount(AccountInfo accountInfo) {
+        // 计算已用金额
+        double usedAmount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().mapToDouble(TradingRecord::getBuyAmount).sum();
+        accountInfo.setUsedAmount(usedAmount);
+        accountInfo.setTotalAmount(accountInfo.getAvailableAmount() + usedAmount);
+        return accountInfo;
     }
 }
