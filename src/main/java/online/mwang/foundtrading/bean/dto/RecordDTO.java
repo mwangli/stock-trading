@@ -1,5 +1,6 @@
 package online.mwang.foundtrading.bean.dto;
 
+import com.alibaba.excel.annotation.ExcelIgnore;
 import com.alibaba.excel.annotation.ExcelProperty;
 import com.alibaba.excel.annotation.write.style.ColumnWidth;
 import lombok.Data;
@@ -10,6 +11,7 @@ import lombok.ToString;
 @ColumnWidth(40)
 public class RecordDTO {
 
+    @ExcelIgnore
     @ExcelProperty("年份")
     private String year;
     @ExcelProperty("月份")
