@@ -3,26 +3,26 @@ apiVersion: apps/v1
 #kind: StatefulSet
 kind: Deployment
 metadata:
-  name: found-front
+  name: stock-front
   labels:
-    app: found-front
+    app: stock-front
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: found-front
-  # serviceName: found-front
+      app: stock-front
+  # serviceName: stock-front
   template:
     metadata:
       labels:
-        app: found-front
+        app: stock-front
     spec:
       imagePullSecrets:
       - name: registry-secret
       containers:
-      - image: registry.cn-shenzhen.aliyuncs.com/mwangli/found-front
+      - image: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-front
         imagePullPolicy: Always
-        name: found-front
+        name: stock-front
         env:
         - name: TZ
           value: Asia/Shanghai
@@ -79,13 +79,13 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: found-front-svc
+  name: stock-front-svc
   labels:
-    app: found-front
+    app: stock-front
 spec:
   type: NodePort
   selector:
-    app: found-front
+    app: stock-front
   ports:
   - port: 80
     protocol: TCP
