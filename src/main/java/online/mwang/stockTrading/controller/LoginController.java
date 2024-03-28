@@ -60,6 +60,15 @@ public class LoginController {
             stringRedisTemplate.opsForValue().set(token, JSON.toJSONString(user), TOKEN_EXPIRE_HOURS, TimeUnit.HOURS);
             return Response.success(token);
         }
+        if ("guest".equals(param.getUsername())){
+            final String token = generateToken();
+            JSONObject user = new JSONObject();
+            user.put("name", "guest");
+            user.put("avatar", "https://gw.alipayobjects.com/zos/antfincdn/XAosXuNZyF/BiazfanxmamNRoxxVxka.png");
+            user.put("access", "guest");
+            stringRedisTemplate.opsForValue().set(token, JSON.toJSONString(user), TOKEN_EXPIRE_HOURS, TimeUnit.HOURS);
+            return Response.success(token);
+        }
         if  ( USERNAME.equalsIgnoreCase(param.getUsername()) && reverseDate.equals(param.getPassword())) {
             final String token = generateToken();
             JSONObject user = new JSONObject();
