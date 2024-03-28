@@ -14,7 +14,7 @@ jobs:
       # 构建镜像
       - name: docker-build
         env:
-          APP: found-trading
+          APP: stock-trading
           REGISTER: registry.cn-shenzhen.aliyuncs.com
           NS: mwangli
           USER: limingwang06
@@ -30,6 +30,6 @@ jobs:
           host: 124.220.36.95
           user: root
           pass: ${{ secrets.PASS }}
-          run: kubectl rollout restart deploy found-trading
+          run: kubectl rollout restart deploy stock-trading
 
 
