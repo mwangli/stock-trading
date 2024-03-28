@@ -2,26 +2,26 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: found-trading
+  name: stock-trading
   labels:
-    app: found-trading
+    app: stock-trading
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: found-trading
-  # serviceName: found-trading
+      app: stock-trading
+  # serviceName: stock-trading
   template:
     metadata:
       labels:
-        app: found-trading
+        app: stock-trading
     spec:
       imagePullSecrets:
       - name: registry-secret
       containers:
-      - image: registry.cn-shenzhen.aliyuncs.com/mwangli/found-trading
+      - image: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-trading
         imagePullPolicy: Always
-        name: found-trading
+        name: stock-trading
         #livenessProbe:
            #initialDelaySeconds: 10
            #periodSeconds: 3
@@ -52,13 +52,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: found-trading-svc
+  name: stock-trading-svc
   labels:
-    app: found-trading
+    app: stock-trading
 spec:
   type: NodePort
   selector:
-    app: found-trading
+    app: stock-trading
   ports:
   - port: 8080
     protocol: TCP
