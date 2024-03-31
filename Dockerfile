@@ -1,4 +1,4 @@
-FROM openjdk:11-jdk-slim
+FROM java:11
 
 LABEL maintainer=mwangli
 
