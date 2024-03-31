@@ -56,6 +56,7 @@ public class OCRController {
     @SneakyThrows
     @GetMapping("/downloadExcel")
     public void downloadExcel(HttpServletResponse response) {
+        log.info("开始下载文件~~~~");
         int[] mergeColumnIndex = {0, 1};
         // 需要从第几行开始合并
         int mergeRowIndex = 1;
