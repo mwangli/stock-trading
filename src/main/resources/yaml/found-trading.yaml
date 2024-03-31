@@ -45,6 +45,8 @@ spec:
           value: mysql-svc:3306
         - name: MYSQL_PASS
           value: Root.123456
+        - name: PROFILE
+          value: prod
         ports:
         - containerPort: 8080
 ---
