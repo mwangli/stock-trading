@@ -64,16 +64,15 @@ data:
         try_files $uri $uri/ /index.html;
     } 
     location /api  {
-        proxy_pass http://found-trading-svc:8080/;
+        proxy_pass http://stock-trading-svc:8080/;
     }
-
-   #lacation /ws  {
-   #   proxy_pass http://found-trading-svc:8080; 
-   #   proxy_http_version 1.1;
-   #   proxy_set_header Upgrade $http_upgrade;
-   #   proxy_set_header Connection "upgrade";
-   # }
-   }
+    # 解决nginx文件上传405问题
+    location /api/ocr/uploadImage {
+                proxy_method POST;
+                proxy_pass   ttp://stock-trading-svc:8080$request_uri;
+                proxy_set_header user_token $http_user_token;
+        }
+    }
 ---
 # 声明Service服务
 apiVersion: v1
