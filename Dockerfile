@@ -4,4 +4,4 @@ LABEL maintainer=mwangli
 
 COPY target/*.jar app.jar
 
-ENTRYPOINT ["java","-jar","app.jar"]
+ENTRYPOINT ["java","-Djava.awt.headless=true", "-jar","app.jar"]
