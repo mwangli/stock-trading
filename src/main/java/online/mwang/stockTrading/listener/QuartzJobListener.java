@@ -32,6 +32,7 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
         final LambdaQueryWrapper<QuartzJob> queryWrapper = new LambdaQueryWrapper<QuartzJob>().eq(QuartzJob::getDeleted, "1");
         List<QuartzJob> jobs = jobMapper.selectList(queryWrapper);
         for (QuartzJob job : jobs) {
+            if (job.getStatus().equals("0")) continue;
             try {
                 JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName()).build();
                 CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
@@ -51,7 +52,7 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
             } catch (Exception e) {
                 log.info("定时任务{}加载异常:{}", job.getName(), e.getMessage());
             }
+            log.info("Quartz定时任务加载完成。");
         }
-        log.info("Quartz定时任务加载完成。");
     }
 }
