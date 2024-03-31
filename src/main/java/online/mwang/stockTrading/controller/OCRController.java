@@ -30,6 +30,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class OCRController {
 
+    static{
+        System.setProperty("java.awt.headless", "true");
+    }
+
     private static final Map<Long, List<String>> wordsMap = new HashMap<>();
     private final List<String> ignoreWords = Arrays.asList("按金额", "筛选", "余额", "储蓄卡", ":", "收支", "十", "明细", "借记卡", "账本", "借记卡3862",
             "其他消费", "交通出行", "卡号", "津贴", "备注", "明细", "分析", "借记卡", "l令", ":", "记一笔","结余");
