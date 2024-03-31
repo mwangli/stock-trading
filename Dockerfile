@@ -1,4 +1,4 @@
-FROM java11-alpine
+FROM docker.io/lpicanco/java11-alpine
 
 LABEL maintainer=mwangli
 
