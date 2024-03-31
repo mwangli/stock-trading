@@ -51,12 +51,12 @@ public class LoginController {
         log.info("username is {}, password is {}", param.getUsername(), param.getPassword());
         final String monthDate = new SimpleDateFormat(SDF).format(new Date());
         final String reverseDate = new StringBuilder(monthDate).reverse().toString();
-        if ("demo".equals(param.getUsername())){
+        if ("test".equals(param.getUsername())){
             final String token = generateToken();
             JSONObject user = new JSONObject();
-            user.put("name", "demo");
+            user.put("name", "test");
             user.put("avatar", "https://gw.alipayobjects.com/zos/antfincdn/XAosXuNZyF/BiazfanxmamNRoxxVxka.png");
-            user.put("access", "demo");
+            user.put("access", "test");
             stringRedisTemplate.opsForValue().set(token, JSON.toJSONString(user), TOKEN_EXPIRE_HOURS, TimeUnit.HOURS);
             return Response.success(token);
         }
