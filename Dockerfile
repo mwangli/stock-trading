@@ -1,4 +1,4 @@
-FROM java:11
+FROM java11-alpine
 
 LABEL maintainer=mwangli
 
