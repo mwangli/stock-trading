@@ -66,7 +66,7 @@ public class OCRController {
         int mergeRowIndex = 1;
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setCharacterEncoding("utf-8");
-        String fileName = URLEncoder.encode("test", StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+        String fileName = URLEncoder.encode("test", String.valueOf(StandardCharsets.UTF_8)).replaceAll("\\+", "%20");
         response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
         EasyExcel.write(response.getOutputStream(), RecordDTO.class).inMemory(true).sheet("demo").registerWriteHandler(new ExcelFillCellMergeStrategy(mergeRowIndex, mergeColumnIndex)).doWrite(dataWash());
         wordsMap.clear();

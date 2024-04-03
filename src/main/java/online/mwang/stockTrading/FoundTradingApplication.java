@@ -2,10 +2,12 @@ package online.mwang.stockTrading;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * @author 13255
  */
+@EnableScheduling
 @SpringBootApplication
 public class FoundTradingApplication {
 
