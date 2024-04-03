@@ -6,16 +6,19 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.bean.base.Response;
 import online.mwang.stockTrading.bean.po.DailyItem;
 import online.mwang.stockTrading.bean.po.StockInfo;
 import online.mwang.stockTrading.bean.query.StockInfoQuery;
 import online.mwang.stockTrading.service.StockInfoService;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.*;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -61,5 +64,25 @@ public class StockInfoController {
             o.setMinIncrease(minRate);
         }).collect(Collectors.toList());
         return Response.success(collect, pageResult.getTotal());
+    }
+
+
+    @SneakyThrows
+    @Scheduled(fixedDelay = 1)
+    private void getData() {
+        final List<StockInfo> list = stockInfoService.list();
+        final StockInfo stockInfo = list.get(10);
+        final List<DailyItem> pricesList = JSON.parseArray(stockInfo.getPrices(), DailyItem.class);
+        final BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter("test.csv"));
+        pricesList.forEach(p -> {
+            try {
+                bufferedWriter.write(p.getItem().toString());
+                bufferedWriter.newLine();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+
+
     }
 }
