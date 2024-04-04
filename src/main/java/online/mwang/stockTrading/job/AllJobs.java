@@ -21,6 +21,7 @@ import online.mwang.stockTrading.utils.RequestUtils;
 import online.mwang.stockTrading.utils.SleepUtils;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -1141,10 +1142,14 @@ public class AllJobs {
             final String price2 = split[2];
             final String price3 = split[3];
             final String price4 = split[4].replaceAll("]", "");
-//            prices.add(new DailyItem(date.concat("-1"), Double.parseDouble(price1) / 100));
-//            prices.add(new DailyItem(date.concat("-2"), Double.parseDouble(price2) / 100));
-//            prices.add(new DailyItem(date.concat("-3"), Double.parseDouble(price3) / 100));
-            prices.add(new DailyItem(date, Double.parseDouble(price1) / 100));
+            DailyItem dailyItem = new DailyItem();
+            dailyItem.setDate(date);
+            dailyItem.setItem(Double.parseDouble(price1) / 100);
+            dailyItem.setPrice1(Double.parseDouble(price1) / 100);
+            dailyItem.setPrice2(Double.parseDouble(price2) / 100);
+            dailyItem.setPrice3(Double.parseDouble(price3) / 100);
+            dailyItem.setPrice4(Double.parseDouble(price4) / 100);
+            prices.add(dailyItem);
         }
         return prices;
     }
