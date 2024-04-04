@@ -16,4 +16,15 @@ import lombok.NoArgsConstructor;
 public class DailyItem {
     private String date;
     private Double item;
+    // price1-4对应上午开盘价，收盘价，下午开盘价，下午收盘价
+    private Double price1;
+    private Double price2;
+    private Double price3;
+    private Double price4;
+
+    public DailyItem(String date, Double item) {
+        this.date = date;
+        this.item = item;
+    }
 }
+

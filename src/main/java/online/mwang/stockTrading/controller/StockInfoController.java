@@ -12,14 +12,21 @@ import online.mwang.stockTrading.bean.base.Response;
 import online.mwang.stockTrading.bean.po.DailyItem;
 import online.mwang.stockTrading.bean.po.StockInfo;
 import online.mwang.stockTrading.bean.query.StockInfoQuery;
+import online.mwang.stockTrading.job.AllJobs;
+import online.mwang.stockTrading.mapper.StockInfoMapper;
 import online.mwang.stockTrading.service.StockInfoService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.io.*;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
 /**
@@ -36,6 +43,8 @@ public class StockInfoController {
 
     private final static String ASCEND = "ascend";
     private final StockInfoService stockInfoService;
+    private final StockInfoMapper stockInfoMapper;
+    private final AllJobs allJobs;
 
     @GetMapping
     public Response<List<StockInfo>> listStockInfo(StockInfoQuery query) {
@@ -68,16 +77,23 @@ public class StockInfoController {
 
 
     @SneakyThrows
-    @Scheduled(fixedDelay = 1)
+    @Scheduled(fixedDelay = 1L)
     private void getData() {
-        final List<StockInfo> list = stockInfoService.list();
-        final StockInfo stockInfo = list.get(10);
-        final List<DailyItem> pricesList = JSON.parseArray(stockInfo.getPrices(), DailyItem.class);
+
+        final StockInfo stockInfo =  stockInfoService.getById(92017L);
+        List<DailyItem> historyPrices = allJobs.getHistoryPrices(stockInfo.getCode());
         final BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter("test.csv"));
-        pricesList.forEach(p -> {
+        historyPrices.forEach(dailyItem -> {
             try {
-                bufferedWriter.write(p.getItem().toString());
+                bufferedWriter.write(dailyItem.getPrice1().toString());
                 bufferedWriter.newLine();
+                bufferedWriter.write(dailyItem.getPrice2().toString());
+                bufferedWriter.newLine();
+                bufferedWriter.write(dailyItem.getPrice3().toString());
+                bufferedWriter.newLine();
+                bufferedWriter.write(dailyItem.getPrice4().toString());
+                bufferedWriter.newLine();
+                bufferedWriter.flush();
             } catch (IOException e) {
                 e.printStackTrace();
             }
