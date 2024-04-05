@@ -4,22 +4,18 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.predict.data.DataProcessIterator;
 import online.mwang.stockTrading.predict.model.ModelConfig;
+import online.mwang.stockTrading.predict.utils.PlotUtil;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.util.ModelSerializer;
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.io.ClassPathResource;
 import org.nd4j.linalg.primitives.Pair;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.util.List;
 
-/**
- * Created by zhanghao on 26/7/17.
- * Modified by zhanghao on 28/9/17.
- *
- * @author ZHANG HAO
- */
+
 @Slf4j
 @Component
 public class StockPricePrediction {
@@ -29,10 +25,13 @@ public class StockPricePrediction {
     private static final double SPLIT_RATIO = 0.9;
     private static final int EPOCHS = 1;
 
+    @Value("${PROFILE}")
+    private String profile;
+
     /**
      * Predict one feature of a stock one-day ahead
      */
-    private static void predictPriceOneAhead(MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, double max, double min) {
+    private void predictPriceOneAhead(MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, double max, double min) {
         double[] predicts = new double[testData.size()];
         double[] actuals = new double[testData.size()];
         for (int i = 0; i < testData.size(); i++) {
@@ -43,15 +42,14 @@ public class StockPricePrediction {
         log.info("Predict,Actual");
         for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "," + actuals[i]);
         log.info("Plot...");
-//        PlotUtil.plot(predicts, actuals, "Price");
+        if (profile.equalsIgnoreCase("dev")) PlotUtil.plot(predicts, actuals, "Price");
     }
 
     @SneakyThrows
     public void predictPrice(String stockCode) {
-
-        String dataFilePath = new ClassPathResource("data/history_price_" + stockCode + ".csv").getFile().getAbsolutePath();
+        File dataFile = new File("/data/history_price_" + stockCode + ".csv");
         log.info("Create dataSet iterator...");
-        DataProcessIterator iterator = new DataProcessIterator(dataFilePath, BATCH_SIZE, WINDOW_LENGTH, SPLIT_RATIO);
+        DataProcessIterator iterator = new DataProcessIterator(dataFile.getAbsolutePath(), BATCH_SIZE, WINDOW_LENGTH, SPLIT_RATIO);
         log.info("Load test dataset...");
         List<Pair<INDArray, INDArray>> test = iterator.getTestDataSet();
 
@@ -68,7 +66,7 @@ public class StockPricePrediction {
         log.info("Saving model...");
 //        String modelPath = new ClassPathResource("model/model_".concat(stockCode).concat(".zip")).getFile().getAbsolutePath();
         // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
-        File modelFile = new File("src/main/resources/model".concat(stockCode).concat(".zip"));
+        File modelFile = new File("/model".concat(stockCode).concat(".zip"));
         ModelSerializer.writeModel(net, modelFile, true);
 
         log.info("Load model...");
