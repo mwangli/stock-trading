@@ -30,7 +30,7 @@ public class LSTMModel {
     private static final int WINDOW_LENGTH = 10;
     private static final int BATCH_SIZE = 32;
     private static final double SPLIT_RATIO = 0.9;
-    private static final int EPOCHS = 256;
+    private static final int EPOCHS = 128;
 
     private static final String resourceBaseDir = "src/main/resources/";
     private static final String priceFileName = "data/history_price_";
@@ -114,7 +114,7 @@ public class LSTMModel {
         }
         dataArray[WINDOW_LENGTH - 1] = (nowPrice - min) / (max - min);
         log.info("填充最后一次价格的输入项:{}", dataArray);
-        INDArray newArray = Nd4j.create(dataArray, new int[]{22, 1});
+        INDArray newArray = Nd4j.create(dataArray, new int[]{WINDOW_LENGTH, 1});
         INDArray predictArray = net.rnnTimeStep(newArray);
         double predictValue = predictArray.getDouble(WINDOW_LENGTH - 1) * (max - min) + min;
         log.info("预测下一个值为：{}", predictValue);

@@ -2,6 +2,7 @@ package online.mwang.stockTrading.web.job;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -33,10 +34,10 @@ public class RunPredictJob {
     private void test() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getDeleted, "1")
                 .eq(StockInfo::getPermission, "1").between(StockInfo::getPrice, 8, 15);
-        List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
-        log.info("获取到股票待预测股票数量：{}", stockInfoList.size());
-//        stockInfoList.stream().filter(s -> stockCodeList.contains(s.getCode())).forEach(stockInfo -> {
-        stockInfoList.forEach(stockInfo -> {
+        Page<StockInfo> page = stockInfoService.page(Page.of(0, 10), queryWrapper);
+        List<StockInfo> dataList = page.getRecords();
+        log.info("获取到股票待预测股票：{}", dataList);
+        dataList.forEach(stockInfo -> {
             long start = System.currentTimeMillis();
             String stockCode = stockInfo.getCode();
             // 保存股票价格历史数据
