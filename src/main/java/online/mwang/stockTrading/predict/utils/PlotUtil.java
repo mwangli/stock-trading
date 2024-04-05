@@ -1,7 +1,10 @@
 package online.mwang.stockTrading.predict.utils;
 
+
+import lombok.SneakyThrows;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
+import org.jfree.chart.ChartUtilities;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.axis.NumberTickUnit;
@@ -9,12 +12,21 @@ import org.jfree.chart.plot.PlotOrientation;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.xy.XYSeries;
 import org.jfree.data.xy.XYSeriesCollection;
+import org.nd4j.linalg.api.ndarray.INDArray;
 
 import javax.swing.*;
+import java.io.File;
 
 public class PlotUtil {
 
 	public static void plot(double[] predicts, double[] actuals, String name) {
+
+		if (!java.awt.GraphicsEnvironment.isHeadless()) {
+			// 正常的图形界面操作代码
+		} else {
+			System.out.printf("1111111111111111");
+		}
+
 		double[] index = new double[predicts.length];
 		for (int i = 0; i < predicts.length; i++)
 			index[i] = i;
