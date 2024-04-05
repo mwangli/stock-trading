@@ -1,4 +1,4 @@
-## FoundTrading AI小模型股票自动交易系统
+## StockTrading AI小模型股票自动交易系统
 
 ### 功能介绍
 
