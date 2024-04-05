@@ -75,7 +75,7 @@ public class ModelConfig {
 
         MultiLayerNetwork net = new MultiLayerNetwork(conf);
         net.init();
-        net.setListeners(new ScoreIterationListener(10));
+        net.setListeners(new ScoreIterationListener(100));
         return net;
     }
 }
