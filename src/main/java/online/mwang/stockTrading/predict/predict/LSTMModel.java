@@ -30,7 +30,7 @@ public class LSTMModel {
     private static final int WINDOW_LENGTH = 10;
     private static final int BATCH_SIZE = 32;
     private static final double SPLIT_RATIO = 0.9;
-    private static final int EPOCHS = 1;
+    private static final int EPOCHS = 256;
 
     //    private static final String resourceBaseDir = "src/main/resources/";
     private static final String resourceBaseDir = "";
