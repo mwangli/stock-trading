@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.predict.predict.LSTMModel;
 import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.ScoreStrategyMapper;
@@ -19,13 +20,13 @@ import online.mwang.stockTrading.web.utils.DateUtils;
 import online.mwang.stockTrading.web.utils.OcrUtils;
 import online.mwang.stockTrading.web.utils.RequestUtils;
 import online.mwang.stockTrading.web.utils.SleepUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -77,9 +78,15 @@ public class AllJobs {
     private final StockInfoMapper stockInfoMapper;
     private final ScoreStrategyMapper strategyMapper;
     private final SleepUtils sleepUtils;
+    private final LSTMModel lstmModel;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
     public boolean enableSaleWaiting = true;
     public boolean enableBuyWaiting = true;
+    public String resourceBaseDir = "src/main/resources/";
+
+    @Value("${PROFILE}")
+    private String profile;
+
 
     public static HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
         if (paramMap == null) return new HashMap<>();
@@ -1322,4 +1329,29 @@ public class AllJobs {
         accountInfo.setTotalAmount(accountInfo.getAvailableAmount() + usedAmount);
         return accountInfo;
     }
+
+    @SneakyThrows
+    public void writeHistoryPriceData(String stockCode) {
+        final StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, stockCode));
+        List<DailyItem> historyPrices = getHistoryPrices(stockInfo.getCode());
+        String filePath = new File(lstmModel.getBaseDir() + "data/history_price_" + stockCode + ".csv").getAbsolutePath();
+        final BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(filePath));
+        String csvHead = "date,code,price1,price2,price3,price4";
+        bufferedWriter.write(csvHead);
+        bufferedWriter.newLine();
+        for (DailyItem item : historyPrices) {
+            bufferedWriter.write(item.getDate().concat(","));
+            bufferedWriter.write(item.getPrice1().toString().concat(","));
+            bufferedWriter.write(item.getPrice2().toString().concat(","));
+            bufferedWriter.write(item.getPrice3().toString().concat(","));
+            bufferedWriter.write(item.getPrice4().toString());
+            bufferedWriter.newLine();
+            bufferedWriter.flush();
+        }
+        bufferedWriter.close();
+        log.info("股票:{}-{}, 历史数据保存完成！", stockInfo.getName(), stockInfo.getCode());
+    }
+
+
+
 }

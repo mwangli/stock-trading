@@ -14,12 +14,14 @@ import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.learning.config.Nesterovs;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
+import org.springframework.stereotype.Component;
 
 /**
  * Created by zhanghao on 26/7/17.
  *
  * @author ZHANG HAO
  */
+@Component
 public class ModelConfig {
 
 
