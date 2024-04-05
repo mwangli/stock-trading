@@ -34,10 +34,13 @@ public class RunPredictJob {
     private void test() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getDeleted, "1")
                 .eq(StockInfo::getPermission, "1").between(StockInfo::getPrice, 8, 15);
-        Page<StockInfo> page = stockInfoService.page(Page.of(0, 10), queryWrapper);
+        Page<StockInfo> page = stockInfoService.page(Page.of(0, 100), queryWrapper);
         List<StockInfo> dataList = page.getRecords();
-        log.info("获取到股票待预测股票数量：{}", dataList.size());
-        dataList.forEach(stockInfo -> {
+        dataList.stream().findAny().ifPresent(stockInfo -> {
+            log.info("获取到股票待预测股票：{}-{}", stockInfo.getName(), stockInfo.getCode());
+
+//        });
+//        dataList.stream().findAny(stockInfo -> {
             long start = System.currentTimeMillis();
             String stockCode = stockInfo.getCode();
             // 保存股票价格历史数据

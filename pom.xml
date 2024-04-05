@@ -139,6 +139,12 @@
             <artifactId>nd4j-api</artifactId>
             <version>${deeplearning4j.version}</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.nd4j</groupId>
+            <artifactId>nd4j-cuda-9.2</artifactId>
+            <version>1.0.0-beta2</version>
+        </dependency>
         <dependency>
             <groupId>org.nd4j</groupId>
             <artifactId>nd4j-native</artifactId>
