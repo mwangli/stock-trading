@@ -31,7 +31,7 @@ public class LSTMModel {
     private static final int WINDOW_LENGTH = 10;
     private static final int BATCH_SIZE = 32;
     private static final double SPLIT_RATIO = 0.9;
-    private static final int EPOCHS = 128;
+    private static final int EPOCHS = 1;
 
     //    private static final String resourceBaseDir = "src/main/resources/";
     private static final String resourceBaseDir = "";
@@ -58,13 +58,13 @@ public class LSTMModel {
         log.info("Create dataSet iterator...");
         double splitRatio = SPLIT_RATIO;
         // 生产环境所有数据参与模型训练
-        if (profile.equalsIgnoreCase("prod")) splitRatio = 1;
+//        if (profile.equalsIgnoreCase("prod")) splitRatio = 1;
         DataProcessIterator iterator = new DataProcessIterator(dataFile.getAbsolutePath(), BATCH_SIZE, WINDOW_LENGTH, splitRatio);
         log.info("Load test dataset...");
 
         log.info("Build lstm networks...");
         MultiLayerNetwork net = ModelConfig.buildLstmNetworks(iterator.inputColumns(), iterator.totalOutcomes());
-        net.summary();
+        log.info(net.summary());
 
         log.info("Training...");
         for (int i = 0; i < EPOCHS; i++) {
@@ -149,7 +149,7 @@ public class LSTMModel {
         log.info("Predict,Actual");
         for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "," + actuals[i]);
         log.info("Plot...");
-        PlotUtil.plot(predicts, actuals, "Price");
+//        PlotUtil.plot(predicts, actuals, "Price");
     }
 
 }
