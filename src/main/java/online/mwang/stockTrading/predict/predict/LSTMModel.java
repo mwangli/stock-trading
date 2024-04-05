@@ -64,7 +64,7 @@ public class LSTMModel {
 
         log.info("Build lstm networks...");
         MultiLayerNetwork net = ModelConfig.buildLstmNetworks(iterator.inputColumns(), iterator.totalOutcomes());
-        log.info(net.summary());
+//        log.info(net.summary());
 
         log.info("Training...");
         for (int i = 0; i < EPOCHS; i++) {
@@ -102,7 +102,7 @@ public class LSTMModel {
         log.info("股票模型-{}，保存成功!", stockCode);
         // 模型测试
         if (profile.equalsIgnoreCase("dev"))
-            modelTest(net, iterator.getTestDataSet(), iterator.getMaxNum(), iterator.getMinNum());
+            modelTest(net, iterator.getTestDataSet(), iterator.getMaxNum(), iterator.getMinNum(), stockCode);
     }
 
 
@@ -138,18 +138,20 @@ public class LSTMModel {
     }
 
 
-    private void modelTest(MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, double max, double min) {
+    public void modelTest(MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, double max, double min, String stockCode) {
         double[] predicts = new double[testData.size()];
         double[] actuals = new double[testData.size()];
         for (int i = 0; i < testData.size(); i++) {
-            predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getDouble(WINDOW_LENGTH - 1) * (max - min) + min;
+            INDArray testInput = testData.get(i).getKey();
+            INDArray testOutput = net.rnnTimeStep(testInput);
+            predicts[i] = testOutput.getDouble(WINDOW_LENGTH-1) * (max - min) + min;
             actuals[i] = testData.get(i).getValue().getDouble(0);
         }
         log.info("Print out Predictions and Actual Values...");
         log.info("Predict,Actual");
         for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "," + actuals[i]);
         log.info("Plot...");
-        PlotUtil.plot(predicts, actuals, "Price");
+        PlotUtil.plot(predicts, actuals, stockCode);
     }
 
 }

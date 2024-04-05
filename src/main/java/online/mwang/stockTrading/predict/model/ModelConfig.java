@@ -24,12 +24,12 @@ import org.springframework.stereotype.Component;
 public class ModelConfig {
 
 
-    private static final double learningRate =  0.05;
+    private static final double learningRate =  0.001;
     private static final int seed = 1024;
     private static final int lstmLayer1Size = 128;
     private static final int lstmLayer2Size = 128;
     private static final int denseLayerSize = 16;
-    private static final double dropoutRatio = 0.1;
+    private static final double dropoutRatio = 0.2;
     private static final int truncatedBPTTLength = 10;
 
 
