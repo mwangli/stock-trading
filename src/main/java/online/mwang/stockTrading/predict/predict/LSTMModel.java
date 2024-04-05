@@ -55,7 +55,10 @@ public class LSTMModel {
             dataFile = new File(getBaseDir() + "history_price_" + stockCode + priceFileNameSuffix);
         }
         log.info("Create dataSet iterator...");
-        DataProcessIterator iterator = new DataProcessIterator(dataFile.getAbsolutePath(), BATCH_SIZE, WINDOW_LENGTH, SPLIT_RATIO);
+        double splitRatio = SPLIT_RATIO;
+        // 生产环境所有数据参与模型训练
+        if (profile.equalsIgnoreCase("prod")) splitRatio = 1;
+        DataProcessIterator iterator = new DataProcessIterator(dataFile.getAbsolutePath(), BATCH_SIZE, WINDOW_LENGTH, splitRatio);
         log.info("Load test dataset...");
 
         log.info("Build lstm networks...");
