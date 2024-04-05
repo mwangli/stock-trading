@@ -4,23 +4,28 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.predict.predict.LSTMModel;
+import online.mwang.stockTrading.web.bean.po.PredictPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
+import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class TestJob {
+public class RunPredictJob {
 
     private final AllJobs allJobs;
     private final LSTMModel lstmModel;
     private final StockInfoService stockInfoService;
+    private final PredictPriceMapper predictPriceMapper;
+
 
 
     @SneakyThrows
@@ -38,11 +43,17 @@ public class TestJob {
             // 预测价格
             double newPrice = stockInfo.getPrice();
             double predictNextPrice = lstmModel.modelPredict(stockCode, newPrice);
-            // 将预测数据写回到数据中
-            stockInfo.setPredictPrice(predictNextPrice);
-            stockInfoService.save(stockInfo);
+            // 将预测数据写入数据库以备后续观察分析
+            PredictPrice predictPrice = new PredictPrice();
+            predictPrice.setStockCode(stockCode);
+            Date nowDate = new Date();
+            predictPrice.setDate(DateUtils.dateFormat.format(nowDate));
+            predictPrice.setPredictPrice(predictNextPrice);
+            predictPrice.setCreateTime(nowDate);
+            predictPrice.setUpdateTime(nowDate);
+            predictPriceMapper.insert(predictPrice);
             long end = System.currentTimeMillis();
-            log.info("当前股票：{}-{}，价格预测任务完成，耗时：{}秒", stockInfo.getName(), stockCode, DateUtils.timeConvertor(end - start));
+            log.info("当前股票：{}-{}，价格预测任务完成，总共耗时：{}秒", stockInfo.getName(), stockCode, DateUtils.timeConvertor(end - start));
         });
     }
 }
