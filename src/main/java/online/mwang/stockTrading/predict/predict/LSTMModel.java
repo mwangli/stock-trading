@@ -42,7 +42,7 @@ public class LSTMModel {
     private String profile;
 
     public String getBaseDir() {
-        if (profile.equalsIgnoreCase("Prod")) return "/root/";
+        if (profile.equalsIgnoreCase("Prod")) return "/root";
         return resourceBaseDir;
     }
 

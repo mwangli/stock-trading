@@ -23,7 +23,6 @@ import online.mwang.stockTrading.web.utils.SleepUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.io.*;
@@ -1335,6 +1334,9 @@ public class AllJobs {
         final StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, stockCode));
         List<DailyItem> historyPrices = getHistoryPrices(stockInfo.getCode());
         String filePath = new File(lstmModel.getBaseDir() + "data/history_price_" + stockCode + ".csv").getAbsolutePath();
+        if (profile.equalsIgnoreCase("prod")) {
+            filePath = new File(lstmModel.getBaseDir() + "/history_price_" + stockCode + ".csv").getAbsolutePath();
+        }
         final BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(filePath));
         String csvHead = "date,code,price1,price2,price3,price4";
         bufferedWriter.write(csvHead);
@@ -1351,7 +1353,6 @@ public class AllJobs {
         bufferedWriter.close();
         log.info("股票:{}-{}, 历史数据保存完成！", stockInfo.getName(), stockInfo.getCode());
     }
-
 
 
 }
