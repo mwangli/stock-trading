@@ -52,7 +52,7 @@ public class LSTMModel {
 
         File dataFile = new File(getBaseDir() + priceFileName + stockCode + priceFileNameSuffix);
         if (profile.equalsIgnoreCase("prod")) {
-            dataFile = new File(getBaseDir() + "history_price" + stockCode + priceFileNameSuffix);
+            dataFile = new File(getBaseDir() + "history_price_" + stockCode + priceFileNameSuffix);
         }
         log.info("Create dataSet iterator...");
         DataProcessIterator iterator = new DataProcessIterator(dataFile.getAbsolutePath(), BATCH_SIZE, WINDOW_LENGTH, SPLIT_RATIO);
