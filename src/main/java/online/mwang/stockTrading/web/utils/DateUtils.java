@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.concurrent.TimeUnit;
 
 public class DateUtils {
 
@@ -70,5 +71,14 @@ public class DateUtils {
             }
         }
         return sb.toString();
+    }
+
+    public static String timeConvertor(long millis) {
+        long seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % 60;
+        long minutes = TimeUnit.MILLISECONDS.toMinutes(millis) % 60;
+        long hours = TimeUnit.MILLISECONDS.toHours(millis) % 24;
+        long days = TimeUnit.MILLISECONDS.toDays(millis) % 365;
+        long years = TimeUnit.MILLISECONDS.toDays(millis) / 365;
+        return years + "年 " + days + "天 " + hours + "小时 " + minutes + "分钟 " + seconds + "秒";
     }
 }
