@@ -30,9 +30,10 @@ public class LSTMModel {
     private static final int WINDOW_LENGTH = 10;
     private static final int BATCH_SIZE = 32;
     private static final double SPLIT_RATIO = 0.9;
-    private static final int EPOCHS = 128;
+    private static final int EPOCHS = 1;
 
-    private static final String resourceBaseDir = "src/main/resources/";
+//    private static final String resourceBaseDir = "src/main/resources/";
+    private static final String resourceBaseDir = "";
     private static final String priceFileName = "data/history_price_";
     private static final String priceFileNameSuffix = ".csv";
     private final StringRedisTemplate redisTemplate;
@@ -84,8 +85,8 @@ public class LSTMModel {
         log.info("Saving model...");
 //        String modelPath = new ClassPathResource("model/model_".concat(stockCode).concat(".zip")).getFile().getAbsolutePath();
         // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
-        String modelFilePath = new File(getBaseDir() + "model/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
-        ModelSerializer.writeModel(net, modelFilePath, true);
+        File modelFile = new File(getBaseDir() + "model/model_".concat(stockCode).concat(".zip"));
+        ModelSerializer.writeModel(net, modelFile, true);
         log.info("股票模型-{}，保存成功!", stockCode);
         // 模型测试
 //        if (profile.equalsIgnoreCase("dev"))
