@@ -38,15 +38,15 @@ public class PlotUtil {
                 false // urls
         );
         XYPlot xyPlot = chart.getXYPlot();
-        // X-axis
-        final NumberAxis domainAxis = (NumberAxis) xyPlot.getDomainAxis();
-        domainAxis.setRange((int) index[0], (int) (index[index.length - 1] + 2));
-        domainAxis.setTickUnit(new NumberTickUnit(20));
-        domainAxis.setVerticalTickLabels(true);
-        // Y-axis
-        final NumberAxis rangeAxis = (NumberAxis) xyPlot.getRangeAxis();
-        rangeAxis.setRange(min, max);
-        rangeAxis.setTickUnit(new NumberTickUnit(50));
+//        // X-axis
+//        final NumberAxis domainAxis = (NumberAxis) xyPlot.getDomainAxis();
+//        domainAxis.setRange((int) index[0], (int) (index[index.length - 1] + 2));
+//        domainAxis.setTickUnit(new NumberTickUnit(20));
+//        domainAxis.setVerticalTickLabels(true);
+//        // Y-axis
+//        final NumberAxis rangeAxis = (NumberAxis) xyPlot.getRangeAxis();
+//        rangeAxis.setRange(min, max);
+//        rangeAxis.setTickUnit(new NumberTickUnit(50));
 //		final ChartPanel panel = new ChartPanel(chart);
         // java.awt.HeadlessException: null
         // 添加启动参数：-Djava.awt.headless=false
@@ -58,13 +58,13 @@ public class PlotUtil {
 //		f.setVisible(true);
 
 
-//        JFreeChart xylineChart = ChartFactory.createXYLineChart(
-//                "NSE-TATAGLOBAL",
-//                "Days",
-//                "Price",
-//                dataSet,
-//                PlotOrientation.VERTICAL,
-//                true, true, false);
+        JFreeChart xylineChart = ChartFactory.createXYLineChart(
+                "NSE-TATAGLOBAL",
+                "Days",
+                "Price",
+                dataSet,
+                PlotOrientation.VERTICAL,
+                true, true, false);
 
 
         int width = 1080;   /* Width of the image */

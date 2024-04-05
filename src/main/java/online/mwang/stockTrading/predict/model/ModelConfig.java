@@ -1,5 +1,7 @@
 package online.mwang.stockTrading.predict.model;
 
+import lombok.extern.slf4j.Slf4j;
+import org.deeplearning4j.api.storage.StatsStorage;
 import org.deeplearning4j.nn.api.OptimizationAlgorithm;
 import org.deeplearning4j.nn.conf.BackpropType;
 import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
@@ -13,27 +15,26 @@ import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.learning.config.Nesterovs;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-/**
- * Created by zhanghao on 26/7/17.
- *
- * @author ZHANG HAO
- */
+
+@Slf4j
 @Component
 public class ModelConfig {
 
-
-    private static final double learningRate =  0.001;
-    private static final int seed = 1024;
+    private static final double learningRate = 0.0015;
+    private static final int seed = 12345;
     private static final int lstmLayer1Size = 128;
     private static final int lstmLayer2Size = 128;
     private static final int denseLayerSize = 16;
-    private static final double dropoutRatio = 0.2;
+    private static final double dropoutRatio = 0.1;
     private static final int truncatedBPTTLength = 10;
 
+    @Value("${PROFILE}")
+    private String profile;
 
-    public static MultiLayerNetwork buildLstmNetworks(int nIn, int nOut) {
+    public MultiLayerNetwork buildLstmNetworks(int nIn, int nOut) {
         MultiLayerConfiguration conf = new NeuralNetConfiguration.Builder()
                 .seed(seed)
                 .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)
@@ -69,13 +70,23 @@ public class ModelConfig {
                 .backpropType(BackpropType.TruncatedBPTT)
                 .tBPTTForwardLength(truncatedBPTTLength)
                 .tBPTTBackwardLength(truncatedBPTTLength)
-                .pretrain(false)
-                .backprop(true)
+                .backpropType(BackpropType.TruncatedBPTT)
                 .build();
 
         MultiLayerNetwork net = new MultiLayerNetwork(conf);
         net.init();
-        net.setListeners(new ScoreIterationListener(100));
+
+        log.info(net.summary());
+//        if (profile.equalsIgnoreCase("dev")) {
+            // 初始化用户界面后端
+//            UIServer uiServer = UIServer.getInstance();
+//            StatsStorage statsStorage = new InMemoryStatsStorage();
+//            uiServer.attach(statsStorage);
+//            net.setListeners(new StatsListener(statsStorage));
+//        } else
+            net.setListeners(new ScoreIterationListener(50));
+//        }
+
         return net;
     }
 }
