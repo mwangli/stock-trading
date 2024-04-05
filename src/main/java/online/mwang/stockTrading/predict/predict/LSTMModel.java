@@ -32,7 +32,7 @@ public class LSTMModel {
     private static final double SPLIT_RATIO = 0.9;
     private static final int EPOCHS = 1;
 
-//    private static final String resourceBaseDir = "src/main/resources/";
+    //    private static final String resourceBaseDir = "src/main/resources/";
     private static final String resourceBaseDir = "";
     private static final String priceFileName = "data/history_price_";
     private static final String priceFileNameSuffix = ".csv";
@@ -43,7 +43,7 @@ public class LSTMModel {
     private String profile;
 
     public String getBaseDir() {
-        if (profile.equalsIgnoreCase("Prod")) return "/root";
+        if (profile.equalsIgnoreCase("Prod")) return "/root/";
         return resourceBaseDir;
     }
 
@@ -51,6 +51,9 @@ public class LSTMModel {
     public void modelTrain(String stockCode) {
 
         File dataFile = new File(getBaseDir() + priceFileName + stockCode + priceFileNameSuffix);
+        if (profile.equalsIgnoreCase("prod")) {
+            dataFile = new File(getBaseDir() + "history_price" + stockCode + priceFileNameSuffix);
+        }
         log.info("Create dataSet iterator...");
         DataProcessIterator iterator = new DataProcessIterator(dataFile.getAbsolutePath(), BATCH_SIZE, WINDOW_LENGTH, SPLIT_RATIO);
         log.info("Load test dataset...");
@@ -86,6 +89,9 @@ public class LSTMModel {
 //        String modelPath = new ClassPathResource("model/model_".concat(stockCode).concat(".zip")).getFile().getAbsolutePath();
         // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
         File modelFile = new File(getBaseDir() + "model/model_".concat(stockCode).concat(".zip"));
+        if (profile.equalsIgnoreCase("prod")) {
+            modelFile = new File(getBaseDir() + "model_".concat(stockCode).concat(".zip"));
+        }
         ModelSerializer.writeModel(net, modelFile, true);
         log.info("股票模型-{}，保存成功!", stockCode);
         // 模型测试
@@ -98,6 +104,9 @@ public class LSTMModel {
     public double modelPredict(String stockCode, double nowPrice) {
         log.info("Load model...");
         String modelPath = new File(getBaseDir() + "model/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
+        if (profile.equalsIgnoreCase("prod")) {
+            modelPath = new File(getBaseDir() + "model_".concat(stockCode).concat(".zip")).getAbsolutePath();
+        }
         MultiLayerNetwork net = ModelSerializer.restoreMultiLayerNetwork(modelPath);
         log.info("Testing...");
         // 从redis中获取最大值，最小值用来做归一化处理
