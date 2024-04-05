@@ -5,7 +5,6 @@ import org.deeplearning4j.nn.conf.BackpropType;
 import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
 import org.deeplearning4j.nn.conf.layers.DenseLayer;
-import org.deeplearning4j.nn.conf.layers.GravesLSTM;
 import org.deeplearning4j.nn.conf.layers.LSTM;
 import org.deeplearning4j.nn.conf.layers.RnnOutputLayer;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
@@ -25,15 +24,13 @@ import org.springframework.stereotype.Component;
 public class ModelConfig {
 
 
-    private static final double learningRate = 0.0015;
-    private static final int iterations = 1;
+    private static final double learningRate = 0.015;
     private static final int seed = 1024;
-
     private static final int lstmLayer1Size = 128;
     private static final int lstmLayer2Size = 128;
     private static final int denseLayerSize = 16;
     private static final double dropoutRatio = 0.1;
-    private static final int truncatedBPTTLength = 22;
+    private static final int truncatedBPTTLength = 10;
 
 
     public static MultiLayerNetwork buildLstmNetworks(int nIn, int nOut) {

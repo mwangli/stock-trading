@@ -27,10 +27,10 @@ import java.util.List;
 @RequiredArgsConstructor
 public class LSTMModel {
 
-    private static final int WINDOW_LENGTH = 22;
+    private static final int WINDOW_LENGTH = 10;
     private static final int BATCH_SIZE = 32;
     private static final double SPLIT_RATIO = 0.9;
-    private static final int EPOCHS = 128;
+    private static final int EPOCHS = 256;
 
     private static final String resourceBaseDir = "src/main/resources/";
     private static final String priceFileName = "data/history_price_";
