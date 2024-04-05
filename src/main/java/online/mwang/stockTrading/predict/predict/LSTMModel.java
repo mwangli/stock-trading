@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.predict.data.DataProcessIterator;
 import online.mwang.stockTrading.predict.model.ModelConfig;
 import online.mwang.stockTrading.predict.utils.PlotUtil;
+import online.mwang.stockTrading.web.utils.DateUtils;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.util.ModelSerializer;
 import org.nd4j.linalg.api.iter.NdIndexIterator;
@@ -49,7 +50,7 @@ public class LSTMModel {
 
     @SneakyThrows
     public void modelTrain(String stockCode) {
-
+        long start = System.currentTimeMillis();
         File dataFile = new File(getBaseDir() + priceFileName + stockCode + priceFileNameSuffix);
         if (profile.equalsIgnoreCase("prod")) {
             dataFile = new File(getBaseDir() + "history_price_" + stockCode + priceFileNameSuffix);
@@ -72,6 +73,8 @@ public class LSTMModel {
             net.rnnClearPreviousState(); // clear previous state
         }
         log.info("股票模型-{}，训练完成!", stockCode);
+        long end = System.currentTimeMillis();
+        log.info("股票模型-{}，训练耗时：{}", stockCode, DateUtils.timeConvertor(end - start));
 //        dataProcessIteratorHashMap.put(stockCode, iterator);
         // 保存最大值最小值，用来做归一化处理
         double min = iterator.getMinNum();
