@@ -76,14 +76,13 @@ public class StockInfoController {
 
 
     @SneakyThrows
-//    @Scheduled(fixedDelay = Long.MAX_VALUE)
+    @Scheduled(fixedDelay = Long.MAX_VALUE)
     private void writeData() {
         List<String> stockCodeList = Arrays.asList("600114", "002527", "600272");
         for (String stockCode : stockCodeList) {
             final StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, stockCode));
             List<DailyItem> historyPrices = allJobs.getHistoryPrices(stockInfo.getCode());
-//            String dataDir = new ClassPathResource("/data").getFile().getAbsolutePath();
-            final BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter("/history_price_" + stockCode + ".csv"));
+            final BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter("/data/history_price_" + stockCode + ".csv"));
             String csvHead = "date,code,price1,price2,price3,price4";
             bufferedWriter.write(csvHead);
             bufferedWriter.newLine();
@@ -101,12 +100,8 @@ public class StockInfoController {
 
             stockPricePrediction.predictPrice(stockCode);
         }
+
     }
 
-    @SneakyThrows
-    @Scheduled(fixedDelay = Long.MAX_VALUE)
-    private void predictPrice() {
-        stockPricePrediction.predictPrice("600272");
-    }
 
 }

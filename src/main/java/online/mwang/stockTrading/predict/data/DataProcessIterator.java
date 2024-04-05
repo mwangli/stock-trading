@@ -20,7 +20,7 @@ public class DataProcessIterator implements DataSetIterator {
 
     private final int VECTOR_SIZE = 1; // number of features for a stock data
     private int BATCH_SIZE; // mini-batch size
-    private int exampleLength; // default 22, say, 22 working days per month
+    private int exampleLength = 22; // default 22, say, 22 working days per month
     private int predictLength = 1; // default 1, say, one day ahead prediction
 
     /**
@@ -180,7 +180,6 @@ public class DataProcessIterator implements DataSetIterator {
     public int batch() {
         return BATCH_SIZE;
     }
-
 
     @Override
     public DataSetPreProcessor getPreProcessor() {
