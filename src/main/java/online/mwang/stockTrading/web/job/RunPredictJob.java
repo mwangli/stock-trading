@@ -57,7 +57,7 @@ public class RunPredictJob {
             predictPrice.setUpdateTime(nowDate);
             predictPriceMapper.insert(predictPrice);
             long end = System.currentTimeMillis();
-            log.info("当前股票：{}-{}，价格预测任务完成，总共耗时：{}秒", stockInfo.getName(), stockCode, DateUtils.timeConvertor(end - start));
+            log.info("当前股票：{}-{}，价格预测任务完成，总共耗时：{}", stockInfo.getName(), stockCode, DateUtils.timeConvertor(end - start));
         });
     }
 }
