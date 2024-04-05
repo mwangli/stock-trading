@@ -1,6 +1,7 @@
 package online.mwang.stockTrading.predict.data;
 
 import com.opencsv.CSVReader;
+import lombok.SneakyThrows;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.DataSetPreProcessor;
@@ -9,7 +10,6 @@ import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.primitives.Pair;
 
 import java.io.FileReader;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -234,7 +234,7 @@ public class DataProcessIterator implements DataSetIterator {
             label = Nd4j.create(new int[]{1}, 'f');
 //                switch (category) {
 //                    case OPEN:
-                        label.putScalar(new int[]{0}, stock.getPrice1());
+            label.putScalar(new int[]{0}, stock.getPrice1());
 //                        break;
 //                    case CLOSE:
 //                        label.putScalar(new int[]{0}, stock.getClose());
@@ -258,36 +258,36 @@ public class DataProcessIterator implements DataSetIterator {
         return test;
     }
 
+
+    @SneakyThrows
     private List<StockData> readStockDataFromFile(String filename) {
         List<StockData> stockDataList = new ArrayList<>();
-        try {
-            for (int i = 0; i < maxArray.length; i++) { // initialize max and min arrays
-                maxArray[i] = Double.MIN_VALUE;
-                minArray[i] = Double.MAX_VALUE;
-            }
-            List<String[]> list = new CSVReader(new FileReader(filename)).readAll(); // load all elements in a list
-            for (String[] arr : list) {
-                //  去掉第0行的标题
-                if (arr[0].equals("date")) continue;
-                double[] nums = new double[VECTOR_SIZE];
-                for (int i = 0; i < VECTOR_SIZE; i++) {
-                    // 从第1列开始读取，第0列是日期，VECTOR_SIZE 是输入特征维度，即输入多少列
-                    nums[i] = Double.parseDouble(arr[i + 1]);
-                    if (nums[i] > maxArray[i]) maxArray[i] = nums[i];
-                    if (nums[i] < minArray[i]) minArray[i] = nums[i];
-                }
-                StockData stockData = new StockData();
-                stockData.setDate(arr[0]);
-                // 保存特征维度
-                for (int i = 0; i < VECTOR_SIZE; i++) {
-                    stockData.setPrice1(nums[0]);
-//                    new StockData(arr[0], arr[1], nums[0], nums[1], nums[2], nums[3], nums[4])
-                }
-                stockDataList.add(stockData);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+
+        for (int i = 0; i < maxArray.length; i++) { // initialize max and min arrays
+            maxArray[i] = Double.MIN_VALUE;
+            minArray[i] = Double.MAX_VALUE;
         }
+        List<String[]> list = new CSVReader(new FileReader(filename)).readAll(); // load all elements in a list
+        for (String[] arr : list) {
+            //  去掉第0行的标题
+            if (arr[0].equals("date")) continue;
+            double[] nums = new double[VECTOR_SIZE];
+            for (int i = 0; i < VECTOR_SIZE; i++) {
+                // 从第1列开始读取，第0列是日期，VECTOR_SIZE 是输入特征维度，即输入多少列
+                nums[i] = Double.parseDouble(arr[i + 1]);
+                if (nums[i] > maxArray[i]) maxArray[i] = nums[i];
+                if (nums[i] < minArray[i]) minArray[i] = nums[i];
+            }
+            StockData stockData = new StockData();
+            stockData.setDate(arr[0]);
+            // 保存特征维度
+            for (int i = 0; i < VECTOR_SIZE; i++) {
+                stockData.setPrice1(nums[0]);
+//                    new StockData(arr[0], arr[1], nums[0], nums[1], nums[2], nums[3], nums[4])
+            }
+            stockDataList.add(stockData);
+        }
+
         return stockDataList;
     }
 }

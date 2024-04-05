@@ -8,7 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.predict.predict.StockPricePrediction;
+import online.mwang.stockTrading.predict.predict.LSTMModel;
 import online.mwang.stockTrading.web.bean.base.Response;
 import online.mwang.stockTrading.web.bean.po.DailyItem;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
@@ -41,9 +41,6 @@ public class StockInfoController {
 
     private final static String ASCEND = "ascend";
     private final StockInfoService stockInfoService;
-    private final StockInfoMapper stockInfoMapper;
-    private final AllJobs allJobs;
-    private final StockPricePrediction stockPricePrediction;
 
     @GetMapping
     public Response<List<StockInfo>> listStockInfo(StockInfoQuery query) {
@@ -73,35 +70,4 @@ public class StockInfoController {
         }).collect(Collectors.toList());
         return Response.success(collect, pageResult.getTotal());
     }
-
-
-    @SneakyThrows
-    @Scheduled(fixedDelay = Long.MAX_VALUE)
-    private void writeData() {
-        List<String> stockCodeList = Arrays.asList("600114", "002527", "600272");
-        for (String stockCode : stockCodeList) {
-            final StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, stockCode));
-            List<DailyItem> historyPrices = allJobs.getHistoryPrices(stockInfo.getCode());
-            final BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter("/data/history_price_" + stockCode + ".csv"));
-            String csvHead = "date,code,price1,price2,price3,price4";
-            bufferedWriter.write(csvHead);
-            bufferedWriter.newLine();
-            for (DailyItem item : historyPrices) {
-                bufferedWriter.write(item.getDate().concat(","));
-                bufferedWriter.write(item.getPrice1().toString().concat(","));
-                bufferedWriter.write(item.getPrice2().toString().concat(","));
-                bufferedWriter.write(item.getPrice3().toString().concat(","));
-                bufferedWriter.write(item.getPrice4().toString());
-                bufferedWriter.newLine();
-                bufferedWriter.flush();
-            }
-            bufferedWriter.close();
-            log.info("股票:{}-{}, 历史数据保存完成！", stockInfo.getName(), stockInfo.getCode());
-
-            stockPricePrediction.predictPrice(stockCode);
-        }
-
-    }
-
-
 }
