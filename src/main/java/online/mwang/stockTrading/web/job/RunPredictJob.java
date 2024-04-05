@@ -21,7 +21,7 @@ import java.util.List;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RunPredictJob {
+public class RunPredictJob extends BaseJob{
 
     private final AllJobs allJobs;
     private final LSTMModel lstmModel;
@@ -62,5 +62,10 @@ public class RunPredictJob {
             long end = System.currentTimeMillis();
             log.info("当前股票：{}-{}，价格预测任务完成，总共耗时：{}", stockInfo.getName(), stockCode, DateUtils.timeConvertor(end - start));
         });
+    }
+
+    @Override
+    void run(String runningId) {
+        test();
     }
 }
