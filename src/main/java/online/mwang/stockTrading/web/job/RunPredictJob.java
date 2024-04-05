@@ -36,7 +36,7 @@ public class RunPredictJob {
                 .eq(StockInfo::getPermission, "1").between(StockInfo::getPrice, 8, 15);
         Page<StockInfo> page = stockInfoService.page(Page.of(0, 10), queryWrapper);
         List<StockInfo> dataList = page.getRecords();
-        log.info("获取到股票待预测股票：{}", dataList);
+        log.info("获取到股票待预测股票数量：{}", dataList.size());
         dataList.forEach(stockInfo -> {
             long start = System.currentTimeMillis();
             String stockCode = stockInfo.getCode();
