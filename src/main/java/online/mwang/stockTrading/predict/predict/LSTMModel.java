@@ -98,8 +98,8 @@ public class LSTMModel {
         ModelSerializer.writeModel(net, modelFile, true);
         log.info("股票模型-{}，保存成功!", stockCode);
         // 模型测试
-//        if (profile.equalsIgnoreCase("dev"))
-//            modelTest(net, iterator.getTestDataSet(), iterator.getMaxNum(), iterator.getMinNum());
+        if (profile.equalsIgnoreCase("dev"))
+            modelTest(net, iterator.getTestDataSet(), iterator.getMaxNum(), iterator.getMinNum());
     }
 
 
