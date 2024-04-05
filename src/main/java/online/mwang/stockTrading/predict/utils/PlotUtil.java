@@ -44,6 +44,8 @@ public class PlotUtil {
 		rangeAxis.setRange(min, max);
 		rangeAxis.setTickUnit(new NumberTickUnit(50));
 		final ChartPanel panel = new ChartPanel(chart);
+		// java.awt.HeadlessException: null
+		// 添加启动参数：-Djava.awt.headless=false
 		final JFrame f = new JFrame();
 		f.add(panel);
 		f.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
