@@ -95,9 +95,12 @@ public class DataProcessIterator implements DataSetIterator {
             for (int i = startIdx; i < endIdx; i++) {
                 int c = i - startIdx;
                 nextData = train.get(i + 1);
+                input.putScalar(new int[] {index, 0, c}, (curData.getPrice1() - minArray[0]) / (maxArray[0] - minArray[0]));
+//                input.putScalar(new int[] {index, 1, c}, (curData.getPrice2() - minArray[1]) / (maxArray[1] - minArray[1]));
 
-                input.putScalar(new int[]{index, 0, c}, (curData.getPrice1() - minArray[0]) / (maxArray[0] - minArray[0]));
-                label.putScalar(new int[]{index, 0, c}, feedLabel(nextData));
+                label.putScalar(new int[] {index, 0, c}, (nextData.getPrice1() - minArray[0]) / (maxArray[0] - minArray[0]));
+//                label.putScalar(new int[] {index, 1, c}, (nextData.getPrice2() - minArray[1]) / (maxArray[1] - minArray[1]));
+
                 curData = nextData;
             }
             if (exampleStartOffsets.size() == 0) break;
@@ -105,11 +108,11 @@ public class DataProcessIterator implements DataSetIterator {
         return new DataSet(input, label);
     }
 
-    private double feedLabel(StockData data) {
-        double value;
-        value = (data.getPrice1() - minArray[0]) / (maxArray[0] - minArray[0]);
-        return value;
-    }
+//    private double feedLabel(StockData data) {
+//        double value;
+//        value = (data.getPrice1() - minArray[0]) / (maxArray[0] - minArray[0]);
+//        return value;
+//    }
 
 
     @Override

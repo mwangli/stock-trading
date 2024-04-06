@@ -17,11 +17,12 @@ import org.springframework.stereotype.Component;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Random;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RunPredictJob extends BaseJob{
+public class RunModelPredictJob extends BaseJob{
 
     private final AllJobs allJobs;
     private final LSTMModel lstmModel;
@@ -31,22 +32,18 @@ public class RunPredictJob extends BaseJob{
 
     @SneakyThrows
     @Scheduled(fixedDelay = Long.MAX_VALUE)
-    private void test() {
+    private void runJob() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getDeleted, "1")
                 .eq(StockInfo::getPermission, "1").between(StockInfo::getPrice, 8, 15);
-        Page<StockInfo> page = stockInfoService.page(Page.of(0, 100), queryWrapper);
+        Page<StockInfo> page = stockInfoService.page(Page.of(0, 500), queryWrapper);
         List<StockInfo> dataList = page.getRecords();
-        dataList.stream().findAny().ifPresent(stockInfo -> {
-            log.info("获取到股票待预测股票：{}-{}", stockInfo.getName(), stockInfo.getCode());
+        StockInfo stockInfo = dataList.get(new Random().nextInt(100));
+        log.info("获取到股票待预测股票：{}-{}", stockInfo.getName(), stockInfo.getCode());
 
 //        });
 //        dataList.stream().findAny(stockInfo -> {
             long start = System.currentTimeMillis();
             String stockCode = stockInfo.getCode();
-            // 保存股票价格历史数据
-            allJobs.writeHistoryPriceData(stockCode);
-            // 训练模型/
-            lstmModel.modelTrain(stockCode);
             // 预测价格
             double newPrice = stockInfo.getPrice();
             double predictNextPrice = lstmModel.modelPredict(stockCode, newPrice);
@@ -61,11 +58,10 @@ public class RunPredictJob extends BaseJob{
             predictPriceMapper.insert(predictPrice);
             long end = System.currentTimeMillis();
             log.info("当前股票：{}-{}，价格预测任务完成，总共耗时：{}", stockInfo.getName(), stockCode, DateUtils.timeConvertor(end - start));
-        });
     }
 
     @Override
     void run(String runningId) {
-        test();
+        runJob();
     }
 }

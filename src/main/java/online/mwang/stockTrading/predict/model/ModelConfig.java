@@ -12,6 +12,9 @@ import org.deeplearning4j.nn.conf.layers.RnnOutputLayer;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.nn.weights.WeightInit;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
+import org.deeplearning4j.ui.api.UIServer;
+import org.deeplearning4j.ui.stats.StatsListener;
+import org.deeplearning4j.ui.storage.InMemoryStatsStorage;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.learning.config.Nesterovs;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
@@ -29,7 +32,7 @@ public class ModelConfig {
     private static final int lstmLayer2Size = 128;
     private static final int denseLayerSize = 16;
     private static final double dropoutRatio = 0.1;
-    private static final int truncatedBPTTLength = 10;
+    private static final int truncatedBPTTLength = 20;
 
     @Value("${PROFILE}")
     private String profile;
@@ -77,15 +80,15 @@ public class ModelConfig {
         net.init();
 
         log.info(net.summary());
-//        if (profile.equalsIgnoreCase("dev")) {
-            // 初始化用户界面后端
+        if (profile.equalsIgnoreCase("dev")) {
+//             初始化用户界面后端
 //            UIServer uiServer = UIServer.getInstance();
 //            StatsStorage statsStorage = new InMemoryStatsStorage();
 //            uiServer.attach(statsStorage);
 //            net.setListeners(new StatsListener(statsStorage));
-//        } else
             net.setListeners(new ScoreIterationListener(50));
-//        }
+        } else
+            net.setListeners(new ScoreIterationListener(50));
 
         return net;
     }

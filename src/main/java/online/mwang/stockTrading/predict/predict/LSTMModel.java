@@ -7,9 +7,11 @@ import online.mwang.stockTrading.predict.data.DataProcessIterator;
 import online.mwang.stockTrading.predict.model.ModelConfig;
 import online.mwang.stockTrading.predict.utils.PlotUtil;
 import online.mwang.stockTrading.web.utils.DateUtils;
+import org.deeplearning4j.eval.RegressionEvaluation;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.util.ModelSerializer;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.primitives.Pair;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -26,9 +28,9 @@ import java.util.List;
 
 public class LSTMModel {
 
-    private static final int WINDOW_LENGTH = 10;
+    private static final int WINDOW_LENGTH = 20;
     private static final int BATCH_SIZE = 32;
-    private static final double SPLIT_RATIO = 0.9;
+    private static final double SPLIT_RATIO = 0.85;
     private static final int EPOCHS = 128;
 
     //    private static final String resourceBaseDir = "src/main/resources/";
@@ -55,10 +57,10 @@ public class LSTMModel {
             dataFile = new File(getBaseDir() + "history_price_" + stockCode + priceFileNameSuffix);
         }
         log.info("Create dataSet iterator...");
-        double splitRatio = SPLIT_RATIO;
+//        double splitRatio = SPLIT_RATIO;
         // 生产环境所有数据参与模型训练
 //        if (profile.equalsIgnoreCase("prod")) splitRatio = 1;
-        DataProcessIterator iterator = new DataProcessIterator(dataFile.getAbsolutePath(), BATCH_SIZE, WINDOW_LENGTH, splitRatio);
+        DataProcessIterator iterator = new DataProcessIterator(dataFile.getAbsolutePath(), BATCH_SIZE, WINDOW_LENGTH, SPLIT_RATIO);
         log.info("Load test dataset...");
 
         log.info("Build lstm networks...");
@@ -66,8 +68,12 @@ public class LSTMModel {
 
         log.info("Training...");
         for (int i = 0; i < EPOCHS; i++) {
-            while (iterator.hasNext()) net.fit(iterator.next()); // fit model using mini-batch data
+            while (iterator.hasNext()) {
+                DataSet input = iterator.next();
+                net.fit(input);
+            } // fit model using mini-batch data
             iterator.reset(); // reset iterator
+
             net.rnnClearPreviousState(); // clear previous state
         }
         log.info("股票模型-{}，训练完成!", stockCode);
@@ -129,13 +135,13 @@ public class LSTMModel {
 //        for (int i = 0; i < dataArray.length - 1; i++) {
 //            dataArray[i] = doubles.get(i + 1);
 //        }
-        log.info("移动最后一个元素之前：{}", lastTestInput);
+//        log.info("移动最后一个元素之前：{}", lastTestInput);
         for (int i = 0; i > WINDOW_LENGTH - 2; i++) {
             double next = lastTestInput.getScalar(i + 1, 0).getDouble(0);
             lastTestInput.putScalar(i, 0, next);
         }
         lastTestInput.putScalar(WINDOW_LENGTH - 1, 0, (nowPrice - min) / (max - min));
-        log.info("移动最后一个元素之后：{}", lastTestInput);
+//        log.info("移动最后一个元素之后：{}", lastTestInput);
 //        dataArray[WINDOW_LENGTH - 1] = (nowPrice - min) / (max - min);
 //        log.info("填充最后一次价格的输入项:{}", dataArray);
 //        INDArray newArray = Nd4j.create(dataArray, new int[]{WINDOW_LENGTH, 1});

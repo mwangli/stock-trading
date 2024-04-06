@@ -22,7 +22,12 @@ import online.mwang.stockTrading.web.utils.RequestUtils;
 import online.mwang.stockTrading.web.utils.SleepUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.io.*;
@@ -74,6 +79,7 @@ public class AllJobs {
     private final TradingRecordService tradingRecordService;
     private final AccountInfoMapper accountInfoMapper;
     private final StringRedisTemplate redisTemplate;
+    private final MongoTemplate mongoTemplate;
     private final StockInfoMapper stockInfoMapper;
     private final ScoreStrategyMapper strategyMapper;
     private final SleepUtils sleepUtils;
@@ -133,7 +139,8 @@ public class AllJobs {
 //    @Scheduled(cron = "0 0 15 ? * MON-FRI")
     public void runHistoryJob() {
         log.info("更新股票历史价格任务执行开始====================================");
-        updateHistoryPrice();
+//        updateHistoryPrice();
+        updateLastHistoryPrice();
         log.info("更新股票历史价格任务执行结束====================================");
     }
 
@@ -621,36 +628,7 @@ public class AllJobs {
         setToken(result.getString("TOKEN"));
     }
 
-    public AccountInfo updateAmount() {
-        String token = getToken();
-        final long timeMillis = System.currentTimeMillis();
-        HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", 116);
-        paramMap.put("ReqlinkType", 1);
-        paramMap.put("token", token);
-        paramMap.put("reqno", timeMillis);
-        final JSONArray jsonArray = requestUtils.request2(buildParams(paramMap));
-        if (jsonArray == null || jsonArray.size() < 1) {
-            log.info("获取账户资金失败！");
-            return null;
-        }
-        final String string = jsonArray.getString(1);
-        // 币种|余额|可取|可用|总资产|证券|基金|冻结资金|资产|资金账户|币种代码|账号主副标志|
-        final String[] split = string.split("\\|");
-        final Double availableAmount = Double.parseDouble(split[3]);
-        final Double totalAmount = Double.parseDouble(split[4]);
-        final Double usedAmount = Double.parseDouble(split[5]);
-        final AccountInfo accountInfo = new AccountInfo();
-        accountInfo.setAvailableAmount(availableAmount);
-        accountInfo.setUsedAmount(usedAmount);
-        accountInfo.setTotalAmount(totalAmount);
-        final Date now = new Date();
-        accountInfo.setCreateTime(now);
-        accountInfo.setUpdateTime(now);
-        accountInfoMapper.insert(accountInfo);
-        log.info("当前可用金额:{}元,持仓金额:{}元,总金额:{}元。", availableAmount, usedAmount, totalAmount);
-        return accountInfo;
-    }
+
 
     private List<OrderStatus> arrayToList(JSONArray result, boolean isToday) {
         // 委托日期|时间|证券代码|证券|委托类别|买卖方向|状态|委托|数量|委托编号|均价|成交|股东代码|交易类别|
@@ -732,7 +710,7 @@ public class AllJobs {
         log.info("查询到订单状态信息:");
         orderInfos.forEach(o -> log.info("{}-{}:{}", o.getCode(), o.getName(), o.getStatus()));
         Optional<OrderStatus> status = orderInfos.stream().filter(o -> o.getAnswerNo().equals(answerNo)).findFirst();
-        if (status.isEmpty()) {
+        if (status.isPresent()) {
             log.info("未查询到合同编号为{}的订单交易状态！", answerNo);
             return null;
         }
@@ -985,7 +963,13 @@ public class AllJobs {
         log.info("共同步{}条股票交易次数", collect.size());
     }
 
+    /**
+     * 2024-04-06，采用mongo来存储历史数据，减轻数据压力
+     *
+     * @See {AllJobs.updateLastHistoryPrice}
+     */
     @SneakyThrows
+    @Deprecated
     public void updateHistoryPrice() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getDeleted, "1");
         final List<StockInfo> stockInfos = stockInfoMapper.selectList(queryWrapper);
@@ -1330,7 +1314,7 @@ public class AllJobs {
     }
 
     @SneakyThrows
-    public void writeHistoryPriceData(String stockCode) {
+    public void writeHistoryPriceDataToCSV(String stockCode) {
         final StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, stockCode));
         List<DailyItem> historyPrices = getHistoryPrices(stockInfo.getCode());
         String filePath = new File(lstmModel.getBaseDir() + "data/history_price_" + stockCode + ".csv").getAbsolutePath();
@@ -1338,21 +1322,112 @@ public class AllJobs {
             filePath = new File(lstmModel.getBaseDir() + "/history_price_" + stockCode + ".csv").getAbsolutePath();
         }
         final BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(filePath));
-        String csvHead = "date,code,price1,price2,price3,price4";
+//        String csvHead = "date,code,price1,price2,price3,price4";
+        String csvHead = "date,price1";
         bufferedWriter.write(csvHead);
         bufferedWriter.newLine();
         for (DailyItem item : historyPrices) {
-            bufferedWriter.write(item.getDate().concat(","));
-            bufferedWriter.write(item.getPrice1().toString().concat(","));
-            bufferedWriter.write(item.getPrice2().toString().concat(","));
-            bufferedWriter.write(item.getPrice3().toString().concat(","));
-            bufferedWriter.write(item.getPrice4().toString());
+//            bufferedWriter.write(item.getDate().concat(","));
+//            bufferedWriter.write(item.getPrice1().toString().concat(","));
+//            bufferedWriter.write(item.getPrice2().toString().concat(","));
+//            bufferedWriter.write(item.getPrice3().toString().concat(","));
+//            bufferedWriter.write(item.getPrice4().toString());
+//            bufferedWriter.newLine();
+//            bufferedWriter.flush();
+            bufferedWriter.write(item.getDate().concat(",").concat(item.getPrice1().toString()));
             bufferedWriter.newLine();
-            bufferedWriter.flush();
+            bufferedWriter.write(item.getDate().concat(",").concat(item.getPrice2().toString()));
+            bufferedWriter.newLine();
+            bufferedWriter.write(item.getDate().concat(",").concat(item.getPrice3().toString()));
+            bufferedWriter.newLine();
+            bufferedWriter.write(item.getDate().concat(",").concat(item.getPrice4().toString()));
+            bufferedWriter.newLine();
         }
         bufferedWriter.close();
         log.info("股票:{}-{}, 历史数据保存完成！", stockInfo.getName(), stockInfo.getCode());
     }
 
 
+    //   交易日的每天中午12点执行
+//    @Scheduled(cron = "0 0 12 ? * MON-FRI")
+    @Scheduled(fixedDelay = Long.MAX_VALUE)
+    public void updateLastHistoryPrice() {
+        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(StockInfo::getDeleted, 1);
+        queryWrapper.eq(StockInfo::getPermission, 1);
+        List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
+        log.info("共需更新{}支股票最新历史价格数据", stockInfoList.size());
+        stockInfoList.forEach(this::writeHistoryPriceDataToMongoDB);
+    }
+
+    // 首次初始化执行，写入3000支股票，每只股票约一千条数据
+//    @Scheduled(fixedDelay = Long.MAX_VALUE)
+    private void updateLastHistoryPriceALL() {
+        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(StockInfo::getDeleted, 1);
+        queryWrapper.eq(StockInfo::getPermission, 1);
+        List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
+        log.info("共需写入{}支股票历史数据", stockInfoList.size());
+        writeHistoryPriceDataToMongoDB(stockInfoList);
+    }
+
+
+    @SneakyThrows
+    public void writeHistoryPriceDataToMongoDB(List<StockInfo> stockInfoList) {
+        stockInfoList.forEach(s -> {
+            List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
+            List<StockHistoryPrice> stockHistoryPriceList = historyPrices.stream().map(item -> {
+                StockHistoryPrice stockHistoryPrice = new StockHistoryPrice();
+                stockHistoryPrice.setName(s.getName());
+                stockHistoryPrice.setCode(s.getCode());
+                stockHistoryPrice.setDate(item.getDate());
+                stockHistoryPrice.setPrice1(item.getPrice1());
+                stockHistoryPrice.setPrice1(item.getPrice2());
+                stockHistoryPrice.setPrice1(item.getPrice3());
+                stockHistoryPrice.setPrice1(item.getPrice4());
+                return stockHistoryPrice;
+            }).collect(Collectors.toList());
+            mongoTemplate.insert(stockHistoryPriceList, s.getCode());
+            log.info("当前股票：{}-{},所有历史数据，初始化完成", s.getName(), s.getCode());
+        });
+    }
+
+    @SneakyThrows
+    public void writeHistoryPriceDataToMongoDB(StockInfo stockInfo) {
+        List<DailyItem> historyPrices = getHistoryPrices(stockInfo.getCode());
+        List<StockHistoryPrice> stockHistoryPriceList = historyPrices.stream().map(item -> {
+            StockHistoryPrice stockHistoryPrice = new StockHistoryPrice();
+            stockHistoryPrice.setName(stockInfo.getName());
+            stockHistoryPrice.setCode(stockInfo.getCode());
+            stockHistoryPrice.setDate(item.getDate());
+            stockHistoryPrice.setPrice1(item.getPrice1());
+            stockHistoryPrice.setPrice1(item.getPrice2());
+            stockHistoryPrice.setPrice1(item.getPrice3());
+            stockHistoryPrice.setPrice1(item.getPrice4());
+            return stockHistoryPrice;
+        }).collect(Collectors.toList());
+        // 翻转一下，将日期从新到旧排列，这样读到已经存在的数据，就可以跳过后续判断写入逻辑
+        Collections.reverse(stockHistoryPriceList);
+        for (StockHistoryPrice s : stockHistoryPriceList) {
+            // 先查询是否已经存在相同记录
+            Query query = new Query(Criteria.where("date").is(s.getDate()));
+            // 每只股票写入不同的表
+            String collectionName = s.getCode();
+            StockHistoryPrice one = mongoTemplate.findOne(query, StockHistoryPrice.class, collectionName);
+            if (Objects.isNull(one)) {
+                mongoTemplate.save(s, collectionName);
+                log.info("当前股票{}-{}-{}，历史数据写入完成", s.getName(), s.getCode(), s.getDate());
+            } else {
+                if (one.getPrice3() == null || one.getPrice4() == null) {
+                    log.info("当前股票{}-{}-{}，历史数据不完整进行修改操作", s.getName(), s.getCode(), s.getDate());
+                    Update update = new Update().set("price3", one.getPrice3()).set("price4", one.getPrice3());
+                    mongoTemplate.updateFirst(query, update, StockHistoryPrice.class, collectionName);
+                } else {
+                    // 数据完整，则跳过后续处理
+                    break;
+                }
+            }
+        }
+        log.info("股票:{}-{}, 所有历史价格数据保存完成！", stockInfo.getName(), stockInfo.getCode());
+    }
 }
