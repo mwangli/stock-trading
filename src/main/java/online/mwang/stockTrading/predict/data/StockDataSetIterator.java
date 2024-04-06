@@ -2,12 +2,12 @@ package online.mwang.stockTrading.predict.data;
 
 import com.google.common.collect.ImmutableMap;
 import com.opencsv.CSVReader;
-import javafx.util.Pair;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.DataSetPreProcessor;
 import org.nd4j.linalg.dataset.api.iterator.DataSetIterator;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.primitives.Pair;
 
 import java.io.FileReader;
 import java.io.IOException;
