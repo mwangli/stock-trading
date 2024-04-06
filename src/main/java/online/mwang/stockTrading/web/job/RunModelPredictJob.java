@@ -15,6 +15,7 @@ import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.Date;
@@ -41,6 +42,7 @@ public class RunModelPredictJob extends BaseJob {
     private void runJob() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda()
                 .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1");
+//        queryWrapper.eq(StockInfo::getCode, "002020");
         List<StockInfo> list = stockInfoService.list(queryWrapper);
 
         list.forEach(stockInfo -> {

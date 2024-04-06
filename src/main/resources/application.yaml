@@ -19,7 +19,7 @@ spring:
       matching-strategy: ANT_PATH_MATCHER
   redis:
     timeout: 10000
-    url: redis://:${REDIS_PASS}@${REDIS_HOST}
+    url: redis://:${REDIS_PASS}@${REDIS_HOST}/1
     jedis:
       pool:
         #最大连接数
