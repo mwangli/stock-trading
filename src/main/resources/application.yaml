@@ -3,11 +3,11 @@ spring:
     time-zone: GMT+8
   data:
     mongodb:
-      host: test1
+      host: 112.74.187.216
       port: 27017
       database: stockHistoryPrice
       username: root
-      password: 'Root.123456'
+      password: Root.123456
       authentication-database: admin
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
