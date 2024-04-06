@@ -19,7 +19,7 @@
         </java.version>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <deeplearning4j.version>1.0.0-beta2</deeplearning4j.version>
+        <deeplearning4j.version>0.9.1</deeplearning4j.version>
         <slf4j.version>1.7.21</slf4j.version>
         <opencsv.version>3.9</opencsv.version>
         <guava.version>23.0</guava.version>
@@ -28,6 +28,13 @@
     </properties>
 
     <dependencies>
+
+        <!-- https://mvnrepository.com/artifact/com.google.code.gson/gson -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.8.6</version>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -151,12 +158,6 @@
             <artifactId>nd4j-api</artifactId>
             <version>${deeplearning4j.version}</version>
         </dependency>
-
-        <dependency>
-            <groupId>org.nd4j</groupId>
-            <artifactId>nd4j-cuda-9.2</artifactId>
-            <version>1.0.0-beta2</version>
-        </dependency>
         <dependency>
             <groupId>org.nd4j</groupId>
             <artifactId>nd4j-native</artifactId>
@@ -172,12 +173,12 @@
             <artifactId>datavec-api</artifactId>
             <version>${deeplearning4j.version}</version>
         </dependency>
-<!--        <dependency>-->
-<!--            <groupId>org.datavec</groupId>-->
-<!--            <artifactId>datavec-dataframe</artifactId>-->
-<!--            <version>${deeplearning4j.version}</version>-->
-<!--        </dependency>-->
-        <!-- Spark Dependencies -->
+        <dependency>
+            <groupId>org.datavec</groupId>
+            <artifactId>datavec-dataframe</artifactId>
+            <version>${deeplearning4j.version}</version>
+        </dependency>
+<!--        &lt;!&ndash; Spark Dependencies &ndash;&gt;-->
 <!--        <dependency>-->
 <!--            <groupId>org.apache.spark</groupId>-->
 <!--            <artifactId>spark-sql_2.10</artifactId>-->
@@ -229,26 +230,16 @@
             <artifactId>jfreechart</artifactId>
             <version>${jfreechart.version}</version>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-        </dependency>
 <!--        <dependency>-->
-<!--            <groupId>org.springframework</groupId>-->
-<!--            <artifactId>spring-test</artifactId>-->
-<!--            <version>6.1.5</version>-->
+<!--            <groupId>com.google.code.gson</groupId>-->
+<!--            <artifactId>gson</artifactId>-->
+<!--            <version>2.8.5</version>-->
 <!--        </dependency>-->
         <!-- Guava dependency -->
 <!--        <dependency>-->
 <!--            <groupId>com.google.guava</groupId>-->
 <!--            <artifactId>guava</artifactId>-->
 <!--            <version>${guava.version}</version>-->
-<!--        </dependency>-->
-
-<!--        <dependency>-->
-<!--            <groupId>com.fasterxml.jackson.module</groupId>-->
-<!--            <artifactId>jackson-module-scala_2.11</artifactId>-->
-<!--            <version>2.9.2</version>-->
 <!--        </dependency>-->
 
     </dependencies>

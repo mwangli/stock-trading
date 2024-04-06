@@ -2,11 +2,10 @@ package online.mwang.stockTrading.web.job;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.predict.model.LSTMModel;
+import online.mwang.stockTrading.predict.model.StockPricePrediction;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
@@ -22,7 +21,7 @@ import java.util.Random;
 public class RunModelTrainJob extends BaseJob {
 
     private final AllJobs allJobs;
-    private final LSTMModel lstmModel;
+    private final StockPricePrediction stockPricePrediction;
     private final StockInfoService stockInfoService;
 
 
@@ -44,7 +43,7 @@ public class RunModelTrainJob extends BaseJob {
         // 保存股票价格历史数据
         allJobs.writeHistoryPriceDataToCSV(stockCode);
         // 训练模型/
-        lstmModel.modelTrain(stockCode);
+        stockPricePrediction.modelTrain(stockCode);
         long end = System.currentTimeMillis();
         log.info("当前股票：{}-{}，模型任务完成，总共耗时：{}", stockInfo.getName(), stockCode, DateUtils.timeConvertor(end - start));
     }

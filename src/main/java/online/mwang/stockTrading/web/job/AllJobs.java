@@ -9,7 +9,6 @@ import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.predict.model.LSTMModel;
 import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
@@ -85,7 +84,6 @@ public class AllJobs {
     private final StockInfoMapper stockInfoMapper;
     private final ScoreStrategyMapper strategyMapper;
     private final SleepUtils sleepUtils;
-    private final LSTMModel lstmModel;
     private final PredictPriceMapper predictPriceMapper;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
     public boolean enableSaleWaiting = true;
@@ -1366,31 +1364,34 @@ public class AllJobs {
     public void writeHistoryPriceDataToCSV(String stockCode) {
         final StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, stockCode));
         List<DailyItem> historyPrices = getHistoryPrices(stockInfo.getCode());
-        String filePath = new File(lstmModel.getBaseDir() + "data/history_price_" + stockCode + ".csv").getAbsolutePath();
+        String filePath = new File("data/history_price_" + stockCode + ".csv").getAbsolutePath();
         if (profile.equalsIgnoreCase("prod")) {
-            filePath = new File(lstmModel.getBaseDir() + "/history_price_" + stockCode + ".csv").getAbsolutePath();
+            filePath = new File("/root/history_price_" + stockCode + ".csv").getAbsolutePath();
         }
-        final BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(filePath));
+        File file = new File(filePath);
+        final BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(file));
 //        String csvHead = "date,code,price1,price2,price3,price4";
-        String csvHead = "date,price1";
+        String csvHead = "date,code,price1,price2,price3,price4,volume";
         bufferedWriter.write(csvHead);
         bufferedWriter.newLine();
         for (DailyItem item : historyPrices) {
-//            bufferedWriter.write(item.getDate().concat(","));
-//            bufferedWriter.write(item.getPrice1().toString().concat(","));
-//            bufferedWriter.write(item.getPrice2().toString().concat(","));
-//            bufferedWriter.write(item.getPrice3().toString().concat(","));
-//            bufferedWriter.write(item.getPrice4().toString());
+            bufferedWriter.write(item.getDate().concat(","));
+            bufferedWriter.write(stockCode.concat(","));
+            bufferedWriter.write(item.getPrice1().toString().concat(","));
+            bufferedWriter.write(item.getPrice2().toString().concat(","));
+            bufferedWriter.write(item.getPrice3().toString().concat(","));
+            bufferedWriter.write(item.getPrice4().toString().concat(","));
+            bufferedWriter.write("0");
+            bufferedWriter.newLine();
+            bufferedWriter.flush();
+//            bufferedWriter.write(item.getDate().concat(",").concat(item.getPrice1().toString()));
 //            bufferedWriter.newLine();
-//            bufferedWriter.flush();
-            bufferedWriter.write(item.getDate().concat(",").concat(item.getPrice1().toString()));
-            bufferedWriter.newLine();
-            bufferedWriter.write(item.getDate().concat(",").concat(item.getPrice2().toString()));
-            bufferedWriter.newLine();
-            bufferedWriter.write(item.getDate().concat(",").concat(item.getPrice3().toString()));
-            bufferedWriter.newLine();
-            bufferedWriter.write(item.getDate().concat(",").concat(item.getPrice4().toString()));
-            bufferedWriter.newLine();
+//            bufferedWriter.write(item.getDate().concat(",").concat(item.getPrice2().toString()));
+//            bufferedWriter.newLine();
+//            bufferedWriter.write(item.getDate().concat(",").concat(item.getPrice3().toString()));
+//            bufferedWriter.newLine();
+//            bufferedWriter.write(item.getDate().concat(",").concat(item.getPrice4().toString()));
+//            bufferedWriter.newLine();
         }
         bufferedWriter.close();
         log.info("股票:{}-{}, 历史数据保存完成！", stockInfo.getName(), stockInfo.getCode());
