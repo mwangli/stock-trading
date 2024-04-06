@@ -9,7 +9,7 @@ import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.predict.predict.LSTMModel;
+import online.mwang.stockTrading.predict.model.LSTMModel;
 import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.ScoreStrategyMapper;
@@ -70,6 +70,7 @@ public class AllJobs {
     private static final int THREAD_POOL_NUMBERS = 8;
     private static final int TOKEN_EXPIRE_MINUTES = 30;
     private static final int CANCEL_WAIT_TIMES = 30;
+    private static final String COLLECTION_NAME_PREFIX = "code_";
     private static final String BUY_TYPE_OP = "B";
     private static final String SALE_TYPE_OP = "S";
     private static HashMap<String, Integer> dateMap;
@@ -139,7 +140,6 @@ public class AllJobs {
 //    @Scheduled(cron = "0 0 15 ? * MON-FRI")
     public void runHistoryJob() {
         log.info("更新股票历史价格任务执行开始====================================");
-//        updateHistoryPrice();
         updateLastHistoryPrice();
         log.info("更新股票历史价格任务执行结束====================================");
     }
@@ -658,7 +658,6 @@ public class AllJobs {
         final JSONObject result = requestUtils.request(buildParams(paramMap));
         setToken(result.getString("TOKEN"));
     }
-
 
 
     private List<OrderStatus> arrayToList(JSONArray result, boolean isToday) {
@@ -1380,28 +1379,14 @@ public class AllJobs {
 
 
     //   交易日的每天中午12点执行
-//    @Scheduled(cron = "0 0 12 ? * MON-FRI")
-    @Scheduled(fixedDelay = Long.MAX_VALUE)
-    public void updateLastHistoryPrice() {
+    @Scheduled(cron = "0 0 12 ? * MON-FRI")
+    private void updateLastHistoryPrice() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(StockInfo::getDeleted, 1);
-        queryWrapper.eq(StockInfo::getPermission, 1);
         List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
         log.info("共需更新{}支股票最新历史价格数据", stockInfoList.size());
         stockInfoList.forEach(this::writeHistoryPriceDataToMongoDB);
     }
-
-    // 首次初始化执行，写入3000支股票，每只股票约一千条数据
-//    @Scheduled(fixedDelay = Long.MAX_VALUE)
-    private void updateLastHistoryPriceALL() {
-        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(StockInfo::getDeleted, 1);
-        queryWrapper.eq(StockInfo::getPermission, 1);
-        List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
-        log.info("共需写入{}支股票历史数据", stockInfoList.size());
-        writeHistoryPriceDataToMongoDB(stockInfoList);
-    }
-
 
     @SneakyThrows
     public void writeHistoryPriceDataToMongoDB(List<StockInfo> stockInfoList) {
@@ -1413,12 +1398,13 @@ public class AllJobs {
                 stockHistoryPrice.setCode(s.getCode());
                 stockHistoryPrice.setDate(item.getDate());
                 stockHistoryPrice.setPrice1(item.getPrice1());
-                stockHistoryPrice.setPrice1(item.getPrice2());
-                stockHistoryPrice.setPrice1(item.getPrice3());
-                stockHistoryPrice.setPrice1(item.getPrice4());
+                stockHistoryPrice.setPrice2(item.getPrice2());
+                stockHistoryPrice.setPrice3(item.getPrice3());
+                stockHistoryPrice.setPrice4(item.getPrice4());
                 return stockHistoryPrice;
             }).collect(Collectors.toList());
-            mongoTemplate.insert(stockHistoryPriceList, s.getCode());
+            String collectionName = COLLECTION_NAME_PREFIX + s.getCode();
+            mongoTemplate.insert(stockHistoryPriceList, collectionName);
             log.info("当前股票：{}-{},所有历史数据，初始化完成", s.getName(), s.getCode());
         });
     }
@@ -1443,7 +1429,7 @@ public class AllJobs {
             // 先查询是否已经存在相同记录
             Query query = new Query(Criteria.where("date").is(s.getDate()));
             // 每只股票写入不同的表
-            String collectionName = s.getCode();
+            String collectionName = COLLECTION_NAME_PREFIX + s.getCode();
             StockHistoryPrice one = mongoTemplate.findOne(query, StockHistoryPrice.class, collectionName);
             if (Objects.isNull(one)) {
                 mongoTemplate.save(s, collectionName);
@@ -1461,4 +1447,16 @@ public class AllJobs {
         }
         log.info("股票:{}-{}, 所有历史价格数据保存完成！", stockInfo.getName(), stockInfo.getCode());
     }
+
+    // 首次初始化执行，写入4000支股票，每只股票约500条数据
+//    @Scheduled(fixedDelay = Long.MAX_VALUE)
+    public void updateLastHistoryPriceALL() {
+        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(StockInfo::getDeleted, 1);
+        List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
+        log.info("共需写入{}支股票历史数据", stockInfoList.size());
+        writeHistoryPriceDataToMongoDB(stockInfoList);
+        log.info("所有数据初始化完成，共{}只股票数据", stockInfoList.size());
+    }
+
 }

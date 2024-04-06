@@ -6,9 +6,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.predict.predict.LSTMModel;
+import online.mwang.stockTrading.predict.model.LSTMModel;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
-import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -25,16 +24,16 @@ public class RunModelTrainJob extends BaseJob {
     private final AllJobs allJobs;
     private final LSTMModel lstmModel;
     private final StockInfoService stockInfoService;
-    private final PredictPriceMapper predictPriceMapper;
 
 
     @SneakyThrows
-//    @Scheduled(fixedDelay = Long.MAX_VALUE)
+    @Scheduled(fixedDelay = Long.MAX_VALUE)
     private void runJob() {
-        LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getDeleted, "1")
-                .eq(StockInfo::getPermission, "1").between(StockInfo::getPrice, 8, 15);
-        Page<StockInfo> page = stockInfoService.page(Page.of(0, 500), queryWrapper);
-        List<StockInfo> dataList = page.getRecords();
+        LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda();
+        queryWrapper.eq(StockInfo::getDeleted, "1");
+        queryWrapper.eq(StockInfo::getPermission, "1");
+        queryWrapper.between(StockInfo::getPrice, 8, 15);
+        List<StockInfo> dataList = stockInfoService.list(queryWrapper);
         StockInfo stockInfo = dataList.get(new Random().nextInt(100));
         log.info("获取到股票待预测股票：{}-{}", stockInfo.getName(), stockInfo.getCode());
 

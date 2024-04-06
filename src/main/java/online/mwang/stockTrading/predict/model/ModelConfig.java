@@ -26,7 +26,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ModelConfig {
 
-    private static final double learningRate = 0.0015;
+    private static final double learningRate = 0.015;
     private static final int seed = 12345;
     private static final int lstmLayer1Size = 128;
     private static final int lstmLayer2Size = 128;
