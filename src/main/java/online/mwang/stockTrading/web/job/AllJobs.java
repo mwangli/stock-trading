@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.predict.model.LSTMModel;
 import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
+import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
 import online.mwang.stockTrading.web.mapper.ScoreStrategyMapper;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
 import online.mwang.stockTrading.web.service.StockInfoService;
@@ -85,6 +86,7 @@ public class AllJobs {
     private final ScoreStrategyMapper strategyMapper;
     private final SleepUtils sleepUtils;
     private final LSTMModel lstmModel;
+    private final PredictPriceMapper predictPriceMapper;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
     public boolean enableSaleWaiting = true;
     public boolean enableBuyWaiting = true;
@@ -1059,9 +1061,10 @@ public class AllJobs {
             AtomicBoolean exist = new AtomicBoolean(false);
             dataList.stream().filter(s -> s.getCode().equals(newInfo.getCode())).findFirst().ifPresent(p -> {
                 Double nowPrice = newInfo.getPrice();
-                List<DailyItem> priceList = JSON.parseArray(p.getPrices(), DailyItem.class);
-                List<DailyItem> rateList = JSON.parseArray(p.getIncreaseRate(), DailyItem.class);
-                Double score = handleScore(nowPrice, priceList, rateList, params);
+//                List<DailyItem> priceList = JSON.parseArray(p.getPrices(), DailyItem.class);
+//                List<DailyItem> rateList = JSON.parseArray(p.getIncreaseRate(), DailyItem.class);
+//                Double score = handleScore(nowPrice, priceList, rateList, params);
+                Double score = handleScore(p);
                 p.setScore(score);
                 p.setPrice(newInfo.getPrice());
                 p.setIncrease(newInfo.getIncrease());
@@ -1094,6 +1097,7 @@ public class AllJobs {
         saveDate(saveList);
     }
 
+    @Deprecated
     private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList, StrategyParams params) {
         if (priceList != null && priceList.size() > 0) {
             Double prePrice = priceList.get(priceList.size() - 1).getItem();
@@ -1105,6 +1109,21 @@ public class AllJobs {
             return getScoreByList(prices, rates, params);
         }
         return 0.0;
+    }
+
+    // 根据预测价格来计算购买优先级
+    private Double handleScore(StockInfo stockInfo) {
+        // 获取该股票今预测价格
+        LambdaQueryWrapper<PredictPrice> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(PredictPrice::getStockCode, stockInfo.getCode());
+        queryWrapper.eq(PredictPrice::getDate, DateUtils.format1(new Date()));
+        PredictPrice predictPrice = predictPriceMapper.selectOne(queryWrapper);
+        Double predictPrice1 = predictPrice.getPredictPrice1();
+        Double predictPrice2 = predictPrice.getPredictPrice2();
+        // 以预测价格的平均住计算价格增长率
+        double predictAvg = (predictPrice1 + predictPrice2) / 2;
+        double increasePercent = predictAvg / stockInfo.getPrice();
+        return increasePercent * 100;
     }
 
 

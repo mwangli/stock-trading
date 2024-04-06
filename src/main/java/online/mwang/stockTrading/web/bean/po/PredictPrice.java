@@ -17,8 +17,10 @@ public class PredictPrice {
     private Long id;
     private String stockCode;
     private String date;
-    private Double actualPrice;
-    private Double predictPrice;
+    private Double actualPrice1;
+    private Double predictPrice1;
+    private Double actualPrice2;
+    private Double predictPrice2;
     private Date createTime;
     private Date updateTime;
 }
