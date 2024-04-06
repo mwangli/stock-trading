@@ -1,25 +1,24 @@
 package online.mwang.stockTrading.web.job;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.predict.model.StockPricePrediction;
 import online.mwang.stockTrading.web.bean.po.PredictPrice;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
-import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.Date;
-import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -31,6 +30,10 @@ public class RunModelPredictJob extends BaseJob {
     private final StockInfoService stockInfoService;
     private final PredictPriceMapper predictPriceMapper;
     private final MongoTemplate mongoTemplate;
+    private final StringRedisTemplate redisTemplate;
+
+    @Value("${PROFILE}")
+    private String profile;
 
     @Override
     void run(String runningId) {
@@ -38,26 +41,23 @@ public class RunModelPredictJob extends BaseJob {
     }
 
     @SneakyThrows
-//    @Scheduled(fixedDelay = Long.MAX_VALUE)
+    @Scheduled(fixedDelay = Long.MAX_VALUE)
     private void runJob() {
-        LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda()
-                .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1");
-//        queryWrapper.eq(StockInfo::getCode, "002020");
-        List<StockInfo> list = stockInfoService.list(queryWrapper);
-
-        list.forEach(stockInfo -> {
-            log.info("获取到股票待预测股票：{}-{}", stockInfo.getName(), stockInfo.getCode());
+        Set<String> keySet = redisTemplate.keys(profile + "_trainedStockList_*");
+        keySet.forEach(key -> {
+            String[] split = key.split("_");
+            String stockCode = split[2];
+            log.info("获取到股票待预测股票：{}", stockCode);
             long start = System.currentTimeMillis();
-            String stockCode = stockInfo.getCode();
             // 获取最新的两条价格数据
             double newPrice1 = 0;
             double newPrice2 = 0;
 
             Query query = new Query(Criteria.where("date").is(DateUtils.format1(new Date())));
             // 每只股票写入不同的表
-            String collectionName = "code_" + stockInfo.getCode();
+            String collectionName = "code_" + stockCode;
             StockHistoryPrice one = mongoTemplate.findOne(query, StockHistoryPrice.class, collectionName);
-            if (one != null){
+            if (one != null) {
                 newPrice1 = one.getPrice1();
                 newPrice2 = one.getPrice2();
             }
@@ -73,7 +73,7 @@ public class RunModelPredictJob extends BaseJob {
             predictPrice.setUpdateTime(nowDate);
             predictPriceMapper.insert(predictPrice);
             long end = System.currentTimeMillis();
-            log.info("当前股票：{}-{}，价格预测任务完成，总共耗时：{}", stockInfo.getName(), stockCode, DateUtils.timeConvertor(end - start));
+            log.info("当前股票：{}，价格预测任务完成，总共耗时：{}", stockCode, DateUtils.timeConvertor(end - start));
         });
     }
 }

@@ -14,6 +14,7 @@ import org.deeplearning4j.util.ModelSerializer;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -116,11 +117,12 @@ public class StockPricePrediction {
             List<Double> doubles = Arrays.asList(nextV1, nextV2);
             lastInput.add(doubles);
         }
+
         redisTemplate.opsForValue().set("lastInput_" + stockCode, JSON.toJSONString(lastInput), 3, TimeUnit.DAYS);
         double[] minArray = iterator.getMinArray();
         double[] maxArray = iterator.getMaxArray();
         redisTemplate.opsForValue().set("minArray_" + stockCode, JSON.toJSONString(minArray), 3, TimeUnit.DAYS);
-        redisTemplate.opsForValue().set("maxArray" + stockCode, JSON.toJSONString(maxArray), 3, TimeUnit.DAYS);
+        redisTemplate.opsForValue().set("maxArray_" + stockCode, JSON.toJSONString(maxArray), 3, TimeUnit.DAYS);
 
         log.info("Saving model...");
         String savePath = new File("model/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
@@ -129,9 +131,10 @@ public class StockPricePrediction {
         }
         // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
         ModelSerializer.writeModel(net, savePath, true);
-
+        redisTemplate.opsForValue().set(profile + "_trainedStockList_" + stockCode, stockCode,3, TimeUnit.DAYS);
 
         log.info("Testing...");
+
 //        if (category.equals(PriceCategory.ALL)) {
         List<Pair<INDArray, INDArray>> testData = iterator.getTestDataSet();
         INDArray max = Nd4j.create(iterator.getMaxArray());
@@ -187,7 +190,7 @@ public class StockPricePrediction {
         JSONArray inputList = JSON.parseArray(lastInputString);
         log.info("lastInputString = {}", lastInputString);
         INDArray input = Nd4j.create(22, 2);
-        Double pre =  0.0;
+        Double pre = 0.0;
         for (int i = 1; i < inputList.size(); i++) {
             JSONArray inputValues = inputList.getJSONArray(i);
             Double v1 = inputValues.getDouble(0);
@@ -195,8 +198,8 @@ public class StockPricePrediction {
             input.putScalar(i - 1, 0, v1);
             input.putScalar(i - 1, 1, v2);
         }
-        input.putScalar(inputList.size()-1, 0, inputList.getJSONArray(inputList.size()-1).getDouble(0));
-        input.putScalar(inputList.size()-1, 1, inputList.getJSONArray(inputList.size()-1).getDouble(1));
+        input.putScalar(inputList.size() - 1, 0, inputList.getJSONArray(inputList.size() - 1).getDouble(0));
+        input.putScalar(inputList.size() - 1, 1, inputList.getJSONArray(inputList.size() - 1).getDouble(1));
 //        double[] minArray = iterator.getMinArray();
 //        double[] maxArray = iterator.getMaxArray();
 //        if (price1 != 0 && price2 != 0) {

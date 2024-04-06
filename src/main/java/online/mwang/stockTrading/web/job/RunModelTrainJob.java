@@ -23,7 +23,6 @@ public class RunModelTrainJob extends BaseJob {
     private final StockPricePrediction stockPricePrediction;
     private final StockInfoService stockInfoService;
 
-
     @SneakyThrows
     @Scheduled(fixedDelay = Long.MAX_VALUE)
     private void runJob() {
