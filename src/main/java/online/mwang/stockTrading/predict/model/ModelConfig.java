@@ -79,7 +79,7 @@ public class ModelConfig {
         MultiLayerNetwork net = new MultiLayerNetwork(conf);
         net.init();
 
-        log.info(net.summary());
+//        log.info(net.summary());
         if (profile.equalsIgnoreCase("dev")) {
 //             初始化用户界面后端
 //            UIServer uiServer = UIServer.getInstance();
