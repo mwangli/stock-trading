@@ -50,7 +50,8 @@ public class RunModelPredictJob extends BaseJob {
             predictPrice.setStockCode(stockCode);
             Date nowDate = new Date();
             predictPrice.setDate(DateUtils.dateFormat.format(nowDate));
-            predictPrice.setPredictPrice(predictNextPrice);
+            predictPrice.setPredictPrice1(predictNextPrice);
+            predictPrice.setPredictPrice2(predictNextPrice);
             predictPrice.setCreateTime(nowDate);
             predictPrice.setUpdateTime(nowDate);
             predictPriceMapper.insert(predictPrice);
