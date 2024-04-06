@@ -29,7 +29,7 @@ public class RunModelTrainJob extends BaseJob {
 
 
     @SneakyThrows
-    @Scheduled(fixedDelay = Long.MAX_VALUE)
+//    @Scheduled(fixedDelay = Long.MAX_VALUE)
     private void runJob() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getDeleted, "1")
                 .eq(StockInfo::getPermission, "1").between(StockInfo::getPrice, 8, 15);
