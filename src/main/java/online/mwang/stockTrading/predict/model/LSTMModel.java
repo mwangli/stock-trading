@@ -1,15 +1,15 @@
-package online.mwang.stockTrading.predict.predict;
+package online.mwang.stockTrading.predict.model;
 
+import com.alibaba.fastjson.JSON;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.predict.data.DataProcessIterator;
-import online.mwang.stockTrading.predict.model.ModelConfig;
 import online.mwang.stockTrading.predict.utils.PlotUtil;
 import online.mwang.stockTrading.web.utils.DateUtils;
-import org.deeplearning4j.eval.RegressionEvaluation;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.util.ModelSerializer;
+import org.nd4j.linalg.api.iter.NdIndexIterator;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.primitives.Pair;
@@ -18,6 +18,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
@@ -29,9 +30,9 @@ import java.util.List;
 public class LSTMModel {
 
     private static final int WINDOW_LENGTH = 20;
-    private static final int BATCH_SIZE = 32;
-    private static final double SPLIT_RATIO = 0.85;
-    private static final int EPOCHS = 128;
+    private static final int BATCH_SIZE = 64;
+    private static final double SPLIT_RATIO = 0.9;
+    private static final int EPOCHS = 64;
 
     //    private static final String resourceBaseDir = "src/main/resources/";
     private static final String resourceBaseDir = "";
@@ -57,9 +58,7 @@ public class LSTMModel {
             dataFile = new File(getBaseDir() + "history_price_" + stockCode + priceFileNameSuffix);
         }
         log.info("Create dataSet iterator...");
-//        double splitRatio = SPLIT_RATIO;
-        // 生产环境所有数据参与模型训练
-//        if (profile.equalsIgnoreCase("prod")) splitRatio = 1;
+
         DataProcessIterator iterator = new DataProcessIterator(dataFile.getAbsolutePath(), BATCH_SIZE, WINDOW_LENGTH, SPLIT_RATIO);
         log.info("Load test dataset...");
 
@@ -84,7 +83,7 @@ public class LSTMModel {
 //        double min = iterator.getMinNum();
 //        double max = iterator.getMaxNum();
 //        redisTemplate.opsForValue().set(stockCode, String.valueOf(min).concat(",").concat(String.valueOf(max)));
-        // 保存最后一组数据用来做预测
+//         保存最后一组数据用来做预测
 //        List<Pair<INDArray, INDArray>> testDataSet = iterator.getTestDataSet();
 //        INDArray testData = testDataSet.get(testDataSet.size() - 1).getKey();
 //        NdIndexIterator ndIndexIterator = new NdIndexIterator(WINDOW_LENGTH);
@@ -112,22 +111,23 @@ public class LSTMModel {
 
     @SneakyThrows
     public double modelPredict(String stockCode, double nowPrice) {
-        log.info("Load model...");
-        String modelPath = new File(getBaseDir() + "model/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
-        if (profile.equalsIgnoreCase("prod")) {
-            modelPath = new File(getBaseDir() + "model_".concat(stockCode).concat(".zip")).getAbsolutePath();
-        }
-        MultiLayerNetwork net = ModelSerializer.restoreMultiLayerNetwork(modelPath);
-        log.info("Testing...");
-        // 从redis中获取最大值，最小值用来做归一化处理
-        DataProcessIterator processIterator = iteratorHashMap.get(stockCode);
-        List<Pair<INDArray, INDArray>> testDataSet = processIterator.getTestDataSet();
-        INDArray lastTestInput = testDataSet.get(testDataSet.size() - 1).getKey();
+        try {
+            log.info("Load model...");
+            String modelPath = new File(getBaseDir() + "model/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
+            if (profile.equalsIgnoreCase("prod")) {
+                modelPath = new File(getBaseDir() + "model_".concat(stockCode).concat(".zip")).getAbsolutePath();
+            }
+            MultiLayerNetwork net = ModelSerializer.restoreMultiLayerNetwork(modelPath);
+            log.info("Testing...");
+            // 从redis中获取最大值，最小值用来做归一化处理
+            DataProcessIterator processIterator = iteratorHashMap.get(stockCode);
+            List<Pair<INDArray, INDArray>> testDataSet = processIterator.getTestDataSet();
+            INDArray lastTestInput = testDataSet.get(testDataSet.size() - 1).getKey();
 //        String minMaxString = redisTemplate.opsForValue().get(stockCode);
 //        String[] minMaxSplit = minMaxString.split(",");
-        double min = processIterator.getMinNum();
-        double max = processIterator.getMaxNum();
-        // 获取测试集的最后一组数据
+            double min = processIterator.getMinNum();
+            double max = processIterator.getMaxNum();
+            // 获取测试集的最后一组数据
 //        String lastDataString = redisTemplate.opsForValue().get("lastData_" + stockCode);
 //        log.info("获取到当前股票的最近的输入:{}", lastDataString);
 //        List<Double> doubles = JSON.parseArray(lastDataString, Double.class);
@@ -136,23 +136,27 @@ public class LSTMModel {
 //            dataArray[i] = doubles.get(i + 1);
 //        }
 //        log.info("移动最后一个元素之前：{}", lastTestInput);
-        for (int i = 0; i > WINDOW_LENGTH - 2; i++) {
-            double next = lastTestInput.getScalar(i + 1, 0).getDouble(0);
-            lastTestInput.putScalar(i, 0, next);
-        }
-        lastTestInput.putScalar(WINDOW_LENGTH - 1, 0, (nowPrice - min) / (max - min));
+            for (int i = 0; i < WINDOW_LENGTH - 2; i++) {
+                double next = lastTestInput.getScalar(i + 1, 0).getDouble(0);
+                lastTestInput.putScalar(i, 0, next);
+            }
+            lastTestInput.putScalar(WINDOW_LENGTH - 1, 0, (nowPrice - min) / (max - min));
 //        log.info("移动最后一个元素之后：{}", lastTestInput);
 //        dataArray[WINDOW_LENGTH - 1] = (nowPrice - min) / (max - min);
 //        log.info("填充最后一次价格的输入项:{}", dataArray);
 //        INDArray newArray = Nd4j.create(dataArray, new int[]{WINDOW_LENGTH, 1});
 //        INDArray predictArray = net.rnnTimeStep(newArray);
-        INDArray testOutput = net.rnnTimeStep(lastTestInput);
+            INDArray testOutput = net.rnnTimeStep(lastTestInput);
 //        predicts[i] = testOutput.getDouble(WINDOW_LENGTH - 1) * (max - min) + min;
-        double predictValue = testOutput.getDouble(WINDOW_LENGTH - 1) * (max - min) + min;
-        log.info("预测下一个值为：{}", predictValue);
-        return predictValue;
+            double predictValue = testOutput.getDouble(WINDOW_LENGTH - 1) * (max - min) + min;
+            log.info("预测下一个值为：{}", predictValue);
+            return predictValue;
+        } catch (Exception e) {
+            e.printStackTrace();
+            log.error("股票价格预测任务异常，使用最新价格数据作为预测值");
+        }
+        return nowPrice;
     }
-
 
     public void modelTest(MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, double max, double min, String stockCode) {
         double[] predicts = new double[testData.size()];
