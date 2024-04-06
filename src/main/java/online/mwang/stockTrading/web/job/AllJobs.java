@@ -245,6 +245,37 @@ public class AllJobs {
         return null;
     }
 
+    public AccountInfo updateAmount() {
+        String token = getToken();
+        final long timeMillis = System.currentTimeMillis();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 116);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        final JSONArray jsonArray = requestUtils.request2(buildParams(paramMap));
+        if (jsonArray == null || jsonArray.size() < 1) {
+            log.info("获取账户资金失败！");
+            return null;
+        }
+        final String string = jsonArray.getString(1);
+        // 币种|余额|可取|可用|总资产|证券|基金|冻结资金|资产|资金账户|币种代码|账号主副标志|
+        final String[] split = string.split("\\|");
+        final Double availableAmount = Double.parseDouble(split[3]);
+        final Double totalAmount = Double.parseDouble(split[4]);
+        final Double usedAmount = Double.parseDouble(split[5]);
+        final AccountInfo accountInfo = new AccountInfo();
+        accountInfo.setAvailableAmount(availableAmount);
+        accountInfo.setUsedAmount(usedAmount);
+        accountInfo.setTotalAmount(totalAmount);
+        final Date now = new Date();
+        accountInfo.setCreateTime(now);
+        accountInfo.setUpdateTime(now);
+        accountInfoMapper.insert(accountInfo);
+        log.info("当前可用金额:{}元,持仓金额:{}元,总金额:{}元。", availableAmount, usedAmount, totalAmount);
+        return accountInfo;
+    }
+
     private List<TradingRecord> getHoldList() {
         String token = getToken();
         long timeMillis = System.currentTimeMillis();
