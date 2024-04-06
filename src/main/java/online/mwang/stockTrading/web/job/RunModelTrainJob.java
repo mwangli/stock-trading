@@ -24,7 +24,6 @@ public class RunModelTrainJob extends BaseJob {
     private final StockInfoService stockInfoService;
 
     @SneakyThrows
-    @Scheduled(fixedDelay = Long.MAX_VALUE)
     private void runJob() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda();
         queryWrapper.eq(StockInfo::getDeleted, "1");
