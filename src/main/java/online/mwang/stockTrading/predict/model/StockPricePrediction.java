@@ -1,6 +1,9 @@
 package online.mwang.stockTrading.predict.model;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
 import javafx.util.Pair;
+import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.predict.data.PriceCategory;
@@ -11,12 +14,13 @@ import org.deeplearning4j.util.ModelSerializer;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.NoSuchElementException;
 
 /**
  * Created by zhanghao on 26/7/17.
@@ -26,12 +30,12 @@ import java.util.NoSuchElementException;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class StockPricePrediction {
 
     private static final int VECTOR_SIZE = 2; // time series length, assume 22 working days per month
     private static int exampleLength = 22; // time series length, assume 22 working days per month
-    private static HashMap<String, StockDataSetIterator> iteratorHashMap = new HashMap<>();
-
+    private final StringRedisTemplate redisTemplate;
     @Value("${PROFILE}")
     private String profile;
 
@@ -56,36 +60,25 @@ public class StockPricePrediction {
      * Predict all the features (open, close, low, high prices and volume) of a stock one-day ahead
      */
     private static void predictAllCategories(MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, INDArray max, INDArray min) {
-        INDArray[] predicts = new INDArray[testData.size()];
-        INDArray[] actuals = new INDArray[testData.size()];
-        for (int i = 0; i < testData.size(); i++) {
-            predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getRow(exampleLength - 1).mul(max.sub(min)).add(min);
-            actuals[i] = testData.get(i).getValue();
-        }
-        log.info("Print out Predictions and Actual Values...");
-        log.info("Predict\tActual");
-        for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "\t" + actuals[i]);
-        log.info("Plot...");
-        for (int n = 0; n < VECTOR_SIZE; n++) {
-            double[] pred = new double[predicts.length];
-            double[] actu = new double[actuals.length];
-            for (int i = 0; i < predicts.length; i++) {
-                pred[i] = predicts[i].getDouble(n);
-                actu[i] = actuals[i].getDouble(n);
-            }
-            String name;
-            switch (n) {
-                case 0:
-                    name = "Stock OPEN Price";
-                    break;
-                case 1:
-                    name = "Stock CLOSE Price";
-                    break;
-                default:
-                    throw new NoSuchElementException();
-            }
-            PlotUtil.plot(pred, actu, name);
-        }
+//        INDArray[] predicts = new INDArray[testData.size()];
+//        INDArray[] actuals = new INDArray[testData.size()];
+//        for (int i = 0; i < testData.size(); i++) {
+//            predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getRow(exampleLength - 1).mul(max.sub(min)).add(min);
+//            actuals[i] = testData.get(i).getValue();
+//        }
+//        log.info("Print out Predictions and Actual Values...");
+//        log.info("Predict\tActual");
+//        for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "\t" + actuals[i]);
+//        log.info("Plot...");
+//        for (int n = 0; n < VECTOR_SIZE; n++) {
+//            double[] pred = new double[predicts.length];
+//            double[] actu = new double[actuals.length];
+//            for (int i = 0; i < predicts.length; i++) {
+//                pred[i] = predicts[i].getDouble(n);
+//                actu[i] = actuals[i].getDouble(n);
+//            }
+//            PlotUtil.plot(pred, actu, "Predict_");
+//        }
     }
 
     @SneakyThrows
@@ -112,12 +105,26 @@ public class StockPricePrediction {
             net.rnnClearPreviousState(); // clear previous state
         }
 
-        iteratorHashMap.put(stockCode, iterator);
+//        iteratorHashMap.put(stockCode, iterator);
+        List<Pair<INDArray, INDArray>> testDataSet = iterator.getTestDataSet();
+        INDArray lastTestInput = testDataSet.get(testDataSet.size() - 1).getKey();
+        List<List<Double>> lastInput = new ArrayList<>();
+        for (int i = 0; i < exampleLength - 1; i++) {
+            double nextV1 = lastTestInput.getScalar(i + 1, 0).getDouble(0);
+            double nextV2 = lastTestInput.getScalar(i + 1, 1).getDouble(0);
+            List<Double> doubles = Arrays.asList(nextV1, nextV2);
+            lastInput.add(doubles);
+        }
+        redisTemplate.opsForValue().set("lastInput_" + stockCode, JSON.toJSONString(lastInput));
+        double[] minArray = iterator.getMinArray();
+        double[] maxArray = iterator.getMaxArray();
+        redisTemplate.opsForValue().set("minArray_" + stockCode, JSON.toJSONString(minArray));
+        redisTemplate.opsForValue().set("maxArray" + stockCode, JSON.toJSONString(maxArray));
 
         log.info("Saving model...");
         String savePath = new File("model/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
         if (profile.equalsIgnoreCase("prod")) {
-             savePath = new File("/root/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
+            savePath = new File("/root/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
         }
         // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
         ModelSerializer.writeModel(net, savePath, true);
@@ -125,9 +132,32 @@ public class StockPricePrediction {
 
         log.info("Testing...");
 //        if (category.equals(PriceCategory.ALL)) {
+        List<Pair<INDArray, INDArray>> testData = iterator.getTestDataSet();
         INDArray max = Nd4j.create(iterator.getMaxArray());
         INDArray min = Nd4j.create(iterator.getMinArray());
-        predictAllCategories(net, iterator.getTestDataSet(), max, min);
+        INDArray[] predicts = new INDArray[testData.size()];
+        INDArray[] actuals = new INDArray[testData.size()];
+        for (int i = 0; i < testData.size(); i++) {
+            predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getRow(exampleLength - 1).mul(max.sub(min)).add(min);
+            actuals[i] = testData.get(i).getValue();
+        }
+        log.info("Print out Predictions and Actual Values...");
+        log.info("Predict\tActual");
+        for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "\t" + actuals[i]);
+        log.info("Plot...");
+        for (int n = 0; n < VECTOR_SIZE; n++) {
+            double[] pred = new double[predicts.length];
+            double[] actu = new double[actuals.length];
+            for (int i = 0; i < predicts.length; i++) {
+                pred[i] = predicts[i].getDouble(n);
+                actu[i] = actuals[i].getDouble(n);
+            }
+            String fileName = "data/Predict_" + stockCode + ".png";
+            if (profile.equalsIgnoreCase("prod")) {
+                fileName = "/root/Predict_" + stockCode + ".png";
+            }
+            PlotUtil.plot(pred, actu, fileName);
+        }
 //        } else {
 //            double max = iterator.getMaxNum(category);
 //            double min = iterator.getMinNum(category);
@@ -146,29 +176,49 @@ public class StockPricePrediction {
         }
         MultiLayerNetwork net = ModelSerializer.restoreMultiLayerNetwork(modelPath);
 
-        StockDataSetIterator iterator = iteratorHashMap.get(stockCode);
-        List<Pair<INDArray, INDArray>> testDataSet = iterator.getTestDataSet();
-        INDArray lastTestInput = testDataSet.get(testDataSet.size() - 1).getKey();
-        for (int i = 0; i < exampleLength - 1; i++) {
-            double nextV1 = lastTestInput.getScalar(i + 1, 0).getDouble(0);
-            double nextV2 = lastTestInput.getScalar(i + 1, 1).getDouble(0);
-            lastTestInput.put(i, 0, nextV1);
-            lastTestInput.put(i, 1, nextV2);
+//        redisTemplate.opsForValue().set("lastInput_" + stockCode, JSON.toJSONString(lastInput));
+//        double[] minArray = iterator.getMinArray();
+//        double[] maxArray = iterator.getMaxArray();
+//        redisTemplate.opsForValue().set("minArray_" + stockCode, JSON.toJSONString(minArray));
+//        redisTemplate.opsForValue().set("maxArray" + stockCode, JSON.toJSONString(maxArray));
+
+        String lastInputString = redisTemplate.opsForValue().get("lastInput_" + stockCode);
+        JSONArray inputList = JSON.parseArray(lastInputString);
+        log.info("lastInputString = {}", lastInputString);
+        INDArray input = Nd4j.create(22, 2);
+        for (int i = 1; i < inputList.size(); i++) {
+            JSONArray inputValues = inputList.getJSONArray(i);
+            Double v1 = inputValues.getDouble(0);
+            Double v2 = inputValues.getDouble(1);
+            input.putScalar(i - 1, 0, v1);
+            input.putScalar(i - 1, 1, v2);
         }
-        double[] minArray = iterator.getMinArray();
-        double[] maxArray = iterator.getMaxArray();
-        if (price1 != 0 && price2 != 0) {
-            lastTestInput.put(exampleLength - 1, 0, (price1 - minArray[0]) / (maxArray[0] - minArray[0]));
-            lastTestInput.put(exampleLength - 1, 1, (price2 - minArray[1]) / (maxArray[1] - minArray[1]));
-        }
-        log.info("input = {}", lastTestInput);
-        INDArray output = net.rnnTimeStep(lastTestInput);
+//        double[] minArray = iterator.getMinArray();
+//        double[] maxArray = iterator.getMaxArray();
+//        if (price1 != 0 && price2 != 0) {
+//            lastTestInput.put(exampleLength - 1, 0, (price1 - minArray[0]) / (maxArray[0] - minArray[0]));
+//            lastTestInput.put(exampleLength - 1, 1, (price2 - minArray[1]) / (maxArray[1] - minArray[1]));
+//        }
+        String minArrayString = redisTemplate.opsForValue().get("minArray_" + stockCode);
+        String maxArrayString = redisTemplate.opsForValue().get("maxArray_" + stockCode);
+        JSONArray minArray = JSON.parseArray(minArrayString);
+        JSONArray maxArray = JSON.parseArray(maxArrayString);
+        Double minValue1 = minArray.getDouble(0);
+        Double minValue2 = minArray.getDouble(1);
+        Double maxValue1 = maxArray.getDouble(0);
+        Double maxValue2 = maxArray.getDouble(1);
+        double lastInputV1 = (price1 - minValue1) / (maxValue1 - minValue1);
+        double lastInputV2 = (price2 - minValue2) / (maxValue2 - minValue2);
+        input.putScalar(21, 0, lastInputV1);
+        input.putScalar(21, 1, lastInputV2);
+        log.info("input = {}", input);
+        INDArray output = net.rnnTimeStep(input);
         log.info("output = {}", output);
         double predictV1 = output.getScalar(0).getDouble(0);
         double predictV2 = output.getScalar(1).getDouble(0);
 
-        double predictPrice1 = predictV1 * (maxArray[0] - minArray[0]) + minArray[0];
-        double predictPrice2 = predictV2 * (maxArray[1] - minArray[1]) + minArray[1];
+        double predictPrice1 = predictV1 * (maxValue1 - minValue1) + minValue1;
+        double predictPrice2 = predictV2 * (maxValue2 - minValue2) + minValue2;
         log.info("predictPrice1 = {}, predictPrice2= {}", predictPrice1, predictPrice2);
         return new double[]{predictPrice1, predictPrice2};
     }

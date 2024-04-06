@@ -17,7 +17,7 @@ import java.io.File;
 public class PlotUtil {
 
     @SneakyThrows
-    public static void plot(double[] predicts, double[] actuals, String stockCode) {
+    public static void plot(double[] predicts, double[] actuals, String fileName) {
 
         double[] index = new double[predicts.length];
         for (int i = 0; i < predicts.length; i++)
@@ -30,7 +30,7 @@ public class PlotUtil {
         final JFreeChart chart = ChartFactory.createXYLineChart(
                 "Prediction Result", // chart title
                 "Index", // x axis label
-                stockCode, // y axis label
+                "Price", // y axis label
                 dataSet, // data
                 PlotOrientation.VERTICAL,
                 true, // include legend
@@ -69,7 +69,7 @@ public class PlotUtil {
 
         int width = 1080;   /* Width of the image */
         int height = 960;  /* Height of the image */
-        File XYChart = new File("data/Predict_" + stockCode + ".png");
+        File XYChart = new File(fileName);
         ChartUtilities.saveChartAsPNG(XYChart, chart, width, height);
     }
 
