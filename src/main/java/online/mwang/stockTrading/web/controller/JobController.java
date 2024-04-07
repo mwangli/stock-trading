@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.base.Response;
 import online.mwang.stockTrading.web.bean.po.QuartzJob;
 import online.mwang.stockTrading.web.bean.query.QuartzJobQuery;
@@ -70,30 +71,30 @@ public class JobController {
     @SneakyThrows
     @PostMapping("run")
     public Response<?> runNow(@RequestBody QuartzJob job) {
-        job.setRunning("1");
-        jobMapper.updateById(job);
+        final QuartzJob findJob = jobMapper.selectById(job.getId());
+        if ("1".equals(findJob.getRunning())) throw new BusinessException("该任务正在运行，请勿重复触发");
         Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
         JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName(), TEMP_GROUP_NAME).build();
         scheduler.scheduleJob(jobDetail, trigger);
+        job.setRunning("1");
+        jobMapper.updateById(job);
         return Response.success();
     }
+
+
+    @SneakyThrows
+    @PostMapping("/interrupt")
+    public Response<Integer> interruptJob(@RequestBody QuartzJob job) {
+        final JobKey jobKey = JobKey.jobKey(job.getName());
+        scheduler.interrupt(jobKey);
+        job.setRunning("0");
+        return Response.success(jobMapper.updateById(job));
+    }
+
 
     @SneakyThrows
     @PutMapping()
     public Response<Integer> modifyJob(@RequestBody QuartzJob job) {
-        // 取消交易等待
-        String enableWaiting = job.getEnableWaiting();
-        if (StringUtils.isNotBlank(enableWaiting)) {
-            jobs.enableBuyWaiting = "enable".equals(enableWaiting);
-            jobs.enableSaleWaiting = "enable".equals(enableWaiting);
-            log.info("买入交易等待{}成功,卖出交易等待{}成功!", jobs.enableBuyWaiting ? "启用" : "取消", jobs.enableSaleWaiting ? "启用" : "取消");
-        }
-        // 是否打开接口日志
-        String logSwitch = job.getLogSwitch();
-        if (StringUtils.isNotBlank(logSwitch)) {
-            requestUtils.logs = "open".equals(logSwitch);
-            log.info("接口日志{}成功！", requestUtils.logs ? "打开" : "关闭");
-        }
         if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");
         }
@@ -120,17 +121,6 @@ public class JobController {
     public Response<Integer> pauseJob(@RequestBody QuartzJob job) {
         scheduler.pauseJob(JobKey.jobKey(job.getName()));
         job.setStatus("0");
-        return Response.success(jobMapper.updateById(job));
-    }
-
-    @SneakyThrows
-    @PostMapping("/interrupt")
-    public Response<Integer> interruptJob(@RequestBody QuartzJob job) {
-        final JobKey jobKey = JobKey.jobKey(job.getName());
-        final JobKey tempKey = JobKey.jobKey(job.getName(), TEMP_GROUP_NAME);
-        scheduler.interrupt(jobKey);
-        scheduler.interrupt(tempKey);
-        job.setRunning("0");
         return Response.success(jobMapper.updateById(job));
     }
 

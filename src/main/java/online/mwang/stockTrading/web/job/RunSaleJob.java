@@ -1,6 +1,7 @@
 package online.mwang.stockTrading.web.job;
 
 import com.alibaba.fastjson.JSONObject;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,41 +32,19 @@ public class RunSaleJob extends BaseJob {
     public static final int SOLD_RETRY_TIMES = 4;
 
     @Override
-    public void run(String runningId) {
-        log.info("开始执行卖出任务====================================");
-        sale(runningId);
-        log.info("卖出任务执行完毕====================================");
-    }
-
-
-    public void sale(String runningId) {
+    public void run() {
         int time = 0;
         while (time++ < SOLD_RETRY_TIMES) {
             log.info("第{}次尝试卖出股票---------", time);
-            if (jobs.checkSoldToday("1")) {
-                log.info("今天已经有卖出记录了,无需重复卖出!");
-                return;
-            }
             // 撤销未成功订单
             if (!jobs.waitOrderCancel()) {
                 log.info("存在未撤销失败订单,取消卖出任务！");
                 return;
             }
-            // 卖出最高收益的股票
-            TradingRecord best = jobs.getBestRecord();
-            if (best == null) {
-                log.info("当前无可卖出股票,取消卖出任务！");
-                return;
-            }
-            log.info("最佳卖出股票[{}-{}],买入价格:{},当前价格:{},预期收益:{},日收益率:{}", best.getCode(), best.getName(), best.getBuyPrice(), best.getSalePrice(), best.getIncome(), String.format("%.4f", best.getDailyIncomeRate()));
-            // 等待最佳卖出时机
-            if (jobs.enableSaleWaiting) {
-                best = jobs.waitingBestRecord(best, runningId);
-                if (best == null) {
-                    log.info("不在交易时间段内，取消卖出任务！");
-                    return;
-                }
-            }
+            final TradingRecord best = tradingRecordService.getOne(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "1"));
+            log.info("最佳卖出股票[{}-{}],买入价格:{},当前价格:{},预期收益:{},日收益率:{}", best.getCode(), best.getName(),
+                    best.getBuyPrice(), best.getSalePrice(), best.getIncome(), String.format("%.4f", best.getDailyIncomeRate()));
+
             // 返回合同编号
             JSONObject res = jobs.buySale("S", best.getCode(), best.getSalePrice(), best.getBuyNumber());
             String saleNo = res.getString("ANSWERNO");
@@ -92,7 +71,6 @@ public class RunSaleJob extends BaseJob {
             best.setUpdateTime(now);
             tradingRecordService.updateById(best);
             // 更新账户资金
-            jobs.getAvaliableAmount();
             // 增加股票交易次数
             StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, best.getCode()));
             stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
@@ -101,5 +79,6 @@ public class RunSaleJob extends BaseJob {
 //            enableSaleWaiting = true;
             return;
         }
+
     }
 }

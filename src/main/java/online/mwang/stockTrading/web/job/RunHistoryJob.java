@@ -35,22 +35,16 @@ public class RunHistoryJob extends BaseJob {
     private final MongoTemplate mongoTemplate;
 
     @Override
-    public void run(String runningId) {
-        log.info("更新股票历史价格任务执行开始====================================");
-        updateLastHistoryPrice();
-        log.info("更新股票历史价格任务执行结束====================================");
-    }
-
-    private void updateLastHistoryPrice() {
+    public void run() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(StockInfo::getDeleted, 1);
         List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
         log.info("共需更新{}支股票最新历史价格数据", stockInfoList.size());
-        stockInfoList.forEach(this::writeHistoryPriceDataToMongoDB);
+        stockInfoList.forEach(this::writeHistoryPriceDataToMongo);
     }
 
     @SneakyThrows
-    public void writeHistoryPriceDataToMongoDB(StockInfo stockInfo) {
+    public void writeHistoryPriceDataToMongo(StockInfo stockInfo) {
         List<DailyItem> historyPrices = jobs. getHistoryPrices(stockInfo.getCode());
         List<StockHistoryPrice> stockHistoryPriceList = historyPrices.stream().map(item -> {
             StockHistoryPrice stockHistoryPrice = new StockHistoryPrice();

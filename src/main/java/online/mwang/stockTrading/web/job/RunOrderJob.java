@@ -28,24 +28,17 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RunSyncJob extends BaseJob {
+public class RunOrderJob extends BaseJob {
 
     private final AllJobs jobs;
     private final TradingRecordService tradingRecordService;
     private final StockInfoService stockInfoService;
 
-    @Override
-    public void run(String runningId) {
-        log.info("同步订单任务执行开始====================================");
-        syncBuySaleRecord();
-        syncBuySaleCount();
-        log.info("同步订单执行结束====================================");
-    }
-
     @SneakyThrows
-    public void syncBuySaleRecord() {
-        // 请求数据
-        List<OrderInfo> lastOrders = jobs.getLastOrder();
+    @Override
+    public void run() {
+        // 同步历史订单数据
+        List<OrderInfo> lastOrders = jobs.getHistoryOrder();
         List<OrderInfo> todayOrders = jobs.getTodayOrder();
         lastOrders.addAll(todayOrders);
         for (OrderInfo order : lastOrders) {
@@ -66,10 +59,10 @@ public class RunSyncJob extends BaseJob {
                 if (selectedOrder == null) {
                     log.info("当前股票[{}-{}]买入记录不存在,新增买入记录", name, code);
                     // 合并多个买入订单
-                    final LambdaQueryWrapper<TradingRecord> queryWrapper = new QueryWrapper<TradingRecord>().lambda()
-                            .eq(TradingRecord::getCode, code).eq(TradingRecord::getSold, "0");
-                    final TradingRecord selectedRecord = tradingRecordService.getOne(queryWrapper);
-                    if (selectedRecord == null) {
+//                    final LambdaQueryWrapper<TradingRecord> queryWrapper = new QueryWrapper<TradingRecord>().lambda()
+//                            .eq(TradingRecord::getCode, code).eq(TradingRecord::getSold, "0");
+//                    final TradingRecord selectedRecord = tradingRecordService.getOne(queryWrapper);
+//                    if (selectedRecord == null) {
                         final TradingRecord record = new TradingRecord();
                         record.setCode(code);
                         record.setName(name);
@@ -88,19 +81,19 @@ public class RunSyncJob extends BaseJob {
                         record.setCreateTime(now);
                         record.setUpdateTime(now);
                         tradingRecordService.save(record);
-                    } else {
-                        selectedRecord.setBuyPrice(price);
-                        selectedRecord.setBuyNumber(number + selectedRecord.getBuyNumber());
-                        final double amount = price * number;
-                        selectedRecord.setBuyAmount(selectedRecord.getBuyAmount() + amount + jobs.getPeeAmount(amount));
-                        final Date buyDate = DateUtils.dateTimeFormat.parse(dateString);
-                        selectedRecord.setBuyDate(buyDate);
-                        selectedRecord.setBuyDateString(date);
-                        selectedRecord.setBuyNo(selectedRecord.getBuyNo() + "," + answerNo);
-                        final Date now = new Date();
-                        selectedRecord.setUpdateTime(now);
-                        tradingRecordService.updateById(selectedRecord);
-                    }
+//                    } else {
+//                        selectedRecord.setBuyPrice(price);
+//                        selectedRecord.setBuyNumber(number + selectedRecord.getBuyNumber());
+//                        final double amount = price * number;
+//                        selectedRecord.setBuyAmount(selectedRecord.getBuyAmount() + amount + jobs.getPeeAmount(amount));
+//                        final Date buyDate = DateUtils.dateTimeFormat.parse(dateString);
+//                        selectedRecord.setBuyDate(buyDate);
+//                        selectedRecord.setBuyDateString(date);
+//                        selectedRecord.setBuyNo(selectedRecord.getBuyNo() + "," + answerNo);
+//                        final Date now = new Date();
+//                        selectedRecord.setUpdateTime(now);
+//                        tradingRecordService.updateById(selectedRecord);
+//                    }
                 }
             }
             if ("卖出".equals(type)) {
@@ -132,29 +125,11 @@ public class RunSyncJob extends BaseJob {
                     // 计算收益和日收益率
                     double income = record.getSaleAmount() - record.getBuyAmount();
                     record.setIncome(income);
-                    int dateDiff = jobs.diffDate(record.getBuyDate(), record.getSaleDate());
-                    record.setHoldDays(dateDiff);
-                    double incomeRate = income / record.getBuyAmount() * 100;
-                    record.setIncomeRate(incomeRate);
-                    final double dailyIncomeRate = incomeRate / dateDiff;
-                    record.setDailyIncomeRate(dailyIncomeRate);
                     tradingRecordService.update(record, queryWrapper);
                 }
             }
         }
         log.info("共同步{}条订单交易记录", lastOrders.size());
-    }
-
-    @SneakyThrows
-    public void syncBuySaleCount() {
-        List<TradingRecord> list = tradingRecordService.list();
-        Map<String, IntSummaryStatistics> collect = list.stream().collect(Collectors.groupingBy(TradingRecord::getCode, Collectors.summarizingInt((o) -> "1".equals(o.getSold()) ? 2 : 1)));
-        collect.forEach((code, accumulate) -> {
-            StockInfo stockInfo = new StockInfo();
-            stockInfo.setBuySaleCount((int) accumulate.getSum());
-            stockInfoService.update(stockInfo, new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, code));
-        });
-        log.info("共同步{}条股票交易次数", collect.size());
     }
 
 }

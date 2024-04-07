@@ -35,14 +35,7 @@ public class RunPredictJob extends BaseJob {
     private String profile;
 
     @Override
-    void run(String runningId) {
-        log.info("更新股票历史价格任务执行开始====================================");
-        predictPrice();
-        log.info("更新股票历史价格任务执行结束====================================");
-    }
-
-    @SneakyThrows
-    private void predictPrice() {
+    void run() {
         Set<String> keySet = redisTemplate.keys(profile + "_trainedStockList_*");
         assert keySet != null;
         keySet.forEach(key -> {
@@ -53,7 +46,6 @@ public class RunPredictJob extends BaseJob {
             // 获取最新的两条价格数据
             double newPrice1 = 0;
             double newPrice2 = 0;
-
             Query query = new Query(Criteria.where("date").is(DateUtils.format1(new Date())));
             // 每只股票写入不同的表
             String collectionName = "code_" + stockCode;
@@ -77,4 +69,6 @@ public class RunPredictJob extends BaseJob {
             log.info("当前股票：{}，价格预测任务完成，总共耗时：{}", stockCode, DateUtils.timeConvertor(end - start));
         });
     }
+
+
 }

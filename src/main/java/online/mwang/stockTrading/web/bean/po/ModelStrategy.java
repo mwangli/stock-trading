@@ -16,7 +16,7 @@ import java.util.Date;
  */
 @Data
 @TableName(autoResultMap = true)
-public class ScoreStrategy {
+public class ModelStrategy {
     @TableId(type = IdType.AUTO)
     private Long id;
     private String name;
@@ -28,17 +28,17 @@ public class ScoreStrategy {
     private Date createTime;
     private Date updateTime;
 
-    public static SFunction<ScoreStrategy, Object> getOrder(String key) {
-        if (key == null) return ScoreStrategy::getSort;
+    public static SFunction<ModelStrategy, Object> getOrder(String key) {
+        if (key == null) return ModelStrategy::getSort;
         switch (key) {
             case "status":
-                return ScoreStrategy::getStatus;
+                return ModelStrategy::getStatus;
             case "createTime":
-                return ScoreStrategy::getCreateTime;
+                return ModelStrategy::getCreateTime;
             case "updateTime":
-                return ScoreStrategy::getUpdateTime;
+                return ModelStrategy::getUpdateTime;
             default:
-                return ScoreStrategy::getSort;
+                return ModelStrategy::getSort;
         }
     }
 }

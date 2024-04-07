@@ -6,7 +6,7 @@ import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import online.mwang.stockTrading.web.bean.base.Response;
-import online.mwang.stockTrading.web.bean.po.ScoreStrategy;
+import online.mwang.stockTrading.web.bean.po.ModelStrategy;
 import online.mwang.stockTrading.web.bean.query.StrategyQuery;
 import online.mwang.stockTrading.web.service.ScoreStrategyService;
 import org.springframework.web.bind.annotation.*;
@@ -30,15 +30,15 @@ public class StrategyController {
     private final ScoreStrategyService strategyService;
 
     @PostMapping("choose")
-    public Boolean choose(@RequestBody ScoreStrategy strategy) {
+    public Boolean choose(@RequestBody ModelStrategy strategy) {
         cancelChoose();
         strategy.setStatus(1);
-        return strategyService.update(strategy, new QueryWrapper<ScoreStrategy>().lambda().eq(ScoreStrategy::getId, strategy.getId()));
+        return strategyService.update(strategy, new QueryWrapper<ModelStrategy>().lambda().eq(ModelStrategy::getId, strategy.getId()));
     }
 
     private void cancelChoose() {
         // 取消选中
-        final List<ScoreStrategy> oldChooseList = strategyService.list(new LambdaQueryWrapper<ScoreStrategy>().eq(ScoreStrategy::getStatus, "1"));
+        final List<ModelStrategy> oldChooseList = strategyService.list(new LambdaQueryWrapper<ModelStrategy>().eq(ModelStrategy::getStatus, "1"));
         oldChooseList.forEach(o -> {
             o.setStatus(0);
             strategyService.updateById(o);
@@ -46,7 +46,7 @@ public class StrategyController {
     }
 
     @PostMapping
-    public Boolean create(@RequestBody ScoreStrategy strategy) {
+    public Boolean create(@RequestBody ModelStrategy strategy) {
         final Date now = new Date();
         strategy.setCreateTime(now);
         strategy.setUpdateTime(now);
@@ -58,27 +58,27 @@ public class StrategyController {
     }
 
     @PutMapping
-    public Boolean update(@RequestBody ScoreStrategy strategy) {
+    public Boolean update(@RequestBody ModelStrategy strategy) {
         if (strategy.getStatus() == 1) cancelChoose();
         strategy.setUpdateTime(new Date());
         return strategyService.updateById(strategy);
     }
 
     @DeleteMapping()
-    public Boolean delete(@RequestBody ScoreStrategy strategy) {
+    public Boolean delete(@RequestBody ModelStrategy strategy) {
             strategy.setDeleted(0);
         return strategyService.updateById(strategy);
     }
 
     @GetMapping
-    public Response<List<ScoreStrategy>> list(StrategyQuery query) {
-        LambdaQueryWrapper<ScoreStrategy> queryWrapper = new QueryWrapper<ScoreStrategy>().lambda()
-                .like(ObjectUtils.isNotNull(query.getName()), ScoreStrategy::getName, query.getName())
-                .like(ObjectUtils.isNotNull(query.getParams()), ScoreStrategy::getParams, query.getParams())
-                .eq((ObjectUtils.isNotNull(query.getStatus())), ScoreStrategy::getStatus, query.getStatus())
-                .eq(ScoreStrategy::getDeleted, "1")
-                .orderBy(true, !DESCEND.equals(query.getSortOrder()), ScoreStrategy.getOrder(query.getSortKey()));
-        Page<ScoreStrategy> pageResult = strategyService.page(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
+    public Response<List<ModelStrategy>> list(StrategyQuery query) {
+        LambdaQueryWrapper<ModelStrategy> queryWrapper = new QueryWrapper<ModelStrategy>().lambda()
+                .like(ObjectUtils.isNotNull(query.getName()), ModelStrategy::getName, query.getName())
+                .like(ObjectUtils.isNotNull(query.getParams()), ModelStrategy::getParams, query.getParams())
+                .eq((ObjectUtils.isNotNull(query.getStatus())), ModelStrategy::getStatus, query.getStatus())
+                .eq(ModelStrategy::getDeleted, "1")
+                .orderBy(true, !DESCEND.equals(query.getSortOrder()), ModelStrategy.getOrder(query.getSortKey()));
+        Page<ModelStrategy> pageResult = strategyService.page(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
         return Response.success(pageResult.getRecords(), pageResult.getTotal());
     }
 }
