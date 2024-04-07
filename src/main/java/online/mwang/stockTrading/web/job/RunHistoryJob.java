@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.web.bean.po.DailyItem;
+import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.StockInfoService;

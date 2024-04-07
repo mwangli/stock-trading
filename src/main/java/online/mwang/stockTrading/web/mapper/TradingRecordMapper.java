@@ -1,6 +1,7 @@
 package online.mwang.stockTrading.web.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.TradingRecord;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -11,5 +12,7 @@ import org.apache.ibatis.annotations.Mapper;
  * @description: FoundTradingMapper
  */
 @Mapper
-public interface FoundTradingMapper extends BaseMapper<TradingRecord> {
+public interface TradingRecordMapper extends BaseMapper<TradingRecord> {
+
+    TradingRecord getRecord(String stockCCode);
 }

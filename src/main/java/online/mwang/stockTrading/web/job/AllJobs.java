@@ -1,14 +1,12 @@
 package online.mwang.stockTrading.web.job;
 
-import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
@@ -21,19 +19,12 @@ import online.mwang.stockTrading.web.utils.OcrUtils;
 import online.mwang.stockTrading.web.utils.RequestUtils;
 import online.mwang.stockTrading.web.utils.SleepUtils;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.io.*;
 import java.util.*;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -204,7 +195,8 @@ public class AllJobs {
         return accountInfo;
     }
 
-    private List<TradingRecord> getHoldList() {
+    // 获取持仓股票
+    public List<TradingRecord> getHoldList() {
         String token = getToken();
         long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -228,8 +220,8 @@ public class AllJobs {
             TradingRecord record = new TradingRecord();
             record.setCode(split[9]);
             record.setName(split[0]);
-            record.setSalePrice(Double.parseDouble(split[4]));
-            record.setSaleNumber(Double.parseDouble(split[2]));
+            record.setBuyPrice(Double.parseDouble(split[4]));
+            record.setBuyNumber(Double.parseDouble(split[2]));
             dataList.add(record);
         }
         return dataList;
@@ -250,7 +242,7 @@ public class AllJobs {
         return arrayToList(result, true);
     }
 
-    public Boolean waitOrderCancel() {
+    public Boolean waitOrderStatus() {
         int times = 0;
         while (times++ < CANCEL_WAIT_TIMES) {
             sleepUtils.second(WAIT_TIME_SECONDS);
@@ -372,7 +364,7 @@ public class AllJobs {
         return format.compareTo("13:00") >= 0 && format.compareTo("15:00") <= 0;
     }
 
-    protected Double getLastPrice(String code) {
+    protected Double getNowPrice(String code) {
         long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("stockcode", code);
@@ -476,10 +468,10 @@ public class AllJobs {
         return status.get().getStatus();
     }
 
-    public Boolean waitOrderCancel(String answerNo) {
+    public Boolean waitOrderStatus(String answerNo) {
         int times = 0;
-        while (times++ < CANCEL_WAIT_TIMES) {
-            sleepUtils.second(WAIT_TIME_SECONDS);
+        while (times++ < 10) {
+            sleepUtils.second(10);
             final String status = queryOrderStatus(answerNo);
             if (status == null) {
                 log.info("当前合同编号:{},订单状态查询失败。", answerNo);
@@ -555,6 +547,7 @@ public class AllJobs {
             stockInfo.setMarket(market);
             stockInfo.setIncrease(increasePercent);
             stockInfo.setPrice(price);
+            // 填充字段
             stockInfos.add(stockInfo);
         }
         log.info("共获取到{}条新数据。", stockInfos.size());

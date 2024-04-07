@@ -2,6 +2,7 @@ package online.mwang.stockTrading.predict.data;
 
 import com.google.common.collect.ImmutableMap;
 import com.opencsv.CSVReader;
+import lombok.extern.slf4j.Slf4j;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.DataSetPreProcessor;
@@ -18,6 +19,7 @@ import java.util.*;
  * Modified by zhanghao on 28/9/17.
  * @author ZHANG HAO
  */
+@Slf4j
 public class StockDataSetIterator implements DataSetIterator {
 
     /** category and its index */
@@ -45,8 +47,7 @@ public class StockDataSetIterator implements DataSetIterator {
     /** adjusted stock dataset for testing */
     private List<Pair<INDArray, INDArray>> test;
 
-    public StockDataSetIterator (String filename, String symbol, int miniBatchSize, int exampleLength, double splitRatio, PriceCategory category) {
-        List<StockData> stockDataList = readStockDataFromFile(filename, symbol);
+    public StockDataSetIterator (List<StockData>  stockDataList, int miniBatchSize, int exampleLength, double splitRatio, PriceCategory category) {
         this.miniBatchSize = miniBatchSize;
         this.exampleLength = exampleLength;
         this.category = category;
@@ -69,10 +70,6 @@ public class StockDataSetIterator implements DataSetIterator {
 
     public double[] getMinArray() { return minArray; }
 
-    public double getMaxNum (PriceCategory category) { return maxArray[featureMapIndex.get(category)]; }
-
-    public double getMinNum (PriceCategory category) { return minArray[featureMapIndex.get(category)]; }
-
     @Override
     public DataSet next(int num) {
         if (exampleStartOffsets.size() == 0) throw new NoSuchElementException();
@@ -88,20 +85,20 @@ public class StockDataSetIterator implements DataSetIterator {
             StockData nextData;
             for (int i = startIdx; i < endIdx; i++) {
                 int c = i - startIdx;
-                input.putScalar(new int[] {index, 0, c}, (curData.getOpen() - minArray[0]) / (maxArray[0] - minArray[0]));
-                input.putScalar(new int[] {index, 1, c}, (curData.getClose() - minArray[1]) / (maxArray[1] - minArray[1]));
+                input.putScalar(new int[] {index, 0, c}, (curData.getPrice1() - minArray[0]) / (maxArray[0] - minArray[0]));
+                input.putScalar(new int[] {index, 1, c}, (curData.getPrice2() - minArray[1]) / (maxArray[1] - minArray[1]));
 //                input.putScalar(new int[] {index, 2, c}, (curData.getLow() - minArray[2]) / (maxArray[2] - minArray[2]));
 //                input.putScalar(new int[] {index, 3, c}, (curData.getHigh() - minArray[3]) / (maxArray[3] - minArray[3]));
 //                input.putScalar(new int[] {index, 4, c}, (curData.getVolume() - minArray[4]) / (maxArray[4] - minArray[4]));
                 nextData = train.get(i + 1);
                 if (category.equals(PriceCategory.ALL)) {
-                    label.putScalar(new int[] {index, 0, c}, (nextData.getOpen() - minArray[1]) / (maxArray[1] - minArray[1]));
-                    label.putScalar(new int[] {index, 1, c}, (nextData.getClose() - minArray[1]) / (maxArray[1] - minArray[1]));
+                    label.putScalar(new int[] {index, 0, c}, (nextData.getPrice1() - minArray[1]) / (maxArray[1] - minArray[1]));
+                    label.putScalar(new int[] {index, 1, c}, (nextData.getPrice2() - minArray[1]) / (maxArray[1] - minArray[1]));
 //                    label.putScalar(new int[] {index, 2, c}, (nextData.getLow() - minArray[2]) / (maxArray[2] - minArray[2]));
 //                    label.putScalar(new int[] {index, 3, c}, (nextData.getHigh() - minArray[3]) / (maxArray[3] - minArray[3]));
 //                    label.putScalar(new int[] {index, 4, c}, (nextData.getVolume() - minArray[4]) / (maxArray[4] - minArray[4]));
                 } else {
-                    label.putScalar(new int[]{index, 0, c}, feedLabel(nextData));
+//                    label.putScalar(new int[]{index, 0, c}, feedLabel(nextData));
                 }
                 curData = nextData;
             }
@@ -110,18 +107,18 @@ public class StockDataSetIterator implements DataSetIterator {
         return new DataSet(input, label);
     }
 
-    private double feedLabel(StockData data) {
-        double value;
-        switch (category) {
-            case OPEN: value = (data.getOpen() - minArray[0]) / (maxArray[0] - minArray[0]); break;
-            case CLOSE: value = (data.getClose() - minArray[1]) / (maxArray[1] - minArray[1]); break;
-            case LOW: value = (data.getLow() - minArray[2]) / (maxArray[2] - minArray[2]); break;
-            case HIGH: value = (data.getHigh() - minArray[3]) / (maxArray[3] - minArray[3]); break;
-            case VOLUME: value = (data.getVolume() - minArray[4]) / (maxArray[4] - minArray[4]); break;
-            default: throw new NoSuchElementException();
-        }
-        return value;
-    }
+//    private double feedLabel(StockData data) {
+//        double value;
+//        switch (category) {
+//            case OPEN: value = (data.getOpen() - minArray[0]) / (maxArray[0] - minArray[0]); break;
+//            case CLOSE: value = (data.getClose() - minArray[1]) / (maxArray[1] - minArray[1]); break;
+//            case LOW: value = (data.getLow() - minArray[2]) / (maxArray[2] - minArray[2]); break;
+//            case HIGH: value = (data.getHigh() - minArray[3]) / (maxArray[3] - minArray[3]); break;
+//            case VOLUME: value = (data.getVolume() - minArray[4]) / (maxArray[4] - minArray[4]); break;
+//            default: throw new NoSuchElementException();
+//        }
+//        return value;
+//    }
 
     @Override public int totalExamples() { return train.size() - exampleLength - predictLength; }
 
@@ -163,8 +160,8 @@ public class StockDataSetIterator implements DataSetIterator {
     		INDArray input = Nd4j.create(new int[] {exampleLength, VECTOR_SIZE}, 'f');
     		for (int j = i; j < i + exampleLength; j++) {
     			StockData stock = stockDataList.get(j);
-    			input.putScalar(new int[] {j - i, 0}, (stock.getOpen() - minArray[0]) / (maxArray[0] - minArray[0]));
-    			input.putScalar(new int[] {j - i, 1}, (stock.getClose() - minArray[1]) / (maxArray[1] - minArray[1]));
+    			input.putScalar(new int[] {j - i, 0}, (stock.getPrice1() - minArray[0]) / (maxArray[0] - minArray[0]));
+    			input.putScalar(new int[] {j - i, 1}, (stock.getPrice2() - minArray[1]) / (maxArray[1] - minArray[1]));
 //    			input.putScalar(new int[] {j - i, 2}, (stock.getLow() - minArray[2]) / (maxArray[2] - minArray[2]));
 //    			input.putScalar(new int[] {j - i, 3}, (stock.getHigh() - minArray[3]) / (maxArray[3] - minArray[3]));
 //    			input.putScalar(new int[] {j - i, 4}, (stock.getVolume() - minArray[4]) / (maxArray[4] - minArray[4]));
@@ -173,48 +170,48 @@ public class StockDataSetIterator implements DataSetIterator {
             INDArray label;
             if (category.equals(PriceCategory.ALL)) {
                 label = Nd4j.create(new int[]{VECTOR_SIZE}, 'f'); // ordering is set as 'f', faster construct
-                label.putScalar(new int[] {0}, stock.getOpen());
-                label.putScalar(new int[] {1}, stock.getClose());
+                label.putScalar(new int[] {0}, stock.getPrice1());
+                label.putScalar(new int[] {1}, stock.getPrice2());
 //                label.putScalar(new int[] {2}, stock.getLow());
 //                label.putScalar(new int[] {3}, stock.getHigh());
 //                label.putScalar(new int[] {4}, stock.getVolume());
             } else {
                 label = Nd4j.create(new int[] {1}, 'f');
-                switch (category) {
-                    case OPEN: label.putScalar(new int[] {0}, stock.getOpen()); break;
-                    case CLOSE: label.putScalar(new int[] {0}, stock.getClose()); break;
-                    case LOW: label.putScalar(new int[] {0}, stock.getLow()); break;
-                    case HIGH: label.putScalar(new int[] {0}, stock.getHigh()); break;
-                    case VOLUME: label.putScalar(new int[] {0}, stock.getVolume()); break;
-                    default: throw new NoSuchElementException();
-                }
+//                switch (category) {
+//                    case OPEN: label.putScalar(new int[] {0}, stock.getOpen()); break;
+//                    case CLOSE: label.putScalar(new int[] {0}, stock.getClose()); break;
+//                    case LOW: label.putScalar(new int[] {0}, stock.getLow()); break;
+//                    case HIGH: label.putScalar(new int[] {0}, stock.getHigh()); break;
+//                    case VOLUME: label.putScalar(new int[] {0}, stock.getVolume()); break;
+//                    default: throw new NoSuchElementException();
+//                }
             }
     		test.add(new Pair<>(input, label));
     	}
     	return test;
     }
 
-	private List<StockData> readStockDataFromFile (String filename, String symbol) {
-        List<StockData> stockDataList = new ArrayList<>();
-        try {
-            for (int i = 0; i < maxArray.length; i++) { // initialize max and min arrays
-                maxArray[i] = Double.MIN_VALUE;
-                minArray[i] = Double.MAX_VALUE;
-            }
-            List<String[]> list = new CSVReader(new FileReader(filename)).readAll(); // load all elements in a list
-            for (String[] arr : list) {
-                if (!arr[1].equals(symbol)) continue;
-                double[] nums = new double[VECTOR_SIZE];
-                for (int i = 0; i < VECTOR_SIZE; i++) {
-                    nums[i] = Double.valueOf(arr[i+2]);
-                    if (nums[i] > maxArray[i]) maxArray[i] = nums[i];
-                    if (nums[i] < minArray[i]) minArray[i] = nums[i];
-                }
-                stockDataList.add(new StockData(arr[0], arr[1], nums[0], nums[1], 0, 0, 0));
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return stockDataList;
-    }
+//	private List<StockData> readStockDataFromFile (String filename, String symbol) {
+//        List<StockData> stockDataList = new ArrayList<>();
+//        try {
+//            for (int i = 0; i < maxArray.length; i++) { // initialize max and min arrays
+//                maxArray[i] = Double.MIN_VALUE;
+//                minArray[i] = Double.MAX_VALUE;
+//            }
+//            List<String[]> list = new CSVReader(new FileReader(filename)).readAll(); // load all elements in a list
+//            for (String[] arr : list) {
+//                if (!arr[1].equals(symbol)) continue;
+//                double[] nums = new double[VECTOR_SIZE];
+//                for (int i = 0; i < VECTOR_SIZE; i++) {
+//                    nums[i] = Double.valueOf(arr[i+2]);
+//                    if (nums[i] > maxArray[i]) maxArray[i] = nums[i];
+//                    if (nums[i] < minArray[i]) minArray[i] = nums[i];
+//                }
+//                stockDataList.add(new StockData(arr[0], arr[1], nums[0], nums[1], 0, 0, 0));
+//            }
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//        return stockDataList;
+//    }
 }
