@@ -9,7 +9,7 @@ import lombok.ToString;
 @Data
 @ToString
 @ColumnWidth(40)
-public class RecordDTO {
+public class ExcelRecordDTO {
 
     @ExcelIgnore
     @ExcelProperty("年份")

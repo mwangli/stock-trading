@@ -28,8 +28,6 @@ public class StockInfo {
     private String market;
     private Double increase;
     private Double price;
-    private String prices;
-    private String increaseRate;
     private Double score;
     private String permission;
     private Integer buySaleCount;

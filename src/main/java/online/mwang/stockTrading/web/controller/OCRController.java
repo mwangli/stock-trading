@@ -7,7 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.base.Response;
-import online.mwang.stockTrading.web.bean.dto.RecordDTO;
+import online.mwang.stockTrading.web.bean.dto.ExcelRecordDTO;
 import online.mwang.stockTrading.web.config.ExcelFillCellMergeStrategy;
 import online.mwang.stockTrading.web.utils.OcrUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -68,12 +68,12 @@ public class OCRController {
         response.setCharacterEncoding("utf-8");
         String fileName = URLEncoder.encode("test", String.valueOf(StandardCharsets.UTF_8)).replaceAll("\\+", "%20");
         response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
-        EasyExcel.write(response.getOutputStream(), RecordDTO.class).inMemory(true).sheet("demo").registerWriteHandler(new ExcelFillCellMergeStrategy(mergeRowIndex, mergeColumnIndex)).doWrite(dataWash());
+        EasyExcel.write(response.getOutputStream(), ExcelRecordDTO.class).inMemory(true).sheet("demo").registerWriteHandler(new ExcelFillCellMergeStrategy(mergeRowIndex, mergeColumnIndex)).doWrite(dataWash());
         wordsMap.clear();
     }
 
 
-    private List<RecordDTO> dataWash() {
+    private List<ExcelRecordDTO> dataWash() {
         // sort
         ArrayList<Long> keys = new ArrayList<>(wordsMap.keySet());
         Collections.sort(keys);
@@ -81,7 +81,7 @@ public class OCRController {
         keys.forEach(key -> wordsList.addAll(wordsMap.get(key)));
         log.info("wordsList:{}", wordsList);
         // buildData
-        ArrayList<RecordDTO> dataList = new ArrayList<>();
+        ArrayList<ExcelRecordDTO> dataList = new ArrayList<>();
         HashSet<Object> duplicateSet = new HashSet<>();
         String year = "yyyy";
         String month = "MM";
@@ -126,20 +126,20 @@ public class OCRController {
 //                nextLine = t;
             }
             if (!isAmount(line) && isAmount(nextLine)) {
-                RecordDTO recordDTO = new RecordDTO();
-                recordDTO.setYear(year.replaceAll("V", "").replaceAll("v", "").replaceAll("银行卡", "").substring(0, 4));
-                recordDTO.setMonth(recordDTO.getYear() + "-" + month.replaceAll("v", "").replaceAll("银行卡", "").replaceAll("、", "").substring(0, 2));
-                recordDTO.setDay(day.length() == 1 ? "0".concat(day) : day);
+                ExcelRecordDTO excelRecordDTO = new ExcelRecordDTO();
+                excelRecordDTO.setYear(year.replaceAll("V", "").replaceAll("v", "").replaceAll("银行卡", "").substring(0, 4));
+                excelRecordDTO.setMonth(excelRecordDTO.getYear() + "-" + month.replaceAll("v", "").replaceAll("银行卡", "").replaceAll("、", "").substring(0, 2));
+                excelRecordDTO.setDay(day.length() == 1 ? "0".concat(day) : day);
                 if (nextLine.contains("-")) {
-                    recordDTO.setType("支出");
+                    excelRecordDTO.setType("支出");
                 } else {
-                    recordDTO.setType("收入");
+                    excelRecordDTO.setType("收入");
                 }
-                recordDTO.setAmount(nextLine.replaceAll("￥", "").replaceAll("人民币元", "").replaceAll("不计入", "").replaceAll("不t", "").replaceAll(",", ""));
-                recordDTO.setTarget(line);
-                String duplicateKey = recordDTO.getYear() + recordDTO.getMonth() + recordDTO.getDay() + recordDTO.getAmount() + recordDTO.getTarget();
+                excelRecordDTO.setAmount(nextLine.replaceAll("￥", "").replaceAll("人民币元", "").replaceAll("不计入", "").replaceAll("不t", "").replaceAll(",", ""));
+                excelRecordDTO.setTarget(line);
+                String duplicateKey = excelRecordDTO.getYear() + excelRecordDTO.getMonth() + excelRecordDTO.getDay() + excelRecordDTO.getAmount() + excelRecordDTO.getTarget();
                 if (!duplicateSet.contains(duplicateKey)) {
-                    dataList.add(recordDTO);
+                    dataList.add(excelRecordDTO);
                     duplicateSet.add(duplicateKey);
                 }
             }

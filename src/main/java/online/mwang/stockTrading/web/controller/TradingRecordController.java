@@ -130,7 +130,6 @@ public class TradingRecordController {
                 final double saleAmount = amount - dailyJob.getPeeAmount(amount);
                 record.setIncome(saleAmount - record.getBuyAmount());
                 record.setIncomeRate(record.getIncome() / record.getBuyAmount() * 100);
-                record.setHoldDays(dailyJob.diffDate(record.getBuyDate(), new Date()));
                 record.setDailyIncomeRate(record.getIncomeRate() / Math.max(record.getHoldDays(), 1));
             }
         }).sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).collect(Collectors.toList());

@@ -24,14 +24,7 @@ public class RunTrainJob extends BaseJob {
 
 
     @Override
-    void run(String runningId) {
-        log.info("模型训练任务执行开始====================================");
-        modelTrain();
-        log.info("模型训练执行结束====================================");
-    }
-
-    @SneakyThrows
-    private void modelTrain() {
+    void run() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda();
         queryWrapper.eq(StockInfo::getDeleted, "1");
         queryWrapper.eq(StockInfo::getPermission, "1");
@@ -42,7 +35,7 @@ public class RunTrainJob extends BaseJob {
             long start = System.currentTimeMillis();
             String stockCode = stockInfo.getCode();
             // 保存股票价格历史数据
-            allJobs.writeHistoryPriceDataToCSV(stockCode);
+            allJobs.writeHistoryPriceDataToCSV(stockInfo);
             // 训练模型/
             stockPricePrediction.modelTrain(stockCode);
             long end = System.currentTimeMillis();
