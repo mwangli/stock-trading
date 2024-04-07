@@ -46,20 +46,20 @@ public class StockInfoController {
                 .le(ObjectUtils.isNotNull(query.getPriceHigh()), StockInfo::getPrice, query.getPriceHigh())
                 .orderBy(true, ASCEND.equals(query.getSortOrder()), StockInfo.getOrder(query.getSortKey()));
         Page<StockInfo> pageResult = stockInfoService.page(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
-        List<StockInfo> collect = pageResult.getRecords().stream().peek(o -> {
-            List<DailyItem> priceList = JSON.parseArray(o.getPrices(), DailyItem.class);
-            final double maxPrice = priceList.stream().mapToDouble(DailyItem::getItem).max().orElse(0.0);
-            final double minPrice = priceList.stream().mapToDouble(DailyItem::getItem).min().orElse(0.0);
-            o.setPricesList(priceList);
-            o.setMaxPrice(Math.ceil(maxPrice));
-            o.setMinPrice(Math.floor(minPrice));
-            List<DailyItem> rateList = JSON.parseArray(o.getIncreaseRate(), DailyItem.class);
-            final double maxRate = rateList.stream().mapToDouble(DailyItem::getItem).max().orElse(0.0);
-            final double minRate = rateList.stream().mapToDouble(DailyItem::getItem).min().orElse(0.0);
-            o.setIncreaseRateList(rateList);
-            o.setMaxIncrease(maxRate);
-            o.setMinIncrease(minRate);
-        }).collect(Collectors.toList());
-        return Response.success(collect, pageResult.getTotal());
+//        List<StockInfo> collect = pageResult.getRecords().stream().peek(o -> {
+//            List<DailyItem> priceList = JSON.parseArray(o.getPrices(), DailyItem.class);
+//            final double maxPrice = priceList.stream().mapToDouble(DailyItem::getItem).max().orElse(0.0);
+//            final double minPrice = priceList.stream().mapToDouble(DailyItem::getItem).min().orElse(0.0);
+//            o.setPricesList(priceList);
+//            o.setMaxPrice(Math.ceil(maxPrice));
+//            o.setMinPrice(Math.floor(minPrice));
+//            List<DailyItem> rateList = JSON.parseArray(o.getIncreaseRate(), DailyItem.class);
+//            final double maxRate = rateList.stream().mapToDouble(DailyItem::getItem).max().orElse(0.0);
+//            final double minRate = rateList.stream().mapToDouble(DailyItem::getItem).min().orElse(0.0);
+//            o.setIncreaseRateList(rateList);
+//            o.setMaxIncrease(maxRate);
+//            o.setMinIncrease(minRate);
+//        }).collect(Collectors.toList());
+        return Response.success(pageResult.getRecords(), pageResult.getTotal());
     }
 }

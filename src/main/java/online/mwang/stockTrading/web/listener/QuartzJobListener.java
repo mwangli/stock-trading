@@ -55,4 +55,5 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
             log.info("Quartz定时任务加载完成。");
         }
     }
+
 }

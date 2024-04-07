@@ -9,7 +9,6 @@ import online.mwang.stockTrading.predict.model.StockPricePrediction;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -17,14 +16,22 @@ import java.util.List;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RunModelTrainJob extends BaseJob {
+public class RunTrainJob extends BaseJob {
 
     private final AllJobs allJobs;
     private final StockPricePrediction stockPricePrediction;
     private final StockInfoService stockInfoService;
 
+
+    @Override
+    void run(String runningId) {
+        log.info("模型训练任务执行开始====================================");
+        modelTrain();
+        log.info("模型训练执行结束====================================");
+    }
+
     @SneakyThrows
-    private void runJob() {
+    private void modelTrain() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda();
         queryWrapper.eq(StockInfo::getDeleted, "1");
         queryWrapper.eq(StockInfo::getPermission, "1");
@@ -42,11 +49,4 @@ public class RunModelTrainJob extends BaseJob {
             log.info("当前股票：{}-{}，模型任务完成，总共耗时：{}", stockInfo.getName(), stockCode, DateUtils.timeConvertor(end - start));
         });
     }
-
-    @Override
-    void run(String runningId) {
-        runJob();
-    }
-
-
 }

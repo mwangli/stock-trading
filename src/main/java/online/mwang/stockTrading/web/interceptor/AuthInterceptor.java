@@ -1,6 +1,5 @@
 package online.mwang.stockTrading.web.interceptor;
 
-import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.base.Response;
@@ -17,28 +16,19 @@ import java.io.PrintWriter;
  * @version 1.0.0
  * @author: mwangli
  * @date: 2023/4/12 11:13
- * @description: LoginInterceptor
+ * @description: AuthInterceptor
  */
 @Slf4j
 @Component
-public class LoginInterceptor implements HandlerInterceptor {
-
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
+public class AuthInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        final String token = request.getHeader("token");
-        if (token == null) {
-            return returnJson(response, Response.fail(1011, "无token,请使用token访问。"));
-        }
-        final String redisToken = stringRedisTemplate.opsForValue().get(token);
-        if (redisToken != null) {
-            final String user = JSONObject.parseObject(redisToken).getString("name");
-            request.setAttribute("user", user);
-            return true;
+        final String user = (String) request.getAttribute("user");
+        if (!"admin".equals(user)) {
+            return returnJson(response, Response.fail(2011, "对不起，您没有操作权限！"));
         } else {
-            return returnJson(response, Response.fail(1001, "登录失效,请重新登录。"));
+            return true;
         }
     }
 
