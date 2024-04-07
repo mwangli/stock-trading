@@ -6,12 +6,11 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.web.bean.po.AccountInfo;
-import online.mwang.stockTrading.web.bean.po.ModelStrategy;
-import online.mwang.stockTrading.web.bean.po.StockInfo;
-import online.mwang.stockTrading.web.bean.po.TradingRecord;
+import online.mwang.stockTrading.web.bean.po.*;
+import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
 import online.mwang.stockTrading.web.mapper.ScoreStrategyMapper;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
+import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import online.mwang.stockTrading.web.utils.RequestUtils;
@@ -48,9 +47,11 @@ public class RunBuyJob extends BaseJob {
     private final RunStockJob runStockJob;
     private final TradingRecordService tradingRecordService;
     private final StockInfoMapper stockInfoMapper;
+    private final StockInfoService stockInfoService;
     private final ScoreStrategyMapper strategyMapper;
     private final RequestUtils requestUtils;
     private final SleepUtils sleepUtils;
+    private final PredictPriceMapper predictPriceMapper;
 
     @SneakyThrows
     @Override
@@ -81,6 +82,8 @@ public class RunBuyJob extends BaseJob {
             log.info("可用资金资金不足,取消购买任务！");
             return;
         }
+        // 更新评分数据
+        updateScore();
         // 选择有交易权限合适价格区间的数据,按评分排序分组
         final LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>()
                 .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1")
@@ -164,5 +167,22 @@ public class RunBuyJob extends BaseJob {
             }
         }
 
+    }
+
+
+    private void updateScore() {
+        LambdaQueryWrapper<PredictPrice> queryWrapper = new LambdaQueryWrapper<PredictPrice>().eq(PredictPrice::getDate, DateUtils.format1(new Date()));
+        List<PredictPrice> PredictPriceList = predictPriceMapper.selectList(queryWrapper);
+        PredictPriceList.forEach(predictPrice -> {
+            StockInfo stockInfo = stockInfoService.getOne(new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getCode, predictPrice.getStockCode()));
+            double predictPrice1 = predictPrice.getPredictPrice1();
+            double predictPrice2 = predictPrice.getPredictPrice2();
+            double predictAvg = (predictPrice1 + predictPrice2) / 2;
+            Double price = stockInfo.getPrice();
+            double score = (predictAvg - price) / price * 100 * 10;
+            stockInfo.setScore(score);
+            stockInfo.setUpdateTime(new Date());
+            stockInfoService.updateById(stockInfo);
+        });
     }
 }

@@ -97,7 +97,7 @@ public class StockPricePrediction {
 //        }
         int batchSize = 64; // mini-batch size
         double splitRatio = 0.9; // 90% for training, 10% for testing
-        int epochs = 100; // training epochs
+        int epochs = 1; // training epochs
 
         log.info("Create dataSet iterator...");
         PriceCategory category = PriceCategory.ALL; // CLOSE: predict close price
@@ -109,7 +109,13 @@ public class StockPricePrediction {
         List<StockData> stockDataList = stockHistoryPrices.stream().map(this::mapToStockData).collect(Collectors.toList());
         log.info("stockDataList size = {}", stockDataList.size());
         StockDataSetIterator iterator = new StockDataSetIterator(stockDataList, batchSize, exampleLength, splitRatio, category);
-
+        // 计算最大值和最小
+        double max1 = stockDataList.stream().mapToDouble(StockData::getPrice1).max().orElse(0.0);
+        double max2 = stockDataList.stream().mapToDouble(StockData::getPrice2).max().orElse(0.0);
+        double min1 = stockDataList.stream().mapToDouble(StockData::getPrice1).min().orElse(0.0);
+        double min2 = stockDataList.stream().mapToDouble(StockData::getPrice2).min().orElse(0.0);
+        iterator.setMinArray(new double[]{min1, min2});
+        iterator.setMaxArray(new double[]{max1, max2});
         log.info("Build lstm networks...");
         MultiLayerNetwork net = RecurrentNets.buildLstmNetworks(iterator.inputColumns(), iterator.totalOutcomes());
 
