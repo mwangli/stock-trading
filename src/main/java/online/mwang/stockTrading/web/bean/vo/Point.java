@@ -1,4 +1,4 @@
-package online.mwang.stockTrading.web.bean.po;
+package online.mwang.stockTrading.web.bean.vo;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

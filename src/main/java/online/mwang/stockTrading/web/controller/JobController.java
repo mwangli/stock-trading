@@ -3,12 +3,10 @@ package online.mwang.stockTrading.web.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
-import com.baomidou.mybatisplus.core.toolkit.StringUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.base.Response;
 import online.mwang.stockTrading.web.bean.po.QuartzJob;
 import online.mwang.stockTrading.web.bean.query.QuartzJobQuery;
@@ -71,14 +69,16 @@ public class JobController {
     @SneakyThrows
     @PostMapping("run")
     public Response<?> runNow(@RequestBody QuartzJob job) {
-        final QuartzJob findJob = jobMapper.selectById(job.getId());
-        if ("1".equals(findJob.getRunning())) throw new BusinessException("该任务正在运行，请勿重复触发");
-        Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
-        JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName(), TEMP_GROUP_NAME).build();
-        scheduler.scheduleJob(jobDetail, trigger);
-        job.setRunning("1");
-        jobMapper.updateById(job);
-        return Response.success();
+        try {
+            Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
+            JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName(), TEMP_GROUP_NAME).build();
+            scheduler.scheduleJob(jobDetail, trigger);
+            job.setRunning("1");
+            jobMapper.updateById(job);
+            return Response.success();
+        } catch (ObjectAlreadyExistsException e) {
+            return Response.fail(20010, "该任务正在运行，请勿重复触发");
+        }
     }
 
 
@@ -87,7 +87,7 @@ public class JobController {
     public Response<Integer> interruptJob(@RequestBody QuartzJob job) {
         final JobKey jobKey = JobKey.jobKey(job.getName());
         scheduler.interrupt(jobKey);
-        job.setRunning("0");
+//        job.setRunning("0");
         return Response.success(jobMapper.updateById(job));
     }
 

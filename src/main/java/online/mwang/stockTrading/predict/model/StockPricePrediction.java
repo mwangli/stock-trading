@@ -6,15 +6,19 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.predict.data.PriceCategory;
+import online.mwang.stockTrading.predict.data.StockData;
 import online.mwang.stockTrading.predict.data.StockDataSetIterator;
 import online.mwang.stockTrading.predict.utils.PlotUtil;
+import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.util.ModelSerializer;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.primitives.Pair;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -23,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * Created by zhanghao on 26/7/17.
@@ -38,6 +43,7 @@ public class StockPricePrediction {
     private static final int VECTOR_SIZE = 2; // time series length, assume 22 working days per month
     private static int exampleLength = 22; // time series length, assume 22 working days per month
     private final StringRedisTemplate redisTemplate;
+    private final MongoTemplate mongoTemplate;
     @Value("${PROFILE}")
     private String profile;
 
@@ -85,17 +91,24 @@ public class StockPricePrediction {
 
     @SneakyThrows
     public void modelTrain(String stockCode) {
-        String filePath = new File("data/history_price_" + stockCode + ".csv").getAbsolutePath();
-        if (profile.equalsIgnoreCase("prod")) {
-            filePath = new File("/root/history_price_" + stockCode + ".csv").getAbsolutePath();
-        }
+//        String filePath = new File("data/history_price_" + stockCode + ".csv").getAbsolutePath();
+//        if (profile.equalsIgnoreCase("prod")) {
+//            filePath = new File("/root/history_price_" + stockCode + ".csv").getAbsolutePath();
+//        }
         int batchSize = 64; // mini-batch size
         double splitRatio = 0.9; // 90% for training, 10% for testing
         int epochs = 100; // training epochs
 
         log.info("Create dataSet iterator...");
         PriceCategory category = PriceCategory.ALL; // CLOSE: predict close price
-        StockDataSetIterator iterator = new StockDataSetIterator(filePath, stockCode, batchSize, exampleLength, splitRatio, category);
+
+        // read history stock data from mongo
+        String collectionName = "code_" + stockCode;
+        Query query = new Query().with(Sort.by(Sort.Direction.ASC, "date"));
+        List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(query, StockHistoryPrice.class, collectionName);
+        List<StockData> stockDataList = stockHistoryPrices.stream().map(this::mapToStockData).collect(Collectors.toList());
+        log.info("stockDataList size = {}", stockDataList.size());
+        StockDataSetIterator iterator = new StockDataSetIterator(stockDataList, batchSize, exampleLength, splitRatio, category);
 
         log.info("Build lstm networks...");
         MultiLayerNetwork net = RecurrentNets.buildLstmNetworks(iterator.inputColumns(), iterator.totalOutcomes());
@@ -131,7 +144,7 @@ public class StockPricePrediction {
         }
         // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
         ModelSerializer.writeModel(net, savePath, true);
-        redisTemplate.opsForValue().set(profile + "_trainedStockList_" + stockCode, stockCode,3, TimeUnit.DAYS);
+        redisTemplate.opsForValue().set(profile + "_trainedStockList_" + stockCode, stockCode, 3, TimeUnit.DAYS);
 
         log.info("Testing...");
 
@@ -230,4 +243,15 @@ public class StockPricePrediction {
         return new double[]{predictPrice1, predictPrice2};
     }
 
+    private StockData mapToStockData(StockHistoryPrice historyPrice) {
+        StockData stockData = new StockData();
+        stockData.setCode(historyPrice.getCode());
+        stockData.setName(historyPrice.getName());
+        stockData.setDate(historyPrice.getDate());
+        stockData.setPrice1(historyPrice.getPrice1());
+        stockData.setPrice2(historyPrice.getPrice2());
+        stockData.setPrice3(historyPrice.getPrice3());
+        stockData.setPrice4(historyPrice.getPrice4());
+        return stockData;
+    }
 }

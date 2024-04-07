@@ -1,20 +1,15 @@
 package online.mwang.stockTrading.web.job;
 
-import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * @version 1.0.0
@@ -41,9 +36,19 @@ public class RunStockJob extends BaseJob {
         final Set<String> toDeleteCodes = oldCodeSet.stream().filter(code -> !newCodeSet.contains(code)).collect(Collectors.toSet());
         final List<StockInfo> insertList = newInfos.stream().filter(s -> toInsetCodes.contains(s.getCode())).collect(Collectors.toList());
         final List<StockInfo> deleteList = dataList.stream().filter(s -> toDeleteCodes.contains(s.getCode())).collect(Collectors.toList());
-        log.info("新增股票列表:{}", insertList);
+        log.info("新增股票数量:{}", insertList.size());
+        insertList.forEach(this::fixProps);
         stockInfoService.saveBatch(insertList);
-        log.info("删除股票列表:{}", deleteList);
+        log.info("删除股票数量:{}", deleteList.size());
         stockInfoService.removeByIds(deleteList.stream().map(StockInfo::getId).collect(Collectors.toList()));
+    }
+
+    private void fixProps(StockInfo stockInfo) {
+        stockInfo.setCreateTime(new Date());
+        stockInfo.setUpdateTime(new Date());
+        stockInfo.setDeleted("1");
+        stockInfo.setPermission("1");
+        stockInfo.setBuySaleCount(0);
+        stockInfo.setScore(0.0);
     }
 }

@@ -1,6 +1,8 @@
-package online.mwang.stockTrading.web.bean.po;
+package online.mwang.stockTrading.web.bean.vo;
 
 import lombok.Data;
+import online.mwang.stockTrading.web.bean.po.AccountInfo;
+import online.mwang.stockTrading.web.bean.po.TradingRecord;
 
 import java.util.List;
 

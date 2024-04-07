@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * @version 1.0.0
@@ -31,11 +32,12 @@ public class RunPermissionJob extends BaseJob {
 
     @Override
     public void run() {
+        log.info("请尝试以更好的方案来更新交易权限....");
+        // 尝试以更好的方案来更新交易权限，而不是试错
         List<String> errorCodes = Arrays.asList("[251112]", "[251127]", "[251299]", "该股票是退市");
         List<StockInfo> stockInfos = stockInfoService.list();
         final HashSet<String> set = new HashSet<>();
-        AtomicInteger count = new AtomicInteger();
-        stockInfos.stream().peek(info -> {
+        List<StockInfo> stockInfoList = stockInfos.stream().peek(info -> {
             JSONObject res = jobs.buySale("B", info.getCode(), 100.0, 100.0);
             final String message = res.getString("ERRORMESSAGE");
             set.add(message);
@@ -44,7 +46,8 @@ public class RunPermissionJob extends BaseJob {
             } else {
                 info.setPermission("1");
             }
-        });
+        }).collect(Collectors.toList());
+        stockInfoService.updateBatchById(stockInfoList);
         log.info("交易权限错误信息合集:{}", set);
         stockInfoService.updateBatchById(stockInfos);
         // 取消所有提交的订单

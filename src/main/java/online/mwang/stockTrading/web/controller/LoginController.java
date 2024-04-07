@@ -48,7 +48,6 @@ public class LoginController {
 
     @PostMapping("/login/account")
     public Response<String> login(@RequestBody LoginParam param) {
-        log.info("username is {}, password is {}", param.getUsername(), param.getPassword());
         final String monthDate = new SimpleDateFormat(SDF).format(new Date());
         final String reverseDate = new StringBuilder(monthDate).reverse().toString();
         if ("test".equals(param.getUsername())){

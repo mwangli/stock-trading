@@ -1,11 +1,9 @@
 package online.mwang.stockTrading.web.utils;
 
 import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONException;
 import com.alibaba.fastjson.JSONObject;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.web.job.AllJobs;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -31,18 +29,13 @@ public class RequestUtils {
     private static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
 
     private static final int RETRY_TIMES = 10;
-
+    public boolean logs = false;
     @Resource
     ApplicationContext applicationContext;
 
-    public boolean logs = false;
-
     @SneakyThrows
-    public JSONObject request(String url, HashMap<String, Object> formParam, int times) {
-        if (times > RETRY_TIMES) {
-            log.error("请求错误次数过多,请检查程序代码!");
-            return new JSONObject();
-        }
+    public JSONObject request(String url, HashMap<String, Object> formParam) {
+        String result = "";
         try {
             CloseableHttpClient client = HttpClients.createDefault();
             MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
@@ -50,42 +43,30 @@ public class RequestUtils {
             HttpPost post = new HttpPost(url);
             post.setEntity(entityBuilder.build());
             CloseableHttpResponse response = client.execute(post);
-            String result = EntityUtils.toString(response.getEntity());
+            result = EntityUtils.toString(response.getEntity());
             if (logs) log.info(result);
-            final JSONObject res = JSONObject.parseObject(result);
-            String code = res.getString("ERRORNO");
-            if ("-204007".equals(code) || "-204009".equals(code)) {
-                log.info("检测到无效token，尝试重新登录...");
-                final AllJobs job = applicationContext.getBean(AllJobs.class);
-                job.clearToken();
-                final String token = job.getToken();
-                if (token != null) {
-                    formParam.put(AllJobs.TOKEN, job.getToken());
-                    return request(url, formParam, ++times);
-                }
-            }
-            return res;
-        } catch (JSONException e) {
-            log.error("请求数据异常，正在重新请求数据。");
-            return request(url, formParam, ++times);
+            return JSONObject.parseObject(result);
+        } catch (Exception e) {
+            log.info("请求失败，返回数据为：{}", result);
         }
+        return null;
     }
 
     @SneakyThrows
     public JSONObject request(HashMap<String, Object> formParam) {
-        return request(REQUEST_URL, formParam, 0);
+        return request(REQUEST_URL, formParam);
     }
 
 
     @SneakyThrows
     public JSONArray request2(HashMap<String, Object> formParam) {
-        JSONObject res = request(REQUEST_URL, formParam, 0);
+        JSONObject res = request(REQUEST_URL, formParam);
         return res.getJSONArray("GRID0");
     }
 
     @SneakyThrows
     public JSONArray request3(HashMap<String, Object> formParam) {
-        JSONObject res = request(REQUEST_URL.concat("?action=1230"), formParam, 0);
+        JSONObject res = request(REQUEST_URL.concat("?action=1230"), formParam);
         final JSONObject data = res.getJSONObject("BINDATA");
         if (data != null && data.getJSONArray("results") != null) {
             return data.getJSONArray("results");
