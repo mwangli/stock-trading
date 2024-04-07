@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>online.mwang</groupId>
-    <artifactId>StockTrading</artifactId>
+    <artifactId>stock-trading</artifactId>
     <version>1.0.1-SNAPSHOT</version>
-    <name>StockTrading</name>
-    <description>StockTrading</description>
+    <name>stock-trading</name>
+    <description>stock-trading</description>
 
     <properties>
         <java.version>

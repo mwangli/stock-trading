@@ -14,7 +14,6 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.Date;
@@ -23,7 +22,7 @@ import java.util.Set;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RunModelPredictJob extends BaseJob {
+public class RunPredictJob extends BaseJob {
 
     private final AllJobs allJobs;
     private final StockPricePrediction stockPricePrediction;
@@ -37,13 +36,15 @@ public class RunModelPredictJob extends BaseJob {
 
     @Override
     void run(String runningId) {
-        runJob();
+        log.info("更新股票历史价格任务执行开始====================================");
+        predictPrice();
+        log.info("更新股票历史价格任务执行结束====================================");
     }
 
     @SneakyThrows
-    @Scheduled(fixedDelay = Long.MAX_VALUE)
-    private void runJob() {
+    private void predictPrice() {
         Set<String> keySet = redisTemplate.keys(profile + "_trainedStockList_*");
+        assert keySet != null;
         keySet.forEach(key -> {
             String[] split = key.split("_");
             String stockCode = split[2];

@@ -1,5 +1,6 @@
 package online.mwang.stockTrading.web.interceptor;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.base.Response;
@@ -33,6 +34,8 @@ public class LoginInterceptor implements HandlerInterceptor {
         }
         final String redisToken = stringRedisTemplate.opsForValue().get(token);
         if (redisToken != null) {
+            final String user = JSONObject.parseObject(redisToken).getString("name");
+            request.setAttribute("user", user);
             return true;
         } else {
             return returnJson(response, Response.fail(1001, "登录失效,请重新登录。"));

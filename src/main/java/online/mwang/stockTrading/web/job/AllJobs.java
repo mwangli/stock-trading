@@ -23,11 +23,7 @@ import online.mwang.stockTrading.web.utils.SleepUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.io.*;
@@ -36,15 +32,13 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
  * @version 1.0.0
  * @author: mwangli
  * @date: 2023/5/22 10:32
- * @description: DailyJob
+ * @description: AllJobs
  */
 @Slf4j
 @Component
@@ -52,40 +46,31 @@ import java.util.stream.Collectors;
 public class AllJobs {
 
     public static final String TOKEN = "requestToken";
-    private static final int MAX_HOLD_NUMBER = 100;
-    private static final int MIN_HOLD_NUMBER = 100;
-    private static final int MAX_HOLD_STOCKS = 6;
-    private static final double HIGH_PRICE_PERCENT = 0.8;
-    private static final double LOW_PRICE_PERCENT = 0.8;
-    private static final double LOW_PRICE_LIMIT = 5.0;
-    private static final int BUY_RETRY_TIMES = 4;
-    private static final int SOLD_RETRY_TIMES = 4;
-    private static final int LOGIN_RETRY_TIMES = 10;
-    private static final double PRICE_TOTAL_FALL_LIMIT = -5.0;
-    private static final double PRICE_TOTAL_UPPER_LIMIT = 5.0;
-    private static final int BUY_RETRY_LIMIT = 100;
-    private static final int WAIT_TIME_SECONDS = 10;
-    private static final int HISTORY_PRICE_LIMIT = 100;
-    private static final int UPDATE_BATCH_SIZE = 500;
-    private static final int THREAD_POOL_NUMBERS = 8;
-    private static final int TOKEN_EXPIRE_MINUTES = 30;
-    private static final int CANCEL_WAIT_TIMES = 30;
-    private static final String COLLECTION_NAME_PREFIX = "code_";
-    private static final String BUY_TYPE_OP = "B";
-    private static final String SALE_TYPE_OP = "S";
-    private static HashMap<String, Integer> dateMap;
-    private final RequestUtils requestUtils;
-    private final OcrUtils ocrUtils;
-    private final StockInfoService stockInfoService;
-    private final TradingRecordService tradingRecordService;
-    private final AccountInfoMapper accountInfoMapper;
-    private final StringRedisTemplate redisTemplate;
-    private final MongoTemplate mongoTemplate;
-    private final StockInfoMapper stockInfoMapper;
-    private final ScoreStrategyMapper strategyMapper;
-    private final SleepUtils sleepUtils;
-    private final PredictPriceMapper predictPriceMapper;
-    private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
+    public static final int LOGIN_RETRY_TIMES = 10;
+    public static final double PRICE_TOTAL_FALL_LIMIT = -5.0;
+    public static final double PRICE_TOTAL_UPPER_LIMIT = 5.0;
+    public static final int WAIT_TIME_SECONDS = 10;
+    public static final int HISTORY_PRICE_LIMIT = 100;
+    public static final int UPDATE_BATCH_SIZE = 500;
+    public static final int THREAD_POOL_NUMBERS = 8;
+    public static final int TOKEN_EXPIRE_MINUTES = 30;
+    public static final int CANCEL_WAIT_TIMES = 30;
+    public static final String COLLECTION_NAME_PREFIX = "code_";
+    public static final String BUY_TYPE_OP = "B";
+    public static final String SALE_TYPE_OP = "S";
+    public static HashMap<String, Integer> dateMap;
+    public final RequestUtils requestUtils;
+    public final OcrUtils ocrUtils;
+    public final StockInfoService stockInfoService;
+    public final TradingRecordService tradingRecordService;
+    public final AccountInfoMapper accountInfoMapper;
+    public final StringRedisTemplate redisTemplate;
+    public final MongoTemplate mongoTemplate;
+    public final StockInfoMapper stockInfoMapper;
+    public final ScoreStrategyMapper strategyMapper;
+    public final SleepUtils sleepUtils;
+    public final PredictPriceMapper predictPriceMapper;
+    public final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
     public boolean enableSaleWaiting = true;
     public boolean enableBuyWaiting = true;
     public String resourceBaseDir = "src/main/resources/";
@@ -94,7 +79,7 @@ public class AllJobs {
     private String profile;
 
 
-    public static HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
+    public HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
         if (paramMap == null) return new HashMap<>();
         paramMap.put("cfrom", "H5");
         paramMap.put("tfrom", "PC");
@@ -104,71 +89,18 @@ public class AllJobs {
         return paramMap;
     }
 
-    // 交易日开盘时间买入 9:30
-//    @Scheduled(cron = "0 0,15,30 9 ? * MON-FRI")
-    public void runBuyJob(String runningId) {
-        log.info("开始执行买入任务====================================");
-        buy(runningId);
-        log.info("买入任务执行完毕====================================");
-    }
-
-    // 交易日收盘时间卖出 14:30
-//    @Scheduled(cron = "0 0 10,11,14 ? * MON-FRI")
-    public void runSaleJob(String runningId) {
-        log.info("开始执行卖出任务====================================");
-        sale(runningId);
-        log.info("卖出任务执行完毕====================================");
-    }
-
-    // 更新账户余额,交易时间段内每小时执行一次
-//    @Scheduled(cron = "0 0 9-15 ? * MON-FRI")
-    public void runAmountJob() {
-        log.info("更新账户余额任务执行开始====================================");
-        updateAmount();
-        log.info("更新账户余额任务执行结束====================================");
-    }
-
-    // 更新股票实时价格,交易日每天上午八点执行
-//    @Scheduled(cron = "0 0 8 ? * MON-FRI")
-    public void runNowJob() {
-        log.info("更新股票实时价格任务执行开始====================================");
-        updateNowPrice();
-        log.info("更新股票实时价格任务执行结束====================================");
-    }
-
-    // 更新股票历史价格,交易日每天下午三点执行
-//    @Scheduled(cron = "0 0 15 ? * MON-FRI")
-    public void runHistoryJob() {
-        log.info("更新股票历史价格任务执行开始====================================");
-        updateLastHistoryPrice();
-        log.info("更新股票历史价格任务执行结束====================================");
-    }
-
-    // 同步股票交易记录,每十天执行一次
-//    @Scheduled(cron = "0 0 15 1/10 * ?")
-    public void runSyncJob() {
-        log.info("同步订单任务执行开始====================================");
-        syncBuySaleRecord();
-        syncBuySaleCount();
-        log.info("同步订单执行结束====================================");
-    }
-
-    // 刷新股票交易权限,每半月月执行一次
-//    @Scheduled(cron = "0 0 12 1,15 * ?")
-    public void runFlushJob() {
-        log.info("更新权限任务执行开始====================================");
-        flushPermission();
-        log.info("更新权限任务执行结束====================================");
-    }
-
     public String getToken() {
         final String token = redisTemplate.opsForValue().get(TOKEN);
-        if (token == null) login();
+        if (token == null) {
+            tryLogin();
+        }
         return redisTemplate.opsForValue().get(TOKEN);
     }
 
     public void setToken(String token) {
-        if (token == null) return;
+        if (token == null) {
+            return;
+        }
         redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
     }
 
@@ -200,7 +132,7 @@ public class AllJobs {
     }
 
     @SneakyThrows
-    public void login() {
+    public void tryLogin() {
         int time = 0;
         while (time++ < LOGIN_RETRY_TIMES) {
             log.info("第{}尝试登录------", time);
@@ -245,7 +177,7 @@ public class AllJobs {
         return null;
     }
 
-    public AccountInfo updateAmount() {
+    public AccountInfo getAmount() {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -288,11 +220,15 @@ public class AllJobs {
         paramMap.put("Volume", 100);
         JSONArray results = requestUtils.request2(buildParams(paramMap));
         List<TradingRecord> dataList = new ArrayList<>();
-        if (results == null || results.size() <= 1) return dataList;
+        if (results == null || results.size() <= 1) {
+            return dataList;
+        }
         for (int i = 1; i < results.size(); i++) {
             String data = results.getString(i);
             String[] split = data.split("\\|");
-            if ("0.00".equals(split[1]) || "0.00".equals(split[2])) continue;
+            if ("0.00".equals(split[1]) || "0.00".equals(split[2])) {
+                continue;
+            }
             TradingRecord record = new TradingRecord();
             record.setCode(split[9]);
             record.setName(split[0]);
@@ -303,7 +239,7 @@ public class AllJobs {
         return dataList;
     }
 
-    private Boolean checkSoldToday(String sold) {
+    protected Boolean checkSoldToday(String sold) {
         // 检查今天是否有交易记录,防止重复交易
         LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>()
                 .eq("0".equals(sold), TradingRecord::getBuyDateString, DateUtils.dateFormat.format(new Date()))
@@ -313,7 +249,26 @@ public class AllJobs {
         return CollectionUtils.isNotEmpty(hasSold);
     }
 
-    private Boolean checkBuyCode(String code) {
+    public Boolean waitOrderCancel() {
+        int times = 0;
+        while (times++ < CANCEL_WAIT_TIMES) {
+            sleepUtils.second(WAIT_TIME_SECONDS);
+            List<OrderStatus> todayOrders = listTodayOrder();
+//            List<OrderStatus> historyOrders = listHistoryOrder();
+//            todayOrders.addAll(historyOrders);
+            List<String> cancelStatus = Arrays.asList("已报", "已报待撤");
+            List<OrderStatus> orderList = todayOrders.stream().filter(o -> cancelStatus.contains(o.getStatus())).collect(Collectors.toList());
+            if (orderList.size() == 0) {
+                return true;
+            } else {
+                log.info("待撤销订单:{}", orderList);
+                orderList.forEach(o -> cancelOrder(o.getAnswerNo()));
+            }
+        }
+        return false;
+    }
+
+    protected Boolean checkBuyCode(String code) {
         // 检查今天是否有重复code,防止买入相同股票
         LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>()
 //                .eq(TradingRecord::getSold, "0")
@@ -322,7 +277,7 @@ public class AllJobs {
         return CollectionUtils.isNotEmpty(hasSold);
     }
 
-    private StockInfo waitingBestPrice(StockInfo best, String runningId) {
+    protected StockInfo waitingBestPrice(StockInfo best, String runningId) {
         double lastPrice = getLastPrice(best.getCode());
         double totalPercent = 0.0;
         while (inTradingTimes()) {
@@ -330,16 +285,21 @@ public class AllJobs {
             Double nowPrice = getLastPrice(best.getCode());
             final double price = nowPrice - lastPrice;
             final double pricePercent = price * 100 / nowPrice;
-            if (pricePercent < 0) totalPercent += pricePercent;
+            if (pricePercent < 0) {
+                totalPercent += pricePercent;
+            }
             log.info("最佳买入股票[{}-{}],上次价格:{},当前价格:{},当前增长幅度:{}%,总增长幅度:{}%,等待最佳买入时机...",
                     best.getCode(), best.getName(), lastPrice, nowPrice, String.format("%.4f", pricePercent), String.format("%.4f", totalPercent));
             lastPrice = nowPrice;
             // 3交易时间段内，总增长幅度达到阈值，或者交易时间即将结束
             boolean totalCondition = totalPercent <= PRICE_TOTAL_FALL_LIMIT;
             if (isDeadLine() || totalCondition) {
-                if (isDeadLine()) log.info("今日交易时间即将结束，开始买入股票。");
-                else log.info("最佳买入股票[{}-{}],总增长幅度达到{}%,开始买入股票。",
-                        best.getCode(), best.getName(), PRICE_TOTAL_FALL_LIMIT);
+                if (isDeadLine()) {
+                    log.info("今日交易时间即将结束，开始买入股票。");
+                } else {
+                    log.info("最佳买入股票[{}-{}],总增长幅度达到{}%,开始买入股票。",
+                            best.getCode(), best.getName(), PRICE_TOTAL_FALL_LIMIT);
+                }
                 best.setPrice(lastPrice);
                 return best;
             }
@@ -347,128 +307,8 @@ public class AllJobs {
         return null;
     }
 
-    public void buy(String runningId) {
-        int time = 0;
-        while (time++ < BUY_RETRY_TIMES) {
-            log.info("第{}次尝试买入股票---------", time);
-            // 查询持仓股票数量
-            final long holdCount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).size();
-            final long needCount = MAX_HOLD_STOCKS - holdCount;
-            if (needCount <= 0) {
-                log.info("持仓股票数量已达到最大值:{},无需购买!", MAX_HOLD_STOCKS);
-                return;
-            }
-            if (checkSoldToday("0")) {
-                log.info("今天已经有买入记录了,无需重复购买！");
-                return;
-            }
-            // 撤销所有未成功订单,回收可用资金
-            if (!waitOrderStatus()) {
-                log.info("存在未撤销失败订单,取消购买任务！");
-                return;
-            }
-            // 更新账户可用资金
-            final AccountInfo accountInfo = updateAmount();
-            if (accountInfo == null) {
-                log.info("更新账户可用资金失败,取消购买任务");
-                return;
-            }
-            final AccountInfo accountAmount = getAccountAmount(accountInfo);
-            final Double totalAvailableAmount = accountAmount.getAvailableAmount();
-            final Double totalAmount = accountAmount.getTotalAmount();
-            final double maxAmount = totalAmount / MAX_HOLD_STOCKS;
-            // 计算此次可用资金
-            double availableAmount = totalAvailableAmount / needCount;
-            availableAmount = Math.min(availableAmount, maxAmount);
-            // 计算可买入股票价格区间
-            final double highPrice = (availableAmount / MIN_HOLD_NUMBER) / HIGH_PRICE_PERCENT;
-            final double lowPrice = (availableAmount / MAX_HOLD_NUMBER) * LOW_PRICE_PERCENT;
-            log.info("当前可用资金{}元, 可买入价格区间[{},{}]", availableAmount, lowPrice, highPrice);
-            if (lowPrice < LOW_PRICE_LIMIT) {
-                log.info("可用资金资金不足,取消购买任务！");
-                return;
-            }
-            //  更新实时价格
-            updateNowPrice();
-            // 选择有交易权限合适价格区间的数据,按评分排序分组
-            final LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>()
-                    .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1")
-                    .ge(StockInfo::getPrice, lowPrice).le(StockInfo::getPrice, highPrice)
-                    .orderByDesc(StockInfo::getScore);
-//            final Page<StockInfo> page = new Page<>(time, BUY_RETRY_LIMIT);
-//            final Page<StockInfo> pageResult = stockInfoMapper.selectPage(page, queryWrapper);
-//            final List<StockInfo> limitList = pageResult.getRecords();
-            final List<StockInfo> limitList = stockInfoMapper.selectList(queryWrapper);
-            if (limitList.size() < BUY_RETRY_LIMIT) {
-                log.info("可买入股票数量不足{},取消购买任务！", BUY_RETRY_LIMIT);
-                return;
-            }
-            // 随机选择一支买入
-            StockInfo best = limitList.get(Math.abs(Objects.hashCode(System.currentTimeMillis()) % limitList.size()));
-            if (checkBuyCode(best.getCode())) {
-                log.info("当前股票[{}-{}]已经持有,尝试买入下一组股票", best.getCode(), best.getName());
-                continue;
-            }
-            log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}", best.getCode(), best.getName(), best.getPrice(), best.getScore());
-            // 等待最佳买入时机
-            if (enableBuyWaiting) {
-                best = waitingBestPrice(best, runningId);
-                if (best == null) {
-                    log.info("不在交易时间段内，取消买入任务！");
-                    return;
-                }
-            }
-            final int maxBuyNumber = (int) (availableAmount / best.getPrice());
-            final int buyNumber = (maxBuyNumber / 100) * 100;
-            JSONObject res = buySale(BUY_TYPE_OP, best.getCode(), best.getPrice(), (double) buyNumber);
-            String buyNo = res.getString("ANSWERNO");
-            if (buyNo == null) {
-                log.info("当前股票[{}-{}]买入失败,尝试买入下一组股票!", best.getCode(), best.getName());
-                continue;
-            }
-            // 查询买入结果
-            final Boolean success = waitOrderStatus(buyNo);
-            if (success == null) {
-                log.info("当前股票[{}-{}].订单撤销失败,取消买入任务！", best.getCode(), best.getName());
-                return;
-            }
-            if (!success) {
-                // 如果交易不成功,撤单后再次尝试卖出
-                log.info("当前买入交易不成功,尝试买入下一组股票。");
-                continue;
-            }
-            // 买入成功后,保存交易数据
-            final TradingRecord record = new TradingRecord();
-            record.setCode(best.getCode());
-            record.setName(best.getName());
-            record.setBuyPrice(best.getPrice());
-            record.setBuyNumber((double) buyNumber);
-            record.setBuyNo(buyNo);
-            final double amount = best.getPrice() * buyNumber;
-            record.setBuyAmount(amount + getPeeAmount(amount));
-            final Date now = new Date();
-            record.setBuyDate(now);
-            record.setBuyDateString(DateUtils.dateFormat.format(now));
-            record.setSold("0");
-            record.setCreateTime(now);
-            record.setUpdateTime(now);
-            // 保存选股策略ID
-            final ScoreStrategy strategy = strategyMapper.getSelectedStrategy();
-            record.setStrategyId(strategy == null ? 0 : strategy.getId());
-            record.setStrategyName(strategy == null ? "默认策略" : strategy.getName());
-            tradingRecordService.save(record);
-            // 更新账户资金
-            updateAmount();
-            // 更新交易次数
-            final StockInfo stockInfo = stockInfoMapper.selectByCode(best.getCode());
-            stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
-            stockInfoMapper.updateById(stockInfo);
-            log.info("成功买入股票[{}-{}], 买入价格:{},买入数量:{},买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
-            return;
-        }
-    }
 
-    private TradingRecord getBestRecord() {
+    protected TradingRecord getBestRecord() {
         List<TradingRecord> holdList = getHoldList();
         double maxDailyRate = -100.00;
         TradingRecord best = null;
@@ -477,8 +317,7 @@ public class AllJobs {
             final LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getCode, record.getCode()).eq(TradingRecord::getSold, "0");
             TradingRecord selectRecord = tradingRecordService.getOne(queryWrapper);
             if (selectRecord == null) {
-                log.info("当前股票[{}-{}]未查询到买入记录,开始同步订单", record.getCode(), record.getName());
-                threadPool.submit(this::syncBuySaleRecord);
+                log.error("当前股票[{}-{}]未查询到买入记录,需要手动触发订单同步任务", record.getCode(), record.getName());
                 continue;
             }
             // 更新每日数据
@@ -503,7 +342,7 @@ public class AllJobs {
         return best;
     }
 
-    private TradingRecord waitingBestRecord(TradingRecord best, String runningId) {
+    protected TradingRecord waitingBestRecord(TradingRecord best, String runningId) {
         double totalPercent = 0.0;
         while (inTradingTimes()) {
             sleepUtils.minutes(1, runningId);
@@ -521,7 +360,9 @@ public class AllJobs {
             Double lastPrice = best.getSalePrice();
             final double price = bestRecord.getSalePrice() - lastPrice;
             final double pricePercent = price * 100 / lastPrice;
-            if (pricePercent > 0) totalPercent += pricePercent;
+            if (pricePercent > 0) {
+                totalPercent += pricePercent;
+            }
             best = bestRecord;
             log.info("最佳卖出股票[{}-{}],买入价格:{},上次价格:{},当前价格:{},当前增长幅度:{}%,总增长幅度:{}%,等待最佳卖出时机...",
                     best.getCode(), best.getName(), best.getBuyPrice(), lastPrice, best.getSalePrice(), String.format("%.4f", pricePercent), String.format("%.4f", totalPercent));
@@ -531,78 +372,31 @@ public class AllJobs {
             boolean incomeCondition = best.getSalePrice() - best.getBuyPrice() > 0.1;
             boolean saleCondition = incomeCondition && priceCondition;
             if (isMorning() ? saleCondition : priceCondition) {
-                if (isDeadLine()) log.info("今日交易时间即将结束，开始卖出股票。");
-                else log.info("最佳卖出股票[{}-{}],总增长幅度达到{}%,开始卖出股票。",
-                        best.getCode(), best.getName(), PRICE_TOTAL_UPPER_LIMIT);
+                if (isDeadLine()) {
+                    log.info("今日交易时间即将结束，开始卖出股票。");
+                } else {
+                    log.info("最佳卖出股票[{}-{}],总增长幅度达到{}%,开始卖出股票。",
+                            best.getCode(), best.getName(), PRICE_TOTAL_UPPER_LIMIT);
+                }
                 return best;
             }
         }
         return null;
     }
 
-    public void sale(String runningId) {
-        int time = 0;
-        while (time++ < SOLD_RETRY_TIMES) {
-            log.info("第{}次尝试卖出股票---------", time);
-            if (checkSoldToday("1")) {
-                log.info("今天已经有卖出记录了,无需重复卖出!");
-                return;
-            }
-            // 撤销未成功订单
-            if (!waitOrderStatus()) {
-                log.info("存在未撤销失败订单,取消卖出任务！");
-                return;
-            }
-            // 卖出最高收益的股票
-            TradingRecord best = getBestRecord();
-            if (best == null) {
-                log.info("当前无可卖出股票,取消卖出任务！");
-                return;
-            }
-            log.info("最佳卖出股票[{}-{}],买入价格:{},当前价格:{},预期收益:{},日收益率:{}", best.getCode(), best.getName(), best.getBuyPrice(), best.getSalePrice(), best.getIncome(), String.format("%.4f", best.getDailyIncomeRate()));
-            // 等待最佳卖出时机
-            if (enableSaleWaiting) {
-                best = waitingBestRecord(best, runningId);
-                if (best == null) {
-                    log.info("不在交易时间段内，取消卖出任务！");
-                    return;
-                }
-            }
-            // 返回合同编号
-            JSONObject res = buySale(SALE_TYPE_OP, best.getCode(), best.getSalePrice(), best.getBuyNumber());
-            String saleNo = res.getString("ANSWERNO");
-            if (saleNo == null) {
-                log.info("当前股票[{}-{}]卖出失败,尝试卖出下一组。", best.getCode(), best.getName());
-                continue;
-            }
-            // 查询卖出结果
-            final Boolean success = waitOrderStatus(saleNo);
-            if (success == null) {
-                log.info("当前股票[{}-{}]撤销订单失败,取消卖出任务！", best.getCode(), best.getName());
-                return;
-            }
-            if (!success) {
-                log.info("当前股票[{}-{}]卖出失败,尝试再次卖出。", best.getCode(), best.getName());
-                enableSaleWaiting = false;
-                continue;
-            }
-            best.setSold("1");
-            best.setSaleNo(saleNo);
-            final Date now = new Date();
-            best.setSaleDate(now);
-            best.setSaleDateString(DateUtils.dateFormat.format(now));
-            best.setUpdateTime(now);
-            tradingRecordService.updateById(best);
-            // 更新账户资金
-            updateAmount();
-            // 增加股票交易次数
-            StockInfo stockInfo = stockInfoService.getOne(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, best.getCode()));
-            stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
-            stockInfoService.updateById(stockInfo);
-            log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{},日收益率为:{}。", best.getCode(), best.getName(), best.getSaleAmount(), best.getIncome(), best.getDailyIncomeRate());
-            enableSaleWaiting = true;
-            return;
-        }
+
+    protected List<OrderStatus> listTodayOrder() {
+        String token = getToken();
+        final long timeMillis = System.currentTimeMillis();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 113);
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", 100);
+        paramMap.put("token", token);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("reqno", timeMillis);
+        JSONArray result = requestUtils.request2(buildParams(paramMap));
+        return arrayToList(result, true);
     }
 
     private Boolean isMorning() {
@@ -634,7 +428,7 @@ public class AllJobs {
         return format.compareTo("13:00") >= 0 && format.compareTo("15:00") <= 0;
     }
 
-    private Double getLastPrice(String code) {
+    protected Double getLastPrice(String code) {
         long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("stockcode", code);
@@ -647,20 +441,8 @@ public class AllJobs {
         return res.getDouble("PRICE");
     }
 
-    public void cancelOrder(String answerNo) {
-        String token = getToken();
-        final long timeMillis = System.currentTimeMillis();
-        HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", "111");
-        paramMap.put("ContactID", answerNo);
-        paramMap.put("token", token);
-        paramMap.put("reqno", timeMillis);
-        final JSONObject result = requestUtils.request(buildParams(paramMap));
-        setToken(result.getString("TOKEN"));
-    }
 
-
-    private List<OrderStatus> arrayToList(JSONArray result, boolean isToday) {
+    protected List<OrderStatus> arrayToList(JSONArray result, boolean isToday) {
         // 委托日期|时间|证券代码|证券|委托类别|买卖方向|状态|委托|数量|委托编号|均价|成交|股东代码|交易类别|
         ArrayList<OrderStatus> statusList = new ArrayList<>();
         if (result != null && result.size() > 1) {
@@ -678,7 +460,7 @@ public class AllJobs {
         return statusList;
     }
 
-    public List<OrderStatus> pageCancelOrder(int page) {
+    protected List<OrderStatus> pageCancelOrder(int page) {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -692,7 +474,7 @@ public class AllJobs {
         return arrayToList(result, true);
     }
 
-    public List<OrderStatus> listCancelOrder() {
+    protected List<OrderStatus> listCancelOrder() {
         List<OrderStatus> cancelOrders = new ArrayList<>();
         for (int i = 0; i < 10; i++) {
             cancelOrders.addAll(pageCancelOrder(i));
@@ -700,25 +482,31 @@ public class AllJobs {
         return cancelOrders;
     }
 
-    public void cancelAllOrder() {
+    public AccountInfo getAccountAmount(AccountInfo accountInfo) {
+        // 计算已用金额
+        double usedAmount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().mapToDouble(TradingRecord::getBuyAmount).sum();
+        accountInfo.setUsedAmount(usedAmount);
+        accountInfo.setTotalAmount(accountInfo.getAvailableAmount() + usedAmount);
+        return accountInfo;
+    }
+
+    public void cancelOrder(String answerNo) {
+        String token = getToken();
+        final long timeMillis = System.currentTimeMillis();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", "111");
+        paramMap.put("ContactID", answerNo);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        final JSONObject result = requestUtils.request(buildParams(paramMap));
+    }
+
+    protected void cancelAllOrder() {
         List<OrderStatus> orderList = listCancelOrder();
         log.info("待撤销订单:{}", orderList);
         orderList.forEach(o -> cancelOrder(o.getAnswerNo()));
     }
 
-    public List<OrderStatus> listTodayOrder() {
-        String token = getToken();
-        final long timeMillis = System.currentTimeMillis();
-        HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", 113);
-        paramMap.put("StartPos", 0);
-        paramMap.put("MaxCount", 100);
-        paramMap.put("token", token);
-        paramMap.put("ReqlinkType", 1);
-        paramMap.put("reqno", timeMillis);
-        JSONArray result = requestUtils.request2(buildParams(paramMap));
-        return arrayToList(result, true);
-    }
 
     public List<OrderStatus> listHistoryOrder() {
         String token = getToken();
@@ -747,26 +535,8 @@ public class AllJobs {
         return status.get().getStatus();
     }
 
-    public Boolean waitOrderStatus() {
-        int times = 0;
-        while (times++ < CANCEL_WAIT_TIMES) {
-            sleepUtils.second(WAIT_TIME_SECONDS);
-            List<OrderStatus> todayOrders = listTodayOrder();
-//            List<OrderStatus> historyOrders = listHistoryOrder();
-//            todayOrders.addAll(historyOrders);
-            List<String> cancelStatus = Arrays.asList("已报", "已报待撤");
-            List<OrderStatus> orderList = todayOrders.stream().filter(o -> cancelStatus.contains(o.getStatus())).collect(Collectors.toList());
-            if (orderList.size() == 0) {
-                return true;
-            } else {
-                log.info("待撤销订单:{}", orderList);
-                orderList.forEach(o -> cancelOrder(o.getAnswerNo()));
-            }
-        }
-        return false;
-    }
 
-    public Boolean waitOrderStatus(String answerNo) {
+    public Boolean waitOrderCancel(String answerNo) {
         int times = 0;
         while (times++ < CANCEL_WAIT_TIMES) {
             sleepUtils.second(WAIT_TIME_SECONDS);
@@ -852,146 +622,6 @@ public class AllJobs {
         return stockInfos;
     }
 
-    @SneakyThrows
-    public void syncBuySaleRecord() {
-        // 请求数据
-        List<OrderInfo> lastOrders = getLastOrder();
-        List<OrderInfo> todayOrders = getTodayOrder();
-        lastOrders.addAll(todayOrders);
-        for (OrderInfo order : lastOrders) {
-            final String date = order.getDate();
-            final String time = order.getTime();
-            final String answerNo = order.getAnswerNo();
-            final String code = order.getCode();
-            final String name = order.getName();
-            final String type = order.getType();
-            final Double price = order.getPrice();
-            Double number = order.getNumber();
-            final String dateString = date + (time.length() < 6 ? ("0" + time) : time);
-            if ("买入".equals(type)) {
-                // 查询买入订单信息是否存在
-                final LambdaQueryWrapper<TradingRecord> lambdaQueryWrapper = new QueryWrapper<TradingRecord>().lambda()
-                        .eq(TradingRecord::getCode, code).like(TradingRecord::getBuyNo, answerNo);
-                final TradingRecord selectedOrder = tradingRecordService.getOne(lambdaQueryWrapper);
-                if (selectedOrder == null) {
-                    log.info("当前股票[{}-{}]买入记录不存在,新增买入记录", name, code);
-                    // 合并多个买入订单
-                    final LambdaQueryWrapper<TradingRecord> queryWrapper = new QueryWrapper<TradingRecord>().lambda()
-                            .eq(TradingRecord::getCode, code).eq(TradingRecord::getSold, "0");
-                    final TradingRecord selectedRecord = tradingRecordService.getOne(queryWrapper);
-                    if (selectedRecord == null) {
-                        final TradingRecord record = new TradingRecord();
-                        record.setCode(code);
-                        record.setName(name);
-                        record.setBuyPrice(price);
-                        record.setBuyNumber(number);
-                        final double amount = price * number;
-                        record.setBuyAmount(amount + getPeeAmount(amount));
-                        final Date buyDate = DateUtils.dateTimeFormat.parse(dateString);
-                        record.setBuyDate(buyDate);
-                        record.setBuyDateString(date);
-                        record.setBuyNo(answerNo);
-                        record.setSold("0");
-                        record.setStrategyId(0L);
-                        record.setStrategyName("默认策略");
-                        final Date now = new Date();
-                        record.setCreateTime(now);
-                        record.setUpdateTime(now);
-                        tradingRecordService.save(record);
-                    } else {
-                        selectedRecord.setBuyPrice(price);
-                        selectedRecord.setBuyNumber(number + selectedRecord.getBuyNumber());
-                        final double amount = price * number;
-                        selectedRecord.setBuyAmount(selectedRecord.getBuyAmount() + amount + getPeeAmount(amount));
-                        final Date buyDate = DateUtils.dateTimeFormat.parse(dateString);
-                        selectedRecord.setBuyDate(buyDate);
-                        selectedRecord.setBuyDateString(date);
-                        selectedRecord.setBuyNo(selectedRecord.getBuyNo() + "," + answerNo);
-                        final Date now = new Date();
-                        selectedRecord.setUpdateTime(now);
-                        tradingRecordService.updateById(selectedRecord);
-                    }
-                }
-            }
-            if ("卖出".equals(type)) {
-                // 查询卖出订单信息是否存在
-                final LambdaQueryWrapper<TradingRecord> lambdaQueryWrapper = new QueryWrapper<TradingRecord>().lambda()
-                        .eq(TradingRecord::getCode, code).eq(TradingRecord::getSaleNo, answerNo);
-                final TradingRecord selectedOrder = tradingRecordService.getOne(lambdaQueryWrapper);
-                if (selectedOrder == null) {
-                    log.info("当前股票[{}-{}]卖出记录不存在,新增卖出记录", name, code);
-                    final LambdaQueryWrapper<TradingRecord> queryWrapper = new QueryWrapper<TradingRecord>().lambda()
-                            .eq(TradingRecord::getCode, code).eq(TradingRecord::getSold, "0");
-                    final TradingRecord record = tradingRecordService.getOne(queryWrapper);
-                    if (record == null) {
-                        log.error("当前股票[{}-{}]没有查询到买入记录,卖出记录同步失败！", name, code);
-                        continue;
-                    }
-                    record.setSalePrice(price);
-                    number = Math.abs(number);
-                    record.setSaleNumber(number);
-                    final double amount = price * number;
-                    record.setSaleAmount(amount - getPeeAmount(amount));
-                    final Date saleDate = DateUtils.dateTimeFormat.parse(dateString);
-                    record.setSaleDate(saleDate);
-                    record.setSaleDateString(date);
-                    record.setSold("1");
-                    record.setSaleNo(answerNo);
-                    final Date now = new Date();
-                    record.setUpdateTime(now);
-                    // 计算收益和日收益率
-                    double income = record.getSaleAmount() - record.getBuyAmount();
-                    record.setIncome(income);
-                    int dateDiff = diffDate(record.getBuyDate(), record.getSaleDate());
-                    record.setHoldDays(dateDiff);
-                    double incomeRate = income / record.getBuyAmount() * 100;
-                    record.setIncomeRate(incomeRate);
-                    final double dailyIncomeRate = incomeRate / dateDiff;
-                    record.setDailyIncomeRate(dailyIncomeRate);
-                    tradingRecordService.update(record, queryWrapper);
-                }
-            }
-        }
-        log.info("共同步{}条订单交易记录", lastOrders.size());
-    }
-
-    @SneakyThrows
-    public void flushPermission() {
-        // 此处不能使用多线程处理,因为每次请求会使上一个Token失效
-        List<String> errorCodes = Arrays.asList("[251112]", "[251127]", "[251299]", "该股票是退市");
-        List<StockInfo> stockInfos = stockInfoService.list();
-        final HashSet<String> set = new HashSet<>();
-        AtomicInteger count = new AtomicInteger();
-        stockInfos.forEach(info -> {
-            JSONObject res = buySale(BUY_TYPE_OP, info.getCode(), 100.0, 100.0);
-            final String message = res.getString("ERRORMESSAGE");
-            set.add(message);
-            if (errorCodes.stream().anyMatch(message::startsWith)) {
-                info.setPermission("0");
-            } else {
-                info.setPermission("1");
-            }
-            stockInfoMapper.updateById(info);
-            if (count.incrementAndGet() % 100 == 0) {
-                log.info("已更新{}条股票交易权限记录。", count.get());
-            }
-        });
-        log.info("交易权限错误信息合集:{}", set);
-        // 取消所有提交的订单
-        cancelAllOrder();
-    }
-
-    @SneakyThrows
-    public void syncBuySaleCount() {
-        List<TradingRecord> list = tradingRecordService.list();
-        Map<String, IntSummaryStatistics> collect = list.stream().collect(Collectors.groupingBy(TradingRecord::getCode, Collectors.summarizingInt((o) -> "1".equals(o.getSold()) ? 2 : 1)));
-        collect.forEach((code, accumulate) -> {
-            StockInfo stockInfo = new StockInfo();
-            stockInfo.setBuySaleCount((int) accumulate.getSum());
-            stockInfoService.update(stockInfo, new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, code));
-        });
-        log.info("共同步{}条股票交易次数", collect.size());
-    }
 
     /**
      * 2024-04-06，采用mongo来存储历史数据，减轻数据压力
@@ -1049,51 +679,6 @@ public class AllJobs {
         return strategyParams;
     }
 
-    @SneakyThrows
-    public void updateNowPrice() {
-        List<StockInfo> newInfos = getDataList();
-        final List<StockInfo> dataList = stockInfoService.list();
-        final ArrayList<StockInfo> saveList = new ArrayList<>();
-        final StrategyParams params = getStrategyParams();
-        newInfos.forEach(newInfo -> {
-            AtomicBoolean exist = new AtomicBoolean(false);
-            dataList.stream().filter(s -> s.getCode().equals(newInfo.getCode())).findFirst().ifPresent(p -> {
-                Double nowPrice = newInfo.getPrice();
-//                List<DailyItem> priceList = JSON.parseArray(p.getPrices(), DailyItem.class);
-//                List<DailyItem> rateList = JSON.parseArray(p.getIncreaseRate(), DailyItem.class);
-//                Double score = handleScore(nowPrice, priceList, rateList, params);
-                Double score = handleScore(p);
-                p.setScore(score);
-                p.setPrice(newInfo.getPrice());
-                p.setIncrease(newInfo.getIncrease());
-                p.setUpdateTime(new Date());
-                p.setDeleted("1");
-                saveList.add(p);
-                exist.set(true);
-                dataList.remove(p);
-            });
-            if (!exist.get()) {
-                Date now = new Date();
-                newInfo.setCreateTime(now);
-                newInfo.setUpdateTime(now);
-                newInfo.setPermission("1");
-                newInfo.setBuySaleCount(0);
-                newInfo.setScore(0.0);
-                newInfo.setPrices("[]");
-                newInfo.setIncreaseRate("[]");
-                newInfo.setDeleted("1");
-                saveList.add(newInfo);
-                log.info("获取到新上市股票:{}", newInfo);
-            }
-        });
-        // 标记退市股票
-        if (CollectionUtils.isNotEmpty(dataList)) {
-            log.info("标记退市股票:{}", dataList.stream().map(s -> s.getCode().concat("-").concat(s.getName())).collect(Collectors.toList()));
-            dataList.forEach(d -> d.setDeleted("0"));
-            saveList.addAll(dataList);
-        }
-        saveDate(saveList);
-    }
 
     @Deprecated
     private Double handleScore(Double nowPrice, List<DailyItem> priceList, List<DailyItem> rateList, StrategyParams params) {
@@ -1227,7 +812,9 @@ public class AllJobs {
 
     private List<OrderInfo> arrayToOrderList(JSONArray results, boolean isToday) {
         final ArrayList<OrderInfo> orderList = new ArrayList<>();
-        if (results == null || results.size() <= 1) return orderList;
+        if (results == null || results.size() <= 1) {
+            return orderList;
+        }
         for (int i = 1; i < results.size(); i++) {
             final String result = results.getString(i);
             final String[] split = result.split("\\|");
@@ -1352,13 +939,6 @@ public class AllJobs {
         return dateMap;
     }
 
-    public AccountInfo getAccountAmount(AccountInfo accountInfo) {
-        // 计算已用金额
-        double usedAmount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().mapToDouble(TradingRecord::getBuyAmount).sum();
-        accountInfo.setUsedAmount(usedAmount);
-        accountInfo.setTotalAmount(accountInfo.getAvailableAmount() + usedAmount);
-        return accountInfo;
-    }
 
     @SneakyThrows
     public void writeHistoryPriceDataToCSV(String stockCode) {
@@ -1398,16 +978,6 @@ public class AllJobs {
     }
 
 
-    //   交易日的每天中午12点执行
-    @Scheduled(cron = "0 0 12 ? * MON-FRI")
-    private void updateLastHistoryPrice() {
-        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(StockInfo::getDeleted, 1);
-        List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
-        log.info("共需更新{}支股票最新历史价格数据", stockInfoList.size());
-        stockInfoList.forEach(this::writeHistoryPriceDataToMongoDB);
-    }
-
     @SneakyThrows
     public void writeHistoryPriceDataToMongoDB(List<StockInfo> stockInfoList) {
         stockInfoList.forEach(s -> {
@@ -1429,44 +999,6 @@ public class AllJobs {
         });
     }
 
-    @SneakyThrows
-    public void writeHistoryPriceDataToMongoDB(StockInfo stockInfo) {
-        List<DailyItem> historyPrices = getHistoryPrices(stockInfo.getCode());
-        List<StockHistoryPrice> stockHistoryPriceList = historyPrices.stream().map(item -> {
-            StockHistoryPrice stockHistoryPrice = new StockHistoryPrice();
-            stockHistoryPrice.setName(stockInfo.getName());
-            stockHistoryPrice.setCode(stockInfo.getCode());
-            stockHistoryPrice.setDate(item.getDate());
-            stockHistoryPrice.setPrice1(item.getPrice1());
-            stockHistoryPrice.setPrice1(item.getPrice2());
-            stockHistoryPrice.setPrice1(item.getPrice3());
-            stockHistoryPrice.setPrice1(item.getPrice4());
-            return stockHistoryPrice;
-        }).collect(Collectors.toList());
-        // 翻转一下，将日期从新到旧排列，这样读到已经存在的数据，就可以跳过后续判断写入逻辑
-        Collections.reverse(stockHistoryPriceList);
-        for (StockHistoryPrice s : stockHistoryPriceList) {
-            // 先查询是否已经存在相同记录
-            Query query = new Query(Criteria.where("date").is(s.getDate()));
-            // 每只股票写入不同的表
-            String collectionName = COLLECTION_NAME_PREFIX + s.getCode();
-            StockHistoryPrice one = mongoTemplate.findOne(query, StockHistoryPrice.class, collectionName);
-            if (Objects.isNull(one)) {
-                mongoTemplate.save(s, collectionName);
-                log.info("当前股票{}-{}-{}，历史数据写入完成", s.getName(), s.getCode(), s.getDate());
-            } else {
-                if (one.getPrice3() == null || one.getPrice4() == null) {
-                    log.info("当前股票{}-{}-{}，历史数据不完整进行修改操作", s.getName(), s.getCode(), s.getDate());
-                    Update update = new Update().set("price3", one.getPrice3()).set("price4", one.getPrice3());
-                    mongoTemplate.updateFirst(query, update, StockHistoryPrice.class, collectionName);
-                } else {
-                    // 数据完整，则跳过后续处理
-                    break;
-                }
-            }
-        }
-        log.info("股票:{}-{}, 所有历史价格数据保存完成！", stockInfo.getName(), stockInfo.getCode());
-    }
 
     // 首次初始化执行，写入4000支股票，每只股票约500条数据
 //    @Scheduled(fixedDelay = Long.MAX_VALUE)
