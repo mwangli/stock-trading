@@ -7,10 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.base.Response;
 import online.mwang.stockTrading.web.bean.param.LoginParam;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
@@ -27,6 +24,7 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @RestController
+@RequestMapping("/login")
 public class LoginController {
 
     private static final Random RANDOM = new Random();
@@ -46,7 +44,7 @@ public class LoginController {
         return builder.toString();
     }
 
-    @PostMapping("/login/account")
+    @PostMapping("/account")
     public Response<String> login(@RequestBody LoginParam param) {
         final String monthDate = new SimpleDateFormat(SDF).format(new Date());
         final String reverseDate = new StringBuilder(monthDate).reverse().toString();
@@ -81,7 +79,7 @@ public class LoginController {
         }
     }
 
-    @PostMapping("/login/outLogin")
+    @PostMapping("/outLogin")
     public Response<Void> outLogin(HttpServletRequest request) {
         final String token = request.getHeader("token");
         stringRedisTemplate.opsForValue().getAndDelete(token);

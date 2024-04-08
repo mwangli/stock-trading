@@ -24,14 +24,14 @@ import java.util.List;
  */
 @Slf4j
 @RestController
-@RequestMapping("stockInfo")
+@RequestMapping("/stockInfo")
 @RequiredArgsConstructor
 public class StockInfoController {
 
     private final static String ASCEND = "ascend";
     private final StockInfoService stockInfoService;
 
-    @GetMapping
+    @GetMapping("/list")
     public Response<List<StockInfo>> listStockInfo(StockInfoQuery query) {
         LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda()
                 .like(ObjectUtils.isNotNull(query.getCode()), StockInfo::getCode, query.getCode())

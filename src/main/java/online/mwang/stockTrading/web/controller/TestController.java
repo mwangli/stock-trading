@@ -3,10 +3,7 @@ package online.mwang.stockTrading.web.controller;
 import com.alibaba.fastjson.JSONObject;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 
@@ -18,16 +15,18 @@ import java.util.HashMap;
  */
 @Slf4j
 @RestController
+@RequestMapping("/test")
 public class TestController {
 
     @SneakyThrows
-    @GetMapping("test")
-    public String test() {
-        return "test:v2.9.2";
+    @GetMapping("/alive")
+    public boolean alive() {
+        // K8S存活探针
+        return true;
     }
 
     @SneakyThrows
-    @PostMapping("imageUpdate")
+    @PostMapping("/imageUpdate")
     public String imageUpdate(@RequestBody HashMap<String, Object> params) {
         log.info(JSONObject.toJSONString(params));
         return "success";

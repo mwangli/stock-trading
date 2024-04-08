@@ -37,7 +37,7 @@ public class JobController {
     private final AllJobs jobs;
 
     @SneakyThrows
-    @GetMapping()
+    @GetMapping("/list")
     public Response<List<QuartzJob>> listJob(QuartzJobQuery query) {
         LambdaQueryWrapper<QuartzJob> queryWrapper = new QueryWrapper<QuartzJob>().lambda()
                 .like(ObjectUtils.isNotNull(query.getName()), QuartzJob::getName, query.getName())
@@ -51,7 +51,7 @@ public class JobController {
     }
 
     @SneakyThrows
-    @PostMapping()
+    @PostMapping("/create")
     public Response<Integer> createJob(@RequestBody QuartzJob job) {
         if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");
@@ -67,7 +67,7 @@ public class JobController {
     }
 
     @SneakyThrows
-    @PostMapping("run")
+    @PostMapping("/run")
     public Response<?> runNow(@RequestBody QuartzJob job) {
         try {
             Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
@@ -109,7 +109,7 @@ public class JobController {
     }
 
     @SneakyThrows
-    @DeleteMapping()
+    @DeleteMapping("/delete")
     public Response<Integer> deleteJob(@RequestBody QuartzJob job) {
         scheduler.deleteJob(JobKey.jobKey(job.getName()));
         job.setDeleted("0");
