@@ -10,7 +10,12 @@ import online.mwang.stockTrading.predict.data.StockData;
 import online.mwang.stockTrading.predict.data.StockDataSetIterator;
 import online.mwang.stockTrading.predict.utils.PlotUtil;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
+import org.deeplearning4j.api.storage.StatsStorage;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
+import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
+import org.deeplearning4j.ui.api.UIServer;
+import org.deeplearning4j.ui.stats.StatsListener;
+import org.deeplearning4j.ui.storage.InMemoryStatsStorage;
 import org.deeplearning4j.util.ModelSerializer;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
@@ -119,6 +124,13 @@ public class StockPricePrediction {
         log.info("Build lstm networks...");
         MultiLayerNetwork net = RecurrentNets.buildLstmNetworks(iterator.inputColumns(), iterator.totalOutcomes());
 
+        if ("dev".equalsIgnoreCase(profile)) {
+//             初始化用户界面后端
+            UIServer uiServer = UIServer.getInstance();
+            StatsStorage statsStorage = new InMemoryStatsStorage();
+            uiServer.attach(statsStorage);
+            net.setListeners(new StatsListener(statsStorage));
+        }
         log.info("Training...");
         for (int i = 0; i < epochs; i++) {
             while (iterator.hasNext()) net.fit(iterator.next()); // fit model using mini-batch data
@@ -179,7 +191,9 @@ public class StockPricePrediction {
             if (profile.equalsIgnoreCase("prod")) {
                 fileName = "/root/Predict_" + stockCode + ".png";
             }
-            PlotUtil.plot(pred, actu, fileName);
+            if (profile.equalsIgnoreCase("dev")) {
+                PlotUtil.plot(pred, actu, fileName);
+            }
         }
 //        } else {
 //            double max = iterator.getMaxNum(category);
