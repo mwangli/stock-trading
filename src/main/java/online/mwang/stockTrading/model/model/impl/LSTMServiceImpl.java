@@ -5,7 +5,6 @@ import com.alibaba.fastjson.JSONArray;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.model.model.ModelConfig;
 import online.mwang.stockTrading.model.data.StockData;
 import online.mwang.stockTrading.model.data.StockDataSetIterator;
 import online.mwang.stockTrading.model.model.IModelService;
@@ -13,13 +12,25 @@ import online.mwang.stockTrading.model.utils.PlotUtil;
 import online.mwang.stockTrading.model.data.PriceCategory;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import org.deeplearning4j.api.storage.StatsStorage;
+import org.deeplearning4j.nn.api.OptimizationAlgorithm;
+import org.deeplearning4j.nn.conf.BackpropType;
+import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
+import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
+import org.deeplearning4j.nn.conf.Updater;
+import org.deeplearning4j.nn.conf.layers.DenseLayer;
+import org.deeplearning4j.nn.conf.layers.GravesLSTM;
+import org.deeplearning4j.nn.conf.layers.RnnOutputLayer;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
+import org.deeplearning4j.nn.weights.WeightInit;
+import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.deeplearning4j.ui.api.UIServer;
 import org.deeplearning4j.ui.stats.StatsListener;
 import org.deeplearning4j.ui.storage.InMemoryStatsStorage;
 import org.deeplearning4j.util.ModelSerializer;
+import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.lossfunctions.LossFunctions;
 import org.nd4j.linalg.primitives.Pair;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Sort;
@@ -44,58 +55,28 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class LSTMModelServiceImpl implements IModelService {
+public class LSTMServiceImpl implements IModelService {
 
+
+    private static final double learningRate = 0.05;
+    private static final int iterations = 1;
+    private static final int seed = 12345;
+
+    private static final int lstmLayer1Size = 256;
+    private static final int lstmLayer2Size = 256;
+    private static final int denseLayerSize = 32;
+    private static final double dropoutRatio = 0.2;
+    private static final int truncatedBPTTLength = 22;
     private static final int VECTOR_SIZE = 2; // time series length, assume 22 working days per month
-    private static int exampleLength = 22; // time series length, assume 22 working days per month
+    private static final int exampleLength = 22; // time series length, assume 22 working days per month
     private final StringRedisTemplate redisTemplate;
     private final MongoTemplate mongoTemplate;
     @Value("${PROFILE}")
     private String profile;
 
-    /**
-     * Predict one feature of a stock one-day ahead
-     */
-//    private static void predictPriceOneAhead(MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, double max, double min, PriceCategory category) {
-//        double[] predicts = new double[testData.size()];
-//        double[] actuals = new double[testData.size()];
-//        for (int i = 0; i < testData.size(); i++) {
-//            predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getDouble(exampleLength - 1) * (max - min) + min;
-//            actuals[i] = testData.get(i).getValue().getDouble(0);
-//        }
-//        log.info("Print out Predictions and Actual Values...");
-//        log.info("Predict,Actual");
-//        for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "," + actuals[i]);
-//        log.info("Plot...");
-//        PlotUtil.plot(predicts, actuals, String.valueOf(category));
-//    }
-
-    /**
-     * Predict all the features (open, close, low, high prices and volume) of a stock one-day ahead
-     */
-    private static void predictAllCategories(MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, INDArray max, INDArray min) {
-//        INDArray[] predicts = new INDArray[testData.size()];
-//        INDArray[] actuals = new INDArray[testData.size()];
-//        for (int i = 0; i < testData.size(); i++) {
-//            predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getRow(exampleLength - 1).mul(max.sub(min)).add(min);
-//            actuals[i] = testData.get(i).getValue();
-//        }
-//        log.info("Print out Predictions and Actual Values...");
-//        log.info("Predict\tActual");
-//        for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "\t" + actuals[i]);
-//        log.info("Plot...");
-//        for (int n = 0; n < VECTOR_SIZE; n++) {
-//            double[] pred = new double[predicts.length];
-//            double[] actu = new double[actuals.length];
-//            for (int i = 0; i < predicts.length; i++) {
-//                pred[i] = predicts[i].getDouble(n);
-//                actu[i] = actuals[i].getDouble(n);
-//            }
-//            PlotUtil.plot(pred, actu, "Predict_");
-//        }
-    }
 
     @SneakyThrows
+    @Override
     public void modelTrain(String stockCode) {
 //        String filePath = new File("data/history_price_" + stockCode + ".csv").getAbsolutePath();
 //        if (profile.equalsIgnoreCase("prod")) {
@@ -114,7 +95,7 @@ public class LSTMModelServiceImpl implements IModelService {
         List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(query, StockHistoryPrice.class, collectionName);
         List<StockData> stockDataList = stockHistoryPrices.stream().map(this::mapToStockData).collect(Collectors.toList());
         log.info("stockDataList size = {}", stockDataList.size());
-        StockDataSetIterator iterator = new StockDataSetIterator(stockDataList, batchSize, exampleLength, splitRatio,category);
+        StockDataSetIterator iterator = new StockDataSetIterator(stockDataList, batchSize, exampleLength, splitRatio, category);
         // 计算最大值和最小
         double max1 = stockDataList.stream().mapToDouble(StockData::getPrice1).max().orElse(0.0);
         double max2 = stockDataList.stream().mapToDouble(StockData::getPrice2).max().orElse(0.0);
@@ -123,7 +104,7 @@ public class LSTMModelServiceImpl implements IModelService {
         iterator.setMinArray(new double[]{min1, min2});
         iterator.setMaxArray(new double[]{max1, max2});
         log.info("Build lstm networks...");
-        MultiLayerNetwork net = ModelConfig.buildLstmNetworks(iterator.inputColumns(), iterator.totalOutcomes());
+        MultiLayerNetwork net = buildLstmNetworks(iterator.inputColumns(), iterator.totalOutcomes());
 
         if ("dev".equalsIgnoreCase(profile)) {
 //             初始化用户界面后端
@@ -204,10 +185,11 @@ public class LSTMModelServiceImpl implements IModelService {
         log.info("Done...");
     }
 
+    @Override
     @SneakyThrows
-    public double[] modelPredict(String stockCode, Double price1, Double price2) {
+    public double[] modelPredict(StockHistoryPrice historyPrice) {
         log.info("Load model...");
-
+        final String stockCode = historyPrice.getCode();
         String modelPath = new File("model/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
         if (profile.equalsIgnoreCase("prod")) {
             modelPath = new File("/root/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
@@ -248,8 +230,8 @@ public class LSTMModelServiceImpl implements IModelService {
         Double minValue2 = minArray.getDouble(1);
         Double maxValue1 = maxArray.getDouble(0);
         Double maxValue2 = maxArray.getDouble(1);
-        double lastInputV1 = (price1 - minValue1) / (maxValue1 - minValue1);
-        double lastInputV2 = (price2 - minValue2) / (maxValue2 - minValue2);
+        double lastInputV1 = (historyPrice.getPrice1() - minValue1) / (maxValue1 - minValue1);
+        double lastInputV2 = (historyPrice.getPrice2() - minValue2) / (maxValue2 - minValue2);
         input.putScalar(21, 0, lastInputV1);
         input.putScalar(21, 1, lastInputV2);
         log.info("input = {}", input);
@@ -275,4 +257,57 @@ public class LSTMModelServiceImpl implements IModelService {
         stockData.setPrice4(historyPrice.getPrice4());
         return stockData;
     }
+
+
+    private MultiLayerNetwork buildLstmNetworks(int nIn, int nOut) {
+        MultiLayerConfiguration conf = new NeuralNetConfiguration.Builder()
+                .seed(seed)
+                .iterations(iterations)
+                .learningRate(learningRate)
+                .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)
+                .weightInit(WeightInit.XAVIER)
+                .updater(Updater.RMSPROP)
+                .regularization(true)
+                .l2(1e-4)
+                .list()
+                .layer(0, new GravesLSTM.Builder()
+                        .nIn(nIn)
+                        .nOut(lstmLayer1Size)
+                        .activation(Activation.TANH)
+                        .gateActivationFunction(Activation.HARDSIGMOID)
+                        .dropOut(dropoutRatio)
+                        .build())
+                .layer(1, new GravesLSTM.Builder()
+                        .nIn(lstmLayer1Size)
+                        .nOut(lstmLayer2Size)
+                        .activation(Activation.TANH)
+                        .gateActivationFunction(Activation.HARDSIGMOID)
+                        .dropOut(dropoutRatio)
+                        .build())
+                .layer(2, new DenseLayer.Builder()
+                        .nIn(lstmLayer2Size)
+                        .nOut(denseLayerSize)
+                        .activation(Activation.RELU)
+                        .build())
+                .layer(3, new RnnOutputLayer.Builder()
+                        .nIn(denseLayerSize)
+                        .nOut(nOut)
+                        .activation(Activation.IDENTITY)
+                        .lossFunction(LossFunctions.LossFunction.MSE)
+                        .build())
+                .backpropType(BackpropType.TruncatedBPTT)
+                .tBPTTForwardLength(truncatedBPTTLength)
+                .tBPTTBackwardLength(truncatedBPTTLength)
+                .pretrain(false)
+                .backprop(true)
+                .build();
+
+        MultiLayerNetwork net = new MultiLayerNetwork(conf);
+        net.init();
+        log.info(net.summary());
+        net.setListeners(new ScoreIterationListener(100));
+        return net;
+    }
+
+
 }
