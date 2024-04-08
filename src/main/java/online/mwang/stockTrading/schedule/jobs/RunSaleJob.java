@@ -3,9 +3,11 @@ package online.mwang.stockTrading.schedule.jobs;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.schedule.data.IDataService;
+import online.mwang.stockTrading.schedule.IDataService;
+import online.mwang.stockTrading.web.bean.po.AccountInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.TradingRecord;
+import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.TradingRecordMapper;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
@@ -32,6 +34,7 @@ public class RunSaleJob extends BaseJob {
     private final TradingRecordService tradingRecordService;
     private final TradingRecordMapper tradingRecordMapper;
     private final StockInfoService stockInfoService;
+    private final AccountInfoMapper accountInfoMapper;
     private final SleepUtils sleepUtils;
     private final double SALE_PERCENT = 0.05;
 
@@ -81,8 +84,7 @@ public class RunSaleJob extends BaseJob {
                 findRecord.setSaleDate(now);
                 findRecord.setSaleDateString(DateUtils.dateFormat.format(now));
                 findRecord.setUpdateTime(now);
-                // 计算收益率
-                // 更新每日数据
+                // 计算收益率并更新交易记录
                 final double amount = findRecord.getSalePrice() * findRecord.getSaleNumber();
                 double saleAmount = amount - dataService.getPeeAmount(amount);
                 double income = saleAmount - findRecord.getBuyAmount();
@@ -94,7 +96,10 @@ public class RunSaleJob extends BaseJob {
                 findRecord.setDailyIncomeRate(incomeRate);
                 tradingRecordService.updateById(findRecord);
                 // 更新账户资金
-                dataService.getAmount();
+                AccountInfo accountInfo = dataService.getAccountInfo();
+                accountInfo.setCreateTime(new Date());
+                accountInfo.setUpdateTime(new Date());
+                accountInfoMapper.insert(accountInfo);
                 // 增加股票交易次数
                 stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
                 stockInfoService.updateById(stockInfo);

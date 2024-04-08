@@ -1,4 +1,4 @@
-package online.mwang.stockTrading.model.model.impl;
+package online.mwang.stockTrading.model.impl;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
@@ -7,9 +7,10 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.data.StockData;
 import online.mwang.stockTrading.model.data.StockDataSetIterator;
-import online.mwang.stockTrading.model.model.IModelService;
+import online.mwang.stockTrading.model.IModelService;
 import online.mwang.stockTrading.model.utils.PlotUtil;
 import online.mwang.stockTrading.model.data.PriceCategory;
+import online.mwang.stockTrading.web.bean.po.PredictPrice;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import org.deeplearning4j.api.storage.StatsStorage;
 import org.deeplearning4j.nn.api.OptimizationAlgorithm;
@@ -77,7 +78,7 @@ public class LSTMServiceImpl implements IModelService {
 
     @SneakyThrows
     @Override
-    public void modelTrain(String stockCode) {
+    public void modelTrain(List<StockHistoryPrice> historyPrices) {
 //        String filePath = new File("data/history_price_" + stockCode + ".csv").getAbsolutePath();
 //        if (profile.equalsIgnoreCase("prod")) {
 //            filePath = new File("/root/history_price_" + stockCode + ".csv").getAbsolutePath();
@@ -89,11 +90,8 @@ public class LSTMServiceImpl implements IModelService {
         log.info("Create dataSet iterator...");
         PriceCategory category = PriceCategory.ALL; // CLOSE: predict close price
 
-        // read history stock data from mongo
-        String collectionName = "code_" + stockCode;
-        Query query = new Query().with(Sort.by(Sort.Direction.ASC, "date"));
-        List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(query, StockHistoryPrice.class, collectionName);
-        List<StockData> stockDataList = stockHistoryPrices.stream().map(this::mapToStockData).collect(Collectors.toList());
+
+        List<StockData> stockDataList = historyPrices.stream().map(this::mapToStockData).collect(Collectors.toList());
         log.info("stockDataList size = {}", stockDataList.size());
         StockDataSetIterator iterator = new StockDataSetIterator(stockDataList, batchSize, exampleLength, splitRatio, category);
         // 计算最大值和最小
@@ -131,20 +129,20 @@ public class LSTMServiceImpl implements IModelService {
             lastInput.add(doubles);
         }
 
-        redisTemplate.opsForValue().set("lastInput_" + stockCode, JSON.toJSONString(lastInput), 3, TimeUnit.DAYS);
+//        redisTemplate.opsForValue().set("lastInput_" + stockCode, JSON.toJSONString(lastInput), 3, TimeUnit.DAYS);
         double[] minArray = iterator.getMinArray();
         double[] maxArray = iterator.getMaxArray();
-        redisTemplate.opsForValue().set("minArray_" + stockCode, JSON.toJSONString(minArray), 3, TimeUnit.DAYS);
-        redisTemplate.opsForValue().set("maxArray_" + stockCode, JSON.toJSONString(maxArray), 3, TimeUnit.DAYS);
+//        redisTemplate.opsForValue().set("minArray_" + stockCode, JSON.toJSONString(minArray), 3, TimeUnit.DAYS);
+//        redisTemplate.opsForValue().set("maxArray_" + stockCode, JSON.toJSONString(maxArray), 3, TimeUnit.DAYS);
 
         log.info("Saving model...");
-        String savePath = new File("model/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
+        String savePath = new File("model/model_".concat(".zip")).getAbsolutePath();
         if (profile.equalsIgnoreCase("prod")) {
-            savePath = new File("/root/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
+            savePath = new File("/root/model_".concat(".zip")).getAbsolutePath();
         }
         // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
         ModelSerializer.writeModel(net, savePath, true);
-        redisTemplate.opsForValue().set(profile + "_trainedStockList_" + stockCode, stockCode, 3, TimeUnit.DAYS);
+//        redisTemplate.opsForValue().set(profile + "_trainedStockList_" + stockCode, stockCode, 3, TimeUnit.DAYS);
 
         log.info("Testing...");
 
@@ -169,9 +167,9 @@ public class LSTMServiceImpl implements IModelService {
                 pred[i] = predicts[i].getDouble(n);
                 actu[i] = actuals[i].getDouble(n);
             }
-            String fileName = "data/Predict_" + stockCode + ".png";
+            String fileName = "data/Predict_" + "" + ".png";
             if (profile.equalsIgnoreCase("prod")) {
-                fileName = "/root/Predict_" + stockCode + ".png";
+                fileName = "/root/Predict_" + "" + ".png";
             }
             if (profile.equalsIgnoreCase("dev")) {
                 PlotUtil.plot(pred, actu, fileName);
@@ -187,7 +185,7 @@ public class LSTMServiceImpl implements IModelService {
 
     @Override
     @SneakyThrows
-    public double[] modelPredict(StockHistoryPrice historyPrice) {
+    public PredictPrice modelPredict(StockHistoryPrice historyPrice) {
         log.info("Load model...");
         final String stockCode = historyPrice.getCode();
         String modelPath = new File("model/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
@@ -243,7 +241,10 @@ public class LSTMServiceImpl implements IModelService {
         double predictPrice1 = predictV1 * (maxValue1 - minValue1) + minValue1;
         double predictPrice2 = predictV2 * (maxValue2 - minValue2) + minValue2;
         log.info("predictPrice1 = {}, predictPrice2= {}", predictPrice1, predictPrice2);
-        return new double[]{predictPrice1, predictPrice2};
+        PredictPrice predictPrice = new PredictPrice();
+        predictPrice.setPredictPrice1(predictPrice1);
+        predictPrice.setPredictPrice2(predictPrice2);
+        return predictPrice;
     }
 
     private StockData mapToStockData(StockHistoryPrice historyPrice) {

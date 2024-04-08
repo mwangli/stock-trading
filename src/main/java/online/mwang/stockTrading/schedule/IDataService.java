@@ -1,4 +1,4 @@
-package online.mwang.stockTrading.schedule.data;
+package online.mwang.stockTrading.schedule;
 
 import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.*;
@@ -18,9 +18,9 @@ import java.util.List;
 public interface IDataService {
 
     /**
-     * 获取账户资金信息
+     * 更新账户资金信息
      */
-    AccountInfo getAmount();
+    AccountInfo getAccountInfo();
 
     /**
      * 获取持仓股票

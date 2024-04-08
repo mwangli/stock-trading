@@ -4,13 +4,19 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.schedule.data.IDataService;
-import online.mwang.stockTrading.model.model.impl.LSTMServiceImpl;
+import online.mwang.stockTrading.model.IModelService;
+import online.mwang.stockTrading.schedule.IDataService;
+import online.mwang.stockTrading.model.impl.LSTMServiceImpl;
+import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
+import java.util.Date;
 import java.util.List;
 import java.util.Random;
 
@@ -20,28 +26,17 @@ import java.util.Random;
 public class RunTrainJob extends BaseJob {
 
     private final IDataService dataService;
-    private final LSTMServiceImpl LSTMServiceImpl;
+    private final IModelService modelService;
     private final StockInfoService stockInfoService;
+    private final MongoTemplate mongoTemplate;
 
 
     @Override
     void run() {
-        LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda();
-        queryWrapper.eq(StockInfo::getDeleted, "1");
-        queryWrapper.eq(StockInfo::getPermission, "1");
-        queryWrapper.between(StockInfo::getPrice, 8, 15);
-        List<StockInfo> dataList = stockInfoService.list(queryWrapper);
-        StockInfo stockInfo = dataList.get(new Random().nextInt(dataList.size()));
-//        dataList.forEach(stockInfo -> {
-            log.info("获取到股票待预测股票：{}-{}", stockInfo.getName(), stockInfo.getCode());
-            long start = System.currentTimeMillis();
-            String stockCode = stockInfo.getCode();
-            // 保存股票价格历史数据
-//            allJobs.writeHistoryPriceDataToCSV(stockInfo);
-            // 训练模型/
-            LSTMServiceImpl.modelTrain(stockCode);
-            long end = System.currentTimeMillis();
-            log.info("当前股票：{}-{}，模型任务完成，总共耗时：{}", stockInfo.getName(), stockCode, DateUtils.timeConvertor(end - start));
-//        });
+        // 获取最新的数据集，给模型进行增量训练
+        // 从mongo中获取所有股票今天最新价格数据
+        Query query = new Query(Criteria.where("date").is(DateUtils.format1(new Date())));
+        List<StockHistoryPrice> historyPrices = mongoTemplate.find(query, StockHistoryPrice.class);
+        modelService.modelTrain(historyPrices);
     }
 }

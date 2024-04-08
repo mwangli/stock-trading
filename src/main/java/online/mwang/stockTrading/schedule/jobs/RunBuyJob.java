@@ -5,8 +5,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.schedule.data.IDataService;
+import online.mwang.stockTrading.schedule.IDataService;
 import online.mwang.stockTrading.web.bean.po.*;
+import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
 import online.mwang.stockTrading.web.mapper.ScoreStrategyMapper;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
@@ -52,22 +53,13 @@ public class RunBuyJob extends BaseJob {
     private final RequestUtils requestUtils;
     private final SleepUtils sleepUtils;
     private final PredictPriceMapper predictPriceMapper;
+    private final AccountInfoMapper accountInfoMapper;
 
     @SneakyThrows
     @Override
     public void run() {
-        // 撤销所有未成功订单,回收可用资金
-//            if (!dataService.waitOrderCancel()) {
-//                log.info("存在未撤销失败订单,取消购买任务！");
-//                return;
-//            }
-        // 更新账户可用资金
-        final AccountInfo accountInfo = dataService.getAmount();
-        if (accountInfo == null) {
-            log.info("更新账户可用资金失败,取消购买任务");
-            return;
-        }
-//        final AccountInfo accountAmount = dataService.getAccountAmount(accountInfo);
+        // 获取最新的账户资金信息
+        AccountInfo accountInfo = accountInfoMapper.getLast();
         final Double totalAvailableAmount = accountInfo.getAvailableAmount();
         final Double totalAmount = accountInfo.getTotalAmount();
         final double maxAmount = totalAmount / MAX_HOLD_STOCKS;
@@ -107,16 +99,17 @@ public class RunBuyJob extends BaseJob {
     private void buyStock(StockInfo stockInfo, AccountInfo accountInfo, CountDownLatch countDownLatch) {
         // 买入原则：以尽可能的低的价格买入
         // 当出现某一次的价格，远远低于前面一段时间的平均值，则进行买入
+        log.info("当前尝试买入股票[{}-{}],价格:{},评分:{}", stockInfo.getCode(), stockInfo.getName(), stockInfo.getPrice(), stockInfo.getScore());
         double priceCount = 1;
         double priceTotal = dataService.getNowPrice(stockInfo.getCode());
-        while (countDownLatch.getCount() > 0 && dataService.inTradingTimes2()) {
+        while ( countDownLatch.getCount() > 0 && dataService.inTradingTimes2()) {
             // 每隔30秒获取一次最新的价格
             sleepUtils.second(30);
-//            log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}", stockInfo.getCode(), stockInfo.getName(), stockInfo.getPrice(), stockInfo.getScore());
             Double nowPrice = dataService.getNowPrice(stockInfo.getCode());
             double priceAvg = priceTotal / priceCount;
             priceTotal += nowPrice;
             priceCount++;
+            // 前30分钟不买入，用户获取稳定的价格平均值
             if (priceCount > 60 && nowPrice <= priceAvg - priceAvg * BUY_PERCENT) {
                 log.info("当前股票{}-{}出现最佳价格，开始提交买入订单，当前价格为{}，前段时间平均价格为{}", stockInfo.getName(), stockInfo.getCode(), nowPrice, priceAvg);
                 final int maxBuyNumber = (int) (accountInfo.getAvailableAmount() / stockInfo.getPrice());
@@ -153,13 +146,16 @@ public class RunBuyJob extends BaseJob {
                 record.setSold("0");
                 record.setCreateTime(now);
                 record.setUpdateTime(now);
-                // 保存选股策略ID
+                // 保存模型策略信息，以备后续数据分析和模型优化
                 final ModelStrategy strategy = strategyMapper.getSelectedStrategy();
                 record.setStrategyId(strategy == null ? 0 : strategy.getId());
                 record.setStrategyName(strategy == null ? "默认策略" : strategy.getName());
                 tradingRecordService.save(record);
-                // 更新账户资金
-                dataService.getAmount();
+                // 更新账户资金状态
+                AccountInfo newAccountInfo = dataService.getAccountInfo();
+                newAccountInfo.setCreateTime(new Date());
+                newAccountInfo.setUpdateTime(new Date());
+                accountInfoMapper.insert(newAccountInfo);
                 // 更新交易次数
                 stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
                 stockInfoMapper.updateById(stockInfo);
@@ -182,6 +178,7 @@ public class RunBuyJob extends BaseJob {
             double score = (predictAvg - price) / price * 100 * 10;
             stockInfo.setScore(score);
             stockInfo.setUpdateTime(new Date());
+            // TODO 请使用批量更新而不是在循环中操作数据库
             stockInfoService.updateById(stockInfo);
         });
     }
