@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.data.IDataService;
-import online.mwang.stockTrading.model.model.impl.LSTMModelServiceImpl;
+import online.mwang.stockTrading.model.model.impl.LSTMServiceImpl;
 import online.mwang.stockTrading.web.bean.po.PredictPrice;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
@@ -27,7 +27,7 @@ import java.util.Set;
 public class RunPredictJob extends BaseJob {
 
     private final IDataService dataService;
-    private final LSTMModelServiceImpl LSTMModelServiceImpl;
+    private final LSTMServiceImpl LSTMServiceImpl;
     private final StockInfoService stockInfoService;
     private final PredictPriceMapper predictPriceMapper;
     private final MongoTemplate mongoTemplate;
@@ -55,7 +55,7 @@ public class RunPredictJob extends BaseJob {
                 newPrice1 = one.getPrice1();
                 newPrice2 = one.getPrice2();
             }
-            double[] predictPrices = LSTMModelServiceImpl.modelPredict(stockCode, newPrice1, newPrice2);
+            double[] predictPrices = LSTMServiceImpl.modelPredict(stockCode, newPrice1, newPrice2);
             log.info("当前股票[{}-{}]预测价格为：{}", one.getName(), one.getCode(), predictPrices);
             // 将预测数据写入数据库以备后续观察分析
             PredictPrice predictPrice = new PredictPrice();

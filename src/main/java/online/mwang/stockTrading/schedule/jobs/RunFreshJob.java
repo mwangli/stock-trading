@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RunPermissionJob extends BaseJob {
+public class RunFreshJob extends BaseJob {
 
     private final IDataService dataService;
     private final StockInfoService stockInfoService;
