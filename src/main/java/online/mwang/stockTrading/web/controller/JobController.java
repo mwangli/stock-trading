@@ -89,7 +89,7 @@ public class JobController {
 
 
     @SneakyThrows
-    @PutMapping()
+    @PutMapping("/update")
     public Response<Integer> modifyJob(@RequestBody QuartzJob job) {
         if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");

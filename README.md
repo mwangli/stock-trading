@@ -7,11 +7,10 @@ https://www.yuque.com/mwangli/kleih7/axga8dz9imansvl4
 
 ### 功能介绍
 
-1. 对接中信证券，实现股票自动化交易
+1. 对接证券平台，实现股票自动化交易
 2. 使用QuartZ定时任务调度，每日自动更新数据
 3. 使用DL4J框架实现LSTM模型指导股票买入，采用T+1短线交易策略
-5. 针对每只股票训练独有"小"模型来更好地学习价格曲线特征并降低计算
-6. 利用K8S+GithubAction实现DevOps
+4. 利用K8S+GithubAction实现DevOps
 
 ### 后期优化方向
 1. 获得更多股票历史数据用于训练

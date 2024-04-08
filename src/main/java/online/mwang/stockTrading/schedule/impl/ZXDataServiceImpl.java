@@ -24,7 +24,9 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.io.*;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -140,6 +142,7 @@ public class ZXDataServiceImpl implements IDataService {
     }
 
     public Boolean doLogin() {
+        String accountPassword = redisTemplate.opsForValue().get("ENCODE_ACCOUNT_PASSWORD");
         final List<String> checkCode = getCheckCode();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", "100");
@@ -147,7 +150,7 @@ public class ZXDataServiceImpl implements IDataService {
         paramMap.put("accounttype", "ZJACCOUNT");
         paramMap.put("account", "880008900626");
         paramMap.put("MobileCode", "13278828091");
-        paramMap.put("password", "9da08684daf6cda30ef11b8fecbaa568963749de0a0496e23fcfca4b9b29953e9703b1a7cc9fe9259f7ad732f2fa1bd09017ba884c0817667c458cb554dcbeb480623ad070c4d81a185dd997e45c9ab5ae655584728193759ec40e72ad7e25f833773f3e6cd0d23c16493765358adc593ce0688edccbefdd35a3355016b724fc");
+        paramMap.put("password", accountPassword);
         paramMap.put("signkey", "51cfce1626c7cb087b940a0c224f2caa");
         paramMap.put("CheckCode", checkCode.get(0));
         paramMap.put("CheckToken", checkCode.get(1));
@@ -349,21 +352,6 @@ public class ZXDataServiceImpl implements IDataService {
         return hours >= 14 && minutes >= 50;
     }
 
-    public Boolean inTradingTimes() {
-        return inTradingTimes1() || inTradingTimes2();
-    }
-
-    @Override
-    public Boolean inTradingTimes1() {
-        String format = DateUtils.timeFormat.format(new Date());
-        return format.compareTo("09:30") >= 0 && format.compareTo("11:30") <= 0;
-    }
-
-    @Override
-    public Boolean inTradingTimes2() {
-        String format = DateUtils.timeFormat.format(new Date());
-        return format.compareTo("13:00") >= 0 && format.compareTo("15:00") <= 0;
-    }
 
     @Override
     public Double getNowPrice(String code) {
@@ -398,7 +386,7 @@ public class ZXDataServiceImpl implements IDataService {
     }
 
     protected List<OrderStatus> pageCancelOrder(int page) {
-      return null;
+        return null;
     }
 
     @Override
@@ -407,7 +395,7 @@ public class ZXDataServiceImpl implements IDataService {
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", 152);
-        paramMap.put("StartPos",  500);
+        paramMap.put("StartPos", 500);
         paramMap.put("MaxCount", 500);
         paramMap.put("op_station", 4);
         paramMap.put("token", token);
@@ -505,7 +493,7 @@ public class ZXDataServiceImpl implements IDataService {
     }
 
     @Override
-    public String buySale(String type, String code, Double price, Double number) {
+    public JSONObject buySale(String type, String code, Double price, Double number) {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -517,9 +505,7 @@ public class ZXDataServiceImpl implements IDataService {
         paramMap.put("Volume", number);
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
-        final JSONObject result = requestUtils.request(buildParams(paramMap));
-        final String answerNo = result.getString("ANSWERNO");
-        return answerNo;
+        return requestUtils.request(buildParams(paramMap));
     }
 
     // 获取每日最新股票数据

@@ -1,5 +1,6 @@
 package online.mwang.stockTrading.schedule.jobs;
 
+import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -62,7 +63,8 @@ public class RunSaleJob extends BaseJob {
             if (priceCount > 60 && nowPrice >= priceAvg + priceAvg * SALE_PERCENT) {
                 log.info("当前股票[{}-{}]，出现最佳卖出价格，当前价格为：{}，前段时间的平均价格为{}", stockInfo.getName(), stockInfo.getCode(), nowPrice, priceAvg);
                 // 返回合同编号
-                String saleNo = dataService.buySale("S", stockInfo.getCode(), nowPrice, findRecord.getBuyNumber());
+                JSONObject result = dataService.buySale("S", stockInfo.getCode(), nowPrice, findRecord.getBuyNumber());
+                String saleNo = result.getString("ANSWERNO");
                 if (saleNo == null) {
                     log.info("当前股票[{}-{}]卖出失败,尝试进行下次卖出", stockInfo.getName(), stockInfo.getCode());
                     continue;

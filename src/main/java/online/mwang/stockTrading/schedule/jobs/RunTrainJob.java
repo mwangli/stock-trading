@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 import java.util.Date;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -35,8 +36,14 @@ public class RunTrainJob extends BaseJob {
     void run() {
         // 获取最新的数据集，给模型进行增量训练
         // 从mongo中获取所有股票今天最新价格数据
-        Query query = new Query(Criteria.where("date").is(DateUtils.format1(new Date())));
-        List<StockHistoryPrice> historyPrices = mongoTemplate.find(query, StockHistoryPrice.class);
-        modelService.modelTrain(historyPrices);
+//        Query query = new Query(Criteria.where("date").is(DateUtils.format1(new Date())));
+//        List<StockHistoryPrice> historyPrices = mongoTemplate.find(query, StockHistoryPrice.class);
+        Set<String> collectionNames = mongoTemplate.getCollectionNames();
+        collectionNames.forEach(collectionName->{
+            List<StockHistoryPrice> historyPrices = mongoTemplate.find(new Query(), StockHistoryPrice.class, collectionName);
+//            historyPrices.stream()
+            // TODO 归一化处理
+        });
+//        modelService.modelTrain(historyPrices);
     }
 }

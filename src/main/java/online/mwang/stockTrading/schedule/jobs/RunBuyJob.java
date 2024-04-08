@@ -1,5 +1,6 @@
 package online.mwang.stockTrading.schedule.jobs;
 
+import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -102,19 +103,20 @@ public class RunBuyJob extends BaseJob {
         log.info("当前尝试买入股票[{}-{}],价格:{},评分:{}", stockInfo.getCode(), stockInfo.getName(), stockInfo.getPrice(), stockInfo.getScore());
         double priceCount = 1;
         double priceTotal = dataService.getNowPrice(stockInfo.getCode());
-        while ( countDownLatch.getCount() > 0 && dataService.inTradingTimes2()) {
+        while (countDownLatch.getCount() > 0 && dataService.inTradingTimes2()) {
             // 每隔30秒获取一次最新的价格
             sleepUtils.second(30);
             Double nowPrice = dataService.getNowPrice(stockInfo.getCode());
             double priceAvg = priceTotal / priceCount;
             priceTotal += nowPrice;
             priceCount++;
-            // 前30分钟不买入，用户获取稳定的价格平均值
+            // 前30分钟不买入，获取稳定的价格平均值
             if (priceCount > 60 && nowPrice <= priceAvg - priceAvg * BUY_PERCENT) {
                 log.info("当前股票{}-{}出现最佳价格，开始提交买入订单，当前价格为{}，前段时间平均价格为{}", stockInfo.getName(), stockInfo.getCode(), nowPrice, priceAvg);
                 final int maxBuyNumber = (int) (accountInfo.getAvailableAmount() / stockInfo.getPrice());
                 final int buyNumber = (maxBuyNumber / 100) * 100;
-                String buyNo = dataService.buySale("B", stockInfo.getCode(), stockInfo.getPrice(), (double) buyNumber);
+                JSONObject result = dataService.buySale("B", stockInfo.getCode(), stockInfo.getPrice(), (double) buyNumber);
+                String buyNo = result.getString("ANSWERNO");
                 if (buyNo == null) {
                     log.info("当前股票[{}-{}]提交买入订单失败,尝试下次买入股票!", stockInfo.getCode(), stockInfo.getName());
                     continue;
@@ -169,17 +171,30 @@ public class RunBuyJob extends BaseJob {
     private void updateScore() {
         LambdaQueryWrapper<PredictPrice> queryWrapper = new LambdaQueryWrapper<PredictPrice>().eq(PredictPrice::getDate, DateUtils.format1(new Date()));
         List<PredictPrice> predictPriceList = predictPriceMapper.selectList(queryWrapper);
-        predictPriceList.forEach(predictPrice -> {
-            StockInfo stockInfo = stockInfoService.getOne(new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getCode, predictPrice.getStockCode()));
-            double predictPrice1 = predictPrice.getPredictPrice1();
-            double predictPrice2 = predictPrice.getPredictPrice2();
-            double predictAvg = (predictPrice1 + predictPrice2) / 2;
-            Double price = stockInfo.getPrice();
-            double score = (predictAvg - price) / price * 100 * 10;
-            stockInfo.setScore(score);
-            stockInfo.setUpdateTime(new Date());
-            // TODO 请使用批量更新而不是在循环中操作数据库
-            stockInfoService.updateById(stockInfo);
-        });
+//        predictPriceList.stream().map((predictPrice -> {
+//            StockInfo stockInfo = stockInfoService.getOne(new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getCode, predictPrice.getStockCode()));
+//            double predictPrice1 = predictPrice.getPredictPrice1();
+//            double predictPrice2 = predictPrice.getPredictPrice2();
+//            double predictAvg = (predictPrice1 + predictPrice2) / 2;
+//            Double price = stockInfo.getPrice();
+//            double score = (predictAvg - price) / price * 100 * 10;
+//            stockInfo.setScore(score);
+//            stockInfo.setUpdateTime(new Date());
+//            // TODO 请使用批量更新而不是在循环中操作数据库
+//            stockInfoService.updateById(stockInfo);
+//        });
+        List<StockInfo> stockInfos = stockInfoService.list();
+        // 跟新评分
+        stockInfos.forEach(s -> predictPriceList.stream().filter(p -> p.getStockCode().equals(s.getCode())).findFirst().ifPresent(p -> s.setScore(calculateScore(s, p))));
+        stockInfoService.saveBatch(stockInfos);
+    }
+
+    // 根据股票价格订单预测值和当前值来计算得分，以平均值计算价格增长率
+    private double calculateScore(StockInfo stockInfo, PredictPrice predictPrice) {
+        double predictPrice1 = predictPrice.getPredictPrice1();
+        double predictPrice2 = predictPrice.getPredictPrice2();
+        double predictAvg = (predictPrice1 + predictPrice2) / 2;
+        Double price = stockInfo.getPrice();
+        return (predictAvg - price) / price * 100 * 10;
     }
 }
