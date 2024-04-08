@@ -1,25 +1,26 @@
 package online.mwang.stockTrading.schedule.jobs;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.schedule.data.IDataService;
-import online.mwang.stockTrading.model.model.impl.LSTMServiceImpl;
+import online.mwang.stockTrading.model.IModelService;
+import online.mwang.stockTrading.schedule.IDataService;
 import online.mwang.stockTrading.web.bean.po.PredictPrice;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
 import online.mwang.stockTrading.web.service.StockInfoService;
+import online.mwang.stockTrading.web.service.PredictPriceService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Date;
-import java.util.Set;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -27,9 +28,10 @@ import java.util.Set;
 public class RunPredictJob extends BaseJob {
 
     private final IDataService dataService;
-    private final LSTMServiceImpl LSTMServiceImpl;
+    private final IModelService modelService;
     private final StockInfoService stockInfoService;
     private final PredictPriceMapper predictPriceMapper;
+    private final PredictPriceService predictPriceService;
     private final MongoTemplate mongoTemplate;
     private final StringRedisTemplate redisTemplate;
 
@@ -38,51 +40,36 @@ public class RunPredictJob extends BaseJob {
 
     @Override
     void run() {
-        Set<String> keySet = redisTemplate.keys(profile + "_trainedStockList_*");
-        assert keySet != null;
-        keySet.forEach(key -> {
-            String[] split = key.split("_");
-            String stockCode = split[2];
-            log.info("获取到股票待预测股票：{}", stockCode);
-            long start = System.currentTimeMillis();
-            // 获取最新的两条价格数据
-            double newPrice1 = 0;
-            double newPrice2 = 0;
-            // 每只股票写入不同的表
-            String collectionName = "code_" + stockCode;
-            StockHistoryPrice one = mongoTemplate.findOne(new Query().with(Sort.by(Sort.Direction.DESC, "date")), StockHistoryPrice.class, collectionName);
-            if (one != null) {
-                newPrice1 = one.getPrice1();
-                newPrice2 = one.getPrice2();
-            }
-            double[] predictPrices = LSTMServiceImpl.modelPredict(stockCode, newPrice1, newPrice2);
-            log.info("当前股票[{}-{}]预测价格为：{}", one.getName(), one.getCode(), predictPrices);
-            // 将预测数据写入数据库以备后续观察分析
-            PredictPrice predictPrice = new PredictPrice();
-            predictPrice.setStockCode(stockCode);
-            Date nowDate = new Date();
-            predictPrice.setDate(DateUtils.dateFormat.format(nowDate));
-            predictPrice.setPredictPrice1(predictPrices[0]);
-            predictPrice.setPredictPrice2(predictPrices[1]);
-            predictPrice.setCreateTime(nowDate);
-            predictPrice.setUpdateTime(nowDate);
-            predictPriceMapper.insert(predictPrice);
-            // 更新股票数据的得分
-            updateScore(stockCode, predictPrices);
-            long end = System.currentTimeMillis();
-            log.info("当前股票：{}，价格预测任务完成，总共耗时：{}", stockCode, DateUtils.timeConvertor(end - start));
-        });
+        List<StockInfo> stockInfos = stockInfoService.list();
+        // 从mongo中获取所有股票今天最新价格数据
+        Query query = new Query(Criteria.where("date").is(DateUtils.format1(new Date())));
+        List<StockHistoryPrice> historyPrices = mongoTemplate.find(query, StockHistoryPrice.class);
+        // 对每支股票进行价格预测
+        List<PredictPrice> predictPrices = historyPrices.stream().map(modelService::modelPredict).collect(Collectors.toList());
+        // 填充空余字段
+        predictPrices.forEach(this::fxiProps);
+        // 写入MySQL
+        // TODO 不应该写入MySQL，这个预测数据每天4000条的增量
+        log.info("共预测{}条股票数据。",predictPrices.size());
+        predictPriceService.saveBatch(predictPrices);
     }
 
-    private void updateScore(String stockCode, double[] predictPrices) {
-        StockInfo stockInfo = stockInfoService.getOne(new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getCode, stockCode));
-        double predictPrice1 = predictPrices[0];
-        double predictPrice2 = predictPrices[1];
-        double predictAvg = (predictPrice1 + predictPrice2) / 2;
-        Double price = stockInfo.getPrice();
-        double score = (predictAvg - price) / price * 100 * 10;
-        stockInfo.setScore(score);
-        stockInfo.setUpdateTime(new Date());
-        stockInfoService.updateById(stockInfo);
+    private void fxiProps(PredictPrice predictPrice){
+        Date nowDate = new Date();
+        predictPrice.setDate(DateUtils.dateFormat.format(nowDate));
+        predictPrice.setCreateTime(nowDate);
+        predictPrice.setUpdateTime(nowDate);
     }
+
+//    private void updateScore(String stockCode, double[] predictPrices) {
+//        StockInfo stockInfo = stockInfoService.getOne(new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getCode, stockCode));
+//        double predictPrice1 = predictPrices[0];
+//        double predictPrice2 = predictPrices[1];
+//        double predictAvg = (predictPrice1 + predictPrice2) / 2;
+//        Double price = stockInfo.getPrice();
+//        double score = (predictAvg - price) / price * 100 * 10;
+//        stockInfo.setScore(score);
+//        stockInfo.setUpdateTime(new Date());
+//        stockInfoService.updateById(stockInfo);
+//    }
 }

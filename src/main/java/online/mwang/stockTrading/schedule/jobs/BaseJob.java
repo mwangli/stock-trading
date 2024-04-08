@@ -46,12 +46,14 @@ public abstract class BaseJob implements InterruptableJob {
 
     @Override
     public void interrupt() {
+        // 由于QuartZ调度会启动一个新的线程来执行任务
+        // 所以实际上没有办法去打断执行
+        // 尝试过在循坏中检测状态，实现繁琐收效甚微，后来删除了
         log.info("正在尝试终止任务...");
     }
 
     private void setRunningStatus(String jobName, String running) {
-        final LambdaQueryWrapper<QuartzJob> queryWrapper = new LambdaQueryWrapper<QuartzJob>()
-                .eq(QuartzJob::getName, jobName);
+        final LambdaQueryWrapper<QuartzJob> queryWrapper = new LambdaQueryWrapper<QuartzJob>().eq(QuartzJob::getName, jobName);
         final QuartzJob quartzJob = jobMapper.selectOne(queryWrapper);
         quartzJob.setRunning(running);
         jobMapper.updateById(quartzJob);

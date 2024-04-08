@@ -1,4 +1,4 @@
-package online.mwang.stockTrading.schedule.data.impl;
+package online.mwang.stockTrading.schedule.impl;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
@@ -6,7 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.schedule.data.IDataService;
+import online.mwang.stockTrading.schedule.IDataService;
 import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
@@ -166,7 +166,7 @@ public class ZXDataServiceImpl implements IDataService {
     }
 
     @Override
-    public AccountInfo getAmount() {
+    public AccountInfo getAccountInfo() {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -189,11 +189,6 @@ public class ZXDataServiceImpl implements IDataService {
         accountInfo.setAvailableAmount(availableAmount);
         accountInfo.setUsedAmount(usedAmount);
         accountInfo.setTotalAmount(totalAmount);
-        final Date now = new Date();
-        accountInfo.setCreateTime(now);
-        accountInfo.setUpdateTime(now);
-        accountInfoMapper.insert(accountInfo);
-        log.info("当前可用金额:{}元,持仓金额:{}元,总金额:{}元。", availableAmount, usedAmount, totalAmount);
         return accountInfo;
     }
 
@@ -664,7 +659,7 @@ public class ZXDataServiceImpl implements IDataService {
         return orderList;
     }
 
-    // 计算手续费,万五,最低五元
+    // 计算手续费,万分之五,最低五元
     @Override
     public Double getPeeAmount(Double amount) {
         return Math.max(5, amount * 0.0005);

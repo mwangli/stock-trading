@@ -6,7 +6,7 @@ import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
-import online.mwang.stockTrading.schedule.data.IDataService;
+import online.mwang.stockTrading.schedule.IDataService;
 import online.mwang.stockTrading.web.bean.base.Response;
 import online.mwang.stockTrading.web.bean.vo.AnalysisData;
 import online.mwang.stockTrading.web.bean.po.*;
