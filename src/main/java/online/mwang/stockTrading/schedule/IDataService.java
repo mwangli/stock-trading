@@ -1,11 +1,13 @@
 package online.mwang.stockTrading.schedule;
 
+import com.alibaba.fastjson.JSONObject;
 import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 
 /**
@@ -68,7 +70,7 @@ public interface IDataService {
      * 提交买卖订单，返回订单编号
      * 如果提交订单失败，返回null不要返回空串
      */
-    String buySale(String type, String code, Double price, Double number);
+    JSONObject buySale(String type, String code, Double price, Double number);
 
     /**
      * 获取最新的所有股票信息
@@ -79,11 +81,6 @@ public interface IDataService {
      * 获取某一只股票历史价格数据
      */
     List<DailyItem> getHistoryPrices(String code);
-
-    /**
-     *  获取全量的历史价格数据
-     */
-    List<StockHistoryPrice> getAllHistoryPrices();
 
     /**
      * 获取历史订单
