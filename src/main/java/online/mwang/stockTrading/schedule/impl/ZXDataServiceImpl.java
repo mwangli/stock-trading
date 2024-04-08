@@ -694,11 +694,12 @@ public class ZXDataServiceImpl implements IDataService {
     }
 
     // 首次初始化执行，写入4000支股票，每只股票约500条数据
-    public void iniHistoryPrice() {
+    public List<StockHistoryPrice> getAllHistoryPrices() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(StockInfo::getDeleted, 1);
         List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
         log.info("共需写入{}支股票历史数据", stockInfoList.size());
+        ArrayList<StockHistoryPrice> allHistoryPrices = new ArrayList<>();
         stockInfoList.forEach(s -> {
             List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
             List<StockHistoryPrice> stockHistoryPriceList = historyPrices.stream().map(item -> {
@@ -712,10 +713,8 @@ public class ZXDataServiceImpl implements IDataService {
                 stockHistoryPrice.setPrice4(item.getPrice4());
                 return stockHistoryPrice;
             }).collect(Collectors.toList());
-            String collectionName = COLLECTION_NAME_PREFIX + s.getCode();
-            mongoTemplate.insert(stockHistoryPriceList, collectionName);
-            log.info("当前股票：{}-{},所有历史数据，初始化完成", s.getName(), s.getCode());
+            allHistoryPrices.addAll(stockHistoryPriceList);
         });
-        log.info("所有数据初始化完成，共{}只股票数据", stockInfoList.size());
+        return allHistoryPrices;
     }
 }

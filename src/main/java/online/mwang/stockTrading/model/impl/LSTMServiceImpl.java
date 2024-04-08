@@ -76,6 +76,8 @@ public class LSTMServiceImpl implements IModelService {
     private String profile;
 
 
+    private String savePath = "";
+
     @SneakyThrows
     @Override
     public void modelTrain(List<StockHistoryPrice> historyPrices) {
@@ -136,7 +138,7 @@ public class LSTMServiceImpl implements IModelService {
 //        redisTemplate.opsForValue().set("maxArray_" + stockCode, JSON.toJSONString(maxArray), 3, TimeUnit.DAYS);
 
         log.info("Saving model...");
-        String savePath = new File("model/model_".concat(".zip")).getAbsolutePath();
+         savePath = new File("model/model_".concat(".zip")).getAbsolutePath();
         if (profile.equalsIgnoreCase("prod")) {
             savePath = new File("/root/model_".concat(".zip")).getAbsolutePath();
         }
@@ -188,11 +190,11 @@ public class LSTMServiceImpl implements IModelService {
     public PredictPrice modelPredict(StockHistoryPrice historyPrice) {
         log.info("Load model...");
         final String stockCode = historyPrice.getCode();
-        String modelPath = new File("model/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
+         savePath = new File("model/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
         if (profile.equalsIgnoreCase("prod")) {
-            modelPath = new File("/root/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
+            savePath = new File("/root/model_".concat(stockCode).concat(".zip")).getAbsolutePath();
         }
-        MultiLayerNetwork net = ModelSerializer.restoreMultiLayerNetwork(modelPath);
+        MultiLayerNetwork net = ModelSerializer.restoreMultiLayerNetwork(savePath);
 
 //        redisTemplate.opsForValue().set("lastInput_" + stockCode, JSON.toJSONString(lastInput));
 //        double[] minArray = iterator.getMinArray();
@@ -245,6 +247,11 @@ public class LSTMServiceImpl implements IModelService {
         predictPrice.setPredictPrice1(predictPrice1);
         predictPrice.setPredictPrice2(predictPrice2);
         return predictPrice;
+    }
+
+    @Override
+    public boolean isPresent() {
+        return new File(savePath).canRead();
     }
 
     private StockData mapToStockData(StockHistoryPrice historyPrice) {
