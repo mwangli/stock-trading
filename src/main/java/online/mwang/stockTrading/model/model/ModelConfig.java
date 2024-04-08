@@ -1,4 +1,4 @@
-package online.mwang.stockTrading.predict.model;
+package online.mwang.stockTrading.model.model;
 
 import lombok.extern.slf4j.Slf4j;
 import org.deeplearning4j.nn.api.OptimizationAlgorithm;
@@ -14,7 +14,6 @@ import org.deeplearning4j.nn.weights.WeightInit;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -24,7 +23,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class RecurrentNets {
+public class ModelConfig {
 
     private static final double learningRate = 0.05;
     private static final int iterations = 1;

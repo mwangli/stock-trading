@@ -1,9 +1,8 @@
-package online.mwang.stockTrading.web.job;
+package online.mwang.stockTrading.schedule.jobs;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
-import online.mwang.stockTrading.web.utils.RequestUtils;
+import online.mwang.stockTrading.schedule.data.IDataService;
 import org.springframework.stereotype.Component;
 
 /**
@@ -17,10 +16,10 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class RunAmountJob extends BaseJob {
 
-    private final AllJobs jobs;
+    private final IDataService dataService;
 
     @Override
     public void run() {
-        jobs.getAmount();
+        dataService.getAmount();
     }
 }

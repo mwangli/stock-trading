@@ -1,18 +1,19 @@
-package online.mwang.stockTrading.predict.model;
+package online.mwang.stockTrading.model.model.impl;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.predict.data.PriceCategory;
-import online.mwang.stockTrading.predict.data.StockData;
-import online.mwang.stockTrading.predict.data.StockDataSetIterator;
-import online.mwang.stockTrading.predict.utils.PlotUtil;
+import online.mwang.stockTrading.model.model.ModelConfig;
+import online.mwang.stockTrading.model.data.StockData;
+import online.mwang.stockTrading.model.data.StockDataSetIterator;
+import online.mwang.stockTrading.model.model.IModelService;
+import online.mwang.stockTrading.model.utils.PlotUtil;
+import online.mwang.stockTrading.model.data.PriceCategory;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import org.deeplearning4j.api.storage.StatsStorage;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
-import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.deeplearning4j.ui.api.UIServer;
 import org.deeplearning4j.ui.stats.StatsListener;
 import org.deeplearning4j.ui.storage.InMemoryStatsStorage;
@@ -43,7 +44,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class StockPricePrediction {
+public class LSTMModelServiceImpl implements IModelService {
 
     private static final int VECTOR_SIZE = 2; // time series length, assume 22 working days per month
     private static int exampleLength = 22; // time series length, assume 22 working days per month
@@ -113,7 +114,7 @@ public class StockPricePrediction {
         List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(query, StockHistoryPrice.class, collectionName);
         List<StockData> stockDataList = stockHistoryPrices.stream().map(this::mapToStockData).collect(Collectors.toList());
         log.info("stockDataList size = {}", stockDataList.size());
-        StockDataSetIterator iterator = new StockDataSetIterator(stockDataList, batchSize, exampleLength, splitRatio, category);
+        StockDataSetIterator iterator = new StockDataSetIterator(stockDataList, batchSize, exampleLength, splitRatio,category);
         // 计算最大值和最小
         double max1 = stockDataList.stream().mapToDouble(StockData::getPrice1).max().orElse(0.0);
         double max2 = stockDataList.stream().mapToDouble(StockData::getPrice2).max().orElse(0.0);
@@ -122,7 +123,7 @@ public class StockPricePrediction {
         iterator.setMinArray(new double[]{min1, min2});
         iterator.setMaxArray(new double[]{max1, max2});
         log.info("Build lstm networks...");
-        MultiLayerNetwork net = RecurrentNets.buildLstmNetworks(iterator.inputColumns(), iterator.totalOutcomes());
+        MultiLayerNetwork net = ModelConfig.buildLstmNetworks(iterator.inputColumns(), iterator.totalOutcomes());
 
         if ("dev".equalsIgnoreCase(profile)) {
 //             初始化用户界面后端

@@ -6,12 +6,12 @@ import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
+import online.mwang.stockTrading.schedule.data.IDataService;
 import online.mwang.stockTrading.web.bean.base.Response;
 import online.mwang.stockTrading.web.bean.vo.AnalysisData;
 import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.bean.query.FoundTradingQuery;
 import online.mwang.stockTrading.web.bean.vo.Point;
-import online.mwang.stockTrading.web.job.AllJobs;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
 import online.mwang.stockTrading.web.service.TradingRecordService;
@@ -38,7 +38,7 @@ public class TradingRecordController {
     private final TradingRecordService tradingRecordService;
     private final AccountInfoMapper accountInfoMapper;
     private final StockInfoMapper stockInfoMapper;
-    private final AllJobs dailyJob;
+    private final IDataService dataService;
 
     @PostMapping("/create")
     public Boolean create(@RequestBody TradingRecord tradingRecord) {
@@ -117,7 +117,7 @@ public class TradingRecordController {
         sortedSoldList.stream().collect(Collectors.groupingBy(TradingRecord::getHoldDays, Collectors.summarizingInt(o -> 1))).forEach((k, v) -> holdDaysCountList.add(new Point("天数" + k.toString(), (double) v.getSum())));
         data.setHoldDaysList(holdDaysCountList.stream().sorted(Comparator.comparingDouble(Point::getY).reversed()).collect(Collectors.toList()));
         // 获取期望持仓日收益率排行
-        data.setExpectList(getExpectedIncome());
+//        data.setExpectList(getExpectedIncome());
         return Response.success(data);
     }
 
@@ -128,10 +128,10 @@ public class TradingRecordController {
                 record.setName(record.getCode().concat("-").concat(record.getName()));
                 record.setSalePrice(stockInfo.getPrice());
                 final double amount = record.getBuyNumber() * record.getSalePrice();
-                final double saleAmount = amount - dailyJob.getPeeAmount(amount);
+                final double saleAmount = amount - dataService.getPeeAmount(amount);
                 record.setIncome(saleAmount - record.getBuyAmount());
                 record.setIncomeRate(record.getIncome() / record.getBuyAmount() * 100);
-                record.setDailyIncomeRate(record.getIncomeRate() / Math.max(record.getHoldDays(), 1));
+//                record.setDailyIncomeRate(record.getIncomeRate() / Math.max(record.getHoldDays(), 1));
             }
         }).sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).collect(Collectors.toList());
     }

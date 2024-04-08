@@ -1,4 +1,4 @@
-package online.mwang.stockTrading.web.job;
+package online.mwang.stockTrading.schedule.data.impl;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.schedule.data.IDataService;
 import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
@@ -37,7 +38,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class AllJobs {
+public class ZXDataServiceImpl implements IDataService {
 
     public static final String TOKEN = "requestToken";
     public static final int LOGIN_RETRY_TIMES = 10;
@@ -164,6 +165,7 @@ public class AllJobs {
         return null;
     }
 
+    @Override
     public AccountInfo getAmount() {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
@@ -196,6 +198,7 @@ public class AllJobs {
     }
 
     // 获取持仓股票
+    @Override
     public List<TradingRecord> getHoldList() {
         String token = getToken();
         long timeMillis = System.currentTimeMillis();
@@ -228,7 +231,8 @@ public class AllJobs {
     }
 
 
-    protected List<OrderStatus> listTodayOrder() {
+    @Override
+    public List<OrderStatus> listTodayOrder() {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -354,17 +358,20 @@ public class AllJobs {
         return inTradingTimes1() || inTradingTimes2();
     }
 
+    @Override
     public Boolean inTradingTimes1() {
         String format = DateUtils.timeFormat.format(new Date());
         return format.compareTo("09:30") >= 0 && format.compareTo("11:30") <= 0;
     }
 
+    @Override
     public Boolean inTradingTimes2() {
         String format = DateUtils.timeFormat.format(new Date());
         return format.compareTo("13:00") >= 0 && format.compareTo("15:00") <= 0;
     }
 
-    protected Double getNowPrice(String code) {
+    @Override
+    public Double getNowPrice(String code) {
         long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("stockcode", code);
@@ -396,25 +403,22 @@ public class AllJobs {
     }
 
     protected List<OrderStatus> pageCancelOrder(int page) {
+      return null;
+    }
+
+    @Override
+    public List<OrderStatus> listCancelOrder() {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", 152);
-        paramMap.put("StartPos", page * 500);
+        paramMap.put("StartPos",  500);
         paramMap.put("MaxCount", 500);
         paramMap.put("op_station", 4);
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
         JSONArray result = requestUtils.request2(buildParams(paramMap));
         return arrayToList(result, true);
-    }
-
-    protected List<OrderStatus> listCancelOrder() {
-        List<OrderStatus> cancelOrders = new ArrayList<>();
-        for (int i = 0; i < 10; i++) {
-            cancelOrders.addAll(pageCancelOrder(i));
-        }
-        return cancelOrders;
     }
 
     public AccountInfo getAccountAmount(AccountInfo accountInfo) {
@@ -425,6 +429,7 @@ public class AllJobs {
         return accountInfo;
     }
 
+    @Override
     public void cancelOrder(String answerNo) {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
@@ -436,12 +441,14 @@ public class AllJobs {
         requestUtils.request(buildParams(paramMap));
     }
 
-    protected void cancelAllOrder() {
+    @Override
+    public void cancelAllOrder() {
         List<OrderStatus> orderList = listCancelOrder();
         log.info("待撤销订单:{}", orderList);
         orderList.forEach(o -> cancelOrder(o.getAnswerNo()));
     }
 
+    @Override
     public List<OrderStatus> listHistoryOrder() {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
@@ -456,6 +463,7 @@ public class AllJobs {
         return arrayToList(result, false);
     }
 
+    @Override
     public String queryOrderStatus(String answerNo) {
         List<OrderStatus> orderInfos = listTodayOrder();
         log.info("查询到订单状态信息:");
@@ -468,6 +476,7 @@ public class AllJobs {
         return status.get().getStatus();
     }
 
+    @Override
     public Boolean waitOrderStatus(String answerNo) {
         int times = 0;
         while (times++ < 10) {
@@ -500,7 +509,8 @@ public class AllJobs {
         return null;
     }
 
-    public JSONObject buySale(String type, String code, Double price, Double number) {
+    @Override
+    public String buySale(String type, String code, Double price, Double number) {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -513,11 +523,12 @@ public class AllJobs {
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
         final JSONObject result = requestUtils.request(buildParams(paramMap));
-        setToken(result.getString("TOKEN"));
-        return result;
+        final String answerNo = result.getString("ANSWERNO");
+        return answerNo;
     }
 
-    // 获取每日最新价格数据
+    // 获取每日最新股票数据
+    @Override
     public List<StockInfo> getDataList() {
         final List<StockInfo> stockInfos = new ArrayList<>();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -555,6 +566,7 @@ public class AllJobs {
     }
 
     // 获取历史价格曲线
+    @Override
     public List<DailyItem> getHistoryPrices(String code) {
         HashMap<String, Object> paramMap = new HashMap<>(10);
         paramMap.put("c.funcno", 20009);
@@ -591,6 +603,7 @@ public class AllJobs {
     }
 
     // 获取历史订单
+    @Override
     public List<OrderInfo> getHistoryOrder() {
         final String token = getToken();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -604,6 +617,7 @@ public class AllJobs {
     }
 
     // 获取今日成交订单
+    @Override
     public List<OrderInfo> getTodayOrder() {
         final long timeMillis = System.currentTimeMillis();
         final String token = getToken();
@@ -651,6 +665,7 @@ public class AllJobs {
     }
 
     // 计算手续费,万五,最低五元
+    @Override
     public Double getPeeAmount(Double amount) {
         return Math.max(5, amount * 0.0005);
     }

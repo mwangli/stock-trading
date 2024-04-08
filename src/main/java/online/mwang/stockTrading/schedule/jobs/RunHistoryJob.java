@@ -1,9 +1,10 @@
-package online.mwang.stockTrading.web.job;
+package online.mwang.stockTrading.schedule.jobs;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.schedule.data.IDataService;
 import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
@@ -30,7 +31,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunHistoryJob extends BaseJob {
 
-    private final AllJobs jobs;
+    private final IDataService dataService;
     private final StockInfoService stockInfoService;
     private final MongoTemplate mongoTemplate;
 
@@ -45,7 +46,7 @@ public class RunHistoryJob extends BaseJob {
 
     @SneakyThrows
     public void writeHistoryPriceDataToMongo(StockInfo stockInfo) {
-        List<DailyItem> historyPrices = jobs. getHistoryPrices(stockInfo.getCode());
+        List<DailyItem> historyPrices = dataService. getHistoryPrices(stockInfo.getCode());
         List<StockHistoryPrice> stockHistoryPriceList = historyPrices.stream().map(item -> {
             StockHistoryPrice stockHistoryPrice = new StockHistoryPrice();
             stockHistoryPrice.setName(stockInfo.getName());

@@ -1,12 +1,12 @@
-package online.mwang.stockTrading.web.job;
+package online.mwang.stockTrading.schedule.jobs;
 
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.schedule.data.IDataService;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
 import online.mwang.stockTrading.web.mapper.OrderInfoMapper;
 import online.mwang.stockTrading.web.service.OrderInfoService;
-import online.mwang.stockTrading.web.service.TradingRecordService;
 import org.springframework.stereotype.Component;
 
 import java.util.Date;
@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunOrderJob extends BaseJob {
 
-    private final AllJobs jobs;
+    private final IDataService dataService;
     private final OrderInfoService orderInfoService;
     private final OrderInfoMapper orderInfoMapper;
 
@@ -32,9 +32,9 @@ public class RunOrderJob extends BaseJob {
     @Override
     public void run() {
         // 同步历史订单数据 (历史订单数据中没有订单状态)
-//        List<OrderInfo> lastOrders = jobs.getHistoryOrder();
-        List<OrderInfo> todayOrders = jobs.getTodayOrder();
-//        lastOrders.addAll(todayOrders);
+        List<OrderInfo> lastOrders = dataService.getHistoryOrder();
+        List<OrderInfo> todayOrders = dataService.getTodayOrder();
+        lastOrders.addAll(todayOrders);
         // 获取已有订单编号，做差集写入
         List<String> answerNo = orderInfoMapper.listAnswerNo();
         List<OrderInfo> insertList = todayOrders.stream().filter(o -> !answerNo.contains(o.getAnswerNo())).collect(Collectors.toList());

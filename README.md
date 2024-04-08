@@ -1,5 +1,10 @@
 ## StockTrading AI小模型股票自动交易系统
 
+### 项目文档 
+https://www.yuque.com/mwangli/kleih7/axga8dz9imansvl4
+### 项目展示
+
+
 ### 功能介绍
 
 1. 对接中信证券，实现股票自动化交易

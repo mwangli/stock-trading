@@ -1,7 +1,8 @@
-package online.mwang.stockTrading.web.job;
+package online.mwang.stockTrading.schedule.jobs;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.schedule.data.IDataService;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -22,7 +23,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunPriceJob extends BaseJob {
 
-    private final AllJobs jobs;
+    private final IDataService dataService;
     private final StockInfoService stockInfoService;
     private final StringRedisTemplate redisTemplate;
     private final String NEW_PRICE_KEY = "NEW_PRICE_KEY";
@@ -30,7 +31,7 @@ public class RunPriceJob extends BaseJob {
     @Override
     public void run() {
         // 获取每只股票最新的当前价格写入到redis map
-        List<StockInfo> newInfos = jobs.getDataList();
+        List<StockInfo> newInfos = dataService.getDataList();
         newInfos.forEach(s -> redisTemplate.opsForHash().put(NEW_PRICE_KEY, s.getCode(), s.getPrice().toString()));
         List<StockInfo> list = stockInfoService.list().stream().peek(stockInfo -> {
             // 仅修改最新价格数据
