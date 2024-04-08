@@ -1,4 +1,4 @@
-package online.mwang.stockTrading.predict.data;
+package online.mwang.stockTrading.model.data;
 
 import com.google.common.collect.ImmutableMap;
 import lombok.extern.slf4j.Slf4j;

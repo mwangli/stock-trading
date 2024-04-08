@@ -1,7 +1,8 @@
-package online.mwang.stockTrading.web.job;
+package online.mwang.stockTrading.schedule.jobs;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.schedule.data.IDataService;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import org.springframework.stereotype.Component;
@@ -22,13 +23,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunStockJob extends BaseJob {
 
-    private final AllJobs jobs;
+    private final IDataService dataService;
     private final StockInfoService stockInfoService;
 
     @Override
     public void run() {
         // 同步股票数据，处理新股票和退市股票，取两个集合的差集
-        List<StockInfo> newInfos = jobs.getDataList();
+        List<StockInfo> newInfos = dataService.getDataList();
         List<StockInfo> dataList = stockInfoService.list();
         final Set<String> newCodeSet = newInfos.stream().map(StockInfo::getCode).collect(Collectors.toSet());
         final Set<String> oldCodeSet = dataList.stream().map(StockInfo::getCode).collect(Collectors.toSet());

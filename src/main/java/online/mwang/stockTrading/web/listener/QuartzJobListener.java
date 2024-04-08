@@ -4,8 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.schedule.data.IDataService;
 import online.mwang.stockTrading.web.bean.po.QuartzJob;
-import online.mwang.stockTrading.web.job.AllJobs;
 import online.mwang.stockTrading.web.mapper.QuartzJobMapper;
 import org.jetbrains.annotations.NotNull;
 import org.quartz.*;
@@ -25,7 +25,6 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
 
     private final QuartzJobMapper jobMapper;
     private final Scheduler scheduler;
-    private final AllJobs allJobs;
 
     @Override
     @SneakyThrows

@@ -7,10 +7,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.schedule.data.IDataService;
 import online.mwang.stockTrading.web.bean.base.Response;
 import online.mwang.stockTrading.web.bean.po.QuartzJob;
 import online.mwang.stockTrading.web.bean.query.QuartzJobQuery;
-import online.mwang.stockTrading.web.job.AllJobs;
 import online.mwang.stockTrading.web.mapper.QuartzJobMapper;
 import online.mwang.stockTrading.web.utils.RequestUtils;
 import org.quartz.*;
@@ -33,8 +33,6 @@ public class JobController {
     private final static String TEMP_GROUP_NAME = "TEMP";
     private final Scheduler scheduler;
     private final QuartzJobMapper jobMapper;
-    private final RequestUtils requestUtils;
-    private final AllJobs jobs;
 
     @SneakyThrows
     @GetMapping("/list")

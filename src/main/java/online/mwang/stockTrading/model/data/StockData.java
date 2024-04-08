@@ -1,4 +1,4 @@
-package online.mwang.stockTrading.predict.data;
+package online.mwang.stockTrading.model.data;
 
 import lombok.Data;
 

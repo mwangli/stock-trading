@@ -1,11 +1,11 @@
-package online.mwang.stockTrading.web.job;
+package online.mwang.stockTrading.schedule.jobs;
 
-import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.schedule.data.IDataService;
 import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
 import online.mwang.stockTrading.web.mapper.ScoreStrategyMapper;
@@ -43,7 +43,7 @@ public class RunBuyJob extends BaseJob {
     public static final int NEED_COUNT = 1;
     public static final double BUY_PERCENT = 0.03;
     public static final double SALE_PERCENT = 0.03;
-    private final AllJobs jobs;
+    private final IDataService dataService;
     private final RunStockJob runStockJob;
     private final TradingRecordService tradingRecordService;
     private final StockInfoMapper stockInfoMapper;
@@ -57,19 +57,19 @@ public class RunBuyJob extends BaseJob {
     @Override
     public void run() {
         // 撤销所有未成功订单,回收可用资金
-//            if (!jobs.waitOrderCancel()) {
+//            if (!dataService.waitOrderCancel()) {
 //                log.info("存在未撤销失败订单,取消购买任务！");
 //                return;
 //            }
         // 更新账户可用资金
-        final AccountInfo accountInfo = jobs.getAmount();
+        final AccountInfo accountInfo = dataService.getAmount();
         if (accountInfo == null) {
             log.info("更新账户可用资金失败,取消购买任务");
             return;
         }
-        final AccountInfo accountAmount = jobs.getAccountAmount(accountInfo);
-        final Double totalAvailableAmount = accountAmount.getAvailableAmount();
-        final Double totalAmount = accountAmount.getTotalAmount();
+//        final AccountInfo accountAmount = dataService.getAccountAmount(accountInfo);
+        final Double totalAvailableAmount = accountInfo.getAvailableAmount();
+        final Double totalAmount = accountInfo.getTotalAmount();
         final double maxAmount = totalAmount / MAX_HOLD_STOCKS;
         // 计算此次可用资金
         double availableAmount = totalAvailableAmount / NEED_COUNT;
@@ -101,18 +101,19 @@ public class RunBuyJob extends BaseJob {
         CountDownLatch countDownLatch = new CountDownLatch(NEED_COUNT);
         limitStockList.forEach(stockInfo -> new Thread(() -> buyStock(stockInfo, accountInfo, countDownLatch)).start());
         countDownLatch.await();
+        log.info("股票买入完成!");
     }
 
     private void buyStock(StockInfo stockInfo, AccountInfo accountInfo, CountDownLatch countDownLatch) {
         // 买入原则：以尽可能的低的价格买入
         // 当出现某一次的价格，远远低于前面一段时间的平均值，则进行买入
         double priceCount = 1;
-        double priceTotal = jobs.getNowPrice(stockInfo.getCode());
-        while (countDownLatch.getCount() > 0) {
+        double priceTotal = dataService.getNowPrice(stockInfo.getCode());
+        while (countDownLatch.getCount() > 0 && dataService.inTradingTimes2()) {
             // 每隔30秒获取一次最新的价格
             sleepUtils.second(30);
 //            log.info("当前买入最佳股票[{}-{}],价格:{},评分:{}", stockInfo.getCode(), stockInfo.getName(), stockInfo.getPrice(), stockInfo.getScore());
-            Double nowPrice = jobs.getNowPrice(stockInfo.getCode());
+            Double nowPrice = dataService.getNowPrice(stockInfo.getCode());
             double priceAvg = priceTotal / priceCount;
             priceTotal += nowPrice;
             priceCount++;
@@ -120,15 +121,14 @@ public class RunBuyJob extends BaseJob {
                 log.info("当前股票{}-{}出现最佳价格，开始提交买入订单，当前价格为{}，前段时间平均价格为{}", stockInfo.getName(), stockInfo.getCode(), nowPrice, priceAvg);
                 final int maxBuyNumber = (int) (accountInfo.getAvailableAmount() / stockInfo.getPrice());
                 final int buyNumber = (maxBuyNumber / 100) * 100;
-                JSONObject res = jobs.buySale("B", stockInfo.getCode(), stockInfo.getPrice(), (double) buyNumber);
-                String buyNo = res.getString("ANSWERNO");
+                String buyNo = dataService.buySale("B", stockInfo.getCode(), stockInfo.getPrice(), (double) buyNumber);
                 if (buyNo == null) {
                     log.info("当前股票[{}-{}]提交买入订单失败,尝试下次买入股票!", stockInfo.getCode(), stockInfo.getName());
                     continue;
                 }
                 log.info("当前股票[{}-{}]提交买入订单成功,订单编号为：{}!", stockInfo.getCode(), stockInfo.getName(), buyNo);
                 // 查询买入结果
-                final Boolean success = jobs.waitOrderStatus(buyNo);
+                final Boolean success = dataService.waitOrderStatus(buyNo);
                 if (success == null) {
                     log.info("当前股票[{}-{}].订单撤销失败,取消买入任务！", stockInfo.getCode(), stockInfo.getName());
                     return;
@@ -146,7 +146,7 @@ public class RunBuyJob extends BaseJob {
                 record.setBuyNumber((double) buyNumber);
                 record.setBuyNo(buyNo);
                 final double amount = stockInfo.getPrice() * buyNumber;
-                record.setBuyAmount(amount + jobs.getPeeAmount(amount));
+                record.setBuyAmount(amount + dataService.getPeeAmount(amount));
                 final Date now = new Date();
                 record.setBuyDate(now);
                 record.setBuyDateString(DateUtils.dateFormat.format(now));
@@ -159,7 +159,7 @@ public class RunBuyJob extends BaseJob {
                 record.setStrategyName(strategy == null ? "默认策略" : strategy.getName());
                 tradingRecordService.save(record);
                 // 更新账户资金
-                jobs.getAmount();
+                dataService.getAmount();
                 // 更新交易次数
                 stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
                 stockInfoMapper.updateById(stockInfo);
@@ -172,8 +172,8 @@ public class RunBuyJob extends BaseJob {
 
     private void updateScore() {
         LambdaQueryWrapper<PredictPrice> queryWrapper = new LambdaQueryWrapper<PredictPrice>().eq(PredictPrice::getDate, DateUtils.format1(new Date()));
-        List<PredictPrice> PredictPriceList = predictPriceMapper.selectList(queryWrapper);
-        PredictPriceList.forEach(predictPrice -> {
+        List<PredictPrice> predictPriceList = predictPriceMapper.selectList(queryWrapper);
+        predictPriceList.forEach(predictPrice -> {
             StockInfo stockInfo = stockInfoService.getOne(new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getCode, predictPrice.getStockCode()));
             double predictPrice1 = predictPrice.getPredictPrice1();
             double predictPrice2 = predictPrice.getPredictPrice2();
