@@ -76,9 +76,14 @@ public interface IDataService {
     List<StockInfo> getDataList();
 
     /**
-     * 获取历史价格数据
+     * 获取某一只股票历史价格数据
      */
     List<DailyItem> getHistoryPrices(String code);
+
+    /**
+     *  获取全量的历史价格数据
+     */
+    List<StockHistoryPrice> getAllHistoryPrices();
 
     /**
      * 获取历史订单
