@@ -18,10 +18,10 @@ import java.util.List;
  * @version 1.0.0
  * @author: mwangli
  * @date: 2023/3/20 10:56
- * @description: FoundTradingController
+ * @description: StrategyController
  */
 @RestController
-@RequestMapping("strategy")
+@RequestMapping("/strategy")
 @RequiredArgsConstructor
 public class StrategyController {
 
@@ -29,7 +29,7 @@ public class StrategyController {
     private final static String DESCEND = "descend";
     private final ScoreStrategyService strategyService;
 
-    @PostMapping("choose")
+    @PostMapping("/choose")
     public Boolean choose(@RequestBody ModelStrategy strategy) {
         cancelChoose();
         strategy.setStatus(1);
@@ -45,7 +45,7 @@ public class StrategyController {
         });
     }
 
-    @PostMapping
+    @PostMapping("/create")
     public Boolean create(@RequestBody ModelStrategy strategy) {
         final Date now = new Date();
         strategy.setCreateTime(now);
@@ -57,20 +57,20 @@ public class StrategyController {
         return strategyService.save(strategy);
     }
 
-    @PutMapping
+    @PutMapping("/update")
     public Boolean update(@RequestBody ModelStrategy strategy) {
         if (strategy.getStatus() == 1) cancelChoose();
         strategy.setUpdateTime(new Date());
         return strategyService.updateById(strategy);
     }
 
-    @DeleteMapping()
+    @DeleteMapping("/delete")
     public Boolean delete(@RequestBody ModelStrategy strategy) {
             strategy.setDeleted(0);
         return strategyService.updateById(strategy);
     }
 
-    @GetMapping
+    @GetMapping("/list")
     public Response<List<ModelStrategy>> list(StrategyQuery query) {
         LambdaQueryWrapper<ModelStrategy> queryWrapper = new QueryWrapper<ModelStrategy>().lambda()
                 .like(ObjectUtils.isNotNull(query.getName()), ModelStrategy::getName, query.getName())

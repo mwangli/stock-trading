@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
  * @description: FoundTradingController
  */
 @RestController
-@RequestMapping("foundTrading")
+@RequestMapping("/tradingRecord")
 @RequiredArgsConstructor
 public class TradingRecordController {
 
@@ -40,23 +40,23 @@ public class TradingRecordController {
     private final StockInfoMapper stockInfoMapper;
     private final AllJobs dailyJob;
 
-    @PostMapping
+    @PostMapping("/create")
     public Boolean create(@RequestBody TradingRecord tradingRecord) {
         return tradingRecordService.save(tradingRecord);
     }
 
-    @PutMapping
+    @PutMapping("/update")
     public Boolean update(@RequestBody TradingRecord tradingRecord) {
         return tradingRecordService.updateById(tradingRecord);
     }
 
-    @DeleteMapping("{id}")
+    @DeleteMapping("/delete/{id}")
     public Boolean delete(@PathVariable String id) {
         return tradingRecordService.removeById(id);
     }
 
     @SneakyThrows
-    @GetMapping
+    @GetMapping("/list")
     public Response<List<TradingRecord>> listFound(FoundTradingQuery query) {
         LambdaQueryWrapper<TradingRecord> queryWrapper = new QueryWrapper<TradingRecord>().lambda()
                 .like(ObjectUtils.isNotNull(query.getCode()), TradingRecord::getCode, query.getCode())
@@ -73,7 +73,7 @@ public class TradingRecordController {
         return Response.success(pageResult.getRecords(), pageResult.getTotal());
     }
 
-    @GetMapping("analysis")
+    @GetMapping("/analysis")
     public Response<AnalysisData> analysis(String startDate, String endDate) {
         final AnalysisData data = new AnalysisData();
         // 获取所有已卖出的股票，按更新时间倒序
@@ -121,7 +121,7 @@ public class TradingRecordController {
         return Response.success(data);
     }
 
-    public List<TradingRecord> getExpectedIncome() {
+    private List<TradingRecord> getExpectedIncome() {
         return tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().peek(record -> {
             final StockInfo stockInfo = stockInfoMapper.selectByCode(record.getCode());
             if (stockInfo != null) {
@@ -136,7 +136,7 @@ public class TradingRecordController {
         }).sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).collect(Collectors.toList());
     }
 
-    public AccountInfo getAccountAmount(AccountInfo accountInfo) {
+    private AccountInfo getAccountAmount(AccountInfo accountInfo) {
         // 计算已用金额
         double usedAmount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().mapToDouble(TradingRecord::getBuyAmount).sum();
         accountInfo.setUsedAmount(usedAmount);

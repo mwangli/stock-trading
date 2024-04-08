@@ -21,9 +21,7 @@ public class WebConfig implements WebMvcConfigurer {
     @Resource
     private AuthInterceptor authInterceptor;
 
-    @Value("${PROFILE}")
-    private String profile;
-
+    // 无需认证URL
     private static final String[] IGNORE_URLS = new String[]{
             "/test",
             "/imageUpdate",
@@ -36,21 +34,22 @@ public class WebConfig implements WebMvcConfigurer {
             "/swagger-ui.html/**"
     };
 
+    // 需要授权URL
     private static final String[] AUTH_URL = new String[]{
+            // 任务操作
             "/job/run",
             "/job/pause",
-            "/job/modify",
             "/job/interrupt",
             "/job/resume",
-            "/job/create",
+            // 资源修改操作
+            "/**/create",
+            "/**/update",
+            "/**/delete",
     };
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // 生产环境需要登录，开发环境不用登录
-//        if (profile.equalsIgnoreCase("prod") ) {
         registry.addInterceptor(loginInterceptor).excludePathPatterns(IGNORE_URLS);
         registry.addInterceptor(authInterceptor).addPathPatterns(AUTH_URL);
-//        }
     }
 }
