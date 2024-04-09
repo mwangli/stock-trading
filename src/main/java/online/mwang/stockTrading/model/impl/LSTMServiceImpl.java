@@ -85,6 +85,8 @@ public class LSTMServiceImpl implements IModelService {
 //        if (profile.equalsIgnoreCase("prod")) {
 //            filePath = new File("/root/history_price_" + stockCode + ".csv").getAbsolutePath();
 //        }
+
+
         int batchSize = 64; // mini-batch size
         double splitRatio = 0.9; // 90% for training, 10% for testing
         int epochs = 1; // training epochs
@@ -247,11 +249,6 @@ public class LSTMServiceImpl implements IModelService {
         predictPrice.setPredictPrice1(predictPrice1);
         predictPrice.setPredictPrice2(predictPrice2);
         return predictPrice;
-    }
-
-    @Override
-    public boolean isPresent() {
-        return new File(savePath).canRead();
     }
 
     private StockData mapToStockData(StockHistoryPrice historyPrice) {

@@ -15,7 +15,6 @@ import online.mwang.stockTrading.web.mapper.ScoreStrategyMapper;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
-import online.mwang.stockTrading.web.utils.DateUtils;
 import online.mwang.stockTrading.web.utils.OcrUtils;
 import online.mwang.stockTrading.web.utils.RequestUtils;
 import online.mwang.stockTrading.web.utils.SleepUtils;
@@ -44,16 +43,8 @@ public class ZXDataServiceImpl implements IDataService {
 
     public static final String TOKEN = "requestToken";
     public static final int LOGIN_RETRY_TIMES = 10;
-    public static final double PRICE_TOTAL_FALL_LIMIT = -5.0;
-    public static final double PRICE_TOTAL_UPPER_LIMIT = 5.0;
-    public static final int WAIT_TIME_SECONDS = 10;
     public static final int HISTORY_PRICE_LIMIT = 100;
-    public static final int UPDATE_BATCH_SIZE = 500;
-    public static final int THREAD_POOL_NUMBERS = 8;
     public static final int TOKEN_EXPIRE_MINUTES = 30;
-    public static final int CANCEL_WAIT_TIMES = 30;
-    public static final String COLLECTION_NAME_PREFIX = "code_";
-    public static HashMap<String, Integer> dateMap;
     public final RequestUtils requestUtils;
     public final OcrUtils ocrUtils;
     public final StockInfoService stockInfoService;
@@ -65,15 +56,8 @@ public class ZXDataServiceImpl implements IDataService {
     public final ScoreStrategyMapper strategyMapper;
     public final SleepUtils sleepUtils;
     public final PredictPriceMapper predictPriceMapper;
-    //    public final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_NUMBERS);
-    public boolean enableSaleWaiting = true;
-    public boolean enableBuyWaiting = true;
-    public String resourceBaseDir = "src/main/resources/";
 
-    @Value("${PROFILE}")
-    private String profile;
-
-    public HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
+    private HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
         if (paramMap == null) return new HashMap<>();
         paramMap.put("cfrom", "H5");
         paramMap.put("tfrom", "PC");
@@ -83,23 +67,19 @@ public class ZXDataServiceImpl implements IDataService {
         return paramMap;
     }
 
-    public String getToken() {
+    private String getToken() {
         final String token = redisTemplate.opsForValue().get(TOKEN);
         if (token == null) tryLogin();
         return redisTemplate.opsForValue().get(TOKEN);
     }
 
-    public void setToken(String token) {
+    private void setToken(String token) {
         if (token == null) return;
         redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
     }
 
-    public void clearToken() {
-        redisTemplate.opsForValue().getAndDelete(TOKEN);
-    }
-
     @SneakyThrows
-    public List<String> getCheckCode() {
+    private List<String> getCheckCode() {
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", "41092");
         final JSONObject res = requestUtils.request(buildParams(paramMap));
@@ -110,7 +90,7 @@ public class ZXDataServiceImpl implements IDataService {
     }
 
     @SneakyThrows
-    public String parseCheckCode(String message) {
+    private String parseCheckCode(String message) {
         String code = "1234";
         try {
             code = ocrUtils.execute(message);
@@ -122,7 +102,7 @@ public class ZXDataServiceImpl implements IDataService {
     }
 
     @SneakyThrows
-    public void tryLogin() {
+    private void tryLogin() {
         int time = 0;
         while (time++ < LOGIN_RETRY_TIMES) {
             log.info("第{}尝试登录------", time);
@@ -141,7 +121,7 @@ public class ZXDataServiceImpl implements IDataService {
         log.info("尝试{}次后登录失败！请检查程序代码！", LOGIN_RETRY_TIMES);
     }
 
-    public Boolean doLogin() {
+    private Boolean doLogin() {
         String accountPassword = redisTemplate.opsForValue().get("ENCODE_ACCOUNT_PASSWORD");
         final List<String> checkCode = getCheckCode();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -166,6 +146,48 @@ public class ZXDataServiceImpl implements IDataService {
         }
         // 其他错误直接返回
         return null;
+    }
+
+    private List<OrderStatus> arrayToList(JSONArray result, boolean isToday) {
+        // 委托日期|时间|证券代码|证券|委托类别|买卖方向|状态|委托|数量|委托编号|均价|成交|股东代码|交易类别|
+        ArrayList<OrderStatus> statusList = new ArrayList<>();
+        if (result != null && result.size() > 1) {
+            for (int i = 1; i < result.size(); i++) {
+                String string = result.getString(i);
+                String[] split = string.split("\\|");
+                String code = isToday ? split[0] : split[2];
+                String name = isToday ? split[1] : split[3];
+                String status = isToday ? split[2] : split[6];
+                String answerNo = isToday ? split[8] : split[9];
+                OrderStatus orderStatus = new OrderStatus(answerNo, code, name, status);
+                statusList.add(orderStatus);
+            }
+        }
+        return statusList;
+    }
+
+    private String queryOrderStatus(String answerNo) {
+
+        List<OrderStatus> orderInfos = listTodayOrder();
+        log.info("查询到订单状态信息:");
+        orderInfos.forEach(o -> log.info("{}-{}:{}", o.getCode(), o.getName(), o.getStatus()));
+        Optional<OrderStatus> status = orderInfos.stream().filter(o -> o.getAnswerNo().equals(answerNo)).findFirst();
+        if (!status.isPresent()) {
+            log.info("未查询到合同编号为{}的订单交易状态！", answerNo);
+            return null;
+        }
+        return status.get().getStatus();
+    }
+
+    private void cancelOrder(String answerNo) {
+        String token = getToken();
+        final long timeMillis = System.currentTimeMillis();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", "111");
+        paramMap.put("ContactID", answerNo);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        requestUtils.request(buildParams(paramMap));
     }
 
     @Override
@@ -195,40 +217,6 @@ public class ZXDataServiceImpl implements IDataService {
         return accountInfo;
     }
 
-    // 获取持仓股票
-    @Override
-    public List<TradingRecord> getHoldList() {
-        String token = getToken();
-        long timeMillis = System.currentTimeMillis();
-        HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", "117");
-        paramMap.put("StartPos", 0);
-        paramMap.put("MaxCount", 500);
-        paramMap.put("reqno", timeMillis);
-        paramMap.put("token", token);
-        paramMap.put("Volume", 100);
-        JSONArray results = requestUtils.request2(buildParams(paramMap));
-        List<TradingRecord> dataList = new ArrayList<>();
-        if (results == null || results.size() <= 1) {
-            return dataList;
-        }
-        for (int i = 1; i < results.size(); i++) {
-            String data = results.getString(i);
-            String[] split = data.split("\\|");
-            if ("0.00".equals(split[1]) || "0.00".equals(split[2])) {
-                continue;
-            }
-            TradingRecord record = new TradingRecord();
-            record.setCode(split[9]);
-            record.setName(split[0]);
-            record.setBuyPrice(Double.parseDouble(split[4]));
-            record.setBuyNumber(Double.parseDouble(split[2]));
-            dataList.add(record);
-        }
-        return dataList;
-    }
-
-
     @Override
     public List<OrderStatus> listTodayOrder() {
         String token = getToken();
@@ -244,115 +232,6 @@ public class ZXDataServiceImpl implements IDataService {
         return arrayToList(result, true);
     }
 
-    public Boolean waitOrderStatus() {
-        int times = 0;
-        while (times++ < CANCEL_WAIT_TIMES) {
-            sleepUtils.second(WAIT_TIME_SECONDS);
-            List<OrderStatus> todayOrders = listTodayOrder();
-//            List<OrderStatus> historyOrders = listHistoryOrder();
-//            todayOrders.addAll(historyOrders);
-            List<String> cancelStatus = Arrays.asList("已报", "已报待撤");
-            List<OrderStatus> orderList = todayOrders.stream().filter(o -> cancelStatus.contains(o.getStatus())).collect(Collectors.toList());
-            if (orderList.size() == 0) {
-                return true;
-            } else {
-                log.info("待撤销订单:{}", orderList);
-                orderList.forEach(o -> cancelOrder(o.getAnswerNo()));
-            }
-        }
-        return false;
-    }
-
-//    protected StockInfo waitingBestPrice(StockInfo best) {
-//        double lastPrice = getLastPrice(best.getCode());
-//        double totalPercent = 0.0;
-//        while (inTradingTimes()) {
-//            sleepUtils.minutes(1);
-//            Double nowPrice = getLastPrice(best.getCode());
-//            final double price = nowPrice - lastPrice;
-//            final double pricePercent = price * 100 / nowPrice;
-//            if (pricePercent < 0) {
-//                totalPercent += pricePercent;
-//            }
-//            log.info("最佳买入股票[{}-{}],上次价格:{},当前价格:{},当前增长幅度:{}%,总增长幅度:{}%,等待最佳买入时机...",
-//                    best.getCode(), best.getName(), lastPrice, nowPrice, String.format("%.4f", pricePercent), String.format("%.4f", totalPercent));
-//            lastPrice = nowPrice;
-//            // 3交易时间段内，总增长幅度达到阈值，或者交易时间即将结束
-//            boolean totalCondition = totalPercent <= PRICE_TOTAL_FALL_LIMIT;
-//            if (isDeadLine() || totalCondition) {
-//                if (isDeadLine()) {
-//                    log.info("今日交易时间即将结束，开始买入股票。");
-//                } else {
-//                    log.info("最佳买入股票[{}-{}],总增长幅度达到{}%,开始买入股票。",
-//                            best.getCode(), best.getName(), PRICE_TOTAL_FALL_LIMIT);
-//                }
-//                best.setPrice(lastPrice);
-//                return best;
-//            }
-//        }
-//        return null;
-//    }
-
-//
-//    protected TradingRecord waitingBestRecord(TradingRecord best, String runningId) {
-//        double totalPercent = 0.0;
-//        while (inTradingTimes()) {
-//            sleepUtils.minutes(1, runningId);
-//            TradingRecord bestRecord = getBestRecord();
-//            if (bestRecord == null) {
-//                log.info("最佳卖出股票获取异常");
-//                return null;
-//            }
-//            // 如果最佳股发生变化
-//            if (!bestRecord.getCode().equals(best.getCode())) {
-//                totalPercent = 0;
-//                best = bestRecord;
-//                log.info("最佳卖出股票变化为:[{}-{}]", best.getCode(), best.getName());
-//            }
-//            Double lastPrice = best.getSalePrice();
-//            final double price = bestRecord.getSalePrice() - lastPrice;
-//            final double pricePercent = price * 100 / lastPrice;
-//            if (pricePercent > 0) {
-//                totalPercent += pricePercent;
-//            }
-//            best = bestRecord;
-//            log.info("最佳卖出股票[{}-{}],买入价格:{},上次价格:{},当前价格:{},当前增长幅度:{}%,总增长幅度:{}%,等待最佳卖出时机...",
-//                    best.getCode(), best.getName(), best.getBuyPrice(), lastPrice, best.getSalePrice(), String.format("%.4f", pricePercent), String.format("%.4f", totalPercent));
-//            // 交易时间段内，价格总增长幅度达到阈值，或者交易时间即将结束
-//            boolean totalCondition = totalPercent >= PRICE_TOTAL_UPPER_LIMIT;
-//            boolean priceCondition = isDeadLine() || totalCondition;
-//            boolean incomeCondition = best.getSalePrice() - best.getBuyPrice() > 0.1;
-//            boolean saleCondition = incomeCondition && priceCondition;
-//            if (isMorning() ? saleCondition : priceCondition) {
-//                if (isDeadLine()) {
-//                    log.info("今日交易时间即将结束，开始卖出股票。");
-//                } else {
-//                    log.info("最佳卖出股票[{}-{}],总增长幅度达到{}%,开始卖出股票。",
-//                            best.getCode(), best.getName(), PRICE_TOTAL_UPPER_LIMIT);
-//                }
-//                return best;
-//            }
-//        }
-//        return null;
-//    }
-
-
-    private Boolean isMorning() {
-        final Calendar calendar = Calendar.getInstance();
-        calendar.setTime(new Date());
-        final int hours = calendar.get(Calendar.HOUR_OF_DAY);
-        return hours < 12;
-    }
-
-    private Boolean isDeadLine() {
-        final Calendar calendar = Calendar.getInstance();
-        calendar.setTime(new Date());
-        final int hours = calendar.get(Calendar.HOUR_OF_DAY);
-        final int minutes = calendar.get(Calendar.MINUTE);
-        return hours >= 14 && minutes >= 50;
-    }
-
-
     @Override
     public Double getNowPrice(String code) {
         long timeMillis = System.currentTimeMillis();
@@ -367,104 +246,28 @@ public class ZXDataServiceImpl implements IDataService {
         return res.getDouble("PRICE");
     }
 
-    protected List<OrderStatus> arrayToList(JSONArray result, boolean isToday) {
-        // 委托日期|时间|证券代码|证券|委托类别|买卖方向|状态|委托|数量|委托编号|均价|成交|股东代码|交易类别|
-        ArrayList<OrderStatus> statusList = new ArrayList<>();
-        if (result != null && result.size() > 1) {
-            for (int i = 1; i < result.size(); i++) {
-                String string = result.getString(i);
-                String[] split = string.split("\\|");
-                String code = isToday ? split[0] : split[2];
-                String name = isToday ? split[1] : split[3];
-                String status = isToday ? split[2] : split[6];
-                String answerNo = isToday ? split[8] : split[9];
-                OrderStatus orderStatus = new OrderStatus(answerNo, code, name, status);
-                statusList.add(orderStatus);
-            }
-        }
-        return statusList;
-    }
-
-    protected List<OrderStatus> pageCancelOrder(int page) {
-        return null;
-    }
-
     @Override
-    public List<OrderStatus> listCancelOrder() {
+    public String buySale(String type, String code, Double price, Double number) {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", 152);
-        paramMap.put("StartPos", 500);
-        paramMap.put("MaxCount", 500);
-        paramMap.put("op_station", 4);
+        paramMap.put("action", 110);
+        paramMap.put("PriceType", 0);
+        paramMap.put("Direction", type);
+        paramMap.put("StockCode", code);
+        paramMap.put("Price", price);
+        paramMap.put("Volume", number);
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
-        JSONArray result = requestUtils.request2(buildParams(paramMap));
-        return arrayToList(result, true);
+        JSONObject result = requestUtils.request(buildParams(paramMap));
+        return result.getString("ANSWERNO");
     }
-
-    public AccountInfo getAccountAmount(AccountInfo accountInfo) {
-        // 计算已用金额
-        double usedAmount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().mapToDouble(TradingRecord::getBuyAmount).sum();
-        accountInfo.setUsedAmount(usedAmount);
-        accountInfo.setTotalAmount(accountInfo.getAvailableAmount() + usedAmount);
-        return accountInfo;
-    }
-
-    @Override
-    public void cancelOrder(String answerNo) {
-        String token = getToken();
-        final long timeMillis = System.currentTimeMillis();
-        HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", "111");
-        paramMap.put("ContactID", answerNo);
-        paramMap.put("token", token);
-        paramMap.put("reqno", timeMillis);
-        requestUtils.request(buildParams(paramMap));
-    }
-
-    @Override
-    public void cancelAllOrder() {
-        List<OrderStatus> orderList = listCancelOrder();
-        log.info("待撤销订单:{}", orderList);
-        orderList.forEach(o -> cancelOrder(o.getAnswerNo()));
-    }
-
-    @Override
-    public List<OrderStatus> listHistoryOrder() {
-        String token = getToken();
-        final long timeMillis = System.currentTimeMillis();
-        HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", 5018);
-        paramMap.put("StartPos", 0);
-        paramMap.put("MaxCount", 100);
-        paramMap.put("token", token);
-        paramMap.put("ReqlinkType", 1);
-        paramMap.put("reqno", timeMillis);
-        JSONArray result = requestUtils.request2(buildParams(paramMap));
-        return arrayToList(result, false);
-    }
-
-    @Override
-    public String queryOrderStatus(String answerNo) {
-        List<OrderStatus> orderInfos = listTodayOrder();
-        log.info("查询到订单状态信息:");
-        orderInfos.forEach(o -> log.info("{}-{}:{}", o.getCode(), o.getName(), o.getStatus()));
-        Optional<OrderStatus> status = orderInfos.stream().filter(o -> o.getAnswerNo().equals(answerNo)).findFirst();
-        if (!status.isPresent()) {
-            log.info("未查询到合同编号为{}的订单交易状态！", answerNo);
-            return null;
-        }
-        return status.get().getStatus();
-    }
-
 
     @Override
     public Boolean waitOrderStatus(String answerNo) {
         int times = 0;
         while (times++ < 10) {
-            sleepUtils.second(10);
+            sleepUtils.second(15);
             final String status = queryOrderStatus(answerNo);
             if (status == null) {
                 log.info("当前合同编号:{},订单状态查询失败。", answerNo);
@@ -491,38 +294,6 @@ public class ZXDataServiceImpl implements IDataService {
             }
         }
         return null;
-    }
-
-
-    @Override
-    public String saleStock(String name, String code, Double price, Double number) {
-        JSONObject result = buySale("S", code, price, number);
-        String saleNo = result.getString("ANSWERNO");
-        if (saleNo == null) return null;
-        log.info("当前股票[{}-{}]提交卖出订单成功!", name, code);
-        // 查询卖出结果
-        final Boolean success = waitOrderStatus(saleNo);
-        if (success) {
-            log.info("当前股票[{}-{}]卖出完成!", name, code);
-            return saleNo;
-        }
-        return null;
-    }
-
-    @Override
-    public JSONObject buySale(String type, String code, Double price, Double number) {
-        String token = getToken();
-        final long timeMillis = System.currentTimeMillis();
-        HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", 110);
-        paramMap.put("PriceType", 0);
-        paramMap.put("Direction", type);
-        paramMap.put("StockCode", code);
-        paramMap.put("Price", price);
-        paramMap.put("Volume", number);
-        paramMap.put("token", token);
-        paramMap.put("reqno", timeMillis);
-        return requestUtils.request(buildParams(paramMap));
     }
 
     // 获取每日最新股票数据
@@ -666,58 +437,5 @@ public class ZXDataServiceImpl implements IDataService {
     @Override
     public Double getPeeAmount(Double amount) {
         return Math.max(5, amount * 0.0005);
-    }
-
-    @SneakyThrows
-    public void writeHistoryPriceDataToCSV(StockInfo stockInfo) {
-        final String stockCode = stockInfo.getCode();
-        List<DailyItem> historyPrices = getHistoryPrices(stockInfo.getCode());
-        String filePath = new File("data/history_price_" + stockCode + ".csv").getAbsolutePath();
-        if ("prod".equalsIgnoreCase(profile)) {
-            filePath = new File("/root/history_price_" + stockCode + ".csv").getAbsolutePath();
-        }
-        File file = new File(filePath);
-        final BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(file));
-        String csvHead = "date,code,price1,price2,price3,price4,volume";
-        bufferedWriter.write(csvHead);
-        bufferedWriter.newLine();
-        for (DailyItem item : historyPrices) {
-            bufferedWriter.write(item.getDate().concat(","));
-            bufferedWriter.write(stockCode.concat(","));
-            bufferedWriter.write(item.getPrice1().toString().concat(","));
-            bufferedWriter.write(item.getPrice2().toString().concat(","));
-            bufferedWriter.write(item.getPrice3().toString().concat(","));
-            bufferedWriter.write(item.getPrice4().toString().concat(","));
-            bufferedWriter.write("0");
-            bufferedWriter.newLine();
-            bufferedWriter.flush();
-        }
-        bufferedWriter.close();
-        log.info("股票:{}-{}, 历史数据保存完成！", stockInfo.getName(), stockInfo.getCode());
-    }
-
-    // 首次初始化执行，写入4000支股票，每只股票约500条数据
-    public List<StockHistoryPrice> getAllHistoryPrices() {
-        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(StockInfo::getDeleted, 1);
-        List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
-        log.info("共需写入{}支股票历史数据", stockInfoList.size());
-        ArrayList<StockHistoryPrice> allHistoryPrices = new ArrayList<>();
-        stockInfoList.forEach(s -> {
-            List<DailyItem> historyPrices = getHistoryPrices(s.getCode());
-            List<StockHistoryPrice> stockHistoryPriceList = historyPrices.stream().map(item -> {
-                StockHistoryPrice stockHistoryPrice = new StockHistoryPrice();
-                stockHistoryPrice.setName(s.getName());
-                stockHistoryPrice.setCode(s.getCode());
-                stockHistoryPrice.setDate(item.getDate());
-                stockHistoryPrice.setPrice1(item.getPrice1());
-                stockHistoryPrice.setPrice2(item.getPrice2());
-                stockHistoryPrice.setPrice3(item.getPrice3());
-                stockHistoryPrice.setPrice4(item.getPrice4());
-                return stockHistoryPrice;
-            }).collect(Collectors.toList());
-            allHistoryPrices.addAll(stockHistoryPriceList);
-        });
-        return allHistoryPrices;
     }
 }

@@ -1,13 +1,16 @@
 package online.mwang.stockTrading.schedule.jobs;
 
-import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.IDataService;
-import online.mwang.stockTrading.web.bean.po.*;
+import online.mwang.stockTrading.web.bean.base.BusinessException;
+import online.mwang.stockTrading.web.bean.po.AccountInfo;
+import online.mwang.stockTrading.web.bean.po.ModelStrategy;
+import online.mwang.stockTrading.web.bean.po.StockInfo;
+import online.mwang.stockTrading.web.bean.po.TradingRecord;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
 import online.mwang.stockTrading.web.mapper.ScoreStrategyMapper;
@@ -60,7 +63,7 @@ public class RunBuyJob extends BaseJob {
     @Override
     public void run() {
         // 获取最新的账户资金信息
-        AccountInfo accountInfo = accountInfoMapper.getLast();
+        AccountInfo accountInfo = dataService.getAccountInfo();
         final Double totalAvailableAmount = accountInfo.getAvailableAmount();
         final Double totalAmount = accountInfo.getTotalAmount();
         final double maxAmount = totalAmount / MAX_HOLD_STOCKS;
@@ -71,25 +74,14 @@ public class RunBuyJob extends BaseJob {
         final double highPrice = (availableAmount / MIN_HOLD_NUMBER) / HIGH_PRICE_PERCENT;
         final double lowPrice = (availableAmount / MAX_HOLD_NUMBER) * LOW_PRICE_PERCENT;
         log.info("当前可用资金{}元, 可买入价格区间[{},{}]", availableAmount, lowPrice, highPrice);
-        if (lowPrice < LOW_PRICE_LIMIT) {
-            log.info("可用资金资金不足,取消购买任务！");
-            return;
-        }
-        // 更新评分数据
-        updateScore();
+        if (lowPrice < LOW_PRICE_LIMIT) throw new BusinessException("可用资金资金不足,取消购买任务！");
         // 选择有交易权限合适价格区间的数据,按评分排序分组
         final LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>()
                 .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1")
                 .ge(StockInfo::getPrice, lowPrice).le(StockInfo::getPrice, highPrice)
                 .orderByDesc(StockInfo::getScore);
-        final Page<StockInfo> page = new Page<>(1, 10);
-        final Page<StockInfo> pageResult = stockInfoMapper.selectPage(page, queryWrapper);
+        final Page<StockInfo> pageResult = stockInfoMapper.selectPage(new Page<>(1, 10), queryWrapper);
         final List<StockInfo> limitStockList = pageResult.getRecords();
-        final List<StockInfo> limitList = stockInfoMapper.selectList(queryWrapper);
-        if (limitList.size() < BUY_RETRY_LIMIT) {
-            log.info("可买入股票数量不足{},取消购买任务！", BUY_RETRY_LIMIT);
-            return;
-        }
         // 多支股票并行买入
         CountDownLatch countDownLatch = new CountDownLatch(NEED_COUNT);
         limitStockList.forEach(stockInfo -> new Thread(() -> buyStock(stockInfo, accountInfo, countDownLatch)).start());
@@ -98,47 +90,31 @@ public class RunBuyJob extends BaseJob {
     }
 
     private void buyStock(StockInfo stockInfo, AccountInfo accountInfo, CountDownLatch countDownLatch) {
-        // 买入原则：以尽可能的低的价格买入
-        // 当出现某一次的价格，远远低于前面一段时间的平均值，则进行买入
-        log.info("当前尝试买入股票[{}-{}],价格:{},评分:{}", stockInfo.getCode(), stockInfo.getName(), stockInfo.getPrice(), stockInfo.getScore());
-        double priceCount = 1;
-        double priceTotal = dataService.getNowPrice(stockInfo.getCode());
-        while (countDownLatch.getCount() > 0 && dataService.inTradingTimes2()) {
-            // 每隔30秒获取一次最新的价格
+        int priceCount = 1;
+        double priceTotal = 0.0;
+        Double nowPrice;
+        while (countDownLatch.getCount() > 0 && DateUtils.inTradingTimes2()) {
             sleepUtils.second(30);
-            Double nowPrice = dataService.getNowPrice(stockInfo.getCode());
             double priceAvg = priceTotal / priceCount;
+            nowPrice = dataService.getNowPrice(stockInfo.getCode());
             priceTotal += nowPrice;
             priceCount++;
-            // 前30分钟不买入，获取稳定的价格平均值
-            if (priceCount > 60 && nowPrice <= priceAvg - priceAvg * BUY_PERCENT) {
-                log.info("当前股票{}-{}出现最佳价格，开始提交买入订单，当前价格为{}，前段时间平均价格为{}", stockInfo.getName(), stockInfo.getCode(), nowPrice, priceAvg);
-                final int maxBuyNumber = (int) (accountInfo.getAvailableAmount() / stockInfo.getPrice());
-                final int buyNumber = (maxBuyNumber / 100) * 100;
-                JSONObject result = dataService.buySale("B", stockInfo.getCode(), stockInfo.getPrice(), (double) buyNumber);
-                String buyNo = result.getString("ANSWERNO");
-                if (buyNo == null) {
-                    log.info("当前股票[{}-{}]提交买入订单失败,尝试下次买入股票!", stockInfo.getCode(), stockInfo.getName());
-                    continue;
-                }
-                log.info("当前股票[{}-{}]提交买入订单成功,订单编号为：{}!", stockInfo.getCode(), stockInfo.getName(), buyNo);
-                // 查询买入结果
-                final Boolean success = dataService.waitOrderStatus(buyNo);
-                if (success == null) {
-                    log.info("当前股票[{}-{}].订单撤销失败,取消买入任务！", stockInfo.getCode(), stockInfo.getName());
-                    return;
-                }
-                if (!success) {
-                    // 如果交易不成功,撤单后再次尝试卖出
-                    log.info("当前买入交易不成功,尝试下次买入股票。");
-                    continue;
-                }
+            if (priceCount > 60 && nowPrice < priceAvg - priceAvg * BUY_PERCENT || DateUtils.isDeadLine2()) {
+                if (DateUtils.isDeadLine2()) log.info("开始进行买入");
+                log.info("开始买入");
+                // 计算买入数量
+                double buyNumber = (accountInfo.getAvailableAmount() / nowPrice / 100) * 100;
+                String buyNo = dataService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
+                if (buyNo == null) throw new BusinessException("买入订单提交失败");
+                Boolean success = dataService.waitOrderStatus(buyNo);
+                if (success == null) throw new BusinessException("撤单失败，无可用资金");
+                if (!success) continue;
                 // 买入成功后,保存交易数据
                 final TradingRecord record = new TradingRecord();
                 record.setCode(stockInfo.getCode());
                 record.setName(stockInfo.getName());
                 record.setBuyPrice(stockInfo.getPrice());
-                record.setBuyNumber((double) buyNumber);
+                record.setBuyNumber(buyNumber);
                 record.setBuyNo(buyNo);
                 final double amount = stockInfo.getPrice() * buyNumber;
                 record.setBuyAmount(amount + dataService.getPeeAmount(amount));
@@ -161,40 +137,13 @@ public class RunBuyJob extends BaseJob {
                 // 更新交易次数
                 stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
                 stockInfoMapper.updateById(stockInfo);
+                countDownLatch.countDown();
                 log.info("成功买入股票[{}-{}], 买入价格:{},买入数量:{},买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
+
             }
         }
-
     }
 
 
-    private void updateScore() {
-        LambdaQueryWrapper<PredictPrice> queryWrapper = new LambdaQueryWrapper<PredictPrice>().eq(PredictPrice::getDate, DateUtils.format1(new Date()));
-        List<PredictPrice> predictPriceList = predictPriceMapper.selectList(queryWrapper);
-//        predictPriceList.stream().map((predictPrice -> {
-//            StockInfo stockInfo = stockInfoService.getOne(new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getCode, predictPrice.getStockCode()));
-//            double predictPrice1 = predictPrice.getPredictPrice1();
-//            double predictPrice2 = predictPrice.getPredictPrice2();
-//            double predictAvg = (predictPrice1 + predictPrice2) / 2;
-//            Double price = stockInfo.getPrice();
-//            double score = (predictAvg - price) / price * 100 * 10;
-//            stockInfo.setScore(score);
-//            stockInfo.setUpdateTime(new Date());
-//            // TODO 请使用批量更新而不是在循环中操作数据库
-//            stockInfoService.updateById(stockInfo);
-//        });
-        List<StockInfo> stockInfos = stockInfoService.list();
-        // 跟新评分
-        stockInfos.forEach(s -> predictPriceList.stream().filter(p -> p.getStockCode().equals(s.getCode())).findFirst().ifPresent(p -> s.setScore(calculateScore(s, p))));
-        stockInfoService.saveBatch(stockInfos);
-    }
-
-    // 根据股票价格订单预测值和当前值来计算得分，以平均值计算价格增长率
-    private double calculateScore(StockInfo stockInfo, PredictPrice predictPrice) {
-        double predictPrice1 = predictPrice.getPredictPrice1();
-        double predictPrice2 = predictPrice.getPredictPrice2();
-        double predictAvg = (predictPrice1 + predictPrice2) / 2;
-        Double price = stockInfo.getPrice();
-        return (predictAvg - price) / price * 100 * 10;
-    }
 }
+

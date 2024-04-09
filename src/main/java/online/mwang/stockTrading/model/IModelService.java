@@ -4,6 +4,7 @@ import online.mwang.stockTrading.web.bean.po.PredictPrice;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -24,9 +25,4 @@ public interface IModelService {
      * 模型预测
      */
     PredictPrice modelPredict(StockHistoryPrice historyPrice);
-
-    /**
-     * 模型是否已经存在，用于判断是进行增量训练还是初始化训练
-     */
-    boolean isPresent();
 }

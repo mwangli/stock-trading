@@ -1,16 +1,22 @@
 package online.mwang.stockTrading.schedule.jobs;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.web.bean.po.*;
+import online.mwang.stockTrading.web.bean.po.AccountInfo;
+import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.AccountInfoService;
+import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
-import java.util.*;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -26,11 +32,13 @@ import java.util.stream.Collectors;
 public class RunCleanJob extends BaseJob {
 
     private final AccountInfoService accountInfoService;
+    private final StockInfoService stockInfoService;
     private final MongoTemplate mongoTemplate;
 
     @Override
     public void run() {
         cleanAccountInfo();
+        cleanStockInfo();
         cleanHistoryPrice();
     }
 
@@ -40,6 +48,14 @@ public class RunCleanJob extends BaseJob {
         final List<AccountInfo> deleteList = list.stream().skip(list.size() >> 1).collect(Collectors.toList());
         accountInfoService.removeBatchByIds(deleteList);
         log.info("共清理{}条账户信息历史数据。", deleteList.size());
+    }
+
+    private void cleanStockInfo() {
+        // 清除已经退市的股票信息
+        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getDeleted, "0");
+        List<StockInfo> deleteList = stockInfoService.list(queryWrapper);
+        stockInfoService.removeBatchByIds(deleteList);
+        log.info("共清理{}条账户退市股票信息。", deleteList.size());
     }
 
     private void cleanHistoryPrice() {

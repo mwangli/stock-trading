@@ -25,11 +25,6 @@ public interface IDataService {
     AccountInfo getAccountInfo();
 
     /**
-     * 获取持仓股票
-     */
-    List<TradingRecord> getHoldList();
-
-    /**
      * 获取今日订单
      */
     List<OrderStatus> listTodayOrder();
@@ -38,45 +33,6 @@ public interface IDataService {
      * 获取指定股票的最新实时价格
      */
     Double getNowPrice(String code);
-
-    /**
-     * 获取取消状态的订单
-     */
-    List<OrderStatus> listCancelOrder();
-
-    /**
-     * 提交取消订单委托
-     */
-    void cancelOrder(String answerNo);
-
-    /**
-     * 获取历史订单
-     */
-    List<OrderStatus> listHistoryOrder();
-
-    /**
-     * 查询指定单号的订单状态
-     */
-    String queryOrderStatus(String answerNo);
-
-    /**
-     * 等待取消订单完成，如果成功取消返回true,如果取消失败返回false
-     * 不取消订单的话，不能回收资金，提交买入订单
-     */
-    Boolean waitOrderStatus(String answerNo);
-
-
-    /**
-     * 提交买卖订单，返回订单编号
-     * 如果提交订单失败，返回null不要返回空串
-     */
-    JSONObject buySale(String type, String code, Double price, Double number);
-
-    /**
-     * 提交买卖订单，返回订单编号
-     * 如果提交订单失败，返回null不要返回空串
-     */
-    String saleStock(String name, String code, Double price, Double number);
 
     /**
      * 获取最新的所有股票信息
@@ -104,17 +60,13 @@ public interface IDataService {
     Double getPeeAmount(Double amount);
 
     /**
-     * 取消所有订单
+     * 提交买卖订单，返回订单编号
      */
-    void cancelAllOrder();
+    String buySale(String type, String code, Double price, Double number);
 
-    default Boolean inTradingTimes1() {
-        String format = DateUtils.timeFormat.format(new Date());
-        return format.compareTo("09:30") >= 0 && format.compareTo("11:30") <= 0;
-    }
 
-    default Boolean inTradingTimes2() {
-        String format = DateUtils.timeFormat.format(new Date());
-        return format.compareTo("13:00") >= 0 && format.compareTo("15:00") <= 0;
-    }
+    /**
+     *  等待买入或者卖出订单完成
+     */
+    Boolean waitOrderStatus(String answerNo);
 }
