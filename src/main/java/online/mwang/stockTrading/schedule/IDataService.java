@@ -20,7 +20,7 @@ import java.util.List;
 public interface IDataService {
 
     /**
-     * 更新账户资金信息
+     * 获取账户资金信息
      */
     AccountInfo getAccountInfo();
 
@@ -71,6 +71,12 @@ public interface IDataService {
      * 如果提交订单失败，返回null不要返回空串
      */
     JSONObject buySale(String type, String code, Double price, Double number);
+
+    /**
+     * 提交买卖订单，返回订单编号
+     * 如果提交订单失败，返回null不要返回空串
+     */
+    String saleStock(String name, String code, Double price, Double number);
 
     /**
      * 获取最新的所有股票信息
