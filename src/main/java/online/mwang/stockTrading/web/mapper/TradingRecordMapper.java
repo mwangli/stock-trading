@@ -14,5 +14,5 @@ import org.apache.ibatis.annotations.Mapper;
 @Mapper
 public interface TradingRecordMapper extends BaseMapper<TradingRecord> {
 
-    TradingRecord getRecord(String stockCCode);
+    TradingRecord getByCodeAndDate(String code, String buyDateString);
 }
