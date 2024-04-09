@@ -40,6 +40,7 @@ public class RunTrainJob extends BaseJob {
 //        List<StockHistoryPrice> historyPrices = mongoTemplate.find(query, StockHistoryPrice.class);
         Set<String> collectionNames = mongoTemplate.getCollectionNames();
         collectionNames.forEach(collectionName->{
+            // ceshi
             List<StockHistoryPrice> historyPrices = mongoTemplate.find(new Query(), StockHistoryPrice.class, collectionName);
 //            historyPrices.stream()
             // TODO
