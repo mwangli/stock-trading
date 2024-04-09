@@ -42,7 +42,7 @@ public class RunTrainJob extends BaseJob {
         collectionNames.forEach(collectionName->{
             List<StockHistoryPrice> historyPrices = mongoTemplate.find(new Query(), StockHistoryPrice.class, collectionName);
 //            historyPrices.stream()
-            // TODO 归一化处理
+            // TODO
         });
 //        modelService.modelTrain(historyPrices);
     }
