@@ -35,7 +35,7 @@ public class RunTrainJob extends BaseJob {
     @Override
     void run() {
         // 获取最新的数据集，给模型进行增量训练
-        // 从mongo中获取所有股票今天最新价格数据
+        // 从mongo中获取所有股票今天最新价格  数据
 //        Query query = new Query(Criteria.where("date").is(DateUtils.format1(new Date())));
 //        List<StockHistoryPrice> historyPrices = mongoTemplate.find(query, StockHistoryPrice.class);
         Set<String> collectionNames = mongoTemplate.getCollectionNames();
