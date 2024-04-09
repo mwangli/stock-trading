@@ -459,6 +459,7 @@ public class ZXDataServiceImpl implements IDataService {
         return status.get().getStatus();
     }
 
+
     @Override
     public Boolean waitOrderStatus(String answerNo) {
         int times = 0;
@@ -488,6 +489,22 @@ public class ZXDataServiceImpl implements IDataService {
                 log.info("当前合同编号:{},订单已经废除", answerNo);
                 return false;
             }
+        }
+        return null;
+    }
+
+
+    @Override
+    public String saleStock(String name, String code, Double price, Double number) {
+        JSONObject result = buySale("S", code, price, number);
+        String saleNo = result.getString("ANSWERNO");
+        if (saleNo == null) return null;
+        log.info("当前股票[{}-{}]提交卖出订单成功!", name, code);
+        // 查询卖出结果
+        final Boolean success = waitOrderStatus(saleNo);
+        if (success) {
+            log.info("当前股票[{}-{}]卖出完成!", name, code);
+            return saleNo;
         }
         return null;
     }

@@ -63,22 +63,7 @@ public class RunSaleJob extends BaseJob {
             if (priceCount > 60 && nowPrice >= priceAvg + priceAvg * SALE_PERCENT) {
                 log.info("当前股票[{}-{}]，出现最佳卖出价格，当前价格为：{}，前段时间的平均价格为{}", stockInfo.getName(), stockInfo.getCode(), nowPrice, priceAvg);
                 // 返回合同编号
-                JSONObject result = dataService.buySale("S", stockInfo.getCode(), nowPrice, findRecord.getBuyNumber());
-                String saleNo = result.getString("ANSWERNO");
-                if (saleNo == null) {
-                    log.info("当前股票[{}-{}]卖出失败,尝试进行下次卖出", stockInfo.getName(), stockInfo.getCode());
-                    continue;
-                }
-                // 查询卖出结果
-                final Boolean success = dataService.waitOrderStatus(saleNo);
-                if (success == null) {
-                    log.info("当前股票[{}-{}]撤销订单失败,取消卖出任务！", stockInfo.getName(), stockCode);
-                    return;
-                }
-                if (!success) {
-                    log.info("当前股票[{}-{}]卖出失败,尝试再次卖出。", stockInfo.getName(), stockCode);
-                    continue;
-                }
+                final String saleNo = dataService.saleStock(stockInfo.getName(), stockCode, nowPrice, findRecord.getBuyNumber());
                 // 卖出成功
                 findRecord.setSold("1");
                 findRecord.setSaleNo(saleNo);

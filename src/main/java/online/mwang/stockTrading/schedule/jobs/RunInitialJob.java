@@ -2,6 +2,7 @@ package online.mwang.stockTrading.schedule.jobs;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IModelService;
 import online.mwang.stockTrading.schedule.IDataService;
@@ -15,6 +16,7 @@ import online.mwang.stockTrading.web.mapper.TradingRecordMapper;
 import online.mwang.stockTrading.web.service.OrderInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
+import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
@@ -72,34 +74,72 @@ public class RunInitialJob extends BaseJob {
         tradingRecord.setUpdateTime(new Date());
     }
 
+    @SneakyThrows
     private List<TradingRecord> buildTradingRecord(List<OrderInfo> historyOrder) {
         // 将订单数据组装成交易数据，这个问题难点在于可能存在同一个股票的多笔交易订单
         // 可能买入一笔，然后分三笔卖出，如何将这4个订单数据组装成同一个交易记录中，后续可能还买入同一股
-        // 利用队列结构来实现，维护一个不完整记录队列，出现卖出订单时，尝试去队列找买入记录进行填充(卖出订单之前必然有买入订单)
-        // TODO
-        final Queue<TradingRecord> unfinishedQueue = new LinkedList<>();
-        final Queue<TradingRecord> finishedQueue = new LinkedList<>();
+        // 使用HashMap来实现，维护一个不完整记录Map，出现卖出订单时，尝试找买入记录进行填充(卖出订单之前必然有买入订单)
+        final HashMap<String, TradingRecord> unfinishedMap = new HashMap<>(16);
+        final ArrayList<TradingRecord> finishedRecords = new ArrayList<>();
         historyOrder.forEach(orderInfo -> {
+            // 需要将多组买入和
             if ("买入".equals(orderInfo.getType())) {
-
+                final TradingRecord tradingRecord = unfinishedMap.getOrDefault(orderInfo.getCode(), getInitTradingRecord());
+                fixPropsFromBuyOrder(tradingRecord, orderInfo);
+                unfinishedMap.put(tradingRecord.getCode(), tradingRecord);
             }
             if ("卖出".equals(orderInfo.getType())) {
-
+                // 尝试找到之前的买入记录
+                final TradingRecord tradingRecord = unfinishedMap.getOrDefault(orderInfo.getCode(), getInitTradingRecord());
+                fixPropsFromBuyOrder(tradingRecord, orderInfo);
+                unfinishedMap.put(tradingRecord.getCode(), tradingRecord);
+                // 如果数据完整，转移到到另外一个完整数据集合,并移除当前Map
+                if (tradingRecord.getSaleNumber().equals(tradingRecord.getBuyNumber())) {
+                    finishedRecords.add(tradingRecord);
+                    unfinishedMap.remove(tradingRecord.getCode());
+                }
             }
         });
-        log.info("共组装成{}条交易记录，剩余{}条未完成订单", finishedQueue.size(), unfinishedQueue.size());
-        return new ArrayList<>(finishedQueue);
+        log.info("共组装成{}条交易记录，剩余{}条未完成订单", finishedRecords.size(), unfinishedMap.size());
+        return finishedRecords;
     }
 
+    private TradingRecord getInitTradingRecord() {
+        final TradingRecord tradingRecord = new TradingRecord();
+        tradingRecord.setBuyNumber(0.0);
+        tradingRecord.setBuyAmount(0.0);
+        tradingRecord.setSaleNumber(0.0);
+        tradingRecord.setSaleAmount(0.0);
+        return tradingRecord;
+    }
+
+    @SneakyThrows
     private void fixPropsFromBuyOrder(TradingRecord record, OrderInfo order) {
-        record.setBuyNo(order.getCode());
+        record.setCode(order.getCode());
+
+        record.setBuyDate(DateUtils.dateFormat.parse(order.getDate()));
         record.setBuyDateString(order.getDate());
+        // 多个订单组合price会被最新的覆盖
         record.setBuyPrice(order.getPrice());
-//        record.set(order.getPrice());
+        record.setBuyNumber(record.getBuyNumber() + order.getNumber());
+        final double amount = order.getPrice() * order.getNumber();
+        // 买入金额中包含了手续费
+        final double buyAmount = amount + dataService.getPeeAmount(amount);
+        record.setBuyAmount(record.getBuyAmount() + buyAmount);
+        record.setSold("0");
     }
 
+    @SneakyThrows
     private void fixPropsFromSaleOrder(TradingRecord record, OrderInfo order) {
-
+        record.setSaleDate(DateUtils.dateFormat.parse(order.getDate()));
+        record.setSaleDateString(order.getDate());
+        record.setSalePrice(order.getPrice());
+        record.setSaleNumber(order.getNumber());
+        final double amount = order.getPrice() * order.getNumber();
+        // 卖出金额中去除了手续费
+        final double saleAmount = amount - dataService.getPeeAmount(amount);
+        record.setBuyAmount(saleAmount);
+        record.setSold("1");
     }
 
 
