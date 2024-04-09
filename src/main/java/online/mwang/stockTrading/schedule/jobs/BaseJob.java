@@ -19,7 +19,12 @@ import javax.annotation.Resource;
  */
 @Slf4j
 @Component
-public abstract class BaseJob implements InterruptableJob {
+public abstract class
+
+
+
+
+BaseJob implements InterruptableJob {
 
     @Resource
     private QuartzJobMapper jobMapper;

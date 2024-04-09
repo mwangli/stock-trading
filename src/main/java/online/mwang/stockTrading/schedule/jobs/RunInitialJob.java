@@ -91,7 +91,7 @@ public class RunInitialJob extends BaseJob {
             if ("卖出".equals(orderInfo.getType())) {
                 // 尝试找到之前的买入记录
                 final TradingRecord tradingRecord = unfinishedMap.getOrDefault(orderInfo.getCode(), getInitTradingRecord());
-                fixPropsFromBuyOrder(tradingRecord, orderInfo);
+                fixPropsFromSaleOrder(tradingRecord, orderInfo);
                 unfinishedMap.put(tradingRecord.getCode(), tradingRecord);
                 // 如果数据完整，转移到到另外一个完整数据集合,并移除当前Map
                 if (tradingRecord.getSaleNumber().equals(tradingRecord.getBuyNumber())) {
@@ -116,7 +116,6 @@ public class RunInitialJob extends BaseJob {
     @SneakyThrows
     private void fixPropsFromBuyOrder(TradingRecord record, OrderInfo order) {
         record.setCode(order.getCode());
-
         record.setBuyDate(DateUtils.dateFormat.parse(order.getDate()));
         record.setBuyDateString(order.getDate());
         // 多个订单组合price会被最新的覆盖

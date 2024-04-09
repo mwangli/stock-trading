@@ -40,8 +40,8 @@ public class RunStockJob extends BaseJob {
         log.info("新增股票数量:{}", insertList.size());
         insertList.forEach(this::fixProps);
         stockInfoService.saveBatch(insertList);
-        log.info("删除股票数量:{}", deleteList.size());
-        stockInfoService.removeByIds(deleteList.stream().map(StockInfo::getId).collect(Collectors.toList()));
+        log.info("标记退市股票数量:{}", deleteList.size());
+        stockInfoService.updateBatchById(deleteList.stream().peek(s -> s.setDeleted("0")).collect(Collectors.toList()));
     }
 
     private void fixProps(StockInfo stockInfo) {
