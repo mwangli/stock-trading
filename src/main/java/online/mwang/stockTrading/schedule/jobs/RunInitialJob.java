@@ -46,7 +46,7 @@ public class RunInitialJob extends BaseJob {
 
     @Override
     public void run() {
-        initHistoryOrder();
+//        initHistoryOrder();
         initHistoryPriceData();
     }
 
@@ -65,8 +65,12 @@ public class RunInitialJob extends BaseJob {
     }
 
     private boolean isExist(TradingRecord record) {
-        final TradingRecord find = tradingRecordMapper.getByCodeAndDate(record.getCode(), record.getBuyDateString());
-        return find != null;
+        final LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(TradingRecord::getCode, record.getCode());
+        queryWrapper.eq(TradingRecord::getBuyDateString, record.getBuyDateString());
+        queryWrapper.eq(TradingRecord::getSaleDateString, record.getSaleDateString());
+        final List<TradingRecord> findList = tradingRecordMapper.selectList(queryWrapper);
+        return findList.size() > 0;
     }
 
     private void fixProps(TradingRecord tradingRecord) {
@@ -92,9 +96,8 @@ public class RunInitialJob extends BaseJob {
                 // 尝试找到之前的买入记录
                 final TradingRecord tradingRecord = unfinishedMap.getOrDefault(orderInfo.getCode(), getInitTradingRecord());
                 fixPropsFromSaleOrder(tradingRecord, orderInfo);
-                unfinishedMap.put(tradingRecord.getCode(), tradingRecord);
                 // 如果数据完整，转移到到另外一个完整数据集合,并移除当前Map
-                if (tradingRecord.getSaleNumber().equals(tradingRecord.getBuyNumber())) {
+                if (Math.abs(tradingRecord.getSaleNumber()) == Math.abs(tradingRecord.getBuyNumber())) {
                     finishedRecords.add(tradingRecord);
                     unfinishedMap.remove(tradingRecord.getCode());
                 }
@@ -160,11 +163,8 @@ public class RunInitialJob extends BaseJob {
                 stockHistoryPrice.setPrice4(item.getPrice4());
                 return stockHistoryPrice;
             }).collect(Collectors.toList());
-            // 先判断是否有数据存在，防止误操作写入重复数据
-            if (mongoTemplate.count(new Query(),StockHistoryPrice.class) == 0) {
-                mongoTemplate.insert(stockHistoryPrices);
-                log.info("股票[{}-{}]，历史数据写入完成！", s.getName(), s.getCode());
-            }
+            mongoTemplate.insert(stockHistoryPrices, StockHistoryPrice.class);
+            log.info("股票[{}-{}]，{}条历史数据写入完成！", s.getName(), s.getCode(), stockHistoryPrices.size());
         });
         log.info("共写入了{}支股票历史数据", stockInfoList.size());
     }
