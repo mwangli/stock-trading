@@ -46,7 +46,7 @@ BaseJob implements InterruptableJob {
         setRunningStatus(jobName, "0");
         final long end = System.currentTimeMillis();
         log.info("{} ,任务执行结束====================================", jobName);
-        log.info("{}, 任务执行耗时{}秒。", jobName, DateUtils.timeConvertor(end - start));
+        log.info("{}, 任务执行耗时{}。", jobName, DateUtils.timeConvertor(end - start));
     }
 
     @Override
