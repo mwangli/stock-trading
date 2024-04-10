@@ -46,8 +46,8 @@ public class RunInitialJob extends BaseJob {
 
     @Override
     public void run() {
-        initHistoryPriceData();
         initHistoryOrder();
+        initHistoryPriceData();
     }
 
     private void initHistoryOrder() {
@@ -160,10 +160,10 @@ public class RunInitialJob extends BaseJob {
                 stockHistoryPrice.setPrice4(item.getPrice4());
                 return stockHistoryPrice;
             }).collect(Collectors.toList());
-            String collectionName = "code_" + s.getCode();
+//            String collectionName = "code_" + s.getCode();
             // 先判断是否有数据存在，防止误操作写入重复数据
-            if (mongoTemplate.count(new Query(), collectionName) == 0) {
-                mongoTemplate.insert(stockHistoryPrices, collectionName);
+            if (mongoTemplate.count(new Query(),StockHistoryPrice.class) == 0) {
+                mongoTemplate.insert(stockHistoryPrices);
                 log.info("股票[{}-{}]，历史数据写入完成！", s.getName(), s.getCode());
             }
         });
