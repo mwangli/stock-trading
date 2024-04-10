@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IModelService;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -22,9 +23,10 @@ public class RunTrainJob extends BaseJob {
 
     @Override
     void run() {
-        Set<String> collectionNames = mongoTemplate.getCollectionNames();
-        List<StockHistoryPrice> historyPrices = new ArrayList<>();
-        collectionNames.stream().filter(c -> c.startsWith("code_")).forEach(c -> historyPrices.addAll(mongoTemplate.findAll(StockHistoryPrice.class, c)));
-        modelService.modelTrain(historyPrices);
+        final List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(new Query(), StockHistoryPrice.class);
+//        Set<String> collectionNames = mongoTemplate.getCollectionNames();
+//        List<StockHistoryPrice> historyPrices = new ArrayList<>();
+//        collectionNames.stream().filter(c -> c.startsWith("code_")).forEach(c -> historyPrices.addAll(mongoTemplate.findAll(StockHistoryPrice.class, c)));
+//        modelService.modelTrain(historyPrices);
     }
 }
