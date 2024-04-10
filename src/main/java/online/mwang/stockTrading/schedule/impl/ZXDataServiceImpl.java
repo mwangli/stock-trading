@@ -347,9 +347,7 @@ public class ZXDataServiceImpl implements IDataService {
         paramMap.put("c.tfrom", "PC");
         final JSONArray results = requestUtils.request3(buildParams(paramMap));
         final ArrayList<DailyItem> prices = new ArrayList<>();
-        // 获取最近100条历史数据
-        int startIndex = results.size() >= HISTORY_PRICE_LIMIT ? results.size() - HISTORY_PRICE_LIMIT : 0;
-        for (int i = startIndex; i < results.size(); i++) {
+        for (int i = 0; i < results.size(); i++) {
             DailyItem dailyItem = new DailyItem();
             String s = results.getString(i);
             s = s.replaceAll("\\[", "").replaceAll("]", "");
