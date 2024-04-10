@@ -3,11 +3,11 @@ spring:
     time-zone: GMT+8
   data:
     mongodb:
-      host: 112.74.187.216
+      host: ${MONGO_HOST}
       port: 27017
       database: stock-trading
       username: root
-      password: Root.123456
+      password: ${MONGO-PASS}
       authentication-database: admin
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -20,9 +20,6 @@ spring:
   redis:
     timeout: 10000
     url: redis://:${REDIS_PASS}@${REDIS_HOST}
-
-
-
     jedis:
       pool:
         #最大连接数

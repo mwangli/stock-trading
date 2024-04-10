@@ -88,8 +88,8 @@ spec:
   ports:
   - port: 80
     protocol: TCP
-    targetPort: 80
-    nodePort: 80
+    targetPort: 8000
+    nodePort: 8000
 ---
 # 镜像仓库密钥
 apiVersion: v1
