@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.po.AccountInfo;
+import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.AccountInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
@@ -61,14 +62,9 @@ public class RunCleanJob extends BaseJob {
     private void cleanHistoryPrice() {
         // 移除MongoDB中前几个的历史数据的预测价格历史数据
         // 只保留最新的三个月数据
-        final Set<String> collectionNames = mongoTemplate.getCollectionNames();
-        AtomicInteger count = new AtomicInteger();
-        collectionNames.stream().filter(s -> s.startsWith("predict")).forEach(c -> {
-            final Query query = new Query(Criteria.where("date").lt(getPreMonthDate()));
-            final List<Object> removed = mongoTemplate.findAllAndRemove(query, c);
-            count.addAndGet(removed.size());
-        });
-        log.info("共清理{}条价格预测历史数据。", count);
+        final Query query = new Query(Criteria.where("date").lt(getPreMonthDate()));
+        final List<StockHistoryPrice> remove = mongoTemplate.findAllAndRemove(query, StockHistoryPrice.class);
+        log.info("共清理{}条价格预测历史数据。", remove.size());
     }
 
     private String getPreMonthDate() {
