@@ -57,6 +57,7 @@ public class JobController {
         scheduler.scheduleJob(jobDetail, cronTrigger);
         job.setStatus("1");
         job.setDeleted("1");
+        job.setRunning("0");
         job.setCreateTime(new Date());
         job.setUpdateTime(new Date());
         return Response.success(jobMapper.insert(job));
