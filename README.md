@@ -1,7 +1,7 @@
 ## StockTrading AI小模型股票自动交易系统
 
 ### 项目文档 
-https://www.yuque.com/mwangli/kleih7/axga8dz9imansvl4
+https://www.yuque.com/mwangli/ha7323/axga8dz9imansvl4
 ### 项目展示
 [http:124.220.36.95:8000](http:124.220.36.95:8000)
 ![图片](https://cdn.nlark.com/yuque/0/2024/jpeg/410925/1712554594862-e1ca43e6-2e26-41d7-b5c0-70f4ab7b4dca.jpeg?x-oss-process=image%2Fformat%2Cwebp)
