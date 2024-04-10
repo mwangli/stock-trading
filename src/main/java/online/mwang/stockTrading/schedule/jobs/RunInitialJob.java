@@ -160,7 +160,6 @@ public class RunInitialJob extends BaseJob {
                 stockHistoryPrice.setPrice4(item.getPrice4());
                 return stockHistoryPrice;
             }).collect(Collectors.toList());
-//            String collectionName = "code_" + s.getCode();
             // 先判断是否有数据存在，防止误操作写入重复数据
             if (mongoTemplate.count(new Query(),StockHistoryPrice.class) == 0) {
                 mongoTemplate.insert(stockHistoryPrices);
