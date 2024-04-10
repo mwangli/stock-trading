@@ -36,12 +36,18 @@ public class RunStockJob extends BaseJob {
         final Set<String> toInsetCodes = newCodeSet.stream().filter(code -> !oldCodeSet.contains(code)).collect(Collectors.toSet());
         final Set<String> toDeleteCodes = oldCodeSet.stream().filter(code -> !newCodeSet.contains(code)).collect(Collectors.toSet());
         final List<StockInfo> insertList = newInfos.stream().filter(s -> toInsetCodes.contains(s.getCode())).collect(Collectors.toList());
-        final List<StockInfo> deleteList = dataList.stream().filter(s -> toDeleteCodes.contains(s.getCode())).collect(Collectors.toList());
+//        final List<StockInfo> deleteList = dataList.stream().filter(s -> toDeleteCodes.contains(s.getCode())).collect(Collectors.toList());
         log.info("新增股票数量:{}", insertList.size());
         insertList.forEach(this::fixProps);
         stockInfoService.saveBatch(insertList);
-        log.info("标记退市股票数量:{}", deleteList.size());
-        stockInfoService.updateBatchById(deleteList.stream().peek(s -> s.setDeleted("0")).collect(Collectors.toList()));
+        // 同步每只股票最新的当前价格
+        log.info("更新价格股票数量:{}", insertList.size());
+        List<StockInfo> list = dataList.stream().peek(stockInfo -> {
+            newInfos.stream().filter(info -> info.getCode().equals(stockInfo.getCode())).mapToDouble(StockInfo::getPrice).findFirst().ifPresent(stockInfo::setPrice);
+            stockInfo.setUpdateTime(new Date());
+            stockInfo.setDeleted(toDeleteCodes.contains(stockInfo.getCode()) ? "0" : "1");
+        }).collect(Collectors.toList());
+        stockInfoService.updateBatchById(list);
     }
 
     private void fixProps(StockInfo stockInfo) {
