@@ -46,7 +46,7 @@ public class RunHistoryJob extends BaseJob {
 
     @SneakyThrows
     public void writeHistoryPriceDataToMongo(StockInfo stockInfo) {
-        List<DailyItem> historyPrices = dataService. getHistoryPrices(stockInfo.getCode());
+        List<DailyItem> historyPrices = dataService.getHistoryPrices(stockInfo.getCode());
         List<StockHistoryPrice> stockHistoryPriceList = historyPrices.stream().map(item -> {
             StockHistoryPrice stockHistoryPrice = new StockHistoryPrice();
             stockHistoryPrice.setName(stockInfo.getName());
@@ -64,16 +64,15 @@ public class RunHistoryJob extends BaseJob {
             // 先查询是否已经存在相同记录
             Query query = new Query(Criteria.where("date").is(s.getDate()).and("code").is(s.getCode()));
 //            // 每只股票写入不同的表
-            String collectionName = "code_" + s.getCode();
-            StockHistoryPrice one = mongoTemplate.findOne(query, StockHistoryPrice.class,collectionName);
+            StockHistoryPrice one = mongoTemplate.findOne(query, StockHistoryPrice.class);
             if (Objects.isNull(one)) {
-                mongoTemplate.save(s,collectionName);
+                mongoTemplate.save(s);
                 log.info("当前股票{}-{}-{}，历史数据写入完成", s.getName(), s.getCode(), s.getDate());
             } else {
                 if (one.getPrice3() == null || one.getPrice4() == null) {
                     log.info("当前股票{}-{}-{}，历史数据不完整进行修改操作", s.getName(), s.getCode(), s.getDate());
                     Update update = new Update().set("price3", one.getPrice3()).set("price4", one.getPrice3());
-                    mongoTemplate.updateFirst(query, update, StockHistoryPrice.class,collectionName);
+                    mongoTemplate.updateFirst(query, update, StockHistoryPrice.class);
                 } else {
                     // 数据完整，则跳过后续处理
                     break;
