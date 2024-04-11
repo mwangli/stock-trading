@@ -1,4 +1,4 @@
-package online.mwang.stockTrading.model.data;
+package online.mwang.stockTrading.model.representation;
 
 /**
  * Created by zhanghao on 28/9/17.

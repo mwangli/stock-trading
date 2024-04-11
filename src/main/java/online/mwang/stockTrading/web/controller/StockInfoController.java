@@ -7,9 +7,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.base.Response;
+import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.query.StockInfoQuery;
 import online.mwang.stockTrading.web.service.StockInfoService;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,6 +33,7 @@ public class StockInfoController {
 
     private final static String ASCEND = "ascend";
     private final StockInfoService stockInfoService;
+    private final MongoTemplate mongoTemplate;
 
     @GetMapping("/list")
     public Response<List<StockInfo>> listStockInfo(StockInfoQuery query) {
@@ -58,5 +62,20 @@ public class StockInfoController {
 //            o.setMinIncrease(minRate);
 //        }).collect(Collectors.toList());
         return Response.success(pageResult.getRecords(), pageResult.getTotal());
+    }
+
+
+    @GetMapping("/listHistoryPrices")
+    public Response<List<StockHistoryPrice>> listHistoryPrices(StockInfoQuery query) {
+        String stockCode = query.getCode();
+        List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(new Query(), StockHistoryPrice.class, "historyPrices_" + stockCode);
+        return Response.success(stockHistoryPrices);
+    }
+
+    @GetMapping("/listTestPrices")
+    public Response<List<StockHistoryPrice>> listTestPrices(StockInfoQuery query) {
+        String stockCode = query.getCode();
+        List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(new Query(), StockHistoryPrice.class, "testPrices_" + stockCode);
+        return Response.success(stockHistoryPrices);
     }
 }

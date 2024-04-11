@@ -18,10 +18,12 @@ import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
 import java.util.stream.Collectors;
 
 /**
@@ -67,8 +69,9 @@ public class RunInitialJob extends BaseJob {
     private boolean isExist(TradingRecord record) {
         final LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(TradingRecord::getCode, record.getCode());
-        queryWrapper.eq(TradingRecord::getBuyDateString, record.getBuyDateString());
-        queryWrapper.eq(TradingRecord::getSaleDateString, record.getSaleDateString());
+        queryWrapper.eq(TradingRecord::getBuyNo, record.getBuyNo());
+//        queryWrapper.eq(TradingRecord::getBuyDateString, record.getBuyDateString());
+//        queryWrapper.eq(TradingRecord::getSaleDateString, record.getSaleDateString());
         final List<TradingRecord> findList = tradingRecordMapper.selectList(queryWrapper);
         return findList.size() > 0;
     }
@@ -90,12 +93,16 @@ public class RunInitialJob extends BaseJob {
             if ("买入".equals(orderInfo.getType())) {
                 final TradingRecord tradingRecord = unfinishedMap.getOrDefault(orderInfo.getCode(), getInitTradingRecord());
                 fixPropsFromBuyOrder(tradingRecord, orderInfo);
+                tradingRecord.setName(orderInfo.getName());
+                tradingRecord.setCode(orderInfo.getCode());
+                tradingRecord.setBuyNo(orderInfo.getAnswerNo());
                 unfinishedMap.put(tradingRecord.getCode(), tradingRecord);
             }
             if ("卖出".equals(orderInfo.getType())) {
                 // 尝试找到之前的买入记录
                 final TradingRecord tradingRecord = unfinishedMap.getOrDefault(orderInfo.getCode(), getInitTradingRecord());
                 fixPropsFromSaleOrder(tradingRecord, orderInfo);
+                tradingRecord.setSaleNo(orderInfo.getAnswerNo());
                 // 如果数据完整，转移到到另外一个完整数据集合,并移除当前Map
                 if (Math.abs(tradingRecord.getSaleNumber()) == Math.abs(tradingRecord.getBuyNumber())) {
                     finishedRecords.add(tradingRecord);
@@ -163,7 +170,7 @@ public class RunInitialJob extends BaseJob {
                 stockHistoryPrice.setPrice4(item.getPrice4());
                 return stockHistoryPrice;
             }).collect(Collectors.toList());
-            mongoTemplate.insert(stockHistoryPrices, StockHistoryPrice.class);
+            mongoTemplate.insert(stockHistoryPrices, "historyPrices_" + s.getCode());
             log.info("股票[{}-{}]，{}条历史数据写入完成！", s.getName(), s.getCode(), stockHistoryPrices.size());
         });
         log.info("共写入了{}支股票历史数据", stockInfoList.size());

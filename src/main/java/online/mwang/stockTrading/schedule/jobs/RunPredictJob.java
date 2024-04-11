@@ -46,10 +46,12 @@ public class RunPredictJob extends BaseJob {
         List<StockHistoryPrice> newHistoryPrice = collectionNames.stream().filter(c -> c.startsWith("code_")).map(c ->
                 mongoTemplate.findOne(new Query(), StockHistoryPrice.class, c)
         ).collect(Collectors.toList());
+//        List<StockInfo> stockInfos = stockInfoService.list(new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getDeleted, "1"));
+//        stockInfos.
         // 完成预测后，写入mongo中不同的collection
         List<PredictPrice> predictPrices = newHistoryPrice.stream().map(modelService::modelPredict).collect(Collectors.toList());
         predictPrices.forEach(this::fxiProps);
-        predictPrices.forEach(p -> mongoTemplate.save(p, "predict_" + p.getStockCode()));
+        predictPrices.forEach(p -> mongoTemplate.insert(p, "predictPrices_" + p.getStockCode()));
         // 更新评分数据
         updateScore(predictPrices);
 

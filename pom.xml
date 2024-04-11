@@ -252,6 +252,11 @@
             <artifactId>jfreechart</artifactId>
             <version>${jfreechart.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-base</artifactId>
+            <version>11</version>
+        </dependency>
         <!--        <dependency>-->
         <!--            <groupId>com.google.code.gson</groupId>-->
         <!--            <artifactId>gson</artifactId>-->
