@@ -19,7 +19,7 @@ public interface IModelService {
     /**
      * 模型训练，增量训练或者初始化训练
      */
-    void modelTrain(List<StockHistoryPrice> historyPrices);
+    List<PredictPrice> modelTrain(List<StockHistoryPrice> historyPrices, String stockCode);
 
     /**
      * 模型预测

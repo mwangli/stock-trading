@@ -8,9 +8,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import online.mwang.stockTrading.schedule.IDataService;
 import online.mwang.stockTrading.web.bean.base.Response;
-import online.mwang.stockTrading.web.bean.vo.AnalysisData;
-import online.mwang.stockTrading.web.bean.po.*;
+import online.mwang.stockTrading.web.bean.po.AccountInfo;
+import online.mwang.stockTrading.web.bean.po.StockInfo;
+import online.mwang.stockTrading.web.bean.po.TradingRecord;
 import online.mwang.stockTrading.web.bean.query.FoundTradingQuery;
+import online.mwang.stockTrading.web.bean.vo.AnalysisData;
 import online.mwang.stockTrading.web.bean.vo.Point;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
@@ -122,18 +124,21 @@ public class TradingRecordController {
     }
 
     private List<TradingRecord> getExpectedIncome() {
-        return tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().peek(record -> {
-            final StockInfo stockInfo = stockInfoMapper.selectByCode(record.getCode());
-            if (stockInfo != null) {
-                record.setName(record.getCode().concat("-").concat(record.getName()));
-                record.setSalePrice(stockInfo.getPrice());
-                final double amount = record.getBuyNumber() * record.getSalePrice();
-                final double saleAmount = amount - dataService.getPeeAmount(amount);
-                record.setIncome(saleAmount - record.getBuyAmount());
-                record.setIncomeRate(record.getIncome() / record.getBuyAmount() * 100);
-//                record.setDailyIncomeRate(record.getIncomeRate() / Math.max(record.getHoldDays(), 1));
-            }
-        }).sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).collect(Collectors.toList());
+//        List<StockInfo> stockInfos = stockInfoMapper.selectList(new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getDeleted, "1"));
+//        stockInfos.
+//        return tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().peek(record -> {
+//            final StockInfo stockInfo = stockInfoMapper.selectByCode(record.getCode());
+//            if (stockInfo != null) {
+//                record.setName(record.getCode().concat("-").concat(record.getName()));
+//                record.setSalePrice(stockInfo.getPrice());
+//                final double amount = record.getBuyNumber() * record.getSalePrice();
+//                final double saleAmount = amount - dataService.getPeeAmount(amount);
+//                record.setIncome(saleAmount - record.getBuyAmount());
+//                record.setIncomeRate(record.getIncome() / record.getBuyAmount() * 100);
+////                record.setDailyIncomeRate(record.getIncomeRate() / Math.max(record.getHoldDays(), 1));
+//            }
+//        }).sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).collect(Collectors.toList());
+        return null;
     }
 
     private AccountInfo getAccountAmount(AccountInfo accountInfo) {
