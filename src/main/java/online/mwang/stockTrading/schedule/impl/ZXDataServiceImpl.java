@@ -64,6 +64,7 @@ public class ZXDataServiceImpl implements IDataService {
         paramMap.put("newindex", "1");
         paramMap.put("MobileCode", "13278828091");
         paramMap.put("intacttoserver", "@ClZvbHVtZUluZm8JAAAANTI1QS00Qjc4");
+        paramMap.put("reqno", System.currentTimeMillis());
         return paramMap;
     }
 
@@ -369,8 +370,7 @@ public class ZXDataServiceImpl implements IDataService {
     }
 
     // 获取历史订单
-    @Override
-    public List<OrderInfo> getHistoryOrder() {
+    public List<OrderInfo> getHistoryOrder(Integer begin, Integer end) {
         final String token = getToken();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", 115);
@@ -378,9 +378,26 @@ public class ZXDataServiceImpl implements IDataService {
         paramMap.put("StartPos", 0);
         paramMap.put("MaxCount", 500);
         paramMap.put("token", token);
-        paramMap.put("reqno", System.currentTimeMillis());
-        final JSONArray results = requestUtils.request2(buildParams(paramMap));
+        paramMap.put("BeginDate", begin);
+        paramMap.put("EndDate", end);
+        final String url = RequestUtils.REQUEST_URL + "?datetype=1#?begindate=" + begin + "&enddate=" + end;
+        final JSONArray results = requestUtils.request2(buildParams(paramMap), url);
         return arrayToOrderList(results, false);
+    }
+
+    @Override
+    // 获取历史订单 平台限制最大只能获取一年跨度
+    public List<OrderInfo> getHistoryOrder() {
+        // 获取自2023年后历史订
+        int startDate = 20230101;
+        int endDate = 20240101;
+        final ArrayList<OrderInfo> orderInfos = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            startDate += i * 10000;
+            endDate += i * 10000;
+            orderInfos.addAll(getHistoryOrder(startDate, endDate));
+        }
+        return orderInfos;
     }
 
     // 获取今日成交订单

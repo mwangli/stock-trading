@@ -1,6 +1,7 @@
 package online.mwang.stockTrading.model.predict;
 
 
+import com.alibaba.fastjson.JSON;
 import javafx.util.Pair;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -24,6 +25,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.BindException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -72,20 +74,22 @@ public class StockPricePrediction implements IModelService {
         }
 
         log.info("Saving model...");
-        File locationToSave = new File("src/main/resources/model/model_".concat(stockCode).concat(".zip"));
+        File locationToSave = new File("/model/model_".concat(stockCode).concat(".zip"));
 //         //saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
+        final File parentFile = locationToSave.getParentFile();
+        if (!parentFile.exists() && !parentFile.mkdirs()) throw new RuntimeException("文件夹创建失败!");
         ModelSerializer.writeModel(net, locationToSave, true);
 
-        log.info("Load model...");
-        net = ModelSerializer.restoreMultiLayerNetwork(locationToSave);
+//        log.info("Load model...");
+//        net = ModelSerializer.restoreMultiLayerNetwork(locationToSave);
 
         log.info("Testing...");
 //        if (category.equals(PriceCategory.ALL)) {
         INDArray max = Nd4j.create(iterator.getMaxArray());
         INDArray min = Nd4j.create(iterator.getMinArray());
 
-        redisTemplate.opsForHash().put("minMaxArray_" + stockCode, "min", iterator.getMinArray());
-        redisTemplate.opsForHash().put("minMaxArray_" + stockCode, "max", iterator.getMaxArray());
+        redisTemplate.opsForHash().put("minMaxArray_" + stockCode, "min", JSON.toJSONString(iterator.getMinArray()));
+        redisTemplate.opsForHash().put("minMaxArray_" + stockCode, "max", JSON.toJSONString(iterator.getMaxArray()));
 
         return predictAllCategories(net, test, iterator.getDateList(), stockCode, max, min);
 //        } else {
@@ -119,27 +123,14 @@ public class StockPricePrediction implements IModelService {
      * Predict all the features (open, close, low, high prices and volume) of a stock one-day ahead
      */
     private List<PredictPrice> predictAllCategories(MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, List<String> dateList, String stockCode, INDArray max, INDArray min) {
+        log.info("dataList={}", dateList);
         INDArray[] predicts = new INDArray[testData.size()];
         INDArray[] actuals = new INDArray[testData.size()];
-
+        final List<PredictPrice> predictPrices = new ArrayList();
         for (int i = 0; i < testData.size(); i++) {
             predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getRow(exampleLength - 1).mul(max.sub(min)).add(min);
             actuals[i] = testData.get(i).getValue();
-        }
-        log.info("Print out Predictions and Actual Values...");
-        log.info("Predict\tActual");
-        for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "\t" + actuals[i]);
-        log.info("Plot...");
-//        for (int n = 0; n < 5; n++) {
-
-        ArrayList<PredictPrice> predictPrices = new ArrayList<>();
-//        for (int n = 0; n < 2; n++) {
-        double[] pred = new double[predicts.length];
-        double[] actu = new double[actuals.length];
-        PredictPrice predictPrice = new PredictPrice();
-        for (int i = 0; i < predicts.length; i++) {
-//                pred[i] = predicts[i].getDouble(n);
-//                actu[i] = actuals[i].getDouble(n);
+            final PredictPrice predictPrice = new PredictPrice();
             predictPrice.setPredictPrice1(predicts[i].getDouble(0));
             predictPrice.setActualPrice1(actuals[i].getDouble(0));
             predictPrice.setPredictPrice2(predicts[i].getDouble(1));
@@ -150,7 +141,21 @@ public class StockPricePrediction implements IModelService {
             predictPrice.setUpdateTime(new Date());
             predictPrices.add(predictPrice);
         }
-//            String name;
+        log.info("Print out Predictions and Actual Values...");
+        log.info("Predict\tActual");
+        for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "\t" + actuals[i]);
+//        log.info("Plot...");
+//        for (int n = 0; n < 5; n++) {
+
+//        for (int n = 0; n < 2; n++) {
+//        double[] pred = new double[predicts.length];
+//        double[] actu = new double[actuals.length];
+//        for (int i = 0; i < predicts.length; i++) {
+////                pred[i] = predicts[i].getDouble(n);
+////                actu[i] = actuals[i].getDouble(n);
+//
+//        }
+////            String name;
 //            switch (n) {
 //                case 0: name = "Stock OPEN Price"; break;
 //                case 1: name = "Stock CLOSE Price"; break;
@@ -166,9 +171,9 @@ public class StockPricePrediction implements IModelService {
 
     @SneakyThrows
     private PredictPrice predictOneHead(String stockCode, List<StockHistoryPrice> historyPrices) {
-        if (historyPrices.size() != exampleLength) throw new BusinessException("价格补偿错误！");
+        if (historyPrices.size() != exampleLength) throw new BusinessException("价格数据错误！");
 
-        File locationToSave = new File("src/main/resources/model/model_".concat(stockCode).concat(".zip"));
+        File locationToSave = new File("/model/model_".concat(stockCode).concat(".zip"));
 //         //saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
 //        ModelSerializer.writeModel(net, locationToSave, true);
 
@@ -183,7 +188,7 @@ public class StockPricePrediction implements IModelService {
         for (int i = 0; i < historyPrices.size(); i += 2) {
             StockHistoryPrice historyPrice = historyPrices.get(i);
             input[i] = (historyPrice.getPrice1() - minArray[0]) / (maxArray[0] - minArray[0]);
-            input[i + 1] = (historyPrice.getPrice2() - minArray[1]) / (maxArray[1] - minArray[1]) ;
+            input[i + 1] = (historyPrice.getPrice2() - minArray[1]) / (maxArray[1] - minArray[1]);
         }
         INDArray inputArray = Nd4j.create(input, new int[]{0, 22, 2});
         INDArray output = net.rnnTimeStep(inputArray);
@@ -192,7 +197,7 @@ public class StockPricePrediction implements IModelService {
         PredictPrice predictPrice = new PredictPrice();
         // TODO scaler
         predictPrice.setPredictPrice1(predictPrice1 * (maxArray[0] - minArray[0]) + minArray[0]);
-        predictPrice.setPredictPrice2(predictPrice2* (maxArray[1] - minArray[1]) + minArray[1]);
+        predictPrice.setPredictPrice2(predictPrice2 * (maxArray[1] - minArray[1]) + minArray[1]);
         predictPrice.setStockCode(stockCode);
 //        predictPrice.setDate(stockCode);
         return predictPrice;
@@ -250,7 +255,8 @@ public class StockPricePrediction implements IModelService {
     @SneakyThrows
     @Override
     public List<PredictPrice> modelTrain(List<StockHistoryPrice> historyPrices, String stockCode) {
-        List<StockData> dataList = historyPrices.stream().map(s -> {
+        final ArrayList<StockData> dataList = new ArrayList<>();
+        for (StockHistoryPrice s : historyPrices) {
             StockData stockData = new StockData();
             stockData.setDate(s.getDate());
             stockData.setSymbol(s.getCode());
@@ -258,8 +264,8 @@ public class StockPricePrediction implements IModelService {
             stockData.setClose(s.getPrice2() == null ? 0 : s.getPrice2());
             stockData.setHigh(s.getPrice3() == null ? 0 : s.getPrice3());
             stockData.setLow(s.getPrice4() == null ? 0 : s.getPrice4());
-            return stockData;
-        }).collect(Collectors.toList());
+            dataList.add(stockData);
+        }
         return train(dataList, stockCode);
     }
 
@@ -271,7 +277,7 @@ public class StockPricePrediction implements IModelService {
         List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(query, StockHistoryPrice.class, "historyPrices_" + code);
 //        stockHistoryPrices.add(historyPrice);
         PredictPrice predictPrice = predictOneHead(code, stockHistoryPrices);
-        log.info("当前股票预测价格为：{},{}",predictPrice.getPredictPrice1(),predictPrice.getPredictPrice2());
+        log.info("当前股票预测价格为：{},{}", predictPrice.getPredictPrice1(), predictPrice.getPredictPrice2());
         return predictPrice;
     }
 }

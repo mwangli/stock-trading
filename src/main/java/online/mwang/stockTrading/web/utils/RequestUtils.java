@@ -2,6 +2,7 @@ package online.mwang.stockTrading.web.utils;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
@@ -10,7 +11,8 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
-import org.springframework.context.ApplicationContext;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
@@ -24,14 +26,15 @@ import java.util.HashMap;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class RequestUtils {
 
-    private static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
-
-    private static final int RETRY_TIMES = 10;
+    public static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
     public boolean logs = false;
-    @Resource
-    ApplicationContext applicationContext;
+    private final StringRedisTemplate redisTemplate;
+
+    @Value("${PROFILE}")
+    private String profile;
 
     @SneakyThrows
     public JSONObject request(String url, HashMap<String, Object> formParam) {
@@ -44,7 +47,7 @@ public class RequestUtils {
             post.setEntity(entityBuilder.build());
             CloseableHttpResponse response = client.execute(post);
             result = EntityUtils.toString(response.getEntity());
-            if (logs) log.info(result);
+            if ("dev".equalsIgnoreCase(profile)) log.info(result);
             return JSONObject.parseObject(result);
         } catch (Exception e) {
             log.info("请求失败，返回数据为：{}", result);
@@ -61,6 +64,21 @@ public class RequestUtils {
     @SneakyThrows
     public JSONArray request2(HashMap<String, Object> formParam) {
         JSONObject res = request(REQUEST_URL, formParam);
+        if ("-204009".equals(res.getString("ERRORNO"))) {
+            log.info("TOKEN已经失效，正在重新登录...");
+            redisTemplate.opsForValue().getAndDelete("requestToken");
+            res = request(REQUEST_URL, formParam);
+        }
+        return res.getJSONArray("GRID0");
+    }
+
+    public JSONArray request2(HashMap<String, Object> formParam,String url) {
+        JSONObject res = request(url, formParam);
+        if ("-204009".equals(res.getString("ERRORNO"))) {
+            log.info("TOKEN已经失效，正在重新登录...");
+            redisTemplate.opsForValue().getAndDelete("requestToken");
+            res = request(REQUEST_URL, formParam);
+        }
         return res.getJSONArray("GRID0");
     }
 
