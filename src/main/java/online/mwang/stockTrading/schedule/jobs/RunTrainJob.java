@@ -13,9 +13,11 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
@@ -25,6 +27,7 @@ public class RunTrainJob extends BaseJob {
     private final IModelService modelService;
     private final MongoTemplate mongoTemplate;
     private final StockInfoService stockInfoService;
+    private final StringRedisTemplate redisTemplate;
 
 
     @Override
@@ -37,6 +40,11 @@ public class RunTrainJob extends BaseJob {
         final List<StockInfo> list = stockInfoService.list(queryWrapper);
         log.info("共获取{}条待训练股票.", list.size());
         for (StockInfo s : list) {
+            String key = redisTemplate.opsForValue().get("model_" + s.getCode());
+            if (key != null) {
+                log.info("股票[{}-{}],近一个月内已经训练过模型了,跳过训练...", s.getName(), s.getCode());
+                continue;
+            }
             log.info("股票[{}-{}],模型训练开始...", s.getName(), s.getCode());
             long start = System.currentTimeMillis();
             String stockCode = s.getCode();
@@ -55,6 +63,7 @@ public class RunTrainJob extends BaseJob {
             log.info("股票[{}-{}],新写入{}条测试集数据", s.getName(), stockCode, stockTestPrices.size());
             long end = System.currentTimeMillis();
             log.info("股票[{}-{}],模型训练完成，共耗时:{}", s.getName(), stockCode, DateUtils.timeConvertor(end - start));
+            redisTemplate.opsForValue().set("model_" + s.getCode(), s.getCode(), 30, TimeUnit.DAYS);
 
         }
     }
