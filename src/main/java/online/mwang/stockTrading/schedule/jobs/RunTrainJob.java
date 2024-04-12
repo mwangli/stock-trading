@@ -13,7 +13,9 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -39,9 +41,13 @@ public class RunTrainJob extends BaseJob {
             long start = System.currentTimeMillis();
             String stockCode = s.getCode();
             String collectionName = "historyPrices_" + stockCode;
-            List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(new Query(), StockHistoryPrice.class, collectionName);
-            log.info("股票[{}-{}],训练数据集大小为:{}", s.getName(), s.getCode(), stockHistoryPrices.size());
-            List<PredictPrice> predictPrices = modelService.modelTrain(stockHistoryPrices, stockCode);
+            List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.findAll(StockHistoryPrice.class, collectionName);
+            final List<StockHistoryPrice> collect = stockHistoryPrices.stream().distinct().sorted(Comparator.comparing(StockHistoryPrice::getDate)).collect(Collectors.toList());
+            log.info("股票[{}-{}],训练数据集大小为:{}", s.getName(), s.getCode(), collect.size());
+            List<PredictPrice> predictPrices = modelService.modelTrain(collect, stockCode);
+
+//            mongoTemplate.getCollectionNames().stream().filter(c->c.startsWith("testPrices_")).forEach(mongoTemplate::dropCollection);
+
             String testCollectionName = "testPrices_" + stockCode;
             List<Object> remove = mongoTemplate.findAllAndRemove(new Query(), testCollectionName);
             log.info("股票[{}-{}],清除{}条废弃测试集数据", s.getName(), stockCode, remove.size());

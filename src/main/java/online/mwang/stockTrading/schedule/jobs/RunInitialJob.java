@@ -18,6 +18,7 @@ import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -48,8 +49,33 @@ public class RunInitialJob extends BaseJob {
 
     @Override
     public void run() {
-        initHistoryOrder();
-//        initHistoryPriceData();
+//        initHistoryOrder();
+        initHistoryPriceData();
+    }
+
+    private void initHistoryPriceData() {
+        // 首次初始化执行，写入4000支股票，每只股票约500条数据
+        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(StockInfo::getDeleted, 1);
+        List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
+        stockInfoList.forEach(s -> {
+            List<DailyItem> historyPrices = dataService.getHistoryPrices(s.getCode());
+            List<StockHistoryPrice> stockHistoryPrices = historyPrices.stream().map(item -> {
+                StockHistoryPrice stockHistoryPrice = new StockHistoryPrice();
+                stockHistoryPrice.setName(s.getName());
+                stockHistoryPrice.setCode(s.getCode());
+                stockHistoryPrice.setDate(item.getDate());
+                stockHistoryPrice.setPrice1(item.getPrice1());
+                stockHistoryPrice.setPrice2(item.getPrice2());
+                stockHistoryPrice.setPrice3(item.getPrice3());
+                stockHistoryPrice.setPrice4(item.getPrice4());
+                return stockHistoryPrice;
+            }).collect(Collectors.toList());
+            final String collectionName = "historyPrices_" + s.getCode();
+            mongoTemplate.insert(stockHistoryPrices, collectionName);
+            log.info("股票[{}-{}]，{}条历史数据写入完成！", s.getName(), s.getCode(), stockHistoryPrices.size());
+        });
+        log.info("共写入了{}支股票历史数据", stockInfoList.size());
     }
 
     private void initHistoryOrder() {
@@ -149,30 +175,5 @@ public class RunInitialJob extends BaseJob {
         final double saleAmount = amount - dataService.getPeeAmount(amount);
         record.setBuyAmount(saleAmount);
         record.setSold("1");
-    }
-
-
-    private void initHistoryPriceData() {
-        // 首次初始化执行，写入4000支股票，每只股票约500条数据
-        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(StockInfo::getDeleted, 1);
-        List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
-        stockInfoList.forEach(s -> {
-            List<DailyItem> historyPrices = dataService.getHistoryPrices(s.getCode());
-            List<StockHistoryPrice> stockHistoryPrices = historyPrices.stream().map(item -> {
-                StockHistoryPrice stockHistoryPrice = new StockHistoryPrice();
-                stockHistoryPrice.setName(s.getName());
-                stockHistoryPrice.setCode(s.getCode());
-                stockHistoryPrice.setDate(item.getDate());
-                stockHistoryPrice.setPrice1(item.getPrice1());
-                stockHistoryPrice.setPrice2(item.getPrice2());
-                stockHistoryPrice.setPrice3(item.getPrice3());
-                stockHistoryPrice.setPrice4(item.getPrice4());
-                return stockHistoryPrice;
-            }).collect(Collectors.toList());
-            mongoTemplate.insert(stockHistoryPrices, "historyPrices_" + s.getCode());
-            log.info("股票[{}-{}]，{}条历史数据写入完成！", s.getName(), s.getCode(), stockHistoryPrices.size());
-        });
-        log.info("共写入了{}支股票历史数据", stockInfoList.size());
     }
 }

@@ -19,6 +19,7 @@ public class Point {
     private String z;
     private String t;
     private String s;
+    private String type;
 
     public Point(String x, Double y) {
         this.x = x;

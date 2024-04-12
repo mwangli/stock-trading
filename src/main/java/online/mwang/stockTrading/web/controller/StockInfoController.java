@@ -7,9 +7,11 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.base.Response;
+import online.mwang.stockTrading.web.bean.po.PredictPrice;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.query.StockInfoQuery;
+import online.mwang.stockTrading.web.bean.vo.Point;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -73,9 +76,19 @@ public class StockInfoController {
     }
 
     @GetMapping("/listTestPrices")
-    public Response<List<StockHistoryPrice>> listTestPrices(StockInfoQuery query) {
+    public Response<List<Point>> listTestPrices(StockInfoQuery query) {
         String stockCode = query.getCode();
-        List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(new Query(), StockHistoryPrice.class, "testPrices_" + stockCode);
-        return Response.success(stockHistoryPrices);
+        String collectionName = "testPrices_" + stockCode;
+        List<PredictPrice> stockHistoryPrices = mongoTemplate.find(new Query(), PredictPrice.class, collectionName);
+        final ArrayList<Point> points = new ArrayList<>();
+        stockHistoryPrices.forEach(s -> {
+            final Point point1 = new Point(s.getDate(), s.getActualPrice1());
+            final Point point2 = new Point(s.getDate(), s.getPredictPrice1());
+            point1.setType("实际开盘价");
+            point1.setType("预测开盘价");
+            points.add(point1);
+            points.add(point2);
+        });
+        return Response.success(points);
     }
 }
