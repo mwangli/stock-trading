@@ -13,7 +13,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @Data
 @EqualsAndHashCode(exclude = {"id"})
 @Document
-public class StockHistoryPrice {
+public class StockPredictPrice {
     @Id
     private String id;
     @Indexed(unique = true)

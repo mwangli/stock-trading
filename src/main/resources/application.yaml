@@ -9,6 +9,7 @@ spring:
       username: root
       password: Root.123456
       authentication-database: admin
+      auto-index-creation: true
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root

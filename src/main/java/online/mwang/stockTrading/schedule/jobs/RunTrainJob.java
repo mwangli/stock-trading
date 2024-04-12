@@ -9,7 +9,9 @@ import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
@@ -40,18 +42,14 @@ public class RunTrainJob extends BaseJob {
             log.info("股票[{}-{}],模型训练开始...", s.getName(), s.getCode());
             long start = System.currentTimeMillis();
             String stockCode = s.getCode();
-            String collectionName = "historyPrices_" + stockCode;
-            List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.findAll(StockHistoryPrice.class, collectionName);
-            final List<StockHistoryPrice> collect = stockHistoryPrices.stream().distinct().sorted(Comparator.comparing(StockHistoryPrice::getDate)).collect(Collectors.toList());
-            log.info("股票[{}-{}],训练数据集大小为:{}", s.getName(), s.getCode(), collect.size());
-            List<PredictPrice> predictPrices = modelService.modelTrain(collect, stockCode);
-
-//            mongoTemplate.getCollectionNames().stream().filter(c->c.startsWith("testPrices_")).forEach(mongoTemplate::dropCollection);
-
-            String testCollectionName = "testPrices_" + stockCode;
-            List<Object> remove = mongoTemplate.findAllAndRemove(new Query(), testCollectionName);
+            final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC));
+            List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(query, StockHistoryPrice.class);
+            log.info("股票[{}-{}],训练数据集大小为:{}", s.getName(), s.getCode(), stockHistoryPrices.size());
+            List<PredictPrice> predictPrices = modelService.modelTrain(stockHistoryPrices, stockCode);
+            final Query deleteQuery = new Query(Criteria.where("code").is(s.getCode()));
+            final List<PredictPrice> remove = mongoTemplate.findAllAndRemove(deleteQuery, PredictPrice.class);
             log.info("股票[{}-{}],清除{}条废弃测试集数据", s.getName(), stockCode, remove.size());
-            mongoTemplate.insert(predictPrices, testCollectionName);
+            mongoTemplate.insert(predictPrices);
             log.info("股票[{}-{}],新写入{}条测试集数据", s.getName(), stockCode, predictPrices.size());
             long end = System.currentTimeMillis();
             log.info("股票[{}-{}],模型训练完成，共耗时:{}", s.getName(), stockCode, DateUtils.timeConvertor(end - start));

@@ -71,8 +71,7 @@ public class RunInitialJob extends BaseJob {
                 stockHistoryPrice.setPrice4(item.getPrice4());
                 return stockHistoryPrice;
             }).collect(Collectors.toList());
-            final String collectionName = "historyPrices_" + s.getCode();
-            mongoTemplate.insert(stockHistoryPrices, collectionName);
+            mongoTemplate.insert(stockHistoryPrices, StockHistoryPrice.class);
             log.info("股票[{}-{}]，{}条历史数据写入完成！", s.getName(), s.getCode(), stockHistoryPrices.size());
         });
         log.info("共写入了{}支股票历史数据", stockInfoList.size());
