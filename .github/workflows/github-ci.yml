@@ -1,9 +1,9 @@
 name: deploy
 
-on:
-  push:
-    tags:
-      - 'v*.*.*'
+on: [push]
+  #push:
+  #  tags:
+  #   - 'v*.*.*'
 
 jobs:
   build:

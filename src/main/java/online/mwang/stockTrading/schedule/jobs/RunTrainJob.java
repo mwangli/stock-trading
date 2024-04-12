@@ -36,13 +36,17 @@ public class RunTrainJob extends BaseJob {
         queryWrapper.le(StockInfo::getPrice, 20);
         final List<StockInfo> list = stockInfoService.list(queryWrapper);
         log.info("共获取{}条待训练股票.", list.size());
-        list.forEach(s -> {
+        for (StockInfo s : list) {
             log.info("股票[{}-{}],模型训练开始...", s.getName(), s.getCode());
             long start = System.currentTimeMillis();
             String stockCode = s.getCode();
             final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
             List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(query, StockHistoryPrice.class);
             log.info("股票[{}-{}],训练数据集大小为:{}", s.getName(), s.getCode(), stockHistoryPrices.size());
+            if (stockHistoryPrices.size() == 0) {
+                log.info("未获取到训练数据集，跳过训练！");
+                continue;
+            }
             List<StockTestPrice> stockTestPrices = modelService.modelTrain(stockHistoryPrices, stockCode);
             final Query deleteQuery = new Query(Criteria.where("code").is(s.getCode()));
             final List<StockTestPrice> remove = mongoTemplate.findAllAndRemove(deleteQuery, StockTestPrice.class);
@@ -51,6 +55,7 @@ public class RunTrainJob extends BaseJob {
             log.info("股票[{}-{}],新写入{}条测试集数据", s.getName(), stockCode, stockTestPrices.size());
             long end = System.currentTimeMillis();
             log.info("股票[{}-{}],模型训练完成，共耗时:{}", s.getName(), stockCode, DateUtils.timeConvertor(end - start));
-        });
+
+        }
     }
 }
