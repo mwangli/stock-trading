@@ -1,10 +1,12 @@
 package online.mwang.stockTrading.schedule.jobs;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IModelService;
 import online.mwang.stockTrading.web.bean.po.PredictPrice;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
+import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -25,7 +27,14 @@ public class RunTrainJob extends BaseJob {
 
     @Override
     void run() {
-        stockInfoService.list().forEach(s -> {
+        final LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(StockInfo::getDeleted, "1");
+        queryWrapper.eq(StockInfo::getPermission, "1");
+        queryWrapper.ge(StockInfo::getPrice, 10);
+        queryWrapper.le(StockInfo::getPrice, 20);
+        final List<StockInfo> list = stockInfoService.list(queryWrapper);
+        log.info("共获取{}条待训练股票.", list.size());
+        list.forEach(s -> {
             log.info("股票[{}-{}],模型训练开始...", s.getName(), s.getCode());
             long start = System.currentTimeMillis();
             String stockCode = s.getCode();

@@ -48,8 +48,8 @@ public class RunInitialJob extends BaseJob {
 
     @Override
     public void run() {
-//        initHistoryOrder();
-        initHistoryPriceData();
+        initHistoryOrder();
+//        initHistoryPriceData();
     }
 
     private void initHistoryOrder() {

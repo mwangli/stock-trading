@@ -118,14 +118,14 @@ public class TradingRecordController {
         ArrayList<Point> holdDaysCountList = new ArrayList<>();
         sortedSoldList.stream().collect(Collectors.groupingBy(TradingRecord::getHoldDays, Collectors.summarizingInt(o -> 1))).forEach((k, v) -> holdDaysCountList.add(new Point("天数" + k.toString(), (double) v.getSum())));
         data.setHoldDaysList(holdDaysCountList.stream().sorted(Comparator.comparingDouble(Point::getY).reversed()).collect(Collectors.toList()));
-        // 获取期望持仓日收益率排行
-//        data.setExpectList(getExpectedIncome());
+        // 获取预期收益率排行
+        data.setExpectList(getExpectedIncome());
         return Response.success(data);
     }
 
     private List<TradingRecord> getExpectedIncome() {
-//        List<StockInfo> stockInfos = stockInfoMapper.selectList(new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getDeleted, "1"));
-//        stockInfos.
+        final LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getDeleted, "1").orderByDesc(StockInfo::getScore);
+        List<StockInfo> stockInfos = stockInfoMapper.selectPage(Page.of(1, 8), queryWrapper).getRecords();
 //        return tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().peek(record -> {
 //            final StockInfo stockInfo = stockInfoMapper.selectByCode(record.getCode());
 //            if (stockInfo != null) {
@@ -138,7 +138,17 @@ public class TradingRecordController {
 ////                record.setDailyIncomeRate(record.getIncomeRate() / Math.max(record.getHoldDays(), 1));
 //            }
 //        }).sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).collect(Collectors.toList());
-        return null;
+        return stockInfos.stream().map(s -> {
+            final TradingRecord tradingRecord = new TradingRecord();
+            tradingRecord.setName(s.getName().concat("-").concat(s.getCode()));
+            tradingRecord.setBuyPrice(s.getPrice());
+            tradingRecord.setSalePrice(s.getPredictPrice());
+            tradingRecord.setSaleDateString(DateUtils.format2(s.getUpdateTime()));
+            tradingRecord.setIncomeRate((s.getPredictPrice() == null ? 0 :
+                    s.getPredictPrice() - s.getPrice()) / s.getPrice());
+            tradingRecord.setSold(s.getScore().toString());
+            return tradingRecord;
+        }).collect(Collectors.toList());
     }
 
     private AccountInfo getAccountAmount(AccountInfo accountInfo) {

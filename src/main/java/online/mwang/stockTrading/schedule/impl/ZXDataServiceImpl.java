@@ -352,10 +352,9 @@ public class ZXDataServiceImpl implements IDataService {
             String s = results.getString(i);
             s = s.replaceAll("\\[", "").replaceAll("]", "");
             final String[] split = s.split(",");
-            final String date = split[0];
             final String price1 = split[1];
             final String price2 = split[2];
-            dailyItem.setDate(date);
+            dailyItem.setDate(split[0]);
             dailyItem.setPrice1(Double.parseDouble(price1) / 100);
             dailyItem.setPrice2(Double.parseDouble(price2) / 100);
             if (split.length > 3) {
@@ -379,6 +378,7 @@ public class ZXDataServiceImpl implements IDataService {
         paramMap.put("StartPos", 0);
         paramMap.put("MaxCount", 500);
         paramMap.put("token", token);
+        paramMap.put("reqno", System.currentTimeMillis());
         final JSONArray results = requestUtils.request2(buildParams(paramMap));
         return arrayToOrderList(results, false);
     }
