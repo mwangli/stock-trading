@@ -28,7 +28,6 @@ spec:
             - secretRef:
                 name: mongo-secret # 引用上述创建的 Secret。
       volumes:
-        # 挂载数据到PVC
         - name: mongo-data
           persistentVolumeClaim:
             claimName: mongo-data-pvc-8g

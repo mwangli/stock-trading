@@ -48,7 +48,7 @@ public class StockPricePrediction implements IModelService {
 
     public List<StockTestPrice> train(List<StockData> dataList, String stockCode) throws IOException {
 //        String file = new ClassPathResource("prices-split-adjusted.csv").getFile().getAbsolutePath();
-        String file = new ClassPathResource("history_price_002153.csv").getFile().getAbsolutePath();
+//        String file = new ClassPathResource("history_price_002153.csv").getFile().getAbsolutePath();
 //        String symbol = "GOOG"; // stock name
         int batchSize = 64; // mini-batch size
         double splitRatio = 0.8; // 90% for training, 10% for testing
@@ -56,7 +56,7 @@ public class StockPricePrediction implements IModelService {
 
         log.info("Create dataSet iterator...");
         PriceCategory category = PriceCategory.ALL; // CLOSE: predict close price
-        StockDataSetIterator iterator = new StockDataSetIterator(dataList, file, stockCode, batchSize, exampleLength, splitRatio, category);
+        StockDataSetIterator iterator = new StockDataSetIterator(dataList, "", stockCode, batchSize, exampleLength, splitRatio, category);
         log.info("Load test dataset...");
         List<Pair<INDArray, INDArray>> test = iterator.getTestDataSet();
 
