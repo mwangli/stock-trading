@@ -11,6 +11,7 @@ import online.mwang.stockTrading.web.bean.base.Response;
 import online.mwang.stockTrading.web.bean.po.QuartzJob;
 import online.mwang.stockTrading.web.bean.query.QuartzJobQuery;
 import online.mwang.stockTrading.web.mapper.QuartzJobMapper;
+import online.mwang.stockTrading.web.utils.RequestUtils;
 import org.quartz.*;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,6 +32,7 @@ public class JobController {
     private final static String TEMP_GROUP_NAME = "TEMP";
     private final Scheduler scheduler;
     private final QuartzJobMapper jobMapper;
+    private final RequestUtils requestUtils;
 
     @SneakyThrows
     @GetMapping("/list")
@@ -92,6 +94,14 @@ public class JobController {
     @SneakyThrows
     @PutMapping("/update")
     public Response<Integer> modifyJob(@RequestBody QuartzJob job) {
+        if ("open".equals(job.getLogSwitch())) {
+            requestUtils.logs = true;
+            log.info("请求日志启用成功!");
+        }
+        if ("close".equals(job.getLogSwitch())) {
+            requestUtils.logs = false;
+            log.info("请求日志关闭成功!");
+        }
         if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");
         }

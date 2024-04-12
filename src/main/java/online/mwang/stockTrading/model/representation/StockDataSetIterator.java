@@ -123,9 +123,9 @@ public class StockDataSetIterator implements DataSetIterator {
         int actualMiniBatchSize = Math.min(num, exampleStartOffsets.size());
         INDArray input = Nd4j.create(new int[]{actualMiniBatchSize, VECTOR_SIZE, exampleLength}, 'f');
         INDArray label;
-        if (category.equals(PriceCategory.ALL))
+//        if (category.equals(PriceCategory.ALL))
             label = Nd4j.create(new int[]{actualMiniBatchSize, VECTOR_SIZE, exampleLength}, 'f');
-        else label = Nd4j.create(new int[]{actualMiniBatchSize, predictLength, exampleLength}, 'f');
+//        else label = Nd4j.create(new int[]{actualMiniBatchSize, predictLength, exampleLength}, 'f');
         for (int index = 0; index < actualMiniBatchSize; index++) {
             int startIdx = exampleStartOffsets.removeFirst();
             int endIdx = startIdx + exampleLength;

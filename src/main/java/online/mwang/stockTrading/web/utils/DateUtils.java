@@ -10,9 +10,14 @@ public class DateUtils {
     public static final SimpleDateFormat dateTimeFormat = new SimpleDateFormat("yyyyMMddHHmmss");
     public static final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd");
     public static final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm");
+    public static final SimpleDateFormat timeFormat2 = new SimpleDateFormat("MM-dd HH:mm");
 
     public static String format1(Date date) {
         return date == null ? "" : dateFormat.format(date);
+    }
+
+    public static String format2(Date date) {
+        return date == null ? "" : timeFormat2.format(date);
     }
 
     public static Date getNextDay(Date date) {
