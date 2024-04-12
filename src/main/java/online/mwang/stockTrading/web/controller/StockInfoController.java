@@ -71,9 +71,10 @@ public class StockInfoController {
 
 
     @GetMapping("/listHistoryPrices")
-    public Response<List<StockHistoryPrice>> listHistoryPrices(StockInfoQuery query) {
-        String stockCode = query.getCode();
-        List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(new Query(), StockHistoryPrice.class, "historyPrices_" + stockCode);
+    public Response<List<StockHistoryPrice>> listHistoryPrices(StockInfoQuery param) {
+        String stockCode = param.getCode();
+        Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
+        List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(query, StockHistoryPrice.class);
         return Response.success(stockHistoryPrices);
     }
 
