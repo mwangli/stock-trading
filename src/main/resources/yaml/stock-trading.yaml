@@ -1,54 +1,83 @@
-# 声明StatefulSet
-apiVersion: apps/v1
-kind: Deployment
+imagePullSecrets:
+  - name: registry-secret
+containers:
+  - image: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-trading
+    imagePullPolicy: Always
+    name: stock-trading
+    #livenessProbe:
+    #   initialDelaySeconds: 10
+    #   periodSeconds: 3
+    #   httpGet:
+    #    port: 8080
+    #    path: /test/alive
+    #readinessProbe:
+    #   initialDelaySeconds: 5
+    #   periodSeconds: 5
+    #   httpGet:
+    #    port: 8080
+    #    path: /test/alive
+    env:
+      - name: MONGO_HOST
+        value: mongo-svc
+      - name: MONGO_PASS
+        value: Root.123456
+      - name: TZ
+        value: Asia/Shanghai
+      - name: REDIS_HOST
+        value: redis-svc:6379
+      - name: REDIS_PASS
+        value: Root.123456
+      - name: MYSQL_HOST
+        value: mysql-svc:3306
+      - name: MYSQL_PASS
+        value: Root.123456
+      - name: PROFILE
+        value: prod
+    ports:
+      - containerPort: 8080
+    volumeMounts:
+      - name: model-data
+        mountPath: /model
+volumes:
+  - name: model-data
+    persistentVolumeClaim:
+      claimName: model-data-pvc-2g
+---
+# 声明PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
 metadata:
-  name: stock-trading
-  labels:
-    app: stock-trading
+  name: model-data-pvc-2g
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: stock-trading
-  # serviceName: stock-trading
-  template:
-    metadata:
-      labels:
-        app: stock-trading
-    spec:
-      imagePullSecrets:
-      - name: registry-secret
-      containers:
-      - image: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-trading
-        imagePullPolicy: Always
-        name: stock-trading
-        #livenessProbe:
-           #initialDelaySeconds: 10
-           #periodSeconds: 3
-           #httpGet:
-           # port: 8080
-           # path: /test
-        readinessProbe:
-           initialDelaySeconds: 5
-           periodSeconds: 5
-           httpGet:
-            port: 8080
-            path: /test
-        env:
-        - name: TZ
-          value: Asia/Shanghai
-        - name: REDIS_HOST
-          value: redis-svc:6379
-        - name: REDIS_PASS
-          value: Root.123456
-        - name: MYSQL_HOST
-          value: mysql-svc:3306
-        - name: MYSQL_PASS
-          value: Root.123456
-        - name: PROFILE
-          value: prod
-        ports:
-        - containerPort: 8080
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: local-storage
+---
+# 声明PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: model-data-pv-2g
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteMany
+  storageClassName: local-storage
+  local:
+    # 需要提前创建好文件夹
+    path: /local/data/model
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - test
 ---
 # 声明Service服务
 apiVersion: v1
@@ -62,10 +91,10 @@ spec:
   selector:
     app: stock-trading
   ports:
-  - port: 8080
-    protocol: TCP
-    targetPort: 8080
-    nodePort: 8080
+    - port: 8080
+      protocol: TCP
+      targetPort: 8080
+      nodePort: 8080
 ---
 # 镜像仓库密钥
 apiVersion: v1
