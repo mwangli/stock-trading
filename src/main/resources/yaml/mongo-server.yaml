@@ -24,9 +24,15 @@ spec:
           volumeMounts:
             - name: mongo-data # 持久化存储卷名称。
               mountPath: /data/db # mongo默认存储路径
-          envFrom:
-            - secretRef:
-                name: mongo-secret # 引用上述创建的 Secret。
+          #envFrom:
+          #  - secretRef:
+          #      name: mongo-secret # 引用上述创建的 Secret。
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              value: root
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              value: 'Root.12345'
+
       volumes:
         - name: mongo-data
           persistentVolumeClaim:
