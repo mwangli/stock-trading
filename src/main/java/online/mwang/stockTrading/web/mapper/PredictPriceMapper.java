@@ -1,11 +1,8 @@
 package online.mwang.stockTrading.web.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import online.mwang.stockTrading.web.bean.po.PredictPrice;
-import online.mwang.stockTrading.web.bean.po.StockInfo;
-import org.apache.ibatis.annotations.Delete;
+import online.mwang.stockTrading.web.bean.po.StockTestPrice;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Select;
 
 /**
  * @version 1.0.0
@@ -14,5 +11,5 @@ import org.apache.ibatis.annotations.Select;
  * @description: StockInfoMapper
  */
 @Mapper
-public interface PredictPriceMapper extends BaseMapper<PredictPrice> {
+public interface PredictPriceMapper extends BaseMapper<StockTestPrice> {
 }

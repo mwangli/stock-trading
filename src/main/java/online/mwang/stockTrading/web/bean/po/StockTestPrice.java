@@ -1,28 +1,27 @@
 package online.mwang.stockTrading.web.bean.po;
 
-
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-/**
- * @author 13255
- */
+import java.util.Date;
+
 @Data
-@EqualsAndHashCode(exclude = {"id"})
+
 @Document
+@CompoundIndex(def = "{'code':1,'date':1}", unique = true)
 public class StockTestPrice {
+
     @Id
     private String id;
-    @Indexed(unique = true)
+    private String stockCode;
     private String date;
-    private String name;
-    @Indexed(unique = true)
-    private String code;
-    private Double price1;
-    private Double price2;
-    private Double price3;
-    private Double price4;
+    private Double actualPrice1;
+    private Double predictPrice1;
+    private Double actualPrice2;
+    private Double predictPrice2;
+    private Date createTime;
+    private Date updateTime;
 }

@@ -7,7 +7,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.base.Response;
-import online.mwang.stockTrading.web.bean.po.PredictPrice;
+import online.mwang.stockTrading.web.bean.po.StockTestPrice;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.query.StockInfoQuery;
@@ -81,7 +81,7 @@ public class StockInfoController {
     public Response<List<Point>> listTestPrices(StockInfoQuery param) {
         String stockCode = param.getCode();
         final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
-        List<PredictPrice> stockHistoryPrices = mongoTemplate.find(query, PredictPrice.class);
+        List<StockTestPrice> stockHistoryPrices = mongoTemplate.find(query, StockTestPrice.class);
         final ArrayList<Point> points = new ArrayList<>();
         stockHistoryPrices.forEach(s -> {
             final Point point1 = new Point(s.getDate(), s.getActualPrice1());

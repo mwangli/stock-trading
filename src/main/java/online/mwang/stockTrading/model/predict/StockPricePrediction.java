@@ -11,7 +11,7 @@ import online.mwang.stockTrading.model.representation.PriceCategory;
 import online.mwang.stockTrading.model.representation.StockData;
 import online.mwang.stockTrading.model.representation.StockDataSetIterator;
 import online.mwang.stockTrading.web.bean.base.BusinessException;
-import online.mwang.stockTrading.web.bean.po.PredictPrice;
+import online.mwang.stockTrading.web.bean.po.StockTestPrice;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.util.ModelSerializer;
@@ -25,11 +25,9 @@ import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.BindException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Created by zhanghao on 26/7/17.
@@ -48,7 +46,7 @@ public class StockPricePrediction implements IModelService {
     //    private static final Logger log = LoggerFactory.getLogger(StockPricePrediction.class);
     private final StringRedisTemplate redisTemplate;
 
-    public List<PredictPrice> train(List<StockData> dataList, String stockCode) throws IOException {
+    public List<StockTestPrice> train(List<StockData> dataList, String stockCode) throws IOException {
 //        String file = new ClassPathResource("prices-split-adjusted.csv").getFile().getAbsolutePath();
         String file = new ClassPathResource("history_price_002153.csv").getFile().getAbsolutePath();
 //        String symbol = "GOOG"; // stock name
@@ -122,24 +120,24 @@ public class StockPricePrediction implements IModelService {
     /**
      * Predict all the features (open, close, low, high prices and volume) of a stock one-day ahead
      */
-    private List<PredictPrice> predictAllCategories(MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, List<String> dateList, String stockCode, INDArray max, INDArray min) {
+    private List<StockTestPrice> predictAllCategories(MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, List<String> dateList, String stockCode, INDArray max, INDArray min) {
         log.info("dataList={}", dateList);
         INDArray[] predicts = new INDArray[testData.size()];
         INDArray[] actuals = new INDArray[testData.size()];
-        final List<PredictPrice> predictPrices = new ArrayList();
+        final List<StockTestPrice> stockTestPrices = new ArrayList();
         for (int i = 0; i < testData.size(); i++) {
             predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getRow(exampleLength - 1).mul(max.sub(min)).add(min);
             actuals[i] = testData.get(i).getValue();
-            final PredictPrice predictPrice = new PredictPrice();
-            predictPrice.setPredictPrice1(predicts[i].getDouble(0));
-            predictPrice.setActualPrice1(actuals[i].getDouble(0));
-            predictPrice.setPredictPrice2(predicts[i].getDouble(1));
-            predictPrice.setActualPrice2(actuals[i].getDouble(1));
-            predictPrice.setDate(dateList.get(i));
-            predictPrice.setStockCode(stockCode);
-            predictPrice.setCreateTime(new Date());
-            predictPrice.setUpdateTime(new Date());
-            predictPrices.add(predictPrice);
+            final StockTestPrice stockTestPrice = new StockTestPrice();
+            stockTestPrice.setPredictPrice1(predicts[i].getDouble(0));
+            stockTestPrice.setActualPrice1(actuals[i].getDouble(0));
+            stockTestPrice.setPredictPrice2(predicts[i].getDouble(1));
+            stockTestPrice.setActualPrice2(actuals[i].getDouble(1));
+            stockTestPrice.setDate(dateList.get(i));
+            stockTestPrice.setStockCode(stockCode);
+            stockTestPrice.setCreateTime(new Date());
+            stockTestPrice.setUpdateTime(new Date());
+            stockTestPrices.add(stockTestPrice);
         }
         log.info("Print out Predictions and Actual Values...");
         log.info("Predict\tActual");
@@ -165,12 +163,12 @@ public class StockPricePrediction implements IModelService {
 //                default: throw new NoSuchElementException();
 
 //            PlotUtil.plot(pred, actu, name);
-        return predictPrices;
+        return stockTestPrices;
 
     }
 
     @SneakyThrows
-    private PredictPrice predictOneHead(String stockCode, List<StockHistoryPrice> historyPrices) {
+    private StockTestPrice predictOneHead(String stockCode, List<StockHistoryPrice> historyPrices) {
         if (historyPrices.size() != exampleLength) throw new BusinessException("价格数据错误！");
 
         File locationToSave = new File("/model/model_".concat(stockCode).concat(".zip"));
@@ -194,13 +192,13 @@ public class StockPricePrediction implements IModelService {
         INDArray output = net.rnnTimeStep(inputArray);
         double predictPrice1 = output.getDouble(0, 0);
         double predictPrice2 = output.getDouble(0, 1);
-        PredictPrice predictPrice = new PredictPrice();
+        StockTestPrice stockTestPrice = new StockTestPrice();
         // TODO scaler
-        predictPrice.setPredictPrice1(predictPrice1 * (maxArray[0] - minArray[0]) + minArray[0]);
-        predictPrice.setPredictPrice2(predictPrice2 * (maxArray[1] - minArray[1]) + minArray[1]);
-        predictPrice.setStockCode(stockCode);
+        stockTestPrice.setPredictPrice1(predictPrice1 * (maxArray[0] - minArray[0]) + minArray[0]);
+        stockTestPrice.setPredictPrice2(predictPrice2 * (maxArray[1] - minArray[1]) + minArray[1]);
+        stockTestPrice.setStockCode(stockCode);
 //        predictPrice.setDate(stockCode);
-        return predictPrice;
+        return stockTestPrice;
 //        redisTemplate.opsForHash().put("minMaxArray_" + stockCode, "max", iterator.getMaxArray());
 
 
@@ -254,7 +252,7 @@ public class StockPricePrediction implements IModelService {
 
     @SneakyThrows
     @Override
-    public List<PredictPrice> modelTrain(List<StockHistoryPrice> historyPrices, String stockCode) {
+    public List<StockTestPrice> modelTrain(List<StockHistoryPrice> historyPrices, String stockCode) {
         final ArrayList<StockData> dataList = new ArrayList<>();
         for (StockHistoryPrice s : historyPrices) {
             StockData stockData = new StockData();
@@ -270,14 +268,14 @@ public class StockPricePrediction implements IModelService {
     }
 
     @Override
-    public PredictPrice modelPredict(StockHistoryPrice historyPrice) {
+    public StockTestPrice modelPredict(StockHistoryPrice historyPrice) {
         // 找到最近的数据
         String code = historyPrice.getCode();
         Query query = new Query().limit(exampleLength - 1);
         List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(query, StockHistoryPrice.class, "historyPrices_" + code);
 //        stockHistoryPrices.add(historyPrice);
-        PredictPrice predictPrice = predictOneHead(code, stockHistoryPrices);
-        log.info("当前股票预测价格为：{},{}", predictPrice.getPredictPrice1(), predictPrice.getPredictPrice2());
-        return predictPrice;
+        StockTestPrice stockTestPrice = predictOneHead(code, stockHistoryPrices);
+        log.info("当前股票预测价格为：{},{}", stockTestPrice.getPredictPrice1(), stockTestPrice.getPredictPrice2());
+        return stockTestPrice;
     }
 }
