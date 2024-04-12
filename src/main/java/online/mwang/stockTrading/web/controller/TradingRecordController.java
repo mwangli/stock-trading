@@ -111,7 +111,7 @@ public class TradingRecordController {
         // 收益排行
         data.setIncomeOrder(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getIncome).reversed()).limit(7).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getIncome())).collect(Collectors.toList()));
         // 收益率排行
-        data.setRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getIncomeRate).reversed()).limit(10).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getIncome(), o.getIncomeRate().toString(), o.getHoldDays().toString(), o.getDailyIncomeRate().toString())).collect(Collectors.toList()));
+        data.setRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getIncomeRate).reversed()).limit(10).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getIncome(), o.getIncomeRate().toString(), o.getHoldDays().toString(), o.getDailyIncomeRate().toString(),"")).collect(Collectors.toList()));
         // 日收益率排行
         data.setDailyRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).limit(7).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getDailyIncomeRate())).collect(Collectors.toList()));
         // 持有天數分组统计列表
