@@ -1,5 +1,6 @@
 package online.mwang.stockTrading.model;
 
+import online.mwang.stockTrading.web.bean.po.StockPredictPrice;
 import online.mwang.stockTrading.web.bean.po.StockTestPrice;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import org.springframework.stereotype.Service;
@@ -23,5 +24,5 @@ public interface IModelService {
     /**
      * 模型预测
      */
-    StockTestPrice modelPredict(StockHistoryPrice historyPrice);
+    StockPredictPrice modelPredict(StockHistoryPrice historyPrice);
 }

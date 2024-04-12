@@ -7,9 +7,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.base.Response;
-import online.mwang.stockTrading.web.bean.po.StockTestPrice;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
+import online.mwang.stockTrading.web.bean.po.StockTestPrice;
 import online.mwang.stockTrading.web.bean.query.StockInfoQuery;
 import online.mwang.stockTrading.web.bean.vo.Point;
 import online.mwang.stockTrading.web.service.StockInfoService;
@@ -81,17 +81,25 @@ public class StockInfoController {
     @GetMapping("/listTestPrices")
     public Response<List<Point>> listTestPrices(StockInfoQuery param) {
         String stockCode = param.getCode();
+        // 查找测试集数据
         final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
-        List<StockTestPrice> stockHistoryPrices = mongoTemplate.find(query, StockTestPrice.class);
+        List<StockTestPrice> stockTestPrices = mongoTemplate.find(query, StockTestPrice.class);
+        String maxDate = stockTestPrices.stream().map(StockTestPrice::getDate).max(String::compareTo).orElse("");
+        String minDate = stockTestPrices.stream().map(StockTestPrice::getDate).min(String::compareTo).orElse("");
+        // 查找历史数据
+        Query historyQuery = new Query(Criteria.where("code").is(stockCode).and("date").lte(maxDate).gte(minDate));
+        List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(historyQuery, StockHistoryPrice.class);
         final ArrayList<Point> points = new ArrayList<>();
-        stockHistoryPrices.forEach(s -> {
-            final Point point1 = new Point(s.getDate(), s.getActualPrice1());
-            final Point point2 = new Point(s.getDate(), s.getPredictPrice1());
-            point1.setType("实际开盘价");
-            point1.setType("预测开盘价");
+        for (int i = 0; i < stockTestPrices.size(); i++) {
+            StockTestPrice stockTestPrice = stockTestPrices.get(i);
+            StockHistoryPrice stockHistoryPrice = stockHistoryPrices.get(i);
+            final Point point1 = new Point(stockTestPrice.getDate(), stockTestPrice.getPrice1());
+            final Point point2 = new Point(stockHistoryPrice.getDate(), stockHistoryPrice.getPrice2());
+            point1.setType("预测价格");
+            point2.setType("实际价格");
             points.add(point1);
             points.add(point2);
-        });
+        }
         return Response.success(points);
     }
 }
