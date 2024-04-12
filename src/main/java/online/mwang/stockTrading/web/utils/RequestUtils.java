@@ -15,7 +15,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.Resource;
 import java.util.HashMap;
 
 /**
@@ -30,9 +29,8 @@ import java.util.HashMap;
 public class RequestUtils {
 
     public static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
-    public boolean logs = false;
     private final StringRedisTemplate redisTemplate;
-
+    public boolean logs = false;
     @Value("${PROFILE}")
     private String profile;
 
@@ -47,7 +45,7 @@ public class RequestUtils {
             post.setEntity(entityBuilder.build());
             CloseableHttpResponse response = client.execute(post);
             result = EntityUtils.toString(response.getEntity());
-            if ("dev".equalsIgnoreCase(profile)) log.info(result);
+            if (logs) log.info(result);
             return JSONObject.parseObject(result);
         } catch (Exception e) {
             log.info("请求失败，返回数据为：{}", result);
@@ -72,7 +70,7 @@ public class RequestUtils {
         return res.getJSONArray("GRID0");
     }
 
-    public JSONArray request2(HashMap<String, Object> formParam,String url) {
+    public JSONArray request2(HashMap<String, Object> formParam, String url) {
         JSONObject res = request(url, formParam);
         if ("-204009".equals(res.getString("ERRORNO"))) {
             log.info("TOKEN已经失效，正在重新登录...");

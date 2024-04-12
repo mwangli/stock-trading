@@ -1,8 +1,7 @@
 package online.mwang.stockTrading.web.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
-import online.mwang.stockTrading.web.bean.po.OrderInfo;
-import online.mwang.stockTrading.web.bean.po.PredictPrice;
+import online.mwang.stockTrading.web.bean.po.StockTestPrice;
 import org.springframework.stereotype.Service;
 
 /**
@@ -12,5 +11,5 @@ import org.springframework.stereotype.Service;
  * @description: FoundTradingService
  */
 @Service
-public interface PredictPriceService extends IService<PredictPrice> {
+public interface PredictPriceService extends IService<StockTestPrice> {
 }

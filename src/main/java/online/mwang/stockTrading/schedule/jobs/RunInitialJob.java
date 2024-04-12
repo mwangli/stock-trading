@@ -18,6 +18,7 @@ import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
@@ -71,8 +72,14 @@ public class RunInitialJob extends BaseJob {
                 stockHistoryPrice.setPrice4(item.getPrice4());
                 return stockHistoryPrice;
             }).collect(Collectors.toList());
-            mongoTemplate.insert(stockHistoryPrices, StockHistoryPrice.class);
-            log.info("股票[{}-{}]，{}条历史数据写入完成！", s.getName(), s.getCode(), stockHistoryPrices.size());
+            Query query = new Query(Criteria.where("code").is(s.getCode()));
+            List<StockHistoryPrice> find = mongoTemplate.find(query, StockHistoryPrice.class);
+            if (find.size() > 0) {
+                log.info("股票[{}-{}]历史数据已经存在，无需写入", s.getName(), s.getCode());
+            } else {
+                mongoTemplate.insert(stockHistoryPrices, StockHistoryPrice.class);
+                log.info("股票[{}-{}]，{}条历史数据写入完成！", s.getName(), s.getCode(), stockHistoryPrices.size());
+            }
         });
         log.info("共写入了{}支股票历史数据", stockInfoList.size());
     }
