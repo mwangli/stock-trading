@@ -6,6 +6,7 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IModelService;
 import online.mwang.stockTrading.schedule.IDataService;
+import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
@@ -50,7 +51,7 @@ public class RunInitialJob extends BaseJob {
 
     @Override
     public void run() {
-//        initHistoryOrder();
+        initHistoryOrder();
         initHistoryPriceData();
     }
 
@@ -59,6 +60,7 @@ public class RunInitialJob extends BaseJob {
         LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(StockInfo::getDeleted, 1);
         List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
+        if (stockInfoList.size() == 0) throw new BusinessException("股票数据为空，请先执行股票同步任务！");
         stockInfoList.forEach(s -> {
             List<DailyItem> historyPrices = dataService.getHistoryPrices(s.getCode());
             List<StockHistoryPrice> stockHistoryPrices = historyPrices.stream().map(item -> {

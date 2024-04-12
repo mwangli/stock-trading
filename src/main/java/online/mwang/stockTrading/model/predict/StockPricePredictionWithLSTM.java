@@ -11,14 +11,15 @@ import online.mwang.stockTrading.model.representation.PriceCategory;
 import online.mwang.stockTrading.model.representation.StockData;
 import online.mwang.stockTrading.model.representation.StockDataSetIterator;
 import online.mwang.stockTrading.web.bean.base.BusinessException;
-import online.mwang.stockTrading.web.bean.po.StockTestPrice;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
+import online.mwang.stockTrading.web.bean.po.StockPredictPrice;
+import online.mwang.stockTrading.web.bean.po.StockTestPrice;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.util.ModelSerializer;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
-import org.nd4j.linalg.io.ClassPathResource;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -38,7 +39,7 @@ import java.util.List;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class StockPricePrediction implements IModelService {
+public class StockPricePredictionWithLSTM implements IModelService {
 
     private static int exampleLength = 22; // time series length, assume 22 working days per month
     private final MongoTemplate mongoTemplate;
@@ -129,14 +130,10 @@ public class StockPricePrediction implements IModelService {
             predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getRow(exampleLength - 1).mul(max.sub(min)).add(min);
             actuals[i] = testData.get(i).getValue();
             final StockTestPrice stockTestPrice = new StockTestPrice();
-            stockTestPrice.setPredictPrice1(predicts[i].getDouble(0));
-            stockTestPrice.setActualPrice1(actuals[i].getDouble(0));
-            stockTestPrice.setPredictPrice2(predicts[i].getDouble(1));
-            stockTestPrice.setActualPrice2(actuals[i].getDouble(1));
+            stockTestPrice.setPrice1(Double.parseDouble(String.format("%.2f",predicts[i].getDouble(0))));
+            stockTestPrice.setPrice2(Double.parseDouble(String.format("%.2f",predicts[i].getDouble(1))));
             stockTestPrice.setDate(dateList.get(i));
-            stockTestPrice.setStockCode(stockCode);
-            stockTestPrice.setCreateTime(new Date());
-            stockTestPrice.setUpdateTime(new Date());
+            stockTestPrice.setCode(stockCode);
             stockTestPrices.add(stockTestPrice);
         }
         log.info("Print out Predictions and Actual Values...");
@@ -168,12 +165,14 @@ public class StockPricePrediction implements IModelService {
     }
 
     @SneakyThrows
-    private StockTestPrice predictOneHead(String stockCode, List<StockHistoryPrice> historyPrices) {
+    private StockPredictPrice predictOneHead(String stockCode, List<StockHistoryPrice> historyPrices) {
         if (historyPrices.size() != exampleLength) throw new BusinessException("价格数据错误！");
 
         File locationToSave = new File("/model/model_".concat(stockCode).concat(".zip"));
 //         //saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
 //        ModelSerializer.writeModel(net, locationToSave, true);
+        File parentFile = locationToSave.getParentFile();
+        if (!parentFile.exists() && !parentFile.mkdirs()) throw new BusinessException("文件夹创建失败！");
 
         log.info("Load model...");
         MultiLayerNetwork net = ModelSerializer.restoreMultiLayerNetwork(locationToSave);
@@ -192,13 +191,13 @@ public class StockPricePrediction implements IModelService {
         INDArray output = net.rnnTimeStep(inputArray);
         double predictPrice1 = output.getDouble(0, 0);
         double predictPrice2 = output.getDouble(0, 1);
-        StockTestPrice stockTestPrice = new StockTestPrice();
+        StockPredictPrice stockPredictPrice = new StockPredictPrice();
         // TODO scaler
-        stockTestPrice.setPredictPrice1(predictPrice1 * (maxArray[0] - minArray[0]) + minArray[0]);
-        stockTestPrice.setPredictPrice2(predictPrice2 * (maxArray[1] - minArray[1]) + minArray[1]);
-        stockTestPrice.setStockCode(stockCode);
+        stockPredictPrice.setPrice1(predictPrice1 * (maxArray[0] - minArray[0]) + minArray[0]);
+        stockPredictPrice.setPrice2(predictPrice2 * (maxArray[1] - minArray[1]) + minArray[1]);
+        stockPredictPrice.setCode(stockCode);
 //        predictPrice.setDate(stockCode);
-        return stockTestPrice;
+        return stockPredictPrice;
 //        redisTemplate.opsForHash().put("minMaxArray_" + stockCode, "max", iterator.getMaxArray());
 
 
@@ -268,14 +267,21 @@ public class StockPricePrediction implements IModelService {
     }
 
     @Override
-    public StockTestPrice modelPredict(StockHistoryPrice historyPrice) {
+    public StockPredictPrice modelPredict(StockHistoryPrice historyPrice) {
         // 找到最近的数据
-        String code = historyPrice.getCode();
-        Query query = new Query().limit(exampleLength - 1);
-        List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(query, StockHistoryPrice.class, "historyPrices_" + code);
-//        stockHistoryPrices.add(historyPrice);
-        StockTestPrice stockTestPrice = predictOneHead(code, stockHistoryPrices);
-        log.info("当前股票预测价格为：{},{}", stockTestPrice.getPredictPrice1(), stockTestPrice.getPredictPrice2());
-        return stockTestPrice;
+        Query query = new Query(Criteria.where("code").is(historyPrice.getCode()));
+        long count = mongoTemplate.count(query, StockHistoryPrice.class);
+        Query skipQuery = query.skip(count - exampleLength);
+        List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(skipQuery, StockHistoryPrice.class);
+        int size = stockHistoryPrices.size();
+        log.info("当前股票预测数据集输入:{}", size);
+        if (size > 0) {
+            log.info("第一组数据:{}", stockHistoryPrices.get(0));
+            log.info("最后一组数据:{}", stockHistoryPrices.get(size-1) );
+            StockPredictPrice stockPredictPrice = predictOneHead(historyPrice.getCode(), stockHistoryPrices);
+            log.info("当前股票预测价格为：{},{}", stockPredictPrice.getPrice1(), stockPredictPrice.getPrice2());
+            return stockPredictPrice;
+        }
+        return new StockPredictPrice();
     }
 }

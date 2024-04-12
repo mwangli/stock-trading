@@ -4,9 +4,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IModelService;
 import online.mwang.stockTrading.schedule.IDataService;
-import online.mwang.stockTrading.web.bean.po.StockTestPrice;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
+import online.mwang.stockTrading.web.bean.po.StockPredictPrice;
 import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
 import online.mwang.stockTrading.web.service.PredictPriceService;
 import online.mwang.stockTrading.web.service.StockInfoService;
@@ -44,33 +44,35 @@ public class RunPredictJob extends BaseJob {
         final Query query = new Query(Criteria.where("date").is(DateUtils.format1(new Date())));
         final List<StockHistoryPrice> newHistoryPrice = mongoTemplate.find(query, StockHistoryPrice.class);
         // 完成预测后，写入mongo中不同的collection
-        List<StockTestPrice> stockTestPrices = newHistoryPrice.stream().map(modelService::modelPredict).collect(Collectors.toList());
-        stockTestPrices.forEach(this::fxiProps);
-        stockTestPrices.forEach(p -> mongoTemplate.insert(p, "predictPrices_" + p.getStockCode()));
+        List<StockPredictPrice> stockPredictPrices = newHistoryPrice.stream().map(modelService::modelPredict).collect(Collectors.toList());
+        stockPredictPrices.forEach(this::fxiProps);
+        mongoTemplate.insert(stockPredictPrices, StockPredictPrice.class);
         // 更新评分数据
-        updateScore(stockTestPrices);
+        updateScore(stockPredictPrices);
 
     }
 
-    private void fxiProps(StockTestPrice stockTestPrice) {
+    private void fxiProps(StockPredictPrice stockTestPrice) {
         Date nowDate = new Date();
         stockTestPrice.setDate(DateUtils.dateFormat.format(nowDate));
-        stockTestPrice.setCreateTime(nowDate);
-        stockTestPrice.setUpdateTime(nowDate);
     }
 
-    private void updateScore(List<StockTestPrice> stockTestPrices) {
+    private void updateScore(List<StockPredictPrice> stockPredictPrices) {
         List<StockInfo> stockInfos = stockInfoService.list();
-        stockInfos.forEach(s -> stockTestPrices.stream()
-                .filter(p -> p.getStockCode().equals(s.getCode()))
-                .findFirst().ifPresent(p -> s.setScore(calculateScore(s, p))));
-        stockInfoService.saveBatch(stockInfos);
+        stockInfos.forEach(s -> stockPredictPrices.stream()
+                .filter(p -> p.getCode().equals(s.getCode()))
+                .findFirst().ifPresent(p -> {
+                    s.setScore(calculateScore(s, p));
+                    s.setPredictPrice((p.getPrice1() + p.getPrice2()) / 2);
+                    s.setUpdateTime(new Date());
+                }));
+        stockInfoService.saveOrUpdateBatch(stockInfos);
     }
 
     // 根据股票价格订单预测值和当前值来计算得分，以平均值计算价格增长率
-    private double calculateScore(StockInfo stockInfo, StockTestPrice stockTestPrice) {
-        double predictPrice1 = stockTestPrice.getPredictPrice1();
-        double predictPrice2 = stockTestPrice.getPredictPrice2();
+    private double calculateScore(StockInfo stockInfo, StockPredictPrice stockPredictPrice) {
+        double predictPrice1 = stockPredictPrice.getPrice1();
+        double predictPrice2 = stockPredictPrice.getPrice2();
         double predictAvg = (predictPrice1 + predictPrice2) / 2;
         Double price = stockInfo.getPrice();
         return (predictAvg - price) / price * 100 * 10;

@@ -11,8 +11,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * @author 13255
  */
 @Data
-@EqualsAndHashCode(exclude = {"id"})
 @Document
+@EqualsAndHashCode(exclude = {"id"})
 @CompoundIndex(def = "{'code':1,'date':1}", unique = true)
 public class StockHistoryPrice {
     @Id
