@@ -13,7 +13,9 @@ import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.query.StockInfoQuery;
 import online.mwang.stockTrading.web.bean.vo.Point;
 import online.mwang.stockTrading.web.service.StockInfoService;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -76,10 +78,10 @@ public class StockInfoController {
     }
 
     @GetMapping("/listTestPrices")
-    public Response<List<Point>> listTestPrices(StockInfoQuery query) {
-        String stockCode = query.getCode();
-        String collectionName = "testPrices_" + stockCode;
-        List<PredictPrice> stockHistoryPrices = mongoTemplate.find(new Query(), PredictPrice.class, collectionName);
+    public Response<List<Point>> listTestPrices(StockInfoQuery param) {
+        String stockCode = param.getCode();
+        final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
+        List<PredictPrice> stockHistoryPrices = mongoTemplate.find(query, PredictPrice.class);
         final ArrayList<Point> points = new ArrayList<>();
         stockHistoryPrices.forEach(s -> {
             final Point point1 = new Point(s.getDate(), s.getActualPrice1());

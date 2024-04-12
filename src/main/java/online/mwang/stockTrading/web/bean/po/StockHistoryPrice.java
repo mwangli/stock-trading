@@ -5,12 +5,14 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
+import org.springframework.data.mongodb.core.mapping.Document;
 
 /**
  * @author 13255
  */
 @Data
 @EqualsAndHashCode(exclude = {"id"})
+@Document
 public class StockHistoryPrice {
     @Id
     private String id;

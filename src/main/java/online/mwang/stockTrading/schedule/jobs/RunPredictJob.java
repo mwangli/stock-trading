@@ -14,6 +14,7 @@ import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -42,12 +43,8 @@ public class RunPredictJob extends BaseJob {
     @Override
     void run() {
         // 从mongo中获取所有股票今天最新价格数据
-        Set<String> collectionNames = mongoTemplate.getCollectionNames();
-        List<StockHistoryPrice> newHistoryPrice = collectionNames.stream().filter(c -> c.startsWith("code_")).map(c ->
-                mongoTemplate.findOne(new Query(), StockHistoryPrice.class, c)
-        ).collect(Collectors.toList());
-//        List<StockInfo> stockInfos = stockInfoService.list(new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getDeleted, "1"));
-//        stockInfos.
+        final Query query = new Query(Criteria.where("date").is(DateUtils.format1(new Date())));
+        final List<StockHistoryPrice> newHistoryPrice = mongoTemplate.find(query, StockHistoryPrice.class);
         // 完成预测后，写入mongo中不同的collection
         List<PredictPrice> predictPrices = newHistoryPrice.stream().map(modelService::modelPredict).collect(Collectors.toList());
         predictPrices.forEach(this::fxiProps);
