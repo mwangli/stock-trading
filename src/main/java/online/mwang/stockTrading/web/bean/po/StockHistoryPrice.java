@@ -17,6 +17,7 @@ public class StockHistoryPrice {
     @Indexed(unique = true)
     private String date;
     private String name;
+    @Indexed(unique = true)
     private String code;
     private Double price1;
     private Double price2;
