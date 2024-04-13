@@ -1,5 +1,6 @@
 package online.mwang.stockTrading.web.controller;
 
+import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
@@ -71,15 +72,21 @@ public class StockInfoController {
 
 
     @GetMapping("/listHistoryPrices")
-    public Response<List<StockHistoryPrice>> listHistoryPrices(StockInfoQuery param) {
+    public Response<JSONObject> listHistoryPrices(StockInfoQuery param) {
         String stockCode = param.getCode();
         Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
         List<StockHistoryPrice> stockHistoryPrices = mongoTemplate.find(query, StockHistoryPrice.class);
-        return Response.success(stockHistoryPrices);
+        JSONObject data = new JSONObject();
+        data.put("points", stockHistoryPrices);
+        double maxValue = stockHistoryPrices.stream().mapToDouble(StockHistoryPrice::getPrice1).max().orElse(0.0);
+        data.put("maxValue", maxValue);
+        double minValue = stockHistoryPrices.stream().mapToDouble(StockHistoryPrice::getPrice1).min().orElse(0.0);
+        data.put("minValue", minValue);
+        return Response.success(data);
     }
 
     @GetMapping("/listTestPrices")
-    public Response<List<Point>> listTestPrices(StockInfoQuery param) {
+    public Response<JSONObject> listTestPrices(StockInfoQuery param) {
         String stockCode = param.getCode();
         // 查找测试集数据
         final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
@@ -100,6 +107,12 @@ public class StockInfoController {
             points.add(point1);
             points.add(point2);
         }
-        return Response.success(points);
+        JSONObject data = new JSONObject();
+        data.put("points", points);
+        double maxValue = points.stream().mapToDouble(Point::getY).max().orElse(0.0);
+        data.put("maxValue", maxValue);
+        double minValue = points.stream().mapToDouble(Point::getY).min().orElse(0.0);
+        data.put("minValue", minValue);
+        return Response.success(data);
     }
 }
