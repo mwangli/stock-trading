@@ -35,8 +35,8 @@ public class RunTrainJob extends BaseJob {
         final LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(StockInfo::getDeleted, "1");
         queryWrapper.eq(StockInfo::getPermission, "1");
-        queryWrapper.ge(StockInfo::getPrice, 10);
-        queryWrapper.le(StockInfo::getPrice, 20);
+//        queryWrapper.ge(StockInfo::getPrice, 10);
+//        queryWrapper.le(StockInfo::getPrice, 20);
         final List<StockInfo> list = stockInfoService.list(queryWrapper);
         log.info("共获取{}条待训练股票.", list.size());
         for (StockInfo s : list) {
