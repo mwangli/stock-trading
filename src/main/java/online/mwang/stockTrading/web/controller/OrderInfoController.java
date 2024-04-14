@@ -39,7 +39,7 @@ public class OrderInfoController {
                 .eq(ObjectUtils.isNotNull(query.getAnswerNo()), OrderInfo::getAnswerNo, query.getAnswerNo())
                 .ge(ObjectUtils.isNotNull(query.getType()), OrderInfo::getType, query.getType())
                 .ge(ObjectUtils.isNotNull(query.getNumber()), OrderInfo::getNumber, query.getNumber())
-                .orderBy(true, false, OrderInfo::getCreateTime);
+                .orderByDesc(OrderInfo::getCreateTime);
         Page<OrderInfo> pageResult = orderInfoService.page(Page.of(query.getCurrent(), query.getPageSize()), queryWrapper);
         return Response.success(pageResult.getRecords(), pageResult.getTotal());
     }
