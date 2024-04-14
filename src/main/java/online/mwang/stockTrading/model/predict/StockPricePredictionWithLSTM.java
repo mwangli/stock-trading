@@ -48,8 +48,6 @@ public class StockPricePredictionWithLSTM implements IModelService {
     private final StringRedisTemplate redisTemplate;
 
     public List<StockTestPrice> train(List<StockData> dataList, String stockCode) throws IOException {
-//        String file = new ClassPathResource("prices-split-adjusted.csv").getFile().getAbsolutePath();
-//        String file = new ClassPathResource("history_price_002153.csv").getFile().getAbsolutePath();
 //        String symbol = "GOOG"; // stock name
         int batchSize = 64; // mini-batch size
         double splitRatio = 0.8; // 90% for training, 10% for testing
