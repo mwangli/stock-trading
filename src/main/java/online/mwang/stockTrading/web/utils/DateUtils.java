@@ -1,6 +1,8 @@
 package online.mwang.stockTrading.web.utils;
 
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
@@ -28,21 +30,17 @@ public class DateUtils {
         return calendar.getTime();
     }
 
-    public static String camelToUnderline(String str) {
-        if (str == null || "".equals(str.trim())) {
-            return "";
-        }
-        int len = str.length();
-        StringBuilder sb = new StringBuilder(len);
-        for (int i = 0; i < len; i++) {
-            char c = str.charAt(i);
-            if (Character.isUpperCase(c)) {
-                sb.append("_").append(Character.toLowerCase(c));
-            } else {
-                sb.append(c);
-            }
-        }
-        return sb.toString();
+
+    public static long diff(Date date1, Date date2, boolean needAbs) {
+        Calendar calendar1 = Calendar.getInstance();
+        calendar1.setTime(date1);
+        Calendar calendar2 = Calendar.getInstance();
+        calendar1.setTime(date2);
+        LocalDate localDate1 = LocalDate.of(calendar1.get(Calendar.YEAR), calendar1.get(Calendar.MONTH) + 1, calendar1.get(Calendar.DAY_OF_MONTH));
+        LocalDate localDate2 = LocalDate.of(calendar2.get(Calendar.YEAR), calendar2.get(Calendar.MONTH) + 1, calendar2.get(Calendar.DAY_OF_MONTH));
+        long daysBetween = ChronoUnit.DAYS.between(localDate1, localDate2);
+        return needAbs ? Math.abs(daysBetween) : daysBetween;
+
     }
 
     public static String timeConvertor(long millis) {

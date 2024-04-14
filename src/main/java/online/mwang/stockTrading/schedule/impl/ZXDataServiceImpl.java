@@ -2,33 +2,31 @@ package online.mwang.stockTrading.schedule.impl;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.IDataService;
 import online.mwang.stockTrading.web.bean.dto.DailyItem;
-import online.mwang.stockTrading.web.bean.po.*;
+import online.mwang.stockTrading.web.bean.po.AccountInfo;
+import online.mwang.stockTrading.web.bean.po.OrderInfo;
+import online.mwang.stockTrading.web.bean.po.OrderStatus;
+import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
 import online.mwang.stockTrading.web.mapper.ScoreStrategyMapper;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
+import online.mwang.stockTrading.web.utils.DateUtils;
 import online.mwang.stockTrading.web.utils.OcrUtils;
 import online.mwang.stockTrading.web.utils.RequestUtils;
 import online.mwang.stockTrading.web.utils.SleepUtils;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 /**
  * @version 1.0.0
@@ -168,8 +166,7 @@ public class ZXDataServiceImpl implements IDataService {
     }
 
     private String queryOrderStatus(String answerNo) {
-
-        List<OrderStatus> orderInfos = listTodayOrder();
+        List<OrderStatus> orderInfos = listTodayAllOrder();
         log.info("查询到订单状态信息:");
         orderInfos.forEach(o -> log.info("{}-{}:{}", o.getCode(), o.getName(), o.getStatus()));
         Optional<OrderStatus> status = orderInfos.stream().filter(o -> o.getAnswerNo().equals(answerNo)).findFirst();
@@ -218,8 +215,8 @@ public class ZXDataServiceImpl implements IDataService {
         return accountInfo;
     }
 
-    @Override
-    public List<OrderStatus> listTodayOrder() {
+    // 获取今日所有提交的委托订单，包含撤销和取消订单
+    public List<OrderStatus> listTodayAllOrder() {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -268,7 +265,7 @@ public class ZXDataServiceImpl implements IDataService {
     public Boolean waitOrderStatus(String answerNo) {
         int times = 0;
         while (times++ < 10) {
-            sleepUtils.second(15);
+            sleepUtils.second(20);
             final String status = queryOrderStatus(answerNo);
             if (status == null) {
                 log.info("当前合同编号:{},订单状态查询失败。", answerNo);
@@ -370,7 +367,7 @@ public class ZXDataServiceImpl implements IDataService {
     }
 
     // 获取历史订单
-    public List<OrderInfo> getHistoryOrder(Integer begin, Integer end) {
+    public List<OrderInfo> getHistoryOrder(String begin, String end) {
         final String token = getToken();
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.put("action", 115);
@@ -380,22 +377,26 @@ public class ZXDataServiceImpl implements IDataService {
         paramMap.put("token", token);
         paramMap.put("BeginDate", begin);
         paramMap.put("EndDate", end);
-        final String url = RequestUtils.REQUEST_URL + "?datetype=1#?begindate=" + begin + "&enddate=" + end;
-        final JSONArray results = requestUtils.request2(buildParams(paramMap), url);
+        final JSONArray results = requestUtils.request2(buildParams(paramMap));
         return arrayToOrderList(results, false);
     }
 
     @Override
-    // 获取历史订单 平台限制最大只能获取一年跨度
+    // 获取历史订单 平台限制最大只能获取一个月跨度
     public List<OrderInfo> getHistoryOrder() {
         // 获取自2023年后历史订
-        int startDate = 20230101;
-        int endDate = 20240101;
+        Calendar calendar = Calendar.getInstance();
+        calendar.set(2023, Calendar.JANUARY, 1);
+        int years = 3;
         final ArrayList<OrderInfo> orderInfos = new ArrayList<>();
-        for (int i = 0; i < 3; i++) {
-            startDate += i * 10000;
-            endDate += i * 10000;
+        for (int i = 0; i < years * 12; i++) {
+            if (calendar.getTime().getTime() > new Date().getTime()) break;
+            String startDate = DateUtils.format1(calendar.getTime());
+            calendar.add(Calendar.MONTH, 1);
+            String endDate = DateUtils.format1(calendar.getTime());
             orderInfos.addAll(getHistoryOrder(startDate, endDate));
+            // 避免请求过快触发安全警告
+            sleepUtils.milliseconds(200);
         }
         return orderInfos;
     }
@@ -442,7 +443,7 @@ public class ZXDataServiceImpl implements IDataService {
             orderInfo.setTime(time);
             orderInfo.setType(type);
             orderInfo.setPrice(Double.parseDouble(price));
-            orderInfo.setNumber(Double.parseDouble(number));
+            orderInfo.setNumber(Math.abs(Double.parseDouble(number)));
             orderList.add(orderInfo);
         }
         return orderList;
