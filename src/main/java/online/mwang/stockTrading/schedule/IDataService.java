@@ -59,7 +59,7 @@ public interface IDataService {
     /**
      * 提交买卖订单，返回订单编号
      */
-    String buySale(String type, String code, Double price, Double number);
+     String  buySale(String type, String code, Double price, Double number);
 
 
     /**

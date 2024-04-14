@@ -49,7 +49,6 @@ public class RunPredictJob extends BaseJob {
         mongoTemplate.insert(stockPredictPrices, StockPredictPrice.class);
         // 更新评分数据
         updateScore(stockPredictPrices);
-
     }
 
     private void fxiProps(StockPredictPrice stockTestPrice) {
@@ -59,13 +58,11 @@ public class RunPredictJob extends BaseJob {
 
     private void updateScore(List<StockPredictPrice> stockPredictPrices) {
         List<StockInfo> stockInfos = stockInfoService.list();
-        stockInfos.forEach(s -> stockPredictPrices.stream()
-                .filter(p -> p.getCode().equals(s.getCode()))
-                .findFirst().ifPresent(p -> {
-                    s.setScore(calculateScore(s, p));
-                    s.setPredictPrice((p.getPrice1() + p.getPrice2()) / 2);
-                    s.setUpdateTime(new Date());
-                }));
+        stockInfos.forEach(s -> stockPredictPrices.stream().filter(p -> p.getCode().equals(s.getCode())).findFirst().ifPresent(p -> {
+            s.setScore(calculateScore(s, p));
+            s.setPredictPrice((p.getPrice1() + p.getPrice2()) / 2);
+            s.setUpdateTime(new Date());
+        }));
         stockInfoService.saveOrUpdateBatch(stockInfos);
     }
 
