@@ -2,8 +2,6 @@ package online.mwang.stockTrading.web.utils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
-import online.mwang.stockTrading.web.bean.base.BusinessException;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
@@ -18,30 +16,20 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class SleepUtils {
 
-    private final StringRedisTemplate redisTemplate;
-    private static final int MINUTE_SECONDS = 60;
-
     @SneakyThrows
-    public void minutes(long minutes, String runningId) {
-        for (int i = 0; i < MINUTE_SECONDS * minutes; i++) {
-            second(1, runningId);
-        }
+    public void milliseconds(long seconds) {
+        TimeUnit.MILLISECONDS.sleep(seconds);
     }
+
 
     @SneakyThrows
     public void second(long seconds) {
         TimeUnit.SECONDS.sleep(seconds);
     }
 
-    @SneakyThrows
-    public void second(long seconds, String runningId) {
-        TimeUnit.SECONDS.sleep(seconds);
-        if (checkRunningId(runningId)) {
-            throw new BusinessException("任务终止!");
-        }
-    }
 
-    public boolean checkRunningId(String runningId) {
-        return redisTemplate.opsForValue().get(runningId) == null;
+    @SneakyThrows
+    public void minutes(long seconds) {
+        TimeUnit.MINUTES.sleep(seconds);
     }
 }

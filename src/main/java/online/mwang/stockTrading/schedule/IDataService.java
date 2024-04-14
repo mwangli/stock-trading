@@ -24,15 +24,6 @@ public interface IDataService {
      */
     AccountInfo getAccountInfo();
 
-    /**
-     * 获取今日订单
-     */
-    List<OrderStatus> listTodayOrder();
-
-    /**
-     * 获取指定股票的最新实时价格
-     */
-    Double getNowPrice(String code);
 
     /**
      * 获取最新的所有股票信息
@@ -40,12 +31,18 @@ public interface IDataService {
     List<StockInfo> getDataList();
 
     /**
+     * 获取指定股票的最新实时价格
+     */
+    Double getNowPrice(String code);
+
+
+    /**
      * 获取某一只股票历史价格数据
      */
     List<DailyItem> getHistoryPrices(String code);
 
     /**
-     * 获取历史订单
+     * 获取历史已成交订单
      */
     List<OrderInfo> getHistoryOrder();
 

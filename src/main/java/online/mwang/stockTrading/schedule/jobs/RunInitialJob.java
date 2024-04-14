@@ -6,7 +6,6 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IModelService;
 import online.mwang.stockTrading.schedule.IDataService;
-import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
@@ -23,10 +22,7 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -52,33 +48,30 @@ public class RunInitialJob extends BaseJob {
     @Override
     public void run() {
         initHistoryOrder();
-        initHistoryPriceData();
+//        initHistoryPriceData();
     }
 
     private void initHistoryPriceData() {
         // 首次初始化执行，写入4000支股票，每只股票约500条数据
-        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(StockInfo::getDeleted, 1);
-        List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
-        if (stockInfoList.size() == 0) throw new BusinessException("股票数据为空，请先执行股票同步任务！");
+        List<StockInfo> stockInfoList = dataService.getDataList();
         stockInfoList.forEach(s -> {
-            List<DailyItem> historyPrices = dataService.getHistoryPrices(s.getCode());
-            List<StockHistoryPrice> stockHistoryPrices = historyPrices.stream().map(item -> {
-                StockHistoryPrice stockHistoryPrice = new StockHistoryPrice();
-                stockHistoryPrice.setName(s.getName());
-                stockHistoryPrice.setCode(s.getCode());
-                stockHistoryPrice.setDate(item.getDate());
-                stockHistoryPrice.setPrice1(item.getPrice1());
-                stockHistoryPrice.setPrice2(item.getPrice2());
-                stockHistoryPrice.setPrice3(item.getPrice3());
-                stockHistoryPrice.setPrice4(item.getPrice4());
-                return stockHistoryPrice;
-            }).collect(Collectors.toList());
             Query query = new Query(Criteria.where("code").is(s.getCode()));
             List<StockHistoryPrice> find = mongoTemplate.find(query, StockHistoryPrice.class);
             if (find.size() > 0) {
                 log.info("股票[{}-{}]历史数据已经存在，无需写入", s.getName(), s.getCode());
             } else {
+                List<DailyItem> historyPrices = dataService.getHistoryPrices(s.getCode());
+                List<StockHistoryPrice> stockHistoryPrices = historyPrices.stream().map(item -> {
+                    StockHistoryPrice stockHistoryPrice = new StockHistoryPrice();
+                    stockHistoryPrice.setName(s.getName());
+                    stockHistoryPrice.setCode(s.getCode());
+                    stockHistoryPrice.setDate(item.getDate());
+                    stockHistoryPrice.setPrice1(item.getPrice1());
+                    stockHistoryPrice.setPrice2(item.getPrice2());
+                    stockHistoryPrice.setPrice3(item.getPrice3());
+                    stockHistoryPrice.setPrice4(item.getPrice4());
+                    return stockHistoryPrice;
+                }).collect(Collectors.toList());
                 mongoTemplate.insert(stockHistoryPrices, StockHistoryPrice.class);
                 log.info("股票[{}-{}]，{}条历史数据写入完成！", s.getName(), s.getCode(), stockHistoryPrices.size());
             }
@@ -92,25 +85,37 @@ public class RunInitialJob extends BaseJob {
         final List<OrderInfo> historyOrders = dataService.getHistoryOrder();
         final List<OrderInfo> todayOrders = dataService.getTodayOrder();
         historyOrders.addAll(todayOrders);
-        final List<TradingRecord> tradingRecords = buildTradingRecord(historyOrders);
-        // 写入时根据买入股票编号，交易日期来判断是否已经存在
-        tradingRecords.forEach(this::fixProps);
-        final List<TradingRecord> saveList = tradingRecords.stream().filter(r -> !isExist(r)).collect(Collectors.toList());
-        tradingRecordService.saveBatch(saveList);
-        log.info("共写入{}条完整交易记录。", saveList.size());
+        List<OrderInfo> distinctOrders = historyOrders.stream().distinct().collect(Collectors.toList());
+        // 写入订单信息
+        Set<String> answerNoSet = orderInfoService.list().stream().map(OrderInfo::getAnswerNo).collect(Collectors.toSet());
+        List<OrderInfo> saveOrderInfos = distinctOrders.stream().filter(o -> !answerNoSet.contains(o.getAnswerNo())).collect(Collectors.toList());
+        saveOrderInfos.forEach(this::fixOrderProps);
+        orderInfoService.saveBatch(saveOrderInfos);
+        log.info("共写入{}条订单记录！", saveOrderInfos.size());
+        // 写入交易记录
+        final List<TradingRecord> tradingRecords = buildTradingRecord(distinctOrders);
+        final List<TradingRecord> saveRecordList = tradingRecords.stream().filter(r -> !isExistTradingRecord(r)).collect(Collectors.toList());
+        tradingRecords.forEach(this::fixRecordProps);
+        tradingRecordService.saveBatch(saveRecordList);
+        log.info("共写入{}条交易记录！", saveRecordList.size());
     }
 
-    private boolean isExist(TradingRecord record) {
+    private boolean isExistTradingRecord(TradingRecord record) {
         final LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(TradingRecord::getCode, record.getCode());
         queryWrapper.eq(TradingRecord::getBuyNo, record.getBuyNo());
-//        queryWrapper.eq(TradingRecord::getBuyDateString, record.getBuyDateString());
-//        queryWrapper.eq(TradingRecord::getSaleDateString, record.getSaleDateString());
         final List<TradingRecord> findList = tradingRecordMapper.selectList(queryWrapper);
         return findList.size() > 0;
     }
 
-    private void fixProps(TradingRecord tradingRecord) {
+
+    private void fixOrderProps(OrderInfo orderInfo) {
+        orderInfo.setStatus("1");
+        orderInfo.setCreateTime(new Date());
+        orderInfo.setUpdateTime(new Date());
+    }
+
+    private void fixRecordProps(TradingRecord tradingRecord) {
         tradingRecord.setCreateTime(new Date());
         tradingRecord.setUpdateTime(new Date());
     }
@@ -138,7 +143,18 @@ public class RunInitialJob extends BaseJob {
                 fixPropsFromSaleOrder(tradingRecord, orderInfo);
                 tradingRecord.setSaleNo(orderInfo.getAnswerNo());
                 // 如果数据完整，转移到到另外一个完整数据集合,并移除当前Map
-                if (Math.abs(tradingRecord.getSaleNumber()) == Math.abs(tradingRecord.getBuyNumber())) {
+                if (tradingRecord.getSaleNumber().equals(tradingRecord.getBuyNumber())) {
+                    // 计算收益金额
+                    double income = tradingRecord.getSaleAmount() - tradingRecord.getBuyAmount();
+                    double incomeRate = income / tradingRecord.getBuyAmount();
+                    long holdDays = DateUtils.diff(tradingRecord.getBuyDate(), tradingRecord.getSaleDate(), true);
+                    double dailyIncomeRate = holdDays == 0 ? 0 : incomeRate / holdDays;
+                    tradingRecord.setIncome(income);
+                    tradingRecord.setIncomeRate(incomeRate);
+                    tradingRecord.setHoldDays((int) holdDays);
+                    tradingRecord.setDailyIncomeRate(dailyIncomeRate);
+                    tradingRecord.setStrategyId(0L);
+                    tradingRecord.setStrategyName("默认策略");
                     finishedRecords.add(tradingRecord);
                     unfinishedMap.remove(tradingRecord.getCode());
                 }
@@ -177,11 +193,11 @@ public class RunInitialJob extends BaseJob {
         record.setSaleDate(DateUtils.dateFormat.parse(order.getDate()));
         record.setSaleDateString(order.getDate());
         record.setSalePrice(order.getPrice());
-        record.setSaleNumber(order.getNumber());
+        record.setSaleNumber(record.getSaleNumber() + order.getNumber());
         final double amount = order.getPrice() * order.getNumber();
         // 卖出金额中去除了手续费
         final double saleAmount = amount - dataService.getPeeAmount(amount);
-        record.setBuyAmount(saleAmount);
+        record.setSaleAmount(record.getSaleAmount() + saleAmount);
         record.setSold("1");
     }
 }

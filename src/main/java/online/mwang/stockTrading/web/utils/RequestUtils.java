@@ -30,7 +30,7 @@ public class RequestUtils {
 
     public static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
     private final StringRedisTemplate redisTemplate;
-    public boolean logs = false;
+    public boolean logs = true;
     @Value("${PROFILE}")
     private String profile;
 
@@ -62,16 +62,6 @@ public class RequestUtils {
     @SneakyThrows
     public JSONArray request2(HashMap<String, Object> formParam) {
         JSONObject res = request(REQUEST_URL, formParam);
-        if ("-204009".equals(res.getString("ERRORNO"))) {
-            log.info("TOKEN已经失效，正在重新登录...");
-            redisTemplate.opsForValue().getAndDelete("requestToken");
-            res = request(REQUEST_URL, formParam);
-        }
-        return res.getJSONArray("GRID0");
-    }
-
-    public JSONArray request2(HashMap<String, Object> formParam, String url) {
-        JSONObject res = request(url, formParam);
         if ("-204009".equals(res.getString("ERRORNO"))) {
             log.info("TOKEN已经失效，正在重新登录...");
             redisTemplate.opsForValue().getAndDelete("requestToken");
