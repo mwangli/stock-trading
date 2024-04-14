@@ -3,19 +3,15 @@ package online.mwang.stockTrading.schedule.jobs;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IModelService;
-import online.mwang.stockTrading.schedule.IDataService;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPredictPrice;
-import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
-import online.mwang.stockTrading.web.service.PredictPriceService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Date;
@@ -27,13 +23,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunPredictJob extends BaseJob {
 
-    private final IDataService dataService;
     private final IModelService modelService;
     private final StockInfoService stockInfoService;
-    private final PredictPriceMapper predictPriceMapper;
-    private final PredictPriceService predictPriceService;
     private final MongoTemplate mongoTemplate;
-    private final StringRedisTemplate redisTemplate;
 
     @Value("${PROFILE}")
     private String profile;

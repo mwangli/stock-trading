@@ -2,12 +2,11 @@ package online.mwang.stockTrading.schedule;
 
 import com.alibaba.fastjson.JSONObject;
 import online.mwang.stockTrading.web.bean.dto.DailyItem;
-import online.mwang.stockTrading.web.bean.po.*;
-import online.mwang.stockTrading.web.utils.DateUtils;
+import online.mwang.stockTrading.web.bean.po.AccountInfo;
+import online.mwang.stockTrading.web.bean.po.OrderInfo;
+import online.mwang.stockTrading.web.bean.po.StockInfo;
 import org.springframework.stereotype.Service;
 
-import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 
 /**
@@ -35,7 +34,6 @@ public interface IDataService {
      */
     Double getNowPrice(String code);
 
-
     /**
      * 获取某一只股票历史价格数据
      */
@@ -51,6 +49,12 @@ public interface IDataService {
      */
     List<OrderInfo> getTodayOrder();
 
+
+    /**
+     * 撤销今日所有无效订单
+     */
+    Integer cancelAllOrder();
+
     /**
      * 计算手续费
      */
@@ -59,11 +63,11 @@ public interface IDataService {
     /**
      * 提交买卖订单，返回订单编号
      */
-     String  buySale(String type, String code, Double price, Double number);
+    JSONObject buySale(String type, String code, Double price, Double number);
 
 
     /**
-     *  等待买入或者卖出订单完成
+     * 等待买入或者卖出订单完成
      */
     Boolean waitOrderStatus(String answerNo);
 }

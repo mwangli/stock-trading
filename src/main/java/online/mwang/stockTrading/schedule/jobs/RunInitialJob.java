@@ -4,17 +4,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.model.IModelService;
 import online.mwang.stockTrading.schedule.IDataService;
 import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
 import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.TradingRecord;
-import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.TradingRecordMapper;
 import online.mwang.stockTrading.web.service.OrderInfoService;
-import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -37,10 +34,7 @@ import java.util.stream.Collectors;
 public class RunInitialJob extends BaseJob {
 
     private final IDataService dataService;
-    private final AccountInfoMapper accountInfoMapper;
-    private final IModelService modelService;
     private final MongoTemplate mongoTemplate;
-    private final StockInfoService stockInfoService;
     private final OrderInfoService orderInfoService;
     private final TradingRecordMapper tradingRecordMapper;
     private final TradingRecordService tradingRecordService;
@@ -48,7 +42,7 @@ public class RunInitialJob extends BaseJob {
     @Override
     public void run() {
         initHistoryOrder();
-//        initHistoryPriceData();
+        initHistoryPriceData();
     }
 
     private void initHistoryPriceData() {

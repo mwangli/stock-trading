@@ -25,12 +25,11 @@ public class RunOrderJob extends BaseJob {
 
     private final IDataService dataService;
     private final OrderInfoService orderInfoService;
-    private final OrderInfoMapper orderInfoMapper;
 
     @SneakyThrows
     @Override
     public void run() {
-        // 同步今日成交订单数据 (由于买入卖出操作会进行很多尝试操作，所有会存在很多撤销的订单，这些数据我们并不需要)
+        // 同步今日成交订单数据
         List<OrderInfo> todayOrders = dataService.getTodayOrder();
         todayOrders.forEach(this::fixProps);
         orderInfoService.saveBatch(todayOrders);
