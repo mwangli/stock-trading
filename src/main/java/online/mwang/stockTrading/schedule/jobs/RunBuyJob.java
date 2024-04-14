@@ -7,14 +7,12 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.IDataService;
 import online.mwang.stockTrading.web.bean.base.BusinessException;
-import online.mwang.stockTrading.web.bean.po.AccountInfo;
-import online.mwang.stockTrading.web.bean.po.ModelStrategy;
-import online.mwang.stockTrading.web.bean.po.StockInfo;
-import online.mwang.stockTrading.web.bean.po.TradingRecord;
+import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
 import online.mwang.stockTrading.web.mapper.ScoreStrategyMapper;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
+import online.mwang.stockTrading.web.service.OrderInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
@@ -24,6 +22,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -52,6 +51,7 @@ public class RunBuyJob extends BaseJob {
     private final RunStockJob runStockJob;
     private final TradingRecordService tradingRecordService;
     private final StockInfoMapper stockInfoMapper;
+    private final OrderInfoService orderInfoService;
     private final StockInfoService stockInfoService;
     private final ScoreStrategyMapper strategyMapper;
     private final RequestUtils requestUtils;
@@ -100,15 +100,38 @@ public class RunBuyJob extends BaseJob {
             priceTotal += nowPrice;
             priceCount++;
             if (priceCount > 60 && nowPrice < priceAvg - priceAvg * BUY_PERCENT || DateUtils.isDeadLine2()) {
-                if (DateUtils.isDeadLine2()) log.info("开始进行买入");
-                log.info("开始买入");
-                // 计算买入数量
+                if (DateUtils.isDeadLine2()) log.info("交易时间段即将结束！");
+                log.info("开始进行买入");
+                Boolean success;
                 double buyNumber = (accountInfo.getAvailableAmount() / nowPrice / 100) * 100;
-                String buyNo = dataService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
-                if (buyNo == null) throw new BusinessException("买入订单提交失败");
-                Boolean success = dataService.waitOrderStatus(buyNo);
-                if (success == null) throw new BusinessException("撤单失败，无可用资金");
-                if (!success) continue;
+                String buyNo;
+                synchronized (Objects.requireNonNull(countDownLatch)) {
+                    log.info("同步买入开始...");
+                    buyNo = dataService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
+                    if (buyNo == null) throw new BusinessException("买入订单提交失败");
+                    success = dataService.waitOrderStatus(buyNo);
+                    if (success == null) throw new BusinessException("撤单失败，无可用资金");
+                    log.info("同步买入结束...");
+                }
+                if (!success) {
+                    log.info("撤单成功，重新尝试买入。");
+                    continue;
+                }
+                // 保存订单信息
+                final Date now = new Date();
+                OrderInfo orderInfo = new OrderInfo();
+                orderInfo.setStatus("1");
+                orderInfo.setCode(stockInfo.getCode());
+                orderInfo.setName(stockInfo.getName());
+                orderInfo.setPrice(nowPrice);
+                orderInfo.setNumber(buyNumber);
+                orderInfo.setType("买入");
+                orderInfo.setAnswerNo(buyNo);
+                orderInfo.setCreateTime(now);
+                orderInfo.setUpdateTime(now);
+                orderInfo.setDate(DateUtils.format1(now));
+                orderInfo.setTime(DateUtils.format2(now));
+                orderInfoService.save(orderInfo);
                 // 买入成功后,保存交易数据
                 final TradingRecord record = new TradingRecord();
                 record.setCode(stockInfo.getCode());
@@ -118,7 +141,6 @@ public class RunBuyJob extends BaseJob {
                 record.setBuyNo(buyNo);
                 final double amount = stockInfo.getPrice() * buyNumber;
                 record.setBuyAmount(amount + dataService.getPeeAmount(amount));
-                final Date now = new Date();
                 record.setBuyDate(now);
                 record.setBuyDateString(DateUtils.dateFormat.format(now));
                 record.setSold("0");
