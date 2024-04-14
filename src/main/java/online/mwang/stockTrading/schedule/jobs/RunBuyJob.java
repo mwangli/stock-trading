@@ -1,5 +1,6 @@
 package online.mwang.stockTrading.schedule.jobs;
 
+import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -9,14 +10,11 @@ import online.mwang.stockTrading.schedule.IDataService;
 import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
-import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
 import online.mwang.stockTrading.web.mapper.ScoreStrategyMapper;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
 import online.mwang.stockTrading.web.service.OrderInfoService;
-import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
-import online.mwang.stockTrading.web.utils.RequestUtils;
 import online.mwang.stockTrading.web.utils.SleepUtils;
 import org.springframework.stereotype.Component;
 
@@ -42,21 +40,14 @@ public class RunBuyJob extends BaseJob {
     public static final double HIGH_PRICE_PERCENT = 0.8;
     public static final double LOW_PRICE_PERCENT = 0.8;
     public static final double LOW_PRICE_LIMIT = 5.0;
-    public static final int BUY_RETRY_TIMES = 4;
-    public static final int BUY_RETRY_LIMIT = 10;
     public static final int NEED_COUNT = 1;
     public static final double BUY_PERCENT = 0.03;
-    public static final double SALE_PERCENT = 0.03;
     private final IDataService dataService;
-    private final RunStockJob runStockJob;
     private final TradingRecordService tradingRecordService;
     private final StockInfoMapper stockInfoMapper;
     private final OrderInfoService orderInfoService;
-    private final StockInfoService stockInfoService;
     private final ScoreStrategyMapper strategyMapper;
-    private final RequestUtils requestUtils;
     private final SleepUtils sleepUtils;
-    private final PredictPriceMapper predictPriceMapper;
     private final AccountInfoMapper accountInfoMapper;
 
     @SneakyThrows
@@ -107,7 +98,8 @@ public class RunBuyJob extends BaseJob {
                 String buyNo;
                 synchronized (Objects.requireNonNull(countDownLatch)) {
                     log.info("同步买入开始...");
-                    buyNo = dataService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
+                    JSONObject result = dataService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
+                    buyNo = result.getString("ANSWERNO");
                     if (buyNo == null) throw new BusinessException("买入订单提交失败");
                     success = dataService.waitOrderStatus(buyNo);
                     if (success == null) throw new BusinessException("撤单失败，无可用资金");

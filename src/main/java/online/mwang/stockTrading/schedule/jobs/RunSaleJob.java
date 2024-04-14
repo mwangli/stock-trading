@@ -1,5 +1,6 @@
 package online.mwang.stockTrading.schedule.jobs;
 
+import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -60,7 +61,8 @@ public class RunSaleJob extends BaseJob {
             if (priceCount > 60 && nowPrice > priceAvg + priceAvg * 0.05 || DateUtils.isDeadLine1()) {
                 if (DateUtils.isDeadLine1()) log.info("交易时间段即将结束");
                 log.info("开始卖出股票");
-                String saleNo = dataService.buySale("S", record.getCode(), nowPrice, record.getBuyNumber());
+                JSONObject result = dataService.buySale("S", record.getCode(), nowPrice, record.getBuyNumber());
+                String saleNo = result.getString("ANSWERNO");
                 Boolean success = dataService.waitOrderStatus(saleNo);
                 if (success == null) throw new BusinessException("买入失败，撤单失败，无可卖数量");
                 if (!success) {

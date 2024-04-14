@@ -41,7 +41,6 @@ public class ZXDataServiceImpl implements IDataService {
 
     public static final String TOKEN = "requestToken";
     public static final int LOGIN_RETRY_TIMES = 10;
-    public static final int HISTORY_PRICE_LIMIT = 100;
     public static final int TOKEN_EXPIRE_MINUTES = 30;
     public final RequestUtils requestUtils;
     public final OcrUtils ocrUtils;
@@ -189,6 +188,14 @@ public class ZXDataServiceImpl implements IDataService {
     }
 
     @Override
+    public Integer cancelAllOrder() {
+        List<OrderInfo> orderInfos = getTodayOrder();
+        orderInfos.forEach(o -> cancelOrder(o.getAnswerNo()));
+        log.info("共取消{}条无效订单!",orderInfos.size());
+        return orderInfos.size();
+    }
+
+    @Override
     public AccountInfo getAccountInfo() {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
@@ -245,7 +252,7 @@ public class ZXDataServiceImpl implements IDataService {
     }
 
     @Override
-    public String buySale(String type, String code, Double price, Double number) {
+    public JSONObject buySale(String type, String code, Double price, Double number) {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -257,8 +264,7 @@ public class ZXDataServiceImpl implements IDataService {
         paramMap.put("Volume", number);
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
-        JSONObject result = requestUtils.request(buildParams(paramMap));
-        return result.getString("ANSWERNO");
+        return requestUtils.request(buildParams(paramMap));
     }
 
     @Override
