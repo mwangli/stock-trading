@@ -120,7 +120,6 @@ public class StockPricePredictionWithLSTM implements IModelService {
      * Predict all the features (open, close, low, high prices and volume) of a stock one-day ahead
      */
     private List<StockTestPrice> predictAllCategories(MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, List<String> dateList, String stockCode, INDArray max, INDArray min) {
-        log.info("dataList={}", dateList);
         INDArray[] predicts = new INDArray[testData.size()];
         INDArray[] actuals = new INDArray[testData.size()];
         final List<StockTestPrice> stockTestPrices = new ArrayList();
@@ -134,9 +133,9 @@ public class StockPricePredictionWithLSTM implements IModelService {
             stockTestPrice.setCode(stockCode);
             stockTestPrices.add(stockTestPrice);
         }
-        log.info("Print out Predictions and Actual Values...");
-        log.info("Predict\tActual");
-        for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "\t" + actuals[i]);
+//        log.info("Print out Predictions and Actual Values...");
+//        log.info("Predict\tActual");
+//        for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "\t" + actuals[i]);
 //        log.info("Plot...");
 //        for (int n = 0; n < 5; n++) {
 
