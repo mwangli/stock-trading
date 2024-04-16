@@ -101,9 +101,9 @@ public class StockInfoController {
             StockTestPrice stockTestPrice = stockTestPrices.get(i);
             StockHistoryPrice stockHistoryPrice = stockHistoryPrices.get(i);
             final Point point1 = new Point(stockTestPrice.getDate(), stockTestPrice.getPrice1());
-            final Point point2 = new Point(stockHistoryPrice.getDate(), stockHistoryPrice.getPrice2());
-            point1.setType("预测价格");
-            point2.setType("实际价格");
+            final Point point2 = new Point(stockHistoryPrice.getDate(), stockHistoryPrice.getPrice1());
+            point1.setType("预测开盘价");
+            point2.setType("实际开盘价");
             points.add(point1);
             points.add(point2);
         }
