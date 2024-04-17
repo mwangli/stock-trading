@@ -3,7 +3,7 @@
 ### 项目文档 
 https://www.yuque.com/mwangli/ha7323/axga8dz9imansvl4
 ### 项目展示
-[http:124.220.36.95:8000](http:124.220.36.95:8000)
+[http:mwang.cloud:8000](http:124.220.36.95:8000)
 ![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1712990475463-950af927-0c82-4774-8e3a-dc867f94773c.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1265%2Climit_0)
 
 ### 功能介绍
