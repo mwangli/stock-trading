@@ -51,19 +51,20 @@ public class LoginController {
         final String monthDate = new SimpleDateFormat(SDF).format(new Date());
         final String reverseDate = new StringBuilder(monthDate).reverse().toString();
         String username = param.getUsername().trim();
+        String password = param.getPassword().trim();
         if (USERNAME_TEST.equalsIgnoreCase(username)) {
             final String token = generateToken();
             JSONObject user = getUserInfo(USERNAME_TEST, USERNAME_TEST);
             stringRedisTemplate.opsForValue().set(token, JSON.toJSONString(user), TOKEN_EXPIRE_HOURS, TimeUnit.HOURS);
             return Response.success(token);
         }
-        if (USERNAME_GUEST.equalsIgnoreCase(param.getUsername())) {
+        if (USERNAME_GUEST.equalsIgnoreCase(username)) {
             final String token = generateToken();
             JSONObject user = getUserInfo(USERNAME_GUEST, USERNAME_GUEST);
             stringRedisTemplate.opsForValue().set(token, JSON.toJSONString(user), TOKEN_EXPIRE_HOURS, TimeUnit.HOURS);
             return Response.success(token);
         }
-        if (USERNAME_ADMIN.equalsIgnoreCase(username) && reverseDate.equals(param.getPassword())) {
+        if (USERNAME_ADMIN.equalsIgnoreCase(username) && reverseDate.equals(password)) {
             final String token = generateToken();
             JSONObject user = getUserInfo(USERNAME_ADMIN, USERNAME_ADMIN);
             stringRedisTemplate.opsForValue().set(token, JSON.toJSONString(user), TOKEN_EXPIRE_HOURS, TimeUnit.HOURS);
