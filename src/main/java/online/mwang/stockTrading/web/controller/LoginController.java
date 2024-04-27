@@ -28,7 +28,9 @@ import java.util.concurrent.TimeUnit;
 public class LoginController {
 
     private static final Random RANDOM = new Random();
-    private static final String USERNAME = "admin";
+    private static final String USERNAME_ADMIN = "admin";
+    private static final String USERNAME_GUEST = "guest";
+    private static final String USERNAME_TEST = "test";
     private static final String SDF = "MMdd";
     private static final Integer TOKEN_LENGTH = 32;
     private static final Integer TOKEN_EXPIRE_HOURS = 4;
@@ -48,35 +50,26 @@ public class LoginController {
     public Response<String> login(@RequestBody LoginParam param) {
         final String monthDate = new SimpleDateFormat(SDF).format(new Date());
         final String reverseDate = new StringBuilder(monthDate).reverse().toString();
-        if ("test".equals(param.getUsername())){
+        String username = param.getUsername().trim();
+        if (USERNAME_TEST.equalsIgnoreCase(username)) {
             final String token = generateToken();
-            JSONObject user = new JSONObject();
-            user.put("name", "test");
-            user.put("avatar", "https://gw.alipayobjects.com/zos/antfincdn/XAosXuNZyF/BiazfanxmamNRoxxVxka.png");
-            user.put("access", "test");
+            JSONObject user = getUserInfo(USERNAME_TEST, USERNAME_TEST);
             stringRedisTemplate.opsForValue().set(token, JSON.toJSONString(user), TOKEN_EXPIRE_HOURS, TimeUnit.HOURS);
             return Response.success(token);
         }
-        if ("guest".equals(param.getUsername())){
+        if (USERNAME_GUEST.equalsIgnoreCase(param.getUsername())) {
             final String token = generateToken();
-            JSONObject user = new JSONObject();
-            user.put("name", "guest");
-            user.put("avatar", "https://gw.alipayobjects.com/zos/antfincdn/XAosXuNZyF/BiazfanxmamNRoxxVxka.png");
-            user.put("access", "guest");
+            JSONObject user = getUserInfo(USERNAME_GUEST, USERNAME_GUEST);
             stringRedisTemplate.opsForValue().set(token, JSON.toJSONString(user), TOKEN_EXPIRE_HOURS, TimeUnit.HOURS);
             return Response.success(token);
         }
-        if  ( USERNAME.equalsIgnoreCase(param.getUsername()) && reverseDate.equals(param.getPassword())) {
+        if (USERNAME_ADMIN.equalsIgnoreCase(username) && reverseDate.equals(param.getPassword())) {
             final String token = generateToken();
-            JSONObject user = new JSONObject();
-            user.put("name", "admin");
-            user.put("avatar", "https://gw.alipayobjects.com/zos/antfincdn/XAosXuNZyF/BiazfanxmamNRoxxVxka.png");
-            user.put("access", "admin");
+            JSONObject user = getUserInfo(USERNAME_ADMIN, USERNAME_ADMIN);
             stringRedisTemplate.opsForValue().set(token, JSON.toJSONString(user), TOKEN_EXPIRE_HOURS, TimeUnit.HOURS);
             return Response.success(token);
-        } else {
-            return Response.fail(1101, "用户名或密码错误!");
         }
+        return Response.fail(1101, "用户名或密码错误!");
     }
 
     @PostMapping("/outLogin")
@@ -91,10 +84,14 @@ public class LoginController {
     public Response<JSONObject> currentUser(HttpServletRequest request) {
         final String token = request.getHeader("token");
         final String user = stringRedisTemplate.opsForValue().get(token);
-//        JSONObject user = new JSONObject();
-//        user.put("name", "Admin");
-//        user.put("avatar", "https://gw.alipayobjects.com/zos/antfincdn/XAosXuNZyF/BiazfanxmamNRoxxVxka.png");
-//        user.put("access", "admin");
         return Response.success(JSON.parseObject(user));
+    }
+
+    private JSONObject getUserInfo(String name, String access) {
+        JSONObject user = new JSONObject();
+        user.put("name", name);
+        user.put("avatar", "https://gw.alipayobjects.com/zos/antfincdn/XAosXuNZyF/BiazfanxmamNRoxxVxka.png");
+        user.put("access", access);
+        return user;
     }
 }
