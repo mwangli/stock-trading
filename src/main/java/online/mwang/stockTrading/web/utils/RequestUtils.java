@@ -30,7 +30,7 @@ public class RequestUtils {
 
     public static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
     private final StringRedisTemplate redisTemplate;
-    public boolean logs = true;
+    public boolean logs = false;
     @Value("${PROFILE}")
     private String profile;
 
