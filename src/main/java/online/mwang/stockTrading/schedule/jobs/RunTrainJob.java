@@ -15,11 +15,9 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.util.CollectionUtils;
 
 import java.util.Date;
 import java.util.List;
-import java.util.Random;
 
 /**
  * @author 13255
@@ -44,9 +42,7 @@ public class RunTrainJob extends BaseJob {
         queryWrapper.orderByDesc(StockInfo::getPrice);
         final List<StockInfo> list = stockInfoService.list(queryWrapper);
         log.info("共获取{}条待训练股票.", list.size());
-        // 随机选择一千至股票数据进行训练
-        for (int i = 0; i < 1000; ) {
-            StockInfo s = list.get(new Random().nextInt(list.size()));
+        for (StockInfo s : list) {
             String stockCode = s.getCode();
             String stockName = s.getName();
             String lastUpdateTime = (String) redisTemplate.opsForHash().get("model:" + stockCode, "lastUpdateTime");
@@ -64,10 +60,6 @@ public class RunTrainJob extends BaseJob {
                 continue;
             }
             List<StockPrices> stockTestPrices = modelService.modelTrain(stockHistoryPrices);
-            if (CollectionUtils.isEmpty(stockTestPrices)) {
-                log.info("当前股票[{}-{}]，未获取到测试集数据！", stockName, stockCode);
-                continue;
-            }
             final Query deleteQuery = new Query(Criteria.where("code").is(s.getCode()));
             final List<StockPrices> remove = mongoTemplate.findAllAndRemove(deleteQuery, TEST_COLLECTION_NAME);
             log.info("股票[{}-{}],清除{}条废弃测试集数据", s.getName(), stockCode, remove.size());
@@ -75,7 +67,6 @@ public class RunTrainJob extends BaseJob {
             log.info("股票[{}-{}],新写入{}条测试集数据", s.getName(), stockCode, stockTestPrices.size());
             long end = System.currentTimeMillis();
             log.info("股票[{}-{}],模型训练完成，共耗时:{}", s.getName(), stockCode, DateUtils.timeConvertor(end - start));
-            i++;
         }
     }
 }
