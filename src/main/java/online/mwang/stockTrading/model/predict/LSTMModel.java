@@ -15,7 +15,6 @@ import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.deeplearning4j.util.ModelSerializer;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
-import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -38,8 +37,8 @@ public class LSTMModel {
     private static final int EPOCHS = 100;
     private static final int SCORE_ITERATIONS = 100;
     private final ModelConfig modelConfig;
-    private final MongoTemplate mongoTemplate;
     private final StringRedisTemplate redisTemplate;
+    public boolean skipTrain = false;
 
     public List<StockPrices> train(List<StockData> dataList) throws IOException {
         log.info("Create dataSet iterator...");
@@ -47,18 +46,25 @@ public class LSTMModel {
         log.info("Load test dataset...");
         List<Pair<INDArray, INDArray>> test = iterator.getTestDataSet();
         log.info("Build lstm networks...");
-        MultiLayerNetwork net = modelConfig.getModel(iterator.inputColumns(), iterator.totalOutcomes());
+
+        String stockCode = dataList.get(0).getCode();
+        File locationToSave = new File("/model/model_".concat(stockCode).concat(".zip"));
+        MultiLayerNetwork net;
+        if (locationToSave.exists()) {
+            net = ModelSerializer.restoreMultiLayerNetwork(locationToSave);
+        } else {
+            net = modelConfig.getModel(iterator.inputColumns(), iterator.totalOutcomes());
+        }
         net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
         net.summary();
         log.info("Training...");
         for (int i = 0; i < EPOCHS; i++) {
+            if (skipTrain) break;
             while (iterator.hasNext()) net.fit(iterator.next());
             iterator.reset();
             net.rnnClearPreviousState();
         }
         log.info("Saving model...");
-        String stockCode = dataList.get(0).getCode();
-        File locationToSave = new File("/model/model_".concat(stockCode).concat(".zip"));
         final File parentFile = locationToSave.getParentFile();
         if (!parentFile.exists() && !parentFile.mkdirs()) throw new RuntimeException("文件夹创建失败!");
         ModelSerializer.writeModel(net, locationToSave, true);
@@ -75,7 +81,7 @@ public class LSTMModel {
      */
     private List<StockPrices> predictAllCategories(MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, List<String> dateList, String stockCode, INDArray max, INDArray min) {
         INDArray[] predicts = new INDArray[testData.size()];
-        ArrayList<StockPrices> stockTestPrices = new ArrayList(100);
+        List<StockPrices> stockTestPrices = new ArrayList(100);
         for (int i = 0; i < testData.size(); i++) {
             predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getRow(EXAMPLE_LENGTH - 1).mul(max.sub(min)).add(min);
             final StockPrices stockTestPrice = new StockPrices();
