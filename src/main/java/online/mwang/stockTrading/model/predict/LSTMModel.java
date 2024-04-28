@@ -75,6 +75,7 @@ public class LSTMModel {
         INDArray min = Nd4j.create(iterator.getMinArray());
         redisTemplate.opsForHash().put("model:" + stockCode, "minArray", JSON.toJSONString(iterator.getMinArray()));
         redisTemplate.opsForHash().put("model:" + stockCode, "maxArray", JSON.toJSONString(iterator.getMaxArray()));
+        redisTemplate.opsForHash().put("model:" + stockCode, "lastUpdateTime", DateUtils.dateFormat.format(new Date()));
         return predictTestDataSet(net, test, iterator.getDateList(), stockCode, stockName, max, min);
     }
 
