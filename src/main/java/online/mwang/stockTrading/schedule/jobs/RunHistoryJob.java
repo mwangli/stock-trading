@@ -48,30 +48,19 @@ public class RunHistoryJob extends BaseJob {
     @SneakyThrows
     public void writeHistoryPriceDataToMongo(StockInfo stockInfo) {
         List<DailyItem> historyPrices = dataService.getHistoryPrices(stockInfo.getCode());
-        List<StockPrices> stockPricesList = historyPrices.stream().map(item -> {
-            StockPrices stockPrices = new StockPrices();
-            stockPrices.setName(stockInfo.getName());
-            stockPrices.setCode(stockInfo.getCode());
-            stockPrices.setDate(item.getDate());
-            stockPrices.setPrice1(item.getPrice1());
-            stockPrices.setPrice2(item.getPrice2());
-            stockPrices.setPrice3(item.getPrice3());
-            stockPrices.setPrice4(item.getPrice4());
-            return stockPrices;
-        }).collect(Collectors.toList());
         // 翻转一下，将日期从新到旧排列，这样读到已经存在的数据，就可以跳过后续判断写入逻辑
-        Collections.reverse(stockPricesList);
-        for (StockPrices s : stockPricesList) {
+        Collections.reverse(historyPrices);
+        for (DailyItem s : historyPrices) {
             // 先查询是否已经存在相同记录
             Query query = new Query(Criteria.where("date").is(s.getDate()).and("code").is(s.getCode()));
             StockPrices one = mongoTemplate.findOne(query, StockPrices.class, TRAIN_COLLECTION_NAME);
             if (Objects.isNull(one)) {
                 mongoTemplate.insert(s, TRAIN_COLLECTION_NAME);
-                log.info("当前股票{}-{}-{}，历史数据写入完成", s.getName(), s.getCode(), s.getDate());
+                log.info("当前股票{}-{}-{}，历史数据写入完成", stockInfo.getName(), stockInfo.getCode(), s.getDate());
             } else {
-                if (one.getPrice3() == null || one.getPrice4() == null) {
-                    log.info("当前股票{}-{}-{}，历史数据不完整进行修改操作", s.getName(), s.getCode(), s.getDate());
-                    Update update = new Update().set("price3", one.getPrice3()).set("price4", one.getPrice3());
+                if (one.getPrice1() == null || one.getPrice2() == null || one.getPrice3() == null || one.getPrice4() == null) {
+                    Update update = new Update().set("price1", s.getPrice1()).set("price2", s.getPrice2()).set("price3", s.getPrice3()).set("price4", s.getPrice4());
+                    log.info("当前股票{}-{}-{}，历史数据不完整进行修改操作", stockInfo.getName(), stockInfo.getCode(), s.getDate());
                     mongoTemplate.updateFirst(query, update, StockPrices.class, TRAIN_COLLECTION_NAME);
                 } else {
                     // 数据完整，则跳过后续数据处理

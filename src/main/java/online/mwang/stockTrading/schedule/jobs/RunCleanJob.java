@@ -66,7 +66,7 @@ public class RunCleanJob extends BaseJob {
         Calendar calendar = Calendar.getInstance();
         calendar.setTime(new Date());
         calendar.add(Calendar.MONTH, -3);
-        final Query query = new Query(Criteria.where("date").lt(DateUtils.dateFormat.format(calendar.getTime())));
+        final Query query = new Query(Criteria.where("date").lte(DateUtils.dateFormat.format(calendar.getTime())));
         final List<StockPrices> remove = mongoTemplate.findAllAndRemove(query, StockPrices.class, VALIDATION_COLLECTION_NAME);
         log.info("共清理{}条价格预测历史数据。", remove.size());
     }
@@ -79,7 +79,7 @@ public class RunCleanJob extends BaseJob {
         if (invalidData != null) {
             log.info("查找到最早的无效的价格数据为:{},开始清除往后的历史数据!", invalidData);
             String startDate = invalidData.getDate();
-            final Query query = new Query(Criteria.where("date").gt(startDate));
+            final Query query = new Query(Criteria.where("date").gte(startDate));
             final List<StockPrices> remove = mongoTemplate.findAllAndRemove(query, StockPrices.class, TRAIN_COLLECTION_NAME);
             log.info("共清理{}条价格历史数据。", remove.size());
         }
