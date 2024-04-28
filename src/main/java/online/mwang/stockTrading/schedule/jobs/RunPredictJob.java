@@ -61,10 +61,10 @@ public class RunPredictJob extends BaseJob {
                 mongoTemplate.insert(stockPredictPrices, VALIDATION_COLLECTION_NAME);
                 // 更新评分数据
                 updateScore(stockPredictPrices);
+                log.info("当前股票[{}-{}]，预测数据写入完成！", s.getName(), s.getCode());
             }
         }
     }
-
 
     private void updateScore(StockPrices stockPredictPrices) {
         LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
