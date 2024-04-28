@@ -3,6 +3,7 @@ package online.mwang.stockTrading.schedule.jobs;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.IStockService;
 import online.mwang.stockTrading.web.bean.base.BusinessException;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * @version 1.0.0
@@ -39,16 +41,20 @@ public class RunSaleJob extends BaseJob {
     private final AccountInfoMapper accountInfoMapper;
     private final SleepUtils sleepUtils;
 
+    @SneakyThrows
     @Override
     public void run() {
         // 查询所有未卖出股票
         LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0");
         List<TradingRecord> tradingRecords = tradingRecordService.list(queryWrapper);
         // 多线程异步卖出
-        tradingRecords.forEach(tradingRecord -> new Thread(() -> saleStock(tradingRecord)).start());
+        CountDownLatch countDownLatch = new CountDownLatch(tradingRecords.size());
+        tradingRecords.forEach(tradingRecord -> new Thread(() -> saleStock(tradingRecord, countDownLatch)).start());
+        countDownLatch.await();
+        log.info("所有股票卖出完成");
     }
 
-    private void saleStock(TradingRecord record) {
+    private void saleStock(TradingRecord record, CountDownLatch countDownLatch) {
         int priceCount = 1;
         double priceTotal = 0.0;
         Double nowPrice;
@@ -103,7 +109,7 @@ public class RunSaleJob extends BaseJob {
                 record.setDailyIncomeRate(incomeRate);
                 tradingRecordService.updateById(record);
                 // 更新账户资金
-                AccountInfo accountInfo = dataService.getAccountInfo();
+                AccountInfo accountInfo = dataService.updateAccountInfo();
                 accountInfo.setCreateTime(new Date());
                 accountInfo.setUpdateTime(new Date());
                 accountInfoMapper.insert(accountInfo);
@@ -112,8 +118,8 @@ public class RunSaleJob extends BaseJob {
                 stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
                 stockInfoService.updateById(stockInfo);
                 log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{},日收益率为:{}。", stockInfo.getCode(), stockInfo.getName(), record.getSaleAmount(), record.getIncome(), record.getDailyIncomeRate());
+                countDownLatch.countDown();
             }
-
         }
     }
 
