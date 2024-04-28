@@ -4,10 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.schedule.IDataService;
+import online.mwang.stockTrading.schedule.IStockService;
 import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
-import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
+import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.TradingRecord;
 import online.mwang.stockTrading.web.mapper.TradingRecordMapper;
@@ -33,7 +33,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunInitialJob extends BaseJob {
 
-    private final IDataService dataService;
+    private final IStockService dataService;
     private final MongoTemplate mongoTemplate;
     private final OrderInfoService orderInfoService;
     private final TradingRecordMapper tradingRecordMapper;
@@ -50,29 +50,30 @@ public class RunInitialJob extends BaseJob {
         List<StockInfo> stockInfoList = dataService.getDataList();
         stockInfoList.forEach(s -> {
             Query query = new Query(Criteria.where("code").is(s.getCode()));
-            List<StockHistoryPrice> find = mongoTemplate.find(query, StockHistoryPrice.class);
+            List<StockPrices> find = mongoTemplate.find(query, StockPrices.class);
             if (find.size() > 0) {
                 log.info("股票[{}-{}]历史数据已经存在，无需写入", s.getName(), s.getCode());
             } else {
                 List<DailyItem> historyPrices = dataService.getHistoryPrices(s.getCode());
-                List<StockHistoryPrice> stockHistoryPrices = historyPrices.stream().map(item -> {
-                    StockHistoryPrice stockHistoryPrice = new StockHistoryPrice();
-                    stockHistoryPrice.setName(s.getName());
-                    stockHistoryPrice.setCode(s.getCode());
-                    stockHistoryPrice.setDate(item.getDate());
-                    stockHistoryPrice.setPrice1(item.getPrice1());
-                    stockHistoryPrice.setPrice2(item.getPrice2());
-                    stockHistoryPrice.setPrice3(item.getPrice3());
-                    stockHistoryPrice.setPrice4(item.getPrice4());
-                    return stockHistoryPrice;
+                List<StockPrices> stockPricesList = historyPrices.stream().map(item -> {
+                    StockPrices stockPrices = new StockPrices();
+                    stockPrices.setName(s.getName());
+                    stockPrices.setCode(s.getCode());
+                    stockPrices.setDate(item.getDate());
+                    stockPrices.setPrice1(item.getPrice1());
+                    stockPrices.setPrice2(item.getPrice2());
+                    stockPrices.setPrice3(item.getPrice3());
+                    stockPrices.setPrice4(item.getPrice4());
+                    return stockPrices;
                 }).collect(Collectors.toList());
-                mongoTemplate.insert(stockHistoryPrices, StockHistoryPrice.class);
-                log.info("股票[{}-{}]，{}条历史数据写入完成！", s.getName(), s.getCode(), stockHistoryPrices.size());
+                mongoTemplate.insert(stockPricesList, StockPrices.class);
+                log.info("股票[{}-{}]，{}条历史数据写入完成！", s.getName(), s.getCode(), stockPricesList.size());
             }
         });
         log.info("共写入了{}支股票历史数据", stockInfoList.size());
     }
 
+    @Deprecated
     private void initHistoryOrder() {
         // 初始化订单数据，当交易记录数据丢失，或者在证券平台上已有订单数据，需要同步
         // 将数据写入到TradingRecord 和 OrderInfo表

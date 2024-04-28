@@ -3,9 +3,8 @@ package online.mwang.stockTrading.schedule.jobs;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.schedule.IDataService;
+import online.mwang.stockTrading.schedule.IStockService;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
-import online.mwang.stockTrading.web.mapper.OrderInfoMapper;
 import online.mwang.stockTrading.web.service.OrderInfoService;
 import org.springframework.stereotype.Component;
 
@@ -23,7 +22,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RunOrderJob extends BaseJob {
 
-    private final IDataService dataService;
+    private final IStockService dataService;
     private final OrderInfoService orderInfoService;
 
     @SneakyThrows

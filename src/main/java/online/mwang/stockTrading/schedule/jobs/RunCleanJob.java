@@ -4,11 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.po.AccountInfo;
-import online.mwang.stockTrading.web.bean.po.StockHistoryPrice;
+import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.AccountInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -33,11 +34,14 @@ public class RunCleanJob extends BaseJob {
     private final AccountInfoService accountInfoService;
     private final StockInfoService stockInfoService;
     private final MongoTemplate mongoTemplate;
+    private static final String VALIDATION_COLLECTION_NAME = "stockPredictPrice";
+    private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
 
     @Override
     public void run() {
-        cleanAccountInfo();
         cleanStockInfo();
+        cleanAccountInfo();
+        cleanPredictPrice();
         cleanHistoryPrice();
     }
 
@@ -57,18 +61,27 @@ public class RunCleanJob extends BaseJob {
         log.info("共清理{}条账户退市股票信息。", deleteList.size());
     }
 
-    private void cleanHistoryPrice() {
-        // 移除MongoDB中前几个的历史数据的预测价格历史数据
-        // 只保留最新的三个月数据
-        final Query query = new Query(Criteria.where("date").lt(getPreMonthDate()));
-        final List<StockHistoryPrice> remove = mongoTemplate.findAllAndRemove(query, StockHistoryPrice.class);
-        log.info("共清理{}条价格预测历史数据。", remove.size());
-    }
-
-    private String getPreMonthDate() {
+    private void cleanPredictPrice() {
+        // 移除MongoDB中前几个的历史数据的预测价格历史数据,只保留最新的三个月数据
         Calendar calendar = Calendar.getInstance();
         calendar.setTime(new Date());
         calendar.add(Calendar.MONTH, -3);
-        return DateUtils.dateFormat.format(calendar.getTime());
+        final Query query = new Query(Criteria.where("date").lt(DateUtils.dateFormat.format(calendar.getTime())));
+        final List<StockPrices> remove = mongoTemplate.findAllAndRemove(query, StockPrices.class, VALIDATION_COLLECTION_NAME);
+        log.info("共清理{}条价格预测历史数据。", remove.size());
+    }
+
+    private void cleanHistoryPrice() {
+        // 找到历史数据中价格缺失的最早一条数据
+        Query findQuery = new Query(Criteria.where("price2").isNull()).with(Sort.by(Sort.Direction.ASC, "date")).limit(1);
+        StockPrices invalidData = mongoTemplate.findOne(findQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
+        // 删除指定日期往后的数据
+        if (invalidData != null) {
+            log.info("查找到最早的无效的价格数据为:{},开始清除往后的历史数据!", invalidData);
+            String startDate = invalidData.getDate();
+            final Query query = new Query(Criteria.where("date").gt(startDate));
+            final List<StockPrices> remove = mongoTemplate.findAllAndRemove(query, StockPrices.class, TRAIN_COLLECTION_NAME);
+            log.info("共清理{}条价格历史数据。", remove.size());
+        }
     }
 }

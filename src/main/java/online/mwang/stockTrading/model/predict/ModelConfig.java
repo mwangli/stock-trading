@@ -13,28 +13,32 @@ import org.deeplearning4j.nn.weights.WeightInit;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
+import org.springframework.stereotype.Component;
 
 /**
- * Created by zhanghao on 26/7/17.
- * @author ZHANG HAO
+ * @version 1.0.0
+ * @author: mwangli
+ * @date: 2024/4/28 10:00
+ * @description: ModelConfig
  */
-public class RecurrentNets {
-	
-	private static final double learningRate = 0.05;
-	private static final int iterations = 1;
-	private static final int seed = 12345;
+@Component
+public class ModelConfig {
 
-    private static final int lstmLayer1Size = 128;
-    private static final int lstmLayer2Size = 128;
-    private static final int denseLayerSize = 32;
-    private static final double dropoutRatio = 0.2;
-    private static final int truncatedBPTTLength = 22;
+    private static final double LEARNING_RATE = 0.05;
+    private static final int ITERATIONS = 1;
+    private static final int SEED = 12345;
+    private static final int LSTM_LAYER_1_SIZE = 128;
+    private static final int LSTM_LAYER_2_SIZE = 128;
+    private static final int DENSE_LAYER_SIZE = 32;
+    private static final double DROPOUT_RATIO = 0.2;
+    private static final int TRUNCATED_BPTT_LENGTH = 22;
+    private static final int SCORE_ITERATIONS = 100;
 
-    public static MultiLayerNetwork buildLstmNetworks(int nIn, int nOut) {
+    public MultiLayerNetwork getModel(int nIn, int nOut) {
         MultiLayerConfiguration conf = new NeuralNetConfiguration.Builder()
-                .seed(seed)
-                .iterations(iterations)
-                .learningRate(learningRate)
+                .seed(SEED)
+                .iterations(ITERATIONS)
+                .learningRate(LEARNING_RATE)
                 .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)
                 .weightInit(WeightInit.XAVIER)
                 .updater(Updater.RMSPROP)
@@ -43,39 +47,38 @@ public class RecurrentNets {
                 .list()
                 .layer(0, new GravesLSTM.Builder()
                         .nIn(nIn)
-                        .nOut(lstmLayer1Size)
+                        .nOut(LSTM_LAYER_1_SIZE)
                         .activation(Activation.TANH)
                         .gateActivationFunction(Activation.HARDSIGMOID)
-                        .dropOut(dropoutRatio)
+                        .dropOut(DROPOUT_RATIO)
                         .build())
                 .layer(1, new GravesLSTM.Builder()
-                        .nIn(lstmLayer1Size)
-                        .nOut(lstmLayer2Size)
+                        .nIn(LSTM_LAYER_1_SIZE)
+                        .nOut(LSTM_LAYER_2_SIZE)
                         .activation(Activation.TANH)
                         .gateActivationFunction(Activation.HARDSIGMOID)
-                        .dropOut(dropoutRatio)
+                        .dropOut(DROPOUT_RATIO)
                         .build())
                 .layer(2, new DenseLayer.Builder()
-                		.nIn(lstmLayer2Size)
-                		.nOut(denseLayerSize)
-                		.activation(Activation.RELU)
-                		.build())
+                        .nIn(LSTM_LAYER_2_SIZE)
+                        .nOut(DENSE_LAYER_SIZE)
+                        .activation(Activation.RELU)
+                        .build())
                 .layer(3, new RnnOutputLayer.Builder()
-                        .nIn(denseLayerSize)
+                        .nIn(DENSE_LAYER_SIZE)
                         .nOut(nOut)
                         .activation(Activation.IDENTITY)
                         .lossFunction(LossFunctions.LossFunction.MSE)
                         .build())
                 .backpropType(BackpropType.TruncatedBPTT)
-                .tBPTTForwardLength(truncatedBPTTLength)
-                .tBPTTBackwardLength(truncatedBPTTLength)
+                .tBPTTForwardLength(TRUNCATED_BPTT_LENGTH)
+                .tBPTTBackwardLength(TRUNCATED_BPTT_LENGTH)
                 .pretrain(false)
                 .backprop(true)
                 .build();
 
         MultiLayerNetwork net = new MultiLayerNetwork(conf);
         net.init();
-        net.setListeners(new ScoreIterationListener(100));
         return net;
     }
 }

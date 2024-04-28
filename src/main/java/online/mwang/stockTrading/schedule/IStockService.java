@@ -16,7 +16,7 @@ import java.util.List;
  * @description: DataService
  */
 @Service
-public interface IDataService {
+public interface IStockService {
 
     /**
      * 获取账户资金信息

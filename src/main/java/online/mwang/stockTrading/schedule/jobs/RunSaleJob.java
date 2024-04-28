@@ -4,7 +4,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.schedule.IDataService;
+import online.mwang.stockTrading.schedule.IStockService;
 import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.AccountInfo;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
@@ -32,7 +32,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RunSaleJob extends BaseJob {
 
-    private final IDataService dataService;
+    private final IStockService dataService;
     private final TradingRecordService tradingRecordService;
     private final StockInfoService stockInfoService;
     private final OrderInfoService orderInfoService;
