@@ -4,8 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.po.AccountInfo;
-import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
+import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.AccountInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
@@ -31,11 +31,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunCleanJob extends BaseJob {
 
+    private static final String VALIDATION_COLLECTION_NAME = "stockPredictPrice";
+    private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
     private final AccountInfoService accountInfoService;
     private final StockInfoService stockInfoService;
     private final MongoTemplate mongoTemplate;
-    private static final String VALIDATION_COLLECTION_NAME = "stockPredictPrice";
-    private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
 
     @Override
     public void run() {
@@ -83,5 +83,9 @@ public class RunCleanJob extends BaseJob {
             final List<StockPrices> remove = mongoTemplate.findAllAndRemove(query, StockPrices.class, TRAIN_COLLECTION_NAME);
             log.info("共清理{}条价格历史数据。", remove.size());
         }
+        // 删除code或date为空的无效数据
+        Query deleteQuery = new Query(Criteria.where("code").isNull().orOperator(Criteria.where("date").isNull()));
+        List<StockPrices> remove = mongoTemplate.findAllAndRemove(deleteQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
+        log.info("共删除{}条无效数据!",remove.size());
     }
 }
