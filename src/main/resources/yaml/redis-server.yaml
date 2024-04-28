@@ -86,7 +86,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: redis-conf
-#  namespace: dafault
+#  namespace: default
 data:
   redis.conf: |
     appendonly yes
