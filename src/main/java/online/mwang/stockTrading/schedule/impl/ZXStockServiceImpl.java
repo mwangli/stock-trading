@@ -5,14 +5,13 @@ import com.alibaba.fastjson.JSONObject;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.schedule.IDataService;
+import online.mwang.stockTrading.schedule.IStockService;
 import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.AccountInfo;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
 import online.mwang.stockTrading.web.bean.po.OrderStatus;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
-import online.mwang.stockTrading.web.mapper.PredictPriceMapper;
 import online.mwang.stockTrading.web.mapper.ScoreStrategyMapper;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
 import online.mwang.stockTrading.web.service.StockInfoService;
@@ -37,7 +36,7 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class ZXDataServiceImpl implements IDataService {
+public class ZXStockServiceImpl implements IStockService {
 
     public static final String TOKEN = "requestToken";
     public static final int LOGIN_RETRY_TIMES = 10;
@@ -52,7 +51,6 @@ public class ZXDataServiceImpl implements IDataService {
     public final StockInfoMapper stockInfoMapper;
     public final ScoreStrategyMapper strategyMapper;
     public final SleepUtils sleepUtils;
-    public final PredictPriceMapper predictPriceMapper;
 
     private HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
         if (paramMap == null) return new HashMap<>();

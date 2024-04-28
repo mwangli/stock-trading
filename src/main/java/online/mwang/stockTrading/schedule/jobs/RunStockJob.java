@@ -2,7 +2,7 @@ package online.mwang.stockTrading.schedule.jobs;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.schedule.IDataService;
+import online.mwang.stockTrading.schedule.IStockService;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import org.springframework.stereotype.Component;
@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunStockJob extends BaseJob {
 
-    private final IDataService dataService;
+    private final IStockService dataService;
     private final StockInfoService stockInfoService;
 
     @Override
@@ -36,12 +36,10 @@ public class RunStockJob extends BaseJob {
         final Set<String> toInsetCodes = newCodeSet.stream().filter(code -> !oldCodeSet.contains(code)).collect(Collectors.toSet());
         final Set<String> toDeleteCodes = oldCodeSet.stream().filter(code -> !newCodeSet.contains(code)).collect(Collectors.toSet());
         final List<StockInfo> insertList = newInfos.stream().filter(s -> toInsetCodes.contains(s.getCode())).collect(Collectors.toList());
-//        final List<StockInfo> deleteList = dataList.stream().filter(s -> toDeleteCodes.contains(s.getCode())).collect(Collectors.toList());
         log.info("新增股票数量:{}", insertList.size());
         insertList.forEach(this::fixProps);
         stockInfoService.saveBatch(insertList);
         // 同步每只股票最新的当前价格
-        log.info("更新价格股票数量:{}", insertList.size());
         List<StockInfo> list = dataList.stream().peek(stockInfo -> {
             newInfos.stream().filter(info -> info.getCode().equals(stockInfo.getCode())).mapToDouble(StockInfo::getPrice).findFirst().ifPresent(stockInfo::setPrice);
             stockInfo.setUpdateTime(new Date());

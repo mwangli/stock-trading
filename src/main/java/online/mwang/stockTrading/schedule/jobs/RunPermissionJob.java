@@ -3,7 +3,7 @@ package online.mwang.stockTrading.schedule.jobs;
 import com.alibaba.fastjson.JSONObject;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.schedule.IDataService;
+import online.mwang.stockTrading.schedule.IStockService;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import org.springframework.stereotype.Component;
@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunPermissionJob extends BaseJob {
 
-    private final IDataService dataService;
+    private final IStockService dataService;
     private final StockInfoService stockInfoService;
 
     @Override

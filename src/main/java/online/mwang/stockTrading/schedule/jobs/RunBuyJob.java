@@ -6,7 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.schedule.IDataService;
+import online.mwang.stockTrading.schedule.IStockService;
 import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
@@ -42,7 +42,7 @@ public class RunBuyJob extends BaseJob {
     public static final double LOW_PRICE_LIMIT = 5.0;
     public static final int NEED_COUNT = 1;
     public static final double BUY_PERCENT = 0.03;
-    private final IDataService dataService;
+    private final IStockService dataService;
     private final TradingRecordService tradingRecordService;
     private final StockInfoMapper stockInfoMapper;
     private final OrderInfoService orderInfoService;
