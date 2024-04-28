@@ -21,7 +21,7 @@ public interface IStockService {
     /**
      * 获取账户资金信息
      */
-    AccountInfo getAccountInfo();
+    AccountInfo updateAccountInfo();
 
 
     /**
