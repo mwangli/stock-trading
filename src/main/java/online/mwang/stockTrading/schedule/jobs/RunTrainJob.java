@@ -31,8 +31,8 @@ public class RunTrainJob extends BaseJob {
     private final MongoTemplate mongoTemplate;
     private final StockInfoService stockInfoService;
     private final StringRedisTemplate redisTemplate;
-    private static final String TEST_COLLECTION_NAME = "stockTestPrices";
-    private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrices";
+    private static final String TEST_COLLECTION_NAME = "stockTestPrice";
+    private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
 
 
     @SneakyThrows
