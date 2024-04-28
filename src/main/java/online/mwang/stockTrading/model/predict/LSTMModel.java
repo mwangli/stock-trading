@@ -53,11 +53,6 @@ public class LSTMModel {
         File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
         final File parentFile = modelFile.getParentFile();
         if (!parentFile.exists() && !parentFile.mkdirs()) throw new RuntimeException("文件夹创建失败!");
-        Date lastModifyDate = new Date(modelFile.lastModified());
-        if (DateUtils.diff(lastModifyDate, new Date(), true) < 30) {
-            log.info("当前股票[{}-{}]，最近30天内已经训练过模型了，跳过训练", stockName, stockCode);
-            return null;
-        }
         MultiLayerNetwork net;
         if (modelFile.exists()) {
             net = ModelSerializer.restoreMultiLayerNetwork(modelFile);
@@ -67,7 +62,6 @@ public class LSTMModel {
         net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
         net.summary();
         log.info("Training...");
-
         for (int i = 0; i < EPOCHS; i++) {
             if (skipTrain) break;
             while (iterator.hasNext()) net.fit(iterator.next());

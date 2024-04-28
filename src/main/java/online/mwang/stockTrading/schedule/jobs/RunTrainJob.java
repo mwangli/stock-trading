@@ -13,10 +13,11 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
+import java.io.File;
+import java.util.Date;
 import java.util.List;
 import java.util.Random;
 
@@ -48,11 +49,16 @@ public class RunTrainJob extends BaseJob {
             log.info("股票[{}-{}],模型训练开始...", s.getName(), s.getCode());
             long start = System.currentTimeMillis();
             String stockCode = s.getCode();
+            String stockName = s.getName();
             final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
             List<StockPrices> stockHistoryPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
             log.info("股票[{}-{}],训练数据集大小为:{}", s.getName(), s.getCode(), stockHistoryPrices.size());
             if (stockHistoryPrices.size() == 0) {
-                log.info("未获取到训练数据集，跳过训练！");
+                log.info("当前股票[{}-{}]，未获取到训练数据集，跳过训练！", stockName, stockCode);
+                continue;
+            }
+            if (checkModelFile(stockCode)) {
+                log.info("当前股票[{}-{}]，最近30天内已经训练过模型了，跳过训练", stockName, stockCode);
                 continue;
             }
             List<StockPrices> stockTestPrices = modelService.modelTrain(stockHistoryPrices);
@@ -66,5 +72,12 @@ public class RunTrainJob extends BaseJob {
             log.info("股票[{}-{}],模型训练完成，共耗时:{}", s.getName(), stockCode, DateUtils.timeConvertor(end - start));
             i++;
         }
+    }
+
+
+    private boolean checkModelFile(String stockCode) {
+        File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
+        Date lastModifyDate = new Date(modelFile.lastModified());
+        return DateUtils.diff(lastModifyDate, new Date(), true) < 30;
     }
 }
