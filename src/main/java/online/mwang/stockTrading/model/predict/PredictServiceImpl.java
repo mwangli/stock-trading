@@ -48,11 +48,12 @@ public class PredictServiceImpl implements IPredictService {
         // 找到最新的窗口数据
         if (CollectionUtils.isEmpty(stockPrices)) throw new BusinessException("历史数据为空，无法进行预测!");
         int size = stockPrices.size();
-        log.info("当前股票预测数据集输入:{}", size);
-        log.info("第一组数据:{}", stockPrices.get(0));
-        log.info("最后一组数据:{}", stockPrices.get(size - 1));
-        StockPrices stockPredictPrice = lstmModel.predictOneHead(stockPrices);
-        log.info("当前股票预测价格为：{},{}", stockPredictPrice.getPrice1(), stockPredictPrice.getPrice2());
-        return stockPredictPrice;
+        String code = stockPrices.get(0).getCode();
+        String name = stockPrices.get(0).getName();
+        log.info("当前股票[{}-{}]预测数据集输入:{},第一组数据:{},最后一组数据:{}", name, code, size, stockPrices.get(0), stockPrices.get(size - 1));
+        StockPrices predictPrices = lstmModel.predictOneHead(stockPrices);
+        if (predictPrices != null)
+            log.info("当前股票[{}-{}]预测价格为：{},{}", name, code, predictPrices.getPrice1(), predictPrices.getPrice2());
+        return predictPrices;
     }
 }
