@@ -1,5 +1,6 @@
 package online.mwang.stockTrading.schedule.jobs;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IPredictService;
