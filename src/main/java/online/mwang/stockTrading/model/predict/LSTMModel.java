@@ -10,6 +10,7 @@ import online.mwang.stockTrading.model.representation.StockData;
 import online.mwang.stockTrading.model.representation.StockDataSetIterator;
 import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
+import online.mwang.stockTrading.web.utils.DateUtils;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.deeplearning4j.util.ModelSerializer;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Component;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -51,6 +53,11 @@ public class LSTMModel {
         File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
         final File parentFile = modelFile.getParentFile();
         if (!parentFile.exists() && !parentFile.mkdirs()) throw new RuntimeException("文件夹创建失败!");
+        Date lastModifyDate = new Date(modelFile.lastModified());
+        if (DateUtils.diff(lastModifyDate, new Date(), true) < 30) {
+            log.info("当前股票[{}-{}]，最近30天内已经训练过模型了，跳过训练", stockName, stockCode);
+            return null;
+        }
         MultiLayerNetwork net;
         if (modelFile.exists()) {
             net = ModelSerializer.restoreMultiLayerNetwork(modelFile);
@@ -60,6 +67,7 @@ public class LSTMModel {
         net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
         net.summary();
         log.info("Training...");
+
         for (int i = 0; i < EPOCHS; i++) {
             if (skipTrain) break;
             while (iterator.hasNext()) net.fit(iterator.next());

@@ -15,9 +15,10 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
-import java.util.Date;
 import java.util.List;
+import java.util.Random;
 
 /**
  * @author 13255
@@ -32,7 +33,6 @@ public class RunTrainJob extends BaseJob {
     private final IPredictService modelService;
     private final MongoTemplate mongoTemplate;
     private final StockInfoService stockInfoService;
-    private final StringRedisTemplate redisTemplate;
 
     @SneakyThrows
     @Override
@@ -42,12 +42,9 @@ public class RunTrainJob extends BaseJob {
         queryWrapper.orderByDesc(StockInfo::getPrice);
         final List<StockInfo> list = stockInfoService.list(queryWrapper);
         log.info("共获取{}条待训练股票.", list.size());
-        for (StockInfo s : list) {
-            String lastUpdateTime = (String) redisTemplate.opsForHash().get("model:" + s.getCode(), "lastUpdateTime");
-            if (lastUpdateTime != null && DateUtils.diff(new Date(), DateUtils.dateTimeFormat.parse(lastUpdateTime), true) < 30) {
-                log.info("股票[{}-{}],近30天内已经训练过模型了,跳过训练...", s.getName(), s.getCode());
-                continue;
-            }
+        // 随机选择一千至股票数据进行训练
+        for (int i = 0; i < 1000; ) {
+            StockInfo s = list.get(new Random().nextInt(list.size()));
             log.info("股票[{}-{}],模型训练开始...", s.getName(), s.getCode());
             long start = System.currentTimeMillis();
             String stockCode = s.getCode();
@@ -59,6 +56,7 @@ public class RunTrainJob extends BaseJob {
                 continue;
             }
             List<StockPrices> stockTestPrices = modelService.modelTrain(stockHistoryPrices);
+            if (CollectionUtils.isEmpty(stockTestPrices)) continue;
             final Query deleteQuery = new Query(Criteria.where("code").is(s.getCode()));
             final List<StockPrices> remove = mongoTemplate.findAllAndRemove(deleteQuery, TEST_COLLECTION_NAME);
             log.info("股票[{}-{}],清除{}条废弃测试集数据", s.getName(), stockCode, remove.size());
@@ -66,7 +64,7 @@ public class RunTrainJob extends BaseJob {
             log.info("股票[{}-{}],新写入{}条测试集数据", s.getName(), stockCode, stockTestPrices.size());
             long end = System.currentTimeMillis();
             log.info("股票[{}-{}],模型训练完成，共耗时:{}", s.getName(), stockCode, DateUtils.timeConvertor(end - start));
-            redisTemplate.opsForHash().put("model:" + s.getCode(), "lastUpdateTime", DateUtils.dateTimeFormat.format(new Date()));
+            i++;
         }
     }
 }
