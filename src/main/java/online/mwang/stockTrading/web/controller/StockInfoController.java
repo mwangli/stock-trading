@@ -1,6 +1,5 @@
 package online.mwang.stockTrading.web.controller;
 
-import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.ObjectUtils;
@@ -9,8 +8,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.base.Response;
 import online.mwang.stockTrading.web.bean.dto.StockPricesDTO;
-import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
+import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.bean.query.StockInfoQuery;
 import online.mwang.stockTrading.web.bean.vo.Point;
 import online.mwang.stockTrading.web.service.StockInfoService;
@@ -38,12 +37,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class StockInfoController {
 
-    private final StockInfoService stockInfoService;
-    private final MongoTemplate mongoTemplate;
     private final static String ASCEND = "ascend";
     private final static String TEST_COLLECTION_NAME = "stockTestPrice";
     private final static String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
-
+    private final StockInfoService stockInfoService;
+    private final MongoTemplate mongoTemplate;
 
     @GetMapping("/list")
     public Response<List<StockInfo>> listStockInfo(StockInfoQuery query) {
@@ -64,7 +62,7 @@ public class StockInfoController {
     public Response<StockPricesDTO> listHistoryPrices(StockInfoQuery param) {
         String stockCode = param.getCode();
         Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
-        List<StockPrices> stockPrices = mongoTemplate.find(query, StockPrices.class);
+        List<StockPrices> stockPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
         List<Point> points = stockPrices.stream().map(p -> new Point(p.getDate(), p.getPrice1())).collect(Collectors.toList());
         StockPricesDTO stockPricesDTO = new StockPricesDTO(points);
         return Response.success(stockPricesDTO);

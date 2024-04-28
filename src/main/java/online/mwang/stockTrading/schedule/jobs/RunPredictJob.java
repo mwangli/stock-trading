@@ -1,11 +1,10 @@
 package online.mwang.stockTrading.schedule.jobs;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IPredictService;
-import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
+import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,14 +21,12 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunPredictJob extends BaseJob {
 
-    private final IPredictService modelService;
-    private final StockInfoService stockInfoService;
-    private final MongoTemplate mongoTemplate;
-
     private static final int EXAMPLE_LENGTH = 22;
     private static final String VALIDATION_COLLECTION_NAME = "stockPredictPrice";
     private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
-
+    private final IPredictService modelService;
+    private final StockInfoService stockInfoService;
+    private final MongoTemplate mongoTemplate;
     @Value("${PROFILE}")
     private String profile;
 
@@ -43,7 +40,7 @@ public class RunPredictJob extends BaseJob {
         Query query = new Query(Criteria.where("date").gte(lastMonthDate));
         List<StockPrices> stockPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
         // 在内存中按code进行分组过滤,只保留最后22条数据
-        Collection<List<StockPrices>> newHistoryPrices = stockPrices.stream().collect(Collectors.groupingBy(StockPrices::getCode)).values();
+        Collection<List<StockPrices>> newHistoryPrices = stockPrices.stream().filter(s -> !Objects.isNull(s.getCode())).collect(Collectors.groupingBy(StockPrices::getCode)).values();
         List<List<StockPrices>> filterHistoryPrices = newHistoryPrices.stream().filter(priceList -> priceList.size() >= EXAMPLE_LENGTH)
                 .map(priceList -> priceList = priceList.stream().sorted(Comparator.comparing(StockPrices::getDate))
                         .skip(priceList.size() - EXAMPLE_LENGTH).limit(EXAMPLE_LENGTH).collect(Collectors.toList())).collect(Collectors.toList());
