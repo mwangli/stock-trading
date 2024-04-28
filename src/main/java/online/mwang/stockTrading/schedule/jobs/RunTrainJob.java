@@ -46,7 +46,7 @@ public class RunTrainJob extends BaseJob {
             String stockCode = s.getCode();
             String stockName = s.getName();
             String lastUpdateTime = (String) redisTemplate.opsForHash().get("model:" + stockCode, "lastUpdateTime");
-            if (DateUtils.diff(DateUtils.dateFormat.parse(lastUpdateTime), new Date(), true) < 30) {
+            if (lastUpdateTime != null && DateUtils.diff(DateUtils.dateFormat.parse(lastUpdateTime), new Date(), true) < 30) {
                 log.info("当前股票[{}-{}]，最近30天内已经训练过模型了，跳过训练", stockName, stockCode);
                 continue;
             }
