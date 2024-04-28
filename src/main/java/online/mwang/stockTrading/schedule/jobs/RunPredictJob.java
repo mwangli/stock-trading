@@ -1,6 +1,5 @@
 package online.mwang.stockTrading.schedule.jobs;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IPredictService;
@@ -33,37 +32,34 @@ public class RunPredictJob extends BaseJob {
 
     @Override
     void run() {
-        // 获取待预测股票
-        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.isNotNull(StockInfo::getCode);
-        queryWrapper.orderByDesc(StockInfo::getPrice);
-        final List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
-        log.info("共获取{}条待预测股票.", stockInfoList.size());
-        // 获取所有股票近一个月的价格信息
+        // 获取所有股票近一个月的价格信息(mongodb实现分组取最后22条实现较为困难)
         Calendar calendar = Calendar.getInstance();
         calendar.setTime(new Date());
         calendar.add(Calendar.DATE, -35);
         String lastMonthDate = DateUtils.dateFormat.format(calendar.getTime());
-        Query query = new Query(Criteria.where("date").gte(lastMonthDate).and("code").ne(null));
+        Query query = new Query(Criteria.where("date").gte(lastMonthDate));
         List<StockPrices> stockPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
-        // 在内存中进行分组过滤吗，每组股票取最新的22条数据
-        List<List<StockPrices>> dataList = stockInfoList.stream().map(stockInfo -> stockPrices.stream().filter(p -> p.getCode().equals(stockInfo.getCode())).collect(Collectors.toList()))
-                .filter(pricesList -> pricesList.size() >= EXAMPLE_LENGTH).map(pricesList -> pricesList = pricesList.stream().sorted(Comparator.comparing(StockPrices::getDate))
-                        .skip(stockPrices.size() - EXAMPLE_LENGTH).limit(EXAMPLE_LENGTH).collect(Collectors.toList())).collect(Collectors.toList());
-
-        List<StockPrices> predictPrices = dataList.stream().map(modelService::modelPredict).collect(Collectors.toList());
+        // 在内存中按code进行分组过滤,只保留最后22条数据
+        Collection<List<StockPrices>> newHistoryPrices = stockPrices.stream().filter(s -> !Objects.isNull(s.getCode())).collect(Collectors.groupingBy(StockPrices::getCode)).values();
+        List<List<StockPrices>> filterHistoryPrices = newHistoryPrices.stream().filter(priceList -> priceList.size() >= EXAMPLE_LENGTH)
+                .map(priceList -> priceList = priceList.stream().sorted(Comparator.comparing(StockPrices::getDate))
+                        .skip(priceList.size() - EXAMPLE_LENGTH).limit(EXAMPLE_LENGTH).collect(Collectors.toList())).collect(Collectors.toList());
+        // 价格预测,保存数据
+        List<StockPrices> predictPrices = filterHistoryPrices.stream().map(modelService::modelPredict).collect(Collectors.toList());
         String date = DateUtils.dateFormat.format(DateUtils.getNextTradingDay(new Date()));
-        predictPrices.forEach(priceList -> fixProps(priceList, stockInfoList, date));
+        predictPrices.forEach(priceList -> fixProps(priceList, date));
         mongoTemplate.remove(new Query(Criteria.where("date").is(date)), StockPrices.class, VALIDATION_COLLECTION_NAME);
         mongoTemplate.insert(predictPrices, VALIDATION_COLLECTION_NAME);
         // 更新评分数据
         updateScore(predictPrices);
     }
 
-    private void fixProps(StockPrices stockPredictPrices, List<StockInfo> stockInfos, String date) {
+    private void fixProps(StockPrices stockPredictPrices, String date) {
+        List<StockInfo> stockInfos = stockInfoService.list();
         stockPredictPrices.setDate(date);
         stockPredictPrices.setName(stockInfos.stream().filter(stockInfo -> stockInfo.getCode().equals(stockPredictPrices.getCode())).findFirst().orElse(new StockInfo()).getName());
     }
+
 
     private void updateScore(List<StockPrices> stockPredictPrices) {
         List<StockInfo> stockInfos = stockInfoService.list();
