@@ -55,8 +55,7 @@ public class RunBuyJob extends BaseJob {
     public void run() {
         // 获取最新的账户资金信息
         AccountInfo accountInfo = dataService.updateAccountInfo();
-//        final Double totalAvailableAmount = accountInfo.getAvailableAmount();
-        final Double totalAvailableAmount = 2000.0;
+        final Double totalAvailableAmount = accountInfo.getAvailableAmount();
         // 计算此次可用资金
         double availableAmount = totalAvailableAmount / NEED_COUNT;
         // 计算可买入股票价格区间
