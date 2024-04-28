@@ -30,6 +30,17 @@ public class DateUtils {
         return calendar.getTime();
     }
 
+    public static Date getNextTradingDay(Date date) {
+        if (date == null) return null;
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        calendar.add(Calendar.DATE, 1);
+        while (calendar.get(Calendar.DAY_OF_WEEK) == Calendar.SATURDAY || calendar.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY) {
+            calendar.add(Calendar.DATE, 1);
+        }
+        return calendar.getTime();
+    }
+
 
     public static long diff(Date date1, Date date2, boolean needAbs) {
         Calendar calendar1 = Calendar.getInstance();

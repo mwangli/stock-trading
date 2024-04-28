@@ -54,7 +54,7 @@ public class RunPredictJob extends BaseJob {
                 stockPrices = stockPrices.stream().sorted(Comparator.comparing(StockPrices::getDate)).skip(stockPrices.size() - EXAMPLE_LENGTH).limit(EXAMPLE_LENGTH).collect(Collectors.toList());
                 StockPrices stockPredictPrices = modelService.modelPredict(stockPrices);
                 if (stockPredictPrices == null) continue;
-                String date = DateUtils.dateFormat.format(DateUtils.getNextDay(new Date()));
+                String date = DateUtils.dateFormat.format(DateUtils.getNextTradingDay(new Date()));
                 stockPredictPrices.setDate(date);
                 stockPredictPrices.setName(list.stream().filter(stockInfo -> stockInfo.getCode().equals(s.getCode())).findFirst().orElse(new StockInfo()).getName());
                 mongoTemplate.remove(new Query(Criteria.where("code").is(s.getCode()).and("date").is(date)), StockPrices.class, VALIDATION_COLLECTION_NAME);
