@@ -41,7 +41,7 @@ public class RunBuyJob extends BaseJob {
     public static final int MIN_HOLD_NUMBER = 100;
     public static final double LOW_PRICE_LIMIT = 5.0;
     public static final int NEED_COUNT = 1;
-    public static final double BUY_PERCENT = 0.03;
+    public static final double BUY_PERCENT = 0.005;
     public static final double AMOUNT_USED_RATE = 0.8;
     private final IStockService dataService;
     private final TradingRecordService tradingRecordService;
@@ -72,14 +72,20 @@ public class RunBuyJob extends BaseJob {
                 .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1")
                 .orderByDesc(StockInfo::getScore);
         priceRanges.forEach(range -> queryWrapper.ge(StockInfo::getPrice, range[0]).le(StockInfo::getPrice, range[1]).or());
-        final Page<StockInfo> pageResult = stockInfoMapper.selectPage(Page.of(1, 10), queryWrapper);
+        final Page<StockInfo> pageResult = stockInfoMapper.selectPage(Page.of(1, 8 * NEED_COUNT), queryWrapper);
         final List<StockInfo> limitStockList = pageResult.getRecords();
         // 多支股票并行买入
         CountDownLatch countDownLatch = new CountDownLatch(NEED_COUNT);
         ArrayList<ReentrantLock> locks = new ArrayList<>();
         for (int i = 0; i < NEED_COUNT; i++) locks.add(new ReentrantLock());
         ReentrantLock reentrantLock = new ReentrantLock();
-        limitStockList.forEach(stockInfo -> new Thread(() -> buyStock(stockInfo, accountInfo, countDownLatch, locks)).start());
+        for (int i = 0; i < limitStockList.size(); i++) {
+            StockInfo stockInfo = limitStockList.get(i);
+            // 每隔3秒启动一个购买线程
+            log.info("开始进行[{}-{}]股票买入!", stockInfo.getName(), stockInfo.getCode());
+            sleepUtils.second(3L * i);
+            new Thread(() -> buyStock(stockInfo, accountInfo, countDownLatch, locks)).start();
+        }
         countDownLatch.await();
         log.info("所有股票买入完成!");
     }
@@ -87,12 +93,13 @@ public class RunBuyJob extends BaseJob {
     private void buyStock(StockInfo stockInfo, AccountInfo accountInfo, CountDownLatch countDownLatch, List<ReentrantLock> locks) {
         int priceCount = 1;
         double priceTotal = 0.0;
-        Double nowPrice;
+        double nowPrice;
         while (countDownLatch.getCount() > 0 && DateUtils.inTradingTimes2()) {
             sleepUtils.second(30);
-            double priceAvg = priceTotal / priceCount;
             nowPrice = dataService.getNowPrice(stockInfo.getCode());
             priceTotal += nowPrice;
+            double priceAvg = priceTotal / priceCount;
+            log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", stockInfo.getName(), stockInfo.getCode(), String.format("%.2f", nowPrice), String.format("%.2f", priceAvg), priceCount);
             priceCount++;
             if (priceCount > 60 && nowPrice < priceAvg - priceAvg * BUY_PERCENT || DateUtils.isDeadLine2()) {
                 if (DateUtils.isDeadLine2()) log.info("交易时间段即将结束！");
