@@ -17,13 +17,15 @@ import online.mwang.stockTrading.web.service.OrderInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import online.mwang.stockTrading.web.utils.SleepUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * @version 1.0.0
@@ -40,8 +42,11 @@ public class RunBuyJob extends BaseJob {
     public static final int MIN_HOLD_NUMBER = 100;
     public static final double LOW_PRICE_LIMIT = 5.0;
     public static final int NEED_COUNT = 1;
-    public static final double BUY_PERCENT = 0.03;
     public static final double AMOUNT_USED_RATE = 0.8;
+    public static final long WAITING_SECONDS = 30;
+    public static final long WAITING_COUNT_SKIP = 30 * 60 / WAITING_SECONDS;
+    public static final long THREAD_COUNT = 10;
+    public static final double BUY_PERCENT = 0.005;
     private final IStockService dataService;
     private final TradingRecordService tradingRecordService;
     private final StockInfoMapper stockInfoMapper;
@@ -50,11 +55,15 @@ public class RunBuyJob extends BaseJob {
     private final SleepUtils sleepUtils;
     private final AccountInfoMapper accountInfoMapper;
 
+    @Value("${PROFILE}")
+    private String profile;
+
     @SneakyThrows
     @Override
     public void run() {
+        if (!DateUtils.inTradingTimes2()) throw new BusinessException("不在交易时间段内，无法执行买入任务!");
         // 获取最新的账户资金信息
-        AccountInfo accountInfo = dataService.updateAccountInfo();
+        AccountInfo accountInfo = dataService.getAccountInfo();
         final Double totalAvailableAmount = accountInfo.getAvailableAmount();
         // 计算此次可用资金
         double availableAmount = totalAvailableAmount / NEED_COUNT;
@@ -71,90 +80,105 @@ public class RunBuyJob extends BaseJob {
                 .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1")
                 .orderByDesc(StockInfo::getScore);
         priceRanges.forEach(range -> queryWrapper.ge(StockInfo::getPrice, range[0]).le(StockInfo::getPrice, range[1]).or());
-        final Page<StockInfo> pageResult = stockInfoMapper.selectPage(Page.of(1,10), queryWrapper);
+        final Page<StockInfo> pageResult = stockInfoMapper.selectPage(Page.of(1, THREAD_COUNT * NEED_COUNT), queryWrapper);
         final List<StockInfo> limitStockList = pageResult.getRecords();
         // 多支股票并行买入
         CountDownLatch countDownLatch = new CountDownLatch(NEED_COUNT);
-        limitStockList.forEach(stockInfo -> new Thread(() -> buyStock(stockInfo, accountInfo, countDownLatch)).start());
+        for (StockInfo stockInfo : limitStockList) {
+            // 每隔3秒启动一个购买线程
+            sleepUtils.second(WAITING_SECONDS / THREAD_COUNT);
+            new Thread(() -> buyStock(stockInfo, accountInfo, countDownLatch)).start();
+        }
         countDownLatch.await();
         log.info("所有股票买入完成!");
     }
 
     private void buyStock(StockInfo stockInfo, AccountInfo accountInfo, CountDownLatch countDownLatch) {
-        int priceCount = 1;
+        boolean debug = "dev".equalsIgnoreCase(profile);
+        if (debug) log.info("启用debug模式");
+        log.info("开始进行[{}-{}]股票买入!", stockInfo.getName(), stockInfo.getCode());
+        int priceCount = 0;
         double priceTotal = 0.0;
-        Double nowPrice;
-        while (countDownLatch.getCount() > 0 && DateUtils.inTradingTimes2()) {
-            sleepUtils.second(30);
-            double priceAvg = priceTotal / priceCount;
-            nowPrice = dataService.getNowPrice(stockInfo.getCode());
-            priceTotal += nowPrice;
+        while (countDownLatch.getCount() > 0) {
+            sleepUtils.second(WAITING_SECONDS);
+            double nowPrice = dataService.getNowPrice(stockInfo.getCode());
             priceCount++;
-            if (priceCount > 60 && nowPrice < priceAvg - priceAvg * BUY_PERCENT || DateUtils.isDeadLine2()) {
+            priceTotal += nowPrice;
+            double priceAvg = priceTotal / priceCount;
+            log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", stockInfo.getName(), stockInfo.getCode(), String.format("%.2f", nowPrice), String.format("%.4f", priceAvg), priceCount);
+            boolean priceCondition = priceCount > WAITING_COUNT_SKIP && nowPrice < priceAvg - priceAvg * BUY_PERCENT;
+            if (debug || DateUtils.isDeadLine2() || priceCondition) {
                 if (DateUtils.isDeadLine2()) log.info("交易时间段即将结束！");
-                log.info("开始进行买入");
-                Boolean success;
-                double buyNumber = (accountInfo.getAvailableAmount() / nowPrice / 100) * 100;
+                log.info("当前股票[{}-{}],开始进行买入!", stockInfo.getName(), stockInfo.getCode());
+                double buyNumber = (int) (accountInfo.getAvailableAmount() / nowPrice / 100) * 100;
                 String buyNo;
-                synchronized (Objects.requireNonNull(countDownLatch)) {
-                    log.info("同步买入开始...");
-                    JSONObject result = dataService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
-                    buyNo = result.getString("ANSWERNO");
-                    if (buyNo == null) throw new BusinessException("买入订单提交失败");
-                    success = dataService.waitOrderStatus(buyNo);
-                    if (success == null) throw new BusinessException("撤单失败，无可用资金");
-                    log.info("同步买入结束...");
+                Boolean success;
+                JSONObject result = dataService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
+                buyNo = result.getString("ANSWERNO");
+                if (buyNo == null) {
+                    log.info("买入订单提交失败!");
+                    continue;
+                }
+                success = dataService.waitOrderStatus(buyNo);
+                if (success == null) {
+                    log.info("买入订单撤单失败，无可用资金!");
+                    continue;
                 }
                 if (!success) {
                     log.info("撤单成功，重新尝试买入。");
                     continue;
                 }
-                // 保存订单信息
-                final Date now = new Date();
-                OrderInfo orderInfo = new OrderInfo();
-                orderInfo.setStatus("1");
-                orderInfo.setCode(stockInfo.getCode());
-                orderInfo.setName(stockInfo.getName());
-                orderInfo.setPrice(nowPrice);
-                orderInfo.setNumber(buyNumber);
-                orderInfo.setType("买入");
-                orderInfo.setAnswerNo(buyNo);
-                orderInfo.setCreateTime(now);
-                orderInfo.setUpdateTime(now);
-                orderInfo.setDate(DateUtils.format1(now));
-                orderInfo.setTime(DateUtils.format2(now));
-                orderInfoService.save(orderInfo);
-                // 买入成功后,保存交易数据
-                final TradingRecord record = new TradingRecord();
-                record.setCode(stockInfo.getCode());
-                record.setName(stockInfo.getName());
-                record.setBuyPrice(stockInfo.getPrice());
-                record.setBuyNumber(buyNumber);
-                record.setBuyNo(buyNo);
-                final double amount = stockInfo.getPrice() * buyNumber;
-                record.setBuyAmount(amount + dataService.getPeeAmount(amount));
-                record.setBuyDate(now);
-                record.setBuyDateString(DateUtils.dateFormat.format(now));
-                record.setSold("0");
-                record.setCreateTime(now);
-                record.setUpdateTime(now);
-                // 保存模型策略信息，以备后续数据分析和模型优化
-                final ModelStrategy strategy = strategyMapper.getSelectedStrategy();
-                record.setStrategyId(strategy == null ? 0 : strategy.getId());
-                record.setStrategyName(strategy == null ? "默认策略" : strategy.getName());
-                tradingRecordService.save(record);
-                // 更新账户资金状态
-                AccountInfo newAccountInfo = dataService.updateAccountInfo();
-                newAccountInfo.setCreateTime(new Date());
-                newAccountInfo.setUpdateTime(new Date());
-                accountInfoMapper.insert(newAccountInfo);
-                // 更新交易次数
-                stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
-                stockInfoMapper.updateById(stockInfo);
+                log.info("买入成功!");
+                saveData(stockInfo, buyNo, nowPrice, buyNumber);
                 countDownLatch.countDown();
-                log.info("成功买入股票[{}-{}], 买入价格:{},买入数量:{},买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
             }
         }
+    }
+
+    private void saveData(StockInfo stockInfo, String buyNo, Double nowPrice, Double buyNumber) {
+        // 保存订单信息
+        final Date now = new Date();
+        OrderInfo orderInfo = new OrderInfo();
+        orderInfo.setStatus("1");
+        orderInfo.setCode(stockInfo.getCode());
+        orderInfo.setName(stockInfo.getName());
+        orderInfo.setPrice(nowPrice);
+        orderInfo.setNumber(buyNumber);
+        orderInfo.setType("买入");
+        orderInfo.setAnswerNo(buyNo);
+        orderInfo.setCreateTime(now);
+        orderInfo.setUpdateTime(now);
+        orderInfo.setDate(DateUtils.format1(now));
+        orderInfo.setTime(DateUtils.format2(now));
+        orderInfoService.save(orderInfo);
+        // 买入成功后,保存交易数据
+        final TradingRecord record = new TradingRecord();
+        record.setCode(stockInfo.getCode());
+        record.setName(stockInfo.getName());
+        record.setBuyPrice(stockInfo.getPrice());
+        record.setBuyNumber(buyNumber);
+        record.setBuyNo(buyNo);
+        final double amount = stockInfo.getPrice() * buyNumber;
+        record.setBuyAmount(amount + dataService.getPeeAmount(amount));
+        record.setBuyDate(now);
+        record.setBuyDateString(DateUtils.dateFormat.format(now));
+        record.setSold("0");
+        record.setCreateTime(now);
+        record.setUpdateTime(now);
+        // 保存模型策略信息，以备后续数据分析和模型优化
+        final ModelStrategy strategy = strategyMapper.getSelectedStrategy();
+        record.setStrategyId(strategy == null ? 0 : strategy.getId());
+        record.setStrategyName(strategy == null ? "默认策略" : strategy.getName());
+        tradingRecordService.save(record);
+        // 更新账户资金状态
+        AccountInfo newAccountInfo = dataService.getAccountInfo();
+        newAccountInfo.setCreateTime(new Date());
+        newAccountInfo.setUpdateTime(new Date());
+        accountInfoMapper.insert(newAccountInfo);
+        // 更新交易次数
+        stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
+        stockInfoMapper.updateById(stockInfo);
+        log.info("成功买入股票[{}-{}], 买入价格:{},买入数量:{},买入金额:{}", record.getCode(), record.getName(), record.getBuyPrice(), record.getBuyNumber(), record.getBuyAmount());
     }
 }
 

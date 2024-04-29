@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.schedule.IStockService;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -15,7 +16,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @version 1.0.0
@@ -29,6 +33,8 @@ import java.util.HashMap;
 public class RequestUtils {
 
     public static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
+    public static final String TOKEN_KEY = "requestToken";
+    public static final long TOKEN_MINUTES = 30;
     private final StringRedisTemplate redisTemplate;
     public boolean logs = false;
     @Value("${PROFILE}")
@@ -45,12 +51,28 @@ public class RequestUtils {
             post.setEntity(entityBuilder.build());
             CloseableHttpResponse response = client.execute(post);
             result = EntityUtils.toString(response.getEntity());
-            if (logs) log.info(result);
-            return JSONObject.parseObject(result);
+            boolean debug = "dev".equalsIgnoreCase(profile);
+            if (logs || debug) log.info(result);
+            JSONObject res = JSONObject.parseObject(result);
+            checkToken(res);
+            return res;
         } catch (Exception e) {
             log.info("请求失败，返回数据为：{}", result);
         }
         return null;
+    }
+
+    private void checkToken(JSONObject res) {
+        List<String> errorCodes = Arrays.asList("-204007", "-204009");
+        String errorNo = res.getString("ERRORNO");
+        if (errorCodes.contains(errorNo)) {
+            log.info("TOKEN已经失效，清除无效TOKEN...");
+            redisTemplate.opsForValue().getAndDelete(TOKEN_KEY);
+        }
+        String token = res.getString("TOKEN");
+        if (token != null) {
+            redisTemplate.opsForValue().set(TOKEN_KEY, token, TOKEN_MINUTES, TimeUnit.MINUTES);
+        }
     }
 
     @SneakyThrows
@@ -58,15 +80,9 @@ public class RequestUtils {
         return request(REQUEST_URL, formParam);
     }
 
-
     @SneakyThrows
     public JSONArray request2(HashMap<String, Object> formParam) {
         JSONObject res = request(REQUEST_URL, formParam);
-        if ("-204009".equals(res.getString("ERRORNO"))) {
-            log.info("TOKEN已经失效，正在重新登录...");
-            redisTemplate.opsForValue().getAndDelete("requestToken");
-            res = request(REQUEST_URL, formParam);
-        }
         return res.getJSONArray("GRID0");
     }
 
@@ -74,9 +90,7 @@ public class RequestUtils {
     public JSONArray request3(HashMap<String, Object> formParam) {
         JSONObject res = request(REQUEST_URL.concat("?action=1230"), formParam);
         final JSONObject data = res.getJSONObject("BINDATA");
-        if (data != null && data.getJSONArray("results") != null) {
-            return data.getJSONArray("results");
-        }
+        if (data != null && data.getJSONArray("results") != null) return data.getJSONArray("results");
         return new JSONArray();
     }
 }
