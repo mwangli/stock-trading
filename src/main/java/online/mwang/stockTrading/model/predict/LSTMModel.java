@@ -105,7 +105,7 @@ public class LSTMModel {
         String stockCode = historyPrices.get(0).getCode();
         File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
         if (!modelFile.exists()) {
-            log.error("未找到模型文件：{}，跳过此次预测！", modelFile.getName());
+            log.info("未找到模型文件：{}，跳过此次预测！", modelFile.getName());
             return null;
         }
         MultiLayerNetwork net = ModelSerializer.restoreMultiLayerNetwork(modelFile);

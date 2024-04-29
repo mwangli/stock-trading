@@ -46,16 +46,17 @@ public class RunPredictJob extends BaseJob {
         List<StockPrices> predictPrices = filterHistoryPrices.stream().map(modelService::modelPredict).collect(Collectors.toList());
         String date = DateUtils.dateFormat.format(DateUtils.getNextTradingDay(new Date()));
         List<StockInfo> stockInfos = stockInfoService.list();
-        predictPrices.forEach(priceList -> fixProps(priceList, stockInfos, date));
+        List<StockPrices> dataList = predictPrices.stream().filter(p -> !Objects.isNull(p)).map(p -> fixProps(p, stockInfos, date)).collect(Collectors.toList());
         mongoTemplate.remove(new Query(Criteria.where("date").is(date)), StockPrices.class, VALIDATION_COLLECTION_NAME);
-        mongoTemplate.insert(predictPrices, VALIDATION_COLLECTION_NAME);
+        mongoTemplate.insert(dataList, VALIDATION_COLLECTION_NAME);
         // 更新评分数据
-        updateScore(predictPrices);
+        updateScore(dataList);
     }
 
-    private void fixProps(StockPrices stockPredictPrices, List<StockInfo> stockInfos, String date) {
+    private StockPrices fixProps(StockPrices stockPredictPrices, List<StockInfo> stockInfos, String date) {
         stockPredictPrices.setDate(date);
         stockPredictPrices.setName(stockInfos.stream().filter(stockInfo -> stockInfo.getCode().equals(stockPredictPrices.getCode())).findFirst().orElse(new StockInfo()).getName());
+        return stockPredictPrices;
     }
 
 
