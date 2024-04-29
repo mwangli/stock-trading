@@ -38,6 +38,9 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
                 if ("0".equals(job.getStatus())) {
                     scheduler.pauseJob(JobKey.jobKey(job.getName()));
                 }
+                // 清除job运行状态
+                job.setRunning("0");
+                jobMapper.updateById(job);
                 log.info("定时任务:{},加载完成", job.getName());
             } catch (Exception e) {
                 log.info("定时任务{},加载异常:{}", job.getName(), e.getMessage());
