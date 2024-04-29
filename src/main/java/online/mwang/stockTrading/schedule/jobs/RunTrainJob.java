@@ -43,6 +43,10 @@ public class RunTrainJob extends BaseJob {
         final List<StockInfo> list = stockInfoService.list(queryWrapper);
         log.info("共获取{}条待训练股票.", list.size());
         for (StockInfo s : list) {
+            if (!DateUtils.isWeekends(new Date()) && DateUtils.inTradingTimes1()) {
+                log.info("当前为交易时间段，取消训练任务!");
+                break;
+            }
             String stockCode = s.getCode();
             String stockName = s.getName();
             String lastUpdateTime = (String) redisTemplate.opsForHash().get("model:" + stockCode, "lastUpdateTime");

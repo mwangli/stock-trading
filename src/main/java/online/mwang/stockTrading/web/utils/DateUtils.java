@@ -87,5 +87,11 @@ public class DateUtils {
         return format.compareTo("13:00") >= 0 && format.compareTo("15:00") <= 0;
     }
 
-
+    public static boolean isWeekends(Date date) {
+        if (date == null) return false;
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        int weekday = calendar.get(Calendar.DAY_OF_WEEK);
+        return weekday == Calendar.SATURDAY || weekday == Calendar.SUNDAY;
+    }
 }
