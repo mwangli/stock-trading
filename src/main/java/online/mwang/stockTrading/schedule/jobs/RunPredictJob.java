@@ -27,8 +27,6 @@ public class RunPredictJob extends BaseJob {
     private final IPredictService modelService;
     private final StockInfoService stockInfoService;
     private final MongoTemplate mongoTemplate;
-    @Value("${PROFILE}")
-    private String profile;
 
     @Override
     void run() {
