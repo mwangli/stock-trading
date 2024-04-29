@@ -1,7 +1,7 @@
 package online.mwang.stockTrading.web.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import online.mwang.stockTrading.web.bean.po.ModelStrategy;
+import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 
@@ -12,8 +12,8 @@ import org.apache.ibatis.annotations.Select;
  * @description: StockInfoMapper
  */
 @Mapper
-public interface ScoreStrategyMapper extends BaseMapper<ModelStrategy> {
+public interface ScoreStrategyMapper extends BaseMapper<ModelInfo> {
 
     @Select("select * from score_strategy where status = 1")
-    ModelStrategy getSelectedStrategy();
+    ModelInfo getSelectedStrategy();
 }

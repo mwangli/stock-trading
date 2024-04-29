@@ -10,7 +10,7 @@ import online.mwang.stockTrading.web.bean.base.BaseQuery;
  * @description: ScoreStrategy
  */
 @Data
-public class StrategyQuery extends BaseQuery {
+public class ModelInfoQuery extends BaseQuery {
     private String name;
     private String params;
     private String description;
