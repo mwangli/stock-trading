@@ -85,7 +85,7 @@ public class RunBuyJob extends BaseJob {
             StockInfo stockInfo = limitStockList.get(i);
             // 每隔2秒启动一个购买线程
             log.info("开始进行[{}-{}]股票买入!", stockInfo.getName(), stockInfo.getCode());
-            sleepUtils.second(2L * i);
+            sleepUtils.second(3L * i);
             new Thread(() -> buyStock(stockInfo, accountInfo, countDownLatch, locks)).start();
         }
         countDownLatch.await();
