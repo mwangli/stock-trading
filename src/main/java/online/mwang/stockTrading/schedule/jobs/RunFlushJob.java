@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RunPermissionJob extends BaseJob {
+public class RunFlushJob extends BaseJob {
 
     private final IStockService dataService;
     private final StockInfoService stockInfoService;
@@ -30,12 +30,12 @@ public class RunPermissionJob extends BaseJob {
     @Override
     public void run() {
         log.info("请尝试以更好的方案来更新交易权限....");
-        //   尝试以更好的方案来更新交易权限，而不是试错
+        //  尝试以更好的方案来更新交易权限，而不是试错
         List<String> errorCodes = Arrays.asList("[251112]", "[251127]", "[251299]", "该股票是退市");
         List<StockInfo> stockInfos = stockInfoService.list();
         final HashSet<String> set = new HashSet<>();
         stockInfos.forEach(info -> {
-            JSONObject result = dataService.buySale("B", info.getCode(), 100.0, 100.0);
+            JSONObject result = dataService.buySale("B", info.getCode(), 100.0, 10000.0);
             final String message = result.getString("ERRORMESSAGE");
             set.add(message);
             if (errorCodes.stream().anyMatch(message::startsWith)) {

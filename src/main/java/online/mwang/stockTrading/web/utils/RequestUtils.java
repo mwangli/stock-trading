@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.schedule.IStockService;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -55,17 +56,21 @@ public class RequestUtils {
 
     @SneakyThrows
     public JSONObject request(HashMap<String, Object> formParam) {
-        return request(REQUEST_URL, formParam);
+        JSONObject res = request(REQUEST_URL, formParam);
+        if ("-204007".equals(res.getString("ERRORNO"))) {
+            log.info("TOKEN已经失效，清除无效TOKEN...");
+            redisTemplate.opsForValue().getAndDelete("requestToken");
+        }
+        return res;
     }
-
 
     @SneakyThrows
     public JSONArray request2(HashMap<String, Object> formParam) {
         JSONObject res = request(REQUEST_URL, formParam);
         if ("-204009".equals(res.getString("ERRORNO"))) {
-            log.info("TOKEN已经失效，正在重新登录...");
+            log.info("TOKEN已经失效，清除无效TOKEN...");
             redisTemplate.opsForValue().getAndDelete("requestToken");
-            res = request(REQUEST_URL, formParam);
+            return new JSONArray();
         }
         return res.getJSONArray("GRID0");
     }
@@ -74,9 +79,8 @@ public class RequestUtils {
     public JSONArray request3(HashMap<String, Object> formParam) {
         JSONObject res = request(REQUEST_URL.concat("?action=1230"), formParam);
         final JSONObject data = res.getJSONObject("BINDATA");
-        if (data != null && data.getJSONArray("results") != null) {
+        if (data != null && data.getJSONArray("results") != null)
             return data.getJSONArray("results");
-        }
         return new JSONArray();
     }
 }

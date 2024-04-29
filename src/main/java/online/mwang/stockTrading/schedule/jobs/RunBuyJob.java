@@ -22,8 +22,8 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -76,13 +76,15 @@ public class RunBuyJob extends BaseJob {
         final List<StockInfo> limitStockList = pageResult.getRecords();
         // 多支股票并行买入
         CountDownLatch countDownLatch = new CountDownLatch(NEED_COUNT);
+        ArrayList<ReentrantLock> locks = new ArrayList<>();
+        for (int i = 0; i < NEED_COUNT; i++) locks.add(new ReentrantLock());
         ReentrantLock reentrantLock = new ReentrantLock();
-        limitStockList.forEach(stockInfo -> new Thread(() -> buyStock(stockInfo, accountInfo, countDownLatch)).start());
+        limitStockList.forEach(stockInfo -> new Thread(() -> buyStock(stockInfo, accountInfo, countDownLatch, locks)).start());
         countDownLatch.await();
         log.info("所有股票买入完成!");
     }
 
-    private void buyStock(StockInfo stockInfo, AccountInfo accountInfo, CountDownLatch countDownLatch) {
+    private void buyStock(StockInfo stockInfo, AccountInfo accountInfo, CountDownLatch countDownLatch, List<ReentrantLock> locks) {
         int priceCount = 1;
         double priceTotal = 0.0;
         Double nowPrice;
@@ -96,17 +98,22 @@ public class RunBuyJob extends BaseJob {
                 if (DateUtils.isDeadLine2()) log.info("交易时间段即将结束！");
                 log.info("开始进行买入");
                 countDownLatch.countDown();
-                Boolean success;
                 double buyNumber = (accountInfo.getAvailableAmount() / nowPrice / 100) * 100;
                 String buyNo;
-                synchronized (Objects.requireNonNull(countDownLatch)) {
-                    log.info("同步买入开始...");
+                Boolean success;
+                ReentrantLock availableLock = locks.stream().filter(l -> !l.isLocked()).findAny().orElse(null);
+                if (availableLock == null) continue;
+                availableLock.lock();
+                try {
+                    log.info("获取到资源锁，开始进行买入");
                     JSONObject result = dataService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
                     buyNo = result.getString("ANSWERNO");
                     if (buyNo == null) throw new BusinessException("买入订单提交失败");
                     success = dataService.waitOrderStatus(buyNo);
                     if (success == null) throw new BusinessException("撤单失败，无可用资金");
                     log.info("同步买入结束...");
+                } finally {
+                    availableLock.unlock();
                 }
                 if (!success) {
                     log.info("撤单成功，重新尝试买入。");
