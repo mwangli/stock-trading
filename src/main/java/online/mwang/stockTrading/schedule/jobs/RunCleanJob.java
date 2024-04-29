@@ -13,11 +13,14 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -36,6 +39,7 @@ public class RunCleanJob extends BaseJob {
     private final AccountInfoService accountInfoService;
     private final StockInfoService stockInfoService;
     private final MongoTemplate mongoTemplate;
+    private final StringRedisTemplate redisTemplate;
 
     @Override
     public void run() {
@@ -43,6 +47,13 @@ public class RunCleanJob extends BaseJob {
         cleanAccountInfo();
         cleanPredictPrice();
         cleanHistoryPrice();
+//        cleanModelUpdateTime();
+    }
+
+    private void cleanModelUpdateTime() {
+        Set<String> keys = redisTemplate.keys("model:**");
+        assert keys != null;
+        keys.forEach(key -> redisTemplate.opsForHash().delete(key, "lastUpdateTime"));
     }
 
     private void cleanAccountInfo() {
@@ -86,6 +97,6 @@ public class RunCleanJob extends BaseJob {
         // 删除code或date为空的无效数据
         Query deleteQuery = new Query(Criteria.where("code").isNull().orOperator(Criteria.where("date").isNull()));
         List<StockPrices> remove = mongoTemplate.findAllAndRemove(deleteQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
-        log.info("共删除{}条无效数据!",remove.size());
+        log.info("共删除{}条无效数据!", remove.size());
     }
 }
