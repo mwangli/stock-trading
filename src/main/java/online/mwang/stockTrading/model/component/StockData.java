@@ -1,4 +1,4 @@
-package online.mwang.stockTrading.model.representation;
+package online.mwang.stockTrading.model.component;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

@@ -1,7 +1,5 @@
-package online.mwang.stockTrading.model.representation;
+package online.mwang.stockTrading.model.component;
 
-import com.google.common.collect.ImmutableMap;
-import com.opencsv.CSVReader;
 import javafx.util.Pair;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
@@ -9,11 +7,8 @@ import org.nd4j.linalg.dataset.api.DataSetPreProcessor;
 import org.nd4j.linalg.dataset.api.iterator.DataSetIterator;
 import org.nd4j.linalg.factory.Nd4j;
 
-import java.io.FileReader;
-import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Created by zhanghao on 26/7/17.
