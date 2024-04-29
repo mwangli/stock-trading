@@ -194,7 +194,7 @@ public class ZXStockServiceImpl implements IStockService {
     }
 
     @Override
-    public AccountInfo updateAccountInfo() {
+    public AccountInfo getAccountInfo() {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -217,7 +217,6 @@ public class ZXStockServiceImpl implements IStockService {
         accountInfo.setAvailableAmount(availableAmount);
         accountInfo.setUsedAmount(usedAmount);
         accountInfo.setTotalAmount(totalAmount);
-        accountInfoMapper.insert(accountInfo);
         return accountInfo;
     }
 
