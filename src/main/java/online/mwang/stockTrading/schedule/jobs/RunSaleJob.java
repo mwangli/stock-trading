@@ -17,6 +17,7 @@ import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import online.mwang.stockTrading.web.utils.SleepUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.Date;
@@ -40,10 +41,11 @@ public class RunSaleJob extends BaseJob {
     private final OrderInfoService orderInfoService;
     private final AccountInfoMapper accountInfoMapper;
     private final SleepUtils sleepUtils;
-
     public static final long WAITING_SECONDS = 30;
     public static final long WAITING_COUNT_SKIP = 30 * 60 / WAITING_SECONDS;
     public static final double SALE_PERCENT = 0.005;
+    @Value("${PROFILE}")
+    private String profile;
 
     @SneakyThrows
     @Override
@@ -63,11 +65,13 @@ public class RunSaleJob extends BaseJob {
     }
 
     private void saleStock(TradingRecord record, CountDownLatch countDownLatch) {
+        boolean debug = "dev".equalsIgnoreCase(profile);
+        if (debug) log.info("启用debug模式");
         log.info("当前股票[{}-{}]开始进行卖出!", record.getName(), record.getCode());
         int priceCount = 0;
         double priceTotal = 0.0;
         while (countDownLatch.getCount() > 0) {
-            sleepUtils.second(WAITING_SECONDS);
+            if (!debug) sleepUtils.second(WAITING_SECONDS);
             double nowPrice = dataService.getNowPrice(record.getCode());
             priceCount++;
             priceTotal += nowPrice;
