@@ -101,8 +101,12 @@ public class RunBuyJob extends BaseJob {
                 double buyNumber = (accountInfo.getAvailableAmount() / nowPrice / 100) * 100;
                 String buyNo;
                 Boolean success;
+                // 获取可用资源锁
                 ReentrantLock availableLock = locks.stream().filter(l -> !l.isLocked()).findAny().orElse(null);
-                if (availableLock == null) continue;
+                if (availableLock == null) {
+                    log.info("未获取到可用资源锁，等待下次购买");
+                    continue;
+                }
                 availableLock.lock();
                 try {
                     log.info("获取到资源锁，开始进行买入");
