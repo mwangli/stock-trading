@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IPredictService;
-import online.mwang.stockTrading.model.representation.StockData;
+import online.mwang.stockTrading.model.component.StockData;
 import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import org.springframework.stereotype.Service;

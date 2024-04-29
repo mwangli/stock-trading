@@ -6,8 +6,8 @@ import javafx.util.Pair;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.model.representation.StockData;
-import online.mwang.stockTrading.model.representation.StockDataSetIterator;
+import online.mwang.stockTrading.model.component.StockData;
+import online.mwang.stockTrading.model.component.StockDataSetIterator;
 import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.utils.DateUtils;
@@ -34,7 +34,7 @@ import java.util.List;
 public class LSTMModel {
 
     private static final int EXAMPLE_LENGTH = 22;
-    private static final int BATCH_SIZE = 64;
+    private static final int BATCH_SIZE = 32;
     private static final double SPLIT_RATIO = 0.8;
     private static final int EPOCHS = 100;
     private static final int SCORE_ITERATIONS = 100;
