@@ -69,10 +69,10 @@ public class ZXStockServiceImpl implements IStockService {
         return redisTemplate.opsForValue().get(TOKEN);
     }
 
-    private void setToken(String token) {
-        if (token == null) return;
-        redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
-    }
+//    private void setToken(String token) {
+//        if (token == null) return;
+//        redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+//    }
 
     @SneakyThrows
     private List<String> getCheckCode() {
@@ -133,7 +133,6 @@ public class ZXStockServiceImpl implements IStockService {
         final JSONObject result = requestUtils.request(buildParams(paramMap));
         final String errorNo = result.getString("ERRORNO");
         if ("331100".equals(errorNo)) {
-            setToken(result.getString("TOKEN"));
             return true;
         }
         if ("-330203".equals(errorNo)) {
@@ -189,12 +188,12 @@ public class ZXStockServiceImpl implements IStockService {
     public Integer cancelAllOrder() {
         List<OrderInfo> orderInfos = getTodayOrder();
         orderInfos.forEach(o -> cancelOrder(o.getAnswerNo()));
-        log.info("共取消{}条无效订单!",orderInfos.size());
+        log.info("共取消{}条无效订单!", orderInfos.size());
         return orderInfos.size();
     }
 
     @Override
-    public AccountInfo updateAccountInfo() {
+    public AccountInfo getAccountInfo() {
         String token = getToken();
         final long timeMillis = System.currentTimeMillis();
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -217,7 +216,6 @@ public class ZXStockServiceImpl implements IStockService {
         accountInfo.setAvailableAmount(availableAmount);
         accountInfo.setUsedAmount(usedAmount);
         accountInfo.setTotalAmount(totalAmount);
-        accountInfoMapper.insert(accountInfo);
         return accountInfo;
     }
 
