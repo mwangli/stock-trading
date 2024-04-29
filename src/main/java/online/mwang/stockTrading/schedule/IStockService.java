@@ -61,13 +61,16 @@ public interface IStockService {
     Double getPeeAmount(Double amount);
 
     /**
-     * 提交买卖订单，返回订单编号
+     * 提交买卖订单
      */
     JSONObject buySale(String type, String code, Double price, Double number);
 
 
     /**
      * 等待买入或者卖出订单完成
+     * 买入成功返回true
+     * 撤单成功返回false
+     * 其他异常情况返回null
      */
     Boolean waitOrderStatus(String answerNo);
 }

@@ -189,7 +189,7 @@ public class ZXStockServiceImpl implements IStockService {
     public Integer cancelAllOrder() {
         List<OrderInfo> orderInfos = getTodayOrder();
         orderInfos.forEach(o -> cancelOrder(o.getAnswerNo()));
-        log.info("共取消{}条无效订单!",orderInfos.size());
+        log.info("共取消{}条无效订单!", orderInfos.size());
         return orderInfos.size();
     }
 
@@ -262,7 +262,9 @@ public class ZXStockServiceImpl implements IStockService {
         paramMap.put("Volume", number);
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
-        return requestUtils.request(buildParams(paramMap));
+        JSONObject res = requestUtils.request(buildParams(paramMap));
+        setToken(res.getString("TOKEN"));
+        return res;
     }
 
     @Override
