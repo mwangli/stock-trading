@@ -41,6 +41,10 @@ public class RunSaleJob extends BaseJob {
     private final AccountInfoMapper accountInfoMapper;
     private final SleepUtils sleepUtils;
 
+    public static final long WAITING_SECONDS = 10;
+    public static final long WAITING_COUNT_SKIP = 180;
+    public static final double SALE_PERCENT = 0.005;
+
     @SneakyThrows
     @Override
     public void run() {
@@ -59,12 +63,12 @@ public class RunSaleJob extends BaseJob {
         double priceTotal = 0.0;
         Double nowPrice;
         while (countDownLatch.getCount() > 0 && DateUtils.inTradingTimes1()) {
-            sleepUtils.second(30);
+            sleepUtils.second(WAITING_SECONDS);
             nowPrice = dataService.getNowPrice(record.getCode());
             double priceAvg = priceTotal / priceCount;
             priceTotal += nowPrice;
             priceCount++;
-            if (priceCount > 60 && nowPrice > priceAvg + priceAvg * 0.05 || DateUtils.isDeadLine1()) {
+            if (priceCount > WAITING_COUNT_SKIP && nowPrice > priceAvg + priceAvg * SALE_PERCENT || DateUtils.isDeadLine1()) {
                 if (DateUtils.isDeadLine1()) log.info("交易时间段即将结束");
                 log.info("开始卖出股票");
                 JSONObject result = dataService.buySale("S", record.getCode(), nowPrice, record.getBuyNumber());
