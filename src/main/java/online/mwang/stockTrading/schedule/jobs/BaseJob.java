@@ -1,8 +1,10 @@
 package online.mwang.stockTrading.schedule.jobs;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.po.QuartzJob;
+import online.mwang.stockTrading.web.logs.WebSocketServer;
 import online.mwang.stockTrading.web.mapper.QuartzJobMapper;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.quartz.InterruptableJob;
@@ -10,6 +12,7 @@ import org.quartz.JobExecutionContext;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
+import javax.websocket.Session;
 
 /**
  * @version 1.0.0
@@ -19,18 +22,14 @@ import javax.annotation.Resource;
  */
 @Slf4j
 @Component
-public abstract class
-
-
-
-
-BaseJob implements InterruptableJob {
+public abstract class BaseJob implements InterruptableJob {
 
     @Resource
     private QuartzJobMapper jobMapper;
 
     abstract void run();
 
+    @SneakyThrows
     @Override
     public void execute(JobExecutionContext jobExecutionContext) {
         final String jobName = jobExecutionContext.getJobDetail().getKey().getName();
@@ -47,6 +46,8 @@ BaseJob implements InterruptableJob {
         final long end = System.currentTimeMillis();
         log.info("{} ,任务执行结束====================================", jobName);
         log.info("{}, 任务执行耗时{}。", jobName, DateUtils.timeConvertor(end - start));
+        // 通知所有的客户端会话，任务执行完成
+        for (Session s : WebSocketServer.sessions) s.getBasicRemote().sendText("任务执行完成");
     }
 
     @Override
