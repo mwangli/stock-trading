@@ -1,7 +1,7 @@
 package online.mwang.stockTrading.web.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
-import online.mwang.stockTrading.web.bean.po.ModelStrategy;
+import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import org.springframework.stereotype.Service;
 
 /**
@@ -11,5 +11,5 @@ import org.springframework.stereotype.Service;
  * @description: FoundTradingService
  */
 @Service
-public interface ScoreStrategyService extends IService<ModelStrategy> {
+public interface ModelInfoService extends IService<ModelInfo> {
 }

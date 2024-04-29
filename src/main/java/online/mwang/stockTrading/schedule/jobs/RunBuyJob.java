@@ -24,8 +24,6 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * @version 1.0.0
@@ -166,7 +164,7 @@ public class RunBuyJob extends BaseJob {
         record.setCreateTime(now);
         record.setUpdateTime(now);
         // 保存模型策略信息，以备后续数据分析和模型优化
-        final ModelStrategy strategy = strategyMapper.getSelectedStrategy();
+        final ModelInfo strategy = strategyMapper.getSelectedStrategy();
         record.setStrategyId(strategy == null ? 0 : strategy.getId());
         record.setStrategyName(strategy == null ? "默认策略" : strategy.getName());
         tradingRecordService.save(record);

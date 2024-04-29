@@ -38,7 +38,7 @@ public class RunTrainJob extends BaseJob {
     @Override
     void run() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.orderByDesc(StockInfo::getScore);
+        queryWrapper.orderByDesc(StockInfo::getPrice);
         final List<StockInfo> list = stockInfoService.list(queryWrapper);
         log.info("共获取{}条待训练股票.", list.size());
         for (StockInfo s : list) {

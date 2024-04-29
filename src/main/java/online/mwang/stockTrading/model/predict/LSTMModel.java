@@ -60,7 +60,7 @@ public class LSTMModel {
             net = modelConfig.getModel(iterator.inputColumns(), iterator.totalOutcomes());
         }
         net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
-        net.summary();
+        log.info(net.summary());
         log.info("Training...");
         for (int i = 0; i < EPOCHS; i++) {
             if (skipTrain) break;
