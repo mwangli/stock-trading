@@ -42,8 +42,8 @@ public class RunBuyJob extends BaseJob {
     public static final double LOW_PRICE_LIMIT = 5.0;
     public static final int NEED_COUNT = 1;
     public static final double AMOUNT_USED_RATE = 0.8;
-    public static final long WAITING_SECONDS = 10;
-    public static final long WAITING_COUNT_SKIP = 180;
+    public static final long WAITING_SECONDS = 30;
+    public static final long WAITING_COUNT_SKIP = 30 * 60 / WAITING_SECONDS;
     public static final double BUY_PERCENT = 0.005;
     private final IStockService dataService;
     private final TradingRecordService tradingRecordService;
@@ -93,19 +93,18 @@ public class RunBuyJob extends BaseJob {
     }
 
     private void buyStock(StockInfo stockInfo, AccountInfo accountInfo, CountDownLatch countDownLatch, List<ReentrantLock> locks) {
-        int priceCount = 1;
+        int priceCount = 0;
         double priceTotal = 0.0;
-        double nowPrice;
         while (countDownLatch.getCount() > 0 && DateUtils.inTradingTimes2()) {
             sleepUtils.second(WAITING_SECONDS);
-            nowPrice = dataService.getNowPrice(stockInfo.getCode());
+            double nowPrice = dataService.getNowPrice(stockInfo.getCode());
+            priceCount++;
             priceTotal += nowPrice;
             double priceAvg = priceTotal / priceCount;
-            log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", stockInfo.getName(), stockInfo.getCode(), String.format("%.2f", nowPrice), String.format("%.2f", priceAvg), priceCount);
-            priceCount++;
+            log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", stockInfo.getName(), stockInfo.getCode(), String.format("%.2f", nowPrice), String.format("%.4f", priceAvg), priceCount);
             if (priceCount > WAITING_COUNT_SKIP && nowPrice < priceAvg - priceAvg * BUY_PERCENT || DateUtils.isDeadLine2()) {
                 if (DateUtils.isDeadLine2()) log.info("交易时间段即将结束！");
-                log.info("开始进行买入");
+                log.info("当前股票[{}-{}],开始进行买入!", stockInfo.getName(), stockInfo.getCode());
                 countDownLatch.countDown();
                 double buyNumber = (accountInfo.getAvailableAmount() / nowPrice / 100) * 100;
                 String buyNo;

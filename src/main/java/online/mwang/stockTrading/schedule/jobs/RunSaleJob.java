@@ -41,8 +41,8 @@ public class RunSaleJob extends BaseJob {
     private final AccountInfoMapper accountInfoMapper;
     private final SleepUtils sleepUtils;
 
-    public static final long WAITING_SECONDS = 10;
-    public static final long WAITING_COUNT_SKIP = 180;
+    public static final long WAITING_SECONDS = 30;
+    public static final long WAITING_COUNT_SKIP = 30 * 60 / WAITING_SECONDS;
     public static final double SALE_PERCENT = 0.005;
 
     @SneakyThrows
@@ -59,15 +59,16 @@ public class RunSaleJob extends BaseJob {
     }
 
     private void saleStock(TradingRecord record, CountDownLatch countDownLatch) {
-        int priceCount = 1;
+        log.info("当前股票[{}-{}]开始进行卖出!", record.getName(), record.getCode());
+        int priceCount = 0;
         double priceTotal = 0.0;
-        Double nowPrice;
         while (countDownLatch.getCount() > 0 && DateUtils.inTradingTimes1()) {
             sleepUtils.second(WAITING_SECONDS);
-            nowPrice = dataService.getNowPrice(record.getCode());
-            double priceAvg = priceTotal / priceCount;
-            priceTotal += nowPrice;
+            double nowPrice = dataService.getNowPrice(record.getCode());
             priceCount++;
+            priceTotal += nowPrice;
+            double priceAvg = priceTotal / priceCount;
+            log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", record.getName(), record.getCode(), String.format("%.2f", nowPrice), String.format("%.4f", priceAvg), priceCount);
             if (priceCount > WAITING_COUNT_SKIP && nowPrice > priceAvg + priceAvg * SALE_PERCENT || DateUtils.isDeadLine1()) {
                 if (DateUtils.isDeadLine1()) log.info("交易时间段即将结束");
                 log.info("开始卖出股票");
