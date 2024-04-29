@@ -69,10 +69,10 @@ public class ZXStockServiceImpl implements IStockService {
         return redisTemplate.opsForValue().get(TOKEN);
     }
 
-    private void setToken(String token) {
-        if (token == null) return;
-        redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
-    }
+//    private void setToken(String token) {
+//        if (token == null) return;
+//        redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+//    }
 
     @SneakyThrows
     private List<String> getCheckCode() {
@@ -133,7 +133,6 @@ public class ZXStockServiceImpl implements IStockService {
         final JSONObject result = requestUtils.request(buildParams(paramMap));
         final String errorNo = result.getString("ERRORNO");
         if ("331100".equals(errorNo)) {
-            setToken(result.getString("TOKEN"));
             return true;
         }
         if ("-330203".equals(errorNo)) {
@@ -262,9 +261,7 @@ public class ZXStockServiceImpl implements IStockService {
         paramMap.put("Volume", number);
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
-        JSONObject res = requestUtils.request(buildParams(paramMap));
-        setToken(res.getString("TOKEN"));
-        return res;
+        return requestUtils.request(buildParams(paramMap));
     }
 
     @Override
