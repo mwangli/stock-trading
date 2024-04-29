@@ -33,10 +33,8 @@ public class RunPredictJob extends BaseJob {
     @Override
     void run() {
         // 获取所有股票近一个月的价格信息(mongodb实现分组取最后22条实现较为困难)
-        Calendar calendar = Calendar.getInstance();
-        calendar.setTime(new Date());
-        calendar.add(Calendar.DATE, -35);
-        String lastMonthDate = DateUtils.dateFormat.format(calendar.getTime());
+        Date preMonthDate = DateUtils.getNextDay(new Date(), -35);
+        String lastMonthDate = DateUtils.dateFormat.format(preMonthDate);
         Query query = new Query(Criteria.where("date").gte(lastMonthDate));
         List<StockPrices> stockPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
         // 在内存中按code进行分组过滤,只保留最后22条数据
@@ -47,15 +45,15 @@ public class RunPredictJob extends BaseJob {
         // 价格预测,保存数据
         List<StockPrices> predictPrices = filterHistoryPrices.stream().map(modelService::modelPredict).collect(Collectors.toList());
         String date = DateUtils.dateFormat.format(DateUtils.getNextTradingDay(new Date()));
-        predictPrices.forEach(priceList -> fixProps(priceList, date));
+        List<StockInfo> stockInfos = stockInfoService.list();
+        predictPrices.forEach(priceList -> fixProps(priceList, stockInfos, date));
         mongoTemplate.remove(new Query(Criteria.where("date").is(date)), StockPrices.class, VALIDATION_COLLECTION_NAME);
         mongoTemplate.insert(predictPrices, VALIDATION_COLLECTION_NAME);
         // 更新评分数据
         updateScore(predictPrices);
     }
 
-    private void fixProps(StockPrices stockPredictPrices, String date) {
-        List<StockInfo> stockInfos = stockInfoService.list();
+    private void fixProps(StockPrices stockPredictPrices, List<StockInfo> stockInfos, String date) {
         stockPredictPrices.setDate(date);
         stockPredictPrices.setName(stockInfos.stream().filter(stockInfo -> stockInfo.getCode().equals(stockPredictPrices.getCode())).findFirst().orElse(new StockInfo()).getName());
     }

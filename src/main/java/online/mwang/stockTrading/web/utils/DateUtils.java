@@ -30,6 +30,14 @@ public class DateUtils {
         return calendar.getTime();
     }
 
+    public static Date getNextDay(Date date, int amount) {
+        if (date == null) return null;
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        calendar.add(Calendar.DATE, amount);
+        return calendar.getTime();
+    }
+
     public static Date getNextTradingDay(Date date) {
         if (date == null) return null;
         Calendar calendar = Calendar.getInstance();
