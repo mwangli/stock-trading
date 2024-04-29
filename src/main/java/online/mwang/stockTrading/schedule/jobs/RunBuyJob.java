@@ -44,6 +44,7 @@ public class RunBuyJob extends BaseJob {
     public static final double AMOUNT_USED_RATE = 0.8;
     public static final long WAITING_SECONDS = 30;
     public static final long WAITING_COUNT_SKIP = 30 * 60 / WAITING_SECONDS;
+    public static final long THREAD_COUNT = 10;
     public static final double BUY_PERCENT = 0.005;
     private final IStockService dataService;
     private final TradingRecordService tradingRecordService;
@@ -74,7 +75,7 @@ public class RunBuyJob extends BaseJob {
                 .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1")
                 .orderByDesc(StockInfo::getScore);
         priceRanges.forEach(range -> queryWrapper.ge(StockInfo::getPrice, range[0]).le(StockInfo::getPrice, range[1]).or());
-        final Page<StockInfo> pageResult = stockInfoMapper.selectPage(Page.of(1, 8 * NEED_COUNT), queryWrapper);
+        final Page<StockInfo> pageResult = stockInfoMapper.selectPage(Page.of(1, THREAD_COUNT * NEED_COUNT), queryWrapper);
         final List<StockInfo> limitStockList = pageResult.getRecords();
         // 多支股票并行买入
         CountDownLatch countDownLatch = new CountDownLatch(NEED_COUNT);
@@ -83,9 +84,9 @@ public class RunBuyJob extends BaseJob {
         ReentrantLock reentrantLock = new ReentrantLock();
         for (int i = 0; i < limitStockList.size(); i++) {
             StockInfo stockInfo = limitStockList.get(i);
-            // 每隔2秒启动一个购买线程
+            // 每隔3秒启动一个购买线程
             log.info("开始进行[{}-{}]股票买入!", stockInfo.getName(), stockInfo.getCode());
-            sleepUtils.second(3L * i);
+            sleepUtils.second(WAITING_SECONDS / THREAD_COUNT * i);
             new Thread(() -> buyStock(stockInfo, accountInfo, countDownLatch, locks)).start();
         }
         countDownLatch.await();
@@ -105,7 +106,6 @@ public class RunBuyJob extends BaseJob {
             if (priceCount > WAITING_COUNT_SKIP && nowPrice < priceAvg - priceAvg * BUY_PERCENT || DateUtils.isDeadLine2()) {
                 if (DateUtils.isDeadLine2()) log.info("交易时间段即将结束！");
                 log.info("当前股票[{}-{}],开始进行买入!", stockInfo.getName(), stockInfo.getCode());
-                countDownLatch.countDown();
                 double buyNumber = (accountInfo.getAvailableAmount() / nowPrice / 100) * 100;
                 String buyNo;
                 Boolean success;
