@@ -41,8 +41,10 @@ public class RunBuyJob extends BaseJob {
     public static final int MIN_HOLD_NUMBER = 100;
     public static final double LOW_PRICE_LIMIT = 5.0;
     public static final int NEED_COUNT = 1;
-    public static final double BUY_PERCENT = 0.005;
     public static final double AMOUNT_USED_RATE = 0.8;
+    public static final long WAITING_SECONDS = 10;
+    public static final long WAITING_COUNT_SKIP = 180;
+    public static final double BUY_PERCENT = 0.005;
     private final IStockService dataService;
     private final TradingRecordService tradingRecordService;
     private final StockInfoMapper stockInfoMapper;
@@ -81,9 +83,9 @@ public class RunBuyJob extends BaseJob {
         ReentrantLock reentrantLock = new ReentrantLock();
         for (int i = 0; i < limitStockList.size(); i++) {
             StockInfo stockInfo = limitStockList.get(i);
-            // 每隔3秒启动一个购买线程
+            // 每隔2秒启动一个购买线程
             log.info("开始进行[{}-{}]股票买入!", stockInfo.getName(), stockInfo.getCode());
-            sleepUtils.second(3L * i);
+            sleepUtils.second(2L * i);
             new Thread(() -> buyStock(stockInfo, accountInfo, countDownLatch, locks)).start();
         }
         countDownLatch.await();
@@ -95,13 +97,13 @@ public class RunBuyJob extends BaseJob {
         double priceTotal = 0.0;
         double nowPrice;
         while (countDownLatch.getCount() > 0 && DateUtils.inTradingTimes2()) {
-            sleepUtils.second(30);
+            sleepUtils.second(WAITING_SECONDS);
             nowPrice = dataService.getNowPrice(stockInfo.getCode());
             priceTotal += nowPrice;
             double priceAvg = priceTotal / priceCount;
             log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", stockInfo.getName(), stockInfo.getCode(), String.format("%.2f", nowPrice), String.format("%.2f", priceAvg), priceCount);
             priceCount++;
-            if (priceCount > 60 && nowPrice < priceAvg - priceAvg * BUY_PERCENT || DateUtils.isDeadLine2()) {
+            if (priceCount > WAITING_COUNT_SKIP && nowPrice < priceAvg - priceAvg * BUY_PERCENT || DateUtils.isDeadLine2()) {
                 if (DateUtils.isDeadLine2()) log.info("交易时间段即将结束！");
                 log.info("开始进行买入");
                 countDownLatch.countDown();
