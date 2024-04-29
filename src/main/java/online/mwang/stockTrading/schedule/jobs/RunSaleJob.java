@@ -58,7 +58,7 @@ public class RunSaleJob extends BaseJob {
         int priceCount = 1;
         double priceTotal = 0.0;
         Double nowPrice;
-        while (DateUtils.inTradingTimes1()) {
+        while (countDownLatch.getCount() > 0 && DateUtils.inTradingTimes1()) {
             sleepUtils.second(30);
             nowPrice = dataService.getNowPrice(record.getCode());
             double priceAvg = priceTotal / priceCount;
@@ -109,7 +109,7 @@ public class RunSaleJob extends BaseJob {
                 record.setDailyIncomeRate(incomeRate);
                 tradingRecordService.updateById(record);
                 // 更新账户资金
-                AccountInfo accountInfo = dataService.updateAccountInfo();
+                AccountInfo accountInfo = dataService.getAccountInfo();
                 accountInfo.setCreateTime(new Date());
                 accountInfo.setUpdateTime(new Date());
                 accountInfoMapper.insert(accountInfo);
@@ -122,5 +122,4 @@ public class RunSaleJob extends BaseJob {
             }
         }
     }
-
 }

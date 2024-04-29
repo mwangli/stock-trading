@@ -24,6 +24,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * @version 1.0.0
@@ -54,7 +55,7 @@ public class RunBuyJob extends BaseJob {
     @Override
     public void run() {
         // 获取最新的账户资金信息
-        AccountInfo accountInfo = dataService.updateAccountInfo();
+        AccountInfo accountInfo = dataService.getAccountInfo();
         final Double totalAvailableAmount = accountInfo.getAvailableAmount();
         // 计算此次可用资金
         double availableAmount = totalAvailableAmount / NEED_COUNT;
@@ -71,10 +72,11 @@ public class RunBuyJob extends BaseJob {
                 .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1")
                 .orderByDesc(StockInfo::getScore);
         priceRanges.forEach(range -> queryWrapper.ge(StockInfo::getPrice, range[0]).le(StockInfo::getPrice, range[1]).or());
-        final Page<StockInfo> pageResult = stockInfoMapper.selectPage(Page.of(1,10), queryWrapper);
+        final Page<StockInfo> pageResult = stockInfoMapper.selectPage(Page.of(1, 10), queryWrapper);
         final List<StockInfo> limitStockList = pageResult.getRecords();
         // 多支股票并行买入
         CountDownLatch countDownLatch = new CountDownLatch(NEED_COUNT);
+        ReentrantLock reentrantLock = new ReentrantLock();
         limitStockList.forEach(stockInfo -> new Thread(() -> buyStock(stockInfo, accountInfo, countDownLatch)).start());
         countDownLatch.await();
         log.info("所有股票买入完成!");
@@ -93,6 +95,7 @@ public class RunBuyJob extends BaseJob {
             if (priceCount > 60 && nowPrice < priceAvg - priceAvg * BUY_PERCENT || DateUtils.isDeadLine2()) {
                 if (DateUtils.isDeadLine2()) log.info("交易时间段即将结束！");
                 log.info("开始进行买入");
+                countDownLatch.countDown();
                 Boolean success;
                 double buyNumber = (accountInfo.getAvailableAmount() / nowPrice / 100) * 100;
                 String buyNo;
@@ -144,7 +147,7 @@ public class RunBuyJob extends BaseJob {
                 record.setStrategyName(strategy == null ? "默认策略" : strategy.getName());
                 tradingRecordService.save(record);
                 // 更新账户资金状态
-                AccountInfo newAccountInfo = dataService.updateAccountInfo();
+                AccountInfo newAccountInfo = dataService.getAccountInfo();
                 newAccountInfo.setCreateTime(new Date());
                 newAccountInfo.setUpdateTime(new Date());
                 accountInfoMapper.insert(newAccountInfo);
