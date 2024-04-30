@@ -102,9 +102,13 @@ public class LSTMModel {
             int paramsSize = Stream.of(net.getLayers()).mapToInt(Model::numParams).sum();
             modelInfo.setParamsSize(String.valueOf(paramsSize));
             modelInfo.setFilePath(modelFile.getPath());
-            modelInfo.setFileSize(String.format("%.2fM", (double) modelFile.getTotalSpace() / (1024 * 1024)));
+            modelInfo.setFileSize(String.format("%.2fM", (double) modelFile.length() / (1024 * 1024)));
             modelInfo.setTrainPeriod(timePeriod);
             modelInfo.setTrainTimes(EPOCHS);
+            modelInfo.setStatus("1");
+            modelInfo.setScore( 0.0);
+            modelInfo.setTestDeviation(0.0);
+            modelInfo.setValidateDeviation(0.0);
             modelInfo.setCreateTime(new Date());
             modelInfo.setUpdateTime(new Date());
             modelInfoService.save(modelInfo);
@@ -125,8 +129,8 @@ public class LSTMModel {
         for (int i = 0; i < testData.size(); i++) {
             predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getRow(EXAMPLE_LENGTH - 1).mul(max.sub(min)).add(min);
             final StockPrices stockTestPrice = new StockPrices();
-            stockTestPrice.setIncreaseRate1(Double.parseDouble(String.format("%.2f", predicts[i].getDouble(0))));
-//            stockTestPrice.setPrice2(Double.parseDouble(String.format("%.2f", predicts[i].getDouble(1))));
+            stockTestPrice.setPrice1(Double.parseDouble(String.format("%.2f", predicts[i].getDouble(0))));
+            stockTestPrice.setPrice2(Double.parseDouble(String.format("%.2f", predicts[i].getDouble(1))));
             stockTestPrice.setDate(dateList.get(i));
             stockTestPrice.setCode(stockCode);
             stockTestPrice.setName(stockName);

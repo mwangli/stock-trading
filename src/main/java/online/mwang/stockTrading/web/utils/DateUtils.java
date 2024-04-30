@@ -66,7 +66,9 @@ public class DateUtils {
         long seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % 60;
         long minutes = TimeUnit.MILLISECONDS.toMinutes(millis) % 60;
         long hours = TimeUnit.MILLISECONDS.toHours(millis) % 24;
-        return hours + "小时 " + minutes + "分钟 " + seconds + "秒";
+        String res = minutes + "分钟 " + seconds + "秒";
+        if (hours > 0) res = hours + "小时 " + res;
+        return res;
     }
 
     public static Boolean isDeadLine1() {
