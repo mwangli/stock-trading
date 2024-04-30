@@ -20,9 +20,11 @@ public class ModelInfo {
     @TableId(type = IdType.AUTO)
     private Long id;
     private String name;
-    private Integer paramsSize;
-    private Integer fileSize;
-    private Integer trainPeriod;
+    private String paramsSize;
+    private String fileSize;
+    private String filePath;
+    private String trainPeriod;
+    private Integer trainTimes;
     private Double testDeviation;
     private Double validateDeviation;
     private Double score;

@@ -2,6 +2,7 @@ package online.mwang.stockTrading.model.predict;
 
 
 import com.alibaba.fastjson.JSON;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import javafx.util.Pair;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -9,7 +10,9 @@ import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.component.StockData;
 import online.mwang.stockTrading.model.component.StockDataSetIterator;
 import online.mwang.stockTrading.web.bean.base.BusinessException;
+import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
+import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
@@ -22,6 +25,7 @@ import org.springframework.stereotype.Component;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 
@@ -40,6 +44,7 @@ public class LSTMModel {
     private static final int SCORE_ITERATIONS = 100;
     private final ModelConfig modelConfig;
     private final StringRedisTemplate redisTemplate;
+    private final ModelInfoService modelInfoService;
     public boolean skipTrain = false;
 
     public List<StockPrices> train(List<StockData> dataList) throws IOException {
@@ -61,15 +66,20 @@ public class LSTMModel {
         }
         net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
         log.info(net.summary());
-        log.info("Training...");
+        log.info("股票[{}-{}],模型训练开始...", stockName, stockCode);
+        long start = System.currentTimeMillis();
         for (int i = 0; i < EPOCHS; i++) {
             if (skipTrain) break;
             while (iterator.hasNext()) net.fit(iterator.next());
             iterator.reset();
             net.rnnClearPreviousState();
         }
+        long end = System.currentTimeMillis();
+        String timePeriod = DateUtils.timeConvertor(end - start);
+        log.info("股票[{}-{}],模型训练完成，共耗时:{}", stockName, stockCode, timePeriod);
         log.info("Saving model...");
         ModelSerializer.writeModel(net, modelFile.getAbsolutePath(), true);
+        saveModelInfo(modelFile, net, timePeriod);
         log.info("Testing...");
         INDArray max = Nd4j.create(iterator.getMaxArray());
         INDArray min = Nd4j.create(iterator.getMinArray());
@@ -77,6 +87,30 @@ public class LSTMModel {
         redisTemplate.opsForHash().put("model:" + stockCode, "maxArray", JSON.toJSONString(iterator.getMaxArray()));
         redisTemplate.opsForHash().put("model:" + stockCode, "lastUpdateTime", DateUtils.dateFormat.format(new Date()));
         return predictTestDataSet(net, test, iterator.getDateList(), stockCode, stockName, max, min);
+    }
+
+    private void saveModelInfo(File modelFile, MultiLayerNetwork net, String timePeriod) {
+        String name = modelFile.getName();
+        LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().eq(ModelInfo::getName, name);
+        ModelInfo findInfo = modelInfoService.getOne(queryWrapper);
+        if (findInfo == null) {
+            ModelInfo modelInfo = new ModelInfo();
+            modelInfo.setName(name);
+            System.out.println(Arrays.toString(net.summary().split("Total Parameters:", 1)));
+            modelInfo.setParamsSize(net.summary().split("Total Parameters:", 1)[0]);
+            modelInfo.setFilePath(modelFile.getPath());
+            modelInfo.setFileSize(String.valueOf(modelFile.getTotalSpace()));
+            modelInfo.setTrainPeriod(timePeriod);
+            modelInfo.setTrainTimes(EPOCHS);
+            modelInfo.setCreateTime(new Date());
+            modelInfo.setUpdateTime(new Date());
+            modelInfoService.save(modelInfo);
+        } else {
+            findInfo.setTrainTimes(findInfo.getTrainTimes() + EPOCHS);
+            findInfo.setTrainPeriod(timePeriod);
+            findInfo.setUpdateTime(new Date());
+            modelInfoService.updateById(findInfo);
+        }
     }
 
     /**

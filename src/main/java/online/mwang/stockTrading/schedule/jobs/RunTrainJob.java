@@ -53,8 +53,7 @@ public class RunTrainJob extends BaseJob {
                 log.info("当前股票[{}-{}]，最近30天内已经训练过模型了，跳过训练", stockName, stockCode);
                 continue;
             }
-            log.info("股票[{}-{}],模型训练开始...", s.getName(), s.getCode());
-            long start = System.currentTimeMillis();
+
             final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
             List<StockPrices> stockHistoryPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
             log.info("股票[{}-{}],训练数据集大小为:{}", s.getName(), s.getCode(), stockHistoryPrices.size());
@@ -68,8 +67,6 @@ public class RunTrainJob extends BaseJob {
             log.info("股票[{}-{}],清除{}条废弃测试集数据", s.getName(), stockCode, remove.size());
             mongoTemplate.insert(stockTestPrices, TEST_COLLECTION_NAME);
             log.info("股票[{}-{}],新写入{}条测试集数据", s.getName(), stockCode, stockTestPrices.size());
-            long end = System.currentTimeMillis();
-            log.info("股票[{}-{}],模型训练完成，共耗时:{}", s.getName(), stockCode, DateUtils.timeConvertor(end - start));
         }
     }
 }

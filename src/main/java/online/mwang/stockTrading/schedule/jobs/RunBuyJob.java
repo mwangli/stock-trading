@@ -92,8 +92,6 @@ public class RunBuyJob extends BaseJob {
     }
 
     private void buyStock(StockInfo stockInfo, AccountInfo accountInfo, CountDownLatch countDownLatch) {
-        boolean debug = "dev".equalsIgnoreCase(profile);
-        if (debug) log.info("启用debug模式");
         log.info("开始进行[{}-{}]股票买入!", stockInfo.getName(), stockInfo.getCode());
         int priceCount = 0;
         double priceTotal = 0.0;
@@ -105,7 +103,7 @@ public class RunBuyJob extends BaseJob {
             double priceAvg = priceTotal / priceCount;
             log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", stockInfo.getName(), stockInfo.getCode(), String.format("%.2f", nowPrice), String.format("%.4f", priceAvg), priceCount);
             boolean priceCondition = priceCount > WAITING_COUNT_SKIP && nowPrice < priceAvg - priceAvg * BUY_PERCENT;
-            if (debug || DateUtils.isDeadLine2() || priceCondition) {
+            if (DateUtils.isDeadLine2() || priceCondition) {
                 if (DateUtils.isDeadLine2()) log.info("交易时间段即将结束！");
                 log.info("当前股票[{}-{}],开始进行买入!", stockInfo.getName(), stockInfo.getCode());
                 double buyNumber = (int) (accountInfo.getAvailableAmount() / nowPrice / 100) * 100;
