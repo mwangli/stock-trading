@@ -83,13 +83,13 @@ public class RunSaleJob extends BaseJob {
                 JSONObject result = dataService.buySale("S", record.getCode(), nowPrice, record.getBuyNumber());
                 String saleNo = result.getString("ANSWERNO");
                 if (saleNo == null) {
-                    log.info("卖出订单提交失败，继续尝试卖出!");
-                    continue;
+                    log.info("卖出订单提交失败!");
+                    return;
                 }
                 Boolean success = dataService.waitOrderStatus(saleNo);
                 if (success == null) {
                     log.info("卖出订单撤单失败，无可卖数量!");
-                    continue;
+                    return;
                 }
                 if (!success) {
                     log.info("卖出订单撤单成功，继续尝试卖出!");

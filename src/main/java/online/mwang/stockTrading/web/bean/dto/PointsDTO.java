@@ -14,12 +14,12 @@ import java.util.List;
  * @description: StockPricesDTO
  */
 @Data
-public class StockPricesDTO {
+public class PointsDTO {
     List<Point> points;
     Double maxValue;
     Double minValue;
 
-    public StockPricesDTO(List<Point> points) {
+    public PointsDTO(List<Point> points) {
         this.points = points;
         this.maxValue = points.stream().mapToDouble(Point::getY).max().orElse(0.0);
         this.minValue = points.stream().mapToDouble(Point::getY).min().orElse(0.0);

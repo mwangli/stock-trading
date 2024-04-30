@@ -113,12 +113,12 @@ public class RunBuyJob extends BaseJob {
                 buyNo = result.getString("ANSWERNO");
                 if (buyNo == null) {
                     log.info("买入订单提交失败!");
-                    continue;
+                    return;
                 }
                 success = dataService.waitOrderStatus(buyNo);
                 if (success == null) {
                     log.info("买入订单撤单失败，无可用资金!");
-                    continue;
+                    return;
                 }
                 if (!success) {
                     log.info("撤单成功，重新尝试买入。");
