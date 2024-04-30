@@ -26,7 +26,7 @@ public class ModelConfig {
 
     private static final double LEARNING_RATE = 0.05;
     private static final int ITERATIONS = 1;
-    private static final int SEED = 12345;
+    private static final int SEED = 9786;
     private static final int LSTM_LAYER_1_SIZE = 128;
     private static final int LSTM_LAYER_2_SIZE = 128;
     private static final int DENSE_LAYER_SIZE = 32;

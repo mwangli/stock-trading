@@ -14,6 +14,8 @@ import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
+import org.deeplearning4j.nn.api.Layer;
+import org.deeplearning4j.nn.api.Model;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.deeplearning4j.util.ModelSerializer;
@@ -28,6 +30,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * @author 13255
@@ -65,7 +69,6 @@ public class LSTMModel {
             net = modelConfig.getModel(iterator.inputColumns(), iterator.totalOutcomes());
         }
         net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
-        log.info(net.summary());
         log.info("股票[{}-{}],模型训练开始...", stockName, stockCode);
         long start = System.currentTimeMillis();
         for (int i = 0; i < EPOCHS; i++) {
@@ -96,10 +99,10 @@ public class LSTMModel {
         if (findInfo == null) {
             ModelInfo modelInfo = new ModelInfo();
             modelInfo.setName(name);
-            System.out.println(Arrays.toString(net.summary().split("Total Parameters:", 1)));
-            modelInfo.setParamsSize(net.summary().split("Total Parameters:", 1)[0]);
+            int paramsSize = Stream.of(net.getLayers()).mapToInt(Model::numParams).sum();
+            modelInfo.setParamsSize(String.valueOf(paramsSize));
             modelInfo.setFilePath(modelFile.getPath());
-            modelInfo.setFileSize(String.valueOf(modelFile.getTotalSpace()));
+            modelInfo.setFileSize(String.format("%.2fM", (double) modelFile.getTotalSpace() / (1024 * 1024)));
             modelInfo.setTrainPeriod(timePeriod);
             modelInfo.setTrainTimes(EPOCHS);
             modelInfo.setCreateTime(new Date());
@@ -122,8 +125,8 @@ public class LSTMModel {
         for (int i = 0; i < testData.size(); i++) {
             predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getRow(EXAMPLE_LENGTH - 1).mul(max.sub(min)).add(min);
             final StockPrices stockTestPrice = new StockPrices();
-            stockTestPrice.setPrice1(Double.parseDouble(String.format("%.2f", predicts[i].getDouble(0))));
-            stockTestPrice.setPrice2(Double.parseDouble(String.format("%.2f", predicts[i].getDouble(1))));
+            stockTestPrice.setIncreaseRate1(Double.parseDouble(String.format("%.2f", predicts[i].getDouble(0))));
+//            stockTestPrice.setPrice2(Double.parseDouble(String.format("%.2f", predicts[i].getDouble(1))));
             stockTestPrice.setDate(dateList.get(i));
             stockTestPrice.setCode(stockCode);
             stockTestPrice.setName(stockName);
