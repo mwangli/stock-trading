@@ -68,15 +68,13 @@ public class ModelInfoController {
         List<StockPrices> historyPrices = mongoTemplate.find(historyQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
         final ArrayList<Point> points = new ArrayList<>();
         for (int i = 1; i < historyPrices.size(); i++) {
-            double todayPrice = historyPrices.get(i).getPrice1();
-            double preDayPrice = historyPrices.get(i - 1).getPrice1();
-            double increaseRate = preDayPrice == 0 ? 0 : (todayPrice - preDayPrice) / preDayPrice * 100;
-            Point point = new Point(historyPrices.get(i).getDate(), increaseRate);
-            point.setType("实际日增长率");
+            Double actualValue = historyPrices.get(i).getPrice1();
+            Point point = new Point(historyPrices.get(i).getDate(), actualValue);
+            point.setType("实际价格");
             points.add(point);
-            Double increaseRate1 = stockTestPrices.get(i).getIncreaseRate();
-            Point point1 = new Point(stockTestPrices.get(i).getDate(), Double.valueOf(String.format("%.2f", increaseRate1 == null ? 0 : increaseRate1)));
-            point1.setType("预测日增长率");
+            Double predictValue = stockTestPrices.get(i).getPrice1();
+            Point point1 = new Point(stockTestPrices.get(i).getDate(), Double.valueOf(String.format("%.2f", predictValue == null ? 0 : predictValue)));
+            point1.setType("预测价格");
             points.add(point1);
         }
         PointsDTO pointsDTO = new PointsDTO(points);

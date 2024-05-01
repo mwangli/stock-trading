@@ -27,18 +27,17 @@ public class PredictServiceImpl implements IPredictService {
     @SneakyThrows
     @Override
     public List<StockPrices> modelTrain(List<StockPrices> historyPrices) {
-        List<StockPrices> dataList = new ArrayList<>();
-        for (int i = 1; i < historyPrices.size(); i++) {
-            double todayPrice = historyPrices.get(i).getPrice1();
-            double preDayPrice = historyPrices.get(i - 1).getPrice1();
-            double increaseRate = preDayPrice == 0 ? 0 : (todayPrice - preDayPrice) / preDayPrice * 100;
-            StockPrices stockPrices = historyPrices.get(i);
-            // 将数据稳定到[-5,5]之间
-//            stockPrices.setIncreaseRate(increaseRate < -1 ? -1 : increaseRate > 1 ? 1 : increaseRate);
-            stockPrices.setIncreaseRate(increaseRate);
-            dataList.add(stockPrices);
-        }
-        return lstmModel.train2(dataList);
+//        List<StockPrices> dataList = new ArrayList<>();
+//        for (int i = 1; i < historyPrices.size(); i++) {
+//            double todayPrice = historyPrices.get(i).getPrice1();
+//            double preDayPrice = historyPrices.get(i - 1).getPrice1();
+//            double increaseRate = preDayPrice == 0 ? 0 : (todayPrice - preDayPrice) / preDayPrice * 100;
+//            StockPrices stockPrices = historyPrices.get(i);
+////            stockPrices.setIncreaseRate(increaseRate < -1 ? -1 : increaseRate > 1 ? 1 : increaseRate);
+//            stockPrices.setIncreaseRate(increaseRate);
+//            dataList.add(stockPrices);
+//        }
+        return lstmModel.train2(historyPrices);
     }
 
     @Override

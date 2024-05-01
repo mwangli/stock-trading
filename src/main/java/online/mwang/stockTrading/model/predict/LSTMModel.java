@@ -69,14 +69,12 @@ public class LSTMModel {
             int endIndex = i + EXAMPLE_LENGTH;
             for (int j = i; j < endIndex; j++) {
                 List<Writable> features = new ArrayList<>();
-                // features 用今天的开盘价，收盘价，日增长率来预测下一天的日增长率
+                // features 用今天的开盘价,收盘价，来预测下一天的开盘价
                 StockPrices currentData = stockPrices.get(j);
                 features.add(new DoubleWritable(currentData.getPrice1()));
-//                features.add(new DoubleWritable(currentData.getPrice2()));
-//                features.add(new DoubleWritable(currentData.getIncreaseRate()));
+                features.add(new DoubleWritable(currentData.getPrice2()));
                 // labels
                 StockPrices nextData = stockPrices.get(j + 1);
-//                features.add(new DoubleWritable(nextData.getIncreaseRate()));
                 features.add(new DoubleWritable(nextData.getPrice1()));
                 sequences.add(features);
             }
@@ -91,9 +89,9 @@ public class LSTMModel {
         List<List<List<Writable>>> allData = buildSequenceData(dataList);
         List<List<List<Writable>>> trainData = allData.stream().limit(splitIndex).collect(Collectors.toList());
         List<List<List<Writable>>> testData = allData.stream().skip(splitIndex).collect(Collectors.toList());
-        DataSetIterator trainIter = new SequenceRecordReaderDataSetIterator(new InMemorySequenceRecordReader(trainData), BATCH_SIZE, -1, 1, true);
-        DataSetIterator testIter = new SequenceRecordReaderDataSetIterator(new InMemorySequenceRecordReader(testData), 1, -1, 1, true);
-        DataSetIterator allIter = new SequenceRecordReaderDataSetIterator(new InMemorySequenceRecordReader(allData), 1, -1, 1, true);
+        DataSetIterator trainIter = new SequenceRecordReaderDataSetIterator(new InMemorySequenceRecordReader(trainData), BATCH_SIZE, -1, 2, true);
+        DataSetIterator testIter = new SequenceRecordReaderDataSetIterator(new InMemorySequenceRecordReader(testData), 1, -1, 2, true);
+        DataSetIterator allIter = new SequenceRecordReaderDataSetIterator(new InMemorySequenceRecordReader(allData), 1, -1, 2, true);
         // 归一化
         NormalizerMinMaxScaler minMaxScaler = new NormalizerMinMaxScaler(0, 1);
         minMaxScaler.fitLabel(true);
@@ -103,8 +101,7 @@ public class LSTMModel {
         // 加载模型
         String stockCode = dataList.get(0).getCode();
         File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
-//        MultiLayerNetwork net = modelFile.exists() ? ModelSerializer.restoreMultiLayerNetwork(modelFile) : modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
-        MultiLayerNetwork net = modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
+        MultiLayerNetwork net = modelFile.exists() ? ModelSerializer.restoreMultiLayerNetwork(modelFile) : modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
         net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
         // 训练模型
         saveModelInfo(stockCode, modelFile, net, null, "0");
@@ -128,13 +125,8 @@ public class LSTMModel {
             INDArray input = testDateSet.getFeatures();
             INDArray labels = testDateSet.getLabels();
             INDArray output = net.rnnTimeStep(input);
-//            if (debug) log.info("input = {}", input);
-//            if (debug) log.info("output = {}", output);
-//            if (debug) log.info("labels = {}", labels);
             minMaxScaler.revertLabels(labels);
             minMaxScaler.revertLabels(output);
-//            if (debug) log.info("revert output = {}", output);
-//            if (debug) log.info("revert labels = {}", labels);
             double predictValue = output.getDouble(EXAMPLE_LENGTH - 1);
             double actualValue = labels.getDouble(EXAMPLE_LENGTH - 1);
             String date = dateList.get(dateStartIndex++);
@@ -144,7 +136,7 @@ public class LSTMModel {
             stockPrices.setCode(stockCode);
             String stockName = dataList.get(0).getName();
             stockPrices.setName(stockName);
-            stockPrices.setIncreaseRate(predictValue);
+            stockPrices.setPrice1(predictValue);
             stockPrices.setDate(date);
             testPredictData.add(stockPrices);
         }
