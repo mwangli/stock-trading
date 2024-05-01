@@ -14,23 +14,38 @@ import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
-import org.deeplearning4j.nn.api.Layer;
+import org.datavec.api.records.reader.SequenceRecordReader;
+import org.datavec.api.records.reader.impl.inmemory.InMemorySequenceRecordReader;
+import org.datavec.api.writable.DoubleWritable;
+import org.datavec.api.writable.Writable;
+import org.deeplearning4j.datasets.datavec.SequenceRecordReaderDataSetIterator;
 import org.deeplearning4j.nn.api.Model;
+import org.deeplearning4j.nn.api.OptimizationAlgorithm;
+import org.deeplearning4j.nn.conf.BackpropType;
+import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
+import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
+import org.deeplearning4j.nn.conf.layers.DenseLayer;
+import org.deeplearning4j.nn.conf.layers.LSTM;
+import org.deeplearning4j.nn.conf.layers.RnnOutputLayer;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
+import org.deeplearning4j.nn.weights.WeightInit;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.deeplearning4j.util.ModelSerializer;
+import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.dataset.api.iterator.DataSetIterator;
+import org.nd4j.linalg.dataset.api.preprocessor.NormalizerMinMaxScaler;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.learning.config.RmsProp;
+import org.nd4j.linalg.lossfunctions.LossFunctions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -41,19 +56,119 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class LSTMModel {
 
+    private static final int SEED = 9786;
+    private static final double LEARNING_RATE = 0.005;
+    private static final int LSTM_LAYER_1_SIZE = 128;
+    private static final int LSTM_LAYER_2_SIZE = 128;
+    private static final int DENSE_LAYER_SIZE = 32;
+    private static final double DROPOUT_RATIO = 0.2;
+    private static final int SCORE_ITERATIONS = 100;
     private static final int EXAMPLE_LENGTH = 22;
     private static final int BATCH_SIZE = 32;
+    private static final int FEATURE_VECTOR = 2;
     private static final double SPLIT_RATIO = 0.8;
     private static final int EPOCHS = 100;
-    private static final int SCORE_ITERATIONS = 100;
-    private final ModelConfig modelConfig;
     private final StringRedisTemplate redisTemplate;
     private final ModelInfoService modelInfoService;
     public boolean skipTrain = false;
 
+    private MultiLayerNetwork getModel(int inputNum, int outputNum) {
+        MultiLayerConfiguration conf = new NeuralNetConfiguration.Builder()
+                .seed(SEED).optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT).weightInit(WeightInit.XAVIER)
+                .updater(new RmsProp.Builder().learningRate(LEARNING_RATE).build()).l2(1e-4).list()
+                .layer(new LSTM.Builder().nIn(inputNum).nOut(LSTM_LAYER_1_SIZE).activation(Activation.TANH).gateActivationFunction(Activation.HARDSIGMOID).dropOut(DROPOUT_RATIO).build())
+                .layer(new LSTM.Builder().nOut(LSTM_LAYER_2_SIZE).activation(Activation.TANH).gateActivationFunction(Activation.HARDSIGMOID).dropOut(DROPOUT_RATIO).build())
+                .layer(new DenseLayer.Builder().nOut(DENSE_LAYER_SIZE).activation(Activation.TANH).build())
+                .layer(new RnnOutputLayer.Builder().nOut(outputNum).activation(Activation.IDENTITY).lossFunction(LossFunctions.LossFunction.MSE).build())
+                .backpropType(BackpropType.TruncatedBPTT).tBPTTForwardLength(EXAMPLE_LENGTH).tBPTTBackwardLength(EXAMPLE_LENGTH).build();
+        MultiLayerNetwork net = new MultiLayerNetwork(conf);
+        net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
+        net.init();
+        return net;
+    }
+
+    /**
+     * 构建时间序列的标准输入集，例如包含2个特征值的序列数据构建
+     * 1,2                 1,2,3,4
+     * 3,4                 3,4,5,6
+     * 5,6      ==>        5,6,7,8
+     * 7,8                 7,8,8,9
+     * 9,10                8,9,9,10
+     * 结果中第1,2列为feature,3,4列为label
+     * 再以固定步长构建数据集以批次训练
+     */
+    private List<List<List<Writable>>> buildSequenceData(List<StockData> stockPrices) {
+        List<List<List<Writable>>> dataList = new ArrayList<>();
+        for (int i = 0; i < stockPrices.size() - EXAMPLE_LENGTH - 1; i++) {
+            int endIndex = i + EXAMPLE_LENGTH;
+            List<List<Writable>> featuresList = new ArrayList<>();
+            for (int col = 0; col < 2 * FEATURE_VECTOR; col++) {
+                List<Writable> featureList = new ArrayList<>();
+                for (int j = i; j < endIndex; j++) {
+                    StockData current = stockPrices.get(j);
+                    StockData next = stockPrices.get(j + 1);
+                    if (col == 0) featureList.add(new DoubleWritable(current.getOpen()));
+                    if (col == 1) featureList.add(new DoubleWritable(current.getClose()));
+                    if (col == 2) featureList.add(new DoubleWritable(next.getOpen()));
+                    if (col == 3) featureList.add(new DoubleWritable(next.getClose()));
+                }
+                featuresList.add(featureList);
+            }
+            dataList.add(featuresList);
+        }
+        return dataList;
+    }
+
+    public List<StockPrices> train2(List<StockData> dataList) throws IOException {
+        // 构建时间序列数据
+        List<List<List<Writable>>> data = buildSequenceData(dataList);
+        SequenceRecordReader trainRecorder = new InMemorySequenceRecordReader(data);
+        SequenceRecordReader testRecorder = new InMemorySequenceRecordReader(data);
+        DataSetIterator trainIter = new SequenceRecordReaderDataSetIterator(trainRecorder, BATCH_SIZE, -1, 5, true);
+        DataSetIterator testIter = new SequenceRecordReaderDataSetIterator(testRecorder, 1, -1, 5, true);
+
+
+//        StockDataSetIterator iterator = new StockDataSetIterator(dataList, BATCH_SIZE, EXAMPLE_LENGTH, SPLIT_RATIO);
+        NormalizerMinMaxScaler minMaxScaler = new NormalizerMinMaxScaler(0, 1);
+
+        minMaxScaler.fitLabel(true);
+        minMaxScaler.fit(trainIter);              //Collect training data statistics
+        trainIter.reset();
+//        log.info("Load test dataset...");
+//        List<Pair<INDArray, INDArray>> test = iterator.getTestDataSet();
+
+        File modelFile = new File("model/model_".concat(dataList.get(0).getCode()).concat(".zip"));
+//        final File parentFile = modelFile.getParentFile();
+//        if (!parentFile.exists() && !parentFile.mkdirs()) throw new RuntimeException("文件夹创建失败!");
+        MultiLayerNetwork net;
+        if (modelFile.exists()) {
+            net = ModelSerializer.restoreMultiLayerNetwork(modelFile);
+        } else {
+            net = getModel(FEATURE_VECTOR, FEATURE_VECTOR);
+        }
+        trainIter.setPreProcessor(minMaxScaler);
+        testIter.setPreProcessor(minMaxScaler);
+        log.info("模型训练开始...");
+        long start = System.currentTimeMillis();
+        if (!skipTrain) net.fit(trainIter, EPOCHS);
+        long end = System.currentTimeMillis();
+        String timePeriod = DateUtils.timeConvertor(end - start);
+        log.info("模型训练完成，共耗时:{}", timePeriod);
+
+        ModelSerializer.writeModel(net, modelFile.getAbsolutePath(), true);
+        saveModelInfo(modelFile, net, timePeriod);
+
+        while (testIter.hasNext()) {
+            INDArray output = net.rnnTimeStep(testIter.next().getFeatures());
+            log.info("test output = {}", output);
+        }
+        return null;
+    }
+
     public List<StockPrices> train(List<StockData> dataList) throws IOException {
         log.info("Create dataSet iterator...");
         StockDataSetIterator iterator = new StockDataSetIterator(dataList, BATCH_SIZE, EXAMPLE_LENGTH, SPLIT_RATIO);
+        iterator.setPreProcessor(new NormalizerMinMaxScaler(0, 1));
         log.info("Load test dataset...");
         List<Pair<INDArray, INDArray>> test = iterator.getTestDataSet();
         log.info("Build lstm networks...");
@@ -66,17 +181,11 @@ public class LSTMModel {
         if (modelFile.exists()) {
             net = ModelSerializer.restoreMultiLayerNetwork(modelFile);
         } else {
-            net = modelConfig.getModel(iterator.inputColumns(), iterator.totalOutcomes());
+            net = getModel(iterator.inputColumns(), iterator.totalOutcomes());
         }
-        net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
         log.info("股票[{}-{}],模型训练开始...", stockName, stockCode);
         long start = System.currentTimeMillis();
-        for (int i = 0; i < EPOCHS; i++) {
-            if (skipTrain) break;
-            while (iterator.hasNext()) net.fit(iterator.next());
-            iterator.reset();
-            net.rnnClearPreviousState();
-        }
+        if (!skipTrain) net.fit(iterator, EPOCHS);
         long end = System.currentTimeMillis();
         String timePeriod = DateUtils.timeConvertor(end - start);
         log.info("股票[{}-{}],模型训练完成，共耗时:{}", stockName, stockCode, timePeriod);
@@ -99,14 +208,14 @@ public class LSTMModel {
         if (findInfo == null) {
             ModelInfo modelInfo = new ModelInfo();
             modelInfo.setName(name);
-            int paramsSize = Stream.of(net.getLayers()).mapToInt(Model::numParams).sum();
+            long paramsSize = Stream.of(net.getLayers()).mapToLong(Model::numParams).sum();
             modelInfo.setParamsSize(String.valueOf(paramsSize));
             modelInfo.setFilePath(modelFile.getPath());
             modelInfo.setFileSize(String.format("%.2fM", (double) modelFile.length() / (1024 * 1024)));
             modelInfo.setTrainPeriod(timePeriod);
             modelInfo.setTrainTimes(EPOCHS);
             modelInfo.setStatus("1");
-            modelInfo.setScore( 0.0);
+            modelInfo.setScore(0.0);
             modelInfo.setTestDeviation(0.0);
             modelInfo.setValidateDeviation(0.0);
             modelInfo.setCreateTime(new Date());

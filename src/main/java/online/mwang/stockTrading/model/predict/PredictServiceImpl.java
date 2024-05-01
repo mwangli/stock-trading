@@ -42,7 +42,7 @@ public class PredictServiceImpl implements IPredictService {
             stockData.setLow(s.getPrice4() == null ? 0 : s.getPrice4());
             return stockData;
         }).collect(Collectors.toList());
-        return lstmModel.train(dataList);
+        return lstmModel.train2(dataList);
     }
 
     @Override
