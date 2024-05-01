@@ -11,6 +11,7 @@ import online.mwang.stockTrading.web.bean.base.BaseQuery;
  */
 @Data
 public class ModelInfoQuery extends BaseQuery {
+    private String code;
     private String name;
     private String params;
     private String description;
