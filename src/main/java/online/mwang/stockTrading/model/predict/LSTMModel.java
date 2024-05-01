@@ -144,7 +144,7 @@ public class LSTMModel {
             stockPrices.setCode(stockCode);
             String stockName = dataList.get(0).getName();
             stockPrices.setName(stockName);
-            stockPrices.setPrice1(predictValue);
+            stockPrices.setIncreaseRate(predictValue);
             stockPrices.setDate(date);
             testPredictData.add(stockPrices);
         }

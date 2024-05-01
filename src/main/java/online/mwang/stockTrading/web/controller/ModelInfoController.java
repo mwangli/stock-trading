@@ -65,16 +65,19 @@ public class ModelInfoController {
         String minDate = stockTestPrices.stream().map(StockPrices::getDate).min(String::compareTo).orElse("");
         // 查找历史数据
         Query historyQuery = new Query(Criteria.where("code").is(stockCode).and("date").lte(maxDate).gte(minDate));
-        List<StockPrices> stockHistoryPrices = mongoTemplate.find(historyQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
+        List<StockPrices> historyPrices = mongoTemplate.find(historyQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
         final ArrayList<Point> points = new ArrayList<>();
-        for (int i = 0; i < stockHistoryPrices.size(); i++) {
-            Point point = new Point(stockHistoryPrices.get(i).getDate(), stockHistoryPrices.get(i).getPrice1());
-            point.setType("实际价格");
+        for (int i = 1; i < historyPrices.size(); i++) {
+            double todayPrice = historyPrices.get(i).getPrice1();
+            double preDayPrice = historyPrices.get(i - 1).getPrice1();
+            double increaseRate = preDayPrice == 0 ? 0 : (todayPrice - preDayPrice) / preDayPrice * 100;
+            Point point = new Point(historyPrices.get(i).getDate(), increaseRate);
+            point.setType("实际日增长率");
             points.add(point);
-            Point point1 = new Point(stockTestPrices.get(i).getDate(), stockTestPrices.get(i).getPrice1());
-            point.setType("预测价格");
+            Double increaseRate1 = stockTestPrices.get(i).getIncreaseRate();
+            Point point1 = new Point(stockTestPrices.get(i).getDate(), Double.valueOf(String.format("%.2f", increaseRate1 == null ? 0 : increaseRate1)));
+            point1.setType("预测日增长率");
             points.add(point1);
-
         }
         PointsDTO pointsDTO = new PointsDTO(points);
         return Response.success(pointsDTO);
