@@ -40,6 +40,7 @@ public class StockInfoController {
     private final static String ASCEND = "ascend";
     private final static String TEST_COLLECTION_NAME = "stockTestPrice";
     private final static String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
+    private final static int HISTORY_SIZE = 100;
     private final StockInfoService stockInfoService;
     private final MongoTemplate mongoTemplate;
 
@@ -60,52 +61,27 @@ public class StockInfoController {
 
     @GetMapping("/listHistoryPrices")
     public Response<PointsDTO> listHistoryPrices(StockInfoQuery param) {
-        String stockCode = param.getCode();
-        Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
-        List<StockPrices> stockPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
-        List<Point> points = stockPrices.stream().map(p -> new Point(p.getDate(), p.getPrice1())).collect(Collectors.toList());
-        PointsDTO pointsDTO = new PointsDTO(points);
-        return Response.success(pointsDTO);
+        List<Point> points = getHistoryData(param.getCode()).stream().map(p -> new Point(p.getDate(), p.getPrice1())).collect(Collectors.toList());
+        return Response.success(new PointsDTO(points));
     }
 
     @GetMapping("/listIncreaseRate")
     public Response<PointsDTO> listIncreaseRate(StockInfoQuery param) {
-        String stockCode = param.getCode();
-        Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
-        List<StockPrices> stockPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
+        List<StockPrices> stockPrices = getHistoryData(param.getCode());
         ArrayList<Point> increaseRateList = new ArrayList<>();
         for (int i = 1; i < stockPrices.size(); i++) {
             double todayPrice = stockPrices.get(i).getPrice1();
             double preDayPrice = stockPrices.get(i - 1).getPrice1();
             double increaseRate = preDayPrice == 0 ? 0 : (todayPrice - preDayPrice) / preDayPrice * 100;
-            increaseRateList.add(new Point(stockPrices.get(i).getDate(), increaseRate));
+            increaseRateList.add(new Point(stockPrices.get(i).getDate(), Double.parseDouble(String.format("%.4f", increaseRate))));
         }
         return Response.success(new PointsDTO(increaseRateList));
     }
 
-//    @GetMapping("/listTestPrices")
-//    public Response<StockPricesDTO> listTestPrices(StockInfoQuery param) {
-//        String stockCode = param.getCode();
-//        // 查找测试集数据
-//        final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
-//        List<StockPrices> stockTestPrices = mongoTemplate.find(query, StockPrices.class, TEST_COLLECTION_NAME);
-//        String maxDate = stockTestPrices.stream().map(StockPrices::getDate).max(String::compareTo).orElse("");
-//        String minDate = stockTestPrices.stream().map(StockPrices::getDate).min(String::compareTo).orElse("");
-//        // 查找历史数据
-//        Query historyQuery = new Query(Criteria.where("code").is(stockCode).and("date").lte(maxDate).gte(minDate));
-//        List<StockPrices> stockHistoryPrices = mongoTemplate.find(historyQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
-//        final ArrayList<Point> points = new ArrayList<>();
-//        for (int i = 0; i < stockTestPrices.size(); i++) {
-//            StockPrices stockTestPrice = stockTestPrices.get(i);
-//            StockPrices stockHistoryPrice = stockHistoryPrices.get(i);
-//            final Point point1 = new Point(stockTestPrice.getDate(), stockTestPrice.getPrice1());
-//            final Point point2 = new Point(stockHistoryPrice.getDate(), stockHistoryPrice.getPrice1());
-//            point1.setType("预测价格");
-//            point2.setType("实际价格");
-//            points.add(point1);
-//            points.add(point2);
-//        }
-//        StockPricesDTO stockPricesDTO = new StockPricesDTO(points);
-//        return Response.success(stockPricesDTO);
-//    }
+    private List<StockPrices> getHistoryData(String code) {
+        Query query = new Query(Criteria.where("code").is(code)).with(Sort.by(Sort.Direction.ASC, "date"));
+        long count = mongoTemplate.count(query, StockPrices.class, TRAIN_COLLECTION_NAME);
+        return mongoTemplate.find(query.skip(count - HISTORY_SIZE), StockPrices.class, TRAIN_COLLECTION_NAME);
+    }
+
 }

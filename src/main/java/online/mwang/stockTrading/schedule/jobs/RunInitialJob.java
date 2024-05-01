@@ -148,8 +148,6 @@ public class RunInitialJob extends BaseJob {
                     tradingRecord.setIncomeRate(incomeRate);
                     tradingRecord.setHoldDays((int) holdDays);
                     tradingRecord.setDailyIncomeRate(dailyIncomeRate);
-                    tradingRecord.setStrategyId(0L);
-                    tradingRecord.setStrategyName("默认策略");
                     finishedRecords.add(tradingRecord);
                     unfinishedMap.remove(tradingRecord.getCode());
                 }

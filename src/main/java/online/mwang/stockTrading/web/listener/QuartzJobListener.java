@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import online.mwang.stockTrading.web.bean.po.QuartzJob;
+import online.mwang.stockTrading.web.mapper.ModelInfoMapper;
 import online.mwang.stockTrading.web.mapper.QuartzJobMapper;
 import org.jetbrains.annotations.NotNull;
 import org.quartz.*;
@@ -23,6 +25,7 @@ import java.util.List;
 public class QuartzJobListener implements ApplicationListener<ApplicationReadyEvent> {
 
     private final QuartzJobMapper jobMapper;
+    private final ModelInfoMapper modelInfoMapper;
     private final Scheduler scheduler;
 
     @Override
@@ -46,5 +49,7 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
                 log.info("定时任务{},加载异常:{}", job.getName(), e.getMessage());
             }
         }
+        // 清除模型训练状态
+        modelInfoMapper.resetStatus();
     }
 }

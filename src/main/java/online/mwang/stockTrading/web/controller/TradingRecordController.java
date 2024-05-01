@@ -63,7 +63,6 @@ public class TradingRecordController {
         LambdaQueryWrapper<TradingRecord> queryWrapper = new QueryWrapper<TradingRecord>().lambda()
                 .like(ObjectUtils.isNotNull(query.getCode()), TradingRecord::getCode, query.getCode())
                 .like(ObjectUtils.isNotNull(query.getName()), TradingRecord::getCode, query.getName())
-                .like(ObjectUtils.isNotNull(query.getStrategyName()), TradingRecord::getStrategyName, query.getStrategyName())
                 .ge(ObjectUtils.isNotNull(query.getBuyDate()), TradingRecord::getBuyDate, query.getBuyDate())
                 .le(ObjectUtils.isNotNull(query.getBuyDate()), TradingRecord::getBuyDate, DateUtils.getNextDay(query.getBuyDate()))
                 .ge((ObjectUtils.isNotNull(query.getSaleDate())), TradingRecord::getSaleDate, query.getSaleDate())

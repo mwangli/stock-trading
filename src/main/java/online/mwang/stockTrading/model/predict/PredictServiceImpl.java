@@ -11,7 +11,6 @@ import org.springframework.util.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * @version 1.0.0
@@ -33,22 +32,11 @@ public class PredictServiceImpl implements IPredictService {
         for (int i = 1; i < historyPrices.size(); i++) {
             double todayPrice = historyPrices.get(i).getPrice1();
             double preDayPrice = historyPrices.get(i - 1).getPrice1();
-            double increaseRate = preDayPrice == 0 ? 0 : (todayPrice - preDayPrice) / preDayPrice * 100;
-            StockPrices stockPrices = new StockPrices();
+            double increaseRate = preDayPrice == 0 ? 0 : (todayPrice - preDayPrice) / preDayPrice * 10;
+            StockPrices stockPrices = historyPrices.get(i);
             stockPrices.setIncreaseRate(increaseRate);
             dataList.add(stockPrices);
         }
-//        List<StockData> dataList = historyPrices.stream().map(s -> {
-//            StockData stockData = new StockData();
-//            stockData.setDate(s.getDate());
-//            stockData.setCode(s.getCode());
-//            stockData.setName(s.getName());
-//            stockData.setOpen(s.getPrice1() == null ? 0 : s.getPrice1());
-//            stockData.setClose(s.getPrice2() == null ? 0 : s.getPrice2());
-//            stockData.setHigh(s.getPrice3() == null ? 0 : s.getPrice3());
-//            stockData.setLow(s.getPrice4() == null ? 0 : s.getPrice4());
-//            return stockData;
-//        }).collect(Collectors.toList());
         return lstmModel.train2(dataList);
     }
 
