@@ -40,7 +40,7 @@ public class StockInfoController {
     private final static String ASCEND = "ascend";
     private final static String TEST_COLLECTION_NAME = "stockTestPrice";
     private final static String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
-    private final static int HISTORY_SIZE = 100;
+    private final static int HISTORY_SIZE = 300;
     private final StockInfoService stockInfoService;
     private final MongoTemplate mongoTemplate;
 
