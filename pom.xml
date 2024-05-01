@@ -195,11 +195,6 @@
             <artifactId>datavec-api</artifactId>
             <version>${deeplearning4j.version}</version>
         </dependency>
-        <dependency>
-            <groupId>org.datavec</groupId>
-            <artifactId>datavec-dataframe</artifactId>
-            <version>${deeplearning4j.version}</version>
-        </dependency>
         <!--        &lt;!&ndash; Spark Dependencies &ndash;&gt;-->
         <!--        <dependency>-->
         <!--            <groupId>org.apache.spark</groupId>-->
