@@ -15,7 +15,6 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.util.CollectionUtils;
 
 import java.util.Date;
 import java.util.List;
@@ -47,16 +46,17 @@ public class RunTrainJob extends BaseJob {
         for (StockInfo s : list) {
             if (!DateUtils.isWeekends(new Date()) && DateUtils.inTradingTimes1()) break;
             if (modelCode != null && modelCode.stream().anyMatch(c -> c.contains(s.getCode()))) continue;
-            final Query query = new Query(Criteria.where("code").is(s.getCode())).with(Sort.by(Sort.Direction.ASC, "date"));
+            String stockCode = s.getCode();
+            final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
             List<StockPrices> stockHistoryPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
             log.info("股票[{}-{}],训练数据集大小为:{}", s.getName(), s.getCode(), stockHistoryPrices.size());
-            if (CollectionUtils.isEmpty(stockHistoryPrices)) continue;
+            if (stockHistoryPrices.size() < 100) continue;
             List<StockPrices> stockTestPrices = modelService.modelTrain(stockHistoryPrices);
             redisTemplate.opsForValue().set("model:model_" + s.getCode(), s.getCode(), 30, TimeUnit.DAYS);
             final Query deleteQuery = new Query(Criteria.where("code").is(s.getCode()));
-            mongoTemplate.findAllAndRemove(deleteQuery, TEST_COLLECTION_NAME);
+            List<Object> removed = mongoTemplate.findAllAndRemove(deleteQuery, TEST_COLLECTION_NAME);
             mongoTemplate.insert(stockTestPrices, TEST_COLLECTION_NAME);
-            log.info("股票[{}-{}],新写入{}条测试集数据", s.getName(), s.getCode(), stockTestPrices.size());
+            log.info("股票[{}-{}],清空{}条，写入{}条测试集数据", s.getName(), s.getCode(), removed.size(), stockTestPrices.size());
         }
     }
 }

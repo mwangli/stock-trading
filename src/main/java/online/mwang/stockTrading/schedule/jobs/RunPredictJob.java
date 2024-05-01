@@ -7,7 +7,6 @@ import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -42,6 +41,7 @@ public class RunPredictJob extends BaseJob {
                         .skip(priceList.size() - EXAMPLE_LENGTH).limit(EXAMPLE_LENGTH).collect(Collectors.toList())).collect(Collectors.toList());
         // 价格预测,保存数据
         List<StockPrices> predictPrices = filterHistoryPrices.stream().map(modelService::modelPredict).collect(Collectors.toList());
+        log.info("预测价格数据：{}", predictPrices);
         String date = DateUtils.dateFormat.format(DateUtils.getNextTradingDay(new Date()));
         List<StockInfo> stockInfos = stockInfoService.list();
         List<StockPrices> dataList = predictPrices.stream().filter(p -> !Objects.isNull(p)).map(p -> fixProps(p, stockInfos, date)).collect(Collectors.toList());
