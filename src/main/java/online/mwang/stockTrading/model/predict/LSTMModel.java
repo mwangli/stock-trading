@@ -154,7 +154,7 @@ public class LSTMModel {
         final File parentFile = modelFile.getParentFile();
         if (!parentFile.exists() && !parentFile.mkdirs()) throw new RuntimeException("文件夹创建失败!");
         ModelSerializer.writeModel(net, modelFile.getAbsolutePath(), true);
-        redisTemplate.opsForHash().put("model:".concat(stockCode), "minMaxScaler", JSON.toJSONString(minMaxScaler));
+        redisTemplate.opsForHash().put("model:minMaxScaler", stockCode, JSON.toJSONString(minMaxScaler));
         // 测试结果
         ArrayList<StockPrices> testPredictData = new ArrayList<>();
         int dateStartIndex = (int) splitIndex + EXAMPLE_LENGTH;
@@ -226,7 +226,7 @@ public class LSTMModel {
         SequenceRecordReader recordReader = new InMemorySequenceRecordReader(buildSequenceData(historyPrices));
         DataSetIterator dataSetIterator = new SequenceRecordReaderDataSetIterator(recordReader, 1, -1, 3, true);
         // 加载归一化器
-        String minMaxScalerString = (String) redisTemplate.opsForHash().get("model:".concat(stockCode), "minMaxScaler");
+        String minMaxScalerString = (String) redisTemplate.opsForHash().get("model:minMaxScaler", stockCode);
         if (minMaxScalerString == null) throw new BusinessException("归一化器丢失！");
         NormalizerMinMaxScaler minMaxScaler = JSON.parseObject(minMaxScalerString, NormalizerMinMaxScaler.class);
         dataSetIterator.setPreProcessor(minMaxScaler);
