@@ -40,15 +40,20 @@ public class RunPredictJob extends BaseJob {
                 .map(priceList -> priceList = priceList.stream().sorted(Comparator.comparing(StockPrices::getDate))
                         .skip(priceList.size() - EXAMPLE_LENGTH).limit(EXAMPLE_LENGTH).collect(Collectors.toList())).collect(Collectors.toList());
         // 价格预测,保存数据
-        List<StockPrices> predictPrices = filterHistoryPrices.stream().map(modelService::modelPredict).collect(Collectors.toList());
-        log.info("预测价格数据：{}", predictPrices);
-        String date = DateUtils.dateFormat.format(DateUtils.getNextTradingDay(new Date()));
+        ArrayList<StockPrices> predictPrices = new ArrayList<>();
+        for (List<StockPrices> newHistoryPrice : filterHistoryPrices) {
+            StockPrices predictPrice = modelService.modelPredict(newHistoryPrice);
+            if (predictPrice != null) predictPrices.add(predictPrice);
+        }
+        // 更新评分数据
         List<StockInfo> stockInfos = stockInfoService.list();
-        List<StockPrices> dataList = predictPrices.stream().filter(p -> !Objects.isNull(p)).map(p -> fixProps(p, stockInfos, date)).collect(Collectors.toList());
+        String date = DateUtils.dateFormat.format(DateUtils.getNextTradingDay(new Date()));
+        List<StockPrices> dataList = predictPrices.stream().map(p -> fixProps(p, stockInfos, date)).collect(Collectors.toList());
+        log.info("预测价格数据：{}条", dataList.size());
+        updateScore(stockInfos, dataList);
+        // 保存预测数据
         mongoTemplate.remove(new Query(Criteria.where("date").is(date)), StockPrices.class, VALIDATION_COLLECTION_NAME);
         mongoTemplate.insert(dataList, VALIDATION_COLLECTION_NAME);
-        // 更新评分数据
-        updateScore(dataList);
     }
 
     private StockPrices fixProps(StockPrices stockPredictPrices, List<StockInfo> stockInfos, String date) {
@@ -57,26 +62,22 @@ public class RunPredictJob extends BaseJob {
         return stockPredictPrices;
     }
 
-
-    private void updateScore(List<StockPrices> stockPredictPrices) {
-        List<StockInfo> stockInfos = stockInfoService.list();
+    private void updateScore(List<StockInfo> stockInfos, List<StockPrices> stockPredictPrices) {
         ArrayList<StockInfo> updateList = new ArrayList<>();
         stockPredictPrices.forEach(p -> stockInfos.stream().filter(s -> s.getCode().equals(p.getCode())).findFirst().ifPresent(s -> {
             s.setScore(calculateScore(s, p));
-            s.setPredictPrice((p.getPrice1() + p.getPrice2()) / 2);
+            s.setPredictPrice(p.getPrice1());
             s.setUpdateTime(new Date());
             updateList.add(s);
         }));
-        stockInfoService.saveOrUpdateBatch(updateList);
+        stockInfoService.updateBatchById(updateList);
     }
 
-    // 根据股票价格订单预测值和当前值来计算得分，以平均值计算价格增长率
+    // 根据股票价格订单预测值和当前值来计算得分
     private double calculateScore(StockInfo stockInfo, StockPrices stockPredictPrice) {
         double predictPrice1 = stockPredictPrice.getPrice1();
-        double predictPrice2 = stockPredictPrice.getPrice2();
-        double predictAvg = (predictPrice1 + predictPrice2) / 2;
-        Double price = stockInfo.getPrice();
-        return (predictAvg - price) / price * 100 * 10;
+        double nowPrice = stockInfo.getPrice();
+        return (predictPrice1 - nowPrice) / nowPrice * 100 * 10;
     }
 }
 

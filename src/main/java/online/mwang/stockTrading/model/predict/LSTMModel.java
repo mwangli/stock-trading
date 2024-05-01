@@ -195,7 +195,7 @@ public class LSTMModel {
         double predictValue = output.getDouble(EXAMPLE_LENGTH - 1);
         // 返回结果
         StockPrices stockPredictPrice = new StockPrices();
-        stockPredictPrice.setIncreaseRate(predictValue);
+        stockPredictPrice.setPrice1(predictValue);
         stockPredictPrice.setCode(stockCode);
         return stockPredictPrice;
     }
