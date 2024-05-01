@@ -54,7 +54,7 @@ public class ModelInfo {
             case "updateTime":
                 return ModelInfo::getUpdateTime;
             default:
-                return ModelInfo::getId;
+                return ModelInfo::getStatus;
         }
     }
 }

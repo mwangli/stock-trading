@@ -15,9 +15,12 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author 13255
@@ -40,33 +43,20 @@ public class RunTrainJob extends BaseJob {
         LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.orderByDesc(StockInfo::getPrice);
         final List<StockInfo> list = stockInfoService.list(queryWrapper);
-        log.info("共获取{}条待训练股票.", list.size());
+        Set<String> modelCode = redisTemplate.keys("model:model_**");
         for (StockInfo s : list) {
-            if (!DateUtils.isWeekends(new Date()) && DateUtils.inTradingTimes1()) {
-                log.info("当前为交易时间段，取消训练任务!");
-//                break;
-            }
-            String stockCode = s.getCode();
-            String stockName = s.getName();
-            String lastUpdateTime = (String) redisTemplate.opsForHash().get("model:" + stockCode, "lastUpdateTime");
-            if (lastUpdateTime != null && DateUtils.diff(DateUtils.dateFormat.parse(lastUpdateTime), new Date(), true) < 30) {
-                log.info("当前股票[{}-{}]，最近30天内已经训练过模型了，跳过训练", stockName, stockCode);
-                continue;
-            }
-
-            final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
+            if (!DateUtils.isWeekends(new Date()) && DateUtils.inTradingTimes1()) break;
+            if (modelCode != null && modelCode.stream().anyMatch(c -> c.contains(s.getCode()))) continue;
+            final Query query = new Query(Criteria.where("code").is(s.getCode())).with(Sort.by(Sort.Direction.ASC, "date"));
             List<StockPrices> stockHistoryPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
             log.info("股票[{}-{}],训练数据集大小为:{}", s.getName(), s.getCode(), stockHistoryPrices.size());
-            if (stockHistoryPrices.size() == 0) {
-                log.info("当前股票[{}-{}]，未获取到训练数据集，跳过训练！", stockName, stockCode);
-                continue;
-            }
+            if (CollectionUtils.isEmpty(stockHistoryPrices)) continue;
             List<StockPrices> stockTestPrices = modelService.modelTrain(stockHistoryPrices);
+            redisTemplate.opsForValue().set("model:model_" + s.getCode(), s.getCode(), 30, TimeUnit.DAYS);
             final Query deleteQuery = new Query(Criteria.where("code").is(s.getCode()));
-            final List<StockPrices> remove = mongoTemplate.findAllAndRemove(deleteQuery, TEST_COLLECTION_NAME);
-            log.info("股票[{}-{}],清除{}条废弃测试集数据", s.getName(), stockCode, remove.size());
+            mongoTemplate.findAllAndRemove(deleteQuery, TEST_COLLECTION_NAME);
             mongoTemplate.insert(stockTestPrices, TEST_COLLECTION_NAME);
-            log.info("股票[{}-{}],新写入{}条测试集数据", s.getName(), stockCode, stockTestPrices.size());
+            log.info("股票[{}-{}],新写入{}条测试集数据", s.getName(), s.getCode(), stockTestPrices.size());
         }
     }
 }

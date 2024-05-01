@@ -11,7 +11,7 @@ import online.mwang.stockTrading.schedule.IStockService;
 import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
-import online.mwang.stockTrading.web.mapper.ScoreStrategyMapper;
+import online.mwang.stockTrading.web.mapper.ModelInfoMapper;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
 import online.mwang.stockTrading.web.service.OrderInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
@@ -49,7 +49,7 @@ public class RunBuyJob extends BaseJob {
     private final TradingRecordService tradingRecordService;
     private final StockInfoMapper stockInfoMapper;
     private final OrderInfoService orderInfoService;
-    private final ScoreStrategyMapper strategyMapper;
+    private final ModelInfoMapper strategyMapper;
     private final SleepUtils sleepUtils;
     private final AccountInfoMapper accountInfoMapper;
 
@@ -161,10 +161,6 @@ public class RunBuyJob extends BaseJob {
         record.setSold("0");
         record.setCreateTime(now);
         record.setUpdateTime(now);
-        // 保存模型策略信息，以备后续数据分析和模型优化
-        final ModelInfo strategy = strategyMapper.getSelectedStrategy();
-        record.setStrategyId(strategy == null ? 0 : strategy.getId());
-        record.setStrategyName(strategy == null ? "默认策略" : strategy.getName());
         tradingRecordService.save(record);
         // 更新账户资金状态
         AccountInfo newAccountInfo = dataService.getAccountInfo();

@@ -13,7 +13,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -36,6 +35,7 @@ public class RunCleanJob extends BaseJob {
 
     private static final String VALIDATION_COLLECTION_NAME = "stockPredictPrice";
     private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
+    private static final String TEST_COLLECTION_NAME = "stockTestPrice";
     private final AccountInfoService accountInfoService;
     private final StockInfoService stockInfoService;
     private final MongoTemplate mongoTemplate;
@@ -47,6 +47,7 @@ public class RunCleanJob extends BaseJob {
         cleanAccountInfo();
         cleanPredictPrice();
         cleanHistoryPrice();
+        cleanTestData();
 //        cleanModelUpdateTime();
     }
 
@@ -70,6 +71,16 @@ public class RunCleanJob extends BaseJob {
         List<StockInfo> deleteList = stockInfoService.list(queryWrapper);
         stockInfoService.removeBatchByIds(deleteList);
         log.info("共清理{}条账户退市股票信息。", deleteList.size());
+    }
+
+    private void cleanTestData() {
+        // 清除无效的测试集数据
+        final Query query = new Query(new Criteria().orOperator(
+                Criteria.where("date").isNull(),
+                Criteria.where("code").isNull(),
+                Criteria.where("increaseRate").isNull()));
+        final List<StockPrices> remove = mongoTemplate.findAllAndRemove(query, StockPrices.class, TEST_COLLECTION_NAME);
+        log.info("共清理{}条测试集无效数据。", remove.size());
     }
 
     private void cleanPredictPrice() {

@@ -12,7 +12,7 @@ import online.mwang.stockTrading.web.bean.po.OrderInfo;
 import online.mwang.stockTrading.web.bean.dto.OrderStatus;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
-import online.mwang.stockTrading.web.mapper.ScoreStrategyMapper;
+import online.mwang.stockTrading.web.mapper.ModelInfoMapper;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
@@ -48,7 +48,7 @@ public class ZXStockServiceImpl implements IStockService {
     public final StringRedisTemplate redisTemplate;
     public final MongoTemplate mongoTemplate;
     public final StockInfoMapper stockInfoMapper;
-    public final ScoreStrategyMapper strategyMapper;
+    public final ModelInfoMapper strategyMapper;
     public final SleepUtils sleepUtils;
 
     private HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
