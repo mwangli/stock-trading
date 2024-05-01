@@ -56,9 +56,8 @@ public class ModelInfoController {
 
     @GetMapping("/listTestData")
     public Response<PointsDTO> listTestData(StockInfoQuery param, String collectionName) {
-        String name = param.getName();
-        String stockCode = name.split("_")[1].split("\\.")[0];
         // 查找测试集数据
+        String stockCode = param.getCode();
         collectionName = collectionName == null ? TEST_COLLECTION_NAME : collectionName;
         final Query query = new Query(Criteria.where("code").is(stockCode).and("date").ne(null)).with(Sort.by(Sort.Direction.ASC, "date"));
         List<StockPrices> stockTestPrices = mongoTemplate.find(query, StockPrices.class, collectionName);
@@ -67,22 +66,15 @@ public class ModelInfoController {
         // 查找历史数据
         Query historyQuery = new Query(Criteria.where("code").is(stockCode).and("date").lte(maxDate).gte(minDate));
         List<StockPrices> stockHistoryPrices = mongoTemplate.find(historyQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
-        // 计算日增长率
         final ArrayList<Point> points = new ArrayList<>();
-        for (int i = 1; i < stockHistoryPrices.size(); i++) {
-            double todayPrice = stockHistoryPrices.get(i).getPrice1();
-            double preDayPrice = stockHistoryPrices.get(i - 1).getPrice1();
-            double increaseRate = preDayPrice == 0 ? 0 : (todayPrice - preDayPrice) / preDayPrice * 100;
-            Point point = new Point(stockHistoryPrices.get(i).getDate(), Double.parseDouble(String.format("%.4f", increaseRate)));
-            point.setType("实际日增长率");
+        for (int i = 0; i < stockHistoryPrices.size(); i++) {
+            Point point = new Point(stockHistoryPrices.get(i).getDate(), stockHistoryPrices.get(i).getPrice1());
+            point.setType("实际价格");
             points.add(point);
-        }
-        for (StockPrices stockTestPrice : stockTestPrices) {
-            Double increaseRate = stockTestPrice.getIncreaseRate();
-            final Point point = new Point(stockTestPrice.getDate(),
-                    Double.parseDouble(String.format("%.4f", increaseRate == null ? 0 : increaseRate)));
-            point.setType("预测日增长率");
-            points.add(point);
+            Point point1 = new Point(stockTestPrices.get(i).getDate(), stockTestPrices.get(i).getPrice1());
+            point.setType("预测价格");
+            points.add(point1);
+
         }
         PointsDTO pointsDTO = new PointsDTO(points);
         return Response.success(pointsDTO);

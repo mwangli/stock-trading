@@ -19,6 +19,7 @@ import java.util.Date;
 public class ModelInfo {
     @TableId(type = IdType.AUTO)
     private Long id;
+    private String code;
     private String name;
     private String paramsSize;
     private String fileSize;

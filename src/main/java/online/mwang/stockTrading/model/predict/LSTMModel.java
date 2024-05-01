@@ -17,24 +17,13 @@ import org.datavec.api.writable.DoubleWritable;
 import org.datavec.api.writable.Writable;
 import org.deeplearning4j.datasets.datavec.SequenceRecordReaderDataSetIterator;
 import org.deeplearning4j.nn.api.Model;
-import org.deeplearning4j.nn.api.OptimizationAlgorithm;
-import org.deeplearning4j.nn.conf.BackpropType;
-import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
-import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
-import org.deeplearning4j.nn.conf.layers.DenseLayer;
-import org.deeplearning4j.nn.conf.layers.LSTM;
-import org.deeplearning4j.nn.conf.layers.RnnOutputLayer;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
-import org.deeplearning4j.nn.weights.WeightInit;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.deeplearning4j.util.ModelSerializer;
-import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.iterator.DataSetIterator;
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerMinMaxScaler;
-import org.nd4j.linalg.learning.config.RmsProp;
-import org.nd4j.linalg.lossfunctions.LossFunctions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -54,41 +43,20 @@ import java.util.stream.Stream;
 @Component
 @RequiredArgsConstructor
 public class LSTMModel {
-
-    private static final int SEED = 9786;
-    private static final double LEARNING_RATE = 0.005;
-    private static final int LSTM_LAYER_1_SIZE = 128;
-    private static final int LSTM_LAYER_2_SIZE = 128;
-    private static final int DENSE_LAYER_SIZE = 32;
-    private static final double DROPOUT_RATIO = 0.2;
-    private static final int SCORE_ITERATIONS = 100;
     private static final int EXAMPLE_LENGTH = 22;
     private static final int BATCH_SIZE = 32;
     private static final int INPUT_SIZE = 1;
     private static final int OUTPUT_SIZE = 1;
     private static final double SPLIT_RATIO = 0.8;
     private static final int EPOCHS = 100;
+    private static final int SCORE_ITERATIONS = 100;
     private final StringRedisTemplate redisTemplate;
     private final ModelInfoService modelInfoService;
+    private final ModelConfig modelConfig;
     public boolean skipTrain = false;
 
     @Value("${PROFILE}")
     private String profile;
-
-    private MultiLayerNetwork getModel() {
-        MultiLayerConfiguration conf = new NeuralNetConfiguration.Builder()
-                .seed(SEED).optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT).weightInit(WeightInit.XAVIER)
-                .updater(new RmsProp.Builder().learningRate(LEARNING_RATE).build()).l2(1e-4).list()
-                .layer(new LSTM.Builder().nIn(INPUT_SIZE).nOut(LSTM_LAYER_1_SIZE).activation(Activation.TANH).gateActivationFunction(Activation.HARDSIGMOID).dropOut(DROPOUT_RATIO).build())
-                .layer(new LSTM.Builder().nOut(LSTM_LAYER_2_SIZE).activation(Activation.TANH).gateActivationFunction(Activation.HARDSIGMOID).dropOut(DROPOUT_RATIO).build())
-                .layer(new DenseLayer.Builder().nOut(DENSE_LAYER_SIZE).activation(Activation.TANH).build())
-                .layer(new RnnOutputLayer.Builder().nOut(OUTPUT_SIZE).activation(Activation.IDENTITY).lossFunction(LossFunctions.LossFunction.MSE).build())
-                .backpropType(BackpropType.TruncatedBPTT).tBPTTForwardLength(EXAMPLE_LENGTH).tBPTTBackwardLength(EXAMPLE_LENGTH).build();
-        MultiLayerNetwork net = new MultiLayerNetwork(conf);
-        net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
-        net.init();
-        return net;
-    }
 
     /**
      * 构建标准时间序列数据输入数据，其中feature包含了label
@@ -103,12 +71,13 @@ public class LSTMModel {
                 List<Writable> features = new ArrayList<>();
                 // features 用今天的开盘价，收盘价，日增长率来预测下一天的日增长率
                 StockPrices currentData = stockPrices.get(j);
-//                features.add(new DoubleWritable(currentData.getPrice1()));
+                features.add(new DoubleWritable(currentData.getPrice1()));
 //                features.add(new DoubleWritable(currentData.getPrice2()));
-                features.add(new DoubleWritable(currentData.getIncreaseRate()));
+//                features.add(new DoubleWritable(currentData.getIncreaseRate()));
                 // labels
                 StockPrices nextData = stockPrices.get(j + 1);
-                features.add(new DoubleWritable(nextData.getIncreaseRate()));
+//                features.add(new DoubleWritable(nextData.getIncreaseRate()));
+                features.add(new DoubleWritable(nextData.getPrice1()));
                 sequences.add(features);
             }
             data.add(sequences);
@@ -117,45 +86,41 @@ public class LSTMModel {
     }
 
     public List<StockPrices> train2(List<StockPrices> dataList) throws IOException {
-        boolean debug = "dev".equalsIgnoreCase(profile);
-        // 保存日期
-        List<String> dateList = dataList.stream().map(StockPrices::getDate).collect(Collectors.toList());
         // 切分数据
-        List<List<List<Writable>>> allData = buildSequenceData(dataList);
         long splitIndex = Math.round(dataList.size() * SPLIT_RATIO);
+        List<List<List<Writable>>> allData = buildSequenceData(dataList);
         List<List<List<Writable>>> trainData = allData.stream().limit(splitIndex).collect(Collectors.toList());
         List<List<List<Writable>>> testData = allData.stream().skip(splitIndex).collect(Collectors.toList());
-        // 归一化器
+        DataSetIterator trainIter = new SequenceRecordReaderDataSetIterator(new InMemorySequenceRecordReader(trainData), BATCH_SIZE, -1, 1, true);
+        DataSetIterator testIter = new SequenceRecordReaderDataSetIterator(new InMemorySequenceRecordReader(testData), 1, -1, 1, true);
+        DataSetIterator allIter = new SequenceRecordReaderDataSetIterator(new InMemorySequenceRecordReader(allData), 1, -1, 1, true);
+        // 归一化
         NormalizerMinMaxScaler minMaxScaler = new NormalizerMinMaxScaler(0, 1);
         minMaxScaler.fitLabel(true);
-        // 训练数据
-        SequenceRecordReader trainRecordReader = new InMemorySequenceRecordReader(trainData);
-        DataSetIterator trainIter = new SequenceRecordReaderDataSetIterator(trainRecordReader, BATCH_SIZE, -1, 1, true);
-        minMaxScaler.fit(trainIter);
+        minMaxScaler.fit(allIter);
         trainIter.setPreProcessor(minMaxScaler);
-        // 测试数据
-        SequenceRecordReader testRecordReader = new InMemorySequenceRecordReader(testData);
-        DataSetIterator testIter = new SequenceRecordReaderDataSetIterator(testRecordReader, 1, -1, 1, true);
-        minMaxScaler.fit(testIter);
         testIter.setPreProcessor(minMaxScaler);
         // 加载模型
         String stockCode = dataList.get(0).getCode();
         File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
-        MultiLayerNetwork net = modelFile.exists() ? ModelSerializer.restoreMultiLayerNetwork(modelFile) : getModel();
+//        MultiLayerNetwork net = modelFile.exists() ? ModelSerializer.restoreMultiLayerNetwork(modelFile) : modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
+        MultiLayerNetwork net = modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
+        net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
         // 训练模型
-        saveModelInfo(modelFile, net, null, "0");
+        saveModelInfo(stockCode, modelFile, net, null, "0");
         long start = System.currentTimeMillis();
         if (!skipTrain) net.fit(trainIter, EPOCHS);
         long end = System.currentTimeMillis();
         String timePeriod = DateUtils.timeConvertor(end - start);
         log.info("模型训练完成，共耗时:{}", timePeriod);
-        saveModelInfo(modelFile, net, timePeriod, "1");
+        saveModelInfo(stockCode, modelFile, net, timePeriod, "1");
         // 保存模型
         final File parentFile = modelFile.getParentFile();
         if (!parentFile.exists() && !parentFile.mkdirs()) throw new RuntimeException("文件夹创建失败!");
         ModelSerializer.writeModel(net, modelFile.getAbsolutePath(), true);
         redisTemplate.opsForHash().put("model:minMaxScaler", stockCode, JSON.toJSONString(minMaxScaler));
         // 测试结果
+        List<String> dateList = dataList.stream().map(StockPrices::getDate).collect(Collectors.toList());
         ArrayList<StockPrices> testPredictData = new ArrayList<>();
         int dateStartIndex = (int) splitIndex + EXAMPLE_LENGTH;
         while (testIter.hasNext()) {
@@ -163,35 +128,36 @@ public class LSTMModel {
             INDArray input = testDateSet.getFeatures();
             INDArray labels = testDateSet.getLabels();
             INDArray output = net.rnnTimeStep(input);
-            if (debug) log.info("input = {}", input);
-            if (debug) log.info("output = {}", output);
-            if (debug) log.info("labels = {}", labels);
+//            if (debug) log.info("input = {}", input);
+//            if (debug) log.info("output = {}", output);
+//            if (debug) log.info("labels = {}", labels);
             minMaxScaler.revertLabels(labels);
             minMaxScaler.revertLabels(output);
-            if (debug) log.info("revert output = {}", output);
-            if (debug) log.info("revert labels = {}", labels);
+//            if (debug) log.info("revert output = {}", output);
+//            if (debug) log.info("revert labels = {}", labels);
             double predictValue = output.getDouble(EXAMPLE_LENGTH - 1);
             double actualValue = labels.getDouble(EXAMPLE_LENGTH - 1);
             String date = dateList.get(dateStartIndex++);
+            boolean debug = "dev".equalsIgnoreCase(profile);
             if (debug) log.info("date = {}, actualValue = {}, predictValue = {}", date, actualValue, predictValue);
             StockPrices stockPrices = new StockPrices();
             stockPrices.setCode(stockCode);
             String stockName = dataList.get(0).getName();
             stockPrices.setName(stockName);
-            stockPrices.setIncreaseRate(predictValue);
+            stockPrices.setPrice1(predictValue);
             stockPrices.setDate(date);
             testPredictData.add(stockPrices);
         }
         return testPredictData;
     }
 
-    private void saveModelInfo(File modelFile, MultiLayerNetwork net, String timePeriod, String status) {
-        String name = modelFile.getName();
-        LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().eq(ModelInfo::getName, name);
+    private void saveModelInfo(String stockCode, File modelFile, MultiLayerNetwork net, String timePeriod, String status) {
+        LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().eq(ModelInfo::getCode, stockCode);
         ModelInfo findInfo = modelInfoService.getOne(queryWrapper);
         if (findInfo == null) {
             ModelInfo modelInfo = new ModelInfo();
-            modelInfo.setName(name);
+            modelInfo.setCode(stockCode);
+            modelInfo.setName(modelFile.getName());
             long paramsSize = Stream.of(net.getLayers()).mapToLong(Model::numParams).sum();
             modelInfo.setParamsSize(String.valueOf(paramsSize));
             modelInfo.setFilePath(modelFile.getPath());
@@ -220,14 +186,14 @@ public class LSTMModel {
         if (historyPrices.size() != EXAMPLE_LENGTH) throw new BusinessException("价格数据时间序列步长错误！");
         String stockCode = historyPrices.get(0).getCode();
         File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
-        if (!modelFile.exists()) throw new BusinessException("模型文件丢失！");
+        if (!modelFile.exists()) return null;
         MultiLayerNetwork net = ModelSerializer.restoreMultiLayerNetwork(modelFile);
         // 构造输入集
         SequenceRecordReader recordReader = new InMemorySequenceRecordReader(buildSequenceData(historyPrices));
         DataSetIterator dataSetIterator = new SequenceRecordReaderDataSetIterator(recordReader, 1, -1, 3, true);
         // 加载归一化器
         String minMaxScalerString = (String) redisTemplate.opsForHash().get("model:minMaxScaler", stockCode);
-        if (minMaxScalerString == null) throw new BusinessException("归一化器丢失！");
+        if (minMaxScalerString == null) return null;
         NormalizerMinMaxScaler minMaxScaler = JSON.parseObject(minMaxScalerString, NormalizerMinMaxScaler.class);
         dataSetIterator.setPreProcessor(minMaxScaler);
         DataSet dataSet = dataSetIterator.next();
