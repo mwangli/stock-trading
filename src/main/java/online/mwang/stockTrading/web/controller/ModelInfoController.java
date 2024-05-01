@@ -47,6 +47,7 @@ public class ModelInfoController {
     @GetMapping("/list")
     public Response<List<ModelInfo>> list(ModelInfoQuery query) {
         LambdaQueryWrapper<ModelInfo> queryWrapper = new QueryWrapper<ModelInfo>().lambda()
+                .like(ObjectUtils.isNotNull(query.getCode()), ModelInfo::getCode, query.getCode())
                 .like(ObjectUtils.isNotNull(query.getName()), ModelInfo::getName, query.getName())
                 .eq((ObjectUtils.isNotNull(query.getStatus())), ModelInfo::getStatus, query.getStatus())
                 .orderBy(true, ASCEND.equals(query.getSortOrder()), ModelInfo.getOrder(query.getSortKey()));
