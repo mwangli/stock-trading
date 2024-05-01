@@ -7,8 +7,7 @@ import javafx.util.Pair;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.model.component.StockData;
-import online.mwang.stockTrading.model.component.StockDataSetIterator;
+import online.mwang.stockTrading.model.component.StockDataIterator;
 import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
@@ -87,53 +86,18 @@ public class LSTMModel {
         return net;
     }
 
-    /**
-     * 构建时间序列的标准输入集，例如包含2个特征值的序列数据构建
-     * 1,2                 1,2,3,4
-     * 3,4                 3,4,5,6
-     * 5,6      ==>        5,6,7,8
-     * 7,8                 7,8,8,9
-     * 9,10                8,9,9,10
-     * 结果中第1,2列为feature,3,4列为label
-     * 再以固定步长构建数据集以批次训练
-     */
-    private List<List<List<Writable>>> buildSequenceData(List<StockData> stockPrices) {
-        List<List<List<Writable>>> dataList = new ArrayList<>();
-        for (int i = 0; i < stockPrices.size() - EXAMPLE_LENGTH - 1; i++) {
-            int endIndex = i + EXAMPLE_LENGTH;
-            List<List<Writable>> featuresList = new ArrayList<>();
-            for (int col = 0; col < 2 * FEATURE_VECTOR; col++) {
-                List<Writable> featureList = new ArrayList<>();
-                for (int j = i; j < endIndex; j++) {
-                    StockData current = stockPrices.get(j);
-                    StockData next = stockPrices.get(j + 1);
-                    if (col == 0) featureList.add(new DoubleWritable(current.getOpen()));
-                    if (col == 1) featureList.add(new DoubleWritable(current.getClose()));
-                    if (col == 2) featureList.add(new DoubleWritable(next.getOpen()));
-                    if (col == 3) featureList.add(new DoubleWritable(next.getClose()));
-                }
-                featuresList.add(featureList);
-            }
-            dataList.add(featuresList);
-        }
-        return dataList;
-    }
 
-    public List<StockPrices> train2(List<StockData> dataList) throws IOException {
-        // 构建时间序列数据
-        List<List<List<Writable>>> data = buildSequenceData(dataList);
-        SequenceRecordReader trainRecorder = new InMemorySequenceRecordReader(data);
-        SequenceRecordReader testRecorder = new InMemorySequenceRecordReader(data);
-        DataSetIterator trainIter = new SequenceRecordReaderDataSetIterator(trainRecorder, BATCH_SIZE, -1, 5, true);
-        DataSetIterator testIter = new SequenceRecordReaderDataSetIterator(testRecorder, 1, -1, 5, true);
+    public List<StockPrices> train2(List<StockPrices> dataList) throws IOException {
 
 
-//        StockDataSetIterator iterator = new StockDataSetIterator(dataList, BATCH_SIZE, EXAMPLE_LENGTH, SPLIT_RATIO);
+        StockDataIterator iterator = new StockDataIterator(dataList);
+
+
         NormalizerMinMaxScaler minMaxScaler = new NormalizerMinMaxScaler(0, 1);
 
         minMaxScaler.fitLabel(true);
-        minMaxScaler.fit(trainIter);              //Collect training data statistics
-        trainIter.reset();
+        minMaxScaler.fit(iterator);              //Collect training data statistics
+//        trainIter.reset();
 //        log.info("Load test dataset...");
 //        List<Pair<INDArray, INDArray>> test = iterator.getTestDataSet();
 
@@ -146,11 +110,11 @@ public class LSTMModel {
         } else {
             net = getModel(FEATURE_VECTOR, FEATURE_VECTOR);
         }
-        trainIter.setPreProcessor(minMaxScaler);
-        testIter.setPreProcessor(minMaxScaler);
+        iterator.setPreProcessor(minMaxScaler);
+//        testIter.setPreProcessor(minMaxScaler);
         log.info("模型训练开始...");
         long start = System.currentTimeMillis();
-        if (!skipTrain) net.fit(trainIter, EPOCHS);
+        if (!skipTrain) net.fit(iterator, EPOCHS);
         long end = System.currentTimeMillis();
         String timePeriod = DateUtils.timeConvertor(end - start);
         log.info("模型训练完成，共耗时:{}", timePeriod);
@@ -158,48 +122,48 @@ public class LSTMModel {
         ModelSerializer.writeModel(net, modelFile.getAbsolutePath(), true);
         saveModelInfo(modelFile, net, timePeriod);
 
-        while (testIter.hasNext()) {
-            INDArray output = net.rnnTimeStep(testIter.next().getFeatures());
-            log.info("test output = {}", output);
-        }
+//        while (testIter.hasNext()) {
+//            INDArray output = net.rnnTimeStep(testIter.next().getFeatures());
+//            log.info("test output = {}", output);
+//        }
         return null;
     }
-
-    public List<StockPrices> train(List<StockData> dataList) throws IOException {
-        log.info("Create dataSet iterator...");
-        StockDataSetIterator iterator = new StockDataSetIterator(dataList, BATCH_SIZE, EXAMPLE_LENGTH, SPLIT_RATIO);
-        iterator.setPreProcessor(new NormalizerMinMaxScaler(0, 1));
-        log.info("Load test dataset...");
-        List<Pair<INDArray, INDArray>> test = iterator.getTestDataSet();
-        log.info("Build lstm networks...");
-        String stockCode = dataList.get(0).getCode();
-        String stockName = dataList.get(0).getName();
-        File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
-        final File parentFile = modelFile.getParentFile();
-        if (!parentFile.exists() && !parentFile.mkdirs()) throw new RuntimeException("文件夹创建失败!");
-        MultiLayerNetwork net;
-        if (modelFile.exists()) {
-            net = ModelSerializer.restoreMultiLayerNetwork(modelFile);
-        } else {
-            net = getModel(iterator.inputColumns(), iterator.totalOutcomes());
-        }
-        log.info("股票[{}-{}],模型训练开始...", stockName, stockCode);
-        long start = System.currentTimeMillis();
-        if (!skipTrain) net.fit(iterator, EPOCHS);
-        long end = System.currentTimeMillis();
-        String timePeriod = DateUtils.timeConvertor(end - start);
-        log.info("股票[{}-{}],模型训练完成，共耗时:{}", stockName, stockCode, timePeriod);
-        log.info("Saving model...");
-        ModelSerializer.writeModel(net, modelFile.getAbsolutePath(), true);
-        saveModelInfo(modelFile, net, timePeriod);
-        log.info("Testing...");
-        INDArray max = Nd4j.create(iterator.getMaxArray());
-        INDArray min = Nd4j.create(iterator.getMinArray());
-        redisTemplate.opsForHash().put("model:" + stockCode, "minArray", JSON.toJSONString(iterator.getMinArray()));
-        redisTemplate.opsForHash().put("model:" + stockCode, "maxArray", JSON.toJSONString(iterator.getMaxArray()));
-        redisTemplate.opsForHash().put("model:" + stockCode, "lastUpdateTime", DateUtils.dateFormat.format(new Date()));
-        return predictTestDataSet(net, test, iterator.getDateList(), stockCode, stockName, max, min);
-    }
+//
+//    public List<StockPrices> train(List<StockData> dataList) throws IOException {
+//        log.info("Create dataSet iterator...");
+//        StockDataSetIterator iterator = new StockDataSetIterator(dataList, BATCH_SIZE, EXAMPLE_LENGTH, SPLIT_RATIO);
+//        iterator.setPreProcessor(new NormalizerMinMaxScaler(0, 1));
+//        log.info("Load test dataset...");
+//        List<Pair<INDArray, INDArray>> test = iterator.getTestDataSet();
+//        log.info("Build lstm networks...");
+//        String stockCode = dataList.get(0).getCode();
+//        String stockName = dataList.get(0).getName();
+//        File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
+//        final File parentFile = modelFile.getParentFile();
+//        if (!parentFile.exists() && !parentFile.mkdirs()) throw new RuntimeException("文件夹创建失败!");
+//        MultiLayerNetwork net;
+//        if (modelFile.exists()) {
+//            net = ModelSerializer.restoreMultiLayerNetwork(modelFile);
+//        } else {
+//            net = getModel(iterator.inputColumns(), iterator.totalOutcomes());
+//        }
+//        log.info("股票[{}-{}],模型训练开始...", stockName, stockCode);
+//        long start = System.currentTimeMillis();
+//        if (!skipTrain) net.fit(iterator, EPOCHS);
+//        long end = System.currentTimeMillis();
+//        String timePeriod = DateUtils.timeConvertor(end - start);
+//        log.info("股票[{}-{}],模型训练完成，共耗时:{}", stockName, stockCode, timePeriod);
+//        log.info("Saving model...");
+//        ModelSerializer.writeModel(net, modelFile.getAbsolutePath(), true);
+//        saveModelInfo(modelFile, net, timePeriod);
+//        log.info("Testing...");
+//        INDArray max = Nd4j.create(iterator.getMaxArray());
+//        INDArray min = Nd4j.create(iterator.getMinArray());
+//        redisTemplate.opsForHash().put("model:" + stockCode, "minArray", JSON.toJSONString(iterator.getMinArray()));
+//        redisTemplate.opsForHash().put("model:" + stockCode, "maxArray", JSON.toJSONString(iterator.getMaxArray()));
+//        redisTemplate.opsForHash().put("model:" + stockCode, "lastUpdateTime", DateUtils.dateFormat.format(new Date()));
+//        return predictTestDataSet(net, test, iterator.getDateList(), stockCode, stockName, max, min);
+//    }
 
     private void saveModelInfo(File modelFile, MultiLayerNetwork net, String timePeriod) {
         String name = modelFile.getName();
