@@ -24,4 +24,5 @@ public class StockPrices {
     private Double price2;
     private Double price3;
     private Double price4;
+    private Double increaseRate;
 }
