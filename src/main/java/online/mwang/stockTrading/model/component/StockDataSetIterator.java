@@ -7,7 +7,10 @@ import org.nd4j.linalg.dataset.api.DataSetPreProcessor;
 import org.nd4j.linalg.dataset.api.iterator.DataSetIterator;
 import org.nd4j.linalg.factory.Nd4j;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 
 /**
@@ -22,7 +25,6 @@ public class StockDataSetIterator implements DataSetIterator {
     private final int miniBatchSize;
     private final int exampleLength;
     private final int predictLength = 1;
-
     /**
      * minimal values of each feature in stock dataset
      */
@@ -31,12 +33,10 @@ public class StockDataSetIterator implements DataSetIterator {
      * maximal values of each feature in stock dataset
      */
     private final double[] maxArray;
-
     /**
      * mini-batch offset
      */
     private final LinkedList<Integer> exampleStartOffsets = new LinkedList<>();
-
     /**
      * stock dataset for training
      */
@@ -45,12 +45,8 @@ public class StockDataSetIterator implements DataSetIterator {
      * adjusted stock dataset for testing
      */
     private final List<Pair<INDArray, INDArray>> test;
-
+    private DataSetPreProcessor preProcessor;
     private List<String> dateList;
-
-    public List<String> getDateList() {
-        return this.dateList;
-    }
 
     public StockDataSetIterator(List<StockData> dataList, int miniBatchSize, int exampleLength, double splitRatio) {
         assert !dataList.isEmpty();
@@ -68,6 +64,10 @@ public class StockDataSetIterator implements DataSetIterator {
         train = dataList.subList(0, split);
         test = generateTestDataSet(dataList.subList(split, dataList.size()));
         initializeOffsets();
+    }
+
+    public List<String> getDateList() {
+        return this.dateList;
     }
 
     /**
@@ -118,10 +118,10 @@ public class StockDataSetIterator implements DataSetIterator {
         return new DataSet(input, label);
     }
 
-    @Override
-    public int totalExamples() {
-        return train.size() - exampleLength - predictLength;
-    }
+//    @Override
+//    public int totalExamples() {
+//        return train.size() - exampleLength - predictLength;
+//    }
 
     @Override
     public int inputColumns() {
@@ -135,7 +135,7 @@ public class StockDataSetIterator implements DataSetIterator {
 
     @Override
     public boolean resetSupported() {
-        return false;
+        return true;
     }
 
     @Override
@@ -153,24 +153,24 @@ public class StockDataSetIterator implements DataSetIterator {
         return miniBatchSize;
     }
 
-    @Override
-    public int cursor() {
-        return totalExamples() - exampleStartOffsets.size();
-    }
-
-    @Override
-    public int numExamples() {
-        return totalExamples();
-    }
+//    @Override
+//    public int cursor() {
+//        return totalExamples() - exampleStartOffsets.size();
+//    }
+//
+//    @Override
+//    public int numExamples() {
+//        return totalExamples();
+//    }
 
     @Override
     public DataSetPreProcessor getPreProcessor() {
-        throw new UnsupportedOperationException("Not Implemented");
+        return preProcessor;
     }
 
     @Override
     public void setPreProcessor(DataSetPreProcessor dataSetPreProcessor) {
-        throw new UnsupportedOperationException("Not Implemented");
+        this.preProcessor = dataSetPreProcessor;
     }
 
     @Override

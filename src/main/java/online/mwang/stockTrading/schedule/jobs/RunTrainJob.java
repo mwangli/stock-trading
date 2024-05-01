@@ -44,7 +44,7 @@ public class RunTrainJob extends BaseJob {
         for (StockInfo s : list) {
             if (!DateUtils.isWeekends(new Date()) && DateUtils.inTradingTimes1()) {
                 log.info("当前为交易时间段，取消训练任务!");
-                break;
+//                break;
             }
             String stockCode = s.getCode();
             String stockName = s.getName();
