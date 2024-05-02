@@ -47,7 +47,7 @@ public class LSTMModel {
     private static final int INPUT_SIZE = 2;
     private static final int OUTPUT_SIZE = 1;
     private static final double SPLIT_RATIO = 0.8;
-    private static final int EPOCHS = 10;
+    private static final int EPOCHS = 100;
     private static final int SCORE_ITERATIONS = 100;
     private final StringRedisTemplate redisTemplate;
     private final ModelInfoService modelInfoService;
