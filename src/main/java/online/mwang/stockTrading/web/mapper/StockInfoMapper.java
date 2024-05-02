@@ -16,7 +16,10 @@ import org.apache.ibatis.annotations.Select;
 public interface StockInfoMapper extends BaseMapper<StockInfo> {
 
     @Select("select * from stock_info where code = #{code}")
-    StockInfo selectByCode(String code);
+    StockInfo getByCode(String code);
+
+    @Select("select name from stock_info where code = #{code}")
+    String getNameByCode(String code);
 
     @Delete("delete from stock_info where code = #{code}")
     int deleteByCode(String code);
