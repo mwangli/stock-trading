@@ -3,6 +3,7 @@ package online.mwang.stockTrading.web.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import online.mwang.stockTrading.web.bean.po.QuartzJob;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Update;
 
 /**
  * @version 1.0.0
@@ -12,4 +13,7 @@ import org.apache.ibatis.annotations.Mapper;
  */
 @Mapper
 public interface QuartzJobMapper extends BaseMapper<QuartzJob> {
+
+    @Update("update quartz_job set running = 0")
+    void resetRunningStatus();
 }

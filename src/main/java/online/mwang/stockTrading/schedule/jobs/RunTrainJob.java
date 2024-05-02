@@ -8,6 +8,7 @@ import online.mwang.stockTrading.model.IPredictService;
 import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
+import online.mwang.stockTrading.web.mapper.StockInfoMapper;
 import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import org.springframework.data.domain.Sort;
@@ -19,7 +20,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * @author 13255
@@ -35,29 +36,25 @@ public class RunTrainJob extends BaseJob {
     private final MongoTemplate mongoTemplate;
     private final StringRedisTemplate redisTemplate;
     private final StockInfoService stockInfoService;
+    private final StockInfoMapper stockInfoMapper;
     private final ModelInfoService modelInfoService;
 
     @SneakyThrows
     @Override
     void run() {
-        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.orderByDesc(StockInfo::getPrice);
-        final List<StockInfo> list = stockInfoService.list(queryWrapper);
-        Set<String> modelCode = redisTemplate.keys("model:code:**");
-        for (StockInfo s : list) {
-//            if (!DateUtils.isWeekends(new Date()) && DateUtils.inTradingTimes1()) break;
-            if (modelCode != null && modelCode.stream().anyMatch(c -> c.contains(s.getCode()))) continue;
+        List<StockInfo> trainStockInfos = stockInfoService.getTrainStockInfos();
+        for (StockInfo s : trainStockInfos) {
             String stockCode = s.getCode();
+            String stockName = s.getName();
             final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
             List<StockPrices> stockHistoryPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
-            log.info("股票[{}-{}],训练数据集大小为:{}", s.getName(), s.getCode(), stockHistoryPrices.size());
+            log.info("股票[{}-{}],训练数据集大小为:{}", stockName, stockCode, stockHistoryPrices.size());
             if (stockHistoryPrices.size() < 100) continue;
             List<StockPrices> stockTestPrices = modelService.modelTrain(stockHistoryPrices);
-            redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 30, TimeUnit.DAYS);
-            final Query deleteQuery = new Query(Criteria.where("code").is(s.getCode()));
+            final Query deleteQuery = new Query(Criteria.where("code").is(stockCode));
             List<Object> removed = mongoTemplate.findAllAndRemove(deleteQuery, TEST_COLLECTION_NAME);
             mongoTemplate.insert(stockTestPrices, TEST_COLLECTION_NAME);
-            log.info("股票[{}-{}],清空{}条，写入{}条测试集数据", s.getName(), s.getCode(), removed.size(), stockTestPrices.size());
+            log.info("股票[{}-{}],清空{}条，写入{}条测试集数据", stockName, stockCode, removed.size(), stockTestPrices.size());
             // 更新模型评分
             updateModelScore(stockTestPrices);
         }

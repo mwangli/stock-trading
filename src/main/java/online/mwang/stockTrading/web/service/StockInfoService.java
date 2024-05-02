@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 /**
  * @version 1.0.0
  * @author: mwangli
@@ -12,4 +14,6 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public interface StockInfoService extends IService<StockInfo> {
+
+    List<StockInfo> getTrainStockInfos();
 }
