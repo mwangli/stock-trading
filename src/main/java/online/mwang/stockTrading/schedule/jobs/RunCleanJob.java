@@ -4,22 +4,22 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.po.AccountInfo;
+import online.mwang.stockTrading.web.bean.po.OrderInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.AccountInfoService;
+import online.mwang.stockTrading.web.service.OrderInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -37,9 +37,9 @@ public class RunCleanJob extends BaseJob {
     private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
     private static final String TEST_COLLECTION_NAME = "stockTestPrice";
     private final AccountInfoService accountInfoService;
+    private final OrderInfoService orderInfoService;
     private final StockInfoService stockInfoService;
     private final MongoTemplate mongoTemplate;
-    private final StringRedisTemplate redisTemplate;
 
     @Override
     public void run() {
@@ -48,13 +48,22 @@ public class RunCleanJob extends BaseJob {
         cleanPredictPrice();
         cleanHistoryPrice();
         cleanTestData();
-//        cleanModelUpdateTime();
+        fixOrderAmount();
     }
 
-    private void cleanModelUpdateTime() {
-        Set<String> keys = redisTemplate.keys("model:**");
-        assert keys != null;
-        keys.forEach(key -> redisTemplate.opsForHash().delete(key, "lastUpdateTime"));
+    private void fixOrderAmount() {
+        List<OrderInfo> orderInfos = orderInfoService.list();
+        orderInfos.forEach(o -> {
+            double amount = o.getPrice() * o.getNumber();
+            double peer = o.getPeer();
+            String type = o.getType();
+            if (type.equals("买入")) {
+                o.setAmount(amount + peer);
+            } else {
+                o.setAmount(amount - peer);
+            }
+        });
+        orderInfoService.updateBatchById(orderInfos);
     }
 
     private void cleanAccountInfo() {
@@ -108,6 +117,6 @@ public class RunCleanJob extends BaseJob {
         // 删除code或date为空的无效数据
         Query deleteQuery = new Query(Criteria.where("code").isNull().orOperator(Criteria.where("date").isNull()));
         List<StockPrices> remove = mongoTemplate.findAllAndRemove(deleteQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
-        log.info("共删除{}条无效数据!", remove.size());
+        log.info("共删除{}条无效历史数据!", remove.size());
     }
 }

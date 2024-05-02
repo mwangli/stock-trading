@@ -28,6 +28,8 @@ public class OrderInfo {
     private String type;
     private Double number;
     private Double price;
+    private Double amount;
+    private Double peer;
     private Date createTime;
     private Date updateTime;
 }
