@@ -3,12 +3,12 @@ name: deploy
 # on: [push]
 on:
   push:
-#    branches:
-#      - 'main'
-#    paths:
-#      - '**.java'
-    tags:
-      - 'v*.*.*'
+    branches:
+      - 'main'
+    paths:
+      - '**.java'
+#    tags:
+#      - 'v*.*.*'
 
 jobs:
   build:
