@@ -1,7 +1,6 @@
 package online.mwang.stockTrading.model.predict;
 
 
-import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -24,12 +23,12 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.iterator.DataSetIterator;
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerMinMaxScaler;
+import org.nd4j.linalg.dataset.api.preprocessor.serializer.NormalizerSerializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -48,7 +47,7 @@ public class LSTMModel {
     private static final int INPUT_SIZE = 2;
     private static final int OUTPUT_SIZE = 1;
     private static final double SPLIT_RATIO = 0.8;
-    private static final int EPOCHS = 100;
+    private static final int EPOCHS = 10;
     private static final int SCORE_ITERATIONS = 100;
     private final StringRedisTemplate redisTemplate;
     private final ModelInfoService modelInfoService;
@@ -60,7 +59,8 @@ public class LSTMModel {
 
     /**
      * 构建标准时间序列数据输入数据，其中feature包含了label
-     * INDArray shape = [batchSize,featureSize,sequenceLength]
+     * dataList size = [batch,sequenceLength,featureSize]
+     * input shape = [batchSize,featureSize,sequenceLength]
      */
     private List<List<List<Writable>>> buildSequenceData(List<StockPrices> stockPrices) {
         List<List<List<Writable>>> data = new ArrayList<>();
@@ -100,6 +100,7 @@ public class LSTMModel {
         testIter.setPreProcessor(minMaxScaler);
         // 加载模型
         String stockCode = dataList.get(0).getCode();
+        String stockName = dataList.get(0).getName();
         File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
         MultiLayerNetwork net = modelFile.exists() ? ModelSerializer.restoreMultiLayerNetwork(modelFile) : modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
         net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
@@ -115,7 +116,8 @@ public class LSTMModel {
         final File parentFile = modelFile.getParentFile();
         if (!parentFile.exists() && !parentFile.mkdirs()) throw new RuntimeException("文件夹创建失败!");
         ModelSerializer.writeModel(net, modelFile.getAbsolutePath(), true);
-        redisTemplate.opsForHash().put("model:minMaxScaler", stockCode, JSON.toJSONString(minMaxScaler));
+        File scalerFile = new File("model/scaler_".concat(stockCode).concat(".zip"));
+        NormalizerSerializer.getDefault().write(minMaxScaler, scalerFile);
         // 测试结果
         List<String> dateList = dataList.stream().map(StockPrices::getDate).collect(Collectors.toList());
         ArrayList<StockPrices> testPredictData = new ArrayList<>();
@@ -132,13 +134,7 @@ public class LSTMModel {
             String date = dateList.get(dateStartIndex++);
             boolean debug = "dev".equalsIgnoreCase(profile);
             if (debug) log.info("date = {}, actualValue = {}, predictValue = {}", date, actualValue, predictValue);
-            StockPrices stockPrices = new StockPrices();
-            stockPrices.setCode(stockCode);
-            String stockName = dataList.get(0).getName();
-            stockPrices.setName(stockName);
-            stockPrices.setPrice1(predictValue);
-            stockPrices.setDate(date);
-            testPredictData.add(stockPrices);
+            testPredictData.add(new StockPrices(stockCode, stockName, date, predictValue));
         }
         return testPredictData;
     }
@@ -175,18 +171,17 @@ public class LSTMModel {
     @SneakyThrows
     public StockPrices predictOneHead(List<StockPrices> historyPrices) {
         // 加载模型
-        if (historyPrices.size() != EXAMPLE_LENGTH) throw new BusinessException("价格数据时间序列步长错误！");
+        if (historyPrices.size() != EXAMPLE_LENGTH + 1) throw new BusinessException("价格数据时间序列步长错误！");
         String stockCode = historyPrices.get(0).getCode();
         File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
         if (!modelFile.exists()) return null;
         MultiLayerNetwork net = ModelSerializer.restoreMultiLayerNetwork(modelFile);
         // 构造输入集
         SequenceRecordReader recordReader = new InMemorySequenceRecordReader(buildSequenceData(historyPrices));
-        DataSetIterator dataSetIterator = new SequenceRecordReaderDataSetIterator(recordReader, 1, -1, 3, true);
+        DataSetIterator dataSetIterator = new SequenceRecordReaderDataSetIterator(recordReader, 1, -1, 2, true);
         // 加载归一化器
-        String minMaxScalerString = (String) redisTemplate.opsForHash().get("model:minMaxScaler", stockCode);
-        if (minMaxScalerString == null) return null;
-        NormalizerMinMaxScaler minMaxScaler = JSON.parseObject(minMaxScalerString, NormalizerMinMaxScaler.class);
+        File scalerFile = new File("model/scaler_".concat(stockCode).concat(".zip"));
+        NormalizerMinMaxScaler minMaxScaler = NormalizerSerializer.getDefault().restore(scalerFile);
         dataSetIterator.setPreProcessor(minMaxScaler);
         DataSet dataSet = dataSetIterator.next();
         // 模型预测
