@@ -17,18 +17,4 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class StockInfoServiceImpl extends ServiceImpl<StockInfoMapper, StockInfo> implements StockInfoService {
-
-    private final StockInfoMapper stockInfoMapper;
-    private final ModelInfoMapper modelInfoMapper;
-
-    @Override
-    public List<StockInfo> getTrainStockInfos() {
-        List<StockInfo> stockInfos = stockInfoMapper.selectList(new QueryWrapper<>());
-        List<ModelInfo> modelInfos = modelInfoMapper.selectList(new QueryWrapper<>());
-        Set<String> stockCodes = stockInfos.stream().map(StockInfo::getCode).collect(Collectors.toSet());
-        Set<String> modelCodes = modelInfos.stream().map(ModelInfo::getCode).collect(Collectors.toSet());
-        stockCodes.removeAll(modelCodes);
-        return stockInfos.stream().filter(s -> stockCodes.contains(s.getCode())).collect(Collectors.toList());
-    }
-
 }

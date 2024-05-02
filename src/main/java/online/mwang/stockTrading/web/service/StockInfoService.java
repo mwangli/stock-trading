@@ -14,6 +14,4 @@ import java.util.List;
  */
 @Service
 public interface StockInfoService extends IService<StockInfo> {
-
-    List<StockInfo> getTrainStockInfos();
 }

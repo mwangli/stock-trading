@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -42,8 +43,10 @@ public class RunTrainJob extends BaseJob {
     @SneakyThrows
     @Override
     void run() {
-        List<StockInfo> trainStockInfos = stockInfoService.getTrainStockInfos();
-        for (StockInfo s : trainStockInfos) {
+        List<StockInfo> stockInfos = stockInfoService.list();
+        Set<String> trainedCodes = redisTemplate.keys("model:code:**");
+        for (StockInfo s : stockInfos) {
+            if (trainedCodes != null && trainedCodes.contains(s.getCode())) continue;
             String stockCode = s.getCode();
             String stockName = s.getName();
             final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
@@ -51,6 +54,7 @@ public class RunTrainJob extends BaseJob {
             log.info("股票[{}-{}],训练数据集大小为:{}", stockName, stockCode, stockHistoryPrices.size());
             if (stockHistoryPrices.size() < 100) continue;
             List<StockPrices> stockTestPrices = modelService.modelTrain(stockHistoryPrices);
+            redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 30, TimeUnit.DAYS);
             final Query deleteQuery = new Query(Criteria.where("code").is(stockCode));
             List<Object> removed = mongoTemplate.findAllAndRemove(deleteQuery, TEST_COLLECTION_NAME);
             mongoTemplate.insert(stockTestPrices, TEST_COLLECTION_NAME);

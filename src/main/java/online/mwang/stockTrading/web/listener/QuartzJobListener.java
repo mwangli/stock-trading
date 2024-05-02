@@ -1,9 +1,11 @@
 package online.mwang.stockTrading.web.listener;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import online.mwang.stockTrading.web.bean.po.QuartzJob;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.mapper.ModelInfoMapper;
@@ -17,6 +19,8 @@ import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * @author 13255
@@ -38,8 +42,12 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
         // 清除模型训练状态
         modelInfoMapper.resetStatus();
         jobMapper.resetRunningStatus();
-        List<StockInfo> trainStockInfos = stockInfoService.getTrainStockInfos();
-        log.info("获取到{}条待训练股票:", trainStockInfos.size());
+        List<StockInfo> stockInfos = stockInfoService.list();
+        List<ModelInfo> modelInfos = modelInfoService.list();
+        Set<String> stockCodes = stockInfos.stream().map(StockInfo::getCode).collect(Collectors.toSet());
+        Set<String> modelCodes = modelInfos.stream().map(ModelInfo::getCode).collect(Collectors.toSet());
+        stockCodes.removeAll(modelCodes);
+        log.info("获取到{}条待训练股票:", stockCodes.size());
         final LambdaQueryWrapper<QuartzJob> queryWrapper = new LambdaQueryWrapper<QuartzJob>().eq(QuartzJob::getDeleted, "1");
         List<QuartzJob> jobs = jobMapper.selectList(queryWrapper);
         for (QuartzJob job : jobs) {
@@ -50,7 +58,7 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
                 if ("0".equals(job.getStatus())) {
                     scheduler.pauseJob(JobKey.jobKey(job.getName()));
                 }
-                if (trainStockInfos.size() > 0 && job.getName().contains("模型训练")) {
+                if (stockCodes.size() > 0 && job.getName().contains("模型训练")) {
                     Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
                     JobDetail jobDetail1 = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName(), "TEMP").build();
                     scheduler.scheduleJob(jobDetail1, trigger);
