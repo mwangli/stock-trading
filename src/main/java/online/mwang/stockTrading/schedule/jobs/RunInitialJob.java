@@ -7,8 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.IStockService;
 import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
-import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
+import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.bean.po.TradingRecord;
 import online.mwang.stockTrading.web.mapper.TradingRecordMapper;
 import online.mwang.stockTrading.web.service.OrderInfoService;
@@ -56,7 +56,7 @@ public class RunInitialJob extends BaseJob {
             } else {
                 List<DailyItem> historyPrices = dataService.getHistoryPrices(s.getCode());
                 List<StockPrices> stockPricesList = historyPrices.stream().map(item -> {
-                    StockPrices stockPrices = new StockPrices( );
+                    StockPrices stockPrices = new StockPrices();
                     stockPrices.setName(s.getName());
                     stockPrices.setCode(s.getCode());
                     stockPrices.setDate(item.getDate());
@@ -106,6 +106,10 @@ public class RunInitialJob extends BaseJob {
 
     private void fixOrderProps(OrderInfo orderInfo) {
         orderInfo.setStatus("1");
+        double amount = orderInfo.getNumber() * orderInfo.getPrice();
+        Double peer = dataService.getPeeAmount(amount);
+        String type = orderInfo.getType();
+        orderInfo.setAmount(type.equals("卖出") ? amount - peer : amount + peer);
         orderInfo.setCreateTime(new Date());
         orderInfo.setUpdateTime(new Date());
     }

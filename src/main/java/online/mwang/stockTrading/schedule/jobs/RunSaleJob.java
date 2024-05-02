@@ -35,15 +35,15 @@ import java.util.concurrent.CountDownLatch;
 @RequiredArgsConstructor
 public class RunSaleJob extends BaseJob {
 
+    public static final long WAITING_SECONDS = 30;
+    public static final long WAITING_COUNT_SKIP = 30 * 60 / WAITING_SECONDS;
+    public static final double SALE_PERCENT = 0.005;
     private final IStockService dataService;
     private final TradingRecordService tradingRecordService;
     private final StockInfoService stockInfoService;
     private final OrderInfoService orderInfoService;
     private final AccountInfoMapper accountInfoMapper;
     private final SleepUtils sleepUtils;
-    public static final long WAITING_SECONDS = 30;
-    public static final long WAITING_COUNT_SKIP = 30 * 60 / WAITING_SECONDS;
-    public static final double SALE_PERCENT = 0.005;
     @Value("${PROFILE}")
     private String profile;
 
@@ -111,6 +111,10 @@ public class RunSaleJob extends BaseJob {
         orderInfo.setName(record.getName());
         orderInfo.setPrice(nowPrice);
         orderInfo.setNumber(record.getBuyNumber());
+        double amount = nowPrice * record.getBuyNumber();
+        Double peer = dataService.getPeeAmount(amount);
+        orderInfo.setPeer(peer);
+        orderInfo.setAmount(amount - peer);
         orderInfo.setType("卖出");
         orderInfo.setAnswerNo(saleNo);
         orderInfo.setCreateTime(now);
@@ -125,8 +129,7 @@ public class RunSaleJob extends BaseJob {
         record.setSaleDateString(DateUtils.dateFormat.format(now));
         record.setUpdateTime(now);
         // 计算收益率并更新交易记录
-        final double amount = record.getSalePrice() * record.getSaleNumber();
-        double saleAmount = amount - dataService.getPeeAmount(amount);
+        double saleAmount = amount - peer;
         double income = saleAmount - record.getBuyAmount();
         double incomeRate = income / record.getBuyAmount() * 100;
         record.setSaleAmount(saleAmount);

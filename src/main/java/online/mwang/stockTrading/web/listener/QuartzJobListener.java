@@ -1,7 +1,6 @@
 package online.mwang.stockTrading.web.listener;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -62,9 +61,8 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
                     Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
                     JobDetail jobDetail1 = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName(), "TEMP").build();
                     scheduler.scheduleJob(jobDetail1, trigger);
-                    log.info("自动触发:{}", job.getName());
+                    log.info("自动触发任务:{}", job.getName());
                 }
-                log.info("定时任务:{},加载完成", job.getName());
                 // 自动启用模型训练任务
             } catch (Exception e) {
                 log.info("定时任务{},加载异常:{}", job.getName(), e.getMessage());
