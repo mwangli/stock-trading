@@ -10,7 +10,6 @@ import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
-import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -18,7 +17,6 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -45,9 +43,9 @@ public class RunTrainJob extends BaseJob {
         LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.orderByDesc(StockInfo::getPrice);
         final List<StockInfo> list = stockInfoService.list(queryWrapper);
-        Set<String> modelCode = redisTemplate.keys("model:model_**");
+        Set<String> modelCode = redisTemplate.keys("model:code:**");
         for (StockInfo s : list) {
-            if (!DateUtils.isWeekends(new Date()) && DateUtils.inTradingTimes1()) break;
+//            if (!DateUtils.isWeekends(new Date()) && DateUtils.inTradingTimes1()) break;
             if (modelCode != null && modelCode.stream().anyMatch(c -> c.contains(s.getCode()))) continue;
             String stockCode = s.getCode();
             final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
@@ -55,7 +53,7 @@ public class RunTrainJob extends BaseJob {
             log.info("股票[{}-{}],训练数据集大小为:{}", s.getName(), s.getCode(), stockHistoryPrices.size());
             if (stockHistoryPrices.size() < 100) continue;
             List<StockPrices> stockTestPrices = modelService.modelTrain(stockHistoryPrices);
-            redisTemplate.opsForValue().set("model:model_" + s.getCode(), s.getCode(), 30, TimeUnit.DAYS);
+            redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 30, TimeUnit.DAYS);
             final Query deleteQuery = new Query(Criteria.where("code").is(s.getCode()));
             List<Object> removed = mongoTemplate.findAllAndRemove(deleteQuery, TEST_COLLECTION_NAME);
             mongoTemplate.insert(stockTestPrices, TEST_COLLECTION_NAME);
@@ -76,7 +74,7 @@ public class RunTrainJob extends BaseJob {
         setIncreaseRate(stockTestPrices);
         // 计算测试集误差和评分
         int mistakeCount = 0;
-        for (int i = 0; i < stockTestPrices.size(); i++) {
+        for (int i = 1; i < stockTestPrices.size(); i++) {
             Double testIncrease = stockTestPrices.get(i).getIncreaseRate();
             Double actualIncrease = historyPrices.get(i).getIncreaseRate();
             if (hasMistake(testIncrease, actualIncrease)) mistakeCount++;

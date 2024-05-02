@@ -56,7 +56,7 @@ public class RunInitialJob extends BaseJob {
             } else {
                 List<DailyItem> historyPrices = dataService.getHistoryPrices(s.getCode());
                 List<StockPrices> stockPricesList = historyPrices.stream().map(item -> {
-                    StockPrices stockPrices = new StockPrices();
+                    StockPrices stockPrices = new StockPrices( );
                     stockPrices.setName(s.getName());
                     stockPrices.setCode(s.getCode());
                     stockPrices.setDate(item.getDate());
