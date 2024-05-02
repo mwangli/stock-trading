@@ -48,22 +48,6 @@ public class RunCleanJob extends BaseJob {
         cleanPredictPrice();
         cleanHistoryPrice();
         cleanTestData();
-        fixOrderAmount();
-    }
-
-    private void fixOrderAmount() {
-        List<OrderInfo> orderInfos = orderInfoService.list();
-        orderInfos.forEach(o -> {
-            double amount = o.getPrice() * o.getNumber();
-            double peer = o.getPeer();
-            String type = o.getType();
-            if (type.equals("买入")) {
-                o.setAmount(amount + peer);
-            } else {
-                o.setAmount(amount - peer);
-            }
-        });
-        orderInfoService.updateBatchById(orderInfos);
     }
 
     private void cleanAccountInfo() {
