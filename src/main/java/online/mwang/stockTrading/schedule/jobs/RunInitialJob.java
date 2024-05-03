@@ -166,8 +166,6 @@ public class RunInitialJob extends BaseJob {
         final TradingRecord tradingRecord = new TradingRecord();
         tradingRecord.setBuyNumber(0.0);
         tradingRecord.setBuyAmount(0.0);
-        tradingRecord.setSaleNumber(0.0);
-        tradingRecord.setSaleAmount(0.0);
         return tradingRecord;
     }
 
