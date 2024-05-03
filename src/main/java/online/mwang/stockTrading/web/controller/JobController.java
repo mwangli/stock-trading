@@ -30,7 +30,6 @@ import java.util.List;
 @RequestMapping("/job")
 @RequiredArgsConstructor
 public class JobController {
-    private final static String TEMP_GROUP_NAME = "TEMP";
     private final Scheduler scheduler;
     private final QuartzJobMapper jobMapper;
     private final RequestUtils requestUtils;
@@ -53,9 +52,6 @@ public class JobController {
     @SneakyThrows
     @PostMapping("/create")
     public Response<Integer> createJob(@RequestBody QuartzJob job) {
-        if (!CronExpression.isValidExpression(job.getCron())) {
-            throw new RuntimeException("非法的cron表达式");
-        }
         JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName()).build();
         CronTrigger cronTrigger = TriggerBuilder.newTrigger().withIdentity(job.getName()).withSchedule(CronScheduleBuilder.cronSchedule(job.getCron())).build();
         scheduler.scheduleJob(jobDetail, cronTrigger);
@@ -70,26 +66,20 @@ public class JobController {
     @SneakyThrows
     @PostMapping("/run")
     public Response<?> runNow(@RequestBody QuartzJob job) {
-        try {
-            Trigger trigger = TriggerBuilder.newTrigger().startNow().build();
-            JobDetail jobDetail = JobBuilder.newJob((Class<Job>) Class.forName(job.getClassName())).withIdentity(job.getName(), TEMP_GROUP_NAME).build();
-            scheduler.scheduleJob(jobDetail, trigger);
-            job.setRunning("1");
-            jobMapper.updateById(job);
-            return Response.success();
-        } catch (ObjectAlreadyExistsException e) {
-            return Response.fail(20010, "该任务正在运行，请勿重复触发");
-        }
+        JobKey jobKey = JobKey.jobKey(job.getName());
+        scheduler.triggerJob(jobKey);
+        job.setRunning("1");
+        jobMapper.updateById(job);
+        return Response.success();
     }
 
 
     @SneakyThrows
     @PostMapping("/interrupt")
-    public Response<Integer> interruptJob(@RequestBody QuartzJob job) {
+    public Response<Boolean> interruptJob(@RequestBody QuartzJob job) {
         final JobKey jobKey = JobKey.jobKey(job.getName());
-        scheduler.interrupt(jobKey);
-//        job.setRunning("0");
-        return Response.success(jobMapper.updateById(job));
+        boolean interrupt = scheduler.interrupt(jobKey);
+        return interrupt ? Response.success() : Response.fail();
     }
 
 
