@@ -23,7 +23,7 @@ public class WebConfig implements WebMvcConfigurer {
 
     // 无需认证URL
     private static final String[] IGNORE_URLS = new String[]{
-            "/test",
+            "/test/**",
             "/imageUpdate",
             "/login/account",
             "/**/test**",
