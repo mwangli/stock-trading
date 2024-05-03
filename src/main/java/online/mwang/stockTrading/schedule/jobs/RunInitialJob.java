@@ -141,7 +141,7 @@ public class RunInitialJob extends BaseJob {
                 final TradingRecord tradingRecord = unfinishedMap.getOrDefault(orderInfo.getCode(), getInitTradingRecord());
                 fixPropsFromSaleOrder(tradingRecord, orderInfo);
                 tradingRecord.setSaleNo(orderInfo.getAnswerNo());
-                // 如果数据完整，转移到到另外一个完整数据集合,并移除当前Map
+                // 如果数据完整，转移到到另外一个完整数据集合
                 if (tradingRecord.getSaleNumber().equals(tradingRecord.getBuyNumber())) {
                     // 计算收益金额
                     double income = tradingRecord.getSaleAmount() - tradingRecord.getBuyAmount();
@@ -157,7 +157,8 @@ public class RunInitialJob extends BaseJob {
                 }
             }
         });
-        log.info("共组装成{}条交易记录，剩余{}条未完成订单", finishedRecords.size(), unfinishedMap.size());
+        finishedRecords.addAll(unfinishedMap.values());
+        log.info("共组装成{}条完整交易记录，{}条未完成订单", finishedRecords.size(), unfinishedMap.size());
         return finishedRecords;
     }
 
