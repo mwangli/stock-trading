@@ -46,7 +46,6 @@ public class WebSocketServer {
         }
         if (path.equals("job")) {
             sessions.add(session);
-            log.info("任务状态会话创建。");
         }
     }
 
@@ -60,7 +59,6 @@ public class WebSocketServer {
         }
         if (path.equals("job")) {
             sessions.remove(session);
-            log.info("任务状态会话移除。");
         }
     }
 }
