@@ -3,7 +3,6 @@ package online.mwang.stockTrading.schedule.jobs;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.QuartzJob;
 import online.mwang.stockTrading.web.logs.WebSocketServer;
 import online.mwang.stockTrading.web.mapper.QuartzJobMapper;
@@ -44,7 +43,7 @@ public abstract class BaseJob implements InterruptableJob {
         setRunningStatus(jobName, "1");
         try {
             run();
-        } catch (BusinessException e) {
+        } catch (Exception e) {
             log.info(e.getMessage());
         }
         setRunningStatus(jobName, "0");
