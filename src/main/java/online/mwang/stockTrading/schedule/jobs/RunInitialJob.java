@@ -131,16 +131,12 @@ public class RunInitialJob extends BaseJob {
             if ("买入".equals(orderInfo.getType())) {
                 final TradingRecord tradingRecord = unfinishedMap.getOrDefault(orderInfo.getCode(), getInitTradingRecord());
                 fixPropsFromBuyOrder(tradingRecord, orderInfo);
-                tradingRecord.setName(orderInfo.getName());
-                tradingRecord.setCode(orderInfo.getCode());
-                tradingRecord.setBuyNo(orderInfo.getAnswerNo());
                 unfinishedMap.put(tradingRecord.getCode(), tradingRecord);
             }
             if ("卖出".equals(orderInfo.getType())) {
                 // 尝试找到之前的买入记录
                 final TradingRecord tradingRecord = unfinishedMap.getOrDefault(orderInfo.getCode(), getInitTradingRecord());
                 fixPropsFromSaleOrder(tradingRecord, orderInfo);
-                tradingRecord.setSaleNo(orderInfo.getAnswerNo());
                 // 如果数据完整，转移到到另外一个完整数据集合
                 if (tradingRecord.getSaleNumber().equals(tradingRecord.getBuyNumber())) {
                     // 计算收益金额
@@ -152,6 +148,7 @@ public class RunInitialJob extends BaseJob {
                     tradingRecord.setIncomeRate(incomeRate);
                     tradingRecord.setHoldDays((int) holdDays);
                     tradingRecord.setDailyIncomeRate(dailyIncomeRate);
+                    tradingRecord.setSold("1");
                     finishedRecords.add(tradingRecord);
                     unfinishedMap.remove(tradingRecord.getCode());
                 }
@@ -181,6 +178,10 @@ public class RunInitialJob extends BaseJob {
         // 买入金额中包含了手续费
         final double buyAmount = amount + dataService.getPeeAmount(amount);
         record.setBuyAmount(record.getBuyAmount() + buyAmount);
+        record.setBuyNo(order.getAnswerNo());
+        record.setName(order.getName());
+        record.setCode(order.getCode());
+        record.setBuyNo(order.getAnswerNo());
         record.setSold("0");
     }
 
@@ -189,11 +190,14 @@ public class RunInitialJob extends BaseJob {
         record.setSaleDate(DateUtils.dateFormat.parse(order.getDate()));
         record.setSaleDateString(order.getDate());
         record.setSalePrice(order.getPrice());
-        record.setSaleNumber(record.getSaleNumber() + order.getNumber());
-        final double amount = order.getPrice() * order.getNumber();
+        Double saleNumber = order.getNumber();
+        if (record.getSaleNumber() != null) saleNumber += order.getNumber();
+        record.setSaleNumber(saleNumber);
+        final double amount = order.getPrice() * saleNumber;
         // 卖出金额中去除了手续费
         final double saleAmount = amount - dataService.getPeeAmount(amount);
         record.setSaleAmount(record.getSaleAmount() + saleAmount);
+        record.setSaleNo(order.getAnswerNo());
         record.setSold("1");
     }
 }
