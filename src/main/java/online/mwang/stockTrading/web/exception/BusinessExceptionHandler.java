@@ -10,8 +10,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class BusinessExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
-    public Response bindException(BusinessException exception) {
+    public Response<?> bindException(BusinessException exception) {
         return Response.fail(20010, exception.getMessage());
     }
 
+    @ExceptionHandler(Exception.class)
+    public Response<?> bindException(Exception exception) {
+        return Response.fail(10010, exception.getMessage());
+    }
 }

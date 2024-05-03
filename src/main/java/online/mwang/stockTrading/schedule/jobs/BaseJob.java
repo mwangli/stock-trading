@@ -3,12 +3,14 @@ package online.mwang.stockTrading.schedule.jobs;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.QuartzJob;
 import online.mwang.stockTrading.web.logs.WebSocketServer;
 import online.mwang.stockTrading.web.mapper.QuartzJobMapper;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.quartz.InterruptableJob;
 import org.quartz.JobExecutionContext;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
@@ -24,23 +26,26 @@ import javax.websocket.Session;
 @Component
 public abstract class BaseJob implements InterruptableJob {
 
+    public boolean debug = false;
     @Resource
     private QuartzJobMapper jobMapper;
+    @Value("${PROFILE}")
+    private String profile;
 
     abstract void run();
 
     @SneakyThrows
     @Override
     public void execute(JobExecutionContext jobExecutionContext) {
+        debug = "dev".equalsIgnoreCase(profile);
         final String jobName = jobExecutionContext.getJobDetail().getKey().getName();
         log.info("{}, 任务执行开始====================================", jobName);
         final long start = System.currentTimeMillis();
         setRunningStatus(jobName, "1");
         try {
             run();
-        } catch (Exception e) {
-            log.error("任务执行出错！请查看下列异常信息栈：");
-            e.printStackTrace();
+        } catch (BusinessException e) {
+            log.info(e.getMessage());
         }
         setRunningStatus(jobName, "0");
         final long end = System.currentTimeMillis();
@@ -52,9 +57,6 @@ public abstract class BaseJob implements InterruptableJob {
 
     @Override
     public void interrupt() {
-        // 由于QuartZ调度会启动一个新的线程来执行任务
-        // 所以实际上没有办法去打断执行
-        // 尝试过在循坏中检测状态，实现繁琐收效甚微，后来删除了
         log.info("正在尝试终止任务...");
     }
 

@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IPredictService;
+import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
@@ -39,6 +40,13 @@ public class RunTrainJob extends BaseJob {
     private final StockInfoService stockInfoService;
     private final StockInfoMapper stockInfoMapper;
     private final ModelInfoService modelInfoService;
+    private boolean isInterrupted = false;
+
+    @Override
+    public void interrupt() {
+        log.info("正在尝试终止模型训练任务...");
+        isInterrupted = true;
+    }
 
     @SneakyThrows
     @Override
@@ -46,6 +54,7 @@ public class RunTrainJob extends BaseJob {
         List<StockInfo> stockInfos = stockInfoService.list();
         Set<String> trainedCodes = redisTemplate.keys("model:code:**");
         for (StockInfo s : stockInfos) {
+            if (isInterrupted) throw new BusinessException("模型训练任务已终止！");
             if (trainedCodes != null && trainedCodes.contains(s.getCode())) continue;
             String stockCode = s.getCode();
             String stockName = s.getName();

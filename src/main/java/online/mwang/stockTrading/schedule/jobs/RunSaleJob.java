@@ -44,8 +44,13 @@ public class RunSaleJob extends BaseJob {
     private final OrderInfoService orderInfoService;
     private final AccountInfoMapper accountInfoMapper;
     private final SleepUtils sleepUtils;
-    @Value("${PROFILE}")
-    private String profile;
+    private boolean isInterrupted = false;
+
+    @Override
+    public void interrupt() {
+        log.info("正在尝试终止股票卖出任务...");
+        isInterrupted = true;
+    }
 
     @SneakyThrows
     @Override
@@ -65,12 +70,12 @@ public class RunSaleJob extends BaseJob {
     }
 
     private void saleStock(TradingRecord record, CountDownLatch countDownLatch) {
-        boolean debug = "dev".equalsIgnoreCase(profile);
-        if (debug) log.info("启用debug模式");
+
         log.info("当前股票[{}-{}]开始进行卖出!", record.getName(), record.getCode());
         int priceCount = 0;
         double priceTotal = 0.0;
         while (countDownLatch.getCount() > 0) {
+            if (isInterrupted) throw new BusinessException("股票卖出任务已经终止！");
             if (!debug) sleepUtils.second(WAITING_SECONDS);
             double nowPrice = dataService.getNowPrice(record.getCode());
             priceCount++;

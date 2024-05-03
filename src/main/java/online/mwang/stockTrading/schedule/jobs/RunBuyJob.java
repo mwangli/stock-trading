@@ -20,7 +20,6 @@ import online.mwang.stockTrading.web.service.OrderInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import online.mwang.stockTrading.web.utils.SleepUtils;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -56,8 +55,13 @@ public class RunBuyJob extends BaseJob {
     private final SleepUtils sleepUtils;
     private final AccountInfoMapper accountInfoMapper;
 
-    @Value("${PROFILE}")
-    private String profile;
+    private boolean isInterrupted = false;
+
+    @Override
+    public void interrupt() {
+        log.info("正在尝试终止股票买入任务...");
+        isInterrupted = true;
+    }
 
     @SneakyThrows
     @Override
@@ -99,6 +103,7 @@ public class RunBuyJob extends BaseJob {
         int priceCount = 0;
         double priceTotal = 0.0;
         while (countDownLatch.getCount() > 0) {
+            if (isInterrupted) throw new BusinessException("股票买入任务已经终止！");
             sleepUtils.second(WAITING_SECONDS);
             double nowPrice = dataService.getNowPrice(stockInfo.getCode());
             priceCount++;
