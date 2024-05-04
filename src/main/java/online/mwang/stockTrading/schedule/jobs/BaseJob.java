@@ -44,7 +44,8 @@ public abstract class BaseJob implements InterruptableJob {
         try {
             run();
         } catch (Exception e) {
-            log.info(e.getMessage());
+            e.printStackTrace();
+            log.info("任务执行出错，请查看异常信息!");
         }
         setRunningStatus(jobName, "0");
         final long end = System.currentTimeMillis();

@@ -50,16 +50,9 @@ public class DateUtils {
     }
 
 
-    public static long diff(Date date1, Date date2, boolean needAbs) {
-        Calendar calendar1 = Calendar.getInstance();
-        calendar1.setTime(date1);
-        Calendar calendar2 = Calendar.getInstance();
-        calendar1.setTime(date2);
-        LocalDate localDate1 = LocalDate.of(calendar1.get(Calendar.YEAR), calendar1.get(Calendar.MONTH) + 1, calendar1.get(Calendar.DAY_OF_MONTH));
-        LocalDate localDate2 = LocalDate.of(calendar2.get(Calendar.YEAR), calendar2.get(Calendar.MONTH) + 1, calendar2.get(Calendar.DAY_OF_MONTH));
-        long daysBetween = ChronoUnit.DAYS.between(localDate1, localDate2);
-        return needAbs ? Math.abs(daysBetween) : daysBetween;
-
+    public static long diff(Date date1, Date date2) {
+        long diffInMillis = date1.getTime() - date2.getTime();
+        return diffInMillis / (24 * 60 * 60 * 1000);
     }
 
     public static String timeConvertor(long millis) {
