@@ -36,9 +36,6 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
     private final StockInfoService stockInfoService;
     private final Scheduler scheduler;
 
-    @Value("${profile]")
-    private String profile;
-
     @Override
     @SneakyThrows
     public void onApplicationEvent(@NotNull ApplicationReadyEvent event) {
@@ -61,8 +58,7 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
                 if ("0".equals(job.getStatus())) {
                     scheduler.pauseJob(JobKey.jobKey(job.getName()));
                 }
-                boolean prod = profile.equalsIgnoreCase("prod");
-                if (prod && stockCodes.size() > 0 && job.getName().contains("模型训练")) {
+                if (stockCodes.size() > 0 && job.getName().contains("模型训练")) {
                     JobKey jobKey = JobKey.jobKey(job.getName());
                     scheduler.triggerJob(jobKey);
                     log.info("生产环境自动触发任务:{}", job.getName());

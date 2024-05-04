@@ -22,7 +22,6 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 /**
  * @author 13255
@@ -55,7 +54,7 @@ public class RunTrainJob extends BaseJob {
         Set<String> trainedCodes = redisTemplate.keys("model:code:**");
         for (StockInfo s : stockInfos) {
             if (isInterrupted) throw new BusinessException("模型训练任务已终止！");
-            if (trainedCodes != null && trainedCodes.contains(s.getCode())) continue;
+            if (trainedCodes != null && trainedCodes.stream().anyMatch(key -> key.contains(s.getCode()))) continue;
             String stockCode = s.getCode();
             String stockName = s.getName();
             final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
