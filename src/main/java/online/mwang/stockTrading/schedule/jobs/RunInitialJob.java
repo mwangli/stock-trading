@@ -142,7 +142,7 @@ public class RunInitialJob extends BaseJob {
                     // 计算收益金额
                     double income = tradingRecord.getSaleAmount() - tradingRecord.getBuyAmount();
                     double incomeRate = income / tradingRecord.getBuyAmount();
-                    long holdDays = DateUtils.diff(tradingRecord.getBuyDate(), tradingRecord.getSaleDate(), true);
+                    long holdDays = DateUtils.diff(tradingRecord.getSaleDate(), tradingRecord.getBuyDate());
                     double dailyIncomeRate = holdDays == 0 ? 0 : incomeRate / holdDays;
                     tradingRecord.setIncome(income);
                     tradingRecord.setIncomeRate(incomeRate);
@@ -174,9 +174,8 @@ public class RunInitialJob extends BaseJob {
         // 多个订单组合price会被最新的覆盖
         record.setBuyPrice(order.getPrice());
         record.setBuyNumber(record.getBuyNumber() + order.getNumber());
-        final double amount = order.getPrice() * order.getNumber();
-        // 买入金额中包含了手续费
-        final double buyAmount = amount + dataService.getPeeAmount(amount);
+        Double amount = order.getPrice() * order.getNumber();
+        Double buyAmount = amount + dataService.getPeeAmount(amount);
         record.setBuyAmount(record.getBuyAmount() + buyAmount);
         record.setBuyNo(order.getAnswerNo());
         record.setName(order.getName());
@@ -191,12 +190,12 @@ public class RunInitialJob extends BaseJob {
         record.setSaleDateString(order.getDate());
         record.setSalePrice(order.getPrice());
         Double saleNumber = order.getNumber();
-        if (record.getSaleNumber() != null) saleNumber += order.getNumber();
+        if (Objects.nonNull(record.getSaleNumber())) saleNumber += order.getNumber();
         record.setSaleNumber(saleNumber);
-        final double amount = order.getPrice() * saleNumber;
-        // 卖出金额中去除了手续费
-        final double saleAmount = amount - dataService.getPeeAmount(amount);
-        record.setSaleAmount(record.getSaleAmount() + saleAmount);
+        Double amount = order.getPrice() * saleNumber;
+        Double saleAmount = amount - dataService.getPeeAmount(amount);
+        if (Objects.nonNull(record.getSaleAmount())) saleAmount += record.getSaleAmount();
+        record.setSaleAmount(saleAmount);
         record.setSaleNo(order.getAnswerNo());
         record.setSold("1");
     }

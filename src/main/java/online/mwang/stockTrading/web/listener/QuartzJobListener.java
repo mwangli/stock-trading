@@ -13,6 +13,7 @@ import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import org.jetbrains.annotations.NotNull;
 import org.quartz.*;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
@@ -34,6 +35,9 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
     private final ModelInfoService modelInfoService;
     private final StockInfoService stockInfoService;
     private final Scheduler scheduler;
+
+    @Value("${profile]")
+    private String profile;
 
     @Override
     @SneakyThrows
@@ -57,10 +61,11 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
                 if ("0".equals(job.getStatus())) {
                     scheduler.pauseJob(JobKey.jobKey(job.getName()));
                 }
-                if (stockCodes.size() > 0 && job.getName().contains("模型训练")) {
+                boolean prod = profile.equalsIgnoreCase("prod");
+                if (prod && stockCodes.size() > 0 && job.getName().contains("模型训练")) {
                     JobKey jobKey = JobKey.jobKey(job.getName());
                     scheduler.triggerJob(jobKey);
-                    log.info("自动触发任务:{}", job.getName());
+                    log.info("生产环境自动触发任务:{}", job.getName());
                 }
                 // 自动启用模型训练任务
             } catch (Exception e) {
