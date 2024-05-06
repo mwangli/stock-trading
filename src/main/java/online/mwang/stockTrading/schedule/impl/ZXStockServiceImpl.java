@@ -264,14 +264,14 @@ public class ZXStockServiceImpl implements IStockService {
     }
 
     @Override
-    public Boolean waitOrderStatus(String answerNo) {
+    public boolean waitSuccess(String answerNo) {
         int times = 0;
         while (times++ < 10) {
             sleepUtils.second(20);
             final String status = queryOrderStatus(answerNo);
             if (status == null) {
                 log.info("当前合同编号:{},订单状态查询失败。", answerNo);
-                return null;
+                return false;
             }
             if ("已成".equals(status)) {
                 log.info("当前合同编号:{},交易成功。", answerNo);
@@ -293,7 +293,7 @@ public class ZXStockServiceImpl implements IStockService {
                 return false;
             }
         }
-        return null;
+        return false;
     }
 
     // 获取每日最新股票数据
