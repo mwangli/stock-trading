@@ -111,13 +111,13 @@ public class LSTMModel {
         long end = System.currentTimeMillis();
         String timePeriod = DateUtils.timeConvertor(end - start);
         log.info("模型训练完成，共耗时:{}", timePeriod);
-        saveModelInfo(stockCode, modelFile, net, timePeriod, "1");
         // 保存模型
         final File parentFile = modelFile.getParentFile();
         if (!parentFile.exists() && !parentFile.mkdirs()) throw new RuntimeException("文件夹创建失败!");
         ModelSerializer.writeModel(net, modelFile.getAbsolutePath(), true);
         File scalerFile = new File("model/scaler_".concat(stockCode).concat(".zip"));
         NormalizerSerializer.getDefault().write(minMaxScaler, scalerFile);
+        saveModelInfo(stockCode, modelFile, net, timePeriod, "1");
         // 测试结果
         List<String> dateList = dataList.stream().map(StockPrices::getDate).collect(Collectors.toList());
         ArrayList<StockPrices> testPredictData = new ArrayList<>();
