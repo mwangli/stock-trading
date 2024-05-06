@@ -49,16 +49,6 @@ public class RunCleanJob extends BaseJob {
         cleanPredictPrice();
         cleanHistoryPrice();
         cleanTestData();
-        clenModelInfo();
-    }
-
-    private void clenModelInfo() {
-        // 清除评分低于45分的模型缓存以重新训练
-        LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().gt(ModelInfo::getScore, 0).lt(ModelInfo::getScore, 45);
-        List<ModelInfo> modelInfos = modelInfoService.list(queryWrapper);
-        modelInfos.forEach(m -> redisTemplate.opsForValue().getAndDelete("model:code:" + m.getCode()));
-        modelInfoService.removeBatchByIds(modelInfos);
-        log.info("共清理{}条低分模型数据", modelInfos.size());
     }
 
     private void cleanAccountInfo() {
