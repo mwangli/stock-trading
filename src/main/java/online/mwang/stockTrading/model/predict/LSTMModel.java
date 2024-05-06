@@ -151,11 +151,10 @@ public class LSTMModel {
             modelInfo.setFilePath(modelFile.getPath());
             modelInfo.setStatus(status);
             modelInfo.setCreateTime(new Date());
-            modelInfo.setUpdateTime(new Date());
             modelInfoService.save(modelInfo);
         } else {
             findInfo.setStatus(status);
-            if (findInfo.getTrainPeriod() != null) findInfo.setTrainPeriod(timePeriod);
+            if (timePeriod != null) findInfo.setTrainPeriod(timePeriod);
             int trainTimes = findInfo.getTrainTimes() == null ? EPOCHS : findInfo.getTrainTimes() + EPOCHS;
             findInfo.setTrainTimes(trainTimes);
             double fileSize = (double) modelFile.length() / (1024 * 1024);

@@ -34,6 +34,4 @@ public class ModelConfig {
         net.init();
         return net;
     }
-
-
 }
