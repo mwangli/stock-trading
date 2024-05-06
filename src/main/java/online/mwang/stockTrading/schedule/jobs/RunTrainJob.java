@@ -12,6 +12,7 @@ import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
 import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
+import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -19,6 +20,7 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -54,6 +56,7 @@ public class RunTrainJob extends BaseJob {
         Set<String> trainedCodes = redisTemplate.keys("model:code:**");
         for (StockInfo s : stockInfos) {
             if (isInterrupted) throw new BusinessException("模型训练任务已终止！");
+            if (!DateUtils.isWeekends(new Date()) && DateUtils.inTradingTimes1()) break;
             if (trainedCodes != null && trainedCodes.stream().anyMatch(key -> key.contains(s.getCode()))) continue;
             String stockCode = s.getCode();
             String stockName = s.getName();
