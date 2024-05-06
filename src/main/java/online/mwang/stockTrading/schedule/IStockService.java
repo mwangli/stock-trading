@@ -68,9 +68,6 @@ public interface IStockService {
 
     /**
      * 等待买入或者卖出订单完成
-     * 买入成功返回true
-     * 撤单成功返回false
-     * 其他异常情况返回null
      */
-    Boolean waitOrderStatus(String answerNo);
+    boolean waitSuccess(String answerNo);
 }
