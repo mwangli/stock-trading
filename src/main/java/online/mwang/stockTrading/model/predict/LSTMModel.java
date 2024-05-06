@@ -103,9 +103,9 @@ public class LSTMModel {
         String stockName = dataList.get(0).getName();
         File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
         MultiLayerNetwork net = modelFile.exists() ? ModelSerializer.restoreMultiLayerNetwork(modelFile) : modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
-        net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
-        // 训练模型
+//        net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
         saveModelInfo(stockCode, modelFile, net, null, "0");
+        // 训练模型
         long start = System.currentTimeMillis();
         if (!skipTrain) net.fit(trainIter, EPOCHS);
         long end = System.currentTimeMillis();
@@ -149,20 +149,16 @@ public class LSTMModel {
             long paramsSize = Stream.of(net.getLayers()).mapToLong(Model::numParams).sum();
             modelInfo.setParamsSize(String.valueOf(paramsSize));
             modelInfo.setFilePath(modelFile.getPath());
-            modelInfo.setFileSize(String.format("%.2fM", (double) modelFile.length() / (1024 * 1024)));
-            modelInfo.setTrainPeriod(timePeriod);
-            modelInfo.setTrainTimes(EPOCHS);
             modelInfo.setStatus(status);
-            modelInfo.setScore(0.0);
-            modelInfo.setTestDeviation(0.0);
-            modelInfo.setValidateDeviation(0.0);
             modelInfo.setCreateTime(new Date());
             modelInfo.setUpdateTime(new Date());
             modelInfoService.save(modelInfo);
         } else {
-            findInfo.setTrainTimes(findInfo.getTrainTimes() + EPOCHS);
-            if (timePeriod != null) findInfo.setTrainPeriod(timePeriod);
             findInfo.setStatus(status);
+            findInfo.setTrainPeriod(timePeriod);
+            findInfo.setTrainTimes(findInfo.getTrainTimes() + EPOCHS);
+            double fileSize = (double) modelFile.length() / (1024 * 1024);
+            findInfo.setFileSize(String.format("%.2fM", fileSize));
             findInfo.setUpdateTime(new Date());
             modelInfoService.updateById(findInfo);
         }
