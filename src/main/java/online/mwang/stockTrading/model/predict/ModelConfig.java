@@ -23,12 +23,11 @@ public class ModelConfig {
 
     public MultiLayerNetwork getNetModel(int inputNum, int outNum) {
         MultiLayerConfiguration conf = new NeuralNetConfiguration.Builder()
-                .seed(140)
+                .seed(12345)
                 .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)
                 .weightInit(WeightInit.XAVIER).updater(new Nesterovs(0.0015, 0.9))
                 .list()
                 .layer(new LSTM.Builder().activation(Activation.TANH).nOut(128).nIn(inputNum).build())
-                .layer(new LSTM.Builder().activation(Activation.TANH).nOut(128).build())
                 .layer(new LSTM.Builder().activation(Activation.TANH).nOut(128).build())
                 .layer(new RnnOutputLayer.Builder(LossFunctions.LossFunction.MSE).activation(Activation.IDENTITY).nOut(outNum).build())
                 .build();
