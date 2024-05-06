@@ -49,7 +49,6 @@ public interface IStockService {
      */
     List<OrderInfo> getTodayOrder();
 
-
     /**
      * 撤销今日所有无效订单
      */
