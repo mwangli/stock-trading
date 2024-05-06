@@ -44,7 +44,7 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class LSTMModel {
     private static final int EXAMPLE_LENGTH = 22;
-    private static final int BATCH_SIZE = 32;
+    private static final int BATCH_SIZE = 64;
     private static final int INPUT_SIZE = 2;
     private static final int OUTPUT_SIZE = 1;
     private static final double SPLIT_RATIO = 0.8;
