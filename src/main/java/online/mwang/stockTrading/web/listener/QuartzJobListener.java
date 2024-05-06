@@ -61,7 +61,7 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
                 if (stockCodes.size() > 0 && job.getName().contains("模型训练")) {
                     JobKey jobKey = JobKey.jobKey(job.getName());
                     scheduler.triggerJob(jobKey);
-                    log.info("生产环境自动触发任务:{}", job.getName());
+                    log.info("自动触发:{}", job.getName());
                 }
                 // 自动启用模型训练任务
             } catch (Exception e) {
