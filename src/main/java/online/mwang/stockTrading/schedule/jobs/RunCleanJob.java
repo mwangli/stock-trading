@@ -3,11 +3,9 @@ package online.mwang.stockTrading.schedule.jobs;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.web.bean.po.AccountInfo;
-import online.mwang.stockTrading.web.bean.po.OrderInfo;
-import online.mwang.stockTrading.web.bean.po.StockInfo;
-import online.mwang.stockTrading.web.bean.po.StockPrices;
+import online.mwang.stockTrading.web.bean.po.*;
 import online.mwang.stockTrading.web.service.AccountInfoService;
+import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.service.OrderInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
@@ -15,6 +13,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Calendar;
@@ -39,6 +38,8 @@ public class RunCleanJob extends BaseJob {
     private final AccountInfoService accountInfoService;
     private final OrderInfoService orderInfoService;
     private final StockInfoService stockInfoService;
+    private final ModelInfoService modelInfoService;
+    private final StringRedisTemplate redisTemplate;
     private final MongoTemplate mongoTemplate;
 
     @Override
@@ -48,6 +49,15 @@ public class RunCleanJob extends BaseJob {
         cleanPredictPrice();
         cleanHistoryPrice();
         cleanTestData();
+        clenModelInfo();
+    }
+
+    private void clenModelInfo() {
+        // 清除评分低于45分的模型缓存以重新训练
+        LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().gt(ModelInfo::getScore, 0).lt(ModelInfo::getScore, 45);
+        List<ModelInfo> modelInfos = modelInfoService.list(queryWrapper);
+        modelInfos.forEach(m -> redisTemplate.opsForValue().getAndDelete("model:code:" + m.getCode()));
+        modelInfoService.removeBatchByIds(modelInfos);
     }
 
     private void cleanAccountInfo() {

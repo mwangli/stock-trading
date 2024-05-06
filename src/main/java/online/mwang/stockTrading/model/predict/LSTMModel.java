@@ -150,9 +150,9 @@ public class LSTMModel {
             modelInfo.setParamsSize(String.valueOf(paramsSize));
             modelInfo.setFilePath(modelFile.getPath());
             modelInfo.setStatus(status);
-            modelInfo.setTrainPeriod("");
             modelInfo.setScore(0.0);
             modelInfo.setTrainTimes(0);
+            modelInfo.setTrainPeriod("0秒");
             modelInfo.setTestDeviation(0.0);
             modelInfo.setValidateDeviation(0.0);
             modelInfo.setCreateTime(new Date());
