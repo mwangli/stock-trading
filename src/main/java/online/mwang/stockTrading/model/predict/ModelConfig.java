@@ -27,8 +27,7 @@ public class ModelConfig {
                 .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)
                 .weightInit(WeightInit.XAVIER).updater(new Nesterovs(0.0015, 0.9))
                 .list()
-                .layer(new LSTM.Builder().activation(Activation.TANH).nOut(64).nIn(inputNum).build())
-                .layer(new LSTM.Builder().activation(Activation.TANH).nOut(64).build())
+                .layer(new LSTM.Builder().activation(Activation.TANH).nOut(128).gateActivationFunction(Activation.SIGMOID).dropOut(0.2).nIn(inputNum).build())
                 .layer(new RnnOutputLayer.Builder(LossFunctions.LossFunction.MSE).activation(Activation.IDENTITY).nOut(outNum).build())
                 .build();
         MultiLayerNetwork net = new MultiLayerNetwork(conf);
