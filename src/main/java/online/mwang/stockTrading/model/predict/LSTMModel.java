@@ -28,7 +28,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -102,7 +103,7 @@ public class LSTMModel {
         String stockCode = dataList.get(0).getCode();
         String stockName = dataList.get(0).getName();
         File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
-        MultiLayerNetwork net = modelFile.exists() ? ModelSerializer.restoreMultiLayerNetwork(modelFile) : modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
+        MultiLayerNetwork net = modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
         net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
         saveModelInfo(stockCode, modelFile, net, null, "0");
         // 训练模型
