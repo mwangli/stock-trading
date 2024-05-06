@@ -28,7 +28,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -103,8 +104,8 @@ public class LSTMModel {
         String stockName = dataList.get(0).getName();
         File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
         MultiLayerNetwork net = modelFile.exists() ? ModelSerializer.restoreMultiLayerNetwork(modelFile) : modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
-//        net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
-        saveModelInfo(stockCode, stockName, modelFile, net, null, "0");
+        net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
+        saveModelInfo(stockCode, stockName, modelFile, net, null, 0, "0");
         // 训练模型
         long start = System.currentTimeMillis();
         if (!skipTrain) net.fit(trainIter, EPOCHS);
@@ -117,7 +118,7 @@ public class LSTMModel {
         ModelSerializer.writeModel(net, modelFile.getAbsolutePath(), true);
         File scalerFile = new File("model/scaler_".concat(stockCode).concat(".zip"));
         NormalizerSerializer.getDefault().write(minMaxScaler, scalerFile);
-        saveModelInfo(stockCode, stockName, modelFile, net, timePeriod, "1");
+        saveModelInfo(stockCode, stockName, modelFile, net, timePeriod, EPOCHS, "1");
         // 测试结果
         List<String> dateList = dataList.stream().map(StockPrices::getDate).collect(Collectors.toList());
         ArrayList<StockPrices> testPredictData = new ArrayList<>();
@@ -139,7 +140,7 @@ public class LSTMModel {
         return testPredictData;
     }
 
-    private void saveModelInfo(String stockCode, String stockName, File modelFile, MultiLayerNetwork net, String timePeriod, String status) {
+    private void saveModelInfo(String stockCode, String stockName, File modelFile, MultiLayerNetwork net, String timePeriod, Integer trainTimes, String status) {
         LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().eq(ModelInfo::getCode, stockCode);
         ModelInfo findInfo = modelInfoService.getOne(queryWrapper);
         if (findInfo == null) {
@@ -162,7 +163,7 @@ public class LSTMModel {
         } else {
             findInfo.setStatus(status);
             if (timePeriod != null) findInfo.setTrainPeriod(timePeriod);
-            findInfo.setTrainTimes(findInfo.getTrainTimes() + EPOCHS);
+            findInfo.setTrainTimes(findInfo.getTrainTimes() + trainTimes);
             double fileSize = (double) modelFile.length() / (1024 * 1024);
             findInfo.setFileSize(String.format("%.2fM", fileSize));
             findInfo.setUpdateTime(new Date());
