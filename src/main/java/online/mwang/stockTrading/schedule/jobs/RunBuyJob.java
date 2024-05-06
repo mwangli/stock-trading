@@ -80,6 +80,7 @@ public class RunBuyJob extends BaseJob {
             if (lowPrice > LOW_PRICE_LIMIT) priceRanges.add(new double[]{lowPrice, highPrice});
         }
         log.info("当前可用资金{}元, 可买入价格区间列表为{}", availableAmount, JSON.toJSONString(priceRanges));
+        if (priceRanges.size() == 0) throw new BusinessException("可用资金不足，无法进行购买任务！");
         // 选择有交易权限合适价格区间的数据,按评分排序分组
         final LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>()
                 .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1")
