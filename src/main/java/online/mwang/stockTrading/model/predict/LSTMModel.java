@@ -155,8 +155,9 @@ public class LSTMModel {
             modelInfoService.save(modelInfo);
         } else {
             findInfo.setStatus(status);
-            findInfo.setTrainPeriod(timePeriod);
-            findInfo.setTrainTimes(findInfo.getTrainTimes() + EPOCHS);
+            if (findInfo.getTrainPeriod() != null) findInfo.setTrainPeriod(timePeriod);
+            int trainTimes = findInfo.getTrainTimes() == null ? EPOCHS : findInfo.getTrainTimes() + EPOCHS;
+            findInfo.setTrainTimes(trainTimes);
             double fileSize = (double) modelFile.length() / (1024 * 1024);
             findInfo.setFileSize(String.format("%.2fM", fileSize));
             findInfo.setUpdateTime(new Date());
