@@ -28,8 +28,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -104,8 +103,8 @@ public class LSTMModel {
         String stockName = dataList.get(0).getName();
         File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
         MultiLayerNetwork net = modelFile.exists() ? ModelSerializer.restoreMultiLayerNetwork(modelFile) : modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
-        net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
-        saveModelInfo(stockCode, modelFile, net, null, "0");
+//        net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
+        saveModelInfo(stockCode, stockName, modelFile, net, null, "0");
         // 训练模型
         long start = System.currentTimeMillis();
         if (!skipTrain) net.fit(trainIter, EPOCHS);
@@ -118,7 +117,7 @@ public class LSTMModel {
         ModelSerializer.writeModel(net, modelFile.getAbsolutePath(), true);
         File scalerFile = new File("model/scaler_".concat(stockCode).concat(".zip"));
         NormalizerSerializer.getDefault().write(minMaxScaler, scalerFile);
-        saveModelInfo(stockCode, modelFile, net, timePeriod, "1");
+        saveModelInfo(stockCode, stockName, modelFile, net, timePeriod, "1");
         // 测试结果
         List<String> dateList = dataList.stream().map(StockPrices::getDate).collect(Collectors.toList());
         ArrayList<StockPrices> testPredictData = new ArrayList<>();
@@ -140,23 +139,25 @@ public class LSTMModel {
         return testPredictData;
     }
 
-    private void saveModelInfo(String stockCode, File modelFile, MultiLayerNetwork net, String timePeriod, String status) {
+    private void saveModelInfo(String stockCode, String stockName, File modelFile, MultiLayerNetwork net, String timePeriod, String status) {
         LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().eq(ModelInfo::getCode, stockCode);
         ModelInfo findInfo = modelInfoService.getOne(queryWrapper);
         if (findInfo == null) {
             ModelInfo modelInfo = new ModelInfo();
             modelInfo.setCode(stockCode);
-            modelInfo.setName(modelFile.getName());
+            modelInfo.setName(stockName);
             long paramsSize = Stream.of(net.getLayers()).mapToLong(Model::numParams).sum();
             modelInfo.setParamsSize(String.valueOf(paramsSize));
             modelInfo.setFilePath(modelFile.getPath());
             modelInfo.setStatus(status);
             modelInfo.setScore(0.0);
             modelInfo.setTrainTimes(0);
+            modelInfo.setFileSize("0M");
             modelInfo.setTrainPeriod("0秒");
             modelInfo.setTestDeviation(0.0);
             modelInfo.setValidateDeviation(0.0);
             modelInfo.setCreateTime(new Date());
+            modelInfo.setUpdateTime(new Date());
             modelInfoService.save(modelInfo);
         } else {
             findInfo.setStatus(status);
