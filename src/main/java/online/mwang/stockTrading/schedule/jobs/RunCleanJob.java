@@ -58,6 +58,7 @@ public class RunCleanJob extends BaseJob {
         List<ModelInfo> modelInfos = modelInfoService.list(queryWrapper);
         modelInfos.forEach(m -> redisTemplate.opsForValue().getAndDelete("model:code:" + m.getCode()));
         modelInfoService.removeBatchByIds(modelInfos);
+        log.info("共清理{}条低分模型数据", modelInfos.size());
     }
 
     private void cleanAccountInfo() {
