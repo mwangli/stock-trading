@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import lombok.Data;
+import org.springframework.data.mongodb.gridfs.GridFsObject;
 
 import java.util.Date;
 
@@ -16,7 +17,7 @@ import java.util.Date;
  */
 @Data
 @TableName(autoResultMap = true)
-public class ModelInfo {
+public class ModelInfo implements GridFsObject {
     @TableId(type = IdType.AUTO)
     private Long id;
     private String code;
@@ -57,5 +58,25 @@ public class ModelInfo {
             default:
                 return ModelInfo::getStatus;
         }
+    }
+
+    @Override
+    public Object getFileId() {
+        return null;
+    }
+
+    @Override
+    public String getFilename() {
+        return null;
+    }
+
+    @Override
+    public Object getContent() {
+        return null;
+    }
+
+    @Override
+    public Options getOptions() {
+        return null;
     }
 }

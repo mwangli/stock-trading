@@ -2,6 +2,7 @@ package online.mwang.stockTrading.model.predict;
 
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mongodb.client.gridfs.model.GridFSFile;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -25,10 +26,15 @@ import org.nd4j.linalg.dataset.api.iterator.DataSetIterator;
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerMinMaxScaler;
 import org.nd4j.linalg.dataset.api.preprocessor.serializer.NormalizerSerializer;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.gridfs.GridFsTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.io.File;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
@@ -51,10 +57,11 @@ public class LSTMModel {
     private static final int EPOCHS = 100;
     private static final int SCORE_ITERATIONS = 100;
     private final StringRedisTemplate redisTemplate;
+    private final MongoTemplate mongoTemplate;
     private final ModelInfoService modelInfoService;
     private final ModelConfig modelConfig;
+    private final GridFsTemplate gridFsTemplate;
     public boolean skipTrain = false;
-
     @Value("${PROFILE}")
     private String profile;
 
@@ -102,10 +109,11 @@ public class LSTMModel {
         // 加载模型
         String stockCode = dataList.get(0).getCode();
         String stockName = dataList.get(0).getName();
-        File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
-        MultiLayerNetwork net = modelFile.exists() ? ModelSerializer.restoreMultiLayerNetwork(modelFile) : modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
+        String modelFileName = "model_".concat(stockCode).concat(".zip");
+        GridFSFile modelFile = gridFsTemplate.findOne(new Query(Criteria.where("filename").is(modelFileName)));
+        MultiLayerNetwork net = modelFile != null ? ModelSerializer.restoreMultiLayerNetwork(gridFsTemplate.getResource(modelFile).getInputStream()) : modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
         net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
-        saveModelInfo(stockCode, stockName, modelFile, net, null, 0, "0");
+        saveModelInfo(stockCode, stockName, null, net, null, 0, "0");
         // 训练模型
         long start = System.currentTimeMillis();
         if (!skipTrain) net.fit(trainIter, EPOCHS);
@@ -113,11 +121,13 @@ public class LSTMModel {
         String timePeriod = DateUtils.timeConvertor(end - start);
         log.info("模型训练完成，共耗时:{}", timePeriod);
         // 保存模型
-        final File parentFile = modelFile.getParentFile();
-        if (!parentFile.exists() && !parentFile.mkdirs()) throw new RuntimeException("文件夹创建失败!");
-        ModelSerializer.writeModel(net, modelFile.getAbsolutePath(), true);
-        File scalerFile = new File("model/scaler_".concat(stockCode).concat(".zip"));
-        NormalizerSerializer.getDefault().write(minMaxScaler, scalerFile);
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        ModelSerializer.writeModel(net, outputStream, true);
+        gridFsTemplate.store(new ByteArrayInputStream(outputStream.toByteArray()), modelFileName);
+        ByteArrayOutputStream outputStream1 = new ByteArrayOutputStream();
+        String scalerFileName = "scaler_".concat(stockCode).concat(".zip");
+        NormalizerSerializer.getDefault().write(minMaxScaler, outputStream1);
+        gridFsTemplate.store(new ByteArrayInputStream(outputStream1.toByteArray()), scalerFileName);
         saveModelInfo(stockCode, stockName, modelFile, net, timePeriod, EPOCHS, "1");
         // 测试结果
         List<String> dateList = dataList.stream().map(StockPrices::getDate).collect(Collectors.toList());
@@ -140,7 +150,7 @@ public class LSTMModel {
         return testPredictData;
     }
 
-    private void saveModelInfo(String stockCode, String stockName, File modelFile, MultiLayerNetwork net, String timePeriod, Integer trainTimes, String status) {
+    private void saveModelInfo(String stockCode, String stockName, GridFSFile modelFile, MultiLayerNetwork net, String timePeriod, Integer trainTimes, String status) {
         LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().eq(ModelInfo::getCode, stockCode);
         ModelInfo findInfo = modelInfoService.getOne(queryWrapper);
         if (findInfo == null) {
@@ -149,7 +159,7 @@ public class LSTMModel {
             modelInfo.setName(stockName);
             long paramsSize = Stream.of(net.getLayers()).mapToLong(Model::numParams).sum();
             modelInfo.setParamsSize(String.valueOf(paramsSize));
-            modelInfo.setFilePath(modelFile.getPath());
+//            modelInfo.setFilePath(modelFile.getUploadDate());
             modelInfo.setStatus(status);
             modelInfo.setScore(0.0);
             modelInfo.setTrainTimes(0);
@@ -164,8 +174,8 @@ public class LSTMModel {
             findInfo.setStatus(status);
             if (timePeriod != null) findInfo.setTrainPeriod(timePeriod);
             findInfo.setTrainTimes(findInfo.getTrainTimes() + trainTimes);
-            double fileSize = (double) modelFile.length() / (1024 * 1024);
-            findInfo.setFileSize(String.format("%.2fM", fileSize));
+            if (modelFile != null)
+                findInfo.setFileSize(String.format("%.2fM", (double) modelFile.getLength() / (1024 * 1024)));
             findInfo.setUpdateTime(new Date());
             modelInfoService.updateById(findInfo);
         }
@@ -173,18 +183,21 @@ public class LSTMModel {
 
     @SneakyThrows
     public StockPrices predictOneHead(List<StockPrices> historyPrices) {
-        // 加载模型
-        if (historyPrices.size() != EXAMPLE_LENGTH + 1) throw new BusinessException("价格数据时间序列步长错误！");
-        String stockCode = historyPrices.get(0).getCode();
-        File modelFile = new File("model/model_".concat(stockCode).concat(".zip"));
-        if (!modelFile.exists()) return null;
-        MultiLayerNetwork net = ModelSerializer.restoreMultiLayerNetwork(modelFile);
         // 构造输入集
         SequenceRecordReader recordReader = new InMemorySequenceRecordReader(buildSequenceData(historyPrices));
         DataSetIterator dataSetIterator = new SequenceRecordReaderDataSetIterator(recordReader, 1, -1, 2, true);
+        // 加载模型
+        if (historyPrices.size() != EXAMPLE_LENGTH + 1) throw new BusinessException("价格数据时间序列步长错误！");
+        String stockCode = historyPrices.get(0).getCode();
+        String modelFileName = "model/model_".concat(stockCode).concat(".zip");
+        GridFSFile modelFile = gridFsTemplate.findOne(new Query(Criteria.where("filename").is(modelFileName)));
+        if (modelFile == null) return null;
+        MultiLayerNetwork net = ModelSerializer.restoreMultiLayerNetwork(gridFsTemplate.getResource(modelFile).getInputStream());
         // 加载归一化器
-        File scalerFile = new File("model/scaler_".concat(stockCode).concat(".zip"));
-        NormalizerMinMaxScaler minMaxScaler = NormalizerSerializer.getDefault().restore(scalerFile);
+        String scalerFileName = "scaler_".concat(stockCode).concat(".zip");
+        GridFSFile scalerFile = gridFsTemplate.findOne(new Query(Criteria.where("filename").is(scalerFileName)));
+        if (scalerFile == null) return null;
+        NormalizerMinMaxScaler minMaxScaler = NormalizerSerializer.getDefault().restore(gridFsTemplate.getResource(scalerFile).getInputStream());
         dataSetIterator.setPreProcessor(minMaxScaler);
         DataSet dataSet = dataSetIterator.next();
         // 模型预测
