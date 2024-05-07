@@ -11,11 +11,11 @@ import online.mwang.stockTrading.web.mapper.ModelInfoMapper;
 import online.mwang.stockTrading.web.mapper.QuartzJobMapper;
 import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
-import org.jetbrains.annotations.NotNull;
 import org.quartz.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -41,7 +41,7 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
 
     @Override
     @SneakyThrows
-    public void onApplicationEvent(@NotNull ApplicationReadyEvent event) {
+    public void onApplicationEvent(@NonNull ApplicationReadyEvent event) {
         // 清除模型训练状态
         modelInfoMapper.resetStatus();
         jobMapper.resetRunningStatus();
