@@ -68,10 +68,11 @@ public class RequestUtils {
         if (errorCodes.contains(errorNo)) {
             log.info("TOKEN已经失效，清除无效TOKEN...");
             redisTemplate.opsForValue().getAndDelete(TOKEN_KEY);
-        }
-        String token = res.getString("TOKEN");
-        if (token != null) {
-            redisTemplate.opsForValue().set(TOKEN_KEY, token, TOKEN_MINUTES, TimeUnit.MINUTES);
+        } else {
+            String token = res.getString("TOKEN");
+            if (token != null) {
+                redisTemplate.opsForValue().set(TOKEN_KEY, token, TOKEN_MINUTES, TimeUnit.MINUTES);
+            }
         }
     }
 

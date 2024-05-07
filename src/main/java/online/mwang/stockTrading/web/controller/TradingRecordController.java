@@ -82,7 +82,9 @@ public class TradingRecordController {
                 .ge(startDate != null, TradingRecord::getSaleDateString, startDate)
                 .le(endDate != null, TradingRecord::getSaleDateString, endDate)
                 .orderByDesc(TradingRecord::getSaleDateString);
-        final List<TradingRecord> sortedSoldList = tradingRecordService.list(queryWrapper);
+        List<TradingRecord> sortedSoldList = tradingRecordService.list(queryWrapper);
+        if (startDate == null || endDate == null)
+            sortedSoldList = sortedSoldList.stream().limit(30).collect(Collectors.toList());
         // 获取最近收益金额
         sortedSoldList.stream().findFirst().ifPresent(o -> data.setIncome(o.getIncome()));
         // 获取上次收益金额
@@ -110,7 +112,7 @@ public class TradingRecordController {
         // 收益排行
         data.setIncomeOrder(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getIncome).reversed()).limit(7).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getIncome())).collect(Collectors.toList()));
         // 收益率排行
-        data.setRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getIncomeRate).reversed()).limit(10).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getIncome(), o.getIncomeRate().toString(), o.getHoldDays().toString(), o.getDailyIncomeRate().toString(),"")).collect(Collectors.toList()));
+        data.setRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getIncomeRate).reversed()).limit(10).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getIncome(), o.getIncomeRate().toString(), o.getHoldDays().toString(), o.getDailyIncomeRate().toString(), "")).collect(Collectors.toList()));
         // 日收益率排行
         data.setDailyRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).limit(7).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getDailyIncomeRate())).collect(Collectors.toList()));
         // 持有天數分组统计列表
