@@ -53,11 +53,10 @@ public class RunTrainJob extends BaseJob {
     @Override
     void run() {
         List<StockInfo> stockInfos = stockInfoService.list();
-        Set<String> trainedCodes = redisTemplate.keys("model:code:**");
         for (StockInfo s : stockInfos) {
             if (isInterrupted) throw new BusinessException("模型训练任务已终止！");
             if (!DateUtils.isWeekends(new Date()) && DateUtils.inTradingTimes1()) break;
-            if (trainedCodes != null && trainedCodes.stream().anyMatch(key -> key.contains(s.getCode()))) continue;
+            if (redisTemplate.opsForValue().get("model:code:" + s.getCode()) != null) continue;
             redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 30, TimeUnit.DAYS);
             String stockCode = s.getCode();
             String stockName = s.getName();
