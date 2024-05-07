@@ -2,23 +2,27 @@ package online.mwang.stockTrading.schedule.jobs;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.web.bean.po.*;
+import online.mwang.stockTrading.web.bean.po.AccountInfo;
+import online.mwang.stockTrading.web.bean.po.StockInfo;
+import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.AccountInfoService;
-import online.mwang.stockTrading.web.service.ModelInfoService;
-import online.mwang.stockTrading.web.service.OrderInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.mongodb.gridfs.GridFsTemplate;
 import org.springframework.stereotype.Component;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -36,11 +40,9 @@ public class RunCleanJob extends BaseJob {
     private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
     private static final String TEST_COLLECTION_NAME = "stockTestPrice";
     private final AccountInfoService accountInfoService;
-    private final OrderInfoService orderInfoService;
     private final StockInfoService stockInfoService;
-    private final ModelInfoService modelInfoService;
-    private final StringRedisTemplate redisTemplate;
     private final MongoTemplate mongoTemplate;
+    private final GridFsTemplate gridFsTemplate;
 
     @Override
     public void run() {
@@ -49,6 +51,19 @@ public class RunCleanJob extends BaseJob {
         cleanPredictPrice();
         cleanHistoryPrice();
         cleanTestData();
+        cleanModelInfo();
+    }
+
+    @SneakyThrows
+    private void cleanModelInfo() {
+        File baseFile = new File("model/");
+        File[] files = baseFile.listFiles();
+        for (int i = 0; i < Objects.requireNonNull(files).length; i++) {
+            File file = files[i];
+            gridFsTemplate.store(new FileInputStream(file), file.getName());
+        }
+        log.info("共清理{}个模型文件", files.length);
+        baseFile.deleteOnExit();
     }
 
     private void cleanAccountInfo() {
@@ -102,6 +117,6 @@ public class RunCleanJob extends BaseJob {
         // 删除code或date为空的无效数据
         Query deleteQuery = new Query(Criteria.where("code").isNull().orOperator(Criteria.where("date").isNull()));
         List<StockPrices> remove = mongoTemplate.findAllAndRemove(deleteQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
-        log.info("共删除{}条无效历史数据!", remove.size());
+        log.info("共清理{}条无效历史数据!", remove.size());
     }
 }
