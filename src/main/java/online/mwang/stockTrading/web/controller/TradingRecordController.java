@@ -98,7 +98,7 @@ public class TradingRecordController {
         // 获取日收益率
         sortedSoldList.stream().findFirst().ifPresent(o -> data.setDailyIncomeRate(o.getDailyIncomeRate()));
         // 查询账户金额
-        accountInfoMapper.selectList(new QueryWrapper<AccountInfo>().lambda().orderByDesc(AccountInfo::getUpdateTime)).stream().findFirst().ifPresent(d -> data.setAccountInfo(getAccountAmount(d)));
+        accountInfoMapper.selectList(new QueryWrapper<AccountInfo>().lambda().orderByDesc(AccountInfo::getUpdateTime)).stream().findFirst().ifPresent(data::setAccountInfo);
         // 查询收益列表
         data.setIncomeList(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getSaleDateString)).map(o -> new Point(o.getSaleDateString(), o.getIncome())).collect(Collectors.toList()));
         // 查询收益率列表
@@ -115,49 +115,29 @@ public class TradingRecordController {
         data.setRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getIncomeRate).reversed()).limit(10).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getIncome(), o.getIncomeRate().toString(), o.getHoldDays().toString(), o.getDailyIncomeRate().toString(), "")).collect(Collectors.toList()));
         // 日收益率排行
         data.setDailyRateOrder(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).limit(7).map(o -> new Point(o.getCode().concat("-").concat(o.getName()), o.getDailyIncomeRate())).collect(Collectors.toList()));
-        // 持有天數分组统计列表
+        // 收益范围分组
         ArrayList<Point> holdDaysCountList = new ArrayList<>();
-        sortedSoldList.stream().collect(Collectors.groupingBy(TradingRecord::getHoldDays, Collectors.summarizingInt(o -> 1))).forEach((k, v) -> holdDaysCountList.add(new Point("天数" + k.toString(), (double) v.getSum())));
-        data.setHoldDaysList(holdDaysCountList.stream().sorted(Comparator.comparingDouble(Point::getY).reversed()).collect(Collectors.toList()));
-        // 获取预期收益率排行
-        data.setExpectList(getExpectedIncome());
+        sortedSoldList.stream().map(this::getIncomeRange).collect(Collectors.groupingBy((a) -> a, Collectors.summarizingInt(o -> 1))).forEach((k, v) -> holdDaysCountList.add(new Point(k, (double) v.getSum())));
+        data.setHoldDaysList(holdDaysCountList.stream().sorted(Comparator.comparing(Point::getX)).peek(p -> p.setX(p.getX().split(":")[1])).collect(Collectors.toList()));
+        // 获取日收益率排行
+        data.setExpectList(sortedSoldList.stream().sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).limit(10).collect(Collectors.toList()));
         return Response.success(data);
     }
 
-    private List<TradingRecord> getExpectedIncome() {
-        final LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>().eq(StockInfo::getDeleted, "1").orderByDesc(StockInfo::getScore);
-        List<StockInfo> stockInfos = stockInfoMapper.selectPage(Page.of(1, 8), queryWrapper).getRecords();
-//        return tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().peek(record -> {
-//            final StockInfo stockInfo = stockInfoMapper.selectByCode(record.getCode());
-//            if (stockInfo != null) {
-//                record.setName(record.getCode().concat("-").concat(record.getName()));
-//                record.setSalePrice(stockInfo.getPrice());
-//                final double amount = record.getBuyNumber() * record.getSalePrice();
-//                final double saleAmount = amount - dataService.getPeeAmount(amount);
-//                record.setIncome(saleAmount - record.getBuyAmount());
-//                record.setIncomeRate(record.getIncome() / record.getBuyAmount() * 100);
-////                record.setDailyIncomeRate(record.getIncomeRate() / Math.max(record.getHoldDays(), 1));
-//            }
-//        }).sorted(Comparator.comparing(TradingRecord::getDailyIncomeRate).reversed()).collect(Collectors.toList());
-        return stockInfos.stream().map(s -> {
-            final TradingRecord tradingRecord = new TradingRecord();
-            tradingRecord.setName(s.getName().concat("-").concat(s.getCode()));
-            tradingRecord.setBuyPrice(s.getPrice());
-            tradingRecord.setSalePrice(s.getPredictPrice());
-            tradingRecord.setSaleDateString(DateUtils.format2(s.getUpdateTime()));
-            tradingRecord.setIncomeRate((s.getPredictPrice() == null ? 0 :
-                    s.getPredictPrice() - s.getPrice()) / s.getPrice());
-            tradingRecord.setSold(s.getScore().toString());
-            return tradingRecord;
-        }).collect(Collectors.toList());
+    public String getIncomeRange(TradingRecord record) {
+        Double income = record.getIncome();
+        if (income > 0 && income <= 10) return "01:[0,10]";
+        if (income > 10 && income <= 20) return "02:[10,20]";
+        if (income > 20 && income <= 50) return "03:[20,50]";
+        if (income > 50 && income <= 100) return "04:[50,100]";
+//        if (income > 100 && income <= 500) return "[100,500]";
+        if (income > 100) return "05:[100,#]";
+        if (income <= 0 && income > -10) return "06:[-10,0]";
+        if (income <= -10 && income > -20) return "07:[-20,-10]";
+        if (income <= -20 && income > -50) return "08:[-50,-20]";
+        if (income <= -50 && income > -100) return "09:[-100,-50]";
+//        if (income <= -100 && income > -500) return "[-500,-100]";
+        if (income <= -100) return "10:[#,-100]";
+        return "11:[#,#]";
     }
-
-    private AccountInfo getAccountAmount(AccountInfo accountInfo) {
-        // 计算已用金额
-        double usedAmount = tradingRecordService.list(new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0")).stream().mapToDouble(TradingRecord::getBuyAmount).sum();
-        accountInfo.setUsedAmount(usedAmount);
-        accountInfo.setTotalAmount(accountInfo.getAvailableAmount() + usedAmount);
-        return accountInfo;
-    }
-
 }

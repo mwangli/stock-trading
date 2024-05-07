@@ -150,7 +150,7 @@ public class RunBuyJob extends BaseJob {
         final TradingRecord record = new TradingRecord();
         record.setCode(stockInfo.getCode());
         record.setName(stockInfo.getName());
-        record.setBuyPrice(stockInfo.getPrice());
+        record.setBuyPrice(nowPrice);
         record.setBuyNumber(buyNumber);
         record.setBuyNo(buyNo);
         record.setBuyAmount(amount + peer);
