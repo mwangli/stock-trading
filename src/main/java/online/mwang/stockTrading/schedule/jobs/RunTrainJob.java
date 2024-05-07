@@ -22,7 +22,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.Date;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -54,8 +53,8 @@ public class RunTrainJob extends BaseJob {
     void run() {
         List<StockInfo> stockInfos = stockInfoService.list();
         for (StockInfo s : stockInfos) {
-            if (!debug && isInterrupted) throw new BusinessException("模型训练任务已终止！");
-            if (!DateUtils.isWeekends(new Date()) && DateUtils.inTradingTimes1()) break;
+            if (isInterrupted) throw new BusinessException("模型训练任务已终止！");
+            if (!debug && !DateUtils.isWeekends(new Date()) && DateUtils.inTradingTimes1()) break;
             if (redisTemplate.opsForValue().get("model:code:" + s.getCode()) != null) continue;
             redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 30, TimeUnit.DAYS);
             String stockCode = s.getCode();
