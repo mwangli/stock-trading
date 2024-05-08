@@ -60,7 +60,7 @@ public class RunTrainJob extends BaseJob {
             final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
             List<StockPrices> stockHistoryPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
             if (stockHistoryPrices.size() < 100) continue;
-            log.info("股票[{}-{}],训练数据集大小为:{}", stockName, stockCode, stockHistoryPrices.size());
+            log.info("股票[{}-{}], 训练数据集大小为:{}", stockName, stockCode, stockHistoryPrices.size());
             List<StockPrices> stockTestPrices = modelService.modelTrain(stockHistoryPrices);
             if (CollectionUtils.isEmpty(stockTestPrices)) continue;
             final Query deleteQuery = new Query(Criteria.where("code").is(stockCode));
