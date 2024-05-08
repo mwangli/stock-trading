@@ -30,8 +30,13 @@ public class GridFsUtils {
     private final GridFsTemplate gridFsTemplate;
 
     @SneakyThrows
-    public void saveToMongo(ByteArrayOutputStream outputStream, String fileName) {
+    public void deleteFile(String fileName) {
         gridFsTemplate.delete(new Query(Criteria.where("filename").is(fileName)));
+    }
+
+    @SneakyThrows
+    public void saveToMongo(ByteArrayOutputStream outputStream, String fileName) {
+        deleteFile(fileName);
         gridFsTemplate.store(new ByteArrayInputStream(outputStream.toByteArray()), fileName);
     }
 
@@ -40,11 +45,6 @@ public class GridFsUtils {
     public ByteArrayInputStream readFromMongo(String fileName) {
         GridFsResource resource = gridFsTemplate.getResource(fileName);
         return !resource.exists() ? null : new ByteArrayInputStream(resource.getInputStream().readAllBytes());
-    }
-
-    @SneakyThrows
-    public void deleteFile(String fileName) {
-        gridFsTemplate.delete(new Query(Criteria.where("filename").is(fileName)));
     }
 
     @SneakyThrows
