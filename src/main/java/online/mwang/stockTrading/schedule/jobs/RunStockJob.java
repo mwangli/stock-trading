@@ -42,7 +42,7 @@ public class RunStockJob extends BaseJob {
         List<StockInfo> list = dataList.stream().peek(stockInfo -> newInfos.stream().filter(info -> info.getCode().equals(stockInfo.getCode())).findFirst().ifPresent(p -> {
             stockInfo.setPrice(p.getPrice());
             stockInfo.setIncrease(p.getIncrease());
-            if (p.getName().contains("退市")) stockInfo.setDeleted("0");
+            if (p.getName().contains("退市") || p.getName().contains("ST")) stockInfo.setDeleted("0");
             stockInfo.setUpdateTime(new Date());
         })).collect(Collectors.toList());
         stockInfoService.updateBatchById(list);
