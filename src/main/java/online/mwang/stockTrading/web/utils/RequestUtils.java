@@ -32,48 +32,22 @@ import java.util.concurrent.TimeUnit;
 public class RequestUtils {
 
     public static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
-    public static final String TOKEN_KEY = "requestToken";
-    public static final long TOKEN_MINUTES = 30;
-    private final StringRedisTemplate redisTemplate;
     public boolean logs = false;
     @Value("${PROFILE}")
     private String profile;
 
     @SneakyThrows
     public JSONObject request(String url, HashMap<String, Object> formParam) {
-        String result = "";
-        try {
-            CloseableHttpClient client = HttpClients.createDefault();
-            MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
-            formParam.forEach((k, v) -> entityBuilder.addTextBody(k, String.valueOf(v)));
-            HttpPost post = new HttpPost(url);
-            post.setEntity(entityBuilder.build());
-            CloseableHttpResponse response = client.execute(post);
-            result = EntityUtils.toString(response.getEntity());
-            boolean debug = "dev".equalsIgnoreCase(profile);
-            if (logs || debug) log.info(result);
-            JSONObject res = JSONObject.parseObject(result);
-            checkToken(res);
-            return res;
-        } catch (Exception e) {
-            log.info("请求失败，返回数据为：{}", result);
-        }
-        return null;
-    }
-
-    private void checkToken(JSONObject res) {
-        List<String> errorCodes = Arrays.asList("-204007", "-204009","-204001");
-        String errorNo = res.getString("ERRORNO");
-        if (errorCodes.contains(errorNo)) {
-            log.info("TOKEN已经失效，清除无效TOKEN...");
-            redisTemplate.opsForValue().getAndDelete(TOKEN_KEY);
-
-        } else {
-            String token = res.getString("TOKEN");
-            if (token != null) {
-                redisTemplate.opsForValue().set(TOKEN_KEY, token, TOKEN_MINUTES, TimeUnit.MINUTES);
-            }
-        }
+        CloseableHttpClient client = HttpClients.createDefault();
+        MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
+        formParam.forEach((k, v) -> entityBuilder.addTextBody(k, String.valueOf(v)));
+        HttpPost post = new HttpPost(url);
+        post.setEntity(entityBuilder.build());
+        CloseableHttpResponse response = client.execute(post);
+        String result = EntityUtils.toString(response.getEntity());
+        boolean debug = "dev".equalsIgnoreCase(profile);
+        if (logs || debug) log.info(result);
+        return JSONObject.parseObject(result);
     }
 
     @SneakyThrows
@@ -91,7 +65,8 @@ public class RequestUtils {
     public JSONArray request3(HashMap<String, Object> formParam) {
         JSONObject res = request(REQUEST_URL.concat("?action=1230"), formParam);
         final JSONObject data = res.getJSONObject("BINDATA");
-        if (data != null && data.getJSONArray("results") != null) return data.getJSONArray("results");
+        if (data != null && data.getJSONArray("results") != null)
+            return data.getJSONArray("results");
         return new JSONArray();
     }
 }
