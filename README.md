@@ -12,7 +12,7 @@ https://www.yuque.com/mwangli/ha7323/axga8dz9imansvl4
 2. 使用QuartZ定时任务调度，每日自动更新数据
 3. 使用DL4J框架实现LSTM模型指导股票买入，采用T+1短线交易策略
 4. 利用K8S+GithubAction实现DevOps
-5. 支持离线不完全分布式训练
+5. 支持分布式离线训练
 
 ### 后期优化方向
 1. 获得更多股票历史数据用于模型增量迭代训练
