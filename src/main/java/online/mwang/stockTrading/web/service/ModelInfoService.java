@@ -12,9 +12,4 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public interface ModelInfoService extends IService<ModelInfo> {
-
-    /**
-     * 更细模型评分
-     */
-    void updateModelScore(String stockCode);
 }

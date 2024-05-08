@@ -1,6 +1,5 @@
 package online.mwang.stockTrading.schedule.jobs;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IPredictService;
@@ -57,12 +56,12 @@ public class RunPredictJob extends BaseJob {
             log.info("当前股票预测价格为：{}", predictPrice);
             mongoTemplate.remove(new Query(Criteria.where("date").is(date).and("code").is(stockInfo.getCode())), VALIDATION_COLLECTION_NAME);
             mongoTemplate.save(predictPrice, VALIDATION_COLLECTION_NAME);
-            modelInfoService.updateModelScore(stockInfo.getCode());
-            updateStockScore(stockInfo);
+            ModelInfo modelInfo = modelInfos.stream().filter(m -> m.getCode().equals(stockInfo.getCode())).findFirst().orElse(new ModelInfo());
+            updateStockScore(stockInfo, modelInfo);
         }
     }
 
-    private void updateStockScore(StockInfo stockInfo) {
+    private void updateStockScore(StockInfo stockInfo, ModelInfo modelInfo) {
         // 获取预测结果中日期大于等于今天的数据(2条)
         Query query = new Query(Criteria.where("date").gte(new Date()).and("code").is(stockInfo.getCode())).with(Sort.by(Sort.Direction.DESC, "date"));
         List<StockPrices> predictPriceList = mongoTemplate.find(query, StockPrices.class, VALIDATION_COLLECTION_NAME);
@@ -71,8 +70,6 @@ public class RunPredictJob extends BaseJob {
             Double prePrice = predictPriceList.get(1).getPrice1();
             double increaseRate = prePrice == 0 ? 0 : (curPrice - prePrice) / prePrice;
             double score2 = increaseRate * 100 * 10;
-            LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().eq(ModelInfo::getCode, stockInfo.getCode());
-            ModelInfo modelInfo = modelInfoService.getOne(queryWrapper);
             double score1 = modelInfo == null ? 0 : modelInfo.getScore();
             double finalScore = score1 * 0.5 + score2 * 0.5;
             stockInfo.setScore(finalScore);

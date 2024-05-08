@@ -25,7 +25,6 @@ public class ModelInfo {
     private String trainPeriod;
     private Integer trainTimes;
     private Double testDeviation;
-    private Double validateDeviation;
     private Double score;
     private Date createTime;
     private Date updateTime;
@@ -40,8 +39,6 @@ public class ModelInfo {
                 return ModelInfo::getTrainPeriod;
             case "testDeviation":
                 return ModelInfo::getTestDeviation;
-            case "validateDeviation":
-                return ModelInfo::getValidateDeviation;
             case "score":
                 return ModelInfo::getScore;
             case "createTime":
