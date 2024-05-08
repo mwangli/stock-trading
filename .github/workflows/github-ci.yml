@@ -38,6 +38,6 @@ jobs:
           host: 124.220.36.95
           user: root
           pass: ${{ secrets.PASS }}
-          run: kubectl rollout restart deploy stock-trading
+          run: kubectl rollout restart sts stock-trading
 
 
