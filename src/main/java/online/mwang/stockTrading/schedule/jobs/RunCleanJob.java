@@ -1,28 +1,25 @@
 package online.mwang.stockTrading.schedule.jobs;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.mongodb.client.gridfs.GridFSFindIterable;
-import com.mongodb.client.gridfs.model.GridFSFile;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.po.AccountInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.AccountInfoService;
+import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.gridfs.GridFsResource;
-import org.springframework.data.mongodb.gridfs.GridFsTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.util.*;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.List;
 import java.util.stream.Collectors;
 
 /**
@@ -41,8 +38,9 @@ public class RunCleanJob extends BaseJob {
     private static final String TEST_COLLECTION_NAME = "stockTestPrice";
     private final AccountInfoService accountInfoService;
     private final StockInfoService stockInfoService;
+    private final ModelInfoService modelInfoService;
+    private final StringRedisTemplate redisTemplate;
     private final MongoTemplate mongoTemplate;
-    private final GridFsTemplate gridFsTemplate;
 
     @Override
     public void run() {
@@ -51,25 +49,6 @@ public class RunCleanJob extends BaseJob {
         cleanPredictPrice();
         cleanHistoryPrice();
         cleanTestData();
-        cleanModelInfo();
-    }
-
-    @SneakyThrows
-    private void cleanModelInfo() {
-        HashSet<String> fileNameSet = new HashSet<>();
-        int deleteCount = 0;
-        GridFSFindIterable files = gridFsTemplate.find(new Query());
-        for (GridFSFile file : files) {
-            String filename = file.getFilename();
-            if (fileNameSet.contains(filename)) {
-                gridFsTemplate.delete(new Query(Criteria.where("_id").is(file.getObjectId())));
-                log.info("删除重复文件：{}", filename);
-                deleteCount++;
-            } else {
-                fileNameSet.add(filename);
-            }
-        }
-        log.info("共清理{}个重复文件!剩余有效文件:{}个", deleteCount, fileNameSet.size());
     }
 
     private void cleanAccountInfo() {

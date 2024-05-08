@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.ModelInfoService;
@@ -99,13 +98,12 @@ public class LSTMModel {
         String stockCode = dataList.get(0).getCode();
         String stockName = dataList.get(0).getName();
         String modelFileName = "model_".concat(stockCode).concat(".zip");
-        MultiLayerNetwork model = gridFsUtils.readModelFromMongo(modelFileName);
-        MultiLayerNetwork net = model == null ? modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE) : model;
+        MultiLayerNetwork net = modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
         net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
         saveModelInfo(stockCode, stockName, "0秒", 0, "0");
         // 训练模型
         long start = System.currentTimeMillis();
-        if (!skipTrain && model == null) net.fit(trainIter, EPOCHS);
+        if (!skipTrain) net.fit(trainIter, EPOCHS);
         long end = System.currentTimeMillis();
         String timePeriod = DateUtils.timeConvertor(end - start);
         log.info("模型训练完成，共耗时:{}", timePeriod);
@@ -123,20 +121,11 @@ public class LSTMModel {
             INDArray input = testDateSet.getFeatures();
             INDArray labels = testDateSet.getLabels();
             INDArray output = net.rnnTimeStep(input);
-            try {
-                minMaxScaler.revertLabels(labels);
-                minMaxScaler.revertLabels(output);
-            } catch (IllegalStateException e) {
-                gridFsUtils.deleteFile(modelFileName);
-                gridFsUtils.deleteFile(scalerFileName);
-                log.info("归一化处理异常，清除无效文件:{},{}", modelFileName, scalerFileName);
-                break;
-            }
+            minMaxScaler.revertLabels(labels);
+            minMaxScaler.revertLabels(output);
             double predictValue = output.getDouble(EXAMPLE_LENGTH - 1);
             double actualValue = labels.getDouble(EXAMPLE_LENGTH - 1);
             String date = dateList.get(dateStartIndex++);
-            boolean debug = "dev".equalsIgnoreCase(profile);
-            if (debug) log.info("date = {}, actualValue = {}, predictValue = {}", date, actualValue, predictValue);
             testPredictData.add(new StockPrices(stockCode, stockName, date, predictValue));
         }
         return testPredictData;
@@ -173,9 +162,9 @@ public class LSTMModel {
         SequenceRecordReader recordReader = new InMemorySequenceRecordReader(buildSequenceData(historyPrices));
         DataSetIterator dataSetIterator = new SequenceRecordReaderDataSetIterator(recordReader, 1, -1, 2, true);
         // 加载模型
-        if (historyPrices.size() != EXAMPLE_LENGTH + 1) throw new BusinessException("价格数据时间序列步长错误！");
         String stockCode = historyPrices.get(0).getCode();
-        String modelFileName = "model/model_".concat(stockCode).concat(".zip");
+        String stockName = historyPrices.get(0).getName();
+        String modelFileName = "model_".concat(stockCode).concat(".zip");
         MultiLayerNetwork model = gridFsUtils.readModelFromMongo(modelFileName);
         if (model == null) return null;
         // 加载归一化器
@@ -192,6 +181,7 @@ public class LSTMModel {
         StockPrices stockPredictPrice = new StockPrices();
         stockPredictPrice.setPrice1(predictValue);
         stockPredictPrice.setCode(stockCode);
+        stockPredictPrice.setName(stockName);
         return stockPredictPrice;
     }
 }

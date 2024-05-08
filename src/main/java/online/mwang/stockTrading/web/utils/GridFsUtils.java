@@ -2,6 +2,7 @@ package online.mwang.stockTrading.web.utils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.util.ModelSerializer;
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerMinMaxScaler;
@@ -21,6 +22,7 @@ import java.io.ByteArrayOutputStream;
  * @date: 2024/5/8 10:38
  * @description: MongoUtils
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class GridFsUtils {
@@ -63,6 +65,7 @@ public class GridFsUtils {
     public MultiLayerNetwork readModelFromMongo(String fileName) {
         ByteArrayInputStream inputStream = readFromMongo(fileName);
         return inputStream == null ? null : ModelSerializer.restoreMultiLayerNetwork(inputStream);
+
     }
 
     @SneakyThrows
