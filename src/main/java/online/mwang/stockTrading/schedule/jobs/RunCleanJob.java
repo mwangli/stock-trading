@@ -1,6 +1,8 @@
 package online.mwang.stockTrading.schedule.jobs;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mongodb.client.gridfs.GridFSFindIterable;
+import com.mongodb.client.gridfs.model.GridFSFile;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -14,15 +16,13 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.gridfs.GridFsResource;
 import org.springframework.data.mongodb.gridfs.GridFsTemplate;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -56,14 +56,20 @@ public class RunCleanJob extends BaseJob {
 
     @SneakyThrows
     private void cleanModelInfo() {
-        File baseFile = new File("model/");
-        File[] files = baseFile.listFiles();
-        for (int i = 0; i < Objects.requireNonNull(files).length; i++) {
-            File file = files[i];
-            gridFsTemplate.store(new FileInputStream(file), file.getName());
+        HashSet<String> fileNameSet = new HashSet<>();
+        int deleteCount = 0;
+        GridFSFindIterable files = gridFsTemplate.find(new Query());
+        for (GridFSFile file : files) {
+            String filename = file.getFilename();
+            if (fileNameSet.contains(filename)) {
+                gridFsTemplate.delete(new Query(Criteria.where("_id").is(file.getObjectId())));
+                log.info("删除重复文件：{}", filename);
+                deleteCount++;
+            } else {
+                fileNameSet.add(filename);
+            }
         }
-        log.info("共清理{}个模型文件", files.length);
-        baseFile.deleteOnExit();
+        log.info("共清理{}个重复文件!剩余有效文件:{}个", deleteCount, fileNameSet.size());
     }
 
     private void cleanAccountInfo() {
@@ -87,7 +93,7 @@ public class RunCleanJob extends BaseJob {
         final Query query = new Query(new Criteria().orOperator(
                 Criteria.where("date").isNull(),
                 Criteria.where("code").isNull(),
-                Criteria.where("increaseRate").isNull()));
+                Criteria.where("price1").isNull()));
         final List<StockPrices> remove = mongoTemplate.findAllAndRemove(query, StockPrices.class, TEST_COLLECTION_NAME);
         log.info("共清理{}条测试集无效数据。", remove.size());
     }

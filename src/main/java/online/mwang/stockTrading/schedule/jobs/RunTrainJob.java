@@ -56,7 +56,7 @@ public class RunTrainJob extends BaseJob {
             if (isInterrupted) throw new BusinessException("模型训练任务已终止！");
             if (!debug && !DateUtils.isWeekends(new Date()) && DateUtils.inTradingTimes1()) break;
             if (redisTemplate.opsForValue().get("model:code:" + s.getCode()) != null) continue;
-            redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 30, TimeUnit.DAYS);
+            redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 10, TimeUnit.MINUTES);
             String stockCode = s.getCode();
             String stockName = s.getName();
             final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
@@ -67,6 +67,7 @@ public class RunTrainJob extends BaseJob {
             final Query deleteQuery = new Query(Criteria.where("code").is(stockCode));
             List<Object> removed = mongoTemplate.findAllAndRemove(deleteQuery, TEST_COLLECTION_NAME);
             mongoTemplate.insert(stockTestPrices, TEST_COLLECTION_NAME);
+            redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 30, TimeUnit.DAYS);
             log.info("股票[{}-{}],清空{}条，写入{}条测试集数据", stockName, stockCode, removed.size(), stockTestPrices.size());
             // 更新模型评分
             updateModelScore(stockTestPrices);
