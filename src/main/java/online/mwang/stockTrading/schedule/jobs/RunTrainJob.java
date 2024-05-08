@@ -57,8 +57,10 @@ public class RunTrainJob extends BaseJob {
             if (!debug && !DateUtils.isWeekends(new Date()) && DateUtils.inTradingTimes1()) break;
             if (redisTemplate.opsForValue().get("model:code:" + s.getCode()) != null) continue;
             redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 10, TimeUnit.MINUTES);
-            String stockCode = s.getCode();
-            String stockName = s.getName();
+//            String stockCode = s.getCode();
+            String stockCode = "000032";
+            String stockName = "深桑达Ａ";
+//            String stockName = s.getName();
             final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
             List<StockPrices> stockHistoryPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
             if (stockHistoryPrices.size() < 100) continue;
