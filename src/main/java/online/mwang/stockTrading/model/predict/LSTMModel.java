@@ -119,12 +119,9 @@ public class LSTMModel {
         while (testIter.hasNext()) {
             DataSet testDateSet = testIter.next();
             INDArray input = testDateSet.getFeatures();
-            INDArray labels = testDateSet.getLabels();
             INDArray output = net.rnnTimeStep(input);
-            minMaxScaler.revertLabels(labels);
             minMaxScaler.revertLabels(output);
             double predictValue = output.getDouble(EXAMPLE_LENGTH - 1);
-            double actualValue = labels.getDouble(EXAMPLE_LENGTH - 1);
             String date = dateList.get(dateStartIndex++);
             testPredictData.add(new StockPrices(stockCode, stockName, date, predictValue));
         }
@@ -143,7 +140,6 @@ public class LSTMModel {
             modelInfo.setTrainTimes(0);
             modelInfo.setTrainPeriod("0秒");
             modelInfo.setTestDeviation(0.0);
-            modelInfo.setValidateDeviation(0.0);
             modelInfo.setCreateTime(new Date());
             modelInfo.setUpdateTime(new Date());
             modelInfoService.save(modelInfo);

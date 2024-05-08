@@ -54,7 +54,7 @@ public class RunTrainJob extends BaseJob {
         for (StockInfo s : stockInfos) {
             if (isInterrupted) throw new BusinessException("模型训练任务已终止！");
             if (redisTemplate.opsForValue().get("model:code:" + s.getCode()) != null) continue;
-            redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 10, TimeUnit.MINUTES);
+            redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 5, TimeUnit.MINUTES);
             String stockCode = s.getCode();
             String stockName = s.getName();
             final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
