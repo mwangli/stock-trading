@@ -1,5 +1,6 @@
 package online.mwang.stockTrading.schedule.jobs;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IPredictService;
@@ -56,12 +57,12 @@ public class RunPredictJob extends BaseJob {
             log.info("当前股票预测价格为：{}", predictPrice);
             mongoTemplate.remove(new Query(Criteria.where("date").is(date).and("code").is(stockInfo.getCode())), VALIDATION_COLLECTION_NAME);
             mongoTemplate.save(predictPrice, VALIDATION_COLLECTION_NAME);
-            ModelInfo modelInfo = modelInfos.stream().filter(m -> m.getCode().equals(stockInfo.getCode())).findFirst().orElse(new ModelInfo());
-            updateStockScore(stockInfo, modelInfo);
+            modelInfoService.updateModelScore(stockInfo.getCode());
+            updateStockScore(stockInfo);
         }
     }
 
-    private void updateStockScore(StockInfo stockInfo, ModelInfo modelInfo) {
+    private void updateStockScore(StockInfo stockInfo) {
         // 获取预测结果中日期大于等于今天的数据(2条)
         Query query = new Query(Criteria.where("date").gte(new Date()).and("code").is(stockInfo.getCode())).with(Sort.by(Sort.Direction.DESC, "date"));
         List<StockPrices> predictPriceList = mongoTemplate.find(query, StockPrices.class, VALIDATION_COLLECTION_NAME);
@@ -70,14 +71,16 @@ public class RunPredictJob extends BaseJob {
             Double prePrice = predictPriceList.get(1).getPrice1();
             double increaseRate = prePrice == 0 ? 0 : (curPrice - prePrice) / prePrice;
             double score2 = increaseRate * 100 * 10;
-            double score1 = modelInfo.getScore() == null ? 0 : modelInfo.getScore();
+            LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().eq(ModelInfo::getCode, stockInfo.getCode());
+            ModelInfo modelInfo = modelInfoService.getOne(queryWrapper);
+            double score1 = modelInfo == null ? 0 : modelInfo.getScore();
             double finalScore = calculateScore(score1, score2, 0.5, 0.5);
             stockInfo.setScore(finalScore);
             stockInfoService.updateById(stockInfo);
         }
     }
 
-    // 使用模型准确率评分和增长率评分的加权和作为最终评分
+    // 使用模型准确率评分和当前股票增长率评分的加权和作为最终评分
     private double calculateScore(double score1, double score2, double w1, double w2) {
         return score1 * w1 + score2 * w2;
     }
