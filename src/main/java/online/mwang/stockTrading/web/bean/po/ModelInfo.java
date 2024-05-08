@@ -17,14 +17,11 @@ import java.util.Date;
  */
 @Data
 @TableName(autoResultMap = true)
-public class ModelInfo implements GridFsObject {
+public class ModelInfo {
     @TableId(type = IdType.AUTO)
     private Long id;
     private String code;
     private String name;
-    private String paramsSize;
-    private String fileSize;
-    private String filePath;
     private String trainPeriod;
     private Integer trainTimes;
     private Double testDeviation;
@@ -39,10 +36,6 @@ public class ModelInfo implements GridFsObject {
         switch (key) {
             case "name":
                 return ModelInfo::getName;
-            case "paramsSize":
-                return ModelInfo::getParamsSize;
-            case "fileSize":
-                return ModelInfo::getFileSize;
             case "trainPeriod":
                 return ModelInfo::getTrainPeriod;
             case "testDeviation":
@@ -58,25 +51,5 @@ public class ModelInfo implements GridFsObject {
             default:
                 return ModelInfo::getStatus;
         }
-    }
-
-    @Override
-    public Object getFileId() {
-        return null;
-    }
-
-    @Override
-    public String getFilename() {
-        return null;
-    }
-
-    @Override
-    public Object getContent() {
-        return null;
-    }
-
-    @Override
-    public Options getOptions() {
-        return null;
     }
 }
