@@ -1,5 +1,6 @@
 package online.mwang.stockTrading.schedule.jobs;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -31,8 +32,16 @@ public class RunOrderJob extends BaseJob {
         // 同步今日成交订单数据
         List<OrderInfo> todayOrders = dataService.getTodayOrder();
         todayOrders.forEach(this::fixProps);
-        orderInfoService.saveBatch(todayOrders);
-        log.info("共写入{}条订单交易记录", todayOrders.size());
+        List<OrderInfo> orderInfos = orderInfoService.list();
+        orderInfos.forEach(orderInfo -> {
+            OrderInfo find = orderInfoService.getOne(new LambdaQueryWrapper<OrderInfo>().eq(OrderInfo::getAnswerNo, orderInfo.getAnswerNo()));
+            if (find != null) {
+                log.info("当前订单{}已经存在，无需写入!", orderInfo);
+            } else {
+                orderInfoService.save(orderInfo);
+                log.info("写入{}条交易订单", orderInfo);
+            }
+        });
     }
 
     private void fixProps(OrderInfo orderInfo) {
