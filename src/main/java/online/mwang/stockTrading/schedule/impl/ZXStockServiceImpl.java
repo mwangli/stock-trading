@@ -7,9 +7,9 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.IStockService;
 import online.mwang.stockTrading.web.bean.dto.DailyItem;
+import online.mwang.stockTrading.web.bean.dto.OrderStatus;
 import online.mwang.stockTrading.web.bean.po.AccountInfo;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
-import online.mwang.stockTrading.web.bean.dto.OrderStatus;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.ModelInfoMapper;
@@ -25,6 +25,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @version 1.0.0
@@ -68,10 +69,10 @@ public class ZXStockServiceImpl implements IStockService {
         return redisTemplate.opsForValue().get(TOKEN);
     }
 
-//    private void setToken(String token) {
-//        if (token == null) return;
-//        redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
-//    }
+    private void setToken(String token) {
+        if (token == null) return;
+        redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+    }
 
     @SneakyThrows
     private List<String> getCheckCode() {
@@ -132,6 +133,7 @@ public class ZXStockServiceImpl implements IStockService {
         final JSONObject result = requestUtils.request(buildParams(paramMap));
         final String errorNo = result.getString("ERRORNO");
         if ("331100".equals(errorNo)) {
+            setToken(result.getString("TOKEN"));
             return true;
         }
         if ("-330203".equals(errorNo)) {
@@ -142,17 +144,17 @@ public class ZXStockServiceImpl implements IStockService {
         return null;
     }
 
-    private List<OrderStatus> arrayToList(JSONArray result, boolean isToday) {
+    private List<OrderStatus> arrayToList(JSONArray result) {
         // 委托日期|时间|证券代码|证券|委托类别|买卖方向|状态|委托|数量|委托编号|均价|成交|股东代码|交易类别|
         ArrayList<OrderStatus> statusList = new ArrayList<>();
         if (result != null && result.size() > 1) {
             for (int i = 1; i < result.size(); i++) {
                 String string = result.getString(i);
                 String[] split = string.split("\\|");
-                String code = isToday ? split[0] : split[2];
-                String name = isToday ? split[1] : split[3];
-                String status = isToday ? split[2] : split[6];
-                String answerNo = isToday ? split[8] : split[9];
+                String code = split[0];
+                String name = split[1];
+                String status = split[2];
+                String answerNo = split[8];
                 OrderStatus orderStatus = new OrderStatus(answerNo, code, name, status);
                 statusList.add(orderStatus);
             }
@@ -230,7 +232,7 @@ public class ZXStockServiceImpl implements IStockService {
         paramMap.put("ReqlinkType", 1);
         paramMap.put("reqno", timeMillis);
         JSONArray result = requestUtils.request2(buildParams(paramMap));
-        return arrayToList(result, true);
+        return arrayToList(result);
     }
 
     @Override
@@ -260,7 +262,26 @@ public class ZXStockServiceImpl implements IStockService {
         paramMap.put("Volume", number);
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
-        return requestUtils.request(buildParams(paramMap));
+        JSONObject res = requestUtils.request(buildParams(paramMap));
+        if (!checkToken(res)) {
+            paramMap.put("token", getToken());
+            return requestUtils.request(buildParams(paramMap));
+        }
+        return res;
+    }
+
+    private boolean checkToken(JSONObject res) {
+        List<String> errorCodes = Arrays.asList("-204007", "-204009", "-204001");
+        String errorNo = res.getString("ERRORNO");
+        if (errorCodes.contains(errorNo)) {
+            log.info("TOKEN已经失效，正在重新登陆...");
+            doLogin();
+            return false;
+        } else {
+            String token = res.getString("TOKEN");
+            setToken(token);
+            return true;
+        }
     }
 
     @Override
