@@ -74,15 +74,10 @@ public class RunPredictJob extends BaseJob {
             LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().eq(ModelInfo::getCode, stockInfo.getCode());
             ModelInfo modelInfo = modelInfoService.getOne(queryWrapper);
             double score1 = modelInfo == null ? 0 : modelInfo.getScore();
-            double finalScore = calculateScore(score1, score2, 0.5, 0.5);
+            double finalScore = score1 * 0.5 + score2 * 0.5;
             stockInfo.setScore(finalScore);
             stockInfoService.updateById(stockInfo);
         }
-    }
-
-    // 使用模型准确率评分和当前股票增长率评分的加权和作为最终评分
-    private double calculateScore(double score1, double score2, double w1, double w2) {
-        return score1 * w1 + score2 * w2;
     }
 }
 
