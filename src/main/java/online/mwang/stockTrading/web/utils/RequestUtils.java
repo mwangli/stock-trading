@@ -32,9 +32,12 @@ import java.util.concurrent.TimeUnit;
 public class RequestUtils {
 
     public static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
+    public static final String TOKEN = "requestToken";
+    public final StringRedisTemplate redisTemplate;
     public boolean logs = false;
     @Value("${PROFILE}")
     private String profile;
+
 
     @SneakyThrows
     public JSONObject request(String url, HashMap<String, Object> formParam) {
@@ -47,7 +50,23 @@ public class RequestUtils {
         String result = EntityUtils.toString(response.getEntity());
         boolean debug = "dev".equalsIgnoreCase(profile);
         if (logs || debug) log.info(result);
-        return JSONObject.parseObject(result);
+        JSONObject res = JSONObject.parseObject(result);
+        if (checkToken(res)) return res;
+        return new JSONObject();
+    }
+
+    private boolean checkToken(JSONObject res) {
+        List<String> errorCodes = Arrays.asList("-204007", "-204009", "-204001");
+        String errorNo = res.getString("ERRORNO");
+        if (errorCodes.contains(errorNo)) {
+            log.info("TOKEN已经失效,请重试!");
+            redisTemplate.opsForValue().getAndDelete(TOKEN);
+            return false;
+        } else {
+            String token = res.getString("TOKEN");
+            if (token != null) redisTemplate.opsForValue().set(TOKEN, token, 30, TimeUnit.MINUTES);
+            return true;
+        }
     }
 
     @SneakyThrows

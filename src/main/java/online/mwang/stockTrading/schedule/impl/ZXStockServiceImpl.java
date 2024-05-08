@@ -133,7 +133,7 @@ public class ZXStockServiceImpl implements IStockService {
         final JSONObject result = requestUtils.request(buildParams(paramMap));
         final String errorNo = result.getString("ERRORNO");
         if ("331100".equals(errorNo)) {
-            setToken(result.getString("TOKEN"));
+//            setToken(result.getString("TOKEN"));
             return true;
         }
         if ("-330203".equals(errorNo)) {
@@ -217,6 +217,8 @@ public class ZXStockServiceImpl implements IStockService {
         accountInfo.setAvailableAmount(availableAmount);
         accountInfo.setUsedAmount(usedAmount);
         accountInfo.setTotalAmount(totalAmount);
+        accountInfo.setCreateTime(new Date());
+        accountInfo.setUpdateTime(new Date());
         return accountInfo;
     }
 
@@ -262,27 +264,10 @@ public class ZXStockServiceImpl implements IStockService {
         paramMap.put("Volume", number);
         paramMap.put("token", token);
         paramMap.put("reqno", timeMillis);
-        JSONObject res = requestUtils.request(buildParams(paramMap));
-        if (!checkToken(res)) {
-            paramMap.put("token", getToken());
-            return requestUtils.request(buildParams(paramMap));
-        }
-        return res;
+        return requestUtils.request(buildParams(paramMap));
     }
 
-    private boolean checkToken(JSONObject res) {
-        List<String> errorCodes = Arrays.asList("-204007", "-204009", "-204001");
-        String errorNo = res.getString("ERRORNO");
-        if (errorCodes.contains(errorNo)) {
-            log.info("TOKEN已经失效，正在重新登陆...");
-            doLogin();
-            return false;
-        } else {
-            String token = res.getString("TOKEN");
-            setToken(token);
-            return true;
-        }
-    }
+
 
     @Override
     public boolean waitSuccess(String answerNo) {
