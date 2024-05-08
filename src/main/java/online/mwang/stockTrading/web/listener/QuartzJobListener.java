@@ -45,12 +45,6 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
         // 清除模型训练状态
         modelInfoMapper.resetStatus();
         jobMapper.resetRunningStatus();
-        List<StockInfo> stockInfos = stockInfoService.list();
-        List<ModelInfo> modelInfos = modelInfoService.list();
-        Set<String> stockCodes = stockInfos.stream().map(StockInfo::getCode).collect(Collectors.toSet());
-        Set<String> modelCodes = modelInfos.stream().map(ModelInfo::getCode).collect(Collectors.toSet());
-        stockCodes.removeAll(modelCodes);
-        log.info("获取到{}条待训练股票:", stockCodes.size());
         final LambdaQueryWrapper<QuartzJob> queryWrapper = new LambdaQueryWrapper<QuartzJob>().eq(QuartzJob::getDeleted, "1");
         List<QuartzJob> jobs = jobMapper.selectList(queryWrapper);
         for (QuartzJob job : jobs) {
@@ -61,12 +55,11 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
                 if ("0".equals(job.getStatus())) {
                     scheduler.pauseJob(JobKey.jobKey(job.getName()));
                 }
-                if ( stockCodes.size() > 0 && job.getName().contains("模型训练")) {
+                if (job.getName().contains("模型训练")) {
                     JobKey jobKey = JobKey.jobKey(job.getName());
                     scheduler.triggerJob(jobKey);
-                    log.info("生产环境自动触发:{}", job.getName());
+                    log.info("自动触发:{}", job.getName());
                 }
-                // 自动启用模型训练任务
             } catch (Exception e) {
                 log.info("定时任务{},加载异常:{}", job.getName(), e.getMessage());
             }

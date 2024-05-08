@@ -89,7 +89,7 @@ public class LSTMModel {
         return data;
     }
 
-    public List<StockPrices> train2(List<StockPrices> dataList) throws IOException {
+    public List<StockPrices> train2(List<StockPrices> dataList) {
         // 切分数据
         long splitIndex = Math.round(dataList.size() * SPLIT_RATIO);
         List<List<List<Writable>>> allData = buildSequenceData(dataList);

@@ -1,5 +1,6 @@
 package online.mwang.stockTrading.web.utils;
 
+import com.mongodb.client.gridfs.model.GridFSFile;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.datavec.api.transform.transform.doubletransform.MinMaxNormalizer;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.util.Objects;
 
 /**
  * @version 1.0.0
@@ -37,22 +39,10 @@ public class GridFsUtils {
     }
 
     @SneakyThrows
-    public InputStream readFromMongo(String fileName) {
-        GridFsResource resource = gridFsTemplate.getResource(fileName);
-        return resource.getInputStream();
-    }
-
-    @SneakyThrows
     public void saveModelToMongo(MultiLayerNetwork model, String fileName) {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         ModelSerializer.writeModel(model, outputStream, true);
         saveToMongo(outputStream, fileName);
-    }
-
-    @SneakyThrows
-    public MultiLayerNetwork readModelFromMongo(String fileName) {
-        InputStream inputStream = readFromMongo(fileName);
-        return ModelSerializer.restoreMultiLayerNetwork(inputStream);
     }
 
     @SneakyThrows
@@ -63,8 +53,20 @@ public class GridFsUtils {
     }
 
     @SneakyThrows
+    public InputStream readFromMongo(String fileName) {
+        GridFSFile file = gridFsTemplate.findOne(new Query(Criteria.where("fileName").is(fileName)));
+        return file == null ? null : gridFsTemplate.getResource(file).getInputStream();
+    }
+
+    @SneakyThrows
+    public MultiLayerNetwork readModelFromMongo(String fileName) {
+        InputStream inputStream = readFromMongo(fileName);
+        return inputStream == null ? null : ModelSerializer.restoreMultiLayerNetwork(inputStream);
+    }
+
+    @SneakyThrows
     public NormalizerMinMaxScaler readScalerFromMongo(String fileName) {
         InputStream inputStream = readFromMongo(fileName);
-        return NormalizerSerializer.getDefault().restore(inputStream);
+        return inputStream == null ? null : NormalizerSerializer.getDefault().restore(inputStream);
     }
 }
