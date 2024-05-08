@@ -33,6 +33,18 @@ public class GridFsUtils {
         gridFsTemplate.store(new ByteArrayInputStream(outputStream.toByteArray()), fileName);
     }
 
+
+    @SneakyThrows
+    public ByteArrayInputStream readFromMongo(String fileName) {
+        GridFsResource resource = gridFsTemplate.getResource(fileName);
+        return !resource.exists() ? null : new ByteArrayInputStream(resource.getInputStream().readAllBytes());
+    }
+
+    @SneakyThrows
+    public void deleteFile(String fileName) {
+        gridFsTemplate.delete(new Query(Criteria.where("filename").is(fileName)));
+    }
+
     @SneakyThrows
     public void saveModelToMongo(MultiLayerNetwork model, String fileName) {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
@@ -45,12 +57,6 @@ public class GridFsUtils {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         NormalizerSerializer.getDefault().write(minMaxScaler, outputStream);
         saveToMongo(outputStream, fileName);
-    }
-
-    @SneakyThrows
-    public ByteArrayInputStream readFromMongo(String fileName) {
-        GridFsResource resource = gridFsTemplate.getResource(fileName);
-        return !resource.exists() ? null : new ByteArrayInputStream(resource.getInputStream().readAllBytes());
     }
 
     @SneakyThrows

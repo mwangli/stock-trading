@@ -15,30 +15,21 @@ import org.datavec.api.records.reader.impl.inmemory.InMemorySequenceRecordReader
 import org.datavec.api.writable.DoubleWritable;
 import org.datavec.api.writable.Writable;
 import org.deeplearning4j.datasets.datavec.SequenceRecordReaderDataSetIterator;
-import org.deeplearning4j.nn.api.Model;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
-import org.deeplearning4j.util.ModelSerializer;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.iterator.DataSetIterator;
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerMinMaxScaler;
-import org.nd4j.linalg.dataset.api.preprocessor.serializer.NormalizerSerializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.gridfs.GridFsResource;
-import org.springframework.data.mongodb.gridfs.GridFsTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.io.*;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * @author 13255
@@ -114,7 +105,7 @@ public class LSTMModel {
         saveModelInfo(stockCode, stockName, "0秒", 0, "0");
         // 训练模型
         long start = System.currentTimeMillis();
-        if (!skipTrain) net.fit(trainIter, EPOCHS);
+        if (!skipTrain && model == null) net.fit(trainIter, EPOCHS);
         long end = System.currentTimeMillis();
         String timePeriod = DateUtils.timeConvertor(end - start);
         log.info("模型训练完成，共耗时:{}", timePeriod);
@@ -132,8 +123,15 @@ public class LSTMModel {
             INDArray input = testDateSet.getFeatures();
             INDArray labels = testDateSet.getLabels();
             INDArray output = net.rnnTimeStep(input);
-            minMaxScaler.revertLabels(labels);
-            minMaxScaler.revertLabels(output);
+            try {
+                minMaxScaler.revertLabels(labels);
+                minMaxScaler.revertLabels(output);
+            } catch (IllegalStateException e) {
+                gridFsUtils.deleteFile(modelFileName);
+                gridFsUtils.deleteFile(scalerFileName);
+                log.info("归一化处理异常，清除无效文件:{},{}", modelFileName, scalerFileName);
+                break;
+            }
             double predictValue = output.getDouble(EXAMPLE_LENGTH - 1);
             double actualValue = labels.getDouble(EXAMPLE_LENGTH - 1);
             String date = dateList.get(dateStartIndex++);

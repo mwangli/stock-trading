@@ -5,7 +5,6 @@ import com.alibaba.fastjson.JSONObject;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.schedule.IStockService;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -63,7 +62,7 @@ public class RequestUtils {
     }
 
     private void checkToken(JSONObject res) {
-        List<String> errorCodes = Arrays.asList("-204007", "-204009");
+        List<String> errorCodes = Arrays.asList("-204007", "-204009","-204001");
         String errorNo = res.getString("ERRORNO");
         if (errorCodes.contains(errorNo)) {
             log.info("TOKEN已经失效，清除无效TOKEN...");
