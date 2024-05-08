@@ -46,7 +46,7 @@ public class ModelInfoServiceImpl extends ServiceImpl<ModelInfoMapper, ModelInfo
     private double calculateDeviation(String stockCode, String collectionName) {
         // 获取测试集数据
         List<StockPrices> pricesList = mongoTemplate.find(new Query(Criteria.where("code").is(stockCode)), StockPrices.class, collectionName);
-        if (CollectionUtils.isEmpty(pricesList)) return 0;
+        if (CollectionUtils.isEmpty(pricesList)) return 1;
         String maxDate = pricesList.stream().map(StockPrices::getDate).max(String::compareTo).orElse("");
         String minDate = pricesList.stream().map(StockPrices::getDate).min(String::compareTo).orElse("");
         Query historyQuery = new Query(Criteria.where("code").is(stockCode).and("date").lte(maxDate).gte(minDate));
