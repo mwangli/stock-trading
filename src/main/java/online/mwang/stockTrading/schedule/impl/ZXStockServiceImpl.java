@@ -63,13 +63,17 @@ public class ZXStockServiceImpl implements IStockService {
         return paramMap;
     }
 
-    private String getToken() {
+    public void clearToken() {
+        redisTemplate.opsForValue().getAndDelete(TOKEN);
+    }
+
+    public String getToken() {
         final String token = redisTemplate.opsForValue().get(TOKEN);
         if (token == null) tryLogin();
         return redisTemplate.opsForValue().get(TOKEN);
     }
 
-    private void setToken(String token) {
+    public void setToken(String token) {
         if (token == null) return;
         redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
     }
@@ -266,7 +270,6 @@ public class ZXStockServiceImpl implements IStockService {
         paramMap.put("reqno", timeMillis);
         return requestUtils.request(buildParams(paramMap));
     }
-
 
 
     @Override
