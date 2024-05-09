@@ -9,10 +9,8 @@ import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
-import online.mwang.stockTrading.web.mapper.StockInfoMapper;
 import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
-import online.mwang.stockTrading.web.service.impl.ModelInfoServiceImpl;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -22,6 +20,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -50,11 +49,23 @@ public class RunTrainJob extends BaseJob {
     @SneakyThrows
     @Override
     void run() {
+        // 启动多线程同时训练充分利用CPU资源
+        int cores = Runtime.getRuntime().availableProcessors();
+        int threads = cores >> 2;
+        log.info("启动模型训练线程数量为：{}", threads);
+        CountDownLatch countDownLatch = new CountDownLatch(threads);
+        for (int i = 0; i < threads; i++) new Thread(() -> train(countDownLatch)).start();
+        countDownLatch.await();
+    }
+
+
+    @SneakyThrows
+    private void train(CountDownLatch countDownLatch) {
         List<StockInfo> stockInfos = stockInfoService.list();
         for (StockInfo s : stockInfos) {
             if (isInterrupted) throw new BusinessException("模型训练任务已终止！");
-            if (redisTemplate.opsForValue().get("model:code:" + s.getCode()) != null) continue;
-            redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 5, TimeUnit.MINUTES);
+            Boolean check = redisTemplate.opsForValue().setIfAbsent("model:code:" + s.getCode(), s.getCode(), 5, TimeUnit.MINUTES);
+            if (check != null && !check) continue;
             String stockCode = s.getCode();
             String stockName = s.getName();
             final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
@@ -69,9 +80,11 @@ public class RunTrainJob extends BaseJob {
             redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 30, TimeUnit.DAYS);
             log.info("股票[{}-{}],清空{}条，写入{}条测试集数据", stockName, stockCode, removed.size(), stockTestPrices.size());
             // 更新模型评分
-           updateModelScore(stockCode);
+            updateModelScore(stockCode);
         }
+        countDownLatch.countDown();
     }
+
     public void updateModelScore(String stockCode) {
         // 计算测试误差
         double testDeviation = calculateDeviation(stockCode);
