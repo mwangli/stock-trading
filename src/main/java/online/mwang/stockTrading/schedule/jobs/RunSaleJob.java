@@ -74,7 +74,7 @@ public class RunSaleJob extends BaseJob {
         double priceTotal = 0.0;
         while (countDownLatch.getCount() > 0) {
             if (isInterrupted) throw new BusinessException("股票卖出任务已经终止！");
-            if (!debug) sleepUtils.second(WAITING_SECONDS);
+            sleepUtils.second(WAITING_SECONDS);
             double nowPrice = dataService.getNowPrice(record.getCode());
             priceCount++;
             priceTotal += nowPrice;
