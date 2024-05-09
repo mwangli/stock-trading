@@ -276,7 +276,7 @@ public class ZXStockServiceImpl implements IStockService {
     public boolean waitSuccess(String answerNo) {
         int times = 0;
         while (times++ < 10) {
-            sleepUtils.second(20);
+            sleepUtils.second(30);
             final String status = queryOrderStatus(answerNo);
             if (status == null) {
                 log.info("当前合同编号:{},订单状态查询失败。", answerNo);
