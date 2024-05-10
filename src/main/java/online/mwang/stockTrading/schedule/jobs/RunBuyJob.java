@@ -66,7 +66,6 @@ public class RunBuyJob extends BaseJob {
     @SneakyThrows
     @Override
     public void run() {
-//        if (!DateUtils.inTradingTimes2()) throw new BusinessException("不在交易时间段内，无法执行买入任务!");
         // 获取最新的账户资金信息
         AccountInfo accountInfo = dataService.getAccountInfo();
         accountInfoMapper.insert(accountInfo);
