@@ -104,25 +104,32 @@ public class RunBuyJob extends BaseJob {
         log.info("开始进行[{}-{}]股票买入!", stockInfo.getName(), stockInfo.getCode());
         int priceCount = 0;
         double priceTotal = 0.0;
-        while (countDownLatch.getCount() > 0) {
+        boolean finished = false;
+        while (countDownLatch.getCount() > 0 && !finished) {
             if (isInterrupted) throw new BusinessException("股票买入任务已经终止！");
-            sleepUtils.second(WAITING_SECONDS);
-            double nowPrice = dataService.getNowPrice(stockInfo.getCode());
-            priceCount++;
-            priceTotal += nowPrice;
-            double priceAvg = priceTotal / priceCount;
-            log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", stockInfo.getName(), stockInfo.getCode(), String.format("%.2f", nowPrice), String.format("%.4f", priceAvg), priceCount);
-            if (priceCount > WAITING_COUNT_SKIP && nowPrice < priceAvg - priceAvg * BUY_PERCENT || DateUtils.isDeadLine2()) {
-                if (DateUtils.isDeadLine2()) log.info("交易时间段即将结束！");
-                log.info("当前股票[{}-{}],开始进行买入!", stockInfo.getName(), stockInfo.getCode());
-                double buyNumber = (int) (availableAmount / nowPrice / 100) * 100;
-                JSONObject result = dataService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
-                String buyNo = result.getString("ANSWERNO");
-                if (buyNo != null && dataService.waitSuccess(buyNo)) {
-                    saveData(stockInfo, buyNo, nowPrice, buyNumber);
-                    countDownLatch.countDown();
-                    log.info("成功买入股票[{}-{}], 买入价格:{},买入数量:{}", stockInfo.getCode(), stockInfo.getName(), nowPrice, buyNumber);
+            try {
+                sleepUtils.second(WAITING_SECONDS);
+                double nowPrice = dataService.getNowPrice(stockInfo.getCode());
+                priceCount++;
+                priceTotal += nowPrice;
+                double priceAvg = priceTotal / priceCount;
+                log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", stockInfo.getName(), stockInfo.getCode(), String.format("%.2f", nowPrice), String.format("%.4f", priceAvg), priceCount);
+                if (priceCount > WAITING_COUNT_SKIP && nowPrice < priceAvg - priceAvg * BUY_PERCENT || DateUtils.isDeadLine2()) {
+                    if (DateUtils.isDeadLine2()) log.info("交易时间段即将结束！");
+                    log.info("当前股票[{}-{}],开始进行买入!", stockInfo.getName(), stockInfo.getCode());
+                    double buyNumber = (int) (availableAmount / nowPrice / 100) * 100;
+                    JSONObject result = dataService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
+                    String buyNo = result.getString("ANSWERNO");
+                    if (buyNo != null && dataService.waitSuccess(buyNo)) {
+                        saveData(stockInfo, buyNo, nowPrice, buyNumber);
+                        countDownLatch.countDown();
+                        finished = true;
+                        log.info("成功买入股票[{}-{}], 买入价格:{},买入数量:{}", stockInfo.getCode(), stockInfo.getName(), nowPrice, buyNumber);
+                    }
                 }
+            } catch (Exception e) {
+                e.printStackTrace();
+                log.info("当前股票[{}-{}],购买任务异常!", stockInfo.getCode(), stockInfo.getName());
             }
         }
     }
