@@ -9,7 +9,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.Date;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -31,18 +30,18 @@ public class RunStockJob extends BaseJob {
         // 同步股票数据，处理新股票和退市股票，取两个集合的差集
         List<StockInfo> newInfos = dataService.getDataList();
         List<StockInfo> dataList = stockInfoService.list();
-        final Set<String> newCodeSet = newInfos.stream().map(StockInfo::getCode).collect(Collectors.toSet());
-        final Set<String> oldCodeSet = dataList.stream().map(StockInfo::getCode).collect(Collectors.toSet());
-        newCodeSet.removeAll(oldCodeSet);
-        final List<StockInfo> insertList = newInfos.stream().filter(s -> newCodeSet.contains(s.getCode())).collect(Collectors.toList());
+        List<StockInfo> insertList = newInfos.stream().filter(s -> dataList.stream().noneMatch(o -> o.getCode().equals(s.getCode()))).collect(Collectors.toList());
         log.info("新增股票数量:{}", insertList.size());
         insertList.forEach(this::fixProps);
         stockInfoService.saveBatch(insertList);
+        // 清除退市股票
+        List<StockInfo> deleteList = dataList.stream().filter(s -> newInfos.stream().noneMatch(o -> o.getCode().equals(s.getCode()))).collect(Collectors.toList());
+        log.info("清除退市股票:{}", deleteList.size());
+        stockInfoService.removeBatchByIds(deleteList);
         // 同步每只股票最新的当前价格
         List<StockInfo> list = dataList.stream().peek(stockInfo -> newInfos.stream().filter(info -> info.getCode().equals(stockInfo.getCode())).findFirst().ifPresent(p -> {
             stockInfo.setPrice(p.getPrice());
             stockInfo.setIncrease(p.getIncrease());
-            if (p.getName().contains("退市") || p.getName().contains("ST")) stockInfo.setDeleted("0");
             stockInfo.setUpdateTime(new Date());
         })).collect(Collectors.toList());
         stockInfoService.updateBatchById(list);

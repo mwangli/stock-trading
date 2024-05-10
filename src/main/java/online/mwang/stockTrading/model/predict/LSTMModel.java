@@ -26,6 +26,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -82,6 +83,7 @@ public class LSTMModel {
     public List<StockPrices> train2(List<StockPrices> dataList) {
         // 切分数据
         List<List<List<Writable>>> allData = buildSequenceData(dataList);
+        if (allData.size() <= EXAMPLE_LENGTH) return Collections.emptyList();
         long splitIndex = Math.round(allData.size() * SPLIT_RATIO);
         List<List<List<Writable>>> trainData = allData.stream().limit(splitIndex).collect(Collectors.toList());
         List<List<List<Writable>>> testData = allData.stream().skip(splitIndex).collect(Collectors.toList());
