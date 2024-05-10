@@ -9,6 +9,7 @@ import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.StockInfoService;
+import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -16,6 +17,7 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -40,8 +42,11 @@ public class RunHistoryJob extends BaseJob {
     public void run() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
         List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
-        log.info("共需更新{}支股票最新历史价格数据", stockInfoList.size());
-        stockInfoList.forEach(this::writeHistoryPriceDataToMongo);
+        Query query = new Query(Criteria.where("date").is(DateUtils.format1(new Date())));
+        List<StockPrices> stockPricesList = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
+        List<StockInfo> updateList = stockInfoList.stream().filter(s -> stockPricesList.stream().noneMatch(p -> p.getCode().equals(s.getCode()))).collect(Collectors.toList());
+        log.info("共需更新{}支股票最新历史价格数据", updateList.size());
+        updateList.forEach(this::writeHistoryPriceDataToMongo);
     }
 
     @SneakyThrows
@@ -66,7 +71,7 @@ public class RunHistoryJob extends BaseJob {
             StockPrices one = mongoTemplate.findOne(query, StockPrices.class, TRAIN_COLLECTION_NAME);
             if (Objects.isNull(one)) {
                 mongoTemplate.insert(s, TRAIN_COLLECTION_NAME);
-                log.info("当前股票{}-{}-{}，历史数据写入完成", s.getName(), s.getCode(), s.getDate());
+                log.info("当前股票{}-{}-{}，写入历史数据", s.getName(), s.getCode(), s.getDate());
             } else {
                 if (one.getPrice3() == null || one.getPrice4() == null) {
                     log.info("当前股票{}-{}-{}，历史数据不完整进行修改操作", s.getName(), s.getCode(), s.getDate());

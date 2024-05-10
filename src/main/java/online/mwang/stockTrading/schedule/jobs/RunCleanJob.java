@@ -44,11 +44,11 @@ public class RunCleanJob extends BaseJob {
 
     @Override
     public void run() {
-        cleanStockInfo();
         cleanAccountInfo();
         cleanPredictPrice();
         cleanHistoryPrice();
         cleanTestData();
+        cleanStockInfo();
     }
 
     private void cleanAccountInfo() {
