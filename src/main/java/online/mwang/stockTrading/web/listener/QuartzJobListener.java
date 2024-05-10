@@ -4,9 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import online.mwang.stockTrading.web.bean.po.QuartzJob;
-import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.mapper.ModelInfoMapper;
 import online.mwang.stockTrading.web.mapper.QuartzJobMapper;
 import online.mwang.stockTrading.web.service.ModelInfoService;
@@ -19,8 +17,6 @@ import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * @author 13255
@@ -55,7 +51,7 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
                 if ("0".equals(job.getStatus())) {
                     scheduler.pauseJob(JobKey.jobKey(job.getName()));
                 }
-                if (job.getName().contains("模型训练")) {
+                if ("dev".equalsIgnoreCase(profile) && job.getName().contains("模型训练")) {
                     JobKey jobKey = JobKey.jobKey(job.getName());
                     scheduler.triggerJob(jobKey);
                     log.info("自动触发:{}", job.getName());
