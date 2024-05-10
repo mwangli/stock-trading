@@ -68,7 +68,7 @@ public class RunPredictJob extends BaseJob {
 
     private void updateStockScore(List<StockInfo> stockInfos, List<ModelInfo> modelInfos) {
         // 获取预测结果中日期大于等于今天的数据(2条)
-        Query query = new Query(Criteria.where("date").gte(new Date())).with(Sort.by(Sort.Direction.DESC, "date"));
+        Query query = new Query(Criteria.where("date").gte(DateUtils.format1(new Date()))).with(Sort.by(Sort.Direction.DESC, "date"));
         List<StockPrices> predictPriceList = mongoTemplate.find(query, StockPrices.class, VALIDATION_COLLECTION_NAME);
         ArrayList<StockInfo> updateList = new ArrayList<>();
         predictPriceList.stream().collect(Collectors.groupingBy(StockPrices::getCode)).forEach((code, pricesList) -> {
