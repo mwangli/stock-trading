@@ -1,8 +1,6 @@
 package online.mwang.stockTrading.web.bean.dto;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 import online.mwang.stockTrading.web.bean.vo.Point;
 
 import java.util.List;
@@ -21,7 +19,7 @@ public class PointsDTO {
 
     public PointsDTO(List<Point> points) {
         this.points = points;
-        this.maxValue = points.stream().mapToDouble(Point::getY).max().orElse(0.0);
-        this.minValue = points.stream().mapToDouble(Point::getY).min().orElse(0.0);
+        this.maxValue = Math.ceil(points.stream().mapToDouble(Point::getY).max().orElse(0.0));
+        this.minValue = Math.floor(points.stream().mapToDouble(Point::getY).min().orElse(0.0));
     }
 }
