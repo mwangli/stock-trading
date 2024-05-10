@@ -81,8 +81,8 @@ public class LSTMModel {
 
     public List<StockPrices> train2(List<StockPrices> dataList) {
         // 切分数据
-        long splitIndex = Math.round(dataList.size() * SPLIT_RATIO);
         List<List<List<Writable>>> allData = buildSequenceData(dataList);
+        long splitIndex = Math.round(allData.size() * SPLIT_RATIO);
         List<List<List<Writable>>> trainData = allData.stream().limit(splitIndex).collect(Collectors.toList());
         List<List<List<Writable>>> testData = allData.stream().skip(splitIndex).collect(Collectors.toList());
         DataSetIterator trainIter = new SequenceRecordReaderDataSetIterator(new InMemorySequenceRecordReader(trainData), BATCH_SIZE, -1, 2, true);
