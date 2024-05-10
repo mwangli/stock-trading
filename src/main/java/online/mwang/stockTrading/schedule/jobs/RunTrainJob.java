@@ -5,7 +5,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IPredictService;
-import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
@@ -62,8 +61,8 @@ public class RunTrainJob extends BaseJob {
     private void train(CountDownLatch countDownLatch) {
         List<StockInfo> stockInfos = stockInfoService.list();
         for (StockInfo s : stockInfos) {
-            if (isInterrupted) throw new BusinessException("模型训练任务已终止！");
             try {
+                if (isInterrupted) break;
                 Boolean check = redisTemplate.opsForValue().setIfAbsent("model:code:" + s.getCode(), s.getCode(), 5, TimeUnit.MINUTES);
                 if (check != null && !check) continue;
                 final Query query = new Query(Criteria.where("code").is(s.getCode())).with(Sort.by(Sort.Direction.ASC, "date"));
