@@ -51,36 +51,37 @@ public class RunTrainJob extends BaseJob {
     void run() {
         // 启动多线程同时训练充分利用CPU资源
         int cores = Runtime.getRuntime().availableProcessors();
-        int threads = cores > 2 ? (cores >> 1) + 1 : 1;
+        int threads = debug ? (cores >> 1) + 1 : 1;
         log.info("启动模型训练线程数量为：{}", threads);
         CountDownLatch countDownLatch = new CountDownLatch(threads);
         for (int i = 0; i < threads; i++) new Thread(() -> train(countDownLatch)).start();
         countDownLatch.await();
     }
 
-
     @SneakyThrows
     private void train(CountDownLatch countDownLatch) {
         List<StockInfo> stockInfos = stockInfoService.list();
         for (StockInfo s : stockInfos) {
             if (isInterrupted) throw new BusinessException("模型训练任务已终止！");
-            Boolean check = redisTemplate.opsForValue().setIfAbsent("model:code:" + s.getCode(), s.getCode(), 5, TimeUnit.MINUTES);
-            if (check != null && !check) continue;
-            String stockCode = s.getCode();
-            String stockName = s.getName();
-            final Query query = new Query(Criteria.where("code").is(stockCode)).with(Sort.by(Sort.Direction.ASC, "date"));
-            List<StockPrices> stockHistoryPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
-            if (stockHistoryPrices.size() < 100) continue;
-            log.info("股票[{}-{}], 训练数据集大小为:{}", stockName, stockCode, stockHistoryPrices.size());
-            List<StockPrices> stockTestPrices = modelService.modelTrain(stockHistoryPrices);
-            if (CollectionUtils.isEmpty(stockTestPrices)) continue;
-            final Query deleteQuery = new Query(Criteria.where("code").is(stockCode));
-            List<Object> removed = mongoTemplate.findAllAndRemove(deleteQuery, TEST_COLLECTION_NAME);
-            mongoTemplate.insert(stockTestPrices, TEST_COLLECTION_NAME);
-            redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 30, TimeUnit.DAYS);
-            log.info("股票[{}-{}],清空{}条，写入{}条测试集数据", stockName, stockCode, removed.size(), stockTestPrices.size());
-            // 更新模型评分
-            updateModelScore(stockCode);
+            try {
+                Boolean check = redisTemplate.opsForValue().setIfAbsent("model:code:" + s.getCode(), s.getCode(), 5, TimeUnit.MINUTES);
+                if (check != null && !check) continue;
+                final Query query = new Query(Criteria.where("code").is(s.getCode())).with(Sort.by(Sort.Direction.ASC, "date"));
+                List<StockPrices> stockHistoryPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
+                log.info("股票[{}-{}], 训练数据集大小为:{}", s.getCode(), s.getName(), stockHistoryPrices.size());
+                List<StockPrices> stockTestPrices = modelService.modelTrain(stockHistoryPrices);
+                if (CollectionUtils.isEmpty(stockTestPrices)) continue;
+                final Query deleteQuery = new Query(Criteria.where("code").is(s.getCode()));
+                List<Object> removed = mongoTemplate.findAllAndRemove(deleteQuery, TEST_COLLECTION_NAME);
+                mongoTemplate.insert(stockTestPrices, TEST_COLLECTION_NAME);
+                redisTemplate.opsForValue().set("model:code:" + s.getCode(), s.getCode(), 30, TimeUnit.DAYS);
+                log.info("股票[{}-{}],清空{}条，写入{}条测试集数据", s.getCode(), s.getName(), removed.size(), stockTestPrices.size());
+                // 更新模型评分
+                updateModelScore(s.getCode());
+            } catch (Exception e) {
+                e.printStackTrace();
+                log.info("当前股票[{}-{}]模型训练异常!", s.getCode(), s.getName());
+            }
         }
         countDownLatch.countDown();
     }
