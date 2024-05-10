@@ -74,24 +74,29 @@ public class RunSaleJob extends BaseJob {
         double priceTotal = 0.0;
         boolean finished = false;
         while (!finished) {
-            if (isInterrupted) throw new BusinessException("股票卖出任务已经终止！");
-            sleepUtils.second(WAITING_SECONDS);
-            double nowPrice = dataService.getNowPrice(record.getCode());
-            priceCount++;
-            priceTotal += nowPrice;
-            double priceAvg = priceTotal / priceCount;
-            log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", record.getName(), record.getCode(), String.format("%.2f", nowPrice), String.format("%.4f", priceAvg), priceCount);
-            if (priceCount > WAITING_COUNT_SKIP && nowPrice > priceAvg + priceAvg * SALE_PERCENT || DateUtils.isDeadLine1()) {
-                if (DateUtils.isDeadLine1()) log.info("交易时间段即将结束");
-                log.info(",当前股票[{}-{}],开始进行卖出", record.getName(), record.getCode());
-                JSONObject result = dataService.buySale("S", record.getCode(), nowPrice, record.getBuyNumber());
-                String saleNo = result.getString("ANSWERNO");
-                if (saleNo != null && dataService.waitSuccess(saleNo)) {
-                    saveData(record, saleNo, nowPrice);
-                    countDownLatch.countDown();
-                    finished = true;
-                    log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{},日收益率为:{}。", record.getCode(), record.getName(), record.getSaleAmount(), record.getIncome(), record.getDailyIncomeRate());
+            try {
+                sleepUtils.second(WAITING_SECONDS);
+                if (isInterrupted) break;
+                double nowPrice = dataService.getNowPrice(record.getCode());
+                priceCount++;
+                priceTotal += nowPrice;
+                double priceAvg = priceTotal / priceCount;
+                log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", record.getName(), record.getCode(), String.format("%.2f", nowPrice), String.format("%.4f", priceAvg), priceCount);
+                if (priceCount > WAITING_COUNT_SKIP && nowPrice > priceAvg + priceAvg * SALE_PERCENT || DateUtils.isDeadLine1()) {
+                    if (DateUtils.isDeadLine1()) log.info("交易时间段即将结束");
+                    log.info(",当前股票[{}-{}],开始进行卖出", record.getName(), record.getCode());
+                    JSONObject result = dataService.buySale("S", record.getCode(), nowPrice, record.getBuyNumber());
+                    String saleNo = result.getString("ANSWERNO");
+                    if (saleNo != null && dataService.waitSuccess(saleNo)) {
+                        saveData(record, saleNo, nowPrice);
+                        countDownLatch.countDown();
+                        finished = true;
+                        log.info("成功卖出股票[{}-{}], 卖出金额为:{}, 收益为:{},日收益率为:{}。", record.getCode(), record.getName(), record.getSaleAmount(), record.getIncome(), record.getDailyIncomeRate());
+                    }
                 }
+            } catch (Exception e) {
+                e.printStackTrace();
+                log.info("当前股票[{}-{}]，卖出任务异常!", record.getCode(), record.getName());
             }
         }
     }
