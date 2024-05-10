@@ -6,7 +6,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.IStockService;
-import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.AccountInfo;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
@@ -54,7 +53,6 @@ public class RunSaleJob extends BaseJob {
     @SneakyThrows
     @Override
     public void run() {
-        if (!DateUtils.inTradingTimes1()) throw new BusinessException("不在交易时间段内，无法执行卖出任务!");
         // 查询所有未卖出股票
         LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<TradingRecord>().eq(TradingRecord::getSold, "0");
         List<TradingRecord> tradingRecords = tradingRecordService.list(queryWrapper);

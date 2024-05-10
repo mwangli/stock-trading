@@ -52,9 +52,9 @@ public class RunCleanJob extends BaseJob {
     }
 
     private void cleanAccountInfo() {
-        // 移除AccountInfo中一半的历史数据
+        // 超过100条后移除AccountInfo中一半的历史数据
         final List<AccountInfo> list = accountInfoService.list();
-        final List<AccountInfo> deleteList = list.stream().skip(list.size() >> 1).collect(Collectors.toList());
+        final List<AccountInfo> deleteList = list.stream().skip(list.size() > 100 ? list.size() >> 1 : list.size()).collect(Collectors.toList());
         accountInfoService.removeBatchByIds(deleteList);
         log.info("共清理{}条账户信息历史数据。", deleteList.size());
     }
