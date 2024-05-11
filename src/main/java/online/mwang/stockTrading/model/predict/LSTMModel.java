@@ -20,7 +20,6 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.iterator.DataSetIterator;
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerMinMaxScaler;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -51,8 +50,6 @@ public class LSTMModel {
     private final ModelConfig modelConfig;
     private final GridFsUtils gridFsUtils;
     public boolean skipTrain = false;
-    @Value("${PROFILE}")
-    private String profile;
 
     /**
      * 构建标准时间序列数据输入数据，其中feature包含了label

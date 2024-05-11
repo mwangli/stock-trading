@@ -28,7 +28,7 @@ public abstract class BaseJob implements InterruptableJob {
     public boolean debug = false;
     @Resource
     private QuartzJobMapper jobMapper;
-    @Value("${PROFILE}")
+    @Value("${profile:dev}")
     private String profile;
 
     abstract void run();

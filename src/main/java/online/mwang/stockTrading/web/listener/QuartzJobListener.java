@@ -28,11 +28,9 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
 
     private final QuartzJobMapper jobMapper;
     private final ModelInfoMapper modelInfoMapper;
-    private final ModelInfoService modelInfoService;
-    private final StockInfoService stockInfoService;
     private final Scheduler scheduler;
 
-    @Value("${profile}")
+    @Value("${profile:dev}")
     private String profile;
 
     @Override
