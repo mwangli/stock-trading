@@ -19,8 +19,8 @@ https://www.yuque.com/mwangli/ha7323/axga8dz9imansvl4
 3. 尝试对价格增长率进行预测提高实际收益率
 
 ### 5.页面展示：
-1. 收益数据统计
-![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1715424205213-b97128b2-e823-4cb2-9699-b81dd9d35922.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1280%2Climit_0)
+1. 收益数据统计![image](https://github.com/mwangli/stock-trading/assets/48406369/2bcb92bb-2737-4da8-a70f-ed8dc9d8ebdd)
+
 2. 交易订单查询
 ![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1715424232855-68e7ea8c-e6f7-451d-b31f-459e9c332697.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1280%2Climit_0)
 3. 股票价格查看
