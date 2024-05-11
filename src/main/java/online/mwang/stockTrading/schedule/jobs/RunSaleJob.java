@@ -36,7 +36,7 @@ public class RunSaleJob extends BaseJob {
     public static final long WAITING_SECONDS = 30;
     public static final long WAITING_COUNT_SKIP = 30 * 60 / WAITING_SECONDS;
     public static final double SALE_PERCENT = 0.005;
-    private final IStockService dataService;
+    private final IStockService stockService;
     private final TradingRecordService tradingRecordService;
     private final StockInfoService stockInfoService;
     private final OrderInfoService orderInfoService;
@@ -75,7 +75,7 @@ public class RunSaleJob extends BaseJob {
             try {
                 sleepUtils.second(WAITING_SECONDS);
                 if (isInterrupted) break;
-                double nowPrice = dataService.getNowPrice(record.getCode());
+                double nowPrice = stockService.getNowPrice(record.getCode());
                 priceCount++;
                 priceTotal += nowPrice;
                 double priceAvg = priceTotal / priceCount;
@@ -83,9 +83,9 @@ public class RunSaleJob extends BaseJob {
                 if (priceCount > WAITING_COUNT_SKIP && nowPrice > priceAvg + priceAvg * SALE_PERCENT || DateUtils.isDeadLine1()) {
                     if (DateUtils.isDeadLine1()) log.info("交易时间段即将结束");
                     log.info(",当前股票[{}-{}],开始进行卖出", record.getName(), record.getCode());
-                    JSONObject result = dataService.buySale("S", record.getCode(), nowPrice, record.getBuyNumber());
+                    JSONObject result = stockService.buySale("S", record.getCode(), nowPrice, record.getBuyNumber());
                     String saleNo = result.getString("ANSWERNO");
-                    if (saleNo != null && dataService.waitSuccess(saleNo)) {
+                    if (saleNo != null && stockService.waitSuccess(saleNo)) {
                         saveData(record, saleNo, nowPrice);
                         countDownLatch.countDown();
                         finished = true;
@@ -109,7 +109,7 @@ public class RunSaleJob extends BaseJob {
         orderInfo.setPrice(nowPrice);
         orderInfo.setNumber(record.getBuyNumber());
         double amount = nowPrice * record.getBuyNumber();
-        Double peer = dataService.getPeeAmount(amount);
+        Double peer = stockService.getPeeAmount(amount);
         orderInfo.setPeer(peer);
         orderInfo.setAmount(amount - peer);
         orderInfo.setType("卖出");
@@ -138,7 +138,7 @@ public class RunSaleJob extends BaseJob {
         record.setDailyIncomeRate(incomeRate);
         tradingRecordService.updateById(record);
         // 更新账户资金
-        AccountInfo accountInfo = dataService.getAccountInfo();
+        AccountInfo accountInfo = stockService.getAccountInfo();
         accountInfo.setCreateTime(new Date());
         accountInfo.setUpdateTime(new Date());
         accountInfoMapper.insert(accountInfo);

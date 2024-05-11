@@ -101,10 +101,7 @@ public class RunTrainJob extends BaseJob {
         // 获取测试集数据
         List<StockPrices> pricesList = mongoTemplate.find(new Query(Criteria.where("code").is(stockCode)), StockPrices.class, TEST_COLLECTION_NAME);
         if (CollectionUtils.isEmpty(pricesList)) return 1;
-        String maxDate = pricesList.stream().map(StockPrices::getDate).max(String::compareTo).orElse("");
-        String minDate = pricesList.stream().map(StockPrices::getDate).min(String::compareTo).orElse("");
-        Query historyQuery = new Query(Criteria.where("code").is(stockCode).and("date").lte(maxDate).gte(minDate));
-        List<StockPrices> historyPrices = mongoTemplate.find(historyQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
+        List<StockPrices> historyPrices = modelInfoService.getHistoryData(pricesList);
         setIncreaseRate(historyPrices);
         setIncreaseRate(pricesList);
         // 计算测试集误差和评分

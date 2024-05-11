@@ -23,14 +23,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RunOrderJob extends BaseJob {
 
-    private final IStockService dataService;
+    private final IStockService stockService;
     private final OrderInfoService orderInfoService;
 
     @SneakyThrows
     @Override
     public void run() {
         // 同步今日成交订单数据
-        List<OrderInfo> todayOrders = dataService.getTodayOrder();
+        List<OrderInfo> todayOrders = stockService.getTodayOrder();
         todayOrders.forEach(this::fixProps);
         List<OrderInfo> orderInfos = orderInfoService.list();
         orderInfos.forEach(orderInfo -> {

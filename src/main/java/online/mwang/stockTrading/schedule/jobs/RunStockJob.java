@@ -22,13 +22,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunStockJob extends BaseJob {
 
-    private final IStockService dataService;
+    private final IStockService stockService;
     private final StockInfoService stockInfoService;
 
     @Override
     public void run() {
         // 同步股票数据，处理新股票和退市股票，取两个集合的差集
-        List<StockInfo> newInfos = dataService.getDataList();
+        List<StockInfo> newInfos = stockService.getDataList();
         List<StockInfo> dataList = stockInfoService.list();
         List<StockInfo> insertList = newInfos.stream().filter(s -> dataList.stream().noneMatch(o -> o.getCode().equals(s.getCode()))).collect(Collectors.toList());
         log.info("新增股票数量:{}", insertList.size());

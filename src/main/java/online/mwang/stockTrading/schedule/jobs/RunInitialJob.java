@@ -33,7 +33,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunInitialJob extends BaseJob {
 
-    private final IStockService dataService;
+    private final IStockService stockService;
     private final MongoTemplate mongoTemplate;
     private final OrderInfoService orderInfoService;
     private final TradingRecordMapper tradingRecordMapper;
@@ -47,14 +47,14 @@ public class RunInitialJob extends BaseJob {
 
     private void initHistoryPriceData() {
         // 首次初始化执行，写入4000支股票，每只股票约500条数据
-        List<StockInfo> stockInfoList = dataService.getDataList();
+        List<StockInfo> stockInfoList = stockService.getDataList();
         stockInfoList.forEach(s -> {
             Query query = new Query(Criteria.where("code").is(s.getCode()));
             List<StockPrices> find = mongoTemplate.find(query, StockPrices.class);
             if (find.size() > 0) {
                 log.info("股票[{}-{}]历史数据已经存在，无需写入", s.getName(), s.getCode());
             } else {
-                List<DailyItem> historyPrices = dataService.getHistoryPrices(s.getCode());
+                List<DailyItem> historyPrices = stockService.getHistoryPrices(s.getCode());
                 List<StockPrices> stockPricesList = historyPrices.stream().map(item -> {
                     StockPrices stockPrices = new StockPrices();
                     stockPrices.setName(s.getName());
@@ -77,8 +77,8 @@ public class RunInitialJob extends BaseJob {
     private void initHistoryOrder() {
         // 初始化订单数据，当交易记录数据丢失，或者在证券平台上已有订单数据，需要同步
         // 将数据写入到TradingRecord 和 OrderInfo表
-        final List<OrderInfo> historyOrders = dataService.getHistoryOrder();
-        final List<OrderInfo> todayOrders = dataService.getTodayOrder();
+        final List<OrderInfo> historyOrders = stockService.getHistoryOrder();
+        final List<OrderInfo> todayOrders = stockService.getTodayOrder();
         historyOrders.addAll(todayOrders);
         List<OrderInfo> distinctOrders = historyOrders.stream().distinct().collect(Collectors.toList());
         // 写入订单信息
@@ -107,7 +107,7 @@ public class RunInitialJob extends BaseJob {
     private void fixOrderProps(OrderInfo orderInfo) {
         orderInfo.setStatus("1");
         double amount = orderInfo.getNumber() * orderInfo.getPrice();
-        Double peer = dataService.getPeeAmount(amount);
+        Double peer = stockService.getPeeAmount(amount);
         String type = orderInfo.getType();
         orderInfo.setAmount(type.equals("卖出") ? amount - peer : amount + peer);
         orderInfo.setCreateTime(new Date());
@@ -175,7 +175,7 @@ public class RunInitialJob extends BaseJob {
         record.setBuyPrice(order.getPrice());
         record.setBuyNumber(record.getBuyNumber() + order.getNumber());
         Double amount = order.getPrice() * order.getNumber();
-        Double buyAmount = amount + dataService.getPeeAmount(amount);
+        Double buyAmount = amount + stockService.getPeeAmount(amount);
         record.setBuyAmount(record.getBuyAmount() + buyAmount);
         record.setBuyNo(order.getAnswerNo());
         record.setName(order.getName());
@@ -193,7 +193,7 @@ public class RunInitialJob extends BaseJob {
         if (Objects.nonNull(record.getSaleNumber())) saleNumber += order.getNumber();
         record.setSaleNumber(saleNumber);
         Double amount = order.getPrice() * saleNumber;
-        Double saleAmount = amount - dataService.getPeeAmount(amount);
+        Double saleAmount = amount - stockService.getPeeAmount(amount);
         if (Objects.nonNull(record.getSaleAmount())) saleAmount += record.getSaleAmount();
         record.setSaleAmount(saleAmount);
         record.setSaleNo(order.getAnswerNo());

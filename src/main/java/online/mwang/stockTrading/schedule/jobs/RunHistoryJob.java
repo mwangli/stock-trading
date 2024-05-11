@@ -33,7 +33,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunHistoryJob extends BaseJob {
 
-    private final IStockService dataService;
+    private final IStockService stockService;
     private final StockInfoService stockInfoService;
     private final MongoTemplate mongoTemplate;
     private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
@@ -51,7 +51,7 @@ public class RunHistoryJob extends BaseJob {
 
     @SneakyThrows
     public void writeHistoryPriceDataToMongo(StockInfo stockInfo) {
-        List<DailyItem> historyPrices = dataService.getHistoryPrices(stockInfo.getCode());
+        List<DailyItem> historyPrices = stockService.getHistoryPrices(stockInfo.getCode());
         List<StockPrices> stockPricesList = historyPrices.stream().map(item -> {
             StockPrices stockPrices = new StockPrices();
             stockPrices.setName(stockInfo.getName());
