@@ -16,19 +16,12 @@ https://www.yuque.com/mwangli/ha7323/axga8dz9imansvl4
 ### 4.后期优化方向
 1. 获得更多股票历史数据用于模型增量迭代训练
 2. 模型超参数调优提高预测价格趋势准确率
-3. 尝试对价格增长率进行预测提高实际收益率
 
 ### 5.页面展示：
 1. 收益数据统计![image](https://github.com/mwangli/stock-trading/assets/48406369/4b22cc32-c6b9-4a9d-a9df-c29f65a4a5bb)
+2. 交易订单查询![image](https://github.com/mwangli/stock-trading/assets/48406369/bd16016b-4085-413d-a609-1643922616c9)
+3. 股票价格查看![image](https://github.com/mwangli/stock-trading/assets/48406369/e080bff3-cc17-4fa3-b642-9a9ea8d3b241)
+4. 模型预测表现![image](https://github.com/mwangli/stock-trading/assets/48406369/8d6272ac-773f-4a7d-9993-faf0694f9707)
+5. 定时任务调度![image](https://github.com/mwangli/stock-trading/assets/48406369/bb10ea48-2f1a-401d-bca4-823d51e8f5bc)
+6. 实时日志跟踪![image](https://github.com/mwangli/stock-trading/assets/48406369/4aaf1d15-6049-4913-b972-c7b6146dbf66)
 
-
-2. 交易订单查询
-![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1715424232855-68e7ea8c-e6f7-451d-b31f-459e9c332697.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1280%2Climit_0)
-3. 股票价格查看
-![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1715424259073-f2ed43a0-8b74-449c-bdca-48920e29f404.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1280%2Climit_0)
-4. 模型预测表现
-![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1715424288063-33d41606-fc4e-459d-b5a7-0f5940bf56cf.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1280%2Climit_0)
-5. 定时任务调度
-![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1715424303631-9d16bfd8-5a04-48a8-8b89-c389de3ad5e2.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1280%2Climit_0)
-6. 实时日志跟踪
-![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1715424340357-68712517-fcbe-497e-8ddb-73a073c44e70.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1280%2Climit_0)
