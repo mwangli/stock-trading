@@ -47,7 +47,7 @@ public class RunBuyJob extends BaseJob {
     public static final long WAITING_COUNT_SKIP = 30 * 60 / WAITING_SECONDS;
     public static final long THREAD_COUNT = 10;
     public static final double BUY_PERCENT = 0.005;
-    private final IStockService dataService;
+    private final IStockService stockService;
     private final TradingRecordService tradingRecordService;
     private final StockInfoMapper stockInfoMapper;
     private final OrderInfoService orderInfoService;
@@ -67,7 +67,7 @@ public class RunBuyJob extends BaseJob {
     @Override
     public void run() {
         // 获取最新的账户资金信息
-        AccountInfo accountInfo = dataService.getAccountInfo();
+        AccountInfo accountInfo = stockService.getAccountInfo();
         accountInfoMapper.insert(accountInfo);
         final Double totalAvailableAmount = accountInfo.getAvailableAmount();
         // 计算此次可用资金
@@ -108,7 +108,7 @@ public class RunBuyJob extends BaseJob {
             try {
                 sleepUtils.second(WAITING_SECONDS);
                 if (isInterrupted) break;
-                double nowPrice = dataService.getNowPrice(stockInfo.getCode());
+                double nowPrice = stockService.getNowPrice(stockInfo.getCode());
                 priceCount++;
                 priceTotal += nowPrice;
                 double priceAvg = priceTotal / priceCount;
@@ -117,9 +117,9 @@ public class RunBuyJob extends BaseJob {
                     if (DateUtils.isDeadLine2()) log.info("交易时间段即将结束！");
                     log.info("当前股票[{}-{}],开始进行买入!", stockInfo.getName(), stockInfo.getCode());
                     double buyNumber = (int) (availableAmount / nowPrice / 100) * 100;
-                    JSONObject result = dataService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
+                    JSONObject result = stockService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
                     String buyNo = result.getString("ANSWERNO");
-                    if (buyNo != null && dataService.waitSuccess(buyNo)) {
+                    if (buyNo != null && stockService.waitSuccess(buyNo)) {
                         saveData(stockInfo, buyNo, nowPrice, buyNumber);
                         countDownLatch.countDown();
                         finished = true;
@@ -143,7 +143,7 @@ public class RunBuyJob extends BaseJob {
         orderInfo.setPrice(nowPrice);
         orderInfo.setNumber(buyNumber);
         double amount = nowPrice * buyNumber;
-        Double peer = dataService.getPeeAmount(amount);
+        Double peer = stockService.getPeeAmount(amount);
         orderInfo.setPeer(peer);
         orderInfo.setAmount(amount + peer);
         orderInfo.setType("买入");
@@ -168,7 +168,7 @@ public class RunBuyJob extends BaseJob {
         record.setUpdateTime(now);
         tradingRecordService.save(record);
         // 更新账户资金状态
-        AccountInfo newAccountInfo = dataService.getAccountInfo();
+        AccountInfo newAccountInfo = stockService.getAccountInfo();
         newAccountInfo.setCreateTime(new Date());
         newAccountInfo.setUpdateTime(new Date());
         accountInfoMapper.insert(newAccountInfo);

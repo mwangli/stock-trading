@@ -62,11 +62,8 @@ public class ModelInfoController {
         collectionName = collectionName == null ? TEST_COLLECTION_NAME : collectionName;
         final Query query = new Query(Criteria.where("code").is(stockCode).and("date").ne(null)).with(Sort.by(Sort.Direction.ASC, "date"));
         List<StockPrices> stockTestPrices = mongoTemplate.find(query, StockPrices.class, collectionName);
-        String maxDate = stockTestPrices.stream().map(StockPrices::getDate).max(String::compareTo).orElse("");
-        String minDate = stockTestPrices.stream().map(StockPrices::getDate).min(String::compareTo).orElse("");
         // 查找历史数据
-        Query historyQuery = new Query(Criteria.where("code").is(stockCode).and("date").lte(maxDate).gte(minDate));
-        List<StockPrices> historyPrices = mongoTemplate.find(historyQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
+        List<StockPrices> historyPrices = modelInfoService.getHistoryData(stockTestPrices);
         final ArrayList<Point> points = new ArrayList<>();
         for (int i = 1; i < historyPrices.size(); i++) {
             Double actualValue = historyPrices.get(i).getPrice1();

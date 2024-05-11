@@ -11,7 +11,6 @@ import org.springframework.stereotype.Component;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * @version 1.0.0
@@ -24,7 +23,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunFlushJob extends BaseJob {
 
-    private final IStockService dataService;
+    private final IStockService stockService;
     private final StockInfoService stockInfoService;
 
     @Override
@@ -35,7 +34,7 @@ public class RunFlushJob extends BaseJob {
         List<StockInfo> stockInfos = stockInfoService.list();
         final HashSet<String> set = new HashSet<>();
         stockInfos.forEach(info -> {
-            JSONObject result = dataService.buySale("B", info.getCode(), 100.0, 10000.0);
+            JSONObject result = stockService.buySale("B", info.getCode(), 100.0, 10000.0);
             final String message = result.getString("ERRORMESSAGE");
             set.add(message);
             if (errorCodes.stream().anyMatch(message::startsWith)) {
@@ -47,6 +46,6 @@ public class RunFlushJob extends BaseJob {
         stockInfoService.updateBatchById(stockInfos);
         log.info("交易权限错误信息合集:{}", set);
         // 取消所有提交的订单
-        dataService.cancelAllOrder();
+        stockService.cancelAllOrder();
     }
 }
