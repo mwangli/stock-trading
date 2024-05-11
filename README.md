@@ -4,7 +4,19 @@
 https://www.yuque.com/mwangli/ha7323/axga8dz9imansvl4
 ### 项目展示
 [http:124.220.36.95:8000](http:124.220.36.95:8000) 用户名/密码：guest
-![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1712990475463-950af927-0c82-4774-8e3a-dc867f94773c.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1265%2Climit_0)
+### 页面展示：
+1. 收益数据统计
+![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1715424205213-b97128b2-e823-4cb2-9699-b81dd9d35922.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1280%2Climit_0)
+2. 交易订单查询
+![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1715424232855-68e7ea8c-e6f7-451d-b31f-459e9c332697.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1280%2Climit_0)
+3. 股票价格查看
+![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1715424259073-f2ed43a0-8b74-449c-bdca-48920e29f404.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1280%2Climit_0)
+4. 模型预测表现
+![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1715424288063-33d41606-fc4e-459d-b5a7-0f5940bf56cf.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1280%2Climit_0)
+5. 定时任务调度
+![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1715424303631-9d16bfd8-5a04-48a8-8b89-c389de3ad5e2.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1280%2Climit_0)
+6. 实时日志跟踪
+![图片](https://cdn.nlark.com/yuque/0/2024/png/410925/1715424340357-68712517-fcbe-497e-8ddb-73a073c44e70.png?x-oss-process=image%2Fformat%2Cwebp%2Fresize%2Cw_1280%2Climit_0)
 
 ### 功能介绍
 
