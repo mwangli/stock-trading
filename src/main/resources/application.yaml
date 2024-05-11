@@ -1,4 +1,7 @@
+profle: ${PROFILE:dev}
 spring:
+  profiles:
+    active:
   jackson:
     time-zone: GMT+8
   data:
