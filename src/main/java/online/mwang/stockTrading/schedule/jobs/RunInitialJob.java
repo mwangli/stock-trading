@@ -38,6 +38,7 @@ public class RunInitialJob extends BaseJob {
     private final OrderInfoService orderInfoService;
     private final TradingRecordMapper tradingRecordMapper;
     private final TradingRecordService tradingRecordService;
+    private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
 
     @Override
     public void run() {
@@ -50,7 +51,7 @@ public class RunInitialJob extends BaseJob {
         List<StockInfo> stockInfoList = stockService.getDataList();
         stockInfoList.forEach(s -> {
             Query query = new Query(Criteria.where("code").is(s.getCode()));
-            List<StockPrices> find = mongoTemplate.find(query, StockPrices.class);
+            List<StockPrices> find = mongoTemplate.find(query, StockPrices.class,TRAIN_COLLECTION_NAME);
             if (find.size() > 0) {
                 log.info("股票[{}-{}]历史数据已经存在，无需写入", s.getName(), s.getCode());
             } else {
@@ -66,7 +67,7 @@ public class RunInitialJob extends BaseJob {
                     stockPrices.setPrice4(item.getPrice4());
                     return stockPrices;
                 }).collect(Collectors.toList());
-                mongoTemplate.insert(stockPricesList, StockPrices.class);
+                mongoTemplate.insert(stockPricesList,TRAIN_COLLECTION_NAME);
                 log.info("股票[{}-{}]，{}条历史数据写入完成！", s.getName(), s.getCode(), stockPricesList.size());
             }
         });
@@ -109,7 +110,7 @@ public class RunInitialJob extends BaseJob {
         double amount = orderInfo.getNumber() * orderInfo.getPrice();
         Double peer = stockService.getPeeAmount(amount);
         String type = orderInfo.getType();
-        orderInfo.setAmount(type.equals("卖出") ? amount - peer : amount + peer);
+        orderInfo.setAmount("卖出".equals(type) ? amount - peer : amount + peer);
         orderInfo.setCreateTime(new Date());
         orderInfo.setUpdateTime(new Date());
     }
