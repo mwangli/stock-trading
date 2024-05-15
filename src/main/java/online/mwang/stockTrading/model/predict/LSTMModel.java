@@ -173,10 +173,6 @@ public class LSTMModel {
         minMaxScaler.revertLabels(output);
         double predictValue = output.getDouble(EXAMPLE_LENGTH - 1);
         // 返回结果
-        StockPrices stockPredictPrice = new StockPrices();
-        stockPredictPrice.setPrice1(predictValue);
-        stockPredictPrice.setCode(stockCode);
-        stockPredictPrice.setName(stockName);
-        return stockPredictPrice;
+        return new StockPrices(stockCode,stockName, "", predictValue);
     }
 }

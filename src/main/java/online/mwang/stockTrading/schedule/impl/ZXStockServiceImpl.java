@@ -6,11 +6,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.IStockService;
-import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.dto.OrderStatus;
 import online.mwang.stockTrading.web.bean.po.AccountInfo;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
+import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.ModelInfoMapper;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
@@ -345,7 +345,7 @@ public class ZXStockServiceImpl implements IStockService {
 
     // 获取历史价格曲线
     @Override
-    public List<DailyItem> getHistoryPrices(String code) {
+    public List<StockPrices> getHistoryPrices(String code) {
         HashMap<String, Object> paramMap = new HashMap<>(10);
         paramMap.put("c.funcno", 20009);
         paramMap.put("c.version", 1);
@@ -355,24 +355,24 @@ public class ZXStockServiceImpl implements IStockService {
         paramMap.put("c.cfrom", "H5");
         paramMap.put("c.tfrom", "PC");
         final JSONArray results = requestUtils.request3(buildParams(paramMap));
-        final ArrayList<DailyItem> prices = new ArrayList<>();
+        final ArrayList<StockPrices> prices = new ArrayList<>();
         for (int i = 0; i < results.size(); i++) {
-            DailyItem dailyItem = new DailyItem();
+            StockPrices stockPrices = new StockPrices();
             String s = results.getString(i);
             s = s.replaceAll("\\[", "").replaceAll("]", "");
             final String[] split = s.split(",");
             final String price1 = split[1];
             final String price2 = split[2];
-            dailyItem.setDate(split[0]);
-            dailyItem.setPrice1(Double.parseDouble(price1) / 100);
-            dailyItem.setPrice2(Double.parseDouble(price2) / 100);
+            stockPrices.setDate(split[0]);
+            stockPrices.setPrice1(Double.parseDouble(price1) / 100);
+            stockPrices.setPrice2(Double.parseDouble(price2) / 100);
             if (split.length > 3) {
                 final String price3 = split[3];
                 final String price4 = split[4];
-                dailyItem.setPrice3(Double.parseDouble(price3) / 100);
-                dailyItem.setPrice4(Double.parseDouble(price4) / 100);
+                stockPrices.setPrice3(Double.parseDouble(price3) / 100);
+                stockPrices.setPrice4(Double.parseDouble(price4) / 100);
             }
-            prices.add(dailyItem);
+            prices.add(stockPrices);
         }
         return prices;
     }
