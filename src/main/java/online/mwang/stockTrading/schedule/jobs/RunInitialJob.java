@@ -109,6 +109,7 @@ public class RunInitialJob extends BaseJob {
         orderInfo.setStatus("1");
         double amount = orderInfo.getNumber() * orderInfo.getPrice();
         Double peer = stockService.getPeeAmount(amount);
+        orderInfo.setPeer(peer);
         String type = orderInfo.getType();
         orderInfo.setAmount("卖出".equals(type) ? amount - peer : amount + peer);
         orderInfo.setCreateTime(new Date());
