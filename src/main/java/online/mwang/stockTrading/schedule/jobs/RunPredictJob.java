@@ -76,14 +76,11 @@ public class RunPredictJob extends BaseJob {
                 Double curPrice = pricesList.get(0).getPrice1();
                 Double prePrice = pricesList.get(1).getPrice1();
                 double increaseRate = prePrice == 0 ? 0 : (curPrice - prePrice) / prePrice;
-                double score2 = increaseRate * 100;
-                // 将比例系数调整到 [-N，-1] 和 [1,N] 之间
-                double finalScore = score2 >= 0 ? Math.max(1, score2) : Math.min(-1, score2);
+                double score2 = increaseRate * 100 * 10;
                 AtomicReference<Double> score1 = new AtomicReference<>((double) 0);
                 modelInfos.stream().filter(m -> m.getCode().equals(code)).findFirst().ifPresent(m -> score1.set(m.getScore()));
                 stockInfos.stream().filter(s -> s.getCode().equals(code)).findFirst().ifPresent(s -> {
-                    // 预测增长率越高则说明风险越大，应该优先选择风险小的稳定增长类型买入
-                    s.setScore(score1.get() / finalScore);
+                    s.setScore(score1.get() + score2);
                     updateList.add(s);
                 });
             }
