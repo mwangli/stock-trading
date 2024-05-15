@@ -5,7 +5,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.IStockService;
-import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.service.StockInfoService;
@@ -51,21 +50,10 @@ public class RunHistoryJob extends BaseJob {
 
     @SneakyThrows
     public void writeHistoryPriceDataToMongo(StockInfo stockInfo) {
-        List<DailyItem> historyPrices = stockService.getHistoryPrices(stockInfo.getCode());
-        List<StockPrices> stockPricesList = historyPrices.stream().map(item -> {
-            StockPrices stockPrices = new StockPrices();
-            stockPrices.setName(stockInfo.getName());
-            stockPrices.setCode(stockInfo.getCode());
-            stockPrices.setDate(item.getDate());
-            stockPrices.setPrice1(item.getPrice1());
-            stockPrices.setPrice2(item.getPrice2());
-            stockPrices.setPrice3(item.getPrice3());
-            stockPrices.setPrice4(item.getPrice4());
-            return stockPrices;
-        }).collect(Collectors.toList());
+        List<StockPrices> historyPrices = stockService.getHistoryPrices(stockInfo.getCode());
         // 翻转一下，将日期从新到旧排列，这样读到已经存在的数据，就可以跳过后续判断写入逻辑
-        Collections.reverse(stockPricesList);
-        for (StockPrices s : stockPricesList) {
+        Collections.reverse(historyPrices);
+        for (StockPrices s : historyPrices) {
             // 先查询是否已经存在相同记录
             Query query = new Query(Criteria.where("date").is(s.getDate()).and("code").is(s.getCode()));
             StockPrices one = mongoTemplate.findOne(query, StockPrices.class, TRAIN_COLLECTION_NAME);

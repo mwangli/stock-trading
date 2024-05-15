@@ -5,7 +5,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.IStockService;
-import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
@@ -51,24 +50,13 @@ public class RunInitialJob extends BaseJob {
         List<StockInfo> stockInfoList = stockService.getDataList();
         stockInfoList.forEach(s -> {
             Query query = new Query(Criteria.where("code").is(s.getCode()));
-            List<StockPrices> find = mongoTemplate.find(query, StockPrices.class,TRAIN_COLLECTION_NAME);
+            List<StockPrices> find = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
             if (find.size() > 0) {
                 log.info("股票[{}-{}]历史数据已经存在，无需写入", s.getName(), s.getCode());
             } else {
-                List<DailyItem> historyPrices = stockService.getHistoryPrices(s.getCode());
-                List<StockPrices> stockPricesList = historyPrices.stream().map(item -> {
-                    StockPrices stockPrices = new StockPrices();
-                    stockPrices.setName(s.getName());
-                    stockPrices.setCode(s.getCode());
-                    stockPrices.setDate(item.getDate());
-                    stockPrices.setPrice1(item.getPrice1());
-                    stockPrices.setPrice2(item.getPrice2());
-                    stockPrices.setPrice3(item.getPrice3());
-                    stockPrices.setPrice4(item.getPrice4());
-                    return stockPrices;
-                }).collect(Collectors.toList());
-                mongoTemplate.insert(stockPricesList,TRAIN_COLLECTION_NAME);
-                log.info("股票[{}-{}]，{}条历史数据写入完成！", s.getName(), s.getCode(), stockPricesList.size());
+                List<StockPrices> historyPrices = stockService.getHistoryPrices(s.getCode());
+                mongoTemplate.insert(historyPrices, TRAIN_COLLECTION_NAME);
+                log.info("股票[{}-{}]，{}条历史数据写入完成！", s.getName(), s.getCode(), historyPrices.size());
             }
         });
         log.info("共写入了{}支股票历史数据", stockInfoList.size());

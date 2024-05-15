@@ -7,7 +7,6 @@ import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import online.mwang.stockTrading.web.bean.dto.DailyItem;
 
 import java.util.Date;
 import java.util.List;
