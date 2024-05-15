@@ -37,13 +37,13 @@ public class StockInfo {
     private String deleted;
 
     @TableField(exist = false)
-    private List<DailyItem> pricesList;
+    private List<StockPrices> pricesList;
     @TableField(exist = false)
     private Double maxPrice;
     @TableField(exist = false)
     private Double minPrice;
     @TableField(exist = false)
-    private List<DailyItem> increaseRateList;
+    private List<StockPrices> increaseRateList;
     @TableField(exist = false)
     private Double maxIncrease;
     @TableField(exist = false)
@@ -58,8 +58,6 @@ public class StockInfo {
                 return StockInfo::getIncrease;
             case "price":
                 return StockInfo::getPrice;
-            case "score":
-                return StockInfo::getScore;
             case "permission":
                 return StockInfo::getPermission;
             case "buySaleCount":
