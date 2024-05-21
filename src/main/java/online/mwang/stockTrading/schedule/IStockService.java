@@ -64,7 +64,6 @@ public interface IStockService {
      */
     JSONObject buySale(String type, String code, Double price, Double number);
 
-
     /**
      * 等待买入或者卖出订单完成
      */
