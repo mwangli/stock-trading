@@ -100,13 +100,13 @@ public class RunTrainJob extends BaseJob {
     private double calculateDeviation(String stockCode) {
         // 获取测试集数据
         List<StockPrices> pricesList = mongoTemplate.find(new Query(Criteria.where("code").is(stockCode)), StockPrices.class, TEST_COLLECTION_NAME);
-        if (CollectionUtils.isEmpty(pricesList)) return 1;
+        if (pricesList.size() < 10) return 1;
         List<StockPrices> historyPrices = modelInfoService.getHistoryData(pricesList);
         setIncreaseRate(historyPrices);
         setIncreaseRate(pricesList);
         // 计算测试集误差和评分
         int mistakeCount = 0;
-        for (int i = 1; i < pricesList.size(); i++) {
+        for (int i = 0; i < pricesList.size(); i++) {
             Double testIncrease = pricesList.get(i).getIncreaseRate();
             Double actualIncrease = historyPrices.get(i).getIncreaseRate();
             if (hasMistake(testIncrease, actualIncrease)) mistakeCount++;
@@ -116,6 +116,7 @@ public class RunTrainJob extends BaseJob {
 
     // 计算日增长率
     private void setIncreaseRate(List<StockPrices> stockPrices) {
+        stockPrices.get(0).setIncreaseRate(0.0);
         for (int i = 1; i < stockPrices.size(); i++) {
             double curPrice = stockPrices.get(i).getPrice1();
             double prePrice = stockPrices.get(i - 1).getPrice1();
