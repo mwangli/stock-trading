@@ -47,7 +47,7 @@ public class RunCleanJob extends BaseJob {
         cleanAccountInfo();
         cleanPredictPrice();
         cleanHistoryPrice();
-        cleanTestData();
+        cleanInvalidData();
         cleanStockInfo();
     }
 
@@ -67,14 +67,20 @@ public class RunCleanJob extends BaseJob {
         log.info("共清理{}条账户退市股票信息。", deleteList.size());
     }
 
-    private void cleanTestData() {
-        // 清除无效的测试集数据
+    private void cleanInvalidData() {
+        cleanInvalidData(TRAIN_COLLECTION_NAME);
+        cleanInvalidData(TEST_COLLECTION_NAME);
+        cleanInvalidData(VALIDATION_COLLECTION_NAME);
+    }
+
+    private void cleanInvalidData(String collectionName) {
+        // 清除无效的数据
         final Query query = new Query(new Criteria().orOperator(
                 Criteria.where("date").isNull(),
                 Criteria.where("code").isNull(),
                 Criteria.where("price1").isNull()));
-        final List<StockPrices> remove = mongoTemplate.findAllAndRemove(query, StockPrices.class, TEST_COLLECTION_NAME);
-        log.info("共清理{}条测试集无效数据。", remove.size());
+        final List<StockPrices> remove = mongoTemplate.findAllAndRemove(query, StockPrices.class, collectionName);
+        log.info("共清理{}条{}无效数据。", remove.size(), collectionName);
     }
 
     private void cleanPredictPrice() {
