@@ -25,6 +25,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -82,15 +83,20 @@ public class RunBuyJob extends BaseJob {
         log.info("当前可用资金{}元, 可买入价格区间列表为{}", availableAmount, JSON.toJSONString(priceRanges));
         if (priceRanges.size() == 0) throw new BusinessException("可用资金不足，无法进行购买任务！");
         // 选择有交易权限合适价格区间的数据,按评分排序分组
-        final LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>()
+        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>()
                 .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1")
                 .orderByDesc(StockInfo::getScore);
         priceRanges.forEach(range -> queryWrapper.ge(StockInfo::getPrice, range[0]).le(StockInfo::getPrice, range[1]).or());
-        final Page<StockInfo> pageResult = stockInfoMapper.selectPage(Page.of(1, THREAD_COUNT * NEED_COUNT), queryWrapper);
-        final List<StockInfo> limitStockList = pageResult.getRecords();
+        // 从前100条数据中分页随机选取10条
+        ArrayList<StockInfo> buyStockList = new ArrayList<>();
+        for (int i = 0; i < THREAD_COUNT * NEED_COUNT; i++) {
+            List<StockInfo> stockInfoList = stockInfoMapper.selectPage(Page.of(1, THREAD_COUNT * NEED_COUNT), queryWrapper).getRecords();
+            StockInfo stockInfo = stockInfoList.get(new Random().nextInt(10));
+            buyStockList.add(stockInfo);
+        }
         // 多支股票并行买入
         CountDownLatch countDownLatch = new CountDownLatch(NEED_COUNT);
-        for (StockInfo stockInfo : limitStockList) {
+        for (StockInfo stockInfo : buyStockList) {
             // 每隔3秒启动一个购买线程
             sleepUtils.second(WAITING_SECONDS / THREAD_COUNT);
             new Thread(() -> buyStock(stockInfo, availableAmount, countDownLatch)).start();
