@@ -29,7 +29,7 @@ public class RunOrderJob extends BaseJob {
     @SneakyThrows
     @Override
     public void run() {
-        // 同步今日成交订单数据
+        // 同步今日成交订单数据 此处会获取到全部订单数据
         List<OrderInfo> todayOrders = stockService.getTodayOrder();
         todayOrders.forEach(this::fixProps);
         List<OrderInfo> orderInfos = orderInfoService.list();
