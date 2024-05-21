@@ -372,6 +372,7 @@ public class ZXStockServiceImpl implements IStockService {
                 stockPrices.setPrice3(Double.parseDouble(price3) / 100);
                 stockPrices.setPrice4(Double.parseDouble(price4) / 100);
             }
+            stockPrices.setCode(code);
             prices.add(stockPrices);
         }
         return prices;

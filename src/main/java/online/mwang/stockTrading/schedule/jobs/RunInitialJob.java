@@ -55,6 +55,7 @@ public class RunInitialJob extends BaseJob {
                 log.info("股票[{}-{}]历史数据已经存在，无需写入", s.getName(), s.getCode());
             } else {
                 List<StockPrices> historyPrices = stockService.getHistoryPrices(s.getCode());
+                historyPrices.forEach(p -> p.setName(s.getName()));
                 mongoTemplate.insert(historyPrices, TRAIN_COLLECTION_NAME);
                 log.info("股票[{}-{}]，{}条历史数据写入完成！", s.getName(), s.getCode(), historyPrices.size());
             }

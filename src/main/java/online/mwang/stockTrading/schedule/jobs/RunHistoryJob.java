@@ -5,10 +5,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.IStockService;
-import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
+import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.StockInfoService;
-import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -16,10 +15,8 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 /**
  * @version 1.0.0
@@ -41,16 +38,14 @@ public class RunHistoryJob extends BaseJob {
     public void run() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
         List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
-        Query query = new Query(Criteria.where("date").is(DateUtils.format1(new Date())));
-        List<StockPrices> stockPricesList = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
-        List<StockInfo> updateList = stockInfoList.stream().filter(s -> stockPricesList.stream().noneMatch(p -> p.getCode().equals(s.getCode()))).collect(Collectors.toList());
-        log.info("共需更新{}支股票最新历史价格数据", updateList.size());
-        updateList.forEach(this::writeHistoryPriceDataToMongo);
+        log.info("共需更新{}支股票最新历史价格数据", stockInfoList.size());
+        stockInfoList.forEach(this::writeHistoryPriceDataToMongo);
     }
 
     @SneakyThrows
     public void writeHistoryPriceDataToMongo(StockInfo stockInfo) {
         List<StockPrices> historyPrices = stockService.getHistoryPrices(stockInfo.getCode());
+        historyPrices.forEach(s -> s.setName(stockInfo.getName()));
         // 翻转一下，将日期从新到旧排列，这样读到已经存在的数据，就可以跳过后续判断写入逻辑
         Collections.reverse(historyPrices);
         for (StockPrices s : historyPrices) {
