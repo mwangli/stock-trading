@@ -33,7 +33,7 @@ import java.util.concurrent.CountDownLatch;
 @RequiredArgsConstructor
 public class RunSaleJob extends BaseJob {
 
-    public static final long WAITING_SECONDS = 30;
+    public static final long WAITING_SECONDS = 10;
     public static final long WAITING_COUNT_SKIP = 10;
     public static final double SALE_PERCENT = 0.005;
     private final IStockService stockService;
