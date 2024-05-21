@@ -76,7 +76,7 @@ public class RunPredictJob extends BaseJob {
                 Double curPrice = pricesList.get(0).getPrice1();
                 Double prePrice = pricesList.get(1).getPrice1();
                 double increaseRate = prePrice == 0 ? 0 : (curPrice - prePrice) / prePrice;
-                double score2 = increaseRate * 100 * 100;
+                double score2 = increaseRate * 100 * 10;
                 AtomicReference<Double> score1 = new AtomicReference<>((double) 0);
                 modelInfos.stream().filter(m -> m.getCode().equals(code)).findFirst().ifPresent(m -> score1.set(m.getScore()));
                 stockInfos.stream().filter(s -> s.getCode().equals(code)).findFirst().ifPresent(s -> {

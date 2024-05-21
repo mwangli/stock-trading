@@ -405,7 +405,7 @@ public class ZXStockServiceImpl implements IStockService {
         int years = 3;
         final ArrayList<OrderInfo> orderInfos = new ArrayList<>();
         for (int i = 0; i < years * 12; i++) {
-            if (calendar.getTime().getTime() > new Date().getTime()) break;
+            if (calendar.getTime().getTime() > System.currentTimeMillis()) break;
             String startDate = DateUtils.format1(calendar.getTime());
             calendar.add(Calendar.MONTH, 1);
             String endDate = DateUtils.format1(calendar.getTime());
