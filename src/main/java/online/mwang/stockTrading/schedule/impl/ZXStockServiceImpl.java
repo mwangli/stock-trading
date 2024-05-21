@@ -275,8 +275,8 @@ public class ZXStockServiceImpl implements IStockService {
     @Override
     public boolean waitSuccess(String answerNo) {
         int times = 0;
-        while (times++ < 10) {
-            sleepUtils.second(30);
+        while (times++ < 120) {
+            sleepUtils.second(10);
             final String status = queryOrderStatus(answerNo);
             if (status == null) {
                 log.info("当前合同编号:{},订单状态查询失败。", answerNo);
@@ -287,8 +287,11 @@ public class ZXStockServiceImpl implements IStockService {
                 return true;
             }
             if ("已报".equals(status)) {
-                log.info("当前合同编号:{},交易不成功,进行撤单操作。", answerNo);
-                cancelOrder(answerNo);
+                log.info("当前合同编号:{},等待交易完成...", answerNo);
+                if (times >= 100) {
+                    log.info("当前合同编号:{},交易不成功,正在进行撤单操作...", answerNo);
+                    cancelOrder(answerNo);
+                }
             }
             if ("已报待撤".equals(status)) {
                 log.info("当前合同编号:{},等待撤单完成...", answerNo);
