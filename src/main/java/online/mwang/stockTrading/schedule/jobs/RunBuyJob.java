@@ -90,7 +90,7 @@ public class RunBuyJob extends BaseJob {
         // 从前100条数据中分页随机选取10条
         ArrayList<StockInfo> buyStockList = new ArrayList<>();
         for (int i = 0; i < THREAD_COUNT * NEED_COUNT; i++) {
-            List<StockInfo> stockInfoList = stockInfoMapper.selectPage(Page.of(1, THREAD_COUNT * NEED_COUNT), queryWrapper).getRecords();
+            List<StockInfo> stockInfoList = stockInfoMapper.selectPage(Page.of(i, 10), queryWrapper).getRecords();
             StockInfo stockInfo = stockInfoList.get(new Random().nextInt(10));
             buyStockList.add(stockInfo);
         }
