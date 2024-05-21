@@ -1,6 +1,5 @@
 package online.mwang.stockTrading.schedule.jobs;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -11,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * @version 1.0.0
@@ -29,17 +29,16 @@ public class RunOrderJob extends BaseJob {
     @SneakyThrows
     @Override
     public void run() {
-        // 同步今日成交订单数据 此处会获取到全部订单数据
+        // 同步今日成交订单数据
         List<OrderInfo> todayOrders = stockService.getTodayOrder();
         todayOrders.forEach(this::fixProps);
         List<OrderInfo> orderInfos = orderInfoService.list();
-        orderInfos.forEach(orderInfo -> {
-            OrderInfo find = orderInfoService.getOne(new LambdaQueryWrapper<OrderInfo>().eq(OrderInfo::getAnswerNo, orderInfo.getAnswerNo()));
-            if (find != null) {
-                log.info("当前订单{}已经存在，无需写入!", orderInfo);
+        List<OrderInfo> saveList = orderInfos.stream().filter(o -> orderInfos.stream().noneMatch(i -> i.getAnswerNo().equals(o.getAnswerNo()))).collect(Collectors.toList());
+        todayOrders.forEach(order -> {
+            if (orderInfos.stream().anyMatch(o -> o.getAnswerNo().equals(order.getAnswerNo()))) {
+                log.info("当前股票[{}-{}]，交易订单已经存在，无需写入！", order.getCode(), order.getName());
             } else {
-                orderInfoService.save(orderInfo);
-                log.info("写入{}条交易订单", orderInfo);
+                orderInfoService.save(order);
             }
         });
     }

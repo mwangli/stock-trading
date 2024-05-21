@@ -67,10 +67,10 @@ public class RunInitialJob extends BaseJob {
     private void initHistoryOrder() {
         // 初始化订单数据，当交易记录数据丢失，或者在证券平台上已有订单数据，需要同步
         // 将数据写入到TradingRecord 和 OrderInfo表
+        final List<OrderInfo> orderInfoList = stockService.getTodayOrder();
         final List<OrderInfo> historyOrders = stockService.getHistoryOrder();
-        final List<OrderInfo> todayOrders = stockService.getTodayOrder();
-        historyOrders.addAll(todayOrders);
-        List<OrderInfo> distinctOrders = historyOrders.stream().distinct().collect(Collectors.toList());
+        orderInfoList.addAll(historyOrders);
+        List<OrderInfo> distinctOrders = orderInfoList.stream().distinct().collect(Collectors.toList());
         // 写入订单信息
         Set<String> answerNoSet = orderInfoService.list().stream().map(OrderInfo::getAnswerNo).collect(Collectors.toSet());
         List<OrderInfo> saveOrderInfos = distinctOrders.stream().filter(o -> !answerNoSet.contains(o.getAnswerNo())).collect(Collectors.toList());
