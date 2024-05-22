@@ -44,10 +44,10 @@ public class RunBuyJob extends BaseJob {
     public static final double LOW_PRICE_LIMIT = 5.0;
     public static final int NEED_COUNT = 1;
     public static final double AMOUNT_USED_RATE = 0.8;
-    public static final long WAITING_SECONDS = 10;
+    public static final long WAITING_SECONDS = 30;
     public static final long WAITING_COUNT_SKIP = 30;
     public static final long THREAD_COUNT = 10;
-    public static final double BUY_PERCENT = 0.01;
+    public static final double BUY_PERCENT = 0.005;
     private final IStockService stockService;
     private final TradingRecordService tradingRecordService;
     private final StockInfoMapper stockInfoMapper;
