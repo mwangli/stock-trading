@@ -1,8 +1,6 @@
 package online.mwang.stockTrading.web.utils;
 
 import java.text.SimpleDateFormat;
-import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
@@ -64,20 +62,26 @@ public class DateUtils {
         return res;
     }
 
+    public static Boolean isDeadLine() {
+        return isDeadLine1() || isDeadLine2();
+    }
+
+    // 上午交易时间段即将结束(9:30-11:30)
     public static Boolean isDeadLine1() {
         final Calendar calendar = Calendar.getInstance();
         calendar.setTime(new Date());
         final int hours = calendar.get(Calendar.HOUR_OF_DAY);
         final int minutes = calendar.get(Calendar.MINUTE);
-        return hours >= 11 && minutes >= 20;
+        return hours == 11 && minutes >= 20 && minutes <= 30;
     }
 
+    // 下午交易时间段即将结束(13:00-15:00)
     public static Boolean isDeadLine2() {
         final Calendar calendar = Calendar.getInstance();
         calendar.setTime(new Date());
         final int hours = calendar.get(Calendar.HOUR_OF_DAY);
         final int minutes = calendar.get(Calendar.MINUTE);
-        return hours >= 14 && minutes >= 50;
+        return hours == 14 && minutes >= 50;
     }
 
     public static Boolean inTradingTimes1() {
