@@ -9,28 +9,17 @@ spring:
       port: 27017
       database: stock-trading
       username: root
-      password: Root.123456
+      password: ${MONGO_PASS}
       authentication-database: admin
       auto-index-creation: true
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
     password: ${MYSQL_PASS}
-    url: jdbc:mysql://${MYSQL_HOST}/found_trading?characterEncoding=utf-8&useSSL=false
+    url: jdbc:mysql://${MYSQL_HOST}:3306/found_trading?characterEncoding=utf-8&useSSL=false
   mvc:
     pathmatch:
       matching-strategy: ANT_PATH_MATCHER
   redis:
     timeout: 10000
-    url: redis://:${REDIS_PASS}@${REDIS_HOST}
-    jedis:
-      pool:
-        #最大连接数
-        max-active: 8
-        #最大阻塞等待时间(负数表示没限制)
-        max-wait: -1
-        #最大空闲
-        max-idle: 8
-        #最小空闲
-        min-idle: 0
-        #连接超时时间
+    url: redis://:${REDIS_PASS}@${REDIS_HOST}:6379

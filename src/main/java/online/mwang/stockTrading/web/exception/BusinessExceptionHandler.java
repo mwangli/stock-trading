@@ -14,8 +14,8 @@ public class BusinessExceptionHandler {
         return Response.fail(20010, exception.getMessage());
     }
 
-    @ExceptionHandler(Exception.class)
-    public Response<?> bindException(Exception exception) {
-        return Response.fail(10010, exception.getMessage());
-    }
+//    @ExceptionHandler(Exception.class)
+//    public Response<?> bindException(Exception exception) {
+//        return Response.fail(10010, exception.getMessage());
+//    }
 }

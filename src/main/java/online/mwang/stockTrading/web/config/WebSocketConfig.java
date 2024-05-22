@@ -7,7 +7,7 @@ import org.springframework.web.socket.server.standard.ServerEndpointExporter;
 import java.io.Serializable;
  
 /**
- * TODO websocket配置
+ * websocket配置
  *
  * @author xiaoshuaishuai
  * @date 2019-05-21 11:18
