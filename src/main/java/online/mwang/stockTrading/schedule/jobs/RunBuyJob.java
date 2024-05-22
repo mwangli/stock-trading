@@ -176,8 +176,8 @@ public class RunBuyJob extends BaseJob {
         tradingRecordService.save(record);
         // 更新账户资金状态
         AccountInfo newAccountInfo = stockService.getAccountInfo();
-        newAccountInfo.setCreateTime(new Date());
-        newAccountInfo.setUpdateTime(new Date());
+        newAccountInfo.setCreateTime(now);
+        newAccountInfo.setUpdateTime(now);
         accountInfoMapper.insert(newAccountInfo);
         // 更新交易次数
         stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);
