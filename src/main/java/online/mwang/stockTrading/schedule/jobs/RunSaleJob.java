@@ -76,13 +76,15 @@ public class RunSaleJob extends BaseJob {
                 sleepUtils.second(WAITING_SECONDS);
                 if (isInterrupted) break;
                 double nowPrice = stockService.getNowPrice(record.getCode());
-                priceCount++;
-                priceTotal += nowPrice;
-                double priceAvg = priceTotal / priceCount;
-                log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", record.getName(), record.getCode(), String.format("%.2f", nowPrice), String.format("%.4f", priceAvg), priceCount);
-                if (priceCount > WAITING_COUNT_SKIP && nowPrice > priceAvg + priceAvg * SALE_PERCENT || DateUtils.isDeadLine1()) {
-                    if (DateUtils.isDeadLine1()) log.info("交易时间段即将结束");
-                    log.info(",当前股票[{}-{}],开始进行卖出", record.getName(), record.getCode());
+                double saleAmount = nowPrice * record.getBuyNumber();
+                Double peer = stockService.getPeeAmount(saleAmount);
+                saleAmount -= peer;
+                double expectedIncome = saleAmount - record.getBuyAmount();
+                double expectedIncomeRate = expectedIncome / record.getBuyAmount() * 100;
+                log.info("当前股票[{}-{}],最新价格为:{}，买入价格为:{}，预计收益为:{},预计日收益率为：{}", record.getCode(), record.getName(), record.getBuyPrice(), nowPrice, expectedIncome, String.format("%.4f", expectedIncomeRate));
+                if (expectedIncomeRate >= SALE_PERCENT || DateUtils.isDeadLine()) {
+                    if (DateUtils.isDeadLine()) log.info("交易时间段即将结束");
+                    log.info("当前股票[{}-{}],开始进行卖出", record.getName(), record.getCode());
                     JSONObject result = stockService.buySale("S", record.getCode(), nowPrice, record.getBuyNumber());
                     String saleNo = result.getString("ANSWERNO");
                     if (saleNo != null && stockService.waitSuccess(saleNo)) {

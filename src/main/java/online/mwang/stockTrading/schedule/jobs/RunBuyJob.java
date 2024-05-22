@@ -118,9 +118,10 @@ public class RunBuyJob extends BaseJob {
                 priceCount++;
                 priceTotal += nowPrice;
                 double priceAvg = priceTotal / priceCount;
-                log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", stockInfo.getName(), stockInfo.getCode(), String.format("%.2f", nowPrice), String.format("%.4f", priceAvg), priceCount);
-                if (priceCount > WAITING_COUNT_SKIP && nowPrice < priceAvg - priceAvg * BUY_PERCENT || DateUtils.isDeadLine2()) {
-                    if (DateUtils.isDeadLine2()) log.info("交易时间段即将结束！");
+                double expectedBuyPrice = priceAvg * (1 - BUY_PERCENT);
+                log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，期望买入价格为:{}", stockInfo.getName(), stockInfo.getCode(), nowPrice, String.format("%.2f", priceAvg), String.format("%.2f", expectedBuyPrice));
+                if (priceCount > WAITING_COUNT_SKIP && nowPrice <= expectedBuyPrice || DateUtils.isDeadLine()) {
+                    if (DateUtils.isDeadLine()) log.info("交易时间段即将结束！");
                     log.info("当前股票[{}-{}],开始进行买入!", stockInfo.getName(), stockInfo.getCode());
                     double buyNumber = (int) (availableAmount / nowPrice / 100) * 100;
                     JSONObject result = stockService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
