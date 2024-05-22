@@ -32,7 +32,6 @@ public class ModelInfoServiceImpl extends ServiceImpl<ModelInfoMapper, ModelInfo
         String maxDate = pricesList.stream().map(StockPrices::getDate).max(String::compareTo).orElse("");
         String minDate = pricesList.stream().map(StockPrices::getDate).min(String::compareTo).orElse("");
         Query historyQuery = new Query(Criteria.where("code").is(stockCode).and("date").lte(maxDate).gte(minDate));
-        List<StockPrices> historyPrices = mongoTemplate.find(historyQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
-        return historyPrices;
+        return mongoTemplate.find(historyQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
     }
 }
