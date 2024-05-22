@@ -1,8 +1,9 @@
 spring:
-  profiles:
-    active:
   jackson:
     time-zone: GMT+8
+  mvc:
+    pathmatch:
+      matching-strategy: ANT_PATH_MATCHER
   data:
     mongodb:
       host: ${MONGO_HOST}
@@ -17,9 +18,6 @@ spring:
     username: root
     password: ${MYSQL_PASS}
     url: jdbc:mysql://${MYSQL_HOST}:3306/found_trading?characterEncoding=utf-8&useSSL=false
-  mvc:
-    pathmatch:
-      matching-strategy: ANT_PATH_MATCHER
   redis:
     timeout: 10000
     url: redis://:${REDIS_PASS}@${REDIS_HOST}:6379
