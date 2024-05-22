@@ -110,10 +110,10 @@ public class RunBuyJob extends BaseJob {
         int priceCount = 0;
         double priceTotal = 0.0;
         boolean finished = false;
-        while (countDownLatch.getCount() > 0 && !finished) {
+        while (!finished) {
             try {
                 sleepUtils.second(WAITING_SECONDS);
-                if (isInterrupted) break;
+                if (isInterrupted || countDownLatch.getCount() <= 0) break;
                 double nowPrice = stockService.getNowPrice(stockInfo.getCode());
                 priceCount++;
                 priceTotal += nowPrice;
