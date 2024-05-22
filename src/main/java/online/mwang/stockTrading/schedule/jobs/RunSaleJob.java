@@ -77,8 +77,7 @@ public class RunSaleJob extends BaseJob {
                 if (isInterrupted) break;
                 double nowPrice = stockService.getNowPrice(record.getCode());
                 double saleAmount = nowPrice * record.getBuyNumber();
-                Double peer = stockService.getPeeAmount(saleAmount);
-                saleAmount -= peer;
+                saleAmount -= stockService.getPeeAmount(saleAmount);
                 double expectedIncome = saleAmount - record.getBuyAmount();
                 double expectedIncomeRate = expectedIncome / record.getBuyAmount() * 100;
                 log.info("当前股票[{}-{}],最新价格为:{}，买入价格为:{}，预计收益为:{},预计日收益率为：{}", record.getCode(), record.getName(), record.getBuyPrice(), nowPrice, expectedIncome, String.format("%.4f", expectedIncomeRate));
