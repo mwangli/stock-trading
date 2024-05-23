@@ -49,7 +49,6 @@ public class LSTMModel {
     private final ModelInfoService modelInfoService;
     private final ModelConfig modelConfig;
     private final GridFsUtils gridFsUtils;
-    public boolean skipTrain = false;
 
     /**
      * 构建标准时间序列数据输入数据，其中feature包含了label
@@ -102,7 +101,7 @@ public class LSTMModel {
         saveModelInfo(stockCode, stockName, "0秒", 0, "0");
         // 训练模型
         long start = System.currentTimeMillis();
-        if (!skipTrain) net.fit(trainIter, EPOCHS);
+        net.fit(trainIter, EPOCHS);
         long end = System.currentTimeMillis();
         String timePeriod = DateUtils.timeConvertor(end - start);
         log.info("模型训练完成，共耗时:{}", timePeriod);
