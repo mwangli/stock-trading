@@ -96,7 +96,8 @@ public class LSTMModel {
         String stockCode = dataList.get(0).getCode();
         String stockName = dataList.get(0).getName();
         String modelFileName = "model_".concat(stockCode).concat(".zip");
-        MultiLayerNetwork net = modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
+        MultiLayerNetwork model = gridFsUtils.readModelFromMongo(modelFileName);
+        MultiLayerNetwork net = model != null ? model : modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
         net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
         saveModelInfo(stockCode, stockName, "0秒", 0, "0");
         // 训练模型
@@ -172,6 +173,6 @@ public class LSTMModel {
         minMaxScaler.revertLabels(output);
         double predictValue = output.getDouble(EXAMPLE_LENGTH - 1);
         // 返回结果
-        return new StockPrices(stockCode,stockName, "", predictValue);
+        return new StockPrices(stockCode, stockName, "", predictValue);
     }
 }
