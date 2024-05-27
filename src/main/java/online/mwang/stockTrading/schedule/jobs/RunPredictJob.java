@@ -71,7 +71,7 @@ public class RunPredictJob extends BaseJob {
         List<StockPrices> predictPriceList = mongoTemplate.find(query, StockPrices.class, VALIDATION_COLLECTION_NAME);
         // 判断最近10次的最大连续增长次数和总增长次数，连续增长次数越多，则说明收益越稳定
         int totalIncreaseCount = 0, continuousIncreaseCount = 0, maxIncreaseCount = 0;
-        for (int i = 0; i < predictPriceList.size(); i++) {
+        for (int i = 0; i < predictPriceList.size() - 1; i++) {
             Double curPrice = predictPriceList.get(i).getPrice1();
             Double prePrice = predictPriceList.get(i + 1).getPrice1();
             if (curPrice > prePrice) {
