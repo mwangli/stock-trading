@@ -15,7 +15,6 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
@@ -41,7 +40,6 @@ public class RunPredictJob extends BaseJob {
         // 获取股票信息和模型信息
         List<StockInfo> stockInfos = stockInfoService.list();
         List<ModelInfo> modelInfos = modelInfoService.list();
-        ArrayList<StockPrices> predictPrices = new ArrayList<>();
         String date = DateUtils.dateFormat.format(DateUtils.getNextTradingDay(new Date()));
         for (StockInfo stockInfo : stockInfos) {
             // 获取历史价格
@@ -55,14 +53,12 @@ public class RunPredictJob extends BaseJob {
             StockPrices predictPrice = modelService.modelPredict(stockHistoryPrices);
             if (predictPrice == null) continue;
             predictPrice.setDate(date);
-            predictPrices.add(predictPrice);
             log.info("当前股票[{}-{}],{}预测价格为:{}", predictPrice.getCode(), predictPrice.getName(), date, predictPrice.getPrice1());
             mongoTemplate.remove(new Query(Criteria.where("date").is(date).and("code").is(stockInfo.getCode())), VALIDATION_COLLECTION_NAME);
-            mongoTemplate.insert(predictPrices, VALIDATION_COLLECTION_NAME);
+            mongoTemplate.insert(predictPrice, VALIDATION_COLLECTION_NAME);
             ModelInfo modelInfo = modelInfos.stream().filter(m -> m.getCode().equals(stockInfo.getCode())).findFirst().orElse(new ModelInfo());
             updateStockScore(stockInfo, modelInfo);
         }
-        log.info("共写入{}条股票价格预测数据。", predictPrices.size());
     }
 
     private void updateStockScore(StockInfo stockInfo, ModelInfo modelInfo) {
