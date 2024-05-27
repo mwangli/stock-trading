@@ -43,7 +43,6 @@ public class RunPredictJob extends BaseJob {
         String date = DateUtils.dateFormat.format(DateUtils.getNextTradingDay(new Date()));
         for (StockInfo stockInfo : stockInfos) {
             // 获取历史价格
-            if (modelInfos.stream().noneMatch(m -> m.getCode().equals(stockInfo.getCode()))) continue;
             Query query = new Query(Criteria.where("code").is(stockInfo.getCode())).with(Sort.by(Sort.Direction.DESC, "date")).limit(EXAMPLE_LENGTH);
             List<StockPrices> stockHistoryPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
             if (stockHistoryPrices.size() != EXAMPLE_LENGTH) continue;
@@ -56,8 +55,7 @@ public class RunPredictJob extends BaseJob {
             log.info("当前股票[{}-{}],{}预测价格为:{}", predictPrice.getCode(), predictPrice.getName(), date, predictPrice.getPrice1());
             mongoTemplate.remove(new Query(Criteria.where("date").is(date).and("code").is(stockInfo.getCode())), VALIDATION_COLLECTION_NAME);
             mongoTemplate.insert(predictPrice, VALIDATION_COLLECTION_NAME);
-            ModelInfo modelInfo = modelInfos.stream().filter(m -> m.getCode().equals(stockInfo.getCode())).findFirst().orElse(new ModelInfo());
-            updateStockScore(stockInfo, modelInfo);
+            modelInfos.stream().filter(m -> m.getCode().equals(stockInfo.getCode())).findFirst().ifPresent(m -> updateStockScore(stockInfo, m));
         }
     }
 
