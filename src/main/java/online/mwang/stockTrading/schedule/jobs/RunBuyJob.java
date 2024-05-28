@@ -26,6 +26,8 @@ import java.util.Date;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * @version 1.0.0
@@ -99,10 +101,11 @@ public class RunBuyJob extends BaseJob {
         }
         // 多支股票并行买入
         CountDownLatch countDownLatch = new CountDownLatch(NEED_COUNT);
+        ExecutorService cachedThreadPool = Executors.newCachedThreadPool();
         for (StockInfo stockInfo : buyStockList) {
             // 每隔3秒启动一个购买线程
             sleepUtils.second(WAITING_SECONDS / THREAD_COUNT);
-            new Thread(() -> buyStock(stockInfo, availableAmount, countDownLatch)).start();
+            cachedThreadPool.submit(() -> buyStock(stockInfo, availableAmount, countDownLatch));
         }
         countDownLatch.await();
         log.info("所有股票买入完成!");

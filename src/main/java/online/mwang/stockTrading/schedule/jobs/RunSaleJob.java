@@ -21,6 +21,8 @@ import org.springframework.stereotype.Component;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * @version 1.0.0
@@ -59,9 +61,10 @@ public class RunSaleJob extends BaseJob {
         List<TradingRecord> tradingRecords = tradingRecordService.list(queryWrapper);
         // 同时卖出卖出持有股票
         CountDownLatch countDownLatch = new CountDownLatch(tradingRecords.size());
+        ExecutorService cachedThreadPool = Executors.newCachedThreadPool();
         for (TradingRecord record : tradingRecords) {
             sleepUtils.second(WAITING_SECONDS / tradingRecords.size());
-            new Thread(() -> saleStock(record, countDownLatch)).start();
+            cachedThreadPool.submit(() -> saleStock(record, countDownLatch));
         }
         countDownLatch.await();
         log.info("所有股票卖出完成!");
