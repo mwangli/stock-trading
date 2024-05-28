@@ -8,7 +8,6 @@ import online.mwang.stockTrading.schedule.IStockService;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.StockInfoService;
-import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -31,8 +30,6 @@ public class RunHistoryJob extends BaseJob {
 
     private final IStockService stockService;
     private final StockInfoService stockInfoService;
-    private final MongoTemplate mongoTemplate;
-    private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
 
     @Override
     public void run() {

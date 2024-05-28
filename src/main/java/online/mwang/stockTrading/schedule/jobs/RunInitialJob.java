@@ -9,11 +9,9 @@ import online.mwang.stockTrading.web.bean.po.OrderInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.bean.po.TradingRecord;
-import online.mwang.stockTrading.web.mapper.TradingRecordMapper;
 import online.mwang.stockTrading.web.service.OrderInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
-import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
@@ -33,11 +31,8 @@ import java.util.stream.Collectors;
 public class RunInitialJob extends BaseJob {
 
     private final IStockService stockService;
-    private final MongoTemplate mongoTemplate;
     private final OrderInfoService orderInfoService;
-    private final TradingRecordMapper tradingRecordMapper;
     private final TradingRecordService tradingRecordService;
-    private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
 
     @Override
     public void run() {
@@ -89,7 +84,7 @@ public class RunInitialJob extends BaseJob {
         final LambdaQueryWrapper<TradingRecord> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(TradingRecord::getCode, record.getCode());
         queryWrapper.eq(TradingRecord::getBuyNo, record.getBuyNo());
-        final List<TradingRecord> findList = tradingRecordMapper.selectList(queryWrapper);
+        final List<TradingRecord> findList = tradingRecordService.list(queryWrapper);
         return findList.size() > 0;
     }
 

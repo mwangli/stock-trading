@@ -11,10 +11,8 @@ import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
@@ -30,11 +28,7 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class RunTrainJob extends BaseJob {
 
-    private static final String TEST_COLLECTION_NAME = "stockTestPrice";
-    private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
     private final IPredictService modelService;
-    private final MongoTemplate mongoTemplate;
-    private final StringRedisTemplate redisTemplate;
     private final StockInfoService stockInfoService;
     private final ModelInfoService modelInfoService;
     private boolean isInterrupted = false;

@@ -11,10 +11,8 @@ import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Calendar;
@@ -33,14 +31,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunCleanJob extends BaseJob {
 
-    private static final String VALIDATION_COLLECTION_NAME = "stockPredictPrice";
-    private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
-    private static final String TEST_COLLECTION_NAME = "stockTestPrice";
     private final AccountInfoService accountInfoService;
     private final StockInfoService stockInfoService;
     private final ModelInfoService modelInfoService;
-    private final StringRedisTemplate redisTemplate;
-    private final MongoTemplate mongoTemplate;
 
     @Override
     public void run() {
