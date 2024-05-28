@@ -7,9 +7,12 @@ import online.mwang.stockTrading.web.bean.po.QuartzJob;
 import online.mwang.stockTrading.web.logs.WebSocketServer;
 import online.mwang.stockTrading.web.mapper.QuartzJobMapper;
 import online.mwang.stockTrading.web.utils.DateUtils;
+import online.mwang.stockTrading.web.utils.SleepUtils;
 import org.quartz.InterruptableJob;
 import org.quartz.JobExecutionContext;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
@@ -31,11 +34,23 @@ public abstract class BaseJob implements InterruptableJob {
     public static ExecutorService fixedThreadPool = Executors.newFixedThreadPool(threads);
     public static ExecutorService cachedThreadPool = Executors.newCachedThreadPool();
 
-    public boolean debug = false;
+    public static final String VALIDATION_COLLECTION_NAME = "stockPredictPrice";
+    public static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
+    public static final String TEST_COLLECTION_NAME = "stockTestPrice";
+    public static final int EXAMPLE_LENGTH = 22;
+
+    @Resource
+    protected SleepUtils sleepUtils;
+    @Resource
+    protected MongoTemplate mongoTemplate;
+    @Resource
+    protected StringRedisTemplate redisTemplate;
     @Resource
     private QuartzJobMapper jobMapper;
     @Value("${profile:dev}")
     private String profile;
+
+    public boolean debug = false;
 
     abstract void run();
 

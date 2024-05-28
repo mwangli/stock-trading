@@ -10,7 +10,6 @@ import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
@@ -27,13 +26,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RunPredictJob extends BaseJob {
 
-    private static final int EXAMPLE_LENGTH = 22;
-    private static final String VALIDATION_COLLECTION_NAME = "stockPredictPrice";
-    private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
     private final IPredictService modelService;
     private final StockInfoService stockInfoService;
     private final ModelInfoService modelInfoService;
-    private final MongoTemplate mongoTemplate;
 
     @Override
     void run() {
@@ -46,7 +41,6 @@ public class RunPredictJob extends BaseJob {
             fixedThreadPool.submit(() -> predict(stockInfo, date, modelInfo));
         }
     }
-
 
     void predict(StockInfo stockInfo, String date, ModelInfo modelInfo) {
         // 获取历史价格

@@ -15,7 +15,6 @@ import online.mwang.stockTrading.web.service.OrderInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
-import online.mwang.stockTrading.web.utils.SleepUtils;
 import org.springframework.stereotype.Component;
 
 import java.util.Date;
@@ -41,7 +40,6 @@ public class RunSaleJob extends BaseJob {
     private final StockInfoService stockInfoService;
     private final OrderInfoService orderInfoService;
     private final AccountInfoMapper accountInfoMapper;
-    private final SleepUtils sleepUtils;
     private boolean isInterrupted = false;
     public boolean skipWaiting = false;
 
