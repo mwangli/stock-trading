@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * @version 1.0.0
@@ -31,16 +32,20 @@ public class RunHistoryJob extends BaseJob {
     private final IStockService stockService;
     private final StockInfoService stockInfoService;
 
+    @SneakyThrows
     @Override
     public void run() {
         LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
         List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
         log.info("共需更新{}支股票最新历史价格数据", stockInfoList.size());
-        stockInfoList.forEach(s -> fixedThreadPool.submit(() -> writeHistoryPriceDataToMongo(s)));
+        CountDownLatch countDownLatch = new CountDownLatch(stockInfoList.size());
+        stockInfoList.forEach(s -> fixedThreadPool.submit(() -> writeHistoryPriceDataToMongo(s,countDownLatch)));
+        countDownLatch.await();
+        log.info("所有历史数据写入完成");
     }
 
     @SneakyThrows
-    public void writeHistoryPriceDataToMongo(StockInfo stockInfo) {
+    public void writeHistoryPriceDataToMongo(StockInfo stockInfo,CountDownLatch countDownLatch) {
         List<StockPrices> historyPrices = stockService.getHistoryPrices(stockInfo.getCode());
         historyPrices.forEach(s -> s.setName(stockInfo.getName()));
         // 翻转一下，将日期从新到旧排列，这样读到已经存在的数据，就可以跳过后续判断写入逻辑
@@ -64,5 +69,6 @@ public class RunHistoryJob extends BaseJob {
             }
         }
         log.info("股票:{}-{}, 所有历史价格数据保存完成！", stockInfo.getName(), stockInfo.getCode());
+        countDownLatch.countDown();
     }
 }
