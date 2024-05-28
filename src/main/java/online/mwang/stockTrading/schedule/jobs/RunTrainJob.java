@@ -49,12 +49,10 @@ public class RunTrainJob extends BaseJob {
     @Override
     void run() {
         // 启动多线程同时训练充分利用CPU资源
-        int cores = Runtime.getRuntime().availableProcessors();
-        int threads = debug ? (cores >> 1) + 1 : 1;
-        log.info("启动模型训练线程数量为：{}", threads);
         CountDownLatch countDownLatch = new CountDownLatch(threads);
-        for (int i = 0; i < threads; i++) new Thread(() -> train(countDownLatch)).start();
-        countDownLatch.await();
+        for (int i = 0; i < threads; i++) fixedThreadPool.submit(() -> train(countDownLatch));
+        countDownLatch.countDown();
+        log.info("所有模型训练完成!");
     }
 
     @SneakyThrows

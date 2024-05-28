@@ -27,7 +27,7 @@ import java.util.concurrent.Executors;
 @Component
 public abstract class BaseJob implements InterruptableJob {
 
-    public static int threads = Runtime.getRuntime().availableProcessors();
+    public static int threads = Runtime.getRuntime().availableProcessors() * 2 - 1;
     public static ExecutorService fixedThreadPool = Executors.newFixedThreadPool(threads);
     public static ExecutorService cachedThreadPool = Executors.newCachedThreadPool();
 
