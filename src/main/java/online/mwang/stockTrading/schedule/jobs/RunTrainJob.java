@@ -13,6 +13,7 @@ import online.mwang.stockTrading.web.service.StockInfoService;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
@@ -31,6 +32,7 @@ public class RunTrainJob extends BaseJob {
     private final IPredictService modelService;
     private final StockInfoService stockInfoService;
     private final ModelInfoService modelInfoService;
+    private final StringRedisTemplate redisTemplate;
     private boolean isInterrupted = false;
 
     @Override
