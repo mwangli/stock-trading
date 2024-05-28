@@ -12,7 +12,6 @@ import online.mwang.stockTrading.web.bean.po.TradingRecord;
 import online.mwang.stockTrading.web.service.OrderInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
-import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
@@ -43,10 +42,9 @@ public class RunInitialJob extends BaseJob {
     private void initHistoryPriceData() {
         // 首次初始化执行，写入4000支股票，每只股票约500条数据
         List<StockInfo> stockInfoList = stockService.getDataList();
+        List<String> codes = mongoTemplate.findDistinct(new Query(), "code", TRAIN_COLLECTION_NAME, String.class);
         stockInfoList.forEach(s -> {
-            Query query = new Query(Criteria.where("code").is(s.getCode()));
-            List<StockPrices> find = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
-            if (find.size() > 0) {
+            if (codes.contains(s.getCode())) {
                 log.info("股票[{}-{}]历史数据已经存在，无需写入", s.getName(), s.getCode());
             } else {
                 List<StockPrices> historyPrices = stockService.getHistoryPrices(s.getCode());
