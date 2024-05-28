@@ -59,10 +59,7 @@ public class RunSaleJob extends BaseJob {
         List<TradingRecord> tradingRecords = tradingRecordService.list(queryWrapper);
         // 同时卖出卖出持有股票
         CountDownLatch countDownLatch = new CountDownLatch(tradingRecords.size());
-        for (TradingRecord record : tradingRecords) {
-            sleepUtils.second(WAITING_SECONDS / tradingRecords.size());
-            cachedThreadPool.submit(() -> saleStock(record, countDownLatch));
-        }
+        tradingRecords.forEach(r -> cachedThreadPool.submit(() -> saleStock(r, countDownLatch)));
         countDownLatch.await();
         log.info("所有股票卖出完成!");
     }
