@@ -12,7 +12,6 @@ import org.quartz.InterruptableJob;
 import org.quartz.JobExecutionContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
@@ -43,8 +42,7 @@ public abstract class BaseJob implements InterruptableJob {
     protected SleepUtils sleepUtils;
     @Resource
     protected MongoTemplate mongoTemplate;
-    @Resource
-    protected StringRedisTemplate redisTemplate;
+
     @Resource
     private QuartzJobMapper jobMapper;
     @Value("${profile:dev}")
