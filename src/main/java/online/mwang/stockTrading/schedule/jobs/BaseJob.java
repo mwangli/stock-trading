@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
 import javax.websocket.Session;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * @version 1.0.0
@@ -24,6 +26,10 @@ import javax.websocket.Session;
 @Slf4j
 @Component
 public abstract class BaseJob implements InterruptableJob {
+
+    public static int threads = Runtime.getRuntime().availableProcessors();
+    public static ExecutorService fixedThreadPool = Executors.newFixedThreadPool(threads);
+    public static ExecutorService cachedThreadPool = Executors.newCachedThreadPool();
 
     public boolean debug = false;
     @Resource
