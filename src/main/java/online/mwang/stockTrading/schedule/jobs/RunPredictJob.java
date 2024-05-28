@@ -42,21 +42,27 @@ public class RunPredictJob extends BaseJob {
         List<ModelInfo> modelInfos = modelInfoService.list();
         String date = DateUtils.dateFormat.format(DateUtils.getNextTradingDay(new Date()));
         for (StockInfo stockInfo : stockInfos) {
-            // 获取历史价格
-            Query query = new Query(Criteria.where("code").is(stockInfo.getCode())).with(Sort.by(Sort.Direction.DESC, "date")).limit(EXAMPLE_LENGTH);
-            List<StockPrices> stockHistoryPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
-            if (stockHistoryPrices.size() != EXAMPLE_LENGTH) continue;
-            Collections.reverse(stockHistoryPrices);
-            // 预填充最后一个预测数据以方便构造输入数据集
-            stockHistoryPrices.add(new StockPrices(0.0));
-            StockPrices predictPrice = modelService.modelPredict(stockHistoryPrices);
-            if (predictPrice == null) continue;
-            predictPrice.setDate(date);
-            log.info("当前股票[{}-{}],{}预测价格为:{}", predictPrice.getCode(), predictPrice.getName(), date, predictPrice.getPrice1());
-            mongoTemplate.remove(new Query(Criteria.where("date").is(date).and("code").is(stockInfo.getCode())), VALIDATION_COLLECTION_NAME);
-            mongoTemplate.insert(predictPrice, VALIDATION_COLLECTION_NAME);
-            modelInfos.stream().filter(m -> m.getCode().equals(stockInfo.getCode())).findFirst().ifPresent(m -> updateStockScore(stockInfo, m));
+            ModelInfo modelInfo = modelInfos.stream().filter(m -> m.getCode().equals(stockInfo.getCode())).findFirst().orElse(new ModelInfo());
+            fixedThreadPool.submit(() -> predict(stockInfo, date, modelInfo));
         }
+    }
+
+
+    void predict(StockInfo stockInfo, String date, ModelInfo modelInfo) {
+        // 获取历史价格
+        Query query = new Query(Criteria.where("code").is(stockInfo.getCode())).with(Sort.by(Sort.Direction.DESC, "date")).limit(EXAMPLE_LENGTH);
+        List<StockPrices> stockHistoryPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
+        if (stockHistoryPrices.size() != EXAMPLE_LENGTH) return;
+        Collections.reverse(stockHistoryPrices);
+        // 预填充最后一个预测数据以方便构造输入数据集
+        stockHistoryPrices.add(new StockPrices(0.0));
+        StockPrices predictPrice = modelService.modelPredict(stockHistoryPrices);
+        if (predictPrice == null) return;
+        predictPrice.setDate(date);
+        log.info("当前股票[{}-{}],{}预测价格为:{}", predictPrice.getCode(), predictPrice.getName(), date, predictPrice.getPrice1());
+        mongoTemplate.remove(new Query(Criteria.where("date").is(date).and("code").is(stockInfo.getCode())), VALIDATION_COLLECTION_NAME);
+        mongoTemplate.insert(predictPrice, VALIDATION_COLLECTION_NAME);
+        updateStockScore(stockInfo, modelInfo);
     }
 
     private void updateStockScore(StockInfo stockInfo, ModelInfo modelInfo) {

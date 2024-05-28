@@ -39,7 +39,7 @@ public class RunHistoryJob extends BaseJob {
         LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<>();
         List<StockInfo> stockInfoList = stockInfoService.list(queryWrapper);
         log.info("共需更新{}支股票最新历史价格数据", stockInfoList.size());
-        stockInfoList.forEach(this::writeHistoryPriceDataToMongo);
+        stockInfoList.forEach(s -> fixedThreadPool.submit(() -> writeHistoryPriceDataToMongo(s)));
     }
 
     @SneakyThrows
