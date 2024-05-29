@@ -65,7 +65,7 @@ public class RunPredictJob extends BaseJob {
             mongoTemplate.insert(predictPrice, VALIDATION_COLLECTION_NAME);
             updateStockScore(stockInfo, modelInfo);
         } catch (Exception e) {
-            log.info("当前股票价格预测异常：{}", e.getMessage());
+            log.info("当前股票[{}-{}],价格预测异常：{}", stockInfo.getName(), stockInfo.getCode(), e.getMessage());
         } finally {
             countDownLatch.countDown();
             log.info("countDownLatch:{}", countDownLatch.getCount());
@@ -89,9 +89,10 @@ public class RunPredictJob extends BaseJob {
                 continuousIncreaseCount = 0;
             }
         }
-        double score = (double) totalIncreaseCount * 10 + maxIncreaseCount * 10;
+        double score1 = (double) totalIncreaseCount * 10 + maxIncreaseCount * 10;
         // 将价格预测评分，和模型准确率评分的加权和作为最终评分
-        Double finalScore = score * 0.8 + modelInfo.getScore() * 0.2;
+        double score2 = modelInfo.getScore() == null ? 0 : modelInfo.getScore();
+        double finalScore = score1 * 0.8 + score2 * 0.2;
         stockInfo.setScore(finalScore);
         stockInfoService.updateById(stockInfo);
     }

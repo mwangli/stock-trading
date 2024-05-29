@@ -53,9 +53,9 @@ public class RunTrainJob extends BaseJob {
 
     @SneakyThrows
     private void train(CountDownLatch countDownLatch) {
-        List<StockInfo> stockInfos = stockInfoService.list();
-        for (StockInfo s : stockInfos) {
-            try {
+        try {
+            List<StockInfo> stockInfos = stockInfoService.list();
+            for (StockInfo s : stockInfos) {
                 if (isInterrupted) break;
                 Boolean check = redisTemplate.opsForValue().setIfAbsent("model:code:" + s.getCode(), s.getCode(), 5, TimeUnit.MINUTES);
                 if (check != null && !check) continue;
@@ -71,12 +71,13 @@ public class RunTrainJob extends BaseJob {
                 log.info("股票[{}-{}],清空{}条，写入{}条测试集数据", s.getCode(), s.getName(), removed.size(), stockTestPrices.size());
                 // 更新模型评分
                 updateModelScore(s.getCode());
-            } catch (Exception e) {
-                e.printStackTrace();
-                log.info("当前股票[{}-{}]模型训练异常!", s.getCode(), s.getName());
+
             }
+        } catch (Exception e) {
+            log.info("模型训练异常:{}", e.getMessage());
+        } finally {
+            countDownLatch.countDown();
         }
-        countDownLatch.countDown();
     }
 
     public void updateModelScore(String stockCode) {
