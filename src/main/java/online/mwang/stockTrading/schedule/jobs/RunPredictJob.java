@@ -65,10 +65,10 @@ public class RunPredictJob extends BaseJob {
             mongoTemplate.insert(predictPrice, VALIDATION_COLLECTION_NAME);
             updateStockScore(stockInfo, modelInfo);
         } catch (Exception e) {
-            e.printStackTrace();
             log.info("当前股票价格预测异常：{}", e.getMessage());
         } finally {
             countDownLatch.countDown();
+            log.info("countDownLatch:{}", countDownLatch.getCount());
         }
     }
 
