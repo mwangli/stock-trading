@@ -1,5 +1,6 @@
 package online.mwang.stockTrading.schedule.jobs;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -38,18 +39,16 @@ public class RunPredictJob extends BaseJob {
     void run() {
         // 获取股票信息和模型信息
         List<StockInfo> stockInfos = stockInfoService.list();
-        List<ModelInfo> modelInfos = modelInfoService.list();
         String date = DateUtils.dateFormat.format(DateUtils.getNextTradingDay(new Date()));
         CountDownLatch countDownLatch = new CountDownLatch(stockInfos.size());
         for (StockInfo stockInfo : stockInfos) {
-            ModelInfo modelInfo = modelInfos.stream().filter(m -> m.getCode().equals(stockInfo.getCode())).findFirst().orElse(new ModelInfo());
-            fixedThreadPool.submit(() -> predict(stockInfo, date, modelInfo, countDownLatch));
+            fixedThreadPool.submit(() -> predict(stockInfo, date, countDownLatch));
         }
         countDownLatch.await();
         log.info("所有股票价格预测完成!");
     }
 
-    void predict(StockInfo stockInfo, String date, ModelInfo modelInfo, CountDownLatch countDownLatch) {
+    void predict(StockInfo stockInfo, String date, CountDownLatch countDownLatch) {
         try {
             Query query = new Query(Criteria.where("code").is(stockInfo.getCode())).with(Sort.by(Sort.Direction.DESC, "date")).limit(EXAMPLE_LENGTH);
             List<StockPrices> stockHistoryPrices = mongoTemplate.find(query, StockPrices.class, TRAIN_COLLECTION_NAME);
@@ -63,7 +62,7 @@ public class RunPredictJob extends BaseJob {
             log.info("当前股票[{}-{}],{}预测价格为:{}", predictPrice.getCode(), predictPrice.getName(), date, predictPrice.getPrice1());
             mongoTemplate.remove(new Query(Criteria.where("date").is(date).and("code").is(stockInfo.getCode())), VALIDATION_COLLECTION_NAME);
             mongoTemplate.insert(predictPrice, VALIDATION_COLLECTION_NAME);
-            updateStockScore(stockInfo, modelInfo);
+            updateStockScore(stockInfo);
         } catch (Exception e) {
             log.info("当前股票[{}-{}],价格预测异常：{}", stockInfo.getName(), stockInfo.getCode(), e.getMessage());
         } finally {
@@ -72,27 +71,25 @@ public class RunPredictJob extends BaseJob {
         }
     }
 
-    private void updateStockScore(StockInfo stockInfo, ModelInfo modelInfo) {
-        // 获取预测结果集中的最后10条数据
-        Query query = new Query(Criteria.where("code").is(stockInfo.getCode())).with(Sort.by(Sort.Direction.DESC, "date")).limit(10);
+    private void updateStockScore(StockInfo stockInfo) {
+        // 获取预测结果集中的最后2条数据
+        Query query = new Query(Criteria.where("code").is(stockInfo.getCode())).with(Sort.by(Sort.Direction.DESC, "date")).limit(2);
         List<StockPrices> predictPriceList = mongoTemplate.find(query, StockPrices.class, VALIDATION_COLLECTION_NAME);
-        // 判断最近10次的最大连续增长次数和总增长次数，连续增长次数越多，则说明收益越稳定
-        int totalIncreaseCount = 0, continuousIncreaseCount = 0, maxIncreaseCount = 0;
-        for (int i = 0; i < predictPriceList.size() - 1; i++) {
-            Double curPrice = predictPriceList.get(i).getPrice1();
-            Double prePrice = predictPriceList.get(i + 1).getPrice1();
-            if (curPrice > prePrice) {
-                totalIncreaseCount++;
-                continuousIncreaseCount++;
-                maxIncreaseCount = Math.max(maxIncreaseCount, continuousIncreaseCount);
-            } else {
-                continuousIncreaseCount = 0;
-            }
+        double score1 = 0;
+        if (predictPriceList.size() >= 2) {
+            StockPrices lastPrice = predictPriceList.get(0);
+            StockPrices prePrice = predictPriceList.get(1);
+            double increaseRate = (lastPrice.getPrice1() - prePrice.getPrice1()) / prePrice.getPrice1();
+            score1 = increaseRate * 100 * 10;
         }
-        double score1 = (double) totalIncreaseCount * 10 + maxIncreaseCount * 10;
         // 将价格预测评分，和模型准确率评分的加权和作为最终评分
-        double score2 = modelInfo.getScore() == null ? 0 : modelInfo.getScore();
-        double finalScore = score1 * 0.8 + score2 * 0.2;
+        double score2 = 0;
+        LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().eq(ModelInfo::getCode, stockInfo.getCode());
+        ModelInfo modelInfo = modelInfoService.getOne(queryWrapper);
+        if (modelInfo != null) {
+            score2 = modelInfo.getScore();
+        }
+        double finalScore = score1 * 0.5 + score2 * 0.5;
         stockInfo.setScore(finalScore);
         stockInfoService.updateById(stockInfo);
     }
