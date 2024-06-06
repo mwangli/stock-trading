@@ -169,7 +169,6 @@ public class ZXStockServiceImpl implements IStockService {
     private String queryOrderStatus(String answerNo) {
         List<OrderStatus> orderInfos = listTodayAllOrder();
         log.info("查询到订单状态信息:");
-        orderInfos.forEach(o -> log.info("{}-{}:{}", o.getCode(), o.getName(), o.getStatus()));
         Optional<OrderStatus> status = orderInfos.stream().filter(o -> o.getAnswerNo().equals(answerNo)).findFirst();
         if (!status.isPresent()) {
             log.info("未查询到合同编号为{}的订单交易状态！", answerNo);
@@ -275,9 +274,10 @@ public class ZXStockServiceImpl implements IStockService {
     @Override
     public boolean waitSuccess(String answerNo) {
         int times = 0;
-        while (times++ < 120) {
+        while (times++ < 18) {
             sleepUtils.second(10);
             final String status = queryOrderStatus(answerNo);
+            log.info("查询到当前订单：{}，状态为：{}", answerNo, status);
             if (status == null) {
                 log.info("当前合同编号:{},订单状态查询失败。", answerNo);
                 return false;
@@ -288,7 +288,7 @@ public class ZXStockServiceImpl implements IStockService {
             }
             if ("已报".equals(status)) {
                 log.info("当前合同编号:{},等待交易完成...", answerNo);
-                if (times >= 100) {
+                if (times >= 6) {
                     log.info("当前合同编号:{},交易不成功,正在进行撤单操作...", answerNo);
                     cancelOrder(answerNo);
                 }
@@ -305,6 +305,7 @@ public class ZXStockServiceImpl implements IStockService {
                 return false;
             }
         }
+        log.info("当前订单：{}订单撤销失败!", answerNo);
         return false;
     }
 

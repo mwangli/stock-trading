@@ -82,6 +82,7 @@ public class RunSaleJob extends BaseJob {
                     log.info(",当前股票[{}-{}],开始进行卖出", record.getName(), record.getCode());
                     JSONObject result = stockService.buySale("S", record.getCode(), nowPrice, record.getBuyNumber());
                     String saleNo = result.getString("ANSWERNO");
+                    log.info("当前股票[{}-{}],卖出订单提交成功,订单编号为：{}", record.getName(), record.getCode(), saleNo);
                     if (saleNo != null && stockService.waitSuccess(saleNo)) {
                         saveData(record, saleNo, nowPrice);
                         countDownLatch.countDown();
