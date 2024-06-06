@@ -168,7 +168,7 @@ public class ZXStockServiceImpl implements IStockService {
 
     private String queryOrderStatus(String answerNo) {
         List<OrderStatus> orderInfos = listTodayAllOrder();
-        log.info("查询到订单状态信息:");
+        log.info("查询到订单状态信息:{}", orderInfos);
         Optional<OrderStatus> status = orderInfos.stream().filter(o -> o.getAnswerNo().equals(answerNo)).findFirst();
         if (!status.isPresent()) {
             log.info("未查询到合同编号为{}的订单交易状态！", answerNo);
@@ -238,6 +238,23 @@ public class ZXStockServiceImpl implements IStockService {
         paramMap.put("reqno", timeMillis);
         JSONArray result = requestUtils.request2(buildParams(paramMap));
         return arrayToList(result);
+    }
+
+
+    // 获取今日成交订单
+    @Override
+    public List<OrderInfo> getTodayOrder() {
+        final long timeMillis = System.currentTimeMillis();
+        final String token = getToken();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 114);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", 100);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        final JSONArray results = requestUtils.request2(buildParams(paramMap));
+        return arrayToOrderList(results, true);
     }
 
     @Override
@@ -415,22 +432,6 @@ public class ZXStockServiceImpl implements IStockService {
             sleepUtils.milliseconds(200);
         }
         return orderInfos;
-    }
-
-    // 获取今日成交订单
-    @Override
-    public List<OrderInfo> getTodayOrder() {
-        final long timeMillis = System.currentTimeMillis();
-        final String token = getToken();
-        HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", 114);
-        paramMap.put("ReqlinkType", 1);
-        paramMap.put("StartPos", 0);
-        paramMap.put("MaxCount", 100);
-        paramMap.put("token", token);
-        paramMap.put("reqno", timeMillis);
-        final JSONArray results = requestUtils.request2(buildParams(paramMap));
-        return arrayToOrderList(results, true);
     }
 
     private List<OrderInfo> arrayToOrderList(JSONArray results, boolean isToday) {
