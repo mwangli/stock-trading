@@ -123,6 +123,7 @@ public class RunBuyJob extends BaseJob {
                     double buyNumber = (int) (availableAmount / nowPrice / 100) * 100;
                     JSONObject result = stockService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
                     String buyNo = result.getString("ANSWERNO");
+                    log.info("当前股票[{}-{}],买入订单提交成功，订单编号为：{}", stockInfo.getName(), stockInfo.getCode(), buyNo);
                     if (buyNo != null && stockService.waitSuccess(buyNo)) {
                         saveData(stockInfo, buyNo, nowPrice, buyNumber);
                         countDownLatch.countDown();
