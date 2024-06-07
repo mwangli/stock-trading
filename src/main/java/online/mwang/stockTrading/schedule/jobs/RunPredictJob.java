@@ -75,8 +75,8 @@ public class RunPredictJob extends BaseJob {
             ThreadPoolExecutor executor = (ThreadPoolExecutor) fixedThreadPool;
             long taskCount = executor.getTaskCount();
             long completedTaskCount = executor.getCompletedTaskCount();
-            int remainingCapacity = executor.getQueue().remainingCapacity();
-            log.info("总任务数量:{}，已完成任务数量：{},剩余任务数量：{}", taskCount, completedTaskCount, remainingCapacity);
+            int size = executor.getQueue().size();
+            log.info("总任务数量:{}，已完成任务数量：{},剩余任务数量：{}", taskCount, completedTaskCount, size);
         }
     }
 
