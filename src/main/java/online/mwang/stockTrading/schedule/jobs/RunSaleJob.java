@@ -33,8 +33,8 @@ import java.util.concurrent.CountDownLatch;
 public class RunSaleJob extends BaseJob {
 
     public static final long WAITING_SECONDS = 10;
-    public static final long WAITING_COUNT_SKIP = 10;
-    public static final double SALE_PERCENT = 0.01;
+    public static final long WAITING_COUNT_SKIP = 5;
+    public static final double SALE_PERCENT = 0.005;
     private final IStockService stockService;
     private final TradingRecordService tradingRecordService;
     private final StockInfoService stockInfoService;
@@ -76,7 +76,7 @@ public class RunSaleJob extends BaseJob {
                 priceTotal += nowPrice;
                 double priceAvg = priceTotal / priceCount;
                 double expectedPrice = priceAvg + priceAvg * SALE_PERCENT;
-                log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，买入价格为:{}, 已统计次数为:{}", record.getName(), record.getCode(), String.format("%.2f", nowPrice), String.format("%.2f", priceAvg), String.format("%.2f", record.getBuyPrice()), priceCount);
+                log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，买入价格为:{}", record.getName(), record.getCode(), String.format("%.2f", nowPrice), String.format("%.2f", priceAvg), String.format("%.2f", record.getBuyPrice()));
                 if ((priceCount > WAITING_COUNT_SKIP && nowPrice > expectedPrice) || DateUtils.isDeadLine() || skipWaiting) {
                     if (DateUtils.isDeadLine1()) log.info("交易时间段即将结束");
                     log.info(",当前股票[{}-{}],开始进行卖出", record.getName(), record.getCode());
