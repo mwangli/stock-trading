@@ -10,6 +10,7 @@ import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
+import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -56,7 +57,7 @@ public class RunTrainJob extends BaseJob {
         try {
             List<StockInfo> stockInfos = stockInfoService.list();
             for (StockInfo s : stockInfos) {
-                if (isInterrupted) break;
+                if (isInterrupted || DateUtils.inTradingTimes1()) break;
                 Boolean check = redisTemplate.opsForValue().setIfAbsent("model:code:" + s.getCode(), s.getCode(), 5, TimeUnit.MINUTES);
                 if (check != null && !check) continue;
                 final Query query = new Query(Criteria.where("code").is(s.getCode())).with(Sort.by(Sort.Direction.ASC, "date"));
