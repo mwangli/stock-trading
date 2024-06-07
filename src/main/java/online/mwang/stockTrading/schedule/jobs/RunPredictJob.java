@@ -21,6 +21,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * @author 13255
@@ -29,6 +30,8 @@ import java.util.concurrent.CountDownLatch;
 @Component
 @RequiredArgsConstructor
 public class RunPredictJob extends BaseJob {
+
+    public static final int EXAMPLE_LENGTH = 22;
 
     private final IPredictService modelService;
     private final StockInfoService stockInfoService;
@@ -41,6 +44,7 @@ public class RunPredictJob extends BaseJob {
         List<StockInfo> stockInfos = stockInfoService.list();
         String date = DateUtils.dateFormat.format(DateUtils.getNextTradingDay(new Date()));
         CountDownLatch countDownLatch = new CountDownLatch(stockInfos.size());
+        log.info("共提交{}条股票价格预测任务", stockInfos.size());
         for (StockInfo stockInfo : stockInfos) {
             fixedThreadPool.submit(() -> predict(stockInfo, date, countDownLatch));
         }
@@ -66,8 +70,11 @@ public class RunPredictJob extends BaseJob {
         } catch (Exception e) {
             log.info("当前股票[{}-{}],价格预测异常：{}", stockInfo.getName(), stockInfo.getCode(), e.getMessage());
         } finally {
-            countDownLatch.countDown();
             log.info("countDownLatch:{}", countDownLatch.getCount());
+            ThreadPoolExecutor executor = (ThreadPoolExecutor) fixedThreadPool;
+            long taskCount = executor.getTaskCount();
+            long completedTaskCount = executor.getCompletedTaskCount();
+            log.info("总任务数量:{}，已完成任务数量：{}", taskCount, completedTaskCount);
         }
     }
 
