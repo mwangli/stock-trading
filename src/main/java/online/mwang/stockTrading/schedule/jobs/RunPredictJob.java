@@ -70,6 +70,7 @@ public class RunPredictJob extends BaseJob {
         } catch (Exception e) {
             log.info("当前股票[{}-{}],价格预测异常：{}", stockInfo.getName(), stockInfo.getCode(), e.getMessage());
         } finally {
+            countDownLatch.countDown();
             log.info("countDownLatch:{}", countDownLatch.getCount());
             ThreadPoolExecutor executor = (ThreadPoolExecutor) fixedThreadPool;
             long taskCount = executor.getTaskCount();
