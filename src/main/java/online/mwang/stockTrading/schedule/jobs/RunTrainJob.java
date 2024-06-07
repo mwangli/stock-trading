@@ -49,7 +49,7 @@ public class RunTrainJob extends BaseJob {
         CountDownLatch countDownLatch = new CountDownLatch(threads);
         for (int i = 0; i < threads; i++) fixedThreadPool.submit(() -> train(countDownLatch));
         countDownLatch.countDown();
-        log.info("所有模型训练完成!");
+        log.info("训练任务终止!");
     }
 
     @SneakyThrows
