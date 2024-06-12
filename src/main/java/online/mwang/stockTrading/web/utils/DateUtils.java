@@ -68,29 +68,23 @@ public class DateUtils {
 
     // 上午交易时间段即将结束(9:30-11:30)
     public static Boolean isDeadLine1() {
-        final Calendar calendar = Calendar.getInstance();
-        calendar.setTime(new Date());
-        final int hours = calendar.get(Calendar.HOUR_OF_DAY);
-        final int minutes = calendar.get(Calendar.MINUTE);
-        return hours == 11 && minutes >= 20 && minutes <= 30;
+        String format = timeFormat.format(new Date());
+        return format.compareTo("11:20") >= 0;
     }
 
     // 下午交易时间段即将结束(13:00-15:00)
     public static Boolean isDeadLine2() {
-        final Calendar calendar = Calendar.getInstance();
-        calendar.setTime(new Date());
-        final int hours = calendar.get(Calendar.HOUR_OF_DAY);
-        final int minutes = calendar.get(Calendar.MINUTE);
-        return hours == 14 && minutes >= 50;
+        String format = timeFormat.format(new Date());
+        return format.compareTo("14:50") >= 0;
     }
 
     public static Boolean inTradingTimes1() {
-        String format = DateUtils.timeFormat.format(new Date());
+        String format = timeFormat.format(new Date());
         return format.compareTo("09:30") >= 0 && format.compareTo("11:30") <= 0;
     }
 
     public static Boolean inTradingTimes2() {
-        String format = DateUtils.timeFormat.format(new Date());
+        String format = timeFormat.format(new Date());
         return format.compareTo("13:00") >= 0 && format.compareTo("15:00") <= 0;
     }
 
