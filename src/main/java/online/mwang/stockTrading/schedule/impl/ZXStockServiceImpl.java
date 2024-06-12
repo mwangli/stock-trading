@@ -168,7 +168,7 @@ public class ZXStockServiceImpl implements IStockService {
 
     private String queryOrderStatus(String answerNo) {
         List<OrderStatus> orderInfos = listTodayAllOrder();
-        log.info("查询到订单状态信息:{}", orderInfos);
+//        log.info("查询到订单状态信息:{}", orderInfos);
         Optional<OrderStatus> status = orderInfos.stream().filter(o -> o.getAnswerNo().equals(answerNo)).findFirst();
         if (!status.isPresent()) {
             log.info("未查询到合同编号为{}的订单交易状态！", answerNo);
