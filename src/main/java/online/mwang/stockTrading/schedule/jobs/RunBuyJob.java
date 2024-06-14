@@ -97,7 +97,10 @@ public class RunBuyJob extends BaseJob {
         }
         // 多支股票并行买入
         CountDownLatch countDownLatch = new CountDownLatch(NEED_COUNT);
-        buyStockList.forEach(s -> cachedThreadPool.submit(() -> buyStock(s, availableAmount, countDownLatch)));
+        buyStockList.forEach(s -> {
+            sleepUtils.second(WAITING_SECONDS / THREAD_COUNT);
+            cachedThreadPool.submit(() -> buyStock(s, availableAmount, countDownLatch));
+        });
         countDownLatch.await();
         log.info("所有股票买入完成!");
     }
