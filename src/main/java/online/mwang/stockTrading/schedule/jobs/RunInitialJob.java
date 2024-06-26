@@ -44,9 +44,7 @@ public class RunInitialJob extends BaseJob {
         List<StockInfo> stockInfoList = stockService.getDataList();
         List<String> codes = mongoTemplate.findDistinct(new Query(), "code", TRAIN_COLLECTION_NAME, String.class);
         stockInfoList.forEach(s -> {
-            if (codes.contains(s.getCode())) {
-                log.info("股票[{}-{}]历史数据已经存在，无需写入", s.getName(), s.getCode());
-            } else {
+            if (!codes.contains(s.getCode())) {
                 List<StockPrices> historyPrices = stockService.getHistoryPrices(s.getCode());
                 historyPrices.forEach(p -> p.setName(s.getName()));
                 mongoTemplate.insert(historyPrices, TRAIN_COLLECTION_NAME);
@@ -60,10 +58,10 @@ public class RunInitialJob extends BaseJob {
     private void initHistoryOrder() {
         // 初始化订单数据，当交易记录数据丢失，或者在证券平台上已有订单数据，需要同步
         // 将数据写入到TradingRecord 和 OrderInfo表
-        final List<OrderInfo> orderInfoList = stockService.getTodayOrder();
         final List<OrderInfo> historyOrders = stockService.getHistoryOrder();
-        orderInfoList.addAll(historyOrders);
-        List<OrderInfo> distinctOrders = orderInfoList.stream().distinct().collect(Collectors.toList());
+        final List<OrderInfo> orderInfoList = stockService.getTodayOrder();
+        historyOrders.addAll(orderInfoList);
+        List<OrderInfo> distinctOrders = historyOrders.stream().distinct().collect(Collectors.toList());
         // 写入订单信息
         Set<String> answerNoSet = orderInfoService.list().stream().map(OrderInfo::getAnswerNo).collect(Collectors.toSet());
         List<OrderInfo> saveOrderInfos = distinctOrders.stream().filter(o -> !answerNoSet.contains(o.getAnswerNo())).collect(Collectors.toList());
