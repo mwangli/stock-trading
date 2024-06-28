@@ -63,7 +63,7 @@ public class RunPredictJob extends BaseJob {
             StockPrices predictPrice = modelService.modelPredict(stockHistoryPrices);
             if (predictPrice == null) throw new BusinessException("价格预测数据异常!");
             predictPrice.setDate(date);
-            log.info("当前股票[{}-{}],{}预测价格为:{}", predictPrice.getCode(), predictPrice.getName(), date, predictPrice.getPrice1());
+            log.info("当前股票[{}-{}],{}预测价格为:{}", predictPrice.getCode(), predictPrice.getName(), date, String.format("%.2f", predictPrice.getPrice1()));
             mongoTemplate.remove(new Query(Criteria.where("date").is(date).and("code").is(stockInfo.getCode())), VALIDATION_COLLECTION_NAME);
             mongoTemplate.insert(predictPrice, VALIDATION_COLLECTION_NAME);
             updateStockScore(stockInfo);
@@ -71,7 +71,6 @@ public class RunPredictJob extends BaseJob {
             log.info("当前股票[{}-{}],价格预测异常：{}", stockInfo.getName(), stockInfo.getCode(), e.getMessage());
         } finally {
             countDownLatch.countDown();
-            log.info("countDownLatch:{}", countDownLatch.getCount());
             ThreadPoolExecutor executor = (ThreadPoolExecutor) fixedThreadPool;
             log.info("剩余任务数量：{}", executor.getQueue().size());
         }
