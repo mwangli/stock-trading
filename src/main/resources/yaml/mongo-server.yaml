@@ -31,7 +31,7 @@ spec:
             - name: MONGO_INITDB_ROOT_USERNAME
               value: root
             - name: MONGO_INITDB_ROOT_PASSWORD
-              value: 'Root.12345'
+              value: '****.******'
           resources:
             limits:
               memory: "1024Mi"
