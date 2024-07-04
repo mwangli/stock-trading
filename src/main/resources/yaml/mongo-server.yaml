@@ -82,7 +82,7 @@ spec:
               values:
                 - test
 ---
-# 声明redis服务
+# 声明mongo服务
 apiVersion: v1
 kind: Service
 metadata:
