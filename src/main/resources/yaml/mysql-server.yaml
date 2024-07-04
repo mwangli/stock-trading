@@ -30,7 +30,7 @@ spec:
         - name: TZ
           value: Asia/Shanghai
         - name: MYSQL_ROOT_PASSWORD
-          value: ****.******
+          value: '****.******'
         ports:
         - containerPort: 3306
         volumeMounts:
