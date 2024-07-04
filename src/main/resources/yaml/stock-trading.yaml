@@ -50,15 +50,15 @@ spec:
         - name: MONGO_HOST
           value: mongo-svc
         - name: MONGO_PASS
-          value: ****.******
+          value: '****.******'
         - name: REDIS_HOST
           value: redis-svc
         - name: REDIS_PASS
-          value: ****.******
+          value: '****.******'
         - name: MYSQL_HOST
           value: mysql-svc
         - name: MYSQL_PASS
-          value: ****.******
+          value: '****.******'
         ports:
         - containerPort: 8080
 ---
