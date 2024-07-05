@@ -41,7 +41,7 @@ public class RunSaleJob extends BaseJob {
     private final OrderInfoService orderInfoService;
     private final AccountInfoMapper accountInfoMapper;
     private boolean isInterrupted = false;
-    public boolean skipWaiting = false;
+    public boolean skipWaiting = true;
 
     @Override
     public void interrupt() {
