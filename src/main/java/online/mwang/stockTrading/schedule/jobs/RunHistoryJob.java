@@ -60,7 +60,7 @@ public class RunHistoryJob extends BaseJob {
             } else {
                 if (one.getPrice3() == null || one.getPrice4() == null) {
                     log.info("当前股票{}-{}-{}，历史数据不完整进行修改操作", s.getName(), s.getCode(), s.getDate());
-                    Update update = new Update().set("price3", one.getPrice3()).set("price4", one.getPrice3());
+                    Update update = new Update().set("price3", one.getPrice3()).set("price4", one.getPrice4());
                     mongoTemplate.updateFirst(query, update, StockPrices.class, TRAIN_COLLECTION_NAME);
                 } else {
                     // 数据完整，则跳过后续数据处理
