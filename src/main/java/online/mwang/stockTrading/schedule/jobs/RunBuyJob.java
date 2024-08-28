@@ -36,9 +36,9 @@ import java.util.concurrent.CountDownLatch;
 @RequiredArgsConstructor
 public class RunBuyJob extends BaseJob {
 
-    public static final int MAX_HOLD_NUMBER = 200;
+    public static final int MAX_HOLD_NUMBER = 100;
     public static final int MIN_HOLD_NUMBER = 100;
-    public static final double LOW_PRICE_LIMIT = 3.0;
+    public static final double LOW_PRICE_LIMIT = 6.0;
     public static final int NEED_COUNT = 1;
     public static final double AMOUNT_USED_RATE = 0.8;
     public static final long WAITING_SECONDS = 20;
