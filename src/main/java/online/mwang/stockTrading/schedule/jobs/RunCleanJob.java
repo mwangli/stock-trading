@@ -103,4 +103,8 @@ public class RunCleanJob extends BaseJob {
         List<StockPrices> remove = mongoTemplate.findAllAndRemove(deleteQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
         log.info("共清理{}条无效历史数据!", remove.size());
     }
+
+    public static void main(String[] args) {
+        System.out.println(System.currentTimeMillis());
+    }
 }
