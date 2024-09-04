@@ -6,6 +6,7 @@ import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.mapper.ModelInfoMapper;
 import online.mwang.stockTrading.web.service.ModelInfoService;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -31,7 +32,7 @@ public class ModelInfoServiceImpl extends ServiceImpl<ModelInfoMapper, ModelInfo
         String stockCode = pricesList.get(0).getCode();
         String maxDate = pricesList.stream().map(StockPrices::getDate).max(String::compareTo).orElse("");
         String minDate = pricesList.stream().map(StockPrices::getDate).min(String::compareTo).orElse("");
-        Query historyQuery = new Query(Criteria.where("code").is(stockCode).and("date").lte(maxDate).gte(minDate));
+        Query historyQuery = new Query(Criteria.where("code").is(stockCode).and("date").lte(maxDate).gte(minDate)).with(Sort.by(Sort.Direction.ASC,"date"));
         return mongoTemplate.find(historyQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
     }
 }
