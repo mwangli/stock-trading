@@ -94,7 +94,7 @@ public class RunPredictJob extends BaseJob {
         if (modelInfo != null) {
             score2 = modelInfo.getScore();
         }
-        double finalScore = score1 * 1.5 + score2 * 1.1;
+        double finalScore = score1 * 0.8 + score2 * 1.2;
         stockInfo.setScore(finalScore);
         stockInfoService.updateById(stockInfo);
     }
