@@ -67,7 +67,8 @@ public class RunSaleJob extends BaseJob {
         int priceCount = 0;
         double priceTotal = 0.0;
         boolean finished = false;
-        while (!finished) {
+        int failedCount = 0;
+        while (!finished && failedCount < 10) {
             try {
                 sleepUtils.second(WAITING_SECONDS);
                 if (isInterrupted) break;
@@ -84,6 +85,7 @@ public class RunSaleJob extends BaseJob {
                     String saleNo = result.getString("ANSWERNO");
                     if (saleNo == null) {
                         log.info("当前股票[{}-{}]卖出订单提交失败!", record.getName(), record.getCode());
+                        failedCount++;
                         continue;
                     }
                     log.info("当前股票[{}-{}],卖出订单提交成功,订单编号为：{}", record.getName(), record.getCode(), saleNo);
