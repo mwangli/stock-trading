@@ -103,7 +103,8 @@ public class RunBuyJob extends BaseJob {
         int priceCount = 0;
         double priceTotal = 0.0;
         boolean finished = false;
-        while (!finished) {
+        int failedCount = 0;
+        while (!finished && failedCount < 10) {
             try {
                 sleepUtils.second(WAITING_SECONDS);
                 if (isInterrupted || countDownLatch.getCount() <= 0) break;
@@ -121,6 +122,7 @@ public class RunBuyJob extends BaseJob {
                     String buyNo = result.getString("ANSWERNO");
                     if (buyNo == null) {
                         log.info("当前股票[{}-{}]买入订单提交失败!", stockInfo.getName(), stockInfo.getCode());
+                        failedCount++;
                         continue;
                     }
                     log.info("当前股票[{}-{}],买入订单提交成功，订单编号为：{}", stockInfo.getName(), stockInfo.getCode(), buyNo);
