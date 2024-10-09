@@ -1,12 +1,10 @@
 package online.mwang.stockTrading.schedule.jobs;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.model.IPredictService;
 import online.mwang.stockTrading.web.bean.base.BusinessException;
-import online.mwang.stockTrading.web.bean.po.ModelInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.ModelInfoService;
@@ -89,12 +87,13 @@ public class RunPredictJob extends BaseJob {
         }
         // 将价格预测评分，和模型准确率评分的加权和作为最终评分
         double score2 = 0;
-        LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().eq(ModelInfo::getCode, stockInfo.getCode());
-        ModelInfo modelInfo = modelInfoService.getOne(queryWrapper);
-        if (modelInfo != null) {
-            score2 = modelInfo.getScore();
-        }
-        double finalScore = -score1 * 1.2 + score2 * 1.2;
+//        LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().eq(ModelInfo::getCode, stockInfo.getCode());
+//        ModelInfo modelInfo = modelInfoService.getOne(queryWrapper);
+//        if (modelInfo != null) {
+//            score2 = modelInfo.getScore();
+//        }
+        // 物极必反，否极泰来
+        double finalScore = -score1 * 1.5 + score2 * 1.2;
         stockInfo.setScore(finalScore);
         stockInfoService.updateById(stockInfo);
     }
