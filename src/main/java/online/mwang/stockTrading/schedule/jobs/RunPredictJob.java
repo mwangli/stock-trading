@@ -92,8 +92,8 @@ public class RunPredictJob extends BaseJob {
 //        if (modelInfo != null) {
 //            score2 = modelInfo.getScore();
 //        }
-        // 物极必反，否极泰来
-        double finalScore = -score1 * 1.5 + score2 * 1.2;
+
+        double finalScore = score1 * 2.0 + score2 * 1.2;
         stockInfo.setScore(finalScore);
         stockInfoService.updateById(stockInfo);
     }
