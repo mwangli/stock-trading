@@ -75,24 +75,28 @@ public class RunPredictJob extends BaseJob {
     }
 
     private void updateStockScore(StockInfo stockInfo) {
-        // 获取预测结果集中的最后2条数据
-        Query query = new Query(Criteria.where("code").is(stockInfo.getCode())).with(Sort.by(Sort.Direction.DESC, "date")).limit(2);
+        // 获取预测结果集中的最后3条数据，取连续两次增长率之和
+        Query query = new Query(Criteria.where("code").is(stockInfo.getCode())).with(Sort.by(Sort.Direction.DESC, "date")).limit(3);
         List<StockPrices> predictPriceList = mongoTemplate.find(query, StockPrices.class, VALIDATION_COLLECTION_NAME);
-        double score1 = 0;
-        if (predictPriceList.size() >= 2) {
+        double score1 = 0, score2 =0;
+        if (predictPriceList.size() >= 3) {
+            // 第一次增长率
             StockPrices lastPrice = predictPriceList.get(0);
             StockPrices prePrice = predictPriceList.get(1);
             double increaseRate = (lastPrice.getPrice1() - prePrice.getPrice1()) / prePrice.getPrice1();
             score1 = increaseRate * 100 * 10;
+            // 第二次增长率
+            StockPrices lastPrice1 = predictPriceList.get(1);
+            StockPrices prePrice1 = predictPriceList.get(2);
+            double increaseRate1 = (lastPrice1.getPrice1() - prePrice1.getPrice1()) / prePrice1.getPrice1();
+             score2 = increaseRate * 100 * 10;
         }
-        // 将价格预测评分，和模型准确率评分的加权和作为最终评分
-        double score2 = 0;
 //        LambdaQueryWrapper<ModelInfo> queryWrapper = new LambdaQueryWrapper<ModelInfo>().eq(ModelInfo::getCode, stockInfo.getCode());
 //        ModelInfo modelInfo = modelInfoService.getOne(queryWrapper);
 //        if (modelInfo != null) {
 //            score2 = modelInfo.getScore();
 //        }
-
+        // 将两次价格增长率的加权和作为最终评分
         double finalScore = score1 * 2.0 + score2 * 1.2;
         stockInfo.setScore(finalScore);
         stockInfoService.updateById(stockInfo);
