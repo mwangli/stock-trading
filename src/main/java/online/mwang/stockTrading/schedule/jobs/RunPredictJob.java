@@ -97,7 +97,7 @@ public class RunPredictJob extends BaseJob {
 //            score2 = modelInfo.getScore();
 //        }
         // 将两次价格增长率的加权和作为最终评分
-        double finalScore = score1 * 2.0 + score2 * 1.2;
+        double finalScore = -score1 * 2.0 + score2 * 1.2;
         stockInfo.setScore(finalScore);
         stockInfoService.updateById(stockInfo);
     }
