@@ -30,13 +30,14 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class OCRController {
 
-    static{
+    private static final Map<Long, List<String>> wordsMap = new HashMap<>();
+
+    static {
         System.setProperty("java.awt.headless", "true");
     }
 
-    private static final Map<Long, List<String>> wordsMap = new HashMap<>();
-    private final List<String> ignoreWords = Arrays.asList("按金额", "筛选", "余额", "储蓄卡", ":", "收支", "十", "明细", "借记卡", "账本", "借记卡3862",
-            "其他消费", "交通出行", "卡号", "津贴", "备注", "明细", "分析", "借记卡", "l令", ":", "记一笔","结余");
+    private final List<String> ignoreWords = Arrays.asList("按金额", "筛选", "余额", "储蓄卡", "收支", "十", "明细", "借记卡", "账本", "借记卡3862",
+            "其他消费", "交通出行", "卡号", "津贴", "备注", "明细", "分析", "借记卡", "l令", "记一笔", "结余");
     @Autowired
     private OcrUtils ocrUtils;
 
@@ -73,6 +74,9 @@ public class OCRController {
     }
 
 
+    /**
+     * 针对建设银行，中信银行，招商银行手机银行APP账单截图识别
+     */
     private List<ExcelRecordDTO> dataWash() {
         // sort
         ArrayList<Long> keys = new ArrayList<>(wordsMap.keySet());
@@ -86,15 +90,22 @@ public class OCRController {
         String year = "yyyy";
         String month = "MM";
         String day = "dd";
+        // 用以暂存数据
+        ExcelRecordDTO preDTO = new ExcelRecordDTO();
         for (int i = 0; i < wordsList.size() - 1; i++) {
             String line = wordsList.get(i);
             String nextLine = wordsList.get(i + 1);
             if (isYear(line)) {
-                if (line.contains("/")) {
-                    String part1 = line.split("\\/")[0];
-                    String part2 = line.split("\\/")[1].split("总")[0];
-                    month = part1.length() < part2.length() ? part1 : part2;
-                    year = part1.length() > part2.length() ? part1 : part2;
+                if (line.contains("-") && line.contains(":")) {
+                    year = line.split("-")[0];
+                    month = line.split("-")[1];
+                    day = line.split("-")[2].substring(0, 2);
+                }
+                if (line.contains("/") ) {
+//                    String part1 = line.split("\\/")[0];
+//                    String part2 = line.split("\\/")[1].split("总")[0];
+//                    month = part1.length() < part2.length() ? part1 : part2;
+//                    year = part1.length() > part2.length() ? part1 : part2;
                 }
                 if (line.contains(".")) {
                     year = line.split("\\.")[0];
@@ -107,6 +118,9 @@ public class OCRController {
                 if (month.length() == 1) {
                     month = "0".concat(month);
                 }
+                preDTO.setYear(year);
+                preDTO.setMonth(year + "-" + month);
+                preDTO.setDay(day);
                 continue;
             }
             if (isDate(line)) {
@@ -118,12 +132,6 @@ public class OCRController {
                     day = day.split("星期")[0];
                 }
                 continue;
-            }
-            {
-                // 交换顺序
-//                String t = line;
-//                line = nextLine;
-//                nextLine = t;
             }
             if (!isAmount(line) && isAmount(nextLine)) {
                 ExcelRecordDTO excelRecordDTO = new ExcelRecordDTO();
@@ -139,6 +147,7 @@ public class OCRController {
                 excelRecordDTO.setTarget(line);
                 String duplicateKey = excelRecordDTO.getYear() + excelRecordDTO.getMonth() + excelRecordDTO.getDay() + excelRecordDTO.getAmount() + excelRecordDTO.getTarget();
                 if (!duplicateSet.contains(duplicateKey)) {
+                    preDTO = excelRecordDTO;
                     dataList.add(excelRecordDTO);
                     duplicateSet.add(duplicateKey);
                 }
