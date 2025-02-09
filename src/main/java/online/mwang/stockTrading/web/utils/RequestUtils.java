@@ -31,7 +31,7 @@ public class RequestUtils {
     private static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
 
     private static final int RETRY_TIMES = 10;
-    public boolean logs = false;
+    public boolean logs = true;
     @Resource
     ApplicationContext applicationContext;
 
@@ -59,9 +59,9 @@ public class RequestUtils {
                 log.info("检测到无效token，尝试重新登录...");
                 stockService.clearToken();
                 String token = stockService.getToken();
-                if (token != null) {
+                if (token != null ) {
                     formParam.put("token", token);
-                    return request(url, formParam, ++times);
+//                    return request(url, formParam, ++times);
                 }
             }
             return res;

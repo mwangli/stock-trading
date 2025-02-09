@@ -145,7 +145,7 @@ public class OCRController {
                 }
                 excelRecordDTO.setAmount(nextLine.replaceAll("￥", "").replaceAll("人民币元", "").replaceAll("不计入", "").replaceAll("不t", "").replaceAll(",", ""));
                 excelRecordDTO.setTarget(line);
-                String duplicateKey = excelRecordDTO.getYear() + excelRecordDTO.getMonth() + excelRecordDTO.getDay() + excelRecordDTO.getAmount() + excelRecordDTO.getTarget();
+                String duplicateKey = excelRecordDTO.getYear() + excelRecordDTO.getMonth() + excelRecordDTO.getDay() + excelRecordDTO.getAmount();
                 if (!duplicateSet.contains(duplicateKey)) {
                     preDTO = excelRecordDTO;
                     dataList.add(excelRecordDTO);
