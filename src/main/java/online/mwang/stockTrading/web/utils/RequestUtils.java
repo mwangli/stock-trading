@@ -31,7 +31,7 @@ public class RequestUtils {
     private static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
 
     private static final int RETRY_TIMES = 10;
-    public boolean logs = false;
+    public boolean logs = true;
     @Resource
     ApplicationContext applicationContext;
 
@@ -43,6 +43,9 @@ public class RequestUtils {
                 return new JSONObject();
             }
             ZXStockServiceImpl stockService = applicationContext.getBean(ZXStockServiceImpl.class);
+            String token = stockService.getToken();
+            log.info("token:{}", token);
+            formParam.put("Token", token);
             CloseableHttpClient client = HttpClients.createDefault();
             MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
             formParam.forEach((k, v) -> entityBuilder.addTextBody(k, String.valueOf(v)));
@@ -58,7 +61,7 @@ public class RequestUtils {
             if ("-204007".equals(code) || "-204009".equals(code)) {
                 log.info("检测到无效token，尝试重新登录...");
                 stockService.clearToken();
-                String token = stockService.getToken();
+                token = stockService.getToken();
                 if (token != null) {
                     formParam.put("token", token);
                     return request(url, formParam, ++times);
@@ -67,7 +70,8 @@ public class RequestUtils {
             return res;
         } catch (JSONException e) {
             log.info("请求数据异常，正在重新请求数据。");
-            return request(url, formParam, ++times);
+            return new JSONObject();
+//            return request(url, formParam, ++times);
         }
     }
 
