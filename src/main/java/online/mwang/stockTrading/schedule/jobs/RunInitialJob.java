@@ -7,6 +7,7 @@ import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.OrderInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
+import online.mwang.stockTrading.web.utils.RequestUtils;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
@@ -26,10 +27,12 @@ public class RunInitialJob extends BaseJob {
     private final IStockService stockService;
     private final OrderInfoService orderInfoService;
     private final TradingRecordService tradingRecordService;
+    private final RequestUtils requestUtils;
 
     @Override
     public void run() {
-        initHistoryPriceData();
+//        initHistoryPriceData();
+        requestUtils.test111();
     }
 
     private void initHistoryPriceData() {

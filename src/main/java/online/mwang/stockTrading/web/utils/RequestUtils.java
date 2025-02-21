@@ -1,17 +1,12 @@
 package online.mwang.stockTrading.web.utils;
 
+import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONException;
 import com.alibaba.fastjson.JSONObject;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.impl.ZXStockServiceImpl;
-import org.apache.hc.client5.http.classic.methods.HttpPost;
-import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
-import org.apache.hc.client5.http.impl.classic.HttpClients;
-import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
@@ -31,7 +26,7 @@ public class RequestUtils {
     private static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
 
     private static final int RETRY_TIMES = 10;
-    public boolean logs = false;
+    public boolean logs = true;
     @Resource
     ApplicationContext applicationContext;
 
@@ -43,15 +38,17 @@ public class RequestUtils {
                 return new JSONObject();
             }
             ZXStockServiceImpl stockService = applicationContext.getBean(ZXStockServiceImpl.class);
-            CloseableHttpClient client = HttpClients.createDefault();
-            MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
-            formParam.forEach((k, v) -> entityBuilder.addTextBody(k, String.valueOf(v)));
-            HttpPost post = new HttpPost(url);
-            post.setEntity(entityBuilder.build());
-            CloseableHttpResponse response = client.execute(post);
-            String result = EntityUtils.toString(response.getEntity());
-            if (logs) log.info(result);
-            final JSONObject res = JSONObject.parseObject(result);
+//            CloseableHttpClient client = HttpClients.createDefault();
+//            MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
+//            formParam.forEach((k, v) -> entityBuilder.addTextBody(k, String.valueOf(v)));
+//            HttpPost post = new HttpPost(url);
+//            post.setEntity(entityBuilder.build());
+//            CloseableHttpResponse response = client.execute(post);
+//            String result = EntityUtils.toString(response.getEntity());
+            // 发送 POST 请求
+            String response = HttpUtil.createPost(url).form(formParam).execute().body();
+            if (logs) log.info(response);
+            JSONObject res = JSONObject.parseObject(response);
             String newToken = res.getString("TOKEN");
             if (newToken != null) stockService.setToken(newToken);
             String code = res.getString("ERRORNO");
@@ -59,15 +56,11 @@ public class RequestUtils {
                 log.info("检测到无效token，尝试重新登录...");
                 stockService.clearToken();
                 String token = stockService.getToken();
-                if (token != null) {
-                    formParam.put("token", token);
-                    return request(url, formParam, ++times);
-                }
             }
             return res;
         } catch (JSONException e) {
-            log.info("请求数据异常，正在重新请求数据。");
-            return request(url, formParam, ++times);
+            log.info("请求数据异常，请检查程序代码。");
+            return new JSONObject();
         }
     }
 
@@ -91,6 +84,26 @@ public class RequestUtils {
             return data.getJSONArray("results");
         }
         return new JSONArray();
+    }
+
+
+    public  void test111() {
+        HashMap<String, Object> params = new HashMap<>();
+        params.put("Token", "Y63ZNw35@17AC-4901690N2zeuo");
+        params.put("MobileCode", "13278828091");
+        params.put("Reqno", System.currentTimeMillis());
+        params.put("ReqlinkType", 1);
+        params.put("newindex", 1);
+        params.put("action", 115);
+        params.put("StartPos", 0);
+        params.put("MaxCount", 100);
+        params.put("BeginDate", "20241119");
+        params.put("EndDate", "20250216");
+        params.put("intacttoserver", "@ClZvbHVtZUluZm8JAAAAMTdBQy00OTAx");
+        params.put("cfrom", "H5");
+        params.put("tfrom", "PC");
+        JSONObject response = request(params);
+        log.info("{}", response);
     }
 }
 
