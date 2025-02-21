@@ -34,10 +34,6 @@ public class RunStockJob extends BaseJob {
         log.info("新增股票数量:{}", insertList.size());
         insertList.forEach(this::fixProps);
         stockInfoService.saveBatch(insertList);
-        // 清除退市股票
-        List<StockInfo> deleteList = dataList.stream().filter(s -> newInfos.stream().noneMatch(o -> o.getCode().equals(s.getCode()))).collect(Collectors.toList());
-        log.info("清除退市股票:{}", deleteList.size());
-        stockInfoService.removeBatchByIds(deleteList);
         // 同步每只股票最新的当前价格
         List<StockInfo> list = dataList.stream().peek(stockInfo -> newInfos.stream().filter(info -> info.getCode().equals(stockInfo.getCode())).findFirst().ifPresent(p -> {
             stockInfo.setPrice(p.getPrice());

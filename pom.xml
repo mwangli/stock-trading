@@ -122,11 +122,20 @@
             <version>1.0.0-M1.1</version>
         </dependency>
 
-<!--        <dependency>-->
+        <!-- https://mvnrepository.com/artifact/cn.hutool/hutool-all -->
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+            <version>5.8.35</version>
+        </dependency>
+
+
+        <!--        <dependency>-->
 <!--            <groupId>org.nd4j</groupId>-->
 <!--            <artifactId>nd4j-cuda-11.2</artifactId>-->
 <!--            <version>1.0.0-M1.1</version>-->
 <!--        </dependency>-->
+
 
     </dependencies>
 
