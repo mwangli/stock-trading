@@ -7,13 +7,17 @@ import online.mwang.stockTrading.web.bean.po.QuartzJob;
 import online.mwang.stockTrading.web.logs.WebSocketServer;
 import online.mwang.stockTrading.web.mapper.QuartzJobMapper;
 import online.mwang.stockTrading.web.utils.DateUtils;
+import online.mwang.stockTrading.web.utils.SleepUtils;
 import org.quartz.InterruptableJob;
 import org.quartz.JobExecutionContext;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
 import javax.websocket.Session;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * @version 1.0.0
@@ -25,11 +29,27 @@ import javax.websocket.Session;
 @Component
 public abstract class BaseJob implements InterruptableJob {
 
-    public boolean debug = false;
+    public static int cores = Runtime.getRuntime().availableProcessors();
+    public static int threads = (cores >> 1) + 1;
+    public static ExecutorService fixedThreadPool = Executors.newFixedThreadPool(threads);
+    public static ExecutorService cachedThreadPool = Executors.newCachedThreadPool();
+
+    public static final String VALIDATION_COLLECTION_NAME = "stockPredictPrice";
+    public static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
+    public static final String TEST_COLLECTION_NAME = "stockTestPrice";
+    public static final int EXAMPLE_LENGTH = 22;
+
+    @Resource
+    protected SleepUtils sleepUtils;
+    @Resource
+    protected MongoTemplate mongoTemplate;
+
     @Resource
     private QuartzJobMapper jobMapper;
     @Value("${profile:dev}")
     private String profile;
+
+    public boolean debug = false;
 
     abstract void run();
 

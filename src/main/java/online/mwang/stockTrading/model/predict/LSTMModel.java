@@ -49,7 +49,6 @@ public class LSTMModel {
     private final ModelInfoService modelInfoService;
     private final ModelConfig modelConfig;
     private final GridFsUtils gridFsUtils;
-    public boolean skipTrain = false;
 
     /**
      * 构建标准时间序列数据输入数据，其中feature包含了label
@@ -97,12 +96,13 @@ public class LSTMModel {
         String stockCode = dataList.get(0).getCode();
         String stockName = dataList.get(0).getName();
         String modelFileName = "model_".concat(stockCode).concat(".zip");
-        MultiLayerNetwork net = modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
+        MultiLayerNetwork model = gridFsUtils.readModelFromMongo(modelFileName);
+        MultiLayerNetwork net = model != null ? model : modelConfig.getNetModel(INPUT_SIZE, OUTPUT_SIZE);
         net.setListeners(new ScoreIterationListener(SCORE_ITERATIONS));
         saveModelInfo(stockCode, stockName, "0秒", 0, "0");
         // 训练模型
         long start = System.currentTimeMillis();
-        if (!skipTrain) net.fit(trainIter, EPOCHS);
+        net.fit(trainIter, EPOCHS);
         long end = System.currentTimeMillis();
         String timePeriod = DateUtils.timeConvertor(end - start);
         log.info("模型训练完成，共耗时:{}", timePeriod);
@@ -173,10 +173,6 @@ public class LSTMModel {
         minMaxScaler.revertLabels(output);
         double predictValue = output.getDouble(EXAMPLE_LENGTH - 1);
         // 返回结果
-        StockPrices stockPredictPrice = new StockPrices();
-        stockPredictPrice.setPrice1(predictValue);
-        stockPredictPrice.setCode(stockCode);
-        stockPredictPrice.setName(stockName);
-        return stockPredictPrice;
+        return new StockPrices(stockCode, stockName, "", predictValue);
     }
 }

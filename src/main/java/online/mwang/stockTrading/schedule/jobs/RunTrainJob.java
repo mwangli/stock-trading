@@ -10,8 +10,8 @@ import online.mwang.stockTrading.web.bean.po.StockInfo;
 import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
+import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -30,13 +30,10 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class RunTrainJob extends BaseJob {
 
-    private static final String TEST_COLLECTION_NAME = "stockTestPrice";
-    private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
     private final IPredictService modelService;
-    private final MongoTemplate mongoTemplate;
-    private final StringRedisTemplate redisTemplate;
     private final StockInfoService stockInfoService;
     private final ModelInfoService modelInfoService;
+    private final StringRedisTemplate redisTemplate;
     private boolean isInterrupted = false;
 
     @Override
@@ -49,20 +46,18 @@ public class RunTrainJob extends BaseJob {
     @Override
     void run() {
         // 启动多线程同时训练充分利用CPU资源
-        int cores = Runtime.getRuntime().availableProcessors();
-        int threads = debug ? (cores >> 1) + 1 : 1;
-        log.info("启动模型训练线程数量为：{}", threads);
         CountDownLatch countDownLatch = new CountDownLatch(threads);
-        for (int i = 0; i < threads; i++) new Thread(() -> train(countDownLatch)).start();
-        countDownLatch.await();
+        for (int i = 0; i < threads; i++) fixedThreadPool.submit(() -> train(countDownLatch));
+        countDownLatch.countDown();
+        log.info("训练任务终止!");
     }
 
     @SneakyThrows
     private void train(CountDownLatch countDownLatch) {
-        List<StockInfo> stockInfos = stockInfoService.list();
-        for (StockInfo s : stockInfos) {
-            try {
-                if (isInterrupted) break;
+        try {
+            List<StockInfo> stockInfos = stockInfoService.list();
+            for (StockInfo s : stockInfos) {
+                if (isInterrupted || DateUtils.inTradingTimes1()) break;
                 Boolean check = redisTemplate.opsForValue().setIfAbsent("model:code:" + s.getCode(), s.getCode(), 5, TimeUnit.MINUTES);
                 if (check != null && !check) continue;
                 final Query query = new Query(Criteria.where("code").is(s.getCode())).with(Sort.by(Sort.Direction.ASC, "date"));
@@ -77,12 +72,13 @@ public class RunTrainJob extends BaseJob {
                 log.info("股票[{}-{}],清空{}条，写入{}条测试集数据", s.getCode(), s.getName(), removed.size(), stockTestPrices.size());
                 // 更新模型评分
                 updateModelScore(s.getCode());
-            } catch (Exception e) {
-                e.printStackTrace();
-                log.info("当前股票[{}-{}]模型训练异常!", s.getCode(), s.getName());
+
             }
+        } catch (Exception e) {
+            log.info("模型训练异常:{}", e.getMessage());
+        } finally {
+            countDownLatch.countDown();
         }
-        countDownLatch.countDown();
     }
 
     public void updateModelScore(String stockCode) {
@@ -100,13 +96,13 @@ public class RunTrainJob extends BaseJob {
     private double calculateDeviation(String stockCode) {
         // 获取测试集数据
         List<StockPrices> pricesList = mongoTemplate.find(new Query(Criteria.where("code").is(stockCode)), StockPrices.class, TEST_COLLECTION_NAME);
-        if (CollectionUtils.isEmpty(pricesList)) return 1;
+        if (pricesList.size() < 10) return 1;
         List<StockPrices> historyPrices = modelInfoService.getHistoryData(pricesList);
         setIncreaseRate(historyPrices);
         setIncreaseRate(pricesList);
         // 计算测试集误差和评分
         int mistakeCount = 0;
-        for (int i = 1; i < pricesList.size(); i++) {
+        for (int i = 0; i < pricesList.size(); i++) {
             Double testIncrease = pricesList.get(i).getIncreaseRate();
             Double actualIncrease = historyPrices.get(i).getIncreaseRate();
             if (hasMistake(testIncrease, actualIncrease)) mistakeCount++;
@@ -116,6 +112,7 @@ public class RunTrainJob extends BaseJob {
 
     // 计算日增长率
     private void setIncreaseRate(List<StockPrices> stockPrices) {
+        stockPrices.get(0).setIncreaseRate(0.0);
         for (int i = 1; i < stockPrices.size(); i++) {
             double curPrice = stockPrices.get(i).getPrice1();
             double prePrice = stockPrices.get(i - 1).getPrice1();

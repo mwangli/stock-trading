@@ -8,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.IStockService;
-import online.mwang.stockTrading.web.bean.base.BusinessException;
 import online.mwang.stockTrading.web.bean.po.AccountInfo;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
@@ -19,7 +18,6 @@ import online.mwang.stockTrading.web.mapper.StockInfoMapper;
 import online.mwang.stockTrading.web.service.OrderInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
-import online.mwang.stockTrading.web.utils.SleepUtils;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -38,24 +36,24 @@ import java.util.concurrent.CountDownLatch;
 @RequiredArgsConstructor
 public class RunBuyJob extends BaseJob {
 
-    public static final int MAX_HOLD_NUMBER = 200;
+    public static final int MAX_HOLD_NUMBER = 100;
     public static final int MIN_HOLD_NUMBER = 100;
-    public static final double LOW_PRICE_LIMIT = 5.0;
+    public static final double LOW_PRICE_LIMIT = 3.0;
     public static final int NEED_COUNT = 1;
     public static final double AMOUNT_USED_RATE = 0.8;
-    public static final long WAITING_SECONDS = 30;
-    public static final long WAITING_COUNT_SKIP = 30 * 60 / WAITING_SECONDS;
+    public static final long WAITING_SECONDS = 20;
+    public static final long WAITING_COUNT_SKIP = 10;
     public static final long THREAD_COUNT = 10;
-    public static final double BUY_PERCENT = 0.005;
+    public static final double BUY_PERCENT = 0.01;
     private final IStockService stockService;
     private final TradingRecordService tradingRecordService;
     private final StockInfoMapper stockInfoMapper;
     private final OrderInfoService orderInfoService;
     private final ModelInfoMapper strategyMapper;
-    private final SleepUtils sleepUtils;
     private final AccountInfoMapper accountInfoMapper;
 
     private boolean isInterrupted = false;
+    public boolean skipWaiting = false;
 
     @Override
     public void interrupt() {
@@ -80,21 +78,22 @@ public class RunBuyJob extends BaseJob {
             if (lowPrice > LOW_PRICE_LIMIT) priceRanges.add(new double[]{lowPrice, highPrice});
         }
         log.info("当前可用资金{}元, 可买入价格区间列表为{}", availableAmount, JSON.toJSONString(priceRanges));
-        if (priceRanges.size() == 0) throw new BusinessException("可用资金不足，无法进行购买任务！");
+        if (priceRanges.size() == 0) {
+            log.info("可用资金不足，无法进行购买任务！");
+            return;
+        }
         // 选择有交易权限合适价格区间的数据,按评分排序分组
-        final LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>()
+        LambdaQueryWrapper<StockInfo> queryWrapper = new LambdaQueryWrapper<StockInfo>()
                 .eq(StockInfo::getDeleted, "1").eq(StockInfo::getPermission, "1")
                 .orderByDesc(StockInfo::getScore);
         priceRanges.forEach(range -> queryWrapper.ge(StockInfo::getPrice, range[0]).le(StockInfo::getPrice, range[1]).or());
-        final Page<StockInfo> pageResult = stockInfoMapper.selectPage(Page.of(1, THREAD_COUNT * NEED_COUNT), queryWrapper);
-        final List<StockInfo> limitStockList = pageResult.getRecords();
+        List<StockInfo> stockInfoList = stockInfoMapper.selectPage(Page.of(1, 10), queryWrapper).getRecords();
         // 多支股票并行买入
         CountDownLatch countDownLatch = new CountDownLatch(NEED_COUNT);
-        for (StockInfo stockInfo : limitStockList) {
-            // 每隔3秒启动一个购买线程
+        stockInfoList.forEach(s -> {
             sleepUtils.second(WAITING_SECONDS / THREAD_COUNT);
-            new Thread(() -> buyStock(stockInfo, availableAmount, countDownLatch)).start();
-        }
+            cachedThreadPool.submit(() -> buyStock(s, availableAmount, countDownLatch));
+        });
         countDownLatch.await();
         log.info("所有股票买入完成!");
     }
@@ -104,22 +103,30 @@ public class RunBuyJob extends BaseJob {
         int priceCount = 0;
         double priceTotal = 0.0;
         boolean finished = false;
-        while (countDownLatch.getCount() > 0 && !finished) {
+        int failedCount = 0;
+        while (!finished && failedCount < 10) {
             try {
                 sleepUtils.second(WAITING_SECONDS);
-                if (isInterrupted) break;
+                if (isInterrupted || countDownLatch.getCount() <= 0) break;
                 double nowPrice = stockService.getNowPrice(stockInfo.getCode());
                 priceCount++;
                 priceTotal += nowPrice;
                 double priceAvg = priceTotal / priceCount;
-                log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", stockInfo.getName(), stockInfo.getCode(), String.format("%.2f", nowPrice), String.format("%.4f", priceAvg), priceCount);
-                if (priceCount > WAITING_COUNT_SKIP && nowPrice < priceAvg - priceAvg * BUY_PERCENT || DateUtils.isDeadLine2()) {
+                double expectedBuyPrice = priceAvg * (1 - BUY_PERCENT);
+                log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，期望买入价格为:{}", stockInfo.getName(), stockInfo.getCode(), nowPrice, String.format("%.2f", priceAvg), String.format("%.2f", expectedBuyPrice));
+                if ((priceCount >= WAITING_COUNT_SKIP && nowPrice <= expectedBuyPrice) || DateUtils.isDeadLine2() || skipWaiting) {
                     if (DateUtils.isDeadLine2()) log.info("交易时间段即将结束！");
                     log.info("当前股票[{}-{}],开始进行买入!", stockInfo.getName(), stockInfo.getCode());
                     double buyNumber = (int) (availableAmount / nowPrice / 100) * 100;
                     JSONObject result = stockService.buySale("B", stockInfo.getCode(), nowPrice, buyNumber);
                     String buyNo = result.getString("ANSWERNO");
-                    if (buyNo != null && stockService.waitSuccess(buyNo)) {
+                    if (buyNo == null) {
+                        log.info("当前股票[{}-{}]买入订单提交失败!", stockInfo.getName(), stockInfo.getCode());
+                        failedCount++;
+                        continue;
+                    }
+                    log.info("当前股票[{}-{}],买入订单提交成功，订单编号为：{}", stockInfo.getName(), stockInfo.getCode(), buyNo);
+                    if (stockService.waitSuccess(buyNo)) {
                         saveData(stockInfo, buyNo, nowPrice, buyNumber);
                         countDownLatch.countDown();
                         finished = true;
@@ -169,8 +176,8 @@ public class RunBuyJob extends BaseJob {
         tradingRecordService.save(record);
         // 更新账户资金状态
         AccountInfo newAccountInfo = stockService.getAccountInfo();
-        newAccountInfo.setCreateTime(new Date());
-        newAccountInfo.setUpdateTime(new Date());
+        newAccountInfo.setCreateTime(now);
+        newAccountInfo.setUpdateTime(now);
         accountInfoMapper.insert(newAccountInfo);
         // 更新交易次数
         stockInfo.setBuySaleCount(stockInfo.getBuySaleCount() + 1);

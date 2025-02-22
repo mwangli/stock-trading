@@ -1,7 +1,6 @@
 ## StockTrading AI小模型股票自动交易系统
 
-## ISSUES:
-## 2025-02-09：目前暂时无法从ZX证券平台请求的到股票的接口数据，待后期优化
+### ISSUES: 2025-02-09：目前暂时无法从ZX证券平台请求的到股票的接口数据，待后期优化
 
 ### 1.项目文档 
 https://www.yuque.com/mwangli/ha7323/axga8dz9imansvl4

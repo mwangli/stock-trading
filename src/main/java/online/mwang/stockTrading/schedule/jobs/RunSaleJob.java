@@ -15,7 +15,6 @@ import online.mwang.stockTrading.web.service.OrderInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.service.TradingRecordService;
 import online.mwang.stockTrading.web.utils.DateUtils;
-import online.mwang.stockTrading.web.utils.SleepUtils;
 import org.springframework.stereotype.Component;
 
 import java.util.Date;
@@ -33,16 +32,16 @@ import java.util.concurrent.CountDownLatch;
 @RequiredArgsConstructor
 public class RunSaleJob extends BaseJob {
 
-    public static final long WAITING_SECONDS = 30;
-    public static final long WAITING_COUNT_SKIP = 30 * 60 / WAITING_SECONDS;
+    public static final long WAITING_SECONDS = 10;
+    public static final long WAITING_COUNT_SKIP = 5;
     public static final double SALE_PERCENT = 0.005;
     private final IStockService stockService;
     private final TradingRecordService tradingRecordService;
     private final StockInfoService stockInfoService;
     private final OrderInfoService orderInfoService;
     private final AccountInfoMapper accountInfoMapper;
-    private final SleepUtils sleepUtils;
     private boolean isInterrupted = false;
+    public boolean skipWaiting = true;
 
     @Override
     public void interrupt() {
@@ -58,10 +57,7 @@ public class RunSaleJob extends BaseJob {
         List<TradingRecord> tradingRecords = tradingRecordService.list(queryWrapper);
         // 同时卖出卖出持有股票
         CountDownLatch countDownLatch = new CountDownLatch(tradingRecords.size());
-        for (TradingRecord record : tradingRecords) {
-            sleepUtils.second(WAITING_SECONDS / tradingRecords.size());
-            new Thread(() -> saleStock(record, countDownLatch)).start();
-        }
+        tradingRecords.forEach(r -> cachedThreadPool.submit(() -> saleStock(r, countDownLatch)));
         countDownLatch.await();
         log.info("所有股票卖出完成!");
     }
@@ -71,7 +67,8 @@ public class RunSaleJob extends BaseJob {
         int priceCount = 0;
         double priceTotal = 0.0;
         boolean finished = false;
-        while (!finished) {
+        int failedCount = 0;
+        while (!finished && failedCount < 10) {
             try {
                 sleepUtils.second(WAITING_SECONDS);
                 if (isInterrupted) break;
@@ -79,13 +76,20 @@ public class RunSaleJob extends BaseJob {
                 priceCount++;
                 priceTotal += nowPrice;
                 double priceAvg = priceTotal / priceCount;
-                log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，已统计次数为:{}", record.getName(), record.getCode(), String.format("%.2f", nowPrice), String.format("%.4f", priceAvg), priceCount);
-                if (priceCount > WAITING_COUNT_SKIP && nowPrice > priceAvg + priceAvg * SALE_PERCENT || DateUtils.isDeadLine1()) {
+                double expectedPrice = priceAvg + priceAvg * SALE_PERCENT;
+                log.info("当前股票[{}-{}],最新价格为:{}，平均价格为:{}，买入价格为:{}", record.getName(), record.getCode(), String.format("%.2f", nowPrice), String.format("%.2f", priceAvg), String.format("%.2f", record.getBuyPrice()));
+                if ((priceCount >= WAITING_COUNT_SKIP && nowPrice >= expectedPrice) || DateUtils.isDeadLine1() || skipWaiting) {
                     if (DateUtils.isDeadLine1()) log.info("交易时间段即将结束");
                     log.info(",当前股票[{}-{}],开始进行卖出", record.getName(), record.getCode());
                     JSONObject result = stockService.buySale("S", record.getCode(), nowPrice, record.getBuyNumber());
                     String saleNo = result.getString("ANSWERNO");
-                    if (saleNo != null && stockService.waitSuccess(saleNo)) {
+                    if (saleNo == null) {
+                        log.info("当前股票[{}-{}]卖出订单提交失败!", record.getName(), record.getCode());
+                        failedCount++;
+                        continue;
+                    }
+                    log.info("当前股票[{}-{}],卖出订单提交成功,订单编号为：{}", record.getName(), record.getCode(), saleNo);
+                    if (stockService.waitSuccess(saleNo)) {
                         saveData(record, saleNo, nowPrice);
                         countDownLatch.countDown();
                         finished = true;

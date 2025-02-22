@@ -1,10 +1,10 @@
 package online.mwang.stockTrading.schedule;
 
 import com.alibaba.fastjson.JSONObject;
-import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.po.AccountInfo;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
+import online.mwang.stockTrading.web.bean.po.StockPrices;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -37,7 +37,7 @@ public interface IStockService {
     /**
      * 获取某一只股票历史价格数据
      */
-    List<DailyItem> getHistoryPrices(String code);
+    List<StockPrices> getHistoryPrices(String code);
 
     /**
      * 获取历史已成交订单
@@ -63,7 +63,6 @@ public interface IStockService {
      * 提交买卖订单
      */
     JSONObject buySale(String type, String code, Double price, Double number);
-
 
     /**
      * 等待买入或者卖出订单完成
