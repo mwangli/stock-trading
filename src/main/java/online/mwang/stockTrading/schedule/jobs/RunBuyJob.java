@@ -3,6 +3,7 @@ package online.mwang.stockTrading.schedule.jobs;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -51,9 +52,8 @@ public class RunBuyJob extends BaseJob {
     private final OrderInfoService orderInfoService;
     private final ModelInfoMapper strategyMapper;
     private final AccountInfoMapper accountInfoMapper;
-
-    private boolean isInterrupted = false;
     public boolean skipWaiting = false;
+    private boolean isInterrupted = false;
 
     @Override
     public void interrupt() {
@@ -88,6 +88,9 @@ public class RunBuyJob extends BaseJob {
                 .orderByDesc(StockInfo::getScore);
         priceRanges.forEach(range -> queryWrapper.ge(StockInfo::getPrice, range[0]).le(StockInfo::getPrice, range[1]).or());
         List<StockInfo> stockInfoList = stockInfoMapper.selectPage(Page.of(1, 10), queryWrapper).getRecords();
+        // 获取所有自选股票
+        List<StockInfo> selectedStockInfos = stockInfoMapper.selectList(new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getSelected, "1"));
+        stockInfoList.addAll(selectedStockInfos);
         // 多支股票并行买入
         CountDownLatch countDownLatch = new CountDownLatch(NEED_COUNT);
         stockInfoList.forEach(s -> {

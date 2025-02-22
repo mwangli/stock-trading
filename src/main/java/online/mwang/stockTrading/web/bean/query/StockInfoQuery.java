@@ -21,6 +21,8 @@ public class StockInfoQuery extends BaseQuery {
 
     private String permission;
 
+    private String selected;
+
     private Integer buySaleCount;
 
     private Double priceLow;
