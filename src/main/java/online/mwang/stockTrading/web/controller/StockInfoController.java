@@ -44,6 +44,23 @@ public class StockInfoController {
     private final StockInfoService stockInfoService;
     private final MongoTemplate mongoTemplate;
 
+
+    @GetMapping("/selectStockInfo")
+    public Response<Boolean> selectStockInfo(StockInfoQuery query) {
+        LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, query.getCode());
+        StockInfo stockInfo = stockInfoService.getOne(queryWrapper);
+        stockInfo.setSelected("1");
+        return Response.success(stockInfoService.updateById(stockInfo));
+    }
+
+    @GetMapping("/cancelStockInfo")
+    public Response<Boolean> cancelStockInfo(StockInfoQuery query) {
+        LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda().eq(StockInfo::getCode, query.getCode());
+        StockInfo stockInfo = stockInfoService.getOne(queryWrapper);
+        stockInfo.setSelected("0");
+        return Response.success(stockInfoService.updateById(stockInfo));
+    }
+
     @GetMapping("/list")
     public Response<List<StockInfo>> listStockInfo(StockInfoQuery query) {
         LambdaQueryWrapper<StockInfo> queryWrapper = new QueryWrapper<StockInfo>().lambda()
@@ -51,6 +68,7 @@ public class StockInfoController {
                 .like(ObjectUtils.isNotNull(query.getName()), StockInfo::getName, query.getName())
                 .like(ObjectUtils.isNotNull(query.getMarket()), StockInfo::getMarket, query.getName())
                 .eq(ObjectUtils.isNotNull(query.getPermission()), StockInfo::getPermission, query.getPermission())
+                .eq(ObjectUtils.isNotNull(query.getSelected()), StockInfo::getSelected, query.getSelected())
                 .eq(ObjectUtils.isNotNull(query.getBuySaleCount()), StockInfo::getBuySaleCount, query.getBuySaleCount())
                 .ge(ObjectUtils.isNotNull(query.getPriceLow()), StockInfo::getPrice, query.getPriceLow())
                 .le(ObjectUtils.isNotNull(query.getPriceHigh()), StockInfo::getPrice, query.getPriceHigh())
