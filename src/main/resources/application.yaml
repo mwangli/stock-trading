@@ -10,7 +10,7 @@ spring:
       port: 27017
       database: stock-trading
       username: root
-      password: ${MONGO_PASS}
+      password: Root.123456
       authentication-database: admin
       auto-index-creation: true
   datasource:
