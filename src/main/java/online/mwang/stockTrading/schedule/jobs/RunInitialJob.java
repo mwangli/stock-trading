@@ -31,8 +31,7 @@ public class RunInitialJob extends BaseJob {
 
     @Override
     public void run() {
-//        initHistoryPriceData();
-        requestUtils.test111();
+        initHistoryPriceData();
     }
 
     private void initHistoryPriceData() {

@@ -47,14 +47,11 @@ public class QuartzJobListener implements ApplicationListener<ApplicationReadyEv
                 if ("0".equals(job.getStatus())) {
                     scheduler.pauseJob(JobKey.jobKey(job.getName()));
                 }
-//                if ("dev".equalsIgnoreCase(profile) && job.getName().contains("模型训练")) {
-//                    JobKey jobKey = JobKey.jobKey(job.getName());
-//                    scheduler.triggerJob(jobKey);
-//                    log.info("自动触发:{}", job.getName());
-//                }
+
             } catch (Exception e) {
                 log.info("定时任务{},加载异常:{}", job.getName(), e.getMessage());
             }
         }
+        log.info("所有定时任务加载完成。");
     }
 }

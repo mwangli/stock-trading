@@ -68,4 +68,14 @@ public interface IStockService {
      * 等待买入或者卖出订单完成
      */
     boolean waitSuccess(String answerNo);
+
+    /**
+     * 获取Token
+     */
+    String getToken();
+
+    /**
+     * 设置Token
+     */
+    void setToken(String token);
 }

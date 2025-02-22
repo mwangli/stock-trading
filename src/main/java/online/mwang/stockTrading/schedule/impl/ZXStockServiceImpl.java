@@ -68,8 +68,8 @@ public class ZXStockServiceImpl implements IStockService {
     }
 
     public String getToken() {
-        final String token = redisTemplate.opsForValue().get(TOKEN);
-        if (token == null) tryLogin();
+        //  2025-02-22，目前暂时无法实现滑块验证，取消登录功能
+        //  if (token == null) tryLogin();
         return redisTemplate.opsForValue().get(TOKEN);
     }
 
