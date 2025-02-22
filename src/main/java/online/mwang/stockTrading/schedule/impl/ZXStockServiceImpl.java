@@ -6,11 +6,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.schedule.IStockService;
-import online.mwang.stockTrading.web.bean.dto.DailyItem;
 import online.mwang.stockTrading.web.bean.dto.OrderStatus;
 import online.mwang.stockTrading.web.bean.po.AccountInfo;
 import online.mwang.stockTrading.web.bean.po.OrderInfo;
 import online.mwang.stockTrading.web.bean.po.StockInfo;
+import online.mwang.stockTrading.web.bean.po.StockPrices;
 import online.mwang.stockTrading.web.mapper.AccountInfoMapper;
 import online.mwang.stockTrading.web.mapper.ModelInfoMapper;
 import online.mwang.stockTrading.web.mapper.StockInfoMapper;
@@ -168,8 +168,7 @@ public class ZXStockServiceImpl implements IStockService {
 
     private String queryOrderStatus(String answerNo) {
         List<OrderStatus> orderInfos = listTodayAllOrder();
-        log.info("查询到订单状态信息:");
-        orderInfos.forEach(o -> log.info("{}-{}:{}", o.getCode(), o.getName(), o.getStatus()));
+//        log.info("查询到订单状态信息:{}", orderInfos);
         Optional<OrderStatus> status = orderInfos.stream().filter(o -> o.getAnswerNo().equals(answerNo)).findFirst();
         if (!status.isPresent()) {
             log.info("未查询到合同编号为{}的订单交易状态！", answerNo);
@@ -241,6 +240,23 @@ public class ZXStockServiceImpl implements IStockService {
         return arrayToList(result);
     }
 
+
+    // 获取今日成交订单
+    @Override
+    public List<OrderInfo> getTodayOrder() {
+        final long timeMillis = System.currentTimeMillis();
+        final String token = getToken();
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", 114);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", 100);
+        paramMap.put("token", token);
+        paramMap.put("reqno", timeMillis);
+        final JSONArray results = requestUtils.request2(buildParams(paramMap));
+        return arrayToOrderList(results, true);
+    }
+
     @Override
     public Double getNowPrice(String code) {
         long timeMillis = System.currentTimeMillis();
@@ -275,9 +291,10 @@ public class ZXStockServiceImpl implements IStockService {
     @Override
     public boolean waitSuccess(String answerNo) {
         int times = 0;
-        while (times++ < 10) {
-            sleepUtils.second(30);
+        while (times++ < 18) {
+            sleepUtils.second(10);
             final String status = queryOrderStatus(answerNo);
+            log.info("查询到当前订单：{}，状态为：{}", answerNo, status);
             if (status == null) {
                 log.info("当前合同编号:{},订单状态查询失败。", answerNo);
                 return false;
@@ -287,8 +304,11 @@ public class ZXStockServiceImpl implements IStockService {
                 return true;
             }
             if ("已报".equals(status)) {
-                log.info("当前合同编号:{},交易不成功,进行撤单操作。", answerNo);
-                cancelOrder(answerNo);
+                log.info("当前合同编号:{},等待交易完成...", answerNo);
+                if (times >= 6) {
+                    log.info("当前合同编号:{},交易不成功,正在进行撤单操作...", answerNo);
+                    cancelOrder(answerNo);
+                }
             }
             if ("已报待撤".equals(status)) {
                 log.info("当前合同编号:{},等待撤单完成...", answerNo);
@@ -302,6 +322,7 @@ public class ZXStockServiceImpl implements IStockService {
                 return false;
             }
         }
+        log.info("当前订单：{}订单撤销失败!", answerNo);
         return false;
     }
 
@@ -345,7 +366,7 @@ public class ZXStockServiceImpl implements IStockService {
 
     // 获取历史价格曲线
     @Override
-    public List<DailyItem> getHistoryPrices(String code) {
+    public List<StockPrices> getHistoryPrices(String code) {
         HashMap<String, Object> paramMap = new HashMap<>(10);
         paramMap.put("c.funcno", 20009);
         paramMap.put("c.version", 1);
@@ -355,24 +376,25 @@ public class ZXStockServiceImpl implements IStockService {
         paramMap.put("c.cfrom", "H5");
         paramMap.put("c.tfrom", "PC");
         final JSONArray results = requestUtils.request3(buildParams(paramMap));
-        final ArrayList<DailyItem> prices = new ArrayList<>();
+        final ArrayList<StockPrices> prices = new ArrayList<>();
         for (int i = 0; i < results.size(); i++) {
-            DailyItem dailyItem = new DailyItem();
+            StockPrices stockPrices = new StockPrices();
             String s = results.getString(i);
             s = s.replaceAll("\\[", "").replaceAll("]", "");
             final String[] split = s.split(",");
             final String price1 = split[1];
             final String price2 = split[2];
-            dailyItem.setDate(split[0]);
-            dailyItem.setPrice1(Double.parseDouble(price1) / 100);
-            dailyItem.setPrice2(Double.parseDouble(price2) / 100);
+            stockPrices.setDate(split[0]);
+            stockPrices.setPrice1(Double.parseDouble(price1) / 100);
+            stockPrices.setPrice2(Double.parseDouble(price2) / 100);
             if (split.length > 3) {
                 final String price3 = split[3];
                 final String price4 = split[4];
-                dailyItem.setPrice3(Double.parseDouble(price3) / 100);
-                dailyItem.setPrice4(Double.parseDouble(price4) / 100);
+                stockPrices.setPrice3(Double.parseDouble(price3) / 100);
+                stockPrices.setPrice4(Double.parseDouble(price4) / 100);
             }
-            prices.add(dailyItem);
+            stockPrices.setCode(code);
+            prices.add(stockPrices);
         }
         return prices;
     }
@@ -401,7 +423,7 @@ public class ZXStockServiceImpl implements IStockService {
         int years = 3;
         final ArrayList<OrderInfo> orderInfos = new ArrayList<>();
         for (int i = 0; i < years * 12; i++) {
-            if (calendar.getTime().getTime() > new Date().getTime()) break;
+            if (calendar.getTime().getTime() > System.currentTimeMillis()) break;
             String startDate = DateUtils.format1(calendar.getTime());
             calendar.add(Calendar.MONTH, 1);
             String endDate = DateUtils.format1(calendar.getTime());
@@ -410,22 +432,6 @@ public class ZXStockServiceImpl implements IStockService {
             sleepUtils.milliseconds(200);
         }
         return orderInfos;
-    }
-
-    // 获取今日成交订单
-    @Override
-    public List<OrderInfo> getTodayOrder() {
-        final long timeMillis = System.currentTimeMillis();
-        final String token = getToken();
-        HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("action", 114);
-        paramMap.put("ReqlinkType", 1);
-        paramMap.put("StartPos", 0);
-        paramMap.put("MaxCount", 100);
-        paramMap.put("token", token);
-        paramMap.put("reqno", timeMillis);
-        final JSONArray results = requestUtils.request2(buildParams(paramMap));
-        return arrayToOrderList(results, true);
     }
 
     private List<OrderInfo> arrayToOrderList(JSONArray results, boolean isToday) {

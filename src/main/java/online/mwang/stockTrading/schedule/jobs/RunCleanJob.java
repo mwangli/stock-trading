@@ -11,10 +11,8 @@ import online.mwang.stockTrading.web.service.ModelInfoService;
 import online.mwang.stockTrading.web.service.StockInfoService;
 import online.mwang.stockTrading.web.utils.DateUtils;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Calendar;
@@ -33,21 +31,16 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RunCleanJob extends BaseJob {
 
-    private static final String VALIDATION_COLLECTION_NAME = "stockPredictPrice";
-    private static final String TRAIN_COLLECTION_NAME = "stockHistoryPrice";
-    private static final String TEST_COLLECTION_NAME = "stockTestPrice";
     private final AccountInfoService accountInfoService;
     private final StockInfoService stockInfoService;
     private final ModelInfoService modelInfoService;
-    private final StringRedisTemplate redisTemplate;
-    private final MongoTemplate mongoTemplate;
 
     @Override
     public void run() {
         cleanAccountInfo();
         cleanPredictPrice();
         cleanHistoryPrice();
-        cleanTestData();
+        cleanInvalidData();
         cleanStockInfo();
     }
 
@@ -67,14 +60,20 @@ public class RunCleanJob extends BaseJob {
         log.info("共清理{}条账户退市股票信息。", deleteList.size());
     }
 
-    private void cleanTestData() {
-        // 清除无效的测试集数据
+    private void cleanInvalidData() {
+        cleanInvalidData(TRAIN_COLLECTION_NAME);
+        cleanInvalidData(TEST_COLLECTION_NAME);
+        cleanInvalidData(VALIDATION_COLLECTION_NAME);
+    }
+
+    private void cleanInvalidData(String collectionName) {
+        // 清除无效的数据
         final Query query = new Query(new Criteria().orOperator(
                 Criteria.where("date").isNull(),
                 Criteria.where("code").isNull(),
                 Criteria.where("price1").isNull()));
-        final List<StockPrices> remove = mongoTemplate.findAllAndRemove(query, StockPrices.class, TEST_COLLECTION_NAME);
-        log.info("共清理{}条测试集无效数据。", remove.size());
+        final List<StockPrices> remove = mongoTemplate.findAllAndRemove(query, StockPrices.class, collectionName);
+        log.info("共清理{}条{}无效数据。", remove.size(), collectionName);
     }
 
     private void cleanPredictPrice() {

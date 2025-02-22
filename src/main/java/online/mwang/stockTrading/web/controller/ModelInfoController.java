@@ -21,8 +21,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * @version 1.0.0
@@ -62,20 +62,20 @@ public class ModelInfoController {
         collectionName = collectionName == null ? TEST_COLLECTION_NAME : collectionName;
         final Query query = new Query(Criteria.where("code").is(stockCode).and("date").ne(null)).with(Sort.by(Sort.Direction.ASC, "date"));
         List<StockPrices> stockTestPrices = mongoTemplate.find(query, StockPrices.class, collectionName);
+        List<Point> pointList = stockTestPrices.stream().map(p -> {
+            Point point = new Point(p.getDate(), Double.valueOf(String.format("%.2f", p.getPrice1() == null ? 0 : p.getPrice1())));
+            point.setType("预测价格");
+            return point;
+        }).collect(Collectors.toList());
         // 查找历史数据
         List<StockPrices> historyPrices = modelInfoService.getHistoryData(stockTestPrices);
-        final ArrayList<Point> points = new ArrayList<>();
-        for (int i = 1; i < historyPrices.size(); i++) {
-            Double actualValue = historyPrices.get(i).getPrice1();
-            Point point = new Point(historyPrices.get(i).getDate(), actualValue);
+        List<Point> points = historyPrices.stream().map(p -> {
+            Point point = new Point(p.getDate(), p.getPrice1());
             point.setType("实际价格");
-            points.add(point);
-            Double predictValue = stockTestPrices.get(i).getPrice1();
-            Point point1 = new Point(stockTestPrices.get(i).getDate(), Double.valueOf(String.format("%.2f", predictValue == null ? 0 : predictValue)));
-            point1.setType("预测价格");
-            points.add(point1);
-        }
-        PointsDTO pointsDTO = new PointsDTO(points);
+            return point;
+        }).collect(Collectors.toList());
+        pointList.addAll(points);
+        PointsDTO pointsDTO = new PointsDTO(pointList);
         return Response.success(pointsDTO);
     }
 

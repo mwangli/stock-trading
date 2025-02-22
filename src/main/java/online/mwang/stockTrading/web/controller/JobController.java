@@ -7,7 +7,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.model.predict.LSTMModel;
+import online.mwang.stockTrading.schedule.jobs.RunBuyJob;
+import online.mwang.stockTrading.schedule.jobs.RunSaleJob;
 import online.mwang.stockTrading.web.bean.base.Response;
 import online.mwang.stockTrading.web.bean.po.QuartzJob;
 import online.mwang.stockTrading.web.bean.query.QuartzJobQuery;
@@ -33,7 +34,8 @@ public class JobController {
     private final Scheduler scheduler;
     private final QuartzJobMapper jobMapper;
     private final RequestUtils requestUtils;
-    private final LSTMModel lstmModel;
+    private final RunSaleJob saleJob;
+    private final RunBuyJob buyJob;
 
     @SneakyThrows
     @GetMapping("/list")
@@ -77,9 +79,11 @@ public class JobController {
     @SneakyThrows
     @PostMapping("/interrupt")
     public Response<Boolean> interruptJob(@RequestBody QuartzJob job) {
-        final JobKey jobKey = JobKey.jobKey(job.getName());
-        boolean interrupt = scheduler.interrupt(jobKey);
-        return interrupt ? Response.success() : Response.fail();
+        JobKey jobKey = JobKey.jobKey(job.getName());
+        scheduler.interrupt(jobKey);
+        job.setRunning("0");
+        jobMapper.updateById(job);
+        return Response.success();
     }
 
 
@@ -94,13 +98,15 @@ public class JobController {
             requestUtils.logs = false;
             log.info("请求日志关闭成功!");
         }
-        if ("enable".equals(job.getSkipTrain())) {
-            lstmModel.skipTrain = true;
-            log.info("跳过模型训练启用成功!");
+        if ("enable".equals(job.getSkipWaiting())) {
+            saleJob.skipWaiting = true;
+            buyJob.skipWaiting = true;
+            log.info("跳过交易等待启用成功!");
         }
-        if ("disable".equals(job.getSkipTrain())) {
-            lstmModel.skipTrain = false;
-            log.info("跳过模型训练关闭成功!");
+        if ("disable".equals(job.getSkipWaiting())) {
+            saleJob.skipWaiting = false;
+            buyJob.skipWaiting = false;
+            log.info("跳过交易等待关闭成功!");
         }
         if (!CronExpression.isValidExpression(job.getCron())) {
             throw new RuntimeException("非法的cron表达式");

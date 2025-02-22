@@ -7,8 +7,6 @@ import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.web.bean.po.QuartzJob;
 import online.mwang.stockTrading.web.mapper.ModelInfoMapper;
 import online.mwang.stockTrading.web.mapper.QuartzJobMapper;
-import online.mwang.stockTrading.web.service.ModelInfoService;
-import online.mwang.stockTrading.web.service.StockInfoService;
 import org.quartz.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;

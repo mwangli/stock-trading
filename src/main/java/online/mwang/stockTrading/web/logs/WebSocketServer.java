@@ -4,7 +4,6 @@ import ch.qos.logback.classic.LoggerContext;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.schedule.jobs.RunBuyJob;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
@@ -33,7 +32,7 @@ public class WebSocketServer {
     @OnOpen
     @SneakyThrows
     public void onOpen(Session session, @PathParam("path") String path) {
-        if (path.equals("logs")) {
+        if ("logs".equals(path)) {
             sessionId = String.valueOf(UUID.randomUUID());
             LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
             ch.qos.logback.classic.Logger rootLogger = lc.getLogger("root");
@@ -44,20 +43,20 @@ public class WebSocketServer {
             rootLogger.addAppender(logsAppender);
             log.info("日志采集器注入成功。");
         }
-        if (path.equals("job")) {
+        if ("job".equals(path)) {
             sessions.add(session);
         }
     }
 
     @OnClose
     public void onClose(Session session, @PathParam("path") String path) {
-        if (path.equals("logs")) {
+        if ("logs".equals(path)) {
             LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
             ch.qos.logback.classic.Logger rootLogger = lc.getLogger("root");
             rootLogger.detachAppender("LogsAppender" + sessionId);
             log.info("日志采集器移除成功。");
         }
-        if (path.equals("job")) {
+        if ("job".equals(path)) {
             sessions.remove(session);
         }
     }
