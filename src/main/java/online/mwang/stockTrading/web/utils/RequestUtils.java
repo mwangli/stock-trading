@@ -47,7 +47,8 @@ public class RequestUtils {
 //            String result = EntityUtils.toString(response.getEntity());
             // 发送 POST 请求
             String response = HttpUtil.createPost(url).form(formParam).execute().body();
-            if (logs) log.info(response);
+            // 日志太长截取前1000个字符
+            if (logs) log.info(response.length() > 1000 ? response.substring(0, 1000) : response);
             JSONObject res = JSONObject.parseObject(response);
             String newToken = res.getString("TOKEN");
             if (newToken != null) stockService.setToken(newToken);
