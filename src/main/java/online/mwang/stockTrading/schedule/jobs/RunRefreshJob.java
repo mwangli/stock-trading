@@ -30,7 +30,7 @@ public class RunRefreshJob extends BaseJob {
     // Token有效期为30分钟，该定时任务设置每隔25分钟执行一次
     private void refreshToken() {
         // 此处的购买参数没有实际意义，仅为了调用购买结果获得一个新的Token
-        JSONObject result = stockService.buySale("B", "000000", 100.00, 1000000.00);
+        JSONObject result = stockService.buySale("B", "", 0.01, 100.00);
         String token = result.getString("TOKEN");
         if (token != null) stockService.setToken(token);
         else log.info("Token刷新失败，请检查程序代码");
