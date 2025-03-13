@@ -54,8 +54,8 @@ public class RequestUtils {
             String code = res.getString("ERRORNO");
             if ("-204007".equals(code) || "-204009".equals(code)) {
                 log.info("检测到无效token，尝试重新登录...");
-                stockService.clearToken();
-                String token = stockService.getToken();
+//                stockService.clearToken();
+//                String token = stockService.getToken();
             }
             return res;
         } catch (JSONException e) {
