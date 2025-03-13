@@ -63,10 +63,6 @@ public class ZXStockServiceImpl implements IStockService {
         return paramMap;
     }
 
-    public void clearToken() {
-        redisTemplate.opsForValue().getAndDelete(TOKEN);
-    }
-
     public String getToken() {
         //  2025-02-22，目前暂时无法实现滑块验证，取消登录功能
         //  if (token == null) tryLogin();
@@ -75,7 +71,7 @@ public class ZXStockServiceImpl implements IStockService {
 
     public void setToken(String token) {
         if (token == null) return;
-        redisTemplate.opsForValue().set(TOKEN, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(TOKEN, token);
     }
 
     @SneakyThrows
