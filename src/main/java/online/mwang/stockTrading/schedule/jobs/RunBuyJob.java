@@ -52,7 +52,7 @@ public class RunBuyJob extends BaseJob {
     private final OrderInfoService orderInfoService;
     private final ModelInfoMapper strategyMapper;
     private final AccountInfoMapper accountInfoMapper;
-    public boolean skipWaiting = false;
+    public boolean skipWaiting = true;
     private boolean isInterrupted = false;
 
     @Override

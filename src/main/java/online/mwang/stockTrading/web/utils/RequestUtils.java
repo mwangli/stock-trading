@@ -52,14 +52,15 @@ public class RequestUtils {
             JSONObject res = JSONObject.parseObject(response);
             String newToken = res.getString("TOKEN");
             if (newToken != null) stockService.setToken(newToken);
-            String code = res.getString("ERRORNO");
-            if ("-204007".equals(code) || "-204009".equals(code)) {
-                log.info("检测到无效token，尝试重新登录...");
-//                stockService.clearToken();
-//                String token = stockService.getToken();
-            }
+//            String code = res.getString("ERRORNO");
+//            if ("-204007".equals(code) || "-204009".equals(code)) {
+//                log.info("检测到无效token，尝试重新登录...");
+////                stockService.clearToken();
+////                String token = stockService.getToken();
+//            }
             return res;
         } catch (JSONException e) {
+            log.info("message:{}", e.getMessage());
             log.info("请求数据异常，请检查程序代码。");
             return new JSONObject();
         }

@@ -66,6 +66,7 @@ public class ZXStockServiceImpl implements IStockService {
     public String getToken() {
         //  2025-02-22，目前暂时无法实现滑块验证，取消登录功能
         //  if (token == null) tryLogin();
+        //  注意：PC端网页调用接口之后，会使Redis中的Token失效，需要重新写入新Token
         return redisTemplate.opsForValue().get(TOKEN);
     }
 
