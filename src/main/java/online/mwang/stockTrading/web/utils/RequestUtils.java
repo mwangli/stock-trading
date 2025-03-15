@@ -47,18 +47,20 @@ public class RequestUtils {
 //            String result = EntityUtils.toString(response.getEntity());
             // 发送 POST 请求
             String response = HttpUtil.createPost(url).form(formParam).execute().body();
-            if (logs) log.info(response);
+            // 日志太长截取前1000个字符
+            if (logs) log.info(response.length() > 1000 ? response.substring(0, 1000) : response);
             JSONObject res = JSONObject.parseObject(response);
             String newToken = res.getString("TOKEN");
             if (newToken != null) stockService.setToken(newToken);
-            String code = res.getString("ERRORNO");
-            if ("-204007".equals(code) || "-204009".equals(code)) {
-                log.info("检测到无效token，尝试重新登录...");
-                stockService.clearToken();
-                String token = stockService.getToken();
-            }
+//            String code = res.getString("ERRORNO");
+//            if ("-204007".equals(code) || "-204009".equals(code)) {
+//                log.info("检测到无效token，尝试重新登录...");
+////                stockService.clearToken();
+////                String token = stockService.getToken();
+//            }
             return res;
         } catch (JSONException e) {
+            log.info("message:{}", e.getMessage());
             log.info("请求数据异常，请检查程序代码。");
             return new JSONObject();
         }
