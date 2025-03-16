@@ -30,6 +30,21 @@ public class StockPrices {
     private Double price4;
     private Double increaseRate;
 
+    private Double newPrice;
+    private Doule riseFallRange;
+    private Doule riseFallAmount;
+    private Doule tradingVolume;
+    private Doule tradingAmount;
+    private Doule amplitude;
+    private Doule highPrice;
+    private Doule lowPrice;
+    private Doule todayOpenPrice;
+    private Doule yesterdayClosePrice;
+    private Doule volumeRate;
+    private Doule exchangeRate;
+    private Doule profitRate;
+    private Doule realProfitRate;
+
     public StockPrices(Double price1) {
         this.price1 = price1;
     }
