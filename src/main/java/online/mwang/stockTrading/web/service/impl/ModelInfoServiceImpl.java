@@ -36,21 +36,3 @@ public class ModelInfoServiceImpl extends ServiceImpl<ModelInfoMapper, ModelInfo
         return mongoTemplate.find(historyQuery, StockPrices.class, TRAIN_COLLECTION_NAME);
     }
 }
-
-
-//                System.out.printl " + stock.getStr("f12"));
-//                System.out.printl " + stock.getStr("f14"));
-//                System.out.printl: " + stock.getStr("f2"));
-//                System.out.printl: " + stock.getStr("f3"));
-//                System.out.printl: " + stock.getStr("f4"));
-//                System.out.printl: " + stock.getStr("f5"));
-//                System.out.printl: " + stock.getStr("f6"));
-//                System.out.printl " + stock.getStr("f7"));
-//                System.out.printl " + stock.getStr("f15"));
-//                System.out.printl " + stock.getStr("f16"));
-//                System.out.printl " + stock.getStr("f17"));
-//                System.out.printl " + stock.getStr("f18"));
-//                System.out.printl " + stock.getStr("f10"));
-//                System.out.printl: " + stock.getStr("f8"));
-//                System.out.println("市盈率: " + stock.getStr("f9"));
-//                System.out.println("市净率: " + stock.getStr("f20"));
