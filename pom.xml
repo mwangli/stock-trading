@@ -148,6 +148,7 @@
 <!--            <version>1.0.0-M1.1</version>-->
 <!--        </dependency>-->
 
+<!--        此处和spring-fox依赖冲突暂未解决 -->
 <!--        <dependency>-->
 <!--            <groupId>org.springframework.boot</groupId>-->
 <!--            <artifactId>spring-boot-starter-actuator</artifactId>-->
