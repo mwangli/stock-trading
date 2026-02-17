@@ -10,11 +10,18 @@ stock-trading/
 │   ├── src/               # 源代码
 │   ├── pom.xml            # Maven 配置
 │   └── AGENTS.md          # 后端开发指南
-├── stock-front/           # React 前端应用
+├── stock-frontend/         # React 前端应用
 │   ├── src/               # TypeScript/React 源码
 │   ├── package.json       # Node 依赖
 │   ├── config/            # 构建配置
 │   └── AGENTS.md          # 前端开发指南
+├── stock-service/         # Python AI 服务
+│   ├── app/              # 应用代码
+│   │   ├── api/          # API 路由
+│   │   ├── services/     # 业务逻辑
+│   │   └── core/        # 配置
+│   ├── requirements.txt   # Python 依赖
+│   └── Dockerfile        # 容器配置
 ├── documents/              # 项目文档
 │   ├── requirements/      # 需求文档
 │   │   ├── 01-introduction/  # 项目概述
@@ -76,7 +83,7 @@ cd stock-backend
 mvn clean install
 
 # 3. 安装前端依赖
-cd ../stock-front
+cd ../stock-frontend
 pnpm install
 ```
 
@@ -88,7 +95,7 @@ cd stock-backend
 mvn spring-boot:run
 
 # 2. 启动前端 (端口 8000)
-cd stock-front
+cd stock-frontend
 npm start
 ```
 
@@ -126,7 +133,7 @@ mvn clean install -DskipTests
 ### 前端开发
 
 ```bash
-cd stock-front
+cd stock-frontend
 
 # 安装依赖
 pnpm install
@@ -144,14 +151,14 @@ npm run tsc
 npm run jest -- path/to/test.tsx
 ```
 
-详见 [stock-front/AGENTS.md](stock-front/AGENTS.md)
+详见 [stock-frontend/AGENTS.md](stock-frontend/AGENTS.md)
 
 ## 项目文档
 
 - **详细文档**: https://www.yuque.com/mwangli/ha7323/axga8dz9imansvl4
 - **开发指南**: [AGENTS.md](AGENTS.md)
 - **后端指南**: [stock-backend/AGENTS.md](stock-backend/AGENTS.md)
-- **前端指南**: [stock-front/AGENTS.md](stock-front/AGENTS.md)
+- **前端指南**: [stock-frontend/AGENTS.md](stock-frontend/AGENTS.md)
 
 ## 在线演示
 

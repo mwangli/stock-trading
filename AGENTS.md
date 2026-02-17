@@ -10,11 +10,11 @@ stock-trading/
 │   ├── src/main/java/     # Java source code
 │   ├── pom.xml            # Maven configuration
 │   └── Dockerfile         # Container config
-├── stock-front/           # React frontend (Ant Design Pro)
+├── stock-frontend/        # React frontend (Ant Design Pro)
 │   ├── src/               # TypeScript/React source
 │   ├── package.json       # Node dependencies
 │   └── config/            # Build configuration
-├── py-service/            # Python AI service (FastAPI)
+├── stock-service/         # Python AI service (FastAPI)
 │   ├── app/              # Application code
 │   │   ├── api/          # API routes
 │   │   ├── services/     # Business logic
@@ -52,10 +52,10 @@ mvn test -Dtest=ClassName#methodName
 mvn clean install -DskipTests
 ```
 
-### Frontend (stock-front/)
+### Frontend (stock-frontend/)
 
 ```bash
-cd stock-front
+cd stock-frontend
 
 # Install dependencies (use pnpm)
 pnpm install
@@ -93,10 +93,10 @@ npm run lint:fix
 npm run prettier
 ```
 
-### Python AI Service (py-service/)
+### Python AI Service (stock-service/)
 
 ```bash
-cd py-service
+cd stock-service
 
 # Create virtual environment (recommended)
 python -m venv venv
