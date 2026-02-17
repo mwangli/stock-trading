@@ -1,0 +1,133 @@
+version: '3.8'
+
+services:
+  # ===================
+  # Frontend Service
+  # ===================
+  frontend:
+    build:
+      context: ./stock-front
+      dockerfile: Dockerfile
+    container_name: stock-frontend
+    ports:
+      - "8000:80"
+    depends_on:
+      - backend
+    networks:
+      - stock-network
+    restart: unless-stopped
+
+  # ===================
+  # Backend Service
+  # ===================
+  backend:
+    build:
+      context: ./stock-backend
+      dockerfile: Dockerfile
+    container_name: stock-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+      - SPRING_DATA_MONGODB_URI=mongodb://mongo:27017/stock_trading
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - STOCK_AI_SERVICE_URL=http://py-service:8001
+    depends_on:
+      - mysql
+      - mongo
+      - redis
+      - py-service
+    networks:
+      - stock-network
+    restart: unless-stopped
+
+  # ===================
+  # Python AI Service
+  # ===================
+  py-service:
+    build:
+      context: ./py-service
+      dockerfile: Dockerfile
+    container_name: stock-py-service
+    ports:
+      - "8001:8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEBUG=false
+    volumes:
+      - py-service-models:/app/models
+      - py-service-data:/app/data
+      - py-service-logs:/app/logs
+    networks:
+      - stock-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+  # ===================
+  # MySQL Database
+  # ===================
+  mysql:
+    image: mysql:8.0
+    container_name: stock-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_DATABASE=stock_trading
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./infrastructure/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - stock-network
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+
+  # ===================
+  # MongoDB
+  # ===================
+  mongo:
+    image: mongo:6.0
+    container_name: stock-mongo
+    environment:
+      - MONGO_INITDB_DATABASE=stock_trading
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - stock-network
+    restart: unless-stopped
+
+  # ===================
+  # Redis Cache
+  # ===================
+  redis:
+    image: redis:7-alpine
+    container_name: stock-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - stock-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+networks:
+  stock-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  mongo-data:
+  redis-data:
+  py-service-models:
+  py-service-data:
+  py-service-logs:
