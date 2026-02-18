@@ -1,0 +1,25 @@
+spring:
+  jackson:
+    time-zone: GMT+8
+  mvc:
+    pathmatch:
+      matching-strategy: ANT_PATH_MATCHER
+  data:
+    mongodb:
+      host: 124.220.36.95
+      port: 27017
+      database: stock-trading
+      username: admin
+      password: Root.123456
+      authentication-database: admin
+      auto-index-creation: true
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: Root.123456
+    url: jdbc:mysql://124.220.36.95:6033/stock-trading?characterEncoding=utf-8&useSSL=false
+  redis:
+    timeout: 10000
+    host: 124.220.36.95
+    port: 6379
+    password: Root.123456
