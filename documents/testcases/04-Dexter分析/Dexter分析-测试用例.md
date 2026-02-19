@@ -20,7 +20,7 @@
 
 ### 1.2 测试环境
 - **JDK**: 17
-- **测试框架**: Spring Boot Test + JUnit 5 + Testcontainers
+- **测试框架**: Spring Boot Test + JUnit 5
 - **缓存**: Redis (Embedded)
 - **数据管理**: Database Rider
 

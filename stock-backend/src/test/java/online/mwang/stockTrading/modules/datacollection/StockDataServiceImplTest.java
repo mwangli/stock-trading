@@ -6,6 +6,7 @@ import online.mwang.stockTrading.modules.datacollection.service.StockDataService
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.util.CollectionUtils;
 
 import java.time.LocalDate;
@@ -17,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * 股票数据采集服务测试类
  */
 @SpringBootTest
+@ActiveProfiles("test")
 class StockDataServiceImplTest {
 
     @Autowired

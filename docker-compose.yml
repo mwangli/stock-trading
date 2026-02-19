@@ -30,9 +30,10 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=prod
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
-      - SPRING_DATA_MONGODB_URI=mongodb://mongo:27017/stock_trading
+      - SPRING_DATA_MONGODB_URI=mongodb://admin:Root.123456@mongo:27017/stock_trading?authSource=admin
       - SPRING_REDIS_HOST=redis
       - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=Root.123456
       - STOCK_AI_SERVICE_URL=http://stock-service:8001
     depends_on:
       - mysql
@@ -77,17 +78,17 @@ services:
     image: mysql:8.0
     container_name: stock-mysql
     environment:
-      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_ROOT_PASSWORD=Root.123456
       - MYSQL_DATABASE=stock_trading
     ports:
-      - "3306:3306"
+      - "6033:3306"
     volumes:
       - mysql-data:/var/lib/mysql
       - ./infrastructure/mysql/init:/docker-entrypoint-initdb.d
     networks:
       - stock-network
     restart: unless-stopped
-    command: --default-authentication-plugin=mysql_native_password
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
 
   # ===================
   # MongoDB
@@ -96,6 +97,8 @@ services:
     image: mongo:6.0
     container_name: stock-mongo
     environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=Root.123456
       - MONGO_INITDB_DATABASE=stock_trading
     ports:
       - "27017:27017"
@@ -118,7 +121,7 @@ services:
     networks:
       - stock-network
     restart: unless-stopped
-    command: redis-server --appendonly yes
+    command: redis-server --requirepass Root.123456 --appendonly yes
 
 networks:
   stock-network:

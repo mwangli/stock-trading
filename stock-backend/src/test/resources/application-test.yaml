@@ -1,0 +1,49 @@
+spring:
+  jackson:
+    time-zone: GMT+8
+  mvc:
+    pathmatch:
+      matching-strategy: ANT_PATH_MATCHER
+  data:
+    mongodb:
+      host: 124.220.36.95
+      port: 27017
+      database: stock-trading-test
+      username: admin
+      password: Root.123456
+      authentication-database: admin
+      auto-index-creation: true
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: Root.123456
+    url: jdbc:mysql://124.220.36.95:6033/stock-trading-test?characterEncoding=utf-8&useSSL=false
+  redis:
+    timeout: 10000
+    host: 124.220.36.95
+    port: 6379
+    password: Root.123456
+  task:
+    scheduling:
+      pool:
+        size: 10
+      thread-name-prefix: scheduled-
+
+stock:
+  data:
+    aktools:
+      base-url: https://api.aktools.com
+      timeout: 30000
+      retry:
+        max-attempts: 3
+        delay: 1000
+    sync:
+      stock-list:
+        cron: "0 0 9 * * ?"
+        enabled: false
+      realtime-quote:
+        cron: "0 0/1 9-15 * * ?"
+        enabled: false
+      historical:
+        cron: "0 30 15 * * ?"
+        enabled: false
