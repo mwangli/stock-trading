@@ -2,9 +2,9 @@
 
 ## 文档信息
 - **模块**: MOD-004 Dexter分析
-- **版本**: 1.0
+- **版本**: 2.0
 - **创建日期**: 2026-02-19
-- **测试类型**: 单元测试 + 集成测试
+- **测试类型**: 真实数据库集成测试 + 数据流穿透测试
 
 ---
 
@@ -15,13 +15,55 @@
 - Dexter API调用
 - 股票基本面分析
 - 实时报价获取
-- 分析结果缓存
-- 错误处理和降级
+- **分析结果真实写入 Redis 缓存**
+- **缓存一致性验证**
 
 ### 1.2 测试环境
 - **JDK**: 17
-- **测试框架**: JUnit 5 + Mockito
-- **依赖服务**: Redis, Dexter服务(本地或云端)
+- **测试框架**: Spring Boot Test + JUnit 5 + Testcontainers
+- **缓存**: Redis (Embedded)
+- **数据管理**: Database Rider
+
+### 1.3 测试原则
+| 原则 | 说明 |
+|------|------|
+| 真实性 | 使用真实 Redis，验证缓存真实写入 |
+| 隔离性 | 测试完成后自动清理缓存 |
+| 可追溯 | 每个步骤都可验证缓存状态 |
+| 全链路 | 从 API 到缓存完整穿透 |
+
+---
+
+## 2. 数据流测试用例
+
+### 2.1 Dexter分析数据流测试
+
+```
+数据流: Dexter API → DexterService → Redis Cache (分析结果)
+验证点:     V1            V2              V3
+```
+
+| 用例ID | 用例名称 | 测试步骤 | 验证点 | 缓存验证 | 预期结果 | 优先级 |
+|--------|---------|---------|--------|---------|---------|--------|
+| TC-004-F001 | 分析结果缓存流程 | 1. 调用analyze()<br>2. 结果写入Redis<br>3. 验证缓存 | V1-V3 | `GET dexter:analysis:000001` | 1. 分析成功<br>2. 缓存写入<br>3. TTL=1小时 | P0 |
+| TC-004-F002 | 缓存命中流程 | 1. 首次调用写入缓存<br>2. 再次调用<br>3. 验证来源 | V3 | 响应时间<100ms | 1. 从缓存读取<br>2. 不调用API | P0 |
+
+### 2.2 Redis 缓存验证示例
+
+```java
+// 验证缓存写入
+String cachedAnalysis = redisTemplate.opsForValue().get("dexter:analysis:000001");
+assertThat(cachedAnalysis).isNotNull();
+
+// 验证 TTL
+Long ttl = redisTemplate.getExpire("dexter:analysis:000001", TimeUnit.SECONDS);
+assertThat(ttl).isGreaterThan(0);
+assertThat(ttl).isLessThanOrEqualTo(3600);  // 1小时
+
+// 验证缓存内容
+DexterResult result = JSON.parseObject(cachedAnalysis, DexterResult.class);
+assertThat(result.getFinancialScore()).isBetween(0, 100);
+```
 
 ---
 

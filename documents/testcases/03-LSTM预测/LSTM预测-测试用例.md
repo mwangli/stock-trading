@@ -2,9 +2,9 @@
 
 ## 文档信息
 - **模块**: MOD-003 LSTM预测
-- **版本**: 1.0
+- **版本**: 2.0
 - **创建日期**: 2026-02-19
-- **测试类型**: 单元测试 + 集成测试
+- **测试类型**: 真实数据库集成测试 + 数据流穿透测试
 
 ---
 
@@ -16,14 +16,55 @@
 - 数据预处理和归一化
 - 单股票价格预测
 - 批量价格预测
-- 预测结果反归一化
-- 模型信息管理
+- **预测结果真实写入 Redis 缓存**
+- **模型信息真实写入 MySQL**
 
 ### 1.2 测试环境
 - **JDK**: 17
 - **框架**: Deeplearning4J
-- **测试框架**: JUnit 5 + Mockito
-- **依赖服务**: MongoDB (历史数据), MySQL (模型信息)
+- **测试框架**: Spring Boot Test + JUnit 5 + Testcontainers
+- **数据库**: MySQL 8.0 (Testcontainers) + MongoDB 5.0 (Testcontainers)
+- **缓存**: Redis (Embedded)
+- **数据管理**: Database Rider
+
+### 1.3 测试原则
+| 原则 | 说明 |
+|------|------|
+| 真实性 | 使用真实数据库，验证数据真实写入 |
+| 隔离性 | @Transactional 自动回滚，不污染环境 |
+| 可追溯 | 每个步骤都可验证数据状态 |
+| 全链路 | 从数据读取到预测结果完整穿透 |
+
+---
+
+## 2. 数据流测试用例
+
+### 2.1 LSTM预测数据流测试
+
+```
+数据流: MongoDB (历史数据) → DataPreprocessing → LSTM Model → Redis (预测结果)
+验证点:        V1                   V2               V3             V4
+```
+
+| 用例ID | 用例名称 | 测试步骤 | 验证点 | 数据库验证 | 预期结果 | 优先级 |
+|--------|---------|---------|--------|-----------|---------|--------|
+| TC-003-F001 | 预测完整数据流 | 1. 从MongoDB读取历史数据<br>2. 预处理<br>3. 执行预测<br>4. 缓存结果 | V1-V4 | `GET prediction:000001` | 1. 读取成功<br>2. 预测完成<br>3. 缓存写入 | P0 |
+| TC-003-F002 | 模型信息持久化 | 1. 训练完成<br>2. 保存模型信息<br>3. 验证MySQL | V4 | `SELECT * FROM model_info WHERE model_type = 'LSTM'` | 1. 模型信息写入<br>2. 字段完整 | P0 |
+
+### 2.2 数据库验证示例
+
+```java
+// 验证 Redis 预测缓存
+String prediction = redisTemplate.opsForValue().get("prediction:000001");
+assertThat(prediction).isNotNull();
+assertThat(Double.parseDouble(prediction)).isGreaterThan(0);
+
+// 验证 MySQL 模型信息
+assertDataExists("model_info", "model_type = 'LSTM' AND is_active = 1");
+
+// 验证 MongoDB 历史数据读取
+assertMongoRowCount("stockPrices", 60);  // 至少60天数据
+```
 
 ---
 
