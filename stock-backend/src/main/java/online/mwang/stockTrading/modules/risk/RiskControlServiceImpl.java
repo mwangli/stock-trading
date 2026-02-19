@@ -10,6 +10,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -29,61 +30,41 @@ public class RiskControlServiceImpl implements RiskControlService {
     public RiskCheckResult checkBeforeBuy() {
         log.info("Checking risk before buy");
         
-        RiskCheckResult result = new RiskCheckResult();
-        
         // 检查单日止损
         if (isDailyStopLossTriggered()) {
-            result.setAllowed(false);
-            result.setRiskLevel(RiskLevel.HIGH);
-            result.setMessage("Daily stop loss triggered (-3%)");
             log.warn("Risk check failed: Daily stop loss triggered");
-            return result;
+            return RiskCheckResult.fail("Daily stop loss triggered (-3%)");
         }
         
         // 检查月度熔断
         if (isMonthlyCircuitBreakerTriggered()) {
-            result.setAllowed(false);
-            result.setRiskLevel(RiskLevel.CRITICAL);
-            result.setMessage("Monthly circuit breaker triggered (-10%)");
             log.warn("Risk check failed: Monthly circuit breaker triggered");
-            return result;
+            return RiskCheckResult.fail("Monthly circuit breaker triggered (-10%)");
         }
         
-        result.setAllowed(true);
-        result.setRiskLevel(getCurrentRiskLevel());
-        result.setMessage("Risk check passed");
-        return result;
+        return RiskCheckResult.pass();
     }
 
     @Override
     public RiskCheckResult checkPositionForSell(Position position) {
-        log.info("Checking position {} for sell", position.getCode());
-        
-        RiskCheckResult result = new RiskCheckResult();
+        log.info("Checking position {} for sell", position.getStockCode());
         
         // 计算持仓盈亏
         double pnl = calculatePositionPnL(position);
         
-        // 如果亏损超过3%，触发止损
+        // 如果亏损超过3%，触发止损卖出
         if (pnl <= DAILY_STOP_LOSS) {
-            result.setAllowed(true);
-            result.setRiskLevel(RiskLevel.HIGH);
-            result.setMessage(String.format("Stop loss triggered: %.2f%%", pnl * 100));
-            result.setAction(online.mwang.stockTrading.modules.risk.enums.Action.SELL);
-            return result;
+            return RiskCheckResult.forceSell(String.format("Stop loss triggered: %.2f%%", pnl * 100));
         }
         
-        result.setAllowed(true);
-        result.setRiskLevel(RiskLevel.NORMAL);
-        result.setMessage("Position normal");
-        return result;
+        return RiskCheckResult.pass();
     }
 
     @Override
     public double calculateDailyPnL() {
         log.info("Calculating daily PnL");
         
-        // 简化：从Redis缓存获取当日盈亏
+        // 从Redis缓存获取当日盈亏
         String key = "risk:daily:pnl:" + LocalDate.now();
         Object cached = redisTemplate.opsForValue().get(key);
         
@@ -122,11 +103,11 @@ public class RiskControlServiceImpl implements RiskControlService {
         double monthlyPnL = calculateMonthlyPnL();
         
         if (monthlyPnL <= MONTHLY_CIRCUIT_BREAKER) {
-            return RiskLevel.CRITICAL;
+            return RiskLevel.MONTHLY_CIRCUIT_BREAKER;
         } else if (dailyPnL <= DAILY_STOP_LOSS) {
-            return RiskLevel.HIGH;
+            return RiskLevel.DAILY_STOP_LOSS;
         } else if (dailyPnL < -0.01 || monthlyPnL < -0.05) {
-            return RiskLevel.MEDIUM;
+            return RiskLevel.WARNING;
         }
         return RiskLevel.NORMAL;
     }
@@ -173,7 +154,7 @@ public class RiskControlServiceImpl implements RiskControlService {
     }
 
     private double calculatePositionPnL(Position position) {
-        // 简化计算
-        return (position.getCurrentPrice() - position.getBuyPrice()) / position.getBuyPrice();
+        // 使用 avgCost 作为买入成本
+        return (position.getCurrentPrice() - position.getAvgCost()) / position.getAvgCost();
     }
 }

@@ -147,6 +147,8 @@
                     <compilerArgs>
                         <arg>-J-Dfile.encoding=UTF-8</arg>
                     </compilerArgs>
+                    <source>16</source>
+                    <target>16</target>
                 </configuration>
             </plugin>
 

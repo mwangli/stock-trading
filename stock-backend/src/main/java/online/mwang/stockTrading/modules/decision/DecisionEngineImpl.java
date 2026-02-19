@@ -38,7 +38,7 @@ public class DecisionEngineImpl implements DecisionEngine {
         }
         
         // 检查风控
-        if (!riskControlService.checkBeforeBuy().isAllowed()) {
+        if (!riskControlService.checkBeforeBuy().isPassed()) {
             return TradingSignal.hold("Risk control triggered");
         }
         
