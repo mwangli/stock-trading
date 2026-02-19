@@ -23,3 +23,28 @@ spring:
     host: 124.220.36.95
     port: 6379
     password: Root.123456
+  task:
+    scheduling:
+      pool:
+        size: 10
+      thread-name-prefix: scheduled-
+
+# 股票数据采集配置
+stock:
+  data:
+    aktools:
+      base-url: https://api.aktools.com
+      timeout: 30000
+      retry:
+        max-attempts: 3
+        delay: 1000
+    sync:
+      stock-list:
+        cron: "0 0 9 * * ?"
+        enabled: true
+      realtime-quote:
+        cron: "0 0/1 9-15 * * ?"
+        enabled: true
+      historical:
+        cron: "0 30 15 * * ?"
+        enabled: true

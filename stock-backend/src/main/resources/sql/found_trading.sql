@@ -102,6 +102,10 @@ CREATE TABLE `stock_info`  (
   `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '股票名称',
   `code` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '股票代码',
   `market` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '上市地区',
+  `industry` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '所属行业',
+  `is_st` tinyint(1) NULL DEFAULT 0 COMMENT '是否ST股票 0-否 1-是',
+  `is_tradable` tinyint(1) NULL DEFAULT 1 COMMENT '是否可交易 0-否 1-是',
+  `listing_date` date NULL DEFAULT NULL COMMENT '上市日期',
   `increase` double(32, 4) NULL DEFAULT NULL COMMENT '增长幅度',
   `price` double(10, 2) NULL DEFAULT NULL COMMENT '当前价格',
   `predict_price` decimal(10, 2) NULL DEFAULT NULL COMMENT '预测价格',
@@ -109,10 +113,14 @@ CREATE TABLE `stock_info`  (
   `permission` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '交易权限',
   `buy_sale_count` int(0) NULL DEFAULT NULL COMMENT '交易次数',
   `create_time` datetime(0) NULL DEFAULT NULL COMMENT '创建时间',
-  `update_time` datetime(0) NULL DEFAULT NULL COMMENT '修改时间',
+  `update_time` datetime(0) NULL DEFAULT NULL COMMENT '更新时间',
   `deleted` varchar(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '退市删除，0表示删除',
+  `selected` varchar(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT '0' COMMENT '是否选中 0-否 1-是',
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `code`(`code`) USING BTREE COMMENT '唯一索引'
+  UNIQUE INDEX `code`(`code`) USING BTREE COMMENT '唯一索引',
+  INDEX `idx_industry`(`industry`) USING BTREE,
+  INDEX `idx_is_tradable`(`is_tradable`) USING BTREE,
+  INDEX `idx_is_st`(`is_st`) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 101909 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '股票信息表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------

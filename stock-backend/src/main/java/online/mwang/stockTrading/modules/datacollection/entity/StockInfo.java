@@ -8,6 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.util.Date;
 import java.util.List;
 
@@ -23,6 +24,10 @@ public class StockInfo {
     private String name;
     private String code;
     private String market;
+    private String industry;
+    private LocalDate listingDate;
+    private Boolean isSt;
+    private Boolean isTradable;
     private Double increase;
     private Double price;
     private Double predictPrice;
