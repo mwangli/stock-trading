@@ -43,30 +43,37 @@ stock-trading/
 
 ## 技术栈
 
-### 后端
-- **框架**: Spring Boot 2.6.6
-- **JDK**: Java 8/9
-- **ORM**: MyBatis-Plus
+### 后端 (Java)
+- **框架**: Spring Boot 3.2.2
+- **JDK**: Java 17
+- **ORM**: JPA (Hibernate)
 - **数据库**: MySQL + MongoDB
 - **缓存**: Redis
 - **任务调度**: Quartz
 - **机器学习**: DeepLearning4J (LSTM)
 
-### 前端
+### 前端 (React)
 - **框架**: React 18 + TypeScript 4.9
 - **UI 组件**: Ant Design 5.x + Pro Components
 - **开发框架**: UmiJS 4.x
 - **状态管理**: DVA
 - **图表**: Ant Design Charts
 
+### AI 服务 (Python)
+- **框架**: FastAPI 0.109.x
+- **机器学习**: PyTorch 2.x, TensorFlow 2.15
+- **NLP**: Transformers (FinBERT 情感分析)
+- **数据验证**: Pydantic 2.x
+
 ## 快速开始
 
 ### 环境要求
 
-- Java JDK 21
+- Java JDK 17+
 - Maven 3.9.6
 - Node.js >= 12.0.0
 - pnpm (推荐包管理器)
+- Python 3.10+
 - MySQL 8.0+
 - MongoDB
 - Redis
@@ -85,6 +92,13 @@ mvn clean install
 # 3. 安装前端依赖
 cd ../stock-frontend
 pnpm install
+
+# 4. 安装 Python AI 服务依赖
+cd ../stock-service
+python -m venv venv
+venv\Scripts\activate  # Windows
+source venv/bin/activate  # Linux/Mac
+pip install -r requirements.txt
 ```
 
 ### 启动开发服务器
@@ -97,6 +111,14 @@ mvn spring-boot:run
 # 2. 启动前端 (端口 8000)
 cd stock-frontend
 npm start
+
+# 3. 启动 Python AI 服务 (端口 8001)
+cd stock-service
+python -m venv venv
+venv\Scripts\activate  # Windows
+source venv/bin/activate  # Linux/Mac
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 ```
 
 访问 http://localhost:8000
@@ -152,6 +174,105 @@ npm run jest -- path/to/test.tsx
 ```
 
 详见 [stock-frontend/AGENTS.md](stock-frontend/AGENTS.md)
+
+### Python AI 服务开发
+
+```bash
+cd stock-service
+
+# 创建虚拟环境
+python -m venv venv
+venv\Scripts\activate  # Windows
+source venv/bin/activate  # Linux/Mac
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 启动开发服务器
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
+
+# 运行测试
+pytest
+
+# 运行测试并生成覆盖率报告
+pytest --cov=app
+```
+
+## API 接口文档
+
+### 后端服务 (Spring Boot) - 端口 8080
+
+#### 股票数据接口 `/api/data`
+
+| 方法 | 路径 | 说明 | 参数 |
+|------|------|------|------|
+| GET | `/api/data/stocks` | 获取股票列表 | - |
+| GET | `/api/data/stocks/{code}/history` | 获取历史K线数据 | `days`: 天数(默认30) |
+| GET | `/api/data/stocks/{code}/price` | 获取实时价格 | - |
+| POST | `/api/data/stocks/{code}/sync` | 同步单只股票历史 | `days`: 天数(默认60) |
+| POST | `/api/data/sync/all` | 全量同步所有股票 | - |
+
+#### 情感分析接口 `/api/sentiment`
+
+| 方法 | 路径 | 说明 | 请求体 |
+|------|------|------|--------|
+| POST | `/api/sentiment/analyze` | 分析单条文本情感 | `{ "text": "..." }` |
+| POST | `/api/sentiment/stock/{stockCode}` | 计算股票情感得分 | `[{ news item }]` |
+| POST | `/api/sentiment/market` | 获取市场整体情绪 | `[{ news item }]` |
+| POST | `/api/sentiment/ranking` | 获取股票情感排名 | `{ stockCode: [news] }` |
+
+### Python AI 服务 (FastAPI) - 端口 8001
+
+#### 健康检查
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/` | 服务状态检查 |
+| GET | `/health` | 详细健康检查 |
+
+#### 数据采集接口 `/api/data`
+
+| 方法 | 路径 | 说明 | 参数 |
+|------|------|------|------|
+| GET | `/api/data/stock/list` | 获取A股股票列表 | - |
+| GET | `/api/data/stock/prices` | 获取历史K线数据 | `symbol`, `start_date`, `end_date`, `period`, `adjust` |
+| GET | `/api/data/stock/quote` | 获取单只股票实时行情 | `symbol` |
+| GET | `/api/data/stock/quotes` | 获取多只股票实时行情 | `symbols`(逗号分隔) |
+| GET | `/api/data/stock/financial` | 获取财务报表数据 | `symbol` |
+| GET | `/api/data/news` | 获取股票新闻 | `symbol`(可选) |
+
+#### 情感分析接口 `/api/sentiment`
+
+| 方法 | 路径 | 说明 | 请求体 |
+|------|------|------|--------|
+| POST | `/api/sentiment/analyze` | 分析单条文本情感 | `{ "text": "..." }` |
+| POST | `/api/sentiment/analyze/batch` | 批量情感分析 | `{ "texts": [...] }` |
+| POST | `/api/sentiment/analyze/news` | 分析新闻情感 | `{ "news": [...] }` |
+| GET | `/api/sentiment/market/{stock_code}` | 获取股票市场情绪 | `news_count` |
+| POST | `/api/sentiment/market/analyze` | 计算市场情绪 | `{ "news": [...] }` |
+| GET | `/api/sentiment/model/info` | 获取模型信息 | - |
+
+### 通用响应格式
+
+**后端 Java 响应:**
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": { ... }
+}
+```
+
+**Python 服务响应:**
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": { ... }
+}
+```
+
+---
 
 ## 项目文档
 

@@ -330,9 +330,97 @@ class LSTMService:
         pass
 ```
 
-### 6.4 接口设计
+### 6.4 数据模型设计
 
-#### 6.4.1 接口列表
+#### 6.4.1 数据表清单
+
+| 表名 | 说明 | 存储 |
+|------|------|------|
+| model_info | LSTM模型信息表 | MySQL |
+
+#### 6.4.2 SQL建表语句
+
+**model_info 表 (LSTM模型信息)**
+
+```sql
+CREATE TABLE `model_info` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `code` varchar(10) NOT NULL COMMENT '股票代码',
+  `name` varchar(50) DEFAULT NULL COMMENT '股票名称',
+  `train_period` varchar(50) DEFAULT NULL COMMENT '训练周期(如: 2020-01-01~2024-01-01)',
+  `train_times` int(11) DEFAULT '0' COMMENT '训练次数',
+  `test_deviation` double DEFAULT NULL COMMENT '测试偏差率(%)',
+  `score` double DEFAULT NULL COMMENT '模型评分',
+  `status` varchar(20) DEFAULT 'ACTIVE' COMMENT '模型状态(ACTIVE-活跃,INACTIVE-停用)',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_code` (`code`),
+  KEY `idx_status` (`status`),
+  KEY `idx_score` (`score`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='LSTM模型信息表';
+```
+
+#### 6.4.3 表结构说明
+
+**model_info 表字段说明**:
+
+| 字段名 | 类型 | 长度 | 说明 | 可空 |
+|--------|------|------|------|------|
+| id | BIGINT | 20 | 主键ID，自增 | 否 |
+| code | VARCHAR | 10 | 股票代码，唯一索引 | 否 |
+| name | VARCHAR | 50 | 股票名称 | 是 |
+| train_period | VARCHAR | 50 | 训练数据周期范围 | 是 |
+| train_times | INT | 11 | 模型训练次数 | 是 |
+| test_deviation | DOUBLE | - | 测试集偏差率(%)，越小越好 | 是 |
+| score | DOUBLE | - | 模型综合评分(0-100) | 是 |
+| status | VARCHAR | 20 | 模型状态(ACTIVE/INACTIVE) | 是 |
+| create_time | DATETIME | - | 记录创建时间 | 是 |
+| update_time | DATETIME | - | 记录更新时间 | 是 |
+
+**索引设计**:
+- 主键索引: `id`
+- 唯一索引: `code` (每只股票对应一个模型)
+- 普通索引: `status` (按状态查询), `score` (按评分排序)
+
+**模型评分算法**:
+```
+score = (1 - test_deviation) * 100
+```
+评分越高表示模型预测偏差越小，质量越好。
+
+**模型状态说明**:
+- `ACTIVE`: 模型活跃，可用于预测
+- `INACTIVE`: 模型停用，不参与预测
+
+#### 6.4.4 Java实体类定义
+
+```java
+@Data
+@TableName(value = "model_info", autoResultMap = true)
+public class ModelInfo {
+    @TableId(type = IdType.AUTO)
+    private Long id;
+    private String code;            // 股票代码
+    private String name;            // 股票名称
+    private String trainPeriod;     // 训练周期
+    private Integer trainTimes;     // 训练次数
+    private Double testDeviation;   // 测试偏差率
+    private Double score;           // 模型评分
+    private String status;          // 模型状态
+    private Date createTime;
+    private Date updateTime;
+
+    // 动态排序方法
+    public static SFunction<ModelInfo, Object> getOrder(String key) {
+        // 根据字段名返回排序函数
+    }
+}
+```
+
+### 6.5 接口设计
+
+#### 6.5.1 接口列表
 
 | 接口路径 | 方法 | 说明 |
 |----------|------|------|

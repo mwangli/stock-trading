@@ -4,10 +4,10 @@
 
 ```
 stock-trading/
-├── stock-backend/          # Java Spring Boot backend
-├── stock-frontend/        # React frontend (Ant Design Pro)
-├── stock-service/         # Python AI service (FastAPI)
-└── documents/             # Design documents
+├── stock-backend/          # Java Spring Boot 3.2.2 (JDK 17)
+├── stock-frontend/         # React 18 + TypeScript 4.9 + UmiJS 4.x
+├── stock-service/          # Python FastAPI AI service
+└── documents/              # Design documents
 ```
 
 ## Build Commands
@@ -16,78 +16,40 @@ stock-trading/
 
 ```bash
 cd stock-backend
-
-# Compile and package
-mvn clean install
-
-# Run Spring Boot application
-mvn spring-boot:run
-
-# Run all tests
-mvn test
-
-# Run single test class
-mvn test -Dtest=ClassName
-
-# Run single test method
-mvn test -Dtest=ClassName#methodName
-
-# Skip tests during build
-mvn clean install -DskipTests
+mvn clean install              # Compile and package
+mvn spring-boot:run           # Run application
+mvn test                      # Run all tests
+mvn test -Dtest=ClassName     # Run single test class
+mvn test -Dtest=ClassName#method  # Run single test method
+mvn clean install -DskipTests # Skip tests during build
 ```
 
 ### Frontend (stock-frontend/)
 
 ```bash
 cd stock-frontend
-
-# Install dependencies (use pnpm)
-pnpm install
-
-# Start development server
-npm start
-# or
-npm run start:dev
-
-# Build for production
-npm run build
-
-# Run all tests
-npm test
-
-# Run tests in watch mode
-npm run jest -- --watch
-
-# Run single test file
-npm run jest -- path/to/test.tsx
-
-# Run tests matching pattern
-npm run jest -- -t "test pattern"
-
-# Type check
-npm run tsc
-
-# Lint code
-npm run lint
-
-# Fix lint issues
-npm run lint:fix
+pnpm install                  # Install dependencies
+npm start                     # Start dev server
+npm run build                 # Build for production
+npm test                      # Run all tests
+npm run jest -- path/to/test.tsx      # Run single test file
+npm run jest -- -t "pattern"  # Run tests matching pattern
+npm run tsc                   # Type check
+npm run lint                  # Lint code
+npm run lint:fix              # Fix lint issues
+npm run prettier              # Format code
 ```
 
 ### Python AI Service (stock-service/)
 
 ```bash
 cd stock-service
-
-# Create virtual environment
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
-
-# Install dependencies
+source venv/bin/activate       # Linux/Mac (Windows: venv\Scripts\activate)
 pip install -r requirements.txt
-
-# Run FastAPI development server
+pytest                         # Run tests
+pytest tests/test_file.py      # Run single test file
+pytest --cov=app              # Run with coverage
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 ```
 
@@ -96,82 +58,76 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 ### Java (Backend)
 
 - **Java Version**: 17 (Spring Boot 3.2.2)
-- **Framework**: Spring Boot
-- **Naming**: CamelCase for classes/methods, UPPER_SNAKE for constants
-- **Lombok**: Use `@Data`, `@Slf4j`, `@RequiredArgsConstructor` annotations
-- **Imports**: Organize imports, no wildcard imports
-- **Key Dependencies**: MyBatis-Plus, Hutool, FastJSON2, EasyExcel
-- **Error Handling**: Use global exception handler, return `Response<T>` wrapper
-- **Logging**: Use `@Slf4j` and log at appropriate levels (info for requests, error for exceptions)
-- **API Design**: RESTful endpoints, use `@RequestBody` for POST/PUT, `@PathVariable` for resources
-- **DTOs**: Define nested static classes for request/response DTOs within controllers
+- **Naming**: CamelCase classes/methods, UPPER_SNAKE constants
+- **Lombok**: `@Data`, `@Slf4j`, `@RequiredArgsConstructor`
+- **Imports**: No wildcards, static imports last
+- **Dependencies**: JPA (Hibernate), Hutool, FastJSON2, EasyExcel, SpringDoc OpenAPI
+- **Error Handling**: `@ControllerAdvice` with `Response<T>` wrapper
+- **API**: RESTful endpoints, `@RequestBody` for POST/PUT, `@PathVariable` for IDs
+- **Logging**: `@Slf4j` with log.info() for requests, log.error() for exceptions
+- **DTOs**: Nested static classes within controllers
+- **Service**: Interface + Impl pattern, `@RequiredArgsConstructor` for DI
 
 ### TypeScript/React (Frontend)
 
-- **Style**: Prettier config (single quotes, trailing commas, 100 char width)
-- **Imports**: Use `@/` alias for src/ directory imports
-- **Components**: Functional components with hooks, PascalCase naming
-- **Types**: Strict TypeScript, always define prop interfaces
-- **Formatting**: LF line endings, no prose wrap
-- **Framework**: UmiJS 4.x, Ant Design 5.x, React 18.x
-- **State Management**: Use React hooks (useState, useRef, useEffect)
-- **API Calls**: Use async/await with proper error handling
-- **UI Components**: Use Ant Design components, follow their prop patterns
+- **Style**: Prettier config (singleQuote, trailingComma: 'all', printWidth: 100)
+- **Imports**: `@/` alias for src/, group: React/libs/components/utils
+- **Components**: Functional with hooks, PascalCase naming
+- **Types**: Strict TypeScript, always define prop interfaces, use `type`
+- **Formatting**: LF line endings, proseWrap: 'never', endOfLine: 'lf'
+- **Framework**: UmiJS 4.x, Ant Design 5.x, React 18.x, Pro Components
+- **State**: React hooks (useState, useRef, useEffect), no class components
+- **API**: async/await with try-catch, errors via Ant Design notification
+- **UI**: Ant Design, ProTable for grids, charts from @ant-design/charts
+- **Intl**: `useIntl()` hook and `<FormattedMessage>`
 
 ### Python AI Service
 
-- **Framework**: FastAPI 0.109.x
-- **ML Libraries**: PyTorch, TensorFlow, scikit-learn
-- **Testing**: pytest with pytest-asyncio
-- **Async**: Use async/await for I/O operations
-- **Logging**: Use Python logging module with appropriate levels
-- **Error Handling**: Use FastAPI exception handlers, return structured error responses
-- **Config**: Use Pydantic settings for configuration management
+- **Framework**: FastAPI 0.109.x, Pydantic 2.x
+- **ML**: PyTorch 2.x, TensorFlow 2.15, scikit-learn, transformers
+- **Structure**: `app/api/` (routes), `app/services/` (logic), `app/core/` (config)
+- **Async**: async/await for I/O, `@asynccontextmanager` for lifespan
+- **Logging**: Python logging with structured format
+- **Errors**: FastAPI exception handlers, structured responses
+- **Config**: Pydantic Settings with `.env`, case_sensitive=True
+- **Typing**: Type hints everywhere, `List[Type]` from typing
 
 ## Testing Standards
 
 ### Java
-- Use JUnit 5 (JUnit Jupiter)
-- Test class naming: `*Test.java`
-- Mock external dependencies with Mockito
-- Test location: `src/test/java/`
+- JUnit 5 (JUnit Jupiter), naming: `*Test.java`
+- Mock with Mockito, location: `src/test/java/`
+- Integration: `@SpringBootTest`, unit: mock dependencies
 
 ### TypeScript/React
-- Use Jest with React Testing Library
-- Test files: `*.test.tsx` or `*.spec.tsx`
-- Test location: Co-located with components or `__tests__/` folder
+- Jest with React Testing Library
+- Files: `*.test.tsx` or `*.spec.tsx`
+- Location: Co-located or `__tests__/`
+- Coverage: `npm run test:coverage`
 
 ### Python
-- Use pytest
-- Test files: `test_*.py` or `*_test.py`
-- Test location: `tests/` folder or co-located
-- Use pytest-asyncio for async tests
+- pytest with pytest-asyncio for async tests
+- Files: `test_*.py` or `*_test.py`
+- Location: `tests/` folder or co-located
+- Fixtures in `conftest.py`
 
 ## Error Handling
 
 ### Backend (Java)
-- Use global exception handler with `@ControllerAdvice`
-- Always return `Response<T>` wrapper with success/error status
+- Global exception handler with `@ControllerAdvice`
+- Return `Response<T>` wrapper with success/error status
 - Log errors at ERROR level with exception details
-- Return appropriate HTTP status codes (200, 400, 404, 500)
+- HTTP: 200 success, 400/404 client errors, 500 server errors
 
 ### Frontend (React)
-- Handle API errors with try-catch blocks
-- Display user-friendly error messages via Ant Design notification
-- Use React Query or SWR for data fetching with error states
+- API errors with try-catch blocks
+- Messages via Ant Design notification
+- Loading states for async operations
 
 ### Python Service
-- Use FastAPI exception handlers (`@app.exception_handler`)
-- Return structured error responses with error codes
-- Log errors with appropriate levels
-
-## Development Workflow
-
-1. Always run tests before committing
-2. Ensure linting passes (`npm run lint` for frontend)
-3. Type check TypeScript (`npm run tsc`)
-4. Use code formatting tools before committing
-5. Ports: Backend 8080, Frontend 8000, Python AI 8001
+- FastAPI exception handlers (`@app.exception_handler`)
+- Structured error responses with error codes
+- Use loguru or standard logging with appropriate levels
 
 ## Key Ports
 
@@ -179,3 +135,20 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 - Frontend: http://localhost:8000
 - Python AI: http://localhost:8001
 - Proxy: `/api/*` → `http://localhost:8080`
+
+## Development Workflow
+
+1. Run tests before committing
+2. Ensure linting passes (`npm run lint` for frontend)
+3. Type check TypeScript (`npm run tsc`)
+4. Format code (`npm run prettier` for frontend)
+5. Verify builds: `mvn clean install`, `npm run build`
+
+## Module Architecture
+
+- **Data Collection**: Stock data sync, AKShare/AKTools integration
+- **Prediction**: LSTM model service for price prediction
+- **Sentiment**: FinBERT-based sentiment analysis
+- **Trading**: Order execution, account management
+- **Risk**: Risk control and position management
+- **Decision**: Trading signal generation engine

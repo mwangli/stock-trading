@@ -50,6 +50,35 @@ class Settings(BaseSettings):
     SENTIMENT_CACHE_TTL: int = 3600  # seconds
     PREDICTION_CACHE_TTL: int = 300  # seconds
 
+    # Database Configuration
+    # MySQL
+    MYSQL_HOST: str = "localhost"
+    MYSQL_PORT: int = 3306
+    MYSQL_USER: str = "root"
+    MYSQL_PASSWORD: str = "password"
+    MYSQL_DATABASE: str = "stock_trading"
+
+    # MongoDB
+    MONGODB_URL: str = "mongodb://localhost:27017"
+    MONGODB_DB: str = "stock_trading"
+
+    # Redis
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    REDIS_PASSWORD: str = ""
+
+    # Data Collection Configuration
+    DATA_COLLECTION_ENABLED: bool = True
+    DATA_COLLECTION_CRON_STOCK_LIST: str = "0 0 9 * * *"  # 每天9:00
+    DATA_COLLECTION_CRON_HISTORICAL: str = "0 30 15 * * *"  # 每天15:30
+    DATA_COLLECTION_CRON_REALTIME: str = "0 0/1 9-15 * * *"  # 交易时段每分钟
+    DATA_COLLECTION_HISTORY_DAYS: int = 60
+    DATA_COLLECTION_BATCH_SIZE: int = 100
+    DATA_COLLECTION_THREAD_POOL_SIZE: int = 10
+    DATA_COLLECTION_MAX_RETRIES: int = 3
+    DATA_COLLECTION_RETRY_DELAY: int = 1  # seconds
+
     class Config:
         env_file = ".env"
         case_sensitive = True

@@ -18,7 +18,7 @@
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <mybatis-plus.version>3.5.5</mybatis-plus.version>
+        <hibernate.version>6.4.0.Final</hibernate.version>
         <hutool.version>5.8.23</hutool.version>
         <fastjson.version>2.0.45</fastjson.version>
         <easyexcel.version>3.3.4</easyexcel.version>
@@ -62,11 +62,17 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- MyBatis Plus -->
+        <!-- Spring Data JPA -->
         <dependency>
-            <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-boot-starter</artifactId>
-            <version>${mybatis-plus.version}</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- Hibernate -->
+        <dependency>
+            <groupId>org.hibernate.orm</groupId>
+            <artifactId>hibernate-core</artifactId>
+            <version>${hibernate.version}</version>
         </dependency>
 
         <!-- Tools -->

@@ -12,12 +12,17 @@ pydantic==2.5.3
 pydantic-settings==2.1.0
 
 # ===============================
-# Data Collection (AKShare)
+# Data Collection (AKShare + Direct DB Write)
 # ===============================
 akshare==1.18.25
+aktools>=0.2.0
 sqlalchemy==2.0.25
 pymysql==1.1.0
 cryptography==41.0.7
+pymongo==4.6.1
+redis==5.0.1
+apscheduler==3.10.4
+tenacity==8.2.3
 
 # ===============================
 # NLP & Sentiment Analysis

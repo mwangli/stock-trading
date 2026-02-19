@@ -80,6 +80,7 @@ services:
     environment:
       - MYSQL_ROOT_PASSWORD=Root.123456
       - MYSQL_DATABASE=stock_trading
+      - MYSQL_ROOT_HOST=%
     ports:
       - "6033:3306"
     volumes:
@@ -88,7 +89,12 @@ services:
     networks:
       - stock-network
     restart: unless-stopped
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    command:
+      --mysql-native-password=ON
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --bind-address=0.0.0.0
 
   # ===================
   # MongoDB
