@@ -2,7 +2,7 @@ package online.mwang.stockTrading.services;
 
 import online.mwang.stockTrading.entities.Position;
 import online.mwang.stockTrading.enums.RiskLevel;
-import online.mwang.stockTrading.models.RiskCheckResult;
+import online.mwang.stockTrading.results.RiskCheckResult;
 
 import java.util.List;
 

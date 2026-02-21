@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import (
-    get_mysql_db, get_mongo_collection, get_redis,
+    get_db, get_mongo_collection, get_redis,
     MySQLSessionLocal, StockInfoModel
 )
 
@@ -97,45 +97,72 @@ class DataCollectionService:
             raise
 
     async def _save_stocks_to_mysql(self, stocks: List[Dict]) -> int:
-        """Save stocks to MySQL with upsert logic"""
+        """Save stocks to MySQL with optimized bulk operations"""
+        if not stocks:
+            return 0
+            
         db = MySQLSessionLocal()
         try:
-            saved_count = 0
-            for stock in stocks:
-                try:
-                    # Check if exists
-                    existing = db.query(StockInfoModel).filter(
-                        StockInfoModel.code == stock['code']
-                    ).first()
-                    
-                    if existing:
-                        # Update existing
-                        existing.name = stock['name']
-                        existing.market = stock['market']
-                        existing.is_st = stock['is_st']
-                        existing.is_tradable = stock['is_tradable']
-                        existing.price = stock['price']
-                        existing.increase = stock['increase']
-                        existing.update_time = datetime.now()
-                    else:
-                        # Insert new
-                        new_stock = StockInfoModel(**stock)
-                        db.add(new_stock)
-                    
-                    saved_count += 1
-                    
-                    # Batch commit
-                    if saved_count % self.batch_size == 0:
-                        db.commit()
-                        logger.debug(f"Committed batch of {self.batch_size} stocks")
-                
-                except Exception as e:
-                    logger.error(f"Failed to save stock {stock.get('code')}: {e}")
-                    db.rollback()
-                    continue
+            # 1. Batch query existing stock codes (single query instead of N queries)
+            stock_codes = [s['code'] for s in stocks]
+            existing_stocks = db.query(StockInfoModel.code).filter(
+                StockInfoModel.code.in_(stock_codes)
+            ).all()
+            existing_code_set = {s[0] for s in existing_stocks}
             
-            # Final commit
+            logger.info(f"Found {len(existing_code_set)} existing stocks out of {len(stocks)} total")
+            
+            # 2. Separate into insert and update lists
+            to_insert = []
+            to_update = []
+            
+            for stock in stocks:
+                if stock['code'] in existing_code_set:
+                    to_update.append(stock)
+                else:
+                    to_insert.append(stock)
+            
+            logger.info(f"Will insert {len(to_insert)} new stocks, update {len(to_update)} existing stocks")
+            
+            saved_count = 0
+            
+            # 3. Bulk insert new stocks
+            if to_insert:
+                try:
+                    db.bulk_insert_mappings(StockInfoModel, to_insert)
+                    saved_count += len(to_insert)
+                    logger.info(f"Bulk inserted {len(to_insert)} new stocks")
+                except Exception as e:
+                    logger.error(f"Failed to bulk insert stocks: {e}")
+                    db.rollback()
+                    raise
+            
+            # 4. Bulk update existing stocks
+            if to_update:
+                try:
+                    # Use bulk update with SQLAlchemy
+                    for stock in to_update:
+                        db.query(StockInfoModel).filter(
+                            StockInfoModel.code == stock['code']
+                        ).update({
+                            'name': stock['name'],
+                            'market': stock['market'],
+                            'is_st': stock['is_st'],
+                            'is_tradable': stock['is_tradable'],
+                            'price': stock['price'],
+                            'increase': stock['increase'],
+                            'update_time': datetime.now()
+                        }, synchronize_session=False)
+                    saved_count += len(to_update)
+                    logger.info(f"Bulk updated {len(to_update)} existing stocks")
+                except Exception as e:
+                    logger.error(f"Failed to bulk update stocks: {e}")
+                    db.rollback()
+                    raise
+            
+            # 5. Commit all changes
             db.commit()
+            logger.info(f"Successfully saved {saved_count} stocks to MySQL")
             return saved_count
             
         except Exception as e:
@@ -211,9 +238,16 @@ class DataCollectionService:
             # 4. Transform data
             records_to_save = []
             for _, row in df.iterrows():
+                # Convert date to string for MongoDB compatibility
+                date_value = row.get('日期')
+                if hasattr(date_value, 'strftime'):
+                    date_str = date_value.strftime('%Y-%m-%d')
+                else:
+                    date_str = str(date_value)
+                
                 record = {
                     'code': stock_code,
-                    'date': row.get('日期'),
+                    'date': date_str,
                     'price1': float(row.get('开盘', 0)),
                     'price2': float(row.get('最高', 0)),
                     'price3': float(row.get('最低', 0)),

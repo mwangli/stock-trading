@@ -1,11 +1,11 @@
 package online.mwang.stockTrading.services;
 
-import online.mwang.stockTrading.models.TradingSignal;
+import online.mwang.stockTrading.results.TradingSignal;
 import online.mwang.stockTrading.services.StockSelector;
-import online.mwang.stockTrading.models.SelectResult;
+import online.mwang.stockTrading.results.SelectResult;
 
 /**
- * 决策引擎
+ * 模块四：AI金融分析 - 决策引擎
  * 根据选股结果生成交易信号
  */
 public interface DecisionEngine {

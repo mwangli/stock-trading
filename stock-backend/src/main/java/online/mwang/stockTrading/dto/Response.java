@@ -1,4 +1,4 @@
-package online.mwang.stockTrading.core.dto;
+package online.mwang.stockTrading.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

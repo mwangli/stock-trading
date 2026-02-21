@@ -2,8 +2,8 @@ package online.mwang.stockTrading.controllers;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.core.dto.Response;
-import online.mwang.stockTrading.services.SentimentAnalysisService;
+import online.mwang.stockTrading.dto.Response;
+import online.mwang.stockTrading.services.impl.SentimentAnalysisService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -33,40 +33,37 @@ public class SentimentController {
     }
 
     /**
-     * 计算股票情感得分
+     * 获取股票情感得分 (从MySQL数据库读取)
      */
-    @PostMapping("/stock/{stockCode}")
-    public Response<Double> getStockSentiment(
-            @PathVariable String stockCode,
-            @RequestBody List<Map<String, Object>> newsItems) {
-        log.info("Calculating sentiment for stock: {}", stockCode);
+    @GetMapping("/stock/{stockCode}")
+    public Response<Double> getStockSentiment(@PathVariable String stockCode) {
+        log.info("Getting sentiment for stock: {}", stockCode);
         
-        double score = sentimentService.calculateStockSentiment(stockCode, newsItems);
+        double score = sentimentService.analyze(stockCode);
         return Response.success(score);
     }
 
     /**
-     * 获取市场整体情绪
+     * 获取市场整体情绪 (从MySQL数据库读取)
      */
-    @PostMapping("/market")
-    public Response<SentimentAnalysisService.MarketSentiment> getMarketSentiment(
-            @RequestBody List<Map<String, Object>> newsItems) {
-        log.info("Analyzing market sentiment with {} news items", newsItems != null ? newsItems.size() : 0);
+    @GetMapping("/market")
+    public Response<SentimentAnalysisService.MarketSentiment> getMarketSentiment() {
+        log.info("Getting market sentiment");
         
-        SentimentAnalysisService.MarketSentiment sentiment = sentimentService.getMarketSentiment(newsItems);
+        SentimentAnalysisService.MarketSentiment sentiment = sentimentService.getMarketSentiment();
         return Response.success(sentiment);
     }
 
     /**
      * 获取股票情感排名
      */
-    @PostMapping("/ranking")
+    @GetMapping("/ranking")
     public Response<List<SentimentAnalysisService.StockSentimentScore>> getRanking(
-            @RequestBody Map<String, List<Map<String, Object>>> stockNewsMap) {
-        log.info("Calculating sentiment ranking for {} stocks", stockNewsMap != null ? stockNewsMap.size() : 0);
+            @RequestParam(defaultValue = "10") int limit) {
+        log.info("Getting sentiment ranking with limit: {}", limit);
         
         List<SentimentAnalysisService.StockSentimentScore> ranking = 
-            sentimentService.getStockSentimentRanking(stockNewsMap);
+            sentimentService.getStockSentimentRanking(limit);
         return Response.success(ranking);
     }
 

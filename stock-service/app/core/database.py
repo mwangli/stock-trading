@@ -2,7 +2,7 @@
 Database Configuration
 Supports MySQL, MongoDB, and Redis
 """
-from sqlalchemy import create_engine, Column, String, Integer, Float, DateTime, BigInteger
+from sqlalchemy import create_engine, Column, String, Integer, Float, DateTime, BigInteger, JSON
 from sqlalchemy.orm import sessionmaker, declarative_base
 from pymongo import MongoClient
 import redis
@@ -136,6 +136,99 @@ class StockInfoModel(Base):
     deleted = Column(String(1), default="0")
     create_time = Column(DateTime, default=datetime.now)
     update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+# ===============================
+# V3.0 Database Models (Python writes, Java reads)
+# ===============================
+
+class StockSentimentModel(Base):
+    """Stock sentiment analysis results - V3.0"""
+    __tablename__ = "stock_sentiment"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    stock_code = Column(String(10), nullable=False, index=True)
+    stock_name = Column(String(50), default=None)
+    sentiment_score = Column(Float, default=None)  # -1 to 1
+    positive_ratio = Column(Float, default=None)
+    negative_ratio = Column(Float, default=None)
+    neutral_ratio = Column(Float, default=None)
+    news_count = Column(Integer, default=0)
+    source = Column(String(50), default=None)
+    analyze_date = Column(DateTime, default=None)
+    analyze_time = Column(DateTime, default=datetime.now)
+    create_time = Column(DateTime, default=datetime.now)
+    update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class NewsSentimentModel(Base):
+    """News sentiment details - V3.0"""
+    __tablename__ = "news_sentiment"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    stock_code = Column(String(10), nullable=False, index=True)
+    news_title = Column(String(255), default=None)
+    news_content = Column(String(2000), default=None)
+    sentiment_score = Column(Float, default=None)
+    sentiment_label = Column(String(10), default=None)  # POSITIVE/NEGATIVE/NEUTRAL
+    confidence = Column(Float, default=None)
+    news_date = Column(DateTime, default=None)
+    source = Column(String(50), default=None)
+    create_time = Column(DateTime, default=datetime.now)
+
+
+class StockPredictionModel(Base):
+    """Stock price prediction results - V3.0"""
+    __tablename__ = "stock_prediction"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    stock_code = Column(String(10), nullable=False, index=True)
+    stock_name = Column(String(50), default=None)
+    predict_date = Column(DateTime, nullable=False)
+    predict_price = Column(Float, default=None)
+    predict_direction = Column(String(10), default=None)  # UP/DOWN/HOLD
+    confidence = Column(Float, default=None)
+    model_version = Column(String(20), default=None)
+    test_deviation = Column(Float, default=None)
+    features = Column(JSON, default=None)
+    create_time = Column(DateTime, default=datetime.now)
+    update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class StockRankingModel(Base):
+    """Stock composite ranking - V3.0"""
+    __tablename__ = "stock_ranking"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    stock_code = Column(String(10), nullable=False, index=True)
+    stock_name = Column(String(50), default=None)
+    composite_score = Column(Float, default=None)  # 0-100
+    sentiment_score = Column(Float, default=None)
+    momentum_score = Column(Float, default=None)
+    valuation_score = Column(Float, default=None)
+    technical_score = Column(Float, default=None)
+    rank_date = Column(DateTime, nullable=False)
+    rank_position = Column(Integer, default=None)
+    create_time = Column(DateTime, default=datetime.now)
+    update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class TaskExecutionLogModel(Base):
+    """Task execution log - V3.0"""
+    __tablename__ = "task_execution_log"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    task_name = Column(String(100), nullable=False, index=True)
+    task_type = Column(String(50), default=None)
+    module_id = Column(String(20), default=None, index=True)
+    status = Column(String(20), default=None, index=True)  # STARTED/SUCCESS/FAILED
+    start_time = Column(DateTime, default=None)
+    end_time = Column(DateTime, default=None)
+    duration = Column(Integer, default=None)  # milliseconds
+    records_processed = Column(Integer, default=0)
+    error_message = Column(String(2000), default=None)
+    execute_info = Column(JSON, default=None)
+    create_time = Column(DateTime, default=datetime.now)
 
 
 # Create MySQL tables

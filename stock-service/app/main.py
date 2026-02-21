@@ -14,6 +14,13 @@ from app.core.config import settings
 from app.core.database import init_databases
 from app.api import sentiment, data_collection
 
+# Import aktools router
+try:
+    from app.api import aktools
+    has_aktools = True
+except ImportError:
+    has_aktools = False
+
 # Import data_sync router conditionally
 try:
     from app.api import data_sync
@@ -49,27 +56,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize databases: {e}")
     
-    # Start data collection scheduler
-    if settings.DATA_COLLECTION_ENABLED:
-        logger.info("Starting data collection scheduler...")
-        try:
-            from app.services.scheduler import init_scheduler
-            init_scheduler()
-            logger.info("Data collection scheduler started")
-        except Exception as e:
-            logger.error(f"Failed to start scheduler: {e}")
+    # Start V3.0 scheduler (includes all modules: Data Collection, Sentiment, Prediction, Ranking)
+    # All results are written directly to MySQL for Java to read
+    logger.info("Starting V3.0 scheduler...")
+    try:
+        from app.services.v3_scheduler import init_scheduler
+        init_scheduler()
+        logger.info("V3.0 scheduler started successfully")
+    except Exception as e:
+        logger.error(f"Failed to start V3.0 scheduler: {e}")
     
     yield
     
     # Shutdown
     logger.info("Shutting down Stock AI Service...")
-    if settings.DATA_COLLECTION_ENABLED:
-        try:
-            from app.services.scheduler import shutdown_scheduler
-            shutdown_scheduler()
-            logger.info("Data collection scheduler stopped")
-        except Exception as e:
-            logger.error(f"Failed to stop scheduler: {e}")
+    try:
+        from app.services.v3_scheduler import shutdown_scheduler
+        shutdown_scheduler()
+        logger.info("V3.0 scheduler stopped")
+    except Exception as e:
+        logger.error(f"Failed to stop scheduler: {e}")
 
 
 app = FastAPI(
@@ -93,6 +99,10 @@ app.include_router(sentiment.router, prefix="/api/sentiment", tags=["Sentiment A
 # Data collection router - provides query APIs and manual sync triggers
 app.include_router(data_collection.router, prefix="/api/data", tags=["Data Collection"])
 
+# Aktools router - provides AKShare HTTP API (public endpoints)
+if has_aktools:
+    app.include_router(aktools.router, prefix="/api/public", tags=["AKTools (AKShare HTTP API)"])
+
 # Data sync router - provides manual sync APIs (if available)
 if has_data_sync:
     app.include_router(data_sync.router, prefix="/api/sync", tags=["Data Sync"])
@@ -104,7 +114,12 @@ async def root():
     return {
         "status": "ok",
         "service": "Stock AI Service",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "features": {
+            "sentiment_analysis": True,
+            "data_collection": True,
+            "aktools": has_aktools
+        }
     }
 
 

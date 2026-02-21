@@ -79,6 +79,19 @@ class Settings(BaseSettings):
     DATA_COLLECTION_MAX_RETRIES: int = 3
     DATA_COLLECTION_RETRY_DELAY: int = 1  # seconds
 
+    # V3.0 Scheduled Tasks Configuration
+    # Sentiment Analysis (MOD-002) - 每天收盘后分析
+    SENTIMENT_ANALYSIS_ENABLED: bool = True
+    SENTIMENT_ANALYSIS_CRON: str = "0 30 15 * * *"  # 每天15:30
+
+    # LSTM Prediction (MOD-003) - 每天收盘后预测
+    LSTM_PREDICTION_ENABLED: bool = True
+    LSTM_PREDICTION_CRON: str = "0 45 15 * * *"  # 每天15:45
+
+    # Stock Ranking (MOD-004) - 每天收盘后计算排名
+    STOCK_RANKING_ENABLED: bool = True
+    STOCK_RANKING_CRON: str = "0 0 16 * * *"  # 每天16:00
+
     class Config:
         env_file = ".env"
         case_sensitive = True

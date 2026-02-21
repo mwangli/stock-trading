@@ -1,7 +1,7 @@
-package online.mwang.stockTrading.core.config;
+package online.mwang.stockTrading.config;
 
-import online.mwang.stockTrading.core.interceptor.AuthInterceptor;
-import online.mwang.stockTrading.core.interceptor.LoginInterceptor;
+import online.mwang.stockTrading.interceptor.AuthInterceptor;
+import online.mwang.stockTrading.interceptor.LoginInterceptor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestTemplate;

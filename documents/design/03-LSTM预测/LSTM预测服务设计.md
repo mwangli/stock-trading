@@ -188,11 +188,41 @@ LSTM的核心结构：
 
 ## 5. 总体设计
 
-### 5.1 技术架构
+## 5. 总体设计
+
+### 5.1 技术选型
+
+#### 5.1.1 深度学习框架对比
+
+| 维度 | TensorFlow/Keras | PyTorch | 结论 |
+|------|-----------------|---------|------|
+| **NLP/Transformer** | 较弱 | ✅ 碾压级优势 | PyTorch胜 |
+| **金融领域模型** | ❌ 无官方支持 | ✅ FinBERT | PyTorch胜 |
+| **LSTM支持** | 成熟 | 成熟 | 持平 |
+| **研究生态** | 较少 | 90%+论文 | PyTorch胜 |
+| **部署** | TFServing | TorchServe | TensorFlow胜 |
+| **内存占用** | 较高 | 较低 | PyTorch胜 |
+| **Windows兼容** | 一般 | 更好 | PyTorch胜 |
+
+#### 5.1.2 为什么选择 PyTorch
+
+1. **统一技术栈**：
+   - 情感分析模块已使用 PyTorch + FinBERT
+   - 避免同时维护两个大框架
+
+2. **FinBERT 金融专用**：
+   - TensorFlow 生态没有金融领域 BERT 模型
+   - FinBERT 专门在金融文本上预训练，准确率高 15-20%
+
+3. **未来扩展性**：
+   - 如果要做新闻摘要、问答等NLP任务，PyTorch生态更丰富
+   - 大多数新论文、模型都以 PyTorch 为主
+
+#### 5.1.3 技术架构
 
 | 组件 | 技术选型 | 版本 |
 |------|---------|------|
-| 深度学习框架 | TensorFlow / Keras | 2.15.x |
+| 深度学习框架 | **PyTorch** | 2.x |
 | 数值计算 | NumPy | 1.x |
 | 数据处理 | Pandas | 2.x |
 | 数据预处理 | Scikit-learn | 1.x |
@@ -246,7 +276,7 @@ LSTM的核心结构：
 
 - 部署方式: Python微服务独立部署
 - 端口: 8001
-- 依赖: TensorFlow, NumPy, Pandas
+- 依赖: PyTorch, NumPy, Pandas
 - 调用方式: HTTP REST API
 
 ## 6. 详细设计

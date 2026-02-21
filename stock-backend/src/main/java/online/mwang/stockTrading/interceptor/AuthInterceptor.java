@@ -1,8 +1,8 @@
-package online.mwang.stockTrading.core.interceptor;
+package online.mwang.stockTrading.interceptor;
 
 import com.alibaba.fastjson2.JSONObject;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.core.dto.Response;
+import online.mwang.stockTrading.dto.Response;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 

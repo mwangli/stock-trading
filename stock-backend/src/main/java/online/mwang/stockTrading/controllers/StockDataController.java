@@ -2,7 +2,7 @@ package online.mwang.stockTrading.controllers;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import online.mwang.stockTrading.core.dto.Response;
+import online.mwang.stockTrading.dto.Response;
 import online.mwang.stockTrading.entities.StockInfo;
 import online.mwang.stockTrading.entities.StockPrices;
 import online.mwang.stockTrading.services.StockDataService;

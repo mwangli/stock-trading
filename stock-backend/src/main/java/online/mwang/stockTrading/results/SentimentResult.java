@@ -1,4 +1,4 @@
-package online.mwang.stockTrading.models;
+package online.mwang.stockTrading.results;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

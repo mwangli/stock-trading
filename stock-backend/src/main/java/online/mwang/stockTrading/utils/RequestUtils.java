@@ -1,8 +1,9 @@
-package online.mwang.stockTrading.core.utils;
+package online.mwang.stockTrading.utils;
 
 import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson2.JSONObject;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 
@@ -10,6 +11,7 @@ import java.util.HashMap;
  * HTTP 请求工具类
  */
 @Slf4j
+@Component
 public class RequestUtils {
 
     private static final String BASE_URL = "https://stock.trade.10jqka.com.cn";

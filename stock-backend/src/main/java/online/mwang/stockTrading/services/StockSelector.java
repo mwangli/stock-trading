@@ -1,18 +1,19 @@
 package online.mwang.stockTrading.services;
 
-import online.mwang.stockTrading.models.SelectResult;
+import online.mwang.stockTrading.results.SelectResult;
 
 import java.util.List;
 
 /**
  * 综合选股服务
- * 综合LSTM、情感分析、Dexter三方评分选股
+ * 综合LSTM预测、情感分析双因子评分选股
+ * 权重：LSTM 60% + 情感 40%
  */
 public interface StockSelector {
 
     /**
      * 综合评分选股，选出最佳股票
-     * 权重：LSTM 1/3 + 情感 1/3 + Dexter 1/3
+     * 权重：LSTM 60% + 情感 40%
      * @return 选股结果
      */
     SelectResult selectBestStock();
@@ -51,19 +52,16 @@ public interface StockSelector {
         private double avgRank;          // 平均排名（越小越好）
         private int lstmRank;            // LSTM排名
         private int sentimentRank;       // 情感排名
-        private int dexterRank;          // Dexter排名
         private double lstmScore;        // LSTM得分
         private double sentimentScore;   // 情感得分
-        private double dexterScore;      // Dexter得分
 
         public ComprehensiveScore(String stockCode, String stockName, double avgRank, 
-                                   int lstmRank, int sentimentRank, int dexterRank) {
+                                   int lstmRank, int sentimentRank) {
             this.stockCode = stockCode;
             this.stockName = stockName;
             this.avgRank = avgRank;
             this.lstmRank = lstmRank;
             this.sentimentRank = sentimentRank;
-            this.dexterRank = dexterRank;
         }
 
         // Getters and setters
@@ -77,13 +75,9 @@ public interface StockSelector {
         public void setLstmRank(int lstmRank) { this.lstmRank = lstmRank; }
         public int getSentimentRank() { return sentimentRank; }
         public void setSentimentRank(int sentimentRank) { this.sentimentRank = sentimentRank; }
-        public int getDexterRank() { return dexterRank; }
-        public void setDexterRank(int dexterRank) { this.dexterRank = dexterRank; }
         public double getLstmScore() { return lstmScore; }
         public void setLstmScore(double lstmScore) { this.lstmScore = lstmScore; }
         public double getSentimentScore() { return sentimentScore; }
         public void setSentimentScore(double sentimentScore) { this.sentimentScore = sentimentScore; }
-        public double getDexterScore() { return dexterScore; }
-        public void setDexterScore(double dexterScore) { this.dexterScore = dexterScore; }
     }
 }

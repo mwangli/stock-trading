@@ -1,8 +1,11 @@
-package online.mwang.stockTrading.core.utils;
+package online.mwang.stockTrading.utils;
+
+import org.springframework.stereotype.Component;
 
 /**
  * OCR 验证码识别工具类
  */
+@Component
 public class OcrUtils {
 
     public String execute(String imageUrl) {

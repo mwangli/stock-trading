@@ -1,6 +1,6 @@
-package online.mwang.stockTrading.core.exception;
+package online.mwang.stockTrading.exception;
 
-import online.mwang.stockTrading.core.dto.Response;
+import online.mwang.stockTrading.dto.Response;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -10,8 +10,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class BusinessExceptionHandler {
 
-    @ExceptionHandler(BusinessException.class)
-    public Response<?> bindException(BusinessException exception) {
+    @ExceptionHandler(online.mwang.stockTrading.core.exception.BusinessException.class)
+    public Response<?> bindException(online.mwang.stockTrading.core.exception.BusinessException exception) {
         return Response.fail(20010, exception.getMessage());
     }
 }

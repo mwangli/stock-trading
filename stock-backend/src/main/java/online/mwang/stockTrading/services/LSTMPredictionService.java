@@ -1,7 +1,7 @@
 package online.mwang.stockTrading.services;
 
 import online.mwang.stockTrading.entities.StockPrices;
-import online.mwang.stockTrading.models.PredictionResult;
+import online.mwang.stockTrading.results.PredictionResult;
 
 import java.util.List;
 

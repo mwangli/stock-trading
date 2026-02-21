@@ -4,7 +4,7 @@ import com.alibaba.fastjson2.JSONObject;
 import online.mwang.stockTrading.entities.AccountInfo;
 import online.mwang.stockTrading.entities.OrderInfo;
 import online.mwang.stockTrading.entities.Position;
-import online.mwang.stockTrading.models.OrderResult;
+import online.mwang.stockTrading.results.OrderResult;
 
 import java.util.List;
 

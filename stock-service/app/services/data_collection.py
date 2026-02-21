@@ -1,10 +1,11 @@
 """
 Data Collection Service
-Using direct HTTP requests to EastMoney API
+Using direct HTTP requests to EastMoney API and AKShare
 """
 import requests
 import json
 import re
+import pandas as pd
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from loguru import logger
@@ -252,16 +253,368 @@ class DataCollectionService:
 
     def get_stock_news(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Get stock news
+        Get stock news using AKShare - fetches real news data
+        
+        Args:
+            symbol: Stock code (e.g., '000001'). If None, fetches general market news
+            
+        Returns:
+            List of news items with title, content, source, publish_time, url
         """
         try:
-            url = "http://news.eastmoney.com/kuaixun.html"
-            response = requests.get(url, headers=self.headers, timeout=10)
-            # Simplified news
-            return []
+            import akshare as ak
+            
+            if symbol:
+                # Fetch news for specific stock
+                logger.info(f"Fetching news for stock {symbol}...")
+                df = ak.stock_news_em(symbol=symbol)
+            else:
+                # Fetch general market news
+                logger.info("Fetching general market news...")
+                df = ak.stock_news_em(symbol='all')
+            
+            if df is None or df.empty:
+                logger.warning(f"No news found for {symbol}")
+                return []
+            
+            # AKShare returns columns: 关键词, 新闻标题, 新闻内容, 发布时间, 新闻来源, 新闻链接
+            news_list = []
+            for _, row in df.iterrows():
+                news_item = {
+                    'stock_code': str(row['关键词']) if pd.notna(row.get('关键词')) else '',
+                    'title': str(row['新闻标题']) if pd.notna(row.get('新闻标题')) else '',
+                    'content': str(row['新闻内容']) if pd.notna(row.get('新闻内容')) else '',
+                    'pub_time': str(row['发布时间']) if pd.notna(row.get('发布时间')) else '',
+                    'source': str(row['文章来源']) if pd.notna(row.get('文章来源')) else '',
+                    'url': str(row['新闻链接']) if pd.notna(row.get('新闻链接')) else '',
+                    'news_id': self._generate_news_id_from_row(row),
+                    'create_time': datetime.now()
+                }
+                news_list.append(news_item)
+            
+            logger.info(f"Fetched {len(news_list)} news items")
+            return news_list
+            
         except Exception as e:
             logger.error(f"Failed to fetch news: {e}")
             return []
+    
+    def _generate_news_id_from_row(self, row) -> str:
+        """Generate unique news ID from row data using column names"""
+        try:
+            import hashlib
+            content = f"{row.get('关键词', '')}_{row.get('新闻标题', '')}_{row.get('发布时间', '')}"
+            return hashlib.md5(content.encode()).hexdigest()[:16]
+        except:
+            return f"news_{datetime.now().timestamp()}"
+    
+    def get_market_news(self, limit: int = 30) -> List[Dict[str, Any]]:
+        """
+        Get general market news (not stock-specific)
+        
+        Args:
+            limit: Maximum number of news items to return
+            
+        Returns:
+            List of market news items
+        """
+        try:
+            import akshare as ak
+            
+            logger.info(f"Fetching market news (limit={limit})...")
+            # stock_news_em with 'all' gets general news
+            df = ak.stock_news_em(symbol='all')
+            
+            if df is None or df.empty:
+                logger.warning("No market news found")
+                return []
+            
+            news_list = []
+            for idx, row in df.head(limit).iterrows():
+                news_item = {
+                    'stock_code': str(row['关键词']) if pd.notna(row.get('关键词')) else '',
+                    'title': str(row['新闻标题']) if pd.notna(row.get('新闻标题')) else '',
+                    'content': str(row['新闻内容']) if pd.notna(row.get('新闻内容')) else '',
+                    'pub_time': str(row['发布时间']) if pd.notna(row.get('发布时间')) else '',
+                    'source': str(row['文章来源']) if pd.notna(row.get('文章来源')) else '',
+                    'url': str(row['新闻链接']) if pd.notna(row.get('新闻链接')) else '',
+                    'news_id': self._generate_news_id_from_row(row),
+                    'create_time': datetime.now()
+                }
+                news_list.append(news_item)
+            
+            logger.info(f"Fetched {len(news_list)} market news items")
+            return news_list
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch market news: {e}")
+            return []
+
+    def fetch_article_content(self, url: str) -> str:
+        """
+        Fetch full article content from news URL
+        
+        Args:
+            url: News article URL
+            
+        Returns:
+            Full article content as string
+        """
+        try:
+            if not url:
+                return ""
+            
+            response = requests.get(url, headers=self.headers, timeout=15)
+            response.encoding = 'utf-8'
+            html = response.text
+            
+            # Try to parse with BeautifulSoup if available
+            try:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(html, 'html.parser')
+                
+                # Remove script and style elements
+                for script in soup(["script", "style"]):
+                    script.decompose()
+                
+                # Try to find article content - EastMoney specific selectors
+                content_elem = None
+                
+                # Common content selectors for financial news sites
+                selectors = [
+                    '.contentbox',      # EastMoney
+                    '.txtinfos',        # EastMoney  
+                    '.news_content',
+                    '.article_content',
+                    '#articleContent',
+                    '#Main_Content_Art',
+                    '.zw',              # Article body
+                    '.text',            # Text content
+                    'article',
+                    '.main_content',
+                ]
+                
+                for selector in selectors:
+                    content_elem = soup.select_one(selector)
+                    if content_elem:
+                        text = content_elem.get_text(separator=' ', strip=True)
+                        if len(text) > 100:  # Must have substantial content
+                            content_elem = content_elem
+                            break
+                
+                # If no specific content found, get text from body
+                if not content_elem:
+                    body = soup.find('body')
+                    if body:
+                        content_elem = body
+                
+                if content_elem:
+                    # Get text
+                    content = content_elem.get_text(separator=' ', strip=True)
+                else:
+                    content = ""
+                    
+            except ImportError:
+                # Fallback to regex if BeautifulSoup not available
+                import re
+                content = re.sub(r'<[^>]+>', ' ', html)
+                content = re.sub(r'\s+', ' ', content).strip()
+            
+            # Clean up
+            content = content.replace('&nbsp;', ' ')
+            content = content.replace('&amp;', '&')
+            content = content.replace('&lt;', '<')
+            content = content.replace('&gt;', '>')
+            content = content.replace('&quot;', '"')
+            
+            return content[:10000]  # Limit to 10000 chars
+            
+        except Exception as e:
+            logger.debug(f"Failed to fetch article content from {url}: {e}")
+            return ""
+
+    def fetch_news_with_content(self, symbol: str) -> List[Dict[str, Any]]:
+        """
+        Get stock news with full article content
+        
+        Args:
+            symbol: Stock code
+            
+        Returns:
+            List of news items with full content
+        """
+        import time
+        
+        news_list = self.get_stock_news(symbol)
+        
+        if not news_list:
+            return []
+        
+        # Fetch full content for each news item
+        for news in news_list:
+            url = news.get('url', '')
+            if url:
+                full_content = self.fetch_article_content(url)
+                # If we got real content, use it; otherwise keep original
+                if len(full_content) > 50:  # Threshold for real content
+                    news['content'] = full_content
+                time.sleep(0.3)  # Rate limiting
+        
+        return news_list
+
+    def save_news_to_mongodb(self, news_list: List[Dict[str, Any]], collection_name: str = "news", fetch_full_content: bool = False) -> int:
+        """
+        Save news data to MongoDB
+        
+        Args:
+            news_list: List of news items to save
+            collection_name: MongoDB collection name
+            fetch_full_content: Whether to fetch full article content from URLs
+            
+        Returns:
+            Number of items saved
+        """
+        try:
+            from app.core.database import get_mongo_collection
+            import time
+            
+            if not news_list:
+                return 0
+            
+            collection = get_mongo_collection(collection_name)
+            
+            # Use news_id or url as unique identifier to avoid duplicates
+            saved_count = 0
+            for news in news_list:
+                # Check if already exists
+                existing = collection.find_one({"news_id": news.get('news_id')})
+                if existing:
+                    continue
+                
+                # Fetch full content if requested
+                if fetch_full_content and news.get('url'):
+                    full_content = self.fetch_article_content(news['url'])
+                    if len(full_content) > 50:
+                        news['content'] = full_content
+                    time.sleep(0.3)
+                
+                # Convert datetime to string for MongoDB compatibility
+                if 'create_time' in news and hasattr(news['create_time'], 'isoformat'):
+                    news['create_time'] = news['create_time'].isoformat()
+                
+                # Parse pub_time to datetime
+                if news.get('pub_time'):
+                    try:
+                        news['publish_time'] = datetime.strptime(news['pub_time'], '%Y-%m-%d %H:%M:%S')
+                    except:
+                        news['publish_time'] = news['pub_time']
+                
+                result = collection.insert_one(news)
+                if result.inserted_id:
+                    saved_count += 1
+            
+            logger.info(f"Saved {saved_count} news items to MongoDB")
+            return saved_count
+            
+        except Exception as e:
+            logger.error(f"Failed to save news to MongoDB: {e}")
+            return 0
+
+    def collect_historical_news(
+        self, 
+        symbols: List[str], 
+        months: int = 3,
+        collection_name: str = "news"
+    ) -> Dict[str, Any]:
+        """
+        Collect historical news for specified stocks (last N months)
+        
+        Note: AKShare stock_news_em returns latest 100 news only.
+        This method collects available news and filters by date.
+        
+        Args:
+            symbols: List of stock codes
+            months: Number of months to look back (default 3)
+            collection_name: MongoDB collection name
+            
+        Returns:
+            Summary of collection results
+        """
+        try:
+            from datetime import timedelta
+            import time
+            
+            # Calculate start date
+            start_date = datetime.now() - timedelta(days=months * 30)
+            
+            total_fetched = 0
+            total_saved = 0
+            failed_symbols = []
+            
+            logger.info(f"Starting historical news collection for {len(symbols)} stocks (last {months} months)")
+            
+            for i, symbol in enumerate(symbols):
+                try:
+                    # Get news for this stock
+                    news_list = self.get_stock_news(symbol)
+                    
+                    if not news_list:
+                        failed_symbols.append(symbol)
+                        continue
+                    
+                    total_fetched += len(news_list)
+                    
+                    # Filter by date
+                    filtered_news = []
+                    for news in news_list:
+                        pub_time_str = news.get('pub_time', '')
+                        if pub_time_str:
+                            try:
+                                pub_date = datetime.strptime(pub_time_str, '%Y-%m-%d %H:%M:%S')
+                                if pub_date >= start_date:
+                                    filtered_news.append(news)
+                            except:
+                                # If date parsing fails, include the news
+                                filtered_news.append(news)
+                    
+                    # Save to MongoDB
+                    if filtered_news:
+                        saved = self.save_news_to_mongodb(filtered_news, collection_name)
+                        total_saved += saved
+                    
+                    # Progress logging
+                    if (i + 1) % 10 == 0:
+                        logger.info(f"Progress: {i+1}/{len(symbols)} stocks processed")
+                    
+                    # Rate limiting
+                    time.sleep(0.5)
+                    
+                except Exception as e:
+                    logger.error(f"Failed to collect news for {symbol}: {e}")
+                    failed_symbols.append(symbol)
+                    continue
+            
+            result = {
+                'total_symbols': len(symbols),
+                'total_fetched': total_fetched,
+                'total_saved': total_saved,
+                'failed_count': len(failed_symbols),
+                'failed_symbols': failed_symbols[:10]  # Limit to first 10
+            }
+            
+            logger.info(f"Historical news collection completed: {result}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Historical news collection failed: {e}")
+            return {
+                'total_symbols': len(symbols),
+                'total_fetched': 0,
+                'total_saved': 0,
+                'failed_count': len(symbols),
+                'failed_symbols': symbols,
+                'error': str(e)
+            }
 
 
 data_collection_service = DataCollectionService()
