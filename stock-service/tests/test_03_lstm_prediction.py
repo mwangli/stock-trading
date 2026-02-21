@@ -36,16 +36,23 @@ class TestLSTMService:
             from app.services.lstm import LSTMService
             service = LSTMService()
             
-            # 执行预测(需要先有历史数据)
-            result = await service.predict("000001", days=5)
+            # 准备测试数据(至少60条)
+            mock_data = [
+                {"open": 10.0 + i*0.1, "high": 10.5 + i*0.1, "low": 9.8 + i*0.1, "close": 10.2 + i*0.1, "volume": 1000000 + i*1000}
+                for i in range(60)
+            ]
+            
+            # 执行预测
+            result = service.predict("TEST", mock_data)
             
             # 验证预测结果
             assert result is not None
+            assert 'stock_code' in result
         except ImportError:
             pytest.skip("LSTM服务不可用")
         except Exception as e:
-            # 可能是没有历史数据，这是可接受的
-            print(f"预测可能需要更多数据: {e}")
+            print(f"预测测试: {e}")
+            pytest.skip(f"需要更多数据: {e}")
 
     def test_prediction_data_requirements(self):
         """TC-003-003: 预测数据要求验证"""
@@ -162,25 +169,25 @@ class TestLSTMFlow:
     @pytest.mark.asyncio
     async def test_lstm_full_flow(self, lstm_service, data_service):
         """TC-003-F001: LSTM预测完整数据流"""
-        # 1. 确保有历史数据(依赖数据采集)
+        # 1. 准备测试数据
         test_code = "000001"
         
-        # 先尝试获取历史数据
-        try:
-            await data_service.fetch_and_save_historical_data(test_code, days=60)
-        except:
-            pass
+        # 模拟历史数据
+        mock_data = [
+            {"open": 10.0 + i*0.1, "high": 10.5 + i*0.1, "low": 9.8 + i*0.1, "close": 10.2 + i*0.1, "volume": 1000000 + i*1000}
+            for i in range(60)
+        ]
         
         # 2. 执行预测
         try:
-            result = await lstm_service.predict(test_code, days=5)
+            result = lstm_service.predict(test_code, mock_data)
             
             # 3. 验证结果
             if result:
                 assert result.get('stock_code') == test_code
         except Exception as e:
             print(f"预测流程测试: {e}")
-            pytest.skip("需要更多历史数据")
+            pytest.skip(f"需要更多数据: {e}")
 
 
 if __name__ == '__main__':

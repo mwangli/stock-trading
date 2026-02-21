@@ -1,12 +1,15 @@
 """
 LSTM Prediction Service
 Stock price prediction using LSTM neural network
+Using PyTorch (unified with sentiment analysis)
 """
 import logging
 from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+import torch
+import torch.nn as nn
 from sklearn.preprocessing import MinMaxScaler
 
 from app.core.config import settings
@@ -14,16 +17,63 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+class LSTMM(nn.Module):
+    """LSTM Model in PyTorch"""
+    
+    def __init__(self, input_size: int, hidden_size: int = 100, num_layers: int = 2, dropout: float = 0.2):
+        super(LSTMM, self).__init__()
+        
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        
+        # LSTM layer
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=dropout if num_layers > 1 else 0
+        )
+        
+        # Dropout
+        self.dropout = nn.Dropout(dropout)
+        
+        # Fully connected layers
+        self.fc1 = nn.Linear(hidden_size, 50)
+        self.fc2 = nn.Linear(50, 25)
+        self.fc3 = nn.Linear(25, 1)
+        
+        self.relu = nn.ReLU()
+    
+    def forward(self, x):
+        # LSTM forward
+        lstm_out, (h_n, c_n) = self.lstm(x)
+        
+        # Take the last time step output
+        out = lstm_out[:, -1, :]
+        
+        # Fully connected layers
+        out = self.dropout(out)
+        out = self.relu(self.fc1(out))
+        out = self.relu(self.fc2(out))
+        out = self.fc3(out)
+        
+        return out
+
+
 class LSTMService:
-    """LSTM-based stock prediction service"""
+    """LSTM-based stock prediction service using PyTorch"""
 
     def __init__(self):
         self.sequence_length = settings.LSTM_SEQUENCE_LENGTH
         self.feature_dim = settings.LSTM_FEATURE_DIM
         self._model = None
         self._scaler = MinMaxScaler(feature_range=(0, 1))
+        self._scaler_min = None
+        self._scaler_max = None
         self._is_trained = False
-        logger.info("LSTMService initialized")
+        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info(f"LSTMService initialized. Device: {self._device}")
 
     @property
     def model(self):
@@ -35,18 +85,45 @@ class LSTMService:
     def _load_model(self):
         """Load trained LSTM model"""
         try:
-            import tensorflow as tf
-            from tensorflow.keras.models import load_model
-
             model_path = settings.MODEL_CACHE_DIR / settings.LSTM_MODEL_PATH
-            if model_path.exists():
-                self._model = load_model(str(model_path))
+            # Try .pt first (PyTorch), then .h5 (TensorFlow fallback)
+            pt_path = str(model_path).replace('.h5', '.pt')
+            
+            import os
+            if os.path.exists(pt_path):
+                # Load PyTorch model
+                checkpoint = torch.load(pt_path, map_location=self._device)
+                
+                # Create model
+                self._model = LSTMM(
+                    input_size=self.feature_dim,
+                    hidden_size=100,
+                    num_layers=2,
+                    dropout=0.2
+                )
+                self._model.load_state_dict(checkpoint['model_state_dict'])
+                self._model.to(self._device)
+                self._model.eval()
+                
+                # Load scaler
+                self._scaler_min = checkpoint.get('scaler_min')
+                self._scaler_max = checkpoint.get('scaler_max')
+                if self._scaler_min is not None and self._scaler_max is not None:
+                    self._scaler.data_min_ = self._scaler_min
+                    self._scaler.data_max_ = self._scaler_max
+                
                 self._is_trained = True
-                logger.info(f"LSTM model loaded from {model_path}")
-            else:
-                logger.warning(f"Model not found at {model_path}, using fallback")
+                logger.info(f"LSTM model loaded from {pt_path}")
+            elif model_path.exists():
+                # TensorFlow fallback - create untrained model
+                logger.warning(f"TensorFlow model found at {model_path}, using fallback PyTorch model")
                 self._model = self._create_fallback_model()
                 self._is_trained = False
+            else:
+                logger.warning(f"Model not found at {pt_path}, using fallback")
+                self._model = self._create_fallback_model()
+                self._is_trained = False
+                
         except Exception as e:
             logger.error(f"Error loading LSTM model: {e}")
             self._model = self._create_fallback_model()
@@ -54,24 +131,15 @@ class LSTMService:
 
     def _create_fallback_model(self):
         """Create a simple fallback model for when no trained model exists"""
-        try:
-            import tensorflow as tf
-            from tensorflow.keras.models import Sequential
-            from tensorflow.keras.layers import LSTM, Dense, Dropout
-
-            model = Sequential([
-                LSTM(50, return_sequences=True, input_shape=(self.sequence_length, self.feature_dim)),
-                Dropout(0.2),
-                LSTM(50, return_sequences=False),
-                Dropout(0.2),
-                Dense(25),
-                Dense(1)
-            ])
-            model.compile(optimizer='adam', loss='mean_squared_error')
-            return model
-        except Exception as e:
-            logger.error(f"Error creating fallback model: {e}")
-            return None
+        model = LSTMM(
+            input_size=self.feature_dim,
+            hidden_size=50,
+            num_layers=2,
+            dropout=0.2
+        )
+        model.to(self._device)
+        model.eval()
+        return model
 
     def _prepare_data(self, data: List[Dict]) -> np.ndarray:
         """
@@ -100,8 +168,13 @@ class LSTMService:
         # Convert to numpy array
         feature_array = np.array(features)
 
-        # Normalize
-        scaled_data = self._scaler.fit_transform(feature_array)
+        # Normalize using stored scaler or fit new
+        if self._scaler_min is not None and self._scaler_max is not None:
+            # Use stored scaler parameters
+            scaled_data = (feature_array - self._scaler_min) / (self._scaler_max - self._scaler_min)
+        else:
+            # Fit new scaler
+            scaled_data = self._scaler.fit_transform(feature_array)
 
         return scaled_data
 
@@ -127,7 +200,7 @@ class LSTMService:
             if len(data) < self.sequence_length:
                 return {
                     "stock_code": stock_code,
-                    "prediction": None,
+                    "predicted_price": None,
                     "confidence": 0.0,
                     "error": f"Need at least {self.sequence_length} data points, got {len(data)}"
                 }
@@ -139,19 +212,31 @@ class LSTMService:
             if len(sequences) == 0:
                 return {
                     "stock_code": stock_code,
-                    "prediction": None,
+                    "predicted_price": None,
                     "confidence": 0.0,
                     "error": "Failed to create sequences"
                 }
 
+            # Convert to PyTorch tensor
+            X = torch.FloatTensor(sequences).to(self._device)
+
             # Predict
-            predictions = self.model.predict(sequences, verbose=0)
+            with torch.no_grad():
+                predictions = self._model(X).cpu().numpy()
 
             # Inverse transform to get actual price
-            # Create dummy array for inverse transform
-            dummy = np.zeros((len(predictions), self.feature_dim))
-            dummy[:, 3] = predictions.flatten()  # Close price is index 3
-            actual_predictions = self._scaler.inverse_transform(dummy)[:, 3]
+            if self._scaler_min is not None and self._scaler_max is not None:
+                # Use stored scaler parameters
+                dummy = np.zeros((len(predictions), self.feature_dim))
+                dummy[:, 3] = predictions.flatten()
+                # Reverse normalization manually
+                actual_predictions = dummy * (self._scaler_max - self._scaler_min) + self._scaler_min
+                actual_predictions = actual_predictions[:, 3]
+            else:
+                # Use scaler inverse transform
+                dummy = np.zeros((len(predictions), self.feature_dim))
+                dummy[:, 3] = predictions.flatten()
+                actual_predictions = self._scaler.inverse_transform(dummy)[:, 3]
 
             # Get the last prediction
             predicted_price = float(actual_predictions[-1])
@@ -177,7 +262,7 @@ class LSTMService:
             logger.error(f"Error predicting for {stock_code}: {e}")
             return {
                 "stock_code": stock_code,
-                "prediction": None,
+                "predicted_price": None,
                 "confidence": 0.0,
                 "error": str(e)
             }
@@ -212,13 +297,22 @@ class LSTMService:
                 if len(sequences) == 0:
                     break
 
+                # Convert to PyTorch tensor
+                X = torch.FloatTensor(sequences[-1:]).to(self._device)
+
                 # Predict next day
-                pred = self.model.predict(sequences[-1:], verbose=0)
+                with torch.no_grad():
+                    pred = self._model(X).cpu().numpy()
 
                 # Inverse transform
-                dummy = np.zeros((1, self.feature_dim))
-                dummy[:, 3] = pred[0, 0]
-                predicted_price = self._scaler.inverse_transform(dummy)[0, 3]
+                if self._scaler_min is not None and self._scaler_max is not None:
+                    dummy = np.zeros((1, self.feature_dim))
+                    dummy[:, 3] = pred[0, 0]
+                    predicted_price = (dummy * (self._scaler_max - self._scaler_min) + self._scaler_min)[0, 3]
+                else:
+                    dummy = np.zeros((1, self.feature_dim))
+                    dummy[:, 3] = pred[0, 0]
+                    predicted_price = self._scaler.inverse_transform(dummy)[0, 3]
 
                 predictions.append({
                     "day": day + 1,
@@ -246,24 +340,28 @@ class LSTMService:
 
     def get_model_info(self) -> Dict:
         """Get model information"""
+        model_path = settings.MODEL_CACHE_DIR / settings.LSTM_MODEL_PATH
+        pt_path = str(model_path).replace('.h5', '.pt')
+        
         return {
             "model_type": "LSTM",
+            "framework": "PyTorch",
+            "device": str(self._device),
             "sequence_length": self.sequence_length,
             "feature_dim": self.feature_dim,
             "is_trained": self._is_trained,
-            "model_path": str(settings.MODEL_CACHE_DIR / settings.LSTM_MODEL_PATH)
+            "model_path": pt_path
         }
 
     def unload(self):
         """Unload model from memory"""
         if self._model is not None:
-            try:
-                import tensorflow as tf
-                tf.keras.backend.clear_session()
-            except Exception as e:
-                logger.error(f"Error clearing TensorFlow session: {e}")
+            del self._model
             self._model = None
             self._is_trained = False
+            # Clear GPU cache if available
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             logger.info("LSTM model unloaded")
 
 
