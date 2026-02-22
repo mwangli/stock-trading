@@ -1,50 +1,86 @@
 package online.mwang.stockTrading.entities;
 
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Date;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
- * 持仓记录实体
+ * 持仓实体
+ * 对应表: positions
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Entity
+@Table(name = "positions")
 public class Position {
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "stock_code", nullable = false)
     private String stockCode;
 
+    @Column(name = "stock_name")
     private String stockName;
 
-    private int quantity;
+    @Column(name = "quantity")
+    private Integer quantity;
 
-    private double avgCost;
+    @Column(name = "available_quantity")
+    private Integer availableQuantity;
 
-    private double currentPrice;
+    @Column(name = "frozen_quantity")
+    private Integer frozenQuantity;
 
-    private double marketValue;
+    @Column(name = "avg_cost")
+    private BigDecimal avgCost;
 
-    private double unrealizedPnl;
+    @Column(name = "current_price")
+    private BigDecimal currentPrice;
 
-    private double unrealizedPnlRatio;
+    @Column(name = "market_value")
+    private BigDecimal marketValue;
 
-    private String status;
+    @Column(name = "unrealized_pnl")
+    private BigDecimal unrealizedPnl;
 
-    private Date openDate;
+    @Column(name = "unrealized_pnl_ratio")
+    private BigDecimal unrealizedPnlRatio;
 
-    private Date closeDate;
+    @Column(name = "open_date")
+    private LocalDate openDate;
 
-    private Date updateTime;
+    @Column(name = "position_side")
+    private String positionSide; // LONG/SHORT
 
+    @Column(name = "status")
+    private String status; // HOLDING/SOLD/STOP_LOSS
+
+    @Column(name = "create_time")
+    private LocalDateTime createTime;
+
+    @Column(name = "update_time")
+    private LocalDateTime updateTime;
+
+    /**
+     * 计算未实现盈亏
+     */
     public void calculateUnrealizedPnl() {
-        this.unrealizedPnl = (currentPrice - avgCost) * quantity;
-        this.unrealizedPnlRatio = (currentPrice - avgCost) / avgCost;
-        this.marketValue = currentPrice * quantity;
+        if (currentPrice != null && avgCost != null && quantity != null) {
+            this.unrealizedPnl = currentPrice.subtract(avgCost).multiply(new BigDecimal(quantity));
+            if (avgCost.compareTo(BigDecimal.ZERO) > 0) {
+                this.unrealizedPnlRatio = currentPrice.subtract(avgCost).divide(avgCost, 4, BigDecimal.ROUND_HALF_UP);
+            }
+            this.marketValue = currentPrice.multiply(new BigDecimal(quantity));
+        }
     }
 }

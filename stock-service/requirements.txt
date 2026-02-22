@@ -44,9 +44,10 @@ pytest-asyncio>=0.23.0
 httpx>=0.26.0
 
 # ===============================
-# ML & NLP (Sentiment Analysis)
+# ML & NLP (Sentiment Analysis + LSTM)
 # ===============================
 torch>=2.0.0
 transformers>=4.36.0
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
+scikit-learn>=1.4.0

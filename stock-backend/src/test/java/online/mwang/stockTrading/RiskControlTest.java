@@ -17,6 +17,8 @@ import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.math.BigDecimal;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -479,8 +481,8 @@ public class RiskControlTest {
                 .stockCode(stockCode)
                 .stockName(stockName)
                 .quantity(quantity)
-                .avgCost(avgCost)
-                .currentPrice(currentPrice)
+                .avgCost(new BigDecimal(avgCost))
+                .currentPrice(new BigDecimal(currentPrice))
                 .build();
     }
 }

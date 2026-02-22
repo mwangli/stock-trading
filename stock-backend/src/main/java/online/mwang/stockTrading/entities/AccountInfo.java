@@ -5,14 +5,16 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Date;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /**
- * 账户信息实体
+ * 账户资金实体
+ * 对应表: account_info
  */
 @Data
-@AllArgsConstructor
 @NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "account_info")
 public class AccountInfo {
@@ -21,20 +23,42 @@ public class AccountInfo {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "available_amount")
-    private Double availableAmount;
+    @Column(name = "total_asset")
+    private BigDecimal totalAsset;
 
-    @Column(name = "used_amount")
-    private Double usedAmount;
+    @Column(name = "available_cash")
+    private BigDecimal availableCash;
 
-    @Column(name = "total_amount")
-    private Double totalAmount;
+    @Column(name = "market_value")
+    private BigDecimal marketValue;
 
-    @Column(name = "create_time")
-    @Temporal(TemporalType.TIMESTAMP)
-    private Date createTime;
+    @Column(name = "frozen_amount")
+    private BigDecimal frozenAmount;
+
+    @Column(name = "daily_pnl")
+    private BigDecimal dailyPnl;
+
+    @Column(name = "daily_pnl_ratio")
+    private BigDecimal dailyPnlRatio;
+
+    @Column(name = "monthly_pnl")
+    private BigDecimal monthlyPnl;
+
+    @Column(name = "monthly_pnl_ratio")
+    private BigDecimal monthlyPnlRatio;
+
+    @Column(name = "total_pnl")
+    private BigDecimal totalPnl;
+
+    @Column(name = "total_pnl_ratio")
+    private BigDecimal totalPnlRatio;
+
+    @Column(name = "position_count")
+    private Integer positionCount;
 
     @Column(name = "update_time")
-    @Temporal(TemporalType.TIMESTAMP)
-    private Date updateTime;
+    private LocalDateTime updateTime;
+
+    @Column(name = "create_time")
+    private LocalDateTime createTime;
 }

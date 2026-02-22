@@ -300,6 +300,53 @@ class DataCollectionService:
         
         return saved_count
 
+    # ==============================
+    # Query Historical Data (for LSTM)
+    # ==============================
+    async def get_historical_data(self, stock_code: str, days: int = 60) -> List[Dict[str, Any]]:
+        """
+        Get historical data from MongoDB for prediction.
+        
+        Args:
+            stock_code: Stock code
+            days: Number of days to retrieve
+            
+        Returns:
+            List of historical price records
+        """
+        try:
+            from datetime import timedelta
+            
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+            
+            collection = get_mongo_collection("stock_prices")
+            records = collection.find({
+                'code': stock_code,
+                'date': {
+                    '$gte': start_date.strftime('%Y-%m-%d'),
+                    '$lte': end_date.strftime('%Y-%m-%d')
+                }
+            }).sort('date', 1)  # Sort ascending
+            
+            result = []
+            for record in records:
+                result.append({
+                    'date': record.get('date'),
+                    'open': record.get('price1'),
+                    'close': record.get('price4'),
+                    'high': record.get('price2'),
+                    'low': record.get('price3'),
+                    'volume': record.get('trading_volume'),
+                    'amount': record.get('trading_amount')
+                })
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to get historical data for {stock_code}: {e}")
+            return []
+
     # ===============================
     # Real-time Quote Collection (Redis + MySQL)
     # ===============================

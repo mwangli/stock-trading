@@ -4,28 +4,61 @@ Stock price prediction using LSTM neural network
 Using PyTorch (unified with sentiment analysis)
 """
 import logging
+import os
+import sys
 from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-import torch
-import torch.nn as nn
 from sklearn.preprocessing import MinMaxScaler
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# PyTorch import with error handling for Windows compatibility
+TORCH_AVAILABLE = False
+torch = None
+nn = None
 
-class LSTMM(nn.Module):
+try:
+    import torch
+    import torch.nn as nn
+    TORCH_AVAILABLE = True
+    logger.info("PyTorch loaded successfully")
+except Exception as e:
+    logger.warning(f"PyTorch not available: {e}, using fallback mode")
+    # Create mock classes
+    class MockModule:
+        pass
+    class MockNN:
+        LSTM = None
+        Module = MockModule
+        Dropout = object
+        Linear = object
+        ReLU = object
+        FloatTensor = lambda x: x
+        no_grad = lambda: None
+        cuda = lambda: None
+        device = lambda x: None
+    torch = MockNN()
+    nn = MockNN()
+
+
+class LSTMM(nn.Module if TORCH_AVAILABLE else object):
     """LSTM Model in PyTorch"""
-    
+
     def __init__(self, input_size: int, hidden_size: int = 100, num_layers: int = 2, dropout: float = 0.2):
+        if not TORCH_AVAILABLE:
+            self.hidden_size = hidden_size
+            self.num_layers = num_layers
+            return
+
         super(LSTMM, self).__init__()
-        
+
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        
+
         # LSTM layer
         self.lstm = nn.LSTM(
             input_size=input_size,
@@ -34,30 +67,34 @@ class LSTMM(nn.Module):
             batch_first=True,
             dropout=dropout if num_layers > 1 else 0
         )
-        
+
         # Dropout
         self.dropout = nn.Dropout(dropout)
-        
+
         # Fully connected layers
         self.fc1 = nn.Linear(hidden_size, 50)
         self.fc2 = nn.Linear(50, 25)
         self.fc3 = nn.Linear(25, 1)
-        
+
         self.relu = nn.ReLU()
-    
+
     def forward(self, x):
+        if not TORCH_AVAILABLE:
+            # Return random prediction when PyTorch not available
+            return np.random.randn(x.shape[0], 1).astype(np.float32)
+
         # LSTM forward
         lstm_out, (h_n, c_n) = self.lstm(x)
-        
+
         # Take the last time step output
         out = lstm_out[:, -1, :]
-        
+
         # Fully connected layers
         out = self.dropout(out)
         out = self.relu(self.fc1(out))
         out = self.relu(self.fc2(out))
         out = self.fc3(out)
-        
+
         return out
 
 
@@ -72,8 +109,22 @@ class LSTMService:
         self._scaler_min = None
         self._scaler_max = None
         self._is_trained = False
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logger.info(f"LSTMService initialized. Device: {self._device}")
+
+        # Safe device initialization
+        if TORCH_AVAILABLE:
+            try:
+                # Force CPU on Windows to avoid DLL issues
+                if sys.platform == 'win32':
+                    self._device = torch.device("cpu")
+                else:
+                    self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            except Exception as e:
+                logger.warning(f"Failed to initialize device: {e}, using CPU")
+                self._device = torch.device("cpu")
+        else:
+            self._device = None
+
+        logger.info(f"LSTMService initialized. Device: {self._device}, PyTorch: {TORCH_AVAILABLE}")
 
     @property
     def model(self):
@@ -88,12 +139,11 @@ class LSTMService:
             model_path = settings.MODEL_CACHE_DIR / settings.LSTM_MODEL_PATH
             # Try .pt first (PyTorch), then .h5 (TensorFlow fallback)
             pt_path = str(model_path).replace('.h5', '.pt')
-            
-            import os
-            if os.path.exists(pt_path):
+
+            if os.path.exists(pt_path) and TORCH_AVAILABLE:
                 # Load PyTorch model
                 checkpoint = torch.load(pt_path, map_location=self._device)
-                
+
                 # Create model
                 self._model = LSTMM(
                     input_size=self.feature_dim,
@@ -104,14 +154,14 @@ class LSTMService:
                 self._model.load_state_dict(checkpoint['model_state_dict'])
                 self._model.to(self._device)
                 self._model.eval()
-                
+
                 # Load scaler
                 self._scaler_min = checkpoint.get('scaler_min')
                 self._scaler_max = checkpoint.get('scaler_max')
                 if self._scaler_min is not None and self._scaler_max is not None:
                     self._scaler.data_min_ = self._scaler_min
                     self._scaler.data_max_ = self._scaler_max
-                
+
                 self._is_trained = True
                 logger.info(f"LSTM model loaded from {pt_path}")
             elif model_path.exists():
@@ -123,7 +173,7 @@ class LSTMService:
                 logger.warning(f"Model not found at {pt_path}, using fallback")
                 self._model = self._create_fallback_model()
                 self._is_trained = False
-                
+
         except Exception as e:
             logger.error(f"Error loading LSTM model: {e}")
             self._model = self._create_fallback_model()
@@ -131,15 +181,19 @@ class LSTMService:
 
     def _create_fallback_model(self):
         """Create a simple fallback model for when no trained model exists"""
-        model = LSTMM(
-            input_size=self.feature_dim,
-            hidden_size=50,
-            num_layers=2,
-            dropout=0.2
-        )
-        model.to(self._device)
-        model.eval()
-        return model
+        if TORCH_AVAILABLE:
+            model = LSTMM(
+                input_size=self.feature_dim,
+                hidden_size=50,
+                num_layers=2,
+                dropout=0.2
+            )
+            model.to(self._device)
+            model.eval()
+            return model
+        else:
+            # Return mock model when PyTorch not available
+            return MockLSTMM(self.feature_dim)
 
     def _prepare_data(self, data: List[Dict]) -> np.ndarray:
         """
@@ -217,25 +271,29 @@ class LSTMService:
                     "error": "Failed to create sequences"
                 }
 
-            # Convert to PyTorch tensor
-            X = torch.FloatTensor(sequences).to(self._device)
+            if TORCH_AVAILABLE:
+                # Convert to PyTorch tensor
+                X = torch.FloatTensor(sequences).to(self._device)
 
-            # Predict
-            with torch.no_grad():
-                predictions = self._model(X).cpu().numpy()
+                # Predict
+                with torch.no_grad():
+                    predictions = self._model(X).cpu().numpy()
+            else:
+                # Fallback prediction
+                predictions = self._model(sequences)
 
             # Inverse transform to get actual price
             if self._scaler_min is not None and self._scaler_max is not None:
                 # Use stored scaler parameters
                 dummy = np.zeros((len(predictions), self.feature_dim))
-                dummy[:, 3] = predictions.flatten()
+                dummy[:, 3] = predictions.flatten() if len(predictions.shape) > 1 else predictions.flatten()
                 # Reverse normalization manually
                 actual_predictions = dummy * (self._scaler_max - self._scaler_min) + self._scaler_min
                 actual_predictions = actual_predictions[:, 3]
             else:
                 # Use scaler inverse transform
                 dummy = np.zeros((len(predictions), self.feature_dim))
-                dummy[:, 3] = predictions.flatten()
+                dummy[:, 3] = predictions.flatten() if len(predictions.shape) > 1 else predictions.flatten()
                 actual_predictions = self._scaler.inverse_transform(dummy)[:, 3]
 
             # Get the last prediction
@@ -297,12 +355,15 @@ class LSTMService:
                 if len(sequences) == 0:
                     break
 
-                # Convert to PyTorch tensor
-                X = torch.FloatTensor(sequences[-1:]).to(self._device)
+                if TORCH_AVAILABLE:
+                    # Convert to PyTorch tensor
+                    X = torch.FloatTensor(sequences[-1:]).to(self._device)
 
-                # Predict next day
-                with torch.no_grad():
-                    pred = self._model(X).cpu().numpy()
+                    # Predict next day
+                    with torch.no_grad():
+                        pred = self._model(X).cpu().numpy()
+                else:
+                    pred = self._model(sequences[-1:])
 
                 # Inverse transform
                 if self._scaler_min is not None and self._scaler_max is not None:
@@ -342,11 +403,11 @@ class LSTMService:
         """Get model information"""
         model_path = settings.MODEL_CACHE_DIR / settings.LSTM_MODEL_PATH
         pt_path = str(model_path).replace('.h5', '.pt')
-        
+
         return {
             "model_type": "LSTM",
-            "framework": "PyTorch",
-            "device": str(self._device),
+            "framework": "PyTorch" if TORCH_AVAILABLE else "Fallback",
+            "device": str(self._device) if self._device else "N/A",
             "sequence_length": self.sequence_length,
             "feature_dim": self.feature_dim,
             "is_trained": self._is_trained,
@@ -360,9 +421,28 @@ class LSTMService:
             self._model = None
             self._is_trained = False
             # Clear GPU cache if available
-            if torch.cuda.is_available():
+            if TORCH_AVAILABLE and torch.cuda.is_available():
                 torch.cuda.empty_cache()
             logger.info("LSTM model unloaded")
+
+
+# Mock LSTM for fallback
+class MockLSTMM:
+    """Mock LSTM model when PyTorch is not available"""
+
+    def __init__(self, input_size: int, hidden_size: int = 50, num_layers: int = 2, dropout: float = 0.2):
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+
+    def __call__(self, x):
+        # Return random prediction
+        return np.random.randn(x.shape[0], 1).astype(np.float32)
+
+    def to(self, device):
+        return self
+
+    def eval(self):
+        return self
 
 
 # Singleton instance

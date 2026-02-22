@@ -8,7 +8,6 @@ Uses APScheduler for all scheduled tasks:
 
 All results are written directly to MySQL for Java backend to read.
 """
-import asyncio
 from datetime import datetime
 from typing import Optional
 
@@ -26,7 +25,8 @@ from app.core.database import (
     StockRankingModel,
 )
 from app.services.data_collection_service import data_collection_service
-from app.services.data_collection import EastMoneyClient
+from app.core.clients import EastMoneyClient
+from app.services.model_iteration import ModelIterationService
 
 
 class UnifiedScheduler:
@@ -63,6 +63,10 @@ class UnifiedScheduler:
         # MOD-004: Stock Ranking
         if settings.STOCK_RANKING_ENABLED:
             self._add_stock_ranking_jobs()
+
+        # MOD-005: Model Iteration
+        if settings.MODEL_ITERATION_ENABLED:
+            self._add_model_iteration_jobs()
 
         self.scheduler.start()
         self.is_running = True
@@ -175,28 +179,52 @@ class UnifiedScheduler:
             logger.error(f"[MOD-001] Stock list sync failed: {e}")
 
     async def _sync_historical_data_job(self):
-        """MOD-001: Sync historical data."""
+        """MOD-001: Sync historical data - incremental (1 day)."""
         log_id = self._log_task_start("Sync Historical Data", "DATA_COLLECTION", "MOD-001")
-        logger.info("[MOD-001] Starting historical data sync...")
+        logger.info("[MOD-001] Starting historical data sync (incremental)...")
         try:
             db = MySQLSessionLocal()
+            # 获取所有可交易股票，不限制数量
             stocks = (
                 db.query(StockInfoModel)
                 .filter(StockInfoModel.deleted == "0", StockInfoModel.is_tradable == 1)
-                .limit(100)
                 .all()
             )
             db.close()
-
-            for stock in stocks:
-                try:
-                    await data_collection_service.fetch_and_save_historical_data(stock.code, days=1)
-                except Exception as e:
-                    logger.error(f"[MOD-001] Failed to sync {stock.code}: {e}")
-                    continue
-
-            self._log_task_end(log_id, "SUCCESS", len(stocks))
-            logger.info(f"[MOD-001] Historical data sync completed for {len(stocks)} stocks")
+            
+            # 使用增量同步天数（1天）
+            from app.core.config import settings
+            days = settings.DATA_COLLECTION_HISTORY_DAYS_INCREMENTAL
+            
+            logger.info(f"[MOD-001] Syncing {len(stocks)} stocks with {days} days of data")
+            
+            # 使用信号量限制并发数
+            semaphore = asyncio.Semaphore(settings.DATA_COLLECTION_THREAD_POOL_SIZE)
+            
+            async def sync_with_limit(code: str):
+                async with semaphore:
+                    try:
+                        return await data_collection_service.fetch_and_save_historical_data(code, days=days)
+                    except Exception as e:
+                        logger.error(f"[MOD-001] Failed to sync {code}: {e}")
+                        return 0
+            
+            # 批量并发处理
+            batch_size = 100
+            total_records = 0
+            for i in range(0, len(stocks), batch_size):
+                batch = [s.code for s in stocks[i:i+batch_size]]
+                tasks = [sync_with_limit(code) for code in batch]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                for result in results:
+                    if isinstance(result, int):
+                        total_records += result
+                
+                logger.info(f"[MOD-001] Progress: {min(i+batch_size, len(stocks))}/{len(stocks)} stocks processed")
+            
+            self._log_task_end(log_id, "SUCCESS", total_records)
+            logger.info(f"[MOD-001] Historical data sync completed: {total_records} records for {len(stocks)} stocks")
         except Exception as e:
             self._log_task_end(log_id, "FAILED", error_message=str(e))
             logger.error(f"[MOD-001] Historical data sync failed: {e}")
@@ -228,7 +256,7 @@ class UnifiedScheduler:
         logger.info("[MOD-002] Starting sentiment analysis...")
 
         try:
-            from app.services.sentiment import sentiment_service
+            from app.services.sentiment_analysis import sentiment_service
 
             db = MySQLSessionLocal()
             stocks = (
@@ -307,7 +335,7 @@ class UnifiedScheduler:
         logger.info("[MOD-003] Starting LSTM prediction...")
 
         try:
-            from app.services.lstm import lstm_service
+            from app.services.lstm_prediction import lstm_service
 
             db = MySQLSessionLocal()
             stocks = (
@@ -449,6 +477,120 @@ class UnifiedScheduler:
         except Exception as e:
             self._log_task_end(log_id, "FAILED", error_message=str(e))
             logger.error(f"[MOD-004] Stock ranking failed: {e}")
+
+    # ===============================
+    # MOD-005: Model Iteration Jobs
+    # ===============================
+    def _add_model_iteration_jobs(self):
+        """Add model iteration scheduled jobs."""
+        # 性能数据收集 (每天 16:15)
+        self.scheduler.add_job(
+            self._collect_performance_job,
+            trigger=CronTrigger.from_crontab(settings.MODEL_ITERATION_CRON_PERFORMANCE.replace("?", "*")),
+            id="mod005_collect_performance",
+            name="MOD-005: Collect Performance Data",
+            replace_existing=True,
+        )
+        # 模型评估 (每天 16:30)
+        self.scheduler.add_job(
+            self._evaluate_model_job,
+            trigger=CronTrigger.from_crontab(settings.MODEL_ITERATION_CRON_EVALUATE.replace("?", "*")),
+            id="mod005_evaluate_model",
+            name="MOD-005: Model Evaluation",
+            replace_existing=True,
+        )
+        # 模型训练 (每天 20:00)
+        self.scheduler.add_job(
+            self._train_model_job,
+            trigger=CronTrigger.from_crontab(settings.MODEL_ITERATION_CRON_TRAIN.replace("?", "*")),
+            id="mod005_train_model",
+            name="MOD-005: Model Training",
+            replace_existing=True,
+        )
+
+    async def _collect_performance_job(self):
+        """MOD-005: Collect performance data."""
+        log_id = self._log_task_start("Collect Performance Data", "MODEL_ITERATION", "MOD-005")
+        logger.info("[MOD-005] Starting performance data collection...")
+        
+        try:
+            with ModelIterationService() as service:
+                result = service.collect_performance_data(days=30)
+                records_count = result.get("total_trades", 0)
+                self._log_task_end(log_id, "SUCCESS", records_count)
+                logger.info(f"[MOD-005] Performance data collection completed: {records_count} records")
+        except Exception as e:
+            self._log_task_end(log_id, "FAILED", error_message=str(e))
+            logger.error(f"[MOD-005] Performance data collection failed: {e}")
+
+    async def _evaluate_model_job(self):
+        """MOD-005: Evaluate model performance."""
+        log_id = self._log_task_start("Model Evaluation", "MODEL_ITERATION", "MOD-005")
+        logger.info("[MOD-005] Starting model evaluation...")
+        
+        try:
+            with ModelIterationService() as service:
+                # 评估所有模型类型
+                model_types = ["sentiment", "lstm", "ranking"]
+                evaluated_count = 0
+                
+                for model_type in model_types:
+                    try:
+                        evaluation = service.evaluate_model(model_type)
+                        if evaluation:
+                            evaluated_count += 1
+                            logger.info(f"[MOD-005] Evaluated {model_type}: win_rate={evaluation.win_rate}, avg_return={evaluation.avg_return}")
+                    except Exception as e:
+                        logger.warning(f"[MOD-005] Failed to evaluate {model_type}: {e}")
+                
+                self._log_task_end(log_id, "SUCCESS", evaluated_count)
+                logger.info(f"[MOD-005] Model evaluation completed: {evaluated_count} models")
+        except Exception as e:
+            self._log_task_end(log_id, "FAILED", error_message=str(e))
+            logger.error(f"[MOD-005] Model evaluation failed: {e}")
+
+    async def _train_model_job(self):
+        """MOD-005: Train models based on performance."""
+        log_id = self._log_task_start("Model Training", "MODEL_ITERATION", "MOD-005")
+        logger.info("[MOD-005] Starting model training check...")
+        
+        try:
+            with ModelIterationService() as service:
+                # 检查是否需要训练
+                stats = service.get_performance_stats(days=30)
+                
+                # 检查是否触发训练条件
+                consecutive_losses = stats.get("consecutive_losses", 0)
+                win_rate = stats.get("win_rate", 0)
+                
+                should_train = (
+                    consecutive_losses >= settings.MODEL_ITERATION_CONSECUTIVE_LOSS_THRESHOLD or
+                    win_rate < settings.MODEL_ITERATION_WIN_RATE_THRESHOLD
+                )
+                
+                if should_train:
+                    logger.info(f"[MOD-005] Training conditions met: consecutive_losses={consecutive_losses}, win_rate={win_rate}")
+                    # 触发训练
+                    model_types = ["sentiment", "lstm", "ranking"]
+                    trained_count = 0
+                    
+                    for model_type in model_types:
+                        try:
+                            task = service.train_model(model_type, force=False)
+                            if task:
+                                trained_count += 1
+                                logger.info(f"[MOD-005] Training triggered for {model_type}: task_id={task.id}")
+                        except Exception as e:
+                            logger.warning(f"[MOD-005] Failed to train {model_type}: {e}")
+                    
+                    self._log_task_end(log_id, "SUCCESS", trained_count)
+                    logger.info(f"[MOD-005] Model training completed: {trained_count} models")
+                else:
+                    logger.info(f"[MOD-005] Training not needed: consecutive_losses={consecutive_losses}, win_rate={win_rate}")
+                    self._log_task_end(log_id, "SUCCESS", 0)
+        except Exception as e:
+            self._log_task_end(log_id, "FAILED", error_message=str(e))
+            logger.error(f"[MOD-005] Model training check failed: {e}")
 
 
 # Singleton instance

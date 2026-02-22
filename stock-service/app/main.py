@@ -1,32 +1,23 @@
 """
 Stock AI Service - Main Application Entry
-FastAPI application with direct database write data collection
+Python后端服务，直接读写数据库，无需提供HTTP API给Java端
+
+环境变量控制:
+- MINIMAL_MODE=true    # 最小模式，不加载PyTorch/调度器
+- ENABLE_SCHEDULER=true # 启用定时任务调度器
 """
 import logging
 import os
 from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger as loguru_logger
 
 from app.core.config import settings
-from app.core.database import init_databases
-from app.api import sentiment, data_collection
 
-# Import aktools router
-try:
-    from app.api import aktools
-    has_aktools = True
-except ImportError:
-    has_aktools = False
-
-# Import data_sync router conditionally
-try:
-    from app.api import data_sync
-    has_data_sync = True
-except ImportError:
-    has_data_sync = False
+# 环境变量控制
+MINIMAL_MODE = os.getenv("MINIMAL_MODE", "false").lower() == "true"
+ENABLE_SCHEDULER = os.getenv("ENABLE_SCHEDULER", "true").lower() == "true"
 
 # Configure logging
 os.makedirs('logs', exist_ok=True)
@@ -44,43 +35,53 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler"""
-    logger.info("Starting Stock AI Service...")
+    if MINIMAL_MODE:
+        logger.info("Starting in MINIMAL MODE (scheduler only)...")
+        yield
+        logger.info("Shutting down MINIMAL MODE...")
+        return
+
+    # 完整模式
+    logger.info("Starting Stock AI Service (Full Mode)...")
     logger.info(f"Model cache directory: {settings.MODEL_CACHE_DIR}")
     logger.info(f"Debug mode: {settings.DEBUG}")
     
     # Initialize databases
     logger.info("Initializing databases...")
     try:
+        from app.core.database import init_databases
         init_databases()
         logger.info("Databases initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize databases: {e}")
     
-    # Start V3.0 scheduler (includes all modules: Data Collection, Sentiment, Prediction, Ranking)
-    # All results are written directly to MySQL for Java to read
-    logger.info("Starting V3.0 scheduler...")
-    try:
-        from app.services.v3_scheduler import init_scheduler
-        init_scheduler()
-        logger.info("V3.0 scheduler started successfully")
-    except Exception as e:
-        logger.error(f"Failed to start V3.0 scheduler: {e}")
+    # Start scheduler (optional)
+    if ENABLE_SCHEDULER:
+        logger.info("Starting Unified scheduler...")
+        try:
+            from app.core.scheduler import init_scheduler
+            init_scheduler()
+            logger.info("Unified scheduler started successfully")
+        except Exception as e:
+            logger.error(f"Failed to start Unified scheduler: {e}")
     
     yield
     
     # Shutdown
     logger.info("Shutting down Stock AI Service...")
-    try:
-        from app.services.v3_scheduler import shutdown_scheduler
-        shutdown_scheduler()
-        logger.info("V3.0 scheduler stopped")
-    except Exception as e:
-        logger.error(f"Failed to stop scheduler: {e}")
+    if ENABLE_SCHEDULER:
+        try:
+            from app.core.scheduler import shutdown_scheduler
+            shutdown_scheduler()
+            logger.info("Unified scheduler stopped")
+        except Exception as e:
+            logger.error(f"Failed to stop scheduler: {e}")
 
 
+# Create FastAPI app (基础服务，仅用于健康检查)
 app = FastAPI(
     title="Stock AI Service",
-    description="AI-powered stock analysis service with FinBERT sentiment and LSTM prediction",
+    description="Python后端服务 - 直接读写数据库，定时执行数据采集/情感分析/LSTM预测/股票排名",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -88,24 +89,11 @@ app = FastAPI(
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.CORS_ORIGINS if not MINIMAL_MODE else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Register routers
-app.include_router(sentiment.router, prefix="/api/sentiment", tags=["Sentiment Analysis"])
-# Data collection router - provides query APIs and manual sync triggers
-app.include_router(data_collection.router, prefix="/api/data", tags=["Data Collection"])
-
-# Aktools router - provides AKShare HTTP API (public endpoints)
-if has_aktools:
-    app.include_router(aktools.router, prefix="/api/public", tags=["AKTools (AKShare HTTP API)"])
-
-# Data sync router - provides manual sync APIs (if available)
-if has_data_sync:
-    app.include_router(data_sync.router, prefix="/api/sync", tags=["Data Sync"])
 
 
 @app.get("/")
@@ -115,18 +103,18 @@ async def root():
         "status": "ok",
         "service": "Stock AI Service",
         "version": "1.0.0",
-        "features": {
-            "sentiment_analysis": True,
-            "data_collection": True,
-            "aktools": has_aktools
-        }
+        "mode": "minimal" if MINIMAL_MODE else "full",
+        "description": "Python后端服务，直接读写数据库"
     }
 
 
 @app.get("/health")
 async def health():
     """Detailed health check"""
-    # Check database connections
+    if MINIMAL_MODE:
+        return {"status": "healthy", "mode": "minimal"}
+    
+    # 完整模式：检查数据库连接
     db_status = {"mysql": "unknown", "mongodb": "unknown", "redis": "unknown"}
     
     try:
@@ -154,10 +142,7 @@ async def health():
     
     return {
         "status": "healthy",
-        "services": {
-            "sentiment": "ready",
-            "data_collection": "ready",
-            "databases": db_status
-        },
+        "mode": "full",
+        "databases": db_status,
         "data_collection_enabled": settings.DATA_COLLECTION_ENABLED
     }

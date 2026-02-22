@@ -156,6 +156,9 @@ public class RiskControlServiceImpl implements RiskControlService {
 
     private double calculatePositionPnL(Position position) {
         // 使用 avgCost 作为买入成本
-        return (position.getCurrentPrice() - position.getAvgCost()) / position.getAvgCost();
+        if (position.getAvgCost() == null || position.getAvgCost().doubleValue() == 0) {
+            return 0.0;
+        }
+        return (position.getCurrentPrice().doubleValue() - position.getAvgCost().doubleValue()) / position.getAvgCost().doubleValue();
     }
 }

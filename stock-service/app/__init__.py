@@ -19,7 +19,6 @@ from app.core.database import (
 # 客户端
 from app.core.eastmoney_client import EastMoneyClient, east_money_client
 from app.core.akshare_client import AKShareAPI, akshare_api
-from app.core.clients import EastMoneyClient, AKShareAPI  # 向后兼容
 
 __all__ = [
     # 数据采集

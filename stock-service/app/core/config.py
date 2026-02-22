@@ -73,7 +73,9 @@ class Settings(BaseSettings):
     DATA_COLLECTION_CRON_STOCK_LIST: str = "0 0 9 * * *"  # 每天9:00
     DATA_COLLECTION_CRON_HISTORICAL: str = "0 30 15 * * *"  # 每天15:30
     DATA_COLLECTION_CRON_REALTIME: str = "0 0/1 9-15 * * *"  # 交易时段每分钟
-    DATA_COLLECTION_HISTORY_DAYS: int = 60
+    DATA_COLLECTION_HISTORY_DAYS: int = 1095  # 3年历史数据
+    DATA_COLLECTION_HISTORY_DAYS_INITIAL: int = 1095  # 初始化采集天数（3年）
+    DATA_COLLECTION_HISTORY_DAYS_INCREMENTAL: int = 1  # 增量同步天数（1天）
     DATA_COLLECTION_BATCH_SIZE: int = 100
     DATA_COLLECTION_THREAD_POOL_SIZE: int = 10
     DATA_COLLECTION_MAX_RETRIES: int = 3
@@ -91,6 +93,17 @@ class Settings(BaseSettings):
     # Stock Ranking (MOD-004) - 每天收盘后计算排名
     STOCK_RANKING_ENABLED: bool = True
     STOCK_RANKING_CRON: str = "0 0 16 * * *"  # 每天16:00
+
+    # Model Iteration (MOD-005) - 每天收盘后评估和训练
+    MODEL_ITERATION_ENABLED: bool = True
+    MODEL_ITERATION_CRON_PERFORMANCE: str = "0 15 16 * * *"  # 每天16:15 收集收益数据
+    MODEL_ITERATION_CRON_EVALUATE: str = "0 30 16 * * *"  # 每天16:30 模型评估
+    MODEL_ITERATION_CRON_TRAIN: str = "0 0 20 * * *"  # 每天20:00 模型训练(可选)
+    
+    # 模型评估阈值
+    MODEL_ITERATION_CONSECUTIVE_LOSS_THRESHOLD: int = 10
+    MODEL_ITERATION_WIN_RATE_THRESHOLD: float = 0.4
+    MODEL_ITERATION_SCORE_THRESHOLD: int = 50
 
     class Config:
         env_file = ".env"

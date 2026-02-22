@@ -231,6 +231,77 @@ class TaskExecutionLogModel(Base):
     create_time = Column(DateTime, default=datetime.now)
 
 
+# ===============================
+# Model Iteration Tables (V2.0)
+# ===============================
+
+class PerformanceRecordModel(Base):
+    """Model performance records - tracks trading performance"""
+    __tablename__ = "performance_records"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    trade_date = Column(DateTime, nullable=False, index=True)
+    daily_return = Column(Float, default=None)  # 日收益率
+    cumulative_return = Column(Float, default=None)  # 累计收益率
+    win_count = Column(Integer, default=0)  # 盈利次数
+    loss_count = Column(Integer, default=0)  # 亏损次数
+    total_trades = Column(Integer, default=0)  # 总交易次数
+    max_drawdown = Column(Float, default=None)  # 最大回撤
+    model_version = Column(String(50), default=None)  # 模型版本
+    create_time = Column(DateTime, default=datetime.now)
+    update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class ModelVersionModel(Base):
+    """Model version management"""
+    __tablename__ = "model_versions"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    model_type = Column(String(50), nullable=False, index=True)  # LSTM/FinBERT
+    version = Column(String(50), nullable=False)  # 版本号
+    file_path = Column(String(255), nullable=False)  # 模型文件路径
+    train_date = Column(DateTime, nullable=False)  # 训练日期
+    accuracy = Column(Float, default=None)  # 准确率
+    is_active = Column(Integer, default=0)  # 是否当前活跃
+    train_params = Column(JSON, default=None)  # 训练参数
+    performance_stats = Column(JSON, default=None)  # 表现统计
+    create_time = Column(DateTime, default=datetime.now)
+
+
+class TrainingTaskModel(Base):
+    """Training task records"""
+    __tablename__ = "training_tasks"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    task_id = Column(String(100), nullable=False, unique=True, index=True)  # 任务ID
+    model_type = Column(String(50), nullable=False)  # 模型类型
+    status = Column(String(20), nullable=False, index=True)  # PENDING/RUNNING/COMPLETED/FAILED
+    start_time = Column(DateTime, default=None)
+    end_time = Column(DateTime, default=None)
+    error_message = Column(String(2000), default=None)
+    new_version = Column(String(50), default=None)
+    create_time = Column(DateTime, default=datetime.now)
+
+
+class ModelEvaluationModel(Base):
+    """Model evaluation results"""
+    __tablename__ = "model_evaluation_results"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    model_type = Column(String(50), nullable=False, index=True)
+    eval_date = Column(DateTime, nullable=False, index=True)
+    period_days = Column(Integer, default=30)  # 评估周期天数
+    total_return = Column(Float, default=None)  # 总收益率
+    win_rate = Column(Float, default=None)  # 胜率
+    max_drawdown = Column(Float, default=None)  # 最大回撤
+    consecutive_loss_days = Column(Integer, default=0)  # 连续亏损天数
+    score = Column(Integer, default=0)  # 综合得分
+    need_retrain = Column(Integer, default=0)  # 是否需要重训练
+    reason = Column(String(255), default=None)  # 触发原因
+    create_time = Column(DateTime, default=datetime.now)
+
+
+
 # Create MySQL tables
 def init_mysql_tables():
     """Initialize MySQL tables"""

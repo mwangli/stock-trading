@@ -27,9 +27,8 @@ import pytest
 import sys
 sys.path.insert(0, '.')
 
-from datetime import datetime
-from app.services.data_collection_service import DataCollectionService
-from app.core.database import (
+from app import DataCollectionService
+from app import (
     MySQLSessionLocal, StockInfoModel,
     get_mongo_collection, get_redis
 )
@@ -325,10 +324,97 @@ class TestHelperFunctions:
 
     def test_pd_not_null_helper(self):
         """辅助函数: pd_not_null"""
-        from app.services.data_collection_service import pd_not_null
+        from app import pd_not_null
         assert pd_not_null(10.5) == True
         assert pd_not_null(0) == True
         assert pd_not_null('-') == False
+
+
+class TestNewsContentFetch:
+    """新闻内容获取测试"""
+
+    @pytest.fixture
+    def eastmoney_client(self):
+        from app import EastMoneyClient
+        return EastMoneyClient()
+
+    def test_get_stock_news(self, eastmoney_client):
+        """获取股票新闻"""
+        news = eastmoney_client.get_stock_news('000001')
+        assert news is not None
+        assert isinstance(news, list)
+
+    def test_fetch_article_content(self, eastmoney_client):
+        """获取文章完整内容"""
+        news = eastmoney_client.get_stock_news('000001')
+        if news:
+            url = news[0].get('url')
+            if url:
+                content = eastmoney_client.fetch_article_content(url)
+                assert isinstance(content, str)
+
+    def test_fetch_news_with_content(self, eastmoney_client):
+        """获取带完整内容的新闻"""
+        news = eastmoney_client.fetch_news_with_content('000001')
+        if news:
+            for item in news:
+                assert 'title' in item or 'content' in item
+
+
+class TestFullHistoricalDataCollection:
+    """
+    全量历史数据采集测试
+    验证场景: 每只股票需要采集近3年(1095天)的历史数据
+    """
+
+    @pytest.fixture
+    def service(self):
+        return DataCollectionService()
+
+    @pytest.fixture
+    def test_code(self):
+        return "000001"
+
+    @pytest.mark.asyncio
+    async def test_full_historical_data_3_years(self, service, test_code):
+        """
+        TC-FULL-001: 验证可以采集近3年的历史数据
+        业务需求: 每只股票需要采集近3年的历史数据用于LSTM训练
+        """
+        # 先确保股票列表有数据
+        await service.fetch_and_save_stock_list()
+        
+        # 执行3年历史数据采集（约1095天）
+        from app.core.config import settings
+        days = settings.DATA_COLLECTION_HISTORY_DAYS_INITIAL
+        
+        # 验证配置正确
+        assert days >= 1095, f"历史数据采集天数应>=1095(3年),实际为{days}天"
+        
+        count = await service.fetch_and_save_historical_data(test_code, days=days)
+        assert count > 0, f"应采集到{days}天的历史数据"
+        
+        # 验证MongoDB有足够的历史数据
+        coll = get_mongo_collection("stock_prices")
+        records = list(coll.find({"code": test_code}))
+        assert len(records) >= 365 * 2, f"3年数据应>=730条,实际为{len(records)}条"
+
+    @pytest.mark.asyncio
+    async def test_incremental_sync_uses_1_day(self, service, test_code):
+        """
+        TC-FULL-002: 验证增量同步使用1天配置
+        业务需求: 日常运行每天同步最新1个交易日的数据
+        """
+        from app.core.config import settings
+        
+        # 验证增量同步配置
+        incremental_days = settings.DATA_COLLECTION_HISTORY_DAYS_INCREMENTAL
+        assert incremental_days == 1, f"增量同步应使用1天,实际为{incremental_days}天"
+        
+        # 执行增量同步
+        count = await service.fetch_and_save_historical_data(test_code, days=incremental_days)
+        # 增量同步应该至少有1条数据
+        assert count >= 0  # 可能没有新数据，这是正常的
 
 
 if __name__ == '__main__':

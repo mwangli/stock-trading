@@ -562,14 +562,18 @@ public interface LSTMPredictClient {
 # LSTM预测服务配置
 lstm:
   model:
-    path: /models/lstm_stock.h5
+    path: /models/lstm_stock.pt      # PyTorch模型格式
     sequence_length: 60
     feature_dim: 5
     device: auto  # auto/cpu/cuda
   
-  api:
-    batch_size: 50
-    timeout: 30000
+    hidden_size: 100
+    num_layers: 2
+    dropout: 0.2
+  
+  scheduler:
+    enabled: true
+    cron: "30 17 * * 1-5"  # 每日17:30执行（交易日）
   
   fallback:
     # 模型不存在时的默认值

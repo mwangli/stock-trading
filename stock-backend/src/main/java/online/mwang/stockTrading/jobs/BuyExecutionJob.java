@@ -3,20 +3,22 @@ package online.mwang.stockTrading.jobs;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import online.mwang.stockTrading.entities.Position;
+import online.mwang.stockTrading.entities.StockRanking;
+import online.mwang.stockTrading.repositories.StockRankingRepository;
 import online.mwang.stockTrading.results.OrderResult;
-import online.mwang.stockTrading.services.DecisionEngineService;
 import online.mwang.stockTrading.services.TradeExecutionService;
 import org.quartz.Job;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
  * 买入执行Job
  * 执行时间: 每天 14:50
- * 任务内容: 根据决策引擎的选股结果执行买入
+ * 任务内容: 根据综合选股结果执行买入
  */
 @Slf4j
 @Component
@@ -24,7 +26,7 @@ import java.util.List;
 public class BuyExecutionJob implements Job {
 
     private final TradeExecutionService tradeExecutionService;
-    private final DecisionEngineService decisionEngineService;
+    private final StockRankingRepository stockRankingRepository;
 
     @Override
     public void execute(JobExecutionContext context) throws JobExecutionException {
@@ -37,12 +39,17 @@ public class BuyExecutionJob implements Job {
                 return;
             }
 
-            // 2. 获取选股结果
-            String selectedStock = decisionEngineService.getSelectedStock();
-            if (selectedStock == null || selectedStock.isEmpty()) {
+            // 2. 获取今日选股结果（综合排名第一的股票）
+            LocalDate today = LocalDate.now();
+            List<StockRanking> topRankings = stockRankingRepository.findTopCompositeScoreByDate(today, 1);
+            
+            if (topRankings == null || topRankings.isEmpty()) {
                 log.warn("今日无选股结果，无法执行买入");
                 return;
             }
+            
+            String selectedStock = topRankings.get(0).getStockCode();
+            log.info("选股结果: stockCode={}, score={}", selectedStock, topRankings.get(0).getCompositeScore());
 
             // 3. 获取账户信息，计算可买入数量
             var accountInfo = tradeExecutionService.getAccountInfo();

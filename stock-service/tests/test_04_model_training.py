@@ -25,7 +25,7 @@ class TestTrainingService:
     def test_training_service_import(self):
         """TC-004-001: 训练服务导入"""
         try:
-            from app.services.training import TrainingService
+            from app import TrainingService
             assert TrainingService is not None
         except ImportError as e:
             pytest.skip(f"训练服务不可用: {e}")
@@ -34,7 +34,7 @@ class TestTrainingService:
     async def test_train_model(self):
         """TC-004-002: 模型训练"""
         try:
-            from app.services.training import TrainingService
+            from app import TrainingService
             service = TrainingService()
             
             # 执行训练(简化版,需要传入data参数)
@@ -56,7 +56,7 @@ class TestModelManagement:
 
     @pytest.fixture
     def db_session(self):
-        from app.core.database import MySQLSessionLocal
+        from app import MySQLSessionLocal
         db = MySQLSessionLocal()
         try:
             yield db
@@ -115,14 +115,14 @@ class TestModelFlow:
     @pytest.fixture
     def training_service(self):
         try:
-            from app.services.training import TrainingService
+            from app import TrainingService
             return TrainingService()
         except ImportError:
             pytest.skip("训练服务不可用")
 
     @pytest.fixture
     def data_service(self):
-        from app.services.data_collection_service import DataCollectionService
+        from app import DataCollectionService
         return DataCollectionService()
 
     @pytest.mark.asyncio
