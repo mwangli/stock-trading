@@ -2,12 +2,13 @@
 Unified Scheduler for Stock Trading AI Service
 Uses APScheduler for all scheduled tasks:
 - MOD-001: Data Collection
-- MOD-002: Sentiment Analysis
+- MOD-002: Sentiment Analysis + News Collection
 - MOD-003: LSTM Prediction
 - MOD-004: Stock Ranking
 
 All results are written directly to MySQL for Java backend to read.
 """
+import asyncio
 from datetime import datetime
 from typing import Optional
 
@@ -25,7 +26,7 @@ from app.core.database import (
     StockRankingModel,
 )
 from app.services.data_collection_service import data_collection_service
-from app.core.clients import EastMoneyClient
+from app.core.eastmoney_client import EastMoneyClient
 from app.services.model_iteration import ModelIterationService
 
 
@@ -52,7 +53,9 @@ class UnifiedScheduler:
         if settings.DATA_COLLECTION_ENABLED:
             self._add_data_collection_jobs()
 
-        # MOD-002: Sentiment Analysis
+        # MOD-002: News Collection + Sentiment Analysis
+        if settings.NEWS_COLLECTION_ENABLED:
+            self._add_news_collection_jobs()
         if settings.SENTIMENT_ANALYSIS_ENABLED:
             self._add_sentiment_analysis_jobs()
 
@@ -236,6 +239,100 @@ class UnifiedScheduler:
             logger.debug(f"[MOD-001] Real-time quotes sync: {count} quotes")
         except Exception as e:
             logger.error(f"[MOD-001] Real-time quotes sync failed: {e}")
+
+    # ===============================
+    # MOD-002: News Collection Jobs
+    # ===============================
+
+
+    def _add_news_collection_jobs(self):
+        """Add news collection scheduled jobs."""
+        # 定时新闻采集任务 - 使用爬虫采集主流财经网站新闻
+        self.scheduler.add_job(
+            self._sync_news_job,
+            trigger=CronTrigger.from_crontab(settings.NEWS_COLLECTION_CRON.replace("?", "*")),
+            id="mod002_sync_news",
+            name="MOD-002: Sync News (Crawler)",
+            replace_existing=True,
+        )
+        # 初始化新闻采集任务 - 采集近30天历史新闻
+        self.scheduler.add_job(
+            self._init_news_collection_job,
+            trigger=CronTrigger.from_crontab("0 0 10 * * *"),  # 每天10:00执行一次
+            id="mod002_init_news",
+            name="MOD-002: Init News Collection",
+            replace_existing=True,
+        )
+
+    async def _sync_news_job(self):
+        """MOD-002: Sync news for all stocks to MongoDB using crawler."""
+        log_id = self._log_task_start("Sync News (Crawler)", "NEWS_COLLECTION", "MOD-002")
+        logger.info("[MOD-002] Starting news sync using crawler...")
+
+        try:
+            # 使用爬虫采集财经新闻
+            from app.core.spiders.finance_news_spider import finance_news_spider
+            
+            # 从多个新闻源采集新闻
+            news_list = finance_news_spider.fetch_all_news(limit_per_spider=30)
+            
+            if not news_list:
+                logger.warning("[MOD-002] No news fetched from crawlers")
+                self._log_task_end(log_id, "SUCCESS", 0)
+                return
+            
+            logger.info(f"[MOD-002] Fetched {len(news_list)} news items from crawlers")
+            
+            # 保存到MongoDB
+            saved_count = finance_news_spider.save_to_mongodb(news_list, "news")
+            
+            self._log_task_end(log_id, "SUCCESS", saved_count)
+            logger.info(f"[MOD-002] News sync completed: {saved_count} news items saved")
+        except Exception as e:
+            self._log_task_end(log_id, "FAILED", error_message=str(e))
+            logger.error(f"[MOD-002] News sync failed: {e}")
+
+    async def _init_news_collection_job(self):
+        """MOD-002: Initial news collection - fetch historical news for all stocks."""
+        log_id = self._log_task_start("Init News Collection", "NEWS_COLLECTION", "MOD-002")
+        logger.info("[MOD-002] Starting initial news collection (30 days history)...")
+
+        try:
+            # 获取所有可交易股票
+            db = MySQLSessionLocal()
+            stocks = (
+                db.query(StockInfoModel)
+                .filter(StockInfoModel.deleted == "0", StockInfoModel.is_tradable == 1)
+                .all()
+            )
+            db.close()
+
+            logger.info(f"[MOD-002] Collecting news for {len(stocks)} stocks")
+
+            # 使用爬虫采集财经新闻（通用新闻，不针对单个股票）
+            from app.core.spiders.finance_news_spider import finance_news_spider
+            
+            total_saved = 0
+            
+            # 分批采集历史新闻（30天）
+            for batch_start in range(0, len(stocks), 100):
+                batch = stocks[batch_start:batch_start + 100]
+                
+                # 采集多轮以获取更多新闻
+                for round_num in range(3):
+                    news_list = finance_news_spider.fetch_all_news(limit_per_spider=50)
+                    if news_list:
+                        saved = finance_news_spider.save_to_mongodb(news_list, "news")
+                        total_saved += saved
+                        logger.info(f"[MOD-002] Round {round_num + 1}: saved {saved} news items")
+                
+                logger.info(f"[MOD-002] Progress: {min(batch_start + 100, len(stocks))}/{len(stocks)} stocks processed")
+
+            self._log_task_end(log_id, "SUCCESS", total_saved)
+            logger.info(f"[MOD-002] Initial news collection completed: {total_saved} news items")
+        except Exception as e:
+            self._log_task_end(log_id, "FAILED", error_message=str(e))
+            logger.error(f"[MOD-002] Initial news collection failed: {e}")
 
     # ===============================
     # MOD-002: Sentiment Analysis Jobs

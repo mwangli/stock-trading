@@ -81,6 +81,14 @@ class Settings(BaseSettings):
     DATA_COLLECTION_MAX_RETRIES: int = 3
     DATA_COLLECTION_RETRY_DELAY: int = 1  # seconds
 
+    # News Collection Configuration (MOD-002)
+    NEWS_COLLECTION_ENABLED: bool = True
+    NEWS_COLLECTION_CRON: str = "0 0/30 9-15 * * *"  # 交易时段每30分钟
+    NEWS_COLLECTION_HISTORY_DAYS: int = 30  # 1个月历史新闻
+    NEWS_COLLECTION_HISTORY_DAYS_INITIAL: int = 30  # 初始化采集天数（1个月）
+    NEWS_COLLECTION_HISTORY_DAYS_INCREMENTAL: int = 1  # 增量同步每天采集
+    NEWS_COLLECTION_BATCH_SIZE: int = 100
+
     # V3.0 Scheduled Tasks Configuration
     # Sentiment Analysis (MOD-002) - 每天收盘后分析
     SENTIMENT_ANALYSIS_ENABLED: bool = True

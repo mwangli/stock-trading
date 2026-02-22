@@ -12,7 +12,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableRetry
 @EnableScheduling
 @SpringBootApplication
-@ComponentScan(basePackages = "online.mwang.stockTrading")
 public class StockTradingApplication {
 
     public static void main(String[] args) {
