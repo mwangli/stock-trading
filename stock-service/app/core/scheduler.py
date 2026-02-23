@@ -273,21 +273,35 @@ class UnifiedScheduler:
             # 使用爬虫采集财经新闻
             from app.core.spiders.finance_news_spider import finance_news_spider
             
-            # 从多个新闻源采集新闻
-            news_list = finance_news_spider.fetch_all_news(limit_per_spider=30)
+            # 多轮采集以达到1000+条新闻
+            total_saved = 0
+            rounds = 3  # 采集3轮
             
-            if not news_list:
-                logger.warning("[MOD-002] No news fetched from crawlers")
-                self._log_task_end(log_id, "SUCCESS", 0)
-                return
+            for round_num in range(1, rounds + 1):
+                logger.info(f"[MOD-002] 第 {round_num}/{rounds} 轮采集...")
+                
+                # 从多个新闻源采集新闻
+                news_list = finance_news_spider.fetch_all_news(limit_per_spider=200)
+                
+                if not news_list:
+                    logger.warning(f"[MOD-002] 第 {round_num} 轮: 未获取到新闻")
+                    continue
+                
+                logger.info(f"[MOD-002] 第 {round_num} 轮: 获取 {len(news_list)} 条新闻")
+                
+                # 保存到MongoDB
+                saved_count = finance_news_spider.save_to_mongodb(news_list, "news")
+                total_saved += saved_count
+                logger.info(f"[MOD-002] 第 {round_num} 轮: 保存 {saved_count} 条新闻")
             
-            logger.info(f"[MOD-002] Fetched {len(news_list)} news items from crawlers")
+            # 检查最终数量
+            from app.core.database import get_mongo_collection
+            collection = get_mongo_collection("news")
+            final_count = collection.count_documents({})
             
-            # 保存到MongoDB
-            saved_count = finance_news_spider.save_to_mongodb(news_list, "news")
+            logger.info(f"[MOD-002] 新闻同步完成: 本次保存 {total_saved} 条, MongoDB总计 {final_count} 条")
             
-            self._log_task_end(log_id, "SUCCESS", saved_count)
-            logger.info(f"[MOD-002] News sync completed: {saved_count} news items saved")
+            self._log_task_end(log_id, "SUCCESS", total_saved)
         except Exception as e:
             self._log_task_end(log_id, "FAILED", error_message=str(e))
             logger.error(f"[MOD-002] News sync failed: {e}")

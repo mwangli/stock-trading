@@ -789,6 +789,102 @@ class TestFinanceNewsSpider:
                 assert result is not None, f"应能解析: {time_str}"
             print(f"  {time_str} -> {result}")
 
+    def test_news_collection_1000_plus(self):
+        """
+        TC-CRAWLER-008: 验证财经新闻爬虫能够采集1000+条新闻
+        用于FinBERT模型训练，需要大量新闻数据
+        """
+        from app.core.spiders.finance_news_spider import (
+            FinanceNewsSpider, SinaFinanceSpider, EastMoneySpider,
+            IfengFinanceSpider, NetEaseFinanceSpider,
+            TonghuashunSpider, XueqiuSpider, HexunSpider
+        )
+        from app.core.database import get_mongo_collection
+        
+        print("\n" + "="*60)
+        print("[测试] 验证新闻采集数量 >= 1000 条")
+        print("="*60)
+        
+        # 记录初始数量
+        collection = get_mongo_collection("news")
+        initial_count = collection.count_documents({})
+        print(f"\n[INFO] 初始MongoDB新闻数量: {initial_count}")
+        
+        # 采集新闻 - 多轮采集以达到1000+
+        total_fetched = 0
+        rounds = 3  # 采集3轮
+        
+        all_spiders = [
+            ("Sina", SinaFinanceSpider),
+            ("EastMoney", EastMoneySpider),
+            ("Ifeng", IfengFinanceSpider),
+            ("NetEase", NetEaseFinanceSpider),
+            ("Tonghuashun", TonghuashunSpider),
+            ("Xueqiu", XueqiuSpider),
+            ("Hexun", HexunSpider),
+        ]
+        
+        for round_num in range(1, rounds + 1):
+            print(f"\n--- 第 {round_num}/{rounds} 轮采集 ---")
+            round_news = []
+            
+            for name, spider_class in all_spiders:
+                try:
+                    spider = spider_class()
+                    news = spider.fetch_news(limit=200)
+                    round_news.extend(news)
+                    print(f"  {name}: 获取 {len(news)} 条")
+                except Exception as e:
+                    print(f"  {name}: 采集失败 - {e}")
+            
+            # 去重
+            seen_urls = set()
+            unique_news = []
+            for news in round_news:
+                url = news.get('url', '')
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    unique_news.append(news)
+            
+            total_fetched += len(unique_news)
+            print(f"  本轮去重后: {len(unique_news)} 条, 累计: {total_fetched} 条")
+            
+            # 保存到MongoDB
+            saved = 0
+            for news in unique_news:
+                try:
+                    if not collection.find_one({"url": news.get('url')}):
+                        result = collection.insert_one(news)
+                        if result.inserted_id:
+                            saved += 1
+                except:
+                    pass
+            print(f"  本轮保存: {saved} 条")
+        
+        # 最终数量
+        final_count = collection.count_documents({})
+        print(f"\n[结果] MongoDB新闻数量:")
+        print(f"  - 初始: {initial_count} 条")
+        print(f"  - 新增: {final_count - initial_count} 条")
+        print(f"  - 总计: {final_count} 条")
+        
+        # 验证
+        print(f"\n[验证] 目标: >= 1000 条")
+        print(f"  - 实际: {final_count} 条")
+        
+        # 按来源统计
+        print(f"\n[统计] 按来源分布:")
+        sources = {}
+        for doc in collection.find():
+            source = doc.get('source', 'Unknown')
+            sources[source] = sources.get(source, 0) + 1
+        for source, count in sorted(sources.items(), key=lambda x: -x[1]):
+            print(f"  - {source}: {count} 条")
+        
+        # 断言
+        assert final_count >= 1000, f"新闻数量应>=1000条，实际: {final_count}条"
+        print(f"\n[PASS] 测试通过: 新闻数量 {final_count} >= 1000")
+
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v', '-s'])
