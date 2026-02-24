@@ -6,12 +6,11 @@ import os
 import logging
 from typing import Dict, List, Optional
 
-# IMPORTANT: Set CUDA visibility BEFORE importing torch/transformers on Windows
-# This prevents DLL loading issues with torch on Windows
-os.environ['CUDA_VISIBLE_DEVICES'] = ''
-os.environ['TORCH_CUDA_ARCH_LIST'] = 'None'
+# Use offline mode to avoid network issues
+os.environ['HF_HUB_OFFLINE'] = '1'
 
 import numpy as np
+import torch
 
 from app.core.config import settings
 
@@ -21,13 +20,17 @@ logger = logging.getLogger(__name__)
 class SentimentService:
     """FinBERT-based sentiment analysis service"""
 
-    def __init__(self):
-        self.model_name = settings.FINBERT_MODEL_NAME
+    def __init__(self, use_chinese: bool = True):
+        self.use_chinese = use_chinese
+        if use_chinese:
+            self.model_name = settings.FINBERT_MODEL_NAME_CN
+        else:
+            self.model_name = settings.FINBERT_MODEL_NAME
         self.max_length = settings.FINBERT_MAX_LENGTH
         self._model = None
-        self._device = "cpu"  # Default to CPU, will be set lazily
+        self._device = "cpu"
         self._device_initialized = False
-        logger.info("SentimentService initialized (model not loaded yet)")
+        logger.info(f"SentimentService initialized (Chinese: {use_chinese}, model not loaded yet)")
 
     def _get_device(self) -> str:
         """Lazy initialization of device to avoid torch import at module load time"""
@@ -49,24 +52,37 @@ class SentimentService:
             logger.info(f"Loading FinBERT model: {self.model_name}")
             
             # Lazy import to avoid torch DLL loading issues on Windows
-            from transformers import AutoModelForSequenceClassification, AutoTokenizer, Pipeline
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer
+            import torch
             
             device = self._get_device()
             
-            tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            # Use local model path if available
+            if self.use_chinese:
+                local_model_path = settings.MODEL_CACHE_DIR / "finbert-chinese"
+            else:
+                local_model_path = settings.MODEL_CACHE_DIR / "finbert"
+                
+            if local_model_path.exists():
+                model_path = str(local_model_path)
+                logger.info(f"Using local model: {model_path}")
+            else:
+                model_path = self.model_name
+            
+            tokenizer = AutoTokenizer.from_pretrained(model_path)
             model = AutoModelForSequenceClassification.from_pretrained(
-                self.model_name,
+                model_path,
                 num_labels=3
             )
             model.to(device)
-            self._model = Pipeline(
-                "text-classification",
-                model=model,
-                tokenizer=tokenizer,
-                device=0 if device == "cuda" else -1,
-                truncation=True,
-                max_length=self.max_length
-            )
+            model.eval()
+            
+            # Store model, tokenizer, and device for direct inference
+            self._model = {
+                'model': model,
+                'tokenizer': tokenizer,
+                'device': device
+            }
             logger.info("FinBERT model loaded successfully")
         return self._model
 
@@ -89,20 +105,35 @@ class SentimentService:
             }
 
         try:
-            result = self.model(text)[0]
-
-            # Map FinBERT labels to standard format
-            label_map = {
-                "positive": "positive",
-                "negative": "negative",
-                "neutral": "neutral"
-            }
-
+            # Use the stored model dict
+            model_dict = self.model
+            model = model_dict['model']
+            tokenizer = model_dict['tokenizer']
+            device = model_dict['device']
+            
+            # Tokenize
+            inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=self.max_length)
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            
+            # Inference
+            with torch.no_grad():
+                outputs = model(**inputs)
+                probs = torch.softmax(outputs.logits, dim=-1)
+                pred_idx = torch.argmax(probs, dim=-1).item()
+            
+            # Map to labels (FinBERT: 0=positive, 1=negative, 2=neutral)
+            label = model.config.id2label[pred_idx]
+            score = probs[0][pred_idx].item()
+            
             return {
-                "label": label_map.get(result["label"], "neutral"),
-                "score": result["score"],
-                "confidence": result["score"],
-                "probabilities": self._get_probabilities(result)
+                "label": label,
+                "score": score,
+                "confidence": score,
+                "probabilities": {
+                    "positive": probs[0][0].item(),
+                    "neutral": probs[0][1].item(),
+                    "negative": probs[0][2].item()
+                }
             }
         except Exception as e:
             logger.error(f"Error analyzing sentiment: {e}")

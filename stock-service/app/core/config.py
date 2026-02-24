@@ -34,6 +34,7 @@ class Settings(BaseSettings):
 
     # FinBERT settings
     FINBERT_MODEL_NAME: str = "ProsusAI/finbert"
+    FINBERT_MODEL_NAME_CN: str = "yiyanghkust/finbert-tone-chinese"
     FINBERT_MAX_LENGTH: int = 512
 
     # LSTM settings
