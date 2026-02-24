@@ -1,56 +1,59 @@
-package online.mwang.stockTrading.utils;
+package online.mwang.stockTrading.web.utils;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 
+@Slf4j
 @Component
 public class RequestUtils {
 
-    private static final Logger log = LoggerFactory.getLogger(RequestUtils.class);
     private static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
+
     private static final int RETRY_TIMES = 10;
 
+    @SneakyThrows
     public JSONObject request(String url, HashMap<String, Object> formParam, int times) {
         try {
             if (times > RETRY_TIMES) {
                 log.info("请求错误次数过多,请检查程序代码!");
                 return new JSONObject();
             }
-            // 发送 POST 请求
-            String response = cn.hutool.http.HttpUtil.createPost(url).form(formParam).execute().body();
-            // 日志太长截取前1000个字符
-            if (response != null && response.length() > 1000) {
-                log.info(response.substring(0, 1000));
+            cn.hutool.http.HttpResponse response = cn.hutool.http.HttpUtil.createPost(url)
+                .form(formParam)
+                .execute();
+            String body = response.body();
+            if (body != null && body.length() > 1000) {
+                log.info(body.substring(0, 1000));
             } else {
-                log.info(response);
+                log.info(body);
             }
-            return JSONObject.parseObject(response);
+            return JSONObject.parseObject(body);
         } catch (Exception e) {
-            log.info("message: {}", e.getMessage());
+            log.info("message:{}", e.getMessage());
             log.info("请求数据异常，请检查程序代码。");
             return new JSONObject();
         }
     }
 
+    @SneakyThrows
     public JSONObject request(HashMap<String, Object> formParam) {
         return request(REQUEST_URL, formParam, 0);
     }
 
+    @SneakyThrows
     public JSONArray request2(HashMap<String, Object> formParam) {
         JSONObject res = request(REQUEST_URL, formParam, 0);
-        if (res == null) return new JSONArray();
-        JSONArray array = res.getJSONArray("GRID0");
-        return array != null ? array : new JSONArray();
+        return res.getJSONArray("GRID0");
     }
 
+    @SneakyThrows
     public JSONArray request3(HashMap<String, Object> formParam) {
         JSONObject res = request(REQUEST_URL.concat("?action=1230"), formParam, 0);
-        if (res == null) return new JSONArray();
         final JSONObject data = res.getJSONObject("BINDATA");
         if (data != null && data.getJSONArray("results") != null) {
             return data.getJSONArray("results");

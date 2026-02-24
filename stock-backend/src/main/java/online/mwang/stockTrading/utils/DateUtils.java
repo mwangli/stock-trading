@@ -1,4 +1,4 @@
-package online.mwang.stockTrading.core.utils;
+package online.mwang.stockTrading.utils;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;

@@ -150,6 +150,7 @@
                 <version>3.11.0</version>
                 <configuration>
                     <fork>true</fork>
+                    <executable>C:\Users\MS\.jdks\jdk-17.0.12\bin\javac.exe</executable>
                     <compilerArgs>
                         <arg>-J-Dfile.encoding=UTF-8</arg>
                     </compilerArgs>

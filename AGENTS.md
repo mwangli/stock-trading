@@ -23,13 +23,16 @@ stock-trading/
 
 ```bash
 cd stock-backend
-mvn clean install              # Compile and package
-mvn spring-boot:run           # Run application
-mvn test                      # Run all tests
-mvn test -Dtest=ClassName     # Run single test class
-mvn test -Dtest=ClassName#method  # Run single test method
-mvn clean install -DskipTests # Skip tests during build
+set JAVA_HOME=C:\Users\MS\.jdks\jdk-17.0.12
+D:\apache-maven-3.6.2\bin\mvn.cmd clean install              # Compile and package
+D:\apache-maven-3.6.2\bin\mvn.cmd spring-boot:run           # Run application
+D:\apache-maven-3.6.2\bin\mvn.cmd test                      # Run all tests
+D:\apache-maven-3.6.2\bin\mvn.cmd test -Dtest=ClassName     # Run single test class
+D:\apache-maven-3.6.2\bin\mvn.cmd test -Dtest=ClassName#method  # Run single test method
+D:\apache-maven-3.6.2\bin\mvn.cmd clean install -DskipTests # Skip tests during build
 ```
+
+> **注意**: 需要 JDK 17 才能编译此项目，当前环境已配置 JDK 17: `C:\Users\MS\.jdks\jdk-17.0.12`
 
 ### Frontend (stock-frontend/)
 
