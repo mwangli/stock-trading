@@ -1,25 +1,24 @@
 package com.stock.databus.repository;
 
-import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.stock.databus.entity.StockInfo;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
-@Mapper
-public interface StockRepository extends BaseMapper<StockInfo> {
+@Repository
+public interface StockRepository extends JpaRepository<StockInfo, Long> {
 
-    @Select("SELECT * FROM stock_info WHERE is_tradable = 1 AND `delete` = '0' LIMIT #{limit}")
-    List<StockInfo> findTradableStocks(@Param("limit") int limit);
+    @Query("SELECT s FROM StockInfo s WHERE s.isTradable = 1 AND s.deleted = '0'")
+    List<StockInfo> findTradableStocks(int limit);
 
-    @Select("SELECT * FROM stock_info WHERE code = #{code}")
-    StockInfo findByCode(@Param("code") String code);
+    StockInfo findByCode(String code);
 
-    @Select("SELECT COUNT(*) FROM stock_info WHERE `delete` = '0'")
+    @Query("SELECT COUNT(s) FROM StockInfo s WHERE s.deleted = '0'")
     int countAll();
 
-    @Select("SELECT * FROM stock_info WHERE market = #{market} AND is_tradable = 1 AND `delete` = '0'")
+    @Query("SELECT s FROM StockInfo s WHERE s.market = :market AND s.isTradable = 1 AND s.deleted = '0'")
     List<StockInfo> findByMarket(@Param("market") String market);
 }
