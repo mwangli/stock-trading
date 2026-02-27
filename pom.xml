@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<<<<<<< HEAD
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
@@ -186,12 +187,59 @@
                 <version>${mockito.version}</version>
                 <scope>test</scope>
             </dependency>
+=======
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- 父项目 - Spring Boot 3.0.x -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.0.13</version>
+        <relativePath/>
+    </parent>
+
+    <!-- 项目信息 -->
+    <groupId>com.example</groupId>
+    <artifactId>ai-shopping</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <name>AI Shopping</name>
+    <description>AI驱动的智能购物系统</description>
+    <packaging>pom</packaging>
+
+    <!-- 模块定义 -->
+    <modules>
+        <module>backend</module>
+        <module>frontend</module>
+    </modules>
+
+    <!-- 属性配置 -->
+    <properties>
+        <java.version>17</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+    </properties>
+
+    <!-- 依赖管理 -->
+    <dependencyManagement>
+        <dependencies>
+            <!-- 内部模块依赖管理 -->
+            <dependency>
+                <groupId>com.example</groupId>
+                <artifactId>ai-shopping-backend</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+>>>>>>> 88da1874eaf261d26904ae1527d3ca40fe0a0862
         </dependencies>
     </dependencyManagement>
 
     <build>
         <pluginManagement>
             <plugins>
+<<<<<<< HEAD
                 <plugin>
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-maven-plugin</artifactId>
@@ -212,11 +260,25 @@
                         <source>${java.version}</source>
                         <target>${java.version}</target>
                         <encoding>${project.build.sourceEncoding}</encoding>
+=======
+                <!-- Spring Boot Maven Plugin -->
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <configuration>
+                        <excludes>
+                            <exclude>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                            </exclude>
+                        </excludes>
+>>>>>>> 88da1874eaf261d26904ae1527d3ca40fe0a0862
                     </configuration>
                 </plugin>
             </plugins>
         </pluginManagement>
     </build>
+<<<<<<< HEAD
 
     <repositories>
         <repository>
@@ -231,4 +293,6 @@
             <url>https://repo.maven.apache.org/maven2</url>
         </pluginRepository>
     </pluginRepositories>
+=======
+>>>>>>> 88da1874eaf261d26904ae1527d3ca40fe0a0862
 </project>

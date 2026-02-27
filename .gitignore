@@ -1,9 +1,17 @@
+<<<<<<< HEAD
 HELP.md
+=======
+# Compiled class files
+*.class
+
+# Maven
+>>>>>>> 88da1874eaf261d26904ae1527d3ca40fe0a0862
 target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+<<<<<<< HEAD
 ### STS ###
 .apt_generated
 .classpath
@@ -35,3 +43,43 @@ build/
 /data
 /model
 node_modules
+=======
+# IDE
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+.classpath
+.project
+.settings/
+
+# Node.js / Frontend
+node_modules/
+dist/
+build/
+.umi/
+.umi-production/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Application
+*.env
+*.env.local
+application-local.yml
+application-dev.yml
+application-prod.yml
+
+# H2 Database
+*.db
+*.mv.db
+*.trace.db
+>>>>>>> 88da1874eaf261d26904ae1527d3ca40fe0a0862
