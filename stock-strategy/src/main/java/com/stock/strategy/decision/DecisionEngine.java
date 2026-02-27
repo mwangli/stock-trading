@@ -1,6 +1,6 @@
 package com.stock.strategy.decision;
 
-import com.stock.common.enums.Signal;
+import com.stock.strategy.enums.Signal;
 import com.stock.strategy.selector.StockSelector;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;

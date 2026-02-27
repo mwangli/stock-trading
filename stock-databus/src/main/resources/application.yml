@@ -42,3 +42,8 @@ logging:
   level:
     root: INFO
     com.stock: DEBUG
+# Tushare API key
+tuShare:
+  keys:
+    - d0bce450faa75f52248dc861d1e3e818228cdb23a58de180eb4f8502
+    - 720c794547409922d75a572418d9d9b7f5ec6dfad7bb7ecc4dffbc65

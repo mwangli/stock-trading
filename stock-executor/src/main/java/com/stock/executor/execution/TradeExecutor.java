@@ -1,6 +1,6 @@
 package com.stock.executor.execution;
 
-import com.stock.common.enums.OrderStatus;
+import com.stock.executor.enums.OrderStatus;
 import com.stock.executor.risk.RiskController;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;

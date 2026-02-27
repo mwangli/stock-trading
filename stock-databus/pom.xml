@@ -16,11 +16,7 @@
 
     <dependencies>
         <!-- 内部模块 -->
-        <dependency>
-            <groupId>com.stock</groupId>
-            <artifactId>stock-common</artifactId>
-        </dependency>
-
+        
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -57,6 +53,13 @@
             <artifactId>okhttp</artifactId>
         </dependency>
 
+        <!-- Tushare SDK -->
+        <dependency>
+            <groupId>com.github.qhh6eq</groupId>
+            <artifactId>tushare-pro-java-sdk</artifactId>
+            <version>2.0.5-RELEASE</version>
+        </dependency>
+
         <!-- Hutool -->
         <dependency>
             <groupId>cn.hutool</groupId>
@@ -84,6 +87,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <version>4.3.18.RELEASE</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

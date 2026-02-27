@@ -12,7 +12,6 @@
     <description>纯Java股票交易系统 - 全新架构</description>
 
     <modules>
-        <module>stock-common</module>
         <module>stock-databus</module>
         <module>stock-models</module>
         <module>stock-strategy</module>
@@ -60,11 +59,6 @@
     <dependencyManagement>
         <dependencies>
             <!-- 内部模块 -->
-            <dependency>
-                <groupId>com.stock</groupId>
-                <artifactId>stock-common</artifactId>
-                <version>${project.version}</version>
-            </dependency>
             <dependency>
                 <groupId>com.stock</groupId>
                 <artifactId>stock-databus</artifactId>

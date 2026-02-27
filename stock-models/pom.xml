@@ -18,10 +18,6 @@
         <!-- 内部模块 -->
         <dependency>
             <groupId>com.stock</groupId>
-            <artifactId>stock-common</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.stock</groupId>
             <artifactId>stock-databus</artifactId>
         </dependency>
 
