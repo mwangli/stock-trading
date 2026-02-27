@@ -1,21 +1,29 @@
 spring:
-  profiles:
-    active: test
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/stock_trading_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
+    url: jdbc:mysql://124.220.36.95:6033/stock_trading_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
     username: root
-    password: root
+    password: Root.123456
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
 
   data:
     mongodb:
-      host: localhost
+      host: 124.220.36.95
       port: 27017
       database: stock_trading_test
-      authentication-database: admin
+      username: admin
+      password: Root.123456
     redis:
-      host: localhost
+      host: 124.220.36.95
       port: 6379
+      password: Root.123456
       database: 0
 
 tuShare:
@@ -25,3 +33,4 @@ tuShare:
 logging:
   level:
     com.stock: DEBUG
+    org.hibernate: INFO
