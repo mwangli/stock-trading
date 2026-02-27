@@ -1,12 +1,12 @@
 package com.stock.databus;
 
-import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
 
 @SpringBootApplication
-@MapperScan("com.stock.databus.repository")
+@EnableJpaRepositories("com.stock.databus.repository")
 @EnableMongoRepositories("com.stock.databus.repository")
 public class StockDatabusApplication {
 

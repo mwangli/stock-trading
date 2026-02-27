@@ -10,7 +10,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -28,7 +27,7 @@ public class StockCollector {
         log.info("开始从Tushare采集股票列表...");
         try {
             List<StockInfo> stocks = tushareClient.fetchStockList();
-            if (stocks.isEmpty()) {
+            if (stocks == null || stocks.isEmpty()) {
                 log.warn("未获取到股票数据");
                 return 0;
             }
@@ -37,13 +36,16 @@ public class StockCollector {
             for (StockInfo stock : stocks) {
                 StockInfo existing = stockRepository.findByCode(stock.getCode());
                 if (existing != null) {
+                    // 更新
                     stock.setId(existing.getId());
                     stock.setCreateTime(existing.getCreateTime());
-                    stockRepository.updateById(stock);
+                    stock.setUpdateTime(LocalDateTime.now());
                 } else {
+                    // 新增
                     stock.setCreateTime(LocalDateTime.now());
-                    stockRepository.insert(stock);
+                    stock.setUpdateTime(LocalDateTime.now());
                 }
+                stockRepository.save(stock);
                 count++;
             }
             log.info("成功采集 {} 只股票", count);
@@ -59,7 +61,7 @@ public class StockCollector {
         log.info("开始采集股票 {} 历史数据, 天数: {}", stockCode, days);
         try {
             List<StockPrice> prices = tushareClient.fetchDailyKlines(stockCode, days);
-            if (prices.isEmpty()) {
+            if (prices == null || prices.isEmpty()) {
                 log.warn("未获取到历史数据");
                 return 0;
             }

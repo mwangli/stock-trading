@@ -10,9 +10,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -61,8 +61,8 @@ public class StockRepositoryTest {
         stock.setCreateTime(LocalDateTime.now());
 
         // 保存到数据库
-        int result = stockRepository.insert(stock);
-        assertTrue(result > 0, "插入应该成功");
+        StockInfo save = stockRepository.save(stock);
+        assertTrue(save.getId() > 0, "插入应该成功");
 
         // 从数据库查询
         StockInfo found = stockRepository.findByCode("600001");
@@ -88,7 +88,7 @@ public class StockRepositoryTest {
 
         // 计算涨跌幅
         BigDecimal increaseRate = closePrice.subtract(openPrice)
-                .divide(openPrice, 4, BigDecimal.ROUND_HALF_UP)
+                .divide(openPrice, 4, RoundingMode.HALF_UP)
                 .multiply(new BigDecimal("100"));
 
         // 验证涨跌幅计算结果为5%
@@ -97,7 +97,7 @@ public class StockRepositoryTest {
         // 测试跌的情况
         BigDecimal closePrice2 = new BigDecimal("95.00");
         BigDecimal increaseRate2 = closePrice2.subtract(openPrice)
-                .divide(openPrice, 4, BigDecimal.ROUND_HALF_UP)
+                .divide(openPrice, 4, RoundingMode.HALF_UP)
                 .multiply(new BigDecimal("100"));
 
         // 验证跌5%
@@ -119,7 +119,7 @@ public class StockRepositoryTest {
         normalStock.setIsTradable(1);
         normalStock.setDeleted("0");
         normalStock.setCreateTime(LocalDateTime.now());
-        stockRepository.insert(normalStock);
+        stockRepository.save(normalStock);
 
         // 插入ST股票
         StockInfo stStock = new StockInfo();
@@ -130,7 +130,7 @@ public class StockRepositoryTest {
         stStock.setIsTradable(0);
         stStock.setDeleted("0");
         stStock.setCreateTime(LocalDateTime.now());
-        stockRepository.insert(stStock);
+        stockRepository.save(stStock);
 
         // 插入*ST股票
         StockInfo starStStock = new StockInfo();
@@ -141,14 +141,14 @@ public class StockRepositoryTest {
         starStStock.setIsTradable(0);
         starStStock.setDeleted("0");
         starStStock.setCreateTime(LocalDateTime.now());
-        stockRepository.insert(starStStock);
+        stockRepository.save(starStStock);
 
         // 查询可交易股票
         List<StockInfo> tradableStocks = stockRepository.findTradableStocks(100);
 
         // 验证ST/*ST股票被过滤
         boolean hasStStock = tradableStocks.stream()
-                .anyMatch(s -> s.getName() != null && 
+                .anyMatch(s -> s.getName() != null &&
                     (s.getName().contains("ST") || s.getName().contains("*ST")));
 
         assertFalse(hasStStock, "可交易股票列表中不应包含ST/*ST股票");
@@ -161,7 +161,7 @@ public class StockRepositoryTest {
     @DisplayName("根据代码查询股票")
     public void testFindByCode() {
         // 插入测试数据
-        stockRepository.insert(testStock);
+        stockRepository.save(testStock);
 
         // 查询
         StockInfo found = stockRepository.findByCode("600000");
@@ -178,7 +178,7 @@ public class StockRepositoryTest {
     @DisplayName("查询可交易股票列表")
     public void testFindTradableStocks() {
         // 插入测试数据
-        stockRepository.insert(testStock);
+        stockRepository.save(testStock);
 
         // 查询可交易股票
         List<StockInfo> tradableStocks = stockRepository.findTradableStocks(10);
@@ -201,7 +201,7 @@ public class StockRepositoryTest {
     @DisplayName("统计股票总数")
     public void testCountAll() {
         // 插入测试数据
-        stockRepository.insert(testStock);
+        stockRepository.save(testStock);
 
         // 统计
         int count = stockRepository.countAll();
@@ -225,7 +225,7 @@ public class StockRepositoryTest {
         shStock.setIsTradable(1);
         shStock.setDeleted("0");
         shStock.setCreateTime(LocalDateTime.now());
-        stockRepository.insert(shStock);
+        stockRepository.save(shStock);
 
         // 插入深圳股票
         StockInfo szStock = new StockInfo();
@@ -236,7 +236,7 @@ public class StockRepositoryTest {
         szStock.setIsTradable(1);
         szStock.setDeleted("0");
         szStock.setCreateTime(LocalDateTime.now());
-        stockRepository.insert(szStock);
+        stockRepository.save(szStock);
 
         // 查询上海股票
         List<StockInfo> shStocks = stockRepository.findByMarket("SH");
@@ -264,15 +264,15 @@ public class StockRepositoryTest {
     @DisplayName("更新股票信息")
     public void testUpdateStock() {
         // 插入
-        stockRepository.insert(testStock);
+        stockRepository.save(testStock);
 
         // 修改
         testStock.setName("修改后的名称");
         testStock.setPrice(new BigDecimal("20.00"));
-        int updateResult = stockRepository.updateById(testStock);
+        stockRepository.save(testStock);
 
         // 验证
-        assertTrue(updateResult > 0, "更新应该成功");
+        assertNotNull(testStock.getId(), "更新应该成功");
 
         // 查询验证
         StockInfo updated = stockRepository.findByCode("600000");
@@ -287,7 +287,7 @@ public class StockRepositoryTest {
     @DisplayName("删除股票（逻辑删除）")
     public void testDeleteStock() {
         // 插入
-        stockRepository.insert(testStock);
+        stockRepository.save(testStock);
 
         // 验证插入成功
         StockInfo beforeDelete = stockRepository.findByCode("600000");
@@ -295,10 +295,10 @@ public class StockRepositoryTest {
 
         // 逻辑删除
         testStock.setDeleted("1");
-        int deleteResult = stockRepository.updateById(testStock);
+        stockRepository.save(testStock);
 
         // 验证
-        assertTrue(deleteResult > 0, "删除应该成功");
+        assertNotNull(testStock.getId(), "删除应该成功");
 
         // 查询验证（逻辑删除后应该查不到）
         StockInfo afterDelete = stockRepository.findByCode("600000");
