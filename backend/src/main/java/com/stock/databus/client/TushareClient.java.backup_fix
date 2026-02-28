@@ -1,0 +1,322 @@
+package com.stock.databus.client;
+
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
+import com.stock.databus.entity.StockInfo;
+import com.stock.databus.entity.StockPrice;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+import java.math.BigDecimal;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Slf4j
+@Component
+public class TushareClient {
+
+    private static final String TUSHARE_API_URL = "http://api.tushare.pro";
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
+
+    private final HttpClient httpClient;
+
+    @Value("#{environment['tuShare.keys'] != null ? environment['tuShare.keys'] : systemProperties['tuShare.keys'] ?: '${tuShare.keys:null}'}")
+    private List<String> tokens;
+
+    private volatile int currentTokenIndex = 0;  // 当前使用的token索引
+
+    // 记录上次限频时间，用于实现简单的冷却时间控制
+    private volatile long lastRateLimitTime = 0;
+    private static final long RATE_LIMIT_COOLDOWN = 61000; // 61秒冷却时间
+
+    // 构造函数
+    public TushareClient() {
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .build();
+        // 初始化时处理没有API密钥的情况
+        if (tokens == null || tokens.toString().equals("null")) {
+            tokens = Collections.emptyList();
+        }
+    }
+
+    // 返回当前可用的api token，并支持轮换
+    private String getCurrentToken() {
+        // 检查是否需要等待冷却
+        long now = System.currentTimeMillis();
+        if (now - lastRateLimitTime < RATE_LIMIT_COOLDOWN) {
+            long waitTime = RATE_LIMIT_COOLDOWN - (now - lastRateLimitTime);
+            log.info("检测到限频或需等待，等待 {} 毫秒后再继续", waitTime);
+            try {
+                Thread.sleep(waitTime);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;  // 由于中断返回null
+            }
+        }
+
+        // 如果没有配置API密钥，返回null
+        if (tokens == null || tokens.isEmpty() || tokens.toString().equals("null")) {
+            log.warn("没有配置Tushare API密钥！请检查application.yml中是否设置了tuShare.keys");
+            return null;
+        }
+
+        String token = tokens.get(currentTokenIndex % tokens.size());
+        log.debug("使用API密钥 #{}", currentTokenIndex);
+        return token;
+    }
+
+    // 当检测到限频时，轮换到下一个可用的API密钥
+    private void rotateToNextToken() {
+        if (tokens != null && tokens.size() > 1) {
+            currentTokenIndex = (currentTokenIndex + 1) % tokens.size();
+            log.info("API限频触发，切换到密钥 #{}", currentTokenIndex);
+            lastRateLimitTime = System.currentTimeMillis(); // 记录限频时间以实现冷却
+        }
+    }
+
+    /**
+     * 调用Tushare API (使用JDK HttpClient)
+     */
+    private JSONObject callApi(String apiName, Map<String, Object> params) {
+        int maxRetries = 5;
+        int retryDelay = 3000; // 3秒
+        
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                Map<String, Object> request = new HashMap<>();
+                request.put("api_name", apiName);
+                String currentToken = getCurrentToken();
+                if (currentToken == null) {
+                    log.warn("未能获取有效的API Token");
+                    return null;
+                }
+                request.put("token", currentToken);
+                request.put("params", params);
+
+                String requestBody = JSON.toJSONString(request);
+
+                HttpRequest httpRequest = HttpRequest.newBuilder()
+                        .uri(URI.create(TUSHARE_API_URL))
+                        .header("Content-Type", "application/json")
+                        .timeout(Duration.ofSeconds(60))
+                        .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(httpRequest,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() != 200) {
+                    log.error("Tushare API调用失败，HTTP状态码: {}", response.statusCode());
+                    if (attempt < maxRetries - 1) {
+                        log.warn("尝试重试 ({} / {})", attempt + 1, maxRetries);
+                        try {
+                            Thread.sleep(retryDelay);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            return null;
+                        }
+                        retryDelay *= 2;
+                        continue;
+                    }
+                    return null;
+                }
+
+                JSONObject jsonResponse = JSON.parseObject(response.body());
+                String errorMsg = jsonResponse.getString("msg");
+                int code = jsonResponse.getIntValue("code", -1);
+                
+                // 检查是否触发速率限制 (包括各种限速错误信息)
+                boolean isRateLimited = (errorMsg != null && (
+                    errorMsg.contains("过于频繁") || 
+                    errorMsg.contains("接口调用频率") ||
+                    errorMsg.contains("频率超过限制") ||
+                    errorMsg.contains("权限拒绝"))
+                );
+
+                if (isRateLimited) {
+                    log.warn("触发速率限制: {}，尝试API密钥轮换并重试 ({} / {})", errorMsg, attempt + 1, maxRetries);
+                    // 轮换到下一个可用的API密钥
+                    rotateToNextToken();
+                    if (attempt < maxRetries - 1) {
+                        try {
+                            Thread.sleep(retryDelay);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            return null;
+                        }
+                        retryDelay *= 2; // 指数退避
+                        continue;
+                    }
+                }
+
+                if (code != 0) {
+                    log.error("Tushare API返回错误: {}", errorMsg);
+                    // 如果不是限速错误，直接返回
+                    if (!isRateLimited) {
+                        return null;
+                    }
+                }
+
+                return jsonResponse;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.error("调用Tushare API被中断", e);
+                return null;
+            } catch (Exception e) {
+                log.error("调用Tushare API异常: {}", e.getMessage());
+                if (attempt < maxRetries - 1) {
+                    try {
+                        Thread.sleep(retryDelay);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return null;
+                    }
+                    retryDelay *= 2;
+                } else {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 获取股票列表
+     */
+    public List<StockInfo> fetchStockList() {
+        log.info("开始获取股票列表...");
+        try {
+            Map<String, Object> params = new HashMap<>();
+            params.put("list_status", "L");
+            params.put("fields", "ts_code,symbol,name,market,st,trade,pre_close,area,industry,list_date");
+
+            JSONObject response = callApi("stock_basic", params);
+
+            if (response == null) {
+                log.warn("调用股票基本接口失败，返回空结果");
+                return new ArrayList<>();
+            }
+
+            JSONArray data = response.getJSONArray("data");
+            if (data == null || data.isEmpty()) {
+                log.warn("未获取到股票数据");
+                return new ArrayList<>();
+            }
+
+            List<StockInfo> stocks = new ArrayList<>();
+            for (int i = 0; i < data.size(); i++) {
+                JSONObject item = data.getJSONObject(i);
+                StockInfo stock = new StockInfo();
+
+                // Tushare返回的ts_code格式: 000001.SZ
+                String tsCode = item.getString("ts_code");
+                if (tsCode != null && tsCode.contains(".")) {
+                    stock.setCode(tsCode.split("\\.")[0]);
+                }
+
+                stock.setName(item.getString("name"));
+                stock.setMarket(item.getString("market"));
+                stock.setIsSt("ST".equals(item.getString("st")) ? 1 : 0);
+                stock.setIsTradable("L".equals(item.getString("trade")) ? 1 : 0);
+                stock.setArea(item.getString("area"));
+                stock.setIndustry(item.getString("industry"));
+                stock.setListDate(item.getString("list_date"));
+                stock.setDeleted("0");
+
+                stocks.add(stock);
+            }
+
+            log.info("成功获取 {} 只股票", stocks.size());
+            return stocks;
+        } catch (Exception e) {
+            log.error("获取股票列表时出现异常", e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 获取历史K线数据
+     */
+    public List<StockPrice> fetchDailyKlines(String stockCode, int days) {
+        log.info("开始获取股票 {} 的历史K线数据, 天数: {}", stockCode, days);
+        try {
+            // 计算日期范围
+            LocalDate endDate = LocalDate.now();
+            LocalDate startDate = endDate.minusDays(days);
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("ts_code", stockCode + ".SZ");
+            params.put("start_date", startDate.format(DATE_FORMATTER));
+            params.put("end_date", endDate.format(DATE_FORMATTER));
+            params.put("fields", "ts_code,trade_date,open,high,low,close,vol,amount");
+
+            JSONObject response = callApi("daily", params);
+
+            if (response == null) {
+                log.warn("调用K线接口失败，返回空结果");
+                return new ArrayList<>();
+            }
+
+            JSONArray data = response.getJSONArray("data");
+            if (data == null || data.isEmpty()) {
+                log.warn("未获取到股票 {} 的历史数据", stockCode);
+                return new ArrayList<>();
+            }
+
+            List<StockPrice> prices = new ArrayList<>();
+            for (int i = 0; i < data.size(); i++) {
+                JSONObject item = data.getJSONObject(i);
+                StockPrice price = new StockPrice();
+
+                String tsCode = item.getString("ts_code");
+                if (tsCode != null && tsCode.contains(".")) {
+                    price.setCode(tsCode.split("\\.")[0]);
+                }
+
+                // 转换日期格式: yyyyMMdd -> LocalDate
+                String tradeDate = item.getString("trade_date");
+                if (tradeDate != null && tradeDate.length() == 8) {
+                    price.setDate(LocalDate.parse(tradeDate, DateTimeFormatter.ofPattern("yyyyMMdd")));
+                }
+
+                price.setTodayOpenPrice(item.getBigDecimal("open"));
+                price.setPrice1(item.getBigDecimal("high"));
+                price.setPrice2(item.getBigDecimal("low"));
+                price.setPrice3(item.getBigDecimal("close"));
+                price.setPrice4(item.getBigDecimal("close"));
+                price.setTradingVolume(item.getBigDecimal("vol"));
+                price.setTradingAmount(item.getBigDecimal("amount"));
+
+                // 计算涨跌幅
+                BigDecimal close = item.getBigDecimal("close");
+                BigDecimal preClose = item.getBigDecimal("pre_close");
+                if (close != null && preClose != null && preClose.compareTo(BigDecimal.ZERO) != 0) {
+                    price.setIncreaseRate(close.subtract(preClose).divide(preClose, 4, java.math.RoundingMode.HALF_UP)
+                            .multiply(BigDecimal.valueOf(100)));
+                    price.setChangeAmount(close.subtract(preClose));
+                }
+
+                prices.add(price);
+            }
+
+            log.info("成功获取股票 {} 的 {} 条历史数据", stockCode, prices.size());
+            return prices;
+        } catch (Exception e) {
+            log.error("获取股票历史K线数据时出现异常", e);
+            return new ArrayList<>();
+        }
+    }
+}

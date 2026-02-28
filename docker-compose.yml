@@ -2,27 +2,11 @@ version: '3.8'
 
 services:
   # ===================
-  # Frontend Service
-  # ===================
-  frontend:
-    build:
-      context: ./stock-frontend
-      dockerfile: Dockerfile
-    container_name: stock-frontend
-    ports:
-      - "8000:80"
-    depends_on:
-      - backend
-    networks:
-      - stock-network
-    restart: unless-stopped
-
-  # ===================
-  # Backend Service
+  # Backend Service (with Frontend bundled)
   # ===================
   backend:
     build:
-      context: ./stock-backend
+      context: ./backend
       dockerfile: Dockerfile
     container_name: stock-backend
     ports:
@@ -34,42 +18,13 @@ services:
       - SPRING_REDIS_HOST=redis
       - SPRING_REDIS_PORT=6379
       - SPRING_REDIS_PASSWORD=Root.123456
-      - STOCK_AI_SERVICE_URL=http://stock-service:8001
     depends_on:
       - mysql
       - mongo
       - redis
-      - stock-service
     networks:
       - stock-network
     restart: unless-stopped
-
-  # ===================
-  # Python AI Service
-  # ===================
-  stock-service:
-    build:
-      context: ./stock-service
-      dockerfile: Dockerfile
-    container_name: stock-ai-service
-    ports:
-      - "8001:8001"
-    environment:
-      - PYTHONUNBUFFERED=1
-      - DEBUG=false
-    volumes:
-      - stock-service-models:/app/models
-      - stock-service-data:/app/data
-      - stock-service-logs:/app/logs
-    networks:
-      - stock-network
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 2G
 
   # ===================
   # MySQL Database
@@ -82,10 +37,9 @@ services:
       - MYSQL_DATABASE=stock_trading
       - MYSQL_ROOT_HOST=%
     ports:
-      - "6033:3306"
+      - "3306:3306"
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./infrastructure/mysql/init:/docker-entrypoint-initdb.d
     networks:
       - stock-network
     restart: unless-stopped
@@ -137,6 +91,3 @@ volumes:
   mysql-data:
   mongo-data:
   redis-data:
-  stock-service-models:
-  stock-service-data:
-  stock-service-logs:

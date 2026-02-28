@@ -1,51 +1,57 @@
-# AI Shopping - Frontend
+# Ant Design Pro
 
-基于 Ant Design Pro + React 的前端项目
+This project is initialized with [Ant Design Pro](https://pro.ant.design). Follow is the quick guide for how to use.
 
-## 技术栈
+## Environment Prepare
 
-- **React**: 18.x
-- **Ant Design**: 5.x
-- **Umi**: 4.x
-- **TypeScript**: 5.x
-
-## 快速开始
-
-### 安装依赖
+Install `node_modules`:
 
 ```bash
 npm install
 ```
 
-### 开发环境启动
+or
 
 ```bash
-npm run dev
+yarn
 ```
 
-### 构建生产环境
+## Provided Scripts
+
+Ant Design Pro provides some useful script to help you quick start and build with web project, code style check and test.
+
+Scripts provided in `package.json`. It's safe to modify or add additional script:
+
+### Start project
+
+```bash
+npm start
+```
+
+### Build project
 
 ```bash
 npm run build
 ```
 
-## 项目结构
+### Check code style
 
-```
-frontend/
-├── src/
-│   ├── pages/          # 页面组件
-│   ├── components/     # 公共组件
-│   ├── services/       # API 服务
-│   ├── models/         # 全局状态
-│   ├── utils/          # 工具函数
-│   └── app.tsx         # 应用入口
-├── config/             # 配置文件
-├── public/             # 静态资源
-├── .umirc.ts           # Umi 配置
-└── package.json        # 项目依赖
+```bash
+npm run lint
 ```
 
-## 后端代理配置
+You can also use script to auto fix some lint error:
 
-开发环境已配置代理，请求 `/api` 会自动转发到 `http://localhost:8080`
+```bash
+npm run lint:fix
+```
+
+### Test code
+
+```bash
+npm test
+```
+
+## More
+
+You can view full document on our [official website](https://pro.ant.design). And welcome any feedback in our [github](https://github.com/ant-design/ant-design-pro).
