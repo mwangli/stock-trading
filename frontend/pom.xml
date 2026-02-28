@@ -1,65 +1,59 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <!-- 继承父项目 -->
     <parent>
-        <groupId>com.example</groupId>
-        <artifactId>ai-shopping</artifactId>
+        <groupId>com.stock</groupId>
+        <artifactId>stock-trading-parent</artifactId>
         <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <!-- 模块信息 -->
-    <artifactId>ai-shopping-frontend</artifactId>
-    <name>AI Shopping - Frontend</name>
-    <description>前端模块 - React + Ant Design Pro</description>
+    <artifactId>stock-trading-frontend</artifactId>
     <packaging>pom</packaging>
+
+    <name>Stock Trading Frontend</name>
+    <description>AI股票自动交易系统 - 前端 (React + Ant Design Pro)</description>
 
     <build>
         <plugins>
-            <!-- Frontend Maven Plugin - 用于构建前端项目 -->
             <plugin>
-                <groupId>com.github.eirslett</groupId>
-                <artifactId>frontend-maven-plugin</artifactId>
-                <version>1.14.2</version>
-                <configuration>
-                    <workingDirectory>${project.basedir}</workingDirectory>
-                    <installDirectory>target</installDirectory>
-                </configuration>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
                 <executions>
-                    <!-- 安装 Node.js 和 npm -->
-                    <execution>
-                        <id>install node and npm</id>
-                        <goals>
-                            <goal>install-node-and-npm</goal>
-                        </goals>
-                        <configuration>
-                            <nodeVersion>v18.19.0</nodeVersion>
-                            <npmVersion>10.2.3</npmVersion>
-                        </configuration>
-                    </execution>
-                    <!-- 安装依赖 -->
                     <execution>
                         <id>npm install</id>
-                        <goals>
-                            <goal>npm</goal>
-                        </goals>
+                        <phase>generate-resources</phase>
                         <configuration>
-                            <arguments>install</arguments>
+                            <target>
+                                <exec executable="cmd" dir="${project.basedir}">
+                                    <arg value="/c"/>
+                                    <arg value="npm install"/>
+                                </exec>
+                            </target>
                         </configuration>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
                     </execution>
-                    <!-- 构建项目 -->
                     <execution>
-                        <id>npm run build</id>
-                        <goals>
-                            <goal>npm</goal>
-                        </goals>
+                        <id>npm build</id>
+                        <phase>compile</phase>
                         <configuration>
-                            <arguments>run build</arguments>
+                            <target>
+                                <exec executable="cmd" dir="${project.basedir}">
+                                    <arg value="/c"/>
+                                    <arg value="npm run build"/>
+                                </exec>
+                            </target>
                         </configuration>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
                     </execution>
                 </executions>
             </plugin>

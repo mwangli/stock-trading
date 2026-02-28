@@ -1,303 +1,130 @@
-<<<<<<< HEAD
-# AGENTS.md - Stock Trading Project Guidelines
+# AGENTS.md - AI 股票交易系统
 
-## 项目变更要求
-所有针对代码实现的变动，都应该遵循以下的顺序流程
-1. 根据提示词，分析变更点，先修改需求和设计文档
-2. 再根据需求和设计文档修改代码
-3. 根据变动代码然后补充测试用例
-4. 最后再执行相关流程的验证
-=======
-# AGENTS.md - AI Shopping Project Guidelines
+## 项目结构
 
-## Build Commands
-
-### Maven (Backend)
-```bash
-# Full build
-D:\apache-maven-3.6.2\bin\mvn clean install
-
-# Compile only
-D:\apache-maven-3.6.2\bin\mvn clean compile
-
-# Run app
-D:\apache-maven-3.6.2\bin\mvn spring-boot:run -pl backend
-
-# Run all tests
-D:\apache-maven-3.6.2\bin\mvn test
-
-# Run single test class
-D:\apache-maven-3.6.2\bin\mvn test -pl backend -Dtest=ClassName
-
-# Run single test method
-D:\apache-maven-3.6.2\bin\mvn test -pl backend -Dtest=ClassName#methodName
-
-# Package without tests
-D:\apache-maven-3.6.2\bin\mvn clean package -DskipTests
+```
+stock-trading/
+├── backend/              # Spring Boot 3.2 + Java 17 后端服务
+│   └── src/main/java/com/stock/
+│       ├── config/        # 全局配置
+│       ├── databus/       # 数据采集模块
+│       │   └── controller # 前端路由控制器
+│       ├── models/        # AI模型模块
+│       │   └── controller # AI模型相关控制器
+│       ├── strategy/      # 交易策略模块
+│       ├── executor/      # 交易执行模块
+│       └── (根包)         # 主启动类
+│
+├── frontend/            # React + Ant Design Pro 前端
+│   └── src/
+│       ├── pages/       # 页面组件
+│       ├── components/  # 通用组件
+│       └── services/    # API服务
+│
+├── mobile/              # React Native 移动端
+│
+└── documents/           # 设计文档
 ```
 
-### npm (Frontend)
+## 构建命令
+
+### Backend
+
+```bash
+cd backend
+
+# 编译并打包
+mvn clean package
+
+# 启动应用
+mvn spring-boot:run
+
+# 运行测试
+mvn test
+
+# 跳过测试打包
+mvn clean package -DskipTests
+```
+
+### Frontend
+
 ```bash
 cd frontend
 
-# Install dependencies
+# 安装依赖
 npm install
+# 或使用 pnpm
+pnpm install
 
-# Start dev server
-npm run dev
+# 启动开发服务器
+npm start
 
-# Production build
+# 构建生产版本
 npm run build
 
-# Format with Prettier
-npm run format
+# 代码检查
+npm run lint
 
-# Setup Umi (post-install)
-npm run setup
+# 修复代码问题
+npm run lint:fix
 ```
 
-## Code Style
+## 代码规范
 
 ### Java (Backend)
 
-**Naming**: PascalCase classes, camelCase methods/variables, UPPER_SNAKE_CASE constants, lowercase packages.
-
-**Imports**: Group by java.*, javax.*, org.*, com.*. No wildcards. Static imports last. Remove unused.
-
-**Formatting**: 4 spaces indent, 120 char line limit, K&R braces, 1 blank line between methods, 2 between classes.
-
-**Types**: Use `var` only for obvious types. REST controllers use `@RestController` + `@RequestMapping`. Use `@Valid` for validation, `@Slf4j` for logging. Public APIs return `ResponseEntity<T>`.
-
-**ORM (MyBatis-Plus)**:
-- Entities use `@TableName` and `@TableField` annotations
-- Extend `BaseMapper<T>` for basic CRUD operations
-- Use `QueryWrapper<T>` or `LambdaQueryWrapper<T>` for complex queries
-- Use `@TableId` for primary key fields
-- Use `IService<T>` and `ServiceImpl<M, T>` for service layer
-
-**Error Handling**: Use `@ControllerAdvice` globally. Custom exceptions extend `RuntimeException`. Error responses include code, message, timestamp, path. Never expose stack traces. Use `Optional<T>` not null.
-
-### TypeScript/React (Frontend)
-
-**Naming**: PascalCase components, camelCase hooks (use* prefix), PascalCase types, match filenames to exports.
-
-**Imports**: React first, third-party second, absolute (@/*) third, relative last. Sort alphabetically within groups.
-
-**Formatting**: 2 spaces indent, single quotes, trailing commas, semicolons required, 100 char line limit.
-
-**Types**: Strict mode enabled. No `any` (use `unknown`). Define interfaces for API responses. Use discriminated unions for complex state.
-
-**React**: Functional components with hooks. Define Props interfaces. Use `React.FC<Props>`. Destructure props in parameters. Custom hooks for reusable logic.
->>>>>>> 88da1874eaf261d26904ae1527d3ca40fe0a0862
-
-## Project Structure
-
-```
-<<<<<<< HEAD
-stock-trading/
-├── stock-backend/          # Java Spring Boot 3.2.2 (JDK 17)
-├── stock-frontend/         # React 18 + TypeScript 4.9 + UmiJS 4.x
-├── stock-service/          # Python FastAPI AI service
-└── documents/              # Design documents
-```
-
-## Build Commands
-
-### Backend (stock-backend/)
-
-```bash
-cd stock-backend
-set JAVA_HOME=C:\Users\MS\.jdks\jdk-17.0.12
-D:\apache-maven-3.6.2\bin\mvn.cmd clean install              # Compile and package
-D:\apache-maven-3.6.2\bin\mvn.cmd spring-boot:run           # Run application
-D:\apache-maven-3.6.2\bin\mvn.cmd test                      # Run all tests
-D:\apache-maven-3.6.2\bin\mvn.cmd test -Dtest=ClassName     # Run single test class
-D:\apache-maven-3.6.2\bin\mvn.cmd test -Dtest=ClassName#method  # Run single test method
-D:\apache-maven-3.6.2\bin\mvn.cmd clean install -DskipTests # Skip tests during build
-```
-
-> **注意**: 需要 JDK 17 才能编译此项目，当前环境已配置 JDK 17: `C:\Users\MS\.jdks\jdk-17.0.12`
-
-### Frontend (stock-frontend/)
-
-```bash
-cd stock-frontend
-pnpm install                  # Install dependencies
-npm start                     # Start dev server
-npm run build                 # Build for production
-npm test                      # Run all tests
-npm run jest -- path/to/test.tsx      # Run single test file
-npm run jest -- -t "pattern"  # Run tests matching pattern
-npm run tsc                   # Type check
-npm run lint                  # Lint code
-npm run lint:fix              # Fix lint issues
-npm run prettier              # Format code
-```
-
-### Python AI Service (stock-service/)
-
-```bash
-cd stock-service
-python -m venv venv
-source venv/bin/activate       # Linux/Mac (Windows: venv\Scripts\activate)
-pip install -r requirements.txt
-pytest                         # Run tests
-pytest tests/test_file.py      # Run single test file
-pytest --cov=app              # Run with coverage
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
-```
-
-## Code Style Guidelines
-
-### Java (Backend)
-
-- **Java Version**: 17 (Spring Boot 3.2.2)
-- **Naming**: CamelCase classes/methods, UPPER_SNAKE constants
+- **Java 版本**: 17 (Spring Boot 3.2.2)
+- **命名**: CamelCase 类/方法, UPPER_SNAKE 常量
 - **Lombok**: `@Data`, `@Slf4j`, `@RequiredArgsConstructor`
-- **Imports**: No wildcards, static imports last
-- **Dependencies**: JPA (Hibernate), Hutool, FastJSON2, EasyExcel, SpringDoc OpenAPI
-- **Error Handling**: `@ControllerAdvice` with `Response<T>` wrapper
-- **API**: RESTful endpoints, `@RequestBody` for POST/PUT, `@PathVariable` for IDs
-- **Logging**: `@Slf4j` with log.info() for requests, log.error() for exceptions
-- **DTOs**: Nested static classes within controllers
-- **Service**: Interface + Impl pattern, `@RequiredArgsConstructor` for DI
+- **导入**: 无通配符, 静态导入放最后
+- **错误处理**: `@ControllerAdvice` + `Response<T>` 封装
+- **API**: RESTful, `@RequestBody` POST/PUT, `@PathVariable` ID
 
 ### TypeScript/React (Frontend)
 
-- **Style**: Prettier config (singleQuote, trailingComma: 'all', printWidth: 100)
-- **Imports**: `@/` alias for src/, group: React/libs/components/utils
-- **Components**: Functional with hooks, PascalCase naming
-- **Types**: Strict TypeScript, always define prop interfaces, use `type`
-- **Formatting**: LF line endings, proseWrap: 'never', endOfLine: 'lf'
-- **Framework**: UmiJS 4.x, Ant Design 5.x, React 18.x, Pro Components
-- **State**: React hooks (useState, useRef, useEffect), no class components
-- **API**: async/await with try-catch, errors via Ant Design notification
-- **UI**: Ant Design, ProTable for grids, charts from @ant-design/charts
-- **Intl**: `useIntl()` hook and `<FormattedMessage>`
+- **框架**: React 18, Ant Design Pro 5, UmiJS 4
+- **命名**: PascalCase 组件, camelCase hooks (use* 前缀)
+- **类型**: 严格模式, 定义接口不使用 `any`
+- **组件**: 函数式组件 + Hooks
+- **状态**: useState, useRef, useEffect
 
-### Python AI Service
+## 模块架构
 
-- **Framework**: FastAPI 0.109.x, Pydantic 2.x
-- **ML**: PyTorch 2.x, TensorFlow 2.15, scikit-learn, transformers
-- **Structure**: `app/api/` (routes), `app/services/` (logic), `app/core/` (config)
-- **Async**: async/await for I/O, `@asynccontextmanager` for lifespan
-- **Logging**: Python logging with structured format
-- **Errors**: FastAPI exception handlers, structured responses
-- **Config**: Pydantic Settings with `.env`, case_sensitive=True
-- **Typing**: Type hints everywhere, `List[Type]` from typing
+| 模块 | 包路径 | 功能 |
+|------|--------|------|
+| 数据采集 | com.stock.databus | 股票数据获取、新闻采集 |
+| AI模型 | com.stock.models | LSTM预测、情感分析 |
+| 交易策略 | com.stock.strategy | 决策引擎、股票筛选 |
+| 交易执行 | com.stock.executor | 订单执行、风险控制 |
+| 全局配置 | com.stock.config |全局配置和Web资源处理 |
 
-## Testing Standards
+## 关键端口
 
-### Java
-- JUnit 5 (JUnit Jupiter), naming: `*Test.java`
-- Mock with Mockito, location: `src/test/java/`
-- Integration: `@SpringBootTest`, unit: mock dependencies
+- 后端 API: http://localhost:8080
+- 前端: http://localhost:8000
+- 代理: `/api/*` → `http://localhost:8080`
 
-### TypeScript/React
-- Jest with React Testing Library
-- Files: `*.test.tsx` or `*.spec.tsx`
-- Location: Co-located or `__tests__/`
-- Coverage: `npm run test:coverage`
+## 开发流程
 
-### Python
-- pytest with pytest-asyncio for async tests
-- Files: `test_*.py` or `*_test.py`
-- Location: `tests/` folder or co-located
-- Fixtures in `conftest.py`
+1. 修改代码前先更新设计文档
+2. 编写测试用例
+3. 实现代码
+4. 运行测试验证
+5. 确保 lint 通过
+6. 提交代码
 
-## Error Handling
+## Git 提交规范
 
-### Backend (Java)
-- Global exception handler with `@ControllerAdvice`
-- Return `Response<T>` wrapper with success/error status
-- Log errors at ERROR level with exception details
-- HTTP: 200 success, 400/404 client errors, 500 server errors
+```
+type(scope): subject
 
-### Frontend (React)
-- API errors with try-catch blocks
-- Messages via Ant Design notification
-- Loading states for async operations
-
-### Python Service
-- FastAPI exception handlers (`@app.exception_handler`)
-- Structured error responses with error codes
-- Use loguru or standard logging with appropriate levels
-
-## Key Ports
-
-- Backend API: http://localhost:8080
-- Frontend: http://localhost:8000
-- Python AI: http://localhost:8001
-- Proxy: `/api/*` → `http://localhost:8080`
-
-## Development Workflow
-
-1. Run tests before committing
-2. Ensure linting passes (`npm run lint` for frontend)
-3. Type check TypeScript (`npm run tsc`)
-4. Format code (`npm run prettier` for frontend)
-5. Verify builds: `mvn clean install`, `npm run build`
-
-## Module Architecture
-
-- **Data Collection**: Stock data sync, AKShare/AKTools integration
-- **Prediction**: LSTM model service for price prediction
-- **Sentiment**: FinBERT-based sentiment analysis
-- **Trading**: Order execution, account management
-- **Risk**: Risk control and position management
-- **Decision**: Trading signal generation engine
-=======
-ai-shopping/
-├── backend/              # Spring Boot 3.0 + Java 17 + MyBatis-Plus
-│   └── src/main/java/com/example/aishopping/
-│       ├── config/       # Configuration (MyBatisPlusConfig)
-│       ├── controller/   # REST controllers
-│       ├── service/      # Business logic (extends ServiceImpl)
-│       ├── mapper/       # MyBatis-Plus mappers (extends BaseMapper)
-│       ├── entity/       # MyBatis-Plus entities (@TableName)
-│       ├── dto/          # Data transfer objects
-│       ├── exception/    # Custom exceptions
-│       └── util/         # Utilities
-│
-├── frontend/             # React 18 + Ant Design Pro
-│   └── src/
-│       ├── pages/        # Page components
-│       ├── components/   # Reusable components
-│       ├── services/     # API calls
-│       ├── models/       # Data models
-│       ├── utils/        # Utilities
-│       └── hooks/        # Custom hooks
-│
-└── doc/                  # Documentation
-    ├── requirements/     # PRD documents
-    └── design/           # Design documents
+类型: feat, fix, docs, style, refactor, test, chore
+示例: feat(databus): add stock price collection
 ```
 
-## Testing
+## 环境要求
 
-**Java**: Use JUnit 5. Test classes: `*Test`. Use `@SpringBootTest` for integration, `@WebMvcTest` for controllers. Mock with Mockito. Name: `shouldDoSomethingWhenCondition()`.
-
-**Frontend**: Jest + React Testing Library. Test files: `*.test.ts`. Test user interactions, not implementation. Mock APIs with MSW.
-
-## Git Workflow
-
-**Commits**: `type(scope): subject`. Types: feat, fix, docs, style, refactor, test, chore. Imperative mood, no period. Example: `feat(product): add search by name`
-
-**Before Commit**:
-1. Run tests: `mvn test` (backend), `npm test` (frontend)
-2. Format: `npm run format`
-3. Check console errors
-4. Review: `git diff`
-
-## Environment
-- **Java**: 17+
-- **Maven**: 3.6.2+ (at D:\apache-maven-3.6.2)
-- **Node.js**: 16+
-- **npm**: 8+
-
-## API Standards
-- Base path: `/api`
-- RESTful: GET/POST/PUT/DELETE
-- JSON request/response
-- Status codes: 200 OK, 201 Created, 400 Bad Request, 404 Not Found, 500 Server Error
->>>>>>> 88da1874eaf261d26904ae1527d3ca40fe0a0862
+- Java: 17+
+- Maven: 3.6+
+- Node.js: 16+
+- npm: 8+ 或 pnpm

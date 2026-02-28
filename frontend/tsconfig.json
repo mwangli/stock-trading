@@ -1,32 +1,23 @@
 {
   "compilerOptions": {
-    "target": "ES2015",
-    "module": "ESNext",
-    "lib": ["ES2015", "DOM"],
-    "jsx": "react-jsx",
+    "target": "esnext",
+    "module": "esnext",
     "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "strict": true,
-    "noImplicitAny": true,
-    "skipLibCheck": true,
+    "importHelpers": true,
+    "jsx": "preserve",
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "declarationMap": true,
     "sourceMap": true,
-    "baseUrl": ".",
+    "baseUrl": "./",
+    "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@@/*": ["./src/.umi/*"],
+      "@@test/*": ["./src/.umi-test/*"]
     }
   },
-  "include": [
-    "src/**/*",
-    "config/**/*",
-    ".umirc.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["./**/*.d.ts", "./**/*.ts", "./**/*.tsx"]
 }
