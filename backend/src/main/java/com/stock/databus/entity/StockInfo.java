@@ -1,57 +1,43 @@
 package com.stock.databus.entity;
 
-import jakarta.persistence.*;
 import lombok.Data;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 
+/**
+ * 股票基本信息实体
+ */
 @Data
-@Entity
-@Table(name = "stock_info")
+@Document(collection = "stock_info")
 public class StockInfo {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private String id;
 
-    @Column(length = 20, nullable = false)
+    /**
+     * 股票代码
+     */
     private String code;
 
-    @Column(length = 100)
+    /**
+     * 股票名称
+     */
     private String name;
 
-    @Column(length = 10)
-    private String market;
+    /**
+     * 上市日期
+     */
+    private LocalDate listDate;
 
-    @Column
-    private Integer isSt;
+    /**
+     * 总股本
+     */
+    private Long totalShares;
 
-    @Column
-    private Integer isTradable;
-
-    @Column(precision = 18, scale = 4)
-    private BigDecimal price;
-
-    @Column(precision = 18, scale = 4)
-    private BigDecimal increase;
-
-    @Column(name = "`delete`", length = 1)
-    private String deleted;
-
-    @Column
-    private LocalDateTime createTime;
-
-    @Column
-    private LocalDateTime updateTime;
-
-    // 扩展字段
-    @Column(length = 50)
-    private String area;
-
-    @Column(length = 50)
-    private String industry;
-
-    @Column(length = 8)
-    private String listDate;
+    /**
+     * 流通股本
+     */
+    private Long circulatingShares;
 }
