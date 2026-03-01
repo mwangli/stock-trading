@@ -3,7 +3,7 @@ server:
 
 spring:
   application:
-    name: stock-databus
+    name: stock-data-collector
 
   # 数据源配置 (部署服务器: 124.220.36.95:6033)
   datasource:

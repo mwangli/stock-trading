@@ -7,7 +7,7 @@ stock-trading/
 ├── backend/              # Spring Boot 3.2 + Java 17 后端服务
 │   └── src/main/java/com/stock/
 │       ├── config/        # 全局配置
-│       ├── databus/       # 数据采集模块
+│       ├── dataCollector/       # 数据采集模块
 │       ├── models/        # AI 模型模块
 │       ├── strategy/      # 交易策略模块
 │       ├── executor/      # 交易执行模块
@@ -123,10 +123,10 @@ npm test
 
 | 模块 | 包路径 | 功能 |
 |------|--------|------|
-| 数据采集 | com.stock.databus | 股票数据获取、新闻采集 |
-| AI 模型 | com.stock.models | LSTM 预测、情感分析 |
-| 交易策略 | com.stock.strategy | 决策引擎、股票筛选 |
-| 交易执行 | com.stock.executor | 订单执行、风险控制 |
+| 数据采集 | com.stock.dataCollector | 股票数据获取、新闻采集 |
+| AI 模型 | com.stock.modelService | LSTM 预测、情感分析 |
+| 交易策略 | com.stock.strategyAnalysis | 决策引擎、股票筛选 |
+| 交易执行 | com.stock.tradingExecutor | 订单执行、风险控制 |
 | 全局配置 | com.stock.config | 全局配置和 Web 资源处理 |
 
 ## 关键端口
@@ -201,7 +201,7 @@ npm test
 - 数据处理流程：使用真实数据验证
 - API 接口：通过真实请求测试
 
-示例：feat(databus): add stock price collection
+示例：feat(dataCollector): add stock price collection
 ```
 
 ### 强制提交场景

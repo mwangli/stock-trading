@@ -31,10 +31,10 @@ documents/
 
 | 模块 | 包路径 | 职责 |
 |------|--------|------|
-| 数据采集 | com.stock.databus | 股票数据、新闻采集 |
-| AI 模型 | com.stock.models | 价格预测、情感分析 |
-| 交易策略 | com.stock.strategy | 选股决策、信号生成 |
-| 交易执行 | com.stock.executor | 风控检查、订单执行 |
+| 数据采集 | com.stock.dataCollector | 股票数据、新闻采集 |
+| AI 模型 | com.stock.modelService | 价格预测、情感分析 |
+| 交易策略 | com.stock.strategyAnalysis | 选股决策、信号生成 |
+| 交易执行 | com.stock.tradingExecutor | 风控检查、订单执行 |
 
 ## 3 种文档类型
 

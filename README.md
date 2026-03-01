@@ -59,7 +59,7 @@ stock-trading/
 ├── backend/                        # Java Spring Boot 后端服务
 │   ├── src/main/java/com/stock/
 │   │   ├── config/                # 全局配置
-│   │   ├── databus/               # 数据采集模块
+│   │   ├── dataCollector/               # 数据采集模块
 │   │   │   ├── controller/        # 前端路由控制器
 │   │   │   ├── collector/         # 数据采集器
 │   │   │   ├── client/            # API 客户端
@@ -190,7 +190,7 @@ docker-compose logs -f
 
 ## 模块架构
 
-### 数据采集模块 (com.stock.databus)
+### 数据采集模块 (com.stock.dataCollector)
 
 - 股票列表同步
 - 实时行情采集
@@ -199,14 +199,14 @@ docker-compose logs -f
 - 财经新闻采集 (证券平台)
 
 
-### AI 模型模块 (com.stock.models)
+### AI 模型模块 (com.stock.modelService)
 
 - LSTM 价格预测模型
 - 情感分析推理
 - 模型加载与管理
 - 预测结果缓存
 
-### 策略模块 (com.stock.strategy)
+### 策略模块 (com.stock.strategyAnalysis)
 
 #### 选股策略 (天级)
 - 综合选股算法 (双因子模型)
@@ -222,7 +222,7 @@ docker-compose logs -f
 - 多指标聚合决策
 - 尾盘强制卖出 (14:57)
 
-### 执行模块 (com.stock.executor)
+### 执行模块 (com.stock.tradingExecutor)
 
 - 风控检查 (止损/仓位/熔断)
 - 订单执行
@@ -262,7 +262,7 @@ docker-compose logs -f
 | 财经新闻 | `/api/news` | 获取相关新闻 |
 | 交易信号 | `/api/signals` | 获取交易信号 (买入/卖出) |
 | 持仓信息 | `/api/positions` | 获取持仓数据 |
-| 策略状态 | `/api/strategy/status` | 获取策略运行状态 |
+| 策略状态 | `/api/strategyAnalysis/status` | 获取策略运行状态 |
 
 ---
 
