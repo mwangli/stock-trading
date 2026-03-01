@@ -10,22 +10,25 @@
 
 ## 项目结构
 
-后端采用 **Maven 多模块项目结构**：
+后端采用 **Maven 多模块项目结构**，每个模块可独立启动，也可聚合启动：
 
 ```
 stock-trading/
 ├── backend/                        # Spring Boot 后端服务 (多模块)
 │   ├── pom.xml                    # 父 POM (依赖管理)
-│   ├── data-collector/            # 数据采集模块
+│   ├── data-collector/            # 数据采集模块 (端口: 8081)
 │   │   ├── pom.xml
 │   │   └── src/main/java/com/stock/dataCollector/
-│   ├── model-service/             # AI 模型模块
+│   │       └── DataCollectorApplication.java
+│   ├── model-service/             # AI 模型模块 (端口: 8082)
 │   │   ├── pom.xml
 │   │   └── src/main/java/com/stock/modelService/
-│   ├── strategy-analysis/         # 策略分析模块
+│   │       └── ModelServiceApplication.java
+│   ├── strategy-analysis/         # 策略分析模块 (端口: 8083)
 │   │   ├── pom.xml
 │   │   └── src/main/java/com/stock/strategyAnalysis/
-│   └── trading-executor/          # 交易执行模块 (主启动类)
+│   │       └── StrategyAnalysisApplication.java
+│   └── trading-executor/          # 交易执行模块 (聚合启动, 端口: 8080)
 │       ├── pom.xml
 │       └── src/main/java/com/stock/tradingExecutor/
 │           └── StockTradingApplication.java
@@ -48,13 +51,26 @@ stock-trading/
 cd backend
 mvn clean package
 
-# 启动应用 (在 trading-executor 模块下)
-cd trading-executor
-mvn spring-boot:run
+# ============ 模块启动方式 ============
 
-# 或者从 backend 根目录启动
-cd backend
+# 方式一：聚合启动 (推荐，启动所有模块)
 mvn spring-boot:run -pl trading-executor
+
+# 方式二：独立启动各模块 (用于开发调试)
+
+# 启动数据采集模块 (端口: 8081)
+mvn spring-boot:run -pl data-collector
+
+# 启动模型服务模块 (端口: 8082)
+mvn spring-boot:run -pl model-service
+
+# 启动策略分析模块 (端口: 8083)
+mvn spring-boot:run -pl strategy-analysis
+
+# 启动聚合模块 (端口: 8080，包含所有功能)
+mvn spring-boot:run -pl trading-executor
+
+# ============ 其他命令 ============
 
 # 运行所有测试
 mvn test
@@ -98,6 +114,54 @@ npm run tsc
 # 运行测试
 npm test
 ```
+
+## 模块架构
+
+| 模块 | Maven ArtifactId | 包路径 | 功能 | 端口 |
+|------|------------------|--------|------|------|
+| 数据采集 | data-collector | com.stock.dataCollector | 股票数据获取、新闻采集 | 8081 |
+| AI 模型 | model-service | com.stock.modelService | LSTM 预测、情感分析 | 8082 |
+| 交易策略 | strategy-analysis | com.stock.strategyAnalysis | 决策引擎、股票筛选 | 8083 |
+| 交易执行 | trading-executor | com.stock.tradingExecutor | 订单执行、风险控制、聚合启动 | 8080 |
+
+## 模块启动说明
+
+### 聚合启动 (生产环境推荐)
+
+```bash
+# 启动所有模块，端口 8080
+mvn spring-boot:run -pl trading-executor
+```
+
+聚合启动后，所有功能通过单一端口访问：
+- 数据采集 API: `http://localhost:8080/api/stock-data/*`
+- 模型服务 API: `http://localhost:8080/api/lstm/*`, `http://localhost:8080/api/sentiment/*`
+
+### 独立启动 (开发调试)
+
+```bash
+# 终端1: 启动数据采集模块
+mvn spring-boot:run -pl data-collector
+# 访问: http://localhost:8081
+
+# 终端2: 启动模型服务模块
+mvn spring-boot:run -pl model-service
+# 访问: http://localhost:8082
+
+# 终端3: 启动策略分析模块
+mvn spring-boot:run -pl strategy-analysis
+# 访问: http://localhost:8083
+```
+
+## 关键端口
+
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| trading-executor (聚合) | 8080 | 所有模块聚合启动 |
+| data-collector | 8081 | 数据采集模块独立启动 |
+| model-service | 8082 | 模型服务模块独立启动 |
+| strategy-analysis | 8083 | 策略分析模块独立启动 |
+| frontend | 8000 | React 前端开发服务器 |
 
 ## 代码规范
 
@@ -145,22 +209,6 @@ npm test
 - **路径别名**:
   - `@/*` → `./src/*`
   - `@@/*` → `./src/.umi/*`
-
-## 模块架构
-
-| 模块 | Maven ArtifactId | 包路径 | 功能 |
-|------|------------------|--------|------|
-| 数据采集 | data-collector | com.stock.dataCollector | 股票数据获取、新闻采集 |
-| AI 模型 | model-service | com.stock.modelService | LSTM 预测、情感分析 |
-| 交易策略 | strategy-analysis | com.stock.strategyAnalysis | 决策引擎、股票筛选 |
-| 交易执行 | trading-executor | com.stock.tradingExecutor | 订单执行、风险控制、主启动类 |
-
-## 关键端口
-
-- 后端 API: http://localhost:8080
-- 前端开发：http://localhost:8000
-- API 代理：`/api/*` → `http://localhost:8080`
-- Swagger UI: http://localhost:8080/swagger-ui.html
 
 ## Git 工作规范
 
@@ -230,12 +278,28 @@ npm test
 3. 真实数据测试能发现集成问题
 4. 确保代码在生产环境中正常工作
 
+### 强制要求：禁止 Mock 测试
+
+**严禁在测试中使用 Mock 数据或模拟实现！**
+
+- 如果数据不足：**跳过测试**（使用 `Assumptions.assumeTrue()`）
+- 如果服务不可用：**测试失败**（抛出异常）
+- 如果环境未就绪：**跳过测试**（记录原因）
+
+**不要写无意义的模拟测试！宁愿测试失败或跳过，也不要用假数据欺骗自己。**
+
+```java
+// 正确做法：数据不足时跳过测试
+Assumptions.assumeTrue(dataAvailable, "跳过测试：MongoDB中没有足够的历史数据");
+
+// 错误做法：使用Mock数据
+@Mock
+private PriceRepository mockRepository; // 禁止！
+```
+
 ### 例外情况
 
-仅在以下情况允许使用 Mock：
-- 外部依赖不可用（如第三方 API）
-- 测试成本过高（如需要大量时间）
-- 核心逻辑已通过集成测试验证
+**无例外！** 所有测试都必须使用真实数据和服务。
 
 ### 强制提交场景
 

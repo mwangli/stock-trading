@@ -1,4 +1,4 @@
-package com.stock.config;
+package com.stock.dataCollector.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
