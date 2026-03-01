@@ -108,21 +108,9 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Internal Modules -->
-        <dependency>
-            <groupId>com.stock</groupId>
-            <artifactId>data-collector</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.stock</groupId>
-            <artifactId>model-service</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.stock</groupId>
-            <artifactId>strategy-analysis</artifactId>
-        </dependency>
+        <!-- trading-executor 作为独立模块，不依赖其他业务模块 -->
+        <!-- 聚合启动由 stock-app 负责 -->
     </dependencies>
-
     <build>
         <plugins>
             <plugin>
