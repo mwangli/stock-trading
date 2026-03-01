@@ -1,25 +1,42 @@
+# 交互语言要求
+
+1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
+2. **代码除外**：代码本身和特殊专有名词（如类名、方法名、API 名称）使用英文
+3. **展示思考过程**：在回答问题时，需要展示分析和推理过程
+
+---
+
 # AGENTS.md - AI 股票交易系统开发指南
 
 ## 项目结构
 
+后端采用 **Maven 多模块项目结构**：
+
 ```
 stock-trading/
-├── backend/              # Spring Boot 3.2 + Java 17 后端服务
-│   └── src/main/java/com/stock/
-│       ├── config/        # 全局配置
-│       ├── dataCollector/       # 数据采集模块
-│       ├── models/        # AI 模型模块
-│       ├── strategy/      # 交易策略模块
-│       ├── executor/      # 交易执行模块
-│       └── (根包)         # 主启动类
+├── backend/                        # Spring Boot 后端服务 (多模块)
+│   ├── pom.xml                    # 父 POM (依赖管理)
+│   ├── data-collector/            # 数据采集模块
+│   │   ├── pom.xml
+│   │   └── src/main/java/com/stock/dataCollector/
+│   ├── model-service/             # AI 模型模块
+│   │   ├── pom.xml
+│   │   └── src/main/java/com/stock/modelService/
+│   ├── strategy-analysis/         # 策略分析模块
+│   │   ├── pom.xml
+│   │   └── src/main/java/com/stock/strategyAnalysis/
+│   └── trading-executor/          # 交易执行模块 (主启动类)
+│       ├── pom.xml
+│       └── src/main/java/com/stock/tradingExecutor/
+│           └── StockTradingApplication.java
 │
-├── frontend/            # React + Ant Design Pro 前端
+├── frontend/                      # React 前端应用
 │   └── src/
-│       ├── pages/       # 页面组件
-│       ├── components/  # 通用组件
-│       └── services/    # API 服务
+│       ├── pages/                 # 页面组件
+│       ├── components/            # 通用组件
+│       └── services/              # API 服务
 │
-└── documents/           # 设计文档
+└── documents/                     # 设计文档
 ```
 
 ## 构建命令
@@ -27,13 +44,17 @@ stock-trading/
 ### Backend (Maven)
 
 ```bash
+# 构建所有模块 (在 backend 目录下)
 cd backend
-
-# 编译并打包
 mvn clean package
 
-# 启动应用
+# 启动应用 (在 trading-executor 模块下)
+cd trading-executor
 mvn spring-boot:run
+
+# 或者从 backend 根目录启动
+cd backend
+mvn spring-boot:run -pl trading-executor
 
 # 运行所有测试
 mvn test
@@ -43,6 +64,12 @@ mvn test -Dtest=ClassName
 
 # 跳过测试打包
 mvn clean package -DskipTests
+
+# 单独构建某个模块
+mvn clean package -pl data-collector
+mvn clean package -pl model-service
+mvn clean package -pl strategy-analysis
+mvn clean package -pl trading-executor
 ```
 
 ### Frontend (npm/pnpm)
@@ -92,7 +119,7 @@ npm test
 - **API 设计**: 
   - RESTful 风格
   - POST/PUT 使用 `@RequestBody`
-  - **测试**: JUnit 5 + Mockito
+- **测试**: JUnit 5 + Mockito
 - **ORM**: Spring Data JPA (自动建库建表，无需 SQL 脚本)
 
 ### TypeScript/React (Frontend)
@@ -121,13 +148,12 @@ npm test
 
 ## 模块架构
 
-| 模块 | 包路径 | 功能 |
-|------|--------|------|
-| 数据采集 | com.stock.dataCollector | 股票数据获取、新闻采集 |
-| AI 模型 | com.stock.modelService | LSTM 预测、情感分析 |
-| 交易策略 | com.stock.strategyAnalysis | 决策引擎、股票筛选 |
-| 交易执行 | com.stock.tradingExecutor | 订单执行、风险控制 |
-| 全局配置 | com.stock.config | 全局配置和 Web 资源处理 |
+| 模块 | Maven ArtifactId | 包路径 | 功能 |
+|------|------------------|--------|------|
+| 数据采集 | data-collector | com.stock.dataCollector | 股票数据获取、新闻采集 |
+| AI 模型 | model-service | com.stock.modelService | LSTM 预测、情感分析 |
+| 交易策略 | strategy-analysis | com.stock.strategyAnalysis | 决策引擎、股票筛选 |
+| 交易执行 | trading-executor | com.stock.tradingExecutor | 订单执行、风险控制、主启动类 |
 
 ## 关键端口
 
@@ -135,9 +161,6 @@ npm test
 - 前端开发：http://localhost:8000
 - API 代理：`/api/*` → `http://localhost:8080`
 - Swagger UI: http://localhost:8080/swagger-ui.html
-
-5. **代码检查**: 确保 lint 和 type check 通过
-6. **提交代码**: 遵循 Git 提交规范（见下文）
 
 ## Git 工作规范
 
@@ -185,8 +208,8 @@ npm test
 - perf: 性能优化
 
 示例：
-- feat(dataCollector): 添加股票价格采集功能
-- fix(modelService): 修复模型训练内存泄漏
+- feat(data-collector): 添加股票价格采集功能
+- fix(model-service): 修复模型训练内存泄漏
 - docs: 更新数据采集设计文档
 ```
 
@@ -214,11 +237,6 @@ npm test
 - 测试成本过高（如需要大量时间）
 - 核心逻辑已通过集成测试验证
 
-### 测试覆盖要求
-```
-示例：feat(dataCollector): add stock price collection
-```
-
 ### 强制提交场景
 
 以下情况**必须**提交代码：
@@ -241,10 +259,3 @@ npm test
 - 保持本地和远程代码同步
 - 确保团队成员可以获取最新代码
 - 避免因本地提交未推送导致的代码丢失风险
-
-**推送命令**：
-```bash
-git push
-```
-
-

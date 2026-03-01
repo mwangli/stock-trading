@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -56,12 +57,32 @@ public class SecuritiesClient {
             }
             
             // 获取 BINDATA -> results
+            // 实测证券平台返回的 BINDATA 可能是 JSON 字符串（而不是 Map）
             Object bindataObj = response.get("BINDATA");
-            if (bindataObj instanceof Map) {
-                Map<String, Object> bindata = (Map<String, Object>) bindataObj;
-                Object results = bindata.get("results");
-                if (results instanceof JSONArray) {
-                    return (JSONArray) results;
+            JSONObject bindataJson = null;
+            if (bindataObj instanceof String bindataStr) {
+                try {
+                    bindataJson = JSONObject.parseObject(bindataStr);
+                } catch (Exception e) {
+                    log.warn("解析证券平台 BINDATA 字符串失败: {}", bindataStr, e);
+                }
+            } else if (bindataObj instanceof Map) {
+                try {
+                    bindataJson = new JSONObject((Map<String, Object>) bindataObj);
+                } catch (Exception e) {
+                    log.warn("解析证券平台 BINDATA Map 失败", e);
+                }
+            }
+
+            if (bindataJson != null) {
+                Object results = bindataJson.get("results");
+                if (results instanceof JSONArray resultsArray) {
+                    return resultsArray;
+                }
+                if (results instanceof List) {
+                    JSONArray resultsArray = new JSONArray();
+                    resultsArray.addAll((List<?>) results);
+                    return resultsArray;
                 }
             }
             
