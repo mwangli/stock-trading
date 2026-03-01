@@ -1,43 +1,40 @@
 package com.stock.dataCollector.service;
 
-import com.stock.dataCollector.entity.mysql.StockInfoMySql;
-import com.stock.dataCollector.repository.mysql.StockInfoMySqlRepository;
+import com.stock.dataCollector.entity.StockInfo;
+import com.stock.dataCollector.repository.StockInfoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * 股票信息MySQL服务
+ * 股票信息服务
  * 负责股票基础数据在MySQL中的存储和查询
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class StockInfoMySqlService {
+public class StockInfoService {
 
-    private final StockInfoMySqlRepository stockInfoMySqlRepository;
+    private final StockInfoRepository stockInfoRepository;
 
     /**
      * 保存或更新股票信息
      * 按code进行去重，存在则更新，不存在则插入
      */
     @Transactional
-    public StockInfoMySql saveOrUpdate(StockInfoMySql stockInfo) {
-        Optional<StockInfoMySql> existing = stockInfoMySqlRepository.findByCode(stockInfo.getCode());
+    public StockInfo saveOrUpdate(StockInfo stockInfo) {
+        Optional<StockInfo> existing = stockInfoRepository.findByCode(stockInfo.getCode());
         
         if (existing.isPresent()) {
-            // 更新现有记录
-            StockInfoMySql existingStock = existing.get();
+            StockInfo existingStock = existing.get();
             updateStockInfo(existingStock, stockInfo);
-            return stockInfoMySqlRepository.save(existingStock);
+            return stockInfoRepository.save(existingStock);
         } else {
-            // 插入新记录
-            return stockInfoMySqlRepository.save(stockInfo);
+            return stockInfoRepository.save(stockInfo);
         }
     }
 
@@ -45,9 +42,9 @@ public class StockInfoMySqlService {
      * 批量保存或更新股票信息
      */
     @Transactional
-    public int batchSaveOrUpdate(List<StockInfoMySql> stockList) {
+    public int batchSaveOrUpdate(List<StockInfo> stockList) {
         int count = 0;
-        for (StockInfoMySql stock : stockList) {
+        for (StockInfo stock : stockList) {
             try {
                 saveOrUpdate(stock);
                 count++;
@@ -61,7 +58,7 @@ public class StockInfoMySqlService {
     /**
      * 更新股票信息
      */
-    private void updateStockInfo(StockInfoMySql target, StockInfoMySql source) {
+    private void updateStockInfo(StockInfo target, StockInfo source) {
         if (source.getName() != null) {
             target.setName(source.getName());
         }
@@ -109,36 +106,36 @@ public class StockInfoMySqlService {
     /**
      * 根据股票代码查询
      */
-    public Optional<StockInfoMySql> findByCode(String code) {
-        return stockInfoMySqlRepository.findByCode(code);
+    public Optional<StockInfo> findByCode(String code) {
+        return stockInfoRepository.findByCode(code);
     }
 
     /**
      * 查询所有股票
      */
-    public List<StockInfoMySql> findAll() {
-        return stockInfoMySqlRepository.findAll();
+    public List<StockInfo> findAll() {
+        return stockInfoRepository.findAll();
     }
 
     /**
      * 查询所有股票代码
      */
     public List<String> findAllCodes() {
-        return stockInfoMySqlRepository.findAllCodes();
+        return stockInfoRepository.findAllCodes();
     }
 
     /**
      * 统计总数
      */
     public long count() {
-        return stockInfoMySqlRepository.count();
+        return stockInfoRepository.count();
     }
 
     /**
      * 根据市场查询
      */
-    public List<StockInfoMySql> findByMarket(String market) {
-        return stockInfoMySqlRepository.findByMarket(market);
+    public List<StockInfo> findByMarket(String market) {
+        return stockInfoRepository.findByMarket(market);
     }
 
     /**
@@ -146,6 +143,6 @@ public class StockInfoMySqlService {
      */
     @Transactional
     public void deleteAll() {
-        stockInfoMySqlRepository.deleteAll();
+        stockInfoRepository.deleteAll();
     }
 }
