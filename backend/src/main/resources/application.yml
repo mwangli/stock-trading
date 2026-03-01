@@ -14,9 +14,11 @@ spring:
 
   # Hibernate JPA 配置
   jpa:
-    hibernate:
-      ddl-auto: update  # 可以选择 create, create-drop, update, validate
+      ddl-auto: update  # 自动建库建表：update, create, create-drop, validate
     show-sql: true
+    properties:
+      hibernate:
+        format_sql: true  # 格式化 SQL
   # Redis配置 (部署服务器: 124.220.36.95:6379)
   data:
     redis:

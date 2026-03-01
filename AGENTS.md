@@ -1,4 +1,4 @@
-# AGENTS.md - AI 股票交易系统
+# AGENTS.md - AI 股票交易系统开发指南
 
 ## 项目结构
 
@@ -8,9 +8,7 @@ stock-trading/
 │   └── src/main/java/com/stock/
 │       ├── config/        # 全局配置
 │       ├── databus/       # 数据采集模块
-│       │   └── controller # 前端路由控制器
-│       ├── models/        # AI模型模块
-│       │   └── controller # AI模型相关控制器
+│       ├── models/        # AI 模型模块
 │       ├── strategy/      # 交易策略模块
 │       ├── executor/      # 交易执行模块
 │       └── (根包)         # 主启动类
@@ -19,16 +17,14 @@ stock-trading/
 │   └── src/
 │       ├── pages/       # 页面组件
 │       ├── components/  # 通用组件
-│       └── services/    # API服务
-│
-├── mobile/              # React Native 移动端
+│       └── services/    # API 服务
 │
 └── documents/           # 设计文档
 ```
 
 ## 构建命令
 
-### Backend
+### Backend (Maven)
 
 ```bash
 cd backend
@@ -39,22 +35,23 @@ mvn clean package
 # 启动应用
 mvn spring-boot:run
 
-# 运行测试
+# 运行所有测试
 mvn test
+
+# 运行单个测试类
+mvn test -Dtest=ClassName
 
 # 跳过测试打包
 mvn clean package -DskipTests
 ```
 
-### Frontend
+### Frontend (npm/pnpm)
 
 ```bash
 cd frontend
 
 # 安装依赖
 npm install
-# 或使用 pnpm
-pnpm install
 
 # 启动开发服务器
 npm start
@@ -67,6 +64,12 @@ npm run lint
 
 # 修复代码问题
 npm run lint:fix
+
+# 类型检查
+npm run tsc
+
+# 运行测试
+npm test
 ```
 
 ## 代码规范
@@ -74,72 +77,89 @@ npm run lint:fix
 ### Java (Backend)
 
 - **Java 版本**: 17 (Spring Boot 3.2.2)
-- **命名**: CamelCase 类/方法, UPPER_SNAKE 常量
+- **命名规范**: 
+  - 类/方法：CamelCase
+  - 常量：UPPER_SNAKE_CASE
+  - 包名：全小写
 - **Lombok**: `@Data`, `@Slf4j`, `@RequiredArgsConstructor`
-- **导入**: 无通配符, 静态导入放最后
-- **错误处理**: `@ControllerAdvice` + `Response<T>` 封装
-- **API**: RESTful, `@RequestBody` POST/PUT, `@PathVariable` ID
+- **导入规则**: 
+  - 禁止通配符导入
+  - 静态导入放最后
+  - 按组组织（标准库、第三方、项目内部）
+- **错误处理**: 
+  - 统一使用 `@ControllerAdvice` + `Response<T>` 封装
+  - 记录详细日志，返回友好错误信息
+- **API 设计**: 
+  - RESTful 风格
+  - POST/PUT 使用 `@RequestBody`
+  - **测试**: JUnit 5 + Mockito
+- **ORM**: Spring Data JPA (自动建库建表，无需 SQL 脚本)
 
 ### TypeScript/React (Frontend)
 
 - **框架**: React 18, Ant Design Pro 5, UmiJS 4
-- **命名**: PascalCase 组件, camelCase hooks (use* 前缀)
-- **类型**: 严格模式, 定义接口不使用 `any`
-- **组件**: 函数式组件 + Hooks
-- **状态**: useState, useRef, useEffect
+- **命名规范**:
+  - 组件：PascalCase
+  - Hooks：camelCase, use* 前缀
+  - 类型接口：PascalCase, 禁止使用 `any`
+- **组件规范**:
+  - 使用函数式组件 + Hooks
+  - 状态管理：useState, useRef, useEffect
+- **代码格式**:
+  - 单引号 (singleQuote: true)
+  - 尾随逗号 (trailingComma: 'all')
+  - 行宽 100 字符 (printWidth: 100)
+  - LF 换行 (endOfLine: 'lf')
+- **编辑器配置** (.editorconfig):
+  - 缩进：2 空格
+  - 字符集：UTF-8
+  - 删除行尾空格
+  - 文件末尾空行
+- **路径别名**:
+  - `@/*` → `./src/*`
+  - `@@/*` → `./src/.umi/*`
 
 ## 模块架构
 
 | 模块 | 包路径 | 功能 |
 |------|--------|------|
 | 数据采集 | com.stock.databus | 股票数据获取、新闻采集 |
-| AI模型 | com.stock.models | LSTM预测、情感分析 |
+| AI 模型 | com.stock.models | LSTM 预测、情感分析 |
 | 交易策略 | com.stock.strategy | 决策引擎、股票筛选 |
 | 交易执行 | com.stock.executor | 订单执行、风险控制 |
-| 全局配置 | com.stock.config |全局配置和Web资源处理 |
+| 全局配置 | com.stock.config | 全局配置和 Web 资源处理 |
 
 ## 关键端口
 
 - 后端 API: http://localhost:8080
-- 前端: http://localhost:8000
-- 代理: `/api/*` → `http://localhost:8080`
+- 前端开发：http://localhost:8000
+- API 代理：`/api/*` → `http://localhost:8080`
+- Swagger UI: http://localhost:8080/swagger-ui.html
 
 ## 开发流程
 
-1. 修改代码前先更新设计文档
-2. 编写测试用例
-3. 实现代码
-4. 运行测试验证
-5. 确保 lint 通过
-6. 提交代码
+1. **需求分析**: 更新 `documents/requirements/` 下的需求文档
+2. **设计评审**: 更新 `documents/design/` 下的设计文档
+3. **代码实现**: 按照本规范编写代码
+4. **测试验证**: 编写单元测试和集成测试
+5. **代码检查**: 确保 lint 和 type check 通过
+6. **提交代码**: 遵循 Git 提交规范
 
 ## Git 提交规范
 
 ```
 type(scope): subject
 
-类型: feat, fix, docs, style, refactor, test, chore
-示例: feat(databus): add stock price collection
+类型：
+- feat: 新功能
+- fix: Bug 修复
+- docs: 文档更新
+- style: 代码格式调整
+- refactor: 重构
+- test: 测试相关
+- chore: 构建/工具链
+
+示例：feat(databus): add stock price collection
 ```
 
-## 环境要求
 
-- Java: 17+
-- Maven: 3.6+
-- Node.js: 16+
-- npm: 8+ 或 pnpm
-
-## 代码提交要求
-
-每执行一个需求变更之后，必须进行代码提交：
-
-1. **变更后立即提交**: 完成每个功能或修复后，马上提交代码
-2. **详细提交信息**: 描述本次变更的具体内容和目的
-3. **确保代码完整可用**: 提交前验证代码能正常运行
-4. **验证后再提交**: 运行必要的测试验证
-
-这样有助于:
-- 保持开发进度的可见性
-- 防止代码丢失
-- 便于跟踪需求实现过程
-- 支持回滚和调试
