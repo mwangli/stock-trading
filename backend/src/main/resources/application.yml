@@ -1,0 +1,103 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: stock-databus
+
+  # 数据源配置 (部署服务器: 124.220.36.95:6033)
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://124.220.36.95:6033/stock_trading?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
+    username: root
+    password: Root.123456
+
+  # Hibernate JPA 配置
+  jpa:
+    hibernate:
+      ddl-auto: update  # 可以选择 create, create-drop, update, validate
+    show-sql: true
+  # Redis配置 (部署服务器: 124.220.36.95:6379)
+  data:
+    redis:
+      host: 124.220.36.95
+      port: 6379
+      password: Root.123456
+      database: 0
+
+  # MongoDB配置 (部署服务器: 124.220.36.95:27017)
+    mongodb:
+      host: 124.220.36.95
+      port: 27017
+      database: stock_trading
+      authentication-database: admin
+      username: admin
+      password: Root.123456
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.stock: DEBUG
+# Tushare API key
+tuShare:
+  keys:
+    - d0bce450faa75f52248dc861d1e3e818228cdb23a58de180eb4f8502
+    - 720c794547409922d75a572418d9d9b7f5ec6dfad7bb7ecc4dffbc65
+tuShare:
+  keys:
+    - d0bce450faa75f52248dc861d1e3e818228cdb23a58de180eb4f8502
+    - 720c794547409922d75a572418d9d9b7f5ec6dfad7bb7ecc4dffbc65
+
+# LSTM 模型训练配置
+models:
+  lstm:
+    # 模型保存路径
+    model-path: models/lstm-stock
+    # 输入序列长度（时间步）
+    sequence-length: 60
+    # 隐藏层大小
+    hidden-size: 50
+    # LSTM 层数
+    num-layers: 2
+    # 训练轮次
+    epochs: 100
+    # 批次大小
+    batch-size: 32
+    # 学习率
+    learning-rate: 0.001
+    # Dropout 率
+    dropout: 0.2
+    # 训练集比例
+    train-ratio: 0.8
+    # 特征维度（开、高、低、收、量）
+    input-size: 5
+    # 是否启用早停
+    early-stopping: true
+    # 早停耐心值
+    patience: 10
+    # 早停耐心值
+    patience: 10
+
+# 情感分析模型训练配置
+models:
+  sentiment:
+    # 模型保存路径
+    model-path: models/sentiment-analysis
+    # 预训练模型名称（HuggingFace）
+    # 
+    # 中文通用模型（快速启动）：
+    # - hfl/chinese-bert-wwm-ext (哈工大 BERT 中文)
+    # - hfl/chinese-roberta-wwm-ext (哈工大 RoBERTa 中文)
+    #
+    # 中文金融专用模型（推荐用于生产）：
+    # - local/finbert-entropy (熵简科技 FinBERT，金融领域专用)
+    # - local/finbert-tushare (基于 Tushare 财经新闻微调)
+    #
+    # 推荐：
+    # - 快速启动：hfl/chinese-bert-wwm-ext
+    # - 生产环境：local/finbert-entropy（金融领域准确率更高）
+    # 快速启动方案：哈工大中文 BERT（当前使用）
+    pretrained-model: hfl/chinese-bert-wwm-ext
+    # 生产环境方案：熵简 FinBERT（需手动下载）
+    # pretrained-model: local/finbert-entropy
