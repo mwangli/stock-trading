@@ -29,12 +29,33 @@ documents/
 
 ## 4 个核心模块
 
-| 模块 | 包路径 | 职责 |
-|------|--------|------|
-| 数据采集 | com.stock.dataCollector | 股票数据、新闻采集 |
-| AI 模型 | com.stock.modelService | 价格预测、情感分析 |
-| 交易策略 | com.stock.strategyAnalysis | 选股决策、信号生成 |
-| 交易执行 | com.stock.tradingExecutor | 风控检查、订单执行 |
+后端采用 Maven 多模块项目结构：
+
+| 模块 | Maven ArtifactId | 包路径 | 职责 |
+|------|------------------|--------|------|
+| 数据采集 | data-collector | com.stock.dataCollector | 股票数据、新闻采集 |
+| AI 模型 | model-service | com.stock.modelService | 价格预测、情感分析 |
+| 交易策略 | strategy-analysis | com.stock.strategyAnalysis | 选股决策、信号生成 |
+| 交易执行 | trading-executor | com.stock.tradingExecutor | 风控检查、订单执行、主启动类 |
+
+### 模块依赖关系
+
+```
+trading-executor (主模块)
+    ├── depends on: strategy-analysis
+    ├── depends on: model-service
+    └── depends on: data-collector
+
+strategy-analysis
+    ├── depends on: model-service
+    └── depends on: data-collector
+
+model-service
+    └── depends on: data-collector
+
+data-collector
+    └── (基础模块，无内部依赖)
+```
 
 ## 3 种文档类型
 
@@ -148,3 +169,4 @@ documents/
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | 1.0.0 | 2024-03-01 | 初始版本，完成 4 模块文档拆分 |
+| 2.0.0 | 2026-03-01 | 更新为 Maven 多模块项目结构 |
