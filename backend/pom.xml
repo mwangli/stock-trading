@@ -4,23 +4,20 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <parent>
+        <groupId>com.stock</groupId>
+        <artifactId>stock-trading-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
     <artifactId>stock-trading-backend</artifactId>
     <packaging>jar</packaging>
 
     <name>Stock Trading Backend</name>
     <description>AI股票自动交易系统 - 后端服务</description>
 
-    <parent>
-        <groupId>com.stock</groupId>
-        <artifactId>stock-trading-parent</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
-    <relativePath>../pom.xml</relativePath>
-    </parent>
-
-
-
     <properties>
-        <hutool.version>5.8.25</hutool.version>
         <hutool.version>5.8.25</hutool.version>
         <fastjson2.version>2.0.53</fastjson2.version>
         <easyexcel.version>3.3.4</easyexcel.version>
@@ -65,7 +62,6 @@
             <artifactId>mysql-connector-j</artifactId>
         </dependency>
 
-
         <!-- HTTP & Network -->
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>
@@ -91,31 +87,13 @@
             <version>${easyexcel.version}</version>
         </dependency>
 
-        <!-- RSS Parsing -->
-        <dependency>
-            <groupId>com.rometools</groupId>
-            <artifactId>rome</artifactId>
-            <version>${rome.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.rometools</groupId>
-            <artifactId>rome-utils</artifactId>
-            <version>${rome.version}</version>
-        </dependency>
-
-        <!-- HTML Parsing -->
-        <dependency>
-            <groupId>org.jsoup</groupId>
-            <artifactId>jsoup</artifactId>
-            <version>${jsoup.version}</version>
-        </dependency>
-
         <!-- API Documentation -->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>${springdoc.version}</version>
         </dependency>
+
         <!-- Deep Java Library (DJL) -->
         <dependency>
             <groupId>ai.djl</groupId>
@@ -132,7 +110,6 @@
             <artifactId>pytorch-model-zoo</artifactId>
             <version>${djl.pytorch.version}</version>
         </dependency>
-        <!-- DJL HuggingFace Tokenizers for BERT -->
         <dependency>
             <groupId>ai.djl.huggingface</groupId>
             <artifactId>tokenizers</artifactId>
@@ -153,13 +130,6 @@
             <version>1.3.2</version>
         </dependency>
 
-        <!-- Test -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-
         <!-- MyBatis -->
         <dependency>
             <groupId>org.mybatis.spring.boot</groupId>
@@ -167,6 +137,7 @@
             <version>3.0.3</version>
         </dependency>
 
+        <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -215,11 +186,9 @@
                             <goal>copy-resources</goal>
                         </goals>
                         <configuration>
-                            <!-- 目标目录：Spring Boot的静态资源目录 -->
                             <outputDirectory>${project.build.directory}/classes/static</outputDirectory>
                             <resources>
                                 <resource>
-                                    <!-- 源目录：前端模块构建产物目录 (UmiJS默认是dist) -->
                                     <directory>../frontend/dist</directory>
                                     <filtering>false</filtering>
                                 </resource>
@@ -244,8 +213,8 @@
             <!-- Maven Surefire Plugin for test encoding -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-surefire-plugin</artifactId>
-            <version>3.2.2</version>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.2</version>
                 <configuration>
                     <argLine>-Dfile.encoding=UTF-8</argLine>
                 </configuration>
