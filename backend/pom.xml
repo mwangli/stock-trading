@@ -14,8 +14,10 @@
         <groupId>com.stock</groupId>
         <artifactId>stock-trading-parent</artifactId>
         <version>1.0.0-SNAPSHOT</version>
-        <relativePath>../pom.xml</relativePath>
+    <relativePath>../pom.xml</relativePath>
     </parent>
+
+
 
     <properties>
         <hutool.version>5.8.25</hutool.version>
