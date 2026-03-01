@@ -1,6 +1,6 @@
-package com.stock.dataCollector.repository.mysql;
+package com.stock.dataCollector.repository;
 
-import com.stock.dataCollector.entity.mysql.StockInfoMySql;
+import com.stock.dataCollector.entity.StockInfo;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
@@ -9,15 +9,15 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * 股票信息MySQL数据访问接口
+ * 股票信息数据访问接口
  */
 @Repository
-public interface StockInfoMySqlRepository extends JpaRepository<StockInfoMySql, Long>, JpaSpecificationExecutor<StockInfoMySql> {
+public interface StockInfoRepository extends JpaRepository<StockInfo, Long>, JpaSpecificationExecutor<StockInfo> {
 
     /**
      * 根据股票代码查询
      */
-    Optional<StockInfoMySql> findByCode(String code);
+    Optional<StockInfo> findByCode(String code);
 
     /**
      * 检查股票是否存在
@@ -27,17 +27,17 @@ public interface StockInfoMySqlRepository extends JpaRepository<StockInfoMySql, 
     /**
      * 根据市场查询
      */
-    List<StockInfoMySql> findByMarket(String market);
+    List<StockInfo> findByMarket(String market);
 
     /**
      * 根据股票名称模糊查询
      */
-    List<StockInfoMySql> findByNameContaining(String name);
+    List<StockInfo> findByNameContaining(String name);
 
     /**
      * 查询所有股票代码
      */
-    @org.springframework.data.jpa.repository.Query("SELECT s.code FROM StockInfoMySql s")
+    @org.springframework.data.jpa.repository.Query("SELECT s.code FROM StockInfo s")
     List<String> findAllCodes();
 
     /**

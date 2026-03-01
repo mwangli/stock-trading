@@ -4,9 +4,8 @@ import com.alibaba.fastjson2.JSONArray;
 import com.stock.dataCollector.client.SecuritiesClient;
 import com.stock.dataCollector.entity.StockInfo;
 import com.stock.dataCollector.entity.StockPrice;
-import com.stock.dataCollector.entity.mysql.StockInfoMySql;
 import com.stock.dataCollector.repository.PriceRepository;
-import com.stock.dataCollector.repository.StockRepository;
+import com.stock.dataCollector.repository.StockInfoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,9 +26,9 @@ import java.util.List;
 public class StockDataService {
 
     private final PriceRepository priceRepository;
-    private final StockRepository stockRepository;
+    private final StockInfoRepository stockInfoRepository;
     private final SecuritiesClient securitiesClient;
-    private final StockInfoMySqlService stockInfoMySqlService;
+    private final StockInfoService stockInfoService;
 
     /**
      * 获取股票历史价格数据
@@ -129,7 +128,7 @@ public class StockDataService {
     }
 
     /**
-     * 从证券平台获取股票列表并保存到MongoDB和MySQL
+     * 从证券平台获取股票列表并保存到MySQL
      * 
      * @return 获取的股票数量
      */
@@ -144,9 +143,7 @@ public class StockDataService {
                 return 0;
             }
             
-            int savedMongo = 0;
-            int savedMysql = 0;
-            List<StockInfoMySql> mysqlList = new ArrayList<>();
+            List<StockInfo> stockList = new ArrayList<>();
             
             for (int i = 0; i < results.size(); i++) {
                 String s = results.getString(i);
@@ -156,72 +153,54 @@ public class StockDataService {
                     continue;
                 }
                 
-                // 解析字段: 涨跌幅|价格|名称|市场|代码
                 String changePercentStr = split[0].replaceAll("\"", "");
                 String priceStr = split[1].replaceAll("\"", "");
                 String name = split[2].replaceAll("\"", "");
                 String market = split[3].replaceAll("\"", "");
                 String code = split[4].replaceAll("\"", "");
                 
-                // 保存到MongoDB
-                if (!stockRepository.existsByCode(code)) {
-                    StockInfo stockInfo = new StockInfo();
-                    stockInfo.setCode(code);
-                    stockInfo.setName(name);
-                    stockRepository.save(stockInfo);
-                    savedMongo++;
-                }
-                
-                // 构建MySQL实体
-                StockInfoMySql mysqlEntity = new StockInfoMySql();
-                mysqlEntity.setCode(code);
-                mysqlEntity.setName(name);
-                mysqlEntity.setMarket(parseMarket(market));
+                StockInfo entity = new StockInfo();
+                entity.setCode(code);
+                entity.setName(name);
+                entity.setMarket(parseMarket(market));
                 
                 try {
                     if (!changePercentStr.isEmpty()) {
-                        mysqlEntity.setChangePercent(new BigDecimal(changePercentStr));
+                        entity.setChangePercent(new BigDecimal(changePercentStr));
                     }
                     if (!priceStr.isEmpty()) {
-                        mysqlEntity.setPrice(new BigDecimal(priceStr));
+                        entity.setPrice(new BigDecimal(priceStr));
                     }
                 } catch (NumberFormatException e) {
-                    log.debug("解析价格或涨跌幅失败: code={}, price={}, change={}", code, priceStr, changePercentStr);
+                    log.debug("解析价格或涨跌幅失败: code={}", code);
                 }
                 
-                // 解析更多字段
                 if (split.length > 5) {
                     try {
                         String volumeStr = split[5].replaceAll("\"", "");
                         if (!volumeStr.isEmpty()) {
-                            mysqlEntity.setVolume(new BigDecimal(volumeStr));
+                            entity.setVolume(new BigDecimal(volumeStr));
                         }
-                    } catch (Exception e) {
-                        log.debug("解析成交量失败: {}", e.getMessage());
-                    }
+                    } catch (Exception ignored) {}
                 }
                 
                 if (split.length > 9) {
                     try {
                         String totalValueStr = split[9].replaceAll("\"", "");
                         if (!totalValueStr.isEmpty()) {
-                            mysqlEntity.setTotalMarketValue(new BigDecimal(totalValueStr));
+                            entity.setTotalMarketValue(new BigDecimal(totalValueStr));
                         }
-                    } catch (Exception e) {
-                        log.debug("解析总市值失败: {}", e.getMessage());
-                    }
+                    } catch (Exception ignored) {}
                 }
                 
-                mysqlEntity.setDataSource("证券平台");
-                mysqlList.add(mysqlEntity);
+                entity.setDataSource("证券平台");
+                stockList.add(entity);
             }
             
-            // 批量保存到MySQL
-            savedMysql = stockInfoMySqlService.batchSaveOrUpdate(mysqlList);
+            int savedCount = stockInfoService.batchSaveOrUpdate(stockList);
             
-            log.info("股票列表获取完成，共 {} 条，MongoDB新增 {} 条，MySQL保存/更新 {} 条", 
-                results.size(), savedMongo, savedMysql);
-            return savedMysql;
+            log.info("股票列表获取完成，共 {} 条，保存/更新 {} 条", results.size(), savedCount);
+            return savedCount;
             
         } catch (Exception e) {
             log.error("从证券平台获取股票列表失败", e);
@@ -283,7 +262,7 @@ public class StockDataService {
                     String market = split[3].replaceAll("\"", "");
                     String code = split[4].replaceAll("\"", "");
                     
-                    StockInfoMySql entity = new StockInfoMySql();
+                    StockInfo entity = new StockInfo();
                     entity.setCode(code);
                     entity.setName(name);
                     entity.setMarket(parseMarket(market));
@@ -299,7 +278,6 @@ public class StockDataService {
                         log.debug("解析价格失败: code={}", code);
                     }
                     
-                    // 解析更多字段
                     if (split.length > 5) {
                         try {
                             String volumeStr = split[5].replaceAll("\"", "");
@@ -320,9 +298,8 @@ public class StockDataService {
                     
                     entity.setDataSource("证券平台");
                     
-                    // 检查是否存在
-                    boolean exists = stockInfoMySqlService.findByCode(code).isPresent();
-                    stockInfoMySqlService.saveOrUpdate(entity);
+                    boolean exists = stockInfoService.findByCode(code).isPresent();
+                    stockInfoService.saveOrUpdate(entity);
                     
                     if (exists) {
                         updatedCount++;
@@ -375,7 +352,7 @@ public class StockDataService {
      */
     public List<StockInfo> getAllStocks() {
         log.info("获取所有股票信息");
-        return stockRepository.findAllByOrderByCodeAsc();
+        return stockInfoRepository.findAll();
     }
 
     /**
@@ -384,7 +361,7 @@ public class StockDataService {
     @Transactional
     public void saveStockInfo(StockInfo stockInfo) {
         log.info("保存股票信息：{} - {}", stockInfo.getCode(), stockInfo.getName());
-        stockRepository.save(stockInfo);
+        stockInfoRepository.save(stockInfo);
     }
 
     /**
