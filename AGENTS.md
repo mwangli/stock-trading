@@ -171,6 +171,25 @@ npm test
 
 ### Git 提交规范
 
+```
+提交类型(模块): 提交说明
+
+提交类型：
+- feat: 新功能
+- fix: Bug 修复
+- docs: 文档更新
+- style: 代码格式调整
+- refactor: 重构
+- test: 测试相关
+- chore: 构建/工具链
+- perf: 性能优化
+
+示例：
+- feat(dataCollector): 添加股票价格采集功能
+- fix(modelService): 修复模型训练内存泄漏
+- docs: 更新数据采集设计文档
+```
+
 ## 测试规范
 
 ### 测试数据要求
@@ -196,11 +215,7 @@ npm test
 - 核心逻辑已通过集成测试验证
 
 ### 测试覆盖要求
-
-- 核心业务逻辑：100% 集成测试覆盖
-- 数据处理流程：使用真实数据验证
-- API 接口：通过真实请求测试
-
+```
 示例：feat(dataCollector): add stock price collection
 ```
 
