@@ -2,12 +2,15 @@ package com.stock.dataCollector.client;
 
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -17,49 +20,148 @@ import java.util.Map;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class SecuritiesClient {
 
     private final RestTemplate restTemplate;
 
     /**
      * 证券平台 API 基础地址
-     * 来源：原项目 RequestUtils.REQUEST_URL
      */
     private static final String API_BASE_URL = "https://weixin.citicsinfo.com/reqxml";
 
     /**
-     * 构建请求参数
+     * 动态Cookie - H5Token (每次启动时可能需要更新)
      */
-    private HashMap<String, Object> buildParams(HashMap<String, Object> paramMap) {
-        if (paramMap == null) {
-            return new HashMap<>();
+    private String h5Token = "";
+
+    public SecuritiesClient(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
+
+    /**
+     * 设置H5Token (用于动态更新认证信息)
+     */
+    public void setH5Token(String token) {
+        this.h5Token = token;
+        log.info("H5Token已更新");
+    }
+
+    /**
+     * 构建通用请求头
+     * 模拟移动端浏览器请求
+     */
+    private HttpHeaders buildHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        
+        // Accept头
+        headers.setAccept(List.of(
+            MediaType.parseMediaType("application/json"),
+            MediaType.parseMediaType("text/javascript"),
+            MediaType.ALL
+        ));
+        
+        // 内容类型
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        
+        // 模拟移动端浏览器 User-Agent
+        headers.set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1");
+        
+        // 来源页面
+        headers.set("Referer", "https://weixin.citicsinfo.com/tztweb/hq/index.html");
+        
+        // CORS相关
+        headers.set("sec-ch-ua", "\"Not:A-Brand\";v=\"99\", \"Google Chrome\";v=\"145\", \"Chromium\";v=\"145\"");
+        headers.set("sec-ch-ua-mobile", "?1");
+        headers.set("sec-ch-ua-platform", "\"iOS\"");
+        headers.set("sec-fetch-dest", "empty");
+        headers.set("sec-fetch-mode", "cors");
+        headers.set("sec-fetch-site", "same-origin");
+        
+        // 语言
+        headers.set("Accept-Language", "zh-CN,zh;q=0.9");
+        
+        // X-Requested-With (标识AJAX请求)
+        headers.set("X-Requested-With", "XMLHttpRequest");
+        
+        // Cache-Control
+        headers.set("Cache-Control", "no-cache");
+        
+        // Cookie (包含认证信息)
+        String cookie = buildCookie();
+        if (!cookie.isEmpty()) {
+            headers.set("Cookie", cookie);
         }
-        paramMap.put("cfrom", "H5");
-        paramMap.put("tfrom", "PC");
-        paramMap.put("newindex", "1");
-        paramMap.put("reqno", System.currentTimeMillis());
-        return paramMap;
+        
+        return headers;
+    }
+
+    /**
+     * 构建Cookie字符串
+     */
+    private String buildCookie() {
+        StringBuilder cookie = new StringBuilder();
+        cookie.append("H5Error=0; ");
+        cookie.append("has_user_token_cookie=0; ");
+        
+        // 动态H5Token
+        if (h5Token != null && !h5Token.isEmpty()) {
+            cookie.append("H5Token=").append(h5Token).append("; ");
+        }
+        
+        return cookie.toString();
+    }
+
+    /**
+     * 构建请求参数Map
+     */
+    private MultiValueMap<String, String> buildParams(Map<String, Object> paramMap) {
+        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
+        
+        // 通用参数
+        params.add("cfrom", "H5");
+        params.add("tfrom", "PC");
+        params.add("newindex", "1");
+        params.add("reqno", String.valueOf(System.currentTimeMillis()));
+        
+        // 业务参数
+        if (paramMap != null) {
+            for (Map.Entry<String, Object> entry : paramMap.entrySet()) {
+                params.add(entry.getKey(), String.valueOf(entry.getValue()));
+            }
+        }
+        
+        return params;
     }
 
     /**
      * 发送请求到证券平台 (用于获取数据列表)
      */
     @SuppressWarnings("unchecked")
-    private JSONArray requestDataList(HashMap<String, Object> paramMap) {
+    private JSONArray requestDataList(Map<String, Object> paramMap) {
         try {
-            String url = API_BASE_URL.concat("?action=1230");
-            Map<String, Object> response = restTemplate.postForObject(url, paramMap, Map.class);
+            String url = API_BASE_URL + "?action=1230";
+            
+            HttpHeaders headers = buildHeaders();
+            MultiValueMap<String, String> params = buildParams(paramMap);
+            
+            HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(params, headers);
+            
+            log.debug("请求URL: {}", url);
+            log.debug("请求参数: {}", params);
+            
+            Map<String, Object> response = restTemplate.postForObject(url, requestEntity, Map.class);
             
             if (response == null) {
                 log.warn("证券平台返回为空");
                 return new JSONArray();
             }
             
+            log.debug("响应数据: {}", response.keySet());
+            
             // 获取 BINDATA -> results
-            // 实测证券平台返回的 BINDATA 可能是 JSON 字符串（而不是 Map）
             Object bindataObj = response.get("BINDATA");
             JSONObject bindataJson = null;
+            
             if (bindataObj instanceof String bindataStr) {
                 try {
                     bindataJson = JSONObject.parseObject(bindataStr);
@@ -103,14 +205,14 @@ public class SecuritiesClient {
     public JSONArray getHistoryPrices(String stockCode, int count) {
         log.info("获取股票 {} 的历史价格数据, 共 {} 天", stockCode, count);
         
-        HashMap<String, Object> paramMap = new HashMap<>(10);
+        Map<String, Object> paramMap = new java.util.HashMap<>(10);
         paramMap.put("c.funcno", 20009);
         paramMap.put("c.version", 1);
         paramMap.put("c.stock_code", stockCode);
         paramMap.put("c.type", "day");
         paramMap.put("c.count", String.valueOf(count));
         
-        return requestDataList(buildParams(paramMap));
+        return requestDataList(paramMap);
     }
 
     /**
@@ -121,7 +223,7 @@ public class SecuritiesClient {
     public JSONArray getStockList() {
         log.info("获取股票列表数据");
         
-        HashMap<String, Object> paramMap = new HashMap<>();
+        Map<String, Object> paramMap = new java.util.HashMap<>();
         paramMap.put("c.funcno", 21000);
         paramMap.put("c.version", 1);
         paramMap.put("c.sort", 1);
@@ -131,7 +233,7 @@ public class SecuritiesClient {
         paramMap.put("c.rowOfPage", 5000);
         paramMap.put("c.field", "1:2:22:23:24:3:8:16:21:31");
         
-        return requestDataList(buildParams(paramMap));
+        return requestDataList(paramMap);
     }
 
     /**
@@ -143,17 +245,28 @@ public class SecuritiesClient {
     public JSONObject getRealtimePrice(String stockCode) {
         log.debug("获取股票 {} 的实时价格", stockCode);
         
-        HashMap<String, Object> paramMap = new HashMap<>();
-        paramMap.put("stockcode", stockCode);
-        paramMap.put("action", 33);
-        paramMap.put("ReqlinkType", 1);
-        paramMap.put("Level", 1);
-        paramMap.put("UseBPrice", 1);
-        
         try {
-            HashMap<String, Object> params = buildParams(paramMap);
             String url = API_BASE_URL;
-            Map<String, Object> response = restTemplate.postForObject(url, params, Map.class);
+            
+            HttpHeaders headers = buildHeaders();
+            MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
+            
+            // 通用参数
+            params.add("cfrom", "H5");
+            params.add("tfrom", "PC");
+            params.add("newindex", "1");
+            params.add("reqno", String.valueOf(System.currentTimeMillis()));
+            
+            // 业务参数
+            params.add("stockcode", stockCode);
+            params.add("action", "33");
+            params.add("ReqlinkType", "1");
+            params.add("Level", "1");
+            params.add("UseBPrice", "1");
+            
+            HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(params, headers);
+            
+            Map<String, Object> response = restTemplate.postForObject(url, requestEntity, Map.class);
             
             if (response == null) {
                 return null;
