@@ -32,4 +32,9 @@ public interface StockRepository extends MongoRepository<StockInfo, String> {
      * 根据股票名称模糊查询
      */
     List<StockInfo> findByNameContaining(String name);
+
+    /**
+     * 根据股票代码删除
+     */
+    void deleteByCode(String code);
 }
