@@ -10,11 +10,11 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>stock-app</artifactId>
+    <artifactId>app-starter</artifactId>
     <packaging>jar</packaging>
 
-    <name>Stock App Module</name>
-    <description>主应用模块 - 聚合所有业务模块，统一启动入口</description>
+    <name>App Starter Module</name>
+    <description>主应用启动模块 - 聚合所有业务模块，统一启动入口</description>
 
     <dependencies>
         <!-- Spring Boot Starters -->
@@ -133,7 +133,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>com.stock.app.StockAppApplication</mainClass>
+                    <mainClass>com.stock.app.AppStarterApplication</mainClass>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>
