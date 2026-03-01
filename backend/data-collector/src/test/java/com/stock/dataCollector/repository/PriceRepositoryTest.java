@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
@@ -33,9 +32,6 @@ class PriceRepositoryTest {
 
     @Autowired
     private PriceRepository priceRepository;
-
-    @Autowired
-    private MongoTemplate mongoTemplate;
 
     /**
      * 测试用股票代码
