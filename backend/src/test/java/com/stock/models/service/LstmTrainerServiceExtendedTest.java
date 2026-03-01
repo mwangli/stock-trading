@@ -145,7 +145,15 @@ class LstmTrainerServiceExtendedTest {
     @Test
     void testMergeTrainingData() {
         // Arrange: 创建测试数据
-        List<float[]> features1 = Arrays.asList(
+        List<float[][]> features1 = Arrays.asList(
+            new float[][]{{1.0f, 2.0f, 3.0f, 4.0f, 5.0f}}
+        );
+        List<float[]> labels1 = Arrays.asList(new float[]{100.0f});
+
+        List<float[][]> features2 = Arrays.asList(
+            new float[][]{{6.0f, 7.0f, 8.0f, 9.0f, 10.0f}}
+        );
+        List<float[]> labels2 = Arrays.asList(new float[]{101.0f});
             new float[]{1.0f, 2.0f, 3.0f, 4.0f, 5.0f}
         );
         List<float[]> labels1 = Arrays.asList(new float[]{100.0f});
@@ -184,7 +192,9 @@ class LstmTrainerServiceExtendedTest {
         int days = 90;
 
         // Mock a simple preprocessing step
-        List<float[]> features = Arrays.asList(
+        List<float[][]> features = Arrays.asList(
+            new float[60][5]  // 60 timesteps, 5 features
+        );
             new float[60 * 5]  // 60 timesteps * 5 features as flattened array
         );
         List<float[]> labels = Arrays.asList(new float[]{100.0f});
