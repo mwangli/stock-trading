@@ -98,6 +98,23 @@ public class LstmDataPreprocessor {
             StockPrice price = prices.get(i);
             
             // 特征向量：[开盘，最高，最低，收盘，成交量]
+            features[i][0] = safeFloat(price.getOpenPrice());
+            features[i][1] = safeFloat(price.getHighPrice());
+            features[i][2] = safeFloat(price.getLowPrice());
+            features[i][3] = safeFloat(price.getClosePrice());
+            features[i][4] = safeFloat(price.getVolume());
+        }
+
+        return features;
+        }
+            StockPrice price = prices.get(i);
+            
+            // 特征向量：[开盘，最高，最低，收盘，成交量]
+            features[i][0] = safeFloat(price.getOpenPrice());
+            features[i][1] = safeFloat(price.getHighPrice());
+            features[i][2] = safeFloat(price.getLowPrice());
+            features[i][3] = safeFloat(price.getClosePrice());
+            features[i][4] = safeFloat(price.getVolume());
             features[i][0] = safeFloat(price.getTodayOpenPrice());
             features[i][1] = safeFloat(price.getPrice1());  // high
             features[i][2] = safeFloat(price.getPrice2());  // low
