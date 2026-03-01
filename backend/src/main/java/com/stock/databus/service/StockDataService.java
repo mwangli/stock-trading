@@ -1,5 +1,7 @@
 package com.stock.databus.service;
 
+import com.alibaba.fastjson2.JSONArray;
+import com.stock.databus.client.SecuritiesClient;
 import com.stock.databus.entity.StockInfo;
 import com.stock.databus.entity.StockPrice;
 import com.stock.databus.repository.PriceRepository;
@@ -8,6 +10,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -25,6 +33,7 @@ public class StockDataService {
 
     private final PriceRepository priceRepository;
     private final StockRepository stockRepository;
+    private final SecuritiesClient securitiesClient;
 
     /**
      * 获取股票历史价格数据
@@ -35,11 +44,51 @@ public class StockDataService {
     public List<StockPrice> getHistoryPrices(String stockCode) {
         log.info("获取股票 {} 的历史价格数据", stockCode);
         
-        // TODO: 实现从证券平台获取历史价格数据
-        // 参考：D:\stock-trading\src\main\java\online\mwang\stockTrading\schedule\jobs\RunHistoryJob.java
-        
-        // 临时返回空列表
-        return new ArrayList<>();
+        try {
+            // 默认获取 20 天历史数据
+            JSONArray results = securitiesClient.getHistoryPrices(stockCode, 20);
+            
+            if (results == null || results.isEmpty()) {
+                log.warn("股票 {} 无历史价格数据", stockCode);
+                return new ArrayList<>();
+            }
+            
+            List<StockPrice> prices = new ArrayList<>();
+            for (int i = 0; i < results.size(); i++) {
+                String s = results.getString(i);
+                s = s.replaceAll("\\[", "").replaceAll("\\]", "");
+                String[] split = s.split(",");
+                
+                if (split.length < 3) {
+                    continue;
+                }
+                
+                StockPrice price = new StockPrice();
+                price.setCode(stockCode);
+                
+                // 解析日期 (格式: 2024-01-01)
+                price.setDate(LocalDate.parse(split[0]));
+                
+                // 解析价格 (除以 100 转换为元)
+                price.setOpenPrice(BigDecimal.valueOf(Double.parseDouble(split[1]) / 100));
+                price.setClosePrice(BigDecimal.valueOf(Double.parseDouble(split[2]) / 100));
+                
+                // 如果有更多价格数据
+                if (split.length > 3) {
+                    price.setHighPrice(BigDecimal.valueOf(Double.parseDouble(split[3]) / 100));
+                    price.setLowPrice(BigDecimal.valueOf(Double.parseDouble(split[4]) / 100));
+                }
+                
+                prices.add(price);
+            }
+            
+            log.info("股票 {} 获取到 {} 条历史价格数据", stockCode, prices.size());
+            return prices;
+            
+        } catch (Exception e) {
+            log.error("获取股票 {} 历史价格数据失败", stockCode, e);
+            return new ArrayList<>();
+        }
     }
 
     /**
@@ -98,6 +147,54 @@ public class StockDataService {
         }
 
         log.info("股票价格数据保存完成 - 新增：{}, 更新：{}, 跳过：{}", saved, updated, skipped);
+    }
+
+    /**
+     * 从证券平台获取股票列表并保存
+     * 
+     * @return 获取的股票数量
+     */
+    public int fetchAndSaveStockList() {
+        log.info("从证券平台获取股票列表");
+        
+        try {
+            JSONArray results = securitiesClient.getStockList();
+            
+            if (results == null || results.isEmpty()) {
+                log.warn("未获取到股票列表数据");
+                return 0;
+            }
+            
+            int saved = 0;
+            for (int i = 0; i < results.size(); i++) {
+                String s = results.getString(i);
+                String[] split = s.split(",");
+                
+                if (split.length < 5) {
+                    continue;
+                }
+                
+                // 解析字段: 涨跌幅|价格|名称|市场|代码
+                String code = split[4].replaceAll("\"", "");
+                String name = split[2].replaceAll("\"", "");
+                
+                // 检查是否已存在
+                if (!stockRepository.existsByCode(code)) {
+                    StockInfo stockInfo = new StockInfo();
+                    stockInfo.setCode(code);
+                    stockInfo.setName(name);
+                    stockRepository.save(stockInfo);
+                    saved++;
+                }
+            }
+            
+            log.info("股票列表获取完成，共 {} 条，新增 {} 条", results.size(), saved);
+            return saved;
+            
+        } catch (Exception e) {
+            log.error("从证券平台获取股票列表失败", e);
+            return 0;
+        }
     }
 
     /**

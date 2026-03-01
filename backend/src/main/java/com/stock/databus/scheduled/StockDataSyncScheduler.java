@@ -22,6 +22,23 @@ public class StockDataSyncScheduler {
     private final StockDataService stockDataService;
 
     /**
+     * 同步股票列表
+     * 每周一至周五早上 9:00 执行
+     */
+    @Scheduled(cron = "0 0 9 * * MON-FRI")
+    public void syncStockList() {
+        log.info("开始同步股票列表");
+        try {
+            int count = stockDataService.fetchAndSaveStockList();
+            log.info("股票列表同步完成，共 {} 条", count);
+        } catch (Exception e) {
+            log.error("同步股票列表失败", e);
+        }
+    }
+
+    /**
+
+    /**
      * 每日收盘后同步最新股票数据
      * 每个交易日下午 16:00 执行
      */

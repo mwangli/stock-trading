@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @SpringBootTest
 @TestPropertySource(properties = {
-    "spring.data.mongodb.uri=mongodb://localhost:27017/stock_trading_test"
+    "spring.data.mongodb.uri=mongodb://admin:Root.123456@124.220.36.95:27017/stock-trading?authSource=admin"
 })
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class StockDataServiceIntegrationTest {

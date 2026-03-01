@@ -14,7 +14,7 @@ spring:
 
   # Hibernate JPA 配置
   jpa:
-      ddl-auto: update  # 自动建库建表：update, create, create-drop, validate
+    ddl-auto: update  # 自动建库建表：update, create, create-drop, validate
     show-sql: true
     properties:
       hibernate:
@@ -31,7 +31,7 @@ spring:
     mongodb:
       host: 124.220.36.95
       port: 27017
-      database: stock_trading
+      database: stock-trading
       authentication-database: admin
       username: admin
       password: Root.123456
@@ -41,9 +41,6 @@ logging:
   level:
     root: INFO
     com.stock: DEBUG
-
-# LSTM 模型训练配置
-
 # LSTM 模型训练配置
 models:
   lstm:
@@ -71,11 +68,8 @@ models:
     early-stopping: true
     # 早停耐心值
     patience: 10
-    # 早停耐心值
-    patience: 10
 
-# 情感分析模型训练配置
-models:
+  # 情感分析模型训练配置
   sentiment:
     # 模型保存路径
     model-path: models/sentiment-analysis
