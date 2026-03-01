@@ -3,8 +3,6 @@ package com.stock.modelService.controller;
 import com.stock.modelService.dto.SentimentTrainingRequest;
 import com.stock.modelService.inference.SentimentInference;
 import com.stock.modelService.service.SentimentTrainerService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -20,7 +18,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/models/sentiment")
 @RequiredArgsConstructor
-@Tag(name = "情感分析模型", description = "情感分析模型训练、推理相关接口")
 public class SentimentController {
 
     private final SentimentTrainerService trainerService;
@@ -30,7 +27,6 @@ public class SentimentController {
      * 训练情感分析模型
      */
     @PostMapping("/train")
-    @Operation(summary = "训练情感分析模型", description = "使用新闻数据训练情感分析模型")
     public ResponseEntity<Map<String, Object>> trainModel(@RequestBody(required = false) SentimentTrainingRequest request) {
         log.info("收到情感分析训练请求");
 
@@ -69,7 +65,6 @@ public class SentimentController {
      * 查询训练状态
      */
     @GetMapping("/status/{trainingId}")
-    @Operation(summary = "获取训练状态", description = "查询情感分析模型训练进度")
     public ResponseEntity<Map<String, Object>> getTrainingStatus(@PathVariable String trainingId) {
         var status = trainerService.getTrainingStatus(trainingId);
 
@@ -91,7 +86,6 @@ public class SentimentController {
      * 分析单条文本情感
      */
     @PostMapping("/analyze")
-    @Operation(summary = "情感分析", description = "分析给定文本的情感倾向")
     public ResponseEntity<Map<String, Object>> analyzeText(@RequestBody Map<String, String> requestBody) {
         String text = requestBody.get("text");
 
@@ -121,7 +115,6 @@ public class SentimentController {
      * 批量分析文本情感
      */
     @PostMapping("/analyze/batch")
-    @Operation(summary = "批量情感分析", description = "批量分析多条文本的情感倾向")
     public ResponseEntity<Map<String, Object>> analyzeBatch(@RequestBody Map<String, Object> requestBody) {
         Object textsObj = requestBody.get("texts");
 
@@ -163,7 +156,6 @@ public class SentimentController {
      * 模型健康检查
      */
     @GetMapping("/health")
-    @Operation(summary = "健康检查", description = "检查情感分析服务状态")
     public ResponseEntity<Map<String, Object>> health() {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "UP");
@@ -177,7 +169,6 @@ public class SentimentController {
      * 重新加载模型
      */
     @PostMapping("/reload")
-    @Operation(summary = "重新加载模型", description = "重新加载情感分析模型")
     public ResponseEntity<Map<String, Object>> reloadModel() {
         try {
             sentimentInference.reloadModel();
@@ -202,7 +193,6 @@ public class SentimentController {
      * 下载预训练模型
      */
     @PostMapping("/download")
-    @Operation(summary = "下载预训练模型", description = "从 HuggingFace 下载预训练的 DistilBERT 模型")
     public ResponseEntity<Map<String, Object>> downloadModel() {
         try {
             String modelPath = trainerService.downloadPretrainedModel();

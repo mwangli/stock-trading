@@ -46,12 +46,6 @@
             <artifactId>lombok</artifactId>
         </dependency>
 
-        <!-- Swagger -->
-        <dependency>
-            <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-        </dependency>
-
         <!-- Internal Modules -->
         <dependency>
             <groupId>com.stock</groupId>
