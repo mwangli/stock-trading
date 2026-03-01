@@ -8,6 +8,8 @@ import ai.djl.training.util.ProgressBar;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.models.config.SentimentTrainingConfig;
 import com.stock.models.dto.SentimentAnalysisResult;
+import com.stock.models.dto.SentimentTrainingRequest;
+import com.stock.models.dto.SentimentTrainingResponse;
 import com.stock.models.dto.TrainingSample;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
