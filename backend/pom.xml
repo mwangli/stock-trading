@@ -22,8 +22,8 @@
         <module>model-service</module>
         <module>strategy-analysis</module>
         <module>trading-executor</module>
+        <module>stock-app</module>  <!-- 主应用模块，聚合所有业务模块 -->
     </modules>
-
     <properties>
         <hutool.version>5.8.25</hutool.version>
         <fastjson2.version>2.0.53</fastjson2.version>
@@ -60,7 +60,11 @@
                 <artifactId>strategy-analysis</artifactId>
                 <version>${project.version}</version>
             </dependency>
-
+            <dependency>
+                <groupId>com.stock</groupId>
+                <artifactId>trading-executor</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <!-- External Dependencies -->
             <dependency>
                 <groupId>cn.hutool</groupId>

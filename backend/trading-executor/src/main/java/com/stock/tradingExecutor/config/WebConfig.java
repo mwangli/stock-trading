@@ -1,4 +1,4 @@
-package com.stock.config;
+package com.stock.tradingExecutor.config;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;

@@ -10,11 +10,11 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>trading-executor</artifactId>
+    <artifactId>stock-app</artifactId>
     <packaging>jar</packaging>
 
-    <name>Trading Executor Module</name>
-    <description>交易执行模块 - 订单执行、风险控制（主模块）</description>
+    <name>Stock App Module</name>
+    <description>主应用模块 - 聚合所有业务模块，统一启动入口</description>
 
     <dependencies>
         <!-- Spring Boot Starters -->
@@ -108,15 +108,32 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- trading-executor 作为独立模块，不依赖其他业务模块 -->
-        <!-- 聚合启动由 stock-app 负责 -->
+        <!-- Internal Modules -->
+        <dependency>
+            <groupId>com.stock</groupId>
+            <artifactId>data-collector</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.stock</groupId>
+            <artifactId>model-service</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.stock</groupId>
+            <artifactId>strategy-analysis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.stock</groupId>
+            <artifactId>trading-executor</artifactId>
+        </dependency>
     </dependencies>
+
     <build>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
+                    <mainClass>com.stock.app.StockAppApplication</mainClass>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>

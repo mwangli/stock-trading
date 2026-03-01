@@ -12,7 +12,6 @@
 
 后端采用 **Maven 多模块项目结构**，每个模块可独立启动，也可聚合启动：
 
-```
 stock-trading/
 ├── backend/                        # Spring Boot 后端服务 (多模块)
 │   ├── pom.xml                    # 父 POM (依赖管理)
@@ -28,10 +27,14 @@ stock-trading/
 │   │   ├── pom.xml
 │   │   └── src/main/java/com/stock/strategyAnalysis/
 │   │       └── StrategyAnalysisApplication.java
-│   └── trading-executor/          # 交易执行模块 (聚合启动, 端口: 8080)
+│   ├── trading-executor/          # 交易执行模块 (端口: 8084)
+│   │   ├── pom.xml
+│   │   └── src/main/java/com/stock/tradingExecutor/
+│   │       └── TradingExecutorApplication.java
+│   └── stock-app/                 # 主应用模块 (聚合启动, 端口: 8080)
 │       ├── pom.xml
-│       └── src/main/java/com/stock/tradingExecutor/
-│           └── StockTradingApplication.java
+│       └── src/main/java/com/stock/app/
+│           └── StockAppApplication.java
 │
 ├── frontend/                      # React 前端应用
 │   └── src/
@@ -40,7 +43,6 @@ stock-trading/
 │       └── services/              # API 服务
 │
 └── documents/                     # 设计文档
-```
 
 ## 构建命令
 
@@ -54,22 +56,23 @@ mvn clean package
 # ============ 模块启动方式 ============
 
 # 方式一：聚合启动 (推荐，启动所有模块)
-mvn spring-boot:run -pl trading-executor
+mvn spring-boot:run -pl stock-app
 
 # 方式二：独立启动各模块 (用于开发调试)
 
 # 启动数据采集模块 (端口: 8081)
 mvn spring-boot:run -pl data-collector
-
 # 启动模型服务模块 (端口: 8082)
 mvn spring-boot:run -pl model-service
 
 # 启动策略分析模块 (端口: 8083)
 mvn spring-boot:run -pl strategy-analysis
 
-# 启动聚合模块 (端口: 8080，包含所有功能)
+# 启动交易执行模块 (端口: 8084)
 mvn spring-boot:run -pl trading-executor
 
+# 启动主应用模块 (端口: 8080，聚合所有模块)
+mvn spring-boot:run -pl stock-app
 # ============ 其他命令 ============
 
 # 运行所有测试
@@ -86,7 +89,44 @@ mvn clean package -pl data-collector
 mvn clean package -pl model-service
 mvn clean package -pl strategy-analysis
 mvn clean package -pl trading-executor
+
+# ============ 模块独立编译验证 ============
+# 修改某个模块后，只需编译当前模块验证，无需编译所有模块
+# 这样可以支持多模块并行开发
+
+# 编译验证 data-collector 模块
+mvn compile -pl data-collector
+
+# 编译验证 model-service 模块
+mvn compile -pl model-service
+
+# 编译验证 strategy-analysis 模块
+mvn compile -pl strategy-analysis
+
+# 编译验证 trading-executor 模块
+mvn compile -pl trading-executor
 ```
+
+### 多模块并行开发规范
+
+**重要原则**：修改某个模块后，只需编译当前模块验证，无需编译所有模块。
+
+```bash
+# 示例：修改了 data-collector 模块
+cd backend
+mvn compile -pl data-collector    # 只编译当前模块
+
+# 编译通过后即可提交，不需要等待其他模块
+```
+
+**原因**：
+- 各模块相对独立，可并行开发
+- 避免其他模块的问题阻塞当前模块的提交
+- 提高开发效率
+
+**注意事项**：
+- 修改了公共依赖（如父 pom.xml）时，需要编译所有模块
+- 修改了模块间接口时，需要同步编译相关模块
 
 ### Frontend (npm/pnpm)
 
@@ -122,16 +162,15 @@ npm test
 | 数据采集 | data-collector | com.stock.dataCollector | 股票数据获取、新闻采集 | 8081 |
 | AI 模型 | model-service | com.stock.modelService | LSTM 预测、情感分析 | 8082 |
 | 交易策略 | strategy-analysis | com.stock.strategyAnalysis | 决策引擎、股票筛选 | 8083 |
-| 交易执行 | trading-executor | com.stock.tradingExecutor | 订单执行、风险控制、聚合启动 | 8080 |
-
+| 交易执行 | trading-executor | com.stock.tradingExecutor | 订单执行、风险控制 | 8084 |
+| 主应用 | stock-app | com.stock.app | 聚合启动所有模块 | 8080 |
 ## 模块启动说明
 
 ### 聚合启动 (生产环境推荐)
 
 ```bash
 # 启动所有模块，端口 8080
-mvn spring-boot:run -pl trading-executor
-```
+mvn spring-boot:run -pl stock-app
 
 聚合启动后，所有功能通过单一端口访问：
 - 数据采集 API: `http://localhost:8080/api/stock-data/*`
@@ -157,10 +196,11 @@ mvn spring-boot:run -pl strategy-analysis
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| trading-executor (聚合) | 8080 | 所有模块聚合启动 |
+| stock-app (聚合) | 8080 | 所有模块聚合启动 |
 | data-collector | 8081 | 数据采集模块独立启动 |
 | model-service | 8082 | 模型服务模块独立启动 |
 | strategy-analysis | 8083 | 策略分析模块独立启动 |
+| trading-executor | 8084 | 交易执行模块独立启动 |
 | frontend | 8000 | React 前端开发服务器 |
 
 ## 代码规范
