@@ -22,7 +22,7 @@
         <module>model-service</module>
         <module>strategy-analysis</module>
         <module>trading-executor</module>
-        <module>stock-app</module>  <!-- 主应用模块，聚合所有业务模块 -->
+        <module>app-starter</module>  <!-- 主应用启动模块，聚合所有业务模块 -->
     </modules>
     <properties>
         <hutool.version>5.8.25</hutool.version>

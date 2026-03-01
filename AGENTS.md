@@ -31,11 +31,10 @@ stock-trading/
 │   │   ├── pom.xml
 │   │   └── src/main/java/com/stock/tradingExecutor/
 │   │       └── TradingExecutorApplication.java
-│   └── stock-app/                 # 主应用模块 (聚合启动, 端口: 8080)
+│   └── app-starter/               # 主应用启动模块 (聚合启动, 端口: 8080)
 │       ├── pom.xml
 │       └── src/main/java/com/stock/app/
-│           └── StockAppApplication.java
-│
+│           └── AppStarterApplication.java
 ├── frontend/                      # React 前端应用
 │   └── src/
 │       ├── pages/                 # 页面组件
@@ -56,7 +55,7 @@ mvn clean package
 # ============ 模块启动方式 ============
 
 # 方式一：聚合启动 (推荐，启动所有模块)
-mvn spring-boot:run -pl stock-app
+mvn spring-boot:run -pl app-starter
 
 # 方式二：独立启动各模块 (用于开发调试)
 
@@ -71,7 +70,8 @@ mvn spring-boot:run -pl strategy-analysis
 # 启动交易执行模块 (端口: 8084)
 mvn spring-boot:run -pl trading-executor
 
-# 启动主应用模块 (端口: 8080，聚合所有模块)
+# 启动主应用启动模块 (端口: 8080，聚合所有模块)
+mvn spring-boot:run -pl app-starter
 mvn spring-boot:run -pl stock-app
 # ============ 其他命令 ============
 
@@ -163,13 +163,14 @@ npm test
 | AI 模型 | model-service | com.stock.modelService | LSTM 预测、情感分析 | 8082 |
 | 交易策略 | strategy-analysis | com.stock.strategyAnalysis | 决策引擎、股票筛选 | 8083 |
 | 交易执行 | trading-executor | com.stock.tradingExecutor | 订单执行、风险控制 | 8084 |
-| 主应用 | stock-app | com.stock.app | 聚合启动所有模块 | 8080 |
+| 主应用启动 | app-starter | com.stock.app | 聚合启动所有模块 | 8080 |
 ## 模块启动说明
 
 ### 聚合启动 (生产环境推荐)
 
 ```bash
 # 启动所有模块，端口 8080
+mvn spring-boot:run -pl app-starter
 mvn spring-boot:run -pl stock-app
 
 聚合启动后，所有功能通过单一端口访问：
@@ -196,7 +197,7 @@ mvn spring-boot:run -pl strategy-analysis
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| stock-app (聚合) | 8080 | 所有模块聚合启动 |
+| app-starter (聚合) | 8080 | 所有模块聚合启动 |
 | data-collector | 8081 | 数据采集模块独立启动 |
 | model-service | 8082 | 模型服务模块独立启动 |
 | strategy-analysis | 8083 | 策略分析模块独立启动 |

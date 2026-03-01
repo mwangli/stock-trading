@@ -14,7 +14,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * - strategy-analysis (策略分析)
  * - trading-executor (交易执行)
  * 
- * 启动命令: mvn spring-boot:run -pl stock-app
+ * 启动命令: mvn spring-boot:run -pl app-starter
  * 端口: 8080
  */
 @SpringBootApplication
@@ -25,10 +25,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
     "com.stock.strategyAnalysis",
     "com.stock.tradingExecutor"
 })
-public class StockAppApplication {
+public class AppStarterApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(StockAppApplication.class, args);
+        SpringApplication.run(AppStarterApplication.class, args);
         System.out.println("========================================");
         System.out.println("  AI 股票交易系统启动成功!");
         System.out.println("  聚合模块: data-collector, model-service,");
