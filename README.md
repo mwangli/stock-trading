@@ -37,8 +37,8 @@
 | HTTP | OkHttp | 4.12 |
 | 工具 | Hutool / FastJSON2 | 5.8 / 2.0 |
 | AI 框架 | DJL (Deep Java Library) | 0.36 |
-| RSS 解析 | ROME | 1.18 |
-| HTML 解析 | Jsoup | 1.15 |
+
+
 
 ### 前端 (Frontend)
 
@@ -62,7 +62,7 @@ stock-trading/
 │   │   ├── databus/               # 数据采集模块
 │   │   │   ├── controller/        # 前端路由控制器
 │   │   │   ├── collector/         # 数据采集器
-│   │   │   ├── client/            # API 客户端 (Tushare 等)
+│   │   │   ├── client/            # API 客户端
 │   │   │   ├── entity/            # 数据实体
 │   │   │   ├── repository/        # 数据访问层
 │   │   │   └── scheduled/         # 定时任务
@@ -196,8 +196,8 @@ docker-compose logs -f
 - 实时行情采集
 - 历史 K 线获取
 - 财经新闻采集
-- RSS 源解析 (ROME 框架)
-- 网页抓取 (Jsoup)
+- 财经新闻采集 (证券平台)
+
 
 ### AI 模型模块 (com.stock.models)
 
@@ -367,9 +367,9 @@ docker-compose logs -f backend
 
 ### 1. 数据采集
 
-- 使用 Tushare API 获取 A 股数据
-- ROME 框架解析 RSS 财经新闻
-- Jsoup 网页抓取补充数据源
+- 使用证券平台 API 获取 A 股数据
+- 证券平台 API 统一采集数据
+
 - 定时任务自动更新
 
 ### 2. AI 预测
