@@ -6,19 +6,21 @@ import com.stock.dataCollector.entity.StockInfo;
 import com.stock.dataCollector.entity.StockPrice;
 import com.stock.dataCollector.repository.PriceRepository;
 import com.stock.dataCollector.repository.StockInfoRepository;
+import com.stock.dataCollector.util.StockDataParser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * 股票数据采集服务
- * 从证券平台获取股票数据
+ * 股票数据服务
+ * 统一处理股票信息的采集、存储和查询
  */
 @Slf4j
 @Service
@@ -28,7 +30,118 @@ public class StockDataService {
     private final PriceRepository priceRepository;
     private final StockInfoRepository stockInfoRepository;
     private final SecuritiesClient securitiesClient;
-    private final StockInfoService stockInfoService;
+
+    // ==================== 股票列表同步 ====================
+
+    /**
+     * 同步股票列表到MySQL
+     * 
+     * @return 同步结果
+     */
+    @Transactional
+    public SyncResult syncStockList() {
+        log.info("========== 开始同步股票列表 ==========");
+        long startTime = System.currentTimeMillis();
+        
+        SyncResult result = new SyncResult();
+        
+        try {
+            JSONArray stockList = securitiesClient.getStockList();
+            
+            if (stockList == null || stockList.isEmpty()) {
+                log.warn("未获取到股票列表数据");
+                return result;
+            }
+            
+            result.setTotalCount(stockList.size());
+            
+            // 使用解析器解析数据
+            List<StockInfo> stockInfos = StockDataParser.parseStockList(stockList);
+            
+            // 批量保存
+            int[] counts = batchSaveWithStats(stockInfos);
+            result.setSavedCount(counts[0]);
+            result.setUpdatedCount(counts[1]);
+            result.setFailedCount(stockList.size() - counts[0] - counts[1]);
+            
+            long costTime = System.currentTimeMillis() - startTime;
+            result.setCostTimeMs(costTime);
+            
+            log.info("========== 股票列表同步完成 ==========");
+            log.info("总数: {}, 新增: {}, 更新: {}, 失败: {}, 耗时: {}ms", 
+                result.getTotalCount(), result.getSavedCount(), result.getUpdatedCount(), 
+                result.getFailedCount(), result.getCostTimeMs());
+            
+            return result;
+            
+        } catch (Exception e) {
+            log.error("同步股票列表失败", e);
+            result.setErrorMessage(e.getMessage());
+            return result;
+        }
+    }
+
+    /**
+     * 批量保存并统计新增/更新数量
+     */
+    private int[] batchSaveWithStats(List<StockInfo> stockInfos) {
+        int savedCount = 0;
+        int updatedCount = 0;
+        
+        for (StockInfo stock : stockInfos) {
+            try {
+                boolean exists = stockInfoRepository.existsByCode(stock.getCode());
+                saveOrUpdate(stock);
+                if (exists) {
+                    updatedCount++;
+                } else {
+                    savedCount++;
+                }
+            } catch (Exception e) {
+                log.error("保存股票 {} 失败: {}", stock.getCode(), e.getMessage());
+            }
+        }
+        
+        return new int[]{savedCount, updatedCount};
+    }
+
+    /**
+     * 保存或更新股票信息
+     */
+    @Transactional
+    public StockInfo saveOrUpdate(StockInfo stockInfo) {
+        Optional<StockInfo> existing = stockInfoRepository.findByCode(stockInfo.getCode());
+        
+        if (existing.isPresent()) {
+            StockInfo existingStock = existing.get();
+            updateStockInfo(existingStock, stockInfo);
+            return stockInfoRepository.save(existingStock);
+        } else {
+            return stockInfoRepository.save(stockInfo);
+        }
+    }
+
+    /**
+     * 更新股票信息字段
+     */
+    private void updateStockInfo(StockInfo target, StockInfo source) {
+        if (source.getName() != null) target.setName(source.getName());
+        if (source.getMarket() != null) target.setMarket(source.getMarket());
+        if (source.getPrice() != null) target.setPrice(source.getPrice());
+        if (source.getChangePercent() != null) target.setChangePercent(source.getChangePercent());
+        if (source.getChangeAmount() != null) target.setChangeAmount(source.getChangeAmount());
+        if (source.getVolume() != null) target.setVolume(source.getVolume());
+        if (source.getAmount() != null) target.setAmount(source.getAmount());
+        if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getTotalMarketValue());
+        if (source.getCirculatingMarketValue() != null) target.setCirculatingMarketValue(source.getCirculatingMarketValue());
+        if (source.getPeRatio() != null) target.setPeRatio(source.getPeRatio());
+        if (source.getPbRatio() != null) target.setPbRatio(source.getPbRatio());
+        if (source.getIsSt() != null) target.setIsSt(source.getIsSt());
+        if (source.getIsSuspended() != null) target.setIsSuspended(source.getIsSuspended());
+        if (source.getDataSource() != null) target.setDataSource(source.getDataSource());
+    }
+
+    // ==================== 历史价格同步 ====================
 
     /**
      * 获取股票历史价格数据
@@ -38,47 +151,15 @@ public class StockDataService {
         
         try {
             JSONArray results = securitiesClient.getHistoryPrices(stockCode, 20);
-            
-            if (results == null || results.isEmpty()) {
-                log.warn("股票 {} 无历史价格数据", stockCode);
-                return new ArrayList<>();
-            }
-            
-            List<StockPrice> prices = new ArrayList<>();
-            for (int i = 0; i < results.size(); i++) {
-                String s = results.getString(i);
-                s = s.replaceAll("\\[", "").replaceAll("\\]", "");
-                String[] split = s.split(",");
-                
-                if (split.length < 3) {
-                    continue;
-                }
-                
-                StockPrice price = new StockPrice();
-                price.setCode(stockCode);
-                price.setDate(LocalDate.parse(split[0]));
-                price.setOpenPrice(BigDecimal.valueOf(Double.parseDouble(split[1]) / 100));
-                price.setClosePrice(BigDecimal.valueOf(Double.parseDouble(split[2]) / 100));
-                
-                if (split.length > 3) {
-                    price.setHighPrice(BigDecimal.valueOf(Double.parseDouble(split[3]) / 100));
-                    price.setLowPrice(BigDecimal.valueOf(Double.parseDouble(split[4]) / 100));
-                }
-                
-                prices.add(price);
-            }
-            
-            log.info("股票 {} 获取到 {} 条历史价格数据", stockCode, prices.size());
-            return prices;
-            
+            return StockDataParser.parsePriceList(results, stockCode);
         } catch (Exception e) {
             log.error("获取股票 {} 历史价格数据失败", stockCode, e);
-            return new ArrayList<>();
+            return List.of();
         }
     }
 
     /**
-     * 保存股票价格数据到 MongoDB
+     * 保存股票价格数据到MongoDB
      */
     @Transactional
     public void saveStockPrices(List<StockPrice> prices) {
@@ -89,20 +170,14 @@ public class StockDataService {
 
         log.info("开始保存 {} 条股票价格数据", prices.size());
         
-        int saved = 0;
-        int skipped = 0;
-        int updated = 0;
+        int saved = 0, updated = 0, skipped = 0;
 
         for (StockPrice price : prices) {
             try {
-                var existingOpt = priceRepository.findByCodeAndDate(
-                    price.getCode(), 
-                    price.getDate()
-                );
+                var existingOpt = priceRepository.findByCodeAndDate(price.getCode(), price.getDate());
 
                 if (existingOpt.isPresent()) {
                     StockPrice existing = existingOpt.get();
-                    
                     if (existing.getClosePrice() == null || existing.getVolume() == null) {
                         existing.setOpenPrice(price.getOpenPrice());
                         existing.setHighPrice(price.getHighPrice());
@@ -128,244 +203,7 @@ public class StockDataService {
     }
 
     /**
-     * 从证券平台获取股票列表并保存到MySQL
-     * 
-     * @return 获取的股票数量
-     */
-    public int fetchAndSaveStockList() {
-        log.info("从证券平台获取股票列表");
-        
-        try {
-            JSONArray results = securitiesClient.getStockList();
-            
-            if (results == null || results.isEmpty()) {
-                log.warn("未获取到股票列表数据");
-                return 0;
-            }
-            
-            List<StockInfo> stockList = new ArrayList<>();
-            
-            for (int i = 0; i < results.size(); i++) {
-                String s = results.getString(i);
-                String[] split = s.split(",");
-                
-                if (split.length < 5) {
-                    continue;
-                }
-                
-                String changePercentStr = split[0].replaceAll("\"", "");
-                String priceStr = split[1].replaceAll("\"", "");
-                String name = split[2].replaceAll("\"", "");
-                String market = split[3].replaceAll("\"", "");
-                String code = split[4].replaceAll("\"", "");
-                
-                StockInfo entity = new StockInfo();
-                entity.setCode(code);
-                entity.setName(name);
-                entity.setMarket(parseMarket(market));
-                
-                try {
-                    if (!changePercentStr.isEmpty()) {
-                        entity.setChangePercent(new BigDecimal(changePercentStr));
-                    }
-                    if (!priceStr.isEmpty()) {
-                        entity.setPrice(new BigDecimal(priceStr));
-                    }
-                } catch (NumberFormatException e) {
-                    log.debug("解析价格或涨跌幅失败: code={}", code);
-                }
-                
-                if (split.length > 5) {
-                    try {
-                        String volumeStr = split[5].replaceAll("\"", "");
-                        if (!volumeStr.isEmpty()) {
-                            entity.setVolume(new BigDecimal(volumeStr));
-                        }
-                    } catch (Exception ignored) {}
-                }
-                
-                if (split.length > 9) {
-                    try {
-                        String totalValueStr = split[9].replaceAll("\"", "");
-                        if (!totalValueStr.isEmpty()) {
-                            entity.setTotalMarketValue(new BigDecimal(totalValueStr));
-                        }
-                    } catch (Exception ignored) {}
-                }
-                
-                entity.setDataSource("证券平台");
-                stockList.add(entity);
-            }
-            
-            int savedCount = stockInfoService.batchSaveOrUpdate(stockList);
-            
-            log.info("股票列表获取完成，共 {} 条，保存/更新 {} 条", results.size(), savedCount);
-            return savedCount;
-            
-        } catch (Exception e) {
-            log.error("从证券平台获取股票列表失败", e);
-            return 0;
-        }
-    }
-
-    /**
-     * 解析市场代码
-     */
-    private String parseMarket(String market) {
-        return switch (market.toUpperCase()) {
-            case "SH" -> "上海";
-            case "SZ" -> "深圳";
-            case "BJ" -> "北京";
-            default -> market;
-        };
-    }
-
-    /**
-     * 同步股票列表到MySQL（定时任务调用）
-     * 
-     * @return 同步结果
-     */
-    @Transactional
-    public SyncResult syncStockListToMySql() {
-        log.info("========== 开始同步股票列表到MySQL ==========");
-        long startTime = System.currentTimeMillis();
-        
-        SyncResult result = new SyncResult();
-        
-        try {
-            JSONArray stockList = securitiesClient.getStockList();
-            
-            if (stockList == null || stockList.isEmpty()) {
-                log.warn("未获取到股票列表数据");
-                return result;
-            }
-            
-            result.setTotalCount(stockList.size());
-            
-            int savedCount = 0;
-            int updatedCount = 0;
-            int failedCount = 0;
-            
-            for (int i = 0; i < stockList.size(); i++) {
-                try {
-                    String s = stockList.getString(i);
-                    String[] split = s.split(",");
-                    
-                    if (split.length < 5) {
-                        failedCount++;
-                        continue;
-                    }
-                    
-                    String changePercentStr = split[0].replaceAll("\"", "");
-                    String priceStr = split[1].replaceAll("\"", "");
-                    String name = split[2].replaceAll("\"", "");
-                    String market = split[3].replaceAll("\"", "");
-                    String code = split[4].replaceAll("\"", "");
-                    
-                    StockInfo entity = new StockInfo();
-                    entity.setCode(code);
-                    entity.setName(name);
-                    entity.setMarket(parseMarket(market));
-                    
-                    try {
-                        if (!changePercentStr.isEmpty()) {
-                            entity.setChangePercent(new BigDecimal(changePercentStr));
-                        }
-                        if (!priceStr.isEmpty()) {
-                            entity.setPrice(new BigDecimal(priceStr));
-                        }
-                    } catch (NumberFormatException e) {
-                        log.debug("解析价格失败: code={}", code);
-                    }
-                    
-                    if (split.length > 5) {
-                        try {
-                            String volumeStr = split[5].replaceAll("\"", "");
-                            if (!volumeStr.isEmpty()) {
-                                entity.setVolume(new BigDecimal(volumeStr));
-                            }
-                        } catch (Exception ignored) {}
-                    }
-                    
-                    if (split.length > 9) {
-                        try {
-                            String totalValueStr = split[9].replaceAll("\"", "");
-                            if (!totalValueStr.isEmpty()) {
-                                entity.setTotalMarketValue(new BigDecimal(totalValueStr));
-                            }
-                        } catch (Exception ignored) {}
-                    }
-                    
-                    entity.setDataSource("证券平台");
-                    
-                    boolean exists = stockInfoService.findByCode(code).isPresent();
-                    stockInfoService.saveOrUpdate(entity);
-                    
-                    if (exists) {
-                        updatedCount++;
-                    } else {
-                        savedCount++;
-                    }
-                    
-                } catch (Exception e) {
-                    failedCount++;
-                    log.error("处理股票数据失败", e);
-                }
-            }
-            
-            result.setSavedCount(savedCount);
-            result.setUpdatedCount(updatedCount);
-            result.setFailedCount(failedCount);
-            
-            long costTime = System.currentTimeMillis() - startTime;
-            result.setCostTimeMs(costTime);
-            
-            log.info("========== 股票列表同步完成 ==========");
-            log.info("总数: {}, 新增: {}, 更新: {}, 失败: {}, 耗时: {}ms", 
-                result.getTotalCount(), result.getSavedCount(), result.getUpdatedCount(), 
-                result.getFailedCount(), result.getCostTimeMs());
-            
-            return result;
-            
-        } catch (Exception e) {
-            log.error("同步股票列表到MySQL失败", e);
-            result.setErrorMessage(e.getMessage());
-            return result;
-        }
-    }
-
-    /**
-     * 同步结果
-     */
-    @lombok.Data
-    public static class SyncResult {
-        private int totalCount;
-        private int savedCount;
-        private int updatedCount;
-        private int failedCount;
-        private long costTimeMs;
-        private String errorMessage;
-    }
-
-    /**
-     * 获取所有股票信息
-     */
-    public List<StockInfo> getAllStocks() {
-        log.info("获取所有股票信息");
-        return stockInfoRepository.findAll();
-    }
-
-    /**
-     * 保存股票基本信息
-     */
-    @Transactional
-    public void saveStockInfo(StockInfo stockInfo) {
-        log.info("保存股票信息：{} - {}", stockInfo.getCode(), stockInfo.getName());
-        stockInfoRepository.save(stockInfo);
-    }
-
-    /**
-     * 同步股票历史数据到 MongoDB
+     * 同步股票历史数据到MongoDB
      */
     @Transactional
     public int syncHistoricalData(String stockCode, LocalDate startDate, LocalDate endDate) {
@@ -383,6 +221,50 @@ public class StockDataService {
         return filteredPrices.size();
     }
 
+    // ==================== 查询方法 ====================
+
+    /**
+     * 查询所有股票
+     */
+    public List<StockInfo> findAllStocks() {
+        return stockInfoRepository.findAll();
+    }
+
+    /**
+     * 分页查询股票
+     */
+    public Page<StockInfo> findAllStocks(Pageable pageable) {
+        return stockInfoRepository.findAll(pageable);
+    }
+
+    /**
+     * 根据代码查询股票
+     */
+    public Optional<StockInfo> findByCode(String code) {
+        return stockInfoRepository.findByCode(code);
+    }
+
+    /**
+     * 查询所有股票代码
+     */
+    public List<String> findAllCodes() {
+        return stockInfoRepository.findAllCodes();
+    }
+
+    /**
+     * 统计股票总数
+     */
+    public long count() {
+        return stockInfoRepository.count();
+    }
+
+    /**
+     * 根据市场查询
+     */
+    public List<StockInfo> findByMarket(String market) {
+        return stockInfoRepository.findByMarket(market);
+    }
+
     /**
      * 获取股票最新价格
      */
@@ -395,13 +277,29 @@ public class StockDataService {
      * 批量获取股票最新价格
      */
     public List<StockPrice> getLatestPrices(List<String> stockCodes) {
-        List<StockPrice> result = new ArrayList<>();
-        for (String code : stockCodes) {
-            StockPrice latest = getLatestPrice(code);
-            if (latest != null) {
-                result.add(latest);
-            }
-        }
-        return result;
+        return stockCodes.stream()
+            .map(this::getLatestPrice)
+            .filter(java.util.Objects::nonNull)
+            .toList();
+    }
+
+    /**
+     * 删除所有股票数据
+     */
+    @Transactional
+    public void deleteAllStocks() {
+        stockInfoRepository.deleteAll();
+    }
+
+    // ==================== 同步结果 ====================
+
+    @lombok.Data
+    public static class SyncResult {
+        private int totalCount;
+        private int savedCount;
+        private int updatedCount;
+        private int failedCount;
+        private long costTimeMs;
+        private String errorMessage;
     }
 }

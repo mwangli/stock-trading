@@ -2,7 +2,6 @@ package com.stock.dataCollector.controller;
 
 import com.stock.dataCollector.entity.StockInfo;
 import com.stock.dataCollector.service.StockDataService;
-import com.stock.dataCollector.service.StockInfoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -23,17 +22,16 @@ import java.util.Map;
 public class StockDataController {
 
     private final StockDataService stockDataService;
-    private final StockInfoService stockInfoService;
 
     /**
-     * 手动触发股票列表同步到MySQL
+     * 手动触发股票列表同步
      */
     @PostMapping("/sync")
     public ResponseEntity<Map<String, Object>> syncStockList() {
         log.info("手动触发股票列表同步");
         
         try {
-            StockDataService.SyncResult result = stockDataService.syncStockListToMySql();
+            StockDataService.SyncResult result = stockDataService.syncStockList();
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -54,23 +52,21 @@ public class StockDataController {
     }
 
     /**
-     * 获取MySQL中股票数据统计
+     * 获取股票数据统计
      */
     @GetMapping("/statistics")
     public ResponseEntity<Map<String, Object>> getStatistics() {
-        long totalCount = stockInfoService.count();
+        long totalCount = stockDataService.count();
         
         Map<String, Long> marketCount = new HashMap<>();
-        List<StockInfo> allStocks = stockInfoService.findAll();
+        List<StockInfo> allStocks = stockDataService.findAllStocks();
+        
         for (StockInfo stock : allStocks) {
             String market = stock.getMarket() != null ? stock.getMarket() : "未知";
             marketCount.merge(market, 1L, Long::sum);
         }
         
-        int withPrice = 0;
-        int withName = 0;
-        int withMarket = 0;
-        int withVolume = 0;
+        int withPrice = 0, withName = 0, withMarket = 0, withVolume = 0;
         
         for (StockInfo stock : allStocks) {
             if (stock.getPrice() != null) withPrice++;
@@ -106,7 +102,7 @@ public class StockDataController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
         
-        List<StockInfo> allStocks = stockInfoService.findAll();
+        List<StockInfo> allStocks = stockDataService.findAllStocks();
         
         int total = allStocks.size();
         int fromIndex = (page - 1) * size;
@@ -130,7 +126,7 @@ public class StockDataController {
      */
     @GetMapping("/code/{code}")
     public ResponseEntity<?> getStockByCode(@PathVariable String code) {
-        return stockInfoService.findByCode(code)
+        return stockDataService.findByCode(code)
             .map(ResponseEntity::ok)
             .orElse(ResponseEntity.notFound().build());
     }
@@ -140,13 +136,9 @@ public class StockDataController {
      */
     @GetMapping("/validate")
     public ResponseEntity<Map<String, Object>> validateData() {
-        List<StockInfo> allStocks = stockInfoService.findAll();
+        List<StockInfo> allStocks = stockDataService.findAllStocks();
         
-        int missingName = 0;
-        int missingPrice = 0;
-        int missingMarket = 0;
-        int missingVolume = 0;
-        int missingCode = 0;
+        int missingName = 0, missingPrice = 0, missingMarket = 0, missingVolume = 0, missingCode = 0;
         
         for (StockInfo stock : allStocks) {
             if (stock.getCode() == null || stock.getCode().isEmpty()) missingCode++;
