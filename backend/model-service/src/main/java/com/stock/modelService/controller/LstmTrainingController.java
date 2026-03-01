@@ -2,8 +2,6 @@ package com.stock.modelService.controller;
 
 import com.stock.modelService.dto.TrainingRequest;
 import com.stock.modelService.service.LstmTrainerService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -19,7 +17,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/models/lstm")
 @RequiredArgsConstructor
-@Tag(name = "LSTM 模型训练", description = "LSTM 股票预测模型训练相关接口")
 public class LstmTrainingController {
 
     private final LstmTrainerService trainerService;
@@ -28,7 +25,6 @@ public class LstmTrainingController {
      * 启动 LSTM 模型训练
      */
     @PostMapping("/train")
-    @Operation(summary = "训练 LSTM 模型", description = "使用历史数据训练 LSTM 股票预测模型")
     public ResponseEntity<Map<String, Object>> trainModel(@RequestBody TrainingRequest request) {
         log.info("收到 LSTM 训练请求：股票代码={}, 天数={}, 轮次={}", 
                 request.getStockCodes(), request.getDays(), request.getEpochs());
@@ -83,7 +79,6 @@ public class LstmTrainingController {
      * 获取训练状态
      */
     @GetMapping("/status/{trainingId}")
-    @Operation(summary = "获取训练状态", description = "查询 LSTM 模型训练的进度状态")
     public ResponseEntity<Map<String, Object>> getTrainingStatus(@PathVariable String trainingId) {
         var status = trainerService.getTrainingStatus(trainingId);
         
@@ -105,7 +100,6 @@ public class LstmTrainingController {
      * 健康检查
      */
     @GetMapping("/health")
-    @Operation(summary = "健康检查", description = "检查 LSTM 训练服务是否可用")
     public ResponseEntity<Map<String, Object>> health() {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "UP");
