@@ -10,20 +10,20 @@ documents/
 ├── requirements/          # 需求文档
 │   ├── 00-系统整体需求.md
 │   ├── 01-数据采集需求.md
-│   ├── 02-AI 模型需求.md
-│   ├── 03-交易策略需求.md
+│   ├── 02-模型服务需求.md
+│   ├── 03-策略分析需求.md
 │   └── 04-交易执行需求.md
 ├── design/               # 设计文档
 │   ├── 00-系统架构设计.md
 │   ├── 01-数据采集设计.md
-│   ├── 02-AI 模型设计.md
-│   ├── 03-交易策略设计.md
+│   ├── 02-模型服务设计.md
+│   ├── 03-策略分析设计.md
 │   └── 04-交易执行设计.md
 └── test/                 # 测试文档
     ├── 00-系统测试计划.md
     ├── 01-数据采集测试.md
-    ├── 02-AI 模型测试.md
-    ├── 03-交易策略测试.md
+    ├── 02-模型服务测试.md
+    ├── 03-策略分析测试.md
     └── 04-交易执行测试.md
 ```
 
@@ -34,10 +34,9 @@ documents/
 | 模块 | Maven ArtifactId | 包路径 | 职责 |
 |------|------------------|--------|------|
 | 数据采集 | data-collector | com.stock.dataCollector | 股票数据、新闻采集 |
-| AI 模型 | model-service | com.stock.modelService | 价格预测、情感分析 |
-| 交易策略 | strategy-analysis | com.stock.strategyAnalysis | 选股决策、信号生成 |
+| 模型服务 | model-service | com.stock.modelService | 价格预测、情感分析 |
+| 策略分析 | strategy-analysis | com.stock.strategyAnalysis | 选股决策、信号生成 |
 | 交易执行 | trading-executor | com.stock.tradingExecutor | 风控检查、订单执行、主启动类 |
-
 ### 模块依赖关系
 
 ```
@@ -128,7 +127,7 @@ data-collector
 ### 文档命名规范
 
 - 文件名：`序号 - 模块名 - 文档类型.md`
-- 序号：00(整体), 01(数据采集), 02(AI 模型), 03(交易策略), 04(交易执行)
+- 序号：00(整体), 01(数据采集), 02(模型服务), 03(策略分析), 04(交易执行)
 - 文档类型：需求/设计/测试
 
 ### 文档模板
