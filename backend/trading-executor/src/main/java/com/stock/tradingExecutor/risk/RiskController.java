@@ -11,6 +11,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -220,7 +226,7 @@ public class RiskController {
         
         // 计算比例
         if (account.getTotalAssets().compareTo(BigDecimal.ZERO) > 0) {
-            return newValue.divide(account.getTotalAssets(), 4, BigDecimal.ROUND_HALF_UP)
+            return newValue.divide(account.getTotalAssets(), 4, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100))
                     .doubleValue();
         }
@@ -268,7 +274,7 @@ public class RiskController {
                 .map(Position::getMarketValue)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         
-        return industryValue.divide(totalAssets, 4, BigDecimal.ROUND_HALF_UP)
+        return industryValue.divide(totalAssets, 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100))
                 .doubleValue();
     }

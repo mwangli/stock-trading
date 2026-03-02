@@ -16,6 +16,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -443,7 +448,7 @@ public class TradeExecutor {
         }
         
         // 计算可买股数
-        int maxQuantity = amount.divide(price, 0, BigDecimal.ROUND_DOWN).intValue();
+        int maxQuantity = amount.divide(price, 0, RoundingMode.DOWN).intValue();
         
         // 向下取整到100股
         return (maxQuantity / 100) * 100;

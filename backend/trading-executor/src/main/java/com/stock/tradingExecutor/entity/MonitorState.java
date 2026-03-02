@@ -3,6 +3,16 @@ package com.stock.tradingExecutor.entity;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.util.List;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.util.List;
+
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -51,6 +61,6 @@ public class MonitorState {
         BigDecimal sum = samples.stream()
                 .map(PriceSample::getPrice)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return sum.divide(BigDecimal.valueOf(samples.size()), 2, BigDecimal.ROUND_HALF_UP);
+        return sum.divide(BigDecimal.valueOf(samples.size()), 2, RoundingMode.HALF_UP);
     }
 }

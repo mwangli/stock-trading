@@ -33,7 +33,7 @@ public class ZXRequestUtils {
     /**
      * 构建通用请求参数
      */
-    private Map<String, Object> buildParams(Map<String, Object> paramMap) {
+    public Map<String, Object> buildParams(Map<String, Object> paramMap) {
         if (paramMap == null) {
             paramMap = new HashMap<>();
         }
