@@ -1,73 +1,447 @@
 package com.stock.tradingExecutor.broker;
 
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
 import com.stock.tradingExecutor.entity.AccountStatus;
 import com.stock.tradingExecutor.entity.OrderResult;
 import com.stock.tradingExecutor.entity.Position;
 import com.stock.tradingExecutor.enums.OrderStatus;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 
 /**
  * 中信证券适配器
- * TODO: 实现真实的券商API对接
+ * 对接中信证券交易平台API
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class ZXBrokerAdapter implements BrokerAdapter {
-    
+
+    private final ZXRequestUtils requestUtils;
+    private final ZXBrokerConfig config;
+    private final StringRedisTemplate redisTemplate;
+
+    // API Action常量
+    private static final int ACTION_GET_ACCOUNT = 116;
+    private static final int ACTION_GET_PRICE = 33;
+    private static final int ACTION_SUBMIT_ORDER = 110;
+    private static final int ACTION_QUERY_TODAY_ORDERS = 113;
+    private static final int ACTION_QUERY_FILLED_ORDERS = 114;
+    private static final int ACTION_QUERY_HISTORY_ORDERS = 115;
+    private static final int ACTION_CANCEL_ORDER = 111;
+
     @Override
     public String getName() {
         return "ZXBroker(中信证券)";
     }
-    
+
     @Override
     public AccountStatus getAccountInfo() {
         log.info("[ZXBroker] 获取账户资金信息");
-        // TODO: 实现真实的中信证券API调用
-        throw new UnsupportedOperationException("中信证券API对接待实现");
+        
+        String token = requestUtils.getToken();
+        if (token == null) {
+            log.error("[ZXBroker] Token无效，请先设置Token");
+            return null;
+        }
+
+        Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", ACTION_GET_ACCOUNT);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("token", token);
+        paramMap.put("reqno", System.currentTimeMillis());
+
+        JSONArray jsonArray = requestUtils.requestArray(requestUtils.buildParams(paramMap));
+        if (jsonArray == null || jsonArray.size() < 2) {
+            log.error("[ZXBroker] 获取账户资金失败");
+            return null;
+        }
+
+        // 解析账户信息
+        // 格式: 币种|余额|可取|可用|总资产|证券|基金|冻结资金|资产|资金账户|币种代码|账号主副标志|
+        String data = jsonArray.getString(1);
+        String[] split = data.split("\\|");
+        
+        if (split.length < 6) {
+            log.error("[ZXBroker] 账户数据格式错误: {}", data);
+            return null;
+        }
+
+        AccountStatus status = new AccountStatus();
+        try {
+            status.setAvailableCash(new BigDecimal(split[3]));
+            status.setTotalAssets(new BigDecimal(split[4]));
+            status.setFrozenAmount(new BigDecimal(split[7]));
+            status.setTotalPosition(new BigDecimal(split[5]));
+        } catch (NumberFormatException e) {
+            log.error("[ZXBroker] 解析账户数据失败: {}", e.getMessage());
+            return null;
+        }
+
+        log.info("[ZXBroker] 账户信息: 总资产={}, 可用={}", status.getTotalAssets(), status.getAvailableCash());
+        return status;
     }
-    
+
     @Override
     public BigDecimal getRealtimePrice(String stockCode) {
         log.info("[ZXBroker] 获取股票实时价格: {}", stockCode);
-        // TODO: 实现真实的中信证券API调用
-        throw new UnsupportedOperationException("中信证券API对接待实现");
+
+        Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put("stockcode", stockCode);
+        paramMap.put("Reqno", System.currentTimeMillis());
+        paramMap.put("action", ACTION_GET_PRICE);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("Level", 1);
+        paramMap.put("UseBPrice", 1);
+
+        JSONObject res = requestUtils.request(requestUtils.buildParams(paramMap));
+        Double price = res.getDouble("PRICE");
+        
+        if (price == null) {
+            log.error("[ZXBroker] 获取股票价格失败: {}", stockCode);
+            return null;
+        }
+
+        log.info("[ZXBroker] 股票 {} 当前价格: {}", stockCode, price);
+        return BigDecimal.valueOf(price);
     }
-    
+
     @Override
     public OrderResult submitOrder(String direction, String stockCode, BigDecimal price, Integer quantity) {
         log.info("[ZXBroker] 提交委托: {} {} {} {}", direction, stockCode, price, quantity);
-        // TODO: 实现真实的中信证券API调用
-        throw new UnsupportedOperationException("中信证券API对接待实现");
+
+        String token = requestUtils.getToken();
+        if (token == null) {
+            log.error("[ZXBroker] Token无效，请先设置Token");
+            return OrderResult.fail("Token无效，请先设置Token");
+        }
+
+        // 转换方向: BUY->B, SELL->S
+        String directionCode = "BUY".equals(direction) ? "B" : "S";
+
+        Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", ACTION_SUBMIT_ORDER);
+        paramMap.put("PriceType", 0);
+        paramMap.put("Direction", directionCode);
+        paramMap.put("StockCode", stockCode);
+        paramMap.put("Price", price.doubleValue());
+        paramMap.put("Volume", quantity);
+        paramMap.put("token", token);
+        paramMap.put("reqno", System.currentTimeMillis());
+
+        JSONObject res = requestUtils.request(requestUtils.buildParams(paramMap));
+        String answerNo = res.getString("ANSWERNO");
+
+        if (answerNo == null) {
+            String errorNo = res.getString("ERRORNO");
+            String errorMsg = res.getString("ERRORMSG");
+            log.error("[ZXBroker] 委托提交失败: {} - {}", errorNo, errorMsg);
+            return OrderResult.fail("委托提交失败: " + errorMsg);
+        }
+
+        log.info("[ZXBroker] 委托提交成功, 订单号: {}", answerNo);
+        return OrderResult.builder()
+                .success(true)
+                .orderId(answerNo)
+                .stockCode(stockCode)
+                .direction(direction)
+                .price(price)
+                .quantity(quantity)
+                .status(OrderStatus.SUBMITTED)
+                .message("委托已提交")
+                .submitTime(LocalDateTime.now())
+                .build();
     }
-    
+
     @Override
     public OrderStatus queryOrderStatus(String orderId) {
         log.info("[ZXBroker] 查询委托状态: {}", orderId);
-        // TODO: 实现真实的中信证券API调用
-        throw new UnsupportedOperationException("中信证券API对接待实现");
+
+        List<OrderInfo> orders = listTodayAllOrder();
+        Optional<OrderInfo> orderOpt = orders.stream()
+                .filter(o -> orderId.equals(o.getAnswerNo()))
+                .findFirst();
+
+        if (!orderOpt.isPresent()) {
+            log.warn("[ZXBroker] 未找到订单: {}", orderId);
+            return OrderStatus.PENDING;
+        }
+
+        String statusStr = orderOpt.get().getStatus();
+        return convertOrderStatus(statusStr);
     }
-    
+
     @Override
     public Boolean cancelOrder(String orderId) {
         log.info("[ZXBroker] 撤销委托: {}", orderId);
-        // TODO: 实现真实的中信证券API调用
-        throw new UnsupportedOperationException("中信证券API对接待实现");
+
+        String token = requestUtils.getToken();
+        if (token == null) {
+            log.error("[ZXBroker] Token无效，请先设置Token");
+            return false;
+        }
+
+        Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", ACTION_CANCEL_ORDER);
+        paramMap.put("ContactID", orderId);
+        paramMap.put("token", token);
+        paramMap.put("reqno", System.currentTimeMillis());
+
+        JSONObject res = requestUtils.request(requestUtils.buildParams(paramMap));
+        String errorNo = res.getString("ERRORNO");
+        
+        if ("0".equals(errorNo)) {
+            log.info("[ZXBroker] 撤单成功: {}", orderId);
+            return true;
+        }
+
+        log.error("[ZXBroker] 撤单失败: {}", res.getString("ERRORMSG"));
+        return false;
     }
-    
+
     @Override
     public List<OrderResult> getTodayOrders() {
-        // TODO: 实现真实的中信证券API调用
-        return new ArrayList<>();
+        log.info("[ZXBroker] 获取当日成交订单");
+
+        String token = requestUtils.getToken();
+        if (token == null) {
+            log.error("[ZXBroker] Token无效，请先设置Token");
+            return new ArrayList<>();
+        }
+
+        Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", ACTION_QUERY_FILLED_ORDERS);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", config.getMaxOrderCount());
+        paramMap.put("token", token);
+        paramMap.put("reqno", System.currentTimeMillis());
+
+        JSONArray results = requestUtils.requestArray(requestUtils.buildParams(paramMap));
+        return parseOrderList(results, true);
     }
-    
+
     @Override
     public List<Position> getPositions() {
-        // TODO: 实现真实的中信证券API调用
+        log.info("[ZXBroker] 获取持仓列表");
+        // 中信证券API需要通过查询账户信息获取持仓
+        // 当前简化实现，返回空列表
+        // 如需完整实现，需要调用持仓查询接口
         return new ArrayList<>();
+    }
+
+    /**
+     * 等待订单成交
+     * @param orderId 订单号
+     * @return 是否成交
+     */
+    public boolean waitSuccess(String orderId) {
+        log.info("[ZXBroker] 等待订单成交: {}", orderId);
+
+        int times = 0;
+        int maxTimes = config.getOrderWaitTimes();
+        int interval = config.getOrderWaitInterval();
+        int cancelTimes = config.getCancelWaitTimes();
+
+        while (times++ < maxTimes) {
+            try {
+                Thread.sleep(interval * 1000L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.error("[ZXBroker] 等待被中断");
+                return false;
+            }
+
+            List<OrderInfo> orders = listTodayAllOrder();
+            Optional<OrderInfo> orderOpt = orders.stream()
+                    .filter(o -> orderId.equals(o.getAnswerNo()))
+                    .findFirst();
+
+            if (!orderOpt.isPresent()) {
+                log.warn("[ZXBroker] 订单状态查询失败: {}", orderId);
+                continue;
+            }
+
+            String status = orderOpt.get().getStatus();
+            log.info("[ZXBroker] 订单 {} 状态: {}", orderId, status);
+
+            if ("已成".equals(status)) {
+                log.info("[ZXBroker] 订单成交: {}", orderId);
+                return true;
+            }
+
+            if ("已报".equals(status)) {
+                log.info("[ZXBroker] 订单等待成交: {}", orderId);
+                if (times >= cancelTimes) {
+                    log.info("[ZXBroker] 超时撤单: {}", orderId);
+                    cancelOrder(orderId);
+                }
+            }
+
+            if ("已报待撤".equals(status)) {
+                log.info("[ZXBroker] 等待撤单完成: {}", orderId);
+            }
+
+            if ("已撤".equals(status)) {
+                log.info("[ZXBroker] 订单已撤销: {}", orderId);
+                return false;
+            }
+
+            if ("废单".equals(status)) {
+                log.info("[ZXBroker] 订单已废除: {}", orderId);
+                return false;
+            }
+        }
+
+        log.error("[ZXBroker] 订单等待超时: {}", orderId);
+        return false;
+    }
+
+    /**
+     * 获取当日所有委托订单
+     */
+    private List<OrderInfo> listTodayAllOrder() {
+        String token = requestUtils.getToken();
+        if (token == null) {
+            return new ArrayList<>();
+        }
+
+        Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put("action", ACTION_QUERY_TODAY_ORDERS);
+        paramMap.put("StartPos", 0);
+        paramMap.put("MaxCount", config.getMaxOrderCount());
+        paramMap.put("token", token);
+        paramMap.put("ReqlinkType", 1);
+        paramMap.put("reqno", System.currentTimeMillis());
+
+        JSONArray result = requestUtils.requestArray(requestUtils.buildParams(paramMap));
+        return parseOrderStatusList(result);
+    }
+
+    /**
+     * 解析订单状态列表
+     * 格式: 委托日期|时间|证券代码|证券|委托类别|买卖方向|状态|委托|数量|委托编号|均价|成交|股东代码|交易类别|
+     */
+    private List<OrderInfo> parseOrderStatusList(JSONArray result) {
+        List<OrderInfo> orderList = new ArrayList<>();
+        if (result == null || result.size() <= 1) {
+            return orderList;
+        }
+
+        for (int i = 1; i < result.size(); i++) {
+            String str = result.getString(i);
+            String[] split = str.split("\\|");
+            if (split.length < 9) {
+                continue;
+            }
+
+            OrderInfo orderInfo = new OrderInfo();
+            orderInfo.setDate(split[0]);
+            orderInfo.setTime(split[1]);
+            orderInfo.setCode(split[2]);
+            orderInfo.setName(split[3]);
+            orderInfo.setType(split[4]); // 委托类别
+            orderInfo.setDirection(split[5]); // 买卖方向
+            orderInfo.setStatus(split[6]); // 状态
+            orderInfo.setAnswerNo(split[9]);
+            
+            orderList.add(orderInfo);
+        }
+
+        return orderList;
+    }
+
+    /**
+     * 解析成交订单列表
+     */
+    private List<OrderResult> parseOrderList(JSONArray results, boolean isToday) {
+        List<OrderResult> orderList = new ArrayList<>();
+        if (results == null || results.size() <= 1) {
+            return orderList;
+        }
+
+        for (int i = 1; i < results.size(); i++) {
+            String result = results.getString(i);
+            String[] split = result.split("\\|");
+            
+            String name = isToday ? split[0] : split[5];
+            String type = isToday ? split[1] : split[6];
+            String number = isToday ? split[2] : split[8];
+            String price = isToday ? split[3] : split[7];
+            String code = isToday ? split[5] : split[4];
+            String answerNo = isToday ? split[6] : split[1];
+            String date = isToday ? split[10] : split[0];
+
+            if ("0".equals(answerNo) || "799999".equals(code)) {
+                continue;
+            }
+
+            OrderResult orderInfo = OrderResult.builder()
+                    .orderId(answerNo)
+                    .stockCode(code)
+                    .stockName(name)
+                    .direction("买入".equals(type) ? "BUY" : "SELL")
+                    .price(new BigDecimal(price))
+                    .quantity((int) Math.abs(Double.parseDouble(number)))
+                    .status(OrderStatus.FILLED)
+                    .message("已成交")
+                    .build();
+
+            orderList.add(orderInfo);
+        }
+
+        return orderList;
+    }
+
+    /**
+     * 转换订单状态
+     */
+    private OrderStatus convertOrderStatus(String statusStr) {
+        if ("已成".equals(statusStr)) {
+            return OrderStatus.FILLED;
+        } else if ("已报".equals(statusStr)) {
+            return OrderStatus.SUBMITTED;
+        } else if ("部成".equals(statusStr)) {
+            return OrderStatus.PARTIAL;
+        } else if ("已撤".equals(statusStr) || "已报待撤".equals(statusStr)) {
+            return OrderStatus.CANCELLED;
+        } else if ("废单".equals(statusStr)) {
+            return OrderStatus.REJECTED;
+        }
+        return OrderStatus.PENDING;
+    }
+
+    /**
+     * 计算手续费
+     * 万分之五，最低5元
+     */
+    public BigDecimal calculateFee(BigDecimal amount) {
+        BigDecimal fee = amount.multiply(new BigDecimal("0.0005"));
+        BigDecimal minFee = new BigDecimal("5");
+        return fee.max(minFee).setScale(2, BigDecimal.ROUND_HALF_UP);
+    }
+
+    /**
+     * 订单信息内部类
+     */
+    @lombok.Data
+    private static class OrderInfo {
+        private String date;
+        private String time;
+        private String code;
+        private String name;
+        private String type;
+        private String direction;
+        private String status;
+        private String answerNo;
     }
 }
