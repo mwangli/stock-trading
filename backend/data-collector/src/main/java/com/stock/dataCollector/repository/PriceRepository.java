@@ -42,4 +42,9 @@ public interface PriceRepository extends MongoRepository<StockPrice, String> {
      * 检查是否存在某日期的数据
      */
     boolean existsByCodeAndDate(String code, LocalDate date);
+
+    /**
+     * 检查是否已存在某只股票的任何历史价格数据
+     */
+    boolean existsByCode(String code);
 }

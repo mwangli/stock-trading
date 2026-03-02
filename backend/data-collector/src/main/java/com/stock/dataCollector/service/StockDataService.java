@@ -219,8 +219,8 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
 
     /**
      * 保存股票价格数据到MongoDB
+     * 仅使用 MongoRepository，不需要 JPA 事务，避免长时间同步导致 MySQL 连接超时
      */
-    @Transactional
     public void saveStockPrices(List<StockPrice> prices) {
         if (prices == null || prices.isEmpty()) {
             log.warn("价格数据为空，跳过保存");
@@ -263,9 +263,8 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
     }
 
     /**
-     * 同步股票历史数据到MongoDB
+     * 同步单只股票的历史数据到MongoDB
      */
-    @Transactional
     public int syncHistoricalData(String stockCode, LocalDate startDate, LocalDate endDate) {
         log.info("开始同步股票 {} 从 {} 到 {} 的历史数据", stockCode, startDate, endDate);
 
@@ -282,12 +281,12 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
     }
 
     /**
-     * 遍历所有股票代码，同步每只股票的历史价格数据到 MongoDB
+     * 遍历所有股票代码，同步每只股票的历史价格数据到 MongoDB。
+     * 如果 Mongo 中已存在某只股票的任何历史价格记录，则跳过该股票，支持重复执行以提高效率。
      *
-     * @param count 每只股票获取的历史天数，null 或 <=0 时使用默认 200 天
+     * @param count 每只股票获取的历史天数（目前平台接口按默认区间返回，此参数暂未使用）
      * @return 实际写入的价格记录总数
      */
-    @Transactional
     public int syncAllStocksHistory(Integer count) {
         int days = (count == null || count <= 0) ? 200 : count;
         List<String> codes = stockInfoRepository.findAllCodes();
@@ -296,11 +295,17 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
             return 0;
         }
 
-        log.info("开始同步所有股票的历史价格数据，共 {} 只股票，每只 {} 天", codes.size(), days);
+        log.info("开始同步所有股票的历史价格数据，共 {} 只股票，每只 {} 天（平台默认区间）", codes.size(), days);
 
         int totalRecords = 0;
         for (String code : codes) {
             try {
+                // 如果 Mongo 中已经存在该股票的历史数据，则跳过，支持重复执行
+                if (priceRepository.existsByCode(code)) {
+                    log.info("股票 {} 已存在历史价格数据，跳过同步", code);
+                    continue;
+                }
+
                 JSONArray results = securitiesClient.getHistoryPrices(code, days);
                 List<StockPrice> prices = StockDataParser.parsePriceList(results, code);
                 saveStockPrices(prices);
