@@ -108,7 +108,6 @@ public class StockDataService {
     /**
      * 保存或更新股票信息
      */
-    @Transactional
     public StockInfo saveOrUpdate(StockInfo stockInfo) {
         Optional<StockInfo> existing = stockInfoRepository.findByCode(stockInfo.getCode());
         
@@ -128,17 +127,10 @@ public class StockDataService {
         if (source.getName() != null) target.setName(source.getName());
         if (source.getMarket() != null) target.setMarket(source.getMarket());
         if (source.getPrice() != null) target.setPrice(source.getPrice());
-        if (source.getChangePercent() != null) target.setChangePercent(source.getChangePercent());
         if (source.getChangeAmount() != null) target.setChangeAmount(source.getChangeAmount());
-        if (source.getVolume() != null) target.setVolume(source.getVolume());
-        if (source.getAmount() != null) target.setAmount(source.getAmount());
+        if (source.getChangePercent() != null) target.setChangePercent(source.getChangePercent());
         if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getTotalMarketValue());
-        if (source.getCirculatingMarketValue() != null) target.setCirculatingMarketValue(source.getCirculatingMarketValue());
-        if (source.getPeRatio() != null) target.setPeRatio(source.getPeRatio());
-        if (source.getPbRatio() != null) target.setPbRatio(source.getPbRatio());
-        if (source.getIsSt() != null) target.setIsSt(source.getIsSt());
-        if (source.getIsSuspended() != null) target.setIsSuspended(source.getIsSuspended());
-        if (source.getDataSource() != null) target.setDataSource(source.getDataSource());
+        if (source.getTurnoverRate() != null) target.setTurnoverRate(source.getTurnoverRate());
     }
 
     // ==================== 历史价格同步 ====================
