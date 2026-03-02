@@ -52,7 +52,7 @@ public class SentimentTrainerService {
 
             log.info("开始训练情感分析模型 - 轮次:{}, 批次:{}", trainEpochs, trainBatchSize);
 
-            status.setStatus("加载数据");
+            status.setStatus("加载数据 - 训练ID: " + trainingId);
             status.setProgress(10);
 
             List<TrainingSample> allSamples = dataPreprocessor.loadTrainingData(
@@ -116,6 +116,7 @@ public class SentimentTrainerService {
             return SentimentTrainingResponse.builder()
                     .success(true)
                     .message("训练完成")
+                    .trainingId(trainingId)
                     .epochs(trainEpochs)
                     .trainLoss(simulatedLoss)
                     .valAccuracy(simulatedAccuracy)
@@ -132,6 +133,7 @@ public class SentimentTrainerService {
 
             return SentimentTrainingResponse.builder()
                     .success(false)
+                    .trainingId(trainingId)
                     .message("训练失败：" + e.getMessage())
                     .build();
         }
