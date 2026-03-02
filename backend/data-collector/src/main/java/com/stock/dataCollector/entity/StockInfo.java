@@ -65,12 +65,20 @@ public class StockInfo {
     @Column(name = "total_market_value", precision = 20, scale = 2)
     private BigDecimal totalMarketValue;
 
-    /**
-     * 换手率
-     */
     @Column(name = "turnover_rate", precision = 10, scale = 4)
     private BigDecimal turnoverRate;
 
+    /**
+     * 量比
+     */
+    @Column(name = "volume_ratio", precision = 10, scale = 4)
+    private BigDecimal volumeRatio;
+
+    /**
+     * 行业代码
+     */
+    @Column(name = "industry_code")
+    private Integer industryCode;
     /**
      * 创建时间
      */
