@@ -24,7 +24,8 @@ import org.springframework.web.client.RestTemplate;
     "com.stock.dataCollector.entity"
 })
 @EnableMongoRepositories(basePackages = {
-    "com.stock.dataCollector.repository"
+    "com.stock.dataCollector.repository",
+    "com.stock.modelService.repository"
 })
 @EnableJpaRepositories(basePackages = {
     "com.stock.dataCollector.repository.mysql"

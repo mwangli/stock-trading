@@ -14,10 +14,13 @@ import ai.djl.training.listener.TrainingListener;
 import ai.djl.training.loss.Loss;
 import ai.djl.training.optimizer.Optimizer;
 import ai.djl.training.tracker.Tracker;
+import ai.djl.ndarray.NDList;
 import com.stock.dataCollector.entity.StockPrice;
 import com.stock.dataCollector.repository.PriceRepository;
 import com.stock.modelService.config.LstmTrainingConfig;
+import com.stock.modelService.entity.LstmModelDocument;
 import com.stock.modelService.model.StockLSTMModel;
+import com.stock.modelService.repository.LstmModelRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -44,6 +47,7 @@ public class LstmTrainerService {
     private final LstmTrainingConfig config;
     private final PriceRepository priceRepository;
     private final LstmDataPreprocessor dataPreprocessor;
+    private final LstmModelRepository lstmModelRepository;
     private final Map<String, TrainingStatus> trainingStatusMap = new ConcurrentHashMap<>();
     private String currentModelPath;
 
@@ -205,7 +209,9 @@ public class LstmTrainerService {
                     .success(true).message("训练完成").epochs(trainEpochs)
                     .trainLoss(finalTrainLoss).valLoss(finalValLoss)
                     .modelPath(currentModelPath).trainSamples(trainSize)
-                    .valSamples(valSize).details(trainingLog).build();
+                    .valSamples(valSize).details(trainingLog)
+                    .trainingId(trainingId)
+                    .build();
 
         } catch (Exception e) {
             log.error("训练失败", e);
@@ -235,18 +241,26 @@ public class LstmTrainerService {
         try (NDManager manager = NDManager.newBaseManager("PyTorch")) {
             NDArray inputArray = manager.create(inputs);
             NDArray targetArray = manager.create(targets).reshape(targets.length, 1);
+            // 这里返回的数据集会在 Trainer 内部重新管理 NDArray 生命周期
             return new ArrayDataset.Builder()
                     .setData(inputArray).optLabels(targetArray)
                     .setSampling(batchSize, true).build();
         }
     }
 
+    /**
+     * 在验证集上评估模型：只做前向传播 + 计算损失，不更新梯度
+     */
     private float evaluateModel(Trainer trainer, ArrayDataset valDataset) throws IOException, ai.djl.translate.TranslateException {
-        float totalLoss = 0;
+        float totalLoss = 0f;
         int batchCount = 0;
+        Loss loss = trainer.getLoss();
+
         for (Batch batch : trainer.iterateDataset(valDataset)) {
-            EasyTrain.trainBatch(trainer, batch);
-            totalLoss += trainer.getTrainingResult().getTrainLoss();
+            NDArray predictions = trainer.forward(batch.getData()).singletonOrThrow();
+            NDArray labels = batch.getLabels().singletonOrThrow();
+            NDArray batchLoss = loss.evaluate(new NDList(labels), new NDList(predictions));
+            totalLoss += batchLoss.toFloatArray()[0];
             batchCount++;
             batch.close();
         }
@@ -260,8 +274,10 @@ public class LstmTrainerService {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String modelName = "lstm-stock-" + timestamp + "-epoch" + epoch;
 
+        // 1. 保存 DJL 模型到本地文件系统
         model.save(modelDir, modelName);
 
+        // 2. 写归一化参数到本地文件（用于备份和排查）
         Path paramsFile = modelDir.resolve("normalization_params_" + timestamp + ".txt");
         String params = String.format(
                 "maxPrice=%.6f\nmaxVolume=%.6f\nsequenceLength=%d\ninputSize=%d\nhiddenSize=%d\nnumLayers=%d\ncreatedAt=%s\nmodelName=%s",
@@ -272,6 +288,25 @@ public class LstmTrainerService {
         );
         Files.writeString(paramsFile, params);
 
+        // 3. 读取 .params 文件二进制内容，保存到 MongoDB
+        Path paramsBinaryFile = modelDir.resolve(modelName + "-0000.params");
+        if (Files.exists(paramsBinaryFile)) {
+            byte[] paramsBytes = Files.readAllBytes(paramsBinaryFile);
+
+            LstmModelDocument doc = new LstmModelDocument();
+            doc.setModelName(modelName);
+            doc.setEpoch(epoch);
+            doc.setCreatedAt(LocalDateTime.now());
+            doc.setParams(paramsBytes);
+            doc.setNormalizationParams(params);
+
+            LstmModelDocument saved = lstmModelRepository.save(doc);
+            log.info("模型已保存到 MongoDB，ID: {}", saved.getId());
+        } else {
+            log.warn("未找到模型参数文件: {}", paramsBinaryFile.toAbsolutePath());
+        }
+
+        // 4. 写 model-ready 标记文件（用于文件系统方式的健康检查）
         Path readyFile = modelDir.resolve("model-ready.txt");
         Files.writeString(readyFile, "Model: " + modelName + "\nReady at: " + LocalDateTime.now());
 
@@ -316,6 +351,7 @@ public class LstmTrainerService {
     public static class TrainingResult {
         private boolean success;
         private String message;
+        private String trainingId;
         private int epochs;
         private double trainLoss;
         private double valLoss;

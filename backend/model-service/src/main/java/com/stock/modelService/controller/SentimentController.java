@@ -43,6 +43,7 @@ public class SentimentController {
             Map<String, Object> response = new HashMap<>();
             response.put("success", result.isSuccess());
             response.put("message", result.getMessage());
+            response.put("trainingId", result.getTrainingId());
             response.put("epochs", result.getEpochs());
             response.put("trainLoss", result.getTrainLoss());
             response.put("valAccuracy", result.getValAccuracy());

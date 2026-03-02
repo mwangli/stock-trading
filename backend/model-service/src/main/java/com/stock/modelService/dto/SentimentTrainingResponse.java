@@ -19,6 +19,10 @@ public class SentimentTrainingResponse {
 
     private boolean success;
     private String message;
+    /**
+     * 训练任务ID（用于轮询训练状态）
+     */
+    private String trainingId;
     private Integer epochs;
     private Double trainLoss;
     private Double valAccuracy;

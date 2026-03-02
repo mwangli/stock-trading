@@ -12,7 +12,9 @@ import ai.djl.nn.SequentialBlock;
 import ai.djl.nn.core.Linear;
 import ai.djl.nn.norm.LayerNorm;
 import ai.djl.nn.recurrent.LSTM;
+import com.stock.modelService.entity.LstmModelDocument;
 import com.stock.modelService.model.StockLSTMModel;
+import com.stock.modelService.repository.LstmModelRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -34,7 +36,10 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Component
+@lombok.RequiredArgsConstructor
 public class LstmInference {
+
+    private final LstmModelRepository lstmModelRepository;
 
     private Model model;
     private boolean isLoaded = false;
@@ -66,29 +71,59 @@ public class LstmInference {
      */
     public void loadModel(String path) {
         try {
+            // 1. 优先从 MongoDB 加载最新模型
+            LstmModelDocument latest = lstmModelRepository.findTopByOrderByCreatedAtDesc();
+            if (latest != null && latest.getParams() != null) {
+                log.info("从 MongoDB 加载最新 LSTM 模型，ID: {}, name: {}", latest.getId(), latest.getModelName());
+
+                // 在临时目录中还原模型文件
+                Path tempDir = Files.createTempDirectory("lstm-model-");
+                Path paramsFile = tempDir.resolve(latest.getModelName() + "-0000.params");
+                Files.write(paramsFile, latest.getParams());
+
+                // 写归一化参数文件，复用现有加载逻辑
+                Path normFile = tempDir.resolve("normalization_params_latest.txt");
+                if (latest.getNormalizationParams() != null) {
+                    Files.writeString(normFile, latest.getNormalizationParams());
+                }
+
+                // 关闭旧模型
+                if (this.model != null) {
+                    this.model.close();
+                }
+
+                this.model = Model.newInstance("lstm-stock", "PyTorch");
+                this.model.load(tempDir, latest.getModelName());
+
+                loadNormalizationParams(tempDir);
+
+                this.isLoaded = true;
+                this.lastLoadedTime = LocalDateTime.now();
+                this.modelPath = "mongo:" + latest.getId();
+                log.info("LSTM 模型从 MongoDB 加载成功");
+                return;
+            }
+
+            // 2. 回退：从文件系统加载（兼容旧逻辑）
             Path modelDir = Paths.get(path);
-            
-            // 查找最新的模型文件
+
             Path modelFile = findLatestModel(modelDir);
-            
+
             if (modelFile == null) {
                 log.warn("模型文件不存在：{}, 使用默认LSTM模型", modelDir);
                 createDefaultModel();
                 return;
             }
 
-            log.info("加载模型：{}", modelFile);
+            log.info("从文件系统加载模型：{}", modelFile);
 
-            // 关闭旧模型
             if (this.model != null) {
                 this.model.close();
             }
 
-            // 加载模型
             this.model = Model.newInstance("lstm-stock", "PyTorch");
             this.model.load(modelFile.getParent(), getBaseName(modelFile));
 
-            // 加载归一化参数
             loadNormalizationParams(modelDir);
 
             this.isLoaded = true;
