@@ -64,14 +64,63 @@ public final class StockDataParser {
         entity.setCode(clean(split[4]));
         entity.setName(clean(split[2]));
         entity.setMarket(parseMarket(clean(split[3])));
-        entity.setDataSource("证券平台");
-
-        setDecimal(entity, clean(split[0]), (e, v) -> e.setChangePercent(v));
-        setDecimal(entity, clean(split[1]), (e, v) -> e.setPrice(v));
         
-        if (split.length > 5) setDecimal(entity, clean(split[5]), (e, v) -> e.setVolume(v));
-        if (split.length > 9) setDecimal(entity, clean(split[9]), (e, v) -> e.setTotalMarketValue(v));
-
+        // 解析当前价格 (索引1)
+        try {
+            if (!clean(split[1]).isEmpty()) {
+                entity.setPrice(new BigDecimal(clean(split[1])));
+            }
+        } catch (NumberFormatException ignored) {}
+        
+        // 解析涨跌幅 (索引0)
+        try {
+            if (!clean(split[0]).isEmpty()) {
+                entity.setChangePercent(new BigDecimal(clean(split[0])));
+            }
+        } catch (NumberFormatException ignored) {}
+        
+        // 解析量比 (索引5)
+        if (split.length > 5) {
+            try {
+                if (!clean(split[5]).isEmpty()) {
+                    entity.setVolumeRatio(new BigDecimal(clean(split[5])));
+                }
+            } catch (NumberFormatException ignored) {}
+        }
+        
+        // 解析换手率 (索引6)
+        if (split.length > 6) {
+            try {
+                if (!clean(split[6]).isEmpty()) {
+                    entity.setTurnoverRate(new BigDecimal(clean(split[6])));
+                }
+            } catch (NumberFormatException ignored) {}
+        }
+        
+        // 解析行业代码 (索引8)
+        if (split.length > 8) {
+            try {
+                if (!clean(split[8]).isEmpty()) {
+                    entity.setIndustryCode(Integer.parseInt(clean(split[8])));
+                }
+            } catch (NumberFormatException ignored) {}
+        }
+        
+        // 解析总市值 (索引9)
+        if (split.length > 9) {
+            try {
+                if (!clean(split[9]).isEmpty()) {
+                    entity.setTotalMarketValue(new BigDecimal(clean(split[9])));
+                }
+            } catch (NumberFormatException ignored) {}
+        }
+        
+        // 计算涨跌额 = 当前价格 × 涨跌幅
+        if (entity.getPrice() != null && entity.getChangePercent() != null) {
+            BigDecimal changeAmount = entity.getPrice().multiply(entity.getChangePercent());
+            entity.setChangeAmount(changeAmount);
+        }
+        
         return entity;
     }
 

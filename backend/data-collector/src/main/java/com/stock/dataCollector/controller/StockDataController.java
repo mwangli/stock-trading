@@ -66,7 +66,7 @@ public class StockDataController {
             marketCount.merge(market, 1L, Long::sum);
         }
         
-        int withPrice = 0, withName = 0, withMarket = 0, withChangePercent = 0, withTotalMarketValue = 0, withTurnoverRate = 0;
+        int withPrice = 0, withName = 0, withMarket = 0, withChangePercent = 0, withTotalMarketValue = 0, withTurnoverRate = 0, withVolumeRatio = 0, withIndustryCode = 0;
         
         for (StockInfo stock : allStocks) {
             if (stock.getPrice() != null) withPrice++;
@@ -75,25 +75,32 @@ public class StockDataController {
             if (stock.getChangePercent() != null) withChangePercent++;
             if (stock.getTotalMarketValue() != null) withTotalMarketValue++;
             if (stock.getTurnoverRate() != null) withTurnoverRate++;
+            if (stock.getVolumeRatio() != null) withVolumeRatio++;
+            if (stock.getIndustryCode() != null) withIndustryCode++;
         }
+        
         Map<String, Object> statistics = new HashMap<>();
         statistics.put("totalCount", totalCount);
         statistics.put("marketDistribution", marketCount);
-        statistics.put("fieldCompleteness", Map.of(
-            "name", withName,
-            "price", withPrice,
-            "market", withMarket,
-            "changePercent", withChangePercent,
-            "totalMarketValue", withTotalMarketValue,
-            "turnoverRate", withTurnoverRate
-        ));
-        statistics.put("completenessRate", Map.of(
-            "name", String.format("%.2f%%", totalCount > 0 ? (withName * 100.0 / totalCount) : 0),
-            "price", String.format("%.2f%%", totalCount > 0 ? (withPrice * 100.0 / totalCount) : 0),
-            "market", String.format("%.2f%%", totalCount > 0 ? (withMarket * 100.0 / totalCount) : 0),
-            "changePercent", String.format("%.2f%%", totalCount > 0 ? (withChangePercent * 100.0 / totalCount) : 0),
-            "totalMarketValue", String.format("%.2f%%", totalCount > 0 ? (withTotalMarketValue * 100.0 / totalCount) : 0),
-            "turnoverRate", String.format("%.2f%%", totalCount > 0 ? (withTurnoverRate * 100.0 / totalCount) : 0)
+statistics.put("fieldCompleteness", Map.of(
+"name", withName,
+"price", withPrice,
+"market", withMarket,
+"changePercent", withChangePercent,
+"totalMarketValue", withTotalMarketValue,
+            "turnoverRate", withTurnoverRate,
+            "volumeRatio", withVolumeRatio,
+            "industryCode", withIndustryCode
+));
+statistics.put("completenessRate", Map.of(
+"name", String.format("%.2f%%", totalCount > 0 ? (withName * 100.0 / totalCount) : 0),
+"price", String.format("%.2f%%", totalCount > 0 ? (withPrice * 100.0 / totalCount) : 0),
+"market", String.format("%.2f%%", totalCount > 0 ? (withMarket * 100.0 / totalCount) : 0),
+"changePercent", String.format("%.2f%%", totalCount > 0 ? (withChangePercent * 100.0 / totalCount) : 0),
+"totalMarketValue", String.format("%.2f%%", totalCount > 0 ? (withTotalMarketValue * 100.0 / totalCount) : 0),
+            "turnoverRate", String.format("%.2f%%", totalCount > 0 ? (withTurnoverRate * 100.0 / totalCount) : 0),
+            "volumeRatio", String.format("%.2f%%", totalCount > 0 ? (withVolumeRatio * 100.0 / totalCount) : 0),
+            "industryCode", String.format("%.2f%%", totalCount > 0 ? (withIndustryCode * 100.0 / totalCount) : 0)
         ));
         
         return ResponseEntity.ok(statistics);
@@ -143,7 +150,7 @@ public class StockDataController {
     public ResponseEntity<Map<String, Object>> validateData() {
         List<StockInfo> allStocks = stockDataService.findAllStocks();
         
-        int missingName = 0, missingPrice = 0, missingMarket = 0, missingChangePercent = 0, missingCode = 0;
+        int missingName = 0, missingPrice = 0, missingMarket = 0, missingChangePercent = 0, missingTotalMarketValue = 0, missingTurnoverRate = 0, missingCode = 0;
         
         for (StockInfo stock : allStocks) {
             if (stock.getCode() == null || stock.getCode().isEmpty()) missingCode++;
@@ -151,6 +158,8 @@ public class StockDataController {
             if (stock.getPrice() == null) missingPrice++;
             if (stock.getMarket() == null || stock.getMarket().isEmpty()) missingMarket++;
             if (stock.getChangePercent() == null) missingChangePercent++;
+            if (stock.getTotalMarketValue() == null) missingTotalMarketValue++;
+            if (stock.getTurnoverRate() == null) missingTurnoverRate++;
         }
         
         Map<String, Object> result = new HashMap<>();
@@ -160,7 +169,9 @@ public class StockDataController {
             "missingName", missingName,
             "missingPrice", missingPrice,
             "missingMarket", missingMarket,
-            "missingChangePercent", missingChangePercent
+            "missingChangePercent", missingChangePercent,
+            "missingTotalMarketValue", missingTotalMarketValue,
+            "missingTurnoverRate", missingTurnoverRate
         ));
         result.put("isValid", missingCode == 0);
         result.put("dataQuality", String.format("%.2f%%", 

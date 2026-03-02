@@ -123,15 +123,17 @@ public class StockDataService {
     /**
      * 更新股票信息字段
      */
-    private void updateStockInfo(StockInfo target, StockInfo source) {
-        if (source.getName() != null) target.setName(source.getName());
-        if (source.getMarket() != null) target.setMarket(source.getMarket());
-        if (source.getPrice() != null) target.setPrice(source.getPrice());
-        if (source.getChangeAmount() != null) target.setChangeAmount(source.getChangeAmount());
-        if (source.getChangePercent() != null) target.setChangePercent(source.getChangePercent());
-        if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getTotalMarketValue());
+private void updateStockInfo(StockInfo target, StockInfo source) {
+if (source.getName() != null) target.setName(source.getName());
+if (source.getMarket() != null) target.setMarket(source.getMarket());
+if (source.getPrice() != null) target.setPrice(source.getPrice());
+if (source.getChangeAmount() != null) target.setChangeAmount(source.getChangeAmount());
+if (source.getChangePercent() != null) target.setChangePercent(source.getChangePercent());
+if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getTotalMarketValue());
         if (source.getTurnoverRate() != null) target.setTurnoverRate(source.getTurnoverRate());
-    }
+        if (source.getVolumeRatio() != null) target.setVolumeRatio(source.getVolumeRatio());
+        if (source.getIndustryCode() != null) target.setIndustryCode(source.getIndustryCode());
+}
 
     // ==================== 历史价格同步 ====================
 
