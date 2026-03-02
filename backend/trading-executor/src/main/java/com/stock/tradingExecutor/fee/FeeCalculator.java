@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 /**
  * 手续费计算器
@@ -36,7 +37,7 @@ public class FeeCalculator {
         BigDecimal minFee = BigDecimal.valueOf(config.getMinFee());
         
         // 取较大值
-        return fee.max(minFee).setScale(2, BigDecimal.ROUND_HALF_UP);
+        return fee.max(minFee).setScale(2, RoundingMode.HALF_UP);
     }
     
     /**

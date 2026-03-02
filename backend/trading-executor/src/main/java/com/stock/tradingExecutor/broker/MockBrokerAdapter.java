@@ -8,6 +8,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -74,7 +79,7 @@ public class MockBrokerAdapter implements BrokerAdapter {
         return mockPrices.computeIfAbsent(stockCode, code -> {
             Random random = new Random();
             double basePrice = 10 + random.nextDouble() * 90; // 10-100元
-            return BigDecimal.valueOf(basePrice).setScale(2, BigDecimal.ROUND_HALF_UP);
+            return BigDecimal.valueOf(basePrice).setScale(2, RoundingMode.HALF_UP);
         });
     }
     
@@ -170,7 +175,7 @@ public class MockBrokerAdapter implements BrokerAdapter {
         // 计算新的平均成本
         BigDecimal totalCost = oldCost.multiply(BigDecimal.valueOf(oldQuantity)).add(price.multiply(BigDecimal.valueOf(quantity)));
         int newQuantity = oldQuantity + quantity;
-        BigDecimal newAvgCost = totalCost.divide(BigDecimal.valueOf(newQuantity), 2, BigDecimal.ROUND_HALF_UP);
+        BigDecimal newAvgCost = totalCost.divide(BigDecimal.valueOf(newQuantity), 2, RoundingMode.HALF_UP);
         
         position.setQuantity(newQuantity);
         position.setAvgCost(newAvgCost);

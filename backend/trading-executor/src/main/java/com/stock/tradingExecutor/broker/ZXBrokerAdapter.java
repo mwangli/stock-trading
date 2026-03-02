@@ -12,6 +12,13 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -427,7 +434,7 @@ public class ZXBrokerAdapter implements BrokerAdapter {
     public BigDecimal calculateFee(BigDecimal amount) {
         BigDecimal fee = amount.multiply(new BigDecimal("0.0005"));
         BigDecimal minFee = new BigDecimal("5");
-        return fee.max(minFee).setScale(2, BigDecimal.ROUND_HALF_UP);
+        return fee.max(minFee).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**

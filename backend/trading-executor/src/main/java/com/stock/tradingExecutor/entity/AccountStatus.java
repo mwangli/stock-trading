@@ -2,6 +2,10 @@ package com.stock.tradingExecutor.entity;
 
 import lombok.Data;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.math.BigDecimal;
 
 /**
  * 账户状态
@@ -63,7 +67,7 @@ public class AccountStatus {
     public Double getTotalPositionPercent() {
         if (totalAssets != null && totalAssets.compareTo(BigDecimal.ZERO) > 0 
                 && totalPosition != null) {
-            return totalPosition.divide(totalAssets, 4, BigDecimal.ROUND_HALF_UP)
+            return totalPosition.divide(totalAssets, 4, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100)).doubleValue();
         }
         return 0.0;

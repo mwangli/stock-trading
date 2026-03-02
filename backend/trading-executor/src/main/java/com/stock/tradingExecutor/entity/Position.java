@@ -2,6 +2,12 @@ package com.stock.tradingExecutor.entity;
 
 import lombok.Data;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
@@ -84,7 +90,7 @@ public class Position {
      */
     public BigDecimal getProfitLossPercent() {
         if (avgCost != null && currentPrice != null && avgCost.compareTo(BigDecimal.ZERO) > 0) {
-            return currentPrice.subtract(avgCost).divide(avgCost, 4, BigDecimal.ROUND_HALF_UP)
+            return currentPrice.subtract(avgCost).divide(avgCost, 4, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100));
         }
         return BigDecimal.ZERO;
