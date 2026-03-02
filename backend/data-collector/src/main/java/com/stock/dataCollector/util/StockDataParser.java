@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -144,22 +145,40 @@ public final class StockDataParser {
 
     /**
      * 解析单条价格数据
+     * BINDATA.results 单条记录字段顺序：
+     * date(yyyyMMdd), open, high, close, low, volume, amount, ratio, turnover, changePercent, changeAmount
      */
     public static StockPrice parseStockPrice(String data, String stockCode) {
         if (data == null || data.isEmpty()) return null;
 
         String cleaned = data.replaceAll("[\\[\\]]", "");
         String[] split = cleaned.split(",");
-        if (split.length < 3) return null;
+        if (split.length < 5) return null;
 
         StockPrice price = new StockPrice();
         price.setCode(stockCode);
-        price.setDate(LocalDate.parse(split[0]));
+        // 日期格式为 yyyyMMdd
+        try {
+            price.setDate(LocalDate.parse(split[0], DateTimeFormatter.BASIC_ISO_DATE));
+        } catch (Exception e) {
+            log.debug("解析价格日期失败: {}", split[0]);
+            return null;
+        }
+
+        // 开盘价、最高价、收盘价、最低价
         price.setOpenPrice(parsePrice(split[1]));
-        price.setClosePrice(parsePrice(split[2]));
-        if (split.length > 4) {
-            price.setHighPrice(parsePrice(split[3]));
-            price.setLowPrice(parsePrice(split[4]));
+        price.setHighPrice(parsePrice(split[2]));
+        price.setClosePrice(parsePrice(split[3]));
+        price.setLowPrice(parsePrice(split[4]));
+
+        // 成交量与成交额（按原始数值存储）
+        if (split.length > 6) {
+            try {
+                price.setVolume(new BigDecimal(split[5]));
+            } catch (Exception ignored) {}
+            try {
+                price.setAmount(new BigDecimal(split[6]));
+            } catch (Exception ignored) {}
         }
         return price;
     }

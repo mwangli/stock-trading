@@ -1,6 +1,7 @@
 package com.stock.dataCollector.service;
 
 import com.stock.dataCollector.entity.StockInfo;
+import com.stock.dataCollector.entity.StockPrice;
 import com.stock.dataCollector.repository.StockInfoRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
@@ -277,5 +278,51 @@ class StockInfoSyncTest {
         assertFalse(stockInfoRepository.existsByCode(nonExistingCode), "股票 " + nonExistingCode + " 不应该存在");
 
         log.info("========== Repository 检查股票存在测试通过 ==========");
+    }
+
+    // ==================== 历史价格同步触发与统计 ====================
+
+    @Test
+    @DisplayName("批量同步所有股票历史价格到 Mongo 并统计")
+    void testSyncAllStocksHistoryToMongo() {
+        log.info("========== 开始批量同步所有股票历史价格 ==========");
+
+        List<String> codes = stockInfoRepository.findAllCodes();
+        if (codes == null || codes.isEmpty()) {
+            log.warn("数据库中无股票代码，跳过历史价格同步测试");
+            return;
+        }
+
+        int totalStocks = codes.size();
+        log.info("本次需要同步历史价格的股票总数: {}", totalStocks);
+
+        int totalStocksWithData = 0;
+        int totalRecords = 0;
+
+        int index = 0;
+        for (String code : codes) {
+            index++;
+            List<StockPrice> prices = stockDataService.getHistoryPrices(code);
+
+            if (prices == null || prices.isEmpty()) {
+                log.warn("股票 {} 无历史价格数据，跳过", code);
+                continue;
+            }
+
+            stockDataService.saveStockPrices(prices);
+            totalStocksWithData++;
+            totalRecords += prices.size();
+
+            double percent = totalStocks == 0 ? 0.0 : (index * 100.0 / totalStocks);
+            log.info("股票 {} 历史数据条数: {}，当前进度: {}/{} ({})",
+                code,
+                prices.size(),
+                index,
+                totalStocks,
+                String.format("%.2f%%", percent));
+        }
+
+        log.info("========== 批量同步完成，成功写入 {} 只股票，共 {} 条历史价格记录 ==========",
+            totalStocksWithData, totalRecords);
     }
 }
