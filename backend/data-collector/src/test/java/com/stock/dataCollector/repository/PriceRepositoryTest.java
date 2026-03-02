@@ -56,7 +56,6 @@ class PriceRepositoryTest {
     private StockPrice createTestPrice(LocalDate date) {
         StockPrice price = new StockPrice();
         price.setCode(TEST_STOCK_CODE);
-        price.setName("测试股票");
         price.setDate(date);
         price.setOpenPrice(new BigDecimal("10.00"));
         price.setHighPrice(new BigDecimal("10.50"));
