@@ -15,8 +15,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * 股票数据服务
@@ -57,20 +60,23 @@ public class StockDataService {
             
             // 使用解析器解析数据
             List<StockInfo> stockInfos = StockDataParser.parseStockList(stockList);
-            
+            log.info("解析完成的股票数量: {}", stockInfos.size());
+
             // 批量保存
             int[] counts = batchSaveWithStats(stockInfos);
             result.setSavedCount(counts[0]);
             result.setUpdatedCount(counts[1]);
-            result.setFailedCount(stockList.size() - counts[0] - counts[1]);
+            result.setFailedCount(stockInfos.size() - counts[0] - counts[1]);
             
             long costTime = System.currentTimeMillis() - startTime;
             result.setCostTimeMs(costTime);
             
+            long dbCount = stockInfoRepository.count();
+
             log.info("========== 股票列表同步完成 ==========");
-            log.info("总数: {}, 新增: {}, 更新: {}, 失败: {}, 耗时: {}ms", 
+            log.info("总数: {}, 新增: {}, 更新: {}, 失败: {}, 耗时: {}ms, DB当前总数: {}", 
                 result.getTotalCount(), result.getSavedCount(), result.getUpdatedCount(), 
-                result.getFailedCount(), result.getCostTimeMs());
+                result.getFailedCount(), result.getCostTimeMs(), dbCount);
             
             return result;
             
@@ -85,23 +91,65 @@ public class StockDataService {
      * 批量保存并统计新增/更新数量
      */
     private int[] batchSaveWithStats(List<StockInfo> stockInfos) {
-        int savedCount = 0;
-        int updatedCount = 0;
-        
-        for (StockInfo stock : stockInfos) {
+        if (stockInfos == null || stockInfos.isEmpty()) {
+            return new int[]{0, 0};
+        }
+
+        // 预处理代码列表
+        List<String> codes = stockInfos.stream()
+            .map(StockInfo::getCode)
+            .filter(code -> code != null && !code.isBlank())
+            .distinct()
+            .toList();
+
+        // 一次性查出已存在的股票，避免逐条 existsByCode / findByCode
+        List<StockInfo> existingList = stockInfoRepository.findByCodeIn(codes);
+        Map<String, StockInfo> existingMap = existingList.stream()
+            .collect(Collectors.toMap(StockInfo::getCode, s -> s));
+
+        List<StockInfo> toInsert = new ArrayList<>();
+        List<StockInfo> toUpdate = new ArrayList<>();
+
+        for (StockInfo incoming : stockInfos) {
             try {
-                boolean exists = stockInfoRepository.existsByCode(stock.getCode());
-                saveOrUpdate(stock);
-                if (exists) {
-                    updatedCount++;
+                if (incoming.getCode() == null || incoming.getCode().isBlank()) {
+                    continue;
+                }
+                StockInfo existing = existingMap.get(incoming.getCode());
+                if (existing != null) {
+                    updateStockInfo(existing, incoming);
+                    toUpdate.add(existing);
                 } else {
-                    savedCount++;
+                    toInsert.add(incoming);
                 }
             } catch (Exception e) {
-                log.error("保存股票 {} 失败: {}", stock.getCode(), e.getMessage());
+                log.error("处理股票 {} 失败: {}", incoming.getCode(), e.getMessage(), e);
             }
         }
-        
+
+        int savedCount = 0;
+        int updatedCount = 0;
+
+        // 分批写入，降低单次事务压力
+        final int batchSize = 200;
+
+        if (!toInsert.isEmpty()) {
+            for (int i = 0; i < toInsert.size(); i += batchSize) {
+                int end = Math.min(i + batchSize, toInsert.size());
+                List<StockInfo> batch = toInsert.subList(i, end);
+                stockInfoRepository.saveAll(batch);
+            }
+            savedCount = toInsert.size();
+        }
+        if (!toUpdate.isEmpty()) {
+            for (int i = 0; i < toUpdate.size(); i += batchSize) {
+                int end = Math.min(i + batchSize, toUpdate.size());
+                List<StockInfo> batch = toUpdate.subList(i, end);
+                stockInfoRepository.saveAll(batch);
+            }
+            updatedCount = toUpdate.size();
+        }
+
         return new int[]{savedCount, updatedCount};
     }
 

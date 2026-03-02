@@ -41,6 +41,11 @@ public interface StockInfoRepository extends JpaRepository<StockInfo, Long>, Jpa
     List<String> findAllCodes();
 
     /**
+     * 根据股票代码集合批量查询
+     */
+    List<StockInfo> findByCodeIn(List<String> codes);
+
+    /**
      * 统计总数
      */
     long countBy();
