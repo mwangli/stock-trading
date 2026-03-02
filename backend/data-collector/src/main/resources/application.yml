@@ -19,6 +19,11 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        jdbc:
+          batch_size: 100
+          fetch_size: 100
+        order_inserts: true
+        order_updates: true
 
   # Redis配置
   data:

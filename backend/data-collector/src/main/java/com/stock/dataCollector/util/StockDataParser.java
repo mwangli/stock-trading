@@ -57,7 +57,12 @@ public final class StockDataParser {
     public static StockInfo parseStockInfo(String data) {
         if (data == null || data.isEmpty()) return null;
 
-        String[] split = data.split(",");
+        // 打印原始股票数据，便于排查解析问题
+        log.debug("原始股票数据: {}", data);
+
+        // 去掉首尾方括号，避免首字段带 "["、末字段带 "]"
+        String cleanedLine = data.replaceAll("[\\[\\]]", "");
+        String[] split = cleanedLine.split(",");
         if (split.length < 5) return null;
 
         StockInfo entity = new StockInfo();
@@ -66,35 +71,31 @@ public final class StockDataParser {
         entity.setMarket(parseMarket(clean(split[3])));
         
         // 解析当前价格 (索引1)
-        try {
-            if (!clean(split[1]).isEmpty()) {
-                entity.setPrice(new BigDecimal(clean(split[1])));
-            }
-        } catch (NumberFormatException ignored) {}
-        
-        // 解析涨跌幅 (索引0)
-        try {
-            if (!clean(split[0]).isEmpty()) {
-                entity.setChangePercent(new BigDecimal(clean(split[0])));
-            }
-        } catch (NumberFormatException ignored) {}
-        
+        BigDecimal price = parseDecimalField(split[1]);
+        if (price != null) {
+            entity.setPrice(price);
+        }
+
+        // 解析涨跌幅 (索引0)，兼容带百分号 / 特殊占位符
+        BigDecimal changePercent = parseDecimalField(split[0]);
+        if (changePercent != null) {
+            entity.setChangePercent(changePercent);
+        }
+
         // 解析量比 (索引5)
         if (split.length > 5) {
-            try {
-                if (!clean(split[5]).isEmpty()) {
-                    entity.setVolumeRatio(new BigDecimal(clean(split[5])));
-                }
-            } catch (NumberFormatException ignored) {}
+            BigDecimal volumeRatio = parseDecimalField(split[5]);
+            if (volumeRatio != null) {
+                entity.setVolumeRatio(volumeRatio);
+            }
         }
         
         // 解析换手率 (索引6)
         if (split.length > 6) {
-            try {
-                if (!clean(split[6]).isEmpty()) {
-                    entity.setTurnoverRate(new BigDecimal(clean(split[6])));
-                }
-            } catch (NumberFormatException ignored) {}
+            BigDecimal turnoverRate = parseDecimalField(split[6]);
+            if (turnoverRate != null) {
+                entity.setTurnoverRate(turnoverRate);
+            }
         }
         
         // 解析行业代码 (索引8)
@@ -108,11 +109,10 @@ public final class StockDataParser {
         
         // 解析总市值 (索引9)
         if (split.length > 9) {
-            try {
-                if (!clean(split[9]).isEmpty()) {
-                    entity.setTotalMarketValue(new BigDecimal(clean(split[9])));
-                }
-            } catch (NumberFormatException ignored) {}
+            BigDecimal totalMv = parseDecimalField(split[9]);
+            if (totalMv != null) {
+                entity.setTotalMarketValue(totalMv);
+            }
         }
         
         // 计算涨跌额 = 当前价格 × 涨跌幅
@@ -166,6 +166,34 @@ public final class StockDataParser {
 
     private static String clean(String field) {
         return field == null ? "" : field.replaceAll("\"", "").trim();
+    }
+
+    /**
+     * 通用十进制字段解析：
+     * - 去掉引号、空格
+     * - 过滤 "--" 等占位符
+     * - 去掉逗号、百分号
+     * - 保持原有数值尺度（不做额外乘除）
+     */
+    private static BigDecimal parseDecimalField(String raw) {
+        String value = clean(raw);
+        if (value.isEmpty()) {
+            return null;
+        }
+        // 过滤常见无效占位符
+        if ("--".equals(value) || "N/A".equalsIgnoreCase(value)) {
+            return null;
+        }
+
+        // 去掉逗号和百分号等格式字符
+        value = value.replace(",", "").replace("%", "");
+
+        try {
+            return new BigDecimal(value);
+        } catch (NumberFormatException e) {
+            log.debug("解析数值字段失败，原始值: {}", raw);
+            return null;
+        }
     }
 
     private static BigDecimal parsePrice(String value) {
