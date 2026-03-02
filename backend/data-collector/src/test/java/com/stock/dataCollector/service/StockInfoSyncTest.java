@@ -200,13 +200,15 @@ class StockInfoSyncTest {
             log.info("  {}: {} ({})", market, count, String.format("%.2f%%", count * 100.0 / allStocks.size())));
 
         int withPrice = (int) allStocks.stream().filter(s -> s.getPrice() != null).count();
-        int withVolume = (int) allStocks.stream().filter(s -> s.getVolume() != null).count();
         int withChangePercent = (int) allStocks.stream().filter(s -> s.getChangePercent() != null).count();
+        int withTotalMarketValue = (int) allStocks.stream().filter(s -> s.getTotalMarketValue() != null).count();
+        int withTurnoverRate = (int) allStocks.stream().filter(s -> s.getTurnoverRate() != null).count();
 
         log.info("字段完整性:");
         log.info("  价格: {} ({})", withPrice, String.format("%.2f%%", withPrice * 100.0 / allStocks.size()));
-        log.info("  成交量: {} ({})", withVolume, String.format("%.2f%%", withVolume * 100.0 / allStocks.size()));
         log.info("  涨跌幅: {} ({})", withChangePercent, String.format("%.2f%%", withChangePercent * 100.0 / allStocks.size()));
+        log.info("  总市值: {} ({})", withTotalMarketValue, String.format("%.2f%%", withTotalMarketValue * 100.0 / allStocks.size()));
+        log.info("  换手率: {} ({})", withTurnoverRate, String.format("%.2f%%", withTurnoverRate * 100.0 / allStocks.size()));
 
         log.info("========== 数据统计报告完成 ==========");
     }

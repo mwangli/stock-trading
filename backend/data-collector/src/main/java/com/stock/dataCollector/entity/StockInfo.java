@@ -42,16 +42,10 @@ public class StockInfo {
     private String market;
 
     /**
-     * 最新价格
+     * 当前价格
      */
     @Column(name = "price", precision = 10, scale = 3)
     private BigDecimal price;
-
-    /**
-     * 涨跌幅
-     */
-    @Column(name = "change_percent", precision = 10, scale = 4)
-    private BigDecimal changePercent;
 
     /**
      * 涨跌额
@@ -60,16 +54,10 @@ public class StockInfo {
     private BigDecimal changeAmount;
 
     /**
-     * 成交量
+     * 涨跌幅
      */
-    @Column(name = "volume", precision = 20, scale = 2)
-    private BigDecimal volume;
-
-    /**
-     * 成交额
-     */
-    @Column(name = "amount", precision = 20, scale = 2)
-    private BigDecimal amount;
+    @Column(name = "change_percent", precision = 10, scale = 4)
+    private BigDecimal changePercent;
 
     /**
      * 总市值
@@ -78,34 +66,10 @@ public class StockInfo {
     private BigDecimal totalMarketValue;
 
     /**
-     * 流通市值
+     * 换手率
      */
-    @Column(name = "circulating_market_value", precision = 20, scale = 2)
-    private BigDecimal circulatingMarketValue;
-
-    /**
-     * 市盈率
-     */
-    @Column(name = "pe_ratio", precision = 10, scale = 4)
-    private BigDecimal peRatio;
-
-    /**
-     * 市净率
-     */
-    @Column(name = "pb_ratio", precision = 10, scale = 4)
-    private BigDecimal pbRatio;
-
-    /**
-     * 是否ST
-     */
-    @Column(name = "is_st")
-    private Boolean isSt;
-
-    /**
-     * 是否停牌
-     */
-    @Column(name = "is_suspended")
-    private Boolean isSuspended;
+    @Column(name = "turnover_rate", precision = 10, scale = 4)
+    private BigDecimal turnoverRate;
 
     /**
      * 创建时间
@@ -118,12 +82,6 @@ public class StockInfo {
      */
     @Column(name = "update_time")
     private LocalDateTime updateTime;
-
-    /**
-     * 数据来源
-     */
-    @Column(name = "data_source", length = 50)
-    private String dataSource;
 
     /**
      * 在持久化前设置创建时间
