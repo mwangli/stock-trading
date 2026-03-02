@@ -50,7 +50,7 @@ public class SentimentTrainerService {
             int trainEpochs = request.getEpochs() != null ? request.getEpochs() : config.getEpochs();
             int trainBatchSize = request.getBatchSize() != null ? request.getBatchSize() : config.getBatchSize();
 
-            log.info("开始训练情感分析模型 - 轮次:{}, 批次:{}", trainEpochs, trainBatchSize);
+            log.info("开始情感分析模型训练流程 - 训练ID:{}, 计划轮次:{}, 批次大小:{}", trainingId, trainEpochs, trainBatchSize);
 
             status.setStatus("加载数据 - 训练ID: " + trainingId);
             status.setProgress(10);
@@ -66,49 +66,54 @@ public class SentimentTrainerService {
             int trainSize = split.getTrainData().size();
             int valSize = split.getValData().size();
 
-            log.info("训练集:{}, 验证集:{}", trainSize, valSize);
+            log.info("训练集样本数:{}, 验证集样本数:{}", trainSize, valSize);
 
-            status.setStatus("训练模型");
-            status.setProgress(30);
+            // 统计标签分布，便于评估数据质量
+            long trainNeg = split.getTrainData().stream().filter(s -> s.getLabel() == 0).count();
+            long trainNeu = split.getTrainData().stream().filter(s -> s.getLabel() == 1).count();
+            long trainPos = split.getTrainData().stream().filter(s -> s.getLabel() == 2).count();
 
-            List<Map<String, Object>> trainingLog = new ArrayList<>();
-            double simulatedLoss = 1.0;
-            double simulatedAccuracy = 0.5;
+            long valNeg = split.getValData().stream().filter(s -> s.getLabel() == 0).count();
+            long valNeu = split.getValData().stream().filter(s -> s.getLabel() == 1).count();
+            long valPos = split.getValData().stream().filter(s -> s.getLabel() == 2).count();
 
-            for (int epoch = 0; epoch < trainEpochs; epoch++) {
-                status.setCurrentEpoch(epoch + 1);
-                status.setTotalEpochs(trainEpochs);
+            log.info("训练集标签分布 - 负面:{}, 中性:{}, 正面:{}", trainNeg, trainNeu, trainPos);
+            log.info("验证集标签分布 - 负面:{}, 中性:{}, 正面:{}", valNeg, valNeu, valPos);
 
-                simulatedLoss = simulatedLoss * 0.85 + Math.random() * 0.05;
-                simulatedAccuracy = Math.min(0.95, simulatedAccuracy + 0.08 + Math.random() * 0.02);
+            status.setStatus("数据加载与统计完成");
+            status.setProgress(40);
 
-                double progress = 30 + (epoch + 1) * (50.0 / trainEpochs);
-                status.setProgress(progress);
-                status.setStatus(String.format("训练中 - Epoch %d/%d, Loss: %.4f, Acc: %.2f%%",
-                        epoch + 1, trainEpochs, simulatedLoss, simulatedAccuracy * 100));
-
-                Map<String, Object> logEntry = new HashMap<>();
-                logEntry.put("epoch", epoch + 1);
-                logEntry.put("trainLoss", simulatedLoss);
-                logEntry.put("valAccuracy", simulatedAccuracy);
-                trainingLog.add(logEntry);
-
-                log.info("Epoch {}/{}, Loss: {:.4f}, Accuracy: {:.2f}%",
-                        epoch + 1, trainEpochs, simulatedLoss, simulatedAccuracy * 100);
-
-                try {
-                    Thread.sleep(200);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
+            // 检查预训练模型是否可用（仅做加载验证，不在此处做真实微调）
+            boolean modelReady = loadModel();
+            if (modelReady) {
+                log.info("预训练情感分析模型已就绪，可用于推理");
+                status.setStatus("模型已加载，可用于推理");
+            } else {
+                log.warn("预训练情感分析模型未加载，将使用规则模式推理");
+                status.setStatus("模型未加载，将使用规则模式推理");
             }
+            status.setProgress(80);
 
-            status.setStatus("保存模型");
-            status.setProgress(90);
+            // 组装训练日志，记录数据与模型状态
+            List<Map<String, Object>> trainingLog = new ArrayList<>();
+            Map<String, Object> summary = new HashMap<>();
+            summary.put("trainEpochsPlanned", trainEpochs);
+            summary.put("trainBatchSize", trainBatchSize);
+            summary.put("trainSize", trainSize);
+            summary.put("valSize", valSize);
+            summary.put("trainNeg", trainNeg);
+            summary.put("trainNeu", trainNeu);
+            summary.put("trainPos", trainPos);
+            summary.put("valNeg", valNeg);
+            summary.put("valNeu", valNeu);
+            summary.put("valPos", valPos);
+            summary.put("pretrainedModel", config.getPretrainedModel());
+            summary.put("modelPath", config.getModelPath());
+            summary.put("modelLoaded", modelReady);
+            trainingLog.add(summary);
 
-            String modelPath = saveModel();
-            log.info("模型保存成功：{}", modelPath);
+            // 暂未在 Java 侧执行真实 BERT 微调，先返回数据统计结果
+            String modelPath = config.getModelPath();
 
             status.setStatus("训练完成");
             status.setProgress(100);
@@ -118,8 +123,8 @@ public class SentimentTrainerService {
                     .message("训练完成")
                     .trainingId(trainingId)
                     .epochs(trainEpochs)
-                    .trainLoss(simulatedLoss)
-                    .valAccuracy(simulatedAccuracy)
+                    .trainLoss(null)
+                    .valAccuracy(null)
                     .modelPath(modelPath)
                     .trainSamples(trainSize)
                     .valSamples(valSize)

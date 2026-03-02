@@ -3,6 +3,8 @@ package com.stock.modelService.service;
 import com.stock.dataCollector.entity.StockNews;
 import com.stock.dataCollector.repository.NewsRepository;
 import com.stock.modelService.config.SentimentTrainingConfig;
+import com.stock.modelService.dataset.NewsSentimentDataset;
+import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
 import com.stock.modelService.dto.TrainingSample;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -220,6 +222,18 @@ public class SentimentDataPreprocessor {
         log.info("数据集划分：训练集={}, 验证集={}", trainData.size(), valData.size());
 
         return new DatasetSplit(trainData, valData);
+    }
+
+    /**
+     * 基于训练样本和 tokenizer 构建 DJL 数据集
+     */
+    public NewsSentimentDataset buildDataset(List<TrainingSample> samples, HuggingFaceTokenizer tokenizer) throws java.io.IOException {
+        return NewsSentimentDataset.builder()
+                .setSamples(samples)
+                .setTokenizer(tokenizer)
+                .setMaxLength(config.getMaxSequenceLength())
+                .setSampling(config.getBatchSize(), true)
+                .build();
     }
 
     /**
