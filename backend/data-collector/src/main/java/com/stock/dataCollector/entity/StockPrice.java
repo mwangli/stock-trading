@@ -6,6 +6,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
  * 股票价格数据实体
@@ -55,4 +56,14 @@ public class StockPrice {
      * 成交额（元）
      */
     private BigDecimal amount;
+
+    /**
+     * 创建时间
+     */
+    private LocalDateTime createTime;
+
+    /**
+     * 修改时间
+     */
+    private LocalDateTime updateTime;
 }

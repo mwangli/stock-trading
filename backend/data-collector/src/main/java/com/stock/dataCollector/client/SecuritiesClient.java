@@ -203,15 +203,23 @@ public class SecuritiesClient {
      * @return 历史价格数据列表
      */
     public JSONArray getHistoryPrices(String stockCode, int count) {
-        log.info("获取股票 {} 的历史价格数据, 共 {} 天", stockCode, count);
+        // 平台接口不支持按天数指定历史区间，忽略 count 参数，
+        // 默认返回最近若干年（约 3 年）的日 K 数据。
+        log.info("获取股票 {} 的历史价格数据(平台默认区间)", stockCode);
         
         Map<String, Object> paramMap = new java.util.HashMap<>(10);
         paramMap.put("c.funcno", 20009);
         paramMap.put("c.version", 1);
         paramMap.put("c.stock_code", stockCode);
         paramMap.put("c.type", "day");
-        paramMap.put("c.count", String.valueOf(count));
-        
+
+        // 为了避免对服务器造成过高压力，简单限流：每次请求之间休眠 0.5 秒
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
         return requestDataList(paramMap);
     }
 
