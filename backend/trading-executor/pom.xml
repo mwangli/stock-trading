@@ -111,8 +111,14 @@
         <!-- trading-executor 作为独立模块，不依赖其他业务模块 -->
         <!-- 聚合启动由 stock-app 负责 -->
     </dependencies>
+    
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.1.2</version>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
