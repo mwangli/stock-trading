@@ -1,5 +1,8 @@
 package com.stock.strategyAnalysis.decision;
 
+import com.stock.strategyAnalysis.config.StrategyConfigService;
+import com.stock.strategyAnalysis.dto.StockRankingDto;
+import com.stock.strategyAnalysis.entity.StrategyConfig;
 import com.stock.strategyAnalysis.enums.Signal;
 import com.stock.strategyAnalysis.selector.StockSelector;
 import lombok.Data;
@@ -10,22 +13,28 @@ import org.springframework.stereotype.Component;
 import java.time.LocalTime;
 import java.util.List;
 
+/**
+ * 决策引擎
+ * 综合选股结果和策略配置生成交易决策
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class DecisionEngine {
 
     private final StockSelector stockSelector;
+    private final StrategyConfigService configService;
 
+    /**
+     * 生成交易决策
+     */
     public DecisionResult makeDecision() {
         log.info("开始生成交易决策...");
         
         LocalTime now = LocalTime.now();
         
         // 判断是否在交易时间
-        boolean isTradingTime = isTradingTime(now);
-        
-        if (!isTradingTime) {
+        if (!isTradingTime(now)) {
             log.info("当前非交易时间");
             return DecisionResult.builder()
                     .signal(Signal.HOLD)
@@ -34,11 +43,10 @@ public class DecisionEngine {
         }
         
         try {
-            // 获取推荐股票
-            List<StockSelector.StockRecommendation> recommendations = 
-                    stockSelector.select(5);
+            // 获取选股结果
+            List<StockRankingDto> rankings = stockSelector.getAllRankings();
             
-            if (recommendations.isEmpty()) {
+            if (rankings.isEmpty()) {
                 return DecisionResult.builder()
                         .signal(Signal.HOLD)
                         .reason("无可推荐股票")
@@ -46,28 +54,21 @@ public class DecisionEngine {
             }
             
             // 选择得分最高的股票
-            StockSelector.StockRecommendation top = recommendations.get(0);
+            StockRankingDto top = rankings.get(0);
+            StrategyConfig config = configService.getCurrentConfig();
             
-            if (top.getScore() > 0.3) {
+            if (top.getTotalScore() >= config.getMinScore()) {
                 return DecisionResult.builder()
                         .signal(Signal.BUY)
                         .stockCode(top.getStockCode())
-                        .confidence(Math.min(top.getScore(), 1.0))
-                        .reason(String.format("综合得分 %.2f, 建议买入", top.getScore()))
-                        .recommendations(recommendations)
-                        .build();
-            } else if (top.getScore() < -0.3) {
-                return DecisionResult.builder()
-                        .signal(Signal.SELL)
-                        .stockCode(top.getStockCode())
-                        .confidence(Math.min(-top.getScore(), 1.0))
-                        .reason(String.format("综合得分 %.2f, 建议卖出", top.getScore()))
+                        .confidence(top.getTotalScore())
+                        .reason(top.getReason())
                         .build();
             } else {
                 return DecisionResult.builder()
                         .signal(Signal.HOLD)
-                        .reason(String.format("综合得分 %.2f, 建议观望", top.getScore()))
-                        .recommendations(recommendations)
+                        .reason(String.format("综合得分 %.2f 低于阈值 %.2f, 建议观望", 
+                                top.getTotalScore(), config.getMinScore()))
                         .build();
             }
             
@@ -80,6 +81,9 @@ public class DecisionEngine {
         }
     }
 
+    /**
+     * 判断是否在交易时间
+     */
     private boolean isTradingTime(LocalTime time) {
         LocalTime morningStart = LocalTime.of(9, 30);
         LocalTime morningEnd = LocalTime.of(11, 30);
@@ -90,6 +94,9 @@ public class DecisionEngine {
                (time.isAfter(afternoonStart) && time.isBefore(afternoonEnd));
     }
 
+    /**
+     * 决策结果
+     */
     @Data
     @lombok.Builder
     public static class DecisionResult {
@@ -97,6 +104,5 @@ public class DecisionEngine {
         private String stockCode;
         private double confidence;
         private String reason;
-        private List<StockSelector.StockRecommendation> recommendations;
     }
 }
