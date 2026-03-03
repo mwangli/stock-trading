@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.Arrays;
+import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,6 +21,7 @@ import java.util.List;
 public class LstmDataPreprocessor {
 
     private final LstmTrainingConfig config;
+private final TechnicalIndicatorService technicalIndicatorService;
 
     /**
      * 处理训练数据
@@ -48,6 +51,27 @@ public class LstmDataPreprocessor {
 
         log.info("归一化参数 - 最高价: {}, 最大成交量: {}", maxPrice, maxVolume);
 
+        log.info("开始计算技术指标...");
+        Map<String, double[]> indicators = technicalIndicatorService.calculateIndicators(prices);
+        double[] rsi = indicators.get("RSI");
+        double[] macd = indicators.get("MACD");
+        double[] sma = indicators.get("SMA");
+        double[] upperBoll = indicators.get("UpperBoll");
+        double[] lowerBoll = indicators.get("LowerBoll");
+        double[] obv = indicators.get("OBV");
+
+        // 为指标找到归一化参数 (使用最大绝对值)
+        double maxRsi = Arrays.stream(rsi).max().orElse(1.0);
+        double minRsi = Arrays.stream(rsi).min().orElse(0.0);
+        double maxMacd = Arrays.stream(macd).map(Math::abs).max().orElse(1.0);
+        double maxSma = Arrays.stream(sma).max().orElse(1.0);
+        double maxUpperBoll = Arrays.stream(upperBoll).max().orElse(1.0);
+        double maxLowerBoll = Arrays.stream(lowerBoll).max().orElse(1.0);
+        double maxObv = Arrays.stream(obv).map(Math::abs).max().orElse(1.0);
+
+        log.info("技术指标计算完成.");
+
+
         // 2. 转换为特征矩阵
         List<double[]> features = new ArrayList<>();
         List<Double> targets = new ArrayList<>();
@@ -62,6 +86,12 @@ public class LstmDataPreprocessor {
             feature[2] = normalize(price.getLowPrice(), maxPrice);
             feature[3] = normalize(price.getClosePrice(), maxPrice);
             feature[4] = normalizeVolume(price.getVolume(), maxVolume);
+            feature[5] = (rsi[i] - minRsi) / (maxRsi - minRsi); // Min-Max scaling for RSI
+            feature[6] = macd[i] / maxMacd; // Normalize MACD
+            feature[7] = sma[i] / maxSma; // Normalize SMA
+            feature[8] = upperBoll[i] / maxUpperBoll;
+            feature[9] = lowerBoll[i] / maxLowerBoll;
+            feature[10] = obv[i] / maxObv;
             
             features.add(feature);
             
@@ -92,6 +122,13 @@ public class LstmDataPreprocessor {
                 .valSamples(valSamples)
                 .maxPrice(maxPrice)
                 .maxVolume(maxVolume)
+                .maxRsi(maxRsi)
+                .minRsi(minRsi)
+                .maxMacd(maxMacd)
+                .maxSma(maxSma)
+                .maxUpperBoll(maxUpperBoll)
+                .maxLowerBoll(maxLowerBoll)
+                .maxObv(maxObv)
                 .featureCount(config.getInputSize())
                 .sequenceLength(config.getSequenceLength())
                 .build();
@@ -158,6 +195,13 @@ public class LstmDataPreprocessor {
         private List<TrainingSample> valSamples;
         private double maxPrice;
         private double maxVolume;
+        private double maxRsi;
+        private double minRsi;
+        private double maxMacd;
+        private double maxSma;
+        private double maxUpperBoll;
+        private double maxLowerBoll;
+        private double maxObv;
         private int featureCount;
         private int sequenceLength;
 
