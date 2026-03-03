@@ -1,6 +1,8 @@
 package com.stock.dataCollector.listener;
 
 import com.stock.dataCollector.entity.StockInfo;
+import com.stock.dataCollector.entity.StockPrice;
+import com.stock.dataCollector.repository.StockInfoRepository;
 import com.stock.dataCollector.service.StockDataService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +22,7 @@ import java.util.List;
 public class ApplicationStartupListener {
 
     private final StockDataService stockDataService;
+    private final StockInfoRepository stockInfoRepository;
 
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
@@ -66,7 +69,60 @@ public class ApplicationStartupListener {
         } catch (Exception e) {
             log.error("数据初始化检查失败", e);
         }
-        
+
         log.info("========== 数据初始化检查完成 ==========");
+
+        // 执行历史价格同步
+        syncAllStocksHistoryToMongo();
+    }
+
+    /**
+     * 批量同步所有股票历史价格到 MongoDB
+     * 与测试方法 testSyncAllStocksHistoryToMongo 逻辑一致
+     */
+    private void syncAllStocksHistoryToMongo() {
+        log.info("========== 开始批量同步所有股票历史价格 ==========");
+
+        List<String> codes = stockInfoRepository.findAllCodes();
+        if (codes == null || codes.isEmpty()) {
+            log.warn("数据库中无股票代码，跳过历史价格同步");
+            return;
+        }
+
+        int totalStocks = codes.size();
+        log.info("本次需要同步历史价格的股票总数: {}", totalStocks);
+
+        int totalStocksWithData = 0;
+        int totalRecords = 0;
+
+        int index = 0;
+        for (String code : codes) {
+            index++;
+            try {
+                List<StockPrice> prices = stockDataService.getHistoryPrices(code);
+
+                if (prices == null || prices.isEmpty()) {
+                    log.warn("股票 {} 无历史价格数据，跳过", code);
+                    continue;
+                }
+
+                stockDataService.saveStockPrices(prices);
+                totalStocksWithData++;
+                totalRecords += prices.size();
+
+                double percent = totalStocks == 0 ? 0.0 : (index * 100.0 / totalStocks);
+                log.info("股票 {} 历史数据条数: {}，当前进度: {}/{} ({})",
+                    code,
+                    prices.size(),
+                    index,
+                    totalStocks,
+                    String.format("%.2f%%", percent));
+            } catch (Exception e) {
+                log.error("同步股票 {} 历史价格失败: {}", code, e.getMessage(), e);
+            }
+        }
+
+        log.info("========== 批量同步完成，成功写入 {} 只股票，共 {} 条历史价格记录 ==========",
+            totalStocksWithData, totalRecords);
     }
 }
