@@ -5,6 +5,7 @@ import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.Shape;
+import ai.djl.ndarray.types.DataType;
 import ai.djl.training.ParameterStore;
 import ai.djl.nn.Block;
 import ai.djl.nn.Blocks;
@@ -78,8 +79,24 @@ public class LstmInference {
 
                 // 在临时目录中还原模型文件
                 Path tempDir = Files.createTempDirectory("lstm-model-");
-                Path paramsFile = tempDir.resolve(latest.getModelName() + "-0000.params");
-                Files.write(paramsFile, latest.getParams());
+                // 写入从 MongoDB 读取到的 zip 或单个文件：
+                byte[] stored = latest.getParams();
+                // 尝试识别是否为 zip（PK header）
+                if (stored != null && stored.length >= 4 && stored[0] == 'P' && stored[1] == 'K') {
+                    // 解压到临时目录
+                    try (java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(stored);
+                         java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(bais)) {
+                        java.util.zip.ZipEntry entry;
+                        while ((entry = zis.getNextEntry()) != null) {
+                            Path out = tempDir.resolve(entry.getName());
+                            Files.write(out, zis.readAllBytes());
+                            zis.closeEntry();
+                        }
+                    }
+                } else {
+                    Path paramsFile = tempDir.resolve(latest.getModelName() + "-0000.params");
+                    Files.write(paramsFile, stored == null ? new byte[]{} : stored);
+                }
 
                 // 写归一化参数文件，复用现有加载逻辑
                 Path normFile = tempDir.resolve("normalization_params_latest.txt");
@@ -304,7 +321,11 @@ public class LstmInference {
             return new float[]{0f};
         }
 
-        try (NDManager manager = NDManager.newBaseManager("PyTorch")) {
+        // 使用 model 的 NDManager（如果可用）来创建输入，保证参数和 NDArray 在同一 manager 下
+        NDManager manager = model != null && model.getNDManager() != null
+                ? model.getNDManager().newSubManager()
+                : NDManager.newBaseManager("PyTorch");
+        try (NDManager autoClose = manager) {
             // 展平输入数据: [batch, seq, features] -> [batch, seq*features]
             int batchSize = data.length;
             int seqLen = data[0].length;
@@ -322,6 +343,16 @@ public class LstmInference {
 
             // 创建输入张量
             NDArray input = manager.create(flatData, new Shape(batchSize, seqLen * features));
+
+            // 确保模型参数已初始化：如果模型是未训练的默认结构，初始化子块
+            if (model.getBlock() instanceof com.stock.modelService.model.StockLSTMModel) {
+                // 对于自定义 StockLSTMModel，block.initialize 在创建模型时可能尚未被调用
+                try {
+                    model.getBlock().initialize(manager, DataType.FLOAT32, new Shape(batchSize, seqLen * features));
+                } catch (Exception ignore) {
+                    // 忽略初始化已完成或不必要的错误
+                }
+            }
 
             // 执行推理
             ParameterStore parameterStore = new ParameterStore(manager, false);

@@ -10,6 +10,7 @@ import ai.djl.nn.core.Linear;
 import ai.djl.nn.norm.LayerNorm;
 import ai.djl.nn.recurrent.LSTM;
 import ai.djl.training.ParameterStore;
+import ai.djl.ndarray.types.DataType;
 import ai.djl.training.initializer.XavierInitializer;
 import ai.djl.util.PairList;
 import lombok.extern.slf4j.Slf4j;
@@ -91,8 +92,11 @@ public class StockLSTMModel extends AbstractBlock {
         // 添加为子块
         addChildBlock("lstm_model", model);
         
-        // 设置初始化器
-        setInitializer(new XavierInitializer(), param -> true);
+        // 设置初始化器：仅对权重参数使用 Xavier，避免作用于一维 bias
+        setInitializer(new XavierInitializer(), param -> {
+            String name = param.getName() == null ? "" : param.getName().toLowerCase();
+            return name.contains("weight") || name.contains("kernel");
+        });
     }
 
     /**
@@ -105,6 +109,12 @@ public class StockLSTMModel extends AbstractBlock {
     @Override
     protected NDList forwardInternal(ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
         return model.forward(parameterStore, inputs, training, params);
+    }
+
+    @Override
+    protected void initializeChildBlocks(ai.djl.ndarray.NDManager manager, DataType dataType, Shape... inputShapes) {
+        // 将子块交给 SequentialBlock 进行初始化
+        model.initialize(manager, dataType, inputShapes);
     }
 
     @Override

@@ -1,0 +1,8 @@
+maxPrice=11.820000
+maxVolume=185299400.000000
+sequenceLength=60
+inputSize=5
+hiddenSize=50
+numLayers=2
+createdAt=2026-03-03T19:25:56.338741100
+modelName=lstm-stock-20260303_192556-epoch1

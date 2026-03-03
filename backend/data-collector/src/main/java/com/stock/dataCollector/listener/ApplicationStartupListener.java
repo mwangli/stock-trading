@@ -3,6 +3,7 @@ package com.stock.dataCollector.listener;
 import com.stock.dataCollector.entity.StockInfo;
 import com.stock.dataCollector.entity.StockPrice;
 import com.stock.dataCollector.repository.StockInfoRepository;
+import com.stock.dataCollector.repository.PriceRepository;
 import com.stock.dataCollector.service.StockDataService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,7 @@ public class ApplicationStartupListener {
 
     private final StockDataService stockDataService;
     private final StockInfoRepository stockInfoRepository;
+    private final PriceRepository priceRepository;
 
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
@@ -96,9 +98,17 @@ public class ApplicationStartupListener {
         int totalRecords = 0;
 
         int index = 0;
+        int skippedCount = 0;
         for (String code : codes) {
             index++;
             try {
+                // 检查该股票是否已存在历史数据，如果存在则跳过
+                if (priceRepository.existsByCode(code)) {
+                    log.info("股票 {} 已存在历史价格数据，跳过同步", code);
+                    skippedCount++;
+                    continue;
+                }
+
                 List<StockPrice> prices = stockDataService.getHistoryPrices(code);
 
                 if (prices == null || prices.isEmpty()) {
@@ -122,7 +132,7 @@ public class ApplicationStartupListener {
             }
         }
 
-        log.info("========== 批量同步完成，成功写入 {} 只股票，共 {} 条历史价格记录 ==========",
-            totalStocksWithData, totalRecords);
+        log.info("========== 批量同步完成，成功写入 {} 只股票，跳过 {} 只已存在股票，共 {} 条历史价格记录 =========="
+            , totalStocksWithData, skippedCount, totalRecords);
     }
 }
