@@ -205,7 +205,7 @@ public class LstmTrainerService {
                         if (valLoss < bestValLoss - config.getMinDelta()) {
                             bestValLoss = valLoss;
                             patienceCounter = 0;
-                            bestModelPath = saveModel(model, processedData, epoch + 1);
+                            bestModelPath = saveModel(model, processedData, epoch + 1, stockCodes);
                         } else {
                             patienceCounter++;
                             if (patienceCounter >= config.getPatience()) {
@@ -221,7 +221,7 @@ public class LstmTrainerService {
             status.setProgress(90);
 
             if (bestModelPath == null) {
-                bestModelPath = saveModel(model, processedData, trainEpochs);
+                bestModelPath = saveModel(model, processedData, trainEpochs, stockCodes);
             }
             currentModelPath = bestModelPath;
 
@@ -316,7 +316,7 @@ public class LstmTrainerService {
         return batchCount > 0 ? totalLoss / batchCount : totalLoss;
     }
 
-    private String saveModel(Model model, LstmDataPreprocessor.ProcessedData processedData, int epoch) throws IOException {
+    private String saveModel(Model model, LstmDataPreprocessor.ProcessedData processedData, int epoch, String modelIdentifier) throws IOException {
         Path modelDir = Paths.get(config.getModelPath());
         Files.createDirectories(modelDir);
 
@@ -375,15 +375,20 @@ public class LstmTrainerService {
 
                     byte[] zipBytes = baos.toByteArray();
 
+                    // 核心修改：先按 modelIdentifier 删除旧模型
+                    lstmModelRepository.deleteByModelName(modelIdentifier);
+                    log.info("已删除旧的 LSTM 模型: {}", modelIdentifier);
+
+                    // 再保存新模型，modelName 直接使用 modelIdentifier
                     LstmModelDocument doc = new LstmModelDocument();
-                    doc.setModelName(modelName);
+                    doc.setModelName(modelIdentifier); // 使用唯一业务标识
                     doc.setEpoch(epoch);
                     doc.setCreatedAt(LocalDateTime.now());
                     doc.setParams(zipBytes);
                     doc.setNormalizationParams(params);
 
                     LstmModelDocument saved = lstmModelRepository.save(doc);
-                    log.info("模型已保存到 MongoDB，ID: {}", saved.getId());
+                    log.info("新模型已保存到 MongoDB，ID: {}, ModelName: {}", saved.getId(), saved.getModelName());
                 }
             } else {
                 log.warn("未找到任何模型相关文件，未保存到 MongoDB: {}", modelSubdir);
