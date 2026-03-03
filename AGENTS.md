@@ -230,8 +230,37 @@ mvn spring-boot:run -pl strategy-analysis
 - **API 设计**: 
   - RESTful 风格
   - POST/PUT 使用 `@RequestBody`
-- **测试**: JUnit 5 + Mockito
+- **测试**: JUnit 5
 - **ORM**: Spring Data JPA (自动建库建表，无需 SQL 脚本)
+
+- **注释规范**:
+  - **类注释**: 每个公共类都必须有 Javadoc 注释，说明其用途。
+    ```java
+    /**
+     * 数据采集器主类，负责协调各种数据源的采集任务。
+     */
+    ```
+  - **方法注释**: 所有公共方法必须有 Javadoc 注释，清晰说明方法的功能、参数 (`@param`)、返回值 (`@return`) 和可能抛出的异常 (`@throws`)。
+    ```java
+    /**
+     * 根据股票代码获取历史K线数据。
+     *
+     * @param stockCode 股票代码
+     * @param days      获取最近N天的数据
+     * @return 包含K线数据的列表
+     * @throws IOException 如果网络请求失败
+     */
+    ```
+  - **行内注释**: 在复杂的业务逻辑、算法或关键步骤处，必须使用 `//` 添加行内注释，解释代码的意图和作用。
+    ```java
+    // 计算移动平均线 (MA)
+    double ma5 = closePrices.subList(i - 4, i + 1).stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+
+    // 检查是否出现金叉信号
+    if (ma5 > ma10 && previousMa5 <= previousMa10) {
+        // ...
+    }
+    ```
 
 ### TypeScript/React (Frontend)
 
@@ -256,6 +285,32 @@ mvn spring-boot:run -pl strategy-analysis
 - **路径别名**:
   - `@/*` → `./src/*`
   - `@@/*` → `./src/.umi/*`
+- **注释规范**:
+  - **组件注释**: 每个 React 组件必须有 JSDoc 注释，说明其功能、Props (`@param`)。
+    ```typescript
+    /**
+     * K线图表组件，用于展示股票价格走势。
+     * @param data - K线数据
+     * @param title - 图表标题
+     */
+    ```
+  - **函数/Hook 注释**: 所有公共函数和自定义 Hook 必须有 JSDoc 注释，说明其功能、参数 (`@param`) 和返回值 (`@returns`)。
+    ```typescript
+    /**
+     * 获取指定股票的实时价格。
+     * @param stockCode - 股票代码
+     * @returns 包含实时价格和涨跌幅的对象
+     */
+    ```
+  - **行内注释**: 在复杂的逻辑、状态管理或关键算法处，必须使用 `//` 或 `{/* ... */}` 添加行内注释。
+    ```typescript
+    // 当筛选条件改变时，重新获取数据
+    useEffect(() => {
+      // 设置加载状态，防止重复请求
+      if (loading) return;
+      fetchData(filters);
+    }, [filters]);
+    ```
 
 ## Git 工作规范
 
@@ -327,8 +382,7 @@ mvn spring-boot:run -pl strategy-analysis
 
 ### 强制要求：禁止 Mock 测试
 
-**严禁在测试中使用 Mock 数据或模拟实现！**
-
+**严禁在测试中使用 Mockito 等任何形式的模拟框架或手动模拟实现！**
 - 如果数据不足：**跳过测试**（使用 `Assumptions.assumeTrue()`）
 - 如果服务不可用：**测试失败**（抛出异常）
 - 如果环境未就绪：**跳过测试**（记录原因）
