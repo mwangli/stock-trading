@@ -84,3 +84,4 @@ application-prod.yml
 *.trace.db
 >>>>>>> 88da1874eaf261d26904ae1527d3ca40fe0a0862
 /.sisyphus/
+.worktrees/
