@@ -14,5 +14,6 @@ public interface LstmModelRepository extends MongoRepository<LstmModelDocument, 
      * 获取最新保存的模型
      */
     LstmModelDocument findTopByOrderByCreatedAtDesc();
+    void deleteByModelName(String modelName);
 }
 

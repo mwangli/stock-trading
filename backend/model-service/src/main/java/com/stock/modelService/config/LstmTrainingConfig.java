@@ -60,7 +60,7 @@ public class LstmTrainingConfig {
     /**
      * 特征维度（开、高、低、收、量）
      */
-    private int inputSize = 5;
+    private int inputSize = 11;
 
     /**
      * 是否启用早停
