@@ -76,8 +76,13 @@ public class LstmDataPreprocessor {
 
         // 4. 划分训练集和验证集
         int trainSize = (int) (samples.size() * config.getTrainRatio());
-        List<TrainingSample> trainSamples = samples.subList(0, trainSize);
-        List<TrainingSample> valSamples = samples.subList(trainSize, samples.size());
+        // 确保至少有一个训练样本（当样本总数 > 0 时）
+        if (trainSize == 0 && samples.size() > 0) {
+            trainSize = 1;
+        }
+        // 防止 trainSize 等于 samples.size() 导致验证集为空（这是允许的）
+        List<TrainingSample> trainSamples = samples.subList(0, Math.min(trainSize, samples.size()));
+        List<TrainingSample> valSamples = samples.subList(Math.min(trainSize, samples.size()), samples.size());
 
         log.info("数据预处理完成 - 总样本: {}, 训练集: {}, 验证集: {}", 
                 samples.size(), trainSamples.size(), valSamples.size());

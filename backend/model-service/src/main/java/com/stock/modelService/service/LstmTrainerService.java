@@ -6,7 +6,7 @@ import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.training.DefaultTrainingConfig;
-import ai.djl.training.EasyTrain;
+import ai.djl.training.GradientCollector;
 import ai.djl.training.Trainer;
 import ai.djl.training.dataset.ArrayDataset;
 import ai.djl.training.dataset.Batch;
@@ -69,7 +69,13 @@ public class LstmTrainerService {
             status.setStatus("准备数据");
             status.setProgress(5);
 
-            List<StockPrice> prices = getStockPrices(stockCodes, days);
+            // 预处理需要 sequenceLength + 1 条数据（包含目标值），如果用户传入 days==sequenceLength
+            // 则额外获取一条历史记录以保证有目标值
+            int fetchDays = days;
+            if (days <= config.getSequenceLength()) {
+                fetchDays = config.getSequenceLength() + 1;
+            }
+            List<StockPrice> prices = getStockPrices(stockCodes, fetchDays);
             if (prices.isEmpty()) {
                 return TrainingResult.builder().success(false).message("没有找到股票数据").build();
             }
@@ -124,7 +130,9 @@ public class LstmTrainerService {
 
             try (Trainer trainer = model.newTrainer(trainingConfig)) {
                 int flattenedSize = config.getSequenceLength() * config.getInputSize();
-                Shape inputShape = new Shape(trainBatchSize, flattenedSize);
+                // 初始化时使用可用样本大小（避免 batchSize 大于样本数导致初始化不匹配）
+                int initBatchSize = Math.min(trainBatchSize, Math.max(1, trainSize));
+                Shape inputShape = new Shape(initBatchSize, flattenedSize);
                 trainer.initialize(inputShape);
 
                 log.info("训练器初始化完成，输入形状: {}", inputShape);
@@ -134,8 +142,10 @@ public class LstmTrainerService {
                 float[][] valInputs = flattenInputs(processedData.getValInputs());
                 float[] valTargets = processedData.getValTargets();
 
-                ArrayDataset trainDataset = createDataset(trainInputs, trainTargets, trainBatchSize);
-                ArrayDataset valDataset = createDataset(valInputs, valTargets, trainBatchSize);
+                // 使用 Trainer 的 NDManager 来创建 NDArrays，保证生命周期由 Trainer 管理
+                ArrayDataset trainDataset = createDataset(trainer.getManager(), trainInputs, trainTargets, trainBatchSize);
+                int valBatchSize = Math.min(trainBatchSize, Math.max(1, valSize));
+                ArrayDataset valDataset = createDataset(trainer.getManager(), valInputs, valTargets, valBatchSize);
 
                 for (int epoch = 0; epoch < trainEpochs; epoch++) {
                     status.setCurrentEpoch(epoch + 1);
@@ -145,15 +155,32 @@ public class LstmTrainerService {
                     int batchCount = 0;
 
                     for (Batch batch : trainer.iterateDataset(trainDataset)) {
-                        EasyTrain.trainBatch(trainer, batch);
-                        trainer.step();
-                        epochLoss += trainer.getTrainingResult().getTrainLoss();
-                        batchCount++;
-                        batch.close();
+                        try {
+                            // 使用显式的 forward/loss/backward 计算训练损失。
+                            // 说明：依赖 trainer.getTrainingResult().getTrainLoss() 在某些情况下可能为 null/0，
+                            // 导致无法得到可用的 loss 数值，进而影响训练结果验证。
+                            Loss loss = trainer.getLoss();
+                            try (GradientCollector collector = trainer.newGradientCollector();
+                                 NDList predictions = trainer.forward(batch.getData());
+                                 NDArray lossValue = loss.evaluate(batch.getLabels(), predictions)) {
+                                collector.backward(lossValue);
+                                epochLoss += lossValue.toFloatArray()[0];
+                            }
+                            trainer.step();
+                            batchCount++;
+                        } finally {
+                            batch.close();
+                        }
                     }
 
                     float avgTrainLoss = batchCount > 0 ? epochLoss / batchCount : epochLoss;
-                    float valLoss = evaluateModel(trainer, valDataset);
+                    float valLoss;
+                    if (valDataset == null) {
+                        // 没有验证集时，跳过评估，使用极大值占位（以避免误判为最佳模型）
+                        valLoss = Float.MAX_VALUE;
+                    } else {
+                        valLoss = evaluateModel(trainer, valDataset);
+                    }
 
                     Map<String, Object> logEntry = new HashMap<>();
                     logEntry.put("epoch", epoch + 1);
@@ -166,8 +193,13 @@ public class LstmTrainerService {
                     status.setStatus(String.format("Epoch %d/%d - TrainLoss: %.6f, ValLoss: %.6f", 
                             epoch + 1, trainEpochs, avgTrainLoss, valLoss));
 
-                    log.info("Epoch {}/{} - TrainLoss: {:.6f}, ValLoss: {:.6f}", 
-                            epoch + 1, trainEpochs, avgTrainLoss, valLoss);
+                    log.info(
+                            "Epoch {}/{} - TrainLoss: {}, ValLoss: {}",
+                            epoch + 1,
+                            trainEpochs,
+                            avgTrainLoss,
+                            valLoss
+                    );
 
                     if (config.isEarlyStopping()) {
                         if (valLoss < bestValLoss - config.getMinDelta()) {
@@ -202,7 +234,7 @@ public class LstmTrainerService {
                     (double) trainingLog.get(trainingLog.size() - 1).get("valLoss");
 
             log.info("========== 训练完成 ==========");
-            log.info("最终训练损失: {:.6f}, 验证损失: {:.6f}", finalTrainLoss, finalValLoss);
+            log.info("最终训练损失: {}, 验证损失: {}", finalTrainLoss, finalValLoss);
             log.info("模型保存路径: {}", currentModelPath);
 
             return TrainingResult.builder()
@@ -238,31 +270,48 @@ public class LstmTrainerService {
     }
 
     private ArrayDataset createDataset(float[][] inputs, float[] targets, int batchSize) throws IOException {
-        try (NDManager manager = NDManager.newBaseManager("PyTorch")) {
-            NDArray inputArray = manager.create(inputs);
-            NDArray targetArray = manager.create(targets).reshape(targets.length, 1);
-            // 这里返回的数据集会在 Trainer 内部重新管理 NDArray 生命周期
-            return new ArrayDataset.Builder()
-                    .setData(inputArray).optLabels(targetArray)
-                    .setSampling(batchSize, true).build();
+        // 注意：不要在此方法中关闭 NDManager，因为 Trainer/ArrayDataset
+        // 可能会在训练过程中管理 NDArray 的生命周期。
+        NDManager manager = NDManager.newBaseManager("PyTorch");
+        return createDataset(manager, inputs, targets, batchSize);
+    }
+
+    /**
+     * 使用指定的 NDManager 创建 ArrayDataset，通常应传入 Trainer.getManager()
+     * 以确保 NDArrays 的生命周期由 Trainer 管理。
+     */
+    private ArrayDataset createDataset(NDManager manager, float[][] inputs, float[] targets, int batchSize) {
+        if (inputs == null || inputs.length == 0 || targets == null || targets.length == 0) {
+            return null;
         }
+        NDArray inputArray = manager.create(inputs);
+        NDArray targetArray = manager.create(targets).reshape(targets.length, 1);
+        return new ArrayDataset.Builder()
+                .setData(inputArray).optLabels(targetArray)
+                .setSampling(batchSize, true).build();
     }
 
     /**
      * 在验证集上评估模型：只做前向传播 + 计算损失，不更新梯度
      */
     private float evaluateModel(Trainer trainer, ArrayDataset valDataset) throws IOException, ai.djl.translate.TranslateException {
+        if (valDataset == null) {
+            return Float.MAX_VALUE;
+        }
         float totalLoss = 0f;
         int batchCount = 0;
         Loss loss = trainer.getLoss();
 
         for (Batch batch : trainer.iterateDataset(valDataset)) {
-            NDArray predictions = trainer.forward(batch.getData()).singletonOrThrow();
-            NDArray labels = batch.getLabels().singletonOrThrow();
-            NDArray batchLoss = loss.evaluate(new NDList(labels), new NDList(predictions));
-            totalLoss += batchLoss.toFloatArray()[0];
-            batchCount++;
-            batch.close();
+            try {
+                try (NDList predictions = trainer.forward(batch.getData());
+                     NDArray batchLoss = loss.evaluate(batch.getLabels(), predictions)) {
+                    totalLoss += batchLoss.toFloatArray()[0];
+                    batchCount++;
+                }
+            } finally {
+                batch.close();
+            }
         }
         return batchCount > 0 ? totalLoss / batchCount : totalLoss;
     }
@@ -288,22 +337,59 @@ public class LstmTrainerService {
         );
         Files.writeString(paramsFile, params);
 
-        // 3. 读取 .params 文件二进制内容，保存到 MongoDB
-        Path paramsBinaryFile = modelDir.resolve(modelName + "-0000.params");
-        if (Files.exists(paramsBinaryFile)) {
-            byte[] paramsBytes = Files.readAllBytes(paramsBinaryFile);
+        // 3. 将训练产生的模型相关文件（以 modelName 开头的所有文件）打包为 zip，保存到 MongoDB
+        try {
+            Path modelSubdir = modelDir.resolve(modelName);
+            if (!Files.exists(modelSubdir)) {
+                // 兼容一些引擎可能直接在 modelDir 下生成文件的情况
+                modelSubdir = modelDir;
+            }
 
-            LstmModelDocument doc = new LstmModelDocument();
-            doc.setModelName(modelName);
-            doc.setEpoch(epoch);
-            doc.setCreatedAt(LocalDateTime.now());
-            doc.setParams(paramsBytes);
-            doc.setNormalizationParams(params);
+            List<Path> modelFiles;
+            if (modelSubdir.getFileName() != null && modelSubdir.getFileName().toString().equals(modelName)) {
+                // 引擎将文件输出到 modelDir/modelName 目录时：将该目录内全部文件入包
+                modelFiles = Files.walk(modelSubdir)
+                        .filter(Files::isRegularFile)
+                        .collect(Collectors.toList());
+            } else {
+                // 兼容引擎直接在 modelDir 下输出文件：仅打包以 modelName 开头的文件
+                modelFiles = Files.walk(modelSubdir)
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().startsWith(modelName))
+                        .collect(Collectors.toList());
+            }
 
-            LstmModelDocument saved = lstmModelRepository.save(doc);
-            log.info("模型已保存到 MongoDB，ID: {}", saved.getId());
-        } else {
-            log.warn("未找到模型参数文件: {}", paramsBinaryFile.toAbsolutePath());
+            if (!modelFiles.isEmpty()) {
+                try (java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                     java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(baos)) {
+                    for (Path p : modelFiles) {
+                        // 将文件写入 zip，保留相对路径（相对于 modelSubdir）
+                        Path rel = modelSubdir.relativize(p);
+                        java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry(rel.toString().replace('\\', '/'));
+                        zos.putNextEntry(entry);
+                        byte[] bytes = Files.readAllBytes(p);
+                        zos.write(bytes);
+                        zos.closeEntry();
+                    }
+                    zos.finish();
+
+                    byte[] zipBytes = baos.toByteArray();
+
+                    LstmModelDocument doc = new LstmModelDocument();
+                    doc.setModelName(modelName);
+                    doc.setEpoch(epoch);
+                    doc.setCreatedAt(LocalDateTime.now());
+                    doc.setParams(zipBytes);
+                    doc.setNormalizationParams(params);
+
+                    LstmModelDocument saved = lstmModelRepository.save(doc);
+                    log.info("模型已保存到 MongoDB，ID: {}", saved.getId());
+                }
+            } else {
+                log.warn("未找到任何模型相关文件，未保存到 MongoDB: {}", modelSubdir);
+            }
+        } catch (Exception e) {
+            log.warn("保存模型到 MongoDB 失败", e);
         }
 
         // 4. 写 model-ready 标记文件（用于文件系统方式的健康检查）
