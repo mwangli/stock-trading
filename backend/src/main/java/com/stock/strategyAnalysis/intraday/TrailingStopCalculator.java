@@ -1,4 +1,4 @@
-package com.stock.strategyAnalysis.intraday.calculator;
+package com.stock.strategyAnalysis.intraday;
 
 import com.stock.strategyAnalysis.entity.MinuteBar;
 import com.stock.strategyAnalysis.entity.StrategyConfig;
