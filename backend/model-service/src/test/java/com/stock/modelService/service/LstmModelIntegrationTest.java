@@ -477,7 +477,7 @@ class LstmModelIntegrationTest {
                 .mapToDouble(p -> p.getHighPrice().doubleValue())
                 .max().orElse(1.0);
 
-        float[][] input = new float[sequenceLength][5];
+        float[][] input = new float[sequenceLength][config.getInputSize()];
         for (int i = 0; i < Math.min(recentPrices.size(), sequenceLength); i++) {
             StockPrice price = recentPrices.get(i);
             input[i][0] = (float) (price.getOpenPrice().doubleValue() / maxPrice);
@@ -486,6 +486,13 @@ class LstmModelIntegrationTest {
             input[i][3] = (float) (price.getClosePrice().doubleValue() / maxPrice);
             input[i][4] = price.getVolume() != null ?
                     (float) (price.getVolume().doubleValue() / 1e8) : 0f;
+
+            // 这里只是一个简化的例子，实际中需要从 LstmDataPreprocessor 获取归一化参数
+            // 并计算和填充所有11个特征
+            // 为简单起见，我们只填充前5个，后续的用0填充
+            for (int j = 5; j < config.getInputSize(); j++) {
+                input[i][j] = 0f;
+            }
         }
 
         return new float[][][]{input};
@@ -500,7 +507,7 @@ class LstmModelIntegrationTest {
                 .max().orElse(1.0);
 
         int seqLen = windowPrices.size();
-        float[][] input = new float[seqLen][5];
+        float[][] input = new float[seqLen][config.getInputSize()];
         for (int i = 0; i < seqLen; i++) {
             StockPrice price = windowPrices.get(i);
             input[i][0] = (float) (price.getOpenPrice().doubleValue() / maxPrice);
@@ -509,6 +516,10 @@ class LstmModelIntegrationTest {
             input[i][3] = (float) (price.getClosePrice().doubleValue() / maxPrice);
             input[i][4] = price.getVolume() != null ?
                     (float) (price.getVolume().doubleValue() / 1e8) : 0f;
+
+            for (int j = 5; j < config.getInputSize(); j++) {
+                input[i][j] = 0f;
+            }
         }
 
         return new float[][][]{input};
