@@ -41,5 +41,9 @@ public class LstmModelDocument {
      * 归一化等训练配置（normalization_params_xxx.txt 的内容）
      */
     private String normalizationParams;
+    /**
+     * Model version (e.g., "v1") to handle schema evolution.
+     */
+    private String modelVersion;
 }
 
