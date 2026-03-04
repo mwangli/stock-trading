@@ -12,6 +12,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * 应用启动后数据初始化监听器
@@ -28,54 +29,64 @@ public class ApplicationStartupListener {
 
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
-        log.info("========== 应用启动完成，开始数据初始化检查 ==========");
-        
-        try {
-            long currentCount = stockDataService.count();
-            log.info("当前StockInfo表中的股票数据数量: {}", currentCount);
+        // 使用 CompletableFuture 将整个初始化流程（列表检查/同步 + 历史数据同步）放入后台异步执行
+        // 这样可以避免阻塞主应用启动，同时保证先同步列表再同步历史数据的顺序依赖
+        CompletableFuture.runAsync(() -> {
+            log.info("========== 应用启动完成，开始后台数据初始化任务 ==========");
             
-            if (currentCount < 4000) {
-                log.warn("数据量不足4000条({}条)，开始执行数据同步...", currentCount);
+            try {
+                // 1. 检查并同步股票列表
+                long currentCount = stockDataService.count();
+                log.info("当前StockInfo表中的股票数据数量: {}", currentCount);
                 
-                // 执行数据同步
-                StockDataService.SyncResult result = stockDataService.syncStockList();
-                
-                log.info("数据同步结果: 总数={}, 新增={}, 更新={}, 失败={}, 耗时={}ms",
-                    result.getTotalCount(), result.getSavedCount(), result.getUpdatedCount(),
-                    result.getFailedCount(), result.getCostTimeMs());
+                if (currentCount < 4000) {
+                    log.warn("数据量不足4000条({}条)，开始执行数据同步...", currentCount);
                     
-                // 获取一些示例数据进行日志输出
-                List<StockInfo> sampleStocks = stockDataService.findAllStocks();
-                int printCount = Math.min(5, sampleStocks.size());
-                for (int i = 0; i < printCount; i++) {
-                    StockInfo stock = sampleStocks.get(i);
-                    log.info("股票数据示例 - 代码: {}, 名称: {}, 市场: {}, 当前价格: {}, 涨跌幅: {}, " +
-                            "涨跌额: {}, 总市值: {}, 换手率: {}, 量比: {}, 行业代码: {}",
-                        stock.getCode(),
-                        stock.getName(),
-                        stock.getMarket(),
-                        stock.getPrice(),
-                        stock.getChangePercent(),
-                        stock.getChangeAmount(),
-                        stock.getTotalMarketValue(),
-                        stock.getTurnoverRate(),
-                        stock.getVolumeRatio(),
-                        stock.getIndustryCode()
-                    );
+                    // 执行数据同步
+                    StockDataService.SyncResult result = stockDataService.syncStockList();
+                    
+                    log.info("数据同步结果: 总数={}, 新增={}, 更新={}, 失败={}, 耗时={}ms",
+                        result.getTotalCount(), result.getSavedCount(), result.getUpdatedCount(),
+                        result.getFailedCount(), result.getCostTimeMs());
+                        
+                    // 获取一些示例数据进行日志输出
+                    List<StockInfo> sampleStocks = stockDataService.findAllStocks();
+                    int printCount = Math.min(5, sampleStocks.size());
+                    for (int i = 0; i < printCount; i++) {
+                        StockInfo stock = sampleStocks.get(i);
+                        log.info("股票数据示例 - 代码: {}, 名称: {}, 市场: {}, 当前价格: {}, 涨跌幅: {}, " +
+                                "涨跌额: {}, 总市值: {}, 换手率: {}, 量比: {}, 行业代码: {}",
+                            stock.getCode(),
+                            stock.getName(),
+                            stock.getMarket(),
+                            stock.getPrice(),
+                            stock.getChangePercent(),
+                            stock.getChangeAmount(),
+                            stock.getTotalMarketValue(),
+                            stock.getTurnoverRate(),
+                            stock.getVolumeRatio(),
+                            stock.getIndustryCode()
+                        );
+                    }
+                    
+                } else {
+                    log.info("数据量充足({}条)，跳过数据同步", currentCount);
                 }
                 
-            } else {
-                log.info("数据量充足({}条)，跳过数据同步", currentCount);
+            } catch (Exception e) {
+                log.error("后台数据初始化任务（列表同步）失败", e);
             }
-            
-        } catch (Exception e) {
-            log.error("数据初始化检查失败", e);
-        }
-
-        log.info("========== 数据初始化检查完成 ==========");
-
-        // 执行历史价格同步
-        syncAllStocksHistoryToMongo();
+    
+            log.info("========== 数据初始化检查完成，准备开始历史数据同步 ==========");
+    
+            // 2. 同步所有股票的历史数据
+            // 注意：这里是顺序执行，确保如果上方同步了新股票列表，这里能获取到最新的列表
+            try {
+                syncAllStocksHistoryToMongo();
+            } catch (Exception e) {
+                log.error("后台数据初始化任务（历史数据同步）失败", e);
+            }
+        });
     }
 
     /**
@@ -120,7 +131,7 @@ public class ApplicationStartupListener {
                 totalStocksWithData++;
                 totalRecords += prices.size();
 
-                double percent = totalStocks == 0 ? 0.0 : (index * 100.0 / totalStocks);
+                double percent = index * 100.0 / totalStocks;
                 log.info("股票 {} 历史数据条数: {}，当前进度: {}/{} ({})",
                     code,
                     prices.size(),

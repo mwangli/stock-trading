@@ -15,5 +15,6 @@ public interface LstmModelRepository extends MongoRepository<LstmModelDocument, 
      */
     LstmModelDocument findTopByOrderByCreatedAtDesc();
     void deleteByModelName(String modelName);
+    boolean existsByModelName(String modelName);
 }
 
