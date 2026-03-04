@@ -16,6 +16,7 @@ import ai.djl.nn.recurrent.LSTM;
 import com.stock.modelService.entity.LstmModelDocument;
 import com.stock.modelService.model.StockLSTMModel;
 import com.stock.modelService.repository.LstmModelRepository;
+import com.stock.modelService.model.io.ModelBinaryCodec;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -41,6 +42,7 @@ import java.util.stream.Collectors;
 public class LstmInference {
 
     private final LstmModelRepository lstmModelRepository;
+    private final ModelBinaryCodec modelBinaryCodec;
 
     private Model model;
     private boolean isLoaded = false;
@@ -57,7 +59,7 @@ public class LstmInference {
 
     @PostConstruct
     public void init() {
-        loadModel();
+        // Lazy load
     }
 
     /**
@@ -70,180 +72,79 @@ public class LstmInference {
     /**
      * 加载模型（指定路径）
      */
+    /**
+     * 加载模型（指定路径）
+     * 注意：path 参数仅为了兼容接口保留，实际总是优先从 MongoDB 加载
+     */
     public void loadModel(String path) {
         try {
-            // 1. 优先从 MongoDB 加载最新模型
+            // 1. Load latest model from MongoDB
             LstmModelDocument latest = lstmModelRepository.findTopByOrderByCreatedAtDesc();
+            
             if (latest != null && latest.getParams() != null) {
-                log.info("从 MongoDB 加载最新 LSTM 模型，ID: {}, name: {}", latest.getId(), latest.getModelName());
+                log.info("Loading latest LSTM model from MongoDB: {}, version: {}", latest.getModelName(), latest.getModelVersion());
 
-                // 在临时目录中还原模型文件
-                Path tempDir = Files.createTempDirectory("lstm-model-");
-                // 写入从 MongoDB 读取到的 zip 或单个文件：
-                byte[] stored = latest.getParams();
-                // 尝试识别是否为 zip（PK header）
-                if (stored != null && stored.length >= 4 && stored[0] == 'P' && stored[1] == 'K') {
-                    // 解压到临时目录
-                    try (java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(stored);
-                         java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(bais)) {
-                        java.util.zip.ZipEntry entry;
-                        while ((entry = zis.getNextEntry()) != null) {
-                            Path out = tempDir.resolve(entry.getName());
-                            Files.write(out, zis.readAllBytes());
-                            zis.closeEntry();
-                        }
-                    }
-                } else {
-                    Path paramsFile = tempDir.resolve(latest.getModelName() + "-0000.params");
-                    Files.write(paramsFile, stored == null ? new byte[]{} : stored);
-                }
-
-                // 写归一化参数文件，复用现有加载逻辑
-                Path normFile = tempDir.resolve("normalization_params_latest.txt");
-                if (latest.getNormalizationParams() != null) {
-                    Files.writeString(normFile, latest.getNormalizationParams());
-                }
-
-                // 关闭旧模型
                 if (this.model != null) {
                     this.model.close();
                 }
 
-                this.model = Model.newInstance("lstm-stock", "PyTorch");
-                this.model.load(tempDir, latest.getModelName());
+                // 2. Parse normalization params to configure model structure
+                parseNormalizationParams(latest.getNormalizationParams());
 
-                loadNormalizationParams(tempDir);
+                // 3. Create Model instance
+                this.model = Model.newInstance("lstm-stock", "PyTorch");
+
+                // 4. Reconstruct Block structure
+                StockLSTMModel block = new StockLSTMModel(
+                        inputSize, hiddenSize, numLayers, 0.2f, sequenceLength
+                );
+                this.model.setBlock(block);
+
+                // 5. Deserialize parameters directly from memory
+                modelBinaryCodec.deserialize(latest.getParams(), this.model);
 
                 this.isLoaded = true;
                 this.lastLoadedTime = LocalDateTime.now();
                 this.modelPath = "mongo:" + latest.getId();
-                log.info("LSTM 模型从 MongoDB 加载成功");
+                log.info("LSTM model loaded successfully from memory.");
                 return;
             }
-
-            // 2. 回退：从文件系统加载（兼容旧逻辑）
-            Path modelDir = Paths.get(path);
-
-            Path modelFile = findLatestModel(modelDir);
-
-            if (modelFile == null) {
-                log.warn("模型文件不存在：{}, 使用默认LSTM模型", modelDir);
-                createDefaultModel();
-                return;
-            }
-
-            log.info("从文件系统加载模型：{}", modelFile);
-
-            if (this.model != null) {
-                this.model.close();
-            }
-
-            this.model = Model.newInstance("lstm-stock", "PyTorch");
-            this.model.load(modelFile.getParent(), getBaseName(modelFile));
-
-            loadNormalizationParams(modelDir);
-
-            this.isLoaded = true;
-            this.lastLoadedTime = LocalDateTime.now();
-            log.info("LSTM 模型加载成功，路径：{}", modelDir.toAbsolutePath());
+            
+            log.warn("No trained model found in MongoDB. Using default initialized model.");
+            createDefaultModel();
 
         } catch (Exception e) {
-            log.error("加载 LSTM 模型失败", e);
+            log.error("Failed to load LSTM model from memory", e);
             createDefaultModel();
         }
     }
 
-    /**
-     * 查找最新的模型文件
-     */
-    private Path findLatestModel(Path modelDir) {
-        if (!Files.exists(modelDir)) {
-            return null;
-        }
+    private void parseNormalizationParams(String content) {
+        if (content == null || content.isEmpty()) return;
 
-        try {
-            List<Path> modelFiles = Files.list(modelDir)
-                    .filter(p -> p.toString().endsWith(".params"))
-                    .sorted((a, b) -> b.getFileName().toString().compareTo(a.getFileName().toString()))
-                    .collect(Collectors.toList());
-
-            return modelFiles.isEmpty() ? null : modelFiles.get(0);
-        } catch (IOException e) {
-            log.error("查找模型文件失败", e);
-            return null;
-        }
-    }
-
-    /**
-     * 获取模型基础名称（不含扩展名）
-     */
-    private String getBaseName(Path modelFile) {
-        String fileName = modelFile.getFileName().toString();
-        int idx = fileName.indexOf("-0000.params");
-        if (idx > 0) {
-            return fileName.substring(0, idx);
-        }
-        idx = fileName.indexOf(".params");
-        if (idx > 0) {
-            return fileName.substring(0, idx);
-        }
-        return fileName;
-    }
-
-    /**
-     * 加载归一化参数
-     */
-    private void loadNormalizationParams(Path modelDir) {
-        // 查找最新的参数文件
-        try {
-            List<Path> paramFiles = Files.list(modelDir)
-                    .filter(p -> p.getFileName().toString().startsWith("normalization_params"))
-                    .sorted((a, b) -> b.getFileName().toString().compareTo(a.getFileName().toString()))
-                    .collect(Collectors.toList());
-
-            if (paramFiles.isEmpty()) {
-                log.warn("归一化参数文件不存在，使用默认值");
-                return;
-            }
-
-            Path paramsFile = paramFiles.get(0);
-            try (BufferedReader reader = Files.newBufferedReader(paramsFile)) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String[] parts = line.split("=");
-                    if (parts.length == 2) {
-                        String key = parts[0].trim();
-                        String value = parts[1].trim();
-                        switch (key) {
-                            case "maxPrice":
-                                maxPrice = Double.parseDouble(value);
-                                break;
-                            case "maxVolume":
-                                maxVolume = Double.parseDouble(value);
-                                break;
-                            case "sequenceLength":
-                                sequenceLength = Integer.parseInt(value);
-                                break;
-                            case "inputSize":
-                                inputSize = Integer.parseInt(value);
-                                break;
-                            case "hiddenSize":
-                                hiddenSize = Integer.parseInt(value);
-                                break;
-                            case "numLayers":
-                                numLayers = Integer.parseInt(value);
-                                break;
-                        }
+        String[] lines = content.split("\n");
+        for (String line : lines) {
+            String[] parts = line.split("=");
+            if (parts.length == 2) {
+                String key = parts[0].trim();
+                String value = parts[1].trim();
+                try {
+                    switch (key) {
+                        case "maxPrice": maxPrice = Double.parseDouble(value); break;
+                        case "maxVolume": maxVolume = Double.parseDouble(value); break;
+                        case "sequenceLength": sequenceLength = Integer.parseInt(value); break;
+                        case "inputSize": inputSize = Integer.parseInt(value); break;
+                        case "hiddenSize": hiddenSize = Integer.parseInt(value); break;
+                        case "numLayers": numLayers = Integer.parseInt(value); break;
                     }
+                } catch (NumberFormatException e) {
+                    log.warn("Invalid format for param: {}={}", key, value);
                 }
-                log.info("归一化参数加载成功 - maxPrice: {}, maxVolume: {}, seqLen: {}", 
-                        maxPrice, maxVolume, sequenceLength);
             }
-        } catch (Exception e) {
-            log.warn("加载归一化参数失败", e);
         }
+        log.info("Normalization params parsed: maxPrice={}, seqLen={}, inputSize={}, hiddenSize={}", 
+                maxPrice, sequenceLength, inputSize, hiddenSize);
     }
-
     /**
      * 创建默认LSTM模型（当没有训练好的模型时）
      */
@@ -311,6 +212,10 @@ public class LstmInference {
      * @return 预测结果
      */
     public float[] predict(float[][][] data) {
+        if (!isLoaded) {
+            loadModel();
+        }
+
         if (data == null || data.length == 0) {
             log.warn("输入数据为空，返回默认预测");
             return new float[]{0f};

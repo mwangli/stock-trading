@@ -21,6 +21,7 @@ import com.stock.modelService.config.LstmTrainingConfig;
 import com.stock.modelService.entity.LstmModelDocument;
 import com.stock.modelService.model.StockLSTMModel;
 import com.stock.modelService.repository.LstmModelRepository;
+import com.stock.modelService.model.io.ModelBinaryCodec;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -48,6 +49,7 @@ public class LstmTrainerService {
     private final PriceRepository priceRepository;
     private final LstmDataPreprocessor dataPreprocessor;
     private final LstmModelRepository lstmModelRepository;
+    private final ModelBinaryCodec modelBinaryCodec;
     private final Map<String, TrainingStatus> trainingStatusMap = new ConcurrentHashMap<>();
     private String currentModelPath;
 
@@ -317,17 +319,13 @@ public class LstmTrainerService {
     }
 
     private String saveModel(Model model, LstmDataPreprocessor.ProcessedData processedData, int epoch, String modelIdentifier) throws IOException {
-        Path modelDir = Paths.get(config.getModelPath());
-        Files.createDirectories(modelDir);
-
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String modelName = "lstm-stock-" + timestamp + "-epoch" + epoch;
 
-        // 1. 保存 DJL 模型到本地文件系统
-        model.save(modelDir, modelName);
+        // 1. Serialize model parameters to memory (no file I/O)
+        byte[] paramsBytes = modelBinaryCodec.serialize(model);
 
-        // 2. 写归一化参数到本地文件（用于备份和排查）
-        Path paramsFile = modelDir.resolve("normalization_params_" + timestamp + ".txt");
+        // 2. Prepare normalization params string
         String params = String.format(
                 "maxPrice=%.6f\nmaxVolume=%.6f\nsequenceLength=%d\ninputSize=%d\nhiddenSize=%d\nnumLayers=%d\ncreatedAt=%s\nmodelName=%s",
                 processedData.getMaxPrice(), processedData.getMaxVolume(),
@@ -335,74 +333,33 @@ public class LstmTrainerService {
                 config.getHiddenSize(), config.getNumLayers(),
                 LocalDateTime.now().toString(), modelName
         );
-        Files.writeString(paramsFile, params);
 
-        // 3. 将训练产生的模型相关文件（以 modelName 开头的所有文件）打包为 zip，保存到 MongoDB
+        // 3. Save to MongoDB
         try {
-            Path modelSubdir = modelDir.resolve(modelName);
-            if (!Files.exists(modelSubdir)) {
-                // 兼容一些引擎可能直接在 modelDir 下生成文件的情况
-                modelSubdir = modelDir;
-            }
+            // Delete old model by identifier first to keep only one active model per identifier
+            lstmModelRepository.deleteByModelName(modelIdentifier);
+            log.info("Deleted old LSTM model: {}", modelIdentifier);
 
-            List<Path> modelFiles;
-            if (modelSubdir.getFileName() != null && modelSubdir.getFileName().toString().equals(modelName)) {
-                // 引擎将文件输出到 modelDir/modelName 目录时：将该目录内全部文件入包
-                modelFiles = Files.walk(modelSubdir)
-                        .filter(Files::isRegularFile)
-                        .collect(Collectors.toList());
-            } else {
-                // 兼容引擎直接在 modelDir 下输出文件：仅打包以 modelName 开头的文件
-                modelFiles = Files.walk(modelSubdir)
-                        .filter(Files::isRegularFile)
-                        .filter(p -> p.getFileName().toString().startsWith(modelName))
-                        .collect(Collectors.toList());
-            }
+            // Save new model
+            LstmModelDocument doc = new LstmModelDocument();
+            doc.setModelName(modelIdentifier);
+            doc.setEpoch(epoch);
+            doc.setCreatedAt(LocalDateTime.now());
+            doc.setParams(paramsBytes);
+            doc.setNormalizationParams(params);
+            doc.setModelVersion("v1");
 
-            if (!modelFiles.isEmpty()) {
-                try (java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-                     java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(baos)) {
-                    for (Path p : modelFiles) {
-                        // 将文件写入 zip，保留相对路径（相对于 modelSubdir）
-                        Path rel = modelSubdir.relativize(p);
-                        java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry(rel.toString().replace('\\', '/'));
-                        zos.putNextEntry(entry);
-                        byte[] bytes = Files.readAllBytes(p);
-                        zos.write(bytes);
-                        zos.closeEntry();
-                    }
-                    zos.finish();
+            LstmModelDocument saved = lstmModelRepository.save(doc);
+            log.info("New model saved to MongoDB, ID: {}, ModelName: {}", saved.getId(), saved.getModelName());
 
-                    byte[] zipBytes = baos.toByteArray();
+            String identifier = "mongo:" + saved.getId();
+            log.info("Model saved successfully: {}", identifier);
+            return identifier;
 
-                    // 核心修改：先按 modelIdentifier 删除旧模型
-                    lstmModelRepository.deleteByModelName(modelIdentifier);
-                    log.info("已删除旧的 LSTM 模型: {}", modelIdentifier);
-
-                    // 再保存新模型，modelName 直接使用 modelIdentifier
-                    LstmModelDocument doc = new LstmModelDocument();
-                    doc.setModelName(modelIdentifier); // 使用唯一业务标识
-                    doc.setEpoch(epoch);
-                    doc.setCreatedAt(LocalDateTime.now());
-                    doc.setParams(zipBytes);
-                    doc.setNormalizationParams(params);
-
-                    LstmModelDocument saved = lstmModelRepository.save(doc);
-                    log.info("新模型已保存到 MongoDB，ID: {}, ModelName: {}", saved.getId(), saved.getModelName());
-                }
-            } else {
-                log.warn("未找到任何模型相关文件，未保存到 MongoDB: {}", modelSubdir);
-            }
         } catch (Exception e) {
-            log.warn("保存模型到 MongoDB 失败", e);
+            log.error("Failed to save model to MongoDB", e);
+            throw new IOException("Failed to save model to MongoDB", e);
         }
-
-        // 4. 写 model-ready 标记文件（用于文件系统方式的健康检查）
-        Path readyFile = modelDir.resolve("model-ready.txt");
-        Files.writeString(readyFile, "Model: " + modelName + "\nReady at: " + LocalDateTime.now());
-
-        log.info("模型保存成功: {}", modelDir.resolve(modelName));
-        return modelDir.toAbsolutePath().toString();
     }
 
     private List<StockPrice> getStockPrices(String stockCodes, int days) {
