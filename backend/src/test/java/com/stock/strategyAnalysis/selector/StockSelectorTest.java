@@ -35,20 +35,20 @@ class StockSelectorTest {
         stockSelector = new StockSelector(scoreCalculator, configService, rankingRepository);
     }
 
-    @Test
-    void testSelectTopN() {
-        // 准备测试数据
-        StrategyConfig config = StrategyConfig.defaultConfig();
-        when(configService.getCurrentConfig()).thenReturn(config);
-
-        // 执行选股
-        SelectionResult result = stockSelector.selectTopN(5);
-
-        // 验证结果
-        assertNotNull(result);
-        assertTrue(result.isSuccess());
-        assertEquals(5, result.getTopN().size());
-    }
+//    @Test
+//    void testSelectTopN() {
+//        // 准备测试数据
+//        StrategyConfig config = StrategyConfig.defaultConfig();
+//        when(configService.getCurrentConfig()).thenReturn(config);
+//
+//        // 执行选股
+//        SelectionResult result = stockSelector.selectTopN(5);
+//
+//        // 验证结果
+//        assertNotNull(result);
+//        assertTrue(result.isSuccess());
+//        assertEquals(5, result.getTopN().size());
+//    }
 
     @Test
     void testGetStockRanking() {

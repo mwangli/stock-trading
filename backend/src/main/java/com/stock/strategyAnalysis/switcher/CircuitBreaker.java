@@ -52,12 +52,18 @@ public class CircuitBreaker {
         log.info("熔断器已重置");
     }
 
+    @org.springframework.beans.factory.annotation.Value("${app.scheduling.enabled:true}")
+    private boolean schedulingEnabled;
+
     /**
      * 定时检查熔断恢复
      * 每分钟执行一次
      */
     @Scheduled(fixedRate = 60000)
     public void checkRecovery() {
+        if (!schedulingEnabled) {
+            return;
+        }
         CircuitBreakerStatusDto status = stateManager.getCircuitBreakerStatus();
         
         if (status.getState() == CircuitBreakerState.OPEN) {

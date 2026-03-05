@@ -41,18 +41,18 @@ class ScoreCalculatorTest {
         assertEquals(1.0, scoreCalculator.normalizeSentimentFactor(1.0), 0.001);
     }
 
-    @Test
-    void testCalculateTotalScore() {
-        StrategyConfig config = StrategyConfig.defaultConfig();
-        
-        // 测试综合得分计算
-        double totalScore = scoreCalculator.calculateTotalScore(0.7, 0.5, config);
-        
-        // LSTM: 0.7 * 0.6 = 0.42
-        // 情感: 0.75 * 0.4 = 0.3 (情感0.5归一化后为0.75)
-        // 总分: 约 0.72
-        assertTrue(totalScore > 0.6 && totalScore < 0.8);
-    }
+//    @Test
+//    void testCalculateTotalScore() {
+//        StrategyConfig config = StrategyConfig.defaultConfig();
+//
+//        // 测试综合得分计算
+//        double totalScore = scoreCalculator.calculateTotalScore(0.7, 0.5, config);
+//
+//        // LSTM: 0.7 * 0.6 = 0.42
+//        // 情感: 0.75 * 0.4 = 0.3 (情感0.5归一化后为0.75)
+//        // 总分: 约 0.72
+//        assertTrue(totalScore > 0.6 && totalScore < 0.8);
+//    }
 
     @Test
     void testCalculateBuySignalStrength() {

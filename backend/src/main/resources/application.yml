@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: stock-trading
+  main:
+    allow-bean-definition-overriding: true
   # MySQL配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -23,9 +25,10 @@ spring:
       port: 6379
       password: Root.123456
       database: 0
-
     # MongoDB配置
     mongodb:
+
+      auto-index-creation: true
       host: 124.220.36.95
       port: 27017
       database: stock_trading
@@ -75,8 +78,6 @@ strategy:
     min-volume: 100000
     min-price: 5.0
     max-pe: 100
-
-# 日志配置
 logging:
   level:
     root: INFO

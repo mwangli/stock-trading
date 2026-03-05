@@ -27,9 +27,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -237,7 +234,7 @@ public class LstmTrainerService {
 
             log.info("========== 训练完成 ==========");
             log.info("最终训练损失: {}, 验证损失: {}", finalTrainLoss, finalValLoss);
-            log.info("模型保存路径: {}", currentModelPath);
+            log.info("模型保存结果: {}", currentModelPath);
 
             return TrainingResult.builder()
                     .success(true).message("训练完成").epochs(trainEpochs)

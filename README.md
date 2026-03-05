@@ -20,7 +20,7 @@
 - **定时任务调度**: 每日自动更新数据、预测和分析
 - **Docker 一键部署**: 使用 Docker Compose 快速部署
 - **CI/CD 自动化**: GitHub Actions 自动构建和部署
-- **无文件 I/O 模型管理**: 模型直接序列化为内存字节流 (`byte[] params`) 并存入 MongoDB，推理时通过 MongoDB 标识符（`mongo:ID`）动态加载，完全消除本地磁盘文件依赖。
+- **无文件 I/O 模型管理**: 模型直接序列化为内存字节流 (`byte[] params`) 并通过 MongoDB Binary Storage 持久化，推理时通过 MongoDB 标识符（`mongo:ID`）动态加载，完全消除本地磁盘文件依赖。
 
 ---
 

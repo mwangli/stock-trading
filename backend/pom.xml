@@ -21,8 +21,8 @@
         <hutool.version>5.8.25</hutool.version>
         <fastjson2.version>2.0.53</fastjson2.version>
         <easyexcel.version>3.3.4</easyexcel.version>
-        <djl.version>0.23.0</djl.version>
-        <djl.pytorch.version>0.23.0</djl.pytorch.version>
+        <djl.version>0.28.0</djl.version>
+        <djl.pytorch.version>2.0.1</djl.pytorch.version>
         <lombok.version>1.18.30</lombok.version>
     </properties>
 
@@ -93,12 +93,26 @@
         <dependency>
             <groupId>ai.djl.pytorch</groupId>
             <artifactId>pytorch-engine</artifactId>
-            <version>${djl.pytorch.version}</version>
+            <version>${djl.version}</version>
         </dependency>
         <dependency>
             <groupId>ai.djl.pytorch</groupId>
             <artifactId>pytorch-model-zoo</artifactId>
+            <version>${djl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ai.djl.pytorch</groupId>
+            <artifactId>pytorch-native-cpu</artifactId>
+            <classifier>win-x86_64</classifier>
             <version>${djl.pytorch.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>ai.djl.pytorch</groupId>
+            <artifactId>pytorch-native-cpu</artifactId>
+            <classifier>linux-x86_64</classifier>
+            <version>${djl.pytorch.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>ai.djl.huggingface</groupId>
@@ -144,6 +158,17 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>de.flapdoodle.embed</groupId>
+            <artifactId>de.flapdoodle.embed.mongo</artifactId>
+            <version>4.11.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -160,6 +185,13 @@
                         </exclude>
                     </excludes>
                 </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

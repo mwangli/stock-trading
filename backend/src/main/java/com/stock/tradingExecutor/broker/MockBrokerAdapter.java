@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Slf4j
 @Component
+@org.springframework.context.annotation.Primary
 public class MockBrokerAdapter implements BrokerAdapter {
     
     /**
