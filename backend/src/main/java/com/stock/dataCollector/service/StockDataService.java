@@ -287,17 +287,24 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
     public int syncHistoricalData(String stockCode, LocalDate startDate, LocalDate endDate) {
         log.info("开始同步股票 {} 从 {} 到 {} 的历史数据", stockCode, startDate, endDate);
 
-        List<StockPrice> prices = getHistoryPrices(stockCode);
+        // 调用新的 Client 方法，仅拉取指定区间
+        JSONArray results = securitiesClient.getHistoryPrices(stockCode, startDate, endDate);
+        List<StockPrice> prices = StockDataParser.parsePriceList(results, stockCode);
+
+        // 保存数据
+        if (!prices.isEmpty()) {
+            saveStockPrices(prices);
+            log.info("股票 {} 历史数据同步完成，共 {} 条", stockCode, prices.size());
+            return prices.size();
+        }
         
-        List<StockPrice> filteredPrices = prices.stream()
-            .filter(p -> !p.getDate().isBefore(startDate) && !p.getDate().isAfter(endDate))
-            .toList();
-
-        saveStockPrices(filteredPrices);
-
-        log.info("股票 {} 历史数据同步完成，共 {} 条", stockCode, filteredPrices.size());
-        return filteredPrices.size();
+        return 0;
     }
+
+
+        
+
+
 
     /**
      * 遍历所有股票代码，同步每只股票的历史价格数据到 MongoDB。
@@ -319,16 +326,35 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
         int totalRecords = 0;
         for (String code : codes) {
             try {
-                // 如果 Mongo 中已经存在该股票的历史数据，则跳过，支持重复执行
-                if (priceRepository.existsByCode(code)) {
-                    log.info("股票 {} 已存在历史价格数据，跳过同步", code);
-                    continue;
+                // 智能增量同步逻辑
+                Optional<StockPrice> lastPriceOpt = priceRepository.findTopByCodeOrderByDateDesc(code);
+                LocalDate startDate;
+                LocalDate today = LocalDate.now();
+
+                if (lastPriceOpt.isPresent()) {
+                    // 增量模式：从最后同步日期的下一天开始
+                    LocalDate lastDate = lastPriceOpt.get().getDate();
+                    startDate = lastDate.plusDays(1);
+                    
+                    if (startDate.isAfter(today)) {
+                        // 数据已最新，跳过
+                        continue; 
+                    }
+                } else {
+                    // 初始化模式：拉取近3年
+                    startDate = today.minusYears(3);
                 }
 
-                JSONArray results = securitiesClient.getHistoryPrices(code, days);
+                // 按需拉取缺失区间
+                JSONArray results = securitiesClient.getHistoryPrices(code, startDate, today);
                 List<StockPrice> prices = StockDataParser.parsePriceList(results, code);
-                saveStockPrices(prices);
-                totalRecords += prices.size();
+                
+                if (!prices.isEmpty()) {
+                    saveStockPrices(prices);
+                    totalRecords += prices.size();
+                }
+
+
             } catch (Exception e) {
                 log.error("同步股票 {} 历史价格数据失败: {}", code, e.getMessage(), e);
             }

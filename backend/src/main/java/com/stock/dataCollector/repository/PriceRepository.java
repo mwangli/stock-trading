@@ -18,6 +18,11 @@ public interface PriceRepository extends MongoRepository<StockPrice, String> {
      * 根据股票代码查询
      */
     List<StockPrice> findByCodeOrderByDateAsc(String code);
+    /**
+     * 查询指定股票最新的一条价格记录（用于断点续传）
+     */
+    Optional<StockPrice> findTopByCodeOrderByDateDesc(String code);
+
 
     /**
      * 根据股票代码和日期范围查询
