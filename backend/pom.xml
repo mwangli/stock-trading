@@ -22,7 +22,7 @@
         <fastjson2.version>2.0.53</fastjson2.version>
         <easyexcel.version>3.3.4</easyexcel.version>
         <djl.version>0.28.0</djl.version>
-        <djl.pytorch.version>2.0.1</djl.pytorch.version>
+        <djl.pytorch.version>2.2.2</djl.pytorch.version>
         <lombok.version>1.18.30</lombok.version>
     </properties>
 

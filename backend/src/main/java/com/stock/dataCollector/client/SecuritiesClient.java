@@ -11,6 +11,8 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
@@ -222,6 +224,35 @@ public class SecuritiesClient {
 
         return requestDataList(paramMap);
     }
+    /**
+     * 获取指定日期范围的历史价格数据 (增量更新)
+     * 
+     * @param stockCode 股票代码
+     * @param startDate 开始日期
+     * @param endDate   结束日期
+     * @return 历史价格数据列表
+     */
+    public JSONArray getHistoryPrices(String stockCode, LocalDate startDate, LocalDate endDate) {
+        log.info("获取股票 {} 的历史价格数据({} ~ {})", stockCode, startDate, endDate);
+        
+        Map<String, Object> paramMap = new java.util.HashMap<>(10);
+        paramMap.put("c.funcno", 20009);
+        paramMap.put("c.version", 1);
+        paramMap.put("c.stock_code", stockCode);
+        paramMap.put("c.type", "day");
+        
+        // 支持按日期范围拉取
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
+        if (startDate != null) {
+            paramMap.put("c.begin_date", startDate.format(formatter));
+        }
+        if (endDate != null) {
+            paramMap.put("c.end_date", endDate.format(formatter));
+        }
+
+        return requestDataList(paramMap);
+    }
+
 
     /**
      * 获取所有股票列表
