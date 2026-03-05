@@ -91,7 +91,7 @@ public class DataSyncScheduler {
             log.info("[定时任务] 共需同步 {} 支股票的历史数据", allStocks.size());
 
             LocalDate endDate = LocalDate.now().minusDays(1);
-            LocalDate startDate = LocalDate.of(2020, 1, 1);
+            LocalDate startDate = LocalDate.of(2005, 1, 1);
 
             for (StockInfo stock : allStocks) {
                 try {
@@ -112,10 +112,11 @@ public class DataSyncScheduler {
     /**
      * 同步单支股票的数据
      */
+    /**
+     * 同步单只股票的数据 (增量同步)
+     */
     private void syncStockData(String stockCode) {
-        LocalDate endDate = LocalDate.now().minusDays(1);
-        LocalDate startDate = endDate.minusDays(365);
-        stockDataService.syncHistoricalData(stockCode, startDate, endDate);
+        stockDataService.syncLatestPriceData(stockCode);
     }
 
     // ==================== 新闻同步 ====================
