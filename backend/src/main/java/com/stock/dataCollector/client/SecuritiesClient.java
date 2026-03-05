@@ -214,11 +214,11 @@ public class SecuritiesClient {
         paramMap.put("c.type", "day");
 
         // 为了避免对服务器造成过高压力，简单限流：每次请求之间休眠 0.5 秒
-        try {
-            Thread.sleep(500);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+//        try {
+//            Thread.sleep(500);
+//        } catch (InterruptedException e) {
+//            Thread.currentThread().interrupt();
+//        }
 
         return requestDataList(paramMap);
     }

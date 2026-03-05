@@ -29,9 +29,9 @@ public class DataSyncScheduler {
     /**
      * 每天凌晨1点同步股票列表到MySQL
      */
-    @Scheduled(cron = "0 0 1 * * ?")
+    @Scheduled(cron = "0 0 1 * * SUN")
     public void syncStockListDaily() {
-        log.info("========== [定时任务] 开始同步股票列表 ==========");
+        log.info("========== [定时任务] 开始同步股票列表(每周一次) ==========");
         
         try {
             StockDataService.SyncResult result = stockDataService.syncStockList();
@@ -51,7 +51,7 @@ public class DataSyncScheduler {
      * 每日收盘后同步最新股票数据
      * 每个交易日下午 16:00 执行
      */
-    @Scheduled(cron = "0 0 16 * * MON-FRI")
+    @Scheduled(cron = "0 0 18 * * MON-FRI")
     public void syncDailyStockData() {
         log.info("========== [定时任务] 开始执行每日股票数据同步 ==========");
 

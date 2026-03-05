@@ -10,8 +10,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.util.List;
+import java.time.LocalDate;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -20,6 +22,7 @@ import java.util.concurrent.CompletableFuture;
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(name = "app.startup.listener.enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class ApplicationStartupListener {
 
@@ -113,9 +116,9 @@ public class ApplicationStartupListener {
         for (String code : codes) {
             index++;
             try {
-                // 检查该股票是否已存在历史数据，如果存在则跳过
-                if (priceRepository.existsByCode(code)) {
-                    log.info("股票 {} 已存在历史价格数据，跳过同步", code);
+                // 优化：仅当今天的数据不存在时才同步，支持每日启动更新
+                if (priceRepository.existsByCodeAndDate(code, LocalDate.now())) {
+                    log.info("股票 {} 已存在今日({})的历史数据，跳过同步", code, LocalDate.now());
                     skippedCount++;
                     continue;
                 }

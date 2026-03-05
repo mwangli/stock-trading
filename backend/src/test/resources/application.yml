@@ -1,0 +1,28 @@
+spring:
+  main:
+    banner-mode: off
+    allow-bean-definition-overriding: true
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:stock_trading_test;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MySQL
+    username: sa
+    password:
+  jpa:
+    show-sql: false
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+app:
+  startup:
+    listener:
+      enabled: false
+
+logging:
+  level:
+    root: INFO
+    com.stock: WARN
+    com.stock.dataCollector.listener: OFF
+    org.springframework: WARN
+    org.hibernate: WARN

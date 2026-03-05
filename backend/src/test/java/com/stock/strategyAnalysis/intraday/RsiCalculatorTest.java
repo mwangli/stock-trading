@@ -1,6 +1,8 @@
-package com.stock.strategyAnalysis.intraday.calculator;
+package com.stock.strategyAnalysis.intraday;
 
 import com.stock.strategyAnalysis.entity.MinuteBar;
+import lombok.extern.slf4j.Slf4j;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -13,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * RsiCalculator 测试类
  */
+@Slf4j
 class RsiCalculatorTest {
 
     private RsiCalculator rsiCalculator;

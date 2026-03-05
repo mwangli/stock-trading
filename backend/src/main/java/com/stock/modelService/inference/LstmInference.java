@@ -21,11 +21,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -46,7 +41,7 @@ public class LstmInference {
 
     private Model model;
     private boolean isLoaded = false;
-    private String modelPath = "models/lstm-stock";
+    private String modelPath = "mongo:unknown";
     private LocalDateTime lastLoadedTime;
 
     // 归一化参数
@@ -82,7 +77,7 @@ public class LstmInference {
             LstmModelDocument latest = lstmModelRepository.findTopByOrderByCreatedAtDesc();
             
             if (latest != null && latest.getParams() != null) {
-                log.info("Loading latest LSTM model from MongoDB: {}, version: {}", latest.getModelName(), latest.getModelVersion());
+                log.info("从 MongoDB 加载最新 LSTM 模型: {}, version: {}", latest.getModelName(), latest.getModelVersion());
 
                 if (this.model != null) {
                     this.model.close();
@@ -106,15 +101,15 @@ public class LstmInference {
                 this.isLoaded = true;
                 this.lastLoadedTime = LocalDateTime.now();
                 this.modelPath = "mongo:" + latest.getId();
-                log.info("LSTM model loaded successfully from memory.");
+                log.info("LSTM 模型加载成功：MongoDB (ID: {})", latest.getId());
                 return;
             }
             
-            log.warn("No trained model found in MongoDB. Using default initialized model.");
+            log.warn("MongoDB 未找到训练模型，使用默认初始化模型。");
             createDefaultModel();
 
         } catch (Exception e) {
-            log.error("Failed to load LSTM model from memory", e);
+            log.error("从 MongoDB 加载 LSTM 模型失败", e);
             createDefaultModel();
         }
     }

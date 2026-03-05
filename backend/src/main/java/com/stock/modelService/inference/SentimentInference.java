@@ -28,7 +28,10 @@ public class SentimentInference {
     /**
      * 初始化时加载模型
      */
-    @jakarta.annotation.PostConstruct
+    // @jakarta.annotation.PostConstruct removed for lazy loading
+    // public void init() {
+    //    loadModel();
+    // }
     public void init() {
         loadModel();
     }
@@ -57,6 +60,10 @@ public class SentimentInference {
      * 分析文本情感
      */
     public SentimentResult analyze(String text) {
+        if (!isLoaded) {
+            loadModel();
+        }
+
         if (text == null || text.trim().isEmpty()) {
             return SentimentResult.neutral();
         }
@@ -81,6 +88,10 @@ public class SentimentInference {
      * 详细的情感分析结果
      */
     public Map<String, Object> analyzeWithDetails(String text) {
+        if (!isLoaded) {
+            loadModel();
+        }
+
         try {
             SentimentAnalysisResult result = trainerService.analyzeSentiment(text);
 
