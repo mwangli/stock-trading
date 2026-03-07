@@ -226,9 +226,5 @@
       "profit": "盈亏",
       "returnRate": "收益率"
     }
-      "filled": "已成交",
-      "pending": "待成交",
-      "cancelled": "已取消"
-    }
   }
   }
