@@ -1,0 +1,42 @@
+name: deploy
+
+on:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - '**.tsx'
+      - '**.ts'
+      - '**.js'
+#    tags:
+#      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # 拉取代码
+      - uses: actions/checkout@v3
+      # 打包文件
+      - name: yarn-build
+        run: yarn && yarn build
+      # 构建镜像
+      - name: docker-build
+        env:
+          APP: stock-front
+          REGISTER: registry.cn-shenzhen.aliyuncs.com
+          NS: mwangli
+          USER: limingwang06
+          PASS: Dknhfre1st
+        run: |
+          docker login --username=$USER --password=$PASS $REGISTER
+          docker build -t $APP -f Dockerfile .
+          docker tag $APP $REGISTER/$NS/$APP
+          docker push $REGISTER/$NS/$APP
+      # 滚动更新
+      - uses: matheusvanzan/sshpass-action@v2
+        with:
+          host: 124.220.36.95
+          user: root
+          pass: ${{ secrets.PASS }}
+          run: kubectl rollout restart deploy stock-front

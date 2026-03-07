@@ -1,0 +1,230 @@
+{
+  "common": {
+    "welcomeBack": "欢迎归来",
+    "login": "系统接入",
+    "logout": "退出登录",
+    "username": "账户",
+    "password": "口令",
+    "submit": "提交",
+    "cancel": "取消",
+    "save": "保存",
+    "search": "搜索",
+    "status": "状态"
+  },
+  "layout": {
+    "dashboard": "总览",
+    "market": "市场行情",
+    "strategies": "量化模型",
+    "analysis": "策略分析",
+    "settings": "系统设置",
+    "profile": "个人资料",
+    "systemStatus": "系统状态",
+    "connected": "已连接",
+    "latency": "延迟",
+    "transactions": "交易记录",
+    "pnl": {
+      "today": "今日收益",
+      "week": "本周收益",
+      "month": "本月收益"
+    },
+    "title": "智能交易终端"
+  },
+  "login": {
+    "systemOnline": "系统在线",
+    "algoTrading": "智能算法交易系统",
+    "subtitle": "下一代金融建模与自动执行策略。由 LSTM 神经网络与实时情感分析驱动。",
+    "stats": {
+      "uptime": "运行时间",
+      "latency": "延迟",
+      "monitoring": "监控"
+    },
+    "form": {
+      "title": "欢迎归来",
+      "subtitle": "输入凭证以访问终端",
+      "usernamePlaceholder": "账户: admin",
+      "passwordPlaceholder": "口令: any",
+      "button": "启动会话",
+      "forgotPassword": "忘记密码？",
+      "systemStatus": "系统状态: 正常"
+    },
+    "footer": "AI 股票交易系统 ©2024"
+  },
+  "dashboard": {
+    "stats": {
+      "totalBalance": "总资产",
+      "activePositions": "当前持仓",
+      "dailyPnL": "今日盈亏",
+      "riskLevel": "风险等级",
+      "risk": {
+        "moderate": "中等"
+      },
+      "pendingOrders": "挂单",
+"today": "今日",
+      "vsYesterday": "较昨日",
+      "volatility": "波动率",
+      "status": {
+        "completed": "已完成",
+        "pending": "待处理"
+      },
+      "type": {
+        "buy": "买入",
+        "sell": "卖出"
+      }
+    },
+    "chart": {
+      "performance": "绩效分析",
+      "portfolioValue": "组合价值",
+      "benchmark": "基准"
+    },
+    "table": {
+      "recentActivity": "最近活动",
+      "symbol": "代码",
+      "type": "类型",
+      "price": "价格",
+      "quantity": "数量",
+      "status": "状态"
+    }
+  },
+  "market": {
+    "stats": {
+      "marketStatus": "市场状态",
+      "volatility": "波动率指数",
+      "volume": "24H成交量",
+      "topGainer": "领涨股",
+      "open": "开盘"
+    },
+    "watchlist": {
+      "search": "搜索代码...",
+      "trade": "交易"
+    },
+    "columns": {
+      "symbol": "代码",
+      "price": "价格",
+      "change": "涨跌幅",
+      "volume": "成交量",
+      "action": "操作"
+    }
+  },
+  "models": {
+    "title": "量化模型中心",
+    "subtitle": "监控与管理 AI 预测引擎",
+    "lstm": {
+      "title": "LSTM 价格预测模型",
+      "desc": "基于5年 OHLCV 数据训练的长短期记忆网络。专为 T+1 趋势反转预测优化。",
+      "accuracy": "测试准确率",
+      "loss": "验证集 Loss",
+      "features": "输入特征",
+      "epochs": "训练轮数",
+      "status": "模型状态"
+    },
+    "finbert": {
+      "title": "FinBert 情感分析",
+      "desc": "针对金融文本微调的 BERT 模型。实时分析新闻标题以生成多空信号。",
+      "sentiment": "当前情绪",
+      "confidence": "置信度",
+      "sources": "新闻源",
+      "articles": "今日分析",
+      "latency": "推理延迟"
+    },
+    "actions": {
+      "retrain": "重新训练",
+      "backtest": "回测模型",
+      "logs": "查看日志",
+      "parameters": "调整参数"
+    }
+  },
+  "strategyAnalysis": {
+    "title": "策略分析中心",
+    "subtitle": "管理选股与交易执行策略",
+    "selection": {
+      "title": "选股策略 (天级)",
+      "doubleFactor": "双因子模型 (LSTM + 情感)"
+    },
+    "trading": {
+      "title": "交易策略 (分钟级)",
+      "tplus1": "T+1 卖出",
+      "stopLoss": "移动止损",
+      "rsi": "RSI 超买",
+      "volume": "成交量背离",
+      "bollinger": "布林带突破"
+    },
+    "metrics": {
+      "winRate": "胜率",
+      "pnl": "盈亏",
+      "totalTrades": "交易次数"
+    }
+  },
+  "settings": {
+    "title": "系统配置",
+    "save": "保存更改",
+    "sections": {
+      "general": "通用偏好",
+      "api": "API 连接",
+      "risk": "风险管理协议"
+    },
+    "fields": {
+      "theme": "主题模式",
+      "language": "语言",
+      "notifications": "启用系统通知",
+      "apiKey": "数据提供商 API 密钥",
+      "refreshRate": "刷新率 (ms)",
+      "riskLevel": "全局风险概况",
+      "maxDrawdown": "最大单日回撤 (%)"
+    },
+    "options": {
+      "theme": {
+        "dark": "赛博朋克暗色",
+        "light": "亮色 (即将推出)"
+      },
+      "language": {
+        "en": "English",
+        "zh": "简体中文"
+      },
+      "risk": {
+        "conservative": "保守 (低波动)",
+        "moderate": "稳健 (平衡)",
+        "aggressive": "激进 (高收益)"
+      }
+    },
+    "testConnection": "测试连接",
+    "successMsg": "设置保存成功"
+  },
+  "transactions": {
+    "title": "交易记录",
+    "subtitle": "所有买入与卖出执行指令的完整记录",
+    "filters": {
+      "searchPlaceholder": "搜索代码 (如 AAPL)",
+      "sidePlaceholder": "按方向筛选",
+      "all": "全部方向",
+      "buy": "买入",
+      "sell": "卖出"
+    },
+    "table": {
+      "time": "时间",
+      "symbol": "代码",
+      "side": "方向",
+      "price": "价格",
+      "quantity": "数量",
+      "totalValue": "总价值",
+      "status": "状态"
+    },
+    "status": {
+      "filled": "已成交",
+      "pending": "待成交",
+      "cancelled": "已取消"
+    },
+    "tabs": {
+      "orders": "订单记录",
+      "trades": "交易记录"
+    },
+    "tradesTable": {
+      "openTime": "开仓时间",
+      "closeTime": "平仓时间",
+      "buyPrice": "买入价",
+      "sellPrice": "卖出价",
+      "fees": "手续费",
+      "profit": "盈亏",
+      "returnRate": "收益率"
+    }
+  }
+  }
