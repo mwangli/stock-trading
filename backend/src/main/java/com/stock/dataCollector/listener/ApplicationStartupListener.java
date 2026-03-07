@@ -12,6 +12,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
+import org.springframework.beans.factory.annotation.Value;
 import java.util.List;
 import java.time.LocalDate;
 import java.util.concurrent.CompletableFuture;
@@ -29,6 +30,10 @@ public class ApplicationStartupListener {
     private final StockDataService stockDataService;
     private final StockInfoRepository stockInfoRepository;
     private final PriceRepository priceRepository;
+
+    @Value("${app.startup.history-sync.enabled:false}")
+    private boolean historySyncEnabled;
+
 
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
@@ -82,13 +87,19 @@ public class ApplicationStartupListener {
     
             log.info("========== 数据初始化检查完成，准备开始历史数据同步 ==========");
     
+
             // 2. 同步所有股票的历史数据
             // 注意：这里是顺序执行，确保如果上方同步了新股票列表，这里能获取到最新的列表
-            try {
-                syncAllStocksHistoryToMongo();
-            } catch (Exception e) {
-                log.error("后台数据初始化任务（历史数据同步）失败", e);
+            if (historySyncEnabled) {
+                try {
+                    syncAllStocksHistoryToMongo();
+                } catch (Exception e) {
+                    log.error("后台数据初始化任务（历史数据同步）失败", e);
+                }
+            } else {
+                log.info("========== 历史数据同步开关已关闭，跳过同步 ==========");
             }
+
         });
     }
 

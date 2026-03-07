@@ -1,0 +1,230 @@
+{
+  "common": {
+    "welcomeBack": "Welcome Back",
+    "login": "Login",
+    "logout": "Logout",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Submit",
+    "cancel": "Cancel",
+    "save": "Save",
+    "search": "Search",
+    "status": "Status"
+  },
+  "layout": {
+    "dashboard": "Dashboard",
+    "market": "Market Overview",
+    "strategies": "Quant Models",
+    "analysis": "Strategy Analysis",
+    "settings": "Settings",
+    "profile": "Profile",
+    "systemStatus": "SYSTEM STATUS",
+    "connected": "Connected",
+    "latency": "Latency",
+    "transactions": "Trade History",
+    "pnl": {
+      "today": "Today's P&L",
+      "week": "Weekly P&L",
+      "month": "Monthly P&L"
+    },
+    "title": "AI TRADER"
+  },
+  "login": {
+    "systemOnline": "SYSTEM ONLINE",
+    "algoTrading": "Algorithmic Trading Intelligence",
+    "subtitle": "Next-generation financial modeling and automated execution strategies. Powered by LSTM neural networks and real-time sentiment analysis.",
+    "stats": {
+      "uptime": "Uptime",
+      "latency": "Latency",
+      "monitoring": "Monitoring"
+    },
+    "form": {
+      "title": "Welcome Back",
+      "subtitle": "Enter your credentials to access the terminal",
+      "usernamePlaceholder": "Username: admin",
+      "passwordPlaceholder": "Password: any",
+      "button": "Initiate Session",
+      "forgotPassword": "Forgot password?",
+      "systemStatus": "System Status: Normal"
+    },
+    "footer": "AI STOCK TRADING SYSTEM ©2024"
+  },
+  "dashboard": {
+    "stats": {
+      "totalBalance": "Total Balance",
+      "activePositions": "Active Positions",
+      "dailyPnL": "Daily P&L",
+      "riskLevel": "Risk Level",
+      "risk": {
+        "moderate": "Moderate"
+      },
+      "pendingOrders": "Pending Orders",
+"today": "Today",
+      "vsYesterday": "vs Yesterday",
+      "volatility": "Volatility",
+      "status": {
+        "completed": "Completed",
+        "pending": "Pending"
+      },
+      "type": {
+        "buy": "BUY",
+        "sell": "SELL"
+      }
+    },
+    "chart": {
+      "performance": "Performance Analytics",
+      "portfolioValue": "Portfolio Value",
+      "benchmark": "Benchmark"
+    },
+    "table": {
+      "recentActivity": "Recent Activity",
+      "symbol": "Symbol",
+      "type": "Type",
+      "price": "Price",
+      "quantity": "Quantity",
+      "status": "Status"
+    }
+  },
+  "market": {
+    "stats": {
+      "marketStatus": "Market Status",
+      "volatility": "Volatility Index",
+      "volume": "24h Volume",
+      "topGainer": "Top Gainer",
+      "open": "OPEN"
+    },
+    "watchlist": {
+      "search": "Search Symbol...",
+      "trade": "TRADE"
+    },
+    "columns": {
+      "symbol": "Symbol",
+      "price": "Price",
+      "change": "Change",
+      "volume": "Volume",
+      "action": "Action"
+    }
+  },
+  "models": {
+    "title": "Quant Model Center",
+    "subtitle": "Monitor & Manage AI Prediction Engines",
+    "lstm": {
+      "title": "LSTM Price Prediction",
+      "desc": "Long Short-Term Memory network trained on 5-year OHLCV data. Optimized for T+1 trend reversal.",
+      "accuracy": "Test Accuracy",
+      "loss": "Validation Loss",
+      "features": "Input Features",
+      "epochs": "Training Epochs",
+      "status": "Model Status"
+    },
+    "finbert": {
+      "title": "FinBert Sentiment",
+      "desc": "BERT model fine-tuned for financial texts. Analyzes news headlines in real-time for long/short signals.",
+      "sentiment": "Current Sentiment",
+      "confidence": "Confidence",
+      "sources": "News Sources",
+      "articles": "Articles Today",
+      "latency": "Inference Latency"
+    },
+    "actions": {
+      "retrain": "Retrain",
+      "backtest": "Backtest",
+      "logs": "View Logs",
+      "parameters": "Parameters"
+    }
+  },
+  "strategyAnalysis": {
+    "title": "Strategy Analysis Center",
+    "subtitle": "Manage Stock Selection & Execution Strategies",
+    "selection": {
+      "title": "Selection Strategies (Daily)",
+      "doubleFactor": "Double Factor (LSTM + Sentiment)"
+    },
+    "trading": {
+      "title": "Trading Strategies (Intraday)",
+      "tplus1": "T+1 Selling",
+      "stopLoss": "Trailing Stop Loss",
+      "rsi": "RSI Overbought",
+      "volume": "Volume Divergence",
+      "bollinger": "Bollinger Breakout"
+    },
+    "metrics": {
+      "winRate": "Win Rate",
+      "pnl": "P&L",
+      "totalTrades": "Total Trades"
+    }
+  },
+  "settings": {
+    "title": "System Configuration",
+    "save": "SAVE CHANGES",
+    "sections": {
+      "general": "General Preferences",
+      "api": "API Connections",
+      "risk": "Risk Management Protocols"
+    },
+    "fields": {
+      "theme": "Theme Mode",
+      "language": "Language",
+      "notifications": "Enable System Notifications",
+      "apiKey": "Data Provider API Key",
+      "refreshRate": "Refresh Rate (ms)",
+      "riskLevel": "Global Risk Profile",
+      "maxDrawdown": "Max Daily Drawdown (%)"
+    },
+    "options": {
+      "theme": {
+        "dark": "Cyberpunk Dark",
+        "light": "Light (Coming Soon)"
+      },
+      "language": {
+        "en": "English",
+        "zh": "Chinese (Simplified)"
+      },
+      "risk": {
+        "conservative": "Conservative (Low Volatility)",
+        "moderate": "Moderate (Balanced)",
+        "aggressive": "Aggressive (High Yield)"
+      }
+    },
+    "testConnection": "Test Connection",
+    "successMsg": "Settings Saved Successfully"
+  },
+  "transactions": {
+    "title": "Trade History",
+    "subtitle": "Comprehensive record of all buy and sell execution orders",
+    "filters": {
+      "searchPlaceholder": "Search by Symbol (e.g., AAPL)",
+      "sidePlaceholder": "Filter by Side",
+      "all": "All Sides",
+      "buy": "Buy",
+      "sell": "Sell"
+    },
+    "table": {
+      "time": "Time",
+      "symbol": "Symbol",
+      "side": "Side",
+      "price": "Price",
+      "quantity": "Quantity",
+      "totalValue": "Total Value",
+      "status": "Status"
+    },
+    "status": {
+      "filled": "Filled",
+      "pending": "Pending",
+      "cancelled": "Cancelled"
+    },
+    "tabs": {
+      "orders": "Orders",
+      "trades": "Trades"
+    },
+    "tradesTable": {
+      "openTime": "Open Time",
+      "closeTime": "Close Time",
+      "buyPrice": "Buy Price",
+      "sellPrice": "Sell Price",
+      "fees": "Fees",
+      "profit": "Profit",
+      "returnRate": "Return Rate"
+    }
+  }
+  }

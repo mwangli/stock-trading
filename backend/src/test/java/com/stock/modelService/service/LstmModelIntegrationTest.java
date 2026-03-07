@@ -122,18 +122,24 @@ class LstmModelIntegrationTest {
         log.info("│ Step 3: 验证模型保存                                        │");
         log.info("└────────────────────────────────────────────────────────────┘");
 
-        Path modelPath = Paths.get(trainedModelPath);
-        assertTrue(Files.exists(modelPath), "模型目录应该存在");
-        log.info("模型目录存在: {}", modelPath.toAbsolutePath());
+        if (trainedModelPath.startsWith("mongo:")) {
+            log.info("模型已保存到 MongoDB, ID: {}", trainedModelPath);
+            assertTrue(trainedModelPath.length() > 6, "MongoDB ID 应该是有效的");
+        } else {
+            Path modelPath = Paths.get(trainedModelPath);
+            assertTrue(Files.exists(modelPath), "模型目录应该存在");
+            log.info("模型目录存在: {}", modelPath.toAbsolutePath());
 
-        // 列出模型目录中的文件
-        try {
-            Files.list(modelPath).forEach(file -> {
-                log.info("  文件: {}", file.getFileName());
-            });
-        } catch (Exception e) {
-            log.warn("无法列出模型目录文件: {}", e.getMessage());
+            // 列出模型目录中的文件
+            try {
+                Files.list(modelPath).forEach(file -> {
+                    log.info("  文件: {}", file.getFileName());
+                });
+            } catch (Exception e) {
+                log.warn("无法列出模型目录文件: {}", e.getMessage());
+            }
         }
+
 
         // Step 4: 加载模型
         log.info("┌────────────────────────────────────────────────────────────┐");

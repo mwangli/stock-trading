@@ -12,6 +12,11 @@ import com.stock.tradingExecutor.time.TradingTimeChecker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -19,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * 交易执行器测试
  */
+@ExtendWith(MockitoExtension.class)
 class TradeExecutorTest {
     
     private TradeExecutor tradeExecutor;
@@ -27,6 +33,8 @@ class TradeExecutorTest {
     private PriceMonitor priceMonitor;
     private OrderPoller orderPoller;
     private FeeCalculator feeCalculator;
+
+    @Mock
     private TradingTimeChecker tradingTimeChecker;
     
     @BeforeEach
@@ -41,7 +49,7 @@ class TradeExecutorTest {
         // 创建组件
         mockBrokerAdapter = new MockBrokerAdapter();
         feeCalculator = new FeeCalculator(feeConfig);
-        tradingTimeChecker = new TradingTimeChecker(tradingTimeConfig);
+        // tradingTimeChecker is mocked
         riskController = new RiskController(mockBrokerAdapter, riskConfig, tradingTimeChecker);
         priceMonitor = new PriceMonitor(mockBrokerAdapter, tradingTimeChecker, monitorConfig);
         orderPoller = new OrderPoller(mockBrokerAdapter, pollerConfig);
@@ -60,8 +68,11 @@ class TradeExecutorTest {
     
     @Test
     void testExecuteBuy_Success() throws InterruptedException {
+        // Mock trading time checks
+        when(tradingTimeChecker.isTradingTime()).thenReturn(true);
+        when(tradingTimeChecker.isPastBuyDeadLine()).thenReturn(false);
+
         // 设置模拟价格
-        mockBrokerAdapter.setMockPrice("000001", new BigDecimal("10.00"));
         
         // 执行买入
         OrderResult result = tradeExecutor.executeBuy("000001", new BigDecimal("10000"));
@@ -81,8 +92,11 @@ class TradeExecutorTest {
     
     @Test
     void testExecuteBuy_InsufficientFunds() {
+        // Mock trading time checks (need to be in trading time to fail on funds)
+        when(tradingTimeChecker.isTradingTime()).thenReturn(true);
+        when(tradingTimeChecker.isPastBuyDeadLine()).thenReturn(false);
+
         // 设置模拟价格
-        mockBrokerAdapter.setMockPrice("000001", new BigDecimal("10.00"));
         
         // 执行买入 (金额过大)
         OrderResult result = tradeExecutor.executeBuy("000001", new BigDecimal("999999999"));

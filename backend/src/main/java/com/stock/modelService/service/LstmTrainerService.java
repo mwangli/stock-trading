@@ -61,6 +61,8 @@ public class LstmTrainerService {
             int trainBatchSize = batchSize != null ? batchSize : config.getBatchSize();
             float trainLearningRate = learningRate != null ? learningRate.floatValue() : (float) config.getLearningRate();
 
+            long trainingStartNs = System.nanoTime();
+
             log.info("========== 开始 LSTM 模型训练 ==========");
             log.info("股票: {}, 天数: {}, 轮次: {}, 批次: {}, 学习率: {}", 
                     stockCodes, days, trainEpochs, trainBatchSize, trainLearningRate);
@@ -147,6 +149,7 @@ public class LstmTrainerService {
                 ArrayDataset valDataset = createDataset(trainer.getManager(), valInputs, valTargets, valBatchSize);
 
                 for (int epoch = 0; epoch < trainEpochs; epoch++) {
+                    long epochStartNs = System.nanoTime();
                     status.setCurrentEpoch(epoch + 1);
                     status.setTotalEpochs(trainEpochs);
 
@@ -193,11 +196,13 @@ public class LstmTrainerService {
                             epoch + 1, trainEpochs, avgTrainLoss, valLoss));
 
                     log.info(
-                            "Epoch {}/{} - TrainLoss: {}, ValLoss: {}",
+                            "Epoch {}/{} ({}) - TrainLoss: {}, ValLoss: {}, 耗时: {} 秒",
                             epoch + 1,
                             trainEpochs,
+                            String.format("%.2f%%", (epoch + 1) * 100.0 / trainEpochs),
                             avgTrainLoss,
-                            valLoss
+                            valLoss,
+                            String.format("%.2f", (System.nanoTime() - epochStartNs) / 1_000_000_000.0)
                     );
 
                     if (config.isEarlyStopping()) {
@@ -235,6 +240,7 @@ public class LstmTrainerService {
             log.info("========== 训练完成 ==========");
             log.info("最终训练损失: {}, 验证损失: {}", finalTrainLoss, finalValLoss);
             log.info("模型保存结果: {}", currentModelPath);
+            log.info("训练总耗时: {} 秒", String.format("%.2f", (System.nanoTime() - trainingStartNs) / 1_000_000_000.0));
 
             return TrainingResult.builder()
                     .success(true).message("训练完成").epochs(trainEpochs)

@@ -64,23 +64,25 @@ class IntradaySellServiceTest {
         );
     }
 
-//    @Test
-//    void testIsForceSellTime() {
-//        // 测试强制卖出时间判断
-//        // 实际测试应模拟不同的时间
-//        assertFalse(intradaySellService.isForceSellTime());
-//    }
+    @Test
+    void testIsForceSellTime() {
+        // 测试强制卖出时间判断
+        // 由于无法轻易Mock系统时间，这里根据当前时间动态断言
+        java.time.LocalTime now = java.time.LocalTime.now();
+        java.time.LocalTime forceTime = java.time.LocalTime.of(14, 57);
+        boolean expected = now.isAfter(forceTime) || now.equals(forceTime);
+        
+        assertEquals(expected, intradaySellService.isForceSellTime(), 
+            "isForceSellTime should return " + expected + " at " + now);
+    }
 
-//    @Test
-//    void testForceSell() {
-//        StrategyConfig config = StrategyConfig.defaultConfig();
-//        when(configService.getCurrentConfig()).thenReturn(config);
-//
-//        // 测试强制卖出
-//        var decision = intradaySellService.forceSell("600519", "测试强制卖出");
-//
-//        assertNotNull(decision);
-//        assertTrue(decision.isShouldSell());
-//        assertEquals("600519", decision.getStockCode());
-//    }
+    @Test
+    void testForceSell() {
+        // 测试强制卖出
+        var decision = intradaySellService.forceSell("600519", "测试强制卖出");
+
+        assertNotNull(decision);
+        assertTrue(decision.isShouldSell());
+        assertEquals("600519", decision.getStockCode());
+    }
 }
