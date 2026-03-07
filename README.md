@@ -428,18 +428,18 @@ docker-compose logs -f backend
 所有需求、设计、测试文档位于 `documents/` 目录：
 
 - [文档中心索引](./documents/README.md) - 文档结构和快速开始
-- [系统整体需求](documents/requirement/00-系统整体需求.md)
-- [系统架构设计](./documents/design/00-系统架构设计.md)
+- [系统整体需求](docs/requirement/00-系统整体需求.md)
+- [系统架构设计](docs/design/00-系统架构设计.md)
 - [系统测试计划](./documents/test/00-系统测试计划.md)
 
 ### 模块文档
 
 | 模块 | 需求文档 | 设计文档 | 测试文档 |
 |------|----------|----------|----------|
-| 数据采集 | [01-数据采集需求](documents/requirement/01-数据采集需求.md) | [01-数据采集设计](./documents/design/01-数据采集设计.md) | [01-数据采集测试](./documents/test/01-数据采集测试.md) |
-| AI 模型 | [02-AI 模型需求](./documents/requirements/02-AI 模型需求.md) | [02-AI 模型设计](./documents/design/02-AI 模型设计.md) | [02-AI 模型测试](./documents/test/02-AI 模型测试.md) |
-| 交易策略 | [03-交易策略需求](documents/requirement/03-交易策略需求.md) | [03-交易策略设计](./documents/design/03-交易策略设计.md) | [03-交易策略测试](./documents/test/03-交易策略测试.md) |
-| 交易执行 | [04-交易执行需求](documents/requirement/04-交易执行需求.md) | [04-交易执行设计](./documents/design/04-交易执行设计.md) | [04-交易执行测试](./documents/test/04-交易执行测试.md) |
+| 数据采集 | [01-数据采集需求](docs/requirement/01-数据采集需求.md) | [01-数据采集设计](docs/design/01-数据采集设计.md) | [01-数据采集测试](./documents/test/01-数据采集测试.md) |
+| AI 模型 | [02-AI 模型需求](./documents/requirements/02-AI 模型需求.md) | [02-AI 模型设计](docs/design/02-AI 模型设计.md) | [02-AI 模型测试](./documents/test/02-AI 模型测试.md) |
+| 交易策略 | [03-交易策略需求](docs/requirement/03-交易策略需求.md) | [03-交易策略设计](docs/design/03-交易策略设计.md) | [03-交易策略测试](./documents/test/03-交易策略测试.md) |
+| 交易执行 | [04-交易执行需求](docs/requirement/04-交易执行需求.md) | [04-交易执行设计](docs/design/04-交易执行设计.md) | [04-交易执行测试](./documents/test/04-交易执行测试.md) |
 
 ---
 

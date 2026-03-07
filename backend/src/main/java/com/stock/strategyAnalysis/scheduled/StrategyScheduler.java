@@ -26,7 +26,7 @@ public class StrategyScheduler {
      * 综合选股任务
      * 交易日 17:00 执行
      */
-    @Scheduled(cron = "0 0 17 ? * MON-FRI")
+    // @Scheduled(cron = "0 0 17 ? * MON-FRI")
     public void runStockSelection() {
         log.info("========== 开始执行选股任务 ==========");
         try {
@@ -41,7 +41,7 @@ public class StrategyScheduler {
      * 信号生成任务
      * 交易日 17:30 执行
      */
-    @Scheduled(cron = "0 30 17 ? * MON-FRI")
+    // @Scheduled(cron = "0 30 17 ? * MON-FRI")
     public void runSignalGeneration() {
         log.info("========== 开始执行信号生成任务 ==========");
         try {
@@ -56,7 +56,7 @@ public class StrategyScheduler {
      * T+1卖出检查任务
      * 交易时段每分钟执行
      */
-    @Scheduled(cron = "0 * 9-11,13-15 ? * MON-FRI")
+    // @Scheduled(cron = "0 * 9-11,13-15 ? * MON-FRI")
     public void checkIntradaySell() {
         log.debug("执行T+1卖出检查");
         try {
@@ -71,7 +71,7 @@ public class StrategyScheduler {
      * 尾盘强制卖出检查
      * 14:57 执行
      */
-    @Scheduled(cron = "0 57 14 ? * MON-FRI")
+    // @Scheduled(cron = "0 57 14 ? * MON-FRI")
     public void checkForceSell() {
         log.info("========== 检查尾盘强制卖出 ==========");
         try {
@@ -87,7 +87,7 @@ public class StrategyScheduler {
      * 时段策略切换检查
      * 每分钟执行
      */
-    @Scheduled(cron = "0 * 9-15 ? * MON-FRI")
+    // @Scheduled(cron = "0 * 9-15 ? * MON-FRI")
     public void checkTimeBasedSwitch() {
         try {
             autoSwitchRuleEngine.checkTimeBasedRules();

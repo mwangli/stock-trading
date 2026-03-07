@@ -14,8 +14,6 @@
     <description>AI股票自动交易系统 - 父项目</description>
 
     <modules>
-        <!-- 前端模块必须先构建，以便生成静态文件供后端复制 -->
-        <module>frontend</module>
         <module>backend</module>
     </modules>
 
@@ -25,7 +23,7 @@
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <spring-boot.version>3.2.2</spring-boot.version>
-        <node.version>v18.18.0</node.version>
+        <node.version>v20.11.0</node.version>
         <npm.version>9.8.1</npm.version>
     </properties>
 

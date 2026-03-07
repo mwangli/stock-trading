@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Login, Dashboard, Market, Strategies, Analysis, Settings, Transactions } from './pages';
+import { Login, Dashboard, Market, Strategies, Analysis, Settings, Transactions, Logs, JobAdmin } from './pages';
+
 import DashboardLayout from './layouts/DashboardLayout';
 import { useUserStore } from './store/userStore';
 
@@ -22,6 +23,11 @@ function App() {
           <Route path="strategies" element={<Strategies />} />
           <Route path="analysis" element={<Analysis />} />
           <Route path="transactions" element={<Transactions />} />
+          <Route path="jobs" element={<JobAdmin />} />
+          <Route path="logs" element={<Logs />} />
+          <Route path="logs" element={<Logs />} />
+          <Route path="settings" element={<Settings />} />
+
           <Route path="settings" element={<Settings />} />
         </Route>
 

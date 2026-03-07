@@ -29,7 +29,7 @@ public class DataSyncScheduler {
     /**
      * 每天凌晨1点同步股票列表到MySQL
      */
-    @Scheduled(cron = "0 0 1 * * SUN")
+    // @Scheduled(cron = "0 0 1 * * SUN")
     public void syncStockListDaily() {
         log.info("========== [定时任务] 开始同步股票列表(每周一次) ==========");
         
@@ -51,7 +51,7 @@ public class DataSyncScheduler {
      * 每日收盘后同步最新股票数据
      * 每个交易日下午 16:00 执行
      */
-    @Scheduled(cron = "0 0 18 * * MON-FRI")
+    // @Scheduled(cron = "0 0 18 * * MON-FRI")
     public void syncDailyStockData() {
         log.info("========== [定时任务] 开始执行每日股票数据同步 ==========");
 
@@ -82,7 +82,7 @@ public class DataSyncScheduler {
      * 全量同步所有股票历史数据
      * 每周日凌晨 2:00 执行
      */
-    @Scheduled(cron = "0 0 2 * * SUN")
+    // @Scheduled(cron = "0 0 2 * * SUN")
     public void syncAllHistoricalData() {
         log.info("========== [定时任务] 开始执行全量股票历史数据同步 ==========");
 
@@ -126,7 +126,7 @@ public class DataSyncScheduler {
      * 每小时执行一次
      * TODO: 实现后启用
      */
-    @Scheduled(cron = "0 0 * * * *")
+    // @Scheduled(cron = "0 0 * * * *")
     public void collectHourlyNews() {
         log.debug("股票新闻采集功能待实现，跳过执行");
         // TODO: stockNewsService.collectStockNews();

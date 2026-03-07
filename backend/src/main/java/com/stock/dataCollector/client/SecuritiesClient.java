@@ -281,6 +281,7 @@ public class SecuritiesClient {
      * @param stockCode 股票代码
      * @return 实时价格
      */
+    @SuppressWarnings("unchecked")
     public JSONObject getRealtimePrice(String stockCode) {
         log.debug("获取股票 {} 的实时价格", stockCode);
         
