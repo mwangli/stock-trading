@@ -1,361 +1,477 @@
-# AGENTS.md - Stock Trading Project Guidelines
+# 交互语言要求
 
-## Project Structure
+1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
+2. **代码除外**：代码本身和特殊专有名词（如类名、方法名、API 名称）使用英文
+3. **展示思考过程**：在回答问题时，需要展示分析和推理过程
 
-This is a full-stack stock trading application with AI-powered trading decisions:
+## 补充强化（必须遵守）
 
-```
+1. **不得直接粘贴英文原始输出**：包括但不限于后台 Agent、外部文档、命令行输出等；如包含英文内容，必须先用中文进行归纳/翻译后再输出。
+2. **面向用户的最终输出必须中文**：允许在代码块、类名/方法名/API 名称、URL、HTTP Header 等专有名词处使用英文。
+3. **“展示思考过程”的边界**：以“结论 → 证据 → 推理 → 验证步骤 → 规避方案”的结构化方式说明；避免输出无关的内部草稿或逐字推演。
+
+---
+
+# AGENTS.md - AI 股票交易系统开发指南
+
+## 项目结构
+
+后端采用 **Maven 多模块项目结构**，每个模块可独立启动，也可聚合启动：
+
 stock-trading/
-├── stock-backend/          # Java Spring Boot backend
-│   ├── src/main/java/     # Java source code
-│   ├── pom.xml            # Maven configuration
-│   └── Dockerfile         # Container config
-├── stock-frontend/        # React frontend (Ant Design Pro)
-│   ├── src/               # TypeScript/React source
-│   ├── package.json       # Node dependencies
-│   └── config/            # Build configuration
-├── stock-service/         # Python AI service (FastAPI)
-│   ├── app/              # Application code
-│   │   ├── api/          # API routes
-│   │   ├── services/     # Business logic
-│   │   └── core/        # Configuration
-│   ├── requirements.txt   # Python dependencies
-│   └── Dockerfile        # Container config
-└── documents/             # Design documents
-    ├── requirements/      # Requirements documents
-    └── design/           # Design documents
-```
+├── backend/                        # Spring Boot 后端服务 (多模块)
+│   ├── pom.xml                    # 父 POM (依赖管理)
+│   ├── data-collector/            # 数据采集模块 (端口: 8081)
+│   │   ├── pom.xml
+│   │   └── src/main/java/com/stock/dataCollector/
+│   │       └── DataCollectorApplication.java
+│   ├── model-service/             # AI 模型模块 (端口: 8082)
+│   │   ├── pom.xml
+│   │   └── src/main/java/com/stock/modelService/
+│   │       └── ModelServiceApplication.java
+│   ├── strategy-analysis/         # 策略分析模块 (端口: 8083)
+│   │   ├── pom.xml
+│   │   └── src/main/java/com/stock/strategyAnalysis/
+│   │       └── StrategyAnalysisApplication.java
+│   ├── trading-executor/          # 交易执行模块 (端口: 8084)
+│   │   ├── pom.xml
+│   │   └── src/main/java/com/stock/tradingExecutor/
+│   │       └── TradingExecutorApplication.java
+│   └── app-starter/               # 主应用启动模块 (聚合启动, 端口: 8080)
+│       ├── pom.xml
+│       └── src/main/java/com/stock/app/
+│           └── AppStarterApplication.java
+├── frontend/                      # React 前端应用
+│   └── src/
+│       ├── pages/                 # 页面组件
+│       ├── components/            # 通用组件
+│       └── services/              # API 服务
+│
+└── documents/                     # 设计文档
 
-## Build Commands
+## 构建命令
 
-### Backend (stock-backend/)
+### Backend (Maven)
 
 ```bash
-cd stock-backend
+# 构建所有模块 (在 backend 目录下)
+cd backend
+mvn clean package
 
-# Compile and package
-mvn clean install
+# ============ 模块启动方式 ============
 
-# Run Spring Boot application
-mvn spring-boot:run
+# 方式一：聚合启动 (推荐，启动所有模块)
+mvn spring-boot:run -pl app-starter
 
-# Run all tests
+# 方式二：独立启动各模块 (用于开发调试)
+
+# 启动数据采集模块 (端口: 8081)
+mvn spring-boot:run -pl data-collector
+# 启动模型服务模块 (端口: 8082)
+mvn spring-boot:run -pl model-service
+
+# 启动策略分析模块 (端口: 8083)
+mvn spring-boot:run -pl strategy-analysis
+
+# 启动交易执行模块 (端口: 8084)
+mvn spring-boot:run -pl trading-executor
+
+# 启动主应用启动模块 (端口: 8080，聚合所有模块)
+mvn spring-boot:run -pl app-starter
+mvn spring-boot:run -pl stock-app
+# ============ 其他命令 ============
+
+# 运行所有测试
 mvn test
 
-# Run single test class
+# 运行单个测试类
 mvn test -Dtest=ClassName
 
-# Run single test method
-mvn test -Dtest=ClassName#methodName
+# 跳过测试打包
+mvn clean package -DskipTests
 
-# Skip tests during build
-mvn clean install -DskipTests
+# 单独构建某个模块
+mvn clean package -pl data-collector
+mvn clean package -pl model-service
+mvn clean package -pl strategy-analysis
+mvn clean package -pl trading-executor
+
+# ============ 模块独立编译验证 ============
+# 修改某个模块后，只需编译当前模块验证，无需编译所有模块
+# 这样可以支持多模块并行开发
+
+# 编译验证 data-collector 模块
+mvn compile -pl data-collector
+
+# 编译验证 model-service 模块
+mvn compile -pl model-service
+
+# 编译验证 strategy-analysis 模块
+mvn compile -pl strategy-analysis
+
+# 编译验证 trading-executor 模块
+mvn compile -pl trading-executor
 ```
 
-### Frontend (stock-frontend/)
+### 多模块并行开发规范
+
+**重要原则**：修改某个模块后，只需编译当前模块验证，无需编译所有模块。
 
 ```bash
-cd stock-frontend
+# 示例：修改了 data-collector 模块
+cd backend
+mvn compile -pl data-collector    # 只编译当前模块
 
-# Install dependencies (use pnpm)
-pnpm install
+# 编译通过后即可提交，不需要等待其他模块
+```
 
-# Start development server
+**原因**：
+- 各模块相对独立，可并行开发
+- 避免其他模块的问题阻塞当前模块的提交
+- 提高开发效率
+
+**注意事项**：
+- 修改了公共依赖（如父 pom.xml）时，需要编译所有模块
+- 修改了模块间接口时，需要同步编译相关模块
+
+### Frontend (npm/pnpm)
+
+```bash
+cd frontend
+
+# 安装依赖
+npm install
+
+# 启动开发服务器
 npm start
-# or
-npm run start:dev
 
-# Build for production
+# 构建生产版本
 npm run build
 
-# Run all tests
-npm test
-
-# Run tests in watch mode
-npm run jest -- --watch
-
-# Run single test file
-npm run jest -- path/to/test.tsx
-
-# Run tests matching pattern
-npm run jest -- -t "test pattern"
-
-# Type check
-npm run tsc
-
-# Lint code
+# 代码检查
 npm run lint
 
-# Fix lint issues
+# 修复代码问题
 npm run lint:fix
 
-# Format code
-npm run prettier
+# 类型检查
+npm run tsc
+
+# 运行测试
+npm test
 ```
 
-### Python AI Service (stock-service/)
+## 模块架构
+
+| 模块 | Maven ArtifactId | 包路径 | 功能 | 端口 |
+|------|------------------|--------|------|------|
+| 数据采集 | data-collector | com.stock.dataCollector | 股票数据获取、新闻采集 | 8081 |
+| AI 模型 | model-service | com.stock.modelService | LSTM 预测、情感分析 | 8082 |
+| 交易策略 | strategy-analysis | com.stock.strategyAnalysis | 决策引擎、股票筛选 | 8083 |
+| 交易执行 | trading-executor | com.stock.tradingExecutor | 订单执行、风险控制 | 8084 |
+| 主应用启动 | app-starter | com.stock.app | 聚合启动所有模块 | 8080 |
+## 模块启动说明
+
+### 聚合启动 (生产环境推荐)
 
 ```bash
-cd stock-service
+# 启动所有模块，端口 8080
+mvn spring-boot:run -pl app-starter
+mvn spring-boot:run -pl stock-app
 
-# Create virtual environment (recommended)
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or
-venv\Scripts\activate     # Windows
+聚合启动后，所有功能通过单一端口访问：
+- 数据采集 API: `http://localhost:8080/api/stock-data/*`
+- 模型服务 API: `http://localhost:8080/api/lstm/*`, `http://localhost:8080/api/sentiment/*`
 
-# Install dependencies
-pip install -r requirements.txt
+### 独立启动 (开发调试)
 
-# Run FastAPI development server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
+```bash
+# 终端1: 启动数据采集模块
+mvn spring-boot:run -pl data-collector
+# 访问: http://localhost:8081
 
-# Run with Docker
-docker build -t stock-py-service .
-docker run -p 8001:8001 stock-py-service
+# 终端2: 启动模型服务模块
+mvn spring-boot:run -pl model-service
+# 访问: http://localhost:8082
+
+# 终端3: 启动策略分析模块
+mvn spring-boot:run -pl strategy-analysis
+# 访问: http://localhost:8083
 ```
 
-## Code Style Guidelines
+## 关键端口
+
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| app-starter (聚合) | 8080 | 所有模块聚合启动 |
+| data-collector | 8081 | 数据采集模块独立启动 |
+| model-service | 8082 | 模型服务模块独立启动 |
+| strategy-analysis | 8083 | 策略分析模块独立启动 |
+| trading-executor | 8084 | 交易执行模块独立启动 |
+| frontend | 8000 | React 前端开发服务器 |
+
+## 代码规范
 
 ### Java (Backend)
 
-- **Java Version**: 8/9 (source/target 9 in pom.xml)
-- **Framework**: Spring Boot 2.6.6
-- **Naming**: CamelCase for classes/methods, UPPER_SNAKE for constants
-- **Lombok**: Use `@Data`, `@Slf4j` annotations for boilerplate reduction
-- **Imports**: Organize imports, no wildcard imports
-- **Dependencies**: Prefer Spring Boot starters, use consistent versions from pom.xml
+- **Java 版本**: 17 (Spring Boot 3.2.2)
+- **命名规范**: 
+  - 类/方法：CamelCase
+  - 常量：UPPER_SNAKE_CASE
+  - 包名：全小写
+- **Lombok**: `@Data`, `@Slf4j`, `@RequiredArgsConstructor`
+- **导入规则**: 
+  - 禁止通配符导入
+  - 静态导入放最后
+  - 按组组织（标准库、第三方、项目内部）
+- **错误处理**: 
+  - 统一使用 `@ControllerAdvice` + `Response<T>` 封装
+  - 记录详细日志，返回友好错误信息
+- **API 设计**: 
+  - RESTful 风格
+  - POST/PUT 使用 `@RequestBody`
+- **测试**: JUnit 5
+- **ORM**: Spring Data JPA (自动建库建表，无需 SQL 脚本)
+
+- **注释规范**:
+  - **类注释**: 每个公共类都必须有 Javadoc 注释，说明其用途。
+    ```java
+    /**
+     * 数据采集器主类，负责协调各种数据源的采集任务。
+     */
+    ```
+  - **方法注释**: 所有公共方法必须有 Javadoc 注释，清晰说明方法的功能、参数 (`@param`)、返回值 (`@return`) 和可能抛出的异常 (`@throws`)。
+    ```java
+    /**
+     * 根据股票代码获取历史K线数据。
+     *
+     * @param stockCode 股票代码
+     * @param days      获取最近N天的数据
+     * @return 包含K线数据的列表
+     * @throws IOException 如果网络请求失败
+     */
+    ```
+  - **行内注释**: 在复杂的业务逻辑、算法或关键步骤处，必须使用 `//` 添加行内注释，解释代码的意图和作用。
+    ```java
+    // 计算移动平均线 (MA)
+    double ma5 = closePrices.subList(i - 4, i + 1).stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+
+    // 检查是否出现金叉信号
+    if (ma5 > ma10 && previousMa5 <= previousMa10) {
+        // ...
+    }
+    ```
 
 ### TypeScript/React (Frontend)
 
-- **Style**: Follow Prettier config (single quotes, trailing commas, 100 char width)
-- **Imports**: Use `@/` alias for src/ directory imports
-- **Components**: Functional components with hooks, PascalCase naming
-- **Types**: Strict TypeScript enabled, always define prop interfaces
-- **Formatting**: LF line endings, no prose wrap
+- **框架**: React 18, Ant Design Pro 5, UmiJS 4
+- **命名规范**:
+  - 组件：PascalCase
+  - Hooks：camelCase, use* 前缀
+  - 类型接口：PascalCase, 禁止使用 `any`
+- **组件规范**:
+  - 使用函数式组件 + Hooks
+  - 状态管理：useState, useRef, useEffect
+- **代码格式**:
+  - 单引号 (singleQuote: true)
+  - 尾随逗号 (trailingComma: 'all')
+  - 行宽 100 字符 (printWidth: 100)
+  - LF 换行 (endOfLine: 'lf')
+- **编辑器配置** (.editorconfig):
+  - 缩进：2 空格
+  - 字符集：UTF-8
+  - 删除行尾空格
+  - 文件末尾空行
+- **路径别名**:
+  - `@/*` → `./src/*`
+  - `@@/*` → `./src/.umi/*`
+- **注释规范**:
+  - **组件注释**: 每个 React 组件必须有 JSDoc 注释，说明其功能、Props (`@param`)。
+    ```typescript
+    /**
+     * K线图表组件，用于展示股票价格走势。
+     * @param data - K线数据
+     * @param title - 图表标题
+     */
+    ```
+  - **函数/Hook 注释**: 所有公共函数和自定义 Hook 必须有 JSDoc 注释，说明其功能、参数 (`@param`) 和返回值 (`@returns`)。
+    ```typescript
+    /**
+     * 获取指定股票的实时价格。
+     * @param stockCode - 股票代码
+     * @returns 包含实时价格和涨跌幅的对象
+     */
+    ```
+  - **行内注释**: 在复杂的逻辑、状态管理或关键算法处，必须使用 `//` 或 `{/* ... */}` 添加行内注释。
+    ```typescript
+    // 当筛选条件改变时，重新获取数据
+    useEffect(() => {
+      // 设置加载状态，防止重复请求
+      if (loading) return;
+      fetchData(filters);
+    }, [filters]);
+    ```
 
-### General
+## Git 工作规范
 
-- **Error Handling**: Use try/catch with meaningful error messages
-- **Logging**: Backend uses SLF4J/Logback; frontend uses console for dev only
-- **Comments**: Javadoc for Java, JSDoc for TypeScript when needed
-- **Git**: Follow conventional commit messages
+### 代码提交和推送要求
+**每次代码修改完成后，必须立即进行 `git add` 和 `git commit` 操作**。
+- 完成一个功能模块或修复一个问题后，应立即提交代码
+- 提交信息应清晰描述本次修改的内容
+- 遵循 Git 提交规范（见下文）
+- 提交前确保代码编译通过且无严重问题
 
-## Testing Standards
+### 禁止回滚规则
 
-### Java
+**严禁使用以下命令回滚任何代码和文件**：
 
-- Use JUnit 5 (JUnit Jupiter)
-- Test class naming: `*Test.java`
-- Mock external dependencies with Mockito
-- Integration tests in `src/test/java`
+- `git checkout`（用于文件恢复）
+- `git revert`
+- `git reset`（含 --hard, --soft 等参数）
+- 任何其他回滚命令
 
-### TypeScript/React
+**原因**：
+- 回滚会丢失代码修改历史，影响团队协作
+- 导致代码审查和问题追踪困难
+- 破坏代码完整性
 
-- Use Jest with React Testing Library
-- Test files: `*.test.tsx` or `*.spec.tsx`
-- Mock API calls and external dependencies
-- Test user interactions and component rendering
+**正确的处理方式**：
+- 如果需要撤销修改，直接删除或重新编辑相关代码
+- 如果提交了错误的代码，应该创建一个新的提交来修复
+- 遇到问题时，先分析原因再决定如何处理，而不是盲目回滚
 
-## Environment Setup
+### Git 提交规范
 
-### Required
+```
+提交类型(模块): 提交说明
 
-- Java JDK 21 (JAVA_HOME=/d/jdk-21.0.10)
-- Maven 3.9.6 (MAVEN_HOME=/d/apache-maven-3.9.6)
-- Node.js >= 12.0.0
-- pnpm (preferred package manager)
+提交类型：
+- feat: 新功能
+- fix: Bug 修复
+- docs: 文档更新
+- style: 代码格式调整
+- refactor: 重构
+- test: 测试相关
+- chore: 构建/工具链
+- perf: 性能优化
 
-### IDE
+示例：
+- feat(data-collector): 添加股票价格采集功能
+- fix(model-service): 修复模型训练内存泄漏
+- docs: 更新数据采集设计文档
+```
 
-- Backend: IntelliJ IDEA or Eclipse with Lombok plugin
-- Frontend: VS Code with ESLint and Prettier extensions
+## 测试规范
 
-## Key Dependencies
+### 测试数据要求
 
-### Backend
+- **禁止使用 Mock 数据**：所有测试必须使用真实数据
+- **真实环境测试**：测试流程必须连接真实数据库和服务
+- **数据准备**：测试前应准备充分的测试数据
+- **数据清理**：测试后应清理测试数据，保持环境干净
+- **集成测试优先**：优先编写集成测试而非单元测试
 
-- Spring Boot Web, Data JPA, Quartz, WebSocket
-- MyBatis-Plus for ORM
-- DeepLearning4J for ML models
-- Hutool for utilities
-- EasyExcel for Excel processing
+### 原因说明
 
-### Frontend
+1. Mock 测试无法验证真实业务逻辑
+2. Mock 测试容易遗漏边界条件
+3. 真实数据测试能发现集成问题
+4. 确保代码在生产环境中正常工作
 
-- UmiJS 4.x (framework)
-- Ant Design 5.x + Pro Components
-- React 18.x
-- TypeScript 4.9.x
-- Jest for testing
+### 强制要求：禁止 Mock 测试
 
-### Python AI Service
+**严禁在测试中使用 Mockito 等任何形式的模拟框架或手动模拟实现！**
+- 如果数据不足：**跳过测试**（使用 `Assumptions.assumeTrue()`）
+- 如果服务不可用：**测试失败**（抛出异常）
+- 如果环境未就绪：**跳过测试**（记录原因）
 
-- FastAPI 0.109.x (framework)
-- Uvicorn 0.27.x (ASGI server)
-- PyTorch for FinBERT model
-- TensorFlow for LSTM model
-- httpx for HTTP client
-- Redis for caching
+**不要写无意义的模拟测试！宁愿测试失败或跳过，也不要用假数据欺骗自己。**
 
-## Development Workflow
+```java
+// 正确做法：数据不足时跳过测试
+Assumptions.assumeTrue(dataAvailable, "跳过测试：MongoDB中没有足够的历史数据");
 
-1. Always run tests before committing
-2. Ensure linting passes (`npm run lint` for frontend)
-3. Type check TypeScript (`npm run tsc`)
-4. Backend API runs on port 8080, frontend dev server on port 8000
-5. Python AI service runs on port 8001
-6. Proxy configured: `/api/*` → `http://localhost:8080`
+// 错误做法：使用Mock数据
+@Mock
+private PriceRepository mockRepository; // 禁止！
+```
 
-## Notes
+### 例外情况
 
-- Backend uses MongoDB and MySQL (configure in application.yaml)
-- Redis for caching
-- Quartz for scheduled tasks
-- LSTM model for stock prediction
-- T+1 trading strategy implementation
-- Three-tier architecture: React → Spring Boot → Python FastAPI
-- Docker Compose deployment (no K8s due to limited server resources)
-<!-- PRPM_MANIFEST_START -->
+**无例外！** 所有测试都必须使用真实数据和服务。
 
-<skills_system priority="1">
-<usage>
-When users ask you to perform tasks, check if any of the available skills below can help complete the task more effectively. Skills provide specialized capabilities and domain knowledge.
+### 强制提交场景
 
-How to use skills (loaded into main context):
-- Use the <path> from the skill entry below
-- Invoke: Bash("cat <path>")
-- The skill content will load into your current context
-- Example: Bash("cat .openskills/backend-architect/SKILL.md")
+以下情况**必须**提交代码：
+- 完成任何功能模块的实现
+- 修复任何 Bug
+- 更新文档
+- 修改配置文件
+- 进行任何代码修改后
 
-Usage notes:
-- Skills share your context window
-- Do not invoke a skill that is already loaded in your context
-</usage>
+### 提交检查清单
 
-<available_skills>
+在提交前请确认：
+- [ ] 代码编译通过
+- [ ] 相关功能已测试（如适用）
 
-<skill activation="lazy">
-<name>skill-using-superpowers</name>
-<description>Use when starting any conversation - establishes mandatory workflows for finding and using skills, including using Read tool before announcing usage, following brainstorming before coding, and creating TodoWrite todos for checklists</description>
-<path>.openskills\skill-using-superpowers\SKILL.md</path>
-</skill>
+### 代码推送要求
+**每次 `git commit` 后，必须立即执行 `git push` 将变更推送到远程仓库**。
+- 保持本地和远程代码同步
+- 确保团队成员可以获取最新代码
+- 避免因本地提交未推送导致的代码丢失风险
 
-<skill activation="lazy">
-<name>skill-brainstorming</name>
-<description>Use when creating or developing anything, before writing code or implementation plans - refines rough ideas into fully-formed designs through structured Socratic questioning, alternative exploration, and incremental validation</description>
-<path>.openskills\skill-brainstorming\SKILL.md</path>
-</skill>
+### Git 工作流程规范
 
-<skill activation="lazy">
-<name>skill-writing-plans</name>
-<description>Use when design is complete and you need detailed implementation tasks for engineers with zero codebase context - creates comprehensive implementation plans with exact file paths, complete code examples, and verification steps assuming engineer has minimal domain knowledge</description>
-<path>.openskills\skill-writing-plans\SKILL.md</path>
-</skill>
+**每次有代码变更或文档修改时，必须遵循以下完整流程：**
 
-<skill activation="lazy">
-<name>skill-executing-plans</name>
-<description>Use when partner provides a complete implementation plan to execute in controlled batches with review checkpoints - loads plan, reviews critically, executes tasks in batches, reports for review between batches</description>
-<path>.openskills\skill-executing-plans\SKILL.md</path>
-</skill>
+1. **本地开发与测试**
+   - 完成代码修改或文档更新
+   - 确保代码编译通过 (`mvn compile` 或 `npm run tsc`)
+   - 运行相关测试确保功能正常
+   - 修复所有lint错误和警告
 
-<skill activation="lazy">
-<name>skill-test-driven-development</name>
-<description>Use when implementing any feature or bugfix, before writing implementation code - write the test first, watch it fail, write minimal code to pass; ensures tests actually verify behavior by requiring failure first</description>
-<path>.openskills\skill-test-driven-development\SKILL.md</path>
-</skill>
+2. **Git状态检查**
+   ```bash
+   # 查看当前工作区状态
+   git status
+   
+   # 查看具体修改内容
+   git diff
+   ```
 
-<skill activation="lazy">
-<name>skill-systematic-debugging</name>
-<description>Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes - four-phase framework (root cause investigation, pattern analysis, hypothesis testing, implementation) that ensures understanding before attempting solutions</description>
-<path>.openskills\skill-systematic-debugging\SKILL.md</path>
-</skill>
+3. **添加变更到暂存区**
+   ```bash
+   # 添加特定文件
+   git add <file-path>
+   
+   # 或添加所有变更
+   git add .
+   ```
 
-<skill activation="lazy">
-<name>skill-requesting-code-review</name>
-<description>Use when completing tasks, implementing major features, or before merging to verify work meets requirements - dispatches code-reviewer subagent to review implementation against plan or requirements before proceeding</description>
-<path>.openskills\skill-requesting-code-review\SKILL.md</path>
-</skill>
+4. **创建Git提交**
+   - 使用规范的提交信息格式：`类型(模块): 描述`
+   - 提交前再次确认变更内容的正确性
+   ```bash
+   git commit -m "feat(module): add new feature"
+   ```
 
-<skill activation="lazy">
-<name>skill-receiving-code-review</name>
-<description>Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation</description>
-<path>.openskills\skill-receiving-code-review\SKILL.md</path>
-</skill>
+5. **推送到远程仓库**
+   ```bash
+   # 推送当前分支到远程
+   git push origin <branch-name>
+   
+   # 如果是新分支，设置上游跟踪
+   git push -u origin <branch-name>
+   ```
 
-<skill activation="lazy">
-<name>skill-verification-before-completion</name>
-<description>Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always</description>
-<path>.openskills\skill-verification-before-completion\SKILL.md</path>
-</skill>
+6. **验证推送成功**
+   - 确认远程仓库已包含最新提交
+   - 在GitHub/GitLab等平台上确认代码已更新
 
-<skill activation="lazy">
-<name>skill-using-git-worktrees</name>
-<description>Use when starting feature work that needs isolation from current workspace or before executing implementation plans - creates isolated git worktrees with smart directory selection and safety verification</description>
-<path>.openskills\skill-using-git-worktrees\SKILL.md</path>
-</skill>
-
-<skill activation="lazy">
-<name>skill-subagent-driven-development</name>
-<description>Use when executing implementation plans with independent tasks in the current session - dispatches fresh subagent for each task with code review between tasks, enabling fast iteration with quality gates</description>
-<path>.openskills\skill-subagent-driven-development\SKILL.md</path>
-</skill>
-
-<skill activation="lazy">
-<name>skill-dispatching-parallel-agents</name>
-<description>Use when facing 3+ independent failures that can be investigated without shared state or dependencies - dispatches multiple Claude agents to investigate and fix independent problems concurrently</description>
-<path>.openskills\skill-dispatching-parallel-agents\SKILL.md</path>
-</skill>
-
-<skill activation="lazy">
-<name>skill-root-cause-tracing</name>
-<description>Use when errors occur deep in execution and you need to trace back to find the original trigger - systematically traces bugs backward through call stack, adding instrumentation when needed, to identify source of invalid data or incorrect behavior</description>
-<path>.openskills\skill-root-cause-tracing\SKILL.md</path>
-</skill>
-
-<skill activation="lazy">
-<name>skill-defense-in-depth</name>
-<description>Use when invalid data causes failures deep in execution, requiring validation at multiple system layers - validates at every layer data passes through to make bugs structurally impossible</description>
-<path>.openskills\skill-defense-in-depth\SKILL.md</path>
-</skill>
-
-<skill activation="lazy">
-<name>skill-condition-based-waiting</name>
-<description>Use when tests have race conditions, timing dependencies, or inconsistent pass/fail behavior - replaces arbitrary timeouts with condition polling to wait for actual state changes, eliminating flaky tests from timing guesses</description>
-<path>.openskills\skill-condition-based-waiting\SKILL.md</path>
-</skill>
-
-<skill activation="lazy">
-<name>skill-testing-anti-patterns</name>
-<description>Use when writing or changing tests, adding mocks, or tempted to add test-only methods to production code - prevents testing mock behavior, production pollution with test-only methods, and mocking without understanding dependencies</description>
-<path>.openskills\skill-testing-anti-patterns\SKILL.md</path>
-</skill>
-
-<skill activation="lazy">
-<name>skill-testing-skills-with-subagents</name>
-<description>Use when creating or editing skills, before deployment, to verify they work under pressure and resist rationalization - applies RED-GREEN-REFACTOR cycle to process documentation by running baseline without skill, writing to address failures, iterating to close loopholes</description>
-<path>.openskills\skill-testing-skills-with-subagents\SKILL.md</path>
-</skill>
-
-<skill activation="lazy">
-<name>skill-writing-skills</name>
-<description>Use when creating new skills, editing existing skills, or verifying skills work before deployment - applies TDD to process documentation by testing with subagents before writing, iterating until bulletproof against rationalization</description>
-<path>.openskills\skill-writing-skills\SKILL.md</path>
-</skill>
-
-<skill activation="lazy">
-<name>skill-sharing-skills</name>
-<description>Use when you&apos;ve developed a broadly useful skill and want to contribute it upstream via pull request - guides process of branching, committing, pushing, and creating PR to contribute skills back to upstream repository</description>
-<path>.openskills\skill-sharing-skills\SKILL.md</path>
-</skill>
-
-<skill activation="lazy">
-<name>skill-finishing-a-development-branch</name>
-<description>Use when implementation is complete, all tests pass, and you need to decide how to integrate the work - guides completion of development work by presenting structured options for merge, PR, or cleanup</description>
-<path>.openskills\skill-finishing-a-development-branch\SKILL.md</path>
-</skill>
-
-</available_skills>
-</skills_system>
-
-<!-- PRPM_MANIFEST_END -->
+**重要原则：**
+- **绝不允许**本地有未推送的提交超过24小时
+- **绝不允许**在没有提交的情况下进行新的代码修改
+- **绝不允许**跳过测试和编译验证直接提交
+- **每个提交**必须是原子性的，只包含相关联的变更
+- **文档修改**与代码修改同等重要，必须同样遵循此流程

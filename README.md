@@ -1,197 +1,477 @@
-# StockTrading - AI 股票自动交易系统
+# Stock Trading - AI 股票自动交易系统
 
-基于 LSTM 神经网络的股票交易决策系统，支持自动化交易、实时数据分析和模型预测。
+基于 LSTM 神经网络与财经新闻情感分析的智能股票交易决策系统，支持自动化交易、实时数据分析和 AI 模型预测。
+
+## 项目简介
+
+这是一个完整的 AI 股票交易系统，采用前后端分离架构设计：
+
+- **后端服务** (Java Spring Boot 3.2): 提供 RESTful API，业务逻辑处理，AI 模型推理
+- **前端应用** (React + Ant Design Pro 5): 可视化 Dashboard，数据展示，交易操作
+- **数据存储**: MySQL (业务数据) + MongoDB (文档数据) + Redis (缓存)
+
+### 核心特性
+
+- **双策略引擎**: 
+  - **选股策略** (天级): LSTM 预测 (60%) + 情感分析 (40%) 双因子选股
+  - **T+1 卖出策略** (分钟级): 基于分钟级价格走势的实时卖出决策
+- **T+1 交易**: 短线交易策略，当日买入次日卖出
+- **多指标决策**: 移动止损、RSI 超买、成交量背离、布林带突破
+- **定时任务调度**: 每日自动更新数据、预测和分析
+- **Docker 一键部署**: 使用 Docker Compose 快速部署
+- **CI/CD 自动化**: GitHub Actions 自动构建和部署
+- **无文件 I/O 模型管理**: 模型直接序列化为内存字节流 (`byte[] params`) 并通过 MongoDB Binary Storage 持久化，推理时通过 MongoDB 标识符（`mongo:ID`）动态加载，完全消除本地磁盘文件依赖。
+
+---
+
+## 技术栈
+
+### 后端 (Backend)
+
+| 组件 | 技术 | 版本 |
+|------|------|------|
+| 框架 | Spring Boot | 3.2.2 |
+| JDK | OpenJDK | 17 |
+| ORM | Spring Data JPA | 自动建表 |
+| 数据库 | MySQL / MongoDB | 8.0 / 6.0 |
+| 缓存 | Redis | 7.x |
+| HTTP | OkHttp | 4.12 |
+| 工具 | Hutool / FastJSON2 | 5.8 / 2.0 |
+| AI 框架 | DJL (Deep Java Library) | 0.36 |
+
+
+
+### 前端 (Frontend)
+
+| 组件 | 技术 | 版本 |
+|------|------|------|
+| 框架 | React | 18.x |
+| UI 库 | Ant Design Pro | 5.x |
+| 构建工具 | UmiJS | 4.x |
+| 语言 | TypeScript | 5.x |
+| 图表 | @ant-design/charts | 2.6 |
+
+---
 
 ## 项目结构
 
 ```
 stock-trading/
-├── stock-backend/          # Java Spring Boot 后端服务
-│   ├── src/               # 源代码
-│   ├── pom.xml            # Maven 配置
-│   └── AGENTS.md          # 后端开发指南
-├── stock-frontend/         # React 前端应用
-│   ├── src/               # TypeScript/React 源码
-│   ├── package.json       # Node 依赖
-│   ├── config/            # 构建配置
-│   └── AGENTS.md          # 前端开发指南
-├── stock-service/         # Python AI 服务
-│   ├── app/              # 应用代码
-│   │   ├── api/          # API 路由
-│   │   ├── services/     # 业务逻辑
-│   │   └── core/        # 配置
-│   ├── requirements.txt   # Python 依赖
-│   └── Dockerfile        # 容器配置
-├── documents/              # 项目文档
-│   ├── requirements/      # 需求文档
-│   │   ├── 01-introduction/  # 项目概述
-│   │   ├── 02-data/          # 数据采集需求
-│   │   ├── 03-analysis/      # 智能分析需求
-│   │   ├── 04-trading/       # 交易执行需求
-│   │   ├── 05-risk/          # 风控管理需求
-│   │   └── 06-nlp/           # NLP技术方案
-│   └── design/            # 设计文档
-│       ├── 01-architecture/  # 系统架构设计
-│       ├── 02-module/        # 核心模块设计
-│       ├── 03-database/      # 数据库设计
-│       └── 04-api/           # 接口设计
-├── .openskills/           # AI 开发技能库
-├── AGENTS.md              # 项目开发指南
-├── README.md              # 项目说明
-└── LICENSE.txt            # 许可证
+├── backend/                        # Java Spring Boot 后端服务
+│   ├── src/main/java/com/stock/
+│   │   ├── config/                # 全局配置
+│   │   ├── dataCollector/               # 数据采集模块
+│   │   │   ├── controller/        # 前端路由控制器
+│   │   │   ├── collector/         # 数据采集器
+│   │   │   ├── client/            # API 客户端
+│   │   │   ├── entity/            # 数据实体
+│   │   │   ├── repository/        # 数据访问层
+│   │   │   └── scheduled/         # 定时任务
+│   │   ├── modelService/           # AI 模型模块
+│   │   │   ├── controller/        # AI 模型相关控制器
+│   │   │   ├── model/             # LSTM 模型
+│   │   │   └── inference/         # 模型推理
+│   │   ├── strategy/              # 策略模块
+│   │   │   ├── decision/          # 决策引擎
+│   │   │   ├── selector/          # 股票筛选
+│   │   │   ├── intraday/          # 日内交易策略 (T+1 卖出)
+│   │   │   └── enums/             # 枚举定义
+│   │   ├── executor/              # 执行模块
+│   │   │   ├── execution/         # 交易执行
+│   │   │   ├── risk/              # 风控管理
+│   │   │   └── enums/             # 订单状态
+│   │   └── (根包)                 # 主启动类和全局配置
+│   ├── src/main/resources/
+│   │   ├── static/                # 前端静态文件 (构建后生成)
+│   │   └── application.yml        # 应用配置
+│   ├── pom.xml                    # Maven 配置
+│   └── Dockerfile                 # Docker 构建配置
+│
+├── frontend/                      # React 前端应用
+│   ├── src/
+│   │   ├── pages/                 # 页面组件
+│   │   ├── components/            # 通用组件
+│   │   ├── services/              # API 服务
+│   │   ├── models/                # 数据模型
+│   │   └── utils/                 # 工具函数
+│   ├── config/                    # 构建配置
+│   ├── package.json               # Node 依赖
+│   └── tsconfig.json              # TypeScript 配置
+│
+├── documents/                     # 项目文档
+│   ├── README.md                  # 文档中心索引
+│   ├── requirements/              # 需求文档
+│   │   ├── 00-系统整体需求.md
+│   │   ├── 01-数据采集需求.md
+│   │   ├── 02-AI 模型需求.md
+│   │   ├── 03-交易策略需求.md     # 包含选股和 T+1 卖出策略
+│   │   └── 04-交易执行需求.md
+│   ├── design/                    # 设计文档
+│   │   ├── 00-系统架构设计.md
+│   │   ├── 01-数据采集设计.md
+│   │   ├── 02-AI 模型设计.md
+│   │   ├── 03-交易策略设计.md     # 包含双策略详细设计
+│   │   └── 04-交易执行设计.md
+│   └── test/                      # 测试文档
+│       ├── 00-系统测试计划.md
+│       ├── 01-数据采集测试.md
+│       ├── 02-AI 模型测试.md
+│       ├── 03-交易策略测试.md     # 包含选股和 T+1 测试用例
+│       └── 04-交易执行测试.md
+│
+├── docker-compose.yml             # Docker 编排配置
+├── pom.xml                        # 父项目配置
+├── AGENTS.md                      # 项目开发指南
+└── README.md                      # 项目说明
 ```
 
-## 技术栈
-
-### 后端
-- **框架**: Spring Boot 2.6.6
-- **JDK**: Java 8/9
-- **ORM**: MyBatis-Plus
-- **数据库**: MySQL + MongoDB
-- **缓存**: Redis
-- **任务调度**: Quartz
-- **机器学习**: DeepLearning4J (LSTM)
-
-### 前端
-- **框架**: React 18 + TypeScript 4.9
-- **UI 组件**: Ant Design 5.x + Pro Components
-- **开发框架**: UmiJS 4.x
-- **状态管理**: DVA
-- **图表**: Ant Design Charts
+---
 
 ## 快速开始
 
 ### 环境要求
 
-- Java JDK 21
-- Maven 3.9.6
-- Node.js >= 12.0.0
-- pnpm (推荐包管理器)
-- MySQL 8.0+
-- MongoDB
-- Redis
+- Java 17+
+- Node.js 18+
+- Maven 3.6+
+- Docker & Docker Compose (可选)
 
-### 安装依赖
+### 本地开发
+
+#### 1. 启动基础设施
 
 ```bash
-# 1. 克隆项目
-git clone https://github.com/mwangli/stock-trading.git
-cd stock-trading
-
-# 2. 安装后端依赖
-cd stock-backend
-mvn clean install
-
-# 3. 安装前端依赖
-cd ../stock-frontend
-pnpm install
+# 使用 Docker Compose 启动数据库和缓存
+docker-compose up -d mysql redis mongo
 ```
 
-### 启动开发服务器
+#### 2. 启动后端
 
 ```bash
-# 1. 启动后端 (端口 8080)
-cd stock-backend
+cd backend
+
+# 编译并启动
 mvn spring-boot:run
 
-# 2. 启动前端 (端口 8000)
-cd stock-frontend
-npm start
+# 访问 API: http://localhost:8080
+# 访问前端：http://localhost:8080
 ```
 
-访问 http://localhost:8000
-
-## 功能特性
-
-1. **自动化交易**: 对接证券平台 API，实现股票自动买卖
-2. **AI 预测**: 基于 LSTM 模型分析股票趋势
-3. **T+1 策略**: 短线交易策略，当日买入次日卖出
-4. **定时任务**: 使用 Quartz 每日自动更新股票数据
-5. **数据可视化**: 收益统计、订单查询、实时股价
-6. **DevOps**: K8S + GitHub Actions 自动化部署
-7. **分布式训练**: 支持离线模型训练
-
-## 开发指南
-
-### 后端开发
+#### 3. 启动前端 (开发模式)
 
 ```bash
-cd stock-backend
-
-# 编译
-mvn clean install
-
-# 运行测试
-mvn test -Dtest=ClassName
-
-# 跳过测试编译
-mvn clean install -DskipTests
-```
-
-详见 [stock-backend/AGENTS.md](stock-backend/AGENTS.md)
-
-### 前端开发
-
-```bash
-cd stock-frontend
+cd frontend
 
 # 安装依赖
-pnpm install
+npm install
 
 # 启动开发服务器
 npm start
+
+# 访问：http://localhost:8000
+```
+
+### Docker 部署
+
+```bash
+# 一键启动所有服务
+docker-compose up -d --build
+
+# 查看服务状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs -f
+
+# 访问
+# 前端 + 后端 API: http://localhost:8080
+```
+
+---
+
+## 模块架构
+
+### 数据采集模块 (com.stock.dataCollector)
+
+- 股票列表同步
+- 实时行情采集
+- 历史 K 线获取
+- 财经新闻采集
+- 财经新闻采集 (证券平台)
+
+
+### AI 模型模块 (com.stock.modelService)
+
+- LSTM 价格预测模型
+- 情感分析推理
+- 模型加载与管理
+- 预测结果缓存
+
+### 策略模块 (com.stock.strategyAnalysis)
+
+#### 选股策略 (天级)
+- 综合选股算法 (双因子模型)
+- 决策引擎
+- 交易信号生成
+- 股票评分排名
+
+#### T+1 卖出策略 (分钟级)
+- 移动止损 (动态跟踪最高价)
+- RSI 超买监控 (14 分钟周期)
+- 成交量背离检测
+- 布林带突破检测
+- 多指标聚合决策
+- 尾盘强制卖出 (14:57)
+
+### 执行模块 (com.stock.tradingExecutor)
+
+- 风控检查 (止损/仓位/熔断)
+- 订单执行
+- 持仓管理
+- 交易记录
+
+### 项目配置 (com.stock)
+
+- REST API 配置
+- 定时任务调度
+- 静态文件服务
+- 全局配置类
+
+### ORM 框架
+
+- **Spring Data JPA**: 自动建库建表，无需 SQL 脚本
+- **Hibernate**: JPA 实现，支持 ddl-auto 自动管理表结构
+
+---
+
+---
+
+## API 文档
+
+启动后端后访问：
+
+- Swagger UI: http://localhost:8080/swagger-ui.html
+- API 文档：http://localhost:8080/v3/api-docs
+
+### 核心接口
+
+| 模块 | 路径 | 说明 |
+|------|------|------|
+| 股票信息 | `/api/stocks` | 获取股票列表/详情 |
+| 实时行情 | `/api/prices/realtime` | 获取实时价格 |
+| 历史 K 线 | `/api/prices/history` | 获取历史数据 |
+| 财经新闻 | `/api/news` | 获取相关新闻 |
+| 交易信号 | `/api/signals` | 获取交易信号 (买入/卖出) |
+| 持仓信息 | `/api/positions` | 获取持仓数据 |
+| 策略状态 | `/api/strategyAnalysis/status` | 获取策略运行状态 |
+
+---
+
+## 数据库配置
+
+### MySQL (业务数据)
+
+```yaml
+url: jdbc:mysql://localhost:3306/stock_trading
+username: root
+password: Root.123456
+```
+
+### MongoDB (文档数据)
+
+```yaml
+uri: mongodb://admin:Root.123456@localhost:27017/stock_trading
+```
+
+### Redis (缓存)
+
+```yaml
+host: localhost
+port: 6379
+password: Root.123456
+```
+
+---
+
+## 开发流程
+
+1. **需求分析**: 更新 `documents/requirements/` 下的需求文档
+2. **设计评审**: 更新 `documents/design/` 下的设计文档
+3. **代码实现**: 按照 AGENTS.md 规范编写代码
+4. **测试验证**: 编写单元测试和集成测试
+5. **代码审查**: 确保 lint 和 tests 通过
+6. **提交部署**: Git 提交并推送到仓库
+
+---
+
+## 测试
+
+### 后端测试
+
+```bash
+cd backend
+
+# 运行所有测试
+mvn test
+
+# 运行单个测试类
+mvn test -Dtest=ClassName
+
+# 跳过测试打包
+mvn package -DskipTests
+```
+
+### 前端测试
+
+```bash
+cd frontend
+
+# 运行测试
+npm test
 
 # 代码检查
 npm run lint
 
 # 类型检查
 npm run tsc
-
-# 运行测试
-npm run jest -- path/to/test.tsx
 ```
 
-详见 [stock-frontend/AGENTS.md](stock-frontend/AGENTS.md)
+---
+
+## 部署
+
+### Docker Compose 部署
+
+```bash
+# 生产环境部署
+docker-compose up -d
+
+# 服务状态
+docker-compose ps
+
+# 日志查看
+docker-compose logs -f backend
+```
+
+### 端口映射
+
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| 后端 + 前端 | 8080 | Spring Boot 服务 |
+| MySQL | 3306 | 数据库 |
+| MongoDB | 27017 | 文档数据库 |
+| Redis | 6379 | 缓存服务 |
+
+---
+
+## 核心功能
+
+### 1. 数据采集
+
+- 使用证券平台 API 获取 A 股数据
+- 证券平台 API 统一采集数据
+
+- 定时任务自动更新
+
+### 2. AI 预测
+
+- LSTM 神经网络预测次日价格
+- 财经新闻情感分析
+- 双因子综合评分
+
+### 3. 交易决策
+
+#### 选股策略 (每日 17:00 执行)
+- 每日自动生成交易信号
+- LSTM(60%) + 情感 (40%) 双因子选股
+- 股票排名和评分
+
+#### T+1 卖出策略 (每分钟执行)
+- 基于分钟级价格走势实时决策
+- 移动止损保护利润
+- 多指标聚合 (移动止损 40% + RSI20% + 成交量 20% + 布林带 20%)
+- 动态阈值调整 (根据当日收益)
+- 尾盘强制卖出 (14:57)
+
+### 4. 可视化
+
+- Dashboard 数据展示
+- K 线图可视化
+- 持仓盈亏分析
+- 交易记录查询
+- 策略运行状态监控
+
+---
+
+## 策略效果指标
+
+### T+1 卖出策略目标
+
+| 指标 | 目标值 | 说明 |
+|------|--------|------|
+| 高点捕获率 | > 75% | 卖出价 / 当日最高价 |
+| 胜率 | > 60% | 卖出价 > 次日开盘价 |
+| 平均优化收益 | > 0.5% | 相比随机卖出的超额收益 |
+| 最大连续失败 | < 5 次 | 连续卖出价低于次高价 |
+| 决策延迟 | < 100ms | 分钟级决策响应时间 |
+
+---
 
 ## 项目文档
 
-- **详细文档**: https://www.yuque.com/mwangli/ha7323/axga8dz9imansvl4
-- **开发指南**: [AGENTS.md](AGENTS.md)
-- **后端指南**: [stock-backend/AGENTS.md](stock-backend/AGENTS.md)
-- **前端指南**: [stock-frontend/AGENTS.md](stock-frontend/AGENTS.md)
+### 开发指南
 
-## 在线演示
+- [AGENTS.md](./AGENTS.md) - 项目开发指南 (代码规范、构建命令)
 
-- **地址**: http://124.220.36.95:8000
-- **账号**: guest / guest
+### 文档中心
 
-## 已知问题
+所有需求、设计、测试文档位于 `documents/` 目录：
 
-⚠️ **2025-02-09**: 目前暂时无法从 ZX 证券平台获取股票接口数据，待后期优化
+- [文档中心索引](./documents/README.md) - 文档结构和快速开始
+- [系统整体需求](documents/requirement/00-系统整体需求.md)
+- [系统架构设计](./documents/design/00-系统架构设计.md)
+- [系统测试计划](./documents/test/00-系统测试计划.md)
 
-## 待优化方向
+### 模块文档
 
-1. 获取更多股票历史数据用于模型增量训练
-2. 模型超参数调优，提高价格趋势预测准确率
-3. 支持更多证券平台对接
-4. 完善风险管理策略
+| 模块 | 需求文档 | 设计文档 | 测试文档 |
+|------|----------|----------|----------|
+| 数据采集 | [01-数据采集需求](documents/requirement/01-数据采集需求.md) | [01-数据采集设计](./documents/design/01-数据采集设计.md) | [01-数据采集测试](./documents/test/01-数据采集测试.md) |
+| AI 模型 | [02-AI 模型需求](./documents/requirements/02-AI 模型需求.md) | [02-AI 模型设计](./documents/design/02-AI 模型设计.md) | [02-AI 模型测试](./documents/test/02-AI 模型测试.md) |
+| 交易策略 | [03-交易策略需求](documents/requirement/03-交易策略需求.md) | [03-交易策略设计](./documents/design/03-交易策略设计.md) | [03-交易策略测试](./documents/test/03-交易策略测试.md) |
+| 交易执行 | [04-交易执行需求](documents/requirement/04-交易执行需求.md) | [04-交易执行设计](./documents/design/04-交易执行设计.md) | [04-交易执行测试](./documents/test/04-交易执行测试.md) |
 
-## 页面展示
+---
 
-| 功能 | 截图 |
-|------|------|
-| 收益数据统计 | ![收益统计](https://github.com/mwangli/stock-trading/assets/48406369/4b22cc32-c6b9-4a9d-a9df-c29f65a4a5bb) |
-| 交易订单查询 | ![交易订单](https://github.com/mwangli/stock-trading/assets/48406369/bd16016b-4085-413d-a609-1643922616c9) |
-| 股票价格查看 | ![股票价格](https://github.com/mwangli/stock-trading/assets/48406369/e080bff3-cc17-4fa3-b642-9a9ea8d3b241) |
-| 模型预测表现 | ![模型预测](https://github.com/mwangli/stock-trading/assets/48406369/8d6272ac-773f-4a7d-9993-faf0694f9707) |
-| 定时任务调度 | ![定时任务](https://github.com/mwangli/stock-trading/assets/48406369/bb10ea48-2f1a-401d-bca4-823d51e8f5bc) |
-| 实时日志跟踪 | ![实时日志](https://github.com/mwangli/stock-trading/assets/48406369/4aaf1d15-6049-4913-b972-c7b6146dbf66) |
+## 常见问题
+
+### 1. 数据库连接失败
+
+检查 Docker 容器是否正常运行：
+```bash
+docker-compose ps
+```
+
+### 2. 前端白屏
+
+检查后端是否正常启动，前端静态文件是否正确打包到 `backend/src/main/resources/static`
+
+### 3. 数据采集失败
+
+检查 API 密钥配置和网络连接
+
+### 4. T+1 策略未触发
+
+- 检查持仓股票是否在监控列表
+- 检查分钟级数据是否正常接收
+- 查看策略日志确认指标计算状态
+
+---
 
 ## 许可证
 
-[MIT License](LICENSE.txt)
+MIT License
 
-## 作者
+## 联系方式
 
-- **mwangli** - [GitHub](https://github.com/mwangli)
-
+如有问题请提交 Issue 或联系开发团队。
