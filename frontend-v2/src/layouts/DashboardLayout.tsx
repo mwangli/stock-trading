@@ -14,7 +14,9 @@ import {
 MenuFoldOutlined,
   HistoryOutlined,
   ArrowUpOutlined,
-  ArrowDownOutlined
+  ArrowDownOutlined,
+  FileTextOutlined,
+  ScheduleOutlined
 } from '@ant-design/icons';
 import { useUserStore } from '../store/userStore';
 
@@ -44,6 +46,8 @@ const DashboardLayout: React.FC = () => {
     { key: '/strategies', icon: <FundOutlined />, label: t('layout.strategies') },
     { key: '/analysis', icon: <PieChartOutlined />, label: t('layout.analysis') },
     { key: '/transactions', icon: <HistoryOutlined />, label: t('layout.transactions') },
+    { key: '/jobs', icon: <ScheduleOutlined />, label: t('layout.jobs') },
+    { key: '/logs', icon: <FileTextOutlined />, label: t('layout.logs') },
     { key: '/settings', icon: <SettingOutlined />, label: t('layout.settings') },
   ];
 
@@ -51,7 +55,7 @@ const DashboardLayout: React.FC = () => {
     items: [
       { key: 'profile', icon: <UserOutlined />, label: t('layout.profile') },
       { key: 'settings', icon: <SettingOutlined />, label: t('layout.settings') },
-      { type: 'divider' },
+      { type: 'divider' as const },
       { key: 'logout', icon: <LogoutOutlined />, label: t('common.logout'), onClick: handleLogout, danger: true },
     ]
   };
@@ -166,7 +170,6 @@ const DashboardLayout: React.FC = () => {
               <div className="text-sm text-white font-medium">{user?.username}</div>
               <div className="text-xs text-[#00e396]">{user?.role}</div>
             </div>
-            {/* @ts-ignore */}
             <Dropdown menu={userMenu} placement="bottomRight" arrow>
               <Avatar 
                 size="large" 

@@ -46,7 +46,7 @@ public class Application {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(15000);  // 15秒连接超时
         factory.setReadTimeout(60000);     // 60秒读取超时
-        factory.setOutputStreaming(false);
+        // factory.setOutputStreaming(false); // Deprecated in Spring Boot 3.x
         return new RestTemplate(factory);
     }
 

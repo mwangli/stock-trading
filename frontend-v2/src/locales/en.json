@@ -16,7 +16,10 @@
     "market": "Market Overview",
     "strategies": "Quant Models",
     "analysis": "Strategy Analysis",
+    "jobs": "Scheduled Jobs",
+    "logs": "Run Logs",
     "settings": "Settings",
+
     "profile": "Profile",
     "systemStatus": "SYSTEM STATUS",
     "connected": "Connected",
@@ -154,6 +157,42 @@
       "totalTrades": "Total Trades"
     }
   },
+    "jobs": {
+      "title": "Job Management",
+      "subtitle": "Manage and Monitor Automated System Tasks",
+      "table": {
+        "name": "Job Name",
+        "description": "Description",
+        "cron": "Schedule (Cron)",
+        "lastRun": "Last Run",
+        "nextRun": "Next Run",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "status": {
+        "active": "Active",
+        "paused": "Paused"
+      },
+      "actions": {
+        "run": "Run Now",
+        "edit": "Edit Schedule",
+        "save": "Update",
+        "cancel": "Cancel"
+      },
+      "modal": {
+        "title": "Edit Schedule",
+        "name": "Job Name",
+        "cron": "Cron Expression",
+        "description": "Description"
+      },
+      "messages": {
+        "starting": "Starting job: {{name}}...",
+        "started": "Job {{name}} started successfully",
+        "resumed": "Job resumed",
+        "paused": "Job paused",
+        "updated": "Job schedule updated"
+      }
+    },
   "settings": {
     "title": "System Configuration",
     "save": "SAVE CHANGES",

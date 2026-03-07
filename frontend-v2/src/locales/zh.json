@@ -12,11 +12,14 @@
     "status": "状态"
   },
   "layout": {
-    "dashboard": "总览",
+    "dashboard": "数据总览",
     "market": "市场行情",
     "strategies": "量化模型",
     "analysis": "策略分析",
+    "jobs": "定时任务",
+    "logs": "运行日志",
     "settings": "系统设置",
+
     "profile": "个人资料",
     "systemStatus": "系统状态",
     "connected": "已连接",
@@ -154,6 +157,42 @@
       "totalTrades": "交易次数"
     }
   },
+    "jobs": {
+      "title": "定时任务管理",
+      "subtitle": "管理和监控系统自动化任务",
+      "table": {
+        "name": "任务名称",
+        "description": "描述",
+        "cron": "调度规则 (Cron)",
+        "lastRun": "上次运行",
+        "nextRun": "下次运行",
+        "status": "状态",
+        "actions": "操作"
+      },
+      "status": {
+        "active": "运行中",
+        "paused": "已暂停"
+      },
+      "actions": {
+        "run": "立即运行",
+        "edit": "编辑调度",
+        "save": "更新",
+        "cancel": "取消"
+      },
+      "modal": {
+        "title": "编辑调度规则",
+        "name": "任务名称",
+        "cron": "Cron 表达式",
+        "description": "描述"
+      },
+      "messages": {
+        "starting": "正在启动任务: {{name}}...",
+        "started": "任务 {{name}} 启动成功",
+        "resumed": "任务已恢复",
+        "paused": "任务已暂停",
+        "updated": "调度规则已更新"
+      }
+    },
   "settings": {
     "title": "系统配置",
     "save": "保存更改",
