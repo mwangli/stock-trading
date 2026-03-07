@@ -42,6 +42,12 @@ public class SentimentTrainerService {
     private final SentimentTrainingConfig config;
     private final SentimentDataPreprocessor dataPreprocessor;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    @PostConstruct
+    public void init() {
+        if (config.isDownloadPretrained()) {
+            loadModel();
+        }
+    }
 
     private ZooModel<String, Classifications> loadedModel = null;
     private boolean isModelLoaded = false;

@@ -62,7 +62,7 @@ public class ModelTrainingStartupListener {
             AtomicInteger skippedCount = new AtomicInteger(0);
             AtomicInteger failedCount = new AtomicInteger(0);
             
-            long startTime = System.currentTimeMillis();
+            long startNs = System.nanoTime();
             
             // 2. 遍历检查每只股票
             for (int i = 0; i < stockCodes.size(); i++) {
@@ -74,24 +74,54 @@ public class ModelTrainingStartupListener {
                     if (lstmModelRepository.existsByModelName(code)) {
                         skippedCount.incrementAndGet();
                         if (skippedCount.get() % 100 == 0) {
-                            log.info("进度: {}/{} - 已跳过 {} 个已存在的模型", i + 1, stockCodes.size(), skippedCount.get());
+                            int done = trainedCount.get() + skippedCount.get() + failedCount.get();
+                            String percentText = String.format("%.2f", done * 100.0 / stockCodes.size());
+                            log.info(
+                                    "总体进度: {}/{} ({}%) - 已跳过 {} 个已存在的模型",
+                                    done,
+                                    stockCodes.size(),
+                                    percentText,
+                                    skippedCount.get()
+                            );
                         }
                         continue;
                     }
-                    
+
                     log.info("股票 {} 模型不存在，开始训练 ({}/{})...", code, i + 1, stockCodes.size());
-                    
+
                     // 3. 训练模型
                     // days=500: 使用最近500个交易日的数据
                     // epochs=null, batchSize=null, learningRate=null: 使用配置文件中的默认值
+                    long oneTrainStartNs = System.nanoTime();
                     LstmTrainerService.TrainingResult result = lstmTrainerService.trainModel(code, 500, null, null, null);
+                    long oneTrainMs = (System.nanoTime() - oneTrainStartNs) / 1_000_000;
+                    String oneTrainSecondsText = String.format("%.2f", oneTrainMs / 1000.0);
 
                     if (result.isSuccess()) {
                         trainedCount.incrementAndGet();
-                        log.info("股票 {} 模型训练完成", code);
+                        int done = trainedCount.get() + skippedCount.get() + failedCount.get();
+                        String percentText = String.format("%.2f", done * 100.0 / stockCodes.size());
+                        log.info(
+                                "股票 {} 模型训练完成，耗时 {} 秒；总体进度: {}/{} ({}%)",
+                                code,
+                                oneTrainSecondsText,
+                                done,
+                                stockCodes.size(),
+                                percentText
+                        );
                     } else {
                         failedCount.incrementAndGet();
-                        log.warn("股票 {} 模型训练未成功: {}", code, result.getMessage());
+                        int done = trainedCount.get() + skippedCount.get() + failedCount.get();
+                        String percentText = String.format("%.2f", done * 100.0 / stockCodes.size());
+                        log.warn(
+                                "股票 {} 模型训练未成功，耗时 {} 秒；原因: {}；总体进度: {}/{} ({}%)",
+                                code,
+                                oneTrainSecondsText,
+                                result.getMessage(),
+                                done,
+                                stockCodes.size(),
+                                percentText
+                        );
                     }
                     
                     
@@ -101,16 +131,24 @@ public class ModelTrainingStartupListener {
                     
                 } catch (Exception e) {
                     failedCount.incrementAndGet();
-                    log.error("股票 {} 模型训练失败: {}", code, e.getMessage());
+                    int done = trainedCount.get() + skippedCount.get() + failedCount.get();
+                    String percentText = String.format("%.2f", done * 100.0 / stockCodes.size());
+                    log.error(
+                            "股票 {} 模型训练失败: {}；总体进度: {}/{} ({}%)",
+                            code,
+                            e.getMessage(),
+                            done,
+                            stockCodes.size(),
+                            percentText
+                    );
                     // 继续处理下一个，不中断循环
                 }
             }
-            
-            long endTime = System.currentTimeMillis();
-            long duration = (endTime - startTime) / 1000;
+
+            long durationSeconds = (System.nanoTime() - startNs) / 1_000_000_000;
             
             log.info("========== 模型检查与训练任务完成 ==========");
-            log.info("耗时: {} 秒", duration);
+            log.info("耗时: {} 秒", durationSeconds);
             log.info("总扫描: {}", stockCodes.size());
             log.info("新训练: {}", trainedCount.get());
             log.info("已存在(跳过): {}", skippedCount.get());

@@ -19,6 +19,13 @@ app:
     listener:
       enabled: false
 
+models:
+  sentiment:
+    download-pretrained: false
+
+    listener:
+      enabled: false
+
 logging:
   level:
     root: INFO

@@ -85,3 +85,9 @@ logging:
     ai.djl: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+app:
+  startup:
+    history-sync:
+      enabled: false  # 历史数据初始化开关，默认关闭以加快启动速度
+
