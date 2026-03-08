@@ -39,7 +39,8 @@ public class JobSchedulerService {
             if (Integer.valueOf(1).equals(job.getStatus())) {
                 startJob(job);
             } else {
-                log.info("[任务调度] 任务 {} 状态为禁用，跳过启动", job.getJobName());
+                String desc = job.getDescription() != null ? job.getDescription() : "-";
+                log.info("[任务调度] 任务 {} ({}) 状态为禁用，跳过启动", job.getJobName(), desc);
             }
         }
         log.info("========== [任务调度] 任务加载完成，共启动 {} 个任务 ==========", scheduledTasks.size());
@@ -58,7 +59,8 @@ public class JobSchedulerService {
             Runnable task = createRunnable(jobConfig);
             ScheduledFuture<?> future = taskScheduler.schedule(task, new CronTrigger(jobConfig.getCronExpression()));
             scheduledTasks.put(jobName, future);
-            log.info("[任务调度] 启动任务成功: {} (Cron: {})", jobName, jobConfig.getCronExpression());
+            String desc = jobConfig.getDescription() != null ? jobConfig.getDescription() : "-";
+            log.info("[任务调度] 启动任务成功: {} - {} (Cron: {})", jobName, desc, jobConfig.getCronExpression());
         } catch (Exception e) {
             log.error("[任务调度] 启动任务失败: {}", jobName, e);
         }

@@ -9,7 +9,9 @@
     "cancel": "取消",
     "save": "保存",
     "search": "搜索",
-    "status": "状态"
+    "status": "状态",
+    "loading": "加载中...",
+    "retry": "重试"
   },
   "layout": {
     "dashboard": "数据总览",
@@ -161,6 +163,8 @@
   "strategyAnalysis": {
     "title": "策略分析中心",
     "subtitle": "管理选股与交易执行策略",
+    "fetchError": "获取策略列表失败，请检查后端服务",
+    "toggleError": "更新失败，请重试",
     "selection": {
       "title": "选股策略 (天级)",
       "doubleFactor": "双因子模型 (LSTM + 情感)"

@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
@@ -35,9 +36,10 @@ public class ApplicationStartupListener {
     private boolean historySyncEnabled;
 
 
+    @Async
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
-        // 使用 CompletableFuture 将整个初始化流程（列表检查/同步 + 历史数据同步）放入后台异步执行
+        // 使用 @Async 不阻塞启动；再使用 CompletableFuture 将列表同步与历史同步放入后台执行
         // 这样可以避免阻塞主应用启动，同时保证先同步列表再同步历史数据的顺序依赖
         CompletableFuture.runAsync(() -> {
             log.info("========== 应用启动完成，开始后台数据初始化任务 ==========");

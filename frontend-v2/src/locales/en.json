@@ -9,7 +9,9 @@
     "cancel": "Cancel",
     "save": "Save",
     "search": "Search",
-    "status": "Status"
+    "status": "Status",
+    "loading": "Loading...",
+    "retry": "Retry"
   },
   "layout": {
     "dashboard": "Dashboard",
@@ -161,6 +163,8 @@
   "strategyAnalysis": {
     "title": "Strategy Analysis Center",
     "subtitle": "Manage Stock Selection & Execution Strategies",
+    "fetchError": "Failed to load strategy list. Check backend.",
+    "toggleError": "Update failed. Please retry.",
     "selection": {
       "title": "Selection Strategies (Daily)",
       "doubleFactor": "Double Factor (LSTM + Sentiment)"

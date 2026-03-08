@@ -1,76 +1,32 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { notification } from 'antd';
 import { useNotificationStore } from '../store/notificationStore';
+import { subscribe } from '../utils/notificationWebSocket';
 
+/**
+ * 订阅全局单例 WebSocket 推送，避免因 React Strict Mode / 路由导致重复建连与关闭
+ */
 const NotificationListener: React.FC = () => {
-  const { addNotification } = useNotificationStore();
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const connect = () => {
-    // Avoid multiple connections
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-
-    const wsUrl = 'ws://localhost:8080/ws/notifications';
-    const ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      console.log('Notification WebSocket connected');
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        console.log('Received notification:', message);
-
-        // Add to store
-        addNotification({
-          type: message.level || 'info', // map backend 'level' to frontend 'type'
-          title: message.title,
-          description: message.content,
-        });
-
-        // Show toast
-        notification.open({
-            message: message.title,
-            description: message.content,
-            type: message.level || 'info',
-            duration: 4.5,
-        });
-
-      } catch (error) {
-        console.error('Failed to parse notification message', error);
-      }
-    };
-
-    ws.onclose = () => {
-      console.log('Notification WebSocket closed, reconnecting in 5s...');
-      wsRef.current = null;
-      reconnectTimeoutRef.current = setTimeout(connect, 5000);
-    };
-
-    ws.onerror = (error) => {
-      console.error('Notification WebSocket error', error);
-      ws.close();
-    };
-
-    wsRef.current = ws;
-  };
+  const addNotification = useNotificationStore((s) => s.addNotification);
 
   useEffect(() => {
-    connect();
+    const unsubscribe = subscribe((message: Record<string, unknown>) => {
+      const title = (message.title as string) ?? '';
+      const content = (message.content as string) ?? '';
+      const type = ((message.level as string) ?? 'info') as 'info' | 'success' | 'warning' | 'error';
 
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-    };
-  }, []);
+      addNotification({ type, title, description: content });
+      notification.open({
+        message: title,
+        description: content,
+        type,
+        duration: 4.5,
+      });
+    });
+    return unsubscribe;
+  }, [addNotification]);
 
-  return null; // Logic only component
+  return null;
 };
 
 export default NotificationListener;

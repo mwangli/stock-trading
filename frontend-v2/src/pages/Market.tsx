@@ -3,7 +3,7 @@ import ReactECharts from 'echarts-for-react';
 import { Table, Input, Button, Select } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { InputRef } from 'antd';
-import { SearchOutlined, ThunderboltOutlined, RiseOutlined } from '@ant-design/icons';
+import { SearchOutlined, ThunderboltOutlined, RiseOutlined, StarOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import request from '../utils/request';
 interface StockInfo {
@@ -20,22 +20,23 @@ interface ApiResponse<T> {
   total?: number;
 }
 
+/** 与后端 StockInfoController#getMarketStats / MarketStatsDto 一致 */
 interface MarketStats {
-  marketStatus: string;
-  changePercent: number;
-  upCount: number;
-  downCount: number;
-  flatCount: number;
-  totalAmount: number;
-  totalVolume: number;
-  topGainerCode: string;
-  topGainerName: string;
-  topGainerChange: number;
-  topLoserCode: string;
-  topLoserName: string;
-  topLoserChange: number;
-  totalCount: number;
-  avgTurnoverRate: number;
+  marketStatus?: string;
+  changePercent?: number;
+  upCount?: number;
+  downCount?: number;
+  flatCount?: number;
+  totalAmount?: number;
+  totalVolume?: number;
+  topGainerCode?: string | null;
+  topGainerName?: string | null;
+  topGainerChange?: number | null;
+  topLoserCode?: string | null;
+  topLoserName?: string | null;
+  topLoserChange?: number | null;
+  totalCount?: number;
+  avgTurnoverRate?: number;
 }
 
 interface WatchlistItem {
@@ -98,15 +99,14 @@ const Market: React.FC = () => {
   });
   const [selectedStock, setSelectedStock] = useState<{ code: string; name: string; price?: number; change?: number } | null>(null);
   const [klineType, setKlineType] = useState<'daily' | 'weekly' | 'monthly'>('daily');
-  const [timeRange, setTimeRange] = useState<'last1Week' | 'last1Month' | 'last3Months' | 'last1Year' | 'last3Years'>('last1Month');
+  const [timeRange, setTimeRange] = useState<'last1Week' | 'last1Month' | 'last1Year' | 'last3Years'>('last1Month');
   const [searchKeyword, setSearchKeyword] = useState('');
   const searchInputRef = useRef<InputRef>(null);
 
-  // 时间范围选项
+  // 时间范围选项（保留最近三年，去掉最近三月避免与「最近3年」混淆）
   const timeRangeOptions = [
     { value: 'last1Week', label: '最近一周' },
     { value: 'last1Month', label: '最近一月' },
-    { value: 'last3Months', label: '最近三月' },
     { value: 'last1Year', label: '最近一年' },
     { value: 'last3Years', label: '最近三年' },
   ];
@@ -121,7 +121,7 @@ const Market: React.FC = () => {
   });
 
   // 处理时间范围变化
-  const handleTimeRangeChange = (value: 'last1Week' | 'last1Month' | 'last3Months' | 'last1Year' | 'last3Years') => {
+  const handleTimeRangeChange = (value: 'last1Week' | 'last1Month' | 'last1Year' | 'last3Years') => {
     setTimeRange(value);
     if (selectedStock) {
       fetchKlineData(selectedStock.code, selectedStock.name, klineType, value);
@@ -256,7 +256,7 @@ const Market: React.FC = () => {
   };
 
   // 获取K线数据
-  const fetchKlineData = async (code: string, name: string, type: 'daily' | 'weekly' | 'monthly' = 'daily', range?: 'last1Week' | 'last1Month' | 'last3Months' | 'last1Year' | 'last3Years') => {
+  const fetchKlineData = async (code: string, name: string, type: 'daily' | 'weekly' | 'monthly' = 'daily', range?: 'last1Week' | 'last1Month' | 'last1Year' | 'last3Years') => {
     const timeRangeParam = range || timeRange;
     try {
       const res = await request.get(`/stock-data/kline/${code}`, {
@@ -297,11 +297,11 @@ const Market: React.FC = () => {
     fetchTopGainers();
   }, []);
 
-  // 获取市场统计数据
+  // 市场统计接口：与后端 /api/stockInfo/marketStats 一致（勿写成 /Info/marketStats）
   const fetchMarketStats = async () => {
     try {
       const res = await request.get('/stockInfo/marketStats') as ApiResponse<MarketStats>;
-      if (res && res.success && res.data) {
+      if (res && res.success === true && res.data != null) {
         setMarketStats(res.data);
       }
     } catch (error) {

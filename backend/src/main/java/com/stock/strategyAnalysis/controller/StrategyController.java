@@ -3,14 +3,14 @@ package com.stock.strategyAnalysis.controller;
 import com.stock.strategyAnalysis.config.StrategyConfigService;
 import com.stock.strategyAnalysis.config.StrategyModeManager;
 import com.stock.strategyAnalysis.config.StrategyStateManager;
-import com.stock.strategyAnalysis.dto.BacktestResultDto;
+import com.stock.strategyAnalysis.dto.AnalysisStrategyItemDto;
 import com.stock.strategyAnalysis.dto.SelectionResult;
-import com.stock.strategyAnalysis.dto.SignalGenerationResult;
 import com.stock.strategyAnalysis.dto.StrategyStateDto;
 import com.stock.strategyAnalysis.entity.StrategyConfig;
 import com.stock.strategyAnalysis.enums.StrategyMode;
 import com.stock.strategyAnalysis.intraday.IntradaySellService;
 import com.stock.strategyAnalysis.selector.StockSelector;
+import com.stock.strategyAnalysis.service.StrategyAnalysisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -33,6 +33,32 @@ public class StrategyController {
     private final StrategyConfigService configService;
     private final StrategyModeManager modeManager;
     private final StrategyStateManager stateManager;
+    private final StrategyAnalysisService strategyAnalysisService;
+
+    /**
+     * 获取分析页策略列表（选股 + 交易），含启用状态与占位指标
+     */
+    @GetMapping("/analysis/list")
+    public ResponseEntity<List<AnalysisStrategyItemDto>> getAnalysisList() {
+        return ResponseEntity.ok(strategyAnalysisService.getAnalysisList());
+    }
+
+    /**
+     * 设置分析页某策略的启用状态
+     *
+     * @param id 策略 id，与前端一致：doubleFactor, tplus1, stopLoss, rsi, volume, bollinger
+     */
+    @PutMapping("/analysis/{id}/active")
+    public ResponseEntity<String> setAnalysisStrategyActive(
+            @PathVariable String id,
+            @RequestBody Map<String, Boolean> body) {
+        Boolean active = body != null ? body.get("active") : null;
+        if (active == null) {
+            return ResponseEntity.badRequest().body("缺少 active 字段");
+        }
+        strategyAnalysisService.setStrategyActive(id, active);
+        return ResponseEntity.ok("已更新");
+    }
 
     /**
      * 执行选股

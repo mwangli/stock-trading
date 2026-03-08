@@ -160,25 +160,27 @@ const DashboardLayout: React.FC = () => {
               </div>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4 sm:gap-6">
             <NotificationBell />
             <Button 
-                type="text" 
-                className="text-[#00e396] border border-[#00e396]/20 hover:bg-[#00e396]/10 font-mono text-xs px-3 h-8"
-                onClick={changeLanguage}
+              type="text" 
+              className="text-[#00e396] border border-[#00e396]/20 hover:bg-[#00e396]/10 font-mono text-xs px-3 h-8 shrink-0"
+              onClick={changeLanguage}
             >
-                {i18n.language === 'en' ? 'EN' : '中文'}
+              {i18n.language === 'en' ? 'EN' : '中文'}
             </Button>
-<div className="text-right hidden sm:block">
-              <div className="text-sm text-white font-medium">{user?.username}</div>
-              <div className="text-xs text-[#00e396]">{user?.role}</div>
-            </div>
             <Dropdown menu={userMenu} placement="bottomRight" arrow>
-              <Avatar 
-                size="large" 
-                style={{ backgroundColor: '#00e396', cursor: 'pointer' }} 
-                icon={<UserOutlined />} 
-              />
+              <div className="flex items-center justify-center gap-3 cursor-pointer min-w-0">
+                <span className="text-sm text-white font-medium truncate max-w-[8rem] hidden sm:inline">
+                  {user?.username ?? '—'}
+                </span>
+                <Avatar 
+                  size="default"
+                  className="shrink-0"
+                  style={{ backgroundColor: '#00e396', cursor: 'pointer' }} 
+                  icon={<UserOutlined />} 
+                />
+              </div>
             </Dropdown>
           </div>
         </Header>
