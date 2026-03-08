@@ -209,7 +209,7 @@ public class LstmTrainerService {
                         if (valLoss < bestValLoss - config.getMinDelta()) {
                             bestValLoss = valLoss;
                             patienceCounter = 0;
-                            bestModelPath = saveModel(model, processedData, epoch + 1, stockCodes);
+                            bestModelPath = saveModel(model, processedData, epoch + 1, stockCodes, (double) avgTrainLoss, (double) valLoss);
                         } else {
                             patienceCounter++;
                             if (patienceCounter >= config.getPatience()) {
@@ -224,18 +224,18 @@ public class LstmTrainerService {
             status.setStatus("保存模型");
             status.setProgress(90);
 
+            double finalTrainLoss = trainingLog.isEmpty() ? 0 : 
+                    (double) trainingLog.get(trainingLog.size() - 1).get("trainLoss");
+            double finalValLoss = trainingLog.isEmpty() ? 0 : 
+                    (double) trainingLog.get(trainingLog.size() - 1).get("valLoss");
+
             if (bestModelPath == null) {
-                bestModelPath = saveModel(model, processedData, trainEpochs, stockCodes);
+                bestModelPath = saveModel(model, processedData, trainEpochs, stockCodes, finalTrainLoss, finalValLoss);
             }
             currentModelPath = bestModelPath;
 
             status.setStatus("训练完成");
             status.setProgress(100);
-
-            double finalTrainLoss = trainingLog.isEmpty() ? 0 : 
-                    (double) trainingLog.get(trainingLog.size() - 1).get("trainLoss");
-            double finalValLoss = trainingLog.isEmpty() ? 0 : 
-                    (double) trainingLog.get(trainingLog.size() - 1).get("valLoss");
 
             log.info("========== 训练完成 ==========");
             log.info("最终训练损失: {}, 验证损失: {}", finalTrainLoss, finalValLoss);
@@ -321,7 +321,7 @@ public class LstmTrainerService {
         return batchCount > 0 ? totalLoss / batchCount : totalLoss;
     }
 
-    private String saveModel(Model model, LstmDataPreprocessor.ProcessedData processedData, int epoch, String modelIdentifier) throws IOException {
+    private String saveModel(Model model, LstmDataPreprocessor.ProcessedData processedData, int epoch, String modelIdentifier, double trainLoss, double valLoss) throws IOException {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String modelName = "lstm-stock-" + timestamp + "-epoch" + epoch;
 
@@ -351,6 +351,8 @@ public class LstmTrainerService {
             doc.setParams(paramsBytes);
             doc.setNormalizationParams(params);
             doc.setModelVersion("v1");
+            doc.setTrainLoss(trainLoss);
+            doc.setValLoss(valLoss);
 
             LstmModelDocument saved = lstmModelRepository.save(doc);
             log.info("New model saved to MongoDB, ID: {}, ModelName: {}", saved.getId(), saved.getModelName());

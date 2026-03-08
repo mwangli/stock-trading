@@ -2,8 +2,9 @@ package com.stock.modelService.entity;
 
 import lombok.Data;
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.Indexed;
+import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
 
@@ -30,8 +31,9 @@ public class LstmModelDocument {
     private int epoch;
 
     /**
-     * 保存时间
+     * 保存时间（列表分页按此字段排序，加索引避免全表扫描）
      */
+    @Indexed(name = "idx_createdAt", useGeneratedName = false)
     private LocalDateTime createdAt;
 
     /**
@@ -47,5 +49,15 @@ public class LstmModelDocument {
      * Model version (e.g., "v1") to handle schema evolution.
      */
     private String modelVersion;
+
+    /**
+     * 训练集损失（保存时写入，用于列表展示训练效果）
+     */
+    private Double trainLoss;
+
+    /**
+     * 验证集损失（保存时写入，用于列表展示与排序）
+     */
+    private Double valLoss;
 }
 
