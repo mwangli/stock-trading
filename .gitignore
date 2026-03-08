@@ -1,18 +1,19 @@
-<<<<<<< HEAD
 HELP.md
-=======
+
 # Compiled class files
 *.class
 
 # Maven
->>>>>>> 88da1874eaf261d26904ae1527d3ca40fe0a0862
 target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 
-<<<<<<< HEAD
-### STS ###
+# IDE
+.idea/
+*.iws
+*.iml
+*.ipr
 .apt_generated
 .classpath
 .factorypath
@@ -20,14 +21,9 @@ target/
 .settings
 .springBeans
 .sts4-cache
+.vscode/
 
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-
-### NetBeans ###
+# NetBeans
 /nbproject/private/
 /nbbuild/
 /dist/
@@ -36,23 +32,6 @@ target/
 build/
 !**/src/main/**/build/
 !**/src/test/**/build/
-
-### VS Code ###
-.vscode/
-
-/data
-/model
-node_modules
-=======
-# IDE
-.idea/
-*.iws
-*.iml
-*.ipr
-.vscode/
-.classpath
-.project
-.settings/
 
 # Node.js / Frontend
 node_modules/
@@ -82,6 +61,12 @@ application-prod.yml
 *.db
 *.mv.db
 *.trace.db
->>>>>>> 88da1874eaf261d26904ae1527d3ca40fe0a0862
+
+# Data & model cache (do not commit)
+/data
+/model
+backend/models/
+models/
+
 /.sisyphus/
 .worktrees/
