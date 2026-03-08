@@ -12,13 +12,18 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
-import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * 模型服务启动监听器
@@ -39,6 +44,14 @@ public class ModelTrainingStartupListener {
     private final LstmModelRepository lstmModelRepository;
     private final LstmTrainerService lstmTrainerService;
 
+    /** 是否在启动时执行模型检查与训练，由 app.startup.model-training.enabled 控制 */
+    @Value("${app.startup.model-training.enabled:true}")
+    private boolean modelTrainingEnabled;
+
+    /** 训练线程数，0 表示使用 CPU 核数 */
+    @Value("${app.startup.model-training.threads:0}")
+    private int modelTrainingThreads;
+
     /**
      * 监听应用启动完成事件
      * 使用 @Async 在独立线程中执行，不阻塞启动；内部再异步执行 K 线聚合与模型训练
@@ -50,7 +63,11 @@ public class ModelTrainingStartupListener {
 
         // 使用 CompletableFuture 异步执行，确保不阻塞 Spring Boot 启动过程
         CompletableFuture.runAsync(this::aggregateKLineDataIfNeeded);
-        CompletableFuture.runAsync(this::checkAndTrainModels);
+        if (modelTrainingEnabled) {
+            CompletableFuture.runAsync(this::checkAndTrainModels);
+        } else {
+            log.info("模型训练开关已关闭 (app.startup.model-training.enabled=false)，跳过启动时模型训练");
+        }
     }
 
     /**
@@ -93,9 +110,13 @@ public class ModelTrainingStartupListener {
 
     /**
      * 检查并训练模型的核心逻辑
+     * 使用线程池按 CPU 核数并行训练，训练分数（trainLoss/valLoss）会随模型保存至 MongoDB
      */
     private void checkAndTrainModels() {
         try {
+            if (!modelTrainingEnabled) {
+                return;
+            }
             log.info("开始检查并训练缺失的 LSTM 模型...");
 
             // 1. 获取所有股票代码
@@ -108,103 +129,78 @@ public class ModelTrainingStartupListener {
 
             log.info("发现共 {} 只股票需要检查", stockCodes.size());
 
-            // 2. 批量查询已存在的模型，避免 N+1 查询问题
+            // 2. 批量查询已存在的模型，使用线程安全 Set 供多线程写入
             long batchQueryStart = System.nanoTime();
-            Set<String> existingModels = new HashSet<>(
-                lstmModelRepository.findByModelNameIn(stockCodes)
-            );
+            Set<String> existingModels = ConcurrentHashMap.newKeySet();
+            existingModels.addAll(lstmModelRepository.findByModelNameIn(stockCodes));
             long batchQueryMs = (System.nanoTime() - batchQueryStart) / 1_000_000;
             log.info("批量查询已存在模型完成，耗时 {} ms，共 {} 个模型已存在", batchQueryMs, existingModels.size());
 
-            AtomicInteger trainedCount = new AtomicInteger(0);
-            AtomicInteger skippedCount = new AtomicInteger(0);
-            AtomicInteger failedCount = new AtomicInteger(0);
+            // 3. 筛选出需要训练的股票代码
+            List<String> codesToTrain = stockCodes.stream()
+                    .filter(code -> !existingModels.contains(code))
+                    .collect(Collectors.toList());
 
+            int skippedCount = stockCodes.size() - codesToTrain.size();
+            if (codesToTrain.isEmpty()) {
+                log.info("========== 模型检查与训练任务完成（无待训练模型）==========");
+                log.info("总扫描: {}，已存在(跳过): {}", stockCodes.size(), skippedCount);
+                return;
+            }
+
+            // 4. 根据配置或 CPU 核数确定训练线程数
+            int nThreads = modelTrainingThreads > 0
+                    ? modelTrainingThreads
+                    : Runtime.getRuntime().availableProcessors();
+            nThreads = Math.min(nThreads, codesToTrain.size());
+            log.info("使用 {} 个线程并行训练，待训练 {} 只股票", nThreads, codesToTrain.size());
+
+            AtomicInteger trainedCount = new AtomicInteger(0);
+            AtomicInteger failedCount = new AtomicInteger(0);
             long startNs = System.nanoTime();
 
-            // 3. 遍历检查每只股票
-            for (int i = 0; i < stockCodes.size(); i++) {
-                String code = stockCodes.get(i);
+            ExecutorService executor = Executors.newFixedThreadPool(nThreads);
+            try {
+                List<CompletableFuture<Void>> futures = new ArrayList<>();
+                for (String code : codesToTrain) {
+                    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                        try {
+                            log.info("股票 {} 开始训练...", code);
+                            long oneStart = System.nanoTime();
+                            LstmTrainerService.TrainingResult result = lstmTrainerService.trainModel(code, 500, null, null, null);
+                            long oneMs = (System.nanoTime() - oneStart) / 1_000_000;
 
-                try {
-                    // 使用内存 Set 检查，避免重复数据库查询
-                    if (existingModels.contains(code)) {
-                        skippedCount.incrementAndGet();
-                        if (skippedCount.get() % 500 == 0) {
-                            int done = trainedCount.get() + skippedCount.get() + failedCount.get();
-                            String percentText = String.format("%.2f", done * 100.0 / stockCodes.size());
-                            log.info(
-                                    "总体进度: {}/{} ({}%) - 详情: [已跳过: {}, 新训练: {}, 失败: {}]",
-                                    done,
-                                    stockCodes.size(),
-                                    percentText,
-                                    skippedCount.get(),
-                                    trainedCount.get(),
-                                    failedCount.get()
-                            );
+                            if (result.isSuccess()) {
+                                trainedCount.incrementAndGet();
+                                existingModels.add(code);
+                                log.info("股票 {} 训练完成，耗时 {} 秒，trainLoss={}, valLoss={}（已保存至 MongoDB）",
+                                        code,
+                                        String.format("%.2f", oneMs / 1000.0),
+                                        result.getTrainLoss(),
+                                        result.getValLoss());
+                            } else {
+                                failedCount.incrementAndGet();
+                                log.warn("股票 {} 训练未成功: {}", code, result.getMessage());
+                            }
+                        } catch (Exception e) {
+                            failedCount.incrementAndGet();
+                            log.error("股票 {} 训练失败: {}", code, e.getMessage());
                         }
-                        continue;
-                    }
-
-                    log.info("股票 {} 模型不存在，开始训练 ({}/{})...", code, i + 1, stockCodes.size());
-
-                    // 4. 训练模型
-                    long oneTrainStartNs = System.nanoTime();
-                    LstmTrainerService.TrainingResult result = lstmTrainerService.trainModel(code, 500, null, null, null);
-                    long oneTrainMs = (System.nanoTime() - oneTrainStartNs) / 1_000_000;
-                    String oneTrainSecondsText = String.format("%.2f", oneTrainMs / 1000.0);
-
-                    if (result.isSuccess()) {
-                        trainedCount.incrementAndGet();
-                        // 将新训练的模型添加到 Set 中，避免重复查询
-                        existingModels.add(code);
-                        int done = trainedCount.get() + skippedCount.get() + failedCount.get();
-                        String percentText = String.format("%.2f", done * 100.0 / stockCodes.size());
-                        log.info(
-                                "股票 {} 模型训练完成，耗时 {} 秒；总体进度: {}/{} ({}%)",
-                                code,
-                                oneTrainSecondsText,
-                                done,
-                                stockCodes.size(),
-                                percentText
-                        );
-                    } else {
-                        failedCount.incrementAndGet();
-                        int done = trainedCount.get() + skippedCount.get() + failedCount.get();
-                        String percentText = String.format("%.2f", done * 100.0 / stockCodes.size());
-                        log.warn(
-                                "股票 {} 模型训练未成功，耗时 {} 秒；原因: {}；总体进度: {}/{} ({}%)",
-                                code,
-                                oneTrainSecondsText,
-                                result.getMessage(),
-                                done,
-                                stockCodes.size(),
-                                percentText
-                        );
-                    }
-
-                } catch (Exception e) {
-                    failedCount.incrementAndGet();
-                    int done = trainedCount.get() + skippedCount.get() + failedCount.get();
-                    String percentText = String.format("%.2f", done * 100.0 / stockCodes.size());
-                    log.error(
-                            "股票 {} 模型训练失败: {}；总体进度: {}/{} ({}%)",
-                            code,
-                            e.getMessage(),
-                            done,
-                            stockCodes.size(),
-                            percentText
-                    );
+                    }, executor);
+                    futures.add(future);
                 }
+
+                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            } finally {
+                executor.shutdown();
             }
 
             long durationSeconds = (System.nanoTime() - startNs) / 1_000_000_000;
-
             log.info("========== 模型检查与训练任务完成 ==========");
-            log.info("耗时: {} 秒", durationSeconds);
+            log.info("耗时: {} 秒，线程数: {}", durationSeconds, nThreads);
             log.info("总扫描: {}", stockCodes.size());
-            log.info("新训练: {}", trainedCount.get());
-            log.info("已存在(跳过): {}", skippedCount.get());
+            log.info("新训练: {}（训练分数 trainLoss/valLoss 已保存至 MongoDB）", trainedCount.get());
+            log.info("已存在(跳过): {}", skippedCount);
             log.info("失败: {}", failedCount.get());
 
         } catch (Exception e) {
