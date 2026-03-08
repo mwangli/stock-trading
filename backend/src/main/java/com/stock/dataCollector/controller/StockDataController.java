@@ -190,42 +190,73 @@ statistics.put("completenessRate", Map.of(
 
     /**
      * 获取股票历史K线数据
-     * 优化：周K和月K使用预聚合数据
+     * 优化：周K和月K使用预聚合数据，直接从数据库查询，无需实时计算
+     * 日K线支持timeRange参数过滤，并限制最大返回数据量
      */
     @GetMapping("/kline/{code}")
     public ResponseEntity<Map<String, Object>> getKlineData(
             @PathVariable String code,
             @RequestParam(required = false, defaultValue = "daily") String type,
             @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate) {
+            @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) String timeRange,
+            @RequestParam(required = false, defaultValue = "500") Integer limit) {
 
-        log.info("获取K线数据: code={}, type={}, startDate={}, endDate={}", code, type, startDate, endDate);
+        log.info("获取K线数据: code={}, type={}, startDate={}, endDate={}, timeRange={}, limit={}",
+                code, type, startDate, endDate, timeRange, limit);
 
         try {
-            // 根据type使用不同的数据源
-            List<? extends StockPrice> prices;
+            // 1. 计算日期范围：优先使用startDate/endDate，其次使用timeRange
+            LocalDate queryStartDate = null;
+            LocalDate queryEndDate = null;
 
             if (startDate != null && endDate != null) {
-                LocalDate start = LocalDate.parse(startDate);
-                LocalDate end = LocalDate.parse(endDate);
-                // 日期范围查询仍使用实时聚合
+                // 显式指定日期范围
+                queryStartDate = LocalDate.parse(startDate);
+                queryEndDate = LocalDate.parse(endDate);
+            } else if (timeRange != null) {
+                // 根据timeRange计算日期范围
+                queryEndDate = LocalDate.now();
+                queryStartDate = switch (timeRange) {
+                    case "thisWeek" -> queryEndDate.minusWeeks(1);
+                    case "thisMonth" -> queryEndDate.minusMonths(1);
+                    case "thisYear" -> queryEndDate.minusYears(1);
+                    case "last3Years" -> queryEndDate.minusYears(3);
+                    case "last5Years" -> queryEndDate.minusYears(5);
+                    default -> queryEndDate.minusYears(1); // 默认查一年
+                };
+            }
+
+            // 2. 根据type使用不同的数据源
+            List<? extends StockPrice> prices;
+
+            if (queryStartDate != null && queryEndDate != null) {
+                // 有日期范围，使用日期范围查询
                 if ("weekly".equals(type)) {
-                    List<StockPrice> dailyPrices = priceRepository.findByCodeAndDateBetweenOrderByDateAsc(code, start, end);
-                    prices = aggregateToWeekly(dailyPrices);
+                    prices = stockDataService.getWeeklyPricesByDateRange(code, queryStartDate, queryEndDate);
                 } else if ("monthly".equals(type)) {
-                    List<StockPrice> dailyPrices = priceRepository.findByCodeAndDateBetweenOrderByDateAsc(code, start, end);
-                    prices = aggregateToMonthly(dailyPrices);
+                    prices = stockDataService.getMonthlyPricesByDateRange(code, queryStartDate, queryEndDate);
                 } else {
-                    prices = priceRepository.findByCodeAndDateBetweenOrderByDateAsc(code, start, end);
+                    // 日K线使用日期范围查询
+                    prices = priceRepository.findByCodeAndDateBetweenOrderByDateAsc(code, queryStartDate, queryEndDate);
+                    // 限制返回数量（从最新数据开始）
+                    if (prices != null && prices.size() > limit) {
+                        prices = prices.subList(prices.size() - limit, prices.size());
+                    }
                 }
             } else {
-                // 无日期范围时，使用预聚合数据
+                // 无日期范围时，根据type使用预聚合数据或带限制的日K数据
                 if ("weekly".equals(type)) {
                     prices = stockDataService.getWeeklyPrices(code);
                 } else if ("monthly".equals(type)) {
                     prices = stockDataService.getMonthlyPrices(code);
                 } else {
-                    prices = priceRepository.findByCodeOrderByDateAsc(code);
+                    // 日K线：默认查询最近一年的数据，避免返回过多
+                    LocalDate oneYearAgo = LocalDate.now().minusYears(1);
+                    prices = priceRepository.findByCodeAndDateBetweenOrderByDateAsc(code, oneYearAgo, LocalDate.now());
+                    if (prices != null && prices.size() > limit) {
+                        prices = prices.subList(prices.size() - limit, prices.size());
+                    }
                 }
             }
 
@@ -287,95 +318,5 @@ statistics.put("completenessRate", Map.of(
 
             return ResponseEntity.internalServerError().body(result);
         }
-    }
-    
-    /**
-     * 将日K数据聚合为周K
-     */
-    private List<StockPrice> aggregateToWeekly(List<StockPrice> dailyPrices) {
-        if (dailyPrices == null || dailyPrices.isEmpty()) {
-            return List.of();
-        }
-        
-        return dailyPrices.stream()
-            .collect(java.util.stream.Collectors.groupingBy(
-                p -> {
-                    // 按周分组：每周一为起始
-                    int weekOfYear = p.getDate().getDayOfYear();
-                    int weekNum = (weekOfYear - 1) / 7 + 1;
-                    return p.getDate().getYear() + "-W" + weekNum;
-                }
-            ))
-            .values()
-            .stream()
-            .map(weekPrices -> {
-                // 取周第一天作为日期
-                StockPrice first = weekPrices.get(0);
-                StockPrice weekPrice = new StockPrice();
-                weekPrice.setDate(first.getDate());
-                weekPrice.setOpenPrice(first.getOpenPrice());
-                weekPrice.setClosePrice(weekPrices.get(weekPrices.size() - 1).getClosePrice());
-                weekPrice.setHighPrice(weekPrices.stream()
-                    .map(StockPrice::getHighPrice)
-                    .reduce(java.math.BigDecimal::max)
-                    .orElse(java.math.BigDecimal.ZERO));
-                weekPrice.setLowPrice(weekPrices.stream()
-                    .map(StockPrice::getLowPrice)
-                    .reduce(java.math.BigDecimal::min)
-                    .orElse(java.math.BigDecimal.ZERO));
-                weekPrice.setVolume(weekPrices.stream()
-                    .map(StockPrice::getVolume)
-                    .reduce(java.math.BigDecimal::add)
-                    .orElse(java.math.BigDecimal.ZERO));
-                weekPrice.setAmount(weekPrices.stream()
-                    .map(StockPrice::getAmount)
-                    .reduce(java.math.BigDecimal::add)
-                    .orElse(java.math.BigDecimal.ZERO));
-                return weekPrice;
-            })
-            .sorted(java.util.Comparator.comparing(StockPrice::getDate))
-            .toList();
-    }
-    
-    /**
-     * 将日K数据聚合为月K
-     */
-    private List<StockPrice> aggregateToMonthly(List<StockPrice> dailyPrices) {
-        if (dailyPrices == null || dailyPrices.isEmpty()) {
-            return List.of();
-        }
-        
-        return dailyPrices.stream()
-            .collect(java.util.stream.Collectors.groupingBy(
-                p -> p.getDate().getYear() + "-" + String.format("%02d", p.getDate().getMonthValue())
-            ))
-            .values()
-            .stream()
-            .map(monthPrices -> {
-                StockPrice first = monthPrices.get(0);
-                StockPrice monthPrice = new StockPrice();
-                monthPrice.setDate(first.getDate());
-                monthPrice.setOpenPrice(first.getOpenPrice());
-                monthPrice.setClosePrice(monthPrices.get(monthPrices.size() - 1).getClosePrice());
-                monthPrice.setHighPrice(monthPrices.stream()
-                    .map(StockPrice::getHighPrice)
-                    .reduce(java.math.BigDecimal::max)
-                    .orElse(java.math.BigDecimal.ZERO));
-                monthPrice.setLowPrice(monthPrices.stream()
-                    .map(StockPrice::getLowPrice)
-                    .reduce(java.math.BigDecimal::min)
-                    .orElse(java.math.BigDecimal.ZERO));
-                monthPrice.setVolume(monthPrices.stream()
-                    .map(StockPrice::getVolume)
-                    .reduce(java.math.BigDecimal::add)
-                    .orElse(java.math.BigDecimal.ZERO));
-                monthPrice.setAmount(monthPrices.stream()
-                    .map(StockPrice::getAmount)
-                    .reduce(java.math.BigDecimal::add)
-                    .orElse(java.math.BigDecimal.ZERO));
-                return monthPrice;
-            })
-            .sorted(java.util.Comparator.comparing(StockPrice::getDate))
-            .toList();
     }
 }
