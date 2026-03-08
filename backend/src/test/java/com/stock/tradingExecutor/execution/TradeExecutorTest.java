@@ -9,6 +9,7 @@ import com.stock.tradingExecutor.enums.OrderStatus;
 import com.stock.tradingExecutor.fee.FeeCalculator;
 import com.stock.tradingExecutor.risk.RiskController;
 import com.stock.tradingExecutor.time.TradingTimeChecker;
+import com.stock.service.NotificationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -36,6 +37,9 @@ class TradeExecutorTest {
 
     @Mock
     private TradingTimeChecker tradingTimeChecker;
+
+    @Mock
+    private NotificationService notificationService;
     
     @BeforeEach
     void setUp() {
@@ -62,7 +66,8 @@ class TradeExecutorTest {
                 feeCalculator,
                 tradingTimeChecker,
                 monitorConfig,
-                pollerConfig
+                pollerConfig,
+                notificationService
         );
     }
     

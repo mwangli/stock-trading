@@ -134,6 +134,20 @@
       "backtest": "回测模型",
       "logs": "查看日志",
       "parameters": "调整参数"
+    },
+    "sentiment": {
+      "title": "情感分析 (AI)",
+      "desc": "基于 BERT 模型的实时情感分析。从财经新闻中提取看多/看空信号。",
+      "score": "情感得分",
+      "confidence": "置信度",
+      "articles": "处理文章数"
+    },
+    "rules": {
+      "title": "情感规则 (兜底)",
+      "desc": "当 AI 模型不可用时的基于规则的情感分析。使用关键词匹配作为备选方案。",
+      "score": "规则得分",
+      "matches": "关键词匹配",
+      "coverage": "覆盖率"
     }
   },
   "strategyAnalysis": {
@@ -265,5 +279,23 @@
       "profit": "盈亏",
       "returnRate": "收益率"
     }
-  }
-  }
+  },
+    "logs": {
+      "title": "智能系统终端LOG",
+      "live": "实时",
+
+"offline": "离线",
+"autoScroll": "自动滚动",
+"clear": "清空",
+"waiting": "等待系统日志...",
+"connected": ">>> 已连接到日志流 <<<",
+"reconnecting": ">>> 连接断开。3秒后重连... <<<"
+    },
+    "notifications": {
+      "title": "系统通知",
+      "markAllRead": "全部已读",
+      "clearAll": "清空通知",
+      "empty": "暂无新通知",
+      "viewAll": "查看全部"
+    }
+}

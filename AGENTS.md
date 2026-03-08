@@ -120,6 +120,9 @@ mvn test -Dtest=StockDataServiceTest#testMethodName
   - **样式**: **强制使用 TailwindCSS** 类名，禁止写行内 style 或传统 CSS 文件（除非必要）
   - **状态**: 使用 Zustand 进行全局状态管理
   - **类型**: 严禁使用 `any`，必须定义 Interface/Type
+  - **数据兜底**: 前端表格或组件优先使用接口数据。当接口返回不可用（或未实现）时，**必须**展示 Mock 数据以保持页面美观，不得留空或报错。
+- **组件结构**:
+  - **类型**: 严禁使用 `any`，必须定义 Interface/Type
 - **组件结构**:
   ```tsx
   // 推荐写法
@@ -158,6 +161,7 @@ mvn test -Dtest=StockDataServiceTest#testMethodName
     - **必须**运行测试或编译命令验证修改。
     - 如果是新增功能，**必须**补充对应的测试用例（后端）。
 4.  **Verify (验证)**: 检查 `lsp_diagnostics` 确保无语法错误。
+5.  **Build Check (编译检查)**: 每次修改前端代码后，**必须**在 `frontend-v2` 目录下运行 `npm run tsc` (或 `npm run build`) 以确保无编译错误。这是强制约定。
 
 **Agent 特别指令**:
 - 如果发现 `frontend-v2` 下缺少测试环境，不要尝试运行 `npm test`，除非你先配置了它。

@@ -33,7 +33,7 @@ public class SentimentTrainingConfig {
      * - 快速启动：hfl/chinese-bert-wwm-ext
      * - 生产环境：熵简 FinBERT（金融领域准确率更高）
      */
-    private String pretrainedModel = "hfl/chinese-bert-wwm-ext";
+    private String pretrainedModel = "yiyanghkust/finbert-tone-chinese";
 
     /**
      * 最大序列长度
@@ -78,5 +78,9 @@ public class SentimentTrainingConfig {
     /**
      * 情感标签映射（中文）
      */
-    private String[] labels = {"negative", "neutral", "positive"};
+    /**
+     * 情感标签映射（注意：需与模型输出对齐）
+     * yiyanghkust/finbert-tone-chinese 标签定义: 0=Neutral, 1=Positive, 2=Negative
+     */
+    private String[] labels = {"neutral", "positive", "negative"};
 }

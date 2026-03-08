@@ -154,7 +154,7 @@ const Transactions: React.FC = () => {
       title: t('transactions.table.price'),
       dataIndex: 'price',
       key: 'price',
-      render: (price: number) => <span className="text-white">${price.toFixed(2)}</span>
+      render: (price: number) => <span className="text-white">¥{price.toFixed(2)}</span>
     },
     {
       title: t('transactions.table.quantity'),
@@ -166,7 +166,7 @@ const Transactions: React.FC = () => {
       title: t('transactions.table.totalValue'),
       dataIndex: 'totalValue',
       key: 'totalValue',
-      render: (val: number) => <span className="text-[#ffbd2e] font-mono">${val.toFixed(2)}</span>
+      render: (val: number) => <span className="text-[#ffbd2e] font-mono">¥{val.toFixed(2)}</span>
     },
     {
       title: t('transactions.table.status'),
@@ -211,25 +211,25 @@ const Transactions: React.FC = () => {
       title: t('transactions.tradesTable.buyPrice'),
       dataIndex: 'buyPrice',
       key: 'buyPrice',
-      render: (price: number) => <span className="text-gray-300">${price.toFixed(2)}</span>
+      render: (price: number) => <span className="text-gray-300">¥{price.toFixed(2)}</span>
     },
     {
       title: t('transactions.tradesTable.sellPrice'),
       dataIndex: 'sellPrice',
       key: 'sellPrice',
-      render: (price: number) => <span className="text-gray-300">${price.toFixed(2)}</span>
+      render: (price: number) => <span className="text-gray-300">¥{price.toFixed(2)}</span>
     },
     {
       title: t('transactions.table.totalValue'),
       dataIndex: 'totalAmount',
       key: 'totalAmount',
-      render: (val: number) => <span className="text-[#ffbd2e] font-mono">${val.toFixed(2)}</span>
+      render: (val: number) => <span className="text-[#ffbd2e] font-mono">¥{val.toFixed(2)}</span>
     },
     {
       title: t('transactions.tradesTable.fees'),
       dataIndex: 'fees',
       key: 'fees',
-      render: (val: number) => <span className="text-gray-400">${val.toFixed(2)}</span>
+      render: (val: number) => <span className="text-gray-400">¥{val.toFixed(2)}</span>
     },
     {
       title: t('transactions.tradesTable.profit'),

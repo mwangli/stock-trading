@@ -77,11 +77,13 @@ public class ModelTrainingStartupListener {
                             int done = trainedCount.get() + skippedCount.get() + failedCount.get();
                             String percentText = String.format("%.2f", done * 100.0 / stockCodes.size());
                             log.info(
-                                    "总体进度: {}/{} ({}%) - 已跳过 {} 个已存在的模型",
+                                    "总体进度: {}/{} ({}%) - 详情: [已跳过: {}, 新训练: {}, 失败: {}]",
                                     done,
                                     stockCodes.size(),
                                     percentText,
-                                    skippedCount.get()
+                                    skippedCount.get(),
+                                    trainedCount.get(),
+                                    failedCount.get()
                             );
                         }
                         continue;

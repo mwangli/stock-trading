@@ -11,16 +11,13 @@ import com.stock.tradingExecutor.enums.OrderStatus;
 import com.stock.tradingExecutor.fee.FeeCalculator;
 import com.stock.tradingExecutor.risk.RiskController;
 import com.stock.tradingExecutor.time.TradingTimeChecker;
+import com.stock.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDateTime;
-import java.util.List;
-import java.math.RoundingMode;
-import java.time.LocalDateTime;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -45,6 +42,7 @@ public class TradeExecutor {
     private final MonitorConfig monitorConfig;
     private final PollerConfig pollerConfig;
     
+    private final NotificationService notificationService;
     /**
      * 并行交易线程池
      */
@@ -176,7 +174,10 @@ public class TradeExecutor {
                 result.setMessage("买入失败: " + finalStatus.getName());
             }
             
+            // 通知
+            notificationService.notifyOrder(result, "BUY");
             return result;
+
             
         } catch (Exception e) {
             log.error("买入下单失败: {}", stockCode, e);
@@ -316,7 +317,10 @@ public class TradeExecutor {
                 result.setMessage("卖出失败: " + finalStatus.getName());
             }
             
+            // 通知
+            notificationService.notifyOrder(result, "SELL");
             return result;
+
             
         } catch (Exception e) {
             log.error("卖出下单失败: {}", stockCode, e);

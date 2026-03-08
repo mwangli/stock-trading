@@ -72,7 +72,7 @@ const Analysis: React.FC = () => {
                   </span>
                   <span className="flex items-center gap-1">
                     <span className="text-gray-500">{t('strategyAnalysis.metrics.pnl')}:</span>
-                    <span className={item.pnl >= 0 ? 'text-[#00e396]' : 'text-[#ff4560]'}>${item.pnl.toLocaleString()}</span>
+                    <span className={item.pnl >= 0 ? 'text-[#00e396]' : 'text-[#ff4560]'}>¥{item.pnl.toLocaleString()}</span>
                   </span>
                   <span className="flex items-center gap-1">
                     <span className="text-gray-500">{t('strategyAnalysis.metrics.totalTrades')}:</span>
@@ -101,7 +101,7 @@ const Analysis: React.FC = () => {
             </div>
             <div className="glass px-6 py-2 rounded-xl flex items-center gap-3 border border-white/10">
                 <span className="text-gray-400 text-xs uppercase tracking-wider">Total P&L</span>
-                <span className="text-2xl font-bold text-[#00e396]">+${strategies.reduce((acc, s) => acc + s.pnl, 0).toLocaleString()}</span>
+                <span className="text-2xl font-bold text-[#00e396]">+¥{strategies.reduce((acc, s) => acc + s.pnl, 0).toLocaleString()}</span>
             </div>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Card, Row, Col, Statistic, Table, Tag } from 'antd';
-import { ArrowUpOutlined, ArrowDownOutlined, RocketOutlined, DollarOutlined } from '@ant-design/icons';
+import { ArrowUpOutlined, ArrowDownOutlined, RocketOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 
 const Dashboard: React.FC = () => {
@@ -68,8 +68,11 @@ const Dashboard: React.FC = () => {
   ];
 
   const data = [
-    { key: '1', symbol: 'AAPL', type: 'BUY', price: '$150.23', quantity: 100, status: 'Completed' },
-    { key: '2', symbol: 'TSLA', type: 'SELL', price: '$890.11', quantity: 50, status: 'Completed' },
+    { key: '1', symbol: 'AAPL', type: 'BUY', price: '¥150.23', quantity: 100, status: 'Completed' },
+    { key: '2', symbol: 'TSLA', type: 'SELL', price: '¥890.11', quantity: 50, status: 'Completed' },
+    { key: '3', symbol: 'NVDA', type: 'BUY', price: '¥420.69', quantity: 200, status: 'Pending' },
+    { key: '2', symbol: 'TSLA', type: 'SELL', price: '¥890.11', quantity: 50, status: 'Completed' },
+    { key: '3', symbol: 'NVDA', type: 'BUY', price: '¥420.69', quantity: 200, status: 'Pending' },
     { key: '3', symbol: 'NVDA', type: 'BUY', price: '$420.69', quantity: 200, status: 'Pending' },
   ];
 
@@ -83,7 +86,7 @@ const Dashboard: React.FC = () => {
               title={<span className="text-gray-400">{t('dashboard.stats.totalBalance')}</span>}
               value={112893.50} 
               precision={2} 
-              prefix={<DollarOutlined className="text-[#00e396]" />} 
+              prefix={<span className="text-[#00e396] font-bold text-2xl">¥</span>}
               valueStyle={{ color: '#fff', fontSize: '24px', fontWeight: 'bold' }}
             />
             <div className="mt-2 text-[#00e396] text-sm flex items-center">

@@ -44,6 +44,12 @@ public class SentimentTrainerService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     @PostConstruct
     public void init() {
+        // 设置 DJL 缓存目录（如果配置了）
+        if (config.getCacheDir() != null && !config.getCacheDir().isEmpty()) {
+            System.setProperty("DJL_CACHE_DIR", config.getCacheDir());
+            log.info("设置 DJL 模型缓存目录: {}", config.getCacheDir());
+        }
+
         if (config.isDownloadPretrained()) {
             loadModel();
         }
@@ -84,14 +90,17 @@ public class SentimentTrainerService {
             log.info("训练集样本数:{}, 验证集样本数:{}", trainSize, valSize);
 
             // 统计标签分布，便于评估数据质量
-            long trainNeg = split.getTrainData().stream().filter(s -> s.getLabel() == 0).count();
-            long trainNeu = split.getTrainData().stream().filter(s -> s.getLabel() == 1).count();
-            long trainPos = split.getTrainData().stream().filter(s -> s.getLabel() == 2).count();
+            // 统计标签分布 (0=Neutral, 1=Positive, 2=Negative)
+            long trainNeu = split.getTrainData().stream().filter(s -> s.getLabel() == 0).count();
+            long trainPos = split.getTrainData().stream().filter(s -> s.getLabel() == 1).count();
+            long trainNeg = split.getTrainData().stream().filter(s -> s.getLabel() == 2).count();
 
-            long valNeg = split.getValData().stream().filter(s -> s.getLabel() == 0).count();
-            long valNeu = split.getValData().stream().filter(s -> s.getLabel() == 1).count();
-            long valPos = split.getValData().stream().filter(s -> s.getLabel() == 2).count();
+            long valNeu = split.getValData().stream().filter(s -> s.getLabel() == 0).count();
+            long valPos = split.getValData().stream().filter(s -> s.getLabel() == 1).count();
+            long valNeg = split.getValData().stream().filter(s -> s.getLabel() == 2).count();
 
+            log.info("训练集标签分布 - 中性:{}, 正面:{}, 负面:{}", trainNeu, trainPos, trainNeg);
+            log.info("验证集标签分布 - 中性:{}, 正面:{}, 负面:{}", valNeu, valPos, valNeg);
             log.info("训练集标签分布 - 负面:{}, 中性:{}, 正面:{}", trainNeg, trainNeu, trainPos);
             log.info("验证集标签分布 - 负面:{}, 中性:{}, 正面:{}", valNeg, valNeu, valPos);
 
@@ -176,13 +185,17 @@ public class SentimentTrainerService {
         }
 
         try {
-            String modelUrl = "djl://ai.djl.huggingface.pytorch/" + config.getPretrainedModel();
-            log.info("正在从 HuggingFace 加载模型: {}", modelUrl);
+            String modelId = config.getPretrainedModel();
+            log.info("正在从 HuggingFace 加载模型: {}", modelId);
 
-            HuggingFaceTokenizer tokenizer = HuggingFaceTokenizer.newInstance(config.getPretrainedModel());
+            HuggingFaceTokenizer tokenizer = HuggingFaceTokenizer.newInstance(modelId);
+            Map<String, Object> arguments = new HashMap<>();
+                    arguments.put("labels", Arrays.asList(config.getLabels()));
+                    Translator<String, Classifications> translator = TextClassificationTranslator.builder(tokenizer, arguments).build();
 
-            Translator<String, Classifications> translator = TextClassificationTranslator.builder(tokenizer)
-                    .build();
+            // 使用 HF 专用 URL 格式 (需引入 ai.djl.huggingface:pytorch)
+            // 格式: djl://ai.djl.huggingface.pytorch/model_id
+            String modelUrl = "djl://ai.djl.huggingface.pytorch/" + modelId;
 
             Criteria<String, Classifications> criteria = Criteria.builder()
                     .setTypes(String.class, Classifications.class)
@@ -194,7 +207,7 @@ public class SentimentTrainerService {
 
             this.loadedModel = criteria.loadModel();
             this.isModelLoaded = true;
-            log.info("情感分析模型加载成功");
+            log.info("情感分析模型加载成功: {}", modelId);
             return true;
 
         } catch (Exception e) {
@@ -203,6 +216,7 @@ public class SentimentTrainerService {
             return false;
         }
     }
+
 
     /**
      * 情感分析推理
@@ -230,10 +244,12 @@ public class SentimentTrainerService {
                 }
 
                 double score = calculateSentimentScore(probabilities);
+                double normalizedScore = calculateNormalizedScore(bestLabel, bestProb);
 
                 return SentimentAnalysisResult.builder()
                         .label(bestLabel)
                         .score(score)
+                        .normalizedScore(normalizedScore)
                         .confidence(bestProb)
                         .probabilities(probabilities)
                         .text(text)
@@ -253,22 +269,39 @@ public class SentimentTrainerService {
         Integer label = dataPreprocessor.autoLabelSentiment(text);
         String[] labels = config.getLabels();
         String labelStr = labels[label];
-
         Map<String, Double> probs = new HashMap<>();
-        probs.put("negative", label == 0 ? 0.7 : 0.15);
-        probs.put("neutral", label == 1 ? 0.7 : 0.15);
-        probs.put("positive", label == 2 ? 0.7 : 0.15);
+        // 0=Neutral, 1=Positive, 2=Negative
+        probs.put("neutral", label == 0 ? 0.7 : 0.15);
+        probs.put("positive", label == 1 ? 0.7 : 0.15);
+        probs.put("negative", label == 2 ? 0.7 : 0.15);
 
-        double score = label == 0 ? -0.7 : (label == 2 ? 0.7 : 0.0);
+        double score = label == 2 ? -0.7 : (label == 1 ? 0.7 : 0.0);
+        double normalizedScore = calculateNormalizedScore(labelStr, 0.7);
 
         return SentimentAnalysisResult.builder()
                 .label(labelStr)
                 .score(score)
+                .normalizedScore(normalizedScore)
                 .confidence(0.7)
                 .probabilities(probs)
                 .text(text)
                 .build();
     }
+
+    private double calculateNormalizedScore(String label, double probability) {
+        if ("negative".equalsIgnoreCase(label)) {
+            // Negative: 0-40 (Strong Negative = 0)
+            return 40.0 - (probability * 40.0);
+        } else if ("neutral".equalsIgnoreCase(label)) {
+            // Neutral: 40-60
+            return 40.0 + (probability * 20.0);
+        } else if ("positive".equalsIgnoreCase(label)) {
+            // Positive: 60-100 (Strong Positive = 100)
+            return 60.0 + (probability * 40.0);
+        }
+        return 50.0; // Default
+    }
+
 
     private double calculateSentimentScore(Map<String, Double> probabilities) {
         Double positive = probabilities.getOrDefault("positive", 0.0);

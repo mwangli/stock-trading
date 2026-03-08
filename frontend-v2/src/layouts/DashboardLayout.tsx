@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import NotificationBell from '../components/NotificationBell';
+import NotificationListener from '../components/NotificationListener';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu, Avatar, Dropdown, Button } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -140,25 +142,26 @@ const DashboardLayout: React.FC = () => {
                 <span className="flex items-center gap-2">
                   <span className="text-gray-500">{t('layout.pnl.today')}</span>
                   <span className="text-[#00e396] flex items-center gap-1">
-                    <ArrowUpOutlined /> $1,245.50
+                    <ArrowUpOutlined /> ¥1,245.50
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
                   <span className="text-gray-500">{t('layout.pnl.week')}</span>
                   <span className="text-[#ff4560] flex items-center gap-1">
-                    <ArrowDownOutlined /> $532.10
+                    <ArrowDownOutlined /> ¥532.10
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
                   <span className="text-gray-500">{t('layout.pnl.month')}</span>
                   <span className="text-[#00e396] flex items-center gap-1">
-                    <ArrowUpOutlined /> $4,320.00
+                    <ArrowUpOutlined /> ¥4,320.00
                   </span>
                 </span>
               </div>
           </div>
 
           <div className="flex items-center gap-6">
+            <NotificationBell />
             <Button 
                 type="text" 
                 className="text-[#00e396] border border-[#00e396]/20 hover:bg-[#00e396]/10 font-mono text-xs px-3 h-8"
@@ -192,6 +195,7 @@ const DashboardLayout: React.FC = () => {
           <Outlet />
         </Content>
       </Layout>
+      <NotificationListener />
     </Layout>
   );
 };

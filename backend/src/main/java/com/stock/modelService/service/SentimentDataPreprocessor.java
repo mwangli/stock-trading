@@ -111,11 +111,11 @@ public class SentimentDataPreprocessor {
         }
 
         if (positiveCount > negativeCount + 1) {
-            return 2; // positive
+            return 1; // positive (was 2)
         } else if (negativeCount > positiveCount + 1) {
-            return 0; // negative
+            return 2; // negative (was 0)
         } else {
-            return 1; // neutral
+            return 0; // neutral (was 1)
         }
     }
 
@@ -185,19 +185,19 @@ public class SentimentDataPreprocessor {
             if (i % 3 == 0) {
                 samples.add(TrainingSample.builder()
                         .text(positiveTexts[i % positiveTexts.length] + " " + i)
-                        .label(2)
+                        .label(1) // positive
                         .source("synthetic")
                         .build());
             } else if (i % 3 == 1) {
                 samples.add(TrainingSample.builder()
                         .text(negativeTexts[i % negativeTexts.length] + " " + i)
-                        .label(0)
+                        .label(2) // negative
                         .source("synthetic")
                         .build());
             } else {
                 samples.add(TrainingSample.builder()
                         .text(neutralTexts[i % neutralTexts.length] + " " + i)
-                        .label(1)
+                        .label(0) // neutral
                         .source("synthetic")
                         .build());
             }
