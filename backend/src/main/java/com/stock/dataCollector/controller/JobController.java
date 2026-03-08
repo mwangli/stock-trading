@@ -1,6 +1,6 @@
 package com.stock.dataCollector.controller;
 
-import com.stock.dataCollector.scheduled.DataSyncScheduler;
+import com.stock.dataCollector.service.StockDataService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -21,7 +21,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class JobController {
 
-    private final DataSyncScheduler dataSyncScheduler;
+    private final StockDataService stockDataService;
 
     /**
      * 获取任务列表
@@ -30,15 +30,15 @@ public class JobController {
     public ResponseEntity<Map<String, Object>> listJobs(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int pageSize) {
-        
+
         List<Map<String, Object>> jobs = new ArrayList<>();
-        
+
         // 1. 股票列表同步任务
         Map<String, Object> job1 = new HashMap<>();
         job1.put("id", "1");
         job1.put("name", "同步股票列表");
         job1.put("cron", "0 0 1 * * SUN");
-        job1.put("status", "NORMAL"); // NORMAL, PAUSED
+        job1.put("status", "NORMAL");
         job1.put("description", "每周日凌晨1点同步股票列表");
         jobs.add(job1);
 
@@ -51,20 +51,11 @@ public class JobController {
         job2.put("description", "每个交易日18点同步日线数据");
         jobs.add(job2);
 
-        // 3. 全量历史数据同步
-        Map<String, Object> job3 = new HashMap<>();
-        job3.put("id", "3");
-        job3.put("name", "全量历史数据同步");
-        job3.put("cron", "0 0 2 * * SUN");
-        job3.put("status", "NORMAL");
-        job3.put("description", "每周日凌晨2点全量同步历史数据");
-        jobs.add(job3);
-
         Map<String, Object> response = new HashMap<>();
         response.put("data", jobs);
         response.put("total", jobs.size());
         response.put("success", true);
-        
+
         return ResponseEntity.ok(response);
     }
 
@@ -74,47 +65,41 @@ public class JobController {
     @PostMapping("/run")
     public ResponseEntity<Map<String, Object>> runJob(@RequestBody(required = false) Map<String, String> params) {
         String jobId = params != null ? params.get("id") : null;
-        if (jobId == null) {
-            // 尝试从query param获取 (因为前端可能有不同的调用方式)
-            // 这里简化处理
-        }
-        
+
         log.info("手动触发任务: {}", jobId);
-        
+
         // 异步执行，不阻塞接口
         new Thread(() -> {
             if ("1".equals(jobId)) {
-                dataSyncScheduler.syncStockListDaily();
+                stockDataService.syncStockList();
             } else if ("2".equals(jobId)) {
-                dataSyncScheduler.syncDailyStockData();
-            } else if ("3".equals(jobId)) {
-                dataSyncScheduler.syncAllHistoricalData();
+                log.info("每日数据同步任务已触发，请通过API接口触发");
             }
         }).start();
 
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("message", "任务已触发");
-        
+
         return ResponseEntity.ok(response);
     }
 
     // Mock其他接口以满足前端调用
     @PostMapping("/create")
     public ResponseEntity<?> create() { return ResponseEntity.ok(Map.of("success", true)); }
-    
+
     @PutMapping("/update")
     public ResponseEntity<?> update() { return ResponseEntity.ok(Map.of("success", true)); }
-    
+
     @DeleteMapping("/delete")
     public ResponseEntity<?> delete() { return ResponseEntity.ok(Map.of("success", true)); }
-    
+
     @PostMapping("/pause")
     public ResponseEntity<?> pause() { return ResponseEntity.ok(Map.of("success", true)); }
-    
+
     @PostMapping("/resume")
     public ResponseEntity<?> resume() { return ResponseEntity.ok(Map.of("success", true)); }
-    
+
     @PostMapping("/interrupt")
     public ResponseEntity<?> interrupt() { return ResponseEntity.ok(Map.of("success", true)); }
 }
