@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
@@ -40,8 +41,9 @@ public class ModelTrainingStartupListener {
 
     /**
      * 监听应用启动完成事件
-     * 异步执行K线聚合和模型训练任务，避免阻塞主线程
+     * 使用 @Async 在独立线程中执行，不阻塞启动；内部再异步执行 K 线聚合与模型训练
      */
+    @Async
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
         log.info("========== 应用启动监听器触发 ==========");
@@ -85,7 +87,7 @@ public class ModelTrainingStartupListener {
             }
 
         } catch (Exception e) {
-            log.error("K线数据聚合任务发生异常", e);
+            logStartupTaskException("K线数据聚合", e);
         }
     }
 
@@ -206,7 +208,38 @@ public class ModelTrainingStartupListener {
             log.info("失败: {}", failedCount.get());
 
         } catch (Exception e) {
-            log.error("模型启动检查任务发生未捕获异常", e);
+            logStartupTaskException("模型检查与训练", e);
         }
+    }
+
+    /**
+     * 统一输出启动任务异常：单行摘要 + 可选的配置类提示，完整堆栈仅 DEBUG 输出
+     */
+    private void logStartupTaskException(String taskName, Exception e) {
+        String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        String hint = buildExceptionHint(e);
+        log.error("[启动任务] {} 失败: {} {}", taskName, msg, hint);
+        if (log.isDebugEnabled()) {
+            log.debug("[启动任务] {} 完整堆栈", taskName, e);
+        }
+    }
+
+    private String buildExceptionHint(Exception e) {
+        Throwable t = e;
+        while (t != null) {
+            String name = t.getClass().getName();
+            String lower = name.toLowerCase();
+            if (lower.contains("configurationpropertiesbind") || lower.contains("bind")) {
+                return "| 建议: 检查 application.yml 中相关配置项格式与缩进";
+            }
+            if (lower.contains("redis")) {
+                return "| 建议: 检查 spring.data.redis 配置 (host/port/password/database)";
+            }
+            if (lower.contains("datasource") || lower.contains("jdbc")) {
+                return "| 建议: 检查数据源配置与数据库可达性";
+            }
+            t = t.getCause();
+        }
+        return "";
     }
 }

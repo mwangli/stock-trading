@@ -378,6 +378,13 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
     }
 
     /**
+     * 涨幅榜 TOP10，按涨跌幅降序，仅查 10 条（避免全表加载）
+     */
+    public List<StockInfo> findTop10ByIncreaseRate() {
+        return stockInfoRepository.findTop10ByChangePercentIsNotNullOrderByChangePercentDesc();
+    }
+
+    /**
      * 带过滤条件的分页查询股票
      */
     public Page<StockInfo> findStocksWithFilter(String name, String code, Pageable pageable) {
@@ -444,12 +451,11 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
 
     /**
      * 获取市场统计信息
-     * 从stock_info表中聚合计算市场基本数据
+     * 使用数据库聚合/单条查询，避免全表加载，提升响应速度
      */
     public MarketStatsDto getMarketStats() {
-        List<StockInfo> allStocks = stockInfoRepository.findAll();
-
-        if (allStocks.isEmpty()) {
+        long totalCount = stockInfoRepository.countBy();
+        if (totalCount == 0) {
             return MarketStatsDto.builder()
                     .marketStatus("休市")
                     .changePercent(BigDecimal.ZERO)
@@ -463,7 +469,7 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
                     .build();
         }
 
-        // 计算市场状态 (9:30-15:00 为开盘时间，周一到周五)
+        // 市场状态 (9:30-15:00 周一到周五)
         LocalTime now = LocalTime.now();
         LocalDate today = LocalDate.now();
         DayOfWeek dayOfWeek = today.getDayOfWeek();
@@ -471,71 +477,33 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
         boolean isMarketOpen = isWeekday && now.isAfter(LocalTime.of(9, 30)) && now.isBefore(LocalTime.of(15, 0));
         String marketStatus = isMarketOpen ? "开盘" : "休市";
 
-        // 统计涨跌平
-        int upCount = 0;
-        int downCount = 0;
-        int flatCount = 0;
-        BigDecimal totalAmount = BigDecimal.ZERO;
+        // 涨跌平数量（聚合查询，不加载实体）
+        int upCount = (int) stockInfoRepository.countByChangePercentGreaterThan(BigDecimal.ZERO);
+        int downCount = (int) stockInfoRepository.countByChangePercentLessThan(BigDecimal.ZERO);
+        long flatCount = stockInfoRepository.countByChangePercentIsNull() + stockInfoRepository.countByChangePercent(BigDecimal.ZERO);
+
+        BigDecimal totalAmount = stockInfoRepository.sumTotalMarketValue() != null ? stockInfoRepository.sumTotalMarketValue() : BigDecimal.ZERO;
         BigDecimal totalVolume = BigDecimal.ZERO;
-        BigDecimal totalTurnoverRate = BigDecimal.ZERO;
+        BigDecimal sumTurnover = stockInfoRepository.sumTurnoverRate() != null ? stockInfoRepository.sumTurnoverRate() : BigDecimal.ZERO;
+        BigDecimal avgTurnoverRate = totalCount > 0
+                ? sumTurnover.divide(BigDecimal.valueOf(totalCount), 4, java.math.RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
 
-        for (StockInfo stock : allStocks) {
-            if (stock.getChangePercent() != null) {
-                if (stock.getChangePercent().compareTo(BigDecimal.ZERO) > 0) {
-                    upCount++;
-                } else if (stock.getChangePercent().compareTo(BigDecimal.ZERO) < 0) {
-                    downCount++;
-                } else {
-                    flatCount++;
-                }
-            }
+        Double avgChange = stockInfoRepository.avgChangePercent();
+        BigDecimal changePercent = (avgChange != null) ? BigDecimal.valueOf(avgChange).setScale(2, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
 
-            if (stock.getTotalMarketValue() != null) {
-                totalAmount = totalAmount.add(stock.getTotalMarketValue());
-            }
-
-            if (stock.getTurnoverRate() != null) {
-                totalTurnoverRate = totalTurnoverRate.add(stock.getTurnoverRate());
-            }
-        }
-
-        // 计算平均换手率
-        BigDecimal avgTurnoverRate = allStocks.isEmpty() ? BigDecimal.ZERO :
-                totalTurnoverRate.divide(BigDecimal.valueOf(allStocks.size()), 4, java.math.RoundingMode.HALF_UP);
-
-        // 计算大盘涨跌幅 (所有股票涨跌幅的加权平均，这里简化为简单平均)
-        BigDecimal totalChangePercent = BigDecimal.ZERO;
-        int validChangeCount = 0;
-        for (StockInfo stock : allStocks) {
-            if (stock.getChangePercent() != null) {
-                totalChangePercent = totalChangePercent.add(stock.getChangePercent());
-                validChangeCount++;
-            }
-        }
-        BigDecimal changePercent = validChangeCount > 0 ?
-                totalChangePercent.divide(BigDecimal.valueOf(validChangeCount), 2, java.math.RoundingMode.HALF_UP) :
-                BigDecimal.ZERO;
-
-        // 找出领涨和领跌股票
-        StockInfo topGainer = allStocks.stream()
-                .filter(s -> s.getChangePercent() != null)
-                .max((a, b) -> a.getChangePercent().compareTo(b.getChangePercent()))
-                .orElse(null);
-
-        StockInfo topLoser = allStocks.stream()
-                .filter(s -> s.getChangePercent() != null)
-                .min((a, b) -> a.getChangePercent().compareTo(b.getChangePercent()))
-                .orElse(null);
+        StockInfo topGainer = stockInfoRepository.findTop1ByChangePercentIsNotNullOrderByChangePercentDesc().orElse(null);
+        StockInfo topLoser = stockInfoRepository.findTop1ByChangePercentIsNotNullOrderByChangePercentAsc().orElse(null);
 
         return MarketStatsDto.builder()
                 .marketStatus(marketStatus)
                 .changePercent(changePercent)
                 .upCount(upCount)
                 .downCount(downCount)
-                .flatCount(flatCount)
+                .flatCount((int) flatCount)
                 .totalAmount(totalAmount)
                 .totalVolume(totalVolume)
-                .totalCount(allStocks.size())
+                .totalCount((int) totalCount)
                 .avgTurnoverRate(avgTurnoverRate)
                 .topGainerCode(topGainer != null ? topGainer.getCode() : null)
                 .topGainerName(topGainer != null ? topGainer.getName() : null)

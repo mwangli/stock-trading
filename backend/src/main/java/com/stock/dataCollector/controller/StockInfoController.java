@@ -38,6 +38,7 @@ public class StockInfoController {
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(required = false) String keywords) {
+        log.info("[StockInfo] 请求到达 GET /api/stockInfo/list current={} pageSize={} keywords={}", current, pageSize, keywords);
 
         // 使用数据库分页查询 (Page 0-based, so subtract 1)
         int pageNumber = Math.max(0, current - 1);
@@ -52,7 +53,7 @@ public class StockInfoController {
         response.put("success", true);
         response.put("current", pageResult.getNumber() + 1);
         response.put("pageSize", pageResult.getSize());
-
+        log.info("[StockInfo] /list 即将返回 total={}", pageResult.getTotalElements());
         return ResponseEntity.ok(response);
     }
 
@@ -102,16 +103,10 @@ public class StockInfoController {
      */
     @GetMapping("/listIncreaseRate")
     public ResponseEntity<Map<String, Object>> listIncreaseRate() {
-        List<StockInfo> allStocks = stockDataService.findAllStocks();
+        log.info("[StockInfo] 请求到达 GET /api/stockInfo/listIncreaseRate");
+        List<StockInfo> top10Stocks = stockDataService.findTop10ByIncreaseRate();
 
-        // 按涨幅排序，取TOP10
-        List<Map<String, Object>> top10 = allStocks.stream()
-            .sorted((a, b) -> {
-                BigDecimal p1 = a.getChangePercent() != null ? a.getChangePercent() : BigDecimal.valueOf(-100.0);
-                BigDecimal p2 = b.getChangePercent() != null ? b.getChangePercent() : BigDecimal.valueOf(-100.0);
-                return p2.compareTo(p1); // 降序
-            })
-            .limit(10)
+        List<Map<String, Object>> top10 = top10Stocks.stream()
             .map(stock -> {
                 Map<String, Object> item = new HashMap<>();
                 item.put("code", stock.getCode());
@@ -124,24 +119,40 @@ public class StockInfoController {
         Map<String, Object> response = new HashMap<>();
         response.put("data", top10);
         response.put("success", true);
-
+        log.info("[StockInfo] /listIncreaseRate 即将返回 size={}", top10.size());
         return ResponseEntity.ok(response);
     }
 
     /**
      * 获取市场统计信息
-     * 从stock_info表中聚合提取市场基本数据
+     * 从stock_info表中聚合提取市场基本数据。
+     * 发生异常时返回兜底数据，确保前端始终能拿到响应，避免请求挂起。
      */
     @GetMapping("/marketStats")
     public ResponseEntity<Map<String, Object>> getMarketStats() {
-        log.info("获取市场统计信息");
-
-        MarketStatsDto stats = stockDataService.getMarketStats();
-
+        log.info("[StockInfo] 请求到达 GET /api/stockInfo/marketStats");
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
-        response.put("data", stats);
-
-        return ResponseEntity.ok(response);
+        try {
+            MarketStatsDto stats = stockDataService.getMarketStats();
+            response.put("data", stats);
+            log.info("[StockInfo] marketStats 即将返回 success=true");
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.warn("[StockInfo] 获取市场统计失败，返回兜底数据: {}", e.getMessage());
+            MarketStatsDto fallback = MarketStatsDto.builder()
+                    .marketStatus("休市")
+                    .changePercent(BigDecimal.ZERO)
+                    .upCount(0)
+                    .downCount(0)
+                    .flatCount(0)
+                    .totalAmount(BigDecimal.ZERO)
+                    .totalVolume(BigDecimal.ZERO)
+                    .totalCount(0)
+                    .avgTurnoverRate(BigDecimal.ZERO)
+                    .build();
+            response.put("data", fallback);
+            return ResponseEntity.ok(response);
+        }
     }
 }

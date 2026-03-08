@@ -3,8 +3,8 @@ package com.stock.job.bootstrap;
 import com.stock.job.entity.JobConfig;
 import com.stock.job.repository.JobConfigRepository;
 import com.stock.job.service.JobSchedulerService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -13,21 +13,39 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executor;
 
+/**
+ * 应用启动时初始化默认定时任务并启动调度器
+ * 在独立线程中执行，不阻塞应用启动
+ */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class JobBootstrap implements ApplicationRunner {
 
     private final JobConfigRepository jobConfigRepository;
     private final JobSchedulerService jobSchedulerService;
+    private final Executor applicationTaskExecutor;
+
+    public JobBootstrap(JobConfigRepository jobConfigRepository,
+                        JobSchedulerService jobSchedulerService,
+                        @Qualifier("applicationTaskExecutor") Executor applicationTaskExecutor) {
+        this.jobConfigRepository = jobConfigRepository;
+        this.jobSchedulerService = jobSchedulerService;
+        this.applicationTaskExecutor = applicationTaskExecutor;
+    }
 
     @Override
+    public void run(ApplicationArguments args) {
+        log.info("========== [任务初始化] 已提交后台执行，不阻塞启动 ==========");
+        applicationTaskExecutor.execute(this::initJobsAsync);
+    }
+
     @Transactional
-    public void run(ApplicationArguments args) throws Exception {
-        log.info("========== [任务初始化] 检查并初始化默认定时任务 ==========");
-        
-        List<JobConfig> defaultJobs = new ArrayList<>();
+    protected void initJobsAsync() {
+        try {
+            log.info("========== [任务初始化] 检查并初始化默认定时任务 ==========");
+            List<JobConfig> defaultJobs = new ArrayList<>();
         
         // 1. 股票列表同步 (每周日凌晨1点)
         defaultJobs.add(new JobConfig()
@@ -121,5 +139,9 @@ public class JobBootstrap implements ApplicationRunner {
         
         // 启动所有任务
         jobSchedulerService.startAllActiveJobs();
+        log.info("========== [任务初始化] 完成 ==========");
+        } catch (Exception e) {
+            log.error("[任务初始化] 执行失败", e);
+        }
     }
 }

@@ -53,6 +53,20 @@ public class StrategyStateManager {
     }
 
     /**
+     * 设置整体策略是否启用（选股/策略总开关）
+     *
+     * @param enabled true 启用，false 禁用
+     */
+    public void setEnabled(boolean enabled) {
+        StrategyStateDto state = getCurrentState();
+        state.setEnabled(enabled);
+        state.setLastSwitchTime(LocalDateTime.now());
+        state.setLastSwitchReason(enabled ? "用户启用" : "用户禁用");
+        redisTemplate.opsForValue().set(REDIS_STATE_KEY, state);
+        log.info("策略总开关已{}", enabled ? "启用" : "禁用");
+    }
+
+    /**
      * 更新策略模式
      */
     public void updateMode(StrategyMode newMode, String reason) {
