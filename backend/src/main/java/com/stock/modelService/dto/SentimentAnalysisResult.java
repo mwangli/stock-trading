@@ -19,6 +19,7 @@ public class SentimentAnalysisResult {
     private String label;
     private double score;
     private double confidence;
+    private double normalizedScore; // 0-100分归一化得分
     private Map<String, Double> probabilities;
     private String text;
 }

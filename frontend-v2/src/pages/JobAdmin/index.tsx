@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Card, Table, Tag, Button, Switch, Modal, Form, Input, Space, Typography, Tooltip, message } from 'antd';
 import { ScheduleOutlined, PlayCircleOutlined, EditOutlined, ClockCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import axios from 'axios';
-
 const { Title, Text } = Typography;
 
 interface Job {

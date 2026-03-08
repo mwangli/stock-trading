@@ -6,8 +6,10 @@ import {
   ReloadOutlined, 
   HistoryOutlined, 
   ExperimentOutlined,
-  CheckCircleOutlined,
-  SyncOutlined
+CheckCircleOutlined,
+  SyncOutlined,
+  CloudServerOutlined,
+  CodeOutlined
 } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
@@ -40,6 +42,32 @@ const Strategies: React.FC = () => {
         { label: t('models.finbert.sentiment'), value: 'Bullish', color: '#00e396' },
         { label: t('models.finbert.confidence'), value: '92.1%', color: '#00e396' },
         { label: t('models.finbert.sources'), value: '14', color: '#fff' }
+      ]
+    },
+    {
+      id: 'sentiment-ai',
+      title: t('models.sentiment.title'),
+      desc: t('models.sentiment.desc'),
+      status: 'online',
+      color: '#00b3f0',
+      icon: <CloudServerOutlined />,
+      stats: [
+        { label: t('models.sentiment.score'), value: '0.85', color: '#00e396' },
+        { label: t('models.sentiment.confidence'), value: '94.2%', color: '#00e396' },
+        { label: t('models.sentiment.articles'), value: '1,240', color: '#fff' }
+      ]
+    },
+    {
+      id: 'sentiment-rules',
+      title: t('models.rules.title'),
+      desc: t('models.rules.desc'),
+      status: 'offline',
+      color: '#a3a3a3',
+      icon: <CodeOutlined />,
+      stats: [
+        { label: t('models.rules.score'), value: '-', color: '#a3a3a3' },
+        { label: t('models.rules.matches'), value: '-', color: '#a3a3a3' },
+        { label: t('models.rules.coverage'), value: '-', color: '#a3a3a3' }
       ]
     }
   ];

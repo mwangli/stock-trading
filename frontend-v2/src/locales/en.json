@@ -134,6 +134,20 @@
       "backtest": "Backtest",
       "logs": "View Logs",
       "parameters": "Parameters"
+    },
+    "sentiment": {
+      "title": "Sentiment Analysis (AI)",
+      "desc": "Real-time sentiment analysis using BERT model. Extracts positive/negative signals from financial news.",
+      "score": "Sentiment Score",
+      "confidence": "Confidence",
+      "articles": "Processed Articles"
+    },
+    "rules": {
+      "title": "Sentiment Rules (Fallback)",
+      "desc": "Rule-based sentiment analysis as a fallback when AI model is unavailable. Uses keyword matching.",
+      "score": "Rule Score",
+      "matches": "Keyword Matches",
+      "coverage": "Coverage"
     }
   },
   "strategyAnalysis": {
@@ -265,5 +279,23 @@
       "profit": "Profit",
       "returnRate": "Return Rate"
     }
-  }
-  }
+  },
+    "logs": {
+      "title": "Smart System Terminal LOG",
+      "live": "LIVE",
+
+"offline": "OFFLINE",
+"autoScroll": "Auto-scroll",
+"clear": "Clear",
+"waiting": "Waiting for system logs...",
+"connected": ">>> Connected to log stream <<<",
+"reconnecting": ">>> Connection closed. Reconnecting in 3s... <<<"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "markAllRead": "Mark all as read",
+      "clearAll": "Clear all",
+      "empty": "No new notifications",
+      "viewAll": "View all"
+    }
+}
