@@ -5,12 +5,14 @@ HELP.md
 
 # Maven
 target/
+frontend/target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 
 # IDE
 .idea/
+.vscode/
 *.iws
 *.iml
 *.ipr
@@ -21,7 +23,12 @@ target/
 .settings
 .springBeans
 .sts4-cache
-.vscode/
+
+# Docs 临时任务计划（不纳入版本控制）
+docs/plans/
+
+# 临时文件与中间脚本
+.tmp/
 
 # NetBeans
 /nbproject/private/

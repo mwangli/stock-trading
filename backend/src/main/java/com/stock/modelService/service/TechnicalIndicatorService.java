@@ -1,6 +1,6 @@
 package com.stock.modelService.service;
 
-import com.stock.dataCollector.entity.StockPrice;
+import com.stock.dataCollector.domain.entity.StockPrice;
 import org.springframework.stereotype.Service;
 import org.ta4j.core.BarSeries;
 import org.ta4j.core.BaseBarSeries;

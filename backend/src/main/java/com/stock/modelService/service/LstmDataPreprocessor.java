@@ -1,6 +1,6 @@
 package com.stock.modelService.service;
 
-import com.stock.dataCollector.entity.StockPrice;
+import com.stock.dataCollector.domain.entity.StockPrice;
 import com.stock.modelService.config.LstmTrainingConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

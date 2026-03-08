@@ -4,7 +4,7 @@
     <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
     <!-- Custom WebSocket Appender -->
-    <appender name="WEBSOCKET" class="com.stock.logging.WebSocketAppender">
+    <appender name="WEBSOCKET" class="com.stock.tradingExecutor.logging.WebSocketAppender">
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
             <level>INFO</level> <!-- Only send INFO and above to WebSocket -->
         </filter>

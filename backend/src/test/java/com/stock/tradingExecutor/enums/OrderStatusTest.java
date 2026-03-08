@@ -1,5 +1,6 @@
 package com.stock.tradingExecutor.enums;
 
+import com.stock.tradingExecutor.domain.entity.OrderStatus;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

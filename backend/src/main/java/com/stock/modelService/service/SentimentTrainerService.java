@@ -11,10 +11,10 @@ import ai.djl.huggingface.translator.TextClassificationTranslator;
 import ai.djl.translate.TranslateException;
 import ai.djl.translate.Translator;
 import com.stock.modelService.config.SentimentTrainingConfig;
-import com.stock.modelService.dto.SentimentAnalysisResult;
-import com.stock.modelService.dto.SentimentTrainingRequest;
-import com.stock.modelService.dto.SentimentTrainingResponse;
-import com.stock.modelService.dto.TrainingSample;
+import com.stock.modelService.domain.vo.SentimentAnalysisResult;
+import com.stock.modelService.domain.param.SentimentTrainingRequest;
+import com.stock.modelService.domain.vo.SentimentTrainingResponse;
+import com.stock.modelService.domain.dto.TrainingSample;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Arrays;
@@ -65,6 +66,7 @@ public class SentimentTrainerService {
 
     private ZooModel<String, Classifications> loadedModel = null;
     private boolean isModelLoaded = false;
+    private LocalDateTime lastLoadedTime = null;
     private final Map<String, TrainingStatus> trainingStatusMap = new ConcurrentHashMap<>();
 
     /**
@@ -215,6 +217,7 @@ public class SentimentTrainerService {
 
             this.loadedModel = criteria.loadModel();
             this.isModelLoaded = true;
+            this.lastLoadedTime = LocalDateTime.now();
             log.info("情感分析模型加载成功: {}", modelId);
             return true;
 
@@ -349,6 +352,53 @@ public class SentimentTrainerService {
             isModelLoaded = false;
             log.info("模型已卸载");
         }
+    }
+
+    /**
+     * 返回上次模型加载成功的时间
+     */
+    public LocalDateTime getLastLoadedTime() {
+        return lastLoadedTime;
+    }
+
+    /**
+     * 情感分析并返回 API 所需的详细 Map（含 label、score、confidence、probabilities、text、modelLoaded）
+     * 模型未加载或异常时自动降级为规则分析并设置 modelLoaded=false
+     */
+    public Map<String, Object> analyzeSentimentWithDetails(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return buildDetailsMap(
+                    SentimentAnalysisResult.builder()
+                            .label("neutral")
+                            .score(0.0)
+                            .confidence(0.5)
+                            .probabilities(Map.of("positive", 0.33, "neutral", 0.34, "negative", 0.33))
+                            .text(text != null ? text : "")
+                            .build(),
+                    false
+            );
+        }
+        if (!isModelLoaded) {
+            loadModel();
+        }
+        try {
+            SentimentAnalysisResult result = analyzeSentiment(text);
+            return buildDetailsMap(result, isModelLoaded);
+        } catch (Exception e) {
+            log.error("情感分析失败，降级为规则分析", e);
+            return buildDetailsMap(analyzeWithRules(text), false);
+        }
+    }
+
+    private Map<String, Object> buildDetailsMap(SentimentAnalysisResult result, boolean modelLoaded) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("label", result.getLabel());
+        response.put("score", result.getScore());
+        response.put("confidence", result.getConfidence());
+        response.put("probabilities", result.getProbabilities() != null ? result.getProbabilities() : Map.of());
+        response.put("text", result.getText() != null ? result.getText() : "");
+        response.put("modelLoaded", modelLoaded);
+        return response;
     }
 
     @lombok.Data

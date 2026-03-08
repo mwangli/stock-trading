@@ -24,7 +24,7 @@ i18n
     },
     lng: 'zh', // default language
     fallbackLng: 'en',
-    debug: true,
+    debug: import.meta.env.DEV, // 仅开发环境输出调试日志
 
     interpolation: {
       escapeValue: false, // not needed for react as it escapes by default

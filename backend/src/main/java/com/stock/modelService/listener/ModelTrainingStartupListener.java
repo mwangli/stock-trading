@@ -1,10 +1,10 @@
 package com.stock.modelService.listener;
 
-import com.stock.dataCollector.repository.MonthlyPriceRepository;
-import com.stock.dataCollector.repository.StockInfoRepository;
-import com.stock.dataCollector.repository.WeeklyPriceRepository;
+import com.stock.dataCollector.persistence.MonthlyPriceRepository;
+import com.stock.dataCollector.persistence.StockInfoRepository;
+import com.stock.dataCollector.persistence.WeeklyPriceRepository;
 import com.stock.dataCollector.service.StockDataService;
-import com.stock.modelService.repository.LstmModelRepository;
+import com.stock.modelService.persistence.LstmModelRepository;
 import com.stock.modelService.service.LstmTrainerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

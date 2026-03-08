@@ -1,16 +1,16 @@
 package com.stock.dataCollector.service;
 
 import com.alibaba.fastjson2.JSONArray;
-import com.stock.dataCollector.client.SecuritiesClient;
-import com.stock.dataCollector.entity.StockInfo;
-import com.stock.dataCollector.entity.StockPrice;
-import com.stock.dataCollector.entity.StockPriceWeekly;
-import com.stock.dataCollector.entity.StockPriceMonthly;
-import com.stock.dataCollector.repository.PriceRepository;
-import com.stock.dataCollector.repository.StockInfoRepository;
-import com.stock.dataCollector.repository.WeeklyPriceRepository;
-import com.stock.dataCollector.repository.MonthlyPriceRepository;
-import com.stock.dataCollector.util.StockDataParser;
+import com.stock.dataCollector.domain.entity.StockInfo;
+import com.stock.dataCollector.domain.entity.StockPrice;
+import com.stock.dataCollector.domain.entity.StockPriceWeekly;
+import com.stock.dataCollector.domain.entity.StockPriceMonthly;
+import com.stock.dataCollector.persistence.MonthlyPriceRepository;
+import com.stock.dataCollector.persistence.PriceRepository;
+import com.stock.dataCollector.persistence.StockInfoRepository;
+import com.stock.dataCollector.persistence.WeeklyPriceRepository;
+import com.stock.dataCollector.support.SecuritiesClient;
+import com.stock.dataCollector.support.StockDataParser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -34,7 +34,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import com.stock.dataCollector.dto.MarketStatsDto;
+import com.stock.dataCollector.domain.vo.MarketStatsDto;
 
 /**
  * 股票数据服务
