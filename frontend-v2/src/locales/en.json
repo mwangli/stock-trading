@@ -1,5 +1,9 @@
 {
   "common": {
+    "timeJustNow": "Just now",
+    "timeMinutesAgo": "{{n}} min ago",
+    "timeHoursAgo": "{{n}} hr ago",
+    "timeDaysAgo": "{{n}} days ago",
     "welcomeBack": "Welcome Back",
     "login": "Login",
     "logout": "Logout",
@@ -16,7 +20,7 @@
   "layout": {
     "dashboard": "Dashboard",
     "market": "Market Overview",
-    "strategies": "Quant Models",
+    "models": "Quant Models",
     "analysis": "Strategy Analysis",
     "jobs": "Scheduled Jobs",
     "logs": "Run Logs",
@@ -128,7 +132,44 @@
       "loss": "Validation Loss",
       "features": "Input Features",
       "epochs": "Training Epochs",
-      "status": "Model Status"
+      "status": "Model Status",
+      "listTitle": "Model List",
+      "trainLoss": "Train Loss",
+      "valLoss": "Val Loss",
+      "effectHint": "New trainings show Loss; older data may not",
+      "listEmpty": "No saved LSTM models yet",
+      "listEmptyHint": "Trained models will appear here",
+      "listError": "Failed to load. Check backend.",
+      "refreshSuccess": "Refreshed"
+    },
+    "effect": {
+      "title": "Training effect",
+      "avgScore": "Avg score (page)",
+      "withMetrics": "With score"
+    },
+    "summary": {
+      "lstmCount": "LSTM models",
+      "sentimentStatus": "Sentiment service",
+      "sentimentLoaded": "Loaded",
+      "sentimentNotLoaded": "Not loaded",
+      "sentimentOnline": "ONLINE",
+      "sentimentOffline": "OFFLINE"
+    },
+    "list": {
+      "code": "Code",
+      "searchPlaceholder": "Filter by code",
+      "sortCreatedAt": "Created",
+      "sortEpoch": "Epochs",
+      "sortValLoss": "Val Loss",
+      "profitAmount": "Profit",
+      "score": "Score",
+      "name": "Name",
+      "version": "Version",
+      "createdAt": "Created",
+      "status": "Status",
+      "statusDeployed": "Deployed",
+      "action": "Action",
+      "total": "{{count}} items"
     },
     "finbert": {
       "title": "FinBert Sentiment",
@@ -143,14 +184,36 @@
       "retrain": "Retrain",
       "backtest": "Backtest",
       "logs": "View Logs",
+      "result": "View Result",
       "parameters": "Parameters"
+    },
+    "resultModal": {
+      "title": "Query Result",
+      "metric": "Metric",
+      "value": "Value",
+      "profitAmount": "Profit",
+      "score": "Score",
+      "noData": "No profit or score data for this model."
     },
     "sentiment": {
       "title": "Sentiment Analysis (AI)",
       "desc": "Real-time sentiment analysis using BERT model. Extracts positive/negative signals from financial news.",
       "score": "Sentiment Score",
       "confidence": "Confidence",
-      "articles": "Processed Articles"
+      "articles": "Processed Articles",
+      "testButton": "Sentiment Test",
+      "testModalTitle": "Sentiment Analysis Test",
+      "testModalPlaceholder": "Enter news or text",
+      "testModalSubmit": "Predict",
+      "testModalResult": "Result",
+      "testModalLabel": "Sentiment",
+      "testModalScore": "Score",
+      "testModalConfidence": "Confidence",
+      "testModalExplanation": "Analysis: sentiment is",
+      "testModalFallback": "using rule-based fallback",
+      "labelPositive": "Positive",
+      "labelNeutral": "Neutral",
+      "labelNegative": "Negative"
     },
     "rules": {
       "title": "Sentiment Rules (Fallback)",
@@ -181,6 +244,41 @@
       "winRate": "Win Rate",
       "pnl": "P&L",
       "totalTrades": "Total Trades"
+    },
+    "params": {
+      "title": "Strategy Parameters",
+      "save": "Save",
+      "cancel": "Cancel",
+      "saveSuccess": "Parameters saved. Will be used for trading.",
+      "saveError": "Save failed. Please retry.",
+      "doubleFactor": {
+        "lstmWeight": "LSTM Factor Weight",
+        "sentimentWeight": "Sentiment Factor Weight",
+        "topN": "Top N Stocks",
+        "minScore": "Min Composite Score"
+      },
+      "tplus1": {
+        "highReturnThreshold": "High Return Sell Threshold (%)",
+        "normalReturnThreshold": "Normal Return Threshold (%)",
+        "lowReturnThreshold": "Low Return Threshold (%)",
+        "lossReturnThreshold": "Loss Sell Threshold (%)"
+      },
+      "stopLoss": {
+        "trailingStopWeight": "Trailing Stop Weight",
+        "trailingStopTolerance": "Drawdown Tolerance"
+      },
+      "rsi": {
+        "rsiWeight": "RSI Weight",
+        "rsiOverboughtThreshold": "RSI Overbought Threshold"
+      },
+      "volume": {
+        "volumeWeight": "Volume Weight",
+        "volumeShrinkThreshold": "Volume Shrink Threshold"
+      },
+      "bollinger": {
+        "bollingerWeight": "Bollinger Weight",
+        "bollingerBreakoutThreshold": "Bollinger Breakout Threshold"
+      }
     }
   },
     "jobs": {

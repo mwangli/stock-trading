@@ -20,7 +20,7 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="market" element={<Market />} />
-          <Route path="strategies" element={<Strategies />} />
+          <Route path="models" element={<Strategies />} />
           <Route path="analysis" element={<Analysis />} />
           <Route path="transactions" element={<Transactions />} />
           <Route path="jobs" element={<JobAdmin />} />

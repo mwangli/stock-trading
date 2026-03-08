@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const request = axios.create({
   baseURL: '/api', // Vite proxy configured in vite.config.ts
-  timeout: 10000,
+  timeout: 30000, // 模型列表等查询可能较慢，适当放宽
 });
 
 // Response interceptor

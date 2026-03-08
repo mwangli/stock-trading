@@ -1,5 +1,9 @@
 {
   "common": {
+    "timeJustNow": "刚刚",
+    "timeMinutesAgo": "{{n}} 分钟前",
+    "timeHoursAgo": "{{n}} 小时前",
+    "timeDaysAgo": "{{n}} 天前",
     "welcomeBack": "欢迎归来",
     "login": "系统接入",
     "logout": "退出登录",
@@ -16,7 +20,7 @@
   "layout": {
     "dashboard": "数据总览",
     "market": "市场行情",
-    "strategies": "量化模型",
+    "models": "量化模型",
     "analysis": "策略分析",
     "jobs": "定时任务",
     "logs": "运行日志",
@@ -128,7 +132,44 @@
       "loss": "验证集 Loss",
       "features": "输入特征",
       "epochs": "训练轮数",
-      "status": "模型状态"
+      "status": "模型状态",
+      "listTitle": "模型列表",
+      "trainLoss": "训练 Loss",
+      "valLoss": "验证 Loss",
+      "effectHint": "新训练模型会显示 Loss，旧数据无",
+      "listEmpty": "暂无已保存的 LSTM 模型",
+      "listEmptyHint": "训练 LSTM 模型后此处将显示",
+      "listError": "加载失败，请检查后端服务",
+      "refreshSuccess": "已刷新"
+    },
+    "effect": {
+      "title": "训练效果",
+      "avgScore": "本页平均分数",
+      "withMetrics": "含分数"
+    },
+    "summary": {
+      "lstmCount": "已部署 LSTM 模型",
+      "sentimentStatus": "情感分析服务",
+      "sentimentLoaded": "已加载",
+      "sentimentNotLoaded": "未加载",
+      "sentimentOnline": "ONLINE",
+      "sentimentOffline": "OFFLINE"
+    },
+    "list": {
+      "code": "股票代码",
+      "searchPlaceholder": "按股票代码筛选",
+      "sortCreatedAt": "创建时间",
+      "sortEpoch": "训练轮数",
+      "sortValLoss": "验证 Loss",
+      "profitAmount": "收益金额",
+      "score": "分数",
+      "name": "名称",
+      "version": "版本",
+      "createdAt": "创建时间",
+      "status": "状态",
+      "statusDeployed": "已部署",
+      "action": "操作",
+      "total": "共 {{count}} 条"
     },
     "finbert": {
       "title": "FinBert 情感分析",
@@ -143,14 +184,36 @@
       "retrain": "重新训练",
       "backtest": "回测模型",
       "logs": "查看日志",
+      "result": "查询结果",
       "parameters": "调整参数"
+    },
+    "resultModal": {
+      "title": "查询结果",
+      "metric": "指标",
+      "value": "数值",
+      "profitAmount": "收益金额",
+      "score": "分数",
+      "noData": "该模型暂无收益与分数数据"
     },
     "sentiment": {
       "title": "情感分析 (AI)",
       "desc": "基于 BERT 模型的实时情感分析。从财经新闻中提取看多/看空信号。",
       "score": "情感得分",
       "confidence": "置信度",
-      "articles": "处理文章数"
+      "articles": "处理文章数",
+      "testButton": "情感分析测试",
+      "testModalTitle": "情感分析测试",
+      "testModalPlaceholder": "输入新闻或文本内容",
+      "testModalSubmit": "预测",
+      "testModalResult": "预测结果",
+      "testModalLabel": "情感倾向",
+      "testModalScore": "综合得分",
+      "testModalConfidence": "置信度",
+      "testModalExplanation": "分析说明：该文本情感倾向为",
+      "testModalFallback": "当前为规则兜底",
+      "labelPositive": "正面",
+      "labelNeutral": "中性",
+      "labelNegative": "负面"
     },
     "rules": {
       "title": "情感规则 (兜底)",
@@ -181,6 +244,41 @@
       "winRate": "胜率",
       "pnl": "盈亏",
       "totalTrades": "交易次数"
+    },
+    "params": {
+      "title": "策略参数配置",
+      "save": "保存",
+      "cancel": "取消",
+      "saveSuccess": "参数已保存，将用于后续交易",
+      "saveError": "保存失败，请重试",
+      "doubleFactor": {
+        "lstmWeight": "LSTM 因子权重",
+        "sentimentWeight": "情感因子权重",
+        "topN": "选股数量",
+        "minScore": "最低综合得分阈值"
+      },
+      "tplus1": {
+        "highReturnThreshold": "高收益卖出阈值 (%)",
+        "normalReturnThreshold": "正常卖出阈值 (%)",
+        "lowReturnThreshold": "低收益卖出阈值 (%)",
+        "lossReturnThreshold": "亏损卖出阈值 (%)"
+      },
+      "stopLoss": {
+        "trailingStopWeight": "移动止损权重",
+        "trailingStopTolerance": "回撤容忍度"
+      },
+      "rsi": {
+        "rsiWeight": "RSI 权重",
+        "rsiOverboughtThreshold": "RSI 超买阈值"
+      },
+      "volume": {
+        "volumeWeight": "成交量权重",
+        "volumeShrinkThreshold": "成交量萎缩阈值"
+      },
+      "bollinger": {
+        "bollingerWeight": "布林带权重",
+        "bollingerBreakoutThreshold": "布林带突破阈值"
+      }
     }
   },
     "jobs": {
