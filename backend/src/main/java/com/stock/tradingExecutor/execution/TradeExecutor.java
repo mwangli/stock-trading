@@ -11,9 +11,10 @@ import com.stock.tradingExecutor.enums.OrderStatus;
 import com.stock.tradingExecutor.fee.FeeCalculator;
 import com.stock.tradingExecutor.risk.RiskController;
 import com.stock.tradingExecutor.time.TradingTimeChecker;
-import com.stock.service.NotificationService;
+import com.stock.event.OrderNotificationEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -42,7 +43,7 @@ public class TradeExecutor {
     private final MonitorConfig monitorConfig;
     private final PollerConfig pollerConfig;
     
-    private final NotificationService notificationService;
+    private final ApplicationEventPublisher eventPublisher;
     /**
      * 并行交易线程池
      */
@@ -174,8 +175,8 @@ public class TradeExecutor {
                 result.setMessage("买入失败: " + finalStatus.getName());
             }
             
-            // 通知
-            notificationService.notifyOrder(result, "BUY");
+            // 发布通知事件
+            eventPublisher.publishEvent(new OrderNotificationEvent(this, result, "BUY"));
             return result;
 
             
@@ -317,8 +318,8 @@ public class TradeExecutor {
                 result.setMessage("卖出失败: " + finalStatus.getName());
             }
             
-            // 通知
-            notificationService.notifyOrder(result, "SELL");
+            // 发布通知事件
+            eventPublisher.publishEvent(new OrderNotificationEvent(this, result, "SELL"));
             return result;
 
             

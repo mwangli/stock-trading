@@ -94,6 +94,8 @@
       "volatility": "Volatility Index",
       "volume": "24h Volume",
       "topGainer": "Top Gainer",
+      "upDown": "Up / Down",
+      "totalVolume": "Total Volume",
       "open": "OPEN"
     },
     "watchlist": {
@@ -106,6 +108,12 @@
       "change": "Change",
       "volume": "Volume",
       "action": "Action"
+    },
+    "kline": {
+      "open": "Open",
+      "close": "Close",
+      "lowest": "Low",
+      "highest": "High"
     }
   },
   "models": {
@@ -296,6 +304,7 @@
       "markAllRead": "Mark all as read",
       "clearAll": "Clear all",
       "empty": "No new notifications",
-      "viewAll": "View all"
+      "viewAll": "View all",
+      "loadMore": "Scroll to load more..."
     }
 }

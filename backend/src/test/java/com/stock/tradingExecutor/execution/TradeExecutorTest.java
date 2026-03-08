@@ -1,5 +1,6 @@
 package com.stock.tradingExecutor.execution;
 
+import com.stock.tradingExecutor.broker.BrokerAdapter;
 import com.stock.tradingExecutor.broker.MockBrokerAdapter;
 import com.stock.tradingExecutor.config.MonitorConfig;
 import com.stock.tradingExecutor.config.PollerConfig;
@@ -9,13 +10,13 @@ import com.stock.tradingExecutor.enums.OrderStatus;
 import com.stock.tradingExecutor.fee.FeeCalculator;
 import com.stock.tradingExecutor.risk.RiskController;
 import com.stock.tradingExecutor.time.TradingTimeChecker;
-import com.stock.service.NotificationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
@@ -39,7 +40,7 @@ class TradeExecutorTest {
     private TradingTimeChecker tradingTimeChecker;
 
     @Mock
-    private NotificationService notificationService;
+    private ApplicationEventPublisher eventPublisher;
     
     @BeforeEach
     void setUp() {
@@ -58,16 +59,19 @@ class TradeExecutorTest {
         priceMonitor = new PriceMonitor(mockBrokerAdapter, tradingTimeChecker, monitorConfig);
         orderPoller = new OrderPoller(mockBrokerAdapter, pollerConfig);
         
+        // 使用 BrokerAdapter 接口和 ApplicationEventPublisher
+        BrokerAdapter brokerAdapter = mockBrokerAdapter;
+        
         tradeExecutor = new TradeExecutor(
                 riskController,
-                mockBrokerAdapter,
+                brokerAdapter,
                 priceMonitor,
                 orderPoller,
                 feeCalculator,
                 tradingTimeChecker,
                 monitorConfig,
                 pollerConfig,
-                notificationService
+                eventPublisher
         );
     }
     

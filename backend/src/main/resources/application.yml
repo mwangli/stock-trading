@@ -6,6 +6,11 @@ spring:
     name: stock-trading
   main:
     allow-bean-definition-overriding: true
+  devtools:
+    restart:
+      enabled: true
+    livereload:
+      enabled: true
   # MySQL配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -87,7 +92,7 @@ strategy:
 logging:
   level:
     root: INFO
-    com.stock: DEBUG
+    com.stock: INFO
     ai.djl: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

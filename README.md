@@ -7,8 +7,8 @@
 这是一个完整的 AI 股票交易系统，采用前后端分离架构设计：
 
 - **后端服务** (Java Spring Boot 3.2): 提供 RESTful API，业务逻辑处理，AI 模型推理
-- **前端应用** (React + Ant Design Pro 5): 可视化 Dashboard，数据展示，交易操作
-- **数据存储**: MySQL (业务数据) + MongoDB (文档数据) + Redis (缓存)
+- **前端应用** (React 19 + Vite 7 + Ant Design 6): 可视化 Dashboard，数据展示，交易操作
+- **数据存储**: MySQL (业务数据) + MongoDB (文档数据/模型存储) + Redis (缓存)
 
 ### 核心特性
 
@@ -18,6 +18,8 @@
 - **T+1 交易**: 短线交易策略，当日买入次日卖出
 - **多指标决策**: 移动止损、RSI 超买、成交量背离、布林带突破
 - **定时任务调度**: 每日自动更新数据、预测和分析
+- **动态任务管理**: 支持运行时调整任务参数
+- **WebSocket 实时推送**: 日志和通知实时推送
 - **Docker 一键部署**: 使用 Docker Compose 快速部署
 - **CI/CD 自动化**: GitHub Actions 自动构建和部署
 - **无文件 I/O 模型管理**: 模型直接序列化为内存字节流 (`byte[] params`) 并通过 MongoDB Binary Storage 持久化，推理时通过 MongoDB 标识符（`mongo:ID`）动态加载，完全消除本地磁盘文件依赖。
@@ -37,7 +39,8 @@
 | 缓存 | Redis | 7.x |
 | HTTP | OkHttp | 4.12 |
 | 工具 | Hutool / FastJSON2 | 5.8 / 2.0 |
-| AI 框架 | DJL (Deep Java Library) | 0.36 |
+| AI 框架 | DJL (Deep Java Library) | 0.28.0 |
+| 技术分析 | TA4J | 0.15 |
 
 
 
@@ -59,70 +62,93 @@
 stock-trading/
 ├── backend/                        # Java Spring Boot 后端服务
 │   ├── src/main/java/com/stock/
+│   │   ├── Application.java       # 主启动类
 │   │   ├── config/                # 全局配置
-│   │   ├── dataCollector/               # 数据采集模块
-│   │   │   ├── controller/        # 前端路由控制器
-│   │   │   ├── collector/         # 数据采集器
+│   │   │   ├── SchedulingConfig.java    # 定时任务配置
+│   │   │   └── WebSocketConfig.java      # WebSocket 配置
+│   │   ├── dataCollector/         # 数据采集模块
 │   │   │   ├── client/            # API 客户端
+│   │   │   ├── controller/        # 控制器
 │   │   │   ├── entity/            # 数据实体
+│   │   │   ├── listener/          # 事件监听
 │   │   │   ├── repository/        # 数据访问层
-│   │   │   └── scheduled/         # 定时任务
-│   │   ├── modelService/           # AI 模型模块
-│   │   │   ├── controller/        # AI 模型相关控制器
+│   │   │   ├── scheduled/         # 定时任务
+│   │   │   ├── service/           # 服务层
+│   │   │   └── util/              # 工具类
+│   │   ├── modelService/          # AI 模型模块
+│   │   │   ├── config/            # 配置
+│   │   │   ├── controller/        # 控制器
+│   │   │   ├── dataset/           # 数据集处理
+│   │   │   ├── dto/               # 数据传输对象
+│   │   │   ├── entity/            # 实体
+│   │   │   ├── inference/         # 模型推理
+│   │   │   ├── listener/          # 事件监听
 │   │   │   ├── model/             # LSTM 模型
-│   │   │   └── inference/         # 模型推理
-│   │   ├── strategy/              # 策略模块
+│   │   │   ├── repository/        # 数据访问层
+│   │   │   └── service/           # 服务层
+│   │   ├── strategyAnalysis/     # 策略分析模块
+│   │   │   ├── config/            # 配置
+│   │   │   ├── controller/        # 控制器
 │   │   │   ├── decision/          # 决策引擎
-│   │   │   ├── selector/          # 股票筛选
+│   │   │   ├── dto/               # 数据传输对象
+│   │   │   ├── entity/            # 实体
+│   │   │   ├── enums/             # 枚举定义
 │   │   │   ├── intraday/          # 日内交易策略 (T+1 卖出)
-│   │   │   └── enums/             # 枚举定义
-│   │   ├── executor/              # 执行模块
+│   │   │   ├── optimizer/         # 策略优化
+│   │   │   ├── repository/        # 数据访问层
+│   │   │   ├── scheduled/         # 定时任务
+│   │   │   ├── selector/          # 股票筛选
+│   │   │   └── switcher/          # 策略开关
+│   │   ├── tradingExecutor/      # 交易执行模块
+│   │   │   ├── broker/            # 券商接口
+│   │   │   ├── config/            # 配置
+│   │   │   ├── controller/        # 控制器
+│   │   │   ├── entity/            # 实体
+│   │   │   ├── enums/             # 枚举定义
 │   │   │   ├── execution/         # 交易执行
+│   │   │   ├── fee/               # 手续费计算
 │   │   │   ├── risk/              # 风控管理
-│   │   │   └── enums/             # 订单状态
-│   │   └── (根包)                 # 主启动类和全局配置
+│   │   │   └── time/              # 时间控制
+│   │   ├── job/                   # 动态任务模块
+│   │   │   ├── bootstrap/         # 任务引导
+│   │ controller/        # 控制器
+│   │   │   │   ├──   ├── entity/            # 实体
+│   │   │   ├── repository/        # 数据访问层
+│   │   │   └── service/           # 服务层
+│   │   ├── event/                 # 事件处理
+│   │   ├── handler/               # WebSocket 处理器
+│   │   ├── logging/               # 日志模块
+│   │   └── service/               # 通用服务
 │   ├── src/main/resources/
-│   │   ├── static/                # 前端静态文件 (构建后生成)
-│   │   └── application.yml        # 应用配置
-│   ├── pom.xml                    # Maven 配置
-│   └── Dockerfile                 # Docker 构建配置
+│   │   ├── application.yml       # 应用配置
+│   │   └── logback-spring.xml    # 日志配置
+│   ├── pom.xml                   # Maven 配置
+│   └── Dockerfile                # Docker 构建配置
 │
-├── frontend/                      # React 前端应用
+├── frontend-v2/                   # React 前端应用
 │   ├── src/
-│   │   ├── pages/                 # 页面组件
-│   │   ├── components/            # 通用组件
-│   │   ├── services/              # API 服务
-│   │   ├── models/                # 数据模型
-│   │   └── utils/                 # 工具函数
-│   ├── config/                    # 构建配置
-│   ├── package.json               # Node 依赖
-│   └── tsconfig.json              # TypeScript 配置
+│   │   ├── App.tsx               # 主应用组件
+│   │   ├── main.tsx              # 入口文件
+│   │   ├── components/           # 通用组件
+│   │   ├── layouts/              # 布局组件
+│   │   ├── locales/              # 国际化资源
+│   │   ├── pages/                # 页面组件
+│   │   ├── store/                # 状态管理
+│   │   └── utils/                # 工具函数
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── tailwind.config.js
 │
-├── documents/                     # 项目文档
-│   ├── README.md                  # 文档中心索引
-│   ├── requirements/              # 需求文档
-│   │   ├── 00-系统整体需求.md
-│   │   ├── 01-数据采集需求.md
-│   │   ├── 02-AI 模型需求.md
-│   │   ├── 03-交易策略需求.md     # 包含选股和 T+1 卖出策略
-│   │   └── 04-交易执行需求.md
-│   ├── design/                    # 设计文档
-│   │   ├── 00-系统架构设计.md
-│   │   ├── 01-数据采集设计.md
-│   │   ├── 02-AI 模型设计.md
-│   │   ├── 03-交易策略设计.md     # 包含双策略详细设计
-│   │   └── 04-交易执行设计.md
-│   └── test/                      # 测试文档
-│       ├── 00-系统测试计划.md
-│       ├── 01-数据采集测试.md
-│       ├── 02-AI 模型测试.md
-│       ├── 03-交易策略测试.md     # 包含选股和 T+1 测试用例
-│       └── 04-交易执行测试.md
+├── docs/                          # 项目文档
+│   ├── requirement/              # 需求文档
+│   ├── design/                   # 设计文档
+│   └── plans/                    # 实施计划
 │
-├── docker-compose.yml             # Docker 编排配置
-├── pom.xml                        # 父项目配置
-├── AGENTS.md                      # 项目开发指南
-└── README.md                      # 项目说明
+├── docker-compose.yml            # Docker 编排配置
+├── pom.xml                       # 父项目配置
+├── AGENTS.md                     # 项目开发指南
+└── README.md                     # 项目说明
 ```
 
 ---
@@ -160,15 +186,15 @@ mvn spring-boot:run
 #### 3. 启动前端 (开发模式)
 
 ```bash
-cd frontend
+cd frontend-v2
 
 # 安装依赖
 npm install
 
 # 启动开发服务器
-npm start
+npm run dev
 
-# 访问：http://localhost:8000
+# 访问：http://localhost:5173
 ```
 
 ### Docker 部署
@@ -204,10 +230,10 @@ docker-compose logs -f
 
 - LSTM 价格预测模型
 - 情感分析推理
-- 模型加载与管理
+- 模型加载与管理 (MongoDB 存储)
 - 预测结果缓存
 
-### 策略模块 (com.stock.strategyAnalysis)
+### 策略分析模块 (com.stock.strategyAnalysis)
 
 #### 选股策略 (天级)
 - 综合选股算法 (双因子模型)
@@ -223,24 +249,24 @@ docker-compose logs -f
 - 多指标聚合决策
 - 尾盘强制卖出 (14:57)
 
-### 执行模块 (com.stock.tradingExecutor)
+### 交易执行模块 (com.stock.tradingExecutor)
 
 - 风控检查 (止损/仓位/熔断)
 - 订单执行
 - 持仓管理
 - 交易记录
+- 手续费计算
 
-### 项目配置 (com.stock)
+### 动态任务模块 (com.stock.job)
 
-- REST API 配置
-- 定时任务调度
-- 静态文件服务
-- 全局配置类
+- 任务引导和初始化
+- 任务状态管理
+- 动态参数调整
 
-### ORM 框架
+### WebSocket 模块
 
-- **Spring Data JPA**: 自动建库建表，无需 SQL 脚本
-- **Hibernate**: JPA 实现，支持 ddl-auto 自动管理表结构
+- 日志实时推送
+- 通知实时推送
 
 ---
 
@@ -324,16 +350,13 @@ mvn package -DskipTests
 ### 前端测试
 
 ```bash
-cd frontend
+cd frontend-v2
 
-# 运行测试
-npm test
+# 构建生产版本
+npm run build
 
 # 代码检查
 npm run lint
-
-# 类型检查
-npm run tsc
 ```
 
 ---
@@ -357,7 +380,8 @@ docker-compose logs -f backend
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| 后端 + 前端 | 8080 | Spring Boot 服务 |
+| 后端 API | 8080 | Spring Boot 服务 |
+| 前端开发 | 5173 | Vite 开发服务器 |
 | MySQL | 3306 | 数据库 |
 | MongoDB | 27017 | 文档数据库 |
 | Redis | 6379 | 缓存服务 |
@@ -369,8 +393,6 @@ docker-compose logs -f backend
 ### 1. 数据采集
 
 - 使用证券平台 API 获取 A 股数据
-- 证券平台 API 统一采集数据
-
 - 定时任务自动更新
 
 ### 2. AI 预测
@@ -381,7 +403,7 @@ docker-compose logs -f backend
 
 ### 3. 交易决策
 
-#### 选股策略 (每日 17:00 执行)
+#### 选股策略 (每日执行)
 - 每日自动生成交易信号
 - LSTM(60%) + 情感 (40%) 双因子选股
 - 股票排名和评分

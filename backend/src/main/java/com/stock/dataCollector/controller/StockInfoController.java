@@ -1,5 +1,6 @@
 package com.stock.dataCollector.controller;
 
+import com.stock.dataCollector.dto.MarketStatsDto;
 import com.stock.dataCollector.entity.StockInfo;
 import com.stock.dataCollector.service.StockDataService;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +12,9 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import java.util.stream.Collectors;
 
 /**
@@ -26,41 +30,29 @@ public class StockInfoController {
     private final StockDataService stockDataService;
 
     /**
-     * 获取股票列表
-     * 前端参数: current, pageSize, name, code
+     * 获取股票列表 (使用数据库分页)
+     * 前端参数: current, pageSize, keywords
      */
     @GetMapping("/list")
     public ResponseEntity<Map<String, Object>> listStockInfo(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int pageSize,
-            @RequestParam(required = false) String name,
-            @RequestParam(required = false) String code) {
-        
-        // 获取所有股票 (因为Service层目前只有findAll，暂时在内存中分页)
-        List<StockInfo> allStocks = stockDataService.findAllStocks();
-        
-        // 过滤
-        List<StockInfo> filtered = allStocks.stream()
-            .filter(s -> (name == null || (s.getName() != null && s.getName().contains(name))) &&
-                         (code == null || (s.getCode() != null && s.getCode().contains(code))))
-            .collect(Collectors.toList());
-            
-        int total = filtered.size();
-        int fromIndex = (current - 1) * pageSize;
-        int toIndex = Math.min(fromIndex + pageSize, total);
-        
-        List<StockInfo> pageData = List.of();
-        if (fromIndex < total) {
-            pageData = filtered.subList(fromIndex, toIndex);
-        }
+            @RequestParam(required = false) String keywords) {
+
+        // 使用数据库分页查询 (Page 0-based, so subtract 1)
+        int pageNumber = Math.max(0, current - 1);
+        PageRequest pageRequest = PageRequest.of(pageNumber, pageSize, Sort.by(Sort.Direction.DESC, "id"));
+
+        // 构建动态查询条件，使用 keywords 同时匹配 name 或 code
+        Page<StockInfo> pageResult = stockDataService.findStocksWithKeywords(keywords, pageRequest);
 
         Map<String, Object> response = new HashMap<>();
-        response.put("data", pageData);
-        response.put("total", total);
+        response.put("data", pageResult.getContent());
+        response.put("total", pageResult.getTotalElements());
         response.put("success", true);
-        response.put("current", current);
-        response.put("pageSize", pageSize);
-        
+        response.put("current", pageResult.getNumber() + 1);
+        response.put("pageSize", pageResult.getSize());
+
         return ResponseEntity.ok(response);
     }
 
@@ -105,27 +97,51 @@ public class StockInfoController {
     }
 
     /**
-     * 获取涨幅榜 (复用list接口，前端可能自己排序，或者这里做排序)
+     * 获取涨幅榜TOP10
+     * 返回格式: [{code, name, changePercent}, ...]
      */
     @GetMapping("/listIncreaseRate")
-    public ResponseEntity<Map<String, Object>> listIncreaseRate(@RequestParam(required = false) String code) {
-        // 简单返回所有股票，或者按涨幅排序
+    public ResponseEntity<Map<String, Object>> listIncreaseRate() {
         List<StockInfo> allStocks = stockDataService.findAllStocks();
-        
-        // 按涨幅排序 (ChangePercent)
-        List<StockInfo> sorted = allStocks.stream()
+
+        // 按涨幅排序，取TOP10
+        List<Map<String, Object>> top10 = allStocks.stream()
             .sorted((a, b) -> {
                 BigDecimal p1 = a.getChangePercent() != null ? a.getChangePercent() : BigDecimal.valueOf(-100.0);
                 BigDecimal p2 = b.getChangePercent() != null ? b.getChangePercent() : BigDecimal.valueOf(-100.0);
                 return p2.compareTo(p1); // 降序
             })
-            .limit(20) // 只返回前20
+            .limit(10)
+            .map(stock -> {
+                Map<String, Object> item = new HashMap<>();
+                item.put("code", stock.getCode());
+                item.put("name", stock.getName());
+                item.put("changePercent", stock.getChangePercent());
+                return item;
+            })
             .collect(Collectors.toList());
 
         Map<String, Object> response = new HashMap<>();
-        response.put("data", sorted);
+        response.put("data", top10);
         response.put("success", true);
-        
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 获取市场统计信息
+     * 从stock_info表中聚合提取市场基本数据
+     */
+    @GetMapping("/marketStats")
+    public ResponseEntity<Map<String, Object>> getMarketStats() {
+        log.info("获取市场统计信息");
+
+        MarketStatsDto stats = stockDataService.getMarketStats();
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("data", stats);
+
         return ResponseEntity.ok(response);
     }
 }
