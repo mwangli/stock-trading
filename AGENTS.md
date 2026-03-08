@@ -22,18 +22,30 @@
 stock-trading/
 ├── backend/                        # Java Spring Boot 单体应用
 │   ├── src/main/java/com/stock/    # 源代码
-│   │   ├── dataCollector/          # 数据采集包
-│   │   ├── modelService/           # 模型服务包
-│   │   ├── strategyAnalysis/       # 策略分析包
-│   │   └── tradingExecutor/        # 交易执行包
-│   └── pom.xml                     # Maven 配置
+│   │   ├── Application.java       # 主启动类
+│   │   ├── config/                # 全局配置
+│   │   ├── dataCollector/         # 数据采集包
+│   │   ├── modelService/          # 模型服务包
+│   │   ├── strategyAnalysis/      # 策略分析包
+│   │   ├── tradingExecutor/       # 交易执行包
+│   │   ├── job/                   # 动态任务包
+│   │   ├── event/                 # 事件处理
+│   │   ├── handler/               # WebSocket 处理器
+│   │   └── service/               # 通用服务
+│   └── pom.xml                    # Maven 配置
 │
-├── frontend-v2/                    # React + Vite 前端应用
-│   ├── src/                        # 源代码
-│   ├── index.html                  # 入口 HTML
-│   ├── package.json                # npm 依赖
-│   └── vite.config.ts              # Vite 配置
+├── frontend-v2/                   # React + Vite 前端应用
+│   ├── src/                       # 源代码
+│   │   ├── pages/                 # 页面组件
+│   │   ├── components/           # 通用组件
+│   │   ├── layouts/              # 布局组件
+│   │   ├── store/                # 状态管理
+│   │   └── locales/              # 国际化
+│   ├── index.html
+│   ├── package.json
+│   └── vite.config.ts
 │
+├── docs/                          # 项目文档
 ├── docker-compose.yml              # 服务编排
 └── pom.xml                         # 根项目 Maven 配置
 ```
@@ -111,6 +123,133 @@ mvn test -Dtest=StockDataServiceTest#testMethodName
   - Controller 返回统一泛型对象 `Response<T>`
 - **分包策略**: 按业务领域分包 (`dataCollector`, `modelService` 等)，而非按层分包。
 - **错误处理**: 使用全局异常处理 (`@ControllerAdvice`)，禁止吞掉异常。
+
+### Java 代码注释规范 (强制)
+
+生成 Java 代码时，必须遵循以下注释规范：
+
+#### 1. 类注释
+
+每个类必须添加类级文档注释，说明类的业务职责。
+
+```java
+/**
+ * 股票数据服务类
+ * 负责股票的实时数据采集、历史数据存储和数据查询
+ * 
+ * @author AI Assistant
+ * @since 1.0
+ */
+public class StockDataService {
+    // ...
+}
+```
+
+#### 2. 方法注释
+
+**每个public/protected方法必须添加 Javadoc 注释**，包含以下要素：
+
+```java
+/**
+ * 同步股票历史数据
+ * 
+ * 根据指定的股票代码和日期范围，从外部API获取历史K线数据，
+ * 并增量更新到本地数据库。对于已存在的数据会自动跳过，
+ * 确保数据不重复。
+ *
+ * @param symbol       股票代码，如 "AAPL" 或 "600519"
+ * @param startDate    起始日期，格式 "yyyy-MM-dd"
+ * @param endDate      结束日期，格式 "yyyy-MM-dd"
+ * @return             同步结果，包含成功条数和失败条数
+ * @throws StockDataException 当外部API调用失败或数据解析异常
+ * @see #queryHistoryPrices(String, String, String)
+ * @see StockPriceEntity
+ */
+public SyncResult syncHistoryData(String symbol, String startDate, String endDate) {
+    // 业务逻辑
+}
+```
+
+#### 3. 业务注释
+
+在方法内部的业务逻辑关键节点，必须添加业务说明注释：
+
+```java
+/**
+ * 执行股票买入操作
+ */
+public void executeBuy(String symbol, int quantity) {
+    // 1. 检查持仓是否超过单只股票仓位上限 (默认30%)
+    if (currentPosition * currentPrice >= totalAssets * 0.30) {
+        throw new BusinessException("单只股票仓位已超过30%上限");
+    }
+    
+    // 2. 检查账户可用资金是否充足
+    BigDecimal requiredAmount = price.multiply(BigDecimal.valueOf(quantity));
+    if (availableCash.compareTo(requiredAmount) < 0) {
+        throw new BusinessException("可用资金不足，当前可用: " + availableAmount);
+    }
+    
+    // 3. 调用券商API下单
+    OrderResult result = brokerApi.submitOrder(symbol, quantity, OrderType.BUY);
+    
+    // 4. 更新本地持仓记录
+    positionService.updatePosition(symbol, quantity, price);
+}
+```
+
+#### 4. 注释禁用规则
+
+- **禁止**添加无意义的注释，如：
+  ```java
+  // 定义变量 (BAD)
+  int count = 0;
+  
+  // 返回结果 (BAD)
+  return result;
+  ```
+
+- **禁止**用注释解释简单逻辑：
+  ```java
+  // 如果列表不为空，遍历列表 (BAD - 冗余)
+  for (Order order : orders) {
+      process(order);
+  }
+  ```
+
+#### 5. 注释要点总结
+
+| 位置 | 注释类型 | 必须包含内容 |
+|------|----------|--------------|
+| 类声明前 | Javadoc | 类职责、业务场景、版本 |
+| public/protected方法 | Javadoc | 功能说明、参数含义、返回值、异常、关联方法 |
+| private方法 | 行内注释 | 仅当业务逻辑复杂或非自明时添加 |
+| 关键业务节点 | 行内注释 | 业务判断逻辑、数据流转、状态变更 |
+| 复杂算法 | 行内注释 | 算法思路、关键变量含义 |
+
+#### 6. 快速模板
+
+生成代码时可使用以下快速模板：
+
+```java
+/**
+ * [方法简短描述]
+ * 
+ * [详细业务说明，包括业务场景、调用时机、预期效果]
+ *
+ * @param [参数名] [参数含义]
+ * @return [返回值含义]
+ * @throws [可能抛出的业务异常]
+ */
+public [返回值类型] [methodName]([参数列表]) {
+    // 1. [业务步骤1说明]
+    // 2. [业务步骤2说明]
+    // 3. [关键判断/计算说明]
+    return [结果];
+}
+```
+
+**Agent 强制要求**：后续生成的所有 Java 代码必须严格遵循此注释规范，类注释和方法 Javadoc 注释为必填项。
 
 ### TypeScript/React (Frontend)
 

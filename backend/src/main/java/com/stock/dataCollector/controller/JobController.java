@@ -51,6 +51,15 @@ public class JobController {
         job2.put("description", "每个交易日18点同步日线数据");
         jobs.add(job2);
 
+        // 3. K线数据聚合任务
+        Map<String, Object> job3 = new HashMap<>();
+        job3.put("id", "3");
+        job3.put("name", "K线数据聚合");
+        job3.put("cron", "0 30 18 * * MON-FRI");
+        job3.put("status", "NORMAL");
+        job3.put("description", "每个交易日18:30聚合周K和月K数据");
+        jobs.add(job3);
+
         Map<String, Object> response = new HashMap<>();
         response.put("data", jobs);
         response.put("total", jobs.size());
@@ -74,6 +83,11 @@ public class JobController {
                 stockDataService.syncStockList();
             } else if ("2".equals(jobId)) {
                 log.info("每日数据同步任务已触发，请通过API接口触发");
+            } else if ("3".equals(jobId)) {
+                // K线数据聚合任务
+                log.info("开始执行K线数据聚合任务...");
+                StockDataService.AggregateResult result = stockDataService.reaggregateAllKLineData();
+                log.info("K线数据聚合任务完成: {}", result);
             }
         }).start();
 

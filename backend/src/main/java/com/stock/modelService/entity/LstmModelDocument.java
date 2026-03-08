@@ -3,6 +3,7 @@ package com.stock.modelService.entity;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
 
 import java.time.LocalDateTime;
 
@@ -12,6 +13,7 @@ import java.time.LocalDateTime;
  */
 @Data
 @Document(collection = "lstm_models")
+@CompoundIndex(name = "idx_model_created", def = "{'modelName': 1, 'createdAt': -1}")
 public class LstmModelDocument {
 
     @Id

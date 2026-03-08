@@ -94,6 +94,8 @@
       "volatility": "波动率指数",
       "volume": "24H成交量",
       "topGainer": "领涨股",
+      "upDown": "涨跌家数",
+      "totalVolume": "总成交额",
       "open": "开盘"
     },
     "watchlist": {
@@ -106,6 +108,12 @@
       "change": "涨跌幅",
       "volume": "成交量",
       "action": "操作"
+    },
+    "kline": {
+      "open": "开盘价",
+      "close": "收盘价",
+      "lowest": "最低价",
+      "highest": "最高价"
     }
   },
   "models": {
@@ -296,6 +304,7 @@
       "markAllRead": "全部已读",
       "clearAll": "清空通知",
       "empty": "暂无新通知",
-      "viewAll": "查看全部"
+      "viewAll": "查看全部",
+      "loadMore": "向下滚动加载更多..."
     }
 }

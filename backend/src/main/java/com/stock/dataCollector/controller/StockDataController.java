@@ -205,6 +205,10 @@ statistics.put("completenessRate", Map.of(
         log.info("获取K线数据: code={}, type={}, startDate={}, endDate={}, timeRange={}, limit={}",
                 code, type, startDate, endDate, timeRange, limit);
 
+        // 调试日志：确认参数接收情况
+        log.debug("参数详情: startDate是否null={}, endDate是否null={}, timeRange是否null={}, timeRange值={}",
+                startDate == null, endDate == null, timeRange == null, timeRange);
+
         try {
             // 1. 计算日期范围：优先使用startDate/endDate，其次使用timeRange
             LocalDate queryStartDate = null;
@@ -215,15 +219,16 @@ statistics.put("completenessRate", Map.of(
                 queryStartDate = LocalDate.parse(startDate);
                 queryEndDate = LocalDate.parse(endDate);
             } else if (timeRange != null) {
-                // 根据timeRange计算日期范围
+                // 根据timeRange计算日期范围：使用"最近N"语义
                 queryEndDate = LocalDate.now();
                 queryStartDate = switch (timeRange) {
-                    case "thisWeek" -> queryEndDate.minusWeeks(1);
-                    case "thisMonth" -> queryEndDate.minusMonths(1);
-                    case "thisYear" -> queryEndDate.minusYears(1);
+                    case "last1Week" -> queryEndDate.minusWeeks(1);
+                    case "last1Month" -> queryEndDate.minusMonths(1);
+                    case "last3Months" -> queryEndDate.minusMonths(3);
+                    case "last1Year" -> queryEndDate.minusYears(1);
                     case "last3Years" -> queryEndDate.minusYears(3);
                     case "last5Years" -> queryEndDate.minusYears(5);
-                    default -> queryEndDate.minusYears(1); // 默认查一年
+                    default -> queryEndDate.minusMonths(1); // 默认查最近一月
                 };
             }
 
@@ -273,6 +278,12 @@ statistics.put("completenessRate", Map.of(
                 result.put("total", 0);
                 return ResponseEntity.ok(result);
             }
+
+            // 调试日志：记录实际返回的数据日期范围
+            LocalDate firstDate = prices.get(0).getDate();
+            LocalDate lastDate = prices.get(prices.size() - 1).getDate();
+            log.info("返回数据: code={}, 数量={}, 日期范围={} 到 {}, type={}",
+                    code, prices.size(), firstDate, lastDate, type);
 
             // 转换为ECharts需要的格式
             List<String> dates = prices.stream()

@@ -19,11 +19,25 @@ const { Text } = Typography;
 const NotificationBell: React.FC = () => {
   const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [displayCount, setDisplayCount] = useState(10);
   
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll } = useNotificationStore();
 
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
+    if (!newOpen) {
+      setDisplayCount(10);
+    }
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const { scrollTop, scrollHeight, clientHeight } = target;
+    if (scrollHeight - scrollTop - clientHeight < 50) {
+      if (displayCount < notifications.length) {
+        setDisplayCount(prev => Math.min(prev + 10, notifications.length));
+      }
+    }
   };
 
   const getIcon = (type: string) => {
@@ -65,66 +79,55 @@ const NotificationBell: React.FC = () => {
         </Space>
       </div>
 
-      <div className="max-h-[600px] overflow-y-auto custom-scrollbar p-2">
+      <div 
+        className="max-h-[600px] overflow-y-scroll custom-scrollbar-none"
+        onScroll={handleScroll}
+      >
         {notifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-            <BellOutlined className="text-4xl mb-2 opacity-20" />
+          <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+            <BellOutlined className="text-4xl mb-3 opacity-20" />
             <Text type="secondary">{t('notifications.empty')}</Text>
           </div>
         ) : (
           <List
-            pagination={{
-              position: 'bottom',
-              align: 'center',
-              pageSize: 5,
-              size: 'small',
-              className: 'text-white mt-2 mb-2',
-            }}
             itemLayout="horizontal"
-            dataSource={notifications}
+            dataSource={notifications.slice(0, displayCount)}
             renderItem={(item) => (
               <List.Item 
-                className={`mx-3 mb-2 rounded-xl border border-white/5 hover:bg-white/[0.08] hover:border-white/10 transition-all duration-300 cursor-pointer ${!item.read ? 'bg-white/[0.04]' : 'bg-[#1e1e2d] opacity-80'}`}
+                className={`mx-2 my-1.5 px-3 py-3 rounded-lg hover:bg-white/[0.08] transition-all duration-200 cursor-pointer ${!item.read ? 'bg-white/[0.04]' : 'opacity-80'}`}
                 onClick={() => markAsRead(item.id)}
               >
-                <List.Item.Meta
-                  avatar={
-                    <div className="mt-1.5 p-2 rounded-full bg-white/5">
-                      {getIcon(item.type)}
-                    </div>
-                  }
-                  title={
+                <div className="flex items-start gap-3 w-full">
+                  <div className="p-2 rounded-full bg-white/5 shrink-0">
+                    {getIcon(item.type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start mb-1">
-                      <Text className={`text-[15px] ${!item.read ? 'text-white font-semibold' : 'text-gray-400 font-medium'}`}>
+                      <Text className={`text-sm truncate ${!item.read ? 'text-white font-semibold' : 'text-gray-400'}`}>
                         {item.title}
                       </Text>
-                      {!item.read && <div className="w-2.5 h-2.5 rounded-full bg-[#00e396] mt-2 ml-3 shrink-0 shadow-[0_0_8px_#00e396]" />}
+                      {!item.read && <div className="w-2 h-2 rounded-full bg-[#00e396] mt-1.5 ml-2 shrink-0 shadow-[0_0_6px_#00e396]" />}
                     </div>
-                  }
-                  description={
-                    <div className="flex flex-col gap-1.5">
-                      <Text className="text-sm text-gray-400 leading-relaxed line-clamp-2">
-                        {item.description}
-                      </Text>
-                      <Text className="text-xs text-gray-500 font-mono mt-0.5">
-                        {formatDistanceToNow(item.timestamp, { 
-                          addSuffix: true,
-                          locale: i18n.language === 'zh' ? zhCN : enUS 
-                        })}
-                      </Text>
-                    </div>
-                  }
-                />
+                    <Text className="text-xs text-gray-500 line-clamp-2 block">
+                      {item.description}
+                    </Text>
+                    <Text className="text-[10px] text-gray-600 font-mono mt-1 block">
+                      {formatDistanceToNow(item.timestamp, { 
+                        addSuffix: true,
+                        locale: i18n.language === 'zh' ? zhCN : enUS 
+                      })}
+                    </Text>
+                  </div>
+                </div>
               </List.Item>
             )}
           />
         )}
-      </div>
-      
-      <div className="p-2 border-t border-white/10 text-center bg-white/5">
-        <Button type="link" size="small" className="text-gray-400 hover:text-white text-xs">
-          {t('notifications.viewAll')}
-        </Button>
+        {displayCount < notifications.length && (
+          <div className="text-center py-3 text-gray-500 text-sm">
+            {t('notifications.loadMore') || '向下滚动加载更多...'}
+          </div>
+        )}
       </div>
     </div>
   );

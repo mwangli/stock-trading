@@ -12,6 +12,37 @@
   --animate-pulse-fast: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* 领涨股滚动动画 */
+@keyframes slideUpFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUpFadeIn 0.35s ease-out forwards;
+}
+
+.animate-slide-down {
+  animation: slideDownFadeIn 0.35s ease-out forwards;
+}
+
 @layer base {
   body {
     @apply bg-black text-white font-sans overflow-hidden antialiased;
@@ -76,4 +107,35 @@
 .ant-btn-primary:hover {
   box-shadow: 0 6px 20px rgba(0, 227, 150, 0.5) !important;
   transform: translateY(-1px);
+}
+
+/* Hidden Scrollbar */
+.custom-scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.custom-scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Ant Select Dark Dropdown */
+.ant-select-dropdown {
+  background: rgba(20, 20, 25, 0.95) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+}
+
+.ant-select-item {
+  color: #fff !important;
+}
+
+.ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background: rgba(0, 227, 150, 0.1) !important;
+}
+
+.ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  background: rgba(0, 227, 150, 0.2) !important;
+  color: #00e396 !important;
 }

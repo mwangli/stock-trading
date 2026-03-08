@@ -51,7 +51,15 @@ public class SentimentTrainerService {
         }
 
         if (config.isDownloadPretrained()) {
-            loadModel();
+            try {
+                loadModel();
+            } catch (Exception e) {
+                // 模型加载失败不影响应用启动，使用规则模式
+                log.warn("预训练模型加载失败，将使用规则模式进行情感分析。原因: {}", e.getMessage());
+                this.isModelLoaded = false;
+            }
+        } else {
+            log.info("已禁用预训练模型下载，将使用规则模式进行情感分析");
         }
     }
 
