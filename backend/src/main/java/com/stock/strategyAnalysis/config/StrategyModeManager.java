@@ -1,7 +1,7 @@
 package com.stock.strategyAnalysis.config;
 
-import com.stock.strategyAnalysis.entity.StrategyConfig;
-import com.stock.strategyAnalysis.enums.StrategyMode;
+import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
+import com.stock.strategyAnalysis.domain.entity.StrategyMode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

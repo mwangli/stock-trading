@@ -41,19 +41,6 @@ spring:
       username: admin
       password: Root.123456
 
-# 模块配置
-modules:
-  data-collector:
-    enabled: true
-    scheduling:
-      enabled: true
-  model-service:
-    enabled: true
-  strategy-analysis:
-    enabled: true
-  trading-executor:
-    enabled: true
-
 # DJL模型配置
 djl:
   model:

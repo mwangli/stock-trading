@@ -1,11 +1,11 @@
 package com.stock.modelService.service;
 
-import com.stock.dataCollector.entity.StockNews;
-import com.stock.dataCollector.repository.NewsRepository;
+import com.stock.dataCollector.domain.entity.StockNews;
+import com.stock.dataCollector.persistence.NewsRepository;
 import com.stock.modelService.config.SentimentTrainingConfig;
-import com.stock.modelService.dataset.NewsSentimentDataset;
+import com.stock.modelService.model.NewsSentimentDataset;
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
-import com.stock.modelService.dto.TrainingSample;
+import com.stock.modelService.domain.dto.TrainingSample;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

@@ -1,11 +1,11 @@
 package com.stock.strategyAnalysis.config;
 
-import com.stock.strategyAnalysis.dto.CircuitBreakerStatusDto;
-import com.stock.strategyAnalysis.dto.StrategyStateDto;
-import com.stock.strategyAnalysis.entity.SwitchLog;
-import com.stock.strategyAnalysis.enums.CircuitBreakerState;
-import com.stock.strategyAnalysis.enums.StrategyMode;
-import com.stock.strategyAnalysis.repository.SwitchLogRepository;
+import com.stock.strategyAnalysis.domain.dto.CircuitBreakerStatusDto;
+import com.stock.strategyAnalysis.domain.entity.CircuitBreakerState;
+import com.stock.strategyAnalysis.domain.dto.StrategyStateDto;
+import com.stock.strategyAnalysis.domain.entity.StrategyMode;
+import com.stock.strategyAnalysis.domain.entity.SwitchLog;
+import com.stock.strategyAnalysis.persistence.SwitchLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;

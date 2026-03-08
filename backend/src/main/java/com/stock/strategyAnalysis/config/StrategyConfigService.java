@@ -1,7 +1,7 @@
 package com.stock.strategyAnalysis.config;
 
-import com.stock.strategyAnalysis.entity.StrategyConfig;
-import com.stock.strategyAnalysis.repository.StrategyConfigRepository;
+import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
+import com.stock.strategyAnalysis.persistence.StrategyConfigRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;

@@ -1,8 +1,8 @@
 package com.stock.strategyAnalysis.service;
 
 import com.stock.strategyAnalysis.config.StrategyStateManager;
-import com.stock.strategyAnalysis.dto.AnalysisStrategyItemDto;
-import com.stock.strategyAnalysis.dto.StrategyStateDto;
+import com.stock.strategyAnalysis.domain.dto.AnalysisStrategyItemDto;
+import com.stock.strategyAnalysis.domain.dto.StrategyStateDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

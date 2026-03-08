@@ -34,7 +34,7 @@ stock-trading/
 │   │   └── service/               # 通用服务
 │   └── pom.xml                    # Maven 配置
 │
-├── frontend-v2/                   # React + Vite 前端应用
+├── frontend/                   # React + Vite 前端应用
 │   ├── src/                       # 源代码
 │   │   ├── pages/                 # 页面组件
 │   │   ├── components/           # 通用组件
@@ -46,9 +46,12 @@ stock-trading/
 │   └── vite.config.ts
 │
 ├── docs/                          # 项目文档
+├── .tmp/                          # 临时文件与中间脚本（不提交 Git）
 ├── docker-compose.yml              # 服务编排
 └── pom.xml                         # 根项目 Maven 配置
 ```
+
+**临时文件约定**：项目根目录下的 `.tmp/` 用于存放所有临时文件和中间脚本。Agent 生成的一次性脚本、临时输出、中间结果等均应放在此目录，且该目录已加入 `.gitignore`，不纳入版本控制。
 
 ## 构建与运行命令
 
@@ -69,7 +72,7 @@ mvn compile
 
 ### Frontend (React/Vite)
 
-工作目录: `D:\ai-stock-trading\frontend-v2`
+工作目录: `D:\ai-stock-trading\frontend`
 
 ```bash
 # 安装依赖
@@ -85,32 +88,9 @@ npm run build
 npm run lint
 ```
 
-## 测试规范
+## 测试说明
 
-### Backend 测试
-
-后端测试位于 `backend/src/test/java`，使用 JUnit 5 + Spring Boot Test。
-
-```bash
-# 运行所有测试
-mvn test
-
-# 运行单个测试类 (重要：Agent 常用)
-mvn test -Dtest=StockDataServiceTest
-
-# 运行特定测试方法
-mvn test -Dtest=StockDataServiceTest#testMethodName
-```
-
-**测试原则**：
-1. **真实环境优先**：尽量使用嵌入式数据库 (H2/Embedded Mongo) 或 Docker 容器进行集成测试。
-2. **谨慎 Mock**：业务逻辑测试尽量避免 Mock，确保真实链路畅通。仅在涉及第三方外部 API（如券商接口）时使用 Mock 或 Simulator。
-3. **数据清理**：测试产生的临时数据必须在测试结束后清理 (`@Transactional` 或 `@AfterEach`)。
-
-### Frontend 测试
-
-目前 `frontend-v2` 尚未配置自动化测试脚本 (`npm test` 不可用)。
-*Agent 注意：在添加前端测试前，需先安装 Vitest 或 Jest。*
+本项目**不维护自动化测试**（无单元测试、集成测试）。原因与说明见 [README - 关于测试](./README.md#关于测试)。构建时使用 `mvn package -DskipTests` 跳过测试。
 
 ## 代码规范
 
@@ -295,13 +275,11 @@ public [返回值类型] [methodName]([参数列表]) {
     - "如果是修改后端 API，是否需要同步更新前端 Type 定义？"
     - "如果是修改数据库实体，是否需要数据库迁移？"
 3.  **Act (执行)**:
-    - 运行单个测试验证修改前的状态（如果存在）。
     - 修改代码。
-    - **必须**运行测试或编译命令验证修改。
-    - 如果是新增功能，**必须**补充对应的测试用例（后端）。
+    - **必须**运行编译命令验证修改（后端 `mvn compile` 或 `mvn package -DskipTests`，前端 `npm run build`）。
 4.  **Verify (验证)**: 检查 `lsp_diagnostics` 确保无语法错误。
-5.  **Build Check (编译检查)**: 每次修改前端代码后，**必须**在 `frontend-v2` 目录下运行 `npm run tsc` (或 `npm run build`) 以确保无编译错误。这是强制约定。
+5.  **Build Check (编译检查)**: 每次修改前端代码后，**必须**在 `frontend` 目录下运行 `npm run tsc` (或 `npm run build`) 以确保无编译错误。这是强制约定。
 
 **Agent 特别指令**:
-- 如果发现 `frontend-v2` 下缺少测试环境，不要尝试运行 `npm test`，除非你先配置了它。
+- 本项目无自动化测试，不要生成或要求补充测试用例；质量依赖代码审查与手工验证。
 - 后端是单体应用结构，不要尝试寻找子模块的 `pom.xml` 进行独立构建，始终在 `backend` 目录下操作。

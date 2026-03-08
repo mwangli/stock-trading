@@ -125,7 +125,7 @@ stock-trading/
 │   ├── pom.xml                   # Maven 配置
 │   └── Dockerfile                # Docker 构建配置
 │
-├── frontend-v2/                   # React 前端应用
+├── frontend/                   # React 前端应用
 │   ├── src/
 │   │   ├── App.tsx               # 主应用组件
 │   │   ├── main.tsx              # 入口文件
@@ -186,7 +186,7 @@ mvn spring-boot:run
 #### 3. 启动前端 (开发模式)
 
 ```bash
-cd frontend-v2
+cd frontend
 
 # 安装依赖
 npm install
@@ -321,43 +321,23 @@ password: Root.123456
 
 ## 开发流程
 
-1. **需求分析**: 更新 `documents/requirements/` 下的需求文档
-2. **设计评审**: 更新 `documents/design/` 下的设计文档
+1. **需求分析**: 更新 `docs/` 下的需求与设计文档
+2. **设计评审**: 按模块维护设计文档
 3. **代码实现**: 按照 AGENTS.md 规范编写代码
-4. **测试验证**: 编写单元测试和集成测试
-5. **代码审查**: 确保 lint 和 tests 通过
-6. **提交部署**: Git 提交并推送到仓库
+4. **代码审查**: 确保 lint 通过、逻辑与文档一致
+5. **提交部署**: Git 提交并推送到仓库
 
 ---
 
-## 测试
+## 关于测试
 
-### 后端测试
+本项目**不维护自动化测试用例**（无单元测试、集成测试或 E2E 测试），原因如下：
 
-```bash
-cd backend
+1. **质量不可控**：由 AI 生成的测试多为 Mock 驱动，难以覆盖真实依赖与边界，对业务正确性保障有限。
+2. **维护成本高**：测试代码需随需求与实现同步更新，在本项目中投入产出比低，不如将精力集中在实现与文档上。
+3. **仍需人工审查**：即便测试通过，关键逻辑仍依赖人工审查与联调验证，自动化测试无法替代。
 
-# 运行所有测试
-mvn test
-
-# 运行单个测试类
-mvn test -Dtest=ClassName
-
-# 跳过测试打包
-mvn package -DskipTests
-```
-
-### 前端测试
-
-```bash
-cd frontend-v2
-
-# 构建生产版本
-npm run build
-
-# 代码检查
-npm run lint
-```
+因此，本项目依赖**代码审查、手工验证与文档**保证质量；构建与打包时默认不运行测试（如 Maven 打包可使用 `mvn package -DskipTests`）。
 
 ---
 
