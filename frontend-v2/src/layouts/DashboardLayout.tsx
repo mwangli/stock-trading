@@ -45,7 +45,7 @@ const DashboardLayout: React.FC = () => {
   const menuItems = [
     { key: '/dashboard', icon: <DesktopOutlined />, label: t('layout.dashboard') },
     { key: '/market', icon: <StockOutlined />, label: t('layout.market') },
-    { key: '/strategies', icon: <FundOutlined />, label: t('layout.strategies') },
+    { key: '/models', icon: <FundOutlined />, label: t('layout.models') },
     { key: '/analysis', icon: <PieChartOutlined />, label: t('layout.analysis') },
     { key: '/transactions', icon: <HistoryOutlined />, label: t('layout.transactions') },
     { key: '/jobs', icon: <ScheduleOutlined />, label: t('layout.jobs') },
