@@ -1,12 +1,17 @@
 package com.stock.dataCollector.controller;
 
 import com.stock.dataCollector.entity.StockInfo;
+import com.stock.dataCollector.entity.StockPrice;
+import com.stock.dataCollector.entity.StockPriceWeekly;
+import com.stock.dataCollector.entity.StockPriceMonthly;
+import com.stock.dataCollector.repository.PriceRepository;
 import com.stock.dataCollector.service.StockDataService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +27,7 @@ import java.util.Map;
 public class StockDataController {
 
     private final StockDataService stockDataService;
+    private final PriceRepository priceRepository;
 
     /**
      * 手动触发股票列表同步
@@ -180,5 +186,196 @@ statistics.put("completenessRate", Map.of(
                 : 0));
         
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 获取股票历史K线数据
+     * 优化：周K和月K使用预聚合数据
+     */
+    @GetMapping("/kline/{code}")
+    public ResponseEntity<Map<String, Object>> getKlineData(
+            @PathVariable String code,
+            @RequestParam(required = false, defaultValue = "daily") String type,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+
+        log.info("获取K线数据: code={}, type={}, startDate={}, endDate={}", code, type, startDate, endDate);
+
+        try {
+            // 根据type使用不同的数据源
+            List<? extends StockPrice> prices;
+
+            if (startDate != null && endDate != null) {
+                LocalDate start = LocalDate.parse(startDate);
+                LocalDate end = LocalDate.parse(endDate);
+                // 日期范围查询仍使用实时聚合
+                if ("weekly".equals(type)) {
+                    List<StockPrice> dailyPrices = priceRepository.findByCodeAndDateBetweenOrderByDateAsc(code, start, end);
+                    prices = aggregateToWeekly(dailyPrices);
+                } else if ("monthly".equals(type)) {
+                    List<StockPrice> dailyPrices = priceRepository.findByCodeAndDateBetweenOrderByDateAsc(code, start, end);
+                    prices = aggregateToMonthly(dailyPrices);
+                } else {
+                    prices = priceRepository.findByCodeAndDateBetweenOrderByDateAsc(code, start, end);
+                }
+            } else {
+                // 无日期范围时，使用预聚合数据
+                if ("weekly".equals(type)) {
+                    prices = stockDataService.getWeeklyPrices(code);
+                } else if ("monthly".equals(type)) {
+                    prices = stockDataService.getMonthlyPrices(code);
+                } else {
+                    prices = priceRepository.findByCodeOrderByDateAsc(code);
+                }
+            }
+
+            // 如果没有数据，返回空结果
+            if (prices == null || prices.isEmpty()) {
+                log.warn("股票 {} 没有K线数据", code);
+                Map<String, Object> result = new HashMap<>();
+                result.put("success", true);
+                result.put("data", Map.of(
+                    "dates", List.of(),
+                    "kline", List.of(),
+                    "volumes", List.of()
+                ));
+                result.put("total", 0);
+                return ResponseEntity.ok(result);
+            }
+
+            // 转换为ECharts需要的格式
+            List<String> dates = prices.stream()
+                .filter(p -> p.getDate() != null)
+                .map(p -> p.getDate().toString())
+                .toList();
+
+            List<List<Object>> klineData = prices.stream()
+                .filter(p -> p.getOpenPrice() != null && p.getClosePrice() != null
+                    && p.getLowPrice() != null && p.getHighPrice() != null)
+                .map(p -> {
+                    List<Object> item = new java.util.ArrayList<>();
+                    item.add(p.getOpenPrice().doubleValue());
+                    item.add(p.getClosePrice().doubleValue());
+                    item.add(p.getLowPrice().doubleValue());
+                    item.add(p.getHighPrice().doubleValue());
+                    return item;
+                })
+                .toList();
+
+            List<Object> volumes = prices.stream()
+                .filter(p -> p.getVolume() != null)
+                .map(p -> (Object) p.getVolume().doubleValue())
+                .toList();
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("data", Map.of(
+                "dates", dates,
+                "kline", klineData,
+                "volumes", volumes
+            ));
+            result.put("total", prices.size());
+
+            return ResponseEntity.ok(result);
+
+        } catch (Exception e) {
+            log.error("获取K线数据失败: code={}", code, e);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "获取K线数据失败: " + e.getMessage());
+
+            return ResponseEntity.internalServerError().body(result);
+        }
+    }
+    
+    /**
+     * 将日K数据聚合为周K
+     */
+    private List<StockPrice> aggregateToWeekly(List<StockPrice> dailyPrices) {
+        if (dailyPrices == null || dailyPrices.isEmpty()) {
+            return List.of();
+        }
+        
+        return dailyPrices.stream()
+            .collect(java.util.stream.Collectors.groupingBy(
+                p -> {
+                    // 按周分组：每周一为起始
+                    int weekOfYear = p.getDate().getDayOfYear();
+                    int weekNum = (weekOfYear - 1) / 7 + 1;
+                    return p.getDate().getYear() + "-W" + weekNum;
+                }
+            ))
+            .values()
+            .stream()
+            .map(weekPrices -> {
+                // 取周第一天作为日期
+                StockPrice first = weekPrices.get(0);
+                StockPrice weekPrice = new StockPrice();
+                weekPrice.setDate(first.getDate());
+                weekPrice.setOpenPrice(first.getOpenPrice());
+                weekPrice.setClosePrice(weekPrices.get(weekPrices.size() - 1).getClosePrice());
+                weekPrice.setHighPrice(weekPrices.stream()
+                    .map(StockPrice::getHighPrice)
+                    .reduce(java.math.BigDecimal::max)
+                    .orElse(java.math.BigDecimal.ZERO));
+                weekPrice.setLowPrice(weekPrices.stream()
+                    .map(StockPrice::getLowPrice)
+                    .reduce(java.math.BigDecimal::min)
+                    .orElse(java.math.BigDecimal.ZERO));
+                weekPrice.setVolume(weekPrices.stream()
+                    .map(StockPrice::getVolume)
+                    .reduce(java.math.BigDecimal::add)
+                    .orElse(java.math.BigDecimal.ZERO));
+                weekPrice.setAmount(weekPrices.stream()
+                    .map(StockPrice::getAmount)
+                    .reduce(java.math.BigDecimal::add)
+                    .orElse(java.math.BigDecimal.ZERO));
+                return weekPrice;
+            })
+            .sorted(java.util.Comparator.comparing(StockPrice::getDate))
+            .toList();
+    }
+    
+    /**
+     * 将日K数据聚合为月K
+     */
+    private List<StockPrice> aggregateToMonthly(List<StockPrice> dailyPrices) {
+        if (dailyPrices == null || dailyPrices.isEmpty()) {
+            return List.of();
+        }
+        
+        return dailyPrices.stream()
+            .collect(java.util.stream.Collectors.groupingBy(
+                p -> p.getDate().getYear() + "-" + String.format("%02d", p.getDate().getMonthValue())
+            ))
+            .values()
+            .stream()
+            .map(monthPrices -> {
+                StockPrice first = monthPrices.get(0);
+                StockPrice monthPrice = new StockPrice();
+                monthPrice.setDate(first.getDate());
+                monthPrice.setOpenPrice(first.getOpenPrice());
+                monthPrice.setClosePrice(monthPrices.get(monthPrices.size() - 1).getClosePrice());
+                monthPrice.setHighPrice(monthPrices.stream()
+                    .map(StockPrice::getHighPrice)
+                    .reduce(java.math.BigDecimal::max)
+                    .orElse(java.math.BigDecimal.ZERO));
+                monthPrice.setLowPrice(monthPrices.stream()
+                    .map(StockPrice::getLowPrice)
+                    .reduce(java.math.BigDecimal::min)
+                    .orElse(java.math.BigDecimal.ZERO));
+                monthPrice.setVolume(monthPrices.stream()
+                    .map(StockPrice::getVolume)
+                    .reduce(java.math.BigDecimal::add)
+                    .orElse(java.math.BigDecimal.ZERO));
+                monthPrice.setAmount(monthPrices.stream()
+                    .map(StockPrice::getAmount)
+                    .reduce(java.math.BigDecimal::add)
+                    .orElse(java.math.BigDecimal.ZERO));
+                return monthPrice;
+            })
+            .sorted(java.util.Comparator.comparing(StockPrice::getDate))
+            .toList();
     }
 }
