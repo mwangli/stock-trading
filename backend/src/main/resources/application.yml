@@ -29,16 +29,10 @@ spring:
       ddl-auto: update
     show-sql: false
 
-  # Redis配置
+  # Redis 已移至 application.properties（扁平键），避免 RedisProperties 绑定失败
   data:
-    redis:
-      host: 124.220.36.95
-      port: 6379
-      password: Root.123456
-      database: 0
     # MongoDB配置
     mongodb:
-
       auto-index-creation: true
       host: 124.220.36.95
       port: 27017
@@ -101,4 +95,9 @@ app:
   startup:
     history-sync:
       enabled: false  # 历史数据初始化开关，默认关闭以加快启动速度
+    # 模型训练开关：启动后是否自动检查并训练缺失的 LSTM 模型
+    model-training:
+      enabled: true
+      # 训练线程数，0 表示使用 CPU 核数；大于 0 时使用指定线程数
+      threads: 0
 
