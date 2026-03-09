@@ -2,13 +2,12 @@ package com.stock.tradingExecutor.execution;
 
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
-import com.stock.tradingExecutor.domain.vo.AccountStatus;
-import com.stock.tradingExecutor.domain.vo.OrderResult;
 import com.stock.tradingExecutor.domain.entity.OrderStatus;
 import com.stock.tradingExecutor.domain.entity.Position;
+import com.stock.tradingExecutor.domain.vo.AccountStatus;
+import com.stock.tradingExecutor.domain.vo.OrderResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -27,7 +26,6 @@ public class ZXBrokerAdapter implements BrokerAdapter {
 
     private final ZXRequestUtils requestUtils;
     private final ZXBrokerConfig config;
-    private final StringRedisTemplate redisTemplate;
 
     // API Action常量
     private static final int ACTION_GET_ACCOUNT = 116;

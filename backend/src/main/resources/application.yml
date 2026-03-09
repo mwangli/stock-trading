@@ -11,13 +11,30 @@ spring:
       enabled: true
     livereload:
       enabled: true
+
   # MySQL配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://124.220.36.95:6033/stock_trading?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
     username: root
     password: Root.123456
+  # 如果你使用远程 Redis，只需要修改 host/port/password 即可
+  data:
+    redis:
+      host: 124.220.36.95
+      port: 6379
+      password: Root.123456
+      database: 0
 
+    # MongoDB配置
+    mongodb:
+      auto-index-creation: true
+      host: 124.220.36.95
+      port: 27017
+      database: stock_trading
+      authentication-database: admin
+      username: admin
+      password: Root.123456
 
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
@@ -29,19 +46,7 @@ spring:
       ddl-auto: update
     show-sql: false
 
-  # Redis 已移至 application.properties（扁平键），避免 RedisProperties 绑定失败
-  data:
-    # MongoDB配置
-    mongodb:
-      auto-index-creation: true
-      host: 124.220.36.95
-      port: 27017
-      database: stock_trading
-      authentication-database: admin
-      username: admin
-      password: Root.123456
-
-# DJL模型配置
+# DJL模型配置（Windows 使用 pytorch-native-cu121 时需安装 NVIDIA 驱动 + CUDA 12.1）
 djl:
   model:
     dir: ./models
@@ -85,6 +90,4 @@ app:
     # 模型训练开关：启动后是否自动检查并训练缺失的 LSTM 模型
     model-training:
       enabled: true
-      # 训练线程数，0 表示使用 CPU 核数；大于 0 时使用指定线程数
-      threads: 0
 

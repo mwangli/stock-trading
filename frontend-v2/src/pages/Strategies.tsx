@@ -252,12 +252,33 @@ const Strategies: React.FC = () => {
       title: t('models.list.status'),
       key: 'status',
       width: lstmColumnWidth,
-      render: () => (
-        <Tag color="success" className="border-none">
-          <CheckCircleOutlined className="mr-1" />
-          {t('models.list.statusDeployed')}
-        </Tag>
-      ),
+      render: (_: unknown, record: LstmModelListItem) => {
+        const isTraining = record.training;
+        const isTrained = record.trained;
+        let color: 'success' | 'processing' | 'default' = 'default';
+        let icon: React.ReactNode;
+        let label: string;
+
+        if (isTraining) {
+          color = 'processing';
+          icon = <SyncOutlined spin className="mr-1" />;
+          label = t('models.list.statusTraining');
+        } else if (isTrained) {
+          color = 'success';
+          icon = <CheckCircleOutlined className="mr-1" />;
+          label = t('models.list.statusDeployed');
+        } else {
+          color = 'default';
+          icon = <CloseCircleOutlined className="mr-1" />;
+          label = t('models.list.statusNotTrained');
+        }
+        return (
+          <Tag color={color} className="border-none">
+            {icon}
+            {label}
+          </Tag>
+        );
+      },
     },
     {
       title: t('models.list.action'),

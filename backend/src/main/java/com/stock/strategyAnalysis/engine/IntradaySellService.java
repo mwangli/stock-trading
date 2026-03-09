@@ -1,15 +1,14 @@
 package com.stock.strategyAnalysis.engine;
 
 import com.stock.strategyAnalysis.config.StrategyConfigService;
-import com.stock.strategyAnalysis.domain.vo.MinuteBar;
 import com.stock.strategyAnalysis.domain.entity.SellDecision;
-import com.stock.strategyAnalysis.domain.vo.StrategyScore;
 import com.stock.strategyAnalysis.domain.entity.SellTriggerType;
 import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
+import com.stock.strategyAnalysis.domain.vo.MinuteBar;
+import com.stock.strategyAnalysis.domain.vo.StrategyScore;
 import com.stock.strategyAnalysis.persistence.DecisionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -37,7 +36,6 @@ public class IntradaySellService {
     private final DecisionAggregator decisionAggregator;
     private final StrategyConfigService configService;
     private final DecisionRepository decisionRepository;
-    private final RedisTemplate<String, Object> redisTemplate;
 
     /**
      * 检查卖出信号

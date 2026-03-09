@@ -110,13 +110,15 @@
             <artifactId>pytorch-model-zoo</artifactId>
             <version>${djl.version}</version>
         </dependency>
+        <!-- Windows: CUDA 12.1 GPU 加速（需安装 NVIDIA 驱动 + CUDA 12.1） -->
         <dependency>
             <groupId>ai.djl.pytorch</groupId>
-            <artifactId>pytorch-native-cpu</artifactId>
+            <artifactId>pytorch-native-cu121</artifactId>
             <classifier>win-x86_64</classifier>
             <version>${djl.pytorch.version}</version>
             <scope>runtime</scope>
         </dependency>
+        <!-- Linux: CPU（服务器无 GPU 时使用）；有 GPU 可改为 pytorch-native-cu121 -->
         <dependency>
             <groupId>ai.djl.pytorch</groupId>
             <artifactId>pytorch-native-cpu</artifactId>

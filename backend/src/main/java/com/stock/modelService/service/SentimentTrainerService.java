@@ -51,16 +51,13 @@ public class SentimentTrainerService {
             log.info("设置 DJL 模型缓存目录: {}", config.getCacheDir());
         }
 
+        // 这里不再在应用启动阶段主动加载 HuggingFace 模型，改为懒加载：
+        // - 首次调用情感分析或训练接口，才根据需要触发 loadModel()
+        // - 启动阶段仅根据配置打印提示信息，避免影响应用启动速度和可用性
         if (config.isDownloadPretrained()) {
-            try {
-                loadModel();
-            } catch (Exception e) {
-                // 模型加载失败不影响应用启动，使用规则模式
-                log.warn("预训练模型加载失败，将使用规则模式进行情感分析。原因: {}", e.getMessage());
-                this.isModelLoaded = false;
-            }
+            log.info("已启用预训练模型下载配置，将在首次使用情感分析服务时按需从 HuggingFace 懒加载模型");
         } else {
-            log.info("已禁用预训练模型下载，将使用规则模式进行情感分析");
+            log.info("已禁用预训练模型下载，将默认使用规则模式进行情感分析");
         }
     }
 

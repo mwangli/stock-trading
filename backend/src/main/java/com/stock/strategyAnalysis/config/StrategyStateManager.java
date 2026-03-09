@@ -1,14 +1,13 @@
 package com.stock.strategyAnalysis.config;
 
 import com.stock.strategyAnalysis.domain.dto.CircuitBreakerStatusDto;
-import com.stock.strategyAnalysis.domain.entity.CircuitBreakerState;
 import com.stock.strategyAnalysis.domain.dto.StrategyStateDto;
+import com.stock.strategyAnalysis.domain.entity.CircuitBreakerState;
 import com.stock.strategyAnalysis.domain.entity.StrategyMode;
 import com.stock.strategyAnalysis.domain.entity.SwitchLog;
 import com.stock.strategyAnalysis.persistence.SwitchLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -16,6 +15,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * 策略状态管理器
@@ -26,17 +27,21 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class StrategyStateManager {
 
-    private static final String REDIS_STATE_KEY = "strategy:state";
-    private static final String REDIS_CIRCUIT_KEY = "strategy:circuit";
-    
-    private final RedisTemplate<String, Object> redisTemplate;
+    private static final String STATE_KEY = "strategy:state";
+    private static final String CIRCUIT_KEY = "strategy:circuit";
+
+    /**
+     * 使用本地内存 Map 替代 Redis 存储策略状态和熔断状态
+     */
+    private final ConcurrentMap<String, Object> stateStore = new ConcurrentHashMap<>();
+
     private final SwitchLogRepository switchLogRepository;
 
     /**
      * 获取当前策略状态
      */
     public StrategyStateDto getCurrentState() {
-        Object cached = redisTemplate.opsForValue().get(REDIS_STATE_KEY);
+        Object cached = stateStore.get(STATE_KEY);
         if (cached instanceof StrategyStateDto) {
             return (StrategyStateDto) cached;
         }
@@ -62,7 +67,7 @@ public class StrategyStateManager {
         state.setEnabled(enabled);
         state.setLastSwitchTime(LocalDateTime.now());
         state.setLastSwitchReason(enabled ? "用户启用" : "用户禁用");
-        redisTemplate.opsForValue().set(REDIS_STATE_KEY, state);
+        stateStore.put(STATE_KEY, state);
         log.info("策略总开关已{}", enabled ? "启用" : "禁用");
     }
 
@@ -76,8 +81,7 @@ public class StrategyStateManager {
         state.setCurrentMode(newMode);
         state.setLastSwitchTime(LocalDateTime.now());
         state.setLastSwitchReason(reason);
-        
-        redisTemplate.opsForValue().set(REDIS_STATE_KEY, state);
+        stateStore.put(STATE_KEY, state);
         
         // 记录切换日志
         saveSwitchLog(oldMode, newMode, reason);
@@ -89,7 +93,7 @@ public class StrategyStateManager {
      * 获取熔断器状态
      */
     public CircuitBreakerStatusDto getCircuitBreakerStatus() {
-        Object cached = redisTemplate.opsForValue().get(REDIS_CIRCUIT_KEY);
+        Object cached = stateStore.get(CIRCUIT_KEY);
         if (cached instanceof CircuitBreakerStatusDto) {
             return (CircuitBreakerStatusDto) cached;
         }
@@ -124,7 +128,7 @@ public class StrategyStateManager {
             triggerCircuitBreaker(indicator);
         }
         
-        redisTemplate.opsForValue().set(REDIS_CIRCUIT_KEY, status);
+        stateStore.put(CIRCUIT_KEY, status);
     }
 
     /**
@@ -137,7 +141,7 @@ public class StrategyStateManager {
         status.setTriggerTime(LocalDateTime.now());
         status.setEstimatedRecoverTime(LocalDateTime.now().plusHours(1));
         
-        redisTemplate.opsForValue().set(REDIS_CIRCUIT_KEY, status);
+        stateStore.put(CIRCUIT_KEY, status);
         
         log.warn("熔断器触发: 指标={}, 预计恢复时间={}", indicator, status.getEstimatedRecoverTime());
     }
@@ -154,7 +158,7 @@ public class StrategyStateManager {
                 .indicatorFailureCounts(new HashMap<>())
                 .build();
         
-        redisTemplate.opsForValue().set(REDIS_CIRCUIT_KEY, status);
+        stateStore.put(CIRCUIT_KEY, status);
         log.info("熔断器已重置");
     }
 
@@ -170,7 +174,7 @@ public class StrategyStateManager {
         if (!disabled.contains(indicator)) {
             disabled.add(indicator);
             state.setDisabledIndicators(disabled);
-            redisTemplate.opsForValue().set(REDIS_STATE_KEY, state);
+            stateStore.put(STATE_KEY, state);
             log.info("指标 {} 已禁用", indicator);
         }
     }
@@ -184,7 +188,7 @@ public class StrategyStateManager {
         if (disabled != null && disabled.contains(indicator)) {
             disabled.remove(indicator);
             state.setDisabledIndicators(disabled);
-            redisTemplate.opsForValue().set(REDIS_STATE_KEY, state);
+            stateStore.put(STATE_KEY, state);
             log.info("指标 {} 已启用", indicator);
         }
     }

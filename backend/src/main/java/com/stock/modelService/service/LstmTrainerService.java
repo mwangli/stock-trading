@@ -1,6 +1,7 @@
 package com.stock.modelService.service;
 
 import ai.djl.Model;
+import ai.djl.Device;
 import ai.djl.engine.Engine;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
@@ -47,6 +48,7 @@ public class LstmTrainerService {
     private final LstmDataPreprocessor dataPreprocessor;
     private final LstmModelRepository lstmModelRepository;
     private final ModelBinaryCodec modelBinaryCodec;
+    private final com.stock.modelService.service.ModelTrainingRecordService modelTrainingRecordService;
     private final Map<String, TrainingStatus> trainingStatusMap = new ConcurrentHashMap<>();
     private String currentModelPath;
 
@@ -62,6 +64,13 @@ public class LstmTrainerService {
             float trainLearningRate = learningRate != null ? learningRate.floatValue() : (float) config.getLearningRate();
 
             long trainingStartNs = System.nanoTime();
+
+            // 标记对应股票进入“训练中”状态，便于前端实时展示
+            try {
+                modelTrainingRecordService.markTraining(stockCodes, true);
+            } catch (Exception e) {
+                log.warn("标记模型训练中状态失败，不影响训练主流程: {}", e.getMessage());
+            }
 
             log.info("========== 开始 LSTM 模型训练 ==========");
             log.info("股票: {}, 天数: {}, 轮次: {}, 批次: {}, 学习率: {}", 
@@ -116,9 +125,14 @@ public class LstmTrainerService {
                     .optWeightDecays(0.001f)
                     .build();
 
+            // 优先使用 GPU（需 pytorch-native-cu121 + NVIDIA 驱动 + CUDA 12.1）
+            Device[] devices = Engine.getInstance().getDevices(1);
+            Device device = devices.length > 0 ? devices[0] : Device.cpu();
+            log.info("LSTM 训练设备: {} (deviceType={})", device, device.getDeviceType());
+
             DefaultTrainingConfig trainingConfig = new DefaultTrainingConfig(Loss.l2Loss())
                     .optOptimizer(optimizer)
-                    .optDevices(Engine.getInstance().getDevices(1))
+                    .optDevices(devices)
                     .addTrainingListeners(TrainingListener.Defaults.logging());
 
             status.setStatus("训练中");
@@ -242,7 +256,7 @@ public class LstmTrainerService {
             log.info("模型保存结果: {}", currentModelPath);
             log.info("训练总耗时: {} 秒", String.format("%.2f", (System.nanoTime() - trainingStartNs) / 1_000_000_000.0));
 
-            return TrainingResult.builder()
+            TrainingResult result = TrainingResult.builder()
                     .success(true).message("训练完成").epochs(trainEpochs)
                     .trainLoss(finalTrainLoss).valLoss(finalValLoss)
                     .modelPath(currentModelPath).trainSamples(trainSize)
@@ -250,10 +264,38 @@ public class LstmTrainerService {
                     .trainingId(trainingId)
                     .build();
 
+            // 更新 MySQL 中的模型训练记录（可能是一只或多只股票）
+            try {
+                long durationSeconds = (System.nanoTime() - trainingStartNs) / 1_000_000_000;
+                // modelPath 形如 mongo:<id>，这里仅提取 MongoDB 文档 ID
+                String mongoId = null;
+                if (currentModelPath != null && currentModelPath.startsWith("mongo:")) {
+                    mongoId = currentModelPath.substring("mongo:".length());
+                }
+                modelTrainingRecordService.updateAfterTraining(
+                        stockCodes,
+                        trainEpochs,
+                        finalTrainLoss,
+                        finalValLoss,
+                        durationSeconds,
+                        mongoId
+                );
+            } catch (Exception e) {
+                log.warn("更新模型训练记录失败，不影响训练主流程: {}", e.getMessage());
+            }
+
+            return result;
+
         } catch (Exception e) {
             log.error("训练失败", e);
             status.setStatus("训练失败：" + e.getMessage());
             status.setProgress(-1);
+            // 训练失败时清除“训练中”标记
+            try {
+                modelTrainingRecordService.markTraining(stockCodes, false);
+            } catch (Exception ex) {
+                log.warn("清除模型训练中状态失败: {}", ex.getMessage());
+            }
             return TrainingResult.builder().success(false).message("训练失败：" + e.getMessage()).build();
         }
     }
