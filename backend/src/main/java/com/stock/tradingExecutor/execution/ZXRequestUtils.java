@@ -5,12 +5,10 @@ import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONException;
 import com.alibaba.fastjson2.JSONObject;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 中信证券API请求工具类
@@ -21,14 +19,13 @@ import java.util.concurrent.TimeUnit;
 public class ZXRequestUtils {
 
     private static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
-    private static final String TOKEN_KEY = "requestToken";
     private static final int RETRY_TIMES = 10;
 
-    private final StringRedisTemplate redisTemplate;
-
-    public ZXRequestUtils(StringRedisTemplate redisTemplate) {
-        this.redisTemplate = redisTemplate;
-    }
+    /**
+     * 使用本地内存缓存请求 Token，替代 Redis 存储
+     */
+    private volatile String token;
+    private volatile long tokenExpireAtMs;
 
     /**
      * 构建通用请求参数
@@ -50,7 +47,11 @@ public class ZXRequestUtils {
      * 获取Token
      */
     public String getToken() {
-        return redisTemplate.opsForValue().get(TOKEN_KEY);
+        long now = System.currentTimeMillis();
+        if (token != null && now < tokenExpireAtMs) {
+            return token;
+        }
+        return null;
     }
 
     /**
@@ -58,7 +59,9 @@ public class ZXRequestUtils {
      */
     public void setToken(String token) {
         if (token != null) {
-            redisTemplate.opsForValue().set(TOKEN_KEY, token, 30, TimeUnit.MINUTES);
+            this.token = token;
+            // 默认缓存30分钟
+            this.tokenExpireAtMs = System.currentTimeMillis() + 30L * 60L * 1000L;
         }
     }
 

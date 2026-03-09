@@ -2,8 +2,8 @@ package com.stock.strategyAnalysis.config;
 
 import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
 import com.stock.strategyAnalysis.persistence.StrategyConfigRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,32 +14,43 @@ import java.util.UUID;
 
 /**
  * 策略配置服务
- * 管理策略配置的获取、更新和持久化（MySQL + Redis 缓存）
+ * 管理策略配置的获取、更新和持久化（MySQL + 可选 Redis 缓存）
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class StrategyConfigService {
 
     private static final String REDIS_CONFIG_KEY = "strategy:config:current";
 
     private final StrategyConfigRepository strategyConfigRepository;
-    private final RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired(required = false)
+    private RedisTemplate<String, Object> redisTemplate;
+
+    public StrategyConfigService(StrategyConfigRepository strategyConfigRepository) {
+        this.strategyConfigRepository = strategyConfigRepository;
+    }
 
     /**
      * 获取当前配置
-     * 优先从 Redis 获取，否则从 MySQL 获取，无则返回默认配置
+     * 优先从 Redis 获取（如可用），否则从 MySQL 获取，无则返回默认配置
      */
     public StrategyConfig getCurrentConfig() {
-        Object cached = redisTemplate.opsForValue().get(REDIS_CONFIG_KEY);
-        if (cached instanceof StrategyConfig) {
-            return (StrategyConfig) cached;
+        if (redisTemplate != null) {
+            Object cached = redisTemplate.opsForValue().get(REDIS_CONFIG_KEY);
+            if (cached instanceof StrategyConfig) {
+                return (StrategyConfig) cached;
+            }
+        } else {
+            log.debug("Redis 未启用，跳过策略配置缓存读取");
         }
 
         Optional<StrategyConfig> dbConfig = strategyConfigRepository.findFirstByEnabledTrueOrderByUpdateTimeDesc();
         if (dbConfig.isPresent()) {
             StrategyConfig config = dbConfig.get();
-            redisTemplate.opsForValue().set(REDIS_CONFIG_KEY, config);
+            if (redisTemplate != null) {
+                redisTemplate.opsForValue().set(REDIS_CONFIG_KEY, config);
+            }
             return config;
         }
 
@@ -48,7 +59,7 @@ public class StrategyConfigService {
     }
 
     /**
-     * 更新配置并写入 MySQL，并刷新 Redis 缓存
+     * 更新配置并写入 MySQL，并在 Redis 可用时刷新缓存
      */
     @Transactional(rollbackFor = Exception.class)
     public void updateConfig(StrategyConfig config) {
@@ -79,9 +90,12 @@ public class StrategyConfigService {
                 }
             }
         }
-
         StrategyConfig saved = strategyConfigRepository.save(toSave);
-        redisTemplate.opsForValue().set(REDIS_CONFIG_KEY, saved);
+        if (redisTemplate != null) {
+            redisTemplate.opsForValue().set(REDIS_CONFIG_KEY, saved);
+        } else {
+            log.debug("Redis 未启用，跳过策略配置缓存刷新");
+        }
         log.info("策略配置已更新(MySQL): id={}, version={}, mode={}", saved.getId(), saved.getVersion(), saved.getMode());
     }
 

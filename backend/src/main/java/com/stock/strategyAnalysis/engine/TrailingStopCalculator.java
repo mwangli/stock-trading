@@ -1,13 +1,12 @@
 package com.stock.strategyAnalysis.engine;
 
-import com.stock.strategyAnalysis.domain.vo.MinuteBar;
 import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
-import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * 移动止损计算器
@@ -17,14 +16,14 @@ import java.util.List;
 @Component
 public class TrailingStopCalculator {
 
-    private static final String REDIS_HIGH_PRICE_KEY = "stock:%s:highPrice:";
-    private static final String REDIS_STOP_LOSS_KEY = "stock:%s:stopLoss:";
+    private static final String HIGH_PRICE_KEY = "stock:%s:highPrice:";
+    private static final String STOP_LOSS_KEY = "stock:%s:stopLoss:";
 
-    private final RedisTemplate<String, Object> redisTemplate;
-
-    public TrailingStopCalculator(RedisTemplate<String, Object> redisTemplate) {
-        this.redisTemplate = redisTemplate;
-    }
+    /**
+     * 本地内存存储，用于替代 Redis 保存当日最高价和止损线
+     */
+    private final ConcurrentMap<String, Double> highPriceStore = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Double> stopLossStore = new ConcurrentHashMap<>();
 
     /**
      * 更新止损线
@@ -38,12 +37,12 @@ public class TrailingStopCalculator {
      */
     public double updateStopLoss(String stockCode, double currentPrice, double dailyAmplitude, StrategyConfig config) {
         String today = LocalDate.now().toString();
-        String highPriceKey = String.format(REDIS_HIGH_PRICE_KEY, stockCode) + today;
-        String stopLossKey = String.format(REDIS_STOP_LOSS_KEY, stockCode) + today;
+        String highPriceKey = String.format(HIGH_PRICE_KEY, stockCode) + today;
+        String stopLossKey = String.format(STOP_LOSS_KEY, stockCode) + today;
 
-        // 获取当前最高价
-        Object cached = redisTemplate.opsForValue().get(highPriceKey);
-        double currentHighPrice = cached != null ? ((Number) cached).doubleValue() : 0;
+        // 获取当前最高价（内存存储）
+        Double cachedHigh = highPriceStore.get(highPriceKey);
+        double currentHighPrice = cachedHigh != null ? cachedHigh : 0;
 
         // 计算动态回撤容忍度
         double tolerance = calculateDynamicTolerance(dailyAmplitude, config);
@@ -51,10 +50,10 @@ public class TrailingStopCalculator {
         // 如果当前价格创新高，更新止损线
         if (currentPrice > currentHighPrice) {
             currentHighPrice = currentPrice;
-            redisTemplate.opsForValue().set(highPriceKey, currentHighPrice);
+            highPriceStore.put(highPriceKey, currentHighPrice);
 
             double stopLoss = currentHighPrice * (1 - tolerance);
-            redisTemplate.opsForValue().set(stopLossKey, stopLoss);
+            stopLossStore.put(stopLossKey, stopLoss);
 
             log.debug("股票 {} 创新高 {}, 更新止损线为 {} (容忍度 {}%)",
                     stockCode, currentHighPrice, stopLoss, tolerance * 100);
@@ -73,14 +72,14 @@ public class TrailingStopCalculator {
      */
     public boolean checkTrigger(String stockCode, double currentPrice, StrategyConfig config) {
         String today = LocalDate.now().toString();
-        String stopLossKey = String.format(REDIS_STOP_LOSS_KEY, stockCode) + today;
+        String stopLossKey = String.format(STOP_LOSS_KEY, stockCode) + today;
 
-        Object cached = redisTemplate.opsForValue().get(stopLossKey);
+        Double cached = stopLossStore.get(stopLossKey);
         if (cached == null) {
             return false;
         }
 
-        double stopLoss = ((Number) cached).doubleValue();
+        double stopLoss = cached;
         boolean triggered = currentPrice <= stopLoss;
 
         if (triggered) {
@@ -95,10 +94,10 @@ public class TrailingStopCalculator {
      */
     public double getStopLossPrice(String stockCode) {
         String today = LocalDate.now().toString();
-        String stopLossKey = String.format(REDIS_STOP_LOSS_KEY, stockCode) + today;
+        String stopLossKey = String.format(STOP_LOSS_KEY, stockCode) + today;
 
-        Object cached = redisTemplate.opsForValue().get(stopLossKey);
-        return cached != null ? ((Number) cached).doubleValue() : 0;
+        Double cached = stopLossStore.get(stopLossKey);
+        return cached != null ? cached : 0;
     }
 
     /**
@@ -106,10 +105,10 @@ public class TrailingStopCalculator {
      */
     public double getHighPrice(String stockCode) {
         String today = LocalDate.now().toString();
-        String highPriceKey = String.format(REDIS_HIGH_PRICE_KEY, stockCode) + today;
+        String highPriceKey = String.format(HIGH_PRICE_KEY, stockCode) + today;
 
-        Object cached = redisTemplate.opsForValue().get(highPriceKey);
-        return cached != null ? ((Number) cached).doubleValue() : 0;
+        Double cached = highPriceStore.get(highPriceKey);
+        return cached != null ? cached : 0;
     }
 
     /**
@@ -117,15 +116,15 @@ public class TrailingStopCalculator {
      */
     public void reset(String stockCode, double openPrice, StrategyConfig config) {
         String today = LocalDate.now().toString();
-        String highPriceKey = String.format(REDIS_HIGH_PRICE_KEY, stockCode) + today;
-        String stopLossKey = String.format(REDIS_STOP_LOSS_KEY, stockCode) + today;
+        String highPriceKey = String.format(HIGH_PRICE_KEY, stockCode) + today;
+        String stopLossKey = String.format(STOP_LOSS_KEY, stockCode) + today;
 
         // 开盘价作为初始最高价
-        redisTemplate.opsForValue().set(highPriceKey, openPrice);
+        highPriceStore.put(highPriceKey, openPrice);
 
         // 计算初始止损线
         double stopLoss = openPrice * (1 - config.getTrailingStopTolerance());
-        redisTemplate.opsForValue().set(stopLossKey, stopLoss);
+        stopLossStore.put(stopLossKey, stopLoss);
 
         log.debug("重置股票 {} 止损状态: 开盘价 {}, 止损线 {}", stockCode, openPrice, stopLoss);
     }

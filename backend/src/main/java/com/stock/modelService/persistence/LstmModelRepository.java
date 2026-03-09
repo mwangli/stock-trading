@@ -17,10 +17,10 @@ import java.util.Optional;
  * @since 1.0
  */
 @Repository
-public interface LstmModelRepository extends MongoRepository<LstmModelDocument, String> {
+public interface LstmModelRepository extends MongoRepository<LstmModelDocument, String>, LstmModelRepositoryCustom {
 
     /**
-     * 获取最新保存的模型
+     * 获取最新保存的模型（全局）
      */
     LstmModelDocument findTopByOrderByCreatedAtDesc();
 
@@ -29,9 +29,14 @@ public interface LstmModelRepository extends MongoRepository<LstmModelDocument, 
     boolean existsByModelName(String modelName);
 
     /**
-     * 批量查询模型名称是否存在
-     * 返回已存在的模型名称集合
+     * 按股票代码（模型名称）查询最近一次保存的 LSTM 模型
      */
+    LstmModelDocument findTopByModelNameOrderByCreatedAtDesc(String modelName);
+
+    /**
+     * 批量查询模型名称是否存在（已废弃，请使用 findAllModelNamesDistinct 或 existsByModelName）
+     */
+    @Deprecated
     List<String> findByModelNameIn(List<String> modelNames);
 
     /**

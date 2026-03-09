@@ -168,6 +168,8 @@
       "createdAt": "创建时间",
       "status": "状态",
       "statusDeployed": "已部署",
+      "statusNotTrained": "未训练",
+      "statusTraining": "训练中",
       "action": "操作",
       "total": "共 {{count}} 条"
     },

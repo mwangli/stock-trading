@@ -15,7 +15,7 @@
 
     <modules>
         <module>backend</module>
-        <module>frontend</module>
+        <module>frontend-v2</module>
     </modules>
 
     <properties>

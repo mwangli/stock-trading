@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration;
+import org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -17,16 +20,15 @@ import org.springframework.web.client.RestTemplate;
 /**
  * 股票交易系统主应用启动类
  * 
- * 聚合启动所有业务模块：
- * - data-collector (数据采集)
- * - model-service (模型服务)
- * - strategy-analysis (策略分析)
- * - trading-executor (交易执行)
- * 
  * 启动命令: mvn spring-boot:run
  * 端口: 8080
  */
-@SpringBootApplication
+@SpringBootApplication(
+        exclude = {
+                RedisAutoConfiguration.class,
+                RedisRepositoriesAutoConfiguration.class
+        }
+)
 @EnableScheduling
 public class Application {
 
@@ -66,6 +68,7 @@ public class Application {
      * 用于缓存和状态管理
      */
     @Bean
+    @ConditionalOnBean(RedisConnectionFactory.class)
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
