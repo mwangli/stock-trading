@@ -2,10 +2,13 @@ package com.stock.dataCollector.api;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
 import com.stock.dataCollector.domain.entity.StockPrice;
-import com.stock.dataCollector.domain.entity.StockPriceMonthly;
-import com.stock.dataCollector.domain.entity.StockPriceWeekly;
 import com.stock.dataCollector.persistence.PriceRepository;
 import com.stock.dataCollector.service.StockDataService;
+import com.stock.dataCollector.domain.dto.SyncStockListResponseDto;
+import com.stock.dataCollector.domain.dto.StockStatisticsResponseDto;
+import com.stock.dataCollector.domain.dto.StockListPageResponseDto;
+import com.stock.dataCollector.domain.dto.StockDataValidationResponseDto;
+import com.stock.dataCollector.domain.dto.KlineDataResponseDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -18,7 +21,12 @@ import java.util.Map;
 
 /**
  * 股票数据采集控制器
- * 提供手动触发接口和数据验证接口
+ * <p>
+ * 提供手动触发同步、数据统计、分页列表、K 线数据、数据验证等接口。
+ * </p>
+ *
+ * @author mwangli
+ * @since 2026-03-10
  */
 @Slf4j
 @RestController
@@ -33,26 +41,29 @@ public class StockDataController {
      * 手动触发股票列表同步
      */
     @PostMapping("/sync")
-    public ResponseEntity<Map<String, Object>> syncStockList() {
+    public ResponseEntity<SyncStockListResponseDto> syncStockList() {
         log.info("手动触发股票列表同步");
         
         try {
             StockDataService.SyncResult result = stockDataService.syncStockList();
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "同步完成");
-            response.put("data", result);
-            
+
+            SyncStockListResponseDto response = SyncStockListResponseDto.builder()
+                    .success(true)
+                    .message("同步完成")
+                    .data(result)
+                    .build();
+
             return ResponseEntity.ok(response);
-            
+
         } catch (Exception e) {
             log.error("手动同步失败", e);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", "同步失败: " + e.getMessage());
-            
+
+            SyncStockListResponseDto response = SyncStockListResponseDto.builder()
+                    .success(false)
+                    .message("同步失败: " + e.getMessage())
+                    .data(null)
+                    .build();
+
             return ResponseEntity.internalServerError().body(response);
         }
     }
@@ -61,7 +72,8 @@ public class StockDataController {
      * 获取股票数据统计
      */
     @GetMapping("/statistics")
-    public ResponseEntity<Map<String, Object>> getStatistics() {
+    public ResponseEntity<StockStatisticsResponseDto> getStatistics() {
+        log.info("[StockData] 获取数据统计");
         long totalCount = stockDataService.count();
         
         Map<String, Long> marketCount = new HashMap<>();
@@ -85,30 +97,34 @@ public class StockDataController {
             if (stock.getIndustryCode() != null) withIndustryCode++;
         }
         
-        Map<String, Object> statistics = new HashMap<>();
-        statistics.put("totalCount", totalCount);
-        statistics.put("marketDistribution", marketCount);
-statistics.put("fieldCompleteness", Map.of(
-"name", withName,
-"price", withPrice,
-"market", withMarket,
-"changePercent", withChangePercent,
-"totalMarketValue", withTotalMarketValue,
-            "turnoverRate", withTurnoverRate,
-            "volumeRatio", withVolumeRatio,
-            "industryCode", withIndustryCode
-));
-statistics.put("completenessRate", Map.of(
-"name", String.format("%.2f%%", totalCount > 0 ? (withName * 100.0 / totalCount) : 0),
-"price", String.format("%.2f%%", totalCount > 0 ? (withPrice * 100.0 / totalCount) : 0),
-"market", String.format("%.2f%%", totalCount > 0 ? (withMarket * 100.0 / totalCount) : 0),
-"changePercent", String.format("%.2f%%", totalCount > 0 ? (withChangePercent * 100.0 / totalCount) : 0),
-"totalMarketValue", String.format("%.2f%%", totalCount > 0 ? (withTotalMarketValue * 100.0 / totalCount) : 0),
-            "turnoverRate", String.format("%.2f%%", totalCount > 0 ? (withTurnoverRate * 100.0 / totalCount) : 0),
-            "volumeRatio", String.format("%.2f%%", totalCount > 0 ? (withVolumeRatio * 100.0 / totalCount) : 0),
-            "industryCode", String.format("%.2f%%", totalCount > 0 ? (withIndustryCode * 100.0 / totalCount) : 0)
-        ));
-        
+        Map<String, Long> fieldCompleteness = Map.of(
+                "name", (long) withName,
+                "price", (long) withPrice,
+                "market", (long) withMarket,
+                "changePercent", (long) withChangePercent,
+                "totalMarketValue", (long) withTotalMarketValue,
+                "turnoverRate", (long) withTurnoverRate,
+                "volumeRatio", (long) withVolumeRatio,
+                "industryCode", (long) withIndustryCode
+        );
+        Map<String, String> completenessRate = Map.of(
+                "name", String.format("%.2f%%", totalCount > 0 ? (withName * 100.0 / totalCount) : 0),
+                "price", String.format("%.2f%%", totalCount > 0 ? (withPrice * 100.0 / totalCount) : 0),
+                "market", String.format("%.2f%%", totalCount > 0 ? (withMarket * 100.0 / totalCount) : 0),
+                "changePercent", String.format("%.2f%%", totalCount > 0 ? (withChangePercent * 100.0 / totalCount) : 0),
+                "totalMarketValue", String.format("%.2f%%", totalCount > 0 ? (withTotalMarketValue * 100.0 / totalCount) : 0),
+                "turnoverRate", String.format("%.2f%%", totalCount > 0 ? (withTurnoverRate * 100.0 / totalCount) : 0),
+                "volumeRatio", String.format("%.2f%%", totalCount > 0 ? (withVolumeRatio * 100.0 / totalCount) : 0),
+                "industryCode", String.format("%.2f%%", totalCount > 0 ? (withIndustryCode * 100.0 / totalCount) : 0)
+        );
+
+        StockStatisticsResponseDto statistics = StockStatisticsResponseDto.builder()
+                .totalCount(totalCount)
+                .marketDistribution(marketCount)
+                .fieldCompleteness(fieldCompleteness)
+                .completenessRate(completenessRate)
+                .build();
+
         return ResponseEntity.ok(statistics);
     }
 
@@ -116,10 +132,10 @@ statistics.put("completenessRate", Map.of(
      * 分页查询股票列表
      */
     @GetMapping("/list")
-    public ResponseEntity<Map<String, Object>> getStockList(
+    public ResponseEntity<StockListPageResponseDto> getStockList(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        
+        log.info("[StockData] 分页查询股票列表 | page={}, size={}", page, size);
         List<StockInfo> allStocks = stockDataService.findAllStocks();
         
         int total = allStocks.size();
@@ -130,20 +146,25 @@ statistics.put("completenessRate", Map.of(
             ? allStocks.subList(fromIndex, toIndex) 
             : List.of();
         
-        Map<String, Object> response = new HashMap<>();
-        response.put("total", total);
-        response.put("page", page);
-        response.put("size", size);
-        response.put("data", pageData);
-        
+        StockListPageResponseDto response = StockListPageResponseDto.builder()
+                .total(total)
+                .page(page)
+                .size(size)
+                .data(pageData)
+                .build();
+
         return ResponseEntity.ok(response);
     }
 
     /**
      * 根据股票代码查询
+     *
+     * @param code 股票代码
+     * @return 股票信息，不存在时 404
      */
     @GetMapping("/code/{code}")
-    public ResponseEntity<?> getStockByCode(@PathVariable String code) {
+    public ResponseEntity<StockInfo> getStockByCode(@PathVariable String code) {
+        log.info("[StockData] 按代码查询股票 | code={}", code);
         return stockDataService.findByCode(code)
             .map(ResponseEntity::ok)
             .orElse(ResponseEntity.notFound().build());
@@ -153,7 +174,8 @@ statistics.put("completenessRate", Map.of(
      * 验证数据完整性
      */
     @GetMapping("/validate")
-    public ResponseEntity<Map<String, Object>> validateData() {
+    public ResponseEntity<StockDataValidationResponseDto> validateData() {
+        log.info("[StockData] 验证数据完整性");
         List<StockInfo> allStocks = stockDataService.findAllStocks();
         
         int missingName = 0, missingPrice = 0, missingMarket = 0, missingChangePercent = 0, missingTotalMarketValue = 0, missingTurnoverRate = 0, missingCode = 0;
@@ -168,23 +190,27 @@ statistics.put("completenessRate", Map.of(
             if (stock.getTurnoverRate() == null) missingTurnoverRate++;
         }
         
-        Map<String, Object> result = new HashMap<>();
-        result.put("totalRecords", allStocks.size());
-        result.put("validation", Map.of(
-            "missingCode", missingCode,
-            "missingName", missingName,
-            "missingPrice", missingPrice,
-            "missingMarket", missingMarket,
-            "missingChangePercent", missingChangePercent,
-            "missingTotalMarketValue", missingTotalMarketValue,
-            "missingTurnoverRate", missingTurnoverRate
-        ));
-        result.put("isValid", missingCode == 0);
-        result.put("dataQuality", String.format("%.2f%%", 
-            allStocks.size() > 0 
-                ? ((allStocks.size() - missingName) * 100.0 / allStocks.size()) 
-                : 0));
-        
+        Map<String, Integer> validation = Map.of(
+                "missingCode", missingCode,
+                "missingName", missingName,
+                "missingPrice", missingPrice,
+                "missingMarket", missingMarket,
+                "missingChangePercent", missingChangePercent,
+                "missingTotalMarketValue", missingTotalMarketValue,
+                "missingTurnoverRate", missingTurnoverRate
+        );
+        String dataQuality = String.format("%.2f%%",
+                allStocks.size() > 0
+                        ? ((allStocks.size() - missingName) * 100.0 / allStocks.size())
+                        : 0);
+
+        StockDataValidationResponseDto result = StockDataValidationResponseDto.builder()
+                .totalRecords(allStocks.size())
+                .validation(validation)
+                .isValid(missingCode == 0)
+                .dataQuality(dataQuality)
+                .build();
+
         return ResponseEntity.ok(result);
     }
 
@@ -194,7 +220,7 @@ statistics.put("completenessRate", Map.of(
      * 日K线支持timeRange参数过滤，并限制最大返回数据量
      */
     @GetMapping("/kline/{code}")
-    public ResponseEntity<Map<String, Object>> getKlineData(
+    public ResponseEntity<KlineDataResponseDto> getKlineData(
             @PathVariable String code,
             @RequestParam(required = false, defaultValue = "daily") String type,
             @RequestParam(required = false) String startDate,
@@ -268,14 +294,16 @@ statistics.put("completenessRate", Map.of(
             // 如果没有数据，返回空结果
             if (prices == null || prices.isEmpty()) {
                 log.warn("股票 {} 没有K线数据", code);
-                Map<String, Object> result = new HashMap<>();
-                result.put("success", true);
-                result.put("data", Map.of(
-                    "dates", List.of(),
-                    "kline", List.of(),
-                    "volumes", List.of()
-                ));
-                result.put("total", 0);
+                KlineDataResponseDto.KlineDataWrapper emptyData = KlineDataResponseDto.KlineDataWrapper.builder()
+                        .dates(List.of())
+                        .kline(List.of())
+                        .volumes(List.of())
+                        .build();
+                KlineDataResponseDto result = KlineDataResponseDto.builder()
+                        .success(true)
+                        .data(emptyData)
+                        .total(0)
+                        .build();
                 return ResponseEntity.ok(result);
             }
 
@@ -308,24 +336,29 @@ statistics.put("completenessRate", Map.of(
                 .filter(p -> p.getVolume() != null)
                 .map(p -> (Object) p.getVolume().doubleValue())
                 .toList();
+            KlineDataResponseDto.KlineDataWrapper data = KlineDataResponseDto.KlineDataWrapper.builder()
+                    .dates(dates)
+                    .kline(klineData)
+                    .volumes(volumes)
+                    .build();
 
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", true);
-            result.put("data", Map.of(
-                "dates", dates,
-                "kline", klineData,
-                "volumes", volumes
-            ));
-            result.put("total", prices.size());
+            KlineDataResponseDto result = KlineDataResponseDto.builder()
+                    .success(true)
+                    .data(data)
+                    .total(prices.size())
+                    .build();
 
             return ResponseEntity.ok(result);
 
         } catch (Exception e) {
             log.error("获取K线数据失败: code={}", code, e);
 
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", false);
-            result.put("message", "获取K线数据失败: " + e.getMessage());
+            KlineDataResponseDto result = KlineDataResponseDto.builder()
+                    .success(false)
+                    .message("获取K线数据失败: " + e.getMessage())
+                    .data(null)
+                    .total(0)
+                    .build();
 
             return ResponseEntity.internalServerError().body(result);
         }

@@ -2,6 +2,13 @@ package com.stock.dataCollector.api;
 
 import com.stock.dataCollector.domain.vo.MarketStatsDto;
 import com.stock.dataCollector.domain.entity.StockInfo;
+import com.stock.dataCollector.domain.entity.StockPrice;
+import com.stock.dataCollector.domain.dto.StockInfoListResponseDto;
+import com.stock.dataCollector.domain.dto.HistoryPriceListResponseDto;
+import com.stock.dataCollector.domain.dto.SimpleFlagResponseDto;
+import com.stock.dataCollector.domain.dto.TopIncreaseItemDto;
+import com.stock.dataCollector.domain.dto.TopIncreaseListResponseDto;
+import com.stock.dataCollector.domain.dto.MarketStatsResponseDto;
 import com.stock.dataCollector.service.StockDataService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +26,12 @@ import java.util.stream.Collectors;
 
 /**
  * 股票信息控制器
- * 对应前端 /api/stockInfo/* 接口
+ * <p>
+ * 对应前端 /api/stockInfo/* 接口，提供股票列表、历史价格、自选、涨幅榜、市场统计等。
+ * </p>
+ *
+ * @author mwangli
+ * @since 2026-03-10
  */
 @Slf4j
 @RestController
@@ -34,7 +46,7 @@ public class StockInfoController {
      * 前端参数: current, pageSize, keywords
      */
     @GetMapping("/list")
-    public ResponseEntity<Map<String, Object>> listStockInfo(
+    public ResponseEntity<StockInfoListResponseDto> listStockInfo(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(required = false) String keywords) {
@@ -47,12 +59,13 @@ public class StockInfoController {
         // 构建动态查询条件，使用 keywords 同时匹配 name 或 code
         Page<StockInfo> pageResult = stockDataService.findStocksWithKeywords(keywords, pageRequest);
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("data", pageResult.getContent());
-        response.put("total", pageResult.getTotalElements());
-        response.put("success", true);
-        response.put("current", pageResult.getNumber() + 1);
-        response.put("pageSize", pageResult.getSize());
+        StockInfoListResponseDto response = StockInfoListResponseDto.builder()
+                .data(pageResult.getContent())
+                .total(pageResult.getTotalElements())
+                .success(true)
+                .current(pageResult.getNumber() + 1)
+                .pageSize(pageResult.getSize())
+                .build();
         log.info("[StockInfo] /list 即将返回 total={}", pageResult.getTotalElements());
         return ResponseEntity.ok(response);
     }
@@ -61,14 +74,15 @@ public class StockInfoController {
      * 获取历史价格
      */
     @GetMapping("/listHistoryPrices")
-    public ResponseEntity<Map<String, Object>> listHistoryPrices(@RequestParam String code) {
-        // 调用Service获取历史数据
-        var prices = stockDataService.getHistoryPrices(code);
-        
-        Map<String, Object> response = new HashMap<>();
-        response.put("data", prices);
-        response.put("success", true);
-        
+    public ResponseEntity<HistoryPriceListResponseDto> listHistoryPrices(@RequestParam String code) {
+        log.info("[StockInfo] 获取历史价格 | code={}", code);
+        List<StockPrice> prices = stockDataService.getHistoryPrices(code);
+
+        HistoryPriceListResponseDto response = HistoryPriceListResponseDto.builder()
+                .data(prices)
+                .success(true)
+                .build();
+
         return ResponseEntity.ok(response);
     }
 
@@ -76,12 +90,13 @@ public class StockInfoController {
      * 加入自选 (模拟)
      */
     @GetMapping("/selectStockInfo")
-    public ResponseEntity<Map<String, Object>> selectStockInfo(@RequestParam String code) {
+    public ResponseEntity<SimpleFlagResponseDto> selectStockInfo(@RequestParam String code) {
         log.info("加入自选: {}", code);
         // TODO: 实现真正的自选逻辑 (可能需要用户系统)
-        
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
+
+        SimpleFlagResponseDto response = SimpleFlagResponseDto.builder()
+                .success(true)
+                .build();
         return ResponseEntity.ok(response);
     }
 
@@ -89,11 +104,12 @@ public class StockInfoController {
      * 取消自选 (模拟)
      */
     @GetMapping("/cancelStockInfo")
-    public ResponseEntity<Map<String, Object>> cancelStockInfo(@RequestParam String code) {
+    public ResponseEntity<SimpleFlagResponseDto> cancelStockInfo(@RequestParam String code) {
         log.info("取消自选: {}", code);
-        
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
+
+        SimpleFlagResponseDto response = SimpleFlagResponseDto.builder()
+                .success(true)
+                .build();
         return ResponseEntity.ok(response);
     }
 
@@ -102,23 +118,22 @@ public class StockInfoController {
      * 返回格式: [{code, name, changePercent}, ...]
      */
     @GetMapping("/listIncreaseRate")
-    public ResponseEntity<Map<String, Object>> listIncreaseRate() {
+    public ResponseEntity<TopIncreaseListResponseDto> listIncreaseRate() {
         log.info("[StockInfo] 请求到达 GET /api/stockInfo/listIncreaseRate");
         List<StockInfo> top10Stocks = stockDataService.findTop10ByIncreaseRate();
 
-        List<Map<String, Object>> top10 = top10Stocks.stream()
-            .map(stock -> {
-                Map<String, Object> item = new HashMap<>();
-                item.put("code", stock.getCode());
-                item.put("name", stock.getName());
-                item.put("changePercent", stock.getChangePercent());
-                return item;
-            })
-            .collect(Collectors.toList());
+        List<TopIncreaseItemDto> top10 = top10Stocks.stream()
+                .map(stock -> TopIncreaseItemDto.builder()
+                        .code(stock.getCode())
+                        .name(stock.getName())
+                        .changePercent(stock.getChangePercent())
+                        .build())
+                .collect(Collectors.toList());
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("data", top10);
-        response.put("success", true);
+        TopIncreaseListResponseDto response = TopIncreaseListResponseDto.builder()
+                .data(top10)
+                .success(true)
+                .build();
         log.info("[StockInfo] /listIncreaseRate 即将返回 size={}", top10.size());
         return ResponseEntity.ok(response);
     }
@@ -129,13 +144,14 @@ public class StockInfoController {
      * 发生异常时返回兜底数据，确保前端始终能拿到响应，避免请求挂起。
      */
     @GetMapping("/marketStats")
-    public ResponseEntity<Map<String, Object>> getMarketStats() {
+    public ResponseEntity<MarketStatsResponseDto> getMarketStats() {
         log.info("[StockInfo] 请求到达 GET /api/stockInfo/marketStats");
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
         try {
             MarketStatsDto stats = stockDataService.getMarketStats();
-            response.put("data", stats);
+            MarketStatsResponseDto response = MarketStatsResponseDto.builder()
+                    .success(true)
+                    .data(stats)
+                    .build();
             log.info("[StockInfo] marketStats 即将返回 success=true");
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -151,7 +167,10 @@ public class StockInfoController {
                     .totalCount(0)
                     .avgTurnoverRate(BigDecimal.ZERO)
                     .build();
-            response.put("data", fallback);
+            MarketStatsResponseDto response = MarketStatsResponseDto.builder()
+                    .success(true)
+                    .data(fallback)
+                    .build();
             return ResponseEntity.ok(response);
         }
     }

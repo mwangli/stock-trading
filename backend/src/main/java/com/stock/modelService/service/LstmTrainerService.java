@@ -16,18 +16,23 @@ import ai.djl.training.loss.Loss;
 import ai.djl.training.optimizer.Optimizer;
 import ai.djl.training.tracker.Tracker;
 import ai.djl.ndarray.NDList;
+import ai.djl.training.ParameterStore;
+import ai.djl.nn.Block;
 import com.stock.dataCollector.domain.entity.StockPrice;
 import com.stock.dataCollector.persistence.PriceRepository;
 import com.stock.modelService.config.LstmTrainingConfig;
 import com.stock.modelService.domain.entity.LstmModelDocument;
 import com.stock.modelService.model.ModelBinaryCodec;
 import com.stock.modelService.model.StockLSTMModel;
+import com.stock.modelService.domain.dto.LstmPredictionResultDto;
 import com.stock.modelService.persistence.LstmModelRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -297,6 +302,104 @@ public class LstmTrainerService {
                 log.warn("清除模型训练中状态失败: {}", ex.getMessage());
             }
             return TrainingResult.builder().success(false).message("训练失败：" + e.getMessage()).build();
+        }
+    }
+
+    /**
+     * 使用最新的 LSTM 模型对单只股票进行下一交易日价格预测
+     *
+     * 该方法会：
+     * 1. 根据股票代码从 MongoDB 中加载最近一次训练保存的模型参数；
+     * 2. 从价格仓库中读取该股票的历史价格数据，并构建与训练阶段一致的特征序列；
+     * 3. 使用 DJL 执行前向推理，得到归一化预测结果，并反归一化为实际价格；
+     * 4. 计算相对涨跌幅并封装为 DTO 返回。
+     *
+     * @param stockCode 股票代码，如 "600519"
+     * @return 预测结果 DTO，包含预测价格、最新收盘价及预测涨跌幅
+     */
+    public LstmPredictionResultDto predictNext(String stockCode) {
+        if (stockCode == null || stockCode.isBlank()) {
+            throw new IllegalArgumentException("股票代码不能为空");
+        }
+
+        String trimmedCode = stockCode.trim();
+        log.info("开始执行 LSTM 预测，股票代码={}", trimmedCode);
+
+        // 1. 从 MongoDB 加载最新模型
+        LstmModelDocument modelDoc = lstmModelRepository.findTopByModelNameOrderByCreatedAtDesc(trimmedCode);
+        if (modelDoc == null || modelDoc.getParams() == null) {
+            throw new IllegalStateException("未找到对应股票的 LSTM 模型，请先完成训练: " + trimmedCode);
+        }
+
+        // 2. 从价格仓库获取历史数据，并构建预测输入
+        int fetchDays = Math.max(config.getSequenceLength() + 1, config.getSequenceLength() * 2);
+        List<StockPrice> prices = getStockPrices(trimmedCode, fetchDays);
+        if (prices.isEmpty()) {
+            throw new IllegalStateException("未找到该股票的历史价格数据: " + trimmedCode);
+        }
+
+        LstmDataPreprocessor.PredictionInput predictionInput = dataPreprocessor.buildPredictionInput(prices);
+        if (predictionInput == null) {
+            throw new IllegalStateException("构建预测输入失败，历史数据不足: " + trimmedCode);
+        }
+
+        double maxPrice = predictionInput.getMaxPrice();
+        double lastClosePrice = predictionInput.getLastClosePrice();
+
+        // 3. 构造 DJL 模型并加载参数
+        try (NDManager manager = NDManager.newBaseManager("PyTorch");
+             Model model = Model.newInstance("lstm-stock-predict", "PyTorch")) {
+            Block block = new StockLSTMModel(
+                    config.getInputSize(),
+                    config.getHiddenSize(),
+                    config.getNumLayers(),
+                    (float) config.getDropout(),
+                    config.getSequenceLength()
+            );
+            model.setBlock(block);
+
+            try (ByteArrayInputStream bais = new ByteArrayInputStream(modelDoc.getParams());
+                 DataInputStream dis = new DataInputStream(bais)) {
+                block.loadParameters(manager, dis);
+            }
+
+            // 4. 构建输入张量并执行前向推理
+            float[][][] batchInputs = new float[1][][];
+            batchInputs[0] = predictionInput.getInput();
+            float[][] flattened = flattenInputs(batchInputs);
+
+            NDArray inputArray = manager.create(flattened);
+            NDList inputs = new NDList(inputArray);
+            ParameterStore parameterStore = new ParameterStore(manager, false);
+            NDList output = model.getBlock().forward(parameterStore, inputs, false);
+            NDArray prediction = output.singletonOrThrow();
+
+            float[] values = prediction.toFloatArray();
+            if (values.length == 0) {
+                throw new IllegalStateException("LSTM 预测结果为空");
+            }
+
+            double normalizedPredicted = values[0];
+            double predictedPrice = normalizedPredicted * maxPrice;
+            Double safeLastClose = lastClosePrice > 0 ? lastClosePrice : null;
+            Double changeRatio = null;
+            if (safeLastClose != null && safeLastClose > 0) {
+                changeRatio = (predictedPrice - safeLastClose) / safeLastClose;
+            }
+
+            log.info("LSTM 预测完成，stockCode={}, predictedPrice={}, lastClose={}, changeRatio={}",
+                    trimmedCode, predictedPrice, lastClosePrice, changeRatio);
+
+            return LstmPredictionResultDto.builder()
+                    .stockCode(trimmedCode)
+                    .predictedClosePrice(predictedPrice)
+                    .lastClosePrice(safeLastClose)
+                    .predictedChangeRatio(changeRatio)
+                    .modelId(modelDoc.getId())
+                    .build();
+        } catch (Exception e) {
+            log.error("LSTM 预测失败，stockCode={}", trimmedCode, e);
+            throw new IllegalStateException("LSTM 预测失败: " + e.getMessage(), e);
         }
     }
 

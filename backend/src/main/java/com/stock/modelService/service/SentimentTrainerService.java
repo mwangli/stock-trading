@@ -391,6 +391,7 @@ public class SentimentTrainerService {
         Map<String, Object> response = new HashMap<>();
         response.put("label", result.getLabel());
         response.put("score", result.getScore());
+        response.put("normalizedScore", result.getNormalizedScore());
         response.put("confidence", result.getConfidence());
         response.put("probabilities", result.getProbabilities() != null ? result.getProbabilities() : Map.of());
         response.put("text", result.getText() != null ? result.getText() : "");

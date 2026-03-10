@@ -1,10 +1,18 @@
 package com.stock.tradingExecutor.api;
 
+import com.stock.tradingExecutor.domain.dto.CurrentUserDto;
+import com.stock.tradingExecutor.domain.dto.CurrentUserResponseDto;
+import com.stock.tradingExecutor.domain.dto.LoginRequestDto;
+import com.stock.tradingExecutor.domain.dto.LoginResponseDto;
+import com.stock.tradingExecutor.domain.dto.LogoutResponseDto;
+import com.stock.tradingExecutor.domain.dto.NoticeDto;
+import com.stock.tradingExecutor.domain.dto.NoticeListResponseDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -20,23 +28,25 @@ public class AuthController {
      * 获取当前用户信息
      */
     @GetMapping("/currentUser")
-    public ResponseEntity<Map<String, Object>> currentUser() {
-        Map<String, Object> user = new HashMap<>();
-        user.put("name", "Admin");
-        user.put("avatar", "https://gw.alipayobjects.com/zos/antfincdn/XAosXuNZyF/BiazfanxmamNRoxxVxka.png");
-        user.put("userid", "00000001");
-        user.put("email", "admin@stock.com");
-        user.put("signature", "AI Trading System Admin");
-        user.put("title", "Administrator");
-        user.put("group", "Admin Group");
-        user.put("notifyCount", 12);
-        user.put("unreadCount", 11);
-        user.put("country", "China");
-        user.put("access", "admin");
+    public ResponseEntity<CurrentUserResponseDto> currentUser() {
+        CurrentUserDto user = CurrentUserDto.builder()
+                .name("Admin")
+                .avatar("https://gw.alipayobjects.com/zos/antfincdn/XAosXuNZyF/BiazfanxmamNRoxxVxka.png")
+                .userid("00000001")
+                .email("admin@stock.com")
+                .signature("AI Trading System Admin")
+                .title("Administrator")
+                .group("Admin Group")
+                .notifyCount(12)
+                .unreadCount(11)
+                .country("China")
+                .access("admin")
+                .build();
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("data", user);
-        response.put("success", true);
+        CurrentUserResponseDto response = CurrentUserResponseDto.builder()
+                .data(user)
+                .success(true)
+                .build();
 
         return ResponseEntity.ok(response);
     }
@@ -45,16 +55,17 @@ public class AuthController {
      * 登录接口
      */
     @PostMapping("/account")
-    public ResponseEntity<Map<String, Object>> login(@RequestBody Map<String, String> params) {
-        String type = params.get("type");
-        String userName = params.get("userName");
+    public ResponseEntity<LoginResponseDto> login(@RequestBody LoginRequestDto params) {
+        String type = params.getType();
+        String userName = params.getUserName();
 
         log.info("用户登录: {}, type={}", userName, type);
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "ok");
-        response.put("type", type);
-        response.put("currentAuthority", "admin");
+        LoginResponseDto response = LoginResponseDto.builder()
+                .status("ok")
+                .type(type)
+                .currentAuthority("admin")
+                .build();
         return ResponseEntity.ok(response);
     }
 
@@ -62,11 +73,12 @@ public class AuthController {
      * 退出登录
      */
     @PostMapping("/outLogin")
-    public ResponseEntity<Map<String, Object>> logout() {
+    public ResponseEntity<LogoutResponseDto> logout() {
         log.info("用户退出登录");
-        Map<String, Object> response = new HashMap<>();
-        response.put("data", new HashMap<>());
-        response.put("success", true);
+        LogoutResponseDto response = LogoutResponseDto.builder()
+                .data(Collections.emptyMap())
+                .success(true)
+                .build();
         return ResponseEntity.ok(response);
     }
 
@@ -81,11 +93,13 @@ public class AuthController {
      * 获取通知 (Mock)
      */
     @GetMapping("/../notices")
-    public ResponseEntity<Map<String, Object>> getNotices() {
-        Map<String, Object> response = new HashMap<>();
-        response.put("data", new java.util.ArrayList<>());
-        response.put("total", 0);
-        response.put("success", true);
+    public ResponseEntity<NoticeListResponseDto> getNotices() {
+        List<NoticeDto> data = List.of();
+        NoticeListResponseDto response = NoticeListResponseDto.builder()
+                .data(data)
+                .total(0)
+                .success(true)
+                .build();
         return ResponseEntity.ok(response);
     }
 }

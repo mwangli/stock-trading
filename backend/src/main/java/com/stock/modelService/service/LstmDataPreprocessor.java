@@ -135,6 +135,91 @@ private final TechnicalIndicatorService technicalIndicatorService;
     }
 
     /**
+     * 构建预测所需的最新序列输入
+     *
+     * 使用与训练阶段完全一致的归一化和技术指标计算方式，
+     * 从价格列表末尾截取 sequenceLength 条记录，生成单条预测输入样本。
+     *
+     * @param prices 股票价格列表（按日期升序排列）
+     * @return 预测输入包装对象，包含归一化后的特征序列、最大价格和最新收盘价
+     */
+    public PredictionInput buildPredictionInput(List<StockPrice> prices) {
+        if (prices == null || prices.size() < config.getSequenceLength()) {
+            log.warn("构建预测输入数据不足: 需要至少 {} 条记录，实际 {}",
+                    config.getSequenceLength(), prices == null ? 0 : prices.size());
+            return null;
+        }
+
+        // 1. 计算价格与成交量归一化参数（与 processData 保持一致）
+        double maxPrice = prices.stream()
+                .mapToDouble(p -> p.getHighPrice() != null ? p.getHighPrice().doubleValue() : 0)
+                .max()
+                .orElse(1.0);
+
+        double maxVolume = prices.stream()
+                .mapToDouble(p -> p.getVolume() != null ? p.getVolume().doubleValue() : 0)
+                .max()
+                .orElse(1.0);
+
+        log.info("构建预测输入 - 归一化参数: maxPrice={}, maxVolume={}", maxPrice, maxVolume);
+
+        // 2. 计算技术指标并获取归一化参数（与 processData 保持一致）
+        Map<String, double[]> indicators = technicalIndicatorService.calculateIndicators(prices);
+        double[] rsi = indicators.get("RSI");
+        double[] macd = indicators.get("MACD");
+        double[] sma = indicators.get("SMA");
+        double[] upperBoll = indicators.get("UpperBoll");
+        double[] lowerBoll = indicators.get("LowerBoll");
+        double[] obv = indicators.get("OBV");
+
+        double maxRsi = Arrays.stream(rsi).max().orElse(1.0);
+        double minRsi = Arrays.stream(rsi).min().orElse(0.0);
+        double maxMacd = Arrays.stream(macd).map(Math::abs).max().orElse(1.0);
+        double maxSma = Arrays.stream(sma).max().orElse(1.0);
+        double maxUpperBoll = Arrays.stream(upperBoll).max().orElse(1.0);
+        double maxLowerBoll = Arrays.stream(lowerBoll).max().orElse(1.0);
+        double maxObv = Arrays.stream(obv).map(Math::abs).max().orElse(1.0);
+
+        int seqLen = config.getSequenceLength();
+        int featureSize = config.getInputSize();
+        float[][] input = new float[seqLen][featureSize];
+
+        // 3. 从价格序列末尾截取 sequenceLength 条记录，构建特征矩阵
+        int startIndex = prices.size() - seqLen;
+        for (int j = 0; j < seqLen; j++) {
+            int idx = startIndex + j;
+            StockPrice price = prices.get(idx);
+            double[] feature = new double[featureSize];
+
+            feature[0] = normalize(price.getOpenPrice(), maxPrice);
+            feature[1] = normalize(price.getHighPrice(), maxPrice);
+            feature[2] = normalize(price.getLowPrice(), maxPrice);
+            feature[3] = normalize(price.getClosePrice(), maxPrice);
+            feature[4] = normalizeVolume(price.getVolume(), maxVolume);
+            feature[5] = (rsi[idx] - minRsi) / (maxRsi - minRsi);
+            feature[6] = macd[idx] / maxMacd;
+            feature[7] = sma[idx] / maxSma;
+            feature[8] = upperBoll[idx] / maxUpperBoll;
+            feature[9] = lowerBoll[idx] / maxLowerBoll;
+            feature[10] = obv[idx] / maxObv;
+
+            for (int k = 0; k < feature.length && k < featureSize; k++) {
+                input[j][k] = (float) feature[k];
+            }
+        }
+
+        double lastClosePrice = prices.get(prices.size() - 1).getClosePrice() != null
+                ? prices.get(prices.size() - 1).getClosePrice().doubleValue()
+                : 0.0;
+
+        return PredictionInput.builder()
+                .input(input)
+                .maxPrice(maxPrice)
+                .lastClosePrice(lastClosePrice)
+                .build();
+    }
+
+    /**
      * 创建训练样本
      * 使用滑动窗口方式构建序列
      */
@@ -248,5 +333,28 @@ private final TechnicalIndicatorService technicalIndicatorService;
             }
             return targets;
         }
+    }
+
+    /**
+     * 单条预测输入包装类
+     * 用于封装 LSTM 预测所需的序列特征和反归一化参数
+     */
+    @lombok.Data
+    @lombok.Builder
+    public static class PredictionInput {
+        /**
+         * 预测输入特征，形状为 [sequenceLength, inputSize]
+         */
+        private float[][] input;
+
+        /**
+         * 价格归一化时使用的最大价格（用于反归一化预测结果）
+         */
+        private double maxPrice;
+
+        /**
+         * 最新一个交易日的收盘价（原始价格）
+         */
+        private double lastClosePrice;
     }
 }

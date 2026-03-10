@@ -1,5 +1,7 @@
 package com.stock.dataCollector.api;
 
+import com.stock.dataCollector.domain.dto.UploadImageDataDto;
+import com.stock.dataCollector.domain.dto.UploadImageResponseDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -8,9 +10,6 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * OCR和图片处理控制器 (Mock)
@@ -25,13 +24,19 @@ public class OcrController {
      * 图片上传接口
      */
     @PostMapping("/uploadImage")
-    public ResponseEntity<Map<String, Object>> uploadImage(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<UploadImageResponseDto> uploadImage(@RequestParam("file") MultipartFile file) {
         log.info("上传文件: {}, 大小: {} bytes", file.getOriginalFilename(), file.getSize());
-        
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("data", Map.of("url", "https://mock-image-url.com/uploaded.png", "text", "Mock OCR Result"));
-        
+
+        UploadImageDataDto data = UploadImageDataDto.builder()
+                .url("https://mock-image-url.com/uploaded.png")
+                .text("Mock OCR Result")
+                .build();
+
+        UploadImageResponseDto response = UploadImageResponseDto.builder()
+                .success(true)
+                .data(data)
+                .build();
+
         return ResponseEntity.ok(response);
     }
 
