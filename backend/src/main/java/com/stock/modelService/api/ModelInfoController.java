@@ -1,20 +1,27 @@
 package com.stock.modelService.api;
 
+import com.stock.modelService.domain.dto.ModelInfoChartDataResponseDto;
+import com.stock.modelService.domain.dto.ModelInfoChartDataWrapperDto;
+import com.stock.modelService.domain.dto.ModelInfoItemDto;
+import com.stock.modelService.domain.dto.ModelInfoListResponseDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 
 /**
  * 模型信息控制器
- * 对应前端 /api/modelInfo/* 接口
+ * <p>
+ * 对应前端 /api/modelInfo/* 接口，提供模型列表、测试/验证图表数据等。
+ * </p>
+ *
+ * @author mwangli
+ * @since 2026-03-10
  */
 @Slf4j
 @RestController
@@ -23,69 +30,87 @@ public class ModelInfoController {
 
     /**
      * 获取模型列表
+     *
+     * @param current  当前页
+     * @param pageSize 每页条数
+     * @param name     模型名称筛选
+     * @param code     股票代码筛选
+     * @return 模型列表分页结果
      */
     @GetMapping("/list")
-    public ResponseEntity<Map<String, Object>> listModels(
+    public ResponseEntity<ModelInfoListResponseDto> listModels(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String code) {
 
-        List<Map<String, Object>> models = new ArrayList<>();
+        log.info("[ModelInfo] 分页查询模型列表 | current={}, pageSize={}, name={}, code={}", current, pageSize, name, code);
 
-        // Mock数据
+        List<ModelInfoItemDto> models = new ArrayList<>();
         for (int i = 0; i < 5; i++) {
-            Map<String, Object> model = new HashMap<>();
             String stockCode = i % 2 == 0 ? "600519" : "000858";
-            model.put("key", "m" + i);
-            model.put("code", stockCode);
-            model.put("name", i % 2 == 0 ? "贵州茅台" : "五粮液");
-            model.put("paramsSize", "100k");
-            model.put("trainTimes", 10 + i);
-            model.put("trainPeriod", "2h");
-            model.put("testDeviation", 0.0123 + i * 0.001);
-            model.put("score", 95.5 - i);
-            model.put("updateTime", LocalDateTime.now().minusDays(i));
-            model.put("status", 1); // 1: Success
+            ModelInfoItemDto model = ModelInfoItemDto.builder()
+                    .key("m" + i)
+                    .code(stockCode)
+                    .name(i % 2 == 0 ? "贵州茅台" : "五粮液")
+                    .paramsSize("100k")
+                    .trainTimes(10 + i)
+                    .trainPeriod("2h")
+                    .testDeviation(0.0123 + i * 0.001)
+                    .score(95.5 - i)
+                    .updateTime(LocalDateTime.now().minusDays(i))
+                    .status(1)
+                    .build();
             models.add(model);
         }
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("data", models);
-        response.put("total", models.size());
-        response.put("success", true);
-        response.put("current", current);
-        response.put("pageSize", pageSize);
+        ModelInfoListResponseDto response = ModelInfoListResponseDto.builder()
+                .data(models)
+                .total(models.size())
+                .success(true)
+                .current(current)
+                .pageSize(pageSize)
+                .build();
 
         return ResponseEntity.ok(response);
     }
 
     /**
-     * 获取测试数据
+     * 获取测试数据（模型预测 vs 真实值图表）
+     *
+     * @param code 股票代码
+     * @return 图表数据，包含 points、maxValue、minValue
      */
     @GetMapping("/listTestData")
-    public ResponseEntity<Map<String, Object>> listTestData(@RequestParam String code) {
-        Map<String, Object> data = generateMockPoints();
-        Map<String, Object> response = new HashMap<>();
-        response.put("data", data);
-        response.put("success", true);
+    public ResponseEntity<ModelInfoChartDataResponseDto> listTestData(@RequestParam String code) {
+        log.info("[ModelInfo] 获取测试数据 | code={}", code);
+        ModelInfoChartDataWrapperDto data = generateMockChartData();
+        ModelInfoChartDataResponseDto response = ModelInfoChartDataResponseDto.builder()
+                .success(true)
+                .data(data)
+                .build();
         return ResponseEntity.ok(response);
     }
 
     /**
-     * 获取验证数据
+     * 获取验证数据（模型预测 vs 真实值图表）
+     *
+     * @param code 股票代码
+     * @return 图表数据，包含 points、maxValue、minValue
      */
     @GetMapping("/listValidateData")
-    public ResponseEntity<Map<String, Object>> listValidateData(@RequestParam String code) {
-        Map<String, Object> data = generateMockPoints();
-        Map<String, Object> response = new HashMap<>();
-        response.put("data", data);
-        response.put("success", true);
+    public ResponseEntity<ModelInfoChartDataResponseDto> listValidateData(@RequestParam String code) {
+        log.info("[ModelInfo] 获取验证数据 | code={}", code);
+        ModelInfoChartDataWrapperDto data = generateMockChartData();
+        ModelInfoChartDataResponseDto response = ModelInfoChartDataResponseDto.builder()
+                .success(true)
+                .data(data)
+                .build();
         return ResponseEntity.ok(response);
     }
 
-    private Map<String, Object> generateMockPoints() {
-        List<Map<String, Object>> points = new ArrayList<>();
+    private ModelInfoChartDataWrapperDto generateMockChartData() {
+        List<ModelInfoChartDataResponseDto.ChartPointDto> points = new ArrayList<>();
         Random random = new Random();
         double price = 100.0;
         double max = 0;
@@ -95,28 +120,26 @@ public class ModelInfoController {
             double change = (random.nextDouble() - 0.5) * 5;
             price += change;
 
-            // 真实值
-            Map<String, Object> p1 = new HashMap<>();
-            p1.put("x", LocalDate.now().minusDays(50 - i).toString());
-            p1.put("y", price);
-            p1.put("type", "真实值");
-            points.add(p1);
+            points.add(ModelInfoChartDataResponseDto.ChartPointDto.builder()
+                    .x(LocalDate.now().minusDays(50 - i).toString())
+                    .y(price)
+                    .type("真实值")
+                    .build());
 
-            // 预测值
-            Map<String, Object> p2 = new HashMap<>();
-            p2.put("x", LocalDate.now().minusDays(50 - i).toString());
-            p2.put("y", price + (random.nextDouble() - 0.5) * 2);
-            p2.put("type", "预测值");
-            points.add(p2);
+            points.add(ModelInfoChartDataResponseDto.ChartPointDto.builder()
+                    .x(LocalDate.now().minusDays(50 - i).toString())
+                    .y(price + (random.nextDouble() - 0.5) * 2)
+                    .type("预测值")
+                    .build());
 
             max = Math.max(max, price);
             min = Math.min(min, price);
         }
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("points", points);
-        result.put("maxValue", max + 10);
-        result.put("minValue", min - 10);
-        return result;
+        return ModelInfoChartDataWrapperDto.builder()
+                .points(points)
+                .maxValue(max + 10)
+                .minValue(min - 10)
+                .build();
     }
 }

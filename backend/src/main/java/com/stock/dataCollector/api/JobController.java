@@ -1,5 +1,9 @@
 package com.stock.dataCollector.api;
 
+import com.stock.dataCollector.domain.dto.JobListItemDto;
+import com.stock.dataCollector.domain.dto.JobListResponseDto;
+import com.stock.dataCollector.domain.dto.JobRunRequestDto;
+import com.stock.dataCollector.domain.dto.JobOperationResponseDto;
 import com.stock.dataCollector.service.StockDataService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -7,13 +11,16 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 任务管理控制器
- * 对应前端 /api/job/* 接口
+ * <p>
+ * 对应前端 /api/job/* 接口，提供任务列表、手动运行、创建/更新/删除等。
+ * </p>
+ *
+ * @author mwangli
+ * @since 2026-03-10
  */
 @Slf4j
 @RestController
@@ -27,43 +34,47 @@ public class JobController {
      * 获取任务列表
      */
     @GetMapping("/list")
-    public ResponseEntity<Map<String, Object>> listJobs(
+    public ResponseEntity<JobListResponseDto> listJobs(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int pageSize) {
-
-        List<Map<String, Object>> jobs = new ArrayList<>();
+        log.info("[Job] 获取任务列表 | current={}, pageSize={}", current, pageSize);
+        List<JobListItemDto> jobs = new ArrayList<>();
 
         // 1. 股票列表同步任务
-        Map<String, Object> job1 = new HashMap<>();
-        job1.put("id", "1");
-        job1.put("name", "同步股票列表");
-        job1.put("cron", "0 0 1 * * SUN");
-        job1.put("status", "NORMAL");
-        job1.put("description", "每周日凌晨1点同步股票列表");
+        JobListItemDto job1 = JobListItemDto.builder()
+                .id("1")
+                .name("同步股票列表")
+                .cron("0 0 1 * * SUN")
+                .status("NORMAL")
+                .description("每周日凌晨1点同步股票列表")
+                .build();
         jobs.add(job1);
 
         // 2. 每日数据同步任务
-        Map<String, Object> job2 = new HashMap<>();
-        job2.put("id", "2");
-        job2.put("name", "每日数据同步");
-        job2.put("cron", "0 0 18 * * MON-FRI");
-        job2.put("status", "NORMAL");
-        job2.put("description", "每个交易日18点同步日线数据");
+        JobListItemDto job2 = JobListItemDto.builder()
+                .id("2")
+                .name("每日数据同步")
+                .cron("0 0 18 * * MON-FRI")
+                .status("NORMAL")
+                .description("每个交易日18点同步日线数据")
+                .build();
         jobs.add(job2);
 
         // 3. K线数据聚合任务
-        Map<String, Object> job3 = new HashMap<>();
-        job3.put("id", "3");
-        job3.put("name", "K线数据聚合");
-        job3.put("cron", "0 30 18 * * MON-FRI");
-        job3.put("status", "NORMAL");
-        job3.put("description", "每个交易日18:30聚合周K和月K数据");
+        JobListItemDto job3 = JobListItemDto.builder()
+                .id("3")
+                .name("K线数据聚合")
+                .cron("0 30 18 * * MON-FRI")
+                .status("NORMAL")
+                .description("每个交易日18:30聚合周K和月K数据")
+                .build();
         jobs.add(job3);
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("data", jobs);
-        response.put("total", jobs.size());
-        response.put("success", true);
+        JobListResponseDto response = JobListResponseDto.builder()
+                .data(jobs)
+                .total(jobs.size())
+                .success(true)
+                .build();
 
         return ResponseEntity.ok(response);
     }
@@ -72,8 +83,8 @@ public class JobController {
      * 手动运行任务
      */
     @PostMapping("/run")
-    public ResponseEntity<Map<String, Object>> runJob(@RequestBody(required = false) Map<String, String> params) {
-        String jobId = params != null ? params.get("id") : null;
+    public ResponseEntity<JobOperationResponseDto> runJob(@RequestBody(required = false) JobRunRequestDto params) {
+        String jobId = params != null ? params.getId() : null;
 
         log.info("手动触发任务: {}", jobId);
 
@@ -91,29 +102,47 @@ public class JobController {
             }
         }).start();
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", "任务已触发");
+        JobOperationResponseDto response = JobOperationResponseDto.builder()
+                .success(true)
+                .message("任务已触发")
+                .build();
 
         return ResponseEntity.ok(response);
     }
 
-    // Mock其他接口以满足前端调用
     @PostMapping("/create")
-    public ResponseEntity<?> create() { return ResponseEntity.ok(Map.of("success", true)); }
+    public ResponseEntity<JobOperationResponseDto> create() {
+        log.info("[Job] 创建任务 (Mock)");
+        return ResponseEntity.ok(JobOperationResponseDto.builder().success(true).message("创建成功").build());
+    }
 
     @PutMapping("/update")
-    public ResponseEntity<?> update() { return ResponseEntity.ok(Map.of("success", true)); }
+    public ResponseEntity<JobOperationResponseDto> update() {
+        log.info("[Job] 更新任务 (Mock)");
+        return ResponseEntity.ok(JobOperationResponseDto.builder().success(true).message("更新成功").build());
+    }
 
     @DeleteMapping("/delete")
-    public ResponseEntity<?> delete() { return ResponseEntity.ok(Map.of("success", true)); }
+    public ResponseEntity<JobOperationResponseDto> delete() {
+        log.info("[Job] 删除任务 (Mock)");
+        return ResponseEntity.ok(JobOperationResponseDto.builder().success(true).message("删除成功").build());
+    }
 
     @PostMapping("/pause")
-    public ResponseEntity<?> pause() { return ResponseEntity.ok(Map.of("success", true)); }
+    public ResponseEntity<JobOperationResponseDto> pause() {
+        log.info("[Job] 暂停任务 (Mock)");
+        return ResponseEntity.ok(JobOperationResponseDto.builder().success(true).message("已暂停").build());
+    }
 
     @PostMapping("/resume")
-    public ResponseEntity<?> resume() { return ResponseEntity.ok(Map.of("success", true)); }
+    public ResponseEntity<JobOperationResponseDto> resume() {
+        log.info("[Job] 恢复任务 (Mock)");
+        return ResponseEntity.ok(JobOperationResponseDto.builder().success(true).message("已恢复").build());
+    }
 
     @PostMapping("/interrupt")
-    public ResponseEntity<?> interrupt() { return ResponseEntity.ok(Map.of("success", true)); }
+    public ResponseEntity<JobOperationResponseDto> interrupt() {
+        log.info("[Job] 中断任务 (Mock)");
+        return ResponseEntity.ok(JobOperationResponseDto.builder().success(true).message("已中断").build());
+    }
 }

@@ -115,6 +115,15 @@ public class JobBootstrap implements ApplicationRunner {
                     .setCronExpression("0 * 9-15 * * MON-FRI")
                     .setStatus(1));
 
+            // 模型训练记录全量同步（每日凌晨 03:30）
+            defaultJobs.add(new JobConfig()
+                    .setJobName("modelTrainingRecordSync")
+                    .setDescription("每日对齐股票基础表、LSTM 模型与训练记录表")
+                    .setBeanName("modelTrainingRecordSyncJob")
+                    .setMethodName("syncAllStocks")
+                    .setCronExpression("0 30 3 * * ?")
+                    .setStatus(1));
+
             for (JobConfig job : defaultJobs) {
                 if (jobConfigRepository.findByJobName(job.getJobName()).isEmpty()) {
                     job.setCreateTime(LocalDateTime.now());

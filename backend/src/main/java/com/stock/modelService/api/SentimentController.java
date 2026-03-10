@@ -1,6 +1,16 @@
 package com.stock.modelService.api;
 
 import com.stock.modelService.domain.param.SentimentTrainingRequest;
+import com.stock.modelService.domain.dto.SentimentAnalyzeRequestDto;
+import com.stock.modelService.domain.dto.SentimentBatchAnalyzeRequestDto;
+import com.stock.modelService.domain.dto.SentimentAnalyzeByStockRequestDto;
+import com.stock.modelService.domain.dto.SentimentAnalyzeResultDto;
+import com.stock.modelService.domain.dto.SentimentPredictRequestDto;
+import com.stock.common.dto.ResponseDTO;
+import com.stock.modelService.domain.dto.SentimentBatchAnalyzeResultDto;
+import com.stock.modelService.domain.dto.SentimentHealthDto;
+import com.stock.modelService.domain.dto.SentimentReloadDto;
+import com.stock.modelService.domain.dto.SentimentDownloadDto;
 import com.stock.modelService.service.SentimentTrainerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,9 +19,16 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.List;
 
 /**
  * 情感分析控制器
+ * <p>
+ * 提供情感分析模型训练、单条/批量文本分析、模型健康检查、重载等接口。
+ * </p>
+ *
+ * @author mwangli
+ * @since 2026-03-10
  */
 @Slf4j
 @RestController
@@ -20,12 +37,42 @@ import java.util.Map;
 public class SentimentController {
 
     private final SentimentTrainerService trainerService;
+    private Double castDouble(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        try {
+            return Double.parseDouble(value.toString());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Map<String, Double> castProbabilities(Object value) {
+        if (value instanceof Map<?, ?> raw) {
+            Map<String, Double> result = new HashMap<>();
+            for (Map.Entry<?, ?> entry : raw.entrySet()) {
+                if (entry.getKey() == null) {
+                    continue;
+                }
+                String key = entry.getKey().toString();
+                Object v = entry.getValue();
+                result.put(key, v instanceof Number ? ((Number) v).doubleValue() : castDouble(v));
+            }
+            return result;
+        }
+        return Map.of();
+    }
 
     /**
      * 训练情感分析模型
      */
     @PostMapping("/train")
-    public ResponseEntity<Map<String, Object>> trainModel(@RequestBody(required = false) SentimentTrainingRequest request) {
+    public ResponseEntity<com.stock.modelService.domain.vo.SentimentTrainingResponse> trainModel(
+            @RequestBody(required = false) SentimentTrainingRequest request) {
         log.info("收到情感分析训练请求");
 
         if (request == null) {
@@ -37,76 +84,74 @@ public class SentimentController {
 
         try {
             var result = trainerService.trainModel(request);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", result.isSuccess());
-            response.put("message", result.getMessage());
-            response.put("trainingId", result.getTrainingId());
-            response.put("epochs", result.getEpochs());
-            response.put("trainLoss", result.getTrainLoss());
-            response.put("valAccuracy", result.getValAccuracy());
-            response.put("modelPath", result.getModelPath());
-            response.put("trainSamples", result.getTrainSamples());
-            response.put("valSamples", result.getValSamples());
-
-            return ResponseEntity.ok(response);
-
+            return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("情感分析训练失败", e);
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "message", "训练失败：" + e.getMessage()
-            ));
+            com.stock.modelService.domain.vo.SentimentTrainingResponse error =
+                    com.stock.modelService.domain.vo.SentimentTrainingResponse.builder()
+                            .success(false)
+                            .message("训练失败：" + e.getMessage())
+                            .build();
+            return ResponseEntity.internalServerError().body(error);
         }
     }
 
     /**
      * 查询训练状态
+     *
+     * @param trainingId 训练任务 ID
      */
     @GetMapping("/status/{trainingId}")
-    public ResponseEntity<Map<String, Object>> getTrainingStatus(@PathVariable String trainingId) {
+    public ResponseEntity<SentimentTrainerService.TrainingStatus> getTrainingStatus(@PathVariable String trainingId) {
+        log.info("[Sentiment] 查询训练状态 | trainingId={}", trainingId);
         var status = trainerService.getTrainingStatus(trainingId);
 
         if (status == null) {
             return ResponseEntity.notFound().build();
         }
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("trainingId", trainingId);
-        response.put("status", status.getStatus());
-        response.put("progress", status.getProgress());
-        response.put("currentEpoch", status.getCurrentEpoch());
-        response.put("totalEpochs", status.getTotalEpochs());
-
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(status);
     }
 
     /**
      * 分析单条文本情感
      */
     @PostMapping("/analyze")
-    public ResponseEntity<Map<String, Object>> analyzeText(@RequestBody Map<String, String> requestBody) {
-        String text = requestBody.get("text");
+    public ResponseEntity<SentimentAnalyzeResultDto> analyzeText(@RequestBody SentimentAnalyzeRequestDto requestBody) {
+        String text = requestBody != null ? requestBody.getText() : null;
+        log.info("[Sentiment] 单条文本情感分析 | textLength={}", text != null ? text.length() : 0);
 
         if (text == null || text.trim().isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "文本不能为空"
-            ));
+            return ResponseEntity.badRequest().body(
+                    SentimentAnalyzeResultDto.builder()
+                            .success(false)
+                            .message("文本不能为空")
+                            .build()
+            );
         }
 
         try {
             Map<String, Object> result = trainerService.analyzeSentimentWithDetails(text);
-            result.put("success", true);
+            SentimentAnalyzeResultDto dto = SentimentAnalyzeResultDto.builder()
+                    .success(true)
+                    .label((String) result.getOrDefault("label", null))
+                    .score(castDouble(result.get("score")))
+                    .normalizedScore(castDouble(result.get("normalizedScore")))
+                    .confidence(castDouble(result.get("confidence")))
+                    .probabilities(castProbabilities(result.get("probabilities")))
+                    .text((String) result.getOrDefault("text", ""))
+                    .modelLoaded((Boolean) result.getOrDefault("modelLoaded", Boolean.FALSE))
+                    .build();
 
-            return ResponseEntity.ok(result);
+            return ResponseEntity.ok(dto);
 
         } catch (Exception e) {
             log.error("情感分析失败", e);
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "message", "分析失败：" + e.getMessage()
-            ));
+            return ResponseEntity.internalServerError().body(
+                    SentimentAnalyzeResultDto.builder()
+                            .success(false)
+                            .message("分析失败：" + e.getMessage())
+                            .build()
+            );
         }
     }
 
@@ -114,40 +159,59 @@ public class SentimentController {
      * 批量分析文本情感
      */
     @PostMapping("/analyze/batch")
-    public ResponseEntity<Map<String, Object>> analyzeBatch(@RequestBody Map<String, Object> requestBody) {
-        Object textsObj = requestBody.get("texts");
+    public ResponseEntity<SentimentBatchAnalyzeResultDto> analyzeBatch(
+            @RequestBody SentimentBatchAnalyzeRequestDto requestBody) {
+        List<String> texts = requestBody != null ? requestBody.getTexts() : null;
+        log.info("[Sentiment] 批量情感分析 | count={}", texts != null ? texts.size() : 0);
 
-        if (!(textsObj instanceof java.util.List)) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "texts 必须是数组"
-            ));
+        if (texts == null || texts.isEmpty()) {
+            return ResponseEntity.badRequest().body(
+                    SentimentBatchAnalyzeResultDto.builder()
+                            .success(false)
+                            .message("texts 不能为空")
+                            .count(0)
+                            .results(List.of())
+                            .build()
+            );
         }
 
         try {
-            java.util.List<?> texts = (java.util.List<?>) textsObj;
-            java.util.List<Map<String, Object>> results = new java.util.ArrayList<>();
+            List<SentimentAnalyzeResultDto> results = new java.util.ArrayList<>();
 
-            for (Object textObj : texts) {
-                String text = textObj.toString();
+            for (String text : texts) {
                 Map<String, Object> result = trainerService.analyzeSentimentWithDetails(text);
-                result.put("index", results.size());
-                results.add(result);
+                SentimentAnalyzeResultDto dto = SentimentAnalyzeResultDto.builder()
+                        .success(true)
+                        .label((String) result.getOrDefault("label", null))
+                        .score(castDouble(result.get("score")))
+                        .normalizedScore(castDouble(result.get("normalizedScore")))
+                        .confidence(castDouble(result.get("confidence")))
+                        .probabilities(castProbabilities(result.get("probabilities")))
+                        .text((String) result.getOrDefault("text", ""))
+                        .modelLoaded((Boolean) result.getOrDefault("modelLoaded", Boolean.FALSE))
+                        .build();
+                results.add(dto);
             }
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("count", results.size());
-            response.put("results", results);
+            SentimentBatchAnalyzeResultDto response = SentimentBatchAnalyzeResultDto.builder()
+                    .success(true)
+                    .message("分析完成")
+                    .count(results.size())
+                    .results(results)
+                    .build();
 
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             log.error("批量情感分析失败", e);
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "message", "分析失败：" + e.getMessage()
-            ));
+            return ResponseEntity.internalServerError().body(
+                    SentimentBatchAnalyzeResultDto.builder()
+                            .success(false)
+                            .message("分析失败：" + e.getMessage())
+                            .count(0)
+                            .results(List.of())
+                            .build()
+            );
         }
     }
 
@@ -155,37 +219,150 @@ public class SentimentController {
      * 模型健康检查
      */
     @GetMapping("/health")
-    public ResponseEntity<Map<String, Object>> health() {
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "UP");
-        response.put("service", "Sentiment Analysis Service");
-        response.put("modelLoaded", trainerService.isModelLoaded());
-        response.put("lastLoadedTime", trainerService.getLastLoadedTime());
-        return ResponseEntity.ok(response);
+    public ResponseEntity<SentimentHealthDto> health() {
+        log.info("[Sentiment] 模型健康检查");
+        SentimentHealthDto dto = SentimentHealthDto.builder()
+                .status("UP")
+                .service("Sentiment Analysis Service")
+                .modelLoaded(trainerService.isModelLoaded())
+                .lastLoadedTime(trainerService.getLastLoadedTime())
+                .build();
+        return ResponseEntity.ok(dto);
     }
 
     /**
      * 重新加载模型
      */
     @PostMapping("/reload")
-    public ResponseEntity<Map<String, Object>> reloadModel() {
+    public ResponseEntity<SentimentReloadDto> reloadModel() {
+        log.info("[Sentiment] 重新加载模型");
         try {
             trainerService.unloadModel();
             trainerService.loadModel();
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "模型重新加载成功");
-            response.put("modelLoaded", trainerService.isModelLoaded());
+            SentimentReloadDto dto = SentimentReloadDto.builder()
+                    .success(true)
+                    .message("模型重新加载成功")
+                    .modelLoaded(trainerService.isModelLoaded())
+                    .build();
 
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(dto);
 
         } catch (Exception e) {
             log.error("重新加载模型失败", e);
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "message", "重新加载失败：" + e.getMessage()
-            ));
+            SentimentReloadDto dto = SentimentReloadDto.builder()
+                    .success(false)
+                    .message("重新加载失败：" + e.getMessage())
+                    .modelLoaded(false)
+                    .build();
+            return ResponseEntity.internalServerError().body(dto);
+        }
+    }
+
+    /**
+     * 情感分析模型预测
+     * <p>
+     * 输入股票代码和新闻内容，输出情感分析结果（标签、得分、置信度等）。
+     * 使用 ResponseDTO 统一封装返回。
+     * </p>
+     *
+     * @param requestBody 请求体，必须包含 stockCode（股票代码）和 news（新闻内容）
+     * @return ResponseDTO 包装的情感分析结果
+     */
+    @PostMapping("/predict")
+    public ResponseDTO<SentimentAnalyzeResultDto> predict(@RequestBody SentimentPredictRequestDto requestBody) {
+        String stockCode = requestBody != null ? requestBody.getStockCode() : null;
+        String news = requestBody != null ? requestBody.getNews() : null;
+
+        log.info("[Sentiment] 情感分析预测 | stockCode={}, newsLength={}", stockCode, news != null ? news.length() : 0);
+
+        if (stockCode == null || stockCode.trim().isEmpty()) {
+            return ResponseDTO.error("stockCode 不能为空");
+        }
+        if (news == null || news.trim().isEmpty()) {
+            return ResponseDTO.error("news 不能为空");
+        }
+
+        try {
+            Map<String, Object> result = trainerService.analyzeSentimentWithDetails(news);
+            SentimentAnalyzeResultDto dto = SentimentAnalyzeResultDto.builder()
+                    .success(true)
+                    .label((String) result.getOrDefault("label", null))
+                    .score(castDouble(result.get("score")))
+                    .normalizedScore(castDouble(result.get("normalizedScore")))
+                    .confidence(castDouble(result.get("confidence")))
+                    .probabilities(castProbabilities(result.get("probabilities")))
+                    .text((String) result.getOrDefault("text", ""))
+                    .modelLoaded((Boolean) result.getOrDefault("modelLoaded", Boolean.FALSE))
+                    .stockCode(stockCode)
+                    .build();
+            return ResponseDTO.success(dto);
+        } catch (Exception e) {
+            log.error("情感分析预测失败，stockCode={}", stockCode, e);
+            return ResponseDTO.error("预测失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 针对单只股票的新闻情感分析
+     *
+     * 根据传入的股票代码和新闻内容，调用情感分析服务对文本进行情感预测，
+     * 返回包含情感标签、置信度、情感得分等信息的结果，并回传股票代码，便于前端或策略模块直接关联使用。
+     *
+     * @param requestBody 请求体，必须包含字段：
+     *                    stockCode：股票代码，如 "600519"
+     *                    text：新闻内容或公告文本
+     * @return 情感分析结果 Map，包含 label / score / confidence / probabilities / text / modelLoaded / stockCode
+     */
+    @PostMapping("/analyzeByStock")
+    public ResponseEntity<SentimentAnalyzeResultDto> analyzeByStock(
+            @RequestBody SentimentAnalyzeByStockRequestDto requestBody) {
+        String stockCode = requestBody.getStockCode();
+        String text = requestBody.getText();
+
+        if (stockCode == null || stockCode.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(
+                    SentimentAnalyzeResultDto.builder()
+                            .success(false)
+                            .message("stockCode 不能为空")
+                            .build()
+            );
+        }
+        if (text == null || text.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(
+                    SentimentAnalyzeResultDto.builder()
+                            .success(false)
+                            .message("text 不能为空")
+                            .stockCode(stockCode)
+                            .build()
+            );
+        }
+
+        log.info("收到情感分析预测请求 - stockCode={}", stockCode);
+
+        try {
+            Map<String, Object> result = trainerService.analyzeSentimentWithDetails(text);
+            SentimentAnalyzeResultDto dto = SentimentAnalyzeResultDto.builder()
+                    .success(true)
+                    .label((String) result.getOrDefault("label", null))
+                    .score(castDouble(result.get("score")))
+                    .normalizedScore(castDouble(result.get("normalizedScore")))
+                    .confidence(castDouble(result.get("confidence")))
+                    .probabilities(castProbabilities(result.get("probabilities")))
+                    .text((String) result.getOrDefault("text", ""))
+                    .modelLoaded((Boolean) result.getOrDefault("modelLoaded", Boolean.FALSE))
+                    .stockCode(stockCode)
+                    .build();
+            return ResponseEntity.ok(dto);
+        } catch (Exception e) {
+            log.error("按股票进行情感分析失败，stockCode={}", stockCode, e);
+            return ResponseEntity.internalServerError().body(
+                    SentimentAnalyzeResultDto.builder()
+                            .success(false)
+                            .message("分析失败：" + e.getMessage())
+                            .stockCode(stockCode)
+                            .build()
+            );
         }
     }
 
@@ -193,23 +370,26 @@ public class SentimentController {
      * 下载预训练模型
      */
     @PostMapping("/download")
-    public ResponseEntity<Map<String, Object>> downloadModel() {
+    public ResponseEntity<SentimentDownloadDto> downloadModel() {
+        log.info("[Sentiment] 下载预训练模型");
         try {
             String modelPath = trainerService.downloadPretrainedModel();
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "预训练模型下载成功");
-            response.put("modelPath", modelPath);
+            SentimentDownloadDto dto = SentimentDownloadDto.builder()
+                    .success(true)
+                    .message("预训练模型下载成功")
+                    .modelPath(modelPath)
+                    .build();
 
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(dto);
 
         } catch (Exception e) {
             log.error("下载预训练模型失败", e);
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "message", "下载失败：" + e.getMessage()
-            ));
+            SentimentDownloadDto dto = SentimentDownloadDto.builder()
+                    .success(false)
+                    .message("下载失败：" + e.getMessage())
+                    .build();
+            return ResponseEntity.internalServerError().body(dto);
         }
     }
 

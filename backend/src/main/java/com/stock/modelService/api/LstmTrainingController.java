@@ -1,10 +1,11 @@
 package com.stock.modelService.api;
 
+import com.stock.common.dto.ResponseDTO;
 import com.stock.dataCollector.persistence.StockInfoRepository;
-import com.stock.modelService.domain.vo.ApiResponse;
 import com.stock.modelService.domain.entity.LstmModelDocument;
 import com.stock.modelService.domain.dto.LstmModelListItemDto;
 import com.stock.modelService.domain.dto.LstmModelResultDto;
+import com.stock.modelService.domain.dto.LstmPredictionResultDto;
 import com.stock.modelService.domain.dto.PageResult;
 import com.stock.modelService.persistence.LstmModelRepository;
 import com.stock.modelService.service.LstmTrainerService;
@@ -33,8 +34,10 @@ import java.util.stream.Collectors;
 /**
  * LSTM 模型训练与列表接口
  *
- * @author AI Assistant
- * @since 1.0
+ * 提供模型列表分页查询、模型结果查询、训练触发、价格预测等功能。
+ *
+ * @author mwangli
+ * @since 2026-03-10
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -55,7 +58,7 @@ public class LstmTrainingController {
      * @param sortOrder 排序方向：asc | desc
      */
     @GetMapping("/models")
-    public ApiResponse<PageResult<LstmModelListItemDto>> listModels(
+    public ResponseDTO<PageResult<LstmModelListItemDto>> listModels(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false, defaultValue = "1") int current,
             @RequestParam(required = false, defaultValue = "10") int pageSize,
@@ -104,7 +107,7 @@ public class LstmTrainingController {
                 .total(page.getTotalElements())
                 .build();
         log.info("[listModels] 即将返回 | list.size()={}, total={}", list.size(), result.getTotal());
-        return ApiResponse.success(result);
+        return ResponseDTO.success(result);
     }
 
     /**
@@ -125,15 +128,16 @@ public class LstmTrainingController {
      * @param id 模型文档 ID（与列表接口返回的 id 一致）
      * @return 收益金额、分数；模型不存在时返回错误
      */
-    @GetMapping("/models/{id}/result")
-    public ApiResponse<LstmModelResultDto> getModelResult(@PathVariable String id) {
+    @GetMapping("/models/result/{id}")
+    public ResponseDTO<LstmModelResultDto> getModelResult(@PathVariable String id) {
+        log.info("查询模型结果: id={}", id);
         if (id == null || id.isBlank()) {
-            return ApiResponse.error("模型 ID 不能为空");
+            return ResponseDTO.error("模型 ID 不能为空");
         }
         Optional<LstmModelDocument> opt = lstmModelRepository.findById(id);
         if (opt.isEmpty()) {
             log.warn("[getModelResult] 未找到模型 id={}", id);
-            return ApiResponse.error("模型不存在");
+            return ResponseDTO.error("模型不存在");
         }
         LstmModelDocument doc = opt.get();
         Double score = null;
@@ -147,7 +151,7 @@ public class LstmTrainingController {
                 .profitAmount(null)
                 .score(score)
                 .build();
-        return ApiResponse.success(dto);
+        return ResponseDTO.success(dto);
     }
 
     private LstmModelListItemDto toListItem(LstmModelDocument doc, Map<String, String> codeToName) {
@@ -174,19 +178,48 @@ public class LstmTrainingController {
                 .build();
     }
 
+    /**
+     * 触发 LSTM 模型训练
+     *
+     * @param stockCodes  股票代码，逗号分隔
+     * @param days        训练数据天数
+     * @param epochs      训练轮数
+     * @param batchSize   批次大小
+     * @param learningRate 学习率
+     * @return 训练结果
+     */
     @PostMapping("/train")
-    public ApiResponse<LstmTrainerService.TrainingResult> trainLstmModel(
+    public ResponseDTO<LstmTrainerService.TrainingResult> trainLstmModel(
             @RequestParam String stockCodes,
             @RequestParam(required = false, defaultValue = "365") int days,
             @RequestParam(required = false) Integer epochs,
             @RequestParam(required = false) Integer batchSize,
             @RequestParam(required = false) Double learningRate
     ) {
+        log.info("触发 LSTM 训练: stockCodes={}, days={}, epochs={}", stockCodes, days, epochs);
         LstmTrainerService.TrainingResult result = lstmTrainerService.trainModel(stockCodes, days, epochs, batchSize, learningRate);
         if (result.isSuccess()) {
-            return ApiResponse.success(result);
+            return ResponseDTO.success(result);
         } else {
-            return ApiResponse.error(result.getMessage());
+            return ResponseDTO.error(result.getMessage());
+        }
+    }
+
+    /**
+     * 使用最新的 LSTM 模型对单只股票进行下一交易日价格预测
+     *
+     * @param stockCode 股票代码，例如 "600519"
+     * @return 预测结果 DTO，包含预测收盘价、最新收盘价与预测涨跌幅
+     */
+    @GetMapping("/predict")
+    public ResponseDTO<LstmPredictionResultDto> predictNext(@RequestParam String stockCode) {
+        log.info("[predictNext] 接口被调用 | stockCode={}", stockCode);
+        try {
+            LstmPredictionResultDto result = lstmTrainerService.predictNext(stockCode);
+            return ResponseDTO.success(result);
+        } catch (Exception e) {
+            log.error("[predictNext] 预测失败 | stockCode={}", stockCode, e);
+            return ResponseDTO.error("预测失败：" + e.getMessage());
         }
     }
 }

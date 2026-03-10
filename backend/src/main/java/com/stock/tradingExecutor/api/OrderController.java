@@ -1,6 +1,7 @@
 package com.stock.tradingExecutor.api;
 
 import com.stock.tradingExecutor.domain.vo.OrderResult;
+import com.stock.tradingExecutor.domain.dto.OrderListResponseDto;
 import com.stock.tradingExecutor.execution.BrokerAdapter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +28,7 @@ public class OrderController {
      * 获取订单列表 (目前仅支持当日订单)
      */
     @GetMapping("/list")
-    public ResponseEntity<Map<String, Object>> listOrders(
+    public ResponseEntity<OrderListResponseDto> listOrders(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int pageSize) {
 
@@ -44,12 +45,13 @@ public class OrderController {
             pageData = allOrders.subList(fromIndex, toIndex);
         }
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("data", pageData);
-        response.put("total", total);
-        response.put("success", true);
-        response.put("current", current);
-        response.put("pageSize", pageSize);
+        OrderListResponseDto response = OrderListResponseDto.builder()
+                .data(pageData)
+                .total(total)
+                .success(true)
+                .current(current)
+                .pageSize(pageSize)
+                .build();
 
         return ResponseEntity.ok(response);
     }
