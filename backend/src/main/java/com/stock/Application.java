@@ -30,7 +30,7 @@ import org.springframework.web.client.RestTemplate;
         }
 )
 @EnableScheduling
-public class Application {
+public class Application { 
 
     /** 进程启动时间戳，用于计算启动耗时 */
     private static long startTimeMs;
