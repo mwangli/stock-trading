@@ -7,7 +7,6 @@ import com.stock.dataCollector.domain.dto.RuleListResponseDto;
 import com.stock.dataCollector.domain.dto.RuleOperationResponseDto;
 import com.stock.dataCollector.domain.dto.RuleUpdateRequestDto;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Collections;
@@ -33,7 +32,7 @@ public class RuleController {
      * @return 规则列表及分页信息
      */
     @GetMapping
-    public ResponseEntity<ResponseDTO<RuleListResponseDto>> listRules(
+    public ResponseDTO<RuleListResponseDto> listRules(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int pageSize) {
 
@@ -45,7 +44,7 @@ public class RuleController {
                 .success(true)
                 .build();
 
-        return ResponseEntity.ok(ResponseDTO.success(response));
+        return ResponseDTO.success(response);
     }
 
     /**
@@ -55,7 +54,7 @@ public class RuleController {
      * @return 操作结果
      */
     @PostMapping
-    public ResponseEntity<ResponseDTO<RuleOperationResponseDto>> addRule(
+    public ResponseDTO<RuleOperationResponseDto> addRule(
             @RequestBody(required = false) RuleAddRequestDto request) {
 
         log.info("新建规则: name={}", request != null ? request.getName() : null);
@@ -64,7 +63,7 @@ public class RuleController {
                 .success(true)
                 .message("新建成功")
                 .build();
-        return ResponseEntity.ok(ResponseDTO.success(response));
+        return ResponseDTO.success(response);
     }
 
     /**
@@ -74,7 +73,7 @@ public class RuleController {
      * @return 操作结果
      */
     @DeleteMapping
-    public ResponseEntity<ResponseDTO<RuleOperationResponseDto>> removeRule(
+    public ResponseDTO<RuleOperationResponseDto> removeRule(
             @RequestBody(required = false) RuleDeleteRequestDto request) {
 
         log.info("删除规则: id={}", request != null ? request.getId() : null);
@@ -83,7 +82,7 @@ public class RuleController {
                 .success(true)
                 .message("删除成功")
                 .build();
-        return ResponseEntity.ok(ResponseDTO.success(response));
+        return ResponseDTO.success(response);
     }
 
     /**
@@ -93,7 +92,7 @@ public class RuleController {
      * @return 操作结果
      */
     @PutMapping
-    public ResponseEntity<ResponseDTO<RuleOperationResponseDto>> updateRule(
+    public ResponseDTO<RuleOperationResponseDto> updateRule(
             @RequestBody(required = false) RuleUpdateRequestDto request) {
 
         log.info("更新规则: id={}", request != null ? request.getId() : null);
@@ -102,6 +101,6 @@ public class RuleController {
                 .success(true)
                 .message("更新成功")
                 .build();
-        return ResponseEntity.ok(ResponseDTO.success(response));
+        return ResponseDTO.success(response);
     }
 }
