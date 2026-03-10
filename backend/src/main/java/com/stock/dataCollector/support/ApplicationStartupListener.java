@@ -65,14 +65,17 @@ public class ApplicationStartupListener {
                 log.error("后台数据初始化任务（列表同步）失败", e);
             }
             log.info("========== 数据初始化检查完成，准备开始历史数据同步 ==========");
+
+            // 使用 app.startup.history-sync.enabled 作为历史数据初始化开关
             if (historySyncEnabled) {
                 try {
+                    log.info("历史数据初始化开关已开启，将在启动阶段执行一次全量历史价格同步");
                     syncAllStocksHistoryToMongo();
                 } catch (Exception e) {
-                    log.error("后台数据初始化任务（历史数据同步）失败", e);
+                    log.error("后台数据初始化任务（历史数据初始化）失败", e);
                 }
             } else {
-                log.info("========== 历史数据同步开关已关闭，跳过同步 ==========");
+                log.info("历史数据初始化开关已关闭，跳过启动阶段的历史价格同步");
             }
         });
     }
@@ -86,34 +89,37 @@ public class ApplicationStartupListener {
         }
         int totalStocks = codes.size();
         log.info("本次需要同步历史价格的股票总数: {}", totalStocks);
-        int totalStocksWithData = 0;
-        int totalRecords = 0;
-        int index = 0;
-        int skippedCount = 0;
-        for (String code : codes) {
-            index++;
+        java.util.concurrent.atomic.AtomicInteger totalStocksWithData = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger skippedCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger totalRecords = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicInteger index = new java.util.concurrent.atomic.AtomicInteger(0);
+
+        // 使用有限并行度的 parallelStream 进行全量历史同步，提升冷启动性能
+        codes.parallelStream().forEach(code -> {
+            int current = index.incrementAndGet();
             try {
                 if (priceRepository.existsByCodeAndDate(code, LocalDate.now())) {
                     log.info("股票 {} 已存在今日({})的历史数据，跳过同步", code, LocalDate.now());
-                    skippedCount++;
-                    continue;
+                    skippedCount.incrementAndGet();
+                    return;
                 }
                 List<StockPrice> prices = stockDataService.getHistoryPrices(code);
                 if (prices == null || prices.isEmpty()) {
                     log.warn("股票 {} 无历史价格数据，跳过", code);
-                    continue;
+                    return;
                 }
                 stockDataService.saveStockPrices(prices);
-                totalStocksWithData++;
-                totalRecords += prices.size();
-                double percent = index * 100.0 / totalStocks;
+                totalStocksWithData.incrementAndGet();
+                totalRecords.addAndGet(prices.size());
+                double percent = current * 100.0 / totalStocks;
                 log.info("股票 {} 历史数据条数: {}，当前进度: {}/{} ({})",
-                    code, prices.size(), index, totalStocks, String.format("%.2f%%", percent));
+                        code, prices.size(), current, totalStocks, String.format("%.2f%%", percent));
             } catch (Exception e) {
                 log.error("同步股票 {} 历史价格失败: {}", code, e.getMessage(), e);
             }
-        }
-        log.info("========== 批量同步完成，成功写入 {} 只股票，跳过 {} 只已存在股票，共 {} 条历史价格记录 =========="
-            , totalStocksWithData, skippedCount, totalRecords);
+        });
+
+        log.info("========== 批量同步完成，成功写入 {} 只股票，跳过 {} 只已存在股票，共 {} 条历史价格记录 ==========",
+                totalStocksWithData.get(), skippedCount.get(), totalRecords.get());
     }
 }

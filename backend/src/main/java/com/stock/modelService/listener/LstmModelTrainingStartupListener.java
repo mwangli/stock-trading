@@ -1,6 +1,8 @@
 package com.stock.modelService.listener;
 
 import com.stock.dataCollector.persistence.StockInfoRepository;
+import com.stock.dataCollector.service.StockDataService;
+import com.stock.modelService.config.LstmDataQualityConfig;
 import com.stock.modelService.persistence.LstmModelRepository;
 import com.stock.modelService.service.LstmTrainerService;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +50,8 @@ public class LstmModelTrainingStartupListener {
     private final StockInfoRepository stockInfoRepository;
     private final LstmModelRepository lstmModelRepository;
     private final LstmTrainerService lstmTrainerService;
+    private final StockDataService stockDataService;
+    private final LstmDataQualityConfig lstmDataQualityConfig;
 
     /**
      * 监听应用启动完成事件，在后台异步检查并训练缺失的 LSTM 模型
@@ -120,6 +124,12 @@ public class LstmModelTrainingStartupListener {
                             long oneStartNs = System.nanoTime();
                             log.info("[LSTM 启动训练] 股票 {} 开始训练...", code);
 
+                            // 如果股票在数据质量黑名单中，直接跳过训练，避免死循环
+                            if (lstmDataQualityConfig.getSkipTrainingCodes().contains(code)) {
+                                log.warn("[LSTM 启动训练] 股票 {} 位于数据质量黑名单列表，跳过训练", code);
+                                return;
+                            }
+
                             LstmTrainerService.TrainingResult result =
                                     lstmTrainerService.trainModel(code, DEFAULT_TRAIN_DAYS, null, null, null);
 
@@ -134,7 +144,19 @@ public class LstmModelTrainingStartupListener {
                                         result.getValLoss());
                             } else if (result != null) {
                                 failedCount.incrementAndGet();
-                                log.warn("[LSTM 启动训练] 股票 {} 训练未成功: {}", code, result.getMessage());
+                                String message = result.getMessage();
+                                log.warn("[LSTM 启动训练] 股票 {} 训练未成功: {}", code, message);
+
+                                // 当历史数据不足以支撑 LSTM 训练时，主动清理本地历史数据，
+                                // 让后续的历史数据同步任务重新写入一份完整数据。
+                                if (message != null && message.contains("数据预处理失败")) {
+                                    log.warn("[LSTM 启动训练] 股票 {} 因历史数据不足，将清理本地历史行情数据，等待下次历史同步重建", code);
+                                    try {
+                                        stockDataService.clearHistoryForStock(code);
+                                    } catch (Exception ex) {
+                                        log.error("[LSTM 启动训练] 股票 {} 清理历史数据失败: {}", code, ex.getMessage(), ex);
+                                    }
+                                }
                             } else {
                                 failedCount.incrementAndGet();
                                 log.warn("[LSTM 启动训练] 股票 {} 训练返回结果为空", code);

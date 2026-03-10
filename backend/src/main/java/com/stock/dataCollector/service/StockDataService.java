@@ -358,6 +358,36 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
         }
     }
 
+    /**
+     * 清理单只股票的全部历史行情数据
+     * <p>
+     * 该方法会删除指定股票在日K、周K和月K中的所有历史记录，
+     * 通常用于当历史数据质量不足或不完整时，先清空本地数据，
+     * 再通过后续的历史数据同步任务重新拉取一份干净的数据。
+     * </p>
+     *
+     * @param stockCode 股票代码，例如 "600519" 或 "301680"
+     */
+    public void clearHistoryForStock(String stockCode) {
+        // 1. 记录清理操作的入口日志，方便排查是谁触发了数据删除
+        log.warn("开始清理股票 {} 的全部历史行情数据（日K/周K/月K），为后续重新同步做准备", stockCode);
+        try {
+            // 2. 删除日K数据
+            priceRepository.deleteByCode(stockCode);
+
+            // 3. 删除周K和月K聚合数据，避免残留不一致的聚合结果
+            weeklyPriceRepository.deleteByCode(stockCode);
+            monthlyPriceRepository.deleteByCode(stockCode);
+
+            // 4. 打印完成日志
+            log.info("股票 {} 历史行情数据清理完成（日K/周K/月K 已全部删除）", stockCode);
+        } catch (Exception e) {
+            // 5. 捕获异常并记录详细错误，方便运维排查
+            log.error("清理股票 {} 历史行情数据失败: {}", stockCode, e.getMessage(), e);
+            throw new RuntimeException("清理历史数据失败: " + e.getMessage(), e);
+        }
+    }
+
 
 
 

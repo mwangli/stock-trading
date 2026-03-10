@@ -110,7 +110,8 @@
             <artifactId>pytorch-model-zoo</artifactId>
             <version>${djl.version}</version>
         </dependency>
-        <!-- Windows: CUDA 12.1 GPU 加速（需安装 NVIDIA 驱动 + CUDA 12.1） -->
+        <!-- Windows: CUDA 12.1 GPU 加速（需 NVIDIA 驱动 + CUDA 12.1）
+             若系统为 CUDA 11.2，需升级至 CUDA 12.1，DJL 2.2.2 无 cu112 版本 -->
         <dependency>
             <groupId>ai.djl.pytorch</groupId>
             <artifactId>pytorch-native-cu121</artifactId>

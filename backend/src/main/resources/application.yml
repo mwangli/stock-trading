@@ -86,7 +86,7 @@ logging:
 app:
   startup:
     history-sync:
-      enabled: false  # 历史数据初始化开关，默认关闭以加快启动速度
+      enabled: true  # 历史数据初始化开关，默认关闭以加快启动速度
     # 模型训练开关：启动后是否自动检查并训练缺失的 LSTM 模型
     model-training:
       enabled: true

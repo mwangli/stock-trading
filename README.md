@@ -48,11 +48,13 @@
 
 | 组件 | 技术 | 版本 |
 |------|------|------|
-| 框架 | React | 18.x |
-| UI 库 | Ant Design Pro | 5.x |
-| 构建工具 | UmiJS | 4.x |
+| 框架 | React | 19.x |
+| 构建工具 | Vite | 7.x |
 | 语言 | TypeScript | 5.x |
-| 图表 | @ant-design/charts | 2.6 |
+| 样式 | TailwindCSS | 4.x |
+| 状态管理 | Zustand | 最新 |
+| 路由 | React Router | 6.x |
+| 图表 | ECharts / Recharts | 按需选择 |
 
 ---
 
@@ -111,8 +113,8 @@ stock-trading/
 │   │   │   └── time/              # 时间控制
 │   │   ├── job/                   # 动态任务模块
 │   │   │   ├── bootstrap/         # 任务引导
-│   │ controller/        # 控制器
-│   │   │   │   ├──   ├── entity/            # 实体
+│   │   │   ├── controller/        # 控制器
+│   │   │   ├── entity/            # 实体
 │   │   │   ├── repository/        # 数据访问层
 │   │   │   └── service/           # 服务层
 │   │   ├── event/                 # 事件处理
@@ -427,21 +429,20 @@ docker-compose logs -f backend
 
 ### 文档中心
 
-所有需求、设计、测试文档位于 `documents/` 目录：
+所有核心需求与设计文档位于 `docs/` 目录：
 
-- [文档中心索引](./documents/README.md) - 文档结构和快速开始
-- [系统整体需求](docs/requirement/00-系统整体需求.md)
-- [系统架构设计](docs/design/00-系统架构设计.md)
-- [系统测试计划](./documents/test/00-系统测试计划.md)
+- [文档索引](./docs/README.md) - 文档结构和快速入口
+- [00-系统架构 - 需求](./docs/00-系统架构/需求.md)
+- [00-系统架构 - 设计](./docs/00-系统架构/设计.md)
 
 ### 模块文档
 
 | 模块 | 需求文档 | 设计文档 | 测试文档 |
 |------|----------|----------|----------|
-| 数据采集 | [01-数据采集需求](docs/requirement/01-数据采集需求.md) | [01-数据采集设计](docs/design/01-数据采集设计.md) | [01-数据采集测试](./documents/test/01-数据采集测试.md) |
-| AI 模型 | [02-AI 模型需求](./documents/requirements/02-AI 模型需求.md) | [02-AI 模型设计](docs/design/02-AI 模型设计.md) | [02-AI 模型测试](./documents/test/02-AI 模型测试.md) |
-| 交易策略 | [03-交易策略需求](docs/requirement/03-交易策略需求.md) | [03-交易策略设计](docs/design/03-交易策略设计.md) | [03-交易策略测试](./documents/test/03-交易策略测试.md) |
-| 交易执行 | [04-交易执行需求](docs/requirement/04-交易执行需求.md) | [04-交易执行设计](docs/design/04-交易执行设计.md) | [04-交易执行测试](./documents/test/04-交易执行测试.md) |
+| 数据采集 | [01-数据采集 - 需求](./docs/01-数据采集/需求.md) | [01-数据采集 - 设计](./docs/01-数据采集/设计.md) | - |
+| AI 模型 | [02-模型服务 - 需求](./docs/02-模型服务/需求.md) | [02-模型服务 - 设计](./docs/02-模型服务/设计.md) | - |
+| 交易策略 | [03-策略分析 - 需求](./docs/03-策略分析/需求.md) | [03-策略分析 - 设计](./docs/03-策略分析/设计.md) | - |
+| 交易执行 | [04-交易执行 - 需求](./docs/04-交易执行/需求.md) | [04-交易执行 - 设计](./docs/04-交易执行/设计.md) | - |
 
 ---
 
