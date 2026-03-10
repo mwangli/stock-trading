@@ -8,7 +8,6 @@ import ai.djl.training.util.ProgressBar;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
 import ai.djl.huggingface.translator.TextClassificationTranslator;
-import ai.djl.translate.TranslateException;
 import ai.djl.translate.Translator;
 import com.stock.modelService.config.SentimentTrainingConfig;
 import com.stock.modelService.domain.vo.SentimentAnalysisResult;
@@ -28,13 +27,13 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Arrays;
 
-import ai.djl.translate.Translator;
-
 import jakarta.annotation.PostConstruct;
-import org.springframework.beans.factory.annotation.Autowired;
-/**
- * 情感分析模型训练服务
- */
+    /**
+     * 情感分析模型训练服务
+     *
+     * @author mwangli
+     * @since 2026-03-10
+     */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -43,17 +42,19 @@ public class SentimentTrainerService {
     private final SentimentTrainingConfig config;
     private final SentimentDataPreprocessor dataPreprocessor;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /**
+     * 应用启动初始化
+     *
+     * 这里只负责打印当前情感模型相关配置，不主动加载模型，实际加载在首次使用时懒加载完成。
+     * 模型根目录统一使用 backend 模块下的 {@code backend/models/sentiment} 目录，
+     * 自动兼容从项目根目录或 backend 目录启动应用的场景。
+     */
     @PostConstruct
     public void init() {
-        // 设置 DJL 缓存目录（如果配置了）
-        if (config.getCacheDir() != null && !config.getCacheDir().isEmpty()) {
-            System.setProperty("DJL_CACHE_DIR", config.getCacheDir());
-            log.info("设置 DJL 模型缓存目录: {}", config.getCacheDir());
-        }
+        Path sentimentDir = resolveSentimentModelDir();
+        log.info("情感分析模型根目录: {}", sentimentDir.toAbsolutePath());
 
-        // 这里不再在应用启动阶段主动加载 HuggingFace 模型，改为懒加载：
-        // - 首次调用情感分析或训练接口，才根据需要触发 loadModel()
-        // - 启动阶段仅根据配置打印提示信息，避免影响应用启动速度和可用性
         if (config.isDownloadPretrained()) {
             log.info("已启用预训练模型下载配置，将在首次使用情感分析服务时按需从 HuggingFace 懒加载模型");
         } else {
@@ -139,12 +140,12 @@ public class SentimentTrainerService {
             summary.put("valNeu", valNeu);
             summary.put("valPos", valPos);
             summary.put("pretrainedModel", config.getPretrainedModel());
-            summary.put("modelPath", config.getModelPath());
+            summary.put("modelPath", resolveSentimentModelDir().toAbsolutePath().toString());
             summary.put("modelLoaded", modelReady);
             trainingLog.add(summary);
 
             // 暂未在 Java 侧执行真实 BERT 微调，先返回数据统计结果
-            String modelPath = config.getModelPath();
+            String modelPath = resolveSentimentModelDir().toAbsolutePath().toString();
 
             status.setStatus("训练完成");
             status.setProgress(100);
@@ -177,14 +178,54 @@ public class SentimentTrainerService {
 
     /**
      * 下载预训练模型（支持中文）
+     *
+     * 该方法仅用于记录配置中的预训练模型信息，本地实际使用的模型文件
+     * 优先来自 {@code models/sentiment} 目录（或由环境变量 {@code STOCK_TRADING_MODELS_DIR}
+     * 指定的根目录下的 {@code sentiment} 子目录），无法通过网络下载时会自动
+     * 回退为规则模式推理。
      */
     public String downloadPretrainedModel() {
         log.info("DJL 将根据配置自动从 HuggingFace 下载并缓存模型: {}", config.getPretrainedModel());
-        return config.getModelPath();
+        return resolveSentimentModelDir().toAbsolutePath().toString();
+    }
+
+    /**
+     * 解析情感模型所在的本地目录
+     * <p>
+     * 统一使用 backend 模块下的 {@code backend/models/sentiment} 作为情感模型目录。
+     * 支持两种启动方式：
+     * 1. 在项目根目录 ai-stock-trading 下运行：此时目录为 {@code ./backend/models/sentiment}
+     * 2. 在 backend 目录下运行：此时目录为 {@code ./models/sentiment}
+     * </p>
+     *
+     * @return 情感模型目录路径
+     */
+    private Path resolveSentimentModelDir() {
+        Path cwd = Paths.get("").toAbsolutePath().normalize();
+        String cwdName = cwd.getFileName() != null ? cwd.getFileName().toString() : "";
+        Path baseDir;
+        if ("backend".equalsIgnoreCase(cwdName)) {
+            // 在 backend 目录下启动：使用 ./models/sentiment
+            baseDir = cwd.resolve("models").resolve("sentiment");
+        } else {
+            // 在项目根目录下启动：使用 ./backend/models/sentiment
+            baseDir = cwd.resolve("backend").resolve("models").resolve("sentiment");
+        }
+        return baseDir.normalize();
     }
 
     /**
      * 加载模型用于推理
+     * <p>
+     * 加载顺序：
+     * 1. **优先使用本地 models 目录**：尝试从 {@code models/sentiment}（即 {@link SentimentTrainingConfig#getModelPath()}）
+     *    加载完整的 Hugging Face 模型文件（至少包含 {@code config.json} 与 {@code tokenizer.json}）。
+     * 2. **本地目录缺失或不完整时**：如果配置开启了 {@code downloadPretrained}，则尝试通过
+     *    {@code djl://ai.djl.huggingface.pytorch/<model-id>} 从远程 Hugging Face 仓库拉取模型并加载。
+     * 3. **远程下载也失败时**：记录错误日志，标记模型未加载，后续情感分析自动回退为规则模式。
+     * </p>
+     *
+     * @return true 表示模型已成功加载，false 表示加载失败（将回退到规则模式）
      */
     public boolean loadModel() {
         if (isModelLoaded) {
@@ -193,16 +234,61 @@ public class SentimentTrainerService {
 
         try {
             String modelId = config.getPretrainedModel();
-            log.info("正在从 HuggingFace 加载模型: {}", modelId);
+            Path modelPath = resolveSentimentModelDir();
+            Files.createDirectories(modelPath);
 
-            HuggingFaceTokenizer tokenizer = HuggingFaceTokenizer.newInstance(modelId);
+            log.info("准备加载情感分析模型, modelId={}, modelPath={}", modelId, modelPath.toAbsolutePath());
+
+            String modelUrl;
+            HuggingFaceTokenizer tokenizer;
+
+            // 1. 优先尝试从本地 models/sentiment 目录加载
+            boolean hasLocalModelDir = Files.isDirectory(modelPath);
+            boolean hasLocalFiles = false;
+            if (hasLocalModelDir) {
+                try (var stream = Files.list(modelPath)) {
+                    hasLocalFiles = stream.findAny().isPresent();
+                }
+                if (hasLocalFiles) {
+                    try (var stream = Files.list(modelPath)) {
+                        var fileNames = stream
+                                .map(path -> path.getFileName().toString())
+                                .toList();
+                        log.info("本地情感模型目录存在且非空, 路径={}, 文件列表={}", modelPath.toAbsolutePath(), fileNames);
+                    }
+                } else {
+                    log.info("本地情感模型目录存在但为空, 路径={}", modelPath.toAbsolutePath());
+                }
+            } else {
+                log.warn("本地情感模型目录不存在, 预期路径={}", modelPath.toAbsolutePath());
+            }
+
+            if (hasLocalModelDir && hasLocalFiles) {
+                try {
+                    modelUrl = modelPath.toAbsolutePath().toString();
+                    tokenizer = HuggingFaceTokenizer.newInstance(modelPath);
+                    log.info("检测到非空本地情感模型目录，尝试使用本地模型加载: {}", modelUrl);
+                } catch (Exception localEx) {
+                    log.error("从本地情感模型目录加载失败，将降级为规则模式分析", localEx);
+                    this.isModelLoaded = false;
+                    return false;
+                }
+            } else if (config.isDownloadPretrained()) {
+                // 2. 本地目录不存在或为空，且允许在线下载时，尝试从 Hugging Face 远程加载
+                log.warn("本地情感模型目录不存在或为空，将尝试从 Hugging Face 远程加载: {}, modelPath={}", modelId, modelPath.toAbsolutePath());
+                tokenizer = HuggingFaceTokenizer.newInstance(modelId);
+                modelUrl = "djl://ai.djl.huggingface.pytorch/" + modelId;
+            } else {
+                // 3. 既没有本地模型，又不允许在线下载，直接回退规则模式
+                log.warn("本地情感模型目录不存在或为空，且已禁用在线下载，将直接使用规则模式分析, modelPath={}", modelPath.toAbsolutePath());
+                this.isModelLoaded = false;
+                return false;
+            }
+
             Map<String, Object> arguments = new HashMap<>();
-                    arguments.put("labels", Arrays.asList(config.getLabels()));
-                    Translator<String, Classifications> translator = TextClassificationTranslator.builder(tokenizer, arguments).build();
-
-            // 使用 HF 专用 URL 格式 (需引入 ai.djl.huggingface:pytorch)
-            // 格式: djl://ai.djl.huggingface.pytorch/model_id
-            String modelUrl = "djl://ai.djl.huggingface.pytorch/" + modelId;
+            arguments.put("labels", Arrays.asList(config.getLabels()));
+            Translator<String, Classifications> translator =
+                    TextClassificationTranslator.builder(tokenizer, arguments).build();
 
             Criteria<String, Classifications> criteria = Criteria.builder()
                     .setTypes(String.class, Classifications.class)
@@ -215,11 +301,11 @@ public class SentimentTrainerService {
             this.loadedModel = criteria.loadModel();
             this.isModelLoaded = true;
             this.lastLoadedTime = LocalDateTime.now();
-            log.info("情感分析模型加载成功: {}", modelId);
+            log.info("情感分析模型加载成功, modelUrl={}", modelUrl);
             return true;
 
         } catch (Exception e) {
-            log.error("加载 HuggingFace 模型失败", e);
+            log.error("加载情感分析模型失败，将回退到规则模式", e);
             this.isModelLoaded = false;
             return false;
         }
@@ -317,6 +403,7 @@ public class SentimentTrainerService {
         return positive - negative;
     }
 
+    @SuppressWarnings("unused")
     private String saveModel() throws IOException {
         Path modelDir = Paths.get(config.getModelPath());
         Files.createDirectories(modelDir);

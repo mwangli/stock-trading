@@ -37,7 +37,7 @@ public class ModelTrainingRecordStartupListener {
     public void onApplicationReady(ApplicationReadyEvent event) {
         log.info("========== [模型记录初始化] ApplicationReadyEvent 收到，开始同步模型训练记录占位数据 ==========");
         try {
-            modelTrainingRecordService.syncAllStocks();
+            // modelTrainingRecordService.syncAllStocks();
             log.info("========== [模型记录初始化] 同步完成 ==========");
         } catch (Exception e) {
             log.error("[模型记录初始化] 同步模型训练记录失败: {}", e.getMessage(), e);

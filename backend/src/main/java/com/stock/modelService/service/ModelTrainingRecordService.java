@@ -46,95 +46,76 @@ public class ModelTrainingRecordService {
     /**
      * 同步所有股票的模型训练记录：
      * <ul>
-     *     <li>为每只股票创建默认记录（未训练）</li>
-     *     <li>根据 MongoDB 中是否存在模型，更新已训练状态与最近一次训练信息</li>
+     *     <li>先从 MySQL 查询所有训练记录（约 4000 条）；</li>
+     *     <li>针对每一条记录，按股票代码从 Mongo 中查询最新的 LSTM 模型；</li>
+     *     <li>根据查询结果更新该记录的训练状态与统计信息，并打印详细日志。</li>
      * </ul>
      */
     @Transactional
     public void syncAllStocks() {
-        log.info("[ModelTrainingRecord] 开始同步模型训练记录占位数据...");
+        long start = System.currentTimeMillis();
+        log.info("[ModelTrainingRecord] 开始同步模型训练记录状态...");
 
-        List<StockInfo> stocks = stockInfoRepository.findAll();
-        if (stocks.isEmpty()) {
-            log.warn("[ModelTrainingRecord] 未发现任何股票基础数据，跳过同步");
+        List<ModelTrainingRecord> records = recordRepository.findAll();
+        if (records.isEmpty()) {
+            log.warn("[ModelTrainingRecord] 未找到任何训练记录，跳过同步");
             return;
         }
-
-        List<String> codes = stocks.stream()
-                .map(StockInfo::getCode)
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .distinct()
-                .toList();
-        if (codes.isEmpty()) {
-            log.warn("[ModelTrainingRecord] 股票代码列表为空，跳过同步");
-            return;
-        }
-
-        Map<String, StockInfo> codeToStock = stocks.stream()
-                .filter(s -> s.getCode() != null)
-                .collect(Collectors.toMap(
-                        s -> s.getCode().trim(),
-                        Function.identity(),
-                        (a, b) -> a));
-
-        List<ModelTrainingRecord> existing = recordRepository.findByStockCodeIn(codes);
-        Map<String, ModelTrainingRecord> codeToRecord = existing.stream()
-                .collect(Collectors.toMap(ModelTrainingRecord::getStockCode, Function.identity()));
+        log.info("[ModelTrainingRecord] 当前训练记录总数: {}", records.size());
 
         List<ModelTrainingRecord> toSave = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
 
-        log.info("[ModelTrainingRecord] 当前股票总数: {}，已有训练记录数: {}", codes.size(), existing.size());
+        for (ModelTrainingRecord record : records) {
+            String code = record.getStockCode();
+            if (code == null || code.trim().isEmpty()) {
+                log.warn("[ModelTrainingRecordSync] 跳过无效记录, id={}, stockCode 为空", record.getId());
+                continue;
+            }
+            String trimmedCode = code.trim();
+            try {
+                LstmModelDocument latest = lstmModelRepository.findTopByModelNameOrderByCreatedAtDesc(trimmedCode);
+                if (latest == null) {
+                    log.info("[ModelTrainingRecordSync] code={} 未找到对应的 Mongo 模型文档，保持原有状态", trimmedCode);
+                    continue;
+                }
 
-        // 1. 为缺失的股票创建默认记录
-        for (String code : codes) {
-            if (!codeToRecord.containsKey(code)) {
-                StockInfo stock = codeToStock.get(code);
-                ModelTrainingRecord record = new ModelTrainingRecord();
-                record.setStockCode(code);
-                record.setStockName(stock != null ? stock.getName() : null);
-                record.setTrained(Boolean.FALSE);
+                // 更新训练状态与统计信息
+                record.setTrained(Boolean.TRUE);
                 record.setTraining(Boolean.FALSE);
-                record.setCreatedAt(now);
+                record.setLastTrainTime(latest.getCreatedAt());
+                record.setLastEpochs(latest.getEpoch());
+                record.setLastTrainLoss(latest.getTrainLoss());
+                record.setLastValLoss(latest.getValLoss());
+                record.setLastModelId(latest.getId());
                 record.setUpdatedAt(now);
-                codeToRecord.put(code, record);
-                toSave.add(record);
-            }
-        }
 
-        // 2. 根据 MongoDB 中的模型更新训练状态（仅在尚未标记训练或缺少关键信息时执行）
-        for (String code : codes) {
-            ModelTrainingRecord record = codeToRecord.get(code);
-            if (record == null) {
-                continue;
+                toSave.add(record);
+
+                log.info(
+                        "[ModelTrainingRecordSync] 更新记录 | id={}, code={}, lastTrainTime={}, epochs={}, trainLoss={}, valLoss={}, modelId={}",
+                        record.getId(),
+                        trimmedCode,
+                        latest.getCreatedAt(),
+                        latest.getEpoch(),
+                        latest.getTrainLoss(),
+                        latest.getValLoss(),
+                        latest.getId()
+                );
+            } catch (Exception e) {
+                log.error("[ModelTrainingRecordSync] 从 Mongo 查询最新模型失败，跳过该记录 | id={}, code={}", record.getId(), trimmedCode, e);
             }
-            // 如果已经有训练时间和模型 ID，视为已初始化过，不重复扫描 Mongo
-            if (Boolean.TRUE.equals(record.getTrained()) && record.getLastTrainTime() != null) {
-                continue;
-            }
-            LstmModelDocument latest = lstmModelRepository.findTopByModelNameOrderByCreatedAtDesc(code);
-            if (latest == null) {
-                continue;
-            }
-            record.setTrained(Boolean.TRUE);
-            record.setTraining(Boolean.FALSE);
-            record.setLastTrainTime(latest.getCreatedAt());
-            record.setLastEpochs(latest.getEpoch());
-            record.setLastTrainLoss(latest.getTrainLoss());
-            record.setLastValLoss(latest.getValLoss());
-            record.setLastModelId(latest.getId());
-            record.setUpdatedAt(now);
-            toSave.add(record);
         }
 
         if (!toSave.isEmpty()) {
             recordRepository.saveAll(toSave);
             log.info("[ModelTrainingRecord] 同步完成，新增/更新记录数: {}", toSave.size());
         } else {
-            log.info("[ModelTrainingRecord] 同步完成，本次无新增或更新记录");
+            log.info("[ModelTrainingRecord] 同步完成，本次无需要更新的记录");
         }
+
+        long costMs = System.currentTimeMillis() - start;
+        log.info("[ModelTrainingRecord] 同步任务结束，总耗时: {} ms (~{} s)", costMs, costMs / 1000);
     }
 
     /**

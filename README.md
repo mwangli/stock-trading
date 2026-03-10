@@ -235,6 +235,60 @@ docker-compose logs -f
 - 模型加载与管理 (MongoDB 存储)
 - 预测结果缓存
 
+#### 情感分析模型（FinBERT 中文版）本地下载与加载说明
+
+由于运行环境无法直接访问 Hugging Face，情感分析模型采用**手动下载 + 本地加载**的方式，避免在线下载失败导致接口不可用。
+
+- **目标模型**: `yiyanghkust/finbert-tone-chinese`（Hugging Face 金融情感模型）
+- **本地模型目录**: `backend/models/sentiment/`
+- **缓存目录说明**:
+  - `models.sentiment.cache-dir` 仅作为 DJL 的通用缓存目录，可选；
+  - 你已经将所有模型文件下载到 `backend/models/sentiment/`，可以删除 `backend/models/cache/` 目录以避免混淆。
+
+**一次性准备步骤（在任意可访问 Hugging Face 的机器上执行）：**
+
+1. 打开浏览器访问模型页面：
+   - `https://huggingface.co/yiyanghkust/finbert-tone-chinese`
+2. 切换到 `Files and versions` 标签页，下载以下核心文件到某个临时目录（例如 `D:\hf-temp\finbert-tone-chinese\`）：
+   - `config.json`
+   - `pytorch_model.bin`
+   - `tokenizer.json`（以及页面中与 tokenizer 相关的 `tokenizer_config.json`、`special_tokens_map.json` 等文件）
+3. 在当前项目中创建本地模型目录：
+   - `d:\ai-stock-trading\backend\models\sentiment\`
+4. 将步骤 2 中下载的所有文件**原样复制**到该目录，最终结构类似：
+
+```text
+backend/models/sentiment/
+  ├─ config.json
+  ├─ pytorch_model.bin
+  ├─ tokenizer.json
+  ├─ tokenizer_config.json
+  ├─ special_tokens_map.json
+  └─ ...
+```
+
+**后端配置说明：**
+
+在 `backend/src/main/resources/application.yml` 中，确保情感模型相关配置指向本地目录，并关闭在线下载：
+
+```yaml
+models:
+  sentiment:
+    model-path: "models/sentiment"   # 对应 backend/models/sentiment
+    cache-dir: "models/cache"        # 可选，用于 DJL 缓存；如无需可删除目录
+    download-pretrained: false       # 禁用在线下载，仅使用本地模型
+```
+
+后端启动后，可通过以下接口检查模型加载状态：
+
+- **重新加载模型**: `POST /api/models/sentiment/reload`
+- **健康检查**: `GET /api/models/sentiment/health`
+
+返回 JSON 中：
+
+- `modelLoaded=true` 表示本地模型已成功加载，将使用 FinBERT 进行情感推理；
+- `modelLoaded=false` 表示加载失败或未加载，系统会自动回退到**规则模式情感分析**，接口仍然可用但效果基于规则。
+
 ### 策略分析模块 (com.stock.strategyAnalysis)
 
 #### 选股策略 (天级)

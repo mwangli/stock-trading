@@ -32,7 +32,7 @@ import java.util.List;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/models/sentiment")
+@RequestMapping("/api/model-sentiment")
 @RequiredArgsConstructor
 public class SentimentController {
 
