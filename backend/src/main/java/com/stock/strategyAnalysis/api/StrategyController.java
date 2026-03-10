@@ -18,7 +18,6 @@ import com.stock.strategyAnalysis.engine.StockSelector;
 import com.stock.strategyAnalysis.service.StrategyAnalysisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -49,9 +48,9 @@ public class StrategyController {
      * 获取分析页策略列表（选股 + 交易），含启用状态与占位指标
      */
     @GetMapping("/analysis/list")
-    public ResponseEntity<ResponseDTO<List<AnalysisStrategyItemDto>>> getAnalysisList() {
+    public ResponseDTO<List<AnalysisStrategyItemDto>> getAnalysisList() {
         log.info("[Strategy] 获取分析页策略列表");
-        return ResponseEntity.ok(ResponseDTO.success(strategyAnalysisService.getAnalysisList()));
+        return ResponseDTO.success(strategyAnalysisService.getAnalysisList());
     }
 
     /**
@@ -64,19 +63,18 @@ public class StrategyController {
      * @param body 请求体，包含 active 字段
      */
     @PutMapping("/analysis/active/{id}")
-    public ResponseEntity<ResponseDTO<StrategyOperationResponseDto>> setAnalysisStrategyActive(
+    public ResponseDTO<StrategyOperationResponseDto> setAnalysisStrategyActive(
             @PathVariable String id,
             @RequestBody AnalysisStrategyToggleRequestDto body) {
         log.info("[Strategy] 设置分析策略启用状态 | id={}, active={}", id, body != null ? body.isActive() : null);
         if (body == null) {
-            return ResponseEntity.badRequest().body(
-                    ResponseDTO.error("请求体不能为空"));
+            return ResponseDTO.error("请求体不能为空");
         }
         strategyAnalysisService.setStrategyActive(id, body.isActive());
-        return ResponseEntity.ok(ResponseDTO.success(StrategyOperationResponseDto.builder()
+        return ResponseDTO.success(StrategyOperationResponseDto.builder()
                 .success(true)
                 .message("已更新")
-                .build()));
+                .build());
     }
 
     /**
@@ -85,114 +83,114 @@ public class StrategyController {
      * @param n 选取数量
      */
     @PostMapping("/select")
-    public ResponseEntity<ResponseDTO<SelectionResult>> executeSelection(@RequestParam(defaultValue = "10") int n) {
+    public ResponseDTO<SelectionResult> executeSelection(@RequestParam(defaultValue = "10") int n) {
         log.info("[Strategy] 执行选股 | n={}", n);
         SelectionResult result = stockSelector.selectTopN(n);
-        return ResponseEntity.ok(ResponseDTO.success(result));
+        return ResponseDTO.success(result);
     }
 
     /**
      * 获取选股结果（排行榜）
      */
     @GetMapping("/rankings")
-    public ResponseEntity<ResponseDTO<List<StockRankingDto>>> getRankings() {
+    public ResponseDTO<List<StockRankingDto>> getRankings() {
         log.info("[Strategy] 获取选股排行榜");
-        return ResponseEntity.ok(ResponseDTO.success(stockSelector.getAllRankings()));
+        return ResponseDTO.success(stockSelector.getAllRankings());
     }
 
     /**
      * 获取策略状态
      */
     @GetMapping("/state")
-    public ResponseEntity<ResponseDTO<StrategyStateDto>> getState() {
+    public ResponseDTO<StrategyStateDto> getState() {
         log.info("[Strategy] 获取策略状态");
-        return ResponseEntity.ok(ResponseDTO.success(stateManager.getCurrentState()));
+        return ResponseDTO.success(stateManager.getCurrentState());
     }
 
     /**
      * 切换策略模式
      */
     @PostMapping("/mode")
-    public ResponseEntity<ResponseDTO<String>> switchMode(@RequestParam StrategyMode mode) {
+    public ResponseDTO<String> switchMode(@RequestParam StrategyMode mode) {
         log.info("[Strategy] 切换策略模式 | mode={}", mode);
         modeManager.switchMode(mode);
-        return ResponseEntity.ok(ResponseDTO.success("策略模式已切换为: " + mode.getName()));
+        return ResponseDTO.success("策略模式已切换为: " + mode.getName());
     }
 
     /**
      * 获取策略配置
      */
     @GetMapping("/config")
-    public ResponseEntity<ResponseDTO<StrategyConfig>> getConfig() {
+    public ResponseDTO<StrategyConfig> getConfig() {
         log.info("[Strategy] 获取策略配置");
-        return ResponseEntity.ok(ResponseDTO.success(configService.getCurrentConfig()));
+        return ResponseDTO.success(configService.getCurrentConfig());
     }
 
     /**
      * 更新策略配置
      */
     @PutMapping("/config")
-    public ResponseEntity<ResponseDTO<String>> updateConfig(@RequestBody StrategyConfig config) {
+    public ResponseDTO<String> updateConfig(@RequestBody StrategyConfig config) {
         log.info("[Strategy] 更新策略配置");
         configService.updateConfig(config);
-        return ResponseEntity.ok(ResponseDTO.success("策略配置已更新"));
+        return ResponseDTO.success("策略配置已更新");
     }
 
     /**
      * 重置策略配置
      */
     @PostMapping("/config/reset")
-    public ResponseEntity<ResponseDTO<String>> resetConfig() {
+    public ResponseDTO<String> resetConfig() {
         log.info("[Strategy] 重置策略配置");
         configService.resetToDefault();
-        return ResponseEntity.ok(ResponseDTO.success("策略配置已重置为默认值"));
+        return ResponseDTO.success("策略配置已重置为默认值");
     }
 
     /**
      * 创建策略 (Mock)
      */
     @PostMapping("/create")
-    public ResponseEntity<ResponseDTO<StrategyOperationResponseDto>> createStrategy(@RequestBody(required = false) StrategyGenericRequestDto params) {
+    public ResponseDTO<StrategyOperationResponseDto> createStrategy(@RequestBody(required = false) StrategyGenericRequestDto params) {
         log.info("[Strategy] 创建策略 | id={}, name={}", params != null ? params.getId() : null, params != null ? params.getName() : null);
-        return ResponseEntity.ok(ResponseDTO.success(StrategyOperationResponseDto.builder()
+        return ResponseDTO.success(StrategyOperationResponseDto.builder()
                 .success(true)
                 .message("创建成功")
-                .build()));
+                .build());
     }
 
     /**
      * 更新策略 (Mock)
      */
     @PutMapping("/update")
-    public ResponseEntity<ResponseDTO<StrategyOperationResponseDto>> updateStrategy(@RequestBody(required = false) StrategyGenericRequestDto params) {
+    public ResponseDTO<StrategyOperationResponseDto> updateStrategy(@RequestBody(required = false) StrategyGenericRequestDto params) {
         log.info("[Strategy] 更新策略 | id={}, name={}", params != null ? params.getId() : null, params != null ? params.getName() : null);
-        return ResponseEntity.ok(ResponseDTO.success(StrategyOperationResponseDto.builder()
+        return ResponseDTO.success(StrategyOperationResponseDto.builder()
                 .success(true)
                 .message("更新成功")
-                .build()));
+                .build());
     }
 
     /**
      * 选择策略 (Mock)
      */
     @PostMapping("/choose")
-    public ResponseEntity<ResponseDTO<StrategyOperationResponseDto>> chooseStrategy(@RequestBody(required = false) StrategyGenericRequestDto params) {
+    public ResponseDTO<StrategyOperationResponseDto> chooseStrategy(@RequestBody(required = false) StrategyGenericRequestDto params) {
         log.info("[Strategy] 选择策略 | id={}, name={}", params != null ? params.getId() : null, params != null ? params.getName() : null);
-        return ResponseEntity.ok(ResponseDTO.success(StrategyOperationResponseDto.builder()
+        return ResponseDTO.success(StrategyOperationResponseDto.builder()
                 .success(true)
                 .message("选择成功")
-                .build()));
+                .build());
     }
 
     /**
      * 删除策略 (Mock)
      */
     @DeleteMapping("/delete")
-    public ResponseEntity<ResponseDTO<StrategyOperationResponseDto>> deleteStrategy(@RequestParam(required = false) String id) {
+    public ResponseDTO<StrategyOperationResponseDto> deleteStrategy(@RequestParam(required = false) String id) {
         log.info("[Strategy] 删除策略 | id={}", id);
-        return ResponseEntity.ok(ResponseDTO.success(StrategyOperationResponseDto.builder()
+        return ResponseDTO.success(StrategyOperationResponseDto.builder()
                 .success(true)
                 .message("删除成功")
-                .build()));
+                .build());
     }
 }

@@ -5,7 +5,6 @@ import com.stock.tradingExecutor.domain.dto.JobToggleStatusRequestDto;
 import com.stock.tradingExecutor.domain.dto.JobUpdateCronRequestDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -32,9 +31,9 @@ public class JobAdminController {
      * 获取任务列表
      */
     @GetMapping
-    public ResponseEntity<ResponseDTO<List<JobConfig>>> listJobs() {
+    public ResponseDTO<List<JobConfig>> listJobs() {
         log.info("获取任务列表");
-        return ResponseEntity.ok(ResponseDTO.success(jobConfigRepository.findAll()));
+        return ResponseDTO.success(jobConfigRepository.findAll());
     }
 
     /**
@@ -43,10 +42,10 @@ public class JobAdminController {
      * @param id 任务 ID
      */
     @PostMapping("/run/{id}")
-    public ResponseEntity<ResponseDTO<Void>> runJob(@PathVariable Long id) {
+    public ResponseDTO<Void> runJob(@PathVariable Long id) {
         log.info("手动运行任务: id={}", id);
         jobSchedulerService.runJobNow(id);
-        return ResponseEntity.ok(ResponseDTO.success(null));
+        return ResponseDTO.success(null);
     }
 
     /**
@@ -56,12 +55,12 @@ public class JobAdminController {
      * @param payload 请求体，包含 active 字段
      */
     @PostMapping("/status/{id}")
-    public ResponseEntity<ResponseDTO<Void>> toggleStatus(
+    public ResponseDTO<Void> toggleStatus(
             @PathVariable Long id,
             @RequestBody(required = true) JobToggleStatusRequestDto payload) {
         log.info("切换任务状态: id={}, active={}", id, payload.isActive());
         jobSchedulerService.toggleJobStatus(id, payload.isActive());
-        return ResponseEntity.ok(ResponseDTO.success(null));
+        return ResponseDTO.success(null);
     }
 
     /**
@@ -71,11 +70,11 @@ public class JobAdminController {
      * @param payload 请求体，包含 cron 字段
      */
     @PostMapping("/cron/{id}")
-    public ResponseEntity<ResponseDTO<Void>> updateCron(
+    public ResponseDTO<Void> updateCron(
             @PathVariable Long id,
             @RequestBody(required = true) JobUpdateCronRequestDto payload) {
         log.info("更新任务 Cron: id={}, cron={}", id, payload.getCron());
         jobSchedulerService.updateJobCron(id, payload.getCron());
-        return ResponseEntity.ok(ResponseDTO.success(null));
+        return ResponseDTO.success(null);
     }
 }
