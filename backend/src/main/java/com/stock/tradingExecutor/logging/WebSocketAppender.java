@@ -2,24 +2,44 @@ package com.stock.tradingExecutor.logging;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.AppenderBase;
-import com.stock.tradingExecutor.handler.LogWebSocketHandler;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
 /**
  * Logback Appender，将日志通过 WebSocket 推送给前端
+ * 通过 {@link ApplicationContextHolder} 获取 Spring 管理的 {@link LogBroadcastService}，
+ * 避免直接依赖 WebSocket Handler 的静态字段，解决 devtools 场景下类加载器隔离问题。
+ *
+ * @author mwangli
+ * @since 2026-03-11
  */
 public class WebSocketAppender extends AppenderBase<ILoggingEvent> {
 
+    /**
+     * 将日志事件推送到 WebSocket 客户端
+     *
+     * @param eventObject 日志事件
+     */
     @Override
     protected void append(ILoggingEvent eventObject) {
         String formattedMessage = format(eventObject);
-        // 测试代码：在后端控制台打印一份，确认 Appender 是否被调用
         System.out.println("[WebSocketAppender] " + formattedMessage);
-        LogWebSocketHandler.broadcast(formattedMessage);
+        try {
+            LogBroadcastService logBroadcastService = ApplicationContextHolder.getBean(LogBroadcastService.class);
+            logBroadcastService.broadcast(formattedMessage);
+        } catch (IllegalStateException ex) {
+            // 应用上下文尚未就绪时，安全降级为仅打印控制台日志，避免影响应用启动
+            System.err.println("[WebSocketAppender] ApplicationContext not ready, skip WebSocket broadcast. message=" + formattedMessage);
+        }
     }
 
+    /**
+     * 将日志事件格式化为简洁的单行文本
+     *
+     * @param event 日志事件
+     * @return 格式化后的日志文本
+     */
     private String format(ILoggingEvent event) {
         StringBuilder sb = new StringBuilder();
         sb.append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(event.getTimeStamp())));
