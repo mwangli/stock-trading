@@ -14,8 +14,21 @@ public class SentimentTrainingConfig {
 
     /**
      * 模型保存路径
+     *
+     * 支持绝对路径或相对路径：
+     * - 绝对路径示例: D:/ai-stock-trading/backend/models/sentiment
+     * - 相对路径示例: backend/models/sentiment 或 models/sentiment
      */
-    private String modelPath = "models/sentiment-analysis";
+    private String modelPath = "models/sentiment";
+
+    /**
+     * 模型加载来源
+     *
+     * 可选值:
+     * - local: 使用本地模型文件
+     * - huggingface: 从 HuggingFace 下载并缓存模型
+     */
+    private String modelSource = "local";
 
     /**
      * 预训练模型名称（HuggingFace）

@@ -1,5 +1,12 @@
 import request from '../utils/request';
 
+/** 后端 ResponseDTO 泛型结构 */
+interface ResponseDTO<T> {
+  success: boolean;
+  message?: string;
+  data: T;
+}
+
 /** 分析页策略项，与后端 AnalysisStrategyItemDto 一致 */
 export interface AnalysisStrategyItem {
   id: string;
@@ -47,27 +54,31 @@ export interface StrategyConfigDto {
 /**
  * 获取分析页策略列表（选股 + 交易）
  */
-export function getAnalysisList(): Promise<AnalysisStrategyItem[]> {
-  return request.get('/strategy/analysis/list') as Promise<AnalysisStrategyItem[]>;
+export async function getAnalysisList(): Promise<AnalysisStrategyItem[]> {
+  const res = await request.get('/strategy/analysis/list') as ResponseDTO<AnalysisStrategyItem[]>;
+  return Array.isArray(res?.data) ? res.data : [];
 }
 
 /**
  * 设置某策略的启用状态
  */
-export function setStrategyActive(id: string, active: boolean): Promise<string> {
-  return request.put(`/strategy/analysis/${id}/active`, { active }) as Promise<string>;
+export async function setStrategyActive(id: string, active: boolean): Promise<string> {
+  const res = await request.put(`/strategy/analysis/active/${id}`, { active }) as ResponseDTO<{ success: boolean; message?: string }>;
+  return res?.message ?? 'OK';
 }
 
 /**
  * 获取当前策略配置（用于参数配置弹窗，无配置时后端返回默认值）
  */
-export function getStrategyConfig(): Promise<StrategyConfigDto> {
-  return request.get('/strategy/config') as Promise<StrategyConfigDto>;
+export async function getStrategyConfig(): Promise<StrategyConfigDto> {
+  const res = await request.get('/strategy/config') as ResponseDTO<StrategyConfigDto>;
+  return (res && res.data) ? res.data : {};
 }
 
 /**
  * 更新策略配置（全量提交，交易时使用）
  */
-export function updateStrategyConfig(config: StrategyConfigDto): Promise<string> {
-  return request.put('/strategy/config', config) as Promise<string>;
+export async function updateStrategyConfig(config: StrategyConfigDto): Promise<string> {
+  const res = await request.put('/strategy/config', config) as ResponseDTO<string>;
+  return res?.data ?? 'OK';
 }
