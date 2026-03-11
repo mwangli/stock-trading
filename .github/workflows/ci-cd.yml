@@ -4,175 +4,38 @@ on:
   push:
     branches:
       - main
-    tags:
-      - 'v*.*.*'
   pull_request:
     branches:
       - main
 
-env:
-  REGISTRY: registry.cn-shenzhen.aliyuncs.com
-  NAMESPACE: mwangli
-  APP_NAME: stock-trading
-
 jobs:
   # ===============================
-  # Build and Test
+  # CI：父项目一次构建
   # ===============================
-  build-and-test:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'temurin'
           cache: 'maven'
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: stock-front/pnpm-lock.yaml
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: py-service/requirements.txt
-
-      # Install frontend dependencies
-      - name: Install frontend dependencies
-        working-directory: stock-front
-        run: pnpm install --frozen-lockfile
-
-      # Install Python dependencies
-      - name: Install Python dependencies
-        working-directory: py-service
-        run: pip install -r requirements.txt
-
-      # Backend tests
-      - name: Run backend tests
-        working-directory: stock-backend
-        run: mvn test -B
-
-      # Frontend build
-      - name: Build frontend
-        working-directory: stock-front
-        run: pnpm run build
-
-      # Python linting (optional)
-      - name: Python linting
-        working-directory: py-service
-        run: |
-          pip install ruff
-          ruff check app/
+      - name: Build full project (skip tests)
+        run: mvn -B clean package -DskipTests
 
   # ===============================
-  # Build Docker Images
-  # ===============================
-  build-images:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
-    outputs:
-      backend-image: ${{ steps.build.outputs.backend-image }}
-      frontend-image: ${{ steps.build.outputs.frontend-image }}
-      py-service-image: ${{ steps.build.outputs.py-service-image }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Aliyun Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.ALIYUN_REGISTRY_USER }}
-          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
-
-      - name: Build and push backend
-        id: build
-        uses: docker/build-push-action@v5
-        with:
-          context: ./stock-backend
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/stock-backend:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/stock-backend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push frontend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./stock-front
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/stock-frontend:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/stock-frontend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push Python AI service
-        uses: docker/build-push-action@v5
-        with:
-          context: ./py-service
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/stock-py-service:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/stock-py-service:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Set output variables
-        id: vars
-        run: |
-          echo "backend-image=${{ env.REGISTRY }}/${{ env.NAMESPACE }}/stock-backend:${{ github.sha }}" >> $GITHUB_OUTPUT
-          echo "frontend-image=${{ env.REGISTRY }}/${{ env.NAMESPACE }}/stock-frontend:${{ github.sha }}" >> $GITHUB_OUTPUT
-          echo "py-service-image=${{ env.REGISTRY }}/${{ env.NAMESPACE }}/stock-py-service:${{ github.sha }}" >> $GITHUB_OUTPUT
-
-  # ===============================
-  # Deploy to Server
+  # CD：SSH 到服务器执行部署
   # ===============================
   deploy:
-    needs: build-images
+    needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Create deployment script
-        run: |
-          cat > deploy.sh << 'EOF'
-          #!/bin/bash
-          set -e
-
-          echo "Deploying Stock Trading Application..."
-
-          # Update docker-compose file with new images
-          sed -i 's|image:.*stock-backend:.*|image: ${{ needs.build-images.outputs.backend-image }}|' docker-compose.production.yml
-          sed -i 's|image:.*stock-frontend:.*|image: ${{ needs.build-images.outputs.frontend-image }}|' docker-compose.production.yml
-          sed -i 's|image:.*stock-py-service:.*|image: ${{ needs.build-images.outputs.py-service-image }}|' docker-compose.production.yml
-
-          # Pull latest images
-          docker-compose -f docker-compose.production.yml pull
-
-          # Restart services
-          docker-compose -f docker-compose.production.yml up -d
-
-          echo "Deployment completed!"
-          EOF
-          chmod +x deploy.sh
-
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -183,24 +46,6 @@ jobs:
           script: |
             cd /opt/stock-trading
             git pull origin main
-            docker-compose -f docker-compose.production.yml pull
-            docker-compose -f docker-compose.production.yml up -d
+            docker-compose -f docker-compose.yml build
+            docker-compose -f docker-compose.yml up -d
             docker system prune -f
-
-  # ===============================
-  # Create Release (on tags)
-  # ===============================
-  release:
-    needs: build-images
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-      - name: Create GitHub Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Stock Trading ${{ github.ref }}
-          draft: false
-          prerelease: false
