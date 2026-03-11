@@ -15,6 +15,8 @@ public class WebSocketAppender extends AppenderBase<ILoggingEvent> {
     @Override
     protected void append(ILoggingEvent eventObject) {
         String formattedMessage = format(eventObject);
+        // 测试代码：在后端控制台打印一份，确认 Appender 是否被调用
+        System.out.println("[WebSocketAppender] " + formattedMessage);
         LogWebSocketHandler.broadcast(formattedMessage);
     }
 
