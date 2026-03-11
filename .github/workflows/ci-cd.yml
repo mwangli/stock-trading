@@ -76,8 +76,8 @@ jobs:
             # 拉取最新后端镜像
             docker pull ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ secrets.ACR_REPO }}:latest
 
-            # 使用最新镜像更新后端服务（docker-compose.yml 中 backend 必须使用 image: 字段）
-            docker-compose -f docker-compose.yml up -d backend
+            # 使用最新镜像更新后端服务（docker compose v2 语法）
+            docker compose -f docker-compose.yml up -d backend
 
             # 可选：清理未使用镜像
             docker image prune -f
