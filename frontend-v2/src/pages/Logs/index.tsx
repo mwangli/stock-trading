@@ -57,6 +57,8 @@ const Logs: React.FC = () => {
       wsRef.current = ws;
 
       ws.onopen = () => {
+        // eslint-disable-next-line no-console
+        console.debug('[Logs] WebSocket opened:', wsUrl);
         globalIsConnected = true;
         setIsConnected(true);
         globalLogsBuffer = [...globalLogsBuffer, t('logs.connected')];
@@ -64,6 +66,8 @@ const Logs: React.FC = () => {
       };
 
       ws.onmessage = (event) => {
+        // eslint-disable-next-line no-console
+        console.debug('[Logs] WebSocket message:', event.data);
         globalLogsBuffer = [...globalLogsBuffer, event.data];
         if (globalLogsBuffer.length > MAX_LOG_LINES) {
           globalLogsBuffer = globalLogsBuffer.slice(globalLogsBuffer.length - MAX_LOG_LINES);

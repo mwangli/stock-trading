@@ -22,6 +22,12 @@ public class LogWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         SESSIONS.add(session);
         log.info("New WebSocket connection established: {}", session.getId());
+        // 测试消息：前端连接建立后立即收到一条提示，便于验证链路
+        try {
+            session.sendMessage(new TextMessage("WebSocket connected: " + session.getId()));
+        } catch (IOException e) {
+            log.error("Failed to send test message to session {}", session.getId(), e);
+        }
     }
 
     @Override
