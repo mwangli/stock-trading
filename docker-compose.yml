@@ -5,53 +5,26 @@ services:
   # Backend Service (with Frontend bundled)
   # ===================
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    # 从阿里云 ACR 固定仓库拉取后端镜像
+    image: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-trading:latest
     container_name: stock-backend
     ports:
       - "8080:8080"
     environment:
       - SPRING_PROFILES_ACTIVE=prod
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
-      - SPRING_DATA_MONGODB_URI=mongodb://admin:Root.123456@mongo:27017/stock_trading?authSource=admin
+      # Mongo 连接字符串中的密码通过统一环境变量注入
+      - SPRING_DATA_MONGODB_URI=mongodb://admin:${GLOBAL_DB_PASSWORD}@mongo:27017/stock_trading?authSource=admin
       - SPRING_REDIS_HOST=redis
       - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=${GLOBAL_DB_PASSWORD}
     depends_on:
       - mysql
       - mongo
       - redis
-      - stock-service
     networks:
       - stock-network
     restart: unless-stopped
-
-  # ===================
-  # Python AI Service
-  # ===================
-  stock-service:
-    build:
-      context: ./stock-service
-      dockerfile: Dockerfile
-    container_name: stock-ai-service
-    ports:
-      - "8001:8001"
-    environment:
-      - PYTHONUNBUFFERED=1
-      - DEBUG=false
-    volumes:
-      - stock-service-models:/app/models
-      - stock-service-data:/app/data
-      - stock-service-logs:/app/logs
-    networks:
-      - stock-network
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 2G
 
   # ===================
   # MySQL Database
@@ -60,7 +33,7 @@ services:
     image: mysql:8.0
     container_name: stock-mysql
     environment:
-      - MYSQL_ROOT_PASSWORD=Root.123456
+      - MYSQL_ROOT_PASSWORD=${GLOBAL_DB_PASSWORD}
       - MYSQL_DATABASE=stock_trading
       - MYSQL_ROOT_HOST=%
     ports:
@@ -86,7 +59,7 @@ services:
     container_name: stock-mongo
     environment:
       - MONGO_INITDB_ROOT_USERNAME=admin
-      - MONGO_INITDB_ROOT_PASSWORD=Root.123456
+      - MONGO_INITDB_ROOT_PASSWORD=${GLOBAL_DB_PASSWORD}
       - MONGO_INITDB_DATABASE=stock_trading
     ports:
       - "27017:27017"
@@ -109,7 +82,7 @@ services:
     networks:
       - stock-network
     restart: unless-stopped
-    command: redis-server --requirepass Root.123456 --appendonly yes
+    command: redis-server --requirepass ${GLOBAL_DB_PASSWORD} --appendonly yes
 
 networks:
   stock-network:
@@ -119,6 +92,3 @@ volumes:
   mysql-data:
   mongo-data:
   redis-data:
-  stock-service-models:
-  stock-service-data:
-  stock-service-logs:
