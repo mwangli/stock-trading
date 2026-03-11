@@ -1,38 +1,36 @@
 package com.stock.tradingExecutor.handler;
 
+import com.stock.tradingExecutor.logging.LogBroadcastService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
-import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
-import java.io.IOException;
 import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class LogWebSocketHandler extends TextWebSocketHandler {
 
+    private final LogBroadcastService logBroadcastService;
     private static final Set<WebSocketSession> SESSIONS = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         SESSIONS.add(session);
+        logBroadcastService.registerSession(session);
         log.info("New WebSocket connection established: {}", session.getId());
-        // 测试消息：前端连接建立后立即收到一条提示，便于验证链路
-        try {
-            session.sendMessage(new TextMessage("WebSocket connected: " + session.getId()));
-        } catch (IOException e) {
-            log.error("Failed to send test message to session {}", session.getId(), e);
-        }
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         SESSIONS.remove(session);
+        logBroadcastService.removeSession(session);
         log.info("WebSocket connection closed: {}", session.getId());
     }
 
@@ -40,20 +38,7 @@ public class LogWebSocketHandler extends TextWebSocketHandler {
      * 向所有已连接客户端广播日志消息
      */
     public static void broadcast(String message) {
-        if (SESSIONS.isEmpty()) {
-            return;
-        }
-        TextMessage textMessage = new TextMessage(message);
-        SESSIONS.forEach(session -> {
-            if (session.isOpen()) {
-                try {
-                    synchronized (session) {
-                        session.sendMessage(textMessage);
-                    }
-                } catch (IOException e) {
-                    log.error("Failed to send log message to session {}", session.getId(), e);
-                }
-            }
-        });
+        int sessionCount = SESSIONS.size();
+        log.debug("WebSocket broadcast invoked (legacy static), sessions={}, message={}", sessionCount, message);
     }
 }
