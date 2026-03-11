@@ -18,8 +18,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.*;
-import java.util.function.Function;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -31,8 +34,8 @@ import java.util.stream.Collectors;
  * 3. 为前端提供分页查询 DTO。
  * </p>
  *
- * @author AI Assistant
- * @since 1.0
+ * @author mwangli
+ * @since 2026-03-10
  */
 @Slf4j
 @Service
@@ -42,6 +45,57 @@ public class ModelTrainingRecordService {
     private final ModelTrainingRecordRepository recordRepository;
     private final StockInfoRepository stockInfoRepository;
     private final LstmModelRepository lstmModelRepository;
+
+    /**
+     * 基于 StockInfo 表初始化模型训练记录占位数据（仅在首次部署时执行一次）。
+     * <p>
+     * 该方法在记录表为空（count=0）时：
+     * <ul>
+     *     <li>从 StockInfo 表查询全部股票基础信息；</li>
+     *     <li>为每一只股票创建一条未训练的占位记录；</li>
+     *     <li>写入创建时间与更新时间，方便后续分页展示。</li>
+     * </ul>
+     * 若记录表中已存在数据，则直接跳过，不会重复初始化。
+     * </p>
+     */
+    @Transactional
+    public void initRecordsFromStockInfoIfEmpty() {
+        long count = recordRepository.count();
+        if (count > 0) {
+            log.info("[ModelTrainingRecord] 已存在 {} 条训练记录，跳过基于 StockInfo 的初始化", count);
+            return;
+        }
+
+        List<StockInfo> stocks = stockInfoRepository.findAll();
+        if (stocks.isEmpty()) {
+            log.warn("[ModelTrainingRecord] StockInfo 表为空，无法初始化模型训练记录占位数据");
+            return;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        List<ModelTrainingRecord> toSave = new ArrayList<>(stocks.size());
+        for (StockInfo stock : stocks) {
+            if (stock.getCode() == null || stock.getCode().trim().isEmpty()) {
+                continue;
+            }
+            ModelTrainingRecord record = new ModelTrainingRecord();
+            record.setStockCode(stock.getCode().trim());
+            record.setStockName(stock.getName());
+            record.setTrained(Boolean.FALSE);
+            record.setTraining(Boolean.FALSE);
+            record.setCreatedAt(now);
+            record.setUpdatedAt(now);
+            toSave.add(record);
+        }
+
+        if (toSave.isEmpty()) {
+            log.warn("[ModelTrainingRecord] 基于 StockInfo 生成的占位记录为空，可能所有股票代码均无效");
+            return;
+        }
+
+        recordRepository.saveAll(toSave);
+        log.info("[ModelTrainingRecord] 基于 StockInfo 初始化模型训练记录完成，新增占位记录数: {}", toSave.size());
+    }
 
     /**
      * 同步所有股票的模型训练记录：
@@ -63,6 +117,21 @@ public class ModelTrainingRecordService {
         }
         log.info("[ModelTrainingRecord] 当前训练记录总数: {}", records.size());
 
+        // 先基于所有训练记录收集去重后的股票代码列表，使用 Mongo 聚合批量查询最新模型，避免 N 次循环查询
+        List<String> allCodes = records.stream()
+                .map(ModelTrainingRecord::getStockCode)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(code -> !code.isEmpty())
+                .distinct()
+                .toList();
+        if (allCodes.isEmpty()) {
+            log.warn("[ModelTrainingRecord] 所有训练记录的 stockCode 均为空，跳过同步");
+            return;
+        }
+        Map<String, LstmModelDocument> latestModelMap = lstmModelRepository.findLatestByModelNames(allCodes);
+        log.info("[ModelTrainingRecord] Mongo 中找到已训练模型的股票数: {}", latestModelMap.size());
+
         List<ModelTrainingRecord> toSave = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
 
@@ -74,7 +143,7 @@ public class ModelTrainingRecordService {
             }
             String trimmedCode = code.trim();
             try {
-                LstmModelDocument latest = lstmModelRepository.findTopByModelNameOrderByCreatedAtDesc(trimmedCode);
+                LstmModelDocument latest = latestModelMap.get(trimmedCode);
                 if (latest == null) {
                     log.info("[ModelTrainingRecordSync] code={} 未找到对应的 Mongo 模型文档，保持原有状态", trimmedCode);
                     continue;

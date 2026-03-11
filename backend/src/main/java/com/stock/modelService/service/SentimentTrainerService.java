@@ -47,7 +47,8 @@ public class SentimentTrainerService {
      * 应用启动初始化
      *
      * 这里只负责打印当前情感模型相关配置，不主动加载模型，实际加载在首次使用时懒加载完成。
-     * 模型根目录统一使用 backend 模块下的 {@code backend/models/sentiment} 目录，
+     * 模型根目录优先使用配置的 {@code models.sentiment.model-path}，未配置时使用
+     * backend 模块下的 {@code backend/models/sentiment} 目录，
      * 自动兼容从项目根目录或 backend 目录启动应用的场景。
      */
     @PostConstruct
@@ -55,10 +56,10 @@ public class SentimentTrainerService {
         Path sentimentDir = resolveSentimentModelDir();
         log.info("情感分析模型根目录: {}", sentimentDir.toAbsolutePath());
 
-        if (config.isDownloadPretrained()) {
-            log.info("已启用预训练模型下载配置，将在首次使用情感分析服务时按需从 HuggingFace 懒加载模型");
+        if (useRemoteModel()) {
+            log.info("已配置从 HuggingFace 加载模型，将在首次使用情感分析服务时按需下载并缓存");
         } else {
-            log.info("已禁用预训练模型下载，将默认使用规则模式进行情感分析");
+            log.info("已配置使用本地模型目录，将尝试从本地加载情感分析模型");
         }
     }
 
@@ -201,6 +202,16 @@ public class SentimentTrainerService {
      * @return 情感模型目录路径
      */
     private Path resolveSentimentModelDir() {
+        String configuredPath = config.getModelPath();
+        if (configuredPath != null && !configuredPath.trim().isEmpty()) {
+            Path configured = Paths.get(configuredPath.trim());
+            if (configured.isAbsolute()) {
+                return configured.normalize();
+            }
+            Path cwd = Paths.get("").toAbsolutePath().normalize();
+            return cwd.resolve(configured).normalize();
+        }
+
         Path cwd = Paths.get("").toAbsolutePath().normalize();
         String cwdName = cwd.getFileName() != null ? cwd.getFileName().toString() : "";
         Path baseDir;
@@ -231,16 +242,21 @@ public class SentimentTrainerService {
         if (isModelLoaded) {
             return true;
         }
-
         try {
             String modelId = config.getPretrainedModel();
             Path modelPath = resolveSentimentModelDir();
             Files.createDirectories(modelPath);
 
-            log.info("准备加载情感分析模型, modelId={}, modelPath={}", modelId, modelPath.toAbsolutePath());
+            log.info("准备加载情感分析模型, modelId={}, modelPath={}, modelSource={}",
+                    modelId, modelPath.toAbsolutePath(), config.getModelSource());
 
             String modelUrl;
             HuggingFaceTokenizer tokenizer;
+
+            if (useLocalModel()) {
+                // 仅在使用本地模型时尝试补全 tokenizer.json
+                ensureLocalTokenizerJson(modelPath);
+            }
 
             // 1. 优先尝试从本地 models/sentiment 目录加载
             boolean hasLocalModelDir = Files.isDirectory(modelPath);
@@ -263,24 +279,27 @@ public class SentimentTrainerService {
                 log.warn("本地情感模型目录不存在, 预期路径={}", modelPath.toAbsolutePath());
             }
 
-            if (hasLocalModelDir && hasLocalFiles) {
+            boolean canUseLocalModel = hasLocalModelDir && hasLocalFiles;
+            if (canUseLocalModel && useLocalModel()) {
+                validateLocalModelFiles(modelPath);
                 try {
-                    modelUrl = modelPath.toAbsolutePath().toString();
+                    modelUrl = modelPath.toUri().toString();
                     tokenizer = HuggingFaceTokenizer.newInstance(modelPath);
-                    log.info("检测到非空本地情感模型目录，尝试使用本地模型加载: {}", modelUrl);
+                    log.info("检测到本地情感模型目录且校验通过，尝试使用本地模型加载: {}", modelUrl);
                 } catch (Exception localEx) {
-                    log.error("从本地情感模型目录加载失败，将降级为规则模式分析", localEx);
+                    log.error("从本地情感模型目录加载失败", localEx);
                     this.isModelLoaded = false;
                     return false;
                 }
-            } else if (config.isDownloadPretrained()) {
-                // 2. 本地目录不存在或为空，且允许在线下载时，尝试从 Hugging Face 远程加载
-                log.warn("本地情感模型目录不存在或为空，将尝试从 Hugging Face 远程加载: {}, modelPath={}", modelId, modelPath.toAbsolutePath());
+            } else if (useRemoteModel()) {
+                // 2. 本地目录不可用或未配置本地优先，尝试从 Hugging Face 远程加载
+                log.warn("本地情感模型目录不可用(目录存在: {}, 含文件: {})，将尝试从 Hugging Face 远程加载: {}, modelPath={}",
+                        hasLocalModelDir, hasLocalFiles, modelId, modelPath.toAbsolutePath());
                 tokenizer = HuggingFaceTokenizer.newInstance(modelId);
                 modelUrl = "djl://ai.djl.huggingface.pytorch/" + modelId;
             } else {
-                // 3. 既没有本地模型，又不允许在线下载，直接回退规则模式
-                log.warn("本地情感模型目录不存在或为空，且已禁用在线下载，将直接使用规则模式分析, modelPath={}", modelPath.toAbsolutePath());
+                // 3. 本地目录不可用且未启用远程下载，直接回退规则模式
+                log.warn("本地情感模型目录不可用且已禁用在线下载，将直接使用规则模式分析, modelPath={}", modelPath.toAbsolutePath());
                 this.isModelLoaded = false;
                 return false;
             }
@@ -308,6 +327,106 @@ public class SentimentTrainerService {
             log.error("加载情感分析模型失败，将回退到规则模式", e);
             this.isModelLoaded = false;
             return false;
+        }
+    }
+
+    /**
+     * 确保本地情感模型目录下存在 tokenizer.json
+     * <p>
+     * 如果缺失，则尝试调用项目根目录下 .tmp/export_finbert_tokenizer.py 脚本，
+     * 自动从 Hugging Face 下载并导出 tokenizer.json，然后再复制到 models/sentiment 目录。
+     * 该逻辑仅在本地缺失 tokenizer.json 且运行环境已安装 python 时生效。
+     * </p>
+     *
+     * @param modelPath 情感模型本地目录
+     */
+    private void ensureLocalTokenizerJson(Path modelPath) {
+        try {
+            Path tokenizerPath = modelPath.resolve("tokenizer.json");
+            if (Files.exists(tokenizerPath)) {
+                return;
+            }
+
+            Path projectRoot = Paths.get("").toAbsolutePath().normalize();
+            Path scriptPath = projectRoot.resolve(".tmp").resolve("export_finbert_tokenizer.py");
+            if (!Files.exists(scriptPath)) {
+                log.warn("未找到自动生成 tokenizer.json 的脚本: {}", scriptPath.toAbsolutePath());
+                return;
+            }
+
+            log.info("检测到缺失 tokenizer.json，尝试通过 Python 脚本自动生成: {}", scriptPath.toAbsolutePath());
+
+            ProcessBuilder pb = new ProcessBuilder("python", scriptPath.toString());
+            pb.directory(projectRoot.toFile());
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                log.warn("Python 脚本执行失败，退出码: {}", exitCode);
+                return;
+            }
+
+            // 脚本会将 tokenizer.json 保存在 .tmp/finbert-tokenizer 目录下，这里检查并复制到模型目录
+            Path generatedPath = projectRoot.resolve(".tmp")
+                    .resolve("finbert-tokenizer")
+                    .resolve("tokenizer.json");
+            if (Files.exists(generatedPath)) {
+                Files.createDirectories(modelPath);
+                Files.copy(generatedPath, tokenizerPath);
+                log.info("已通过 Python 脚本生成并复制 tokenizer.json 到: {}", tokenizerPath.toAbsolutePath());
+            } else {
+                log.warn("Python 脚本执行完成但未找到生成的 tokenizer.json, 预期路径: {}", generatedPath.toAbsolutePath());
+            }
+        } catch (Exception ex) {
+            log.error("自动生成 tokenizer.json 过程中发生异常，将继续后续加载流程", ex);
+        }
+    }
+
+    private boolean useLocalModel() {
+        String source = config.getModelSource();
+        if (source == null || source.trim().isEmpty()) {
+            return !config.isDownloadPretrained();
+        }
+        return "local".equalsIgnoreCase(source.trim());
+    }
+
+    private boolean useRemoteModel() {
+        String source = config.getModelSource();
+        if (source == null || source.trim().isEmpty()) {
+            return config.isDownloadPretrained();
+        }
+        return "huggingface".equalsIgnoreCase(source.trim());
+    }
+
+    private void validateLocalModelFiles(Path modelPath) throws IOException {
+        List<String> required = List.of("config.json", "tokenizer.json");
+        List<String> missing = new ArrayList<>();
+        for (String fileName : required) {
+            if (!Files.exists(modelPath.resolve(fileName))) {
+                missing.add(fileName);
+            }
+        }
+
+        boolean hasSafetensors = false;
+        boolean hasPytorchModel = false;
+        try (var stream = Files.list(modelPath)) {
+            for (Path path : stream.toList()) {
+                String name = path.getFileName().toString();
+                if (name.endsWith(".safetensors")) {
+                    hasSafetensors = true;
+                }
+                if (name.equals("pytorch_model.bin") || name.endsWith(".bin")) {
+                    hasPytorchModel = true;
+                }
+            }
+        }
+
+        if (!hasSafetensors && !hasPytorchModel) {
+            missing.add("model weights (.safetensors or pytorch_model.bin)");
+        }
+
+        if (!missing.isEmpty()) {
+            throw new IOException("本地情感模型文件不完整，缺少: " + String.join(", ", missing));
         }
     }
 
@@ -398,8 +517,24 @@ public class SentimentTrainerService {
 
 
     private double calculateSentimentScore(Map<String, Double> probabilities) {
-        Double positive = probabilities.getOrDefault("positive", 0.0);
-        Double negative = probabilities.getOrDefault("negative", 0.0);
+        double positive = 0.0;
+        double negative = 0.0;
+
+        if (probabilities != null && !probabilities.isEmpty()) {
+            for (Map.Entry<String, Double> entry : probabilities.entrySet()) {
+                String key = entry.getKey();
+                Double value = entry.getValue();
+                if (key == null || value == null) {
+                    continue;
+                }
+                if ("positive".equalsIgnoreCase(key)) {
+                    positive = value;
+                } else if ("negative".equalsIgnoreCase(key)) {
+                    negative = value;
+                }
+            }
+        }
+
         return positive - negative;
     }
 

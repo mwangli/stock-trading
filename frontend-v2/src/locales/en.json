@@ -123,11 +123,11 @@
     }
   },
   "models": {
-    "title": "Quant Model Center",
-    "subtitle": "Monitor & Manage AI Prediction Engines",
+  "title": "Quant Model Console",
+  "subtitle": "One place to monitor training, evaluate performance and track sentiment signals",
     "lstm": {
       "title": "LSTM Price Prediction",
-      "desc": "Long Short-Term Memory network trained on 5-year OHLCV data. Optimized for T+1 trend reversal.",
+      "desc": "LSTM network trained on multi-year OHLCV data, focusing on T+1 trend reversals and short‑term volatility regimes.",
       "accuracy": "Test Accuracy",
       "loss": "Validation Loss",
       "features": "Input Features",
@@ -136,20 +136,20 @@
       "listTitle": "Model List",
       "trainLoss": "Train Loss",
       "valLoss": "Val Loss",
-      "effectHint": "New trainings show Loss; older data may not",
+      "effectHint": "The latest training run exposes loss and quality metrics. Legacy models may only keep core indicators.",
       "listEmpty": "No saved LSTM models yet",
       "listEmptyHint": "Trained models will appear here",
       "listError": "Failed to load. Check backend.",
       "refreshSuccess": "Refreshed"
     },
     "effect": {
-      "title": "Training effect",
-      "avgScore": "Avg score (page)",
-      "withMetrics": "With score"
+      "title": "Training Effect Overview",
+      "avgScore": "Average score of listed models",
+      "withMetrics": "Models with score"
     },
     "summary": {
-      "lstmCount": "LSTM models",
-      "sentimentStatus": "Sentiment service",
+      "lstmCount": "Deployed LSTM models",
+      "sentimentStatus": "Sentiment engine status",
       "sentimentLoaded": "Loaded",
       "sentimentNotLoaded": "Not loaded",
       "sentimentOnline": "ONLINE",
@@ -172,9 +172,9 @@
       "total": "{{count}} items"
     },
     "finbert": {
-      "title": "FinBert Sentiment",
-      "desc": "BERT model fine-tuned for financial texts. Analyzes news headlines in real-time for long/short signals.",
-      "sentiment": "Current Sentiment",
+      "title": "FinBERT Sentiment Engine",
+      "desc": "BERT model fine‑tuned on Chinese financial news, extracting long/short sentiment and confidence in real time.",
+      "sentiment": "Current market sentiment",
       "confidence": "Confidence",
       "sources": "News Sources",
       "articles": "Articles Today",
@@ -196,31 +196,32 @@
       "noData": "No profit or score data for this model."
     },
     "sentiment": {
-      "title": "Sentiment Analysis (AI)",
-      "desc": "Real-time sentiment analysis using BERT model. Extracts positive/negative signals from financial news.",
-      "score": "Sentiment Score",
+      "title": "Sentiment Analysis (AI Model)",
+      "desc": "Run FinBERT on a single headline or paragraph to get detailed sentiment score, label, confidence and normalized rating.",
+      "score": "Sentiment score (-1 ~ 1)",
       "confidence": "Confidence",
       "articles": "Processed Articles",
       "testButton": "Sentiment Test",
+      "reloadButton": "Reload Model",
       "testModalTitle": "Sentiment Analysis Test",
       "testModalPlaceholder": "Enter news or text",
       "testModalSubmit": "Predict",
-      "testModalResult": "Result",
-      "testModalLabel": "Sentiment",
-      "testModalScore": "Score",
-      "testModalConfidence": "Confidence",
-      "testModalExplanation": "Analysis: sentiment is",
+      "testModalResult": "Detailed result",
+      "testModalLabel": "Dominant sentiment",
+      "testModalScore": "Composite score (higher = more bullish)",
+      "testModalConfidence": "Model confidence",
+      "testModalExplanation": "Explanation: the text is classified as",
       "testModalFallback": "using rule-based fallback",
       "labelPositive": "Positive",
       "labelNeutral": "Neutral",
       "labelNegative": "Negative"
     },
     "rules": {
-      "title": "Sentiment Rules (Fallback)",
-      "desc": "Rule-based sentiment analysis as a fallback when AI model is unavailable. Uses keyword matching.",
-      "score": "Rule Score",
-      "matches": "Keyword Matches",
-      "coverage": "Coverage"
+      "title": "Rule-based Sentiment (Fallback)",
+      "desc": "When the AI model is unavailable, a lightweight rule engine uses keywords and thresholds to classify sentiment.",
+      "score": "Rule score",
+      "matches": "Triggered keyword rules",
+      "coverage": "Rule coverage"
     }
   },
   "strategyAnalysis": {

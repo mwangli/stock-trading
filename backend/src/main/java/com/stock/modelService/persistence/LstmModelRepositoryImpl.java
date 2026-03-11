@@ -50,8 +50,7 @@ public class LstmModelRepositoryImpl implements LstmModelRepositoryCustom {
 
         Aggregation aggregation = Aggregation.newAggregation(
                 Aggregation.match(Criteria.where(FIELD_MODEL_NAME).in(distinctNames)),
-                Aggregation.project("_id", FIELD_MODEL_NAME, "epoch", "createdAt", "trainLoss", "valLoss")
-                        .andExclude("params", "normalizationParams"),
+                Aggregation.project("_id", FIELD_MODEL_NAME, "epoch", "createdAt", "trainLoss", "valLoss"),
                 Aggregation.sort(Sort.by(Sort.Order.asc(FIELD_MODEL_NAME), Sort.Order.desc("createdAt"))),
                 Aggregation.group(FIELD_MODEL_NAME).first(Aggregation.ROOT).as("doc")
         );

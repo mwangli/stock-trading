@@ -12,7 +12,7 @@ export interface SentimentHealth {
  * 获取情感分析服务健康状态
  */
 export async function getSentimentHealth(): Promise<SentimentHealth> {
-  const data = await request.get('models/sentiment/health') as SentimentHealth;
+  const data = await request.get('model-sentiment/health') as SentimentHealth;
   return data ?? { status: 'UNKNOWN', service: 'Sentiment', modelLoaded: false };
 }
 
@@ -32,6 +32,15 @@ export interface SentimentAnalyzeResult {
  * 情感分析：输入文本，返回预测结果
  */
 export async function analyzeSentiment(text: string): Promise<SentimentAnalyzeResult> {
-  const data = await request.post('models/sentiment/analyze', { text }) as SentimentAnalyzeResult;
-  return data ?? { success: false, message: '请求失败' };
+  const data = await request.post('model-sentiment/analyze', { text }) as SentimentAnalyzeResult | null;
+  if (!data) {
+    return { success: false, message: '请求失败' };
+  }
+
+  const normalizedLabel = data.label ? data.label.toLowerCase() : undefined;
+
+  return {
+    ...data,
+    label: normalizedLabel,
+  };
 }

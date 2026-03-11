@@ -206,6 +206,39 @@ public class LstmTrainingController {
     }
 
     /**
+     * 重新训练 LSTM 模型
+     *
+     * <p>
+     * 用于在已有模型基础上再次发起训练任务，通常在模型效果衰减或行情环境发生变化时调用。
+     * 入参与 {@link #trainLstmModel(String, int, Integer, Integer, Double)} 一致，
+     * 仅在日志与语义上区分为“重新训练”。
+     * </p>
+     *
+     * @param stockCodes  股票代码，逗号分隔，例如 "600519,000858"
+     * @param days        训练所使用的历史天数
+     * @param epochs      训练轮数，可为空则使用默认配置
+     * @param batchSize   批次大小，可为空则使用默认配置
+     * @param learningRate 学习率，可为空则使用默认配置
+     * @return 重新训练结果，包含损失、样本数等统计信息
+     */
+    @PostMapping("/retrain")
+    public ResponseDTO<LstmTrainerService.TrainingResult> retrainLstmModel(
+            @RequestParam String stockCodes,
+            @RequestParam(required = false, defaultValue = "365") int days,
+            @RequestParam(required = false) Integer epochs,
+            @RequestParam(required = false) Integer batchSize,
+            @RequestParam(required = false) Double learningRate
+    ) {
+        log.info("重新训练 LSTM 模型: stockCodes={}, days={}, epochs={}", stockCodes, days, epochs);
+        LstmTrainerService.TrainingResult result = lstmTrainerService.trainModel(stockCodes, days, epochs, batchSize, learningRate);
+        if (result.isSuccess()) {
+            return ResponseDTO.success(result);
+        } else {
+            return ResponseDTO.error(result.getMessage());
+        }
+    }
+
+    /**
      * 使用最新的 LSTM 模型对单只股票进行下一交易日价格预测
      *
      * @param stockCode 股票代码，例如 "600519"

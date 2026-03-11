@@ -17,6 +17,55 @@ import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { getLstmModelList, getLstmModelResult, type LstmModelListItem, type LstmModelListParams, type LstmModelResult } from '../api/lstm';
 import { getSentimentHealth, analyzeSentiment, type SentimentHealth, type SentimentAnalyzeResult } from '../api/sentiment';
+import { reloadSentimentModel } from '../api/sentimentReload';
+
+interface SentimentTestSample {
+  label: 'positive' | 'neutral' | 'negative';
+  text: string;
+}
+
+const SENTIMENT_TEST_SAMPLES: SentimentTestSample[] = [
+  {
+    label: 'positive',
+    text: '国家发改委发布新一轮资本市场改革举措，拟进一步降低交易成本、优化退市机制，多项政策将于下月起正式落地。受此消息提振，A股市场情绪明显回暖，多家券商研报集体上调对明年盈利增速的预期。',
+  },
+  {
+    label: 'positive',
+    text: '某新能源龙头公司公告称，其最新一代动力电池已与全球多家主流车企达成长期供货协议，预计未来三年订单金额超千亿元。公司表示，新产品毛利率有望显著高于现有型号。',
+  },
+  {
+    label: 'negative',
+    text: '受海外需求持续疲软影响，最新公布的出口数据大幅低于市场预期，多项制造业景气指数跌至近两年低位。分析人士指出，外需走弱叠加企业信心不足，短期内经济下行压力仍然较大。',
+  },
+  {
+    label: 'negative',
+    text: '某互联网平台因多项数据安全与广告合规问题被监管部门立案调查，公司可能面临高额罚款及业务整改。消息公布后，市场担忧其盈利能力将受到长期压制，股价盘中一度跳水。',
+  },
+  {
+    label: 'neutral',
+    text: '某白酒企业发布三季度业绩预告，预计营收与净利润与去年同期基本持平。公司表示，本期销售节奏与去年存在一定差异，但整体渠道库存处于合理水平，产品结构调整仍在推进中。',
+  },
+  {
+    label: 'neutral',
+    text: '近期人民币汇率在双向波动中保持基本稳定，一方面外部环境仍存在不确定性，另一方面国内经济数据有所改善。业内人士认为，短期市场情绪或继续反复，但长期汇率基础条件并未发生根本变化。',
+  },
+  {
+    label: 'negative',
+    text: '受突发公共卫生事件影响，多地线下消费场景被迫关闭，旅游、餐饮、线下零售等行业订单大面积取消。部分中小企业出现现金流紧张甚至停业风险，市场避险情绪快速升温，资金加速流向避险资产。',
+  },
+  {
+    label: 'positive',
+    text: '多项关键经济数据连续三个月超出预期，制造业与服务业景气度同步回升。国际评级机构上调了对本国经济增长的预测，并表示当前改革进程有望夯实中长期增长潜力，提振投资者信心。',
+  },
+  {
+    label: 'negative',
+    text: '由于原材料价格阶段性上行，部分制造业企业成本压力有所抬升，利润空间被进一步压缩。虽然目前整体行业仍保持增长，但不少企业管理层在调研中表达了对明年盈利的不确定担忧。',
+  },
+  {
+    label: 'positive',
+    text: '交通、基建等领域一批重大项目集中开工，地方专项债资金加速使用，有望带动相关产业链订单稳步增加。分析认为，这将对稳投资、稳就业形成一定支撑，但政策效果仍需时间进一步体现。',
+  },
+];
 
 /** Mock 模型列表，用于接口不可用或空数据时展示比对效果 */
 function getMockLstmList(): LstmModelListItem[] {
@@ -27,15 +76,50 @@ function getMockLstmList(): LstmModelListItem[] {
     return x.toISOString();
   };
   const toScore = (v: number) => Math.max(0, Math.min(100, (1 - v) * 100));
+
+  const makeItem = (
+    idx: number,
+    stockCode: string,
+    stockName: string,
+    epoch: number,
+    score: number | null,
+    daysAgo: number,
+    modelVersion: string | null = 'v1'
+  ): LstmModelListItem => {
+    const ts = fmt(now, daysAgo);
+    const baseScore = score != null ? toScore(score) : null;
+    return {
+      id: -idx, // 负数 ID 标记为 Mock 数据
+      stockCode,
+      stockName,
+      trained: true,
+      training: false,
+      lastTrainTime: ts,
+      lastDurationSeconds: null,
+      lastEpochs: epoch,
+      lastTrainLoss: null,
+      lastValLoss: null,
+      lastModelId: null,
+      createdAt: ts,
+      updatedAt: ts,
+      modelName: stockCode,
+      name: stockName,
+      epoch,
+      modelVersion,
+      profitAmount: null,
+      score: baseScore,
+    };
+  };
+
   return [
-    { id: 'mock-1', modelName: '600519', name: '贵州茅台', modelVersion: 'v1', epoch: 100, score: toScore(0.0281), profitAmount: null, createdAt: fmt(now, 1) },
-    { id: 'mock-2', modelName: '000858', name: '五粮液', modelVersion: 'v1', epoch: 80, score: toScore(0.0356), profitAmount: null, createdAt: fmt(now, 2) },
-    { id: 'mock-3', modelName: '601318', name: '中国平安', modelVersion: 'v2', epoch: 120, score: toScore(0.0245), profitAmount: null, createdAt: fmt(now, 3) },
-    { id: 'mock-4', modelName: '000333', name: '美的集团', modelVersion: 'v1', epoch: 60, score: toScore(0.0489), profitAmount: null, createdAt: fmt(now, 5) },
-    { id: 'mock-5', modelName: '300750', name: '宁德时代', modelVersion: 'v1', epoch: 150, score: toScore(0.0189), profitAmount: null, createdAt: fmt(now, 7) },
-    { id: 'mock-6', modelName: '600036', name: '招商银行', modelVersion: 'v1', epoch: 90, score: toScore(0.0312), profitAmount: null, createdAt: fmt(now, 10) },
-    { id: 'mock-7', modelName: '000001', name: '平安银行', modelVersion: 'v2', epoch: 70, score: undefined, profitAmount: null, createdAt: fmt(now, 14) },
-    { id: 'mock-8', modelName: '601012', name: '隆基绿能', modelVersion: 'v1', epoch: 110, score: toScore(0.0267), profitAmount: null, createdAt: fmt(now, 21) },
+    makeItem(1, '600519', '贵州茅台', 100, 0.0281, 1),
+    makeItem(2, '000858', '五粮液', 80, 0.0356, 2),
+    makeItem(3, '601318', '中国平安', 120, 0.0245, 3, 'v2'),
+    makeItem(4, '000333', '美的集团', 60, 0.0489, 5),
+    makeItem(5, '300750', '宁德时代', 150, 0.0189, 7),
+    makeItem(6, '600036', '招商银行', 90, 0.0312, 10),
+    makeItem(7, '000001', '平安银行', 70, null, 14, 'v2'),
+    makeItem(8, '601012', '隆基绿能', 110, 0.0267, 21),
   ];
 }
 
@@ -80,6 +164,8 @@ const Strategies: React.FC = () => {
   const [sentimentTestText, setSentimentTestText] = useState('');
   const [sentimentTestLoading, setSentimentTestLoading] = useState(false);
   const [sentimentTestResult, setSentimentTestResult] = useState<SentimentAnalyzeResult | null>(null);
+  const [sentimentReloading, setSentimentReloading] = useState(false);
+  const [sentimentSampleIndex, setSentimentSampleIndex] = useState(0);
 
   const fetchLstmList = useCallback(async (opts?: { isRefresh?: boolean; page?: number; pageSize?: number; keyword?: string; sortBy?: 'createdAt' | 'epoch' | 'valLoss'; sortOrder?: 'asc' | 'desc' }) => {
     const isRefresh = opts?.isRefresh ?? false;
@@ -129,6 +215,24 @@ const Strategies: React.FC = () => {
     }
   }, []);
 
+  const handleReloadSentiment = useCallback(async () => {
+    if (sentimentReloading) return;
+    setSentimentReloading(true);
+    try {
+      const res = await reloadSentimentModel();
+      if (res.success) {
+        message.success(res.message || t('models.sentiment.reloadSuccess'));
+        await fetchSentimentHealth();
+      } else {
+        message.error(res.message || t('models.sentiment.reloadFailed'));
+      }
+    } catch {
+      message.error(t('models.sentiment.reloadFailed'));
+    } finally {
+      setSentimentReloading(false);
+    }
+  }, [sentimentReloading, fetchSentimentHealth, t]);
+
   useEffect(() => {
     fetchLstmList();
   }, []);
@@ -147,12 +251,12 @@ const Strategies: React.FC = () => {
     }
   }, []);
 
-  const openResultModal = useCallback((modelId: string, record?: LstmModelListItem) => {
+  const openResultModal = useCallback((modelId: string | number, record?: LstmModelListItem) => {
     setResultModalVisible(true);
     setResultModalData(null);
-    if (record?.id?.startsWith('mock-')) {
+    if (typeof record?.id === 'number' && record.id < 0) {
       setResultModalData({
-        modelId: record.id,
+        modelId: String(record.id),
         modelName: record.modelName,
         profitAmount: record.profitAmount ?? null,
         score: record.score ?? null,
@@ -161,7 +265,7 @@ const Strategies: React.FC = () => {
       return;
     }
     setResultModalLoading(true);
-    getLstmModelResult(modelId)
+    getLstmModelResult(String(modelId))
       .then((data) => setResultModalData(data))
       .catch(() => message.error(t('models.lstm.listError')))
       .finally(() => setResultModalLoading(false));
@@ -319,9 +423,9 @@ const Strategies: React.FC = () => {
       color: '#a3a3a3',
       icon: <CodeOutlined />,
       stats: [
-        { label: t('models.rules.score'), value: '-', color: '#a3a3a3' },
-        { label: t('models.rules.matches'), value: '-', color: '#a3a3a3' },
-        { label: t('models.rules.coverage'), value: '-', color: '#a3a3a3' }
+        { label: t('models.rules.score'), value: '72', color: '#00e396' },
+        { label: t('models.rules.matches'), value: '5', color: '#feb019' },
+        { label: t('models.rules.coverage'), value: '86%', color: '#a3a3a3' }
       ]
     }
   ];
@@ -335,7 +439,11 @@ const Strategies: React.FC = () => {
     fetchLstmList({ keyword: value, page: 1 });
   }, [fetchLstmList]);
 
-  const sentimentModels = useMemo(() => models.filter((m) => m.id === 'sentiment-rules'), [models]);
+  const sentimentModels = useMemo(() => {
+    const base = models.find((m) => m.id === 'sentiment-rules');
+    if (!base) return [];
+    return [base, { ...base, id: `${base.id}-clone` }];
+  }, [models]);
 
   const tabItems = useMemo(
     () => [
@@ -352,13 +460,22 @@ const Strategies: React.FC = () => {
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex flex-wrap gap-4"
+              className="flex flex-wrap gap-4 items-center justify-between"
             >
               <div className="glass px-5 py-3 rounded-xl border border-white/10 flex items-center gap-3">
                 <ThunderboltOutlined className="text-[#00e396]" />
                 <span className="text-gray-400 text-sm">{t('models.summary.lstmCount')}</span>
                 <span className="text-xl font-bold text-white">{lstmTotal}</span>
               </div>
+              <Button
+                type="primary"
+                size="small"
+                icon={<ReloadOutlined spin={refreshing} />}
+                className="bg-[#00e396] text-black border-none font-bold hover:bg-[#00c985] shrink-0"
+                onClick={() => message.info(t('models.actions.retrain'))}
+              >
+                {t('models.actions.retrain')}
+              </Button>
             </motion.div>
             <motion.div
               initial={{ opacity: 0, y: 16 }}
@@ -369,21 +486,23 @@ const Strategies: React.FC = () => {
           <h2 className="text-lg font-bold flex items-center gap-2">
             <ThunderboltOutlined className="text-[#00e396]" />
             {t('models.lstm.listTitle')}
-            {lstmList.length > 0 && lstmList.every((m) => m.id?.startsWith('mock-')) && (
+            {lstmList.length > 0 && lstmList.every((m) => typeof m.id === 'number' && m.id < 0) && (
               <Tag color="orange" className="border-none text-xs font-normal">
                 当前为 Mock 数据，仅用于展示表格比对效果
               </Tag>
             )}
           </h2>
-          <Button
-            type="text"
-            size="small"
-            icon={<ReloadOutlined spin={refreshing} />}
-            onClick={() => fetchLstmList({ isRefresh: true })}
-            loading={refreshing}
-            disabled={lstmLoading}
-            className="text-gray-400 hover:text-[#00e396] shrink-0"
-          />
+          <div className="flex items-center gap-2">
+            <Button
+              type="text"
+              size="small"
+              icon={<ReloadOutlined spin={refreshing} />}
+              onClick={() => fetchLstmList({ isRefresh: true })}
+              loading={refreshing}
+              disabled={lstmLoading}
+              className="text-gray-400 hover:text-[#00e396] shrink-0"
+            />
+          </div>
         </div>
         <div className="px-6 py-3 bg-white/[0.02] border-b border-white/5 flex items-center gap-3 flex-nowrap">
           <Input.Search
@@ -496,35 +615,71 @@ const Strategies: React.FC = () => {
               <div className="glass px-5 py-3 rounded-xl border border-white/10 flex items-center gap-3">
                 <CloudServerOutlined className="text-[#00b3f0]" />
                 <span className="text-gray-400 text-sm">{t('models.summary.sentimentStatus')}</span>
-                {sentimentLoading ? (
-                  <Spin size="small" />
-                ) : (
-                  <Tag color={sentimentHealth?.modelLoaded ? 'success' : 'default'} className="border-none flex items-center gap-1.5">
-                    {sentimentHealth?.modelLoaded ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
-                    <span>{sentimentHealth?.modelLoaded ? t('models.summary.sentimentOnline') : t('models.summary.sentimentOffline')}</span>
-                  </Tag>
-                )}
+                <div className="flex items-center gap-3">
+                  {sentimentLoading ? (
+                    <Spin size="small" />
+                  ) : (
+                    <Tag
+                      color={sentimentHealth?.status === 'UP' ? 'success' : 'default'}
+                      className="border-none flex items-center gap-1.5"
+                    >
+                      {sentimentHealth?.status === 'UP' ? (
+                        <CheckCircleOutlined />
+                      ) : (
+                        <CloseCircleOutlined />
+                      )}
+                      <span>
+                        {sentimentHealth?.status === 'UP'
+                          ? t('models.summary.sentimentOnline')
+                          : t('models.summary.sentimentOffline')}
+                      </span>
+                    </Tag>
+                  )}
+                </div>
               </div>
             </motion.div>
-            <motion.div
+              <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 }}
-              className="glass rounded-2xl border border-white/10 overflow-hidden p-6"
+                className="glass rounded-2xl border border-white/10 overflow-hidden p-6 min-h-[260px]"
             >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold flex items-center gap-2">
                   <CodeOutlined className="text-[#a3a3a3]" />
                   {t('models.rules.title')}
                 </h2>
-                {sentimentLoading ? (
-                  <Spin size="small" />
-                ) : (
-                  <Tag color={sentimentHealth?.modelLoaded ? 'success' : 'default'} className="border-none flex items-center gap-1.5">
-                    {sentimentHealth?.modelLoaded ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
-                    <span>{sentimentHealth?.modelLoaded ? t('models.summary.sentimentOnline') : t('models.summary.sentimentOffline')}</span>
-                  </Tag>
-                )}
+                <div className="flex items-center gap-2">
+                  {sentimentLoading ? (
+                    <Spin size="small" />
+                  ) : (
+                    <Tag
+                      color={sentimentHealth?.status === 'UP' ? 'success' : 'default'}
+                      className="border-none flex items-center gap-1.5"
+                    >
+                      {sentimentHealth?.status === 'UP' ? (
+                        <CheckCircleOutlined />
+                      ) : (
+                        <CloseCircleOutlined />
+                      )}
+                      <span>
+                        {sentimentHealth?.status === 'UP'
+                          ? t('models.summary.sentimentOnline')
+                          : t('models.summary.sentimentOffline')}
+                      </span>
+                    </Tag>
+                  )}
+                  <Button
+                    type="primary"
+                    size="small"
+                    icon={<ReloadOutlined spin={sentimentReloading} />}
+                    loading={sentimentReloading}
+                    className="bg-[#00e396] text-black border-none font-bold hover:bg-[#00c985] shrink-0"
+                    onClick={handleReloadSentiment}
+                  >
+                    {t('models.actions.retrain')}
+                  </Button>
+                </div>
               </div>
               <p className="text-gray-400 text-sm mb-4">{t('models.rules.desc')}</p>
               <div className="flex flex-wrap gap-4 text-sm items-center">
@@ -538,7 +693,16 @@ const Strategies: React.FC = () => {
                   size="middle"
                   icon={<ExperimentOutlined />}
                   className="bg-[#00e396] text-black border-none hover:bg-[#00c985]"
-                  onClick={() => setSentimentTestModalVisible(true)}
+                  onClick={() => {
+                    setSentimentSampleIndex(0);
+                    if (SENTIMENT_TEST_SAMPLES.length > 0) {
+                      setSentimentTestText(SENTIMENT_TEST_SAMPLES[0].text);
+                    } else {
+                      setSentimentTestText('');
+                    }
+                    setSentimentTestResult(null);
+                    setSentimentTestModalVisible(true);
+                  }}
                 >
                   {t('models.sentiment.testButton')}
                 </Button>
@@ -629,14 +793,34 @@ const Strategies: React.FC = () => {
           <h1 className="text-3xl font-bold mb-2">{t('models.title')}</h1>
           <p className="text-gray-400">{t('models.subtitle')}</p>
         </div>
-        <Button
-          type="primary"
-          size="large"
-          icon={<ReloadOutlined />}
-          className="bg-[#00e396] text-black border-none font-bold hover:bg-[#00c985]"
-        >
-          {t('models.actions.retrain')} All
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 text-xs text-gray-500">
+            <span>{t('models.summary.sentimentStatus')}</span>
+            <Tag
+              color={sentimentHealth?.status === 'UP' ? 'processing' : 'default'}
+              className="border-none flex items-center gap-1.5"
+            >
+              {sentimentHealth?.status === 'UP' ? (
+                <SyncOutlined spin />
+              ) : (
+                <CloseCircleOutlined />
+              )}
+              <span className="ml-1 uppercase">
+                {sentimentHealth?.status === 'UP' ? 'ONLINE' : 'OFFLINE'}
+              </span>
+            </Tag>
+          </div>
+          <Button
+            type="default"
+            size="small"
+            icon={<ReloadOutlined spin={sentimentReloading} />}
+            loading={sentimentReloading}
+            className="border-white/20 text-gray-300 hover:text-[#00e396] hover:border-[#00e396]"
+            onClick={handleReloadSentiment}
+          >
+            {t('models.sentiment.reloadButton')}
+          </Button>
+        </div>
       </div>
       <Tabs items={tabItems} className="models-tabs" />
       <Modal
@@ -681,44 +865,60 @@ const Strategies: React.FC = () => {
         }}
         footer={null}
         destroyOnClose
-        width={560}
+        width={720}
       >
-        <div className="space-y-4">
-          <div>
+        <div className="space-y-4 flex flex-col items-center">
+          <div className="w-full max-w-[640px]">
             <label className="block text-gray-400 text-sm mb-1">{t('models.sentiment.testModalPlaceholder')}</label>
             <TextArea
               value={sentimentTestText}
               onChange={(e) => setSentimentTestText(e.target.value)}
               placeholder={t('models.sentiment.testModalPlaceholder')}
-              rows={4}
-              className="bg-white/5 border-white/10"
+              rows={6}
+              className="bg-white/5 border-white/10 text-base px-4 py-3"
             />
           </div>
-          <Button
-            type="primary"
-            icon={<ExperimentOutlined />}
-            loading={sentimentTestLoading}
-            disabled={!sentimentTestText.trim()}
-            className="bg-[#00e396] text-black border-none hover:bg-[#00c985]"
-            onClick={async () => {
-              const text = sentimentTestText.trim();
-              if (!text) return;
-              setSentimentTestLoading(true);
-              setSentimentTestResult(null);
-              try {
-                const res = await analyzeSentiment(text);
-                setSentimentTestResult(res);
-                if (res.success === false && res.message) message.error(res.message);
-              } catch {
-                message.error(t('models.lstm.listError'));
-                setSentimentTestResult({ success: false, message: t('models.lstm.listError') });
-              } finally {
-                setSentimentTestLoading(false);
-              }
-            }}
-          >
-            {t('models.sentiment.testModalSubmit')}
-          </Button>
+          <div className="flex gap-3">
+            <Button
+              type="default"
+              icon={<ReloadOutlined />}
+              disabled={SENTIMENT_TEST_SAMPLES.length === 0}
+              className="border-white/20 text-gray-300 hover:text-[#00e396] hover:border-[#00e396]"
+              onClick={() => {
+                if (SENTIMENT_TEST_SAMPLES.length === 0) return;
+                const nextIndex = (sentimentSampleIndex + 1) % SENTIMENT_TEST_SAMPLES.length;
+                setSentimentSampleIndex(nextIndex);
+                setSentimentTestText(SENTIMENT_TEST_SAMPLES[nextIndex].text);
+              }}
+            >
+              换一段
+            </Button>
+            <Button
+              type="primary"
+              icon={<ExperimentOutlined />}
+              loading={sentimentTestLoading}
+              disabled={!sentimentTestText.trim()}
+              className="bg-[#00e396] text-black border-none hover:bg-[#00c985]"
+              onClick={async () => {
+                const text = sentimentTestText.trim();
+                if (!text) return;
+                setSentimentTestLoading(true);
+                setSentimentTestResult(null);
+                try {
+                  const res = await analyzeSentiment(text);
+                  setSentimentTestResult(res);
+                  if (res.success === false && res.message) message.error(res.message);
+                } catch {
+                  message.error(t('models.lstm.listError'));
+                  setSentimentTestResult({ success: false, message: t('models.lstm.listError') });
+                } finally {
+                  setSentimentTestLoading(false);
+                }
+              }}
+            >
+              {t('models.sentiment.testModalSubmit')}
+            </Button>
+          </div>
           {sentimentTestResult && (
             <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
               <div className="text-sm font-medium text-gray-400">{t('models.sentiment.testModalResult')}</div>

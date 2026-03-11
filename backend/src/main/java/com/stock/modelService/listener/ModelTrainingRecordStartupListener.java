@@ -11,14 +11,16 @@ import org.springframework.stereotype.Component;
 /**
  * 模型训练记录同步启动监听器
  * <p>
- * 在应用启动完成后，根据已有的股票基础信息为每一只股票创建
- * 一条模型训练记录占位数据，用于量化模型列表展示。
- * 若某只股票尚未训练，则记录会标记为未训练；若 Mongo 中已经存在
- * 对应的 LSTM 模型，则会自动标记为已训练并补全最近训练信息。
+ * 在应用启动完成后触发模型训练记录初始化与状态同步流程：
+ * <ul>
+ *     <li>若模型训练记录表为空，则基于 StockInfo 表为每一只股票创建占位记录；</li>
+ *     <li>随后根据 Mongo 中已有的 LSTM 模型，同步每只股票的训练状态与最近训练信息。</li>
+ * </ul>
+ * 该流程确保前端“量化模型”页面在首次部署后即可看到完整的股票列表及训练状态。
  * </p>
  *
- * @author AI Assistant
- * @since 1.0
+ * @author mwangli
+ * @since 2026-03-10
  */
 @Slf4j
 @Component
@@ -28,17 +30,18 @@ public class ModelTrainingRecordStartupListener {
     private final ModelTrainingRecordService modelTrainingRecordService;
 
     /**
-     * 应用启动完成事件回调，在后台异步同步模型训练记录占位数据
+     * 应用启动完成事件回调，在后台异步执行初始化与同步流程
      *
      * @param event Spring Boot 应用就绪事件
      */
     @Async
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady(ApplicationReadyEvent event) {
-        log.info("========== [模型记录初始化] ApplicationReadyEvent 收到，开始同步模型训练记录占位数据 ==========");
+        log.info("========== [模型记录初始化] ApplicationReadyEvent 收到，开始初始化与同步模型训练记录 ==========");
         try {
-            // modelTrainingRecordService.syncAllStocks();
-            log.info("========== [模型记录初始化] 同步完成 ==========");
+            modelTrainingRecordService.initRecordsFromStockInfoIfEmpty();
+            modelTrainingRecordService.syncAllStocks();
+            log.info("========== [模型记录初始化] 初始化与同步流程完成 ==========");
         } catch (Exception e) {
             log.error("[模型记录初始化] 同步模型训练记录失败: {}", e.getMessage(), e);
         }
