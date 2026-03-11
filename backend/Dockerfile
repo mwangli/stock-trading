@@ -1,5 +1,5 @@
-# 构建阶段
-FROM maven:3.8-openjdk-17-slim AS builder
+# 构建阶段：使用维护中的 Eclipse Temurin 17 镜像
+FROM maven:3.9-eclipse-temurin-17 AS builder
 
 WORKDIR /app
 
@@ -11,8 +11,8 @@ RUN mvn dependency:go-offline -B
 COPY src ./src
 RUN mvn clean package -DskipTests -B
 
-# 运行阶段
-FROM openjdk:17-slim
+# 运行阶段：使用精简版 Eclipse Temurin 17 JRE 镜像
+FROM eclipse-temurin:17-jre-jammy
 
 WORKDIR /app
 
