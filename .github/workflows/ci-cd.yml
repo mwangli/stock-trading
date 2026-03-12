@@ -31,8 +31,8 @@ jobs:
               echo "[CI] Existing repo found, update from origin/main"
               cd "${D}/app"
               git fetch origin main
-              git checkout main
-              git reset --hard origin/main
+              # 无论本地是否已有 main 分支，都用远端 origin/main 强制创建/重置
+              git checkout -B main origin/main
             else
               echo "[CI] No repo found, cloning fresh"
               git clone "https://github.com/${R}.git" "${D}/app"
