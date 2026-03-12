@@ -244,10 +244,10 @@ docker-compose logs -f
 由于运行环境无法直接访问 Hugging Face，情感分析模型采用**手动下载 + 本地加载**的方式，避免在线下载失败导致接口不可用。
 
 - **目标模型**: `yiyanghkust/finbert-tone-chinese`（Hugging Face 金融情感模型）
-- **本地模型目录**: `backend/models/sentiment/`
+- **本地模型目录**: `models/sentiment/`（项目根目录）
 - **缓存目录说明**:
   - `models.sentiment.cache-dir` 仅作为 DJL 的通用缓存目录，可选；
-  - 你已经将所有模型文件下载到 `backend/models/sentiment/`，可以删除 `backend/models/cache/` 目录以避免混淆。
+  - 你已经将所有模型文件下载到 `models/sentiment/`，可以删除 `models/cache/` 目录以避免混淆。
 
 **一次性准备步骤（在任意可访问 Hugging Face 的机器上执行）：**
 
@@ -258,11 +258,11 @@ docker-compose logs -f
    - `pytorch_model.bin`
    - `tokenizer.json`（以及页面中与 tokenizer 相关的 `tokenizer_config.json`、`special_tokens_map.json` 等文件）
 3. 在当前项目中创建本地模型目录：
-   - `d:\ai-stock-trading\backend\models\sentiment\`
+   - `d:\ai-stock-trading\models\sentiment\`
 4. 将步骤 2 中下载的所有文件**原样复制**到该目录，最终结构类似：
 
 ```text
-backend/models/sentiment/
+models/sentiment/
   ├─ config.json
   ├─ pytorch_model.bin
   ├─ tokenizer.json
@@ -278,7 +278,7 @@ backend/models/sentiment/
 ```yaml
 models:
   sentiment:
-    model-path: "models/sentiment"   # 对应 backend/models/sentiment
+    model-path: "models/sentiment"   # 对应项目根目录 models/sentiment
     cache-dir: "models/cache"        # 可选，用于 DJL 缓存；如无需可删除目录
     download-pretrained: false       # 禁用在线下载，仅使用本地模型
 ```
@@ -292,6 +292,32 @@ models:
 
 - `modelLoaded=true` 表示本地模型已成功加载，将使用 FinBERT 进行情感推理；
 - `modelLoaded=false` 表示加载失败或未加载，系统会自动回退到**规则模式情感分析**，接口仍然可用但效果基于规则。
+
+#### 模型文件与 Git LFS / 部署说明
+
+为避免模型文件（如 `models/sentiment` 下的 `pytorch_model.bin` 等）导致仓库体积膨胀，项目使用 **Git LFS** 管理根目录 `models/` 目录：
+
+- 根目录 `.gitattributes` 中启用：
+
+```text
+models/** filter=lfs diff=lfs merge=lfs -text
+```
+
+- 本地首次使用时，需执行一次：
+
+```bash
+git lfs install
+git add .gitattributes
+git add models
+git commit -m "chore(models): track models with git lfs"
+git push
+```
+
+CI/CD 中的部署流程会自动：
+
+- 在 GitHub Actions Runner 上执行 `git lfs install && git lfs pull`，确保拉取完整的模型文件；
+- 使用 `scp` 将项目根目录下的 `models/` 同步到服务器 `${SERVER_DEPLOY_DIR}/models`；
+- 后端容器可以通过配置中的 `models.sentiment.model-path: "models/sentiment"` 访问这些模型文件。
 
 ### 策略分析模块 (com.stock.strategyAnalysis)
 

@@ -69,11 +69,5 @@ application-prod.yml
 *.mv.db
 *.trace.db
 
-# Data & model cache (do not commit)
-/data
-/model
-backend/models/
-models/
-
 /.sisyphus/
 .worktrees/

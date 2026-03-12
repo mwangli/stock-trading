@@ -38,6 +38,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 确保在 Runner 上正确拉取 LFS 中的模型文件
+      - name: Setup Git LFS and pull models
+        run: |
+          git lfs install
+          git lfs pull
+
       # 1. 确保服务器上部署目录及 backend 子目录存在
       - name: Prepare deploy directory on server
         uses: appleboy/ssh-action@v1.0.0
@@ -48,6 +54,7 @@ jobs:
           port: 22
           script: |
             mkdir -p ${{ secrets.SERVER_DEPLOY_DIR }}/backend
+            mkdir -p ${{ secrets.SERVER_DEPLOY_DIR }}/models
 
       # 2. 传输 docker-compose.yml（放在部署根目录）
       - name: Copy docker-compose.yml to server
@@ -72,7 +79,18 @@ jobs:
           source: "backend/target/*.jar,backend/Dockerfile"
           target: "${{ secrets.SERVER_DEPLOY_DIR }}/backend"
 
-      # 4. 在服务器上本地构建镜像并通过 docker compose 启动 backend 容器
+      # 4. 传输模型文件目录 models 到服务器部署目录（${SERVER_DEPLOY_DIR}/models）
+      - name: Copy models to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: 22
+          source: "models"
+          target: "${{ secrets.SERVER_DEPLOY_DIR }}"
+
+      # 5. 在服务器上本地构建镜像并通过 docker compose 启动 backend 容器
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
