@@ -16,18 +16,29 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: 22
           script: |
-            set -e
+            set -ex
             R="${{ github.repository }}"
             D="${{ secrets.SERVER_DEPLOY_DIR }}"
             T="${{ github.ref_name }}"
+            echo "[CI] Start deploy, repo=${R}, tag=${T}, dir=${D}"
             mkdir -p "${D}"
+            echo "[CI] Dir ready"
             rm -rf "${D}/app"
+            echo "[CI] Old app removed"
             git clone --depth 1 --branch "${T}" "https://github.com/${R}.git" "${D}/app"
+            echo "[CI] Git clone done"
             cd "${D}/app"
             git lfs pull
+            echo "[CI] Git LFS done"
             mvn -B clean package -DskipTests
+            echo "[CI] Maven build done"
             cp backend/target/*.jar backend/
+            echo "[CI] Jar copied"
             docker build -t stock-backend:latest ./backend
+            echo "[CI] Docker build done"
             [ -f ../.env ] || { echo "Missing ${D}/.env (GLOBAL_DB_PASSWORD)"; exit 1; }
+            echo "[CI] .env found"
             docker compose --env-file ../.env -f docker-compose.yml up -d backend
+            echo "[CI] Docker compose up done"
             docker image prune -f
+            echo "[CI] Docker prune done, deploy finished"
