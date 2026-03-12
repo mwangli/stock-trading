@@ -239,85 +239,50 @@ docker-compose logs -f
 - 模型加载与管理 (MongoDB 存储)
 - 预测结果缓存
 
-#### 情感分析模型（FinBERT 中文版）本地下载与加载说明
+#### 情感分析模型（FinBERT 中文版）部署说明
 
-由于运行环境无法直接访问 Hugging Face，情感分析模型采用**手动下载 + 本地加载**的方式，避免在线下载失败导致接口不可用。
+情感分析使用 DJL 加载本地 TorchScript 模型，目录 `models/sentiment/`（项目根目录）。
 
-- **目标模型**: `yiyanghkust/finbert-tone-chinese`（Hugging Face 金融情感模型）
-- **本地模型目录**: `models/sentiment/`（项目根目录）
-- **缓存目录说明**:
-  - `models.sentiment.cache-dir` 仅作为 DJL 的通用缓存目录，可选；
-  - 你已经将所有模型文件下载到 `models/sentiment/`，可以删除 `models/cache/` 目录以避免混淆。
+**DJL 所需文件：**
 
-**一次性准备步骤（在任意可访问 Hugging Face 的机器上执行）：**
+| 文件 | 说明 |
+|------|------|
+| `sentiment.pt` | TorchScript 模型权重 |
+| `tokenizer.json` | 分词器配置 |
+| `config.json` | 模型配置 |
+| `serving.properties` | DJL 服务配置（`engine=PyTorch`、`option.modelName=sentiment`） |
 
-1. 打开浏览器访问模型页面：
-   - `https://huggingface.co/yiyanghkust/finbert-tone-chinese`
-2. 切换到 `Files and versions` 标签页，下载以下核心文件到某个临时目录（例如 `D:\hf-temp\finbert-tone-chinese\`）：
-   - `config.json`
-   - `pytorch_model.bin`
-   - `tokenizer.json`（以及页面中与 tokenizer 相关的 `tokenizer_config.json`、`special_tokens_map.json` 等文件）
-3. 在当前项目中创建本地模型目录：
-   - `d:\ai-stock-trading\models\sentiment\`
-4. 将步骤 2 中下载的所有文件**原样复制**到该目录，最终结构类似：
+**DJL 格式转换：**
 
-```text
-models/sentiment/
-  ├─ config.json
-  ├─ pytorch_model.bin
-  ├─ tokenizer.json
-  ├─ tokenizer_config.json
-  ├─ special_tokens_map.json
-  └─ ...
+Hugging Face 原始格式需转换为 TorchScript（`.pt`）后 DJL 才能加载。使用官方 **djl-convert** 工具：
+
+```bash
+pip install https://publish.djl.ai/djl_converter
+djl-convert -m yiyanghkust/finbert-tone-chinese -o models/sentiment -t text-classification
 ```
 
-**后端配置说明：**
+完整步骤与排错见 [情感分析模型格式转换指南](docs/02-模型服务/模型格式转换.md)。
 
-在 `backend/src/main/resources/application.yml` 中，确保情感模型相关配置指向本地目录，并关闭在线下载：
+**配置（application.yml）：**
 
 ```yaml
 models:
   sentiment:
-    model-path: "models/sentiment"   # 对应项目根目录 models/sentiment
-    cache-dir: "models/cache"        # 可选，用于 DJL 缓存；如无需可删除目录
-    download-pretrained: false       # 禁用在线下载，仅使用本地模型
+    model-path: "models/sentiment"
+    model-source: "local"
+    download-pretrained: false
 ```
 
-后端启动后，可通过以下接口检查模型加载状态：
+**接口：**
 
-- **重新加载模型**: `POST /api/models/sentiment/reload`
-- **健康检查**: `GET /api/models/sentiment/health`
+- 健康检查：`GET /api/models/sentiment/health`
+- 重新加载：`POST /api/models/sentiment/reload`
 
-返回 JSON 中：
+`modelLoaded=true` 表示 FinBERT 已加载；`false` 时回退到规则模式。
 
-- `modelLoaded=true` 表示本地模型已成功加载，将使用 FinBERT 进行情感推理；
-- `modelLoaded=false` 表示加载失败或未加载，系统会自动回退到**规则模式情感分析**，接口仍然可用但效果基于规则。
+#### Git LFS 与 CI/CD
 
-#### 模型文件与 Git LFS / 部署说明
-
-为避免模型文件（如 `models/sentiment` 下的 `pytorch_model.bin` 等）导致仓库体积膨胀，项目使用 **Git LFS** 管理根目录 `models/` 目录：
-
-- 根目录 `.gitattributes` 中启用：
-
-```text
-models/** filter=lfs diff=lfs merge=lfs -text
-```
-
-- 本地首次使用时，需执行一次：
-
-```bash
-git lfs install
-git add .gitattributes
-git add models
-git commit -m "chore(models): track models with git lfs"
-git push
-```
-
-CI/CD 中的部署流程会自动：
-
-- 在 GitHub Actions Runner 上执行 `git lfs install && git lfs pull`，确保拉取完整的模型文件；
-- 使用 `scp` 将项目根目录下的 `models/` 同步到服务器 `${SERVER_DEPLOY_DIR}/models`；
-- 后端容器可以通过配置中的 `models.sentiment.model-path: "models/sentiment"` 访问这些模型文件。
+模型文件由 Git LFS 管理（`.gitattributes`: `models/** filter=lfs diff=lfs merge=lfs -text`）。CI/CD 部署：push tag 触发，服务器执行 `git clone + lfs pull + mvn + docker build + compose up`。
 
 ### 策略分析模块 (com.stock.strategyAnalysis)
 

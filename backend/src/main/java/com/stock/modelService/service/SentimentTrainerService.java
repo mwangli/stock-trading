@@ -399,7 +399,7 @@ public class SentimentTrainerService {
     }
 
     private void validateLocalModelFiles(Path modelPath) throws IOException {
-        List<String> required = List.of("config.json", "tokenizer.json");
+        List<String> required = List.of("config.json", "tokenizer.json", "serving.properties");
         List<String> missing = new ArrayList<>();
         for (String fileName : required) {
             if (!Files.exists(modelPath.resolve(fileName))) {
@@ -407,22 +407,20 @@ public class SentimentTrainerService {
             }
         }
 
-        boolean hasSafetensors = false;
-        boolean hasPytorchModel = false;
+        boolean hasModelWeights = false;
         try (var stream = Files.list(modelPath)) {
             for (Path path : stream.toList()) {
                 String name = path.getFileName().toString();
-                if (name.endsWith(".safetensors")) {
-                    hasSafetensors = true;
-                }
-                if (name.equals("pytorch_model.bin") || name.endsWith(".bin")) {
-                    hasPytorchModel = true;
+                if (name.endsWith(".safetensors") || name.equals("pytorch_model.bin") || name.endsWith(".bin")
+                        || name.endsWith(".pt")) {
+                    hasModelWeights = true;
+                    break;
                 }
             }
         }
 
-        if (!hasSafetensors && !hasPytorchModel) {
-            missing.add("model weights (.safetensors or pytorch_model.bin)");
+        if (!hasModelWeights) {
+            missing.add("model weights (.pt TorchScript, .safetensors, or pytorch_model.bin)");
         }
 
         if (!missing.isEmpty()) {
