@@ -2,7 +2,7 @@ name: CI/CD
 
 on:
   push:
-    tags: ['v*', 'V*']
+    branches: ['main']
 
 jobs:
   deploy:
@@ -19,15 +19,21 @@ jobs:
             set -ex
             R="${{ github.repository }}"
             D="${{ secrets.SERVER_DEPLOY_DIR }}"
-            T="${{ github.ref_name }}"
-            echo "[CI] Start deploy, repo=${R}, tag=${T}, dir=${D}"
+            echo "[CI] Start deploy, repo=${R}, branch=main, dir=${D}"
             mkdir -p "${D}"
             echo "[CI] Dir ready"
-            rm -rf "${D}/app"
-            echo "[CI] Old app removed"
-            git clone --depth 1 --branch "${T}" "https://github.com/${R}.git" "${D}/app"
-            echo "[CI] Git clone done"
-            cd "${D}/app"
+            if [ -d "${D}/app/.git" ]; then
+              echo "[CI] Existing repo found, update from origin/main"
+              cd "${D}/app"
+              git fetch origin main
+              git checkout main
+              git reset --hard origin/main
+            else
+              echo "[CI] No repo found, cloning fresh"
+              git clone "https://github.com/${R}.git" "${D}/app"
+              cd "${D}/app"
+            fi
+            echo "[CI] Git clone/update done"
             git lfs pull
             echo "[CI] Git LFS done"
             mvn -B clean package -DskipTests
