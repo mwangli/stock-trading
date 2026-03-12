@@ -6,8 +6,9 @@ WORKDIR /app
 # 创建非 root 用户
 RUN groupadd -r stock && useradd -r -g stock stock
 
-# 从构建上下文中复制已打包好的后端 JAR（backend/target 下）
-COPY backend/target/*.jar app.jar
+# 从构建上下文中复制已打包好的后端 JAR
+# 约定：在服务器部署目录中，Docker build 上下文包含 Dockerfile 与唯一的后端 JAR 文件
+COPY *.jar app.jar
 
 # 设置文件所有权
 RUN chown stock:stock app.jar

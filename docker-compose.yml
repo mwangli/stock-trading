@@ -2,11 +2,11 @@
 
 services:
   # ===================
-  # Backend Service (with Frontend bundled)
+  # Backend Service (local image build on server)
   # ===================
   backend:
-    # 从阿里云 ACR 拉取后端镜像（通过环境变量配置仓库地址）
-    image: ${ACR_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPO}:latest
+    # 使用服务器本地构建的镜像，不再依赖远程镜像仓库
+    image: stock-backend:latest
     container_name: stock-backend
     ports:
       - "8080:8080"
@@ -37,7 +37,8 @@ services:
       - MYSQL_DATABASE=stock_trading
       - MYSQL_ROOT_HOST=%
     ports:
-      - "3306:3306"
+      # 宿主机 6033 -> 容器 3306，对外暴露 6033
+      - "6033:3306"
     volumes:
       - mysql-data:/var/lib/mysql
       - ./infrastructure/mysql/init:/docker-entrypoint-initdb.d
