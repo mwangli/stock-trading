@@ -1,51 +1,14 @@
-name: CI/CD Pipeline
+name: CI/CD
 
 on:
   push:
-    tags:
-      - 'v*'
-      - 'V*'
+    tags: ['v*', 'V*']
 
 jobs:
-  # ===============================
-  # CI：父项目一次构建
-  # ===============================
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      # Maven 构建做基本校验，并生成后端 JAR
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'maven'
-
-      - name: Build full project (skip tests)
-        run: mvn -B clean package -DskipTests
-
-  # ===============================
-  # CD：SSH 到服务器执行部署
-  # ===============================
   deploy:
-    needs: build
     runs-on: ubuntu-latest
-    # 仅当 push 的是 tag（v* 或 V*）时才执行部署
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # 确保在 Runner 上正确拉取 LFS 中的模型文件
-      - name: Setup Git LFS and pull models
-        run: |
-          git lfs install
-          git lfs pull
-
-      # 1. 确保服务器上部署目录及 backend 子目录存在
-      - name: Prepare deploy directory on server
+      - name: Deploy on server
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -53,64 +16,17 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: 22
           script: |
-            mkdir -p ${{ secrets.SERVER_DEPLOY_DIR }}/backend
-            mkdir -p ${{ secrets.SERVER_DEPLOY_DIR }}/models
-
-      # 2. 传输 docker-compose.yml（放在部署根目录）
-      - name: Copy docker-compose.yml to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: 22
-          source: "docker-compose.yml"
-          target: "${{ secrets.SERVER_DEPLOY_DIR }}"
-
-      # 3. 传输后端 JAR 与 Dockerfile 到服务器 backend 子目录
-      - name: Copy backend jar and Dockerfile to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: 22
-          # 注意：backend/target 下应只有一个后端 JAR
-          source: "backend/target/*.jar,backend/Dockerfile"
-          target: "${{ secrets.SERVER_DEPLOY_DIR }}/backend"
-
-      # 4. 传输模型文件目录 models 到服务器部署目录（${SERVER_DEPLOY_DIR}/models）
-      - name: Copy models to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: 22
-          source: "models"
-          target: "${{ secrets.SERVER_DEPLOY_DIR }}"
-
-      # 5. 在服务器上本地构建镜像并通过 docker compose 启动 backend 容器
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: 22
-          script: |
-            # 进入 backend 部署目录，构建本地镜像
-            cd ${{ secrets.SERVER_DEPLOY_DIR }}/backend
-
-            # 可选：清理旧 JAR，仅保留最新一个（根据实际需要调整）
-            # ls *.jar | head -n -1 | xargs -r rm -f
-
-            # 使用当前目录中的 Dockerfile 与唯一的后端 JAR 构建镜像
-            docker build -t stock-backend:latest .
-
-            # 返回部署根目录，使用 docker compose 更新 backend 服务
-            cd ${{ secrets.SERVER_DEPLOY_DIR }}
-            docker compose -f docker-compose.yml up -d backend
-
-            # 可选：清理未使用镜像
+            set -e
+            D="${{ secrets.SERVER_DEPLOY_DIR }}"
+            T="${{ github.ref_name }}"
+            R="${{ github.repository }}"
+            rm -rf "${D}/app"
+            git clone --depth 1 --branch "${T}" "https://github.com/${R}.git" "${D}/app"
+            cd "${D}/app"
+            git lfs pull
+            mvn -B clean package -DskipTests
+            cp backend/target/*.jar backend/
+            docker build -t stock-backend:latest ./backend
+            [ -f ../.env ] || { echo "Missing ${D}/.env (GLOBAL_DB_PASSWORD)"; exit 1; }
+            docker compose --env-file ../.env -f docker-compose.yml up -d backend
             docker image prune -f

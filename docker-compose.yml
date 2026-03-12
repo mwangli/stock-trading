@@ -10,6 +10,8 @@ services:
     container_name: stock-backend
     ports:
       - "8080:8080"
+    volumes:
+      - ./models:/app/models
     environment:
       - SPRING_PROFILES_ACTIVE=prod
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
