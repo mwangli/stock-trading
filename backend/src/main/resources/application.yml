@@ -17,13 +17,13 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://124.220.36.95:6033/stock_trading?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
     username: root
-    password: Root.123456
+    password: ${GLOBAL_DB_PASSWORD}
   # 如果你使用远程 Redis，只需要修改 host/port/password 即可
   data:
     redis:
       host: 124.220.36.95
       port: 6379
-      password: Root.123456
+      password: ${GLOBAL_DB_PASSWORD}
       database: 0
 
     # MongoDB配置
@@ -34,7 +34,7 @@ spring:
       database: stock_trading
       authentication-database: admin
       username: admin
-      password: Root.123456
+      password: ${GLOBAL_DB_PASSWORD}
 
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
