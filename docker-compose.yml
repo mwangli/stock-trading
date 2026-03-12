@@ -5,8 +5,8 @@ services:
   # Backend Service (with Frontend bundled)
   # ===================
   backend:
-    # 从阿里云 ACR 固定仓库拉取后端镜像
-    image: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-trading:latest
+    # 从阿里云 ACR 拉取后端镜像（通过环境变量配置仓库地址）
+    image: ${ACR_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPO}:latest
     container_name: stock-backend
     ports:
       - "8080:8080"
@@ -45,7 +45,6 @@ services:
       - stock-network
     restart: unless-stopped
     command:
-      --mysql-native-password=ON
       --default-authentication-plugin=mysql_native_password
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_unicode_ci

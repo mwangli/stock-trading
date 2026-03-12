@@ -57,6 +57,19 @@ jobs:
     # 仅当 push 的是 tag（v* 或 V*）时才执行部署
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy docker-compose.yml to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: 22
+          source: "docker-compose.yml"
+          target: "${{ secrets.SERVER_DEPLOY_DIR }}"
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
