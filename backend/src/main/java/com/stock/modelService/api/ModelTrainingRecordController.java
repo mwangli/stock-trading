@@ -1,6 +1,6 @@
 package com.stock.modelService.api;
 
-import com.stock.common.dto.ResponseDTO;
+import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.modelService.domain.dto.ModelTrainingRecordDto;
 import com.stock.modelService.domain.dto.PageResult;
 import com.stock.modelService.service.ModelTrainingRecordService;

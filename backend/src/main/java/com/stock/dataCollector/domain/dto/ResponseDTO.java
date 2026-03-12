@@ -1,4 +1,4 @@
-package com.stock.common.dto;
+package com.stock.dataCollector.domain.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

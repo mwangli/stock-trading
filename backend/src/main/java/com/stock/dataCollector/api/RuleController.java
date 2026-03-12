@@ -1,6 +1,6 @@
 package com.stock.dataCollector.api;
 
-import com.stock.common.dto.ResponseDTO;
+import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.dataCollector.domain.dto.RuleAddRequestDto;
 import com.stock.dataCollector.domain.dto.RuleDeleteRequestDto;
 import com.stock.dataCollector.domain.dto.RuleListResponseDto;

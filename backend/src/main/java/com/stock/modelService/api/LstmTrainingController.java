@@ -1,6 +1,6 @@
 package com.stock.modelService.api;
 
-import com.stock.common.dto.ResponseDTO;
+import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.dataCollector.persistence.StockInfoRepository;
 import com.stock.modelService.domain.entity.LstmModelDocument;
 import com.stock.modelService.domain.dto.LstmModelListItemDto;

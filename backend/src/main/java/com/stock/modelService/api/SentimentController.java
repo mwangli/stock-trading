@@ -6,7 +6,7 @@ import com.stock.modelService.domain.dto.SentimentBatchAnalyzeRequestDto;
 import com.stock.modelService.domain.dto.SentimentAnalyzeByStockRequestDto;
 import com.stock.modelService.domain.dto.SentimentAnalyzeResultDto;
 import com.stock.modelService.domain.dto.SentimentPredictRequestDto;
-import com.stock.common.dto.ResponseDTO;
+import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.modelService.domain.dto.SentimentBatchAnalyzeResultDto;
 import com.stock.modelService.domain.dto.SentimentHealthDto;
 import com.stock.modelService.domain.dto.SentimentReloadDto;

@@ -1,6 +1,6 @@
 package com.stock.strategyAnalysis.api;
 
-import com.stock.common.dto.ResponseDTO;
+import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.strategyAnalysis.config.StrategyConfigService;
 import com.stock.strategyAnalysis.config.StrategyModeManager;
 import com.stock.strategyAnalysis.config.StrategyStateManager;
