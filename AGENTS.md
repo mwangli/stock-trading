@@ -21,34 +21,26 @@
 ```
 stock-trading/
 ├── backend/                        # Java Spring Boot 单体应用
-│   ├── src/main/java/com/stock/    # 源代码
-│   │   ├── Application.java       # 主启动类
+│   ├── src/main/java/com/stock/
 │   │   ├── config/                # 全局配置
-│   │   ├── dataCollector/         # 数据采集包
-│   │   ├── modelService/          # 模型服务包
-│   │   ├── strategyAnalysis/      # 策略分析包
-│   │   ├── tradingExecutor/       # 交易执行包
-│   │   ├── job/                   # 动态任务包
-│   │   ├── event/                 # 事件处理
-│   │   ├── handler/               # WebSocket 处理器
-│   │   └── service/               # 通用服务
-│   └── pom.xml                    # Maven 配置
+│   │   ├── dataCollector/        # 数据采集
+│   │   ├── modelService/         # AI 模型（LSTM、情感分析）
+│   │   ├── strategyAnalysis/    # 策略分析
+│   │   ├── tradingExecutor/     # 交易执行（含 job 调度）
+│   │   ├── event/、handler/、logging/、service/
+│   │   └── ...
+│   └── pom.xml
 │
-├── frontend/                   # React + Vite 前端应用
-│   ├── src/                       # 源代码
-│   │   ├── pages/                 # 页面组件
-│   │   ├── components/           # 通用组件
-│   │   ├── layouts/              # 布局组件
-│   │   ├── store/                # 状态管理
-│   │   └── locales/              # 国际化
-│   ├── index.html
-│   ├── package.json
-│   └── vite.config.ts
+├── frontend-v2/                    # React + Vite 前端
+│   ├── src/pages/、components/、layouts/、store/、locales/
+│   ├── package.json、vite.config.ts
+│   └── ...
 │
-├── docs/                          # 项目文档
-├── .tmp/                          # 临时文件与中间脚本（不提交 Git）
-├── docker-compose.yml              # 服务编排
-└── pom.xml                         # 根项目 Maven 配置
+├── models/sentiment/               # 情感模型（TorchScript，Git LFS）
+├── docs/                           # 文档（00~04 模块需求与设计）
+├── .tmp/                           # 临时文件（不提交）
+├── docker-compose.yml
+└── pom.xml
 ```
 
 **临时文件约定**：项目根目录下的 `.tmp/` 用于存放所有临时文件和中间脚本。Agent 生成的一次性脚本、临时输出、中间结果等均应放在此目录，且该目录已加入 `.gitignore`，不纳入版本控制。
@@ -57,7 +49,7 @@ stock-trading/
 
 ### Backend (Java/Maven)
 
-工作目录: `D:\ai-stock-trading\backend`
+工作目录: `backend/`
 
 ```bash
 # 启动应用 (Spring Boot)

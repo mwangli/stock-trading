@@ -17,9 +17,9 @@ jobs:
           port: 22
           script: |
             set -e
+            R="${{ github.repository }}"
             D="${{ secrets.SERVER_DEPLOY_DIR }}"
             T="${{ github.ref_name }}"
-            R="${{ github.repository }}"
             rm -rf "${D}/app"
             git clone --depth 1 --branch "${T}" "https://github.com/${R}.git" "${D}/app"
             cd "${D}/app"

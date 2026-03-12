@@ -1,6 +1,6 @@
 package com.stock.tradingExecutor.job;
 
-import com.stock.common.dto.ResponseDTO;
+import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.tradingExecutor.domain.dto.JobToggleStatusRequestDto;
 import com.stock.tradingExecutor.domain.dto.JobUpdateCronRequestDto;
 import lombok.RequiredArgsConstructor;

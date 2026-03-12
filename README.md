@@ -282,7 +282,8 @@ models:
 
 #### Git LFS 与 CI/CD
 
-模型文件由 Git LFS 管理（`.gitattributes`: `models/** filter=lfs diff=lfs merge=lfs -text`）。CI/CD 部署：push tag 触发，服务器执行 `git clone + lfs pull + mvn + docker build + compose up`。
+模型文件由 Git LFS 管理（`.gitattributes`: `models/** filter=lfs diff=lfs merge=lfs -text`）。
+CI/CD 部署：push tag 触发，服务器执行 `git clone + lfs pull + mvn + docker build + compose up`。
 
 ### 策略分析模块 (com.stock.strategyAnalysis)
 
@@ -341,32 +342,6 @@ models:
 | 交易信号 | `/api/signals` | 获取交易信号 (买入/卖出) |
 | 持仓信息 | `/api/positions` | 获取持仓数据 |
 | 策略状态 | `/api/strategyAnalysis/status` | 获取策略运行状态 |
-
----
-
-## 数据库配置
-
-### MySQL (业务数据)
-
-```yaml
-url: jdbc:mysql://localhost:3306/stock_trading
-username: root
-password: Root.123456
-```
-
-### MongoDB (文档数据)
-
-```yaml
-uri: mongodb://admin:Root.123456@localhost:27017/stock_trading
-```
-
-### Redis (缓存)
-
-```yaml
-host: localhost
-port: 6379
-password: Root.123456
-```
 
 ---
 
