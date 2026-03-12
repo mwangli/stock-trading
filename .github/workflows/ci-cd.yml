@@ -22,6 +22,11 @@ jobs:
             echo "[CI] Start deploy, repo=${R}, branch=main, dir=${D}"
             mkdir -p "${D}"
             echo "[CI] Dir ready"
+            # 清理可能残留的 Git 锁文件，避免上一次异常中断导致的 index.lock 阻塞
+            if [ -f "${D}/app/.git/index.lock" ]; then
+              echo "[CI] Found stale index.lock, removing"
+              rm -f "${D}/app/.git/index.lock"
+            fi
             if [ -d "${D}/app/.git" ]; then
               echo "[CI] Existing repo found, update from origin/main"
               cd "${D}/app"
