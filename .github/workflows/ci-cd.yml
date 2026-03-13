@@ -5,66 +5,43 @@ on:
     branches: ['main']
 
 jobs:
-  deploy:
+  build_and_deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
-
-      - name: Build backend jar with Maven
+      - name: build-backend-jar
         working-directory: backend
-        run: mvn -B clean package -DskipTests
-
-      - name: Copy jar and docker files to server via SCP
+        run: |
+          mvn -B clean package -DskipTests
+          cp target/*.jar app.jar
+      - name: upload-files-to-server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: 22
-          # 复制后端 jar、Dockerfile 和 docker-compose.yml 到服务器部署目录
-          source: |
-            backend/target/*.jar
-            backend/Dockerfile
-            docker-compose.yml
+          source: "backend/app.jar,backend/Dockerfile,docker-compose.yml"
           target: ${{ secrets.SERVER_DEPLOY_DIR }}/app
           overwrite: true
-
-      - name: Deploy on server via SSH
+      - name: deploy-on-server
         uses: appleboy/ssh-action@v1.0.0
         env:
-          # 从 GitHub Secrets 注入到当前步骤的环境变量
           GLOBAL_DB_PASSWORD: ${{ secrets.GLOBAL_DB_PASSWORD }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: 22
-          # 将环境变量转发到远程服务器
           envs: GLOBAL_DB_PASSWORD
           script: |
             set -ex
-
             D="${{ secrets.SERVER_DEPLOY_DIR }}/app"
-            echo "[CI] Deploy dir: ${D}"
-
             cd "${D}"
-
-            echo "[CI] Normalize jar name to app.jar"
-            JAR_FILE=$(ls backend/target/*.jar | head -n 1)
-            cp "${JAR_FILE}" backend/app.jar
-
-            echo "[CI] Build backend Docker image using pre-built jar"
             docker build -t stock-backend:latest -f backend/Dockerfile backend
-
-            echo "[CI] Start backend container with docker compose (GLOBAL_DB_PASSWORD 来自 GitHub Secrets)"
             docker compose -f docker-compose.yml up -d backend
-
-            echo "[CI] Prune unused images"
             docker image prune -f
