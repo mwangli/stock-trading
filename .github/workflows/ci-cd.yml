@@ -1,4 +1,4 @@
-name: CI/CD
+name: Simple CI
 
 on:
   push:
@@ -8,50 +8,36 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Build backend jar
-        run: mvn -B clean package -DskipTests
-        working-directory: backend
-
-      - name: Copy backend jar to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: 22
-          source: "backend/target/*.jar"
-          target: "${{ secrets.SERVER_DEPLOY_DIR }}/app/backend"
-
-      - name: Deploy on server
+      # SSH 登录到服务器，在服务器上执行：拉代码 + 构建镜像 + 启动容器
+      - name: Deploy on server via SSH
         uses: appleboy/ssh-action@v1.0.0
+        env:
+          # 从 GitHub Secrets 注入到当前步骤的环境变量
+          GLOBAL_DB_PASSWORD: ${{ secrets.GLOBAL_DB_PASSWORD }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: 22
+          # 将环境变量转发到远程服务器
+          envs: GLOBAL_DB_PASSWORD
           script: |
             set -ex
-            D="${{ secrets.SERVER_DEPLOY_DIR }}"
-            echo "[CI] Start deploy using pre-built jar, dir=${D}"
-            cd "${D}/app/backend"
-            echo "[CI] Backend directory content:"
-            ls -l
 
-            docker build -t stock-backend:latest .
-            echo "[CI] Docker build done"
+            D="${{ secrets.SERVER_DEPLOY_DIR }}"
+            echo "[CI] Deploy dir: ${D}"
+
+            # 进入服务器上的项目根目录（假设代码在 ${D}/app 下）
             cd "${D}/app"
-            [ -f ../.env ] || { echo "Missing ${D}/.env (GLOBAL_DB_PASSWORD)"; exit 1; }
-            echo "[CI] .env found"
-            docker compose --env-file ../.env -f docker-compose.yml up -d backend
-            echo "[CI] Docker compose up done"
+
+            echo "[CI] Git pull latest code"
+            git pull origin main
+
+            echo "[CI] Build backend Docker image using root Dockerfile"
+            docker build -t stock-backend:latest -f Dockerfile .
+
+            echo "[CI] Start backend container with docker compose (GLOBAL_DB_PASSWORD 来自 GitHub Secrets)"
+            docker compose -f docker-compose.yml up -d backend
+
+            echo "[CI] Prune unused images"
             docker image prune -f
-            echo "[CI] Docker prune done, deploy finished"

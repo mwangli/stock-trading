@@ -11,7 +11,8 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./models:/app/models
+      # 统一模型资源数据卷，容器内挂载到 /models
+      - models-data:/models
     environment:
       - SPRING_PROFILES_ACTIVE=prod
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
@@ -94,3 +95,5 @@ volumes:
   mysql-data:
   mongo-data:
   redis-data:
+  # 模型资源持久化卷（LSTM / 情感等模型统一挂载到 /models）
+  models-data:

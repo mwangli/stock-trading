@@ -33,6 +33,11 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -42,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -325,13 +331,7 @@ public class LstmTrainerService {
         String trimmedCode = stockCode.trim();
         log.info("开始执行 LSTM 预测，股票代码={}", trimmedCode);
 
-        // 1. 从 MongoDB 加载最新模型
-        LstmModelDocument modelDoc = lstmModelRepository.findTopByModelNameOrderByCreatedAtDesc(trimmedCode);
-        if (modelDoc == null || modelDoc.getParams() == null) {
-            throw new IllegalStateException("未找到对应股票的 LSTM 模型，请先完成训练: " + trimmedCode);
-        }
-
-        // 2. 从价格仓库获取历史数据，并构建预测输入
+        // 1. 从价格仓库获取历史数据，并构建预测输入
         int fetchDays = Math.max(config.getSequenceLength() + 1, config.getSequenceLength() * 2);
         List<StockPrice> prices = getStockPrices(trimmedCode, fetchDays);
         if (prices.isEmpty()) {
@@ -346,7 +346,7 @@ public class LstmTrainerService {
         double maxPrice = predictionInput.getMaxPrice();
         double lastClosePrice = predictionInput.getLastClosePrice();
 
-        // 3. 构造 DJL 模型并加载参数
+        // 2. 构造 DJL 模型并加载参数（根据配置从 MongoDB 或本地文件恢复）
         try (NDManager manager = NDManager.newBaseManager("PyTorch");
              Model model = Model.newInstance("lstm-stock-predict", "PyTorch")) {
             Block block = new StockLSTMModel(
@@ -358,12 +358,23 @@ public class LstmTrainerService {
             );
             model.setBlock(block);
 
-            try (ByteArrayInputStream bais = new ByteArrayInputStream(modelDoc.getParams());
-                 DataInputStream dis = new DataInputStream(bais)) {
-                block.loadParameters(manager, dis);
+            // 根据存储类型加载模型参数
+            String storageType = config.getStorageType();
+            if ("local".equalsIgnoreCase(storageType)) {
+                loadModelFromLocalFiles(trimmedCode, manager, block);
+            } else {
+                // 默认使用 MongoDB
+                LstmModelDocument modelDoc = lstmModelRepository.findTopByModelNameOrderByCreatedAtDesc(trimmedCode);
+                if (modelDoc == null || modelDoc.getParams() == null) {
+                    throw new IllegalStateException("未找到对应股票的 LSTM 模型，请先完成训练: " + trimmedCode);
+                }
+                try (ByteArrayInputStream bais = new ByteArrayInputStream(modelDoc.getParams());
+                     DataInputStream dis = new DataInputStream(bais)) {
+                    block.loadParameters(manager, dis);
+                }
             }
 
-            // 4. 构建输入张量并执行前向推理
+            // 3. 构建输入张量并执行前向推理
             float[][][] batchInputs = new float[1][][];
             batchInputs[0] = predictionInput.getInput();
             float[][] flattened = flattenInputs(batchInputs);
@@ -390,13 +401,21 @@ public class LstmTrainerService {
             log.info("LSTM 预测完成，stockCode={}, predictedPrice={}, lastClose={}, changeRatio={}",
                     trimmedCode, predictedPrice, lastClosePrice, changeRatio);
 
-            return LstmPredictionResultDto.builder()
+            LstmPredictionResultDto.LstmPredictionResultDtoBuilder builder = LstmPredictionResultDto.builder()
                     .stockCode(trimmedCode)
                     .predictedClosePrice(predictedPrice)
                     .lastClosePrice(safeLastClose)
-                    .predictedChangeRatio(changeRatio)
-                    .modelId(modelDoc.getId())
-                    .build();
+                    .predictedChangeRatio(changeRatio);
+
+            // 仅在使用 MongoDB 存储时填充 modelId
+            if (!"local".equalsIgnoreCase(config.getStorageType())) {
+                LstmModelDocument latestDoc = lstmModelRepository.findTopByModelNameOrderByCreatedAtDesc(trimmedCode);
+                if (latestDoc != null) {
+                    builder.modelId(latestDoc.getId());
+                }
+            }
+
+            return builder.build();
         } catch (Exception e) {
             log.error("LSTM 预测失败，stockCode={}", trimmedCode, e);
             throw new IllegalStateException("LSTM 预测失败: " + e.getMessage(), e);
@@ -470,10 +489,10 @@ public class LstmTrainerService {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String modelName = "lstm-stock-" + timestamp + "-epoch" + epoch;
 
-        // 1. Serialize model parameters to memory (no file I/O)
+        // 1. Serialize model parameters to memory（不直接落盘，便于灵活选择存储介质）
         byte[] paramsBytes = modelBinaryCodec.serialize(model);
 
-        // 2. Prepare normalization params string
+        // 2. 准备归一化参数的文本描述，便于后续调试和排查
         String params = String.format(
                 "maxPrice=%.6f\nmaxVolume=%.6f\nsequenceLength=%d\ninputSize=%d\nhiddenSize=%d\nnumLayers=%d\ncreatedAt=%s\nmodelName=%s",
                 processedData.getMaxPrice(), processedData.getMaxVolume(),
@@ -482,19 +501,64 @@ public class LstmTrainerService {
                 LocalDateTime.now().toString(), modelName
         );
 
-        // 3. Save to MongoDB
+        String storageType = config.getStorageType();
+        if ("local".equalsIgnoreCase(storageType)) {
+            return saveModelToLocal(paramsBytes, params, epoch, modelIdentifier, trainLoss, valLoss, timestamp);
+        }
+        // 默认使用 MongoDB
+        return saveModelToMongo(paramsBytes, params, epoch, modelIdentifier, trainLoss, valLoss);
+    }
+
+    /**
+     * 将 LSTM 模型保存到本地文件系统
+     * 目录由配置项 models.lstm.local-base-path 控制，默认挂载到 /models/lstm。
+     */
+    private String saveModelToLocal(byte[] paramsBytes,
+                                    String normalizationParams,
+                                    int epoch,
+                                    String modelIdentifier,
+                                    double trainLoss,
+                                    double valLoss,
+                                    String timestamp) throws IOException {
+        String safeIdentifier = modelIdentifier == null ? "unknown" : modelIdentifier.replaceAll("[^a-zA-Z0-9_-]", "_");
+        Path baseDir = Paths.get(config.getLocalBasePath());
+        Files.createDirectories(baseDir);
+
+        String filePrefix = safeIdentifier + "-" + timestamp + "-epoch" + epoch;
+        Path paramsFile = baseDir.resolve(filePrefix + ".bin");
+        Path metaFile = baseDir.resolve(filePrefix + ".meta");
+
+        Files.write(paramsFile, paramsBytes);
+        Files.writeString(metaFile, normalizationParams, StandardCharsets.UTF_8);
+
+        log.info("LSTM 模型已保存到本地文件: {}, meta: {}, trainLoss={}, valLoss={}",
+                paramsFile, metaFile, trainLoss, valLoss);
+
+        String identifier = "local:" + paramsFile;
+        log.info("Model saved successfully (local): {}", identifier);
+        return identifier;
+    }
+
+    /**
+     * 将 LSTM 模型以二进制形式保存到 MongoDB
+     */
+    private String saveModelToMongo(byte[] paramsBytes,
+                                    String normalizationParams,
+                                    int epoch,
+                                    String modelIdentifier,
+                                    double trainLoss,
+                                    double valLoss) throws IOException {
         try {
-            // Delete old model by identifier first to keep only one active model per identifier
+            // 仅保留该标识下的最新模型，避免历史版本无限增长
             lstmModelRepository.deleteByModelName(modelIdentifier);
             log.info("Deleted old LSTM model: {}", modelIdentifier);
 
-            // Save new model
             LstmModelDocument doc = new LstmModelDocument();
             doc.setModelName(modelIdentifier);
             doc.setEpoch(epoch);
             doc.setCreatedAt(LocalDateTime.now());
             doc.setParams(paramsBytes);
-            doc.setNormalizationParams(params);
+            doc.setNormalizationParams(normalizationParams);
             doc.setModelVersion("v1");
             doc.setTrainLoss(trainLoss);
             doc.setValLoss(valLoss);
@@ -503,12 +567,49 @@ public class LstmTrainerService {
             log.info("New model saved to MongoDB, ID: {}, ModelName: {}", saved.getId(), saved.getModelName());
 
             String identifier = "mongo:" + saved.getId();
-            log.info("Model saved successfully: {}", identifier);
+            log.info("Model saved successfully (mongo): {}", identifier);
             return identifier;
 
         } catch (Exception e) {
             log.error("Failed to save model to MongoDB", e);
             throw new IOException("Failed to save model to MongoDB", e);
+        }
+    }
+
+    /**
+     * 从本地文件系统加载最新的 LSTM 模型参数
+     * 通过文件名前缀（股票代码）和修改时间选择最新的模型文件。
+     */
+    private void loadModelFromLocalFiles(String stockCode, NDManager manager, Block block) throws IOException, ai.djl.MalformedModelException {
+        Path baseDir = Paths.get(config.getLocalBasePath());
+        if (!Files.exists(baseDir) || !Files.isDirectory(baseDir)) {
+            throw new IllegalStateException("本地模型目录不存在或不是目录: " + baseDir);
+        }
+
+        String prefix = stockCode.replaceAll("[^a-zA-Z0-9_-]", "_") + "-";
+        try (Stream<Path> stream = Files.list(baseDir)) {
+            Path latestFile = stream
+                    .filter(p -> Files.isRegularFile(p))
+                    .filter(p -> p.getFileName().toString().startsWith(prefix))
+                    .filter(p -> p.getFileName().toString().endsWith(".bin"))
+                    .max(Comparator.comparingLong(p -> {
+                        try {
+                            return Files.getLastModifiedTime(p).toMillis();
+                        } catch (IOException e) {
+                            return 0L;
+                        }
+                    }))
+                    .orElse(null);
+
+            if (latestFile == null) {
+                throw new IllegalStateException("未在本地目录中找到股票 " + stockCode + " 的 LSTM 模型文件");
+            }
+
+            log.info("从本地文件加载 LSTM 模型，stockCode={}, file={}", stockCode, latestFile);
+            try (InputStream is = Files.newInputStream(latestFile);
+                 DataInputStream dis = new DataInputStream(is)) {
+                block.loadParameters(manager, dis);
+            }
         }
     }
 

@@ -51,7 +51,12 @@ djl:
   model:
     dir: ./models
     lstm:
+      # 本地 LSTM 模型目录（用于 DJL 加载）
       path: ./models/lstm
+      # 模型存储类型：mongo（默认，存到 MongoDB）或 local（存到本地卷 /models/lstm）
+      storage-type: mongo
+      # 当 storage-type=local 时，本地模型根目录（容器内部路径，挂载自 models-data 卷）
+      local-base-path: /models/lstm
     sentiment:
       path: ./models/sentiment
 

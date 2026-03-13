@@ -6,16 +6,30 @@ import org.springframework.stereotype.Component;
 
 /**
  * LSTM 模型训练配置
+ * 负责控制模型训练的超参数与模型持久化方式（本地文件 / MongoDB）
+ *
+ * @author mwangli
+ * @since 2026-03-13
  */
 @Data
 @Component
-@ConfigurationProperties(prefix = "models.lstm")
+@ConfigurationProperties(prefix = "djl.model.lstm")
 public class LstmTrainingConfig {
 
     /**
-     * 模型保存路径
+     * 模型存储类型
+     * 可选值：
+     * - mongo：以二进制形式持久化到 MongoDB（默认）
+     * - local：以文件形式持久化到本地目录
      */
-    private String modelPath = "models/lstm-stock";
+    private String storageType = "mongo";
+
+    /**
+     * 本地文件系统模型根目录（容器内部路径）
+     * 当 storageType=local 时，模型文件将保存到该目录下
+     * 默认挂载到 /models/lstm，对应 docker-compose 中的 models-data 卷
+     */
+    private String localBasePath = "/models/lstm";
 
     /**
      * 输入序列长度（时间步）
