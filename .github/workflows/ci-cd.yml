@@ -8,7 +8,34 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      # SSH 登录到服务器，在服务器上执行：拉代码 + 构建镜像 + 启动容器
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Build backend jar with Maven
+        working-directory: backend
+        run: mvn -B clean package -DskipTests
+
+      - name: Copy jar and docker files to server via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: 22
+          # 复制后端 jar、Dockerfile 和 docker-compose.yml 到服务器部署目录
+          source: |
+            backend/target/*.jar
+            backend/Dockerfile
+            docker-compose.yml
+          target: ${{ secrets.SERVER_DEPLOY_DIR }}/app
+          overwrite: true
+
       - name: Deploy on server via SSH
         uses: appleboy/ssh-action@v1.0.0
         env:
@@ -24,17 +51,17 @@ jobs:
           script: |
             set -ex
 
-            D="${{ secrets.SERVER_DEPLOY_DIR }}"
+            D="${{ secrets.SERVER_DEPLOY_DIR }}/app"
             echo "[CI] Deploy dir: ${D}"
 
-            # 进入服务器上的项目根目录（假设代码在 ${D}/app 下）
-            cd "${D}/app"
+            cd "${D}"
 
-            echo "[CI] Git pull latest code"
-            git pull origin main
+            echo "[CI] Normalize jar name to app.jar"
+            JAR_FILE=$(ls backend/target/*.jar | head -n 1)
+            cp "${JAR_FILE}" backend/app.jar
 
-            echo "[CI] Build backend Docker image using root Dockerfile"
-            docker build -t stock-backend:latest -f Dockerfile .
+            echo "[CI] Build backend Docker image using pre-built jar"
+            docker build -t stock-backend:latest -f backend/Dockerfile backend
 
             echo "[CI] Start backend container with docker compose (GLOBAL_DB_PASSWORD 来自 GitHub Secrets)"
             docker compose -f docker-compose.yml up -d backend
