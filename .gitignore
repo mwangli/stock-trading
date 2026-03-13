@@ -71,3 +71,4 @@ application-prod.yml
 
 /.sisyphus/
 .worktrees/
+models/
