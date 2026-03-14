@@ -13,12 +13,10 @@ services:
       - models-data:/models
     environment:
       - SPRING_PROFILES_ACTIVE=prod
+      - GLOBAL_DB_PASSWORD=${GLOBAL_DB_PASSWORD}
       - SPRING_DATASOURCE_URL=jdbc:mysql://stock-mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
-      # Mongo 连接字符串中的密码通过统一环境变量注入
       - SPRING_DATA_MONGODB_URI=mongodb://admin:${GLOBAL_DB_PASSWORD}@stock-mongo:27017/stock_trading?authSource=admin
       - SPRING_REDIS_HOST=stock-redis
-      - SPRING_REDIS_PORT=6379
-      - SPRING_REDIS_PASSWORD=${GLOBAL_DB_PASSWORD}
     depends_on:
       - stock-mysql
       - stock-mongo
