@@ -6,7 +6,7 @@ services:
   # ===================
   backend:
     # 阿里云镜像：CI 部署时注入 BACKEND_IMAGE；本地开发用 stock-backend:latest
-    image: ${BACKEND_IMAGE:stock-backend:latest}
+    image: ${BACKEND_IMAGE:-stock-backend:latest}
     container_name: stock-backend
     ports:
       - "8080:8080"
