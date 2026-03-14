@@ -39,16 +39,16 @@ public class StockNewsService {
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter DATES_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
-    /** 每页条数，接口支持最大 100，只采集最新数据 */
-    private static final int PAGE_SIZE = 100;
+    /** 每页条数，50 条降低采集负担与限流风险 */
+    private static final int PAGE_SIZE = 50;
     /** 每只股票每个来源（新闻/公告）最多采集页数，历史新闻无意义 */
     private static final int MAX_PAGES = 1;
     /** 单条详情请求间隔，降低限流风险 */
     private static final long REQUEST_DELAY_MS = 150;
     /** 并行采集线程数 */
     private static final int PARALLEL_THREADS = 6;
-    /** 批量写入阈值，与每页 100 条对齐，一次写入整页 */
-    private static final int BATCH_INSERT_SIZE = 100;
+    /** 批量写入阈值，与每页 50 条对齐，一次写入整页 */
+    private static final int BATCH_INSERT_SIZE = 50;
 
     /** 采集来源：新闻(20002)、公告(20001) */
     private static final List<NewsSource> NEWS_SOURCES = List.of(
@@ -68,6 +68,9 @@ public class StockNewsService {
                 return t;
             });
 
+    /** 代码→名称全局缓存，lazy 加载，避免重复 findAll */
+    private volatile Map<String, String> codeToNameCache = null;
+
     @PreDestroy
     public void shutdown() {
         executor.shutdown();
@@ -82,17 +85,30 @@ public class StockNewsService {
     }
 
     /**
-     * 采集指定股票的新闻和公告
+     * 采集指定股票的新闻和公告（单只调用，使用全局缓存）
      *
      * @param stockCode 股票代码，如 600519
      * @return 本次采集新增的新闻数量
      */
     public int collectStockNewsByCode(String stockCode) {
-        log.info("开始采集股票 {} 的新闻与公告", stockCode);
+        return collectStockNewsByCode(stockCode, getCodeToNameCache());
+    }
+
+    /**
+     * 采集指定股票的新闻和公告
+     *
+     * @param stockCode       股票代码，如 600519
+     * @param codeToNameCache 代码→名称缓存，批量采集时传入可避免 N 次查询
+     * @return 本次采集新增的新闻数量
+     */
+    public int collectStockNewsByCode(String stockCode, Map<String, String> codeToNameCache) {
+        String stockName = resolveStockName(stockCode, codeToNameCache);
+        String label = stockCode + (stockName != null && !stockName.isEmpty() ? " " + stockName : "");
+        log.info("开始采集股票 {} 的新闻与公告", label);
         int totalSaved = 0;
         for (NewsSource src : NEWS_SOURCES) {
-            log.info("股票 {} 开始采集{} (menu_id={})", stockCode, src.category, src.menuId);
-            int saved = collectBySource(stockCode, src);
+            log.info("股票 {} 开始采集{} (menu_id={})", label, src.category, src.menuId);
+            int saved = collectBySource(stockCode, stockName, label, src);
             totalSaved += saved;
         }
         return totalSaved;
@@ -100,8 +116,12 @@ public class StockNewsService {
 
     /**
      * 按采集来源（新闻/公告）采集，批量写入
+     *
+     * @param stockCode 股票代码
+     * @param stockName 股票名称，冗余存储
+     * @param label     日志用展示标签，如 "000001 平安银行"
      */
-    private int collectBySource(String stockCode, NewsSource src) {
+    private int collectBySource(String stockCode, String stockName, String label, NewsSource src) {
         List<StockNews> batch = new ArrayList<>(BATCH_INSERT_SIZE);
         int totalSaved = 0;
         int totalSkipped = 0;
@@ -111,7 +131,7 @@ public class StockNewsService {
         while (hasMore && page <= MAX_PAGES) {
             Map<String, Object> listResp = securitiesClient.requestNewsList(stockCode, page, PAGE_SIZE, src.menuId);
             if (listResp.isEmpty()) {
-                log.info("股票 {} {} 第 {} 页列表返回为空，跳过", stockCode, src.category, page);
+                log.info("股票 {} {} 第 {} 页列表返回为空，跳过", label, src.category, page);
                 break;
             }
 
@@ -121,7 +141,7 @@ public class StockNewsService {
             }
 
             if (grid0.isEmpty()) {
-                log.info("股票 {} {} 第 {} 页无数据，跳过", stockCode, src.category, page);
+                log.info("股票 {} {} 第 {} 页无数据，跳过", label, src.category, page);
                 hasMore = false;
                 break;
             }
@@ -152,7 +172,7 @@ public class StockNewsService {
             String titlePreview = titles.stream().limit(5)
                     .map(t -> t.length() > 25 ? t.substring(0, 25) + "…" : t)
                     .collect(Collectors.joining(" | "));
-            log.info("股票 {} {} 第 {} 页: 采集到 {} 条标题，示例: {}", stockCode, src.category, page, titles.size(), titlePreview);
+            log.info("股票 {} {} 第 {} 页: 采集到 {} 条标题，示例: {}", label, src.category, page, titles.size(), titlePreview);
 
             Set<String> existingIds = externalIds.isEmpty() ? Set.of()
                     : newsRepository.findExternalIdsByStockCodeAndExternalIdIn(stockCode, externalIds).stream()
@@ -169,7 +189,7 @@ public class StockNewsService {
                     continue;
                 }
 
-                StockNews news = fetchDetail(externalId, titles.get(i), dateStrs.get(i), stockCode, src);
+                StockNews news = fetchDetail(externalId, titles.get(i), dateStrs.get(i), stockCode, stockName, src);
                 if (news != null) {
                     batch.add(news);
                     if (batch.size() >= BATCH_INSERT_SIZE) {
@@ -194,7 +214,7 @@ public class StockNewsService {
             totalSaved += batch.size();
         }
 
-        log.info("股票 {} {} 采集完成，新增 {} 条，已存在跳过 {} 条", stockCode, src.category, totalSaved, totalSkipped);
+        log.info("股票 {} {} 采集完成，新增 {} 条，已存在跳过 {} 条", label, src.category, totalSaved, totalSkipped);
         return totalSaved;
     }
 
@@ -239,6 +259,8 @@ public class StockNewsService {
         }
 
         int limit = maxStocks > 0 ? Math.min(maxStocks, codes.size()) : codes.size();
+        Map<String, String> codeToName = getCodeToNameCache();
+
         AtomicInteger totalSaved = new AtomicInteger(0);
         AtomicInteger processedCount = new AtomicInteger(0);
         AtomicInteger failedCount = new AtomicInteger(0);
@@ -250,7 +272,7 @@ public class StockNewsService {
             String code = codes.get(i);
             executor.submit(() -> {
                 try {
-                    int saved = collectStockNewsByCode(code);
+                    int saved = collectStockNewsByCode(code, codeToName);
                     totalSaved.addAndGet(saved);
                     processedCount.incrementAndGet();
                     int p = processedCount.get();
@@ -259,7 +281,7 @@ public class StockNewsService {
                     }
                 } catch (Exception e) {
                     failedCount.incrementAndGet();
-                    log.error("股票 {} 新闻采集失败: {}", code, e.getMessage(), e);
+                    log.error("股票 {} 新闻采集失败: {}", resolveStockLabel(code, codeToName), e.getMessage(), e);
                 } finally {
                     latch.countDown();
                 }
@@ -297,7 +319,7 @@ public class StockNewsService {
      * 拉取新闻/公告详情（不写入，由调用方批量写入）
      */
     private StockNews fetchDetail(String externalId, String listTitle, String dateStr,
-                                  String stockCode, NewsSource src) {
+                                  String stockCode, String stockName, NewsSource src) {
         Map<String, Object> detailResp = securitiesClient.requestNewsDetail(externalId, src.menuId);
         if (detailResp.isEmpty()) {
             return null;
@@ -321,6 +343,7 @@ public class StockNewsService {
         news.setTitle(title);
         news.setContent(content);
         news.setStockCode(stockCode);
+        news.setStockName(stockName != null && !stockName.isEmpty() ? stockName : null);
         news.setSource(source.isEmpty() ? null : source);
         news.setCategory(src.category);
         news.setPublishTime(publishTime);
@@ -356,6 +379,60 @@ public class StockNewsService {
             Thread.currentThread().interrupt();
             log.warn("新闻采集延迟被中断");
         }
+    }
+
+    /**
+     * 获取代码→名称缓存，lazy 加载，线程安全
+     */
+    private Map<String, String> getCodeToNameCache() {
+        Map<String, String> cache = codeToNameCache;
+        if (cache == null) {
+            synchronized (this) {
+                cache = codeToNameCache;
+                if (cache == null) {
+                    cache = stockInfoRepository.findAll().stream()
+                            .filter(s -> s.getCode() != null)
+                            .collect(Collectors.toMap(s -> s.getCode(), s -> s.getName() != null ? s.getName() : "", (a, b) -> a));
+                    codeToNameCache = cache;
+                    log.debug("股票代码→名称缓存已加载，共 {} 条", cache.size());
+                }
+            }
+        }
+        return cache;
+    }
+
+    /**
+     * 失效代码→名称缓存，股票列表同步后调用以刷新
+     */
+    public void invalidateCodeToNameCache() {
+        codeToNameCache = null;
+    }
+
+    /**
+     * 解析股票展示标签，用于日志输出
+     *
+     * @param stockCode       股票代码
+     * @param codeToNameCache 缓存，为 null 时按需查询
+     * @return "代码 名称" 或仅 "代码"（名称不存在时）
+     */
+    private String resolveStockLabel(String stockCode, Map<String, String> codeToNameCache) {
+        String name = resolveStockName(stockCode, codeToNameCache);
+        return stockCode + (name != null && !name.isEmpty() ? " " + name : "");
+    }
+
+    /**
+     * 解析股票名称，用于冗余存储与日志
+     *
+     * @param codeToNameCache 缓存，为 null 时按需查询
+     */
+    private String resolveStockName(String stockCode, Map<String, String> codeToNameCache) {
+        if (codeToNameCache != null) {
+            String name = codeToNameCache.get(stockCode);
+            return (name != null && !name.isEmpty()) ? name : null;
+        }
+        return stockInfoRepository.findByCode(stockCode)
+                .map(s -> s.getName())
+                .orElse(null);
     }
 
     /**

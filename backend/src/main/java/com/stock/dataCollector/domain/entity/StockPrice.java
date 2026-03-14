@@ -19,7 +19,10 @@ public class StockPrice {
 
     @Id
     private String id;
+    /** 股票代码 */
     private String code;
+    /** 股票名称，冗余存储便于展示 */
+    private String stockName;
     private LocalDate date;
     private BigDecimal openPrice;
     private BigDecimal highPrice;

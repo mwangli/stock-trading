@@ -45,6 +45,11 @@ public class StockNews {
     private String stockCode;
 
     /**
+     * 股票名称，冗余存储便于展示
+     */
+    private String stockName;
+
+    /**
      * 来源媒体，如 上海证券交易所
      */
     private String source;

@@ -248,6 +248,13 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
 
         log.info("开始批量 upsert {} 条股票价格数据", prices.size());
         long startTime = System.currentTimeMillis();
+
+        String stockName = null;
+        if (!prices.isEmpty()) {
+            stockName = stockInfoRepository.findByCode(prices.get(0).getCode())
+                    .map(s -> s.getName())
+                    .orElse(null);
+        }
         
         try {
             BulkOperations bulkOps = mongoTemplate.bulkOps(
@@ -265,6 +272,7 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
                 );
                 
                 Update update = new Update()
+                    .set("stockName", stockName)
                     .set("openPrice", price.getOpenPrice())
                     .set("highPrice", price.getHighPrice())
                     .set("lowPrice", price.getLowPrice())
@@ -905,6 +913,7 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
                 StockPrice first = weekPrices.get(0);
                 StockPriceWeekly weekly = new StockPriceWeekly();
                 weekly.setCode(first.getCode());
+                weekly.setStockName(first.getStockName());
                 // 设置为本周第一天（周一）的日期
                 LocalDate monday = first.getDate().minusDays(first.getDate().getDayOfWeek().getValue() - 1);
                 weekly.setDate(monday);
@@ -955,6 +964,7 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
                 StockPrice first = monthPrices.get(0);
                 StockPriceMonthly monthly = new StockPriceMonthly();
                 monthly.setCode(first.getCode());
+                monthly.setStockName(first.getStockName());
                 // 设置为本月第一天
                 monthly.setDate(first.getDate().withDayOfMonth(1));
                 monthly.setOpenPrice(first.getOpenPrice());
