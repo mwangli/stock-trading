@@ -110,23 +110,7 @@
             <artifactId>pytorch-model-zoo</artifactId>
             <version>${djl.version}</version>
         </dependency>
-        <!-- Windows: CUDA 12.1 GPU 加速（需 NVIDIA 驱动 + CUDA 12.1）
-             若系统为 CUDA 11.2，需升级至 CUDA 12.1，DJL 2.2.2 无 cu112 版本 -->
-        <dependency>
-            <groupId>ai.djl.pytorch</groupId>
-            <artifactId>pytorch-native-cu121</artifactId>
-            <classifier>win-x86_64</classifier>
-            <version>${djl.pytorch.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-        <!-- Linux: CPU（服务器无 GPU 时使用）；有 GPU 可改为 pytorch-native-cu121 -->
-        <dependency>
-            <groupId>ai.djl.pytorch</groupId>
-            <artifactId>pytorch-native-cpu</artifactId>
-            <classifier>linux-x86_64</classifier>
-            <version>${djl.pytorch.version}</version>
-            <scope>runtime</scope>
-        </dependency>
+        <!-- PyTorch 原生库：默认 CPU（mvn package），本地 GPU 用 mvn package -P gpu -->
         <dependency>
             <groupId>ai.djl.huggingface</groupId>
             <artifactId>tokenizers</artifactId>
@@ -182,11 +166,12 @@
             <version>4.11.0</version>
             <scope>test</scope>
         </dependency>
-        <!--        <dependency>-->
-<!--            <groupId>com.stock</groupId>-->
-<!--            <artifactId>stock-trading-frontend</artifactId>-->
-<!--            <version>${project.parent.version}</version>-->
-<!--        </dependency>-->
+        <!-- 前端静态资源（index.html、JS、CSS），供 java -jar 单包运行时访问 /index.html -->
+        <dependency>
+            <groupId>com.stock</groupId>
+            <artifactId>stock-trading-frontend</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
     </dependencies>
 
 
@@ -234,4 +219,36 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- 默认：CPU（Linux），CI/生产，JAR ~200MB -->
+        <profile>
+            <id>cpu</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>ai.djl.pytorch</groupId>
+                    <artifactId>pytorch-native-cpu</artifactId>
+                    <classifier>linux-x86_64</classifier>
+                    <version>${djl.pytorch.version}</version>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+        <!-- 本地 GPU：mvn package -P gpu，需 NVIDIA + CUDA 12.1，JAR ~2.4GB -->
+        <profile>
+            <id>gpu</id>
+            <dependencies>
+                <dependency>
+                    <groupId>ai.djl.pytorch</groupId>
+                    <artifactId>pytorch-native-cu121</artifactId>
+                    <classifier>win-x86_64</classifier>
+                    <version>${djl.pytorch.version}</version>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
 </project>

@@ -14,10 +14,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: build-backend-jar
-        working-directory: backend
         run: |
           mvn -B clean package -DskipTests
-          cp target/*.jar app.jar
+          cp backend/target/stock-trading-backend-*.jar backend/app.jar
       - name: upload-files-to-server
         uses: appleboy/scp-action@v0.1.7
         with:
