@@ -1,13 +1,9 @@
 # 流程：构建 JAR → 推送 ACR → 服务器 docker run
-# 前置：服务器需有 stock-network、mysql/mongo/redis、models-data
 name: Simple CI
 
 on:
   push:
     branches: ['main']
-
-env:
-  IMAGE_NAME: stock-trading
 
 jobs:
   deploy:
@@ -20,46 +16,34 @@ jobs:
           java-version: '17'
 
       - name: build-and-push
-        env:
-          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
-          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
-          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
-          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
         run: |
-          mvn -B clean package -DskipTests
+          mvn -B -q clean package -DskipTests
           cp backend/target/stock-trading-backend-*.jar backend/app.jar
-          echo "$ACR_PASSWORD" | docker login $ACR_REGISTRY -u "$ACR_USERNAME" --password-stdin
-          IMAGE=$ACR_REGISTRY/$ACR_NAMESPACE/${{ env.IMAGE_NAME }}:latest
-          docker build -t $IMAGE -f backend/Dockerfile backend
+          IMAGE=${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/stock-trading:latest
+          docker build -q -t $IMAGE -f backend/Dockerfile backend
+          echo "${{ secrets.ACR_PASSWORD }}" | docker login ${{ secrets.ACR_REGISTRY }} -u "${{ secrets.ACR_USERNAME }}" --password-stdin
           docker push $IMAGE
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
       - name: deploy
         uses: appleboy/ssh-action@v1.0.0
-        env:
-          GLOBAL_DB_PASSWORD: ${{ secrets.GLOBAL_DB_PASSWORD }}
-          BACKEND_IMAGE: ${{ env.IMAGE }}
-          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
-          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
-          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: 22
-          envs: GLOBAL_DB_PASSWORD,BACKEND_IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
           script: |
-            set -ex
-            echo "$ACR_PASSWORD" | docker login $ACR_REGISTRY -u "$ACR_USERNAME" --password-stdin
-            docker pull ${BACKEND_IMAGE}
+            set -e
+            echo "${{ secrets.ACR_PASSWORD }}" | docker login ${{ secrets.ACR_REGISTRY }} -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+            docker pull ${{ env.IMAGE }}
             docker stop stock-backend 2>/dev/null || true
             docker rm stock-backend 2>/dev/null || true
             docker run -d --name stock-backend --network stock-network -p 8080:8080 \
               -v models-data:/models --restart unless-stopped \
               -e SPRING_PROFILES_ACTIVE=prod \
               -e 'SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai' \
-              -e "SPRING_DATA_MONGODB_URI=mongodb://admin:${GLOBAL_DB_PASSWORD}@mongo:27017/stock_trading?authSource=admin" \
+              -e "SPRING_DATA_MONGODB_URI=mongodb://admin:${{ secrets.GLOBAL_DB_PASSWORD }}@mongo:27017/stock_trading?authSource=admin" \
               -e SPRING_REDIS_HOST=redis -e SPRING_REDIS_PORT=6379 \
-              -e "SPRING_REDIS_PASSWORD=${GLOBAL_DB_PASSWORD}" \
-              ${BACKEND_IMAGE}
+              -e "SPRING_REDIS_PASSWORD=${{ secrets.GLOBAL_DB_PASSWORD }}" \
+              ${{ env.IMAGE }}
             docker image prune -f
