@@ -18,12 +18,16 @@ import java.util.Map;
 
 /**
  * 证券平台 API 客户端，对接证券平台获取股票数据
+ *
+ * @author mwangli
+ * @since 2026-03-14
  */
 @Slf4j
 @Component
 public class SecuritiesClient {
 
     private static final String API_BASE_URL = "https://weixin.citicsinfo.com/reqxml";
+    private static final String NEWS_API_URL = API_BASE_URL + "?action=1234";
     private final RestTemplate restTemplate;
     private String h5Token = "";
 
@@ -203,6 +207,83 @@ public class SecuritiesClient {
         } catch (Exception e) {
             log.error("获取股票 {} 实时价格失败", stockCode, e);
             return null;
+        }
+    }
+
+    // ==================== 新闻 API ====================
+
+    /** 新闻 menu_id */
+    public static final String MENU_ID_NEWS = "20002";
+    /** 公告 menu_id */
+    public static final String MENU_ID_ANNOUNCEMENT = "20001";
+
+    /**
+     * 获取指定股票的新闻/公告列表
+     *
+     * @param stockCode 股票代码，如 600234
+     * @param page      页码，从 1 开始
+     * @param pageSize  每页条数，15~100
+     * @param menuId    菜单 ID，20002=新闻，20001=公告
+     * @return 新闻列表响应，GRID0 为 "externalId|title|publishTime||" 格式的字符串数组
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> requestNewsList(String stockCode, int page, int pageSize, String menuId) {
+        log.debug("获取股票 {} 的列表(menu_id={})，第 {} 页，每页 {} 条", stockCode, menuId, page, pageSize);
+        try {
+            HttpHeaders headers = buildHeaders();
+            MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
+            params.add("action", "46101");
+            params.add("stockCode", stockCode);
+            params.add("menu_id", menuId);
+            params.add("ReqLinkType", "2");
+            params.add("nPage", String.valueOf(page));
+            params.add("maxcount", String.valueOf(pageSize));
+            params.add("cfrom", "H5");
+            params.add("tfrom", "PC");
+            params.add("CHANNEL", "");
+            HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(params, headers);
+            Map<String, Object> response = restTemplate.postForObject(NEWS_API_URL, requestEntity, Map.class);
+            if (response == null) {
+                log.warn("证券平台新闻列表返回为空");
+                return java.util.Collections.emptyMap();
+            }
+            return response;
+        } catch (Exception e) {
+            log.error("获取股票 {} 新闻列表失败", stockCode, e);
+            return java.util.Collections.emptyMap();
+        }
+    }
+
+    /**
+     * 获取新闻/公告详情
+     *
+     * @param externalId 证券平台新闻 ID
+     * @param menuId     菜单 ID，需与列表请求时一致，20002=新闻，20001=公告
+     * @return 新闻详情响应，包含 GRID0(正文)、TITLE、TIME、DATES、MEDIA
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> requestNewsDetail(String externalId, String menuId) {
+        log.debug("获取详情，ID: {}, menu_id: {}", externalId, menuId);
+        try {
+            HttpHeaders headers = buildHeaders();
+            MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
+            params.add("action", "46102");
+            params.add("id", externalId);
+            params.add("menu_id", menuId);
+            params.add("ReqLinkType", "2");
+            params.add("cfrom", "H5");
+            params.add("tfrom", "PC");
+            params.add("CHANNEL", "");
+            HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(params, headers);
+            Map<String, Object> response = restTemplate.postForObject(NEWS_API_URL, requestEntity, Map.class);
+            if (response == null) {
+                log.warn("证券平台新闻详情返回为空");
+                return java.util.Collections.emptyMap();
+            }
+            return response;
+        } catch (Exception e) {
+            log.error("获取新闻详情失败，ID: {}", externalId, e);
+            return java.util.Collections.emptyMap();
         }
     }
 }

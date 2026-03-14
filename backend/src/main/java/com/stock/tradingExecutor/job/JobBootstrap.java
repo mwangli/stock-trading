@@ -68,11 +68,19 @@ public class JobBootstrap implements ApplicationRunner {
                     .setStatus(1));
 
             defaultJobs.add(new JobConfig()
-                    .setJobName("newsCrawler")
-                    .setDescription("每小时抓取财经新闻进行情感分析")
+                    .setJobName("newsFullSync")
+                    .setDescription("全量新闻采集：每周日 6:00 全股票最新 100 条新闻/公告")
                     .setBeanName("dataSyncScheduler")
-                    .setMethodName("collectHourlyNews")
-                    .setCronExpression("0 0 * * * *")
+                    .setMethodName("collectNewsFullSync")
+                    .setCronExpression("0 0 6 * * SUN")
+                    .setStatus(0));
+
+            defaultJobs.add(new JobConfig()
+                    .setJobName("newsDailySync")
+                    .setDescription("每日增量新闻采集：每交易日 6:00 全股票最新 100 条新闻/公告")
+                    .setBeanName("dataSyncScheduler")
+                    .setMethodName("collectNewsDailySync")
+                    .setCronExpression("0 0 6 * * MON-FRI")
                     .setStatus(0));
 
             defaultJobs.add(new JobConfig()

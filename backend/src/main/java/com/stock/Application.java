@@ -13,9 +13,7 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.scheduling.annotation.EnableScheduling;
-import org.springframework.web.client.RestTemplate;
 
 /**
  * 股票交易系统主应用启动类
@@ -48,19 +46,6 @@ public class Application {
         System.out.println("           strategy-analysis, trading-executor");
         System.out.println("  访问地址: http://localhost:8080");
         System.out.println("========================================");
-    }
-
-    /**
-     * RestTemplate 配置
-     * 用于 HTTP 请求到证券平台
-     */
-    @Bean
-    public RestTemplate restTemplate() {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(15000);  // 15秒连接超时
-        factory.setReadTimeout(60000);     // 60秒读取超时
-        // factory.setOutputStreaming(false); // Deprecated in Spring Boot 3.x
-        return new RestTemplate(factory);
     }
 
     /**
