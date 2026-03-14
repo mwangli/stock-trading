@@ -1,4 +1,4 @@
-# 流程：构建 JAR → 推送 ACR → 服务器 docker run
+# 流程：构建 JAR → 推送 ACR → rsync compose → docker compose up
 name: Simple CI
 
 on:
@@ -25,6 +25,13 @@ jobs:
           docker push $IMAGE
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
+      - name: rsync-compose
+        run: |
+          sudo apt-get install -y sshpass
+          sshpass -e rsync -az -e "ssh -o StrictHostKeyChecking=no" docker-compose.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.SERVER_DEPLOY_DIR }}/
+        env:
+          SSHPASS: ${{ secrets.SERVER_PASSWORD }}
+
       - name: deploy
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -33,17 +40,6 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: 22
           script: |
-            set -e
+            cd ${{ secrets.SERVER_DEPLOY_DIR }}
             echo "${{ secrets.ACR_PASSWORD }}" | docker login ${{ secrets.ACR_REGISTRY }} -u "${{ secrets.ACR_USERNAME }}" --password-stdin
-            docker pull ${{ env.IMAGE }}
-            docker stop stock-backend 2>/dev/null || true
-            docker rm stock-backend 2>/dev/null || true
-            docker run -d --name stock-backend --network stock-network -p 8080:8080 \
-              -v models-data:/models --restart unless-stopped \
-              -e SPRING_PROFILES_ACTIVE=prod \
-              -e 'SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai' \
-              -e "SPRING_DATA_MONGODB_URI=mongodb://admin:${{ secrets.GLOBAL_DB_PASSWORD }}@mongo:27017/stock_trading?authSource=admin" \
-              -e SPRING_REDIS_HOST=redis -e SPRING_REDIS_PORT=6379 \
-              -e "SPRING_REDIS_PASSWORD=${{ secrets.GLOBAL_DB_PASSWORD }}" \
-              ${{ env.IMAGE }}
-            docker image prune -f
+            BACKEND_IMAGE=${{ env.IMAGE }} GLOBAL_DB_PASSWORD=${{ secrets.GLOBAL_DB_PASSWORD }} docker compose up -d --pull always backend
