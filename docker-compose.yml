@@ -2,11 +2,11 @@
 
 services:
   # ===================
-  # Backend Service (local image build on server)
+  # Backend Service（CI 推送至阿里云 ACR，服务器拉取）
   # ===================
   backend:
-    # 使用服务器本地构建的镜像，不再依赖远程镜像仓库
-    image: stock-backend:latest
+    # 阿里云镜像：CI 部署时注入 BACKEND_IMAGE；本地开发用 stock-backend:latest
+    image: ${BACKEND_IMAGE:stock-backend:latest}
     container_name: stock-backend
     ports:
       - "8080:8080"
