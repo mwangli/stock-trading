@@ -1,12 +1,10 @@
-version: '3.8'
-
 services:
   # ===================
   # Backend Service（CI 推送至阿里云 ACR，服务器拉取）
   # ===================
-  backend:
-    # 阿里云镜像：CI 部署时注入 BACKEND_IMAGE；本地开发用 stock-backend:latest
-    image: ${BACKEND_IMAGE:-stock-backend:latest}
+  stock-backend:
+    # 阿里云镜像（固定地址）
+    image: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-trading:latest
     container_name: stock-backend
     ports:
       - "8080:8080"
@@ -15,16 +13,16 @@ services:
       - models-data:/models
     environment:
       - SPRING_PROFILES_ACTIVE=prod
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+      - SPRING_DATASOURCE_URL=jdbc:mysql://stock-mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
       # Mongo 连接字符串中的密码通过统一环境变量注入
-      - SPRING_DATA_MONGODB_URI=mongodb://admin:${GLOBAL_DB_PASSWORD}@mongo:27017/stock_trading?authSource=admin
-      - SPRING_REDIS_HOST=redis
+      - SPRING_DATA_MONGODB_URI=mongodb://admin:${GLOBAL_DB_PASSWORD}@stock-mongo:27017/stock_trading?authSource=admin
+      - SPRING_REDIS_HOST=stock-redis
       - SPRING_REDIS_PORT=6379
       - SPRING_REDIS_PASSWORD=${GLOBAL_DB_PASSWORD}
     depends_on:
-      - mysql
-      - mongo
-      - redis
+      - stock-mysql
+      - stock-mongo
+      - stock-redis
     networks:
       - stock-network
     restart: unless-stopped
@@ -32,7 +30,7 @@ services:
   # ===================
   # MySQL Database
   # ===================
-  mysql:
+  stock-mysql:
     image: mysql:8.0
     container_name: stock-mysql
     environment:
@@ -57,7 +55,7 @@ services:
   # ===================
   # MongoDB
   # ===================
-  mongo:
+  stock-mongo:
     image: mongo:6.0
     container_name: stock-mongo
     environment:
@@ -75,7 +73,7 @@ services:
   # ===================
   # Redis Cache
   # ===================
-  redis:
+  stock-redis:
     image: redis:7-alpine
     container_name: stock-redis
     ports:

@@ -42,4 +42,4 @@ jobs:
           script: |
             cd ${{ secrets.SERVER_DEPLOY_DIR }}
             echo "${{ secrets.ACR_PASSWORD }}" | docker login ${{ secrets.ACR_REGISTRY }} -u "${{ secrets.ACR_USERNAME }}" --password-stdin
-            BACKEND_IMAGE=${{ env.IMAGE }} GLOBAL_DB_PASSWORD=${{ secrets.GLOBAL_DB_PASSWORD }} docker compose up -d --pull always backend
+            BACKEND_IMAGE=${{ env.IMAGE }} GLOBAL_DB_PASSWORD=${{ secrets.GLOBAL_DB_PASSWORD }} docker compose up -d --pull always stock-backend

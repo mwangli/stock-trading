@@ -145,7 +145,7 @@ public class ModelTrainingRecordService {
             try {
                 LstmModelDocument latest = latestModelMap.get(trimmedCode);
                 if (latest == null) {
-                    log.info("[ModelTrainingRecordSync] code={} 未找到对应的 Mongo 模型文档，保持原有状态", trimmedCode);
+                    log.debug("[ModelTrainingRecordSync] code={} 无 Mongo 模型，保持原状", trimmedCode);
                     continue;
                 }
 
