@@ -18,15 +18,17 @@ jobs:
           mvn -B clean package -DskipTests
           cp backend/target/stock-trading-backend-*.jar backend/app.jar
       - name: upload-files-to-server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: 22
-          source: "backend/app.jar,backend/Dockerfile,docker-compose.yml"
-          target: ${{ secrets.SERVER_DEPLOY_DIR }}/app
-          overwrite: true
+        env:
+          SSHPASS: ${{ secrets.SERVER_PASSWORD }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y sshpass
+          mkdir -p deploy-staging/backend
+          cp backend/app.jar backend/Dockerfile deploy-staging/backend/
+          cp docker-compose.yml deploy-staging/
+          sshpass -e rsync -avz --progress \
+            -e "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -p 22" \
+            deploy-staging/ \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.SERVER_DEPLOY_DIR }}/app/
       - name: deploy-on-server
         uses: appleboy/ssh-action@v1.0.0
         env:
