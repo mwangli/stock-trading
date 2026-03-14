@@ -22,17 +22,17 @@ jobs:
           IMAGE=${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/stock-trading:latest
           docker build -q -t $IMAGE -f backend/Dockerfile backend
           echo "${{ secrets.ACR_PASSWORD }}" | docker login ${{ secrets.ACR_REGISTRY }} -u "${{ secrets.ACR_USERNAME }}" --password-stdin
-          docker push $IMAGE
+          for i in 1 2 3; do docker push $IMAGE && break || sleep 15; done
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
-      - name: rsync-compose
+      - name: rsync-docker-compose
         run: |
           sudo apt-get install -y sshpass
           sshpass -e rsync -az -e "ssh -o StrictHostKeyChecking=no" docker-compose.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.SERVER_DEPLOY_DIR }}/
         env:
           SSHPASS: ${{ secrets.SERVER_PASSWORD }}
 
-      - name: deploy
+      - name: deploy-and-start
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SERVER_HOST }}
