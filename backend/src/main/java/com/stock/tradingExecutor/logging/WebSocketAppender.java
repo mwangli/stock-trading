@@ -24,13 +24,11 @@ public class WebSocketAppender extends AppenderBase<ILoggingEvent> {
     @Override
     protected void append(ILoggingEvent eventObject) {
         String formattedMessage = format(eventObject);
-        System.out.println("[WebSocketAppender] " + formattedMessage);
         try {
             LogBroadcastService logBroadcastService = ApplicationContextHolder.getBean(LogBroadcastService.class);
             logBroadcastService.broadcast(formattedMessage);
         } catch (IllegalStateException ex) {
-            // 应用上下文尚未就绪时，安全降级为仅打印控制台日志，避免影响应用启动
-            System.err.println("[WebSocketAppender] ApplicationContext not ready, skip WebSocket broadcast. message=" + formattedMessage);
+            // 应用上下文尚未就绪时静默跳过，避免重复打印（CONSOLE appender 已输出）
         }
     }
 
