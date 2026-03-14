@@ -4,13 +4,13 @@ import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.index.Indexed;
 
 import java.time.LocalDateTime;
 
 /**
  * 股票新闻实体
  * 存储从证券平台采集的股票相关新闻，用于情感分析等下游任务
+ * 同一条新闻可关联多只股票，以 (stockCode, externalId) 联合唯一
  *
  * @author mwangli
  * @since 2026-03-14
@@ -18,16 +18,15 @@ import java.time.LocalDateTime;
 @Data
 @Document(collection = "stock_news")
 @CompoundIndex(name = "idx_stock_publish", def = "{'stockCode': 1, 'publishTime': -1}")
+@CompoundIndex(name = "idx_stock_external", def = "{'stockCode': 1, 'externalId': 1}", unique = true)
 public class StockNews {
 
     @Id
     private String id;
 
     /**
-     * 证券平台新闻 ID，用于去重，避免重复采集
-     * 索引名 externalId 与库中已有索引一致，避免 IndexOptionsConflict
+     * 证券平台新闻 ID，与 stockCode 联合唯一，用于去重
      */
-    @Indexed(unique = true, name = "externalId")
     private String externalId;
 
     /**

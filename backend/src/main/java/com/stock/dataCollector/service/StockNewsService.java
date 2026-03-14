@@ -155,7 +155,7 @@ public class StockNewsService {
             log.info("股票 {} {} 第 {} 页: 采集到 {} 条标题，示例: {}", stockCode, src.category, page, titles.size(), titlePreview);
 
             Set<String> existingIds = externalIds.isEmpty() ? Set.of()
-                    : newsRepository.findExternalIdsByExternalIdIn(externalIds).stream()
+                    : newsRepository.findExternalIdsByStockCodeAndExternalIdIn(stockCode, externalIds).stream()
                             .map(StockNews::getExternalId)
                             .filter(Objects::nonNull)
                             .collect(Collectors.toSet());

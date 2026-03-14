@@ -25,25 +25,23 @@ public interface NewsRepository extends MongoRepository<StockNews, String> {
     void deleteByStockCode(String stockCode);
 
     /**
-     * 根据证券平台外部 ID 查询，用于采集时去重
+     * 根据股票代码与证券平台外部 ID 查询，用于采集时去重
      *
+     * @param stockCode  股票代码
      * @param externalId 证券平台新闻 ID
      * @return 已存在的新闻，若不存在则 empty
      */
-    Optional<StockNews> findByExternalId(String externalId);
+    Optional<StockNews> findByStockCodeAndExternalId(String stockCode, String externalId);
 
     /**
-     * 判断指定外部 ID 的新闻是否已存在
-     */
-    boolean existsByExternalId(String externalId);
-
-    /**
-     * 批量查询已存在的外部 ID，用于方案 A 批量预查去重
-     * 使用 projection 仅返回 externalId，避免传输 content 等大字段，提升查询性能
+     * 批量查询指定股票下已存在的外部 ID，用于方案 A 批量预查去重
+     * 同一条新闻可关联多只股票，需按 (stockCode, externalId) 联合判重
+     * 使用 projection 仅返回 externalId，避免传输 content 等大字段
      *
+     * @param stockCode  股票代码
      * @param externalIds 待检查的外部 ID 列表
      * @return 已存在的新闻（仅 externalId 有值），用于提取 Set
      */
-    @Query(value = "{ 'externalId' : { $in : ?0 } }", fields = "{ 'externalId' : 1, '_id' : 0 }")
-    List<StockNews> findExternalIdsByExternalIdIn(List<String> externalIds);
+    @Query(value = "{ 'stockCode' : ?0, 'externalId' : { $in : ?1 } }", fields = "{ 'externalId' : 1, '_id' : 0 }")
+    List<StockNews> findExternalIdsByStockCodeAndExternalIdIn(String stockCode, List<String> externalIds);
 }
