@@ -1,0 +1,74 @@
+HELP.md
+
+# Compiled class files
+*.class
+
+# Maven
+target/
+frontend/target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# IDE
+.idea/
+.vscode/
+*.iws
+*.iml
+*.ipr
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# Docs 临时任务计划（不纳入版本控制）
+docs/plans/
+
+# 临时文件与中间脚本
+.tmp/
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# Node.js / Frontend
+node_modules/
+dist/
+build/
+.umi/
+.umi-production/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Application
+*.env
+*.env.local
+application-local.yml
+application-dev.yml
+application-prod.yml
+
+# H2 Database
+*.db
+*.mv.db
+*.trace.db
+
+/.sisyphus/
+.worktrees/
+models/

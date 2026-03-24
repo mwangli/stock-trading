@@ -1,0 +1,366 @@
+package com.stock.dataCollector.api;
+
+import com.stock.dataCollector.domain.entity.StockInfo;
+import com.stock.dataCollector.domain.entity.StockPrice;
+import com.stock.dataCollector.persistence.PriceRepository;
+import com.stock.dataCollector.service.StockDataService;
+import com.stock.dataCollector.domain.dto.SyncStockListResponseDto;
+import com.stock.dataCollector.domain.dto.StockStatisticsResponseDto;
+import com.stock.dataCollector.domain.dto.StockListPageResponseDto;
+import com.stock.dataCollector.domain.dto.StockDataValidationResponseDto;
+import com.stock.dataCollector.domain.dto.KlineDataResponseDto;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 股票数据采集控制器
+ * <p>
+ * 提供手动触发同步、数据统计、分页列表、K 线数据、数据验证等接口。
+ * </p>
+ *
+ * @author mwangli
+ * @since 2026-03-10
+ */
+@Slf4j
+@RestController
+@RequestMapping("/api/stock-data")
+@RequiredArgsConstructor
+public class StockDataController {
+
+    private final StockDataService stockDataService;
+    private final PriceRepository priceRepository;
+
+    /**
+     * 手动触发股票列表同步
+     */
+    @PostMapping("/sync")
+    public ResponseEntity<SyncStockListResponseDto> syncStockList() {
+        log.info("手动触发股票列表同步");
+        
+        try {
+            StockDataService.SyncResult result = stockDataService.syncStockList();
+
+            SyncStockListResponseDto response = SyncStockListResponseDto.builder()
+                    .success(true)
+                    .message("同步完成")
+                    .data(result)
+                    .build();
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("手动同步失败", e);
+
+            SyncStockListResponseDto response = SyncStockListResponseDto.builder()
+                    .success(false)
+                    .message("同步失败: " + e.getMessage())
+                    .data(null)
+                    .build();
+
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+
+    /**
+     * 获取股票数据统计
+     */
+    @GetMapping("/statistics")
+    public ResponseEntity<StockStatisticsResponseDto> getStatistics() {
+        log.info("[StockData] 获取数据统计");
+        long totalCount = stockDataService.count();
+        
+        Map<String, Long> marketCount = new HashMap<>();
+        List<StockInfo> allStocks = stockDataService.findAllStocks();
+        
+        for (StockInfo stock : allStocks) {
+            String market = stock.getMarket() != null ? stock.getMarket() : "未知";
+            marketCount.merge(market, 1L, Long::sum);
+        }
+        
+        int withPrice = 0, withName = 0, withMarket = 0, withChangePercent = 0, withTotalMarketValue = 0, withTurnoverRate = 0, withVolumeRatio = 0, withIndustryCode = 0;
+        
+        for (StockInfo stock : allStocks) {
+            if (stock.getPrice() != null) withPrice++;
+            if (stock.getName() != null && !stock.getName().isEmpty()) withName++;
+            if (stock.getMarket() != null && !stock.getMarket().isEmpty()) withMarket++;
+            if (stock.getChangePercent() != null) withChangePercent++;
+            if (stock.getTotalMarketValue() != null) withTotalMarketValue++;
+            if (stock.getTurnoverRate() != null) withTurnoverRate++;
+            if (stock.getVolumeRatio() != null) withVolumeRatio++;
+            if (stock.getIndustryCode() != null) withIndustryCode++;
+        }
+        
+        Map<String, Long> fieldCompleteness = Map.of(
+                "name", (long) withName,
+                "price", (long) withPrice,
+                "market", (long) withMarket,
+                "changePercent", (long) withChangePercent,
+                "totalMarketValue", (long) withTotalMarketValue,
+                "turnoverRate", (long) withTurnoverRate,
+                "volumeRatio", (long) withVolumeRatio,
+                "industryCode", (long) withIndustryCode
+        );
+        Map<String, String> completenessRate = Map.of(
+                "name", String.format("%.2f%%", totalCount > 0 ? (withName * 100.0 / totalCount) : 0),
+                "price", String.format("%.2f%%", totalCount > 0 ? (withPrice * 100.0 / totalCount) : 0),
+                "market", String.format("%.2f%%", totalCount > 0 ? (withMarket * 100.0 / totalCount) : 0),
+                "changePercent", String.format("%.2f%%", totalCount > 0 ? (withChangePercent * 100.0 / totalCount) : 0),
+                "totalMarketValue", String.format("%.2f%%", totalCount > 0 ? (withTotalMarketValue * 100.0 / totalCount) : 0),
+                "turnoverRate", String.format("%.2f%%", totalCount > 0 ? (withTurnoverRate * 100.0 / totalCount) : 0),
+                "volumeRatio", String.format("%.2f%%", totalCount > 0 ? (withVolumeRatio * 100.0 / totalCount) : 0),
+                "industryCode", String.format("%.2f%%", totalCount > 0 ? (withIndustryCode * 100.0 / totalCount) : 0)
+        );
+
+        StockStatisticsResponseDto statistics = StockStatisticsResponseDto.builder()
+                .totalCount(totalCount)
+                .marketDistribution(marketCount)
+                .fieldCompleteness(fieldCompleteness)
+                .completenessRate(completenessRate)
+                .build();
+
+        return ResponseEntity.ok(statistics);
+    }
+
+    /**
+     * 分页查询股票列表
+     */
+    @GetMapping("/list")
+    public ResponseEntity<StockListPageResponseDto> getStockList(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        log.info("[StockData] 分页查询股票列表 | page={}, size={}", page, size);
+        List<StockInfo> allStocks = stockDataService.findAllStocks();
+        
+        int total = allStocks.size();
+        int fromIndex = (page - 1) * size;
+        int toIndex = Math.min(fromIndex + size, total);
+        
+        List<StockInfo> pageData = fromIndex < total 
+            ? allStocks.subList(fromIndex, toIndex) 
+            : List.of();
+        
+        StockListPageResponseDto response = StockListPageResponseDto.builder()
+                .total(total)
+                .page(page)
+                .size(size)
+                .data(pageData)
+                .build();
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 根据股票代码查询
+     *
+     * @param code 股票代码
+     * @return 股票信息，不存在时 404
+     */
+    @GetMapping("/code/{code}")
+    public ResponseEntity<StockInfo> getStockByCode(@PathVariable String code) {
+        log.info("[StockData] 按代码查询股票 | code={}", code);
+        return stockDataService.findByCode(code)
+            .map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * 验证数据完整性
+     */
+    @GetMapping("/validate")
+    public ResponseEntity<StockDataValidationResponseDto> validateData() {
+        log.info("[StockData] 验证数据完整性");
+        List<StockInfo> allStocks = stockDataService.findAllStocks();
+        
+        int missingName = 0, missingPrice = 0, missingMarket = 0, missingChangePercent = 0, missingTotalMarketValue = 0, missingTurnoverRate = 0, missingCode = 0;
+        
+        for (StockInfo stock : allStocks) {
+            if (stock.getCode() == null || stock.getCode().isEmpty()) missingCode++;
+            if (stock.getName() == null || stock.getName().isEmpty()) missingName++;
+            if (stock.getPrice() == null) missingPrice++;
+            if (stock.getMarket() == null || stock.getMarket().isEmpty()) missingMarket++;
+            if (stock.getChangePercent() == null) missingChangePercent++;
+            if (stock.getTotalMarketValue() == null) missingTotalMarketValue++;
+            if (stock.getTurnoverRate() == null) missingTurnoverRate++;
+        }
+        
+        Map<String, Integer> validation = Map.of(
+                "missingCode", missingCode,
+                "missingName", missingName,
+                "missingPrice", missingPrice,
+                "missingMarket", missingMarket,
+                "missingChangePercent", missingChangePercent,
+                "missingTotalMarketValue", missingTotalMarketValue,
+                "missingTurnoverRate", missingTurnoverRate
+        );
+        String dataQuality = String.format("%.2f%%",
+                allStocks.size() > 0
+                        ? ((allStocks.size() - missingName) * 100.0 / allStocks.size())
+                        : 0);
+
+        StockDataValidationResponseDto result = StockDataValidationResponseDto.builder()
+                .totalRecords(allStocks.size())
+                .validation(validation)
+                .isValid(missingCode == 0)
+                .dataQuality(dataQuality)
+                .build();
+
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 获取股票历史K线数据
+     * 优化：周K和月K使用预聚合数据，直接从数据库查询，无需实时计算
+     * 日K线支持timeRange参数过滤，并限制最大返回数据量
+     */
+    @GetMapping("/kline/{code}")
+    public ResponseEntity<KlineDataResponseDto> getKlineData(
+            @PathVariable String code,
+            @RequestParam(required = false, defaultValue = "daily") String type,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) String timeRange,
+            @RequestParam(required = false, defaultValue = "500") Integer limit) {
+
+        log.info("获取K线数据: code={}, type={}, startDate={}, endDate={}, timeRange={}, limit={}",
+                code, type, startDate, endDate, timeRange, limit);
+
+        // 调试日志：确认参数接收情况
+        log.debug("参数详情: startDate是否null={}, endDate是否null={}, timeRange是否null={}, timeRange值={}",
+                startDate == null, endDate == null, timeRange == null, timeRange);
+
+        try {
+            // 1. 计算日期范围：优先使用startDate/endDate，其次使用timeRange
+            LocalDate queryStartDate = null;
+            LocalDate queryEndDate = null;
+
+            if (startDate != null && endDate != null) {
+                // 显式指定日期范围
+                queryStartDate = LocalDate.parse(startDate);
+                queryEndDate = LocalDate.parse(endDate);
+            } else if (timeRange != null) {
+                // 根据timeRange计算日期范围：使用"最近N"语义
+                queryEndDate = LocalDate.now();
+                queryStartDate = switch (timeRange) {
+                    case "last1Week" -> queryEndDate.minusWeeks(1);
+                    case "last1Month" -> queryEndDate.minusMonths(1);
+                    case "last3Months" -> queryEndDate.minusMonths(3);
+                    case "last1Year" -> queryEndDate.minusYears(1);
+                    case "last3Years" -> queryEndDate.minusYears(3);
+                    case "last5Years" -> queryEndDate.minusYears(5);
+                    default -> queryEndDate.minusMonths(1); // 默认查最近一月
+                };
+            }
+
+            // 2. 根据type使用不同的数据源
+            List<? extends StockPrice> prices;
+
+            if (queryStartDate != null && queryEndDate != null) {
+                // 有日期范围，使用日期范围查询
+                if ("weekly".equals(type)) {
+                    prices = stockDataService.getWeeklyPricesByDateRange(code, queryStartDate, queryEndDate);
+                } else if ("monthly".equals(type)) {
+                    prices = stockDataService.getMonthlyPricesByDateRange(code, queryStartDate, queryEndDate);
+                } else {
+                    // 日K线使用日期范围查询
+                    prices = priceRepository.findByCodeAndDateBetweenOrderByDateAsc(code, queryStartDate, queryEndDate);
+                    // 限制返回数量（从最新数据开始）
+                    if (prices != null && prices.size() > limit) {
+                        prices = prices.subList(prices.size() - limit, prices.size());
+                    }
+                }
+            } else {
+                // 无日期范围时，根据type使用预聚合数据或带限制的日K数据
+                if ("weekly".equals(type)) {
+                    prices = stockDataService.getWeeklyPrices(code);
+                } else if ("monthly".equals(type)) {
+                    prices = stockDataService.getMonthlyPrices(code);
+                } else {
+                    // 日K线：默认查询最近一年的数据，避免返回过多
+                    LocalDate oneYearAgo = LocalDate.now().minusYears(1);
+                    prices = priceRepository.findByCodeAndDateBetweenOrderByDateAsc(code, oneYearAgo, LocalDate.now());
+                    if (prices != null && prices.size() > limit) {
+                        prices = prices.subList(prices.size() - limit, prices.size());
+                    }
+                }
+            }
+
+            // 如果没有数据，返回空结果
+            if (prices == null || prices.isEmpty()) {
+                log.warn("股票 {} 没有K线数据", code);
+                KlineDataResponseDto.KlineDataWrapper emptyData = KlineDataResponseDto.KlineDataWrapper.builder()
+                        .dates(List.of())
+                        .kline(List.of())
+                        .volumes(List.of())
+                        .build();
+                KlineDataResponseDto result = KlineDataResponseDto.builder()
+                        .success(true)
+                        .data(emptyData)
+                        .total(0)
+                        .build();
+                return ResponseEntity.ok(result);
+            }
+
+            // 调试日志：记录实际返回的数据日期范围
+            LocalDate firstDate = prices.get(0).getDate();
+            LocalDate lastDate = prices.get(prices.size() - 1).getDate();
+            log.info("返回数据: code={}, 数量={}, 日期范围={} 到 {}, type={}",
+                    code, prices.size(), firstDate, lastDate, type);
+
+            // 转换为ECharts需要的格式
+            List<String> dates = prices.stream()
+                .filter(p -> p.getDate() != null)
+                .map(p -> p.getDate().toString())
+                .toList();
+
+            List<List<Object>> klineData = prices.stream()
+                .filter(p -> p.getOpenPrice() != null && p.getClosePrice() != null
+                    && p.getLowPrice() != null && p.getHighPrice() != null)
+                .map(p -> {
+                    List<Object> item = new java.util.ArrayList<>();
+                    item.add(p.getOpenPrice().doubleValue());
+                    item.add(p.getClosePrice().doubleValue());
+                    item.add(p.getLowPrice().doubleValue());
+                    item.add(p.getHighPrice().doubleValue());
+                    return item;
+                })
+                .toList();
+
+            List<Object> volumes = prices.stream()
+                .filter(p -> p.getVolume() != null)
+                .map(p -> (Object) p.getVolume().doubleValue())
+                .toList();
+            KlineDataResponseDto.KlineDataWrapper data = KlineDataResponseDto.KlineDataWrapper.builder()
+                    .dates(dates)
+                    .kline(klineData)
+                    .volumes(volumes)
+                    .build();
+
+            KlineDataResponseDto result = KlineDataResponseDto.builder()
+                    .success(true)
+                    .data(data)
+                    .total(prices.size())
+                    .build();
+
+            return ResponseEntity.ok(result);
+
+        } catch (Exception e) {
+            log.error("获取K线数据失败: code={}", code, e);
+
+            KlineDataResponseDto result = KlineDataResponseDto.builder()
+                    .success(false)
+                    .message("获取K线数据失败: " + e.getMessage())
+                    .data(null)
+                    .total(0)
+                    .build();
+
+            return ResponseEntity.internalServerError().body(result);
+        }
+    }
+}

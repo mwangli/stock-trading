@@ -1,0 +1,415 @@
+{
+  "common": {
+    "timeJustNow": "刚刚",
+    "timeMinutesAgo": "{{n}} 分钟前",
+    "timeHoursAgo": "{{n}} 小时前",
+    "timeDaysAgo": "{{n}} 天前",
+    "welcomeBack": "欢迎归来",
+    "login": "系统接入",
+    "logout": "退出登录",
+    "username": "账户",
+    "password": "口令",
+    "submit": "提交",
+    "cancel": "取消",
+    "save": "保存",
+    "search": "搜索",
+    "status": "状态",
+    "loading": "加载中...",
+    "retry": "重试"
+  },
+  "layout": {
+    "dashboard": "数据总览",
+    "market": "市场行情",
+    "models": "量化模型",
+    "analysis": "策略分析",
+    "jobs": "定时任务",
+    "logs": "运行日志",
+    "settings": "系统设置",
+
+    "profile": "个人资料",
+    "systemStatus": "系统状态",
+    "connected": "已连接",
+    "latency": "延迟",
+    "transactions": "交易记录",
+    "pnl": {
+      "today": "今日收益",
+      "week": "本周收益",
+      "month": "本月收益"
+    },
+    "title": "智能交易终端"
+  },
+  "login": {
+    "systemOnline": "系统在线",
+    "algoTrading": "智能算法交易系统",
+    "subtitle": "下一代金融建模与自动执行策略。由 LSTM 神经网络与实时情感分析驱动。",
+    "stats": {
+      "uptime": "运行时间",
+      "latency": "延迟",
+      "monitoring": "监控"
+    },
+    "form": {
+      "title": "欢迎归来",
+      "subtitle": "输入凭证以访问终端",
+      "usernamePlaceholder": "账户: admin",
+      "passwordPlaceholder": "口令: any",
+      "button": "启动会话",
+      "forgotPassword": "忘记密码？",
+      "systemStatus": "系统状态: 正常"
+    },
+    "footer": "AI 股票交易系统 ©2024"
+  },
+  "dashboard": {
+    "stats": {
+      "totalBalance": "总资产",
+      "activePositions": "当前持仓",
+      "dailyPnL": "今日盈亏",
+      "riskLevel": "风险等级",
+      "risk": {
+        "moderate": "中等"
+      },
+      "pendingOrders": "挂单",
+"today": "今日",
+      "vsYesterday": "较昨日",
+      "volatility": "波动率",
+      "status": {
+        "completed": "已完成",
+        "pending": "待处理"
+      },
+      "type": {
+        "buy": "买入",
+        "sell": "卖出"
+      }
+    },
+    "chart": {
+      "performance": "绩效分析",
+      "portfolioValue": "组合价值",
+      "benchmark": "基准"
+    },
+    "table": {
+      "recentActivity": "最近活动",
+      "symbol": "代码",
+      "type": "类型",
+      "price": "价格",
+      "quantity": "数量",
+      "status": "状态"
+    }
+  },
+  "market": {
+    "stats": {
+      "marketStatus": "市场状态",
+      "volatility": "波动率指数",
+      "volume": "24H成交量",
+      "topGainer": "领涨股",
+      "upDown": "涨跌家数",
+      "totalVolume": "总成交额",
+      "open": "开盘"
+    },
+    "watchlist": {
+      "search": "搜索代码...",
+      "trade": "交易"
+    },
+    "columns": {
+      "symbol": "代码",
+      "price": "价格",
+      "change": "涨跌幅",
+      "volume": "成交量",
+      "action": "操作"
+    },
+    "kline": {
+      "open": "开盘价",
+      "close": "收盘价",
+      "lowest": "最低价",
+      "highest": "最高价"
+    }
+  },
+  "models": {
+  "title": "量化模型中控台",
+  "subtitle": "一站式查看训练进度、效果评估与情绪信号",
+    "lstm": {
+      "title": "LSTM 价格预测模型",
+      "desc": "基于多年份 K 线与成交量数据训练的 LSTM 网络，用于捕捉 T+1 级别的趋势反转与波动区间。",
+      "accuracy": "测试准确率",
+      "loss": "验证集 Loss",
+      "features": "输入特征",
+      "epochs": "训练轮数",
+      "status": "模型状态",
+      "listTitle": "模型列表",
+      "trainLoss": "训练 Loss",
+      "valLoss": "验证 Loss",
+      "effectHint": "最新一轮训练会展示 Loss 与效果评分，历史模型可能仅保留核心指标。",
+      "listEmpty": "暂无已保存的 LSTM 模型",
+      "listEmptyHint": "训练 LSTM 模型后此处将显示",
+      "listError": "加载失败，请检查后端服务",
+      "refreshSuccess": "已刷新"
+    },
+    "effect": {
+      "title": "训练效果总览",
+      "avgScore": "当前列表平均评分",
+      "withMetrics": "已打分模型数"
+    },
+    "summary": {
+      "lstmCount": "已部署 LSTM 模型数",
+      "sentimentStatus": "情感分析引擎状态",
+      "sentimentLoaded": "已加载",
+      "sentimentNotLoaded": "未加载",
+      "sentimentOnline": "ONLINE",
+      "sentimentOffline": "OFFLINE"
+    },
+    "list": {
+      "code": "股票代码",
+      "searchPlaceholder": "按股票代码筛选",
+      "sortCreatedAt": "创建时间",
+      "sortEpoch": "训练轮数",
+      "sortValLoss": "验证 Loss",
+      "profitAmount": "收益金额",
+      "score": "分数",
+      "name": "名称",
+      "version": "版本",
+      "createdAt": "创建时间",
+      "status": "状态",
+      "statusDeployed": "已部署",
+      "statusNotTrained": "未训练",
+      "statusTraining": "训练中",
+      "action": "操作",
+      "total": "共 {{count}} 条"
+    },
+    "finbert": {
+      "title": "FinBERT 情绪引擎",
+      "desc": "面向中文财经新闻微调的 BERT 模型，从标题与正文中抽取多空情绪与置信度信号。",
+      "sentiment": "当前整体情绪",
+      "confidence": "置信度",
+      "sources": "新闻源",
+      "articles": "今日分析",
+      "latency": "推理延迟"
+    },
+    "actions": {
+      "retrain": "重新训练",
+      "backtest": "回测模型",
+      "logs": "查看日志",
+      "result": "查询结果",
+      "parameters": "调整参数"
+    },
+    "resultModal": {
+      "title": "查询结果",
+      "metric": "指标",
+      "value": "数值",
+      "profitAmount": "收益金额",
+      "score": "分数",
+      "noData": "该模型暂无收益与分数数据"
+    },
+    "sentiment": {
+      "title": "情感分析 (AI 模型)",
+      "desc": "通过 FinBERT 模型对单条新闻或文本进行细粒度情绪打分，输出多空倾向、置信度与归一化评分。",
+      "score": "情感得分（-1 ~ 1）",
+      "confidence": "置信度",
+      "articles": "处理文章数",
+      "testButton": "情感分析测试",
+      "reloadButton": "重新加载模型",
+      "testModalTitle": "情感分析测试",
+      "testModalPlaceholder": "输入新闻或文本内容",
+      "testModalSubmit": "预测",
+      "testModalResult": "预测结果明细",
+      "testModalLabel": "主导情感倾向",
+      "testModalScore": "综合得分（数值越大越偏多）",
+      "testModalConfidence": "模型置信度",
+      "testModalExplanation": "分析说明：该文本的主导情感为",
+      "testModalFallback": "当前为规则兜底",
+      "labelPositive": "正面",
+      "labelNeutral": "中性",
+      "labelNegative": "负面"
+    },
+    "rules": {
+      "title": "情感规则引擎（兜底）",
+      "desc": "当 AI 模型未加载或不可用时，启用基于关键词与阈值的规则引擎，对文本进行快速情绪归类。",
+      "score": "规则打分",
+      "matches": "触发的关键词规则数",
+      "coverage": "规则覆盖率"
+    }
+  },
+  "strategyAnalysis": {
+    "title": "策略分析中心",
+    "subtitle": "管理选股与交易执行策略",
+    "fetchError": "获取策略列表失败，请检查后端服务",
+    "toggleError": "更新失败，请重试",
+    "selection": {
+      "title": "选股策略 (天级)",
+      "doubleFactor": "双因子模型 (LSTM + 情感)"
+    },
+    "trading": {
+      "title": "交易策略 (分钟级)",
+      "tplus1": "T+1 卖出",
+      "stopLoss": "移动止损",
+      "rsi": "RSI 超买",
+      "volume": "成交量背离",
+      "bollinger": "布林带突破"
+    },
+    "metrics": {
+      "winRate": "胜率",
+      "pnl": "盈亏",
+      "totalTrades": "交易次数"
+    },
+    "params": {
+      "title": "策略参数配置",
+      "save": "保存",
+      "cancel": "取消",
+      "saveSuccess": "参数已保存，将用于后续交易",
+      "saveError": "保存失败，请重试",
+      "doubleFactor": {
+        "lstmWeight": "LSTM 因子权重",
+        "sentimentWeight": "情感因子权重",
+        "topN": "选股数量",
+        "minScore": "最低综合得分阈值"
+      },
+      "tplus1": {
+        "highReturnThreshold": "高收益卖出阈值 (%)",
+        "normalReturnThreshold": "正常卖出阈值 (%)",
+        "lowReturnThreshold": "低收益卖出阈值 (%)",
+        "lossReturnThreshold": "亏损卖出阈值 (%)"
+      },
+      "stopLoss": {
+        "trailingStopWeight": "移动止损权重",
+        "trailingStopTolerance": "回撤容忍度"
+      },
+      "rsi": {
+        "rsiWeight": "RSI 权重",
+        "rsiOverboughtThreshold": "RSI 超买阈值"
+      },
+      "volume": {
+        "volumeWeight": "成交量权重",
+        "volumeShrinkThreshold": "成交量萎缩阈值"
+      },
+      "bollinger": {
+        "bollingerWeight": "布林带权重",
+        "bollingerBreakoutThreshold": "布林带突破阈值"
+      }
+    }
+  },
+    "jobs": {
+      "title": "定时任务管理",
+      "subtitle": "管理和监控系统自动化任务",
+      "table": {
+        "name": "任务名称",
+        "description": "描述",
+        "cron": "调度规则 (Cron)",
+        "lastRun": "上次运行",
+        "nextRun": "下次运行",
+        "status": "状态",
+        "actions": "操作"
+      },
+      "status": {
+        "active": "运行中",
+        "paused": "已暂停"
+      },
+      "actions": {
+        "run": "立即运行",
+        "edit": "编辑调度",
+        "save": "更新",
+        "cancel": "取消"
+      },
+      "modal": {
+        "title": "编辑调度规则",
+        "name": "任务名称",
+        "cron": "Cron 表达式",
+        "description": "描述"
+      },
+      "messages": {
+        "starting": "正在启动任务: {{name}}...",
+        "started": "任务 {{name}} 启动成功",
+        "resumed": "任务已恢复",
+        "paused": "任务已暂停",
+        "updated": "调度规则已更新"
+      }
+    },
+  "settings": {
+    "title": "系统配置",
+    "save": "保存更改",
+    "sections": {
+      "general": "通用偏好",
+      "api": "API 连接",
+      "risk": "风险管理协议"
+    },
+    "fields": {
+      "theme": "主题模式",
+      "language": "语言",
+      "notifications": "启用系统通知",
+      "apiKey": "数据提供商 API 密钥",
+      "refreshRate": "刷新率 (ms)",
+      "riskLevel": "全局风险概况",
+      "maxDrawdown": "最大单日回撤 (%)"
+    },
+    "options": {
+      "theme": {
+        "dark": "赛博朋克暗色",
+        "light": "亮色 (即将推出)"
+      },
+      "language": {
+        "en": "English",
+        "zh": "简体中文"
+      },
+      "risk": {
+        "conservative": "保守 (低波动)",
+        "moderate": "稳健 (平衡)",
+        "aggressive": "激进 (高收益)"
+      }
+    },
+    "testConnection": "测试连接",
+    "successMsg": "设置保存成功"
+  },
+  "transactions": {
+    "title": "交易记录",
+    "subtitle": "所有买入与卖出执行指令的完整记录",
+    "filters": {
+      "searchPlaceholder": "搜索代码 (如 AAPL)",
+      "sidePlaceholder": "按方向筛选",
+      "all": "全部方向",
+      "buy": "买入",
+      "sell": "卖出"
+    },
+    "table": {
+      "time": "时间",
+      "symbol": "代码",
+      "side": "方向",
+      "price": "价格",
+      "quantity": "数量",
+      "totalValue": "总价值",
+      "status": "状态"
+    },
+    "status": {
+      "filled": "已成交",
+      "pending": "待成交",
+      "cancelled": "已取消"
+    },
+    "tabs": {
+      "orders": "订单记录",
+      "trades": "交易记录"
+    },
+    "tradesTable": {
+      "openTime": "开仓时间",
+      "closeTime": "平仓时间",
+      "buyPrice": "买入价",
+      "sellPrice": "卖出价",
+      "fees": "手续费",
+      "profit": "盈亏",
+      "returnRate": "收益率"
+    }
+  },
+    "logs": {
+      "title": "智能系统终端LOG",
+      "live": "实时",
+
+"offline": "离线",
+"autoScroll": "自动滚动",
+"clear": "清空",
+"waiting": "等待系统日志...",
+"connected": ">>> 已连接到日志流 <<<",
+"reconnecting": ">>> 连接断开。3秒后重连... <<<"
+    },
+    "notifications": {
+      "title": "系统通知",
+      "markAllRead": "全部已读",
+      "clearAll": "清空通知",
+      "empty": "暂无新通知",
+      "viewAll": "查看全部",
+      "loadMore": "向下滚动加载更多..."
+    }
+}
