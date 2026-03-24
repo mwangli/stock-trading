@@ -359,18 +359,38 @@ public class LoginPageHandler {
             return;
         }
         JavascriptExecutor js = (JavascriptExecutor) driver;
-        element.clear();
-        for (int i = 0; i < text.length(); i++) {
-            element.sendKeys(String.valueOf(text.charAt(i)));
-            js.executeScript("arguments[0].dispatchEvent(new Event('input', {bubbles: true}));", element);
-            try {
-                Thread.sleep(80 + (int) (Math.random() * 60));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
+        // 先用 JS 聚焦
+        try {
+            js.executeScript("arguments[0].scrollIntoView({block:'center'}); arguments[0].focus(); arguments[0].value = '';", element);
+            Thread.sleep(200);
+        } catch (Exception ignored) {
         }
-        element.sendKeys("");
+        // 尝试 sendKeys
+        try {
+            element.clear();
+            for (int i = 0; i < text.length(); i++) {
+                element.sendKeys(String.valueOf(text.charAt(i)));
+                js.executeScript("arguments[0].dispatchEvent(new Event('input', {bubbles: true}));", element);
+                Thread.sleep(80 + (int) (Math.random() * 60));
+            }
+            return;
+        } catch (Exception e) {
+            log.debug("[LoginPageHandler] sendKeys 失败，回退到 JS 输入: {}", e.getMessage());
+        }
+        // 回退到 JS 输入
+        try {
+            js.executeScript("arguments[0].value = '';", element);
+            for (int i = 0; i < text.length(); i++) {
+                String current = text.substring(0, i + 1);
+                js.executeScript(
+                        "arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input', {bubbles:true}));",
+                        element, current);
+                Thread.sleep(80 + (int) (Math.random() * 60));
+            }
+            js.executeScript("arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", element);
+        } catch (Exception ex) {
+            log.error("[LoginPageHandler] JS 输入也失败: {}", ex.getMessage());
+        }
     }
 
     public void simulateHumanBehavior() {

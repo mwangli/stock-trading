@@ -68,6 +68,16 @@ public class BrowserSessionManager {
             log.info("[BrowserSession] 浏览器已在运行中，复用现有会话");
             return;
         }
+        // 确保关闭之前残留的 Selenium 会话（仅关闭自己创建的 driver）
+        if (driver != null) {
+            try {
+                driver.quit();
+                log.info("[BrowserSession] 已关闭残留的旧浏览器会话");
+            } catch (Exception ignored) {
+            }
+            driver = null;
+            isRunning = false;
+        }
 
         log.info("[BrowserSession] 启动 Chrome...");
         ChromeOptions options = createChromeOptions();
@@ -141,12 +151,25 @@ public class BrowserSessionManager {
     public synchronized void quitBrowser() {
         if (driver != null) {
             try {
+                // 先关闭所有窗口
+                for (String handle : driver.getWindowHandles()) {
+                    try {
+                        driver.switchTo().window(handle);
+                        driver.close();
+                    } catch (Exception ignored) {
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+            try {
                 driver.quit();
-                log.info("[BrowserSession] Chrome浏览器已关闭");
+                log.info("[BrowserSession] Chrome 浏览器已关闭");
             } catch (Exception e) {
                 log.warn("[BrowserSession] 关闭浏览器异常: {}", e.getMessage());
             }
             driver = null;
+            wait = null;
+            actions = null;
             isRunning = false;
         }
     }
@@ -178,24 +201,51 @@ public class BrowserSessionManager {
         return options;
     }
 
+    /**
+     * 注入浏览器指纹，隐藏 Selenium 自动化特征。
+     * <p>Chrome 146+ 不允许通过 JS 重定义 navigator.webdriver，改用 CDP 命令在页面加载前注入。</p>
+     */
     public void injectFingerprint() {
         if (driver == null) return;
-        JavascriptExecutor js = (JavascriptExecutor) driver;
-        js.executeScript("""
-            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            Object.defineProperty(navigator, 'languages', {get: () => ['zh-CN', 'zh', 'en-US', 'en']});
-            Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});
-            Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
-            Object.defineProperty(navigator, 'deviceMemory', {get: () => 8});
-            Object.defineProperty(navigator, 'cookieEnabled', {get: () => true});
-            Object.defineProperty(navigator, 'onLine', {get: () => true});
-            Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 10});
-            Object.defineProperty(navigator, 'language', {get: () => 'zh-CN'});
-        """);
+        try {
+            // 方式1：使用 CDP 命令在每个新文档加载前自动执行（推荐，兼容 Chrome 146+）
+            if (driver instanceof org.openqa.selenium.chromium.ChromiumDriver chromiumDriver) {
+                chromiumDriver.executeCdpCommand("Page.addScriptToEvaluateOnNewDocument",
+                        java.util.Map.of("source", """
+                            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                            Object.defineProperty(navigator, 'languages', {get: () => ['zh-CN', 'zh', 'en-US', 'en']});
+                            Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});
+                            Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
+                            Object.defineProperty(navigator, 'deviceMemory', {get: () => 8});
+                            Object.defineProperty(navigator, 'cookieEnabled', {get: () => true});
+                            Object.defineProperty(navigator, 'onLine', {get: () => true});
+                            Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 10});
+                            Object.defineProperty(navigator, 'language', {get: () => 'zh-CN'});
+                        """));
+                log.debug("[BrowserSession] 已通过 CDP 注入浏览器指纹");
+                return;
+            }
+        } catch (Exception e) {
+            log.debug("[BrowserSession] CDP 注入失败，回退到 JS 注入: {}", e.getMessage());
+        }
+        // 方式2：回退到 JS 直接执行（远程 WebDriver 或旧版 Chrome）
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript("""
+                try { Object.defineProperty(navigator, 'webdriver', {get: () => undefined}); } catch(e) {}
+                try { Object.defineProperty(navigator, 'languages', {get: () => ['zh-CN', 'zh', 'en-US', 'en']}); } catch(e) {}
+                try { Object.defineProperty(navigator, 'platform', {get: () => 'Win32'}); } catch(e) {}
+                try { Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8}); } catch(e) {}
+                try { Object.defineProperty(navigator, 'deviceMemory', {get: () => 8}); } catch(e) {}
+            """);
+        } catch (Exception e) {
+            log.warn("[BrowserSession] JS 指纹注入也失败: {}", e.getMessage());
+        }
     }
 
     public void visitLoginPage() {
         log.info("[BrowserSession] 访问登录页面: {}", LOGIN_URL);
+        // CDP 指纹注入必须在 driver.get() 之前，确保首次页面加载时生效
         injectFingerprint();
         driver.get(LOGIN_URL);
         waitForPageLoad();
@@ -443,62 +493,158 @@ public class BrowserSessionManager {
         sleepRandomSeconds(3, 5);
     }
 
+    /**
+     * 检测当前是否在手机验证页面。
+     * <p>SPA 路由可能不更新 URL hash，因此同时检测 URL 和 DOM 内容。</p>
+     */
     public boolean isOnActivePhonePage() {
-        return getCurrentUrl().contains("activePhone.html");
+        if (getCurrentUrl().contains("activePhone.html")) {
+            return true;
+        }
+        // SPA 情况下 URL 可能仍显示 login.html，但 DOM 内容已切换到手机验证页
+        if (driver == null) return false;
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Boolean result = (Boolean) js.executeScript("""
+                var inputs = document.querySelectorAll('input');
+                for (var i = 0; i < inputs.length; i++) {
+                    var ph = inputs[i].placeholder || '';
+                    if (ph.includes('手机号') || ph.includes('手机验证码')) return true;
+                }
+                var texts = document.body ? document.body.innerText : '';
+                return texts.includes('手机验证') && texts.includes('获取验证码');
+            """);
+            return Boolean.TRUE.equals(result);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
+    /**
+     * 检测当前是否在标准登录页面（非手机验证页）。
+     * <p>通过检测 DOM 中是否存在「资金账号」或「交易密码」输入框来判断。</p>
+     */
     public boolean isOnLoginPage() {
-        return getCurrentUrl().contains("login.html");
+        if (driver == null) return false;
+        // 先排除手机验证页
+        if (isOnActivePhonePage()) return false;
+        if (getCurrentUrl().contains("login.html")) {
+            // 进一步确认 DOM 中有登录表单元素
+            try {
+                JavascriptExecutor js = (JavascriptExecutor) driver;
+                Boolean result = (Boolean) js.executeScript("""
+                    var inputs = document.querySelectorAll('input');
+                    for (var i = 0; i < inputs.length; i++) {
+                        var ph = inputs[i].placeholder || '';
+                        if (ph.includes('资金账号') || ph.includes('交易密码') || inputs[i].type === 'password') return true;
+                    }
+                    return false;
+                """);
+                return Boolean.TRUE.equals(result);
+            } catch (Exception e) {
+                return true; // URL 匹配时默认认为是登录页
+            }
+        }
+        return false;
     }
 
-    public void analyzePageStructure() {
+    /**
+     * 分析当前页面结构，打印所有输入框、按钮、图片信息用于调试。
+     *
+     * @return 页面结构分析结果的 JSON 字符串
+     */
+    public String analyzePageStructure() {
         log.info("[分析] === 页面结构分析 ===");
         log.info("[分析] 当前URL: {}", getCurrentUrl());
 
-        int iframes = driver.findElements(By.tagName("iframe")).size();
-        int inputs = driver.findElements(By.tagName("input")).size();
-        int buttons = driver.findElements(By.tagName("button")).size();
-        int images = driver.findElements(By.tagName("img")).size();
-        int divs = driver.findElements(By.tagName("div")).size();
-
-        log.info("[分析] iframe: {}, input: {}, button: {}, img: {}, div: {}", iframes, inputs, buttons, images, divs);
-
-        log.info("[分析] 打印所有可见按钮:");
-        List<WebElement> allButtons = driver.findElements(By.tagName("button"));
-        for (int i = 0; i < allButtons.size(); i++) {
-            WebElement btn = allButtons.get(i);
-            log.info("[分析]   button[{}]: text='{}', displayed={}, enabled={}", i, btn.getText(), btn.isDisplayed(), btn.isEnabled());
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+        String script = """
+                (function() {
+                    var result = {inputs: [], buttons: [], images: [], iframes: 0};
+                    result.iframes = document.querySelectorAll('iframe').length;
+                    document.querySelectorAll('input').forEach(function(el, i) {
+                        result.inputs.push({
+                            index: i, type: el.type || '', placeholder: el.placeholder || '',
+                            name: el.name || '', id: el.id || '',
+                            displayed: el.offsetParent !== null, width: el.offsetWidth, height: el.offsetHeight
+                        });
+                    });
+                    document.querySelectorAll('button, div[class*="btn"], a[class*="btn"]').forEach(function(el, i) {
+                        var text = (el.textContent || '').trim().substring(0, 30);
+                        if (text) result.buttons.push({index: i, tag: el.tagName, text: text, displayed: el.offsetParent !== null});
+                    });
+                    document.querySelectorAll('img').forEach(function(el, i) {
+                        result.images.push({
+                            index: i, src: (el.src || '').substring(0, 80),
+                            width: el.naturalWidth || el.offsetWidth, height: el.naturalHeight || el.offsetHeight,
+                            displayed: el.offsetParent !== null
+                        });
+                    });
+                    return JSON.stringify(result);
+                })()
+                """;
+        try {
+            String result = (String) js.executeScript(script);
+            log.info("[分析] 页面元素: {}", result);
+            return result;
+        } catch (Exception e) {
+            log.error("[分析] 分析失败: {}", e.getMessage());
+            return "{}";
         }
-        log.info("[分析] ======================");
     }
 
+    /**
+     * 点击"获取验证码"按钮。
+     * <p>使用 JS 定位按钮坐标后，通过 Selenium Actions 执行物理级别点击（而非 JS 事件派发），
+     * 确保 Angular/Vue 等框架能正确响应，触发滑块验证弹出。</p>
+     */
     public boolean clickSendCodeButton() {
         log.info("[BrowserSession] 查找发送验证码按钮...");
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            // 1. JS 获取按钮在页面视口中的坐标
+            String script = """
+                var all = document.querySelectorAll('button, div, span, a, p');
+                var target = null;
+                for (var i = 0; i < all.length; i++) {
+                    var text = (all[i].textContent || all[i].innerText || '').trim();
+                    if ((text.includes('获取验证码') || text.includes('发送验证码')) && all[i].children.length < 5) {
+                        target = all[i];
+                        break;
+                    }
+                }
+                if (!target) return null;
+                target.scrollIntoView({behavior: 'instant', block: 'center'});
+                var rect = target.getBoundingClientRect();
+                return JSON.stringify({text: target.textContent.trim().substring(0, 30), tag: target.tagName,
+                    x: Math.round(rect.left + rect.width / 2),
+                    y: Math.round(rect.top + rect.height / 2)});
+            """;
+            String result = (String) js.executeScript(script);
+            if (result == null) {
+                log.warn("[BrowserSession] 未找到发送验证码按钮");
+                return false;
+            }
+            log.info("[BrowserSession] 定位到发送验证码按钮: {}", result);
 
-        By[] locators = {
-                By.xpath("//button[contains(text(),'点击获取验证码')]"),
-                By.xpath("//button[contains(text(),'获取验证码')]"),
-                By.xpath("//button[contains(text(),'发送验证码')]"),
-                By.xpath("//span[contains(text(),'点击获取验证码')]"),
-                By.xpath("//div[contains(text(),'点击获取验证码')]"),
-                By.xpath("//button[contains(text(),'获取')]"),
-                By.xpath("//button[contains(text(),'发送')]"),
-                By.xpath("//div[contains(text(),'获取验证码')]"),
-                By.xpath("//span[contains(text(),'获取验证码')]")
-        };
+            // 2. 仅 CDP 物理点击
+            com.alibaba.fastjson2.JSONObject info = com.alibaba.fastjson2.JSONObject.parseObject(result);
+            int x = info.getIntValue("x");
+            int y = info.getIntValue("y");
+            if (driver instanceof org.openqa.selenium.chromium.ChromiumDriver cd && x > 0 && y > 0) {
+                cdpClick(cd, x, y);
+                log.info("[BrowserSession] ✓ CDP 物理点击发送验证码按钮 ({}, {})", x, y);
+            } else {
+                log.warn("[BrowserSession] 非 Chromium 驱动，无法使用 CDP");
+                return false;
+            }
 
-        WebElement button = findVisibleElement(locators);
-        if (button == null) {
-            log.warn("[BrowserSession] 未找到发送验证码按钮");
-            analyzePageStructure();
+            sleepRandomSeconds(2, 3);
+            return true;
+        } catch (Exception e) {
+            log.error("[BrowserSession] 点击发送验证码按钮失败: {}", e.getMessage());
             return false;
         }
-
-        scrollToElement(button);
-        button.click();
-        log.info("[BrowserSession] ✓ 已点击发送验证码按钮");
-        sleepRandomSeconds(2, 3);
-        return true;
     }
 
     public String waitForSmsCode() {
@@ -571,32 +717,37 @@ public class BrowserSessionManager {
 
     public boolean submitPhoneVerification() {
         log.info("[BrowserSession] 查找「下一步」/确认按钮...");
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            String script = """
+                var all = document.querySelectorAll('button, div, a');
+                for (var i = 0; i < all.length; i++) {
+                    var text = (all[i].textContent || all[i].innerText || '').trim();
+                    if (text.includes('下一步') || text === '确认' || text === '验证' || text === '提交') {
+                        all[i].scrollIntoView({behavior: 'smooth', block: 'center'});
+                        all[i].click();
+                        return 'clicked: ' + text;
+                    }
+                }
+                return null;
+            """;
+            String result = (String) js.executeScript(script);
+            if (result != null) {
+                log.info("[BrowserSession] ✓ {}", result);
+                sleepRandomSeconds(3, 5);
 
-        By[] locators = {
-                By.xpath("//button[contains(text(),'下一步')]"),
-                By.xpath("//button[contains(text(),'确认')]"),
-                By.xpath("//button[contains(text(),'验证')]"),
-                By.xpath("//button[contains(text(),'提交')]"),
-                By.cssSelector("button[type='submit']")
-        };
-
-        WebElement button = findVisibleElement(locators);
-        if (button == null) {
+                if (isOnLoginPage()) {
+                    log.info("[BrowserSession] ✓ 成功跳转回登录页面");
+                    return true;
+                } else {
+                    log.warn("[BrowserSession] ⚠ 尚未跳转回登录页面，当前URL: {}", getCurrentUrl());
+                    return false;
+                }
+            }
             log.warn("[BrowserSession] 未找到下一步/确认按钮");
             return false;
-        }
-
-        scrollToElement(button);
-        button.click();
-        log.info("[BrowserSession] ✓ 已点击按钮: {}", button.getText());
-
-        sleepRandomSeconds(3, 5);
-
-        if (isOnLoginPage()) {
-            log.info("[BrowserSession] ✓ 成功跳转回登录页面");
-            return true;
-        } else {
-            log.warn("[BrowserSession] ⚠ 尚未跳转回登录页面，当前URL: {}", getCurrentUrl());
+        } catch (Exception e) {
+            log.error("[BrowserSession] 提交手机验证失败: {}", e.getMessage());
             return false;
         }
     }
@@ -612,46 +763,85 @@ public class BrowserSessionManager {
         return true;
     }
 
+    /**
+     * 智能输入账号/手机号。
+     * <p>使用 CDP 点击输入框聚焦 + CDP 键盘逐字输入，确保 Angular ng-model 正确绑定。</p>
+     *
+     * @param account 账号或手机号
+     * @return 是否输入成功
+     */
     public boolean inputAccount(String account) {
-        ensureOnLoginPage();
-        // 1. 优先匹配实际 placeholder: "请输入资金账号"
-        WebElement input = findElementSafely(By.cssSelector("input[placeholder*='资金账号']"));
-        // 2. 备选：placeholder 含 "账号"
-        if (input == null) {
-            input = findElementSafely(By.cssSelector("input[placeholder*='账号']"));
-        }
-        // 3. 备选：id/name
-        if (input == null) {
-            input = findElementSafely(By.cssSelector("input[id='account'], input[name='account']"));
-        }
-        // 4. 最后回退：第一个可见的 text 输入框
-        if (input == null) {
-            List<WebElement> inputs = driver.findElements(By.cssSelector("input[type='text'], input:not([type])"));
-            for (WebElement el : inputs) {
-                try {
-                    if (el.isDisplayed()) {
-                        input = el;
-                        break;
+        if (driver == null) return false;
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            // 1. JS 获取第一个可见文本输入框的坐标
+            String script = """
+                var inputs = document.querySelectorAll('input');
+                var target = null;
+                var keywords = ['资金账号', '手机号', '账号'];
+                for (var k = 0; k < keywords.length; k++) {
+                    for (var i = 0; i < inputs.length; i++) {
+                        var ph = inputs[i].placeholder || '';
+                        if (ph.includes(keywords[k]) && inputs[i].offsetParent !== null) { target = inputs[i]; break; }
                     }
-                } catch (Exception ignored) {
+                    if (target) break;
                 }
+                if (!target) {
+                    for (var i = 0; i < inputs.length; i++) {
+                        var t = inputs[i].type || 'text';
+                        if ((t === 'text' || t === 'tel' || t === 'number') && inputs[i].offsetParent !== null) { target = inputs[i]; break; }
+                    }
+                }
+                if (!target) return null;
+                target.scrollIntoView({block: 'center'});
+                var rect = target.getBoundingClientRect();
+                return JSON.stringify({ph: target.placeholder || '', x: Math.round(rect.left + 50), y: Math.round(rect.top + rect.height / 2)});
+            """;
+            String info = (String) js.executeScript(script);
+            if (info == null) {
+                log.warn("[BrowserSession] 未找到账号/手机号输入框");
+                return false;
             }
-        }
+            com.alibaba.fastjson2.JSONObject pos = com.alibaba.fastjson2.JSONObject.parseObject(info);
+            log.info("[BrowserSession] 找到输入框: {}", info);
 
-        if (input == null) {
-            log.warn("[BrowserSession] 未找到账号输入框");
+            if (driver instanceof org.openqa.selenium.chromium.ChromiumDriver cd) {
+                // 2. CDP 三击输入框全选内容
+                int ix = pos.getIntValue("x");
+                int iy = pos.getIntValue("y");
+                cdpClick(cd, ix, iy);
+                Thread.sleep(200);
+                cdpClick(cd, ix, iy);
+                Thread.sleep(50);
+                cdpClick(cd, ix, iy);
+                Thread.sleep(200);
+                // 3. 删除选中内容
+                cd.executeCdpCommand("Input.dispatchKeyEvent",
+                        java.util.Map.of("type", "rawKeyDown", "windowsVirtualKeyCode", 8, "nativeVirtualKeyCode", 8, "key", "Backspace"));
+                cd.executeCdpCommand("Input.dispatchKeyEvent",
+                        java.util.Map.of("type", "keyUp", "windowsVirtualKeyCode", 8, "nativeVirtualKeyCode", 8, "key", "Backspace"));
+                Thread.sleep(200);
+                // 4. CDP insertText 一次性插入（类似粘贴，Angular 能正确感知）
+                cd.executeCdpCommand("Input.insertText", java.util.Map.of("text", account));
+                Thread.sleep(100);
+                // 5. 触发 Tab 让 Angular blur 事件生效
+                cd.executeCdpCommand("Input.dispatchKeyEvent",
+                        java.util.Map.of("type", "rawKeyDown", "windowsVirtualKeyCode", 9, "key", "Tab"));
+                cd.executeCdpCommand("Input.dispatchKeyEvent",
+                        java.util.Map.of("type", "keyUp", "windowsVirtualKeyCode", 9, "key", "Tab"));
+            }
+            this.currentUsername = account;
+            log.info("[BrowserSession] ✓ 账号/手机号 CDP 键盘输入成功: {}", account);
+            return true;
+        } catch (Exception e) {
+            log.error("[BrowserSession] 账号输入失败: {}", e.getMessage());
             return false;
         }
-
-        scrollToElement(input);
-        humanType(input, account);
-        this.currentUsername = account;
-        log.info("[BrowserSession] ✓ 账号输入成功: {}", account);
-        return true;
     }
 
     public boolean inputPassword(String password) {
-        ensureOnLoginPage();
+        // 仅在登录页调用 ensureOnLoginPage，手机验证页不需要
+        if (isOnLoginPage()) ensureOnLoginPage();
         WebElement input = findElementSafely(By.cssSelector("input[type='password']"));
         if (input == null) {
             log.warn("[BrowserSession] 未找到密码输入框");
@@ -666,44 +856,33 @@ public class BrowserSessionManager {
     }
 
     public String captureCaptchaImage() {
-        ensureOnLoginPage();
-
-        List<WebElement> images = driver.findElements(By.cssSelector("img"));
-        WebElement captchaImg = null;
-
-        // 1. 优先查找验证码图片：宽度在 60~200 之间，且不是 logo 等大图
-        for (WebElement img : images) {
-            try {
-                int width = img.getSize().getWidth();
-                int height = img.getSize().getHeight();
-                String src = img.getAttribute("src");
-                if (width > 50 && width < 250 && height > 15 && height < 80
-                        && src != null && !src.isEmpty() && !src.equals("data:image/png;base64,")) {
-                    captchaImg = img;
-                    break;
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        if (captchaImg == null) {
-            log.warn("[BrowserSession] 未找到验证码图片");
-            return null;
-        }
-
+        // 不强制导航，截取当前页面截图
         try {
-            scrollToElement(captchaImg);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            // 1. 用 JS 查找验证码图片的 src（在当前 frame 上下文中执行）
+            String script = """
+                var imgs = document.querySelectorAll('img');
+                var result = [];
+                for (var i = 0; i < imgs.length; i++) {
+                    var img = imgs[i];
+                    var w = img.naturalWidth || img.offsetWidth;
+                    var h = img.naturalHeight || img.offsetHeight;
+                    var src = img.src || '';
+                    result.push({src: src.substring(0, 200), w: w, h: h, visible: img.offsetParent !== null});
+                }
+                return JSON.stringify(result);
+            """;
+            String imgInfoJson = (String) js.executeScript(script);
+            log.info("[BrowserSession] 页面图片列表: {}", imgInfoJson);
+
+            // 2. 全页面截图保存
             Path tmp = resolveTmpDirPath();
             String captchaPath = tmp.resolve("captcha_" + System.currentTimeMillis() + ".png").toString();
+            File screenshot = ((TakesScreenshot) driver).getScreenshotAs(OutputType.FILE);
+            java.nio.file.Files.copy(screenshot.toPath(), new File(captchaPath).toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 
-            File screenshot = captchaImg.getScreenshotAs(OutputType.FILE);
-            java.nio.file.Files.copy(screenshot.toPath(), new File(captchaPath).toPath());
-
-            log.info("[BrowserSession] ✓ 验证码图片已保存: {}", captchaPath);
-
-            BufferedImage img = ImageIO.read(new File(captchaPath));
-            log.info("[BrowserSession]   图片尺寸: {}x{}", img.getWidth(), img.getHeight());
-
+            log.info("[BrowserSession] ✓ 全页面截图已保存: {}", captchaPath);
             return captchaPath;
         } catch (Exception e) {
             log.error("[BrowserSession] 截取验证码图片失败: {}", e.getMessage());
@@ -762,7 +941,6 @@ public class BrowserSessionManager {
     }
 
     public boolean inputCaptcha(String captcha) {
-        ensureOnLoginPage();
         // 1. 优先匹配: "请输入四则运算的运算结果"
         WebElement input = findElementSafely(By.cssSelector("input[placeholder*='运算']"));
         // 2. 备选: placeholder 含 "结果"
@@ -786,80 +964,199 @@ public class BrowserSessionManager {
     }
 
     public boolean checkPrivacyAgreement() {
-        ensureOnLoginPage();
-        List<WebElement> checkboxes = driver.findElements(By.cssSelector("input[type='checkbox']"));
-        if (checkboxes.isEmpty()) {
-            log.warn("[BrowserSession] 未找到隐私条款复选框");
-            return false;
-        }
-
-        WebElement checkbox = checkboxes.get(0);
-        scrollToElement(checkbox);
-
-        if (!checkbox.isSelected()) {
-            checkbox.click();
-        }
-
-        log.info("[BrowserSession] ✓ 隐私条款已勾选");
-        return true;
+        // 不再调用 ensureOnLoginPage()，避免在手机验证页时被导航到登录页导致状态丢失
+        return jsCheckAllAgreements();
     }
 
     public boolean checkAuthAgreement() {
-        ensureOnLoginPage();
-        List<WebElement> checkboxes = driver.findElements(By.cssSelector("input[type='checkbox']"));
-        if (checkboxes.size() < 2) {
-            log.warn("[BrowserSession] 未找到授权书复选框");
-            return false;
-        }
-
-        WebElement checkbox = checkboxes.get(1);
-        scrollToElement(checkbox);
-
-        if (!checkbox.isSelected()) {
-            checkbox.click();
-        }
-
-        log.info("[BrowserSession] ✓ 授权书已勾选");
+        // 已在 checkPrivacyAgreement 中一并处理所有 checkbox
         return true;
     }
 
-    public boolean clickLoginButton() {
-        ensureOnLoginPage();
+    /**
+     * 通过 CDP 物理点击勾选所有协议 checkbox。
+     * <p>checkbox 本身可能被 CSS 隐藏（width/height=0），实际可点击区域是其父容器或相邻 label。
+     * 因此查找 checkbox 的父元素或包含"勾选"文字的容器来获取可点击坐标。</p>
+     */
+    private boolean jsCheckAllAgreements() {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            // 获取所有协议勾选区域的坐标（checkbox 本身、父元素或 label）
+            String script = """
+                var checkboxes = document.querySelectorAll('input[type="checkbox"]');
+                var result = [];
+                for (var i = 0; i < checkboxes.length; i++) {
+                    var cb = checkboxes[i];
+                    if (cb.checked) continue;
+                    var rect = cb.getBoundingClientRect();
+                    // 如果 checkbox 自身有可见尺寸，直接用它
+                    if (rect.width >= 5 && rect.height >= 5) {
+                        result.push({x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2),
+                            src: 'checkbox', w: Math.round(rect.width), h: Math.round(rect.height)});
+                        continue;
+                    }
+                    // 否则用父容器（通常是 label 或包含 checkbox 的 div）
+                    var parent = cb.parentElement;
+                    if (parent) {
+                        rect = parent.getBoundingClientRect();
+                        if (rect.width > 0 && rect.height > 0) {
+                            result.push({x: Math.round(rect.left + Math.min(rect.width, 30) / 2),
+                                y: Math.round(rect.top + rect.height / 2),
+                                src: 'parent:' + parent.tagName, w: Math.round(rect.width), h: Math.round(rect.height)});
+                            continue;
+                        }
+                    }
+                    // 最后回退：用 for 属性关联的 label
+                    var id = cb.id;
+                    if (id) {
+                        var label = document.querySelector('label[for="' + id + '"]');
+                        if (label) {
+                            rect = label.getBoundingClientRect();
+                            result.push({x: Math.round(rect.left + 10), y: Math.round(rect.top + rect.height / 2),
+                                src: 'label', w: Math.round(rect.width), h: Math.round(rect.height)});
+                        }
+                    }
+                }
+                return JSON.stringify(result);
+            """;
+            String coordsJson = (String) js.executeScript(script);
+            log.info("[BrowserSession] checkbox 坐标诊断: {}", coordsJson);
 
-        List<WebElement> buttons = driver.findElements(By.tagName("button"));
-        WebElement loginButton = null;
+            @SuppressWarnings("unchecked")
+            java.util.List<com.alibaba.fastjson2.JSONObject> coords =
+                    com.alibaba.fastjson2.JSON.parseArray(coordsJson, com.alibaba.fastjson2.JSONObject.class);
 
-        for (WebElement btn : buttons) {
-            String text = btn.getText();
-            if ((text.contains("登录") || text.contains("下一步")) && btn.isDisplayed()) {
-                loginButton = btn;
-                break;
+            if (coords == null || coords.isEmpty()) {
+                log.info("[BrowserSession] 所有协议已勾选或未找到 checkbox");
+                return true;
             }
-        }
 
-        if (loginButton == null && !buttons.isEmpty()) {
-            loginButton = buttons.get(buttons.size() - 1);
-        }
-
-        if (loginButton == null) {
-            log.warn("[BrowserSession] 未找到登录按钮");
+            if (driver instanceof org.openqa.selenium.chromium.ChromiumDriver cd) {
+                for (com.alibaba.fastjson2.JSONObject coord : coords) {
+                    int x = coord.getIntValue("x");
+                    int y = coord.getIntValue("y");
+                    cdpClick(cd, x, y);
+                    log.info("[BrowserSession] ✓ CDP 点击 checkbox ({}, {}) via {}", x, y, coord.getString("src"));
+                    Thread.sleep(300);
+                }
+            }
+            log.info("[BrowserSession] ✓ 协议勾选完成，点击了 {} 个", coords.size());
+            return true;
+        } catch (Exception e) {
+            log.error("[BrowserSession] 协议勾选失败: {}", e.getMessage());
             return false;
         }
+    }
 
-        scrollToElement(loginButton);
-        actions.moveToElement(loginButton).perform();
-        sleepRandomSeconds(1, 2);
+    /**
+     * CDP 级别的鼠标点击（mousePressed + mouseReleased），模拟真实用户点击。
+     *
+     * @param cd ChromiumDriver
+     * @param x  视口 X 坐标
+     * @param y  视口 Y 坐标
+     */
+    private void cdpClick(org.openqa.selenium.chromium.ChromiumDriver cd, int x, int y) throws InterruptedException {
+        cd.executeCdpCommand("Input.dispatchMouseEvent",
+                java.util.Map.of("type", "mousePressed", "x", x, "y", y, "button", "left", "clickCount", 1));
+        Thread.sleep(50 + random.nextInt(50));
+        cd.executeCdpCommand("Input.dispatchMouseEvent",
+                java.util.Map.of("type", "mouseReleased", "x", x, "y", y, "button", "left", "clickCount", 1));
+    }
 
-        loginButton.click();
-        log.info("[BrowserSession] ✓ 已点击登录按钮");
+    /**
+     * 点击登录/下一步按钮。
+     * <p>仅使用 CDP 物理点击（不使用 JS click/Angular triggerHandler，避免触发错误行为）。
+     * 先用 JS 获取按钮坐标，再用 CDP Input.dispatchMouseEvent 执行浏览器级别点击。</p>
+     */
+    public boolean clickLoginButton() {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            // 1. JS 仅获取按钮坐标（不触发任何点击）
+            String script = """
+                var buttons = document.querySelectorAll('button, div[class*="btn"], a[class*="btn"]');
+                var target = null;
+                for (var i = 0; i < buttons.length; i++) {
+                    var text = (buttons[i].textContent || buttons[i].innerText || '').trim();
+                    if ((text.includes('登') && text.includes('录')) || text === '下一步') {
+                        target = buttons[i];
+                        break;
+                    }
+                }
+                if (!target) return null;
+                target.scrollIntoView({behavior: 'instant', block: 'center'});
+                var rect = target.getBoundingClientRect();
+                return JSON.stringify({text: target.textContent.trim().substring(0, 20),
+                    x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2)});
+            """;
+            String result = (String) js.executeScript(script);
+            if (result == null) {
+                log.warn("[BrowserSession] 未找到登录/下一步按钮");
+                return false;
+            }
+            log.info("[BrowserSession] 定位到登录按钮: {}", result);
 
-        sleepRandomSeconds(3, 5);
-        return true;
+            // 2. 仅 CDP 物理点击
+            com.alibaba.fastjson2.JSONObject info = com.alibaba.fastjson2.JSONObject.parseObject(result);
+            int x = info.getIntValue("x");
+            int y = info.getIntValue("y");
+            if (driver instanceof org.openqa.selenium.chromium.ChromiumDriver cd && x > 0 && y > 0) {
+                cd.executeCdpCommand("Input.dispatchMouseEvent",
+                        java.util.Map.of("type", "mousePressed", "x", x, "y", y, "button", "left", "clickCount", 1));
+                Thread.sleep(80 + random.nextInt(50));
+                cd.executeCdpCommand("Input.dispatchMouseEvent",
+                        java.util.Map.of("type", "mouseReleased", "x", x, "y", y, "button", "left", "clickCount", 1));
+                log.info("[BrowserSession] ✓ CDP 物理点击登录按钮 ({}, {})", x, y);
+            } else {
+                // 非 Chromium 回退
+                js.executeScript("""
+                    var buttons = document.querySelectorAll('button, div[class*="btn"]');
+                    for (var i = 0; i < buttons.length; i++) {
+                        var text = (buttons[i].textContent || '').trim();
+                        if (text.includes('登') && text.includes('录')) { buttons[i].click(); break; }
+                    }
+                """);
+            }
+            sleepRandomSeconds(3, 5);
+            return true;
+        } catch (Exception e) {
+            log.error("[BrowserSession] 点击登录按钮失败: {}", e.getMessage());
+            return false;
+        }
     }
 
     public boolean isLoginSuccess() {
         String url = getCurrentUrl();
         return !url.contains("login.html") && !url.contains("activePhone.html") && !url.contains("captcha");
+    }
+
+    /**
+     * 获取当前所在 iframe 相对于顶层文档的偏移量。
+     * <p>需在 switchToDefaultContent() 后调用。遍历所有 iframe 找到之前所在的 frame。</p>
+     *
+     * @param js JavascriptExecutor
+     * @return [offsetX, offsetY]；非 iframe 页面返回 null
+     */
+    private Long[] getIframeOffset(JavascriptExecutor js) {
+        try {
+            // 在顶层文档中查找所有可见的 iframe，返回第一个可见 iframe 的偏移
+            @SuppressWarnings("unchecked")
+            java.util.List<Object> offsets = (java.util.List<Object>) js.executeScript("""
+                var iframes = document.querySelectorAll('iframe');
+                for (var i = 0; i < iframes.length; i++) {
+                    var rect = iframes[i].getBoundingClientRect();
+                    if (rect.width > 100 && rect.height > 100) {
+                        return [Math.round(rect.left), Math.round(rect.top)];
+                    }
+                }
+                return null;
+            """);
+            if (offsets != null && offsets.size() == 2) {
+                return new Long[]{(Long) offsets.get(0), (Long) offsets.get(1)};
+            }
+        } catch (Exception e) {
+            log.debug("[BrowserSession] 获取 iframe 偏移失败: {}", e.getMessage());
+        }
+        return null;
     }
 
     private WebElement findVisibleElement(By[] locators) {
@@ -896,18 +1193,38 @@ public class BrowserSessionManager {
     }
 
     private void humanType(WebElement element, String text) {
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+        // 先用 JS 聚焦并清空
+        try {
+            js.executeScript("arguments[0].scrollIntoView({block:'center'}); arguments[0].focus(); arguments[0].value = '';", element);
+            Thread.sleep(200);
+        } catch (Exception ignored) {
+        }
+        // 尝试 sendKeys 逐字符输入
         try {
             element.clear();
-        } catch (Exception ignored) {}
-
-        for (int i = 0; i < text.length(); i++) {
-            element.sendKeys(String.valueOf(text.charAt(i)));
-            try {
+            for (int i = 0; i < text.length(); i++) {
+                element.sendKeys(String.valueOf(text.charAt(i)));
                 Thread.sleep(50 + random.nextInt(50));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
             }
+            return;
+        } catch (Exception e) {
+            log.debug("[BrowserSession] sendKeys 失败，回退到 JS 输入: {}", e.getMessage());
+        }
+        // 回退：使用 JS 逐字符设置值并触发事件
+        try {
+            js.executeScript("arguments[0].value = '';", element);
+            for (int i = 0; i < text.length(); i++) {
+                String current = text.substring(0, i + 1);
+                js.executeScript(
+                        "arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input', {bubbles:true}));",
+                        element, current);
+                Thread.sleep(50 + random.nextInt(50));
+            }
+            // 触发 change 事件确保框架感知
+            js.executeScript("arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", element);
+        } catch (Exception ex) {
+            log.error("[BrowserSession] JS 输入也失败: {}", ex.getMessage());
         }
     }
 

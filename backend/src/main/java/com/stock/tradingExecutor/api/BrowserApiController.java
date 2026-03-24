@@ -55,9 +55,10 @@ public class BrowserApiController {
     public ResponseEntity<Map<String, Object>> analyzePage() {
         log.info("[BrowserApi] 收到页面分析请求");
         try {
-            browserSession.analyzePageStructure();
+            String analysis = browserSession.analyzePageStructure();
 
             Map<String, Object> result = new HashMap<>();
+            result.put("analysis", analysis);
             result.put("success", true);
             result.put("url", browserSession.getCurrentUrl());
             return ResponseEntity.ok(result);
