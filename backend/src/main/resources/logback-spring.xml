@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true" scanPeriod="60 seconds">
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <!-- Custom WebSocket Appender -->
+    <appender name="WEBSOCKET" class="com.stock.tradingExecutor.logging.WebSocketAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level> <!-- Only send INFO and above to WebSocket -->
+        </filter>
+    </appender>
+
+    <!-- Async wrapper for performance (optional but recommended) -->
+    <appender name="ASYNC_WEBSOCKET" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="WEBSOCKET" />
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="ASYNC_WEBSOCKET" />
+    </root>
+
+    <!-- Set specific log levels if needed -->
+    <logger name="com.stock" level="DEBUG" />
+
+</configuration>

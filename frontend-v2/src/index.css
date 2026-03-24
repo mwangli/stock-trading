@@ -1,0 +1,167 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #050505;
+  --color-surface: #0a0c10;
+  --color-primary: #00e396;
+  --color-secondary: #ff4560;
+  --color-accent: #775dd0;
+  --color-border: rgba(255, 255, 255, 0.1);
+
+  --animate-spin-slow: spin 3s linear infinite;
+  --animate-pulse-fast: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* 领涨股滚动动画 */
+@keyframes slideUpFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUpFadeIn 0.35s ease-out forwards;
+}
+
+.animate-slide-down {
+  animation: slideDownFadeIn 0.35s ease-out forwards;
+}
+
+@layer base {
+  body {
+    @apply bg-black text-white font-sans overflow-hidden antialiased;
+  }
+}
+
+/* Ant Design Global Dark Overrides */
+:root {
+  --ant-color-bg-base: #050505;
+  --ant-color-text-base: #ffffff;
+}
+
+/* Custom Cyberpunk Styles */
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+
+.neon-border {
+  border: 1px solid rgba(0, 227, 150, 0.3);
+  box-shadow: 0 0 15px rgba(0, 227, 150, 0.1);
+}
+
+.text-neon-green {
+  color: #00e396;
+  text-shadow: 0 0 8px rgba(0, 227, 150, 0.6);
+}
+
+.text-neon-red {
+  color: #ff4560;
+  text-shadow: 0 0 8px rgba(255, 69, 96, 0.6);
+}
+
+.bg-grid-pattern {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Ant Input Override */
+.ant-input, .ant-input-password {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+}
+
+.ant-input:focus, .ant-input-password:focus-within {
+  border-color: #00e396 !important;
+  box-shadow: 0 0 0 2px rgba(0, 227, 150, 0.1) !important;
+}
+
+.ant-btn-primary {
+  background: linear-gradient(90deg, #00e396 0%, #00b374 100%) !important;
+  border: none !important;
+  color: #000 !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 15px rgba(0, 227, 150, 0.3) !important;
+}
+
+.ant-btn-primary:hover {
+  box-shadow: 0 6px 20px rgba(0, 227, 150, 0.5) !important;
+  transform: translateY(-1px);
+}
+
+/* Hidden Scrollbar */
+.custom-scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.custom-scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Ant Select Dark Dropdown */
+.ant-select-dropdown {
+  background: rgba(20, 20, 25, 0.95) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+}
+
+.ant-select-item {
+  color: #fff !important;
+}
+
+.ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background: rgba(0, 227, 150, 0.1) !important;
+}
+
+.ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  background: rgba(0, 227, 150, 0.2) !important;
+  color: #00e396 !important;
+}
+
+/* Ant Table dark (e.g. LSTM model list) */
+.models-table.ant-table-wrapper .ant-table {
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.85);
+}
+.models-table .ant-table-thead > tr > th {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.65);
+  font-weight: 600;
+}
+.models-table .ant-table-tbody > tr > td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.models-table .ant-table-tbody > tr:hover > td {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+.models-table .ant-pagination .ant-pagination-item a,
+.models-table .ant-pagination .ant-pagination-item-link,
+.models-table .ant-pagination .ant-pagination-total-text {
+  color: rgba(255, 255, 255, 0.65);
+}
+.models-table .ant-pagination .ant-pagination-item-active a {
+  color: #000;
+}

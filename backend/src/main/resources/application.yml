@@ -1,0 +1,120 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: stock-trading
+  main:
+    allow-bean-definition-overriding: true
+  devtools:
+    restart:
+      enabled: true
+    livereload:
+      enabled: true
+
+  # MySQL配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://124.220.36.95:6033/stock_trading?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
+    username: root
+    password: ${GLOBAL_DB_PASSWORD}
+  # 如果你使用远程 Redis，只需要修改 host/port/password 即可
+  data:
+    redis:
+      host: 124.220.36.95
+      port: 6379
+      password: ${GLOBAL_DB_PASSWORD}
+      database: 0
+
+    # MongoDB配置
+    mongodb:
+      auto-index-creation: true
+      host: 124.220.36.95
+      port: 27017
+      database: stock_trading
+      authentication-database: admin
+      username: admin
+      password: ${GLOBAL_DB_PASSWORD}
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    serialization:
+      write-dates-as-timestamps: false
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+# DJL模型配置（Windows 使用 pytorch-native-cu121 时需安装 NVIDIA 驱动 + CUDA 12.1）
+djl:
+  model:
+    dir: ./models
+    lstm:
+      # 本地 LSTM 模型目录（用于 DJL 加载）
+      path: ./models/lstm
+      # 模型存储类型：mongo（默认，存到 MongoDB）或 local（存到本地卷 /models/lstm）
+      storage-type: mongo
+      # 当 storage-type=local 时，本地模型根目录（容器内部路径，挂载自 models-data 卷）
+      local-base-path: /models/lstm
+    sentiment:
+      path: ./models/sentiment
+
+# 训练配置
+training:
+  lstm:
+    epochs: 100
+    batchSize: 32
+    learningRate: 0.001
+  sentiment:
+    epochs: 50
+    batchSize: 16
+    learningRate: 0.0001
+
+# 策略配置
+strategy:
+  decision:
+    confidence-threshold: 0.7
+    max-position-size: 10000
+  selector:
+    min-volume: 100000
+    min-price: 5.0
+    max-pe: 100
+logging:
+  level:
+    root: INFO
+    com.stock: INFO
+    ai.djl: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+  # 自动登录配置
+  auto-login:
+    # 默认登录账号（资金账号）
+    account: 13278828091
+    # 默认登录密码
+    password: "132553"
+    # 临时文件目录（验证码截图、SMS文件）
+    tmp-dir: ""
+
+app:
+  startup:
+    history-sync:
+      enabled: false  # 历史数据初始化开关，启动时执行全量历史价格同步
+    # 新闻采集开关：启动时遍历所有股票，先采集标题再获取详情写入数据库
+    news-sync:
+      enabled: false
+    # 模型训练开关：启动后是否自动检查并训练缺失的 LSTM 模型
+    model-training:
+      enabled: false
+
+  # 证券平台 HTTP 代理（用于解决云服务器 IP 被 weixin.citicsinfo.com 拦截 403 的问题）
+  # 当远程部署返回 403 而本地可访问时，在本地/可访问机器搭建代理，远程通过此配置转发请求
+  securities:
+    proxy:
+      enabled: false
+      host: 127.0.0.1
+      port: 1080
+      # 类型: HTTP 或 SOCKS5
+      type: HTTP
+

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /d/stock-trading-main -type f -name *Selenium* -o -name *Login* -o -name *Cookie* -o -name *Captcha*)",
+      "Bash(grep -E \"\\\\.\\(java|xml|yml\\)$\")",
+      "Bash(grep -E \"\\\\.java$\")",
+      "Bash(mvn compile:*)",
+      "Bash(mvn compiler:compile -q)",
+      "Bash(mvn install:*)",
+      "Bash(mvn spring-boot:run)"
+    ]
+  }
+}

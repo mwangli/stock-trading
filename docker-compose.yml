@@ -1,0 +1,114 @@
+services:
+  # ===================
+  # Chrome Headless服务 (用于自动化登录)
+  # ===================
+  chrome:
+    image: selenium/standalone-chrome:latest
+    container_name: stock-chrome
+    ports:
+      - "4444:4444"    # Selenium Grid端口
+      - "7900:7900"    # VNC可视化端口（可选）
+    shm_size: '2gb'
+    environment:
+      - SE_NODE_MAX_SESSIONS=1
+      - SE_SESSION_REQUEST_TIMEOUT=300
+    networks:
+      - stock-network
+    restart: unless-stopped
+
+  # ===================
+  # Backend Service（CI 推送至阿里云 ACR，服务器拉取）
+  # ===================
+  stock-backend:
+    # 阿里云镜像（固定地址）
+    image: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-trading:latest
+    container_name: stock-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      # 统一模型资源数据卷，容器内挂载到 /models
+      - models-data:/models
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - GLOBAL_DB_PASSWORD=${GLOBAL_DB_PASSWORD}
+      - SPRING_DATASOURCE_URL=jdbc:mysql://stock-mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+      - SPRING_DATA_MONGODB_URI=mongodb://admin:${GLOBAL_DB_PASSWORD}@stock-mongo:27017/stock_trading?authSource=admin
+      - SPRING_REDIS_HOST=stock-redis
+      - CHROME_REMOTE_URL=http://chrome:4444/wd/hub
+    depends_on:
+      - stock-mysql
+      - stock-mongo
+      - stock-redis
+      - chrome
+    networks:
+      - stock-network
+    restart: unless-stopped
+
+  # ===================
+  # MySQL Database
+  # ===================
+  stock-mysql:
+    image: mysql:8.0
+    container_name: stock-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${GLOBAL_DB_PASSWORD}
+      - MYSQL_DATABASE=stock_trading
+      - MYSQL_ROOT_HOST=%
+    ports:
+      # 宿主机 6033 -> 容器 3306，对外暴露 6033
+      - "6033:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./infrastructure/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - stock-network
+    restart: unless-stopped
+    command:
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --bind-address=0.0.0.0
+
+  # ===================
+  # MongoDB
+  # ===================
+  stock-mongo:
+    image: mongo:6.0
+    container_name: stock-mongo
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=${GLOBAL_DB_PASSWORD}
+      - MONGO_INITDB_DATABASE=stock_trading
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - stock-network
+    restart: unless-stopped
+
+  # ===================
+  # Redis Cache
+  # ===================
+  stock-redis:
+    image: redis:7-alpine
+    container_name: stock-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - stock-network
+    restart: unless-stopped
+    command: redis-server --requirepass ${GLOBAL_DB_PASSWORD} --appendonly yes
+
+networks:
+  stock-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  mongo-data:
+  redis-data:
+  # 模型资源持久化卷（LSTM / 情感等模型统一挂载到 /models）
+  models-data:
