@@ -113,9 +113,24 @@ public class LoginPageHandler {
 
     /**
      * 在匹配元素中找到第一个可见的
+     * 使用 JS offsetParent 作为可见性判断（比 Selenium isDisplayed 更准确）
      */
     private WebElement findVisibleElement(WebDriver driver, By locator) {
         List<WebElement> elements = driver.findElements(locator);
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+
+        for (WebElement el : elements) {
+            try {
+                // 用 JS 判断可见性：offsetParent != null 且 offsetWidth > 0
+                Boolean visible = (Boolean) js.executeScript(
+                        "return arguments[0].offsetParent !== null && arguments[0].offsetWidth > 0", el);
+                if (Boolean.TRUE.equals(visible)) {
+                    return el;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        // 兜底：用 Selenium isDisplayed
         for (WebElement el : elements) {
             try {
                 if (el.isDisplayed()) {
@@ -124,11 +139,7 @@ public class LoginPageHandler {
             } catch (Exception ignored) {
             }
         }
-        // 如果没有可见的，返回第一个（让 Selenium 报原始错误）
-        if (!elements.isEmpty()) {
-            return elements.get(0);
-        }
-        throw new NoSuchElementException("未找到元素: " + locator);
+        throw new NoSuchElementException("未找到可见元素: " + locator);
     }
 
     /**
@@ -163,23 +174,27 @@ public class LoginPageHandler {
 
     /**
      * 勾选协议（隐私条款 + 授权书）
+     * 页面 checkbox 原生 input 被隐藏（display:none），外层 span.icon_check 作为可视化替代。
+     * 策略：遍历所有 checkbox，对于其父级 wrapper 可见且未勾选的，通过 JS 点击 span 触发勾选。
      */
     public void checkAgreements() {
         WebDriver driver = browserSessionManager.getDriver();
         try {
-            // 勾选所有可见的 checkbox
-            List<WebElement> checkboxes = driver.findElements(By.xpath("//input[@type='checkbox']"));
-            int checked = 0;
-            for (WebElement cb : checkboxes) {
-                try {
-                    if (cb.isDisplayed() && !cb.isSelected()) {
-                        browserSessionManager.safeClick(cb);
-                        checked++;
-                    }
-                } catch (Exception e) {
-                    log.debug("勾选 checkbox 失败: {}", e.getMessage());
-                }
-            }
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            // 通过 JS 点击所有可见且未选中的 checkbox 的 span 父元素
+            Long checked = (Long) js.executeScript(
+                    "var cbs = document.querySelectorAll('input[type=checkbox]');" +
+                    "var count = 0;" +
+                    "for(var i=0; i<cbs.length; i++){" +
+                    "  var cb = cbs[i];" +
+                    "  var span = cb.parentElement;" +
+                    "  var wrapper = span ? span.parentElement : null;" +
+                    "  if(wrapper && wrapper.offsetParent !== null && !cb.checked){" +
+                    "    span.click(); count++;" +
+                    "  }" +
+                    "}" +
+                    "return count;"
+            );
             log.info("协议勾选完成，共勾选 {} 个", checked);
         } catch (Exception e) {
             log.error("勾选协议失败: {}", e.getMessage());
@@ -281,28 +296,19 @@ public class LoginPageHandler {
 
     /**
      * 点击「获取验证码」按钮（手机验证页）
-     * 策略：先用 XPath 定位，失败则用 JavaScript 全文搜索点击
+     * 策略：优先用 JavaScript 全文搜索点击（更稳定），失败则用 XPath 定位
      */
     public void clickSendCodeButton() {
         WebDriver driver = browserSessionManager.getDriver();
-        // 策略1：XPath 定位
-        try {
-            WebElement sendButton = findVisibleElement(driver, SMS_CODE_BUTTON);
-            browserSessionManager.safeClick(sendButton);
-            log.info("获取验证码按钮已点击（XPath）");
-            return;
-        } catch (Exception e) {
-            log.warn("XPath 定位获取验证码按钮失败，尝试 JS 方式: {}", e.getMessage());
-        }
 
-        // 策略2：JavaScript 全文搜索
+        // 策略1：JavaScript 全文搜索（优先，更稳定）
         try {
             org.openqa.selenium.JavascriptExecutor js = (org.openqa.selenium.JavascriptExecutor) driver;
             Boolean clicked = (Boolean) js.executeScript(
                     "var all = document.querySelectorAll('a,button,div,span,input[type=button]');" +
                     "for (var i = 0; i < all.length; i++) {" +
                     "  var t = all[i].innerText || all[i].textContent || '';" +
-                    "  if (t.includes('获取验证码') && all[i].offsetParent !== null) {" +
+                    "  if (t.indexOf('获取验证码') >= 0 && all[i].offsetParent !== null) {" +
                     "    all[i].click(); return true;" +
                     "  }" +
                     "}" +
@@ -313,10 +319,20 @@ public class LoginPageHandler {
                 return;
             }
         } catch (Exception e) {
-            log.error("JS 点击获取验证码失败: {}", e.getMessage());
+            log.warn("JS 点击获取验证码失败，尝试 XPath: {}", e.getMessage());
         }
 
-        throw new RuntimeException("点击获取验证码按钮失败：XPath 和 JS 均未找到目标元素");
+        // 策略2：XPath 定位
+        try {
+            WebElement sendButton = findVisibleElement(driver, SMS_CODE_BUTTON);
+            browserSessionManager.safeClick(sendButton);
+            log.info("获取验证码按钮已点击（XPath）");
+            return;
+        } catch (Exception e) {
+            log.error("XPath 定位获取验证码按钮也失败: {}", e.getMessage());
+        }
+
+        throw new RuntimeException("点击获取验证码按钮失败：JS 和 XPath 均未找到目标元素");
     }
 
     /**

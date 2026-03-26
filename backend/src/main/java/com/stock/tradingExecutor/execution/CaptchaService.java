@@ -154,10 +154,34 @@ public class CaptchaService {
     }
 
     /**
-     * 检查当前 frame 中是否存在 .yidun 元素
+     * 检查当前 frame 中是否存在可见的 .yidun 滑块面板
+     * 仅检测实际弹出的面板（yidun_panel, yidun_popup, yidun_slider），
+     * 排除隐藏的 yidun_input
      */
     private boolean hasYidunElement(WebDriver driver) {
-        return !driver.findElements(By.cssSelector("[class*='yidun']")).isEmpty();
+        // 优先检测可见的滑块面板
+        List<WebElement> panels = driver.findElements(
+                By.cssSelector(".yidun_panel, .yidun_popup, .yidun_slider, .yidun_bgimg"));
+        for (WebElement panel : panels) {
+            try {
+                if (panel.isDisplayed() && panel.getSize().getWidth() > 0) {
+                    return true;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        // 兜底：检测包含可见图片的 yidun 容器
+        List<WebElement> imgs = driver.findElements(By.cssSelector("[class*='yidun'] img[src]"));
+        for (WebElement img : imgs) {
+            try {
+                String src = img.getAttribute("src");
+                if (src != null && !src.isEmpty() && img.isDisplayed()) {
+                    return true;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return false;
     }
 
     /**
@@ -246,51 +270,74 @@ public class CaptchaService {
     }
 
     /**
-     * 计算滑块距离（模板匹配 SAD）
+     * 计算滑块距离
+     * 策略：在背景图上检测拼图缺口的垂直边缘位置。
+     * 拼图缺口在背景图中表现为突然的色差边缘（左侧边缘），
+     * 通过逐列计算灰度跳变次数来找到缺口位置。
+     *
+     * @param bgImage     背景图字节数据
+     * @param sliderImage 拼图块字节数据（用于获取拼图宽度做修正）
+     * @return 滑块需要滑动的距离（像素）
      */
     public int calculateSliderDistance(byte[] bgImage, byte[] sliderImage) throws IOException {
         BufferedImage bg = ImageIO.read(new ByteArrayInputStream(bgImage));
         BufferedImage slider = ImageIO.read(new ByteArrayInputStream(sliderImage));
 
-        int[][] bgGray = toGrayMatrix(bg);
-        int[][] sliderGray = toGrayMatrix(slider);
+        if (bg == null || slider == null) {
+            log.error("图片解码失败：bg={}, slider={}", bg != null, slider != null);
+            return 0;
+        }
 
+        int bgWidth = bg.getWidth();
+        int bgHeight = bg.getHeight();
+        int sliderWidth = slider.getWidth();
+
+        log.info("图片尺寸：bg={}x{}, slider={}x{}", bgWidth, bgHeight, sliderWidth, slider.getHeight());
+
+        // 1. 将背景图转为灰度矩阵
+        int[][] gray = new int[bgWidth][bgHeight];
+        for (int y = 0; y < bgHeight; y++) {
+            for (int x = 0; x < bgWidth; x++) {
+                Color c = new Color(bg.getRGB(x, y));
+                gray[x][y] = (c.getRed() + c.getGreen() + c.getBlue()) / 3;
+            }
+        }
+
+        // 2. 逐列计算灰度跳变强度（Sobel 水平边缘）
+        // 跳过前10%区域（滑块起始位置通常不在最左侧）
+        int startX = bgWidth / 10;
+        int endX = bgWidth - sliderWidth / 2;
         int bestX = 0;
-        int minDiff = Integer.MAX_VALUE;
+        int maxEdgeSum = 0;
 
-        for (int x = 0; x < bgGray.length - sliderGray.length; x++) {
-            int diff = calculateSAD(bgGray, sliderGray, x, 0);
-            if (diff < minDiff) {
-                minDiff = diff;
+        for (int x = startX; x < endX; x++) {
+            int edgeSum = 0;
+            for (int y = 1; y < bgHeight - 1; y++) {
+                // 水平 Sobel：检测垂直边缘
+                int left = x > 0 ? gray[x - 1][y] : gray[x][y];
+                int right = x < bgWidth - 1 ? gray[x + 1][y] : gray[x][y];
+                int diff = Math.abs(right - left);
+                if (diff > 30) { // 阈值：明显的灰度跳变
+                    edgeSum += diff;
+                }
+            }
+            if (edgeSum > maxEdgeSum) {
+                maxEdgeSum = edgeSum;
                 bestX = x;
             }
         }
 
-        log.info("滑块距离: {}px（模板匹配，最小差异值={}）", bestX, minDiff);
-        return bestX;
-    }
+        // 3. 距离修正：页面渲染宽度 / 图片原始宽度
+        // NECaptcha 背景图原始 320px，渲染 220px
+        // 返回的距离需要按渲染比例换算
+        // 注意：调用方会直接用这个距离来拖动，所以要返回渲染后的距离
+        double renderRatio = 220.0 / bgWidth;
+        int renderDistance = (int) (bestX * renderRatio);
 
-    private int calculateSAD(int[][] bg, int[][] template, int startX, int startY) {
-        int sum = 0;
-        for (int y = 0; y < template[0].length; y++) {
-            for (int x = 0; x < template.length; x++) {
-                sum += Math.abs(bg[startX + x][startY + y] - template[x][y]);
-            }
-        }
-        return sum;
-    }
+        log.info("滑块距离计算：原始={}px, 渲染={}px（ratio={}, maxEdge={}）",
+                bestX, renderDistance, String.format("%.2f", renderRatio), maxEdgeSum);
 
-    private int[][] toGrayMatrix(BufferedImage image) {
-        int width = image.getWidth();
-        int height = image.getHeight();
-        int[][] matrix = new int[width][height];
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                Color color = new Color(image.getRGB(x, y));
-                matrix[x][y] = (color.getRed() + color.getGreen() + color.getBlue()) / 3;
-            }
-        }
-        return matrix;
+        return renderDistance;
     }
 
     /**
@@ -323,11 +370,12 @@ public class CaptchaService {
 
     /**
      * 使用 Selenium Actions 执行滑块拖动
+     * 轨迹为绝对位置，转为增量执行 moveByOffset
      */
     public boolean executeSliderDrag(WebDriver driver, int distance) {
         try {
             WebElement sliderHandler = driver.findElement(
-                    By.cssSelector(".yidun_slider__handler, .yidun_btn")
+                    By.cssSelector(".yidun_slider, .yidun_slide_indicator, .yidun_slider__handler, .yidun_btn")
             );
 
             List<int[]> trajectory = generateSliderTrajectory(distance);
@@ -335,8 +383,13 @@ public class CaptchaService {
             Actions actions = new Actions(driver);
             actions.clickAndHold(sliderHandler).perform();
 
+            int prevX = 0, prevY = 0;
             for (int[] point : trajectory) {
-                actions.moveByOffset(point[0], point[1]).perform();
+                int dx = point[0] - prevX;
+                int dy = point[1] - prevY;
+                actions.moveByOffset(dx, dy).perform();
+                prevX = point[0];
+                prevY = point[1];
                 Thread.sleep(ThreadLocalRandom.current().nextInt(15, 26));
             }
 

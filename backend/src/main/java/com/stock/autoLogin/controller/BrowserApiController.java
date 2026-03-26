@@ -11,10 +11,22 @@ import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.WebDriver;
 import org.springframework.web.bind.annotation.*;
 
+import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.OutputType;
+import org.openqa.selenium.TakesScreenshot;
+
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 浏览器 API 控制器
@@ -47,13 +59,23 @@ public class BrowserApiController {
     }
 
     /**
-     * 访问登录页面
+     * 访问登录页面（等待页面加载完成后返回）
      */
     @PostMapping("/navigate/login")
     public ResponseDTO<Void> navigateToLogin() {
         log.info("访问登录页面");
         WebDriver driver = browserSessionManager.getDriver();
         driver.get("https://weixin.citicsinfo.com/tztweb/deal/index.html#!/account/login.html");
+        // 等待页面中出现表单元素（手机号或密码输入框）
+        try {
+            new org.openqa.selenium.support.ui.WebDriverWait(driver, java.time.Duration.ofSeconds(10))
+                    .until(d -> !d.findElements(org.openqa.selenium.By.xpath(
+                            "//input[contains(@placeholder, '手机号')] | //input[@type='password']"
+                    )).isEmpty());
+            log.info("登录页面加载完成");
+        } catch (Exception e) {
+            log.warn("等待页面加载超时，继续执行: {}", e.getMessage());
+        }
         return ResponseDTO.success(null, "已访问登录页面");
     }
 
@@ -266,6 +288,7 @@ public class BrowserApiController {
 
     /**
      * 执行滑块验证
+     * 如果滑块面板不在，尝试重新点击获取验证码按钮触发
      */
     @PostMapping("/phone/solve-slider")
     public ResponseDTO<Map<String, Object>> solveSlider() {
@@ -273,11 +296,25 @@ public class BrowserApiController {
         WebDriver driver = browserSessionManager.getDriver();
         Map<String, Object> result = new HashMap<>();
 
-        // 1. 切换到滑块所在 frame
+        // 1. 切换到滑块所在 frame（如果不在，尝试重新触发）
         if (!captchaService.switchToSliderFrame(driver)) {
-            result.put("success", false);
-            result.put("error", "未找到滑块元素");
-            return ResponseDTO.success(result, "未找到滑块元素");
+            log.info("滑块未弹出，尝试重新点击获取验证码按钮触发");
+            try {
+                // 切回表单 frame 点击按钮
+                browserSessionManager.ensureLoginFrame();
+                loginPageHandler.clickSendCodeButton();
+                Thread.sleep(3000);  // 等待滑块弹窗加载
+                // 再次尝试切换到滑块 frame
+                if (!captchaService.switchToSliderFrame(driver)) {
+                    result.put("success", false);
+                    result.put("error", "滑块弹窗未弹出（重试后仍未检测到）");
+                    return ResponseDTO.success(result, "滑块弹窗未弹出");
+                }
+            } catch (Exception e) {
+                result.put("success", false);
+                result.put("error", "重新触发滑块失败: " + e.getMessage());
+                return ResponseDTO.success(result, "重新触发滑块失败");
+            }
         }
 
         try {
@@ -360,6 +397,274 @@ public class BrowserApiController {
         log.info("点击下一步/登录按钮");
         loginPageHandler.clickNextStepButton();
         return ResponseDTO.success(null, "已提交");
+    }
+
+    // ==================== 诊断接口 ====================
+
+    /**
+     * 全页面截图
+     *
+     * @return 截图文件路径
+     */
+    @GetMapping("/debug/screenshot")
+    public ResponseDTO<String> screenshot() {
+        log.info("截取页面截图");
+        try {
+            WebDriver driver = browserSessionManager.getDriver();
+            driver.switchTo().defaultContent();
+
+            File screenshotFile = ((TakesScreenshot) driver).getScreenshotAs(OutputType.FILE);
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
+            Path dest = Paths.get(".tmp", "screenshot_" + timestamp + ".png");
+            Files.createDirectories(dest.getParent());
+            Files.copy(screenshotFile.toPath(), dest, StandardCopyOption.REPLACE_EXISTING);
+
+            log.info("截图已保存: {}", dest.toAbsolutePath());
+            return ResponseDTO.success(dest.toAbsolutePath().toString(), "截图已保存");
+        } catch (Exception e) {
+            log.error("截图失败", e);
+            return ResponseDTO.failure("截图失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * DOM 诊断 — 在顶层和所有 iframe 中搜索 .yidun 元素
+     *
+     * @return 每个 frame 的搜索结果
+     */
+    @GetMapping("/debug/dom-inspect")
+    public ResponseDTO<List<Map<String, Object>>> domInspect() {
+        log.info("DOM 诊断 — 搜索 .yidun 元素");
+        WebDriver driver = browserSessionManager.getDriver();
+        List<Map<String, Object>> results = new ArrayList<>();
+
+        // 1. 检查顶层
+        driver.switchTo().defaultContent();
+        results.add(inspectFrameForYidun(driver, "顶层 document"));
+
+        // 2. 检查所有 iframe
+        List<org.openqa.selenium.WebElement> iframes = driver.findElements(
+                org.openqa.selenium.By.tagName("iframe"));
+        for (int i = 0; i < iframes.size(); i++) {
+            try {
+                driver.switchTo().defaultContent();
+                driver.switchTo().frame(i);
+                results.add(inspectFrameForYidun(driver, "iframe[" + i + "]"));
+            } catch (Exception e) {
+                Map<String, Object> errResult = new HashMap<>();
+                errResult.put("frameName", "iframe[" + i + "]");
+                errResult.put("found", false);
+                errResult.put("error", e.getMessage());
+                results.add(errResult);
+            }
+        }
+
+        driver.switchTo().defaultContent();
+        return ResponseDTO.success(results);
+    }
+
+    /**
+     * 表单状态 — 返回当前 frame 中所有 input/button 的状态
+     *
+     * @return 表单元素状态
+     */
+    @GetMapping("/debug/form-state")
+    public ResponseDTO<Map<String, Object>> formState() {
+        log.info("查询表单状态");
+        WebDriver driver = browserSessionManager.getDriver();
+        Map<String, Object> state = new HashMap<>();
+
+        List<org.openqa.selenium.WebElement> inputs = driver.findElements(
+                org.openqa.selenium.By.tagName("input"));
+        List<Map<String, String>> inputStates = inputs.stream().map(input -> {
+            Map<String, String> m = new HashMap<>();
+            m.put("type", input.getAttribute("type"));
+            m.put("placeholder", input.getAttribute("placeholder"));
+            m.put("value", input.getAttribute("value"));
+            m.put("checked", String.valueOf(input.isSelected()));
+            m.put("displayed", String.valueOf(input.isDisplayed()));
+            return m;
+        }).collect(Collectors.toList());
+        state.put("inputs", inputStates);
+
+        List<org.openqa.selenium.WebElement> buttons = driver.findElements(
+                org.openqa.selenium.By.tagName("button"));
+        List<Map<String, String>> buttonStates = buttons.stream().map(btn -> {
+            Map<String, String> m = new HashMap<>();
+            m.put("text", btn.getText());
+            m.put("enabled", String.valueOf(btn.isEnabled()));
+            m.put("displayed", String.valueOf(btn.isDisplayed()));
+            return m;
+        }).collect(Collectors.toList());
+        state.put("buttons", buttonStates);
+
+        return ResponseDTO.success(state);
+    }
+
+    /**
+     * 滑块轮询 — 持续 N 秒在所有 frame 中轮询 .yidun 元素
+     *
+     * @param seconds 轮询秒数
+     * @return 每秒检测结果
+     */
+    @GetMapping("/debug/slider-poll")
+    public ResponseDTO<List<Map<String, Object>>> sliderPoll(
+            @RequestParam(defaultValue = "10") int seconds) {
+        log.info("滑块轮询 {} 秒", seconds);
+        WebDriver driver = browserSessionManager.getDriver();
+        List<Map<String, Object>> results = new ArrayList<>();
+
+        for (int i = 0; i < seconds; i++) {
+            Map<String, Object> pollResult = new HashMap<>();
+            pollResult.put("second", i + 1);
+
+            // 在所有 frame 中查找
+            String foundIn = findYidunInAllFrames(driver);
+            pollResult.put("found", foundIn != null);
+            pollResult.put("foundIn", foundIn);
+
+            results.add(pollResult);
+
+            if (foundIn != null) {
+                log.info("第 {} 秒在 {} 中检测到滑块", i + 1, foundIn);
+                break;
+            }
+
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        return ResponseDTO.success(results);
+    }
+
+    /**
+     * 指纹检查 — 检查浏览器反爬检测状态
+     *
+     * @return 浏览器指纹信息
+     */
+    @GetMapping("/debug/fingerprint")
+    public ResponseDTO<Map<String, Object>> fingerprint() {
+        log.info("检查浏览器指纹");
+        WebDriver driver = browserSessionManager.getDriver();
+        driver.switchTo().defaultContent();
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("webdriver", js.executeScript("return navigator.webdriver"));
+        result.put("languages", js.executeScript("return navigator.languages"));
+        result.put("platform", js.executeScript("return navigator.platform"));
+        result.put("hardwareConcurrency", js.executeScript("return navigator.hardwareConcurrency"));
+        result.put("userAgent", js.executeScript("return navigator.userAgent"));
+        result.put("chromeRuntime", js.executeScript("return typeof window.chrome"));
+
+        return ResponseDTO.success(result);
+    }
+
+    /**
+     * 当前 frame 信息
+     *
+     * @return frame 上下文信息
+     */
+    @GetMapping("/debug/frame-info")
+    public ResponseDTO<Map<String, Object>> frameInfo() {
+        log.info("查询 frame 信息");
+        WebDriver driver = browserSessionManager.getDriver();
+        Map<String, Object> info = new HashMap<>();
+        info.put("currentUrl", driver.getCurrentUrl());
+        info.put("title", driver.getTitle());
+
+        driver.switchTo().defaultContent();
+        List<org.openqa.selenium.WebElement> iframes = driver.findElements(
+                org.openqa.selenium.By.tagName("iframe"));
+        info.put("iframeCount", iframes.size());
+
+        List<Map<String, String>> iframeDetails = iframes.stream().map(iframe -> {
+            Map<String, String> detail = new HashMap<>();
+            detail.put("src", iframe.getAttribute("src"));
+            detail.put("id", iframe.getAttribute("id"));
+            detail.put("name", iframe.getAttribute("name"));
+            return detail;
+        }).collect(Collectors.toList());
+        info.put("iframes", iframeDetails);
+
+        return ResponseDTO.success(info);
+    }
+
+    /**
+     * 执行任意 JS 脚本（仅调试用）
+     *
+     * @param script JS 代码
+     * @return 执行结果
+     */
+    @PostMapping("/debug/exec-js")
+    public ResponseDTO<Object> execJs(@RequestBody String script) {
+        log.info("执行 JS 脚本");
+        WebDriver driver = browserSessionManager.getDriver();
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+        try {
+            Object result = js.executeScript(script);
+            return ResponseDTO.success(result);
+        } catch (Exception e) {
+            return ResponseDTO.failure("JS 执行失败: " + e.getMessage());
+        }
+    }
+
+    // ==================== 内部方法 ====================
+
+    /**
+     * 在指定 frame 中检查 .yidun 元素
+     */
+    private Map<String, Object> inspectFrameForYidun(WebDriver driver, String frameName) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("frameName", frameName);
+
+        List<org.openqa.selenium.WebElement> yidunElements = driver.findElements(
+                org.openqa.selenium.By.cssSelector("[class*='yidun']"));
+        boolean found = !yidunElements.isEmpty();
+        result.put("found", found);
+
+        if (found) {
+            String details = yidunElements.stream()
+                    .map(e -> e.getTagName() + "." + e.getAttribute("class"))
+                    .collect(Collectors.joining(", "));
+            result.put("details", details);
+        }
+
+        return result;
+    }
+
+    /**
+     * 在顶层和所有 iframe 中搜索 .yidun 元素
+     *
+     * @return 找到的 frame 名称，未找到返回 null
+     */
+    private String findYidunInAllFrames(WebDriver driver) {
+        // 检查顶层
+        driver.switchTo().defaultContent();
+        if (!driver.findElements(org.openqa.selenium.By.cssSelector("[class*='yidun']")).isEmpty()) {
+            return "顶层 document";
+        }
+
+        // 检查所有 iframe
+        List<org.openqa.selenium.WebElement> iframes = driver.findElements(
+                org.openqa.selenium.By.tagName("iframe"));
+        for (int i = 0; i < iframes.size(); i++) {
+            try {
+                driver.switchTo().defaultContent();
+                driver.switchTo().frame(i);
+                if (!driver.findElements(org.openqa.selenium.By.cssSelector("[class*='yidun']")).isEmpty()) {
+                    return "iframe[" + i + "]";
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        driver.switchTo().defaultContent();
+        return null;
     }
 
 }

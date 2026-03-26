@@ -4,6 +4,7 @@ import com.stock.autoLogin.exception.BrowserException;
 import io.github.bonigarcia.wdm.WebDriverManager;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
@@ -240,17 +241,35 @@ public class BrowserSessionManager implements DisposableBean {
 
     /**
      * 模拟人类打字（80-140ms/字符）
+     * 先尝试 Selenium 原生方式，失败则用 JS 方式
      */
     public void humanLikeInput(WebElement element, String text) {
+        // 策略 1：Selenium 原生方式
         try {
             element.clear();
             for (char c : text.toCharArray()) {
                 element.sendKeys(String.valueOf(c));
                 Thread.sleep(ThreadLocalRandom.current().nextInt(80, 141));
             }
-            log.debug("模拟人类输入完成，字符数={}", text.length());
+            log.debug("模拟人类输入完成（Selenium），字符数={}", text.length());
+            return;
         } catch (Exception e) {
-            throw new BrowserException("输入失败：" + e.getMessage(), e);
+            log.warn("Selenium 输入失败，改用 JS: {}", e.getMessage());
+        }
+
+        // 策略 2：JS 方式（兼容 readonly/hidden 场景）
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript(
+                    "arguments[0].value = ''; arguments[0].focus();" +
+                    "arguments[0].value = arguments[1];" +
+                    "arguments[0].dispatchEvent(new Event('input', {bubbles: true}));" +
+                    "arguments[0].dispatchEvent(new Event('change', {bubbles: true}));",
+                    element, text
+            );
+            log.debug("模拟人类输入完成（JS），字符数={}", text.length());
+        } catch (Exception e) {
+            throw new BrowserException("输入失败（Selenium+JS 均失败）：" + e.getMessage(), e);
         }
     }
 
