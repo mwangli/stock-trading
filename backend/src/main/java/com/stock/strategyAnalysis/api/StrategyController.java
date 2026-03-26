@@ -7,7 +7,6 @@ import com.stock.strategyAnalysis.config.StrategyStateManager;
 import com.stock.strategyAnalysis.domain.vo.SelectionResult;
 import com.stock.strategyAnalysis.domain.dto.AnalysisStrategyItemDto;
 import com.stock.strategyAnalysis.domain.dto.AnalysisStrategyToggleRequestDto;
-import com.stock.strategyAnalysis.domain.dto.StrategyGenericRequestDto;
 import com.stock.strategyAnalysis.domain.dto.StrategyOperationResponseDto;
 import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
 import com.stock.strategyAnalysis.domain.entity.StrategyMode;
@@ -146,51 +145,4 @@ public class StrategyController {
         return ResponseDTO.success("策略配置已重置为默认值");
     }
 
-    /**
-     * 创建策略 (Mock)
-     */
-    @PostMapping("/create")
-    public ResponseDTO<StrategyOperationResponseDto> createStrategy(@RequestBody(required = false) StrategyGenericRequestDto params) {
-        log.info("[Strategy] 创建策略 | id={}, name={}", params != null ? params.getId() : null, params != null ? params.getName() : null);
-        return ResponseDTO.success(StrategyOperationResponseDto.builder()
-                .success(true)
-                .message("创建成功")
-                .build());
-    }
-
-    /**
-     * 更新策略 (Mock)
-     */
-    @PutMapping("/update")
-    public ResponseDTO<StrategyOperationResponseDto> updateStrategy(@RequestBody(required = false) StrategyGenericRequestDto params) {
-        log.info("[Strategy] 更新策略 | id={}, name={}", params != null ? params.getId() : null, params != null ? params.getName() : null);
-        return ResponseDTO.success(StrategyOperationResponseDto.builder()
-                .success(true)
-                .message("更新成功")
-                .build());
-    }
-
-    /**
-     * 选择策略 (Mock)
-     */
-    @PostMapping("/choose")
-    public ResponseDTO<StrategyOperationResponseDto> chooseStrategy(@RequestBody(required = false) StrategyGenericRequestDto params) {
-        log.info("[Strategy] 选择策略 | id={}, name={}", params != null ? params.getId() : null, params != null ? params.getName() : null);
-        return ResponseDTO.success(StrategyOperationResponseDto.builder()
-                .success(true)
-                .message("选择成功")
-                .build());
-    }
-
-    /**
-     * 删除策略 (Mock)
-     */
-    @DeleteMapping("/delete")
-    public ResponseDTO<StrategyOperationResponseDto> deleteStrategy(@RequestParam(required = false) String id) {
-        log.info("[Strategy] 删除策略 | id={}", id);
-        return ResponseDTO.success(StrategyOperationResponseDto.builder()
-                .success(true)
-                .message("删除成功")
-                .build());
-    }
 }

@@ -5,39 +5,8 @@ import type { ColumnsType } from 'antd/es/table';
 import type { InputRef } from 'antd';
 import { SearchOutlined, ThunderboltOutlined, RiseOutlined, StarOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import request from '../utils/request';
-interface StockInfo {
-  code: string;
-  name: string;
-  price: number;
-  changePercent: number;
-  totalMarketValue: number;
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  total?: number;
-}
-
-/** 与后端 StockInfoController#getMarketStats / MarketStatsDto 一致 */
-interface MarketStats {
-  marketStatus?: string;
-  changePercent?: number;
-  upCount?: number;
-  downCount?: number;
-  flatCount?: number;
-  totalAmount?: number;
-  totalVolume?: number;
-  topGainerCode?: string | null;
-  topGainerName?: string | null;
-  topGainerChange?: number | null;
-  topLoserCode?: string | null;
-  topLoserName?: string | null;
-  topLoserChange?: number | null;
-  totalCount?: number;
-  avgTurnoverRate?: number;
-}
+import { getStockList, getMarketStats as fetchMarketStatsApi, getTopGainers as fetchTopGainersApi, getKlineData as fetchKlineDataApi } from '../api/stockInfo';
+import type { MarketStats } from '../api/stockInfo';
 
 interface WatchlistItem {
   key: string;
@@ -48,12 +17,6 @@ interface WatchlistItem {
   volume: string;
   volumeValue: number; // 用于排序的原始数值
   starred: boolean;
-}
-
-interface KlineData {
-  dates: string[];
-  kline: number[][];
-  volumes: number[];
 }
 
 
@@ -213,9 +176,7 @@ const Market: React.FC = () => {
         console.log('[fetchStocks] search params:', params);
       }
 
-      const res = await request.get('/stockInfo/list', {
-        params
-      }) as unknown as ApiResponse<StockInfo[]> & { total?: number };
+      const res = await getStockList(params as { current: number; pageSize: number; keywords?: string });
 
       console.log('[fetchStocks] response:', res);
 
@@ -259,9 +220,7 @@ const Market: React.FC = () => {
   const fetchKlineData = async (code: string, name: string, type: 'daily' | 'weekly' | 'monthly' = 'daily', range?: 'last1Week' | 'last1Month' | 'last1Year' | 'last3Years') => {
     const timeRangeParam = range || timeRange;
     try {
-      const res = await request.get(`/stock-data/kline/${code}`, {
-        params: { type, timeRange: timeRangeParam }
-      }) as { success: boolean; data: KlineData; total: number };
+      const res = await fetchKlineDataApi(code, type, timeRangeParam);
       
       if (res.success && res.data) {
         // 获取最新价格和涨跌幅
@@ -297,10 +256,9 @@ const Market: React.FC = () => {
     fetchTopGainers();
   }, []);
 
-  // 市场统计接口：与后端 /api/stockInfo/marketStats 一致（勿写成 /Info/marketStats）
   const fetchMarketStats = async () => {
     try {
-      const res = await request.get('/stockInfo/marketStats') as ApiResponse<MarketStats>;
+      const res = await fetchMarketStatsApi();
       if (res && res.success === true && res.data != null) {
         setMarketStats(res.data);
       }
@@ -309,10 +267,9 @@ const Market: React.FC = () => {
     }
   };
 
-  // 获取涨幅榜TOP10
   const fetchTopGainers = async () => {
     try {
-      const res = await request.get('/stockInfo/listIncreaseRate') as { success: boolean; data: {code: string; name: string; changePercent: number}[] };
+      const res = await fetchTopGainersApi();
       if (res && res.success && res.data) {
         setTopGainers(res.data);
       }

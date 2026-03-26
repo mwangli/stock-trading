@@ -6,7 +6,6 @@ import com.stock.dataCollector.persistence.PriceRepository;
 import com.stock.dataCollector.service.StockDataService;
 import com.stock.dataCollector.domain.dto.SyncStockListResponseDto;
 import com.stock.dataCollector.domain.dto.StockStatisticsResponseDto;
-import com.stock.dataCollector.domain.dto.StockListPageResponseDto;
 import com.stock.dataCollector.domain.dto.StockDataValidationResponseDto;
 import com.stock.dataCollector.domain.dto.KlineDataResponseDto;
 import lombok.RequiredArgsConstructor;
@@ -126,34 +125,6 @@ public class StockDataController {
                 .build();
 
         return ResponseEntity.ok(statistics);
-    }
-
-    /**
-     * 分页查询股票列表
-     */
-    @GetMapping("/list")
-    public ResponseEntity<StockListPageResponseDto> getStockList(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        log.info("[StockData] 分页查询股票列表 | page={}, size={}", page, size);
-        List<StockInfo> allStocks = stockDataService.findAllStocks();
-        
-        int total = allStocks.size();
-        int fromIndex = (page - 1) * size;
-        int toIndex = Math.min(fromIndex + size, total);
-        
-        List<StockInfo> pageData = fromIndex < total 
-            ? allStocks.subList(fromIndex, toIndex) 
-            : List.of();
-        
-        StockListPageResponseDto response = StockListPageResponseDto.builder()
-                .total(total)
-                .page(page)
-                .size(size)
-                .data(pageData)
-                .build();
-
-        return ResponseEntity.ok(response);
     }
 
     /**

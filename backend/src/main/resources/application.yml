@@ -97,6 +97,12 @@ logging:
     # 临时文件目录（验证码截图、SMS文件）
     tmp-dir: ""
 
+# Chrome Selenium 配置
+chrome:
+  remote:
+    url: http://localhost:4444/wd/hub
+  headless: false
+
 app:
   startup:
     history-sync:

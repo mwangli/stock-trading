@@ -41,7 +41,7 @@ public class JobAdminController {
      *
      * @param id 任务 ID
      */
-    @PostMapping("/run/{id}")
+    @PostMapping("/{id}/run")
     public ResponseDTO<Void> runJob(@PathVariable Long id) {
         log.info("手动运行任务: id={}", id);
         jobSchedulerService.runJobNow(id);
@@ -54,7 +54,7 @@ public class JobAdminController {
      * @param id      任务 ID
      * @param payload 请求体，包含 active 字段
      */
-    @PostMapping("/status/{id}")
+    @PostMapping("/{id}/status")
     public ResponseDTO<Void> toggleStatus(
             @PathVariable Long id,
             @RequestBody(required = true) JobToggleStatusRequestDto payload) {
@@ -69,7 +69,7 @@ public class JobAdminController {
      * @param id      任务 ID
      * @param payload 请求体，包含 cron 字段
      */
-    @PostMapping("/cron/{id}")
+    @PostMapping("/{id}/cron")
     public ResponseDTO<Void> updateCron(
             @PathVariable Long id,
             @RequestBody(required = true) JobUpdateCronRequestDto payload) {

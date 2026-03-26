@@ -44,3 +44,18 @@ export async function analyzeSentiment(text: string): Promise<SentimentAnalyzeRe
     label: normalizedLabel,
   };
 }
+
+/** 重新加载情感分析模型响应 */
+export interface SentimentReloadResponse {
+  success: boolean;
+  message?: string;
+  modelLoaded?: boolean;
+}
+
+/**
+ * 重新加载情感分析模型
+ */
+export async function reloadSentimentModel(): Promise<SentimentReloadResponse> {
+  const data = await request.post('model-sentiment/reload') as SentimentReloadResponse;
+  return data ?? { success: false, message: '情感模型重载失败' };
+}

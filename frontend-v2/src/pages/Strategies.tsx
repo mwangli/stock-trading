@@ -16,8 +16,7 @@ import {
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { getLstmModelList, getLstmModelResult, type LstmModelListItem, type LstmModelListParams, type LstmModelResult } from '../api/lstm';
-import { getSentimentHealth, analyzeSentiment, type SentimentHealth, type SentimentAnalyzeResult } from '../api/sentiment';
-import { reloadSentimentModel } from '../api/sentimentReload';
+import { getSentimentHealth, analyzeSentiment, reloadSentimentModel, type SentimentHealth, type SentimentAnalyzeResult } from '../api/sentiment';
 
 interface SentimentTestSample {
   label: 'positive' | 'neutral' | 'negative';

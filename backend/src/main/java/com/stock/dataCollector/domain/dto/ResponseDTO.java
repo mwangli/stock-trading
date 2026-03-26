@@ -66,5 +66,32 @@ public class ResponseDTO<T> {
                 .data(null)
                 .build();
     }
+
+    /**
+     * 构建成功响应（带自定义消息）
+     *
+     * @param data    业务数据
+     * @param message 提示信息
+     * @param <T>     业务数据类型
+     * @return 成功响应的 ResponseDTO
+     */
+    public static <T> ResponseDTO<T> success(T data, String message) {
+        return ResponseDTO.<T>builder()
+                .success(true)
+                .message(message)
+                .data(data)
+                .build();
+    }
+
+    /**
+     * 构建失败响应（别名方法）
+     *
+     * @param message 错误信息
+     * @param <T>     业务数据类型
+     * @return 失败响应的 ResponseDTO
+     */
+    public static <T> ResponseDTO<T> failure(String message) {
+        return error(message);
+    }
 }
 

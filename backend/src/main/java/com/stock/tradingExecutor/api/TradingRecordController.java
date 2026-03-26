@@ -21,7 +21,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/tradingRecord")
+@RequestMapping("/api/trading-record")
 @RequiredArgsConstructor
 public class TradingRecordController {
 

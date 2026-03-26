@@ -5,15 +5,11 @@ import com.stock.tradingExecutor.domain.dto.CurrentUserResponseDto;
 import com.stock.tradingExecutor.domain.dto.LoginRequestDto;
 import com.stock.tradingExecutor.domain.dto.LoginResponseDto;
 import com.stock.tradingExecutor.domain.dto.LogoutResponseDto;
-import com.stock.tradingExecutor.domain.dto.NoticeDto;
-import com.stock.tradingExecutor.domain.dto.NoticeListResponseDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Collections;
-import java.util.List;
-import java.util.Map;
 
 /**
  * 认证控制器 (Mock)
@@ -82,24 +78,4 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
-    /**
-     * 获取验证码 (Mock)
-     */
-    @GetMapping("/captcha")
-    public ResponseEntity<String> captcha() {
-        return ResponseEntity.ok("mock-captcha");
-    }
-    /**
-     * 获取通知 (Mock)
-     */
-    @GetMapping("/../notices")
-    public ResponseEntity<NoticeListResponseDto> getNotices() {
-        List<NoticeDto> data = List.of();
-        NoticeListResponseDto response = NoticeListResponseDto.builder()
-                .data(data)
-                .total(0)
-                .success(true)
-                .build();
-        return ResponseEntity.ok(response);
-    }
 }

@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/stockInfo")
+@RequestMapping("/api/stock-info")
 @RequiredArgsConstructor
 public class StockInfoController {
 

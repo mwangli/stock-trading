@@ -2,17 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Card, Table, Tag, Button, Switch, Modal, Form, Input, Space, Typography, Tooltip, message } from 'antd';
 import { ScheduleOutlined, PlayCircleOutlined, EditOutlined, ClockCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import request from '../../utils/request';
+import { getJobList, runJob as runJobApi, toggleJobStatus as toggleJobStatusApi, updateJobCron } from '../../api/jobs';
+import type { Job } from '../../api/jobs';
 const { Title, Text } = Typography;
-
-interface Job {
-  id: number;
-  jobName: string;
-  description: string;
-  cronExpression: string;
-  lastRunTime: string | null;
-  status: number; // 1: Active, 0: Paused
-}
 
 const MOCK_JOBS: Job[] = [
   {
@@ -100,7 +92,7 @@ const JobAdmin: React.FC = () => {
   const fetchJobs = async () => {
     setLoading(true);
     try {
-      const res = await request.get('/jobs') as unknown as Job[];
+      const res = await getJobList();
       // 正确的逻辑：HTTP 200 时使用接口数据
       if (Array.isArray(res) && res.length > 0) {
         // 过滤关键字段有效的记录
@@ -129,7 +121,7 @@ const JobAdmin: React.FC = () => {
   const handleRun = async (job: Job) => {
     message.loading({ content: t('jobs.messages.starting', { name: job.jobName }), key: 'runJob' });
     try {
-      await request.post(`/jobs/${job.id}/run`);
+      await runJobApi(job.id);
       message.success({ content: t('jobs.messages.started', { name: job.jobName }), key: 'runJob' });
       setTimeout(fetchJobs, 1000);
     } catch (error) {
@@ -140,7 +132,7 @@ const JobAdmin: React.FC = () => {
 
   const toggleStatus = async (id: number, checked: boolean) => {
     try {
-      await request.post(`/jobs/${id}/status`, { active: checked });
+      await toggleJobStatusApi(id, checked);
       setJobs(jobs.map(j => j.id === id ? { ...j, status: checked ? 1 : 0 } : j));
       message.success(checked ? t('jobs.messages.resumed') : t('jobs.messages.paused'));
     } catch (error) {
@@ -160,7 +152,7 @@ const JobAdmin: React.FC = () => {
       if (!editingJob) return;
 
       try {
-        await request.post(`/jobs/${editingJob.id}/cron`, { cron: values.cronExpression });
+        await updateJobCron(editingJob.id, values.cronExpression);
         setJobs(jobs.map(j => j.id === editingJob.id ? { ...j, cronExpression: values.cronExpression, description: values.description } : j));
         setIsModalVisible(false);
         message.success(t('jobs.messages.updated'));

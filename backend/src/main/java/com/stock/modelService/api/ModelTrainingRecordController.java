@@ -19,18 +19,14 @@ import org.springframework.web.bind.annotation.RestController;
  * LSTM 模型训练状态（已训练/未训练）、最近训练时间、训练耗时等信息。
  * </p>
  *
- * <p>接口路径兼容：</p>
- * <ul>
- *     <li>{@code GET /api/model-training-records}</li>
- *     <li>{@code GET /api/models/training-records}</li>
- * </ul>
+ * <p>接口路径：{@code /api/models/training-records}</p>
  *
  * @author mwangli
  * @since 2026-03-10
  */
 @Slf4j
 @RestController
-@RequestMapping({"/api/model-training-records", "/api/models/training-records"})
+@RequestMapping("/api/models/training-records")
 @RequiredArgsConstructor
 public class ModelTrainingRecordController {
 

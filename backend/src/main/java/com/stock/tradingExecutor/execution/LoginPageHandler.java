@@ -1,25 +1,26 @@
 package com.stock.tradingExecutor.execution;
 
+import com.stock.autoLogin.service.BrowserSessionManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.openqa.selenium.By;
-import org.openqa.selenium.JavascriptExecutor;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
-import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.openqa.selenium.support.ui.WebDriverWait;
+import org.openqa.selenium.*;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
+import java.io.File;
 import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 登录页元素定位与表单操作，与 {@link BrowserSessionManager} 共用同一 WebDriver。
+ * 登录页面处理
+ * 负责登录表单的元素定位、数据输入、验证码处理等
+ * 支持标准登录页（login.html）和手机验证页（activePhone.html）
  *
  * @author mwangli
- * @since 2026-03-22
+ * @since 2026-03-25
  */
 @Slf4j
 @Component
@@ -27,393 +28,340 @@ import java.util.regex.Pattern;
 public class LoginPageHandler {
 
     private final BrowserSessionManager browserSessionManager;
-    private static final int DEFAULT_TIMEOUT = 15;
 
-    private WebDriver requireDriver() {
-        if (!browserSessionManager.isRunning()) {
-            return null;
-        }
-        return browserSessionManager.getDriver();
-    }
+    // ===== 标准登录页元素定位器 =====
 
-    public boolean inputAccount(String account) {
-        WebDriver driver = requireDriver();
-        if (driver == null) {
-            log.error("[LoginPageHandler] 驱动未初始化");
-            return false;
-        }
+    private static final By ACCOUNT_LOCATOR = By.xpath(
+            "//input[contains(@placeholder, '资金账号')] | " +
+            "//input[contains(@placeholder, '账号')] | " +
+            "//input[contains(@placeholder, '手机号')] | " +
+            "//input[@id='account']"
+    );
+
+    private static final By PASSWORD_LOCATOR = By.xpath(
+            "//input[contains(@placeholder, '交易密码')] | " +
+            "//input[@type='password']"
+    );
+
+    private static final By CAPTCHA_INPUT_LOCATOR = By.xpath(
+            "//input[contains(@placeholder, '四则运算')] | " +
+            "//input[contains(@placeholder, '运算结果')] | " +
+            "//input[contains(@placeholder, '验证码')]"
+    );
+
+    private static final By CAPTCHA_IMAGE_LOCATOR = By.xpath(
+            "//img[@width >= 50 and @width <= 250 and " +
+            "@height >= 15 and @height <= 80]"
+    );
+
+    private static final By PRIVACY_CHECKBOX = By.xpath(
+            "(//input[@type='checkbox'])[1]"
+    );
+    private static final By AUTHORIZATION_CHECKBOX = By.xpath(
+            "(//input[@type='checkbox'])[2]"
+    );
+
+    private static final By LOGIN_BUTTON = By.xpath(
+            "//button[contains(text(), '登录')] | " +
+            "//div[contains(text(), '登录')] | " +
+            "//span[contains(text(), '登录')]"
+    );
+
+    // ===== 手机验证页元素定位器 =====
+
+    private static final By SMS_CODE_BUTTON = By.xpath(
+            "//button[contains(., '获取验证码')] | " +
+            "//a[contains(., '获取验证码')] | " +
+            "//div[contains(., '获取验证码')] | " +
+            "//span[contains(., '获取验证码')] | " +
+            "//*[contains(., '点击获取验证码')]"
+    );
+
+    private static final By SMS_CODE_INPUT = By.xpath(
+            "//input[contains(@placeholder, '手机验证码')] | " +
+            "//input[contains(@placeholder, '验证码')]"
+    );
+
+    private static final By NEXT_STEP_BUTTON = By.xpath(
+            "//button[contains(text(), '下一步')] | " +
+            "//a[contains(text(), '下一步')] | " +
+            "//div[contains(text(), '下一步')] | " +
+            "//*[contains(text(), '下一步')]"
+    );
+
+    private static final By CONFIRM_BUTTON = By.xpath(
+            "//button[contains(text(), '确定')] | " +
+            "//a[contains(text(), '确定')] | " +
+            "//div[contains(text(), '确定')] | " +
+            "//*[contains(text(), '确定')]"
+    );
+
+    /**
+     * 输入账号/手机号（自动选择可见的输入框）
+     */
+    public void inputAccount(String account) {
+        WebDriver driver = browserSessionManager.getDriver();
         try {
-            WebElement accountInput = findAccountInput(driver);
-            if (accountInput == null) {
-                log.error("[LoginPageHandler] 未找到账号输入框");
-                return false;
-            }
-            humanType(accountInput, account);
-            log.info("[LoginPageHandler] 账号输入成功");
-            return true;
+            WebElement accountInput = findVisibleElement(driver, ACCOUNT_LOCATOR);
+            browserSessionManager.humanLikeInput(accountInput, account);
+            log.info("账号输入完成: {}", account);
         } catch (Exception e) {
-            log.error("[LoginPageHandler] 账号输入失败: {}", e.getMessage());
-            return false;
+            log.error("输入账号失败: {}", e.getMessage());
+            throw new RuntimeException("输入账号失败", e);
         }
     }
 
-    public boolean inputPassword(String password) {
-        WebDriver driver = requireDriver();
-        if (driver == null) {
-            log.error("[LoginPageHandler] 驱动未初始化");
-            return false;
-        }
-        try {
-            WebElement passwordInput = findPasswordInput(driver);
-            if (passwordInput == null) {
-                log.error("[LoginPageHandler] 未找到密码输入框");
-                return false;
+    /**
+     * 在匹配元素中找到第一个可见的
+     */
+    private WebElement findVisibleElement(WebDriver driver, By locator) {
+        List<WebElement> elements = driver.findElements(locator);
+        for (WebElement el : elements) {
+            try {
+                if (el.isDisplayed()) {
+                    return el;
+                }
+            } catch (Exception ignored) {
             }
-            humanType(passwordInput, password);
-            log.info("[LoginPageHandler] 密码输入成功");
-            return true;
+        }
+        // 如果没有可见的，返回第一个（让 Selenium 报原始错误）
+        if (!elements.isEmpty()) {
+            return elements.get(0);
+        }
+        throw new NoSuchElementException("未找到元素: " + locator);
+    }
+
+    /**
+     * 输入密码
+     */
+    public void inputPassword(String password) {
+        WebDriver driver = browserSessionManager.getDriver();
+        try {
+            WebElement passwordInput = findVisibleElement(driver, PASSWORD_LOCATOR);
+            browserSessionManager.humanLikeInput(passwordInput, password);
+            log.info("密码输入完成");
         } catch (Exception e) {
-            log.error("[LoginPageHandler] 密码输入失败: {}", e.getMessage());
-            return false;
+            log.error("输入密码失败: {}", e.getMessage());
+            throw new RuntimeException("输入密码失败", e);
         }
     }
 
-    public String extractCaptchaText() {
-        WebDriver driver = requireDriver();
-        if (driver == null) {
-            log.error("[LoginPageHandler] 驱动未初始化");
-            return null;
-        }
+    /**
+     * 输入验证码
+     */
+    public void inputCaptcha(String captcha) {
+        WebDriver driver = browserSessionManager.getDriver();
         try {
-            JavascriptExecutor js = (JavascriptExecutor) driver;
-            String script = """
-                const elements = document.querySelectorAll('div, span, p');
-                for (let element of elements) {
-                    const text = element.textContent || element.innerText;
-                    if (text && (text.includes('+') || text.includes('-') || text.includes('*') || text.includes('/')) && text.includes('=')) {
-                        return text.trim();
+            WebElement captchaInput = findVisibleElement(driver, CAPTCHA_INPUT_LOCATOR);
+            browserSessionManager.humanLikeInput(captchaInput, captcha);
+            log.info("验证码输入完成: {}", captcha);
+        } catch (Exception e) {
+            log.error("输入验证码失败: {}", e.getMessage());
+            throw new RuntimeException("输入验证码失败", e);
+        }
+    }
+
+    /**
+     * 勾选协议（隐私条款 + 授权书）
+     */
+    public void checkAgreements() {
+        WebDriver driver = browserSessionManager.getDriver();
+        try {
+            // 勾选所有可见的 checkbox
+            List<WebElement> checkboxes = driver.findElements(By.xpath("//input[@type='checkbox']"));
+            int checked = 0;
+            for (WebElement cb : checkboxes) {
+                try {
+                    if (cb.isDisplayed() && !cb.isSelected()) {
+                        browserSessionManager.safeClick(cb);
+                        checked++;
+                    }
+                } catch (Exception e) {
+                    log.debug("勾选 checkbox 失败: {}", e.getMessage());
+                }
+            }
+            log.info("协议勾选完成，共勾选 {} 个", checked);
+        } catch (Exception e) {
+            log.error("勾选协议失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 提取并计算数学验证码
+     */
+    public String calculateMathCaptcha() {
+        WebDriver driver = browserSessionManager.getDriver();
+        try {
+            WebElement captchaImg = driver.findElement(CAPTCHA_IMAGE_LOCATOR);
+            String altText = captchaImg.getAttribute("alt");
+            if (altText != null && altText.matches(".*\\d.*[+\\-×÷].*")) {
+                String result = evaluateExpression(altText);
+                if (result != null) {
+                    log.info("数学验证码计算成功: {} = {}", altText, result);
+                    return result;
+                }
+            }
+
+            try {
+                WebElement label = captchaImg.findElement(By.xpath(
+                        "preceding-sibling::*[contains(text(), '?')] | " +
+                        "following-sibling::*[contains(text(), '?')]"
+                ));
+                if (label != null) {
+                    String result = evaluateExpression(label.getText());
+                    if (result != null) {
+                        log.info("数学验证码计算成功: {} = {}", label.getText(), result);
+                        return result;
                     }
                 }
-                return null;
-            """;
-            String captchaText = (String) js.executeScript(script);
-            if (captchaText != null) {
-                log.info("[LoginPageHandler] 提取到验证码文本: {}", captchaText);
-            } else {
-                log.warn("[LoginPageHandler] 未找到验证码文本");
+            } catch (Exception e) {
+                log.debug("未找到验证码标签: {}", e.getMessage());
             }
-            return captchaText;
+
+            log.warn("无法提取数学算式，需要人工识别");
+            return null;
         } catch (Exception e) {
-            log.error("[LoginPageHandler] 提取验证码文本失败: {}", e.getMessage());
+            log.error("计算数学验证码失败: {}", e.getMessage());
             return null;
         }
     }
 
-    public int calculateCaptcha(String captchaText) {
-        if (captchaText == null || captchaText.isEmpty()) {
-            log.error("[LoginPageHandler] 验证码文本为空");
-            return -1;
-        }
-        try {
-            String equation = captchaText.split("=")[0].trim();
-            log.info("[LoginPageHandler] 解析算式: {}", equation);
-            int result = evaluateExpression(equation);
-            log.info("[LoginPageHandler] 计算结果: {} = {}", equation, result);
-            return result;
-        } catch (Exception e) {
-            log.error("[LoginPageHandler] 算式解析失败: {}", e.getMessage());
-            return -1;
-        }
-    }
-
-    private int evaluateExpression(String expression) {
-        expression = expression.replaceAll("\\s+", "");
-        Pattern pattern = Pattern.compile("(\\d+)([+\\-*/])(\\d+)");
-        Matcher matcher = pattern.matcher(expression);
+    private String evaluateExpression(String expr) {
+        expr = expr.replace('×', '*').replace('÷', '/');
+        Matcher matcher = Pattern.compile("(\\d+)\\s*([+\\-*/])\\s*(\\d+)").matcher(expr);
         if (matcher.find()) {
             int a = Integer.parseInt(matcher.group(1));
-            String op = matcher.group(2);
+            char op = matcher.group(2).charAt(0);
             int b = Integer.parseInt(matcher.group(3));
-            return switch (op) {
-                case "+" -> a + b;
-                case "-" -> a - b;
-                case "*" -> a * b;
-                case "/" -> a / b;
-                default -> throw new IllegalArgumentException("不支持的运算符: " + op);
+            int result = switch (op) {
+                case '+' -> a + b;
+                case '-' -> a - b;
+                case '*' -> a * b;
+                case '/' -> a / b;
+                default -> throw new IllegalArgumentException("未知运算符：" + op);
             };
-        }
-        throw new IllegalArgumentException("无法解析表达式: " + expression);
-    }
-
-    public boolean inputCaptcha(String captcha) {
-        WebDriver driver = requireDriver();
-        if (driver == null) {
-            log.error("[LoginPageHandler] 驱动未初始化");
-            return false;
-        }
-        try {
-            WebElement captchaInput = findCaptchaInput(driver);
-            if (captchaInput == null) {
-                log.error("[LoginPageHandler] 未找到验证码输入框");
-                return false;
-            }
-            humanType(captchaInput, captcha);
-            log.info("[LoginPageHandler] 验证码输入成功: {}", captcha);
-            return true;
-        } catch (Exception e) {
-            log.error("[LoginPageHandler] 验证码输入失败: {}", e.getMessage());
-            return false;
-        }
-    }
-
-    public boolean checkAgreement() {
-        WebDriver driver = requireDriver();
-        if (driver == null) {
-            log.error("[LoginPageHandler] 驱动未初始化");
-            return false;
-        }
-        try {
-            JavascriptExecutor js = (JavascriptExecutor) driver;
-            // 勾选所有未选中的 checkbox（《隐私保护条款》和《授权书》）
-            String script = """
-                const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-                let checkedCount = 0;
-                for (let checkbox of checkboxes) {
-                    if (!checkbox.checked) {
-                        checkbox.click();
-                        checkbox.dispatchEvent(new Event('change', {bubbles: true}));
-                        checkbox.dispatchEvent(new Event('click', {bubbles: true}));
-                        checkedCount++;
-                    }
-                }
-                return checkedCount;
-            """;
-            Long count = (Long) js.executeScript(script);
-            if (count != null && count > 0) {
-                log.info("[LoginPageHandler] 同意条款勾选成功，勾选了 {} 个复选框", count);
-            }
-            return true;
-        } catch (Exception e) {
-            log.error("[LoginPageHandler] 同意条款勾选失败: {}", e.getMessage());
-            return false;
-        }
-    }
-
-    public boolean clickLoginButton() {
-        WebDriver driver = requireDriver();
-        if (driver == null) {
-            log.error("[LoginPageHandler] 驱动未初始化");
-            return false;
-        }
-        try {
-            JavascriptExecutor js = (JavascriptExecutor) driver;
-            String script = """
-                const buttons = document.querySelectorAll('button');
-                for (let button of buttons) {
-                    const text = button.textContent || button.innerText;
-                    const className = button.className;
-                    if (text.includes('登录') || className.includes('login')) {
-                        button.scrollIntoView({behavior: 'smooth', block: 'center'});
-                        button.dispatchEvent(new Event('mouseover', {bubbles: true}));
-                        button.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0, buttons: 1}));
-                        button.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0, buttons: 0}));
-                        button.click();
-                        return true;
-                    }
-                }
-                const divs = document.querySelectorAll('div');
-                for (let div of divs) {
-                    const text = div.textContent || div.innerText;
-                    const className = div.className;
-                    if (text.includes('登录') && (className.includes('btn') || className.includes('login'))) {
-                        div.scrollIntoView({behavior: 'smooth', block: 'center'});
-                        div.click();
-                        return true;
-                    }
-                }
-                return false;
-            """;
-            Boolean result = (Boolean) js.executeScript(script);
-            if (Boolean.TRUE.equals(result)) {
-                log.info("[LoginPageHandler] 点击登录按钮成功");
-                return true;
-            } else {
-                log.warn("[LoginPageHandler] 未找到登录按钮");
-                return false;
-            }
-        } catch (Exception e) {
-            log.error("[LoginPageHandler] 点击登录按钮失败: {}", e.getMessage());
-            return false;
-        }
-    }
-
-    public boolean isOnLoginPage() {
-        WebDriver driver = requireDriver();
-        if (driver == null) {
-            return false;
-        }
-        String url = driver.getCurrentUrl();
-        return url != null && url.contains("login.html");
-    }
-
-    public boolean isLoginSuccess() {
-        WebDriver driver = requireDriver();
-        if (driver == null) {
-            return false;
-        }
-        String url = driver.getCurrentUrl();
-        return url != null && !url.contains("login.html") && !url.contains("activePhone");
-    }
-
-    private WebElement findAccountInput(WebDriver driver) {
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(DEFAULT_TIMEOUT));
-        // 1. 优先：placeholder 含 "资金账号"（实际页面: "请输入资金账号"）
-        try {
-            return wait.until(ExpectedConditions.elementToBeClickable(
-                    By.cssSelector("input[placeholder*='资金账号']")));
-        } catch (Exception e) {
-            log.debug("[LoginPageHandler] 通过'资金账号'占位符查找失败，尝试其他方式");
-        }
-        // 2. id/name
-        try {
-            return wait.until(ExpectedConditions.elementToBeClickable(
-                    By.cssSelector("input[id='account'], input[name='account']")));
-        } catch (Exception e) {
-            log.debug("[LoginPageHandler] 通过ID/Name查找失败，遍历查找");
-        }
-        // 3. 遍历 input，匹配 placeholder 含 "账号"
-        try {
-            List<WebElement> inputs = driver.findElements(By.tagName("input"));
-            for (WebElement input : inputs) {
-                String placeholder = input.getAttribute("placeholder");
-                if (placeholder != null && (placeholder.contains("账号") || placeholder.contains("资金"))) {
-                    return input;
-                }
-            }
-        } catch (Exception e) {
-            log.debug("[LoginPageHandler] 遍历查找账号输入框失败: {}", e.getMessage());
+            return String.valueOf(result);
         }
         return null;
     }
 
-    private WebElement findPasswordInput(WebDriver driver) {
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(DEFAULT_TIMEOUT));
-        // 1. 优先：placeholder 含 "交易密码"（实际页面: "请输入交易密码"）
+    /**
+     * 截图保存验证码图片
+     */
+    public File captureCaptchaImage() {
+        WebDriver driver = browserSessionManager.getDriver();
         try {
-            return wait.until(ExpectedConditions.elementToBeClickable(
-                    By.cssSelector("input[placeholder*='交易密码']")));
+            WebElement captchaImg = driver.findElement(CAPTCHA_IMAGE_LOCATOR);
+            File screenshot = captchaImg.getScreenshotAs(OutputType.FILE);
+            Path captchaPath = Paths.get(".tmp/captcha_image.png");
+            Files.createDirectories(captchaPath.getParent());
+            Files.copy(screenshot.toPath(), captchaPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            log.info("验证码图片已保存：{}", captchaPath.toAbsolutePath());
+            return captchaPath.toFile();
         } catch (Exception e) {
-            log.debug("[LoginPageHandler] 通过'交易密码'占位符查找失败，尝试type查找");
+            log.error("截图保存失败: {}", e.getMessage());
+            throw new RuntimeException("截图保存失败", e);
         }
-        // 2. type=password
-        try {
-            return wait.until(ExpectedConditions.elementToBeClickable(
-                    By.cssSelector("input[type='password']")));
-        } catch (Exception e) {
-            log.debug("[LoginPageHandler] 通过type=password查找失败，遍历查找");
-        }
-        // 3. 遍历匹配
-        try {
-            List<WebElement> inputs = driver.findElements(By.tagName("input"));
-            for (WebElement input : inputs) {
-                String placeholder = input.getAttribute("placeholder");
-                String type = input.getAttribute("type");
-                if ((placeholder != null && placeholder.contains("密码")) || "password".equals(type)) {
-                    return input;
-                }
-            }
-        } catch (Exception e) {
-            log.debug("[LoginPageHandler] 遍历查找密码输入框失败: {}", e.getMessage());
-        }
-        return null;
     }
 
-    private WebElement findCaptchaInput(WebDriver driver) {
-        // 1. 优先：placeholder 含 "四则运算"（实际页面: "请输入四则运算的运算结果"）
+    /**
+     * 点击登录按钮
+     */
+    public void clickLoginButton() {
+        WebDriver driver = browserSessionManager.getDriver();
         try {
-            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(5));
-            return wait.until(ExpectedConditions.elementToBeClickable(
-                    By.cssSelector("input[placeholder*='四则运算'], input[placeholder*='运算结果']")));
+            WebElement loginButton = findVisibleElement(driver, LOGIN_BUTTON);
+            browserSessionManager.safeClick(loginButton);
+            log.info("登录按钮已点击");
         } catch (Exception e) {
-            log.debug("[LoginPageHandler] 通过'四则运算'占位符查找失败，遍历查找");
+            log.error("点击登录按钮失败: {}", e.getMessage());
+            throw new RuntimeException("点击登录按钮失败", e);
         }
-        // 2. 遍历匹配
-        try {
-            List<WebElement> inputs = driver.findElements(By.tagName("input"));
-            for (WebElement input : inputs) {
-                String placeholder = input.getAttribute("placeholder");
-                if (placeholder != null && (placeholder.contains("运算") || placeholder.contains("结果")
-                        || placeholder.contains("验证码"))) {
-                    return input;
-                }
-            }
-        } catch (Exception e) {
-            log.debug("[LoginPageHandler] 查找验证码输入框失败: {}", e.getMessage());
-        }
-        return null;
     }
 
-    private void humanType(WebElement element, String text) {
-        WebDriver driver = requireDriver();
-        if (driver == null) {
-            return;
-        }
-        JavascriptExecutor js = (JavascriptExecutor) driver;
-        // 先用 JS 聚焦
+    /**
+     * 点击「获取验证码」按钮（手机验证页）
+     * 策略：先用 XPath 定位，失败则用 JavaScript 全文搜索点击
+     */
+    public void clickSendCodeButton() {
+        WebDriver driver = browserSessionManager.getDriver();
+        // 策略1：XPath 定位
         try {
-            js.executeScript("arguments[0].scrollIntoView({block:'center'}); arguments[0].focus(); arguments[0].value = '';", element);
-            Thread.sleep(200);
-        } catch (Exception ignored) {
-        }
-        // 尝试 sendKeys
-        try {
-            element.clear();
-            for (int i = 0; i < text.length(); i++) {
-                element.sendKeys(String.valueOf(text.charAt(i)));
-                js.executeScript("arguments[0].dispatchEvent(new Event('input', {bubbles: true}));", element);
-                Thread.sleep(80 + (int) (Math.random() * 60));
-            }
+            WebElement sendButton = findVisibleElement(driver, SMS_CODE_BUTTON);
+            browserSessionManager.safeClick(sendButton);
+            log.info("获取验证码按钮已点击（XPath）");
             return;
         } catch (Exception e) {
-            log.debug("[LoginPageHandler] sendKeys 失败，回退到 JS 输入: {}", e.getMessage());
+            log.warn("XPath 定位获取验证码按钮失败，尝试 JS 方式: {}", e.getMessage());
         }
-        // 回退到 JS 输入
+
+        // 策略2：JavaScript 全文搜索
         try {
-            js.executeScript("arguments[0].value = '';", element);
-            for (int i = 0; i < text.length(); i++) {
-                String current = text.substring(0, i + 1);
-                js.executeScript(
-                        "arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input', {bubbles:true}));",
-                        element, current);
-                Thread.sleep(80 + (int) (Math.random() * 60));
+            org.openqa.selenium.JavascriptExecutor js = (org.openqa.selenium.JavascriptExecutor) driver;
+            Boolean clicked = (Boolean) js.executeScript(
+                    "var all = document.querySelectorAll('a,button,div,span,input[type=button]');" +
+                    "for (var i = 0; i < all.length; i++) {" +
+                    "  var t = all[i].innerText || all[i].textContent || '';" +
+                    "  if (t.includes('获取验证码') && all[i].offsetParent !== null) {" +
+                    "    all[i].click(); return true;" +
+                    "  }" +
+                    "}" +
+                    "return false;"
+            );
+            if (Boolean.TRUE.equals(clicked)) {
+                log.info("获取验证码按钮已点击（JS）");
+                return;
             }
-            js.executeScript("arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", element);
-        } catch (Exception ex) {
-            log.error("[LoginPageHandler] JS 输入也失败: {}", ex.getMessage());
+        } catch (Exception e) {
+            log.error("JS 点击获取验证码失败: {}", e.getMessage());
+        }
+
+        throw new RuntimeException("点击获取验证码按钮失败：XPath 和 JS 均未找到目标元素");
+    }
+
+    /**
+     * 输入短信验证码
+     */
+    public void inputSmsCode(String code) {
+        WebDriver driver = browserSessionManager.getDriver();
+        try {
+            WebElement codeInput = findVisibleElement(driver, SMS_CODE_INPUT);
+            browserSessionManager.humanLikeInput(codeInput, code);
+            log.info("短信验证码输入完成");
+        } catch (Exception e) {
+            log.error("输入短信验证码失败: {}", e.getMessage());
+            throw new RuntimeException("输入短信验证码失败", e);
         }
     }
 
-    public void simulateHumanBehavior() {
-        simulateMouseMove();
-        browserSessionManager.randomWait(1, 2);
+    /**
+     * 点击「下一步」/「登录」按钮（手机验证页）
+     */
+    public void clickNextStepButton() {
+        WebDriver driver = browserSessionManager.getDriver();
+        try {
+            WebElement nextButton = findVisibleElement(driver, NEXT_STEP_BUTTON);
+            browserSessionManager.safeClick(nextButton);
+            log.info("下一步按钮已点击");
+        } catch (Exception e) {
+            log.error("点击下一步按钮失败: {}", e.getMessage());
+            throw new RuntimeException("点击下一步按钮失败", e);
+        }
     }
 
-    private void simulateMouseMove() {
-        WebDriver driver = requireDriver();
-        if (driver == null) {
-            return;
+    /**
+     * 点击「确定」按钮（滑块验证后）
+     */
+    public void clickConfirmButton() {
+        WebDriver driver = browserSessionManager.getDriver();
+        try {
+            WebElement confirmButton = driver.findElement(CONFIRM_BUTTON);
+            browserSessionManager.safeClick(confirmButton);
+            log.info("确定按钮已点击");
+        } catch (NoSuchElementException e) {
+            log.info("未找到确定按钮（可能不需要此步骤）");
+        } catch (Exception e) {
+            log.warn("点击确定按钮失败: {}", e.getMessage());
         }
-        JavascriptExecutor js = (JavascriptExecutor) driver;
-        js.executeScript("""
-            const startX = Math.random() * window.innerWidth * 0.8 + window.innerWidth * 0.1;
-            const startY = Math.random() * window.innerHeight * 0.8 + window.innerHeight * 0.1;
-            const endX = Math.random() * window.innerWidth * 0.8 + window.innerWidth * 0.1;
-            const endY = Math.random() * window.innerHeight * 0.8 + window.innerHeight * 0.1;
-            for (let i = 0; i < 15; i++) {
-                const x = startX + (endX - startX) * i / 15 + (Math.random() - 0.5) * 15;
-                const y = startY + (endY - startY) * i / 15 + (Math.random() - 0.5) * 15;
-                document.dispatchEvent(new MouseEvent('mousemove', {clientX: x, clientY: y, bubbles: true}));
-            }
-        """);
     }
 }
