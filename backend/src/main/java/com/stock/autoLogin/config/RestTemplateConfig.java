@@ -1,4 +1,4 @@
-package com.stock.config;
+package com.stock.autoLogin.config;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,7 +22,7 @@ import java.net.Proxy;
 @Configuration
 public class RestTemplateConfig {
 
-    @Bean
+    @Bean(name = "autoLoginRestTemplate")
     public RestTemplate restTemplate(
             @Value("${app.securities.proxy.enabled:false}") boolean proxyEnabled,
             @Value("${app.securities.proxy.host:127.0.0.1}") String proxyHost,

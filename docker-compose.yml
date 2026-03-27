@@ -4,19 +4,27 @@ services:
   # 直接启动 Chrome 并暴露 DevTools 端口，后端通过 CDP 直连
   # ===================
   chrome:
-    image: selenium/standalone-chrome:latest
+    image: selenium/chrome:latest
     container_name: stock-chrome
     ports:
       - "9222:9222"    # Chrome DevTools 协议端口（CDP 直连）
       - "7900:7900"    # VNC 可视化端口（可选）
+    mem_limit: 1500m  # 限制容器最大内存1.5GB（适配4G服务器）
     shm_size: '2gb'
     volumes:
-      - chrome-userdata:/home/seluser/.config/chromium   # Cookie 持久化
+      - chrome-userdata:/home/seluser/chrome-data   # Cookie 持久化
+    environment:
+      - CHROME_PORT=9222
     networks:
       - stock-network
     restart: unless-stopped
-    # 启动独立的 Chrome（不通过 Selenium Grid），支持 --user-data-dir 持久化
-    command: bash -c "Xvfb :99 -screen 0 1920x1080x24 & sleep 2 && google-chrome --remote-debugging-port=9222 --user-data-dir=/home/seluser/.config/chromium --disable-blink-features=AutomationControlled --no-sandbox --disable-dev-shm-usage --disable-gpu"
+    # 直接启动 Chrome，支持 CDP 和会话持久化
+    command: >
+      bash -c "
+        rm -f /tmp/.X*-lock /home/seluser/chrome-data/SingletonLock 2>/dev/null;
+        mkdir -p /home/seluser/chrome-data && chown -R seluser:seluser /home/seluser/chrome-data &&
+        su - seluser -c 'google-chrome --headless=new --remote-debugging-port=9222 --user-data-dir=/home/seluser/chrome-data --disable-blink-features=AutomationControlled --no-sandbox --disable-dev-shm-usage --disable-gpu'
+      "
 
   # ===================
   # Backend Service（CI 推送至阿里云 ACR，服务器拉取）
@@ -34,6 +42,9 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:mysql://stock-mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
       - SPRING_DATA_MONGODB_URI=mongodb://admin:${GLOBAL_DB_PASSWORD}@stock-mongo:27017/stock_trading?authSource=admin
       - SPRING_REDIS_HOST=stock-redis
+      - CHROME_MODE=docker
+      - CHROME_DEBUG_PORT=9222
+      - CHROME_USER_DATA_DIR=/home/seluser/chrome-data
     depends_on:
       - stock-mysql
       - stock-mongo

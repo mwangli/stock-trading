@@ -4,6 +4,7 @@ import com.stock.autoLogin.enums.SliderType;
 import com.stock.autoLogin.service.BrowserSessionManager;
 import com.stock.autoLogin.service.CaptchaFetchService;
 import com.stock.autoLogin.service.CookieManager;
+import com.stock.autoLogin.service.MathCaptchaService;
 import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.tradingExecutor.execution.CaptchaService;
 import com.stock.tradingExecutor.execution.LoginPageHandler;
@@ -52,6 +53,7 @@ public class BrowserApiController {
     private final CaptchaService captchaService;
     private final CookieManager cookieManager;
     private final CaptchaFetchService captchaFetchService;
+    private final MathCaptchaService mathCaptchaService;
 
     // ==================== 通用操作 ====================
 
@@ -84,6 +86,27 @@ public class BrowserApiController {
             log.warn("等待页面加载超时，继续执行: {}", e.getMessage());
         }
         return ResponseDTO.success(null, "已访问登录页面");
+    }
+
+    /**
+     * 刷新当前页面
+     * 用于导航后确保页面内容正确加载
+     */
+    @PostMapping("/refresh")
+    public ResponseDTO<Void> refreshPage() {
+        log.info("刷新当前页面");
+        WebDriver driver = browserSessionManager.getDriver();
+        driver.navigate().refresh();
+        try {
+            new org.openqa.selenium.support.ui.WebDriverWait(driver, java.time.Duration.ofSeconds(10))
+                    .until(d -> !d.findElements(org.openqa.selenium.By.xpath(
+                            "//input[contains(@placeholder, '手机号')] | //input[@type='password']"
+                    )).isEmpty());
+            log.info("页面刷新完成，内容已加载");
+        } catch (Exception e) {
+            log.warn("刷新后等待页面加载超时: {}", e.getMessage());
+        }
+        return ResponseDTO.success(null, "页面刷新完成");
     }
 
     /**
@@ -146,20 +169,27 @@ public class BrowserApiController {
     }
 
     /**
-     * 截取验证码（自动计算或截图）
+     * 截取验证码（通过API获取图片Base64进行OCR识别）
      */
     @GetMapping("/login/capture-captcha")
-    public ResponseDTO<String> captureCaptcha() {
-        log.info("截取验证码");
-        String mathResult = loginPageHandler.calculateMathCaptcha();
-        if (mathResult != null) {
-            return ResponseDTO.success(mathResult, "数学验证码自动计算完成");
+    public ResponseDTO<Map<String, Object>> captureCaptcha(
+            @RequestParam(required = false) String account) {
+        log.info("通过API获取验证码图片并进行OCR识别");
+
+        if (account == null || account.isEmpty()) {
+            account = "13278828091";
         }
-        File captchaImage = loginPageHandler.captureCaptchaImage();
-        return ResponseDTO.success(
-                captchaImage.getAbsolutePath(),
-                "验证码图片已保存，请人工识别后调用 input-captcha 接口"
-        );
+
+        Map<String, Object> result = mathCaptchaService.getCaptchaResult(account);
+
+        if ((boolean) result.getOrDefault("success", false)) {
+            Map<String, Object> data = new HashMap<>();
+            data.put("expression", result.get("expression"));
+            data.put("result", result.get("result"));
+            return ResponseDTO.success(data, "验证码识别成功");
+        } else {
+            return ResponseDTO.failure("验证码识别失败: " + result.getOrDefault("error", "未知错误"));
+        }
     }
 
     /**
@@ -415,7 +445,7 @@ public class BrowserApiController {
 
     /**
      * 输入短信验证码
-     * - 如果 code 参数为空，使用增强版获取逻辑（Redis 3次重试 + 邮箱获取）
+     * - 如果 code 参数为空，通过邮件获取验证码
      * - 如果 code 参数有值，直接使用传入的值
      */
     @PostMapping("/phone/input-code")
@@ -423,12 +453,12 @@ public class BrowserApiController {
         log.info("输入短信验证码");
 
         if (code == null || code.trim().isEmpty()) {
-            log.info("未提供验证码，使用增强版获取逻辑");
+            log.info("未提供验证码，通过邮件获取");
             code = captchaFetchService.getPhoneCode();
             if (code == null) {
-                return ResponseDTO.failure("增强获取失败：Redis和邮箱均未获取到验证码");
+                return ResponseDTO.failure("邮件获取验证码失败");
             }
-            log.info("增强获取验证码成功: {}", code);
+            log.info("邮件获取验证码成功: {}", code);
         }
 
         browserSessionManager.ensureLoginFrame();
@@ -436,7 +466,7 @@ public class BrowserApiController {
 
         Map<String, Object> result = new HashMap<>();
         result.put("code", code);
-        result.put("source", "enhanced");
+        result.put("source", "email");
         return ResponseDTO.success(result, "验证码输入成功");
     }
 
@@ -463,33 +493,6 @@ public class BrowserApiController {
         } else {
             return ResponseDTO.failure("验证码获取失败");
         }
-    }
-
-    /**
-     * 从 Redis 获取短信验证码（仅获取，不删除）
-     */
-    @GetMapping("/phone/code-from-redis")
-    public ResponseDTO<Map<String, Object>> getPhoneCodeFromRedis() {
-        String code = captchaFetchService.peekRedisCode();
-        Map<String, Object> result = new HashMap<>();
-        if (code != null) {
-            result.put("code", code);
-            result.put("source", "redis");
-            return ResponseDTO.success(result, "验证码获取成功");
-        } else {
-            return ResponseDTO.failure("Redis 中未找到验证码");
-        }
-    }
-
-    /**
-     * 清除 Redis 中的验证码
-     */
-    @PostMapping("/phone/clear-redis")
-    public ResponseDTO<Map<String, Object>> clearRedisCode() {
-        boolean success = captchaFetchService.clearRedisCode();
-        Map<String, Object> result = new HashMap<>();
-        result.put("success", success);
-        return ResponseDTO.success(result, success ? "Redis 验证码已清除" : "清除失败");
     }
 
     /**

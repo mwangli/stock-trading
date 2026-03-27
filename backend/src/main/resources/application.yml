@@ -107,15 +107,17 @@ logging:
 
 # Chrome Selenium 配置
 chrome:
-  # 直连模式（CDP）- 直接连接 Chrome DevTools 端口，实现会话持久化
-  # 优点：--user-data-dir 持久化完全生效，Cookie/Session 保持
+  # 浏览器模式: local(本地CDP直连) / remote(Selenium Grid)
+  mode: local
+  # 直连模式（CDP）- 直接连接 Chrome DevTools 端口
   directConnect: true
   debugger:
-    url: http://localhost:9222
+    # CDP 调试端口
+    url: http://localhost:${CHROME_DEBUG_PORT:9222}
   headless: false
   # 浏览器持久化目录
-  # Chrome Docker 已挂载 chrome-userdata 卷到 /home/seluser/.config/chromium
-  userDataDir: /home/seluser/.config/chromium
+  # 本地 Windows: C:\Users\<用户名>\chrome-sessions\stock
+  userDataDir: ${CHROME_USER_DATA_DIR:}
 
 app:
   startup:

@@ -1,93 +1,89 @@
-# 会话持久化任务清单 - 直连模式
+# 浏览器会话持久化任务清单 - CDP 直连模式
 
 ## 问题背景
 
-中信证券平台**每天最多获取8次验证码**，必须实现会话持久化来避免重复手机验证。
-
-## 方案：直连模式（CDP）
-
-已全面转向直连模式，删除所有 Grid 相关代码和配置。
+通过 CDP 直连模式实现浏览器会话持久化，删除所有 Selenium Grid 相关配置。
 
 ---
 
-## Task 1: 配置修改
+## Task 1: 环境变量配置
 
-- [x] 1.1 修改 application.yml - 启用 directConnect: true
-- [x] 1.2 删除 chrome.remote.url 配置
-- [x] 1.3 修改 docker-compose.yml - 删除 Grid 配置，保留 9222 端口
+- [x] 1.1 application.yml 支持 `CHROME_DEBUG_PORT` 环境变量
+- [x] 1.2 application.yml 支持 `CHROME_USER_DATA_DIR` 环境变量
+- [x] 1.3 `directConnect: true` 配置
 
-## Task 2: 代码修改
+## Task 2: 本地 Chrome 启动脚本
 
-- [x] 2.1 BrowserSessionManager.java - 删除 Grid/RemoteWebDriver 代码
-- [x] 2.2 BrowserSessionManager.java - 简化启动逻辑，只保留直连模式
-- [x] 2.3 删除不需要的 import（URL、RemoteWebDriver、By）
-- [x] 2.4 修改 configureChromeOptions - 移除 Grid 模式专属参数
+- [x] 2.1 创建 `scripts/start-local-chrome.ps1`
+- [x] 2.2 使用 `--remote-debugging-port=9222`
+- [x] 2.3 使用 `--user-data-dir` 指定 Profile 目录
 
-## Task 3: 文档更新
+## Task 3: Docker Chrome 配置
 
-- [x] 3.1 更新 spec.md - 删除 Grid 方案描述
-- [x] 3.2 更新 tasks.md - 删除 Grid 相关任务
-- [x] 3.3 更新 checklist.md - 删除 Grid 相关检查项
+- [x] 3.1 docker-compose.yml 配置 Chrome 容器
+- [x] 3.2 配置 `--remote-debugging-port=9222`
+- [x] 3.3 配置 `--user-data-dir` 持久化
+- [x] 3.4 配置 chrome-userdata volume
 
-## Task 4: Docker Chrome 容器配置
+## Task 4: BrowserSessionManager 实现
 
-- [x] 4.1 Chrome 容器使用独立启动命令（不通过 Grid）
-- [x] 4.2 配置 Xvfb 虚拟显示
-- [x] 4.3 配置 --remote-debugging-port=9222
-- [x] 4.4 配置 --user-data-dir 持久化目录
-- [x] 4.5 挂载 chrome-userdata 卷
+- [x] 4.1 CDP 直连模式实现
+- [x] 4.2 调试日志输出
 
 ## Task 5: 验证测试
 
-- [ ] 5.1 重启 Chrome Docker 容器
-- [ ] 5.2 重启后端服务
-- [ ] 5.3 测试 CDP 直连模式启动
-- [ ] 5.4 测试会话复用
-- [ ] 5.5 测试会话持久化（完成登录后重启后端，验证无需重新登录）
+### CDP 连接验证
+
+- [x] 5.1 本地 Chrome 启动脚本运行
+- [x] 5.2 CDP 端口 9222 可访问
+- [x] 5.3 后端直连模式启动成功
+
+### 会话持久化验证
+
+- [ ] 5.4 Profile 目录存在
+- [ ] 5.5 完成网站登录后 Cookie 保存
+- [ ] 5.6 关闭 Chrome 后重新启动，登录状态保留
 
 ---
 
-## 配置变更总结
+## 文件变更清单
 
-### application.yml
+| 文件 | 变更类型 | 说明 |
+|------|---------|------|
+| `application.yml` | 已完成 | CDP 直连配置 |
+| `BrowserSessionManager.java` | 已完成 | CDP 直连实现 |
+| `docker-compose.yml` | 已完成 | Chrome 容器配置 |
+| `scripts/start-local-chrome.ps1` | 已完成 | 本地 Chrome 启动脚本 |
 
-```yaml
-# 删除前
-chrome:
-  directConnect: false
-  remote:
-    url: http://localhost:4444/wd/hub
+---
 
-# 删除后
-chrome:
-  directConnect: true
-  debugger:
-    url: http://localhost:9222
+## 验证命令
+
+### 本地模式
+
+```powershell
+# 启动 Chrome
+.\scripts\start-local-chrome.ps1
+
+# 验证 CDP
+curl.exe http://localhost:9222/json
+
+# 启动后端
+mvn spring-boot:run
+
+# 测试 API
+curl.exe -X POST http://localhost:8080/api/browser/start
 ```
 
-### docker-compose.yml
+### Docker 模式
 
-```yaml
-# 删除前
-chrome:
-  ports:
-    - "4444:4444"    # Selenium Grid
-  environment:
-    - SE_NODE_MAX_SESSIONS=1
-    - SE_SESSION_REQUEST_TIMEOUT=3600
-  command: /opt/bin/entry_point.sh
+```bash
+# 启动 Docker Chrome
+docker start stock-chrome
 
-# 删除后
-chrome:
-  ports:
-    - "9222:9222"    # CDP 直连
-  command: bash -c "Xvfb :99 -screen 0 1920x1080x24 & sleep 2 && google-chrome --remote-debugging-port=9222 --user-data-dir=/home/seluser/.config/chromium ..."
+# 验证 CDP
+curl.exe http://localhost:9222/json
+
+# 启动后端
+mvn spring-boot:run
 ```
-
-### BrowserSessionManager.java
-
-- 删除 `chromeRemoteUrl` 字段
-- 删除 `if (chromeRemoteUrl != null)` 分支
-- 删除 `RemoteWebDriver` import
-- 删除 `configureChromeOptionsForDirectConnect()` 方法
-- 保留 `configureChromeOptions()` 方法作为唯一配置方式

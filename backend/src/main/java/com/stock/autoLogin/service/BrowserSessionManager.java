@@ -40,10 +40,14 @@ public class BrowserSessionManager implements DisposableBean {
     @Value("${chrome.userDataDir:}")
     private String chromeUserDataDir;
 
+    @Value("${CHROME_MODE:auto}")
+    private String chromeMode;
+
     private WebDriver driver;
 
     /**
      * 启动浏览器（直连模式）
+     * 如果 Chrome 未运行，自动尝试启动
      */
     public synchronized WebDriver startBrowser() {
         if (isBrowserAlive()) {
@@ -53,10 +57,23 @@ public class BrowserSessionManager implements DisposableBean {
 
         try {
             log.info("开始启动 Chrome 浏览器...");
+
+            if (!isChromeReachable()) {
+                log.warn("Chrome 调试端口不可访问，尝试自动启动...");
+                if (!tryAutoStartChrome()) {
+                    throw new BrowserException("Chrome 未运行且自动启动失败，请先运行 start-local-chrome.ps1");
+                }
+            }
+
+            log.info("Chrome 模式: {}", chromeMode);
             log.info("使用 CDP 直连模式: {}", debuggerUrl);
 
             ChromeOptions options = configureChromeOptions();
-            options.setExperimentalOption("debuggerAddress", "localhost:9222");
+
+            String debuggerAddress = extractDebuggerAddress(debuggerUrl);
+            options.setExperimentalOption("debuggerAddress", debuggerAddress);
+            log.info("CDP 连接地址: {}", debuggerAddress);
+
             WebDriverManager.chromedriver().setup();
             driver = new ChromeDriver(options);
 
@@ -65,9 +82,102 @@ public class BrowserSessionManager implements DisposableBean {
             log.info("浏览器启动成功");
             return driver;
 
+        } catch (BrowserException e) {
+            throw e;
         } catch (Exception e) {
             log.error("浏览器启动失败", e);
             throw new BrowserException("浏览器启动失败：" + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 检查 Chrome 调试端口是否可达
+     */
+    private boolean isChromeReachable() {
+        try {
+            java.net.URL url = new java.net.URL(debuggerUrl);
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(2000);
+            conn.setRequestMethod("GET");
+            int responseCode = conn.getResponseCode();
+            conn.disconnect();
+            return responseCode == 200;
+        } catch (Exception e) {
+            log.debug("Chrome 调试端口不可达: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 尝试自动启动 Chrome
+     * 本地模式：调用启动脚本
+     * Docker 模式：通过 HTTP 请求触发
+     */
+    private boolean tryAutoStartChrome() {
+        String mode = System.getenv("CHROME_MODE");
+        log.info("尝试自动启动 Chrome，模式: {}", mode);
+
+        try {
+            if ("docker".equals(mode)) {
+                return startDockerChrome();
+            } else {
+                return startLocalChrome();
+            }
+        } catch (Exception e) {
+            log.error("自动启动 Chrome 失败: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 启动本地 Chrome
+     */
+    private boolean startLocalChrome() {
+        try {
+            String chromePath = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+            String profileDir = System.getProperty("user.home") + "\\chrome-sessions\\stock";
+
+            ProcessBuilder pb = new ProcessBuilder(
+                chromePath,
+                "--remote-debugging-port=9222",
+                "--user-data-dir=" + profileDir,
+                "--disable-blink-features=AutomationControlled"
+            );
+            pb.start();
+            log.info("已启动本地 Chrome 进程");
+
+            Thread.sleep(3000);
+            return isChromeReachable();
+
+        } catch (Exception e) {
+            log.error("启动本地 Chrome 失败: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 启动 Docker Chrome（通过 docker API）
+     */
+    private boolean startDockerChrome() {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                "docker", "start", "stock-chrome"
+            );
+            pb.start();
+            log.info("已发送 docker start stock-chrome 命令");
+
+            for (int i = 0; i < 10; i++) {
+                Thread.sleep(2000);
+                if (isChromeReachable()) {
+                    return true;
+                }
+            }
+            return false;
+
+        } catch (Exception e) {
+            log.error("启动 Docker Chrome 失败: {}", e.getMessage());
+            return false;
         }
     }
 
@@ -326,6 +436,19 @@ public class BrowserSessionManager implements DisposableBean {
             }
         }
         throw new BrowserException("点击失败：已达最大重试次数");
+    }
+
+    /**
+     * 从 URL 中提取主机地址和端口
+     */
+    private String extractDebuggerAddress(String debuggerUrl) {
+        try {
+            java.net.URL url = new java.net.URL(debuggerUrl);
+            return url.getHost() + ":" + url.getPort();
+        } catch (Exception e) {
+            log.warn("解析 CDP 地址失败，使用默认值: {}", e.getMessage());
+            return "localhost:9222";
+        }
     }
 
     @Override

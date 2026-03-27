@@ -1,163 +1,77 @@
-# 会话持久化验证清单 - 直连模式
+# 浏览器会话持久化验证清单 - CDP 直连模式
 
-## 问题背景
+## 环境变量配置检查
 
-中信证券平台**每天最多获取8次验证码**，核心目标是实现会话持久化来避免重复手机验证。
+- [x] `CHROME_DEBUG_PORT` 环境变量支持（默认 9222）
+- [x] `CHROME_USER_DATA_DIR` 环境变量支持
+- [x] `directConnect: true` 配置
 
-***
+---
 
-## 直连模式配置检查
+## Chrome 启动检查
 
-### application.yml
+### 本地 Chrome
 
-* [x] `chrome.directConnect: true`
+- [x] `scripts/start-local-chrome.ps1` 存在
+- [x] 脚本能正确启动 Chrome
+- [x] 使用 `--remote-debugging-port=9222`
+- [x] 使用 `--user-data-dir` 指定 Profile 目录
 
-* [x] `chrome.debugger.url: http://localhost:9222`
+### Docker Chrome
 
-* [x] `chrome.userDataDir: /home/seluser/.config/chromium`
+- [x] `docker start stock-chrome` 成功启动
+- [x] 容器状态为 `Up`
+- [x] Chrome 进程正常运行
 
-* [ ] `chrome.headless: false`（可选）
+---
 
-### docker-compose.yml
+## CDP 连接检查
 
-* [x] 移除 4444 端口（Grid）
+- [x] `http://localhost:9222/json` 可访问
+- [x] 后端 `/api/browser/start` 返回成功
+- [x] 日志显示 "使用 CDP 直连模式"
 
-* [x] 保留 9222:9222（CDP）
+---
 
-* [x] 配置 Xvfb 虚拟显示
+## 会话复用检查
 
-* [x] Chrome 启动命令包含 `--remote-debugging-port=9222`
+- [x] 第二次调用 `/api/browser/start` 显示 "复用现有实例"
 
-* [x] Chrome 启动命令包含 `--user-data-dir=/home/seluser/.config/chromium`
+---
 
-* [x] chrome-userdata 卷挂载
+## 会话持久化检查
 
-### BrowserSessionManager.java
+- [ ] Profile 目录存在
+- [ ] 完成网站登录后 Cookie 保存到 Profile 目录
+- [ ] 关闭 Chrome 后重新启动，登录状态保留
 
-* [x] 删除 `chromeRemoteUrl` 字段
-
-* [x] 删除 `RemoteWebDriver` import
-
-* [x] 删除 Grid 模式分支逻辑
-
-* [x] 只保留直连模式（CDP）逻辑
-
-* [x] `configureChromeOptions()` 只配置直连模式参数
-
-***
-
-## 直连模式功能验证
-
-### 启动验证
-
-* [ ] 调用 `/api/browser/start` 成功
-
-* [ ] 日志显示 "使用 CDP 直连模式: <http://localhost:9222>"
-
-* [ ] 日志显示 "启用浏览器持久化: user-data-dir=..."
-
-### 会话复用验证
-
-* [ ] 第二次调用 `/api/browser/start` 显示 "复用现有实例"
-
-* [ ] 多次调用不会创建新的 Chrome 实例
-
-### Chrome 实例验证
-
-* [ ] Chrome 容器保持运行
-
-* [ ] CDP 端口 9222 可访问
-
-* [ ] VNC 端口 7900 可访问（可选）
-
-***
-
-## 会话持久化验证
-
-### Cookie/Session 持久化
-
-* [ ] 完成登录后，`user-data-dir` 中保存了 Cookie
-
-* [ ] 重启后端服务
-
-* [ ] 重新连接后 Cookie 仍然有效
-
-* [ ] 无需重新进行手机验证
-
-### 验证码次数控制
-
-* [ ] 首次登录使用 1 次验证码
-
-* [ ] 后续操作无需再次验证（验证次数保持为 1）
-
-***
-
-## 登录流程验证
-
-### 手机验证页流程（PHONE\_VERIFY）
-
-* [ ] 页面类型检测正确
-
-* [ ] iframe 切换成功
-
-* [ ] 手机号输入成功
-
-* [ ] 协议勾选成功
-
-* [ ] 滑块检测成功
-
-* [ ] 滑块验证成功
-
-* [ ] 短信验证码获取成功
-
-* [ ] 页面跳转到登录页
-
-### 登录页流程（LOGIN）
-
-* [ ] 页面类型检测为 LOGIN
-
-* [ ] 账号输入成功
-
-* [ ] 密码输入成功
-
-* [ ] 数学验证码计算
-
-* [ ] 协议勾选成功
-
-* [ ] 登录提交成功
-
-* [ ] Token 获取成功
-
-***
+---
 
 ## 代码质量检查
 
-* [ ] `mvn compile` 编译通过
+- [x] `mvn compile` 编译通过
+- [x] 无未处理的 Bean 冲突（RestTemplateConfig）
+- [x] BrowserSessionManager 日志输出完整
 
-* [ ] 无未使用的 import
-
-* [ ] 关键方法有 Javadoc 注释
-
-* [ ] 日志输出符合规范
-
-***
+---
 
 ## 测试结果记录
 
-| # | 测试项        | 结果  | 备注 |
-| - | ---------- | --- | -- |
-| 1 | CDP 直连启动   | 待测试 | -  |
-| 2 | 会话复用       | 待测试 | -  |
-| 3 | Cookie 持久化 | 待测试 | -  |
-| 4 | 后端重启后会话保持  | 待测试 | -  |
+| # | 测试项 | 结果 | 备注 |
+|---|--------|------|------|
+| 1 | 本地 Chrome 启动 | ✅ 通过 | 脚本运行正常 |
+| 2 | CDP 端口访问 | ✅ 通过 | http://localhost:9222/json |
+| 3 | 后端直连模式 | ✅ 通过 | 日志显示 CDP 直连 |
+| 4 | 会话复用 | ✅ 通过 | 复用现有实例 |
+| 5 | Docker Chrome | ✅ 通过 | 容器运行正常 |
+| 6 | 会话持久化 | ⏳ 待验证 | 需完成实际登录 |
 
-***
+---
 
 ## 关键日志检查点
 
 ```
 [浏览器启动] 使用 CDP 直连模式: http://localhost:9222
-[浏览器启动] 启用浏览器持久化: user-data-dir=/home/seluser/.config/chromium
 [浏览器启动] 浏览器已在运行，复用现有实例
+[浏览器启动] 启用浏览器持久化: user-data-dir=xxx
 ```
-

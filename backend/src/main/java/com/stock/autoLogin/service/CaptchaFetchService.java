@@ -1,10 +1,7 @@
 package com.stock.autoLogin.service;
 
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.Properties;
@@ -13,8 +10,7 @@ import java.util.regex.Pattern;
 
 /**
  * 验证码获取服务
- * 支持从 Redis 和邮件两种方式获取短信验证码
- * 增强版：3次Redis重试 + 退阶邮件获取 + 失效自动重发
+ * 通过邮件 IMAP 协议获取中信证券验证码
  *
  * @author mwangli
  * @since 2026-03-27
@@ -23,7 +19,6 @@ import java.util.regex.Pattern;
 @Service
 public class CaptchaFetchService {
 
-    private static final String PHONE_CODE_KEY = "PHONE_CODE";
     private static final Pattern SMS_CODE_PATTERN = Pattern.compile("(\\d{6})");
 
     @Value("${spring.email.host:imap.qq.com}")
@@ -40,32 +35,33 @@ public class CaptchaFetchService {
 
     private boolean emailConfigured = false;
 
-    @Autowired(required = false)
-    private RedisTemplate<String, Object> redisTemplate;
-
-    @PostConstruct
-    public void init() {
-        emailConfigured = !emailUsername.isEmpty() && !emailPassword.isEmpty();
-        log.info("验证码获取服务初始化: Redis可用={}, 邮箱已配置={}", redisTemplate != null, emailConfigured);
+    public CaptchaFetchService() {
+        log.info("验证码获取服务初始化：邮件直连模式");
     }
 
     /**
-     * 获取手机验证码（增强版）
-     * 先从 Redis 获取，失败则重试 3 次（等待 10s, 20s, 30s）
-     * Redis 3 次都失败，则从邮件获取
+     * 初始化邮箱配置
+     */
+    public void init() {
+        emailConfigured = !emailUsername.isEmpty() && !emailPassword.isEmpty();
+        log.info("邮箱配置状态: host={}, port={}, username={}, configured={}",
+                emailHost, emailPort, emailUsername, emailConfigured);
+    }
+
+    /**
+     * 获取手机验证码（直接通过邮件获取）
      *
      * @return 6位数字验证码，或 null
      */
     public String getPhoneCode() {
-        log.info("========== 开始获取手机验证码（增强版）==========");
+        log.info("========== 开始获取邮件验证码 ==========");
 
-        String code = tryGetFromRedisWithRetry();
-        if (code != null) {
-            return code;
+        if (!emailConfigured) {
+            log.warn("邮箱未配置，无法获取验证码");
+            return null;
         }
 
-        log.warn("Redis 获取验证码失败，尝试从邮件获取...");
-        return getCodeFromEmail();
+        return fetchLatestEmail();
     }
 
     /**
@@ -76,7 +72,7 @@ public class CaptchaFetchService {
      * @return 6位数字验证码，或 null
      */
     public String getPhoneCodeWithRetry(java.util.function.Supplier<Boolean> resendCodeFunc) {
-        log.info("========== 开始获取手机验证码（带失效重试）==========");
+        log.info("========== 开始获取邮件验证码（带失效重试）==========");
 
         for (int attempt = 1; attempt <= 3; attempt++) {
             log.info("第 {}/3 次尝试获取验证码", attempt);
@@ -102,119 +98,12 @@ public class CaptchaFetchService {
     }
 
     /**
-     * 从 Redis 获取验证码，支持重试
-     * 重试策略：10s -> 20s -> 30s
-     */
-    private String tryGetFromRedisWithRetry() {
-        if (redisTemplate == null) {
-            log.warn("RedisTemplate 未配置，跳过 Redis 获取");
-            return null;
-        }
-
-        int[] retryDelays = {10, 20, 30};
-
-        for (int i = 0; i < retryDelays.length; i++) {
-            int delay = retryDelays[i];
-            log.info("尝试 {}/{}: 等待 {} 秒后从 Redis 获取验证码", i + 1, retryDelays.length, delay);
-
-            if (i > 0) {
-                try {
-                    Thread.sleep(delay * 1000L);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    log.warn("等待被中断");
-                    break;
-                }
-            }
-
-            String code = fetchFromRedis();
-            if (code != null) {
-                log.info("Redis 获取验证码成功: {}", code);
-                return code;
-            }
-
-            log.warn("第 {}/{} 次 Redis 获取失败", i + 1, retryDelays.length);
-        }
-
-        return null;
-    }
-
-    /**
-     * 从 Redis 获取验证码（一次性，获取后删除）
-     */
-    public String fetchFromRedis() {
-        if (redisTemplate == null) {
-            return null;
-        }
-
-        try {
-            Object code = redisTemplate.opsForValue().get(PHONE_CODE_KEY);
-            if (code != null) {
-                String codeStr = code.toString();
-                if (isValidSmsCode(codeStr)) {
-                    redisTemplate.delete(PHONE_CODE_KEY);
-                    log.info("Redis 验证码: {}", codeStr);
-                    return codeStr;
-                }
-            }
-            log.debug("Redis 中未找到有效验证码");
-            return null;
-        } catch (Exception e) {
-            log.error("从 Redis 获取验证码异常: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * 查询 Redis 中的验证码（不删除）
-     */
-    public String peekRedisCode() {
-        if (redisTemplate == null) {
-            return null;
-        }
-
-        try {
-            Object code = redisTemplate.opsForValue().get(PHONE_CODE_KEY);
-            if (code != null) {
-                return code.toString();
-            }
-            return null;
-        } catch (Exception e) {
-            log.error("查询 Redis 验证码失败: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * 清除 Redis 中的验证码
-     */
-    public boolean clearRedisCode() {
-        if (redisTemplate == null) {
-            return false;
-        }
-
-        try {
-            Boolean deleted = redisTemplate.delete(PHONE_CODE_KEY);
-            log.info("清除 Redis 验证码: {}", deleted);
-            return Boolean.TRUE.equals(deleted);
-        } catch (Exception e) {
-            log.error("清除 Redis 验证码失败: {}", e.getMessage());
-            return false;
-        }
-    }
-
-    /**
      * 从邮件获取验证码
      */
-    private String getCodeFromEmail() {
-        if (!emailConfigured) {
-            log.warn("邮箱未配置，无法从邮件获取验证码");
-            return null;
-        }
-
+    private String fetchLatestEmail() {
         try {
             log.info("从邮件获取验证码...");
-            String emailContent = fetchLatestEmail();
+            String emailContent = fetchFromEmailServer();
             if (emailContent == null) {
                 log.warn("未找到包含验证码的邮件");
                 return null;
@@ -228,9 +117,9 @@ public class CaptchaFetchService {
     }
 
     /**
-     * 获取最新邮件内容
+     * 连接邮件服务器获取最新邮件内容
      */
-    private String fetchLatestEmail() throws Exception {
+    private String fetchFromEmailServer() throws Exception {
         Properties props = new Properties();
         props.put("mail.store.protocol", "imaps");
         props.put("mail.imaps.host", emailHost);
