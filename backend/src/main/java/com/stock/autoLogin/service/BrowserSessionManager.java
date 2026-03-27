@@ -257,17 +257,20 @@ public class BrowserSessionManager implements DisposableBean {
             log.warn("Selenium 输入失败，改用 JS: {}", e.getMessage());
         }
 
-        // 策略 2：JS 方式（兼容 readonly/hidden 场景）
+        // 策略 2：JS + jQuery 方式（兼容 readonly/hidden 场景，确保 jQuery 事件同步）
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             js.executeScript(
                     "arguments[0].value = ''; arguments[0].focus();" +
                     "arguments[0].value = arguments[1];" +
                     "arguments[0].dispatchEvent(new Event('input', {bubbles: true}));" +
-                    "arguments[0].dispatchEvent(new Event('change', {bubbles: true}));",
+                    "arguments[0].dispatchEvent(new Event('change', {bubbles: true}));" +
+                    "if(typeof jQuery !== 'undefined') {" +
+                    "  jQuery(arguments[0]).val(arguments[1]).trigger('input').trigger('change');" +
+                    "}",
                     element, text
             );
-            log.debug("模拟人类输入完成（JS），字符数={}", text.length());
+            log.debug("模拟人类输入完成（JS+jQuery），字符数={}", text.length());
         } catch (Exception e) {
             throw new BrowserException("输入失败（Selenium+JS 均失败）：" + e.getMessage(), e);
         }

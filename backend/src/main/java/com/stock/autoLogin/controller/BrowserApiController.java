@@ -624,47 +624,43 @@ public class BrowserApiController {
 
         List<org.openqa.selenium.WebElement> yidunElements = driver.findElements(
                 org.openqa.selenium.By.cssSelector("[class*='yidun']"));
-        boolean found = !yidunElements.isEmpty();
-        result.put("found", found);
 
-        if (found) {
-            String details = yidunElements.stream()
-                    .map(e -> e.getTagName() + "." + e.getAttribute("class"))
-                    .collect(Collectors.joining(", "));
-            result.put("details", details);
+        // 统计可见和隐藏的元素
+        int visibleCount = 0;
+        List<String> elementDetails = new ArrayList<>();
+        for (org.openqa.selenium.WebElement el : yidunElements) {
+            try {
+                boolean displayed = el.isDisplayed();
+                int width = el.getSize().getWidth();
+                int height = el.getSize().getHeight();
+                boolean visible = displayed && width > 0 && height > 0;
+                if (visible) {
+                    visibleCount++;
+                }
+                elementDetails.add(el.getTagName() + "." + el.getAttribute("class")
+                        + " [visible=" + visible + " displayed=" + displayed
+                        + " " + width + "x" + height + "]");
+            } catch (Exception e) {
+                elementDetails.add(el.getTagName() + "." + el.getAttribute("class") + " [error]");
+            }
         }
+
+        result.put("totalFound", yidunElements.size());
+        result.put("visibleCount", visibleCount);
+        result.put("found", visibleCount > 0);
+        result.put("details", String.join(", ", elementDetails));
 
         return result;
     }
 
     /**
-     * 在顶层和所有 iframe 中搜索 .yidun 元素
+     * 在顶层和所有 iframe 中搜索可见的 .yidun 滑块元素
+     * 委托给 CaptchaService，确保使用统一的可见性检查逻辑
      *
      * @return 找到的 frame 名称，未找到返回 null
      */
     private String findYidunInAllFrames(WebDriver driver) {
-        // 检查顶层
-        driver.switchTo().defaultContent();
-        if (!driver.findElements(org.openqa.selenium.By.cssSelector("[class*='yidun']")).isEmpty()) {
-            return "顶层 document";
-        }
-
-        // 检查所有 iframe
-        List<org.openqa.selenium.WebElement> iframes = driver.findElements(
-                org.openqa.selenium.By.tagName("iframe"));
-        for (int i = 0; i < iframes.size(); i++) {
-            try {
-                driver.switchTo().defaultContent();
-                driver.switchTo().frame(i);
-                if (!driver.findElements(org.openqa.selenium.By.cssSelector("[class*='yidun']")).isEmpty()) {
-                    return "iframe[" + i + "]";
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        driver.switchTo().defaultContent();
-        return null;
+        return captchaService.findYidunInAllFrames(driver);
     }
 
 }

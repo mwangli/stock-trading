@@ -11,7 +11,10 @@ services:
     shm_size: '2gb'
     environment:
       - SE_NODE_MAX_SESSIONS=1
-      - SE_SESSION_REQUEST_TIMEOUT=300
+      - SE_SESSION_REQUEST_TIMEOUT=600
+      - SE_NODE_SESSION_TIMEOUT=1800    # 30分钟session超时（等待短信验证码输入）
+    volumes:
+      - chrome-userdata:/home/seluser/.config/chromium   # Cookie持久化，避免每次都要手机验证
     networks:
       - stock-network
     restart: unless-stopped
@@ -112,3 +115,5 @@ volumes:
   redis-data:
   # 模型资源持久化卷（LSTM / 情感等模型统一挂载到 /models）
   models-data:
+  # Chrome用户数据持久化（Cookie/Session保持，避免重复手机验证）
+  chrome-userdata:

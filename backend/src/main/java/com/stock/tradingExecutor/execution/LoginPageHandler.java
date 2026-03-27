@@ -175,22 +175,25 @@ public class LoginPageHandler {
     /**
      * 勾选协议（隐私条款 + 授权书）
      * 页面 checkbox 原生 input 被隐藏（display:none），外层 span.icon_check 作为可视化替代。
-     * 策略：遍历所有 checkbox，对于其父级 wrapper 可见且未勾选的，通过 JS 点击 span 触发勾选。
+     * 策略：使用 jQuery trigger 点击 span.icon_check（页面使用 jQuery 绑定事件）
      */
     public void checkAgreements() {
         WebDriver driver = browserSessionManager.getDriver();
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
-            // 通过 JS 点击所有可见且未选中的 checkbox 的 span 父元素
             Long checked = (Long) js.executeScript(
-                    "var cbs = document.querySelectorAll('input[type=checkbox]');" +
                     "var count = 0;" +
-                    "for(var i=0; i<cbs.length; i++){" +
-                    "  var cb = cbs[i];" +
-                    "  var span = cb.parentElement;" +
-                    "  var wrapper = span ? span.parentElement : null;" +
-                    "  if(wrapper && wrapper.offsetParent !== null && !cb.checked){" +
-                    "    span.click(); count++;" +
+                    "var spans = document.querySelectorAll('span.icon_check');" +
+                    "for(var i=0; i<spans.length; i++){" +
+                    "  var span = spans[i];" +
+                    "  var wrapper = span.parentElement;" +
+                    "  if(wrapper && wrapper.offsetParent !== null && wrapper.textContent.indexOf('勾选表示同意') >= 0){" +
+                    "    if(typeof jQuery !== 'undefined'){" +
+                    "      jQuery(span).trigger('click');" +
+                    "    } else {" +
+                    "      span.dispatchEvent(new MouseEvent('click', {bubbles:true}));" +
+                    "    }" +
+                    "    count++;" +
                     "  }" +
                     "}" +
                     "return count;"
@@ -281,13 +284,35 @@ public class LoginPageHandler {
 
     /**
      * 点击登录按钮
+     * 策略：jQuery trigger → Selenium 原生点击
+     * 页面使用 jQuery 绑定事件，优先使用 jQuery trigger 确保事件被正确触发
      */
     public void clickLoginButton() {
         WebDriver driver = browserSessionManager.getDriver();
+        org.openqa.selenium.JavascriptExecutor js = (org.openqa.selenium.JavascriptExecutor) driver;
+
+        // 策略1：jQuery trigger
+        try {
+            Boolean clicked = (Boolean) js.executeScript(
+                    "if (typeof jQuery !== 'undefined') {" +
+                    "  var btn = jQuery('a:contains(登):visible, button:contains(登):visible').first();" +
+                    "  if (btn.length > 0) { btn.trigger('click'); return true; }" +
+                    "}" +
+                    "return false;"
+            );
+            if (Boolean.TRUE.equals(clicked)) {
+                log.info("登录按钮已点击（jQuery trigger）");
+                return;
+            }
+        } catch (Exception e) {
+            log.warn("jQuery trigger 点击登录按钮失败: {}", e.getMessage());
+        }
+
+        // 策略2：Selenium 原生点击（兜底）
         try {
             WebElement loginButton = findVisibleElement(driver, LOGIN_BUTTON);
             browserSessionManager.safeClick(loginButton);
-            log.info("登录按钮已点击");
+            log.info("登录按钮已点击（Selenium）");
         } catch (Exception e) {
             log.error("点击登录按钮失败: {}", e.getMessage());
             throw new RuntimeException("点击登录按钮失败", e);
@@ -296,43 +321,78 @@ public class LoginPageHandler {
 
     /**
      * 点击「获取验证码」按钮（手机验证页）
-     * 策略：优先用 JavaScript 全文搜索点击（更稳定），失败则用 XPath 定位
+     * 策略优先级：jQuery trigger → Selenium 原生点击 → 原生 JS dispatchEvent
+     * 注意：该页面使用 jQuery 2.1.1 绑定事件，原生 element.click() 无法触发 jQuery handler
      */
     public void clickSendCodeButton() {
         WebDriver driver = browserSessionManager.getDriver();
+        org.openqa.selenium.JavascriptExecutor js = (org.openqa.selenium.JavascriptExecutor) driver;
 
-        // 策略1：JavaScript 全文搜索（优先，更稳定）
+        // 策略1：jQuery trigger（页面使用 jQuery 绑定事件，这是最可靠的方式）
         try {
-            org.openqa.selenium.JavascriptExecutor js = (org.openqa.selenium.JavascriptExecutor) driver;
             Boolean clicked = (Boolean) js.executeScript(
-                    "var all = document.querySelectorAll('a,button,div,span,input[type=button]');" +
-                    "for (var i = 0; i < all.length; i++) {" +
-                    "  var t = all[i].innerText || all[i].textContent || '';" +
-                    "  if (t.indexOf('获取验证码') >= 0 && all[i].offsetParent !== null) {" +
-                    "    all[i].click(); return true;" +
-                    "  }" +
+                    "var el = document.getElementById('sendMsg');" +
+                    "if (el && typeof jQuery !== 'undefined') {" +
+                    "  jQuery(el).trigger('click');" +
+                    "  return true;" +
                     "}" +
                     "return false;"
             );
             if (Boolean.TRUE.equals(clicked)) {
-                log.info("获取验证码按钮已点击（JS）");
+                log.info("获取验证码按钮已点击（jQuery trigger #sendMsg）");
                 return;
             }
         } catch (Exception e) {
-            log.warn("JS 点击获取验证码失败，尝试 XPath: {}", e.getMessage());
+            log.warn("jQuery trigger 点击失败: {}", e.getMessage());
         }
 
-        // 策略2：XPath 定位
+        // 策略2：jQuery 文本匹配 + trigger
+        try {
+            Boolean clicked = (Boolean) js.executeScript(
+                    "if (typeof jQuery !== 'undefined') {" +
+                    "  var btn = jQuery('a:contains(获取验证码):visible, span:contains(获取验证码):visible').first();" +
+                    "  if (btn.length > 0) { btn.trigger('click'); return true; }" +
+                    "}" +
+                    "return false;"
+            );
+            if (Boolean.TRUE.equals(clicked)) {
+                log.info("获取验证码按钮已点击（jQuery :contains 匹配）");
+                return;
+            }
+        } catch (Exception e) {
+            log.warn("jQuery :contains 点击失败: {}", e.getMessage());
+        }
+
+        // 策略3：Selenium 原生点击（会模拟真实鼠标事件）
         try {
             WebElement sendButton = findVisibleElement(driver, SMS_CODE_BUTTON);
             browserSessionManager.safeClick(sendButton);
-            log.info("获取验证码按钮已点击（XPath）");
+            log.info("获取验证码按钮已点击（Selenium 原生点击）");
             return;
         } catch (Exception e) {
-            log.error("XPath 定位获取验证码按钮也失败: {}", e.getMessage());
+            log.warn("Selenium 原生点击失败: {}", e.getMessage());
         }
 
-        throw new RuntimeException("点击获取验证码按钮失败：JS 和 XPath 均未找到目标元素");
+        // 策略4：原生 JS dispatchEvent 模拟完整事件链
+        try {
+            Boolean clicked = (Boolean) js.executeScript(
+                    "var el = document.getElementById('sendMsg') || document.querySelector('a.activeBtn');" +
+                    "if (el) {" +
+                    "  var evt = new MouseEvent('click', {bubbles: true, cancelable: true, view: window});" +
+                    "  el.dispatchEvent(evt);" +
+                    "  return true;" +
+                    "}" +
+                    "return false;"
+            );
+            if (Boolean.TRUE.equals(clicked)) {
+                log.info("获取验证码按钮已点击（dispatchEvent）");
+                return;
+            }
+        } catch (Exception e) {
+            log.error("dispatchEvent 点击也失败: {}", e.getMessage());
+        }
+
+        throw new RuntimeException("点击获取验证码按钮失败：所有策略均未成功");
     }
 
     /**
@@ -352,13 +412,34 @@ public class LoginPageHandler {
 
     /**
      * 点击「下一步」/「登录」按钮（手机验证页）
+     * 策略：jQuery trigger → Selenium 原生点击
      */
     public void clickNextStepButton() {
         WebDriver driver = browserSessionManager.getDriver();
+        org.openqa.selenium.JavascriptExecutor js = (org.openqa.selenium.JavascriptExecutor) driver;
+
+        // 策略1：jQuery trigger（与页面框架一致）
+        try {
+            Boolean clicked = (Boolean) js.executeScript(
+                    "if (typeof jQuery !== 'undefined') {" +
+                    "  var btn = jQuery('a:contains(下一步):visible').first();" +
+                    "  if (btn.length > 0) { btn.trigger('click'); return true; }" +
+                    "}" +
+                    "return false;"
+            );
+            if (Boolean.TRUE.equals(clicked)) {
+                log.info("下一步按钮已点击（jQuery trigger）");
+                return;
+            }
+        } catch (Exception e) {
+            log.warn("jQuery trigger 点击下一步失败: {}", e.getMessage());
+        }
+
+        // 策略2：Selenium 原生点击
         try {
             WebElement nextButton = findVisibleElement(driver, NEXT_STEP_BUTTON);
             browserSessionManager.safeClick(nextButton);
-            log.info("下一步按钮已点击");
+            log.info("下一步按钮已点击（Selenium）");
         } catch (Exception e) {
             log.error("点击下一步按钮失败: {}", e.getMessage());
             throw new RuntimeException("点击下一步按钮失败", e);
@@ -366,14 +447,68 @@ public class LoginPageHandler {
     }
 
     /**
-     * 点击「确定」按钮（滑块验证后）
+     * 点击「确定」按钮（滑块验证后的提示弹窗）
+     * 该页面使用 xubox layer 插件，确定按钮 id=pop_tip_alert_btn，文字中有多余空格
+     * 策略：ID定位 → jQuery trigger → XPath normalize-space → 原始XPath
      */
     public void clickConfirmButton() {
         WebDriver driver = browserSessionManager.getDriver();
+        org.openqa.selenium.JavascriptExecutor js = (org.openqa.selenium.JavascriptExecutor) driver;
+
+        // 策略1：通过 xubox 弹窗的固定 ID 定位（最可靠）
+        try {
+            Boolean clicked = (Boolean) js.executeScript(
+                    "var btn = document.getElementById('pop_tip_alert_btn');" +
+                    "if (btn) {" +
+                    "  btn.click();" +
+                    "  if (typeof jQuery !== 'undefined') jQuery(btn).trigger('click');" +
+                    "  return true;" +
+                    "}" +
+                    "return false;"
+            );
+            if (Boolean.TRUE.equals(clicked)) {
+                log.info("确定按钮已点击（xubox #pop_tip_alert_btn）");
+                return;
+            }
+        } catch (Exception e) {
+            log.debug("xubox ID 点击失败: {}", e.getMessage());
+        }
+
+        // 策略2：jQuery trigger 搜索 xubox_layer 内的链接
+        try {
+            Boolean clicked = (Boolean) js.executeScript(
+                    "if (typeof jQuery !== 'undefined') {" +
+                    "  var btn = jQuery('.xubox_layer a:visible').first();" +
+                    "  if (btn.length > 0) { btn.trigger('click'); return true; }" +
+                    "}" +
+                    "return false;"
+            );
+            if (Boolean.TRUE.equals(clicked)) {
+                log.info("确定按钮已点击（jQuery .xubox_layer a）");
+                return;
+            }
+        } catch (Exception e) {
+            log.debug("jQuery xubox 点击失败: {}", e.getMessage());
+        }
+
+        // 策略3：XPath normalize-space（处理文字中多余空格的情况）
+        try {
+            WebElement confirmButton = driver.findElement(By.xpath(
+                    "//*[normalize-space(text())='确定'] | " +
+                    "//a[contains(@id, 'alert_btn')]"
+            ));
+            browserSessionManager.safeClick(confirmButton);
+            log.info("确定按钮已点击（XPath normalize-space）");
+            return;
+        } catch (NoSuchElementException e) {
+            log.debug("XPath normalize-space 未找到确定按钮");
+        }
+
+        // 策略4：原始 XPath（兜底）
         try {
             WebElement confirmButton = driver.findElement(CONFIRM_BUTTON);
             browserSessionManager.safeClick(confirmButton);
-            log.info("确定按钮已点击");
+            log.info("确定按钮已点击（原始 XPath）");
         } catch (NoSuchElementException e) {
             log.info("未找到确定按钮（可能不需要此步骤）");
         } catch (Exception e) {
