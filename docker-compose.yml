@@ -1,26 +1,22 @@
 services:
   # ===================
-  # Chrome Headless服务 (用于自动化登录)
+  # Chrome 直连模式容器 - 支持会话持久化
+  # 直接启动 Chrome 并暴露 DevTools 端口，后端通过 CDP 直连
   # ===================
   chrome:
     image: selenium/standalone-chrome:latest
     container_name: stock-chrome
     ports:
-      - "4444:4444"    # Selenium Grid端口
-      - "9222:9222"    # Chrome DevTools Protocol 端口（直连模式）
-      - "7900:7900"    # VNC可视化端口（可选）
+      - "9222:9222"    # Chrome DevTools 协议端口（CDP 直连）
+      - "7900:7900"    # VNC 可视化端口（可选）
     shm_size: '2gb'
-    mem_limit: 1500m  # 限制容器最大内存1.5GB（适配4G服务器）
-    environment:
-      - SE_NODE_MAX_SESSIONS=1              # 限制为单会话，确保会话复用
-      - SE_SESSION_REQUEST_TIMEOUT=3600    # 1小时session超时（等待短信验证码）
-      - SE_NODE_SESSION_TIMEOUT=7200        # 2小时实际session超时
-      - CHROME_HEADLESS=true                # 启用无头模式节省内存
     volumes:
-      - chrome-userdata:/tmp/chrome-user-data  # 持久化卷（容器重启后恢复会话）
+      - chrome-userdata:/home/seluser/.config/chromium   # Cookie 持久化
     networks:
       - stock-network
     restart: unless-stopped
+    # 启动独立的 Chrome（不通过 Selenium Grid），支持 --user-data-dir 持久化
+    command: bash -c "Xvfb :99 -screen 0 1920x1080x24 & sleep 2 && google-chrome --remote-debugging-port=9222 --user-data-dir=/home/seluser/.config/chromium --disable-blink-features=AutomationControlled --no-sandbox --disable-dev-shm-usage --disable-gpu"
 
   # ===================
   # Backend Service（CI 推送至阿里云 ACR，服务器拉取）
@@ -38,12 +34,10 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:mysql://stock-mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
       - SPRING_DATA_MONGODB_URI=mongodb://admin:${GLOBAL_DB_PASSWORD}@stock-mongo:27017/stock_trading?authSource=admin
       - SPRING_REDIS_HOST=stock-redis
-      - CHROME_REMOTE_URL=http://chrome:4444/wd/hub
     depends_on:
       - stock-mysql
       - stock-mongo
       - stock-redis
-      - chrome
     networks:
       - stock-network
     restart: unless-stopped
@@ -59,7 +53,6 @@ services:
       - MYSQL_DATABASE=stock_trading
       - MYSQL_ROOT_HOST=%
     ports:
-      # 宿主机 6033 -> 容器 3306，对外暴露 6033
       - "6033:3306"
     volumes:
       - mysql-data:/var/lib/mysql
@@ -114,7 +107,5 @@ volumes:
   mysql-data:
   mongo-data:
   redis-data:
-  # 模型资源持久化卷（LSTM / 情感等模型统一挂载到 /models）
   models-data:
-  # Chrome用户数据持久化（Cookie/Session保持，避免重复手机验证）
   chrome-userdata:

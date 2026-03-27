@@ -107,12 +107,15 @@ logging:
 
 # Chrome Selenium 配置
 chrome:
-  remote:
-    url: http://localhost:4444/wd/hub
+  # 直连模式（CDP）- 直接连接 Chrome DevTools 端口，实现会话持久化
+  # 优点：--user-data-dir 持久化完全生效，Cookie/Session 保持
+  directConnect: true
+  debugger:
+    url: http://localhost:9222
   headless: false
-  # 浏览器持久化目录（Docker 容器内路径，与 docker-compose.yml 持久化卷路径保持一致）
-  # 方案C：长期运行容器模式，卷挂载到 /tmp/chrome-user-data
-  userDataDir: /tmp/chrome-user-data
+  # 浏览器持久化目录
+  # Chrome Docker 已挂载 chrome-userdata 卷到 /home/seluser/.config/chromium
+  userDataDir: /home/seluser/.config/chromium
 
 app:
   startup:

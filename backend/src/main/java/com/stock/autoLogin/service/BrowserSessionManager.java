@@ -9,12 +9,10 @@ import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
-import org.openqa.selenium.remote.RemoteWebDriver;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.net.URL;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -30,8 +28,11 @@ import java.util.concurrent.ThreadLocalRandom;
 @Slf4j
 public class BrowserSessionManager implements DisposableBean {
 
-    @Value("${chrome.remote.url:}")
-    private String chromeRemoteUrl;
+    @Value("${chrome.directConnect:true}")
+    private boolean directConnect;
+
+    @Value("${chrome.debugger.url:http://localhost:9222}")
+    private String debuggerUrl;
 
     @Value("${chrome.headless:false}")
     private boolean chromeHeadless;
@@ -42,7 +43,7 @@ public class BrowserSessionManager implements DisposableBean {
     private WebDriver driver;
 
     /**
-     * 启动浏览器
+     * 启动浏览器（直连模式）
      */
     public synchronized WebDriver startBrowser() {
         if (isBrowserAlive()) {
@@ -52,16 +53,12 @@ public class BrowserSessionManager implements DisposableBean {
 
         try {
             log.info("开始启动 Chrome 浏览器...");
-            ChromeOptions options = configureChromeOptions();
+            log.info("使用 CDP 直连模式: {}", debuggerUrl);
 
-            if (chromeRemoteUrl != null && !chromeRemoteUrl.isEmpty()) {
-                log.info("使用 Remote Chrome: {}", chromeRemoteUrl);
-                driver = new RemoteWebDriver(new URL(chromeRemoteUrl), options);
-            } else {
-                log.info("使用本地 Chrome");
-                WebDriverManager.chromedriver().setup();
-                driver = new ChromeDriver(options);
-            }
+            ChromeOptions options = configureChromeOptions();
+            options.setExperimentalOption("debuggerAddress", "localhost:9222");
+            WebDriverManager.chromedriver().setup();
+            driver = new ChromeDriver(options);
 
             driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
             injectAntiDetection();
@@ -75,7 +72,7 @@ public class BrowserSessionManager implements DisposableBean {
     }
 
     /**
-     * 配置 ChromeOptions
+     * 配置 ChromeOptions（直连模式）
      */
     private ChromeOptions configureChromeOptions() {
         ChromeOptions options = new ChromeOptions();
@@ -84,10 +81,7 @@ public class BrowserSessionManager implements DisposableBean {
         options.addArguments("--disable-extensions");
         options.addArguments("--no-sandbox");
         options.addArguments("--disable-dev-shm-usage");
-        options.setExperimentalOption("excludeSwitches", new String[]{"enable-automation"});
-        options.setExperimentalOption("useAutomationExtension", false);
 
-        // 浏览器持久化配置（保持登录状态，避免每次重新手机验证）
         if (chromeUserDataDir != null && !chromeUserDataDir.isEmpty()) {
             options.addArguments("--user-data-dir=" + chromeUserDataDir);
             log.info("启用浏览器持久化: user-data-dir={}", chromeUserDataDir);
