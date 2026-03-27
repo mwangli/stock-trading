@@ -50,6 +50,18 @@
 - [x] BrowserSessionManager 正确使用配置
 - [ ] 注意：Selenium Grid 模式下需 Token 持久化方案
 
+### 浏览器会话长期运行模式（方案C）- 2026-03-27
+
+- [x] docker-compose.yml 配置检查
+  - [x] mem_limit: 1500m 内存限制
+  - [x] SE_NODE_MAX_SESSIONS=1 单会话限制
+  - [x] SE_SESSION_REQUEST_TIMEOUT=3600 超长超时
+  - [x] CHROME_HEADLESS=true 启用无头模式
+  - [x] chrome-userdata:/tmp/chrome-user-data 持久化卷
+  - [x] 9222:9222 DevTools 端口
+- [ ] 容器重启后会话恢复验证（待测试）
+- [ ] 单会话复用验证（待测试）
+
 ## Token 获取
 
 - [ ] 待验证

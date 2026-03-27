@@ -110,9 +110,9 @@ chrome:
   remote:
     url: http://localhost:4444/wd/hub
   headless: false
-  # 浏览器持久化目录（Docker 容器内路径）
-  # Chrome Docker 已挂载 chrome-userdata 卷到 /home/seluser/.config/chromium
-  userDataDir: /home/seluser/.config/chromium
+  # 浏览器持久化目录（Docker 容器内路径，与 docker-compose.yml 持久化卷路径保持一致）
+  # 方案C：长期运行容器模式，卷挂载到 /tmp/chrome-user-data
+  userDataDir: /tmp/chrome-user-data
 
 app:
   startup:

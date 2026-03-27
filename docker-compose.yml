@@ -7,14 +7,17 @@ services:
     container_name: stock-chrome
     ports:
       - "4444:4444"    # Selenium Grid端口
+      - "9222:9222"    # Chrome DevTools Protocol 端口（直连模式）
       - "7900:7900"    # VNC可视化端口（可选）
     shm_size: '2gb'
+    mem_limit: 1500m  # 限制容器最大内存1.5GB（适配4G服务器）
     environment:
-      - SE_NODE_MAX_SESSIONS=1
-      - SE_SESSION_REQUEST_TIMEOUT=600
-      - SE_NODE_SESSION_TIMEOUT=1800    # 30分钟session超时（等待短信验证码输入）
+      - SE_NODE_MAX_SESSIONS=1              # 限制为单会话，确保会话复用
+      - SE_SESSION_REQUEST_TIMEOUT=3600    # 1小时session超时（等待短信验证码）
+      - SE_NODE_SESSION_TIMEOUT=7200        # 2小时实际session超时
+      - CHROME_HEADLESS=true                # 启用无头模式节省内存
     volumes:
-      - chrome-userdata:/home/seluser/.config/chromium   # Cookie持久化，避免每次都要手机验证
+      - chrome-userdata:/tmp/chrome-user-data  # 持久化卷（容器重启后恢复会话）
     networks:
       - stock-network
     restart: unless-stopped
@@ -23,13 +26,11 @@ services:
   # Backend Service（CI 推送至阿里云 ACR，服务器拉取）
   # ===================
   stock-backend:
-    # 阿里云镜像（固定地址）
     image: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-trading:latest
     container_name: stock-backend
     ports:
       - "8080:8080"
     volumes:
-      # 统一模型资源数据卷，容器内挂载到 /models
       - models-data:/models
     environment:
       - SPRING_PROFILES_ACTIVE=prod

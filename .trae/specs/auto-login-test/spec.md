@@ -179,6 +179,88 @@
 - **WHEN** 配置了 `chrome.userDataDir`
 - **THEN** 浏览器启动时使用配置的 user-data-dir
 
+### Requirement: 浏览器会话长期运行模式（方案C）
+
+为解决 Selenium Grid 模式下浏览器会话无法持久化的问题，系统采用**长期运行容器 + 单会话复用**模式：
+
+#### 架构设计
+
+| 组件 | 配置 | 说明 |
+|------|------|------|
+| 容器内存限制 | `mem_limit: 1500m` | 适配4G服务器，Chrome headless 模式 |
+| Session 超时 | `SE_SESSION_REQUEST_TIMEOUT=3600` | 1小时等待短信验证码 |
+| 实际 Session 超时 | `SE_NODE_SESSION_TIMEOUT=7200` | 2小时总超时 |
+| 最大会话数 | `SE_NODE_MAX_SESSIONS=1` | 单会话确保复用 |
+| 持久化卷 | `chrome-userdata:/tmp/chrome-user-data` | 容器重启后会话恢复 |
+| DevTools 端口 | `9222:9222` | 支持 CDP 直连模式 |
+
+#### 工作原理
+
+1. **容器设计为无状态但会话可恢复**
+   - `chrome-userdata` 卷持久化 Chrome 用户配置
+   - 容器重启后，原有 Cookie、LocalStorage 仍然有效
+   - 无需重新进行手机验证（首次登录后）
+
+2. **单会话限制**
+   - `SE_NODE_MAX_SESSIONS=1` 确保同时只有一个 WebDriver 连接
+   - 避免多会话竞争导致会话丢失
+
+3. **长超时配置**
+   - 短信验证码输入可能需要较长时间
+   - `SE_SESSION_REQUEST_TIMEOUT=3600` 确保不会因等待验证码而超时
+
+#### 4G内存可行性评估
+
+| 组件 | 内存占用 | 说明 |
+|------|---------|------|
+| Chrome Headless | 200-300MB | 基础开销 |
+| 渲染进程 | 50-150MB | 取决于页面复杂度 |
+| 系统其他 | 500-800MB | SSH、systemd等 |
+| **总计** | **~1.5GB** | 分配 `mem_limit: 1500m` |
+
+**结论：4G内存完全可行，推荐使用 headless 模式。**
+
+#### Scenario: 长期运行容器验证
+- **WHEN** 容器启动后完成首次登录
+- **THEN** 容器重启后仍保持登录状态，无需重新手机验证
+
+### Requirement: 直连模式 CDP 连接（备选方案）
+
+如需完全控制浏览器会话，可切换到 CDP 直连模式：
+
+#### 配置变更
+
+```yaml
+# docker-compose.yml
+chrome:
+  ports:
+    - "9222:9222"  # Chrome DevTools Protocol
+```
+
+#### Java 连接代码
+
+```java
+// 通过 CDP 直连已有浏览器
+ChromeOptions options = new ChromeOptions();
+options.setExperimentalOption("debuggerAddress", "chrome:9222");
+WebDriver driver = new RemoteWebDriver(
+    new URL("http://localhost:9222/wd/hub"),
+    options
+);
+```
+
+#### 优势
+- 完全支持 `--user-data-dir` 持久化
+- 复用浏览器配置、Cookie、LocalStorage
+
+#### 劣势
+- 失去 Grid 的负载均衡能力
+- 需要手动管理容器生命周期
+
+#### Scenario: CDP 直连模式
+- **WHEN** 使用 `debuggerAddress` 连接 Chrome
+- **THEN** 复用已有浏览器实例和会话
+
 ## REMOVED Requirements
 
 无

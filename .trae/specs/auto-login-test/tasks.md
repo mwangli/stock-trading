@@ -87,6 +87,22 @@
 - [x] 在 application.yml 添加 `chrome.userDataDir` 配置
 - [x] 注意：Selenium Grid 模式下 `--user-data-dir` 不直接生效
 
+### 浏览器会话长期运行模式（方案C）- 2026-03-27
+
+- [x] 评估 4G 内存运行 Docker Chrome 的可行性
+  - Chrome Headless 模式：~1.5GB 内存足够
+  - 推荐配置：mem_limit=1500m, headless=true
+- [x] 修改 docker-compose.yml
+  - 添加 mem_limit: 1500m 内存限制
+  - 添加 SE_NODE_MAX_SESSIONS=1 单会话限制
+  - 添加 SE_SESSION_REQUEST_TIMEOUT=3600 超长超时
+  - 添加 CHROME_HEADLESS=true 启用无头模式
+  - 调整持久化卷路径为 /tmp/chrome-user-data
+  - 添加 9222 端口支持 CDP 直连模式
+- [ ] 修改 BrowserSessionManager.java 支持直连模式（待代码实现）
+- [ ] 更新 docs/05-自动登录/设计.md 文档（已完成）
+- [ ] 验证容器重启后会话恢复功能
+
 ## Task Dependencies
 
 - Task 2 依赖 Task 1 的页面类型检测结果
