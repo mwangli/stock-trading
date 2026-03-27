@@ -180,7 +180,7 @@ public class BrowserApiController {
         result.put("hasToken", token != null);
         result.put("token", token != null ? token.substring(0, Math.min(10, token.length())) + "***" : null);
 
-        SliderType sliderType = captchaService.detectSliderType(driver);
+        SliderType sliderType = captchaService.detectSliderByScreenshot(driver);
         result.put("sliderStatus", sliderType == SliderType.NONE ? "未检测到滑块" : "滑块存在: " + sliderType.name());
 
         return ResponseDTO.success(result);
@@ -250,13 +250,16 @@ public class BrowserApiController {
     }
 
     /**
-     * 检查滑块状态（跨 frame 检测）
+     * 检查滑块状态（截图检测，最可靠的方式）
+     * 通过截图分析页面中是否出现滑块验证弹窗
+     *
+     * @return hasSlider、sliderType 以及截图文件路径
      */
     @GetMapping("/phone/slider-status")
     public ResponseDTO<Map<String, Object>> checkSliderStatus() {
-        log.info("检查滑块状态");
+        log.info("检查滑块状态（截图检测）");
         WebDriver driver = browserSessionManager.getDriver();
-        SliderType sliderType = captchaService.detectSliderType(driver);
+        SliderType sliderType = captchaService.detectSliderByScreenshot(driver);
 
         Map<String, Object> status = new HashMap<>();
         status.put("hasSlider", sliderType != SliderType.NONE);
@@ -265,7 +268,11 @@ public class BrowserApiController {
     }
 
     /**
-     * 执行滑块验证
+     * 执行滑块验证（截图驱动，支持自动重试）
+     * 流程：截图 → 定位面板 → 裁剪拼图 → Sobel 边缘检测 → S 曲线拖动
+     * 最多重试 3 次
+     *
+     * @return 包含 distance、attempt、success 等字段的结果
      */
     @PostMapping("/phone/solve-slider")
     public ResponseDTO<Map<String, Object>> solveSlider() {
@@ -273,59 +280,81 @@ public class BrowserApiController {
         WebDriver driver = browserSessionManager.getDriver();
         Map<String, Object> result = new HashMap<>();
 
-        // 1. 切换到滑块所在 frame
-        if (!captchaService.switchToSliderFrame(driver)) {
-            result.put("success", false);
-            result.put("error", "未找到滑块元素");
-            return ResponseDTO.success(result, "未找到滑块元素");
+        int maxAttempts = 3;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            log.info("===== 滑块验证第 {}/{} 次尝试 =====", attempt, maxAttempts);
+            result.put("attempt", attempt);
+
+            try {
+                // 1. 截图检测滑块是否存在
+                SliderType type = captchaService.detectSliderByScreenshot(driver);
+                if (type == SliderType.NONE) {
+                    log.info("截图未检测到滑块，可能已通过或未触发");
+                    result.put("success", true);
+                    result.put("info", "未检测到滑块弹窗");
+                    return ResponseDTO.success(result, "未检测到滑块弹窗");
+                }
+
+                // 2. 截图方式计算拖动距离
+                CaptchaService.SliderResult sliderResult = captchaService.calculateSliderDistance(driver);
+                if (sliderResult == null) {
+                    result.put("success", false);
+                    result.put("error", "距离计算失败");
+                    if (attempt < maxAttempts) {
+                        Thread.sleep(1500);
+                        continue;
+                    }
+                    return ResponseDTO.success(result, "距离计算失败");
+                }
+
+                int distance = sliderResult.getDistance();
+                result.put("distance", distance);
+                result.put("method", "SCREENSHOT");
+
+                // 3. 执行拖动
+                boolean dragSuccess = captchaService.executeSliderDrag(driver, distance);
+                result.put("dragSuccess", dragSuccess);
+                if (!dragSuccess) {
+                    result.put("success", false);
+                    result.put("error", "拖动执行失败");
+                    if (attempt < maxAttempts) {
+                        Thread.sleep(1500);
+                        continue;
+                    }
+                    return ResponseDTO.success(result, "拖动失败");
+                }
+
+                // 4. 等待验证结果（截图检测弹窗消失）
+                boolean verified = captchaService.waitForVerificationResult(driver, 3);
+                result.put("success", verified);
+
+                if (verified) {
+                    log.info("滑块验证成功（第 {} 次尝试）", attempt);
+                    return ResponseDTO.success(result, "滑块验证成功");
+                }
+
+                log.warn("第 {} 次验证未通过", attempt);
+                if (attempt < maxAttempts) {
+                    Thread.sleep(2000);
+                }
+
+            } catch (Exception e) {
+                log.error("滑块验证第 {} 次异常: {}", attempt, e.getMessage(), e);
+                result.put("success", false);
+                result.put("error", e.getMessage());
+                if (attempt >= maxAttempts) {
+                    return ResponseDTO.success(result, "滑块验证异常: " + e.getMessage());
+                }
+                try {
+                    Thread.sleep(1500);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+            }
         }
 
-        try {
-            // 2. 提取图片 URL
-            CaptchaService.ImageUrls urls = captchaService.extractYidunImageUrls(driver);
-            result.put("bgUrl", urls.getBgUrl() != null ? "已获取" : "失败");
-            result.put("sliderUrl", urls.getSliderUrl() != null ? "已获取" : "失败");
-
-            if (urls.getBgUrl() == null || urls.getSliderUrl() == null) {
-                result.put("success", false);
-                result.put("error", "无法提取滑块图片 URL");
-                return ResponseDTO.success(result, "无法提取滑块图片 URL");
-            }
-
-            // 3. 下载图片 + 计算距离
-            byte[] bgImage = captchaService.downloadImage(urls.getBgUrl());
-            byte[] sliderImage = captchaService.downloadImage(urls.getSliderUrl());
-            int distance = captchaService.calculateSliderDistance(bgImage, sliderImage);
-            result.put("distance", distance);
-            log.info("滑块距离: {}px", distance);
-
-            if (distance <= 0) {
-                result.put("success", false);
-                result.put("error", "距离计算失败");
-                return ResponseDTO.success(result, "距离计算失败");
-            }
-
-            // 4. 执行拖动
-            boolean dragSuccess = captchaService.executeSliderDrag(driver, distance);
-            result.put("dragSuccess", dragSuccess);
-
-            if (!dragSuccess) {
-                result.put("success", false);
-                result.put("error", "拖动失败");
-                return ResponseDTO.success(result, "拖动失败");
-            }
-
-            // 5. 等待验证结果
-            boolean verified = captchaService.waitForVerificationResult(driver, 3);
-            result.put("success", verified);
-            return ResponseDTO.success(result, verified ? "滑块验证成功" : "滑块验证失败");
-
-        } catch (Exception e) {
-            log.error("滑块验证异常", e);
-            result.put("success", false);
-            result.put("error", e.getMessage());
-            return ResponseDTO.success(result, "滑块验证异常: " + e.getMessage());
-        }
+        result.put("success", false);
+        return ResponseDTO.success(result, "滑块验证失败：已达最大重试次数");
     }
 
     /**

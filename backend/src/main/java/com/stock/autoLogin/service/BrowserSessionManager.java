@@ -125,25 +125,53 @@ public class BrowserSessionManager implements DisposableBean {
 
     /**
      * 检查浏览器是否存活
+     * 区分临时网络异常和真正的会话死亡，避免误判导致会话丢失
+     *
+     * @return 浏览器是否可用
      */
     public boolean isBrowserAlive() {
         if (driver == null) {
             return false;
         }
-        try {
-            driver.getCurrentUrl();
-            return true;
-        } catch (Exception e) {
-            driver = null;
-            return false;
+        // 多次重试，避免临时网络抖动导致误判
+        for (int i = 0; i < 3; i++) {
+            try {
+                driver.getCurrentUrl();
+                return true;
+            } catch (org.openqa.selenium.NoSuchSessionException e) {
+                // 会话已销毁，确认死亡
+                log.warn("浏览器会话已销毁: {}", e.getMessage());
+                driver = null;
+                return false;
+            } catch (org.openqa.selenium.WebDriverException e) {
+                // 可能是临时异常，重试
+                log.debug("浏览器存活检测第 {} 次异常: {}", i + 1, e.getMessage());
+                if (i < 2) {
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("浏览器存活检测未知异常: {}", e.getMessage());
+                driver = null;
+                return false;
+            }
         }
+        // 3 次都失败，判定死亡
+        log.error("浏览器存活检测连续 3 次失败，判定会话已死亡");
+        driver = null;
+        return false;
     }
 
     /**
      * 获取 WebDriver 实例
+     *
+     * @return WebDriver，不可用时抛出 BrowserException
      */
     public WebDriver getDriver() {
-        if (!isBrowserAlive()) {
+        if (driver == null) {
             throw new BrowserException("浏览器未启动");
         }
         return driver;

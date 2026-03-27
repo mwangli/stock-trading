@@ -174,7 +174,7 @@ public class AutoLoginService {
     private boolean handleSliderCaptcha(WebDriver driver) throws Exception {
         Thread.sleep(1000);
 
-        SliderType sliderType = captchaService.detectSliderType(driver);
+        SliderType sliderType = captchaService.detectSliderByScreenshot(driver);
         if (sliderType == SliderType.NONE) {
             log.info("未检测到滑块验证码，继续登录流程");
             return true;
@@ -182,27 +182,14 @@ public class AutoLoginService {
 
         log.info("检测到滑块验证码，开始处理");
 
-        // 切换到滑块所在 frame
-        if (!captchaService.switchToSliderFrame(driver)) {
-            log.error("无法切换到滑块所在 frame");
-            return false;
-        }
-
-        CaptchaService.ImageUrls imageUrls = captchaService.extractYidunImageUrls(driver);
-        if (imageUrls.getBgUrl() == null || imageUrls.getSliderUrl() == null) {
-            log.error("无法提取滑块图片 URL");
-            return false;
-        }
-
-        byte[] bgImage = captchaService.downloadImage(imageUrls.getBgUrl());
-        byte[] sliderImage = captchaService.downloadImage(imageUrls.getSliderUrl());
-        int distance = captchaService.calculateSliderDistance(bgImage, sliderImage);
-
-        if (distance <= 0) {
+        // 截图方式计算距离
+        CaptchaService.SliderResult sliderResult = captchaService.calculateSliderDistance(driver);
+        if (sliderResult == null || sliderResult.getDistance() <= 0) {
             log.error("滑块距离计算失败");
             return false;
         }
 
+        int distance = sliderResult.getDistance();
         boolean success = captchaService.executeSliderDrag(driver, distance);
         if (!success) {
             log.error("滑块拖动失败");
