@@ -303,66 +303,131 @@ public class CaptchaService {
             }
         }
 
-        // 2. 逐列计算灰度跳变强度（Sobel 水平边缘）
-        // 跳过前10%区域（滑块起始位置通常不在最左侧）
+        // 2. 逐列计算灰度跳变强度（增强版 Sobel）
         int startX = bgWidth / 10;
         int endX = bgWidth - sliderWidth / 2;
-        int bestX = 0;
-        int maxEdgeSum = 0;
+
+        int[] edgeScores = new int[bgWidth];
+        int globalMin = Integer.MAX_VALUE;
+        int globalMax = Integer.MIN_VALUE;
 
         for (int x = startX; x < endX; x++) {
             int edgeSum = 0;
+            int localMin = Integer.MAX_VALUE;
+            int localMax = Integer.MIN_VALUE;
+
             for (int y = 1; y < bgHeight - 1; y++) {
-                // 水平 Sobel：检测垂直边缘
-                int left = x > 0 ? gray[x - 1][y] : gray[x][y];
-                int right = x < bgWidth - 1 ? gray[x + 1][y] : gray[x][y];
+                int left = gray[x - 1][y];
+                int right = gray[x + 1][y];
                 int diff = Math.abs(right - left);
-                if (diff > 30) { // 阈值：明显的灰度跳变
-                    edgeSum += diff;
-                }
+
+                edgeSum += diff;
+                localMin = Math.min(localMin, Math.min(left, right));
+                localMax = Math.max(localMax, Math.max(left, right));
             }
-            if (edgeSum > maxEdgeSum) {
-                maxEdgeSum = edgeSum;
-                bestX = x;
+
+            int colorRange = localMax - localMin;
+            edgeScores[x] = edgeSum * (colorRange > 50 ? 2 : 1);
+            globalMin = Math.min(globalMin, edgeScores[x]);
+            globalMax = Math.max(globalMax, edgeScores[x]);
+        }
+
+        // 3. 动态阈值找边缘
+        int threshold = (globalMax + globalMin) / 3;
+        int bestX = startX;
+        int maxScore = 0;
+        int consecutiveHigh = 0;
+        int peakStart = 0;
+        int peakEnd = 0;
+
+        for (int x = startX; x < endX; x++) {
+            if (edgeScores[x] > threshold) {
+                if (consecutiveHigh == 0) {
+                    peakStart = x;
+                }
+                consecutiveHigh++;
+                peakEnd = x;
+
+                if (edgeScores[x] > maxScore) {
+                    maxScore = edgeScores[x];
+                    bestX = x;
+                }
+            } else {
+                consecutiveHigh = 0;
             }
         }
 
-        // 3. 距离修正：页面渲染宽度 / 图片原始宽度
-        // NECaptcha 背景图原始 320px，渲染 220px
-        // 返回的距离需要按渲染比例换算
-        // 注意：调用方会直接用这个距离来拖动，所以要返回渲染后的距离
+        // 如果没有明显边缘，使用能量最高点
+        if (maxScore == 0) {
+            for (int x = startX; x < endX; x++) {
+                if (edgeScores[x] > maxScore) {
+                    maxScore = edgeScores[x];
+                    bestX = x;
+                }
+            }
+        }
+
+        // 4. 根据实际渲染尺寸计算比例
+        // 背景图实际渲染宽度需要根据图片比例推算
         double renderRatio = 220.0 / bgWidth;
         int renderDistance = (int) (bestX * renderRatio);
 
-        log.info("滑块距离计算：原始={}px, 渲染={}px（ratio={}, maxEdge={}）",
-                bestX, renderDistance, String.format("%.2f", renderRatio), maxEdgeSum);
+        // 确保距离在合理范围内
+        int minDistance = bgWidth / 10;
+        int maxDistance = bgWidth - bgWidth / 5;
+        if (bestX < minDistance) {
+            renderDistance = (int) (minDistance * renderRatio);
+        } else if (bestX > maxDistance) {
+            renderDistance = (int) (maxDistance * renderRatio);
+        }
+
+        log.info("滑块距离计算：原始={}px, 渲染={}px（ratio={}, maxScore={}, bgWidth={}）",
+                bestX, renderDistance, String.format("%.3f", renderRatio), maxScore, bgWidth);
 
         return renderDistance;
     }
 
     /**
-     * 生成 S 曲线缓动滑动轨迹
+     * 生成更真实的滑块拖动轨迹
+     * 模拟真人操作：加速-减速-轻微回退-再加速模式
      */
     public List<int[]> generateSliderTrajectory(int distance) {
         List<int[]> trajectory = new ArrayList<>();
-        int pointCount = 30 + distance / 10;
+        int pointCount = 40 + distance / 8;
         ThreadLocalRandom random = ThreadLocalRandom.current();
 
         for (int i = 0; i < pointCount; i++) {
             double t = (double) i / pointCount;
+
             double easing;
-            if (t < 0.3) {
-                easing = 2 * t * t;
-            } else if (t < 0.7) {
-                easing = -2 * t * t + 2 * t - 0.2;
+            if (t < 0.2) {
+                easing = 1.5 * t * t;
+            } else if (t < 0.4) {
+                easing = 0.8 * t + 0.1;
+            } else if (t < 0.6) {
+                easing = -0.5 * t * t + 0.9 * t + 0.05;
+            } else if (t < 0.85) {
+                easing = 0.3 * t + 0.55;
             } else {
-                easing = 1 - Math.pow(1 - t, 2);
+                double overShoot = Math.sin((t - 0.85) * Math.PI / 0.15) * 0.03;
+                easing = 0.85 + (t - 0.85) * 1.2 + overShoot;
             }
 
-            int x = (int) (easing * distance) + random.nextInt(-2, 3);
-            int y = (int) (Math.sin(i * 0.3) * 3);
+            easing = Math.max(0, Math.min(1.05, easing));
+
+            int x = (int) (easing * distance) + random.nextInt(-3, 4);
+            int y = random.nextInt(-4, 5);
+
+            if (random.nextInt(100) < 15) {
+                y += random.nextInt(-3, 4);
+            }
+
             trajectory.add(new int[]{x, y});
         }
+
+        int lastIdx = trajectory.size() - 1;
+        int[] lastPoint = trajectory.get(lastIdx);
+        trajectory.set(lastIdx, new int[]{lastPoint[0], lastPoint[1] + random.nextInt(-2, 3)});
 
         log.debug("生成滑动轨迹：点数={}, 距离={}px", trajectory.size(), distance);
         return trajectory;
@@ -370,7 +435,7 @@ public class CaptchaService {
 
     /**
      * 使用 Selenium Actions 执行滑块拖动
-     * 轨迹为绝对位置，转为增量执行 moveByOffset
+     * 优化版：模拟更真实的真人操作
      */
     public boolean executeSliderDrag(WebDriver driver, int distance) {
         try {
@@ -383,14 +448,29 @@ public class CaptchaService {
             Actions actions = new Actions(driver);
             actions.clickAndHold(sliderHandler).perform();
 
+            Thread.sleep(200);
+
             int prevX = 0, prevY = 0;
-            for (int[] point : trajectory) {
+            ThreadLocalRandom random = ThreadLocalRandom.current();
+
+            for (int i = 0; i < trajectory.size(); i++) {
+                int[] point = trajectory.get(i);
                 int dx = point[0] - prevX;
                 int dy = point[1] - prevY;
+
+                int baseDelay = random.nextInt(10, 25);
+                if (i < 5) {
+                    baseDelay += random.nextInt(20, 50);
+                } else if (i > trajectory.size() - 5) {
+                    baseDelay += random.nextInt(30, 60);
+                } else if (random.nextInt(100) < 10) {
+                    baseDelay += random.nextInt(50, 100);
+                }
+
                 actions.moveByOffset(dx, dy).perform();
                 prevX = point[0];
                 prevY = point[1];
-                Thread.sleep(ThreadLocalRandom.current().nextInt(15, 26));
+                Thread.sleep(baseDelay);
             }
 
             actions.release().perform();

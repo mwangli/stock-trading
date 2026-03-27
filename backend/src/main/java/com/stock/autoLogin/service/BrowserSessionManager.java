@@ -36,6 +36,9 @@ public class BrowserSessionManager implements DisposableBean {
     @Value("${chrome.headless:false}")
     private boolean chromeHeadless;
 
+    @Value("${chrome.userDataDir:}")
+    private String chromeUserDataDir;
+
     private WebDriver driver;
 
     /**
@@ -83,6 +86,12 @@ public class BrowserSessionManager implements DisposableBean {
         options.addArguments("--disable-dev-shm-usage");
         options.setExperimentalOption("excludeSwitches", new String[]{"enable-automation"});
         options.setExperimentalOption("useAutomationExtension", false);
+
+        // 浏览器持久化配置（保持登录状态，避免每次重新手机验证）
+        if (chromeUserDataDir != null && !chromeUserDataDir.isEmpty()) {
+            options.addArguments("--user-data-dir=" + chromeUserDataDir);
+            log.info("启用浏览器持久化: user-data-dir={}", chromeUserDataDir);
+        }
 
         if (chromeHeadless) {
             options.addArguments("--headless=new");

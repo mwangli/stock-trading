@@ -2,6 +2,7 @@ package com.stock.autoLogin.controller;
 
 import com.stock.autoLogin.enums.SliderType;
 import com.stock.autoLogin.service.BrowserSessionManager;
+import com.stock.autoLogin.service.CaptchaFetchService;
 import com.stock.autoLogin.service.CookieManager;
 import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.tradingExecutor.execution.CaptchaService;
@@ -11,9 +12,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.WebDriver;
 import org.springframework.web.bind.annotation.*;
 
+import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
+import org.openqa.selenium.WebElement;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -26,6 +29,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -41,10 +45,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class BrowserApiController {
 
+    private static final String PHONE_CODE_KEY = "PHONE_CODE";
+
     private final BrowserSessionManager browserSessionManager;
     private final LoginPageHandler loginPageHandler;
     private final CaptchaService captchaService;
     private final CookieManager cookieManager;
+    private final CaptchaFetchService captchaFetchService;
 
     // ==================== 通用操作 ====================
 
@@ -292,77 +299,106 @@ public class BrowserApiController {
      */
     @PostMapping("/phone/solve-slider")
     public ResponseDTO<Map<String, Object>> solveSlider() {
-        log.info("执行滑块验证");
+        log.info("执行滑块验证（增强版：自动重新获取图片）");
         WebDriver driver = browserSessionManager.getDriver();
         Map<String, Object> result = new HashMap<>();
 
-        // 1. 切换到滑块所在 frame（如果不在，尝试重新触发）
-        if (!captchaService.switchToSliderFrame(driver)) {
-            log.info("滑块未弹出，尝试重新点击获取验证码按钮触发");
-            try {
-                // 切回表单 frame 点击按钮
-                browserSessionManager.ensureLoginFrame();
-                loginPageHandler.clickSendCodeButton();
-                Thread.sleep(3000);  // 等待滑块弹窗加载
-                // 再次尝试切换到滑块 frame
-                if (!captchaService.switchToSliderFrame(driver)) {
+        int maxAttempts = 3;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            log.info("滑块验证第 {}/{} 次尝试", attempt, maxAttempts);
+
+            // 1. 切换到滑块所在 frame（如果不在，尝试重新触发）
+            if (!captchaService.switchToSliderFrame(driver)) {
+                log.info("滑块未弹出，尝试重新点击获取验证码按钮触发");
+                try {
+                    browserSessionManager.ensureLoginFrame();
+                    loginPageHandler.clickSendCodeButton();
+                    Thread.sleep(3000);
+                    if (!captchaService.switchToSliderFrame(driver)) {
+                        result.put("success", false);
+                        result.put("error", "滑块弹窗未弹出");
+                        result.put("attempt", attempt);
+                        return ResponseDTO.success(result, "滑块弹窗未弹出");
+                    }
+                } catch (Exception e) {
                     result.put("success", false);
-                    result.put("error", "滑块弹窗未弹出（重试后仍未检测到）");
-                    return ResponseDTO.success(result, "滑块弹窗未弹出");
+                    result.put("error", "重新触发滑块失败: " + e.getMessage());
+                    result.put("attempt", attempt);
+                    return ResponseDTO.success(result, "重新触发滑块失败");
                 }
+            }
+
+            try {
+                // 2. 提取图片 URL（每次都重新获取，因为页面可能已刷新）
+                CaptchaService.ImageUrls urls = captchaService.extractYidunImageUrls(driver);
+                result.put("bgUrl", urls.getBgUrl() != null ? "已获取" : "失败");
+                result.put("sliderUrl", urls.getSliderUrl() != null ? "已获取" : "失败");
+
+                if (urls.getBgUrl() == null || urls.getSliderUrl() == null) {
+                    result.put("success", false);
+                    result.put("error", "无法提取滑块图片 URL");
+                    result.put("attempt", attempt);
+                    return ResponseDTO.success(result, "无法提取滑块图片 URL");
+                }
+
+                // 3. 下载图片 + 计算距离（每次都重新计算，因为图片已刷新）
+                byte[] bgImage = captchaService.downloadImage(urls.getBgUrl());
+                byte[] sliderImage = captchaService.downloadImage(urls.getSliderUrl());
+                int distance = captchaService.calculateSliderDistance(bgImage, sliderImage);
+                result.put("distance", distance);
+                log.info("滑块距离: {}px (第 {}/{} 次)", distance, attempt, maxAttempts);
+
+                if (distance <= 0) {
+                    result.put("success", false);
+                    result.put("error", "距离计算失败");
+                    result.put("attempt", attempt);
+                    return ResponseDTO.success(result, "距离计算失败");
+                }
+
+                // 4. 执行拖动
+                boolean dragSuccess = captchaService.executeSliderDrag(driver, distance);
+                result.put("dragSuccess", dragSuccess);
+
+                if (!dragSuccess) {
+                    result.put("success", false);
+                    result.put("error", "拖动失败");
+                    result.put("attempt", attempt);
+                    return ResponseDTO.success(result, "拖动失败");
+                }
+
+                // 5. 等待验证结果（单次等待，不重试）
+                boolean verified = captchaService.waitForVerificationResult(driver, 1);
+                result.put("verified", verified);
+
+                if (verified) {
+                    log.info("滑块验证成功！");
+                    result.put("success", true);
+                    result.put("attempt", attempt);
+                    return ResponseDTO.success(result, "滑块验证成功");
+                }
+
+                // 验证失败，页面已刷新成新的滑块，继续下一次循环重新获取图片和距离
+                log.warn("滑块验证失败，页面已刷新，继续第 {} 次尝试", attempt + 1);
+
+                if (attempt < maxAttempts) {
+                    Thread.sleep(1500);
+                }
+
             } catch (Exception e) {
+                log.error("滑块验证异常 (第 {}/{} 次): {}", attempt, maxAttempts, e.getMessage());
                 result.put("success", false);
-                result.put("error", "重新触发滑块失败: " + e.getMessage());
-                return ResponseDTO.success(result, "重新触发滑块失败");
+                result.put("error", e.getMessage());
+                result.put("attempt", attempt);
+                if (attempt == maxAttempts) {
+                    return ResponseDTO.success(result, "滑块验证异常: " + e.getMessage());
+                }
             }
         }
 
-        try {
-            // 2. 提取图片 URL
-            CaptchaService.ImageUrls urls = captchaService.extractYidunImageUrls(driver);
-            result.put("bgUrl", urls.getBgUrl() != null ? "已获取" : "失败");
-            result.put("sliderUrl", urls.getSliderUrl() != null ? "已获取" : "失败");
-
-            if (urls.getBgUrl() == null || urls.getSliderUrl() == null) {
-                result.put("success", false);
-                result.put("error", "无法提取滑块图片 URL");
-                return ResponseDTO.success(result, "无法提取滑块图片 URL");
-            }
-
-            // 3. 下载图片 + 计算距离
-            byte[] bgImage = captchaService.downloadImage(urls.getBgUrl());
-            byte[] sliderImage = captchaService.downloadImage(urls.getSliderUrl());
-            int distance = captchaService.calculateSliderDistance(bgImage, sliderImage);
-            result.put("distance", distance);
-            log.info("滑块距离: {}px", distance);
-
-            if (distance <= 0) {
-                result.put("success", false);
-                result.put("error", "距离计算失败");
-                return ResponseDTO.success(result, "距离计算失败");
-            }
-
-            // 4. 执行拖动
-            boolean dragSuccess = captchaService.executeSliderDrag(driver, distance);
-            result.put("dragSuccess", dragSuccess);
-
-            if (!dragSuccess) {
-                result.put("success", false);
-                result.put("error", "拖动失败");
-                return ResponseDTO.success(result, "拖动失败");
-            }
-
-            // 5. 等待验证结果
-            boolean verified = captchaService.waitForVerificationResult(driver, 3);
-            result.put("success", verified);
-            return ResponseDTO.success(result, verified ? "滑块验证成功" : "滑块验证失败");
-
-        } catch (Exception e) {
-            log.error("滑块验证异常", e);
-            result.put("success", false);
-            result.put("error", e.getMessage());
-            return ResponseDTO.success(result, "滑块验证异常: " + e.getMessage());
-        }
+        log.error("滑块验证失败：已达最大尝试次数 {}", maxAttempts);
+        result.put("success", false);
+        result.put("error", "滑块验证失败：已达最大尝试次数 " + maxAttempts);
+        return ResponseDTO.success(result, "滑块验证失败");
     }
 
     /**
@@ -379,14 +415,81 @@ public class BrowserApiController {
 
     /**
      * 输入短信验证码
+     * - 如果 code 参数为空，使用增强版获取逻辑（Redis 3次重试 + 邮箱获取）
+     * - 如果 code 参数有值，直接使用传入的值
      */
     @PostMapping("/phone/input-code")
-    public ResponseDTO<Void> inputSmsCode(@RequestParam String code) {
+    public ResponseDTO<Map<String, Object>> inputSmsCode(@RequestParam(required = false) String code) {
         log.info("输入短信验证码");
-        // 可能需要切回表单 iframe
+
+        if (code == null || code.trim().isEmpty()) {
+            log.info("未提供验证码，使用增强版获取逻辑");
+            code = captchaFetchService.getPhoneCode();
+            if (code == null) {
+                return ResponseDTO.failure("增强获取失败：Redis和邮箱均未获取到验证码");
+            }
+            log.info("增强获取验证码成功: {}", code);
+        }
+
         browserSessionManager.ensureLoginFrame();
         loginPageHandler.inputSmsCode(code);
-        return ResponseDTO.success(null, "验证码输入成功");
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("code", code);
+        result.put("source", "enhanced");
+        return ResponseDTO.success(result, "验证码输入成功");
+    }
+
+    /**
+     * 增强版获取验证码（含失效重试）
+     * 如果验证失败，可调用此接口重新获取
+     */
+    @PostMapping("/phone/get-code-enhanced")
+    public ResponseDTO<Map<String, Object>> getCodeEnhanced() {
+        log.info("增强版获取验证码（含失效重试）");
+
+        String code = captchaFetchService.getPhoneCodeWithRetry(() -> {
+            log.info("触发重新发送验证码...");
+            browserSessionManager.ensureLoginFrame();
+            loginPageHandler.clickSendCodeButton();
+            return true;
+        });
+
+        Map<String, Object> result = new HashMap<>();
+        if (code != null) {
+            result.put("code", code);
+            result.put("source", "enhanced-retry");
+            return ResponseDTO.success(result, "验证码获取成功");
+        } else {
+            return ResponseDTO.failure("验证码获取失败");
+        }
+    }
+
+    /**
+     * 从 Redis 获取短信验证码（仅获取，不删除）
+     */
+    @GetMapping("/phone/code-from-redis")
+    public ResponseDTO<Map<String, Object>> getPhoneCodeFromRedis() {
+        String code = captchaFetchService.peekRedisCode();
+        Map<String, Object> result = new HashMap<>();
+        if (code != null) {
+            result.put("code", code);
+            result.put("source", "redis");
+            return ResponseDTO.success(result, "验证码获取成功");
+        } else {
+            return ResponseDTO.failure("Redis 中未找到验证码");
+        }
+    }
+
+    /**
+     * 清除 Redis 中的验证码
+     */
+    @PostMapping("/phone/clear-redis")
+    public ResponseDTO<Map<String, Object>> clearRedisCode() {
+        boolean success = captchaFetchService.clearRedisCode();
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", success);
+        return ResponseDTO.success(result, success ? "Redis 验证码已清除" : "清除失败");
     }
 
     /**
@@ -400,6 +503,76 @@ public class BrowserApiController {
     }
 
     // ==================== 诊断接口 ====================
+
+    /**
+     * 检测页面类型（基于 DOM 内容，非 URL）
+     * - 手机验证页：包含"手机验证"标题 + 手机号输入框 + "获取验证码"按钮
+     * - 登录页：包含 password 输入框 + 资金账号输入框 + "登录"按钮
+     */
+    @GetMapping("/debug/page-type")
+    public ResponseDTO<Map<String, Object>> detectPageType() {
+        log.info("检测页面类型");
+        WebDriver driver = browserSessionManager.getDriver();
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            // 1. 获取页面标题
+            String title = driver.getTitle();
+            result.put("title", title);
+
+            // 2. 检测登录页特征（password 输入框）
+            List<WebElement> passwordInputs = driver.findElements(
+                    By.xpath("//input[@type='password']"));
+            boolean hasPassword = !passwordInputs.isEmpty();
+            result.put("hasPasswordInput", hasPassword);
+
+            // 3. 检测手机验证页特征
+            List<WebElement> phoneInputs = driver.findElements(
+                    By.xpath("//input[contains(@placeholder, '手机号')]"));
+            boolean hasPhoneInput = !phoneInputs.isEmpty();
+            result.put("hasPhoneInput", hasPhoneInput);
+
+            List<WebElement> sendCodeButtons = driver.findElements(
+                    By.xpath("//*[contains(text(), '获取验证码')]"));
+            boolean hasSendCodeButton = !sendCodeButtons.isEmpty();
+            result.put("hasSendCodeButton", hasSendCodeButton);
+
+            // 4. 判断页面类型（增加可见性检查）
+            String pageType;
+            if (hasPhoneInput && hasSendCodeButton) {
+                // 进一步检查：只有当 password 输入框不可见时，才判定为手机验证页
+                boolean passwordVisible = passwordInputs.stream().anyMatch(WebElement::isDisplayed);
+                if (passwordVisible) {
+                    // password 输入框可见，说明是登录页
+                    pageType = "LOGIN";
+                    result.put("description", "登录页（常规登录，含密码输入框）");
+                } else {
+                    pageType = "PHONE_VERIFY";
+                    result.put("description", "手机验证页（首次登录/新设备）");
+                }
+            } else if (hasPassword) {
+                pageType = "LOGIN";
+                result.put("description", "登录页（常规登录）");
+            } else {
+                pageType = "UNKNOWN";
+                result.put("description", "未知页面类型");
+            }
+
+            result.put("pageType", pageType);
+            result.put("currentUrl", driver.getCurrentUrl());
+
+            log.info("页面类型检测结果: {}", pageType);
+            return ResponseDTO.success(result);
+
+        } catch (Exception e) {
+            log.error("页面类型检测失败: {}", e.getMessage());
+            result.put("pageType", "ERROR");
+            result.put("error", e.getMessage());
+            return ResponseDTO.failure("页面类型检测失败: " + e.getMessage());
+        }
+    }
 
     /**
      * 全页面截图

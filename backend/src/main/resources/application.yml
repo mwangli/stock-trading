@@ -46,6 +46,14 @@ spring:
       ddl-auto: update
     show-sql: false
 
+  # 邮箱配置（用于获取短信验证码）
+  email:
+    host: imap.qq.com
+    port: 993
+    username: 1325533186@qq.com
+    password: xwzpzqzjwebibabc
+    from: 1325533186@qq.com
+
 # DJL模型配置（Windows 使用 pytorch-native-cu121 时需安装 NVIDIA 驱动 + CUDA 12.1）
 djl:
   model:
@@ -102,6 +110,9 @@ chrome:
   remote:
     url: http://localhost:4444/wd/hub
   headless: false
+  # 浏览器持久化目录（Docker 容器内路径）
+  # Chrome Docker 已挂载 chrome-userdata 卷到 /home/seluser/.config/chromium
+  userDataDir: /home/seluser/.config/chromium
 
 app:
   startup:
