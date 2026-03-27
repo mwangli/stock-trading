@@ -2,32 +2,29 @@ package com.stock.tradingExecutor.execution;
 
 import com.stock.autoLogin.enums.SliderType;
 import lombok.extern.slf4j.Slf4j;
-import org.openqa.selenium.*;
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.Actions;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
-import java.awt.Color;
-import java.awt.Rectangle;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.io.InputStream;
+import java.net.URL;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * 验证码服务 — 截图驱动方案
- * <p>
- * 核心思路：所有检测和识别均基于全页面截图，不依赖 DOM 选择器（因 Yidun SDK 弹窗
- * 在不同环境下 DOM 结构不一致，且可能在 Shadow DOM / 独立 overlay 中渲染）。
- * <p>
- * 流程：截图 → 检测弹窗 → 定位面板 → 裁剪拼图 → Sobel 边缘检测 → S 曲线拖动
+ * 验证码服务
+ * 提供滑块验证码的距离计算、轨迹生成和验证执行
  *
  * @author mwangli
  * @since 2026-03-25
@@ -36,463 +33,149 @@ import java.util.concurrent.ThreadLocalRandom;
 @Service
 public class CaptchaService {
 
-    // ==================== 截图与滑块检测 ====================
-
     /**
-     * 截取全页面截图并保存到 .tmp 目录
+     * 检测滑块验证码类型（跨 frame 搜索）
+     * 策略：当前 frame → 顶层 document → 遍历所有 iframe
      *
      * @param driver WebDriver 实例
-     * @param tag    截图标签（用于文件名）
-     * @return 截图的 BufferedImage，失败返回 null
+     * @return 滑块类型枚举
      */
-    public BufferedImage takeScreenshot(WebDriver driver, String tag) {
+    public SliderType detectSliderType(WebDriver driver) {
         try {
-            driver.switchTo().defaultContent();
-            byte[] bytes = ((TakesScreenshot) driver).getScreenshotAs(OutputType.BYTES);
-            BufferedImage img = ImageIO.read(new ByteArrayInputStream(bytes));
-            saveDebugImage(img, tag);
-            log.info("截图成功 [{}]: {}x{}", tag, img.getWidth(), img.getHeight());
-            return img;
-        } catch (Exception e) {
-            log.error("截图失败 [{}]: {}", tag, e.getMessage());
-            return null;
-        }
-    }
+            // 策略 1: 当前 frame 查找
+            if (hasYidunElement(driver)) {
+                log.info("在当前 frame 中检测到网易云盾滑块");
+                return SliderType.YIDUN;
+            }
 
-    /**
-     * 通过截图检测滑块弹窗是否存在
-     * 检测逻辑：在截图中查找白色/浅色矩形弹窗面板（网易云盾特征）
-     *
-     * @param driver WebDriver 实例
-     * @return 如果检测到滑块弹窗返回 YIDUN，否则返回 NONE
-     */
-    public SliderType detectSliderByScreenshot(WebDriver driver) {
-        BufferedImage screenshot = takeScreenshot(driver, "detect_slider");
-        if (screenshot == null) {
-            return SliderType.NONE;
+            // 策略 2: 切到顶层查找
+            driver.switchTo().defaultContent();
+            if (hasYidunElement(driver)) {
+                log.info("在顶层 document 中检测到网易云盾滑块");
+                return SliderType.YIDUN;
+            }
+
+            // 策略 3: 遍历顶层 iframe 查找
+            List<WebElement> iframes = driver.findElements(By.tagName("iframe"));
+            for (int i = 0; i < iframes.size(); i++) {
+                try {
+                    driver.switchTo().defaultContent();
+                    driver.switchTo().frame(i);
+                    if (hasYidunElement(driver)) {
+                        log.info("在第 {} 个 iframe 中检测到网易云盾滑块", i);
+                        return SliderType.YIDUN;
+                    }
+                } catch (Exception e) {
+                    log.debug("切换到第 {} 个 iframe 失败: {}", i, e.getMessage());
+                }
+            }
+
+        } catch (Exception e) {
+            log.debug("滑块检测异常: {}", e.getMessage());
         }
-        Rectangle panel = locateSliderPanel(screenshot);
-        if (panel != null) {
-            log.info("截图检测到滑块弹窗：x={}, y={}, w={}, h={}", panel.x, panel.y, panel.width, panel.height);
-            return SliderType.YIDUN;
-        }
-        log.info("截图未检测到滑块弹窗");
+
+        log.debug("未检测到滑块验证码");
         return SliderType.NONE;
     }
 
-    // ==================== 截图式距离计算 ====================
-
     /**
-     * 基于截图计算滑块拖动距离
-     * 完整流程：截图 → 定位面板 → 裁剪拼图 → Sobel 边缘检测 → 坐标映射
+     * 切换到滑块所在的 frame 上下文
      *
      * @param driver WebDriver 实例
-     * @return 包含距离和面板位置的结果，失败返回 null
+     * @return 是否成功找到并切换
      */
-    public SliderResult calculateSliderDistance(WebDriver driver) {
-        // 1. 截图
-        BufferedImage fullPage = takeScreenshot(driver, "solve_slider");
-        if (fullPage == null) {
-            return null;
-        }
-
-        // 2. 定位滑块面板
-        Rectangle panelRect = locateSliderPanel(fullPage);
-        if (panelRect == null) {
-            log.error("截图中未定位到滑块面板");
-            return null;
-        }
-        log.info("面板定位：x={}, y={}, w={}, h={}", panelRect.x, panelRect.y, panelRect.width, panelRect.height);
-        BufferedImage panelImage = fullPage.getSubimage(panelRect.x, panelRect.y, panelRect.width, panelRect.height);
-        saveDebugImage(panelImage, "slider_panel");
-
-        // 3. 裁剪拼图区域（去除标题栏和底部滑轨）
-        int titleH = (int) (panelRect.height * 0.12);
-        int barH = (int) (panelRect.height * 0.20);
-        int puzzleH = panelRect.height - titleH - barH;
-        if (puzzleH <= 20) {
-            log.error("面板高度异常: {}", panelRect.height);
-            return null;
-        }
-        BufferedImage puzzle = fullPage.getSubimage(panelRect.x, panelRect.y + titleH, panelRect.width, puzzleH);
-        saveDebugImage(puzzle, "slider_puzzle");
-
-        // 4. Sobel 边缘检测缺口
-        int gapX = detectGapByEdge(puzzle);
-        if (gapX < 0) {
-            log.error("缺口检测失败");
-            return null;
-        }
-        log.info("缺口位置：x={}px（截图像素）", gapX);
-
-        // 5. 坐标映射
-        double dpr = getDpr(driver);
-        int initOffset = (int) (panelRect.width * 0.06 / dpr);
-        int distance = (int) (gapX / dpr) - initOffset;
-        distance = Math.max(10, Math.min(distance, 300));
-        log.info("拖动距离：{}px（DPR={}, 初始偏移={}）", distance, dpr, initOffset);
-
-        return new SliderResult(distance, panelRect);
-    }
-
-    // ==================== 面板定位 ====================
-
-    /**
-     * 从截图中定位滑块弹窗面板
-     * 策略 A：扫描白色矩形面板（25%~50% 页宽）
-     * 策略 B：从灰色滑轨条反推面板位置
-     *
-     * @param fullPage 全页面截图
-     * @return 面板区域，未找到返回 null
-     */
-    public Rectangle locateSliderPanel(BufferedImage fullPage) {
-        int w = fullPage.getWidth();
-        int h = fullPage.getHeight();
-        int minPW = (int) (w * 0.20);
-        int maxPW = (int) (w * 0.50);
-        int minPH = (int) (h * 0.15);
-        int maxPH = (int) (h * 0.50);
-
-        // 策略 A：扫描白色矩形
-        for (int y = (int) (h * 0.05); y < h * 0.7; y++) {
-            int runStart = -1;
-            int runLen = 0;
-            for (int x = (int) (w * 0.1); x < w * 0.9; x++) {
-                Color c = new Color(fullPage.getRGB(x, y));
-                if (c.getRed() > 230 && c.getGreen() > 230 && c.getBlue() > 230) {
-                    if (runStart < 0) runStart = x;
-                    runLen++;
-                } else {
-                    if (runLen >= minPW && runLen <= maxPW) {
-                        Rectangle panel = verifyPanel(fullPage, runStart, y, runLen, minPH, maxPH);
-                        if (panel != null) return panel;
-                    }
-                    runStart = -1;
-                    runLen = 0;
-                }
-            }
-            if (runLen >= minPW && runLen <= maxPW) {
-                Rectangle panel = verifyPanel(fullPage, runStart, y, runLen, minPH, maxPH);
-                if (panel != null) return panel;
-            }
-        }
-
-        // 策略 B：灰色滑轨反推
-        return locateBySliderBar(fullPage);
-    }
-
-    /**
-     * 验证候选面板：内部有拼图图片（色彩丰富）
-     */
-    private Rectangle verifyPanel(BufferedImage img, int x, int y, int width, int minH, int maxH) {
-        int imgH = img.getHeight();
-        int panelH = 0;
-        for (int dy = 1; dy < maxH && (y + dy) < imgH; dy++) {
-            Color left = new Color(img.getRGB(x + 2, y + dy));
-            Color right = new Color(img.getRGB(x + width - 3, y + dy));
-            if (left.getRed() <= 200 && right.getRed() <= 200) {
-                panelH = dy;
-                break;
-            }
-            panelH = dy;
-        }
-        if (panelH < minH) return null;
-
-        // 检查面板中部色彩丰富度
-        int midY = y + panelH / 3;
-        int midX = x + width / 2;
-        int colorVar = 0;
-        int prev = -1;
-        for (int dx = -20; dx <= 20; dx++) {
-            int px = midX + dx;
-            if (px < 0 || px >= img.getWidth()) continue;
-            Color c = new Color(img.getRGB(px, midY));
-            int gray = (c.getRed() + c.getGreen() + c.getBlue()) / 3;
-            if (prev >= 0) colorVar += Math.abs(gray - prev);
-            prev = gray;
-        }
-        if (colorVar < 100) return null;
-
-        return new Rectangle(x, y, width, panelH);
-    }
-
-    /**
-     * 策略 B：通过灰色滑轨定位
-     */
-    private Rectangle locateBySliderBar(BufferedImage fullPage) {
-        int w = fullPage.getWidth();
-        int h = fullPage.getHeight();
-        for (int y = (int) (h * 0.2); y < h * 0.85; y++) {
-            int grayRun = 0;
-            int grayStart = -1;
-            for (int x = (int) (w * 0.1); x < w * 0.9; x++) {
-                Color c = new Color(fullPage.getRGB(x, y));
-                boolean isGray = c.getRed() > 200 && c.getRed() < 245
-                        && Math.abs(c.getRed() - c.getGreen()) < 10
-                        && Math.abs(c.getRed() - c.getBlue()) < 10;
-                if (isGray) {
-                    if (grayStart < 0) grayStart = x;
-                    grayRun++;
-                } else {
-                    if (grayRun > w * 0.2) {
-                        int panelW = grayRun;
-                        int panelH = (int) (panelW * 0.65);
-                        int panelY = y - panelH;
-                        if (panelY > 0) {
-                            log.info("滑轨定位面板：barY={}, barW={}", y, grayRun);
-                            return new Rectangle(grayStart, panelY, panelW, panelH + 40);
-                        }
-                    }
-                    grayRun = 0;
-                    grayStart = -1;
-                }
-            }
-        }
-        return null;
-    }
-
-    // ==================== 边缘检测 ====================
-
-    /**
-     * Sobel 双方向边缘检测定位拼图缺口
-     *
-     * @param puzzle 裁剪后的拼图图片
-     * @return 缺口 X 坐标（截图像素），失败返回 -1
-     */
-    public int detectGapByEdge(BufferedImage puzzle) {
-        int w = puzzle.getWidth();
-        int h = puzzle.getHeight();
-
-        // 1. 灰度 + 双次高斯模糊
-        int[][] gray = toGrayMatrix(puzzle);
-        int[][] blurred = gaussianBlur(gray, w, h);
-        blurred = gaussianBlur(blurred, w, h);
-
-        // 2. Sobel 双方向梯度幅值
-        int[][] edge = new int[w][h];
-        for (int y = 1; y < h - 1; y++) {
-            for (int x = 1; x < w - 1; x++) {
-                int gx = -blurred[x - 1][y - 1] + blurred[x + 1][y - 1]
-                        - 2 * blurred[x - 1][y] + 2 * blurred[x + 1][y]
-                        - blurred[x - 1][y + 1] + blurred[x + 1][y + 1];
-                int gy = -blurred[x - 1][y - 1] - 2 * blurred[x][y - 1] - blurred[x + 1][y - 1]
-                        + blurred[x - 1][y + 1] + 2 * blurred[x][y + 1] + blurred[x + 1][y + 1];
-                edge[x][y] = (int) Math.sqrt(gx * gx + gy * gy);
-            }
-        }
-
-        // 3. 列投影（跳过左 20%，搜索到 88%）
-        int startX = (int) (w * 0.20);
-        int endX = (int) (w * 0.88);
-        int yStart = (int) (h * 0.15);
-        int yEnd = (int) (h * 0.85);
-        int[] colSum = new int[w];
-        for (int x = startX; x < endX; x++) {
-            for (int y = yStart; y < yEnd; y++) {
-                colSum[x] += edge[x][y];
-            }
-        }
-
-        // 4. 滑动窗口平滑
-        int[] smooth = new int[w];
-        for (int x = startX; x < endX; x++) {
-            int sum = 0;
-            int cnt = 0;
-            for (int dx = -2; dx <= 2; dx++) {
-                int nx = x + dx;
-                if (nx >= startX && nx < endX) {
-                    sum += colSum[nx];
-                    cnt++;
-                }
-            }
-            smooth[x] = cnt > 0 ? sum / cnt : 0;
-        }
-
-        // 5. 计算基线（排除 top 10%）
-        int rangeLen = endX - startX;
-        int[] sorted = new int[rangeLen];
-        for (int i = 0; i < rangeLen; i++) sorted[i] = smooth[startX + i];
-        java.util.Arrays.sort(sorted);
-        long baseSum = 0;
-        int cutoff = (int) (rangeLen * 0.9);
-        for (int i = 0; i < cutoff; i++) baseSum += sorted[i];
-        double baseline = cutoff > 0 ? (double) baseSum / cutoff : 0;
-
-        // 6. 找显著峰值区间
-        double threshold = baseline * 1.8;
-        int bestStart = -1;
-        int bestScore = 0;
-        int regionStart = -1;
-        int regionScore = 0;
-        for (int x = startX; x < endX; x++) {
-            if (smooth[x] > threshold) {
-                if (regionStart < 0) regionStart = x;
-                regionScore += smooth[x];
-            } else {
-                if (regionStart > 0 && regionScore > bestScore) {
-                    bestStart = regionStart;
-                    bestScore = regionScore;
-                }
-                regionStart = -1;
-                regionScore = 0;
-            }
-        }
-        if (regionStart > 0 && regionScore > bestScore) bestStart = regionStart;
-
-        if (bestStart > 0) {
-            log.info("缺口检测成功（区间法）: x={}, 基线={}, 阈值={}", bestStart, (int) baseline, (int) threshold);
-            return bestStart;
-        }
-
-        // 7. 回退：全局最大峰值
-        int maxVal = 0;
-        int gapX = -1;
-        for (int x = startX; x < endX; x++) {
-            if (smooth[x] > maxVal) {
-                maxVal = smooth[x];
-                gapX = x;
-            }
-        }
-        if (gapX > 0 && maxVal > baseline * 1.3) {
-            log.info("缺口检测成功（峰值法）: x={}", gapX);
-            return gapX;
-        }
-
-        log.warn("缺口检测失败: maxVal={}, baseline={}", maxVal, (int) baseline);
-        return -1;
-    }
-
-    // ==================== 轨迹与拖动 ====================
-
-    /**
-     * 生成 S 曲线缓动滑动轨迹
-     *
-     * @param distance 拖动总距离
-     * @return 轨迹点数组
-     */
-    public List<int[]> generateSliderTrajectory(int distance) {
-        List<int[]> trajectory = new ArrayList<>();
-        int count = 30 + distance / 10;
-        ThreadLocalRandom rng = ThreadLocalRandom.current();
-        for (int i = 0; i < count; i++) {
-            double t = (double) i / count;
-            double ease = t < 0.3 ? 2 * t * t
-                    : t < 0.7 ? -2 * t * t + 2 * t - 0.2
-                    : 1 - Math.pow(1 - t, 2);
-            int x = (int) (ease * distance) + rng.nextInt(-2, 3);
-            int y = (int) (Math.sin(i * 0.3) * 3);
-            trajectory.add(new int[]{x, y});
-        }
-        return trajectory;
-    }
-
-    /**
-     * 通过 DOM 元素定位执行滑块拖动
-     *
-     * @param driver   WebDriver 实例
-     * @param distance 拖动距离
-     * @return 是否成功
-     */
-    public boolean executeSliderDrag(WebDriver driver, int distance) {
-        try {
-            // 先切到滑块所在 frame
-            switchToSliderFrame(driver);
-
-            WebElement handler = driver.findElement(By.cssSelector(
-                    ".yidun_slider__handler, .yidun_btn, [class*='yidun'][class*='handler']"));
-
-            List<int[]> trajectory = generateSliderTrajectory(distance);
-            Actions actions = new Actions(driver);
-            actions.clickAndHold(handler).perform();
-            Thread.sleep(100);
-
-            int prevX = 0, prevY = 0;
-            for (int[] pt : trajectory) {
-                actions.moveByOffset(pt[0] - prevX, pt[1] - prevY).perform();
-                prevX = pt[0];
-                prevY = pt[1];
-                Thread.sleep(ThreadLocalRandom.current().nextInt(15, 26));
-            }
-            actions.release().perform();
-            log.info("滑块拖动完成: {}px", distance);
+    public boolean switchToSliderFrame(WebDriver driver) {
+        // 1. 检查当前 frame
+        if (hasYidunElement(driver)) {
+            log.info("滑块在当前 frame 中");
             return true;
-        } catch (Exception e) {
-            log.error("滑块拖动失败: {}", e.getMessage());
-            return false;
         }
-    }
 
-    /**
-     * 等待滑块验证结果
-     *
-     * @param driver     WebDriver 实例
-     * @param maxRetries 最大等待次数
-     * @return 是否通过
-     */
-    public boolean waitForVerificationResult(WebDriver driver, int maxRetries) {
-        for (int i = 1; i <= maxRetries; i++) {
+        // 2. 检查顶层
+        driver.switchTo().defaultContent();
+        if (hasYidunElement(driver)) {
+            log.info("滑块在顶层 document 中");
+            return true;
+        }
+
+        // 3. 遍历 iframe
+        List<WebElement> iframes = driver.findElements(By.tagName("iframe"));
+        for (int i = 0; i < iframes.size(); i++) {
             try {
-                Thread.sleep(2000);
-                // 重新截图检查弹窗是否消失
-                BufferedImage check = takeScreenshot(driver, "verify_" + i);
-                if (check != null && locateSliderPanel(check) == null) {
-                    log.info("滑块弹窗已消失，视为验证通过");
-                    return true;
-                }
-                // 检查 URL 跳转
-                String url = driver.getCurrentUrl();
-                if (!url.contains("login") && !url.contains("activePhone")) {
-                    log.info("URL 跳转检测到验证通过: {}", url);
+                driver.switchTo().defaultContent();
+                driver.switchTo().frame(i);
+                if (hasYidunElement(driver)) {
+                    log.info("滑块在第 {} 个 iframe 中", i);
                     return true;
                 }
             } catch (Exception e) {
-                log.error("验证结果检测异常", e);
+                log.debug("切换到第 {} 个 iframe 失败", i);
             }
         }
-        log.warn("滑块验证未通过（{}次检测）", maxRetries);
+
+        log.warn("未找到滑块元素所在 frame");
         return false;
     }
 
-    // ==================== Frame 切换（辅助） ====================
-
     /**
-     * 切换到滑块所在的 frame（尝试顶层 + 所有 iframe）
+     * 在所有 frame 中搜索 .yidun 元素（诊断用）
      *
      * @param driver WebDriver 实例
-     * @return 是否成功
+     * @return 找到滑块的 frame 名称，未找到返回 null
      */
-    public boolean switchToSliderFrame(WebDriver driver) {
-        // 先检查当前 frame
-        if (hasYidunDomElement(driver)) return true;
-        // 顶层
+    public String findYidunInAllFrames(WebDriver driver) {
+        // 检查当前 frame
+        if (hasYidunElement(driver)) {
+            return "当前 frame";
+        }
+
+        // 检查顶层
         driver.switchTo().defaultContent();
-        if (hasYidunDomElement(driver)) return true;
+        if (hasYidunElement(driver)) {
+            return "顶层 document";
+        }
+
         // 遍历 iframe
         List<WebElement> iframes = driver.findElements(By.tagName("iframe"));
         for (int i = 0; i < iframes.size(); i++) {
             try {
                 driver.switchTo().defaultContent();
                 driver.switchTo().frame(i);
-                if (hasYidunDomElement(driver)) {
-                    log.info("滑块在 iframe[{}] 中", i);
-                    return true;
+                if (hasYidunElement(driver)) {
+                    return "iframe[" + i + "]";
                 }
             } catch (Exception ignored) {
             }
         }
-        // 找不到也回到顶层
+
+        // 切回顶层
         driver.switchTo().defaultContent();
-        return false;
+        return null;
     }
 
     /**
-     * DOM 辅助检测（仅用于 frame 切换定位，不作为滑块存在的判据）
+     * 检查当前 frame 中是否存在可见的 .yidun 滑块面板
+     * 仅检测实际弹出的面板（yidun_panel, yidun_popup, yidun_slider），
+     * 排除隐藏的 yidun_input
      */
-    private boolean hasYidunDomElement(WebDriver driver) {
-        List<WebElement> elements = driver.findElements(By.cssSelector("[class*='yidun']"));
-        for (WebElement el : elements) {
+    private boolean hasYidunElement(WebDriver driver) {
+        // 优先检测可见的滑块面板
+        List<WebElement> panels = driver.findElements(
+                By.cssSelector(".yidun_panel, .yidun_popup, .yidun_slider, .yidun_bgimg"));
+        for (WebElement panel : panels) {
             try {
-                if (!"input".equalsIgnoreCase(el.getTagName()) && el.isDisplayed()) {
+                if (panel.isDisplayed() && panel.getSize().getWidth() > 0) {
+                    return true;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        // 兜底：检测包含可见图片的 yidun 容器
+        List<WebElement> imgs = driver.findElements(By.cssSelector("[class*='yidun'] img[src]"));
+        for (WebElement img : imgs) {
+            try {
+                String src = img.getAttribute("src");
+                if (src != null && !src.isEmpty() && img.isDisplayed()) {
                     return true;
                 }
             } catch (Exception ignored) {
@@ -501,126 +184,333 @@ public class CaptchaService {
         return false;
     }
 
-    // ==================== 工具方法 ====================
-
-    private double getDpr(WebDriver driver) {
+    /**
+     * 提取网易云盾背景图和拼图块图片 URL
+     * 多策略：img src → CSS background-image → 全局搜索
+     */
+    public ImageUrls extractYidunImageUrls(WebDriver driver) {
         try {
-            Object dpr = ((JavascriptExecutor) driver).executeScript("return window.devicePixelRatio || 1");
-            return dpr instanceof Number ? ((Number) dpr).doubleValue() : 1.0;
+            org.openqa.selenium.JavascriptExecutor js = (org.openqa.selenium.JavascriptExecutor) driver;
+
+            // 策略 1: 从 img 标签 src 提取（多种选择器）
+            String bgUrl = (String) js.executeScript(
+                    "return document.querySelector('.yidun_bg-img img')?.src || " +
+                            "document.querySelector('.yidun_bgimg img')?.src || " +
+                            "document.querySelector('.yidun_bgimg')?.src || " +
+                            "document.querySelector('[class*=\"yidun\"][class*=\"bg\"] img')?.src || " +
+                            "document.querySelector('.yidun_panel img')?.src"
+            );
+            String sliderUrl = (String) js.executeScript(
+                    "return document.querySelector('.yidun_jigsaw img')?.src || " +
+                            "document.querySelector('.yidun_slider__icon')?.src || " +
+                            "document.querySelector('[class*=\"yidun\"][class*=\"jigsaw\"] img')?.src"
+            );
+
+            // 策略 2: 从 CSS background-image 提取
+            if (bgUrl == null) {
+                bgUrl = (String) js.executeScript(
+                        "var selectors = ['.yidun_bg-img', '.yidun_bgimg', '[class*=\"yidun_bg\"]'];" +
+                                "for (var i = 0; i < selectors.length; i++) {" +
+                                "  var el = document.querySelector(selectors[i]);" +
+                                "  if (el) {" +
+                                "    var bg = getComputedStyle(el).backgroundImage;" +
+                                "    if (bg && bg !== 'none') return bg.replace(/url\\([\"']?(.+?)[\"']?\\)/, '$1');" +
+                                "  }" +
+                                "}" +
+                                "return null;"
+                );
+            }
+
+            // 策略 3: 从所有 yidun 容器内的 img 中筛选（按尺寸区分背景/拼图）
+            if (bgUrl == null) {
+                @SuppressWarnings("unchecked")
+                java.util.List<java.util.Map<String, Object>> allImgs = (java.util.List<java.util.Map<String, Object>>) js.executeScript(
+                        "return Array.from(document.querySelectorAll('[class*=\"yidun\"] img, #captcha img')).map(img => " +
+                                "({src: img.src, w: img.naturalWidth || img.width, h: img.naturalHeight || img.height, cls: img.className, pCls: img.parentElement?.className}));"
+                );
+                if (allImgs != null) {
+                    log.info("策略3：在 yidun/captcha 中找到 {} 张图片", allImgs.size());
+                    for (java.util.Map<String, Object> img : allImgs) {
+                        String src = (String) img.get("src");
+                        Long w = img.get("w") instanceof Long ? (Long) img.get("w") : 0L;
+                        if (src != null && !src.isEmpty()) {
+                            if (w > 200 && bgUrl == null) {
+                                bgUrl = src;
+                            } else if (w <= 200 && w > 0 && sliderUrl == null) {
+                                sliderUrl = src;
+                            }
+                        }
+                    }
+                }
+            }
+
+            log.info("网易云盾图片提取：bgUrl={}, sliderUrl={}",
+                    bgUrl != null ? "已获取(" + bgUrl.substring(0, Math.min(50, bgUrl.length())) + "...)" : "失败",
+                    sliderUrl != null ? "已获取" : "失败"
+            );
+            return new ImageUrls(bgUrl, sliderUrl);
         } catch (Exception e) {
-            return 1.0;
+            log.error("提取图片 URL 失败: {}", e.getMessage());
+            return new ImageUrls(null, null);
         }
     }
-
-    private int[][] toGrayMatrix(BufferedImage image) {
-        int w = image.getWidth(), h = image.getHeight();
-        int[][] m = new int[w][h];
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++) {
-                Color c = new Color(image.getRGB(x, y));
-                m[x][y] = (c.getRed() + c.getGreen() + c.getBlue()) / 3;
-            }
-        return m;
-    }
-
-    private int[][] gaussianBlur(int[][] gray, int w, int h) {
-        int[][] b = new int[w][h];
-        int[][] k = {{1, 2, 1}, {2, 4, 2}, {1, 2, 1}};
-        for (int y = 1; y < h - 1; y++)
-            for (int x = 1; x < w - 1; x++) {
-                int sum = 0;
-                for (int ky = -1; ky <= 1; ky++)
-                    for (int kx = -1; kx <= 1; kx++)
-                        sum += gray[x + kx][y + ky] * k[ky + 1][kx + 1];
-                b[x][y] = sum / 16;
-            }
-        return b;
-    }
-
-    private void saveDebugImage(BufferedImage image, String prefix) {
-        try {
-            String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
-            Path dest = Paths.get(".tmp", prefix + "_" + ts + ".png");
-            Files.createDirectories(dest.getParent());
-            ImageIO.write(image, "png", dest.toFile());
-            log.debug("调试图片: {}", dest);
-        } catch (Exception e) {
-            log.debug("保存调试图片失败: {}", e.getMessage());
-        }
-    }
-
-    // ==================== 兼容方法（供 ZXRequestUtils 调用） ====================
 
     /**
-     * 计算滑块距离（兼容旧接口，基于图片模板匹配）
+     * 下载图片
+     */
+    public byte[] downloadImage(String imageUrl) throws IOException {
+        if (imageUrl == null || imageUrl.isEmpty()) {
+            throw new IOException("图片 URL 为空");
+        }
+        try (InputStream in = new URL(imageUrl).openStream()) {
+            byte[] data = in.readAllBytes();
+            log.info("滑块图片下载成功：{} 字节", data.length);
+            return data;
+        }
+    }
+
+    /**
+     * 计算滑块距离
+     * 策略：在背景图上检测拼图缺口的垂直边缘位置。
+     * 拼图缺口在背景图中表现为突然的色差边缘（左侧边缘），
+     * 通过逐列计算灰度跳变次数来找到缺口位置。
+     *
+     * @param bgImage     背景图字节数据
+     * @param sliderImage 拼图块字节数据（用于获取拼图宽度做修正）
+     * @return 滑块需要滑动的距离（像素）
+     */
+    public int calculateSliderDistance(byte[] bgImage, byte[] sliderImage) throws IOException {
+        BufferedImage bg = ImageIO.read(new ByteArrayInputStream(bgImage));
+        BufferedImage slider = ImageIO.read(new ByteArrayInputStream(sliderImage));
+
+        if (bg == null || slider == null) {
+            log.error("图片解码失败：bg={}, slider={}", bg != null, slider != null);
+            return 0;
+        }
+
+        int bgWidth = bg.getWidth();
+        int bgHeight = bg.getHeight();
+        int sliderWidth = slider.getWidth();
+
+        log.info("图片尺寸：bg={}x{}, slider={}x{}", bgWidth, bgHeight, sliderWidth, slider.getHeight());
+
+        // 1. 将背景图转为灰度矩阵
+        int[][] gray = new int[bgWidth][bgHeight];
+        for (int y = 0; y < bgHeight; y++) {
+            for (int x = 0; x < bgWidth; x++) {
+                Color c = new Color(bg.getRGB(x, y));
+                gray[x][y] = (c.getRed() + c.getGreen() + c.getBlue()) / 3;
+            }
+        }
+
+        // 2. 逐列计算灰度跳变强度（Sobel 水平边缘）
+        // 跳过前10%区域（滑块起始位置通常不在最左侧）
+        int startX = bgWidth / 10;
+        int endX = bgWidth - sliderWidth / 2;
+        int bestX = 0;
+        int maxEdgeSum = 0;
+
+        for (int x = startX; x < endX; x++) {
+            int edgeSum = 0;
+            for (int y = 1; y < bgHeight - 1; y++) {
+                // 水平 Sobel：检测垂直边缘
+                int left = x > 0 ? gray[x - 1][y] : gray[x][y];
+                int right = x < bgWidth - 1 ? gray[x + 1][y] : gray[x][y];
+                int diff = Math.abs(right - left);
+                if (diff > 30) { // 阈值：明显的灰度跳变
+                    edgeSum += diff;
+                }
+            }
+            if (edgeSum > maxEdgeSum) {
+                maxEdgeSum = edgeSum;
+                bestX = x;
+            }
+        }
+
+        // 3. 距离修正：页面渲染宽度 / 图片原始宽度
+        // NECaptcha 背景图原始 320px，渲染 220px
+        // 返回的距离需要按渲染比例换算
+        // 注意：调用方会直接用这个距离来拖动，所以要返回渲染后的距离
+        double renderRatio = 220.0 / bgWidth;
+        int renderDistance = (int) (bestX * renderRatio);
+
+        log.info("滑块距离计算：原始={}px, 渲染={}px（ratio={}, maxEdge={}）",
+                bestX, renderDistance, String.format("%.2f", renderRatio), maxEdgeSum);
+
+        return renderDistance;
+    }
+
+    /**
+     * 生成 S 曲线缓动滑动轨迹
+     */
+    public List<int[]> generateSliderTrajectory(int distance) {
+        List<int[]> trajectory = new ArrayList<>();
+        int pointCount = 30 + distance / 10;
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+
+        for (int i = 0; i < pointCount; i++) {
+            double t = (double) i / pointCount;
+            double easing;
+            if (t < 0.3) {
+                easing = 2 * t * t;
+            } else if (t < 0.7) {
+                easing = -2 * t * t + 2 * t - 0.2;
+            } else {
+                easing = 1 - Math.pow(1 - t, 2);
+            }
+
+            int x = (int) (easing * distance) + random.nextInt(-2, 3);
+            int y = (int) (Math.sin(i * 0.3) * 3);
+            trajectory.add(new int[]{x, y});
+        }
+
+        log.debug("生成滑动轨迹：点数={}, 距离={}px", trajectory.size(), distance);
+        return trajectory;
+    }
+
+    /**
+     * 使用 Selenium Actions 执行滑块拖动
+     * 轨迹为绝对位置，转为增量执行 moveByOffset
+     */
+    public boolean executeSliderDrag(WebDriver driver, int distance) {
+        try {
+            WebElement sliderHandler = driver.findElement(
+                    By.cssSelector(".yidun_slider, .yidun_slide_indicator, .yidun_slider__handler, .yidun_btn")
+            );
+
+            List<int[]> trajectory = generateSliderTrajectory(distance);
+
+            Actions actions = new Actions(driver);
+            actions.clickAndHold(sliderHandler).perform();
+
+            int prevX = 0, prevY = 0;
+            for (int[] point : trajectory) {
+                int dx = point[0] - prevX;
+                int dy = point[1] - prevY;
+                actions.moveByOffset(dx, dy).perform();
+                prevX = point[0];
+                prevY = point[1];
+                Thread.sleep(ThreadLocalRandom.current().nextInt(15, 26));
+            }
+
+            actions.release().perform();
+            log.info("滑块拖动执行完成：距离={}px", distance);
+            return true;
+
+        } catch (Exception e) {
+            log.error("滑块拖动失败", e);
+            return false;
+        }
+    }
+
+    /**
+     * 等待滑块验证结果
+     */
+    public boolean waitForVerificationResult(WebDriver driver, int maxRetries) {
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(5));
+
+                // 检测 1: 成功提示文本
+                try {
+                    WebElement successTip = wait.until(ExpectedConditions.presenceOfElementLocated(
+                            By.cssSelector(".yidun_tips__text")));
+                    if (successTip.getText().contains("成功") || successTip.getText().contains("通过")) {
+                        log.info("网易云盾滑块验证通过（提示文本检测）");
+                        return true;
+                    }
+                } catch (Exception ignored) {
+                }
+
+                // 检测 2: 滑块面板消失
+                try {
+                    wait.until(ExpectedConditions.invisibilityOfElementLocated(
+                            By.cssSelector(".yidun_panel, .yidun")));
+                    log.info("滑块已消失，视为通过（面板消失检测）");
+                    return true;
+                } catch (Exception ignored) {
+                }
+
+                // 检测 3: 页面 URL 跳转
+                String currentUrl = driver.getCurrentUrl();
+                if (!currentUrl.contains("login") && !currentUrl.contains("activePhone")) {
+                    log.info("网易云盾滑块验证通过（URL 跳转检测）");
+                    return true;
+                }
+
+                if (attempt < maxRetries) {
+                    log.warn("滑块验证失败，准备第 {} 次重试", attempt + 1);
+                    Thread.sleep(1000);
+                }
+
+            } catch (Exception e) {
+                log.error("验证结果检测异常", e);
+            }
+        }
+
+        log.error("滑块验证失败：已达最大重试次数 {}", maxRetries);
+        return false;
+    }
+
+    /**
+     * 计算滑块距离（兼容 ZXRequestUtils 调用）
      */
     public int calculateDistance(byte[] bgImage, byte[] sliderImage) {
         try {
-            BufferedImage bg = ImageIO.read(new ByteArrayInputStream(bgImage));
-            BufferedImage slider = ImageIO.read(new ByteArrayInputStream(sliderImage));
-            int[][] bgGray = toGrayMatrix(bg);
-            int[][] slGray = toGrayMatrix(slider);
-            int bestX = 0;
-            int minDiff = Integer.MAX_VALUE;
-            for (int x = 0; x < bgGray.length - slGray.length; x++) {
-                int diff = 0;
-                for (int sy = 0; sy < slGray[0].length; sy++)
-                    for (int sx = 0; sx < slGray.length; sx++)
-                        diff += Math.abs(bgGray[x + sx][sy] - slGray[sx][sy]);
-                if (diff < minDiff) {
-                    minDiff = diff;
-                    bestX = x;
-                }
-            }
-            return bestX;
+            return calculateSliderDistance(bgImage, sliderImage);
         } catch (IOException e) {
-            log.error("模板匹配失败: {}", e.getMessage());
+            log.error("计算滑块距离失败: {}", e.getMessage());
             return 0;
         }
     }
 
     /**
-     * 生成滑块拖动轨迹（兼容旧接口）
+     * 生成滑块拖动轨迹（兼容 ZXRequestUtils 调用，返回 List<Integer>）
      */
     public List<Integer> generateSlideTrack(int distance) {
         List<Integer> track = new ArrayList<>();
-        if (distance <= 0) return track;
-        int cur = 0;
-        double acc = 0.3;
+        if (distance <= 0) {
+            return track;
+        }
+        int current = 0;
+        double acceleration = 0.3;
         int step = 0;
-        while (cur < distance) {
-            if (step < 10) acc = 0.3 + step * 0.05;
-            else if (step > distance / 5) acc = 2.0 - (step - distance / 5.0) / (distance / 10.0);
-            int move = (int) (Math.random() * 3 + 1 + acc);
-            cur += Math.min(move, distance - cur);
-            track.add(cur);
+        while (current < distance) {
+            if (step < 10) {
+                acceleration = 0.3 + step * 0.05;
+            } else if (step > distance / 5) {
+                acceleration = 2.0 - (step - distance / 5.0) / (distance / 10.0);
+            }
+            int move = (int) (Math.random() * 3 + 1 + acceleration);
+            current += Math.min(move, distance - current);
+            track.add(current);
             step++;
             if (step > 1000) break;
         }
-        while (track.size() < 30 && track.size() < distance) track.add(distance);
+        while (track.size() < 30 && track.size() < distance) {
+            track.add(distance);
+        }
         return track;
     }
 
-    // ==================== 数据类 ====================
-
     /**
-     * 滑块识别结果
+     * 图片 URL 数据类
      */
-    public static class SliderResult {
-        private final int distance;
-        private final Rectangle panelRect;
+    public static class ImageUrls {
+        private final String bgUrl;
+        private final String sliderUrl;
 
-        public SliderResult(int distance, Rectangle panelRect) {
-            this.distance = distance;
-            this.panelRect = panelRect;
+        public ImageUrls(String bgUrl, String sliderUrl) {
+            this.bgUrl = bgUrl;
+            this.sliderUrl = sliderUrl;
         }
 
-        public int getDistance() {
-            return distance;
+        public String getBgUrl() {
+            return bgUrl;
         }
 
-        public Rectangle getPanelRect() {
-            return panelRect;
+        public String getSliderUrl() {
+            return sliderUrl;
         }
     }
 }
