@@ -41,7 +41,7 @@ public class LoginStepController {
      * @param account 资金账号/手机号
      * @return 操作结果
      */
-    @PostMapping("/input-account")
+    @PostMapping("/inputAccount")
     public ResponseDTO<Void> inputAccount(@RequestParam String account) {
         log.info("输入账号: {}", account);
         loginPageHandler.inputAccount(account);
@@ -54,7 +54,7 @@ public class LoginStepController {
      * @param password 交易密码
      * @return 操作结果
      */
-    @PostMapping("/input-password")
+    @PostMapping("/inputPassword")
     public ResponseDTO<Void> inputPassword(@RequestParam String password) {
         log.info("输入密码");
         loginPageHandler.inputPassword(password);
@@ -68,7 +68,7 @@ public class LoginStepController {
      * @param account 可选，资金账号/手机号，不传则使用默认配置
      * @return 验证码识别结果（表达式和计算结果）
      */
-    @GetMapping("/capture-captcha")
+    @GetMapping("/captureCaptcha")
     public ResponseDTO<Map<String, Object>> captureCaptcha(
             @RequestParam(required = false) String account) {
         log.info("通过 API 获取验证码图片并进行 OCR 识别");
@@ -96,7 +96,7 @@ public class LoginStepController {
      * @param captcha 验证码答案
      * @return 操作结果
      */
-    @PostMapping("/input-captcha")
+    @PostMapping("/inputCaptcha")
     public ResponseDTO<Void> inputCaptcha(@RequestParam String captcha) {
         log.info("输入验证码: {}", captcha);
         loginPageHandler.inputCaptcha(captcha);
@@ -108,7 +108,7 @@ public class LoginStepController {
      *
      * @return 操作结果
      */
-    @PostMapping("/check-agreements")
+    @PostMapping("/checkAgreements")
     public ResponseDTO<Void> checkAgreements() {
         log.info("勾选协议");
         loginPageHandler.checkAgreements();

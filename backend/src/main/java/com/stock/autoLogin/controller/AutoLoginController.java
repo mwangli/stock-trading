@@ -21,7 +21,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/auto-login")
+@RequestMapping("/api/autoLogin")
 @RequiredArgsConstructor
 public class AutoLoginController {
 

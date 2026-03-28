@@ -39,7 +39,7 @@ public class PhoneVerifyController {
      *
      * @return 弹窗检测结果（DOM 子元素、iframe、验证码组件特征）
      */
-    @PostMapping("/send-code")
+    @PostMapping("/sendCode")
     public ResponseDTO<Map<String, Object>> sendSmsCode() {
         log.info("点击获取验证码按钮");
         // 1. 点击获取验证码按钮
@@ -55,7 +55,7 @@ public class PhoneVerifyController {
      *
      * @return 滑块存在状态及类型
      */
-    @GetMapping("/slider-status")
+    @GetMapping("/sliderStatus")
     public ResponseDTO<Map<String, Object>> checkSliderStatus() {
         log.info("检查滑块状态");
         WebDriver driver = browserSessionManager.getDriver();
@@ -73,7 +73,7 @@ public class PhoneVerifyController {
      *
      * @return 滑块验证结果（成功状态、距离、尝试次数）
      */
-    @PostMapping("/solve-slider")
+    @PostMapping("/solveSlider")
     public ResponseDTO<Map<String, Object>> solveSlider() {
         log.info("执行滑块验证");
         WebDriver driver = browserSessionManager.getDriver();
@@ -87,7 +87,7 @@ public class PhoneVerifyController {
      *
      * @return 操作结果
      */
-    @PostMapping("/confirm-slider")
+    @PostMapping("/confirmSlider")
     public ResponseDTO<Void> confirmSlider() {
         log.info("点击确定按钮");
         browserSessionManager.ensureLoginFrame();
@@ -102,7 +102,7 @@ public class PhoneVerifyController {
      * @param code 可选，短信验证码（6位数字）
      * @return 验证码输入结果
      */
-    @PostMapping("/input-code")
+    @PostMapping("/inputCode")
     public ResponseDTO<Map<String, Object>> inputSmsCode(@RequestParam(required = false) String code) {
         log.info("输入短信验证码");
         // 1. 自动获取验证码（如未提供）
@@ -132,7 +132,7 @@ public class PhoneVerifyController {
      *
      * @return 验证码获取结果
      */
-    @PostMapping("/get-code-enhanced")
+    @PostMapping("/getCodeEnhanced")
     public ResponseDTO<Map<String, Object>> getCodeEnhanced() {
         log.info("增强版获取验证码（含失效重试）");
         String code = captchaFetchService.getPhoneCodeWithRetry(() -> {

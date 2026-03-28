@@ -37,7 +37,7 @@ public class DiagnosticController {
      *
      * @return 页面类型及描述
      */
-    @GetMapping("/page-type")
+    @GetMapping("/pageType")
     public ResponseDTO<Map<String, Object>> detectPageType() {
         log.info("检测页面类型");
         WebDriver driver = browserSessionManager.getDriver();
@@ -68,7 +68,7 @@ public class DiagnosticController {
      *
      * @return 每个 frame 的搜索结果
      */
-    @GetMapping("/dom-inspect")
+    @GetMapping("/domInspect")
     public ResponseDTO<List<Map<String, Object>>> domInspect() {
         log.info("DOM 诊断 — 搜索 .yidun 元素");
         WebDriver driver = browserSessionManager.getDriver();
@@ -81,7 +81,7 @@ public class DiagnosticController {
      *
      * @return 表单元素状态
      */
-    @GetMapping("/form-state")
+    @GetMapping("/formState")
     public ResponseDTO<Map<String, Object>> formState() {
         log.info("查询表单状态");
         WebDriver driver = browserSessionManager.getDriver();
@@ -95,7 +95,7 @@ public class DiagnosticController {
      * @param seconds 轮询秒数，默认 10 秒
      * @return 每秒检测结果
      */
-    @GetMapping("/slider-poll")
+    @GetMapping("/sliderPoll")
     public ResponseDTO<List<Map<String, Object>>> sliderPoll(
             @RequestParam(defaultValue = "10") int seconds) {
         log.info("滑块轮询 {} 秒", seconds);
@@ -122,7 +122,7 @@ public class DiagnosticController {
      *
      * @return frame 上下文信息
      */
-    @GetMapping("/frame-info")
+    @GetMapping("/frameInfo")
     public ResponseDTO<Map<String, Object>> frameInfo() {
         log.info("查询 frame 信息");
         WebDriver driver = browserSessionManager.getDriver();
@@ -136,7 +136,7 @@ public class DiagnosticController {
      * @param script JavaScript 代码
      * @return 执行结果
      */
-    @PostMapping("/exec-js")
+    @PostMapping("/execJs")
     public ResponseDTO<Object> execJs(@RequestBody String script) {
         log.info("执行 JS 脚本");
         WebDriver driver = browserSessionManager.getDriver();

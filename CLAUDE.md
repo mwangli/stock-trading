@@ -90,7 +90,7 @@ Each domain module follows: `controller/` -> `service/` -> `repository/` (JPA fo
 - **Business comments**: Numbered step comments at key logic nodes (e.g., `// 1. 检查仓位上限`)
 - **Response wrapper**: All endpoints return `ResponseDTO<T>` — never raw DTOs or Maps
 - **DTOs**: All controller params/returns must be typed DTOs (never `Map`, `List<Map>`, `Object`). DTO fields require Javadoc comments.
-- **API paths**: `/api/` prefix, lowercase+hyphens (REST style). Path params always at end of URL (e.g., `/api/jobs/status/{id}`, not `/api/jobs/{id}/status`)
+- **API paths**: `/api/` prefix, camelCase (e.g., `/api/autoLogin/login`, `/api/browser/phone/sendCode`). Path params always at end of URL (e.g., `/api/jobs/status/{id}`, not `/api/jobs/{id}/status`). **禁止使用 kebab-case（如 `check-agreements`），必须使用 camelCase（如 `checkAgreements`）**
 - **Scheduled tasks**: MUST use `JobConfig` table + `JobSchedulerService`. NEVER use `@Scheduled` annotation.
 - **Controller logging**: Every controller uses `@Slf4j` with explicit `log.info()` at method entry (in addition to global AOP)
 - **Error handling**: Global `@ControllerAdvice`. Never swallow exceptions.
