@@ -204,7 +204,7 @@ public class CaptchaFetchService {
         while (matcher.find()) {
             String code = matcher.group(1);
             if (isValidSmsCode(code)) {
-                log.info("从邮件中提取到验证码: {}", code);
+                log.info("从邮件中提取到验证码: {}****", code.substring(0, 2));
                 return code;
             }
         }

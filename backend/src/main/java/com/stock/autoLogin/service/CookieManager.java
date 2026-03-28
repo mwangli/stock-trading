@@ -1,6 +1,8 @@
 package com.stock.autoLogin.service;
 
 import com.stock.autoLogin.exception.TokenException;
+import com.stock.tradingExecutor.execution.ZXRequestUtils;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.Cookie;
 import org.openqa.selenium.JavascriptExecutor;
@@ -11,18 +13,24 @@ import java.util.Set;
 
 /**
  * Token 管理器
- * 负责从 Cookie、localStorage、sessionStorage 中提取 Token
+ * 负责从 Cookie、localStorage、sessionStorage 中提取 Token，并同步到交易工具
  *
  * @author mwangli
  * @since 2026-03-25
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class CookieManager {
+
+    private final ZXRequestUtils zxRequestUtils;
 
     /**
      * 从 Cookie / localStorage / sessionStorage 提取 Token
      * 多策略依次尝试
+     *
+     * @param driver WebDriver 实例
+     * @return Token 字符串，未找到返回 null
      */
     public String extractToken(WebDriver driver) {
         if (driver == null) {
@@ -120,21 +128,16 @@ public class CookieManager {
 
     /**
      * 同步 Token 到 ZXRequestUtils 供后续交易接口使用
+     *
+     * @param token Token 字符串
      */
     public void syncTokenToZXRequestUtils(String token) {
         if (token == null || token.isEmpty()) {
             throw new TokenException("Token 为空，无法同步");
         }
 
-        try {
-            Class<?> zxRequestUtilsClass = Class.forName("com.stock.tradingExecutor.execution.ZXRequestUtils");
-            java.lang.reflect.Method setGlobalTokenMethod = zxRequestUtilsClass.getMethod("setGlobalToken", String.class);
-            setGlobalTokenMethod.invoke(null, token);
-            log.info("Token 已同步到 ZXRequestUtils: {}***",
-                    token.substring(0, Math.min(10, token.length())));
-        } catch (Exception e) {
-            log.error("同步 Token 到 ZXRequestUtils 失败: {}", e.getMessage());
-            throw new TokenException("Token 同步失败: " + e.getMessage());
-        }
+        zxRequestUtils.setToken(token);
+        log.info("Token 已同步到 ZXRequestUtils: {}***",
+                token.substring(0, Math.min(10, token.length())));
     }
 }

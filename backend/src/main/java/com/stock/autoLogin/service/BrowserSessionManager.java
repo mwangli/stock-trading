@@ -28,6 +28,9 @@ import java.util.concurrent.ThreadLocalRandom;
 @Slf4j
 public class BrowserSessionManager implements DisposableBean {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private PageTypeDetector pageTypeDetector;
+
     @Value("${chrome.directConnect:true}")
     private boolean directConnect;
 
@@ -326,21 +329,13 @@ public class BrowserSessionManager implements DisposableBean {
 
     /**
      * 判断当前 frame 是否包含登录/验证表单元素
-     * 支持标准登录页和手机验证页
+     * 委托给 PageTypeDetector 统一检测逻辑
+     *
+     * @param d WebDriver 实例
+     * @return 是否包含表单元素
      */
     private boolean hasFormElements(WebDriver d) {
-        // 标准登录页：有 password 输入框
-        if (!d.findElements(By.xpath("//input[@type='password']")).isEmpty()) {
-            return true;
-        }
-        // 手机验证页：有"获取验证码"按钮或"手机号"输入框
-        if (!d.findElements(By.xpath(
-                "//*[contains(text(), '获取验证码')] | " +
-                "//input[contains(@placeholder, '手机号')]"
-        )).isEmpty()) {
-            return true;
-        }
-        return false;
+        return pageTypeDetector.hasFormElements(d);
     }
 
     /**

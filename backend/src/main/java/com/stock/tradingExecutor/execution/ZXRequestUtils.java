@@ -28,7 +28,7 @@ public class ZXRequestUtils {
     private static final int RETRY_TIMES = 10;
     private static final int MAX_CAPTCHA_RETRY = 3;
 
-    private final CaptchaService captchaService;
+    private final com.stock.autoLogin.service.CaptchaService captchaService;
 
     /**
      * 使用本地内存缓存请求 Token，替代 Redis 存储

@@ -1,4 +1,4 @@
-package com.stock.tradingExecutor.execution;
+package com.stock.autoLogin.service;
 
 import com.stock.autoLogin.enums.SliderType;
 import lombok.extern.slf4j.Slf4j;
@@ -34,42 +34,55 @@ import java.util.concurrent.ThreadLocalRandom;
 public class CaptchaService {
 
     /**
+     * 跨帧搜索滑块元素的通用方法
+     * 搜索顺序：当前 frame → 顶层 document → 遍历所有 iframe
+     * 找到后停留在该 frame 上下文中（不切回）
+     *
+     * @param driver WebDriver 实例
+     * @return 找到滑块的 frame 描述，未找到返回 null
+     */
+    private String searchYidunAcrossFrames(WebDriver driver) {
+        // 1. 检查当前 frame
+        if (hasYidunElement(driver)) {
+            return "当前 frame";
+        }
+
+        // 2. 检查顶层
+        driver.switchTo().defaultContent();
+        if (hasYidunElement(driver)) {
+            return "顶层 document";
+        }
+
+        // 3. 遍历 iframe
+        List<WebElement> iframes = driver.findElements(By.tagName("iframe"));
+        for (int i = 0; i < iframes.size(); i++) {
+            try {
+                driver.switchTo().defaultContent();
+                driver.switchTo().frame(i);
+                if (hasYidunElement(driver)) {
+                    return "iframe[" + i + "]";
+                }
+            } catch (Exception e) {
+                log.debug("切换到第 {} 个 iframe 失败: {}", i, e.getMessage());
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * 检测滑块验证码类型（跨 frame 搜索）
-     * 策略：当前 frame → 顶层 document → 遍历所有 iframe
      *
      * @param driver WebDriver 实例
      * @return 滑块类型枚举
      */
     public SliderType detectSliderType(WebDriver driver) {
         try {
-            // 策略 1: 当前 frame 查找
-            if (hasYidunElement(driver)) {
-                log.info("在当前 frame 中检测到网易云盾滑块");
+            String foundIn = searchYidunAcrossFrames(driver);
+            if (foundIn != null) {
+                log.info("在{}中检测到网易云盾滑块", foundIn);
                 return SliderType.YIDUN;
             }
-
-            // 策略 2: 切到顶层查找
-            driver.switchTo().defaultContent();
-            if (hasYidunElement(driver)) {
-                log.info("在顶层 document 中检测到网易云盾滑块");
-                return SliderType.YIDUN;
-            }
-
-            // 策略 3: 遍历顶层 iframe 查找
-            List<WebElement> iframes = driver.findElements(By.tagName("iframe"));
-            for (int i = 0; i < iframes.size(); i++) {
-                try {
-                    driver.switchTo().defaultContent();
-                    driver.switchTo().frame(i);
-                    if (hasYidunElement(driver)) {
-                        log.info("在第 {} 个 iframe 中检测到网易云盾滑块", i);
-                        return SliderType.YIDUN;
-                    }
-                } catch (Exception e) {
-                    log.debug("切换到第 {} 个 iframe 失败: {}", i, e.getMessage());
-                }
-            }
-
         } catch (Exception e) {
             log.debug("滑块检测异常: {}", e.getMessage());
         }
@@ -80,77 +93,34 @@ public class CaptchaService {
 
     /**
      * 切换到滑块所在的 frame 上下文
+     * 搜索后停留在滑块所在的 frame 中，方便后续操作
      *
      * @param driver WebDriver 实例
      * @return 是否成功找到并切换
      */
     public boolean switchToSliderFrame(WebDriver driver) {
-        // 1. 检查当前 frame
-        if (hasYidunElement(driver)) {
-            log.info("滑块在当前 frame 中");
+        String foundIn = searchYidunAcrossFrames(driver);
+        if (foundIn != null) {
+            log.info("滑块在{}", foundIn);
             return true;
         }
-
-        // 2. 检查顶层
-        driver.switchTo().defaultContent();
-        if (hasYidunElement(driver)) {
-            log.info("滑块在顶层 document 中");
-            return true;
-        }
-
-        // 3. 遍历 iframe
-        List<WebElement> iframes = driver.findElements(By.tagName("iframe"));
-        for (int i = 0; i < iframes.size(); i++) {
-            try {
-                driver.switchTo().defaultContent();
-                driver.switchTo().frame(i);
-                if (hasYidunElement(driver)) {
-                    log.info("滑块在第 {} 个 iframe 中", i);
-                    return true;
-                }
-            } catch (Exception e) {
-                log.debug("切换到第 {} 个 iframe 失败", i);
-            }
-        }
-
         log.warn("未找到滑块元素所在 frame");
         return false;
     }
 
     /**
      * 在所有 frame 中搜索 .yidun 元素（诊断用）
+     * 搜索后切回顶层 document
      *
      * @param driver WebDriver 实例
-     * @return 找到滑块的 frame 名称，未找到返回 null
+     * @return 找到滑块的 frame 描述，未找到返回 null
      */
     public String findYidunInAllFrames(WebDriver driver) {
-        // 检查当前 frame
-        if (hasYidunElement(driver)) {
-            return "当前 frame";
+        String foundIn = searchYidunAcrossFrames(driver);
+        if (foundIn == null) {
+            driver.switchTo().defaultContent();
         }
-
-        // 检查顶层
-        driver.switchTo().defaultContent();
-        if (hasYidunElement(driver)) {
-            return "顶层 document";
-        }
-
-        // 遍历 iframe
-        List<WebElement> iframes = driver.findElements(By.tagName("iframe"));
-        for (int i = 0; i < iframes.size(); i++) {
-            try {
-                driver.switchTo().defaultContent();
-                driver.switchTo().frame(i);
-                if (hasYidunElement(driver)) {
-                    return "iframe[" + i + "]";
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        // 切回顶层
-        driver.switchTo().defaultContent();
-        return null;
+        return foundIn;
     }
 
     /**

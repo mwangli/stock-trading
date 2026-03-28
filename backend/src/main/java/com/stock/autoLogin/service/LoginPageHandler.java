@@ -1,6 +1,6 @@
-package com.stock.tradingExecutor.execution;
+package com.stock.autoLogin.service;
 
-import com.stock.autoLogin.service.BrowserSessionManager;
+import com.stock.autoLogin.exception.BrowserException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.*;
@@ -107,7 +107,7 @@ public class LoginPageHandler {
             log.info("账号输入完成: {}", account);
         } catch (Exception e) {
             log.error("输入账号失败: {}", e.getMessage());
-            throw new RuntimeException("输入账号失败", e);
+            throw new BrowserException("输入账号失败", e);
         }
     }
 
@@ -153,7 +153,7 @@ public class LoginPageHandler {
             log.info("密码输入完成");
         } catch (Exception e) {
             log.error("输入密码失败: {}", e.getMessage());
-            throw new RuntimeException("输入密码失败", e);
+            throw new BrowserException("输入密码失败", e);
         }
     }
 
@@ -168,7 +168,7 @@ public class LoginPageHandler {
             log.info("验证码输入完成: {}", captcha);
         } catch (Exception e) {
             log.error("输入验证码失败: {}", e.getMessage());
-            throw new RuntimeException("输入验证码失败", e);
+            throw new BrowserException("输入验证码失败", e);
         }
     }
 
@@ -278,7 +278,7 @@ public class LoginPageHandler {
             return captchaPath.toFile();
         } catch (Exception e) {
             log.error("截图保存失败: {}", e.getMessage());
-            throw new RuntimeException("截图保存失败", e);
+            throw new BrowserException("截图保存失败", e);
         }
     }
 
@@ -315,7 +315,7 @@ public class LoginPageHandler {
             log.info("登录按钮已点击（Selenium）");
         } catch (Exception e) {
             log.error("点击登录按钮失败: {}", e.getMessage());
-            throw new RuntimeException("点击登录按钮失败", e);
+            throw new BrowserException("点击登录按钮失败", e);
         }
     }
 
@@ -392,7 +392,7 @@ public class LoginPageHandler {
             log.error("dispatchEvent 点击也失败: {}", e.getMessage());
         }
 
-        throw new RuntimeException("点击获取验证码按钮失败：所有策略均未成功");
+        throw new BrowserException("点击获取验证码按钮失败：所有策略均未成功");
     }
 
     /**
@@ -406,7 +406,7 @@ public class LoginPageHandler {
             log.info("短信验证码输入完成");
         } catch (Exception e) {
             log.error("输入短信验证码失败: {}", e.getMessage());
-            throw new RuntimeException("输入短信验证码失败", e);
+            throw new BrowserException("输入短信验证码失败", e);
         }
     }
 
@@ -442,7 +442,7 @@ public class LoginPageHandler {
             log.info("下一步按钮已点击（Selenium）");
         } catch (Exception e) {
             log.error("点击下一步按钮失败: {}", e.getMessage());
-            throw new RuntimeException("点击下一步按钮失败", e);
+            throw new BrowserException("点击下一步按钮失败", e);
         }
     }
 

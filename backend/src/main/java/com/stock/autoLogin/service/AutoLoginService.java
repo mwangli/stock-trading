@@ -1,10 +1,10 @@
 package com.stock.autoLogin.service;
 
 import com.stock.autoLogin.dto.LoginResult;
+import com.stock.autoLogin.enums.PageType;
 import com.stock.autoLogin.exception.LoginException;
 import com.stock.autoLogin.exception.TokenException;
-import com.stock.tradingExecutor.execution.CaptchaService;
-import com.stock.tradingExecutor.execution.LoginPageHandler;
+import com.stock.tradingExecutor.execution.ZXRequestUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.WebDriver;
@@ -12,7 +12,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 /**
  * 自动登录服务
@@ -34,6 +33,8 @@ public class AutoLoginService {
     private final CaptchaService captchaService;
     private final CookieManager cookieManager;
     private final CaptchaFetchService captchaFetchService;
+    private final PageTypeDetector pageTypeDetector;
+    private final ZXRequestUtils zxRequestUtils;
 
     @Value("${spring.auto-login.captcha-timeout:300}")
     private int captchaTimeoutSeconds;
@@ -42,70 +43,6 @@ public class AutoLoginService {
     private int maxRetries;
 
     private LocalDateTime lastLoginTime;
-
-    /**
-     * 检测页面类型（严格模式）
-     * @return "PHONE_VERIFY"（手机验证页）或 "LOGIN"（登录页）
-     */
-    private String detectPageType(WebDriver driver) {
-        try {
-            org.openqa.selenium.JavascriptExecutor js = (org.openqa.selenium.JavascriptExecutor) driver;
-
-            // 1. 检测手机验证页特征
-            // 手机号输入框（placeholder 包含"手机号"）且可见
-            List<org.openqa.selenium.WebElement> phoneInputs = driver.findElements(
-                    org.openqa.selenium.By.xpath("//input[contains(@placeholder, '手机号')]"));
-            boolean hasVisiblePhoneInput = phoneInputs.stream().anyMatch(org.openqa.selenium.WebElement::isDisplayed);
-
-            // "获取验证码"按钮存在且可见
-            List<org.openqa.selenium.WebElement> sendCodeButtons = driver.findElements(
-                    org.openqa.selenium.By.xpath("//*[contains(text(), '获取验证码')]"));
-            boolean hasVisibleSendCode = sendCodeButtons.stream().anyMatch(org.openqa.selenium.WebElement::isDisplayed);
-
-            // 2. 检测登录页特征
-            // 密码输入框存在且可见
-            List<org.openqa.selenium.WebElement> passwordInputs = driver.findElements(
-                    org.openqa.selenium.By.xpath("//input[@type='password']"));
-            boolean hasVisiblePassword = passwordInputs.stream().anyMatch(org.openqa.selenium.WebElement::isDisplayed);
-
-            // 资金账号输入框（placeholder 包含"资金账号"或"证券账号"）且可见
-            List<org.openqa.selenium.WebElement> accountInputs = driver.findElements(
-                    org.openqa.selenium.By.xpath("//input[contains(@placeholder, '资金账号') or contains(@placeholder, '证券账号')]"));
-            boolean hasVisibleAccount = accountInputs.stream().anyMatch(org.openqa.selenium.WebElement::isDisplayed);
-
-            // 3. 综合判断
-            // 手机验证页：手机号输入框可见 + 获取验证码按钮可见 + 密码输入框不可见
-            if (hasVisiblePhoneInput && hasVisibleSendCode && !hasVisiblePassword) {
-                log.info("检测到页面类型：PHONE_VERIFY（手机验证页）- hasPhone={}, hasSendCode={}, hasPassword={}",
-                        hasVisiblePhoneInput, hasVisibleSendCode, hasVisiblePassword);
-                return "PHONE_VERIFY";
-            }
-
-            // 登录页：密码输入框可见 或 资金账号输入框可见
-            if (hasVisiblePassword || hasVisibleAccount) {
-                log.info("检测到页面类型：LOGIN（登录页）- hasPassword={}, hasAccount={}",
-                        hasVisiblePassword, hasVisibleAccount);
-                return "LOGIN";
-            }
-
-            // 如果都检测不到，打印详细信息用于调试
-            log.warn("无法确定页面类型，打印页面元素信息：");
-            log.warn("  - 手机号输入框: {}个, 可见: {}", phoneInputs.size(), hasVisiblePhoneInput);
-            log.warn("  - 获取验证码按钮: {}个, 可见: {}", sendCodeButtons.size(), hasVisibleSendCode);
-            log.warn("  - 密码输入框: {}个, 可见: {}", passwordInputs.size(), hasVisiblePassword);
-            log.warn("  - 资金账号输入框: {}个, 可见: {}", accountInputs.size(), hasVisibleAccount);
-
-            // 备选判断：如果密码输入框存在（不论可见性），认为是登录页
-            if (!passwordInputs.isEmpty()) {
-                return "LOGIN";
-            }
-
-            return "UNKNOWN";
-        } catch (Exception e) {
-            log.error("页面类型检测失败: {}", e.getMessage());
-            return "UNKNOWN";
-        }
-    }
 
     /**
      * 执行手机验证流程（首次登录/新设备）
@@ -173,7 +110,7 @@ public class AutoLoginService {
      * 执行登录页流程（常规登录）
      * 流程：输入账号密码 → 数学验证码 → 勾选协议 → 点击登录 → 滑块验证 → Token 获取
      *
-     * @param account 资金账号
+     * @param account  资金账号
      * @param password 交易密码
      * @return Token 字符串
      */
@@ -235,6 +172,7 @@ public class AutoLoginService {
      * @return 登录结果，包含 Token 和状态
      */
     public LoginResult executeLogin(String account, String password) {
+        long startTime = System.currentTimeMillis();
         int attempt = 0;
 
         while (attempt < maxRetries) {
@@ -249,27 +187,22 @@ public class AutoLoginService {
                 driver.get("https://weixin.citicsinfo.com/tztweb/deal/index.html#!/account/login.html");
                 Thread.sleep(3000);
 
-                // 3. 检测页面类型
-                String pageType = detectPageType(driver);
+                // 3. 检测页面类型（使用统一检测器）
+                PageType pageType = pageTypeDetector.detect(driver);
                 String token;
 
-                if ("PHONE_VERIFY".equals(pageType)) {
+                if (pageType == PageType.PHONE_VERIFY) {
                     // 流程一：手机验证页 → 登录页
-                    String phone = account; // 手机号即账号
                     if (!browserSessionManager.ensureLoginFrame()) {
                         throw new LoginException("无法切换到登录表单 iframe");
                     }
 
-                    // 执行手机验证流程
-                    executePhoneVerifyFlow(phone);
-
-                    // 等待跳转到登录页
+                    executePhoneVerifyFlow(account);
                     Thread.sleep(3000);
 
                     // 检测是否已跳转到登录页
-                    String newPageType = detectPageType(driver);
-                    if ("LOGIN".equals(newPageType)) {
-                        // 继续执行登录页流程
+                    PageType newPageType = pageTypeDetector.detect(driver);
+                    if (newPageType == PageType.LOGIN) {
                         token = executeLoginFlow(account, password);
                     } else {
                         throw new LoginException("手机验证完成后未跳转到登录页");
@@ -279,12 +212,14 @@ public class AutoLoginService {
                     token = executeLoginFlow(account, password);
                 }
 
-                // 10. 同步 Token
-                cookieManager.syncTokenToZXRequestUtils(token);
+                // 4. 同步 Token 到 ZXRequestUtils
+                zxRequestUtils.setToken(token);
+                log.info("Token 已同步到 ZXRequestUtils");
 
                 lastLoginTime = LocalDateTime.now();
-                log.info("========== 登录成功 ==========");
-                return LoginResult.success(token);
+                long durationMs = System.currentTimeMillis() - startTime;
+                log.info("========== 登录成功，耗时 {}ms ==========", durationMs);
+                return LoginResult.success(token, durationMs);
 
             } catch (Exception e) {
                 log.error("第 {} 次登录尝试失败: {}", attempt, e.getMessage());
@@ -307,6 +242,7 @@ public class AutoLoginService {
 
     /**
      * 处理数学验证码
+     *
      * @return 验证码结果，如果无法自动计算返回 null
      */
     private String handleMathCaptcha() {
@@ -326,6 +262,9 @@ public class AutoLoginService {
 
     /**
      * 处理滑块验证码
+     *
+     * @return 是否验证通过
+     * @throws Exception 处理异常
      */
     private boolean handleSliderCaptcha() throws Exception {
         WebDriver driver = browserSessionManager.getDriver();
@@ -369,37 +308,28 @@ public class AutoLoginService {
 
     /**
      * 获取上次登录时间
+     *
+     * @return 上次登录时间
      */
     public LocalDateTime getLastLoginTime() {
         return lastLoginTime;
     }
 
     /**
-     * 检查当前登录状态
+     * 检查当前登录状态（通过 Token 是否有效判断）
+     *
+     * @return 是否已登录
      */
     public boolean isLoggedIn() {
-        try {
-            Class<?> zxRequestUtilsClass = Class.forName("com.stock.tradingExecutor.execution.ZXRequestUtils");
-            java.lang.reflect.Method isTokenValidMethod = zxRequestUtilsClass.getMethod("isTokenValid");
-            return (Boolean) isTokenValidMethod.invoke(null);
-        } catch (Exception e) {
-            log.warn("检查登录状态失败: {}", e.getMessage());
-            return false;
-        }
+        return zxRequestUtils.getToken() != null;
     }
 
     /**
      * 强制退出登录
      */
     public void forceLogout() {
-        try {
-            Class<?> zxRequestUtilsClass = Class.forName("com.stock.tradingExecutor.execution.ZXRequestUtils");
-            java.lang.reflect.Method clearTokenMethod = zxRequestUtilsClass.getMethod("clearToken");
-            clearTokenMethod.invoke(null);
-            browserSessionManager.quitBrowser();
-            log.info("强制退出登录成功");
-        } catch (Exception e) {
-            log.error("强制退出登录失败: {}", e.getMessage());
-        }
+        zxRequestUtils.setToken(null);
+        browserSessionManager.quitBrowser();
+        log.info("强制退出登录成功");
     }
 }
