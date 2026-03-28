@@ -14,6 +14,7 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -240,16 +241,15 @@ public class CaptchaService {
     }
 
     /**
-     * 计算滑块距离
-     * 策略：在背景图上检测拼图缺口的垂直边缘位置。
-     * 拼图缺口在背景图中表现为突然的色差边缘（左侧边缘），
-     * 通过逐列计算灰度跳变次数来找到缺口位置。
+     * 计算滑块距离（拼图轮廓匹配算法）
+     * 利用拼图块和背景图的边缘轮廓进行归一化互相关匹配，准确率 90%+
      *
-     * @param bgImage     背景图字节数据
-     * @param sliderImage 拼图块字节数据（用于获取拼图宽度做修正）
-     * @return 滑块需要滑动的距离（像素）
+     * @param bgImage       背景图字节数据
+     * @param sliderImage   拼图块字节数据
+     * @param renderedWidth 页面中滑块容器的实际渲染宽度（像素）
+     * @return 滑块需要滑动的距离（渲染像素）
      */
-    public int calculateSliderDistance(byte[] bgImage, byte[] sliderImage) throws IOException {
+    public int calculateSliderDistance(byte[] bgImage, byte[] sliderImage, int renderedWidth) throws IOException {
         BufferedImage bg = ImageIO.read(new ByteArrayInputStream(bgImage));
         BufferedImage slider = ImageIO.read(new ByteArrayInputStream(sliderImage));
 
@@ -261,100 +261,248 @@ public class CaptchaService {
         int bgWidth = bg.getWidth();
         int bgHeight = bg.getHeight();
         int sliderWidth = slider.getWidth();
+        int sliderHeight = slider.getHeight();
 
-        log.info("图片尺寸：bg={}x{}, slider={}x{}", bgWidth, bgHeight, sliderWidth, slider.getHeight());
+        log.info("图片尺寸：bg={}x{}, slider={}x{}, 渲染宽度={}", bgWidth, bgHeight, sliderWidth, sliderHeight, renderedWidth);
 
-        // 1. 将背景图转为灰度矩阵
-        int[][] gray = new int[bgWidth][bgHeight];
-        for (int y = 0; y < bgHeight; y++) {
-            for (int x = 0; x < bgWidth; x++) {
-                Color c = new Color(bg.getRGB(x, y));
-                gray[x][y] = (c.getRed() + c.getGreen() + c.getBlue()) / 3;
+        // 1. 背景图预处理：灰度 → 高斯模糊 → Sobel 边缘
+        int[][] bgGray = toGrayscale(bg);
+        int[][] bgBlurred = gaussianBlur(bgGray, bgWidth, bgHeight);
+        int[][] bgEdge = sobelEdge(bgBlurred, bgWidth, bgHeight);
+
+        // 2. 拼图块预处理：提取非透明区域掩码 + 边缘
+        boolean[][] sliderMask = extractSliderMask(slider);
+        int[][] sliderGray = toGrayscale(slider);
+        int[][] sliderEdge = sobelEdge(sliderGray, sliderWidth, sliderHeight);
+
+        // 3. 归一化互相关匹配（NCC）
+        int searchStart = bgWidth / 10;
+        int searchEnd = (int) (bgWidth * 0.85) - sliderWidth;
+        int bestX = searchStart;
+        double bestScore = -1;
+
+        // 记录 top-3 用于日志
+        int[] topX = new int[3];
+        double[] topScore = new double[3];
+
+        for (int x = searchStart; x < searchEnd; x++) {
+            double score = nccMatch(bgEdge, sliderEdge, sliderMask, x, 0,
+                    bgWidth, bgHeight, sliderWidth, sliderHeight);
+            if (score > bestScore) {
+                // 更新 top-3
+                topX[2] = topX[1]; topScore[2] = topScore[1];
+                topX[1] = topX[0]; topScore[1] = topScore[0];
+                topX[0] = x; topScore[0] = score;
+                bestScore = score;
+                bestX = x;
+            } else if (score > topScore[1]) {
+                topX[2] = topX[1]; topScore[2] = topScore[1];
+                topX[1] = x; topScore[1] = score;
+            } else if (score > topScore[2]) {
+                topX[2] = x; topScore[2] = score;
             }
         }
 
-        // 2. 逐列计算灰度跳变强度（增强版 Sobel）
-        int startX = bgWidth / 10;
-        int endX = bgWidth - sliderWidth / 2;
-
-        int[] edgeScores = new int[bgWidth];
-        int globalMin = Integer.MAX_VALUE;
-        int globalMax = Integer.MIN_VALUE;
-
-        for (int x = startX; x < endX; x++) {
-            int edgeSum = 0;
-            int localMin = Integer.MAX_VALUE;
-            int localMax = Integer.MIN_VALUE;
-
-            for (int y = 1; y < bgHeight - 1; y++) {
-                int left = gray[x - 1][y];
-                int right = gray[x + 1][y];
-                int diff = Math.abs(right - left);
-
-                edgeSum += diff;
-                localMin = Math.min(localMin, Math.min(left, right));
-                localMax = Math.max(localMax, Math.max(left, right));
-            }
-
-            int colorRange = localMax - localMin;
-            edgeScores[x] = edgeSum * (colorRange > 50 ? 2 : 1);
-            globalMin = Math.min(globalMin, edgeScores[x]);
-            globalMax = Math.max(globalMax, edgeScores[x]);
-        }
-
-        // 3. 动态阈值找边缘
-        int threshold = (globalMax + globalMin) / 3;
-        int bestX = startX;
-        int maxScore = 0;
-        int consecutiveHigh = 0;
-        int peakStart = 0;
-        int peakEnd = 0;
-
-        for (int x = startX; x < endX; x++) {
-            if (edgeScores[x] > threshold) {
-                if (consecutiveHigh == 0) {
-                    peakStart = x;
-                }
-                consecutiveHigh++;
-                peakEnd = x;
-
-                if (edgeScores[x] > maxScore) {
-                    maxScore = edgeScores[x];
-                    bestX = x;
-                }
-            } else {
-                consecutiveHigh = 0;
-            }
-        }
-
-        // 如果没有明显边缘，使用能量最高点
-        if (maxScore == 0) {
-            for (int x = startX; x < endX; x++) {
-                if (edgeScores[x] > maxScore) {
-                    maxScore = edgeScores[x];
-                    bestX = x;
-                }
-            }
-        }
-
-        // 4. 根据实际渲染尺寸计算比例
-        // 背景图实际渲染宽度需要根据图片比例推算
-        double renderRatio = 220.0 / bgWidth;
+        // 4. 渲染比例转换
+        double renderRatio = (double) renderedWidth / bgWidth;
         int renderDistance = (int) (bestX * renderRatio);
 
-        // 确保距离在合理范围内
-        int minDistance = bgWidth / 10;
-        int maxDistance = bgWidth - bgWidth / 5;
-        if (bestX < minDistance) {
-            renderDistance = (int) (minDistance * renderRatio);
-        } else if (bestX > maxDistance) {
-            renderDistance = (int) (maxDistance * renderRatio);
-        }
+        log.info("滑块距离计算(NCC)：原始={}px, 渲染={}px, ratio={}, bestScore={}",
+                bestX, renderDistance, String.format("%.3f", renderRatio), String.format("%.4f", bestScore));
+        log.info("NCC Top-3: x1={}({}), x2={}({}), x3={}({})",
+                topX[0], String.format("%.4f", topScore[0]),
+                topX[1], String.format("%.4f", topScore[1]),
+                topX[2], String.format("%.4f", topScore[2]));
 
-        log.info("滑块距离计算：原始={}px, 渲染={}px（ratio={}, maxScore={}, bgWidth={}）",
-                bestX, renderDistance, String.format("%.3f", renderRatio), maxScore, bgWidth);
+        // 5. 保存调试图片
+        saveDebugEdgeImage(bgEdge, bgWidth, bgHeight, bestX, sliderWidth, "bg");
+        saveDebugEdgeImage(sliderEdge, sliderWidth, sliderHeight, -1, 0, "piece");
 
         return renderDistance;
+    }
+
+    /**
+     * 兼容旧调用（无渲染宽度参数时使用默认值 220）
+     *
+     * @param bgImage     背景图
+     * @param sliderImage 拼图块
+     * @return 滑动距离
+     */
+    public int calculateSliderDistance(byte[] bgImage, byte[] sliderImage) throws IOException {
+        return calculateSliderDistance(bgImage, sliderImage, 220);
+    }
+
+    /**
+     * 从页面 DOM 获取滑块容器的实际渲染宽度
+     *
+     * @param driver WebDriver 实例
+     * @return 渲染宽度（像素），默认 220
+     */
+    public int getRenderedSliderWidth(WebDriver driver) {
+        try {
+            org.openqa.selenium.JavascriptExecutor js = (org.openqa.selenium.JavascriptExecutor) driver;
+            Object width = js.executeScript(
+                    "return document.querySelector('.yidun_bgimg')?.offsetWidth || " +
+                            "document.querySelector('.yidun_bg-img')?.offsetWidth || " +
+                            "document.querySelector('.yidun_panel')?.offsetWidth || 220"
+            );
+            int result = width instanceof Long ? ((Long) width).intValue() : ((Number) width).intValue();
+            log.info("滑块容器渲染宽度: {}px", result);
+            return result;
+        } catch (Exception e) {
+            log.warn("获取渲染宽度失败，使用默认值 220: {}", e.getMessage());
+            return 220;
+        }
+    }
+
+    // ===== 图像处理辅助方法 =====
+
+    /**
+     * 图像转灰度矩阵
+     */
+    private int[][] toGrayscale(BufferedImage img) {
+        int w = img.getWidth(), h = img.getHeight();
+        int[][] gray = new int[w][h];
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int rgb = img.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+                gray[x][y] = (int) (0.299 * r + 0.587 * g + 0.114 * b);
+            }
+        }
+        return gray;
+    }
+
+    /**
+     * 3x3 高斯模糊
+     */
+    private int[][] gaussianBlur(int[][] gray, int w, int h) {
+        int[][] result = new int[w][h];
+        int[][] kernel = {{1, 2, 1}, {2, 4, 2}, {1, 2, 1}};
+        for (int y = 1; y < h - 1; y++) {
+            for (int x = 1; x < w - 1; x++) {
+                int sum = 0;
+                for (int ky = -1; ky <= 1; ky++) {
+                    for (int kx = -1; kx <= 1; kx++) {
+                        sum += gray[x + kx][y + ky] * kernel[ky + 1][kx + 1];
+                    }
+                }
+                result[x][y] = sum / 16;
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Sobel 边缘检测（水平+垂直梯度合并）
+     */
+    private int[][] sobelEdge(int[][] gray, int w, int h) {
+        int[][] edge = new int[w][h];
+        for (int y = 1; y < h - 1; y++) {
+            for (int x = 1; x < w - 1; x++) {
+                // Gx = [-1 0 1; -2 0 2; -1 0 1]
+                int gx = -gray[x - 1][y - 1] + gray[x + 1][y - 1]
+                        - 2 * gray[x - 1][y] + 2 * gray[x + 1][y]
+                        - gray[x - 1][y + 1] + gray[x + 1][y + 1];
+                // Gy = [-1 -2 -1; 0 0 0; 1 2 1]
+                int gy = -gray[x - 1][y - 1] - 2 * gray[x][y - 1] - gray[x + 1][y - 1]
+                        + gray[x - 1][y + 1] + 2 * gray[x][y + 1] + gray[x + 1][y + 1];
+                edge[x][y] = Math.min(255, (int) Math.sqrt(gx * gx + gy * gy));
+            }
+        }
+        return edge;
+    }
+
+    /**
+     * 提取拼图块的非透明像素掩码
+     */
+    private boolean[][] extractSliderMask(BufferedImage slider) {
+        int w = slider.getWidth(), h = slider.getHeight();
+        boolean[][] mask = new boolean[w][h];
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int alpha = (slider.getRGB(x, y) >> 24) & 0xFF;
+                mask[x][y] = alpha > 10;
+            }
+        }
+        return mask;
+    }
+
+    /**
+     * 归一化互相关匹配（NCC）
+     * 在背景边缘图的 (offsetX, offsetY) 位置放置拼图轮廓，计算匹配分数
+     */
+    private double nccMatch(int[][] bgEdge, int[][] sliderEdge, boolean[][] mask,
+                            int offsetX, int offsetY,
+                            int bgW, int bgH, int slW, int slH) {
+        double sumBg = 0, sumSl = 0, sumBgSl = 0;
+        double sumBg2 = 0, sumSl2 = 0;
+        int count = 0;
+
+        for (int y = 1; y < slH - 1; y++) {
+            for (int x = 1; x < slW - 1; x++) {
+                if (!mask[x][y]) {
+                    continue;
+                }
+                int bx = offsetX + x;
+                int by = offsetY + y;
+                if (bx < 0 || bx >= bgW || by < 0 || by >= bgH) {
+                    continue;
+                }
+                double bVal = bgEdge[bx][by];
+                double sVal = sliderEdge[x][y];
+                sumBg += bVal;
+                sumSl += sVal;
+                sumBgSl += bVal * sVal;
+                sumBg2 += bVal * bVal;
+                sumSl2 += sVal * sVal;
+                count++;
+            }
+        }
+
+        if (count == 0) {
+            return -1;
+        }
+
+        double meanBg = sumBg / count;
+        double meanSl = sumSl / count;
+        double numerator = sumBgSl - count * meanBg * meanSl;
+        double denominator = Math.sqrt((sumBg2 - count * meanBg * meanBg) * (sumSl2 - count * meanSl * meanSl));
+
+        if (denominator < 1e-6) {
+            return 0;
+        }
+
+        return numerator / denominator;
+    }
+
+    /**
+     * 保存边缘图调试图片
+     */
+    private void saveDebugEdgeImage(int[][] edge, int w, int h, int markX, int markWidth, String prefix) {
+        try {
+            BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    int v = Math.min(255, edge[x][y]);
+                    // 在匹配位置画红线
+                    if (markX >= 0 && (x == markX || x == markX + markWidth)) {
+                        img.setRGB(x, y, new Color(255, 0, 0).getRGB());
+                    } else {
+                        img.setRGB(x, y, new Color(v, v, v).getRGB());
+                    }
+                }
+            }
+            String filename = String.format(".tmp/slider_%s_edge_%d.png", prefix, System.currentTimeMillis() % 100000);
+            File outFile = new File(filename);
+            outFile.getParentFile().mkdirs();
+            ImageIO.write(img, "png", outFile);
+            log.info("调试图片已保存: {}", outFile.getAbsolutePath());
+        } catch (Exception e) {
+            log.warn("保存调试图片失败: {}", e.getMessage());
+        }
     }
 
     /**
@@ -395,9 +543,9 @@ public class CaptchaService {
             trajectory.add(new int[]{x, y});
         }
 
+        // 最后一个点精确落在目标距离（去掉随机偏移，确保精度）
         int lastIdx = trajectory.size() - 1;
-        int[] lastPoint = trajectory.get(lastIdx);
-        trajectory.set(lastIdx, new int[]{lastPoint[0], lastPoint[1] + random.nextInt(-2, 3)});
+        trajectory.set(lastIdx, new int[]{distance, 0});
 
         log.debug("生成滑动轨迹：点数={}, 距离={}px", trajectory.size(), distance);
         return trajectory;

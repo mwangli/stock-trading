@@ -88,11 +88,12 @@ public class SliderVerificationService {
                 return SliderVerificationResult.failure("无法提取滑块图片 URL", attempt);
             }
 
-            // 3. 下载图片并计算滑动距离
+            // 3. 下载图片并计算滑动距离（使用动态渲染宽度）
             byte[] bgImage = captchaService.downloadImage(urls.getBgUrl());
             byte[] sliderImage = captchaService.downloadImage(urls.getSliderUrl());
-            int distance = captchaService.calculateSliderDistance(bgImage, sliderImage);
-            log.info("滑块距离: {}px (第 {}/{} 次)", distance, attempt, maxAttempts);
+            int renderedWidth = captchaService.getRenderedSliderWidth(driver);
+            int distance = captchaService.calculateSliderDistance(bgImage, sliderImage, renderedWidth);
+            log.info("滑块距离: {}px (渲染宽度={}px, 第 {}/{} 次)", distance, renderedWidth, attempt, maxAttempts);
 
             if (distance <= 0) {
                 return SliderVerificationResult.failure("距离计算失败", attempt);

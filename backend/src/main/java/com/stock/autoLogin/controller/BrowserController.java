@@ -70,7 +70,9 @@ public class BrowserController {
     public ResponseDTO<Void> refreshPage() {
         log.info("刷新当前页面");
         WebDriver driver = browserSessionManager.getDriver();
-        driver.navigate().refresh();
+        // 1. 使用 JS 硬刷新代替 navigate().refresh()，解决 SPA hash 路由页面刷新后白屏问题
+        ((org.openqa.selenium.JavascriptExecutor) driver).executeScript("location.reload(true)");
+        // 2. 等待页面关键元素加载
         try {
             new org.openqa.selenium.support.ui.WebDriverWait(driver, Duration.ofSeconds(10))
                     .until(d -> !d.findElements(By.xpath(

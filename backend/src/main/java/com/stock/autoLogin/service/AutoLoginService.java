@@ -285,10 +285,11 @@ public class AutoLoginService {
             return false;
         }
 
-        // 3. 下载图片 + 计算距离
+        // 3. 下载图片 + 计算距离（使用动态渲染宽度）
         byte[] bgImage = captchaService.downloadImage(urls.getBgUrl());
         byte[] sliderImage = captchaService.downloadImage(urls.getSliderUrl());
-        int distance = captchaService.calculateSliderDistance(bgImage, sliderImage);
+        int renderedWidth = captchaService.getRenderedSliderWidth(driver);
+        int distance = captchaService.calculateSliderDistance(bgImage, sliderImage, renderedWidth);
         if (distance <= 0) {
             log.error("滑块距离计算失败");
             return false;

@@ -2,6 +2,7 @@ package com.stock.autoLogin.controller;
 
 import com.stock.autoLogin.enums.PageType;
 import com.stock.autoLogin.service.BrowserSessionManager;
+import com.stock.autoLogin.service.CaptchaFetchService;
 import com.stock.autoLogin.service.DiagnosticService;
 import com.stock.autoLogin.service.PageTypeDetector;
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -31,6 +32,7 @@ public class DiagnosticController {
     private final BrowserSessionManager browserSessionManager;
     private final DiagnosticService diagnosticService;
     private final PageTypeDetector pageTypeDetector;
+    private final CaptchaFetchService captchaFetchService;
 
     /**
      * 检测页面类型（基于 DOM 内容，非 URL）
@@ -93,7 +95,7 @@ public class DiagnosticController {
      * 滑块轮询 — 持续 N 秒在所有 frame 中轮询 .yidun 元素
      *
      * @param seconds 轮询秒数，默认 10 秒
-     * @return 每秒检测结果
+     * @return 每秒检测结果/
      */
     @GetMapping("/sliderPoll")
     public ResponseDTO<List<Map<String, Object>>> sliderPoll(
@@ -133,14 +135,27 @@ public class DiagnosticController {
     /**
      * 执行任意 JS 脚本（仅开发调试用，生产环境应禁用）
      *
-     * @param script JavaScript 代码
+     * @param body JavaScript 代码
      * @return 执行结果
      */
     @PostMapping("/execJs")
-    public ResponseDTO<Object> execJs(@RequestBody String script) {
+    public ResponseDTO<Object> execJs(@RequestBody java.util.Map<String, String> body) {
         log.info("执行 JS 脚本");
+        String script = body.get("script");
         WebDriver driver = browserSessionManager.getDriver();
         Object result = diagnosticService.executeJavaScript(driver, script);
+        return ResponseDTO.success(result);
+    }
+
+    /**
+     * 测试邮件连接和读取（诊断用）
+     *
+     * @return 邮件服务器连接测试结果
+     */
+    @GetMapping("/testEmail")
+    public ResponseDTO<String> testEmailConnection() {
+        log.info("测试邮件连接");
+        String result = captchaFetchService.testEmailConnection();
         return ResponseDTO.success(result);
     }
 }
