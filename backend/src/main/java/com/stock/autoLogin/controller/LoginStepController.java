@@ -6,6 +6,7 @@ import com.stock.dataCollector.domain.dto.ResponseDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.WebDriver;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -14,6 +15,7 @@ import java.util.Map;
 /**
  * 登录页分步操作控制器
  * 提供登录表单的逐步操作接口：输入账号、密码、验证码、勾选协议、提交登录、检查结果
+ * 所有业务逻辑委托给对应的 Service 处理，Controller 仅负责参数接收和响应封装
  *
  * @author mwangli
  * @since 2026-03-25
@@ -29,6 +31,9 @@ public class LoginStepController {
     private final CaptchaService captchaService;
     private final CookieManager cookieManager;
     private final MathCaptchaService mathCaptchaService;
+
+    @Value("${spring.auto-login.account:13278828091}")
+    private String defaultAccount;
 
     /**
      * 输入账号
@@ -57,22 +62,24 @@ public class LoginStepController {
     }
 
     /**
-     * 截取验证码（通过 API 获取图片 Base64 进行 OCR 识别）
+     * 获取并识别数学验证码
+     * 通过 API 获取验证码图片 Base64，进行 OCR 识别和数学运算
      *
-     * @param account 可选，资金账号/手机号
-     * @return 验证码识别结果
+     * @param account 可选，资金账号/手机号，不传则使用默认配置
+     * @return 验证码识别结果（表达式和计算结果）
      */
     @GetMapping("/capture-captcha")
     public ResponseDTO<Map<String, Object>> captureCaptcha(
             @RequestParam(required = false) String account) {
-        log.info("通过API获取验证码图片并进行OCR识别");
+        log.info("通过 API 获取验证码图片并进行 OCR 识别");
 
-        if (account == null || account.isEmpty()) {
-            account = "13278828091";
-        }
+        // 1. 使用传入账号或默认账号
+        String targetAccount = (account != null && !account.isEmpty()) ? account : defaultAccount;
 
-        Map<String, Object> result = mathCaptchaService.getCaptchaResult(account);
+        // 2. 调用验证码识别服务
+        Map<String, Object> result = mathCaptchaService.getCaptchaResult(targetAccount);
 
+        // 3. 封装响应
         if ((boolean) result.getOrDefault("success", false)) {
             Map<String, Object> data = new HashMap<>();
             data.put("expression", result.get("expression"));
@@ -97,7 +104,7 @@ public class LoginStepController {
     }
 
     /**
-     * 勾选协议
+     * 勾选协议（隐私条款 + 授权书）
      *
      * @return 操作结果
      */
@@ -122,6 +129,7 @@ public class LoginStepController {
 
     /**
      * 检查登录结果
+     * 综合检查当前页面 URL、Token 状态和滑块状态
      *
      * @return 登录状态信息（URL、Token、滑块状态）
      */
@@ -131,14 +139,17 @@ public class LoginStepController {
         WebDriver driver = browserSessionManager.getDriver();
         Map<String, Object> result = new HashMap<>();
 
+        // 1. 检查页面 URL 是否已离开登录页
         String currentUrl = driver.getCurrentUrl();
         result.put("currentUrl", currentUrl);
         result.put("isSuccess", !currentUrl.contains("login") && !currentUrl.contains("activePhone"));
 
+        // 2. 检查 Token 是否已获取
         String token = cookieManager.extractToken(driver);
         result.put("hasToken", token != null);
         result.put("token", token != null ? token.substring(0, Math.min(10, token.length())) + "***" : null);
 
+        // 3. 检查是否存在滑块验证码
         SliderType sliderType = captchaService.detectSliderType(driver);
         result.put("sliderStatus", sliderType == SliderType.NONE ? "未检测到滑块" : "滑块存在: " + sliderType.name());
 
