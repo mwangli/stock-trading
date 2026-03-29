@@ -132,6 +132,24 @@ public class JobBootstrap implements ApplicationRunner {
                     .setCronExpression("0 30 3 * * ?")
                     .setStatus(1));
 
+            // 情感模型评估任务（每日收盘后 16:30）
+            defaultJobs.add(new JobConfig()
+                    .setJobName("sentimentModelEvaluation")
+                    .setDescription("每日收盘后评估情感模型性能")
+                    .setBeanName("sentimentModelEvaluationJob")
+                    .setMethodName("evaluateSentimentModel")
+                    .setCronExpression("0 30 16 * * MON-FRI")
+                    .setStatus(1));
+
+            // 情感模型自动标注任务（每日收盘后 17:00）
+            defaultJobs.add(new JobConfig()
+                    .setJobName("sentimentAutoLabel")
+                    .setDescription("每日收盘后自动生成情感标注数据")
+                    .setBeanName("sentimentAutoLabelJob")
+                    .setMethodName("generateAutoLabels")
+                    .setCronExpression("0 0 17 * * MON-FRI")
+                    .setStatus(1));
+
             for (JobConfig job : defaultJobs) {
                 if (jobConfigRepository.findByJobName(job.getJobName()).isEmpty()) {
                     job.setCreateTime(LocalDateTime.now());

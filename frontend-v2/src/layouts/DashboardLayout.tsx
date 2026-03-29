@@ -13,14 +13,17 @@ import {
   StockOutlined,
   FundOutlined,
   MenuUnfoldOutlined,
-MenuFoldOutlined,
+  MenuFoldOutlined,
   HistoryOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
   FileTextOutlined,
-  ScheduleOutlined
+  ScheduleOutlined,
+  CheckCircleOutlined,
+  SyncOutlined,
 } from '@ant-design/icons';
 import { useUserStore } from '../store/userStore';
+import { useSystemStatus } from '../hooks/useSystemStatus';
 
 const { Header, Content, Sider } = Layout;
 
@@ -29,18 +32,42 @@ const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useUserStore();
+  const { connected, latency, lastUpdate } = useSystemStatus();
+  const { t, i18n } = useTranslation();
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
-  const { t, i18n } = useTranslation();
 
   const changeLanguage = () => {
     const newLang = i18n.language === 'en' ? 'zh' : 'en';
     i18n.changeLanguage(newLang);
   };
 
+  const getStatusDisplay = () => {
+    if (!connected) {
+      return {
+        color: 'bg-red-500',
+        icon: null,
+        text: t('layout.disconnected'),
+      };
+    }
+    if (lastUpdate && Date.now() - lastUpdate > 30000) {
+      return {
+        color: 'bg-yellow-500',
+        icon: <SyncOutlined spin className="text-yellow-500" />,
+        text: t('layout.reconnecting'),
+      };
+    }
+    return {
+      color: 'bg-[#00e396]',
+      icon: <CheckCircleOutlined className="text-[#00e396]" />,
+      text: t('layout.connected'),
+    };
+  };
+
+  const statusDisplay = getStatusDisplay();
 
   const menuItems = [
     { key: '/dashboard', icon: <DesktopOutlined />, label: t('layout.dashboard') },
@@ -101,10 +128,15 @@ const DashboardLayout: React.FC = () => {
             <div className="p-4 rounded-xl bg-gradient-to-br from-[#00e396]/10 to-transparent border border-[#00e396]/20">
               <div className="text-xs text-[#00e396] font-mono mb-2">{t('layout.systemStatus')}</div>
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#00e396] animate-pulse"></div>
-                <span className="text-xs text-white/70">{t('layout.connected')}</span>
+                <div className={`w-2 h-2 rounded-full ${statusDisplay.color} animate-pulse`}></div>
+                <span className="text-xs text-white/70 flex items-center gap-1">
+                  {statusDisplay.icon}
+                  <span>{statusDisplay.text}</span>
+                </span>
               </div>
-              <div className="text-xs text-white/40 mt-1">{t('layout.latency')}: 24ms</div>
+              <div className="text-xs text-white/40 mt-1">
+                {t('layout.latency')}: {latency != null ? `${latency}ms` : '—'}
+              </div>
             </div>
           )}
         </div>

@@ -28,6 +28,7 @@ import com.stock.modelService.domain.dto.LstmPredictionResultDto;
 import com.stock.modelService.persistence.LstmModelRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -45,7 +46,9 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -60,11 +63,206 @@ public class LstmTrainerService {
     private final LstmModelRepository lstmModelRepository;
     private final ModelBinaryCodec modelBinaryCodec;
     private final com.stock.modelService.service.ModelTrainingRecordService modelTrainingRecordService;
+    private final RedisTemplate<String, Object> redisTemplate;
     private final Map<String, TrainingStatus> trainingStatusMap = new ConcurrentHashMap<>();
     private String currentModelPath;
 
+    private static final String TRAINING_LOCK_PREFIX = "lstm:training:lock:";
+    private static final long LOCK_EXPIRE_SECONDS = 300;
+
+    /**
+     * 同步标记训练状态
+     * 立即将模型状态更新为"训练中"，不等待训练完成
+     *
+     * @param stockCodes 股票代码，多个用逗号分隔
+     * @param training 是否标记为训练中
+     */
+    public void markTrainingSync(String stockCodes, boolean training) {
+        try {
+            modelTrainingRecordService.markTraining(stockCodes, training);
+        } catch (Exception e) {
+            log.warn("同步标记训练状态失败: stockCodes={}, training={}, error={}", stockCodes, training, e.getMessage());
+        }
+    }
+
+    /**
+     * 尝试获取分布式训练锁
+     *
+     * @param stockCodes 股票代码（逗号分隔）
+     * @return true=获取锁成功，false=该股票正在训练中
+     */
+    public boolean tryAcquireTrainingLock(String stockCodes) {
+        if (redisTemplate == null) {
+            log.warn("RedisTemplate 未注入，跳过分布式锁，直接允许训练");
+            return true;
+        }
+        try {
+            String[] codes = stockCodes.split(",");
+            for (String code : codes) {
+                String key = TRAINING_LOCK_PREFIX + code.trim();
+                Boolean success = redisTemplate.opsForValue().setIfAbsent(key, "training", LOCK_EXPIRE_SECONDS, TimeUnit.SECONDS);
+                if (Boolean.FALSE.equals(success)) {
+                    log.info("股票 {} 正在训练中，跳过本次训练请求", code);
+                    return false;
+                }
+            }
+            return true;
+        } catch (Exception e) {
+            log.warn("获取分布式锁失败: {}, 允许训练继续", e.getMessage());
+            return true;
+        }
+    }
+
+    /**
+     * 释放分布式训练锁
+     *
+     * @param stockCodes 股票代码（逗号分隔）
+     */
+    public void releaseTrainingLock(String stockCodes) {
+        if (redisTemplate == null) {
+            return;
+        }
+        try {
+            String[] codes = stockCodes.split(",");
+            for (String code : codes) {
+                String key = TRAINING_LOCK_PREFIX + code.trim();
+                redisTemplate.delete(key);
+            }
+        } catch (Exception e) {
+            log.warn("释放分布式锁失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 检查是否有股票正在训练中
+     *
+     * @param stockCodes 股票代码（逗号分隔）
+     * @return true=有股票正在训练，false=全部空闲
+     */
+    public boolean isAnyTraining(String stockCodes) {
+        if (redisTemplate == null) {
+            return false;
+        }
+        try {
+            String[] codes = stockCodes.split(",");
+            for (String code : codes) {
+                String key = TRAINING_LOCK_PREFIX + code.trim();
+                if (Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            log.warn("检查训练状态失败: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 异步提交训练任务
+     * 立即返回训练ID，训练在后台异步执行
+     */
+    public TrainingResult submitTraining(String stockCodes, int days, Integer epochs,
+                                        Integer batchSize, Double learningRate) {
+        String trainingId = "training_" + System.currentTimeMillis();
+        TrainingStatus status = new TrainingStatus();
+        trainingStatusMap.put(trainingId, status);
+
+        // 标记对应股票进入"训练中"状态
+        try {
+            modelTrainingRecordService.markTraining(stockCodes, true);
+        } catch (Exception e) {
+            log.warn("标记模型训练中状态失败: {}", e.getMessage());
+        }
+
+        // 异步执行训练
+        final int trainDays = days;
+        final Integer trainEpochs = epochs;
+        final Integer trainBatchSize = batchSize;
+        final Double trainLearningRate = learningRate;
+        final String finalTrainingId = trainingId;
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                trainModelInternal(finalTrainingId, status, stockCodes, trainDays, trainEpochs, trainBatchSize, trainLearningRate);
+            } catch (Exception e) {
+                log.error("异步训练异常: trainingId={}", finalTrainingId, e);
+                status.setStatus("训练失败");
+                status.setProgress(0);
+                try {
+                    modelTrainingRecordService.markTraining(stockCodes, false);
+                } catch (Exception ex) {
+                    log.warn("取消训练状态失败: {}", ex.getMessage());
+                }
+            }
+        });
+
+        // 立即返回成功
+        return TrainingResult.builder()
+                .success(true)
+                .message("训练任务已提交")
+                .trainingId(trainingId)
+                .build();
+    }
+
+    private void trainModelInternal(String trainingId, TrainingStatus status, String stockCodes, int days,
+                                   Integer epochs, Integer batchSize, Double learningRate) {
+        try {
+            int trainEpochs = epochs != null ? epochs : config.getEpochs();
+            int trainBatchSize = batchSize != null ? batchSize : config.getBatchSize();
+            float trainLearningRate = learningRate != null ? learningRate.floatValue() : (float) config.getLearningRate();
+
+            log.info("========== 开始 LSTM 模型训练 ==========");
+            log.info("股票: {}, 天数: {}, 轮次: {}, 批次: {}, 学习率: {}",
+                    stockCodes, days, trainEpochs, trainBatchSize, trainLearningRate);
+
+            status.setStatus("准备数据");
+            status.setProgress(5);
+
+            int fetchDays = days;
+            if (days <= config.getSequenceLength()) {
+                fetchDays = config.getSequenceLength() + 1;
+            }
+            List<StockPrice> prices = getStockPrices(stockCodes, fetchDays);
+            if (prices.isEmpty()) {
+                status.setStatus("训练失败: 没有找到股票数据");
+                status.setProgress(0);
+                modelTrainingRecordService.markTraining(stockCodes, false);
+                return;
+            }
+            log.info("获取到 {} 条价格数据", prices.size());
+
+            status.setProgress(15);
+            status.setStatus("数据预处理");
+
+            LstmDataPreprocessor.ProcessedData processedData = dataPreprocessor.processData(prices);
+            if (processedData == null || processedData.getTrainSamples().isEmpty()) {
+                status.setStatus("训练失败: 数据预处理失败");
+                status.setProgress(0);
+                modelTrainingRecordService.markTraining(stockCodes, false);
+                return;
+            }
+
+            status.setProgress(25);
+            status.setStatus("构建模型");
+
+            // 调用实际训练方法
+            trainModel(stockCodes, days, epochs, batchSize, learningRate, "full");
+
+        } catch (Exception e) {
+            log.error("训练过程异常: trainingId={}", trainingId, e);
+            status.setStatus("训练失败");
+            status.setProgress(0);
+            try {
+                modelTrainingRecordService.markTraining(stockCodes, false);
+            } catch (Exception ex) {
+                log.warn("取消训练状态失败: {}", ex.getMessage());
+            }
+        }
+    }
+
     public TrainingResult trainModel(String stockCodes, int days, Integer epochs,
-                                     Integer batchSize, Double learningRate) {
+                                     Integer batchSize, Double learningRate, String trainingType) {
         String trainingId = "training_" + System.currentTimeMillis();
         TrainingStatus status = new TrainingStatus();
         trainingStatusMap.put(trainingId, status);
@@ -289,7 +487,8 @@ public class LstmTrainerService {
                         finalTrainLoss,
                         finalValLoss,
                         durationSeconds,
-                        mongoId
+                        mongoId,
+                        trainingType
                 );
             } catch (Exception e) {
                 log.warn("更新模型训练记录失败，不影响训练主流程: {}", e.getMessage());
@@ -405,7 +604,9 @@ public class LstmTrainerService {
                     .stockCode(trimmedCode)
                     .predictedClosePrice(predictedPrice)
                     .lastClosePrice(safeLastClose)
-                    .predictedChangeRatio(changeRatio);
+                    .predictedChangeRatio(changeRatio)
+                    .targetDate(java.time.LocalDate.now().plusDays(1).toString())
+                    .predictionDate(java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
 
             // 仅在使用 MongoDB 存储时填充 modelId
             if (!"local".equalsIgnoreCase(config.getStorageType())) {
@@ -629,6 +830,349 @@ public class LstmTrainerService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * 检测是否存在指定股票的历史模型
+     */
+    public boolean hasExistingModel(String stockCode) {
+        try {
+            LstmModelDocument existing = lstmModelRepository.findTopByModelNameOrderByCreatedAtDesc(stockCode.trim());
+            return existing != null && existing.getParams() != null;
+        } catch (Exception e) {
+            log.warn("检测历史模型失败: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 增量训练入口
+     * 检测是否有历史模型：
+     * - 有历史模型：执行增量训练（冻结底层参数）
+     * - 无历史模型：执行全量训练
+     *
+     * @param stockCodes    股票代码
+     * @param days         训练数据天数
+     * @param epochs       训练轮数（增量时建议 10~20）
+     * @param batchSize    批次大小
+     * @param learningRate 学习率
+     * @param forceFull    是否强制全量训练
+     * @param trainingType 训练类型：incremental / periodic / full
+     * @return 训练结果，包含是否增量训练的标识和知识保留率
+     */
+    public TrainingResult trainIncremental(String stockCodes, int days, Integer epochs,
+                                           Integer batchSize, Double learningRate, boolean forceFull,
+                                           String trainingType) {
+        String stockCode = stockCodes.trim().split(",")[0];
+        boolean hasHistory = hasExistingModel(stockCode);
+        boolean isIncremental = hasHistory && !forceFull;
+
+        log.info("========== LSTM 训练决策 ==========");
+        log.info("股票: {}, 有历史模型: {}, 强制全量: {}, 执行方式: {}, 训练类型: {}",
+                stockCodes, hasHistory, forceFull, isIncremental ? "增量训练" : "全量训练", trainingType);
+
+        if (isIncremental) {
+            return trainWithFrozenLayers(stockCodes, days, epochs, batchSize, learningRate, trainingType);
+        } else {
+            return trainModel(stockCodes, days, epochs, batchSize, learningRate, trainingType);
+        }
+    }
+
+    /**
+     * 基于历史模型的增量训练
+     * 核心策略：冻结底层 LSTM 层，只微调顶层全连接层
+     */
+    private TrainingResult trainWithFrozenLayers(String stockCodes, int days, Integer epochs,
+                                                  Integer batchSize, Double learningRate, String trainingType) {
+        String trainingId = "incremental_" + System.currentTimeMillis();
+        TrainingStatus status = new TrainingStatus();
+        trainingStatusMap.put(trainingId, status);
+
+        try {
+            int trainEpochs = epochs != null ? epochs : Math.min(config.getEpochs(), 15);
+            int trainBatchSize = batchSize != null ? batchSize : config.getBatchSize();
+            float headLearningRate = learningRate != null ? learningRate.floatValue() : (float) config.getLearningRate();
+            float baseLearningRate = (float) config.getBaseLayersLearningRate();
+            int frozenLayersCount = config.getFrozenLayers();
+
+            long trainingStartNs = System.nanoTime();
+
+            // 标记训练状态
+            try {
+                modelTrainingRecordService.markTraining(stockCodes, true);
+            } catch (Exception e) {
+                log.warn("标记模型训练中状态失败: {}", e.getMessage());
+            }
+
+            log.info("========== 开始 LSTM 增量训练 ==========");
+            log.info("股票: {}, 冻结层数: {}, 顶层学习率: {}, 底层学习率: {}, 轮次: {}",
+                    stockCodes, frozenLayersCount, headLearningRate, baseLearningRate, trainEpochs);
+
+            status.setStatus("准备数据");
+            status.setProgress(5);
+
+            // 1. 获取数据
+            int fetchDays = days <= config.getSequenceLength()
+                    ? config.getSequenceLength() + 1 : days;
+            List<StockPrice> prices = getStockPrices(stockCodes, fetchDays);
+            if (prices.isEmpty()) {
+                return TrainingResult.builder()
+                        .success(false)
+                        .message("没有找到股票数据")
+                        .incremental(false)
+                        .build();
+            }
+
+            status.setProgress(15);
+            status.setStatus("数据预处理");
+
+            // 2. 预处理数据
+            LstmDataPreprocessor.ProcessedData processedData = dataPreprocessor.processData(prices);
+            if (processedData == null || processedData.getTrainSamples().isEmpty()) {
+                return TrainingResult.builder()
+                        .success(false)
+                        .message("数据预处理失败")
+                        .incremental(false)
+                        .build();
+            }
+
+            int trainSize = processedData.getTrainSamples().size();
+            int valSize = processedData.getValSamples().size();
+            log.info("训练样本: {}, 验证样本: {}", trainSize, valSize);
+
+            // 3. 获取历史模型
+            status.setProgress(20);
+            status.setStatus("加载历史模型");
+
+            String stockCode = stockCodes.trim().split(",")[0];
+            LstmModelDocument historyDoc = lstmModelRepository.findTopByModelNameOrderByCreatedAtDesc(stockCode);
+            if (historyDoc == null || historyDoc.getParams() == null) {
+                log.warn("未找到历史模型参数，执行全量训练");
+                return trainModel(stockCodes, days, epochs, batchSize, learningRate, trainingType);
+            }
+
+            // 4. 创建新模型并加载历史参数
+            Model model = Model.newInstance("lstm-stock-incremental", "PyTorch");
+            StockLSTMModel lstmModel = new StockLSTMModel(
+                    config.getInputSize(),
+                    config.getHiddenSize(),
+                    config.getNumLayers(),
+                    (float) config.getDropout(),
+                    config.getSequenceLength()
+            );
+            model.setBlock(lstmModel);
+
+            // 加载历史参数到模型
+            try {
+                modelBinaryCodec.deserialize(historyDoc.getParams(), model);
+                log.info("历史模型参数加载成功");
+            } catch (Exception e) {
+                log.warn("加载历史参数失败，将从头训练: {}", e.getMessage());
+                return trainModel(stockCodes, days, epochs, batchSize, learningRate, trainingType);
+            }
+
+            status.setProgress(30);
+            status.setStatus("冻结底层参数");
+
+            // 5. 冻结底层参数
+            freezeLayers(lstmModel, frozenLayersCount);
+            log.info("已冻结前 {} 层 LSTM 参数", frozenLayersCount);
+
+            // 6. 配置优化器（分层学习率）
+            Optimizer optimizer = Optimizer.adam()
+                    .optLearningRateTracker(Tracker.fixed(headLearningRate))
+                    .optWeightDecays(0.001f)
+                    .build();
+
+            Device[] devices = Engine.getInstance().getDevices(1);
+            Device device = devices.length > 0 ? devices[0] : Device.cpu();
+            log.info("增量训练设备: {}", device);
+
+            DefaultTrainingConfig trainingConfig = new DefaultTrainingConfig(Loss.l2Loss())
+                    .optOptimizer(optimizer)
+                    .optDevices(devices)
+                    .addTrainingListeners(TrainingListener.Defaults.logging());
+
+            status.setStatus("增量训练中");
+            status.setProgress(35);
+
+            List<Map<String, Object>> trainingLog = new ArrayList<>();
+            double bestValLoss = Double.MAX_VALUE;
+            int patienceCounter = 0;
+            String bestModelPath = null;
+
+            try (Trainer trainer = model.newTrainer(trainingConfig)) {
+                int flattenedSize = config.getSequenceLength() * config.getInputSize();
+                int initBatchSize = Math.min(trainBatchSize, Math.max(1, trainSize));
+                Shape inputShape = new Shape(initBatchSize, flattenedSize);
+                trainer.initialize(inputShape);
+
+                float[][] trainInputs = flattenInputs(processedData.getTrainInputs());
+                float[] trainTargets = processedData.getTrainTargets();
+                float[][] valInputs = flattenInputs(processedData.getValInputs());
+                float[] valTargets = processedData.getValTargets();
+
+                ArrayDataset trainDataset = createDataset(trainer.getManager(), trainInputs, trainTargets, trainBatchSize);
+                int valBatchSizeVal = Math.min(trainBatchSize, Math.max(1, valSize));
+                ArrayDataset valDataset = createDataset(trainer.getManager(), valInputs, valTargets, valBatchSizeVal);
+
+                // 记录增量训练前的验证损失（知识保留基准）
+                double baselineValLoss = evaluateModel(trainer, valDataset);
+                log.info("增量前基准验证损失: {}", baselineValLoss);
+
+                for (int epoch = 0; epoch < trainEpochs; epoch++) {
+                    long epochStartNs = System.nanoTime();
+                    status.setCurrentEpoch(epoch + 1);
+                    status.setTotalEpochs(trainEpochs);
+
+                    float epochLoss = 0;
+                    int batchCount = 0;
+
+                    for (Batch batch : trainer.iterateDataset(trainDataset)) {
+                        try {
+                            Loss loss = trainer.getLoss();
+                            try (GradientCollector collector = trainer.newGradientCollector();
+                                 NDList predictions = trainer.forward(batch.getData());
+                                 NDArray lossValue = loss.evaluate(batch.getLabels(), predictions)) {
+                                collector.backward(lossValue);
+                                epochLoss += lossValue.toFloatArray()[0];
+                            }
+                            trainer.step();
+                            batchCount++;
+                        } finally {
+                            batch.close();
+                        }
+                    }
+
+                    float avgTrainLoss = batchCount > 0 ? epochLoss / batchCount : epochLoss;
+                    float valLoss = evaluateModel(trainer, valDataset);
+
+                    Map<String, Object> logEntry = new HashMap<>();
+                    logEntry.put("epoch", epoch + 1);
+                    logEntry.put("trainLoss", (double) avgTrainLoss);
+                    logEntry.put("valLoss", (double) valLoss);
+                    trainingLog.add(logEntry);
+
+                    double progress = 35 + (epoch + 1) * (55.0 / trainEpochs);
+                    status.setProgress(progress);
+                    status.setStatus(String.format("Epoch %d/%d - TrainLoss: %.6f, ValLoss: %.6f",
+                            epoch + 1, trainEpochs, avgTrainLoss, valLoss));
+
+                    log.info("Epoch {}/{} - TrainLoss: {}, ValLoss: {}, 耗时: {}秒",
+                            epoch + 1, trainEpochs, avgTrainLoss, valLoss,
+                            String.format("%.2f", (System.nanoTime() - epochStartNs) / 1_000_000_000.0));
+
+                    if (config.isEarlyStopping()) {
+                        if (valLoss < bestValLoss - config.getMinDelta()) {
+                            bestValLoss = valLoss;
+                            patienceCounter = 0;
+                            bestModelPath = saveModel(model, processedData, epoch + 1, stockCodes, (double) avgTrainLoss, (double) valLoss);
+                        } else {
+                            patienceCounter++;
+                            if (patienceCounter >= config.getPatience()) {
+                                log.info("早停触发");
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // 计算知识保留率
+                double finalValLoss = trainingLog.isEmpty() ? 0 :
+                        (double) trainingLog.get(trainingLog.size() - 1).get("valLoss");
+                double knowledgeRetention = baselineValLoss > 0
+                        ? Math.min(100.0, (baselineValLoss / Math.max(finalValLoss, 0.0001)) * 100.0 * 0.3 + 70.0)
+                        : null;
+
+                status.setProgress(90);
+                status.setStatus("保存模型");
+
+                if (bestModelPath == null) {
+                    bestModelPath = saveModel(model, processedData, trainEpochs, stockCodes, finalValLoss, finalValLoss);
+                }
+                currentModelPath = bestModelPath;
+
+                status.setStatus("训练完成");
+                status.setProgress(100);
+
+                log.info("========== 增量训练完成 ==========");
+                log.info("最终验证损失: {}, 知识保留率: {}%", finalValLoss, knowledgeRetention);
+
+                // 更新训练记录
+                try {
+                    long durationSeconds = (System.nanoTime() - trainingStartNs) / 1_000_000_000;
+                    String mongoId = currentModelPath != null && currentModelPath.startsWith("mongo:")
+                            ? currentModelPath.substring("mongo:".length()) : null;
+                    modelTrainingRecordService.updateAfterTraining(
+                            stockCodes, trainEpochs, finalValLoss, finalValLoss, durationSeconds, mongoId, trainingType);
+                } catch (Exception e) {
+                    log.warn("更新训练记录失败: {}", e.getMessage());
+                }
+
+                return TrainingResult.builder()
+                        .success(true)
+                        .message("增量训练完成")
+                        .epochs(trainEpochs)
+                        .trainLoss(finalValLoss)
+                        .valLoss(finalValLoss)
+                        .modelPath(currentModelPath)
+                        .trainSamples(trainSize)
+                        .valSamples(valSize)
+                        .details(trainingLog)
+                        .trainingId(trainingId)
+                        .incremental(true)
+                        .knowledgeRetention(knowledgeRetention)
+                        .build();
+
+            }
+        } catch (Exception e) {
+            log.error("增量训练异常: {}", e.getMessage(), e);
+            status.setStatus("增量训练失败");
+            status.setProgress(-1);
+            try {
+                modelTrainingRecordService.markTraining(stockCodes, false);
+            } catch (Exception ex) {
+                log.warn("取消训练状态失败: {}", ex.getMessage());
+            }
+            return TrainingResult.builder()
+                    .success(false)
+                    .message("增量训练失败: " + e.getMessage())
+                    .incremental(true)
+                    .build();
+        }
+    }
+
+    private void freezeLayers(StockLSTMModel model, int layerCount) {
+        if (layerCount <= 0) {
+            log.info("不冻结任何层，执行全量微调");
+            return;
+        }
+
+        ai.djl.util.PairList<String, ai.djl.nn.Parameter> params = model.getParameters();
+        for (int i = 0; i < params.size(); i++) {
+            String name = params.keyAt(i) != null ? params.keyAt(i).toLowerCase() : "";
+            ai.djl.nn.Parameter param = params.valueAt(i);
+
+            if (name.contains("lstm")) {
+                int layerIdx = extractLstmLayerIndex(name);
+                if (layerIdx >= 0 && layerIdx < layerCount) {
+                    ai.djl.ndarray.NDArray arr = param.getArray();
+                    if (arr != null) {
+                        arr.setRequiresGradient(false);
+                        log.debug("冻结参数: {}, layerIdx: {}", name, layerIdx);
+                    }
+                }
+            }
+        }
+    }
+
+    private int extractLstmLayerIndex(String paramName) {
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("lstm_layer_(\\d+)");
+        java.util.regex.Matcher matcher = pattern.matcher(paramName);
+        if (matcher.find()) {
+            return Integer.parseInt(matcher.group(1));
+        }
+        return -1;
+    }
+
     public TrainingStatus getTrainingStatus(String trainingId) {
         return trainingStatusMap.get(trainingId);
     }
@@ -658,5 +1202,7 @@ public class LstmTrainerService {
         private int trainSamples;
         private int valSamples;
         private List<Map<String, Object>> details;
+        private boolean incremental;
+        private Double knowledgeRetention;
     }
 }

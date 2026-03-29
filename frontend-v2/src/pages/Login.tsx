@@ -4,6 +4,7 @@ import { Input, Button, Form, message } from 'antd';
 import { UserOutlined, LockOutlined, RiseOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useUserStore } from '../store/userStore';
+import { useHealthCheck } from '../hooks/useHealthCheck';
 
 import { useTranslation } from 'react-i18next';
 const Login: React.FC = () => {
@@ -11,12 +12,13 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const { login } = useUserStore();
   const { t } = useTranslation();
+  const { state: healthState, isChecking } = useHealthCheck({ interval: 15000, timeout: 5000 });
 
   const onFinish = async (values: any) => {
     setLoading(true);
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     login(values.username);
     message.success('System Access Granted');
     navigate('/dashboard');
@@ -31,6 +33,54 @@ const Login: React.FC = () => {
     }, 50);
     return () => clearInterval(interval);
   }, []);
+
+  const getStatusBadge = () => {
+    if (isChecking) {
+      return (
+        <motion.div
+          className="inline-block px-3 py-1 mb-6 border border-yellow-500/50 rounded-full bg-yellow-500/10 text-yellow-500 text-xs font-mono tracking-widest"
+          animate={{ opacity: [0.5, 1, 0.5] }}
+          transition={{ duration: 1.5, repeat: Infinity }}
+        >
+          {isChecking ? '检测中...' : ''}
+        </motion.div>
+      );
+    }
+
+    if (healthState === 'online') {
+      return (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8 }}
+          className="inline-block px-3 py-1 mb-6 border border-[#00e396] rounded-full bg-[#00e396]/10 text-[#00e396] text-xs font-mono tracking-widest"
+        >
+          {t('login.systemOnline')}
+        </motion.div>
+      );
+    }
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8 }}
+        className="inline-block px-3 py-1 mb-6 border border-red-500 rounded-full bg-red-500/10 text-red-500 text-xs font-mono tracking-widest"
+      >
+        系统离线
+      </motion.div>
+    );
+  };
+
+  const getSystemStatusText = () => {
+    if (isChecking) {
+      return '检测中...';
+    }
+    if (healthState === 'online') {
+      return '系统状态：在线';
+    }
+    return '系统状态：离线';
+  };
 
   return (
     <div className="flex h-screen w-full bg-[#050505] overflow-hidden font-sans text-white">
@@ -59,13 +109,12 @@ const Login: React.FC = () => {
         />
 
         <div className="z-10 relative">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
-            className="inline-block px-3 py-1 mb-6 border border-[#00e396] rounded-full bg-[#00e396]/10 text-[#00e396] text-xs font-mono tracking-widest"
           >
-            {t('login.systemOnline')}
+            {getStatusBadge()}
           </motion.div>
 
           <motion.h1 
@@ -157,13 +206,13 @@ const Login: React.FC = () => {
 
             <div className="flex justify-between text-sm text-gray-500 mt-6">
               <span className="cursor-pointer hover:text-white transition-colors">{t('login.form.forgotPassword')}</span>
-              <span className="cursor-pointer hover:text-[#00e396] transition-colors">{t('login.form.systemStatus')}</span>
+              <span className="cursor-pointer hover:text-[#00e396] transition-colors">{getSystemStatusText()}</span>
             </div>
           </Form>
         </div>
         
         <div className="absolute bottom-8 text-center text-gray-600 text-xs">
-          {t('login.footer')}
+          AI 股票交易系统 ©2026 <a href="http://github.com/mwangli" target="_blank" rel="noopener noreferrer" className="hover:text-[#00e396]">@mangli</a>
         </div>
       </div>
     </div>

@@ -44,5 +44,15 @@ public class LstmPredictionResultDto {
      * 使用的模型文档 ID（MongoDB _id，便于追踪与调试）
      */
     private String modelId;
+
+    /**
+     * 目标预测日期（格式 yyyy-MM-dd，表示预测的是哪一天的收盘价，即下一交易日）
+     */
+    private String targetDate;
+
+    /**
+     * 预测发布日期（格式 yyyy-MM-dd HH:mm:ss）
+     */
+    private String predictionDate;
 }
 

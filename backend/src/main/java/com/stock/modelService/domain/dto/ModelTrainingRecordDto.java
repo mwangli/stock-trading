@@ -101,5 +101,7 @@ public class ModelTrainingRecordDto {
     private String modelVersion;
     private Double profitAmount;
     private Double score;
+    private Double price;
+    private Double changePercent;
 }
 

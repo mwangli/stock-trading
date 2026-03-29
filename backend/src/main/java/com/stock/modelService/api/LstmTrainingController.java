@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import java.util.HashMap;
 import java.util.List;
@@ -179,13 +180,15 @@ public class LstmTrainingController {
     }
 
     /**
-     * 触发 LSTM 模型训练
+     * 触发 LSTM 模型训练（异步 + 增量迭代）
+     * 立即返回，训练在后台异步执行
      *
      * @param stockCodes  股票代码，逗号分隔
      * @param days        训练数据天数
      * @param epochs      训练轮数
      * @param batchSize   批次大小
      * @param learningRate 学习率
+     * @param forceFull   是否强制全量训练（跳过增量训练）
      * @return 训练结果
      */
     @PostMapping("/train")
@@ -194,15 +197,41 @@ public class LstmTrainingController {
             @RequestParam(required = false, defaultValue = "365") int days,
             @RequestParam(required = false) Integer epochs,
             @RequestParam(required = false) Integer batchSize,
-            @RequestParam(required = false) Double learningRate
+            @RequestParam(required = false) Double learningRate,
+            @RequestParam(required = false, defaultValue = "false") boolean forceFull
     ) {
-        log.info("触发 LSTM 训练: stockCodes={}, days={}, epochs={}", stockCodes, days, epochs);
-        LstmTrainerService.TrainingResult result = lstmTrainerService.trainModel(stockCodes, days, epochs, batchSize, learningRate);
-        if (result.isSuccess()) {
-            return ResponseDTO.success(result);
-        } else {
-            return ResponseDTO.error(result.getMessage());
+        log.info("提交 LSTM 训练任务: stockCodes={}, days={}, epochs={}, forceFull={}",
+                stockCodes, days, epochs, forceFull);
+
+        if (!lstmTrainerService.tryAcquireTrainingLock(stockCodes)) {
+            log.warn("股票 {} 正在训练中，拒绝重复训练请求", stockCodes);
+            return ResponseDTO.error("该股票正在训练中，请稍后再试");
         }
+
+        lstmTrainerService.markTrainingSync(stockCodes, true);
+
+        String finalStockCodes = stockCodes;
+        CompletableFuture.runAsync(() -> {
+            try {
+                String trainingType = forceFull ? "full" : "incremental";
+                LstmTrainerService.TrainingResult result = lstmTrainerService.trainIncremental(
+                        finalStockCodes, days, epochs, batchSize, learningRate, forceFull, trainingType);
+                log.info("异步训练完成: success={}, incremental={}, message={}",
+                        result.isSuccess(), result.isIncremental(), result.getMessage());
+            } catch (Exception e) {
+                log.error("异步训练异常: stockCodes={}", finalStockCodes, e);
+            } finally {
+                lstmTrainerService.releaseTrainingLock(finalStockCodes);
+            }
+        });
+
+        return ResponseDTO.success(
+            LstmTrainerService.TrainingResult.builder()
+                .success(true)
+                .message("训练任务已提交")
+                .incremental(forceFull ? false : true)
+                .build()
+        );
     }
 
     /**
@@ -230,7 +259,7 @@ public class LstmTrainingController {
             @RequestParam(required = false) Double learningRate
     ) {
         log.info("重新训练 LSTM 模型: stockCodes={}, days={}, epochs={}", stockCodes, days, epochs);
-        LstmTrainerService.TrainingResult result = lstmTrainerService.trainModel(stockCodes, days, epochs, batchSize, learningRate);
+        LstmTrainerService.TrainingResult result = lstmTrainerService.trainModel(stockCodes, days, epochs, batchSize, learningRate, "full");
         if (result.isSuccess()) {
             return ResponseDTO.success(result);
         } else {

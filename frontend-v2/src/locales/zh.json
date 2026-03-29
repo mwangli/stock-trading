@@ -29,6 +29,8 @@
     "profile": "个人资料",
     "systemStatus": "系统状态",
     "connected": "已连接",
+    "disconnected": "已断开",
+    "reconnecting": "重新连接中",
     "latency": "延迟",
     "transactions": "交易记录",
     "pnl": {
@@ -36,11 +38,11 @@
       "week": "本周收益",
       "month": "本月收益"
     },
-    "title": "智能交易终端"
+    "title": "AI股票交易系统"
   },
   "login": {
     "systemOnline": "系统在线",
-    "algoTrading": "智能算法交易系统",
+    "algoTrading": "AI股票交易系统",
     "subtitle": "下一代金融建模与自动执行策略。由 LSTM 神经网络与实时情感分析驱动。",
     "stats": {
       "uptime": "运行时间",
@@ -51,12 +53,12 @@
       "title": "欢迎归来",
       "subtitle": "输入凭证以访问终端",
       "usernamePlaceholder": "账户: admin",
-      "passwordPlaceholder": "口令: any",
-      "button": "启动会话",
+      "passwordPlaceholder": "输入任意密码",
+      "button": "登录",
       "forgotPassword": "忘记密码？",
       "systemStatus": "系统状态: 正常"
     },
-    "footer": "AI 股票交易系统 ©2024"
+    "footer": "AI 股票交易系统 ©2026 @mangli"
   },
   "dashboard": {
     "stats": {
@@ -157,17 +159,17 @@
     },
     "list": {
       "code": "股票代码",
+      "price": "当前价",
       "searchPlaceholder": "按股票代码筛选",
       "sortCreatedAt": "创建时间",
       "sortEpoch": "训练轮数",
       "sortValLoss": "验证 Loss",
-      "profitAmount": "收益金额",
-      "score": "分数",
+      "score": "模型得分",
       "name": "名称",
       "version": "版本",
       "createdAt": "创建时间",
       "status": "状态",
-      "statusDeployed": "已部署",
+      "statusDeployed": "已训练",
       "statusNotTrained": "未训练",
       "statusTraining": "训练中",
       "action": "操作",
@@ -184,6 +186,8 @@
     },
     "actions": {
       "retrain": "重新训练",
+      "train": "训练",
+      "predict": "预测",
       "backtest": "回测模型",
       "logs": "查看日志",
       "result": "查询结果",
@@ -193,9 +197,37 @@
       "title": "查询结果",
       "metric": "指标",
       "value": "数值",
-      "profitAmount": "收益金额",
-      "score": "分数",
-      "noData": "该模型暂无收益与分数数据"
+      "score": "模型得分",
+      "noData": "该模型暂无得分数据"
+    },
+    "predictModal": {
+      "title": "股票预测",
+      "loading": "预测中，请稍候...",
+      "prediction": "预测价格",
+      "predictionTip": "基于 LSTM 模型对下一交易日收盘价的预测",
+      "lastClose": "昨收价格",
+      "lastCloseTip": "前一交易日股票的收盘价格",
+      "currentPrice": "当前价格",
+      "currentPriceTip": "模型输入时所使用的最新市场价格",
+      "changeAmount": "涨跌额",
+      "changeAmountTip": "当前价格相对于昨收价格的变化金额",
+      "predictionDate": "预测生成时间",
+      "predictionDateTip": "此预测结果生成的时间",
+      "targetDate": "目标预测日期",
+      "targetDateTip": "此价格预测对应的目标交易日（下一交易日）",
+      "predictedChangeRatio": "预测涨跌幅",
+      "predictedChangeRatioTip": "预测价格相对于昨收价格的百分比变化，正值表示上涨，负值表示下跌",
+      "recommendation": "推荐操作",
+      "recommendationTip": "根据预测结果给出的操作建议",
+      "buy": "买入",
+      "sell": "卖出",
+      "buyReason": "模型预测上涨，建议关注买入机会",
+      "sellReason": "模型预测下跌，建议谨慎或考虑卖出",
+      "progressBarTip": "进度条表示预测涨跌幅的绝对值大小，仅反映价格变动幅度，不构成买卖建议",
+      "progressBarLabel": "变动幅度指数",
+      "disclaimer": "以上预测仅供参考，不构成投资建议",
+      "noData": "暂无预测数据",
+      "dateInfo": "预测时间信息"
     },
     "sentiment": {
       "title": "情感分析 (AI 模型)",

@@ -203,7 +203,8 @@ public class ModelTrainingRecordService {
                                     double trainLoss,
                                     double valLoss,
                                     long durationSeconds,
-                                    String mongoModelId) {
+                                    String mongoModelId,
+                                    String trainingType) {
         if (stockCodes == null || stockCodes.isBlank()) {
             return;
         }
@@ -224,6 +225,7 @@ public class ModelTrainingRecordService {
                 record = new ModelTrainingRecord();
                 record.setStockCode(code);
                 record.setCreatedAt(now);
+                record.setModelVersion("v1.0.1");
             }
             if (stockInfo != null) {
                 record.setStockName(stockInfo.getName());
@@ -236,8 +238,62 @@ public class ModelTrainingRecordService {
             record.setLastTrainLoss(trainLoss);
             record.setLastValLoss(valLoss);
             record.setLastModelId(mongoModelId);
+            record.setModelVersion(incrementVersion(record.getModelVersion(), trainingType));
             record.setUpdatedAt(now);
             recordRepository.save(record);
+        }
+    }
+
+    /**
+     * 根据训练类型递增版本号
+     * <ul>
+     *     <li>incremental: 增量训练 -> Z++（小版本递增）</li>
+     *     <li>periodic: 周期训练 -> Y++ 并重置 Z=0</li>
+     *     <li>full: 全量训练 -> X++ 并重置 Y=0, Z=0</li>
+     * </ul>
+     *
+     * @param currentVersion 当前版本号，如 v1.0.1
+     * @param trainingType   训练类型：incremental / periodic / full
+     * @return 新版本号
+     */
+    private String incrementVersion(String currentVersion, String trainingType) {
+        if (currentVersion == null || currentVersion.isBlank()) {
+            return "v1.0.1";
+        }
+
+        String version = currentVersion.startsWith("v") ? currentVersion.substring(1) : currentVersion;
+        String[] parts = version.split("\\.");
+        if (parts.length < 3) {
+            return "v1.0.1";
+        }
+
+        try {
+            int major = Integer.parseInt(parts[0]);
+            int minor = Integer.parseInt(parts[1]);
+            int patch = Integer.parseInt(parts[2]);
+
+            switch (trainingType != null ? trainingType : "incremental") {
+                case "incremental":
+                    patch++;
+                    break;
+                case "periodic":
+                    minor++;
+                    patch = 0;
+                    break;
+                case "full":
+                    major++;
+                    minor = 0;
+                    patch = 0;
+                    break;
+                default:
+                    patch++;
+                    break;
+            }
+
+            return String.format("v%d.%d.%d", major, minor, patch);
+        } catch (NumberFormatException e) {
+            log.warn("版本号解析失败: {}, 返回默认版本", currentVersion);
+            return "v1.0.1";
         }
     }
 
@@ -320,6 +376,18 @@ public class ModelTrainingRecordService {
     private ModelTrainingRecordDto toDto(ModelTrainingRecord record) {
         Integer epoch = record.getLastEpochs() != null ? record.getLastEpochs() : 0;
 
+        Double price = null;
+        Double changePercent = null;
+        try {
+            StockInfo stockInfo = stockInfoRepository.findByCode(record.getStockCode()).orElse(null);
+            if (stockInfo != null) {
+                price = stockInfo.getPrice() != null ? stockInfo.getPrice().doubleValue() : null;
+                changePercent = stockInfo.getChangePercent() != null ? stockInfo.getChangePercent().doubleValue() : null;
+            }
+        } catch (Exception e) {
+            log.debug("获取股票价格失败: {}", record.getStockCode());
+        }
+
         return ModelTrainingRecordDto.builder()
                 .id(record.getId())
                 .stockCode(record.getStockCode())
@@ -341,6 +409,8 @@ public class ModelTrainingRecordService {
                 .modelVersion("v1")
                 .profitAmount(null)
                 .score(null)
+                .price(price)
+                .changePercent(changePercent)
                 .build();
     }
 }

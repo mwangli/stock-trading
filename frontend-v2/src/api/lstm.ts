@@ -47,6 +47,10 @@ export interface LstmModelListItem {
   profitAmount?: number | null;
   /** 效果分数 0～100，由验证集推导，当前为 null 默认占位 */
   score?: number | null;
+  /** 当前股票价格 */
+  price?: number | null;
+  /** 股票价格涨跌幅 (百分比) */
+  changePercent?: number | null;
 }
 
 /** 分页结果，与后端 PageResult 一致 */
@@ -80,17 +84,69 @@ export async function getLstmModelList(params?: LstmModelListParams): Promise<Ls
 export interface LstmModelResult {
   modelId: string;
   modelName: string;
-  /** 收益金额（元） */
-  profitAmount?: number | null;
-  /** 效果分数 0～100 */
+  /** 模型得分 0～100 */
   score?: number | null;
 }
 
 /**
- * 查询指定模型的结果数据（收益金额与分数）
+ * 查询指定模型的结果数据（模型得分）
  */
 export async function getLstmModelResult(id: string): Promise<LstmModelResult> {
   const res = await request.get(`/lstm/models/${encodeURIComponent(id)}/result`) as ApiResponse<LstmModelResult>;
   if (res?.success && res.data != null) return res.data;
   throw new Error(res?.message ?? '获取结果失败');
+}
+
+/** LSTM 训练参数 */
+export interface TrainParams {
+  stockCodes: string;
+  days?: number;
+  epochs?: number;
+  batchSize?: number;
+  learningRate?: number;
+}
+
+/** LSTM 训练结果 */
+export interface TrainingResult {
+  success: boolean;
+  message: string;
+  modelId?: string;
+  trainLoss?: number;
+  valLoss?: number;
+  epoch?: number;
+  sampleCount?: number;
+}
+
+/**
+ * 触发 LSTM 模型训练
+ */
+export async function trainLstmModel(params: TrainParams): Promise<TrainingResult> {
+  const res = await request.post('/lstm/train', null, { params }) as ApiResponse<TrainingResult>;
+  if (res?.success && res.data != null) return res.data;
+  throw new Error(res?.message ?? '训练失败');
+}
+
+/** LSTM 预测参数 */
+export interface PredictParams {
+  stockCode: string;
+}
+
+/** LSTM 预测结果 */
+export interface PredictResult {
+  stockCode: string;
+  predictedClosePrice: number;
+  lastClosePrice: number;
+  predictedChangeRatio: number;
+  modelId?: string;
+  targetDate?: string;
+  predictionDate?: string;
+}
+
+/**
+ * 使用最新的 LSTM 模型对单只股票进行下一交易日价格预测
+ */
+export async function predictStock(params: PredictParams): Promise<PredictResult> {
+  const res = await request.get('/lstm/predict', { params }) as ApiResponse<PredictResult>;
+  if (res?.success && res.data != null) return res.data;
+  throw new Error(res?.message ?? '预测失败');
 }

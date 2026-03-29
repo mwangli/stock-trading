@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Tag, Table, Spin, Empty, Tooltip, message, Input, Select, Modal, Tabs } from 'antd';
+import { Button, Tag, Table, Spin, Empty, Tooltip, message, Input, Modal, Tabs } from 'antd';
 const { TextArea } = Input;
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -11,11 +11,10 @@ import {
   CloseCircleOutlined,
   SyncOutlined,
   CloudServerOutlined,
-  CodeOutlined,
 } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { getLstmModelList, getLstmModelResult, type LstmModelListItem, type LstmModelListParams, type LstmModelResult } from '../api/lstm';
+import { getLstmModelList, getLstmModelResult, trainLstmModel, predictStock, type LstmModelListItem, type LstmModelListParams, type LstmModelResult, type PredictResult } from '../api/lstm';
 import { getSentimentHealth, analyzeSentiment, reloadSentimentModel, type SentimentHealth, type SentimentAnalyzeResult } from '../api/sentiment';
 
 interface SentimentTestSample {
@@ -66,86 +65,10 @@ const SENTIMENT_TEST_SAMPLES: SentimentTestSample[] = [
   },
 ];
 
-/** Mock 模型列表，用于接口不可用或空数据时展示比对效果 */
-function getMockLstmList(): LstmModelListItem[] {
-  const now = new Date();
-  const fmt = (d: Date, daysAgo: number) => {
-    const x = new Date(d);
-    x.setDate(x.getDate() - daysAgo);
-    return x.toISOString();
-  };
-  const toScore = (v: number) => Math.max(0, Math.min(100, (1 - v) * 100));
-
-  const makeItem = (
-    idx: number,
-    stockCode: string,
-    stockName: string,
-    epoch: number,
-    score: number | null,
-    daysAgo: number,
-    modelVersion: string | null = 'v1'
-  ): LstmModelListItem => {
-    const ts = fmt(now, daysAgo);
-    const baseScore = score != null ? toScore(score) : null;
-    return {
-      id: -idx, // 负数 ID 标记为 Mock 数据
-      stockCode,
-      stockName,
-      trained: true,
-      training: false,
-      lastTrainTime: ts,
-      lastDurationSeconds: null,
-      lastEpochs: epoch,
-      lastTrainLoss: null,
-      lastValLoss: null,
-      lastModelId: null,
-      createdAt: ts,
-      updatedAt: ts,
-      modelName: stockCode,
-      name: stockName,
-      epoch,
-      modelVersion,
-      profitAmount: null,
-      score: baseScore,
-    };
-  };
-
-  return [
-    makeItem(1, '600519', '贵州茅台', 100, 0.0281, 1),
-    makeItem(2, '000858', '五粮液', 80, 0.0356, 2),
-    makeItem(3, '601318', '中国平安', 120, 0.0245, 3, 'v2'),
-    makeItem(4, '000333', '美的集团', 60, 0.0489, 5),
-    makeItem(5, '300750', '宁德时代', 150, 0.0189, 7),
-    makeItem(6, '600036', '招商银行', 90, 0.0312, 10),
-    makeItem(7, '000001', '平安银行', 70, null, 14, 'v2'),
-    makeItem(8, '601012', '隆基绿能', 110, 0.0267, 21),
-  ];
-}
-
-/** 相对时间文案（依赖 i18n，在组件内调用时传入 t） */
-function formatRelativeTime(
-  dateStr: string,
-  t: (key: string, opts?: { n?: number }) => string
-): string {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return '';
-  const now = Date.now();
-  const diffMs = now - d.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  const diffHour = Math.floor(diffMs / 3600000);
-  const diffDay = Math.floor(diffMs / 86400000);
-  if (diffMin < 1) return t('common.timeJustNow');
-  if (diffMin < 60) return t('common.timeMinutesAgo', { n: diffMin });
-  if (diffHour < 24) return t('common.timeHoursAgo', { n: diffHour });
-  if (diffDay < 7) return t('common.timeDaysAgo', { n: diffDay });
-  return '';
-}
-
 const Strategies: React.FC = () => {
   const { t } = useTranslation();
-  const [lstmList, setLstmList] = useState<LstmModelListItem[]>(() => getMockLstmList());
-  const [lstmTotal, setLstmTotal] = useState(() => getMockLstmList().length);
+  const [lstmList, setLstmList] = useState<LstmModelListItem[]>([]);
+  const [lstmTotal, setLstmTotal] = useState(0);
   const [lstmLoading, setLstmLoading] = useState(true);
   const [lstmError, setLstmError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -159,6 +82,10 @@ const Strategies: React.FC = () => {
   const [resultModalVisible, setResultModalVisible] = useState(false);
   const [resultModalLoading, setResultModalLoading] = useState(false);
   const [resultModalData, setResultModalData] = useState<LstmModelResult | null>(null);
+  const [predictModalVisible, setPredictModalVisible] = useState(false);
+  const [predictModalLoading, setPredictModalLoading] = useState(false);
+  const [predictModalData, setPredictModalData] = useState<{ stockCode: string; stockName: string; price?: number | null } | null>(null);
+  const [predictResult, setPredictResult] = useState<PredictResult | null>(null);
   const [sentimentTestModalVisible, setSentimentTestModalVisible] = useState(false);
   const [sentimentTestText, setSentimentTestText] = useState('');
   const [sentimentTestLoading, setSentimentTestLoading] = useState(false);
@@ -180,8 +107,8 @@ const Strategies: React.FC = () => {
       const params: LstmModelListParams = { current: page, pageSize: ps, sortBy: sb, sortOrder: so };
       if (kw.trim()) params.keyword = kw.trim();
       const result = await getLstmModelList(params);
-      const list = result.list?.length ? result.list : getMockLstmList();
-      const total = result.list?.length ? result.total : list.length;
+      const list = result.list ?? [];
+      const total = result.total ?? 0;
       setLstmList(list);
       setLstmTotal(total);
       setLstmError(null);
@@ -191,11 +118,11 @@ const Strategies: React.FC = () => {
       if (opts?.sortBy !== undefined) setSortBy(opts.sortBy);
       if (opts?.sortOrder !== undefined) setSortOrder(opts.sortOrder);
       if (isRefresh) message.success(t('models.lstm.refreshSuccess'));
-    } catch {
-      const mock = getMockLstmList();
-      setLstmList(mock);
-      setLstmTotal(mock.length);
-      setLstmError(null);
+    } catch (err: unknown) {
+      const errorMessage = (err as { message?: string })?.message || t('models.lstm.listError');
+      setLstmError(errorMessage);
+      setLstmList([]);
+      setLstmTotal(0);
     } finally {
       setLstmLoading(false);
       setRefreshing(false);
@@ -257,7 +184,6 @@ const Strategies: React.FC = () => {
       setResultModalData({
         modelId: String(record.id),
         modelName: record.modelName,
-        profitAmount: record.profitAmount ?? null,
         score: record.score ?? null,
       });
       setResultModalLoading(false);
@@ -277,15 +203,9 @@ const Strategies: React.FC = () => {
 
   const resultTableData = useMemo(() => {
     if (!resultModalData) return [];
-    const hasProfit = resultModalData.profitAmount != null;
     const hasScore = resultModalData.score != null;
-    if (!hasProfit && !hasScore) return [];
+    if (!hasScore) return [];
     const rows: { key: string; metric: string; value: string }[] = [];
-    rows.push({
-      key: 'profit',
-      metric: t('models.resultModal.profitAmount'),
-      value: hasProfit ? `${Number(resultModalData.profitAmount).toFixed(2)} 元` : '—',
-    });
     rows.push({
       key: 'score',
       metric: t('models.resultModal.score'),
@@ -301,6 +221,8 @@ const Strategies: React.FC = () => {
       dataIndex: 'modelName',
       key: 'modelName',
       width: lstmColumnWidth,
+      align: 'center',
+      sorter: true,
       render: (v: string) => {
         const text = v ?? '—';
         const cell = <span className="font-mono text-[#00e396]">{text}</span>;
@@ -312,6 +234,8 @@ const Strategies: React.FC = () => {
       dataIndex: 'name',
       key: 'name',
       width: lstmColumnWidth,
+      align: 'center',
+      sorter: true,
       ellipsis: true,
       render: (v: string) => {
         const text = v ?? '—';
@@ -319,20 +243,28 @@ const Strategies: React.FC = () => {
         return text.length > 12 ? <Tooltip title={text}>{cell}</Tooltip> : cell;
       },
     },
-    { title: t('models.list.version'), dataIndex: 'modelVersion', key: 'modelVersion', width: lstmColumnWidth, render: (v: string) => <span className="text-gray-400">{v ?? '—'}</span> },
-    { title: t('models.lstm.epochs'), dataIndex: 'epoch', key: 'epoch', width: lstmColumnWidth, render: (v: number) => <span className="font-mono text-gray-300">{v ?? '—'}</span> },
     {
-      title: t('models.list.profitAmount'),
-      dataIndex: 'profitAmount',
-      key: 'profitAmount',
+      title: t('models.list.price'),
+      key: 'price',
       width: lstmColumnWidth,
-      render: (v: number | undefined | null) => (v != null ? <span className="font-mono text-[#00e396]/90">{v.toFixed(2)} 元</span> : <span className="text-gray-500">—</span>),
+      align: 'center',
+      render: (_: unknown, record: LstmModelListItem) => {
+        const price = record.price;
+        if (price == null) {
+          return <span className="text-gray-500">—</span>;
+        }
+        return <span className={`font-mono ${(record.changePercent ?? 0) >= 0 ? 'text-[#00e396]' : 'text-[#ff4560]'}`}>¥{price.toFixed(2)}</span>;
+      },
     },
+    { title: t('models.list.version'), dataIndex: 'modelVersion', key: 'modelVersion', width: lstmColumnWidth, align: 'center', sorter: true, render: (v: string) => <span className="text-gray-400">{v ?? '—'}</span> },
+    { title: t('models.lstm.epochs'), dataIndex: 'epoch', key: 'epoch', width: lstmColumnWidth, align: 'center', sorter: true, render: (v: number) => <span className="font-mono text-gray-300">{v ?? '—'}</span> },
     {
       title: t('models.list.score'),
       dataIndex: 'score',
       key: 'score',
       width: lstmColumnWidth,
+      align: 'center',
+      sorter: true,
       render: (v: number | undefined | null) => (v != null ? <span className="font-mono text-amber-400/90">{v.toFixed(1)}</span> : <span className="text-gray-500">—</span>),
     },
     {
@@ -340,21 +272,18 @@ const Strategies: React.FC = () => {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: lstmColumnWidth,
-      render: (v: string) => {
-        const abs = formatDate(v);
-        const rel = formatRelativeTime(v, t);
-        return (
-          <span className="text-gray-400 text-sm block">
-            <span>{abs}</span>
-            {rel ? <span className="block text-xs text-gray-500 mt-0.5">{rel}</span> : null}
-          </span>
-        );
-      },
+      align: 'center',
+      sorter: true,
+      render: (v: string) => (
+        <span className="text-gray-400 text-sm">
+          {formatDate(v)}
+        </span>
+      ),
     },
-    {
-      title: t('models.list.status'),
+    { title: t('models.list.status'),
       key: 'status',
       width: lstmColumnWidth,
+      align: 'center',
       render: (_: unknown, record: LstmModelListItem) => {
         const isTraining = record.training;
         const isTrained = record.trained;
@@ -386,16 +315,52 @@ const Strategies: React.FC = () => {
     {
       title: t('models.list.action'),
       key: 'action',
-      width: lstmColumnWidth,
+      width: 160,
+      align: 'center',
       render: (_: unknown, record: LstmModelListItem) => (
-        <Button
-          type="link"
-          size="small"
-          className="text-[#00e396] hover:text-[#00c985] p-0"
-          onClick={() => openResultModal(record.id, record)}
-        >
-          {t('models.actions.result')}
-        </Button>
+        <div className="flex gap-2 justify-center">
+          <Button
+            type="link"
+            size="small"
+            className="text-[#00e396] hover:text-[#00c985] p-0"
+            disabled={record.training}
+            onClick={() => {
+              trainLstmModel({ stockCodes: record.stockCode || record.modelName })
+                .then(() => {
+                  message.info({
+                    content: `${record.stockCode || record.modelName} 训练任务已提交，后台训练中...`,
+                    duration: 3,
+                  });
+                  fetchLstmList();
+                })
+                .catch((err) => message.error(err?.message || err?.response?.data?.message || t('models.lstm.listError')));
+            }}
+          >
+            {t('models.actions.train')}
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            className="text-[#00e396] hover:text-[#00c985] p-0"
+            onClick={() => {
+              setPredictModalData({ stockCode: record.stockCode || record.modelName, stockName: record.name || record.stockCode, price: record.price });
+              setPredictModalVisible(true);
+              setPredictModalLoading(true);
+              setPredictResult(null);
+              predictStock({ stockCode: record.stockCode || record.modelName })
+                .then((result) => {
+                  setPredictResult(result);
+                  setPredictModalLoading(false);
+                })
+                .catch((err) => {
+                  message.error(err?.message || err?.response?.data?.message || t('models.lstm.listError'));
+                  setPredictModalLoading(false);
+                });
+            }}
+          >
+            {t('models.actions.predict')}
+          </Button>
+        </div>
       ),
     },
   ], [t, formatDate, openResultModal]);
@@ -420,7 +385,7 @@ const Strategies: React.FC = () => {
       desc: t('models.rules.desc'),
       status: 'offline',
       color: '#a3a3a3',
-      icon: <CodeOutlined />,
+      icon: <CloudServerOutlined />,
       stats: [
         { label: t('models.rules.score'), value: '72', color: '#00e396' },
         { label: t('models.rules.matches'), value: '5', color: '#feb019' },
@@ -429,20 +394,34 @@ const Strategies: React.FC = () => {
     }
   ];
 
-  const handleTableChange = useCallback((page: number, size: number) => {
-    fetchLstmList({ page, pageSize: size });
+  const sentimentModels = useMemo(() => {
+    const base = models.find((m) => m.id === 'sentiment-rules');
+    if (!base) return [];
+    return [base, { ...base, id: `${base.id}-clone` }];
+  }, [models]);
+
+  const handleTableChange = useCallback((page: number, size: number, sorter?: { field?: string; order?: 'ascend' | 'descend' }) => {
+    if (sorter?.field && sorter?.order) {
+      const sortFieldMap: Record<string, 'createdAt' | 'epoch' | 'valLoss'> = {
+        modelName: 'createdAt',
+        name: 'createdAt',
+        modelVersion: 'createdAt',
+        epoch: 'epoch',
+        score: 'valLoss',
+        createdAt: 'createdAt',
+      };
+      const sortBy = sortFieldMap[sorter.field] || 'createdAt';
+      const sortOrder = sorter.order === 'ascend' ? 'asc' : 'desc';
+      fetchLstmList({ page, pageSize: size, sortBy, sortOrder });
+    } else {
+      fetchLstmList({ page, pageSize: size });
+    }
   }, [fetchLstmList]);
 
   const handleSearch = useCallback((value: string) => {
     setKeyword(value);
     fetchLstmList({ keyword: value, page: 1 });
   }, [fetchLstmList]);
-
-  const sentimentModels = useMemo(() => {
-    const base = models.find((m) => m.id === 'sentiment-rules');
-    if (!base) return [];
-    return [base, { ...base, id: `${base.id}-clone` }];
-  }, [models]);
 
   const tabItems = useMemo(
     () => [
@@ -485,11 +464,6 @@ const Strategies: React.FC = () => {
           <h2 className="text-lg font-bold flex items-center gap-2">
             <ThunderboltOutlined className="text-[#00e396]" />
             {t('models.lstm.listTitle')}
-            {lstmList.length > 0 && lstmList.every((m) => typeof m.id === 'number' && m.id < 0) && (
-              <Tag color="orange" className="border-none text-xs font-normal">
-                当前为 Mock 数据，仅用于展示表格比对效果
-              </Tag>
-            )}
           </h2>
           <div className="flex items-center gap-2">
             <Button
@@ -512,25 +486,6 @@ const Strategies: React.FC = () => {
             allowClear
             size="middle"
             className="w-48 sm:w-56 [&_.ant-input-group-addon]:bg-white/5 [&_.ant-input-group-addon]:border-white/10 [&_.ant-input]:bg-white/5 [&_.ant-input]:border-white/10"
-          />
-            <Select
-              value={`${sortBy}-${sortOrder}`}
-              onChange={(v) => {
-                const [sb, so] = v.split('-') as ['createdAt' | 'epoch' | 'valLoss', 'asc' | 'desc'];
-                setSortBy(sb);
-                setSortOrder(so);
-                fetchLstmList({ sortBy: sb, sortOrder: so, page: 1 });
-              }}
-              options={[
-                { value: 'createdAt-desc', label: t('models.list.sortCreatedAt') + ' ↓' },
-                { value: 'createdAt-asc', label: t('models.list.sortCreatedAt') + ' ↑' },
-                { value: 'epoch-desc', label: t('models.list.sortEpoch') + ' ↓' },
-                { value: 'epoch-asc', label: t('models.list.sortEpoch') + ' ↑' },
-                { value: 'valLoss-asc', label: t('models.list.sortValLoss') + ' ↑' },
-                { value: 'valLoss-desc', label: t('models.list.sortValLoss') + ' ↓' },
-              ]}
-            size="middle"
-            className="w-36 shrink-0 [&_.ant-select-selector]:bg-white/5 [&_.ant-select-selector]:border-white/10"
           />
         </div>
         {lstmList.length > 0 && (() => {
@@ -609,7 +564,7 @@ const Strategies: React.FC = () => {
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex flex-wrap gap-4"
+              className="flex flex-wrap gap-4 items-center justify-between"
             >
               <div className="glass px-5 py-3 rounded-xl border border-white/10 flex items-center gap-3">
                 <CloudServerOutlined className="text-[#00b3f0]" />
@@ -636,16 +591,26 @@ const Strategies: React.FC = () => {
                   )}
                 </div>
               </div>
+              <Button
+                type="primary"
+                size="small"
+                icon={<ReloadOutlined spin={sentimentReloading} />}
+                loading={sentimentReloading}
+                className="bg-[#00e396] text-black border-none font-bold hover:bg-[#00c985] shrink-0"
+                onClick={handleReloadSentiment}
+              >
+                {t('models.actions.retrain')}
+              </Button>
             </motion.div>
-              <motion.div
+            <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 }}
-                className="glass rounded-2xl border border-white/10 overflow-hidden p-6 min-h-[260px]"
+              className="glass rounded-2xl border border-white/10 overflow-hidden p-6 min-h-[260px]"
             >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold flex items-center gap-2">
-                  <CodeOutlined className="text-[#a3a3a3]" />
+                  <CloudServerOutlined className="text-[#00b3f0]" />
                   {t('models.rules.title')}
                 </h2>
                 <div className="flex items-center gap-2">
@@ -668,16 +633,6 @@ const Strategies: React.FC = () => {
                       </span>
                     </Tag>
                   )}
-                  <Button
-                    type="primary"
-                    size="small"
-                    icon={<ReloadOutlined spin={sentimentReloading} />}
-                    loading={sentimentReloading}
-                    className="bg-[#00e396] text-black border-none font-bold hover:bg-[#00c985] shrink-0"
-                    onClick={handleReloadSentiment}
-                  >
-                    {t('models.actions.retrain')}
-                  </Button>
                 </div>
               </div>
               <p className="text-gray-400 text-sm mb-4">{t('models.rules.desc')}</p>
@@ -709,54 +664,49 @@ const Strategies: React.FC = () => {
             </motion.div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {sentimentModels.map((model, index) => (
-          <motion.div
-            key={model.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
-            className="relative glass rounded-2xl p-8 border border-white/10 overflow-hidden"
-          >
-             {/* Background Glow */}
-             <div className={`absolute top-0 right-0 w-64 h-64 bg-[${model.color}]/5 blur-[80px] rounded-full pointer-events-none`} />
-
-            <div className="flex justify-between items-start mb-6">
-              <div className="flex items-center gap-4">
-                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl bg-[${model.color}]/20 text-[${model.color}] shadow-lg shadow-[${model.color}]/20`}>
-                  {model.icon}
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-white">{model.title}</h2>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Tag color={model.status === 'online' ? 'success' : 'processing'} className="border-none px-2 py-0.5">
-                      {model.status === 'online' ? <CheckCircleOutlined /> : <SyncOutlined spin />} 
-                      <span className="ml-1 uppercase">{model.status}</span>
-                    </Tag>
+                <motion.div
+                  key={model.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  className="relative glass rounded-2xl p-8 border border-white/10 overflow-hidden"
+                >
+                  <div className={`absolute top-0 right-0 w-64 h-64 bg-[${model.color}]/5 blur-[80px] rounded-full pointer-events-none`} />
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl bg-[${model.color}]/20 text-[${model.color}] shadow-lg shadow-[${model.color}]/20`}>
+                        {model.icon}
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-bold text-white">{model.title}</h2>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Tag color={model.status === 'online' ? 'success' : 'processing'} className="border-none px-2 py-0.5">
+                            {model.status === 'online' ? <CheckCircleOutlined /> : <SyncOutlined spin />}
+                            <span className="ml-1 uppercase">{model.status}</span>
+                          </Tag>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </div>
-
-            <p className="text-gray-400 mb-8 h-12 text-lg leading-relaxed">{model.desc}</p>
-
-            <div className="grid grid-cols-3 gap-4 mb-8 bg-white/5 p-4 rounded-xl border border-white/5">
-              {model.stats.map((stat, i) => (
-                <div key={i} className="text-center">
-                  <div className="text-xs text-gray-500 uppercase mb-1">{stat.label}</div>
-                  <div className="text-xl font-bold font-mono" style={{ color: stat.color }}>{stat.value}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-3">
-              <Button type="primary" icon={<ExperimentOutlined />} className="flex-1 bg-white/10 border-white/10 hover:bg-white/20 hover:border-white/30 h-10">
-                {t('models.actions.backtest')}
-              </Button>
-              <Button icon={<HistoryOutlined />} className="flex-1 bg-transparent border-white/10 text-gray-400 hover:text-white hover:border-white h-10">
-                {t('models.actions.result')}
-              </Button>
-              <Button icon={<ReloadOutlined />} className="bg-transparent border-white/10 text-gray-400 hover:text-[#00e396] hover:border-[#00e396] h-10" />
-            </div>
-          </motion.div>
+                  <p className="text-gray-400 mb-8 h-12 text-lg leading-relaxed">{model.desc}</p>
+                  <div className="grid grid-cols-3 gap-4 mb-8 bg-white/5 p-4 rounded-xl border border-white/5">
+                    {model.stats.map((stat, i) => (
+                      <div key={i} className="text-center">
+                        <div className="text-xs text-gray-500 uppercase mb-1">{stat.label}</div>
+                        <div className="text-xl font-bold font-mono" style={{ color: stat.color }}>{stat.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-3">
+                    <Button type="primary" icon={<ExperimentOutlined />} className="flex-1 bg-white/10 border-white/10 hover:bg-white/20 hover:border-white/30 h-10">
+                      {t('models.actions.backtest')}
+                    </Button>
+                    <Button icon={<HistoryOutlined />} className="flex-1 bg-transparent border-white/10 text-gray-400 hover:text-white hover:border-white h-10">
+                      {t('models.actions.result')}
+                    </Button>
+                    <Button icon={<ReloadOutlined />} className="bg-transparent border-white/10 text-gray-400 hover:text-[#00e396] hover:border-[#00e396] h-10" />
+                  </div>
+                </motion.div>
               ))}
             </div>
           </div>
@@ -792,15 +742,34 @@ const Strategies: React.FC = () => {
           <h1 className="text-3xl font-bold mb-2">{t('models.title')}</h1>
           <p className="text-gray-400">{t('models.subtitle')}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-3 text-xs text-gray-500">
-            <span>{t('models.summary.sentimentStatus')}</span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <ThunderboltOutlined className="text-[#00e396]" />
+            <span>LSTM 模型</span>
             <Tag
-              color={sentimentHealth?.status === 'UP' ? 'processing' : 'default'}
-              className="border-none flex items-center gap-1.5"
+              color={lstmList.length > 0 ? 'success' : 'default'}
+              className="border-none flex items-center gap-1"
+            >
+              {lstmList.length > 0 ? (
+                <CheckCircleOutlined />
+              ) : (
+                <CloseCircleOutlined />
+              )}
+              <span className="ml-1 uppercase">
+                {lstmList.length > 0 ? 'ONLINE' : 'OFFLINE'}
+              </span>
+            </Tag>
+          </div>
+          <div className="w-px h-6 bg-white/10" />
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <CloudServerOutlined className="text-[#00b3f0]" />
+            <span>情感模型</span>
+            <Tag
+              color={sentimentHealth?.status === 'UP' ? 'success' : 'default'}
+              className="border-none flex items-center gap-1"
             >
               {sentimentHealth?.status === 'UP' ? (
-                <SyncOutlined spin />
+                <CheckCircleOutlined />
               ) : (
                 <CloseCircleOutlined />
               )}
@@ -809,16 +778,6 @@ const Strategies: React.FC = () => {
               </span>
             </Tag>
           </div>
-          <Button
-            type="default"
-            size="small"
-            icon={<ReloadOutlined spin={sentimentReloading} />}
-            loading={sentimentReloading}
-            className="border-white/20 text-gray-300 hover:text-[#00e396] hover:border-[#00e396]"
-            onClick={handleReloadSentiment}
-          >
-            {t('models.sentiment.reloadButton')}
-          </Button>
         </div>
       </div>
       <Tabs items={tabItems} className="models-tabs" />
@@ -834,7 +793,7 @@ const Strategies: React.FC = () => {
           <div className="py-8 flex justify-center">
             <Spin />
           </div>
-        ) : resultModalData && (resultModalData.profitAmount != null || resultModalData.score != null) ? (
+        ) : resultModalData && resultModalData.score != null ? (
           <>
             {resultModalData.modelName && (
               <p className="text-gray-400 text-sm mb-3">
@@ -851,6 +810,131 @@ const Strategies: React.FC = () => {
           </>
         ) : (
           <p className="text-gray-400 py-4">{t('models.resultModal.noData')}</p>
+        )}
+      </Modal>
+
+      <Modal
+        title={t('models.predictModal.title')}
+        open={predictModalVisible}
+        onCancel={() => setPredictModalVisible(false)}
+        footer={null}
+        destroyOnClose
+        width={600}
+        keyboard
+      >
+        {predictModalLoading ? (
+          <div className="py-12 flex flex-col items-center justify-center gap-4">
+            <Spin size="large" />
+            <span className="text-gray-400">{t('models.predictModal.loading')}</span>
+          </div>
+        ) : predictResult ? (
+          <div className="py-3 space-y-4">
+            <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <div className="text-lg font-bold text-white">{predictModalData?.stockName}</div>
+                  <div className="text-sm text-gray-500">{predictModalData?.stockCode}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-gray-500 mb-1">{t('models.predictModal.currentPrice')}</div>
+                  <div className="text-xl font-mono font-bold text-white">¥{predictModalData?.price?.toFixed(2) ?? '--'}</div>
+                  <div className={`text-sm font-mono ${(predictModalData?.price && predictResult.lastClosePrice && (predictModalData.price - predictResult.lastClosePrice) >= 0 ? 'text-[#00e396]' : 'text-[#ff4560]')}`}>
+                    {predictModalData?.price && predictResult.lastClosePrice ? (
+                      <>{(predictModalData.price - predictResult.lastClosePrice) >= 0 ? '+' : ''}{(predictModalData.price - predictResult.lastClosePrice).toFixed(2)}</>
+                    ) : '--'}
+                  </div>
+                </div>
+              </div>
+              <div className="text-xs text-gray-600 border-t border-white/5 pt-2 mt-2">
+                <span className="text-gray-500">{t('models.predictModal.currentPriceTip')}</span>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-r from-[#00e396]/10 to-[#00b374]/10 rounded-xl p-4 border border-[#00e396]/20">
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <div className="text-xs text-gray-400 uppercase tracking-wider">{t('models.predictModal.prediction')}</div>
+                  <div className="text-xs text-gray-600 mt-0.5">{t('models.predictModal.predictionTip')}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-3xl font-bold font-mono text-[#00e396]">
+                    ¥{predictResult.predictedClosePrice.toFixed(2)}
+                  </div>
+                  <div className={`text-lg font-mono ${predictResult.predictedChangeRatio >= 0 ? 'text-[#00e396]' : 'text-[#ff4560]'}`}>
+                    {predictResult.predictedChangeRatio >= 0 ? '+' : ''}{(predictResult.predictedChangeRatio * 100).toFixed(2)}%
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-[#00e396]/10">
+                <div>
+                  <div className="text-xs text-gray-500">{t('models.predictModal.lastClose')}</div>
+                  <div className="text-sm text-white font-mono">¥{predictResult.lastClosePrice.toFixed(2)}</div>
+                  <div className="text-xs text-gray-600">{t('models.predictModal.lastCloseTip')}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">{t('models.predictModal.predictedChangeRatio')}</div>
+                  <div className={`text-sm font-mono ${predictResult.predictedChangeRatio >= 0 ? 'text-[#00e396]' : 'text-[#ff4560]'}`}>
+                    {predictResult.predictedChangeRatio >= 0 ? '+' : ''}{(predictResult.predictedChangeRatio * 100).toFixed(2)}%
+                  </div>
+                  <div className="text-xs text-gray-600">{t('models.predictModal.predictedChangeRatioTip')}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <div className="text-xs text-gray-400 uppercase tracking-wider">{t('models.predictModal.recommendation')}</div>
+                  <div className="text-xs text-gray-600 mt-0.5">{t('models.predictModal.recommendationTip')}</div>
+                </div>
+                <div className={`text-2xl font-bold ${predictResult.predictedChangeRatio >= 0 ? 'text-[#00e396]' : 'text-[#ff4560]'}`}>
+                  {predictResult.predictedChangeRatio >= 0 ? t('models.predictModal.buy') : t('models.predictModal.sell')}
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs text-gray-500">{t('models.predictModal.progressBarLabel')}</span>
+                  <span className="text-xs text-gray-500">{Math.abs(predictResult.predictedChangeRatio * 100).toFixed(2)}%</span>
+                </div>
+                <div className="h-2.5 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${predictResult.predictedChangeRatio >= 0 ? 'bg-[#00e396]' : 'bg-[#ff4560]'}`}
+                    style={{ width: `${Math.min(100, Math.abs(predictResult.predictedChangeRatio) * 100)}%` }}
+                  />
+                </div>
+                <div className="text-xs text-gray-600 mt-1.5">
+                  {t('models.predictModal.progressBarTip')}
+                </div>
+              </div>
+              <div className="text-xs text-gray-500 mt-3 pt-3 border-t border-white/5">
+                {predictResult.predictedChangeRatio >= 0
+                  ? t('models.predictModal.buyReason')
+                  : t('models.predictModal.sellReason')}
+              </div>
+            </div>
+
+            <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+              <div className="text-xs text-gray-400 mb-2">{t('models.predictModal.dateInfo')}</div>
+              <div className="flex items-center gap-6 text-sm">
+                <div>
+                  <span className="text-gray-500">{t('models.predictModal.targetDate')}: </span>
+                  <span className="text-white font-mono">{predictResult.targetDate ?? '--'}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">{t('models.predictModal.predictionDate')}: </span>
+                  <span className="text-white font-mono">{predictResult.predictionDate ?? '--'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-xs text-gray-600 text-center">
+              {t('models.predictModal.disclaimer')}
+            </div>
+          </div>
+        ) : (
+          <div className="py-8 text-center text-gray-500">
+            {t('models.predictModal.noData')}
+          </div>
         )}
       </Modal>
 

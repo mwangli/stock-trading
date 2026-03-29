@@ -90,4 +90,26 @@ public class LstmTrainingConfig {
      * 最小 delta（早停判断）
      */
     private double minDelta = 0.0001;
+
+    /**
+     * 增量训练时冻结的 LSTM 层数
+     * 0 表示全部解冻（进行微调）
+     * 1 表示冻结第一层 LSTM（推荐增量训练场景）
+     * 默认 1
+     */
+    private int frozenLayers = 1;
+
+    /**
+     * 增量训练时顶层全连接层学习率倍率
+     * 增量训练时底层使用较小学习率，顶层使用基准学习率 * 此倍率
+     * 默认 1.0（与全量训练相同）
+     */
+    private double headLearningRateMultiplier = 1.0;
+
+    /**
+     * 增量训练时底层 LSTM 学习率
+     * 当 frozenLayers > 0 且 freezeBaseLayers = true 时，底层使用此学习率
+     * 默认 1e-5
+     */
+    private double baseLayersLearningRate = 1e-5;
 }

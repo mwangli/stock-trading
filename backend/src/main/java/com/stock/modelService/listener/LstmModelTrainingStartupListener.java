@@ -131,7 +131,7 @@ public class LstmModelTrainingStartupListener {
                             }
 
                             LstmTrainerService.TrainingResult result =
-                                    lstmTrainerService.trainModel(code, DEFAULT_TRAIN_DAYS, null, null, null);
+                                    lstmTrainerService.trainModel(code, DEFAULT_TRAIN_DAYS, null, null, null, "full");
 
                             long oneMs = (System.nanoTime() - oneStartNs) / 1_000_000;
                             if (result != null && result.isSuccess()) {

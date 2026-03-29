@@ -29,6 +29,8 @@
     "profile": "Profile",
     "systemStatus": "SYSTEM STATUS",
     "connected": "Connected",
+    "disconnected": "Disconnected",
+    "reconnecting": "Reconnecting...",
     "latency": "Latency",
     "transactions": "Trade History",
     "pnl": {

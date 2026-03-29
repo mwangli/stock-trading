@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ConfigProvider, theme } from 'antd';
+import { ConfigProvider, theme, App as AntApp } from 'antd';
+import zhCN from 'antd/locale/zh_CN';
 import './index.css'
 import './i18n'; // Import i18n configuration
 import App from './App.tsx'
@@ -8,6 +9,7 @@ import App from './App.tsx'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ConfigProvider
+      locale={zhCN}
       theme={{
         algorithm: theme.darkAlgorithm,
         token: {
@@ -17,7 +19,9 @@ createRoot(document.getElementById('root')!).render(
         },
       }}
     >
-      <App />
+      <AntApp>
+        <App />
+      </AntApp>
     </ConfigProvider>
   </StrictMode>,
 )

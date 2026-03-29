@@ -35,6 +35,21 @@ public class DiagnosticController {
     private final CaptchaFetchService captchaFetchService;
 
     /**
+     * 健康检查接口
+     * 用于前端检测后端服务是否在线
+     *
+     * @return 健康状态信息
+     */
+    @GetMapping("/health")
+    public ResponseDTO<Map<String, Object>> healthCheck() {
+        log.info("健康检查接口调用");
+        Map<String, Object> result = new HashMap<>();
+        result.put("status", "UP");
+        result.put("timestamp", System.currentTimeMillis());
+        return ResponseDTO.success(result);
+    }
+
+    /**
      * 检测页面类型（基于 DOM 内容，非 URL）
      *
      * @return 页面类型及描述

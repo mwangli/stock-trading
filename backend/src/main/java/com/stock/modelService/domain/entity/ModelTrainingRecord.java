@@ -91,6 +91,14 @@ public class ModelTrainingRecord {
     private String lastModelId;
 
     /**
+     * 模型版本号，格式 vX.Y.Z
+     * X=大版本（全量训练时递增），Y=中版本（周期训练时递增并重置Z），Z=小版本（增量训练时递增）
+     * 初始版本 v1.0.1
+     */
+    @Column(name = "model_version", length = 16)
+    private String modelVersion;
+
+    /**
      * 记录创建时间
      */
     @Column(name = "created_at", nullable = false)
@@ -188,6 +196,14 @@ public class ModelTrainingRecord {
 
     public void setLastModelId(String lastModelId) {
         this.lastModelId = lastModelId;
+    }
+
+    public String getModelVersion() {
+        return modelVersion;
+    }
+
+    public void setModelVersion(String modelVersion) {
+        this.modelVersion = modelVersion;
     }
 
     public LocalDateTime getCreatedAt() {
