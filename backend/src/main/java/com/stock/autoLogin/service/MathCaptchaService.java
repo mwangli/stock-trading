@@ -2,18 +2,17 @@ package com.stock.autoLogin.service;
 
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,6 +57,12 @@ public class MathCaptchaService {
     /** 运算符区域（图片宽度 35%~55% 之间）竖向笔画比例超过此值判定为加号 */
     private static final double PLUS_RATIO = 0.12;
 
+    private final ImagePreprocessor imagePreprocessor;
+
+    public MathCaptchaService(ImagePreprocessor imagePreprocessor) {
+        this.imagePreprocessor = imagePreprocessor;
+    }
+
     @Value("${spring.auto-login.account:13278828091}")
     private String defaultAccount;
 
@@ -75,103 +80,318 @@ public class MathCaptchaService {
     // -------------------------------------------------------------------------
 
     /**
+     * 获取验证码原始图片
+     *
+     * @param account 资金账号/手机号
+     * @return 验证码原始图片，失败返回 null
+     */
+    public BufferedImage fetchCaptchaImage(String account) {
+        try {
+            String base64Raw = fetchCaptchaBase64(account);
+            if (base64Raw == null) {
+                return null;
+            }
+            byte[] rawBytes = Base64.getDecoder().decode(base64Raw);
+            return ImageIO.read(new ByteArrayInputStream(rawBytes));
+        } catch (Exception e) {
+            log.error("获取验证码图片失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * 获取验证码图片并识别计算结果
      *
      * @param account 资金账号/手机号
      * @return Map 包含：success, expression, result, method, error
      */
+    @Data
+    public static class CaptchaQuality {
+        private double score;
+        private boolean acceptable;
+        private boolean lowQuality;
+        private java.util.List<String> reasons;
+
+        public static CaptchaQuality good() {
+            CaptchaQuality q = new CaptchaQuality();
+            q.score = 1.0;
+            q.acceptable = true;
+            q.lowQuality = false;
+            q.reasons = new ArrayList<>();
+            return q;
+        }
+
+        public static CaptchaQuality low(double score, String reason) {
+            CaptchaQuality q = new CaptchaQuality();
+            q.score = score;
+            q.acceptable = score >= 0.5;
+            q.lowQuality = true;
+            q.reasons = new ArrayList<>();
+            q.reasons.add(reason);
+            return q;
+        }
+
+        public static CaptchaQuality fail(String reason) {
+            CaptchaQuality q = new CaptchaQuality();
+            q.score = 0;
+            q.acceptable = false;
+            q.lowQuality = true;
+            q.reasons = new ArrayList<>();
+            q.reasons.add(reason);
+            return q;
+        }
+    }
+
+    /**
+     * 验证码质量检测
+     * 评估图片质量，决定是否需要重试
+     * 验证码图片通常较小，调整尺寸标准为实际合理范围
+     */
+    private CaptchaQuality assessCaptchaQuality(BufferedImage img) {
+        int w = img.getWidth();
+        int h = img.getHeight();
+
+        // 检查图片尺寸 - 验证码图片通常较小，放宽标准
+        if (w < 50 || h < 20) {
+            return CaptchaQuality.fail("图片尺寸过小: " + w + "x" + h);
+        }
+
+        // 计算灰度统计
+        int[] grayValues = new int[256];
+        int pixelCount = 0;
+        long sumGray = 0;
+        long sumVariance = 0;
+
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int rgb = img.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+                int gray = (int) (0.299 * r + 0.587 * g + 0.114 * b);
+                grayValues[gray]++;
+                sumGray += gray;
+                pixelCount++;
+            }
+        }
+
+        int meanGray = (int) (sumGray / pixelCount);
+
+        // 计算方差
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int rgb = img.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+                int gray = (int) (0.299 * r + 0.587 * g + 0.114 * b);
+                sumVariance += (gray - meanGray) * (gray - meanGray);
+            }
+        }
+        double variance = sumVariance / pixelCount;
+        double stdDev = Math.sqrt(variance);
+
+        // 计算暗像素比例（验证码内容通常是深色的）
+        int darkPixels = 0;
+        int threshold = 150; // 亮度小于150视为暗像素
+        for (int gray : grayValues) {
+            // 忽略极端值计算
+        }
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int rgb = img.getRGB(x, y);
+                int gray = (rgb >> 16) & 0xFF;
+                if (gray < threshold) darkPixels++;
+            }
+        }
+        double darkRatio = (double) darkPixels / pixelCount;
+
+        // 质量评分
+        double score = 1.0;
+        java.util.List<String> reasons = new java.util.ArrayList<>();
+
+        // 1. 检查对比度（标准差）- 验证码图片通常对比度较低，放宽标准
+        if (stdDev < 15) {
+            score -= 0.3;
+            reasons.add("对比度过低 (stdDev=" + String.format("%.1f", stdDev) + ")");
+        }
+
+        // 2. 检查暗像素比例（内容区域占比）
+        if (darkRatio < 0.03) {
+            score -= 0.4;
+            reasons.add("内容区域过少 (darkRatio=" + String.format("%.2f", darkRatio) + ")");
+        } else if (darkRatio > 0.6) {
+            score -= 0.2;
+            reasons.add("背景过暗 (darkRatio=" + String.format("%.2f", darkRatio) + ")");
+        }
+
+        // 3. 检查是否有足够的灰度分布
+        int graySpan = 0;
+        int firstNonZero = -1, lastNonZero = -1;
+        for (int i = 0; i < 256; i++) {
+            if (grayValues[i] > 0 && firstNonZero < 0) firstNonZero = i;
+            if (grayValues[255 - i] > 0 && lastNonZero < 0) lastNonZero = 255 - i;
+        }
+        graySpan = lastNonZero - firstNonZero;
+        if (graySpan < 30) {
+            score -= 0.2;
+            reasons.add("灰度范围过窄 (span=" + graySpan + ")");
+        }
+
+        // 4. 检查图片尺寸是否合理 - 验证码天生较小，降低要求
+        if (w < 60 || h < 25) {
+            score -= 0.1;
+            reasons.add("图片尺寸偏小");
+        }
+
+        // 判定
+        if (score >= 0.7) {
+            return CaptchaQuality.good();
+        } else if (score >= 0.4) {
+            CaptchaQuality q = CaptchaQuality.low(score, reasons.isEmpty() ? "轻微质量问题" : String.join(", ", reasons));
+            return q;
+        } else {
+            return CaptchaQuality.fail(reasons.isEmpty() ? "质量问题严重" : String.join(", ", reasons));
+        }
+    }
+
     public Map<String, Object> getCaptchaResult(String account) {
         Map<String, Object> result = new HashMap<>();
-        try {
-            // 1. 获取验证码原始 JPEG base64
-            String base64Raw = fetchCaptchaBase64(account);
-            if (base64Raw == null) {
-                result.put("success", false);
-                result.put("error", "获取验证码图片失败");
-                return result;
-            }
+        int maxRetries = 3;
 
-            // 2. 加载图片并保存原图调试文件
-            byte[] rawBytes = Base64.getDecoder().decode(base64Raw);
-            BufferedImage img = ImageIO.read(new ByteArrayInputStream(rawBytes));
-            saveDebugImage(img, "raw");
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                log.info("验证码识别第 {} 次尝试", attempt);
 
-            // 3. 整图放大 SCALE 倍（NEAREST 插值保留锐边）
-            BufferedImage scaled = scaleImage(img, SCALE);
-            saveDebugImage(scaled, "scaled");
+                String base64Raw = fetchCaptchaBase64(account);
+                if (base64Raw == null) {
+                    result.put("success", false);
+                    result.put("error", "获取验证码图片失败");
+                    return result;
+                }
 
-            // 4. 整图送百度 general_basic OCR，直接识别完整表达式
-            byte[] scaledBytes = toBytes(scaled);
-            String scaledB64 = Base64.getEncoder().encodeToString(scaledBytes);
+                byte[] rawBytes = Base64.getDecoder().decode(base64Raw);
+                BufferedImage img = ImageIO.read(new ByteArrayInputStream(rawBytes));
 
-            int leftNum  = -1;
-            int rightNum = -1;
-            char op      = '?';
+                CaptchaQuality quality = assessCaptchaQuality(img);
+                if (!quality.isAcceptable()) {
+                    log.warn("验证码质量不合格: {} (分数: {}), 原因: {}",
+                            quality.isLowQuality() ? "低质量" : "不合格",
+                            quality.getScore(), quality.getReasons());
+                    if (attempt < maxRetries) {
+                        log.info("重新获取验证码...");
+                        continue;
+                    }
+                    result.put("success", false);
+                    result.put("error", "验证码质量不合格: " + quality.getReasons());
+                    result.put("quality", quality);
+                    return result;
+                }
 
-            // 4a. 尝试 general_basic：直接解析 "数字 op 数字" 表达式
-            String ocrText = ocrGeneralText(scaledB64);
-            log.info("general_basic OCR文本: [{}]", ocrText);
-            java.util.regex.Matcher exprMatcher = java.util.regex.Pattern
-                    .compile("(\\d+)\\s*([+\\-])\\s*(\\d+)")
-                    .matcher(ocrText);
-            if (exprMatcher.find()) {
-                leftNum  = Integer.parseInt(exprMatcher.group(1));
-                rightNum = Integer.parseInt(exprMatcher.group(3));
-                op       = exprMatcher.group(2).charAt(0);
-                log.info("general_basic 解析成功: {} {} {}", leftNum, op, rightNum);
-            }
+                saveDebugImage(img, "raw");
+                ImagePreprocessor.ProcessedResult preprocessed = imagePreprocessor.preprocess(img, 1);
+                saveDebugImage(preprocessed.processed(), "preprocessed");
 
-            // 4b. 若 general_basic 失败，退回 numbers OCR + 运算符检测
-            if (leftNum < 0) {
-                String allDigits = ocrAllDigits(scaledB64);
-                log.info("numbers OCR数字串: [{}]", allDigits);
-                boolean[][] dark2 = binarize(img);
-                op = detectOperator(dark2, img.getWidth(), img.getHeight());
+                int leftNum = -1, rightNum = -1;
+                char op = '?';
+                String method = "unknown";
 
-                // 根据数字串长度决定拆分方式
-                String digits = allDigits.replaceAll("[^0-9]", "");
-                if (digits.length() == 4) {
-                    leftNum  = Integer.parseInt(digits.substring(0, 2));
-                    rightNum = Integer.parseInt(digits.substring(2, 4));
-                } else if (digits.length() == 3) {
-                    // 判断运算符列位置：若在前 30% 则左侧为1位数，否则为2位数
-                    int opCol = findOperatorColumn(dark2, img.getWidth(), img.getHeight());
-                    double opRatio = (double) opCol / img.getWidth();
-                    log.info("运算符列位置: {} ({:.1%})", opCol, opRatio);
-                    if (opRatio < 0.30) {
-                        leftNum  = Integer.parseInt(digits.substring(0, 1));
-                        rightNum = Integer.parseInt(digits.substring(1, 3));
-                    } else {
-                        leftNum  = Integer.parseInt(digits.substring(0, 2));
-                        rightNum = Integer.parseInt(digits.substring(2, 3));
+                BufferedImage scaled = scaleImage(img, SCALE);
+                byte[] scaledBytes = toBytes(scaled);
+                String scaledB64 = Base64.getEncoder().encodeToString(scaledBytes);
+                saveDebugImage(scaled, "scaled");
+
+                String ocrText = ocrGeneralText(scaledB64);
+                log.info("方案A - 放大{}倍 OCR: [{}]", SCALE, ocrText);
+
+                if (ocrText != null && ocrText.matches(".*\\d+.*")) {
+                    String digitsOnly = ocrText.replaceAll("[^0-9]", "");
+                    java.util.regex.Matcher exprMatcher = java.util.regex.Pattern
+                            .compile("(\\d+)\\s*([+\\-×*])\\s*(\\d+)").matcher(ocrText);
+                    if (exprMatcher.find() && digitsOnly.length() >= 3) {
+                        leftNum = Integer.parseInt(exprMatcher.group(1));
+                        rightNum = Integer.parseInt(exprMatcher.group(3));
+                        op = exprMatcher.group(2).charAt(0);
+                        if (op == '×' || op == '*') op = '+';
+                        method = "scaled-image-ocr";
+                        log.info("方案A成功: {} {} {}", leftNum, op, rightNum);
                     }
                 }
-            }
 
-            if (leftNum < 0 || rightNum < 0 || op == '?') {
+                if (leftNum < 0) {
+                    String allDigits = ocrAllDigits(scaledB64);
+                    log.info("numbers OCR数字串: [{}]", allDigits);
+                    String digits = allDigits.replaceAll("[^0-9]", "");
+                    log.info("清理后数字串: [{}] (长度={})", digits, digits.length());
+
+                    if (digits.length() >= 4) {
+                        String num4 = digits.substring(digits.length() - 4);
+                        if (num4.charAt(0) != '0' && num4.charAt(2) != '0') {
+                            leftNum = Integer.parseInt(num4.substring(0, 2));
+                            rightNum = Integer.parseInt(num4.substring(2, 4));
+                            op = detectOperator(preprocessed.darkMatrix(), img.getWidth(), img.getHeight());
+                            if (op == '?') op = '+';
+                            method = "numbers-ocr-4digits";
+                            log.info("方案B成功: {} {} {}", leftNum, op, rightNum);
+                        }
+                    } else if (digits.length() == 3) {
+                        boolean[][] dark = preprocessed.darkMatrix();
+                        op = detectOperator(dark, img.getWidth(), img.getHeight());
+                        int opCol = findOperatorColumn(dark, img.getWidth(), img.getHeight());
+                        double opRatio = (double) opCol / img.getWidth();
+                        log.info("运算符列位置: {} ({:.1%}), 运算符: {}", opCol, opRatio, op);
+
+                        if (opRatio < 0.35) {
+                            leftNum = Integer.parseInt(digits.substring(0, 1));
+                            rightNum = Integer.parseInt(digits.substring(1, 3));
+                        } else {
+                            leftNum = Integer.parseInt(digits.substring(0, 2));
+                            rightNum = Integer.parseInt(digits.substring(2, 3));
+                        }
+                        if (op == '?') op = '+';
+                        method = "numbers-ocr-3digits";
+                        log.info("方案B(3位)成功: {} {} {}", leftNum, op, rightNum);
+                    } else if (digits.length() == 2) {
+                        log.warn("numbers OCR只返回2位数字，无法分割: {}", digits);
+                    }
+                }
+
+                if (leftNum < 0 || rightNum < 0 || op == '?') {
+                    if (attempt < maxRetries) {
+                        log.info("方案失败，重试...");
+                        continue;
+                    }
+                    result.put("success", false);
+                    result.put("error", "OCR识别失败，无法解析表达式");
+                    result.put("method", "manual");
+                    return result;
+                }
+
+                int answer = op == '+' ? leftNum + rightNum : leftNum - rightNum;
+                String expression = leftNum + " " + op + " " + rightNum;
+
+                result.put("success", true);
+                result.put("expression", expression);
+                result.put("result", String.valueOf(answer));
+                result.put("method", method);
+                log.info("验证码识别成功: {} = {}", expression, answer);
+                return result;
+
+            } catch (Exception e) {
+                log.error("验证码识别异常: {}", e.getMessage());
+                if (attempt < maxRetries) {
+                    log.info("异常发生，重试...");
+                    continue;
+                }
                 result.put("success", false);
-                result.put("error", "OCR识别失败，无法解析表达式");
-                result.put("method", "manual");
+                result.put("error", e.getMessage());
                 return result;
             }
-
-            // 5. 计算结果
-            int answer = op == '+' ? leftNum + rightNum : leftNum - rightNum;
-            String expression = leftNum + " " + op + " " + rightNum;
-
-            result.put("success", true);
-            result.put("expression", expression);
-            result.put("result", String.valueOf(answer));
-            result.put("method", "full-image-ocr");
-            log.info("验证码识别成功: {} = {}", expression, answer);
-            return result;
-
-        } catch (Exception e) {
-            log.error("获取验证码失败: {}", e.getMessage(), e);
-            result.put("success", false);
-            result.put("error", e.getMessage());
-            return result;
         }
+
+        result.put("success", false);
+        result.put("error", "达到最大重试次数");
+        return result;
     }
 
     // -------------------------------------------------------------------------
@@ -249,6 +469,164 @@ public class MathCaptchaService {
         return op;
     }
 
+    /**
+     * 基于形状的运算符检测
+     * 分析运算符区域的连通组件和几何特征
+     *
+     * @param dark 二值数组
+     * @param w 图片宽度
+     * @param h 图片高度
+     * @return '+' 或 '-' 或 '?'
+     */
+    private char detectOperatorByShape(boolean[][] dark, int w, int h) {
+        // 找到运算符区域（宽度的35%~55%）
+        int opLeft = (int)(w * 0.35);
+        int opRight = (int)(w * 0.55);
+
+        // 统计水平和垂直方向的暗像素
+        int horizontalCount = 0;
+        int verticalCount = 0;
+        int centerX = (opLeft + opRight) / 2;
+        int centerY = h / 2;
+
+        for (int x = opLeft; x < opRight; x++) {
+            // 水平线（中段）
+            if (dark[x][centerY]) horizontalCount++;
+        }
+
+        for (int y = 0; y < h; y++) {
+            // 垂直线（中段）
+            if (dark[centerX][y]) verticalCount++;
+        }
+
+        // 加号：水平和垂直方向都有较多暗像素
+        // 减号：只有水平方向有暗像素
+        double hRatio = (double) horizontalCount / (opRight - opLeft);
+        double vRatio = (double) verticalCount / h;
+
+        log.info("运算符形状分析 - 水平比例: {:.2f}, 垂直比例: {:.2f}", hRatio, vRatio);
+
+        if (hRatio > 0.3 && vRatio > 0.3) {
+            return '+';
+        } else if (hRatio > 0.3) {
+            return '-';
+        }
+        return '?';
+    }
+
+    /**
+     * 基于二值化和连通区域分析提取数字
+     * 通过垂直投影分割数字区域，然后逐个识别
+     *
+     * @param img 原始图片
+     * @return 提取的数字数组，失败返回null
+     */
+    private int[] extractNumbersByBinarization(BufferedImage img) {
+        try {
+            int w = img.getWidth();
+            int h = img.getHeight();
+            boolean[][] dark = binarize(img);
+
+            // 计算垂直投影
+            int[] projection = new int[w];
+            for (int x = 0; x < w; x++) {
+                for (int y = 0; y < h; y++) {
+                    if (dark[x][y]) {
+                        projection[x]++;
+                    }
+                }
+            }
+
+            // 找到分割点（波谷位置）
+            int threshold = h / 10;
+            java.util.List<Integer> splitPoints = new java.util.ArrayList<>();
+            boolean inContent = false;
+            int contentStart = 0;
+
+            for (int x = 0; x < w; x++) {
+                boolean hasContent = projection[x] > threshold;
+                if (!inContent && hasContent) {
+                    inContent = true;
+                    contentStart = x;
+                } else if (inContent && !hasContent) {
+                    inContent = false;
+                    splitPoints.add((contentStart + x) / 2);
+                }
+            }
+
+            // 根据分割点提取数字
+            if (splitPoints.size() < 3) {
+                log.info("分割点数量不足: {}", splitPoints.size());
+                return null;
+            }
+
+            // 通常格式为：数字1 | 运算符 | 数字2 | 等号
+            // 我们需要找到运算符的位置来分割两个数字
+            java.util.List<Integer> numRegions = new java.util.ArrayList<>();
+            int prev = 0;
+            for (int split : splitPoints) {
+                if (split - prev > 10) { // 忽略太小的区域
+                    numRegions.add(prev);
+                    numRegions.add(split);
+                }
+                prev = split;
+            }
+
+            log.info("提取到 {} 个区域", numRegions.size() / 2);
+
+            // 简单策略：如果有4个区域，取中间两个作为数字
+            if (numRegions.size() >= 4) {
+                int[] numbers = new int[2];
+                // 区域索引 1 和 2 是两个数字（跳过第一个区域和最后一个等号）
+                int num1Start = numRegions.get(1);
+                int num1End = numRegions.get(2);
+                int num2Start = numRegions.get(3);
+                int num2End = numRegions.size() > 4 ? numRegions.get(4) : w;
+
+                // 简单数字识别：统计暗像素数量作为特征
+                numbers[0] = estimateDigitByPixels(dark, num1Start, num1End, h);
+                numbers[1] = estimateDigitByPixels(dark, num2Start, num2End, h);
+
+                return numbers;
+            }
+
+            return null;
+        } catch (Exception e) {
+            log.error("二值化数字提取异常: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 根据暗像素数量估算数字
+     * 这是一个非常简化的实现，实际应该用模板匹配
+     */
+    private int estimateDigitByPixels(boolean[][] dark, int startX, int endX, int h) {
+        int count = 0;
+        int pixelCount = 0;
+        for (int x = startX; x < endX && x < dark.length; x++) {
+            for (int y = 0; y < h; y++) {
+                if (dark[x][y]) {
+                    count++;
+                }
+                pixelCount++;
+            }
+        }
+
+        if (pixelCount == 0) {
+            return 0;
+        }
+
+        // 根据像素比例估算
+        int avgCount = count * 100 / pixelCount;
+
+        if (avgCount < 5) return 1;
+        if (avgCount < 10) return 7;
+        if (avgCount < 15) return 4;
+        if (avgCount < 20) return 0;
+        return 8;
+    }
+
     // -------------------------------------------------------------------------
     // OCR
     // -------------------------------------------------------------------------
@@ -265,7 +643,7 @@ public class MathCaptchaService {
             if (token == null) return "";
 
             String url  = String.format(BAIDU_OCR_GENERAL_URL, token);
-            String body = "image=" + URLEncoder.encode(base64Image, StandardCharsets.UTF_8);
+            String body = "image=" + java.net.URLEncoder.encode(base64Image, StandardCharsets.UTF_8);
 
             HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setRequestMethod("POST");
@@ -342,7 +720,7 @@ public class MathCaptchaService {
             if (token == null) return "";
 
             String url  = String.format(BAIDU_OCR_NUMBERS_URL, token);
-            String body = "image=" + URLEncoder.encode(base64Image, StandardCharsets.UTF_8);
+            String body = "image=" + java.net.URLEncoder.encode(base64Image, StandardCharsets.UTF_8);
 
             HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setRequestMethod("POST");
