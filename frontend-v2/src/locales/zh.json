@@ -357,15 +357,15 @@
     "save": "保存更改",
     "sections": {
       "general": "通用偏好",
-      "api": "API 连接",
+      "brokerPlatform": "券商平台",
       "risk": "风险管理协议"
     },
     "fields": {
       "theme": "主题模式",
       "language": "语言",
       "notifications": "启用系统通知",
-      "apiKey": "数据提供商 API 密钥",
-      "refreshRate": "刷新率 (ms)",
+      "apiKey": "平台登录API密钥",
+      "refreshRate": "密钥刷新频率(分钟)",
       "riskLevel": "全局风险概况",
       "maxDrawdown": "最大单日回撤 (%)"
     },
@@ -384,8 +384,13 @@
         "aggressive": "激进 (高收益)"
       }
     },
+    "openBrokerPlatform": "打开平台地址",
     "testConnection": "测试连接",
-    "successMsg": "设置保存成功"
+    "successMsg": "设置保存成功",
+    "saveFailed": "保存失败，请重试",
+    "apiKeyChanged": "已设置密钥，如需修改请输入新密钥",
+    "apiKeyEmpty": "请输入平台登录API密钥",
+    "apiKeyPlaceholder": "输入API密钥"
   },
   "transactions": {
     "title": "交易记录",

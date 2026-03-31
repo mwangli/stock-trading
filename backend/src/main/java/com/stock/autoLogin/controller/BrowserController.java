@@ -47,6 +47,7 @@ public class BrowserController {
     @PostMapping("/navigate/login")
     public ResponseDTO<Void> navigateToLogin() {
         log.info("访问登录页面");
+        browserSessionManager.startBrowser();
         WebDriver driver = browserSessionManager.getDriver();
         driver.get("https://weixin.citicsinfo.com/tztweb/deal/index.html#!/account/login.html");
         try {

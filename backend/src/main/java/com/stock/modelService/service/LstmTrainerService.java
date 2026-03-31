@@ -28,6 +28,7 @@ import com.stock.modelService.domain.dto.LstmPredictionResultDto;
 import com.stock.modelService.persistence.LstmModelRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -54,7 +55,6 @@ import java.util.stream.Stream;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class LstmTrainerService {
 
     private final LstmTrainingConfig config;
@@ -63,12 +63,38 @@ public class LstmTrainerService {
     private final LstmModelRepository lstmModelRepository;
     private final ModelBinaryCodec modelBinaryCodec;
     private final com.stock.modelService.service.ModelTrainingRecordService modelTrainingRecordService;
-    private final RedisTemplate<String, Object> redisTemplate;
+    private RedisTemplate<String, Object> redisTemplate;
     private final Map<String, TrainingStatus> trainingStatusMap = new ConcurrentHashMap<>();
     private String currentModelPath;
 
     private static final String TRAINING_LOCK_PREFIX = "lstm:training:lock:";
     private static final long LOCK_EXPIRE_SECONDS = 300;
+
+    @Autowired
+    public LstmTrainerService(LstmTrainingConfig config,
+                              PriceRepository priceRepository,
+                              LstmDataPreprocessor dataPreprocessor,
+                              LstmModelRepository lstmModelRepository,
+                              ModelBinaryCodec modelBinaryCodec,
+                              com.stock.modelService.service.ModelTrainingRecordService modelTrainingRecordService) {
+        this.config = config;
+        this.priceRepository = priceRepository;
+        this.dataPreprocessor = dataPreprocessor;
+        this.lstmModelRepository = lstmModelRepository;
+        this.modelBinaryCodec = modelBinaryCodec;
+        this.modelTrainingRecordService = modelTrainingRecordService;
+        log.info("LstmTrainerService 初始化完成，RedisTemplate 未注入（可选依赖）");
+    }
+
+    @Autowired(required = false)
+    public void setRedisTemplate(RedisTemplate<String, Object> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+        if (redisTemplate != null) {
+            log.info("RedisTemplate 已注入，分布式锁功能启用");
+        } else {
+            log.warn("RedisTemplate 未注入，分布式锁功能禁用");
+        }
+    }
 
     /**
      * 同步标记训练状态

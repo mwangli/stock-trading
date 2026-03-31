@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Form, Input, Switch, Button, Select, Divider, message } from 'antd';
 import { SaveOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
+import request from '../utils/request';
 
 const { Option } = Select;
 
@@ -9,22 +10,119 @@ const Settings: React.FC = () => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [encryptionKey, setEncryptionKey] = useState<string>('');
+  const [hasApiKey, setHasApiKey] = useState(false);
+
+  useEffect(() => {
+    fetchEncryptionKey();
+    fetchConfig();
+  }, []);
+
+  const fetchEncryptionKey = async () => {
+    try {
+      const res = await request.get('/system/encryptionKey') as { success: boolean; data?: { encryptionKey: string } };
+      if (res.success && res.data?.encryptionKey) {
+        setEncryptionKey(res.data.encryptionKey);
+      }
+    } catch (error) {
+      console.error('获取加密密钥失败:', error);
+    }
+  };
+
+  const fetchConfig = async () => {
+    try {
+      const res = await request.get('/system/config') as { success: boolean; data?: { apiKey?: string } };
+      if (res.success && res.data) {
+        if (res.data.apiKey) {
+          setHasApiKey(true);
+        }
+      }
+    } catch (error) {
+      console.error('获取配置失败:', error);
+    }
+  };
+
+  const base64ToBytes = (base64: string): Uint8Array => {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  };
+
+  const bytesToBase64 = (bytes: Uint8Array): string => {
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  };
+
+  const encrypt = async (plainText: string, key: string): Promise<string> => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(plainText);
+    const keyBytes = base64ToBytes(key);
+
+    const cryptoKey = await window.crypto.subtle.importKey(
+      'raw',
+      keyBytes.buffer as ArrayBuffer,
+      { name: 'AES-ECB' },
+      false,
+      ['encrypt']
+    );
+
+    const encrypted = await window.crypto.subtle.encrypt(
+      { name: 'AES-ECB' },
+      cryptoKey,
+      data
+    );
+
+    return bytesToBase64(new Uint8Array(encrypted));
+  };
 
   const onFinish = async (values: any) => {
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log(values);
-    message.success(t('settings.successMsg'));
-    setLoading(false);
+    try {
+      let apiKeyToSave = values.apiKey;
+
+      if (apiKeyToSave && apiKeyToSave !== '************************' && encryptionKey) {
+        apiKeyToSave = await encrypt(apiKeyToSave, encryptionKey);
+      } else if (apiKeyToSave === '************************') {
+        apiKeyToSave = undefined;
+      }
+
+      const submitData = {
+        ...values,
+        apiKey: apiKeyToSave
+      };
+
+      await request.put('/system/config', submitData);
+      setHasApiKey(true);
+      message.success(t('settings.successMsg'));
+    } catch (error) {
+      message.error(t('settings.saveFailed') || '保存失败，请检查后端服务');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    try {
+      await request.post('/browser/navigate/login');
+      message.success(t('settings.navigateSuccess') || '已跳转到券商登录页面');
+    } catch (error) {
+      message.error(t('settings.navigateFailed') || '跳转失败，请检查后端服务');
+    }
   };
 
   return (
     <div className="max-w-4xl mx-auto p-6 glass rounded-2xl">
       <div className="flex justify-between items-center mb-8 border-b border-white/10 pb-4">
         <h1 className="text-3xl font-bold text-white">{t('settings.title')}</h1>
-        <Button 
-          type="primary" 
-          icon={<SaveOutlined />} 
+        <Button
+          type="primary"
+          icon={<SaveOutlined />}
           loading={loading}
           onClick={() => form.submit()}
           className="bg-[#00e396] text-black border-none font-bold"
@@ -41,9 +139,10 @@ const Settings: React.FC = () => {
           theme: 'dark',
           language: 'en',
           notifications: true,
-          apiKey: '************************',
+          apiKey: '',
           riskLevel: 'moderate',
           maxDrawdown: 15,
+          refreshRate: 30,
         }}
         className="space-y-8"
       >
@@ -68,16 +167,38 @@ const Settings: React.FC = () => {
             </Form.Item>
           </section>
 
-          {/* API & Data */}
+          {/* Broker Platform */}
           <section>
-            <h3 className="text-xl font-bold text-[#00e396] mb-4">{t('settings.sections.api')}</h3>
-            <Form.Item label={t('settings.fields.apiKey')} name="apiKey">
-              <Input.Password className="bg-white/5 border-white/10 text-white" />
+            <h3 className="text-xl font-bold text-[#00e396] mb-4 flex items-center gap-3">
+              <span>{t('settings.sections.brokerPlatform')}</span>
+              <a
+                href="https://weixin.citicsinfo.com/tztweb/deal/index.html#!/account/login.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-normal text-[#00e396]/70 hover:text-[#00e396] hover:underline decoration-dashed underline-offset-4 transition-colors duration-200"
+              >
+                <span className="inline-flex items-center gap-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+                    <path fillRule="evenodd" d="M15.75 2.25a4.25 4.25 0 014.24 4.24H21a.75.75 0 010 1.5H19.5a.75.75 0 00-.75.75v10.5a.75.75 0 001.5 0V8.25h4.28a.75.75 0 000-1.5H19.8a4.25 4.25 0 00-4.05-3.75 4.25 4.25 0 00-4.25 4.25v6.75a.75.75 0 001.5 0V4.5A2.25 2.25 0 0012.5 2.25h-1.5A2.25 2.25 0 008.75 4.5v6.75a.75.75 0 001.5 0v-4.5A4.25 4.25 0 0114.25 2.25h1.5z" clipRule="evenodd" />
+                  </svg>
+                  {t('settings.openBrokerPlatform')}
+                </span>
+              </a>
+            </h3>
+            <Form.Item
+              label={t('settings.fields.apiKey')}
+              name="apiKey"
+              extra={hasApiKey ? t('settings.apiKeyChanged') : t('settings.apiKeyEmpty')}
+            >
+              <Input.Password
+                className="bg-white/5 border-white/10 text-white"
+                placeholder={hasApiKey ? '••••••••••••' : t('settings.apiKeyPlaceholder')}
+              />
             </Form.Item>
-            <Form.Item label={t('settings.fields.refreshRate')} name="refreshRate" initialValue={1000}>
+            <Form.Item label={t('settings.fields.refreshRate')} name="refreshRate">
                <Input type="number" className="bg-white/5 border-white/10 text-white" />
             </Form.Item>
-            <Button icon={<ReloadOutlined />} className="mt-2 bg-transparent text-[#00e396] border-[#00e396]">{t('settings.testConnection')}</Button>
+            <Button icon={<ReloadOutlined />} onClick={handleTestConnection} className="mt-2 bg-transparent text-[#00e396] border-[#00e396]">{t('settings.testConnection')}</Button>
           </section>
         </div>
 

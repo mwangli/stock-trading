@@ -325,15 +325,15 @@
     "save": "SAVE CHANGES",
     "sections": {
       "general": "General Preferences",
-      "api": "API Connections",
+      "brokerPlatform": "Broker Platform",
       "risk": "Risk Management Protocols"
     },
     "fields": {
       "theme": "Theme Mode",
       "language": "Language",
       "notifications": "Enable System Notifications",
-      "apiKey": "Data Provider API Key",
-      "refreshRate": "Refresh Rate (ms)",
+      "apiKey": "Platform Login API Key",
+      "refreshRate": "Token Refresh Interval (min)",
       "riskLevel": "Global Risk Profile",
       "maxDrawdown": "Max Daily Drawdown (%)"
     },
@@ -352,8 +352,13 @@
         "aggressive": "Aggressive (High Yield)"
       }
     },
+    "openBrokerPlatform": "Open Platform",
     "testConnection": "Test Connection",
-    "successMsg": "Settings Saved Successfully"
+    "successMsg": "Settings Saved Successfully",
+    "saveFailed": "Save failed, please retry",
+    "apiKeyChanged": "API key is set. Enter new key to update.",
+    "apiKeyEmpty": "Please enter the Platform Login API Key",
+    "apiKeyPlaceholder": "Enter API Key"
   },
   "transactions": {
     "title": "Trade History",

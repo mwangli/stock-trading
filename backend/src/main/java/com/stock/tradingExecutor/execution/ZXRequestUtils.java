@@ -6,11 +6,14 @@ import com.alibaba.fastjson2.JSONException;
 import com.alibaba.fastjson2.JSONObject;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 中信证券API请求工具类
@@ -21,20 +24,29 @@ import java.util.Map;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class ZXRequestUtils {
 
     private static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
     private static final int RETRY_TIMES = 10;
     private static final int MAX_CAPTCHA_RETRY = 3;
+    private static final String REDIS_TOKEN_KEY = "citics:token";
+    private static final long TOKEN_EXPIRE_MINUTES = 30;
 
     private final com.stock.autoLogin.service.CaptchaService captchaService;
+    private final RedisTemplate<String, Object> redisTemplate;
 
     /**
-     * 使用本地内存缓存请求 Token，替代 Redis 存储
+     * 使用本地内存缓存请求 Token，作为Redis的备份
      */
     private volatile String token;
     private volatile long tokenExpireAtMs;
+
+    public ZXRequestUtils(
+            com.stock.autoLogin.service.CaptchaService captchaService,
+            @Autowired(required = false) RedisTemplate<String, Object> redisTemplate) {
+        this.captchaService = captchaService;
+        this.redisTemplate = redisTemplate;
+    }
 
     /**
      * 构建通用请求参数
@@ -54,9 +66,26 @@ public class ZXRequestUtils {
 
     /**
      * 获取Token
+     * 优先从Redis获取，Redis不可用时使用本地内存缓存
      */
     public String getToken() {
         long now = System.currentTimeMillis();
+
+        if (redisTemplate != null) {
+            try {
+                Object cachedToken = redisTemplate.opsForValue().get(REDIS_TOKEN_KEY);
+                if (cachedToken != null) {
+                    String tokenStr = cachedToken.toString();
+                    if (!tokenStr.isEmpty()) {
+                        log.debug("[ZXRequestUtils] 从Redis获取Token成功");
+                        return tokenStr;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[ZXRequestUtils] 从Redis获取Token失败，使用内存缓存: {}", e.getMessage());
+            }
+        }
+
         if (token != null && now < tokenExpireAtMs) {
             return token;
         }
@@ -65,12 +94,38 @@ public class ZXRequestUtils {
 
     /**
      * 设置Token
+     * 同时写入Redis和本地内存缓存
      */
     public void setToken(String token) {
         if (token != null) {
             this.token = token;
-            // 默认缓存30分钟
-            this.tokenExpireAtMs = System.currentTimeMillis() + 30L * 60L * 1000L;
+            this.tokenExpireAtMs = System.currentTimeMillis() + TOKEN_EXPIRE_MINUTES * 60L * 1000L;
+
+            if (redisTemplate != null) {
+                try {
+                    redisTemplate.opsForValue().set(REDIS_TOKEN_KEY, token, TOKEN_EXPIRE_MINUTES, TimeUnit.MINUTES);
+                    log.info("[ZXRequestUtils] Token已写入Redis，Key: {}, 过期时间: {}分钟", REDIS_TOKEN_KEY, TOKEN_EXPIRE_MINUTES);
+                } catch (Exception e) {
+                    log.warn("[ZXRequestUtils] Token写入Redis失败，仅保存在内存: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+    /**
+     * 清除Token
+     */
+    public void clearToken() {
+        this.token = null;
+        this.tokenExpireAtMs = 0;
+
+        if (redisTemplate != null) {
+            try {
+                redisTemplate.delete(REDIS_TOKEN_KEY);
+                log.info("[ZXRequestUtils] Token已从Redis清除");
+            } catch (Exception e) {
+                log.warn("[ZXRequestUtils] Token从Redis清除失败: {}", e.getMessage());
+            }
         }
     }
 
@@ -91,10 +146,8 @@ public class ZXRequestUtils {
                 return new JSONObject();
             }
 
-            // 发送 POST 请求
             String response = HttpUtil.createPost(url).form(formParam).execute().body();
 
-            // 日志太长截取前1000个字符
             if (log.isDebugEnabled()) {
                 log.debug("[ZXBroker] 响应: {}",
                     response.length() > 1000 ? response.substring(0, 1000) : response);
@@ -161,13 +214,13 @@ public class ZXRequestUtils {
                 continue;
             }
 
-            // 打印登录响应的详细信息，以便调试
             log.info("[ZXRequestUtils] 登录响应: {}", loginResponse.toJSONString());
 
             if (!loginResponse.containsKey("need_captcha") || !loginResponse.getBoolean("need_captcha")) {
                 String token = loginResponse.getString("token");
                 if (token != null) {
                     log.info("[ZXRequestUtils] 登录成功，无需验证码");
+                    setToken(token);
                     return token;
                 }
             }
@@ -200,6 +253,7 @@ public class ZXRequestUtils {
                 String token = finalResponse != null ? finalResponse.getString("token") : null;
                 if (token != null) {
                     log.info("[ZXRequestUtils] 验证码验证后登录成功");
+                    setToken(token);
                     return token;
                 }
             }

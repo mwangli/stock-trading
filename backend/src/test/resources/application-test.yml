@@ -1,0 +1,28 @@
+spring:
+  # MySQL配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://124.220.36.95:6033/stock_trading?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
+    username: root
+    password: ${GLOBAL_DB_PASSWORD}
+  # Redis配置
+  data:
+    redis:
+      host: 124.220.36.95
+      port: 6379
+      password: ${GLOBAL_DB_PASSWORD}
+      database: 0
+
+# 关闭自动登录相关功能（测试环境不需要）
+auto-login:
+  enabled: false
+
+# 关闭启动时的数据同步任务
+app:
+  startup:
+    history-sync:
+      enabled: false
+    news-sync:
+      enabled: false
+    model-training:
+      enabled: false

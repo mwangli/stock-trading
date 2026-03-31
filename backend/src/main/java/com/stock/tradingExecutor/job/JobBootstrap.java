@@ -150,6 +150,15 @@ public class JobBootstrap implements ApplicationRunner {
                     .setCronExpression("0 0 17 * * MON-FRI")
                     .setStatus(1));
 
+            // 历史订单同步任务（每周日凌晨 3:00 执行一次全量同步）
+            defaultJobs.add(new JobConfig()
+                    .setJobName("historyOrderSync")
+                    .setDescription("每周同步券商历史委托订单数据")
+                    .setBeanName("historyOrderSyncJob")
+                    .setMethodName("syncHistoryOrders")
+                    .setCronExpression("0 0 3 * * SUN")
+                    .setStatus(1));
+
             for (JobConfig job : defaultJobs) {
                 if (jobConfigRepository.findByJobName(job.getJobName()).isEmpty()) {
                     job.setCreateTime(LocalDateTime.now());
