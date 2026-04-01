@@ -1,7 +1,10 @@
 package com.stock.tradingExecutor.api;
 
+import com.stock.dataCollector.domain.dto.ResponseDTO;
+import com.stock.modelService.domain.dto.PageResult;
 import com.stock.tradingExecutor.domain.entity.HistoryOrder;
 import com.stock.tradingExecutor.dto.HistoryOrderDTO;
+import com.stock.tradingExecutor.dto.HistoryOrderPageRequest;
 import com.stock.tradingExecutor.persistence.HistoryOrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,7 +12,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,61 +24,75 @@ import java.util.List;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/history-orders")
+@RequestMapping("/api/historyOrders")
 @RequiredArgsConstructor
 public class HistoryOrderController {
 
     private final HistoryOrderRepository historyOrderRepository;
 
-    @GetMapping
-    public List<HistoryOrderDTO> list(
-            @RequestParam(required = false) String stockCode,
-            @RequestParam(required = false) String stockName,
-            @RequestParam(required = false) String direction,
-            @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate,
-            @PageableDefault(size = 20, sort = "orderSubmitTime", direction = Sort.Direction.DESC) Pageable pageable) {
-
-        log.info("分页查询历史订单: stockCode={}, stockName={}, direction={}, startDate={}, endDate={}, page={}",
-                stockCode, stockName, direction, startDate, endDate, pageable.getPageNumber());
-
-        Page<HistoryOrder> page = historyOrderRepository.findAll(pageable);
-        return page.getContent().stream().map(this::toDTO).toList();
-    }
-
+    /**
+     * 分页查询历史订单（支持多条件过滤）
+     *
+     * @param request 查询条件
+     * @return 统一封装响应
+     */
     @GetMapping("/page")
-    public Page<HistoryOrderDTO> page(
-            @RequestParam(required = false) String stockCode,
-            @RequestParam(required = false) String stockName,
-            @RequestParam(required = false) String direction,
-            @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-
+    public ResponseDTO<PageResult<HistoryOrderDTO>> page(HistoryOrderPageRequest request) {
         log.info("分页查询历史订单: stockCode={}, stockName={}, direction={}, startDate={}, endDate={}, page={}, size={}",
-                stockCode, stockName, direction, startDate, endDate, page, size);
+                request.getStockCode(), request.getStockName(), request.getDirection(),
+                request.getStartDate(), request.getEndDate(), request.getPage(), request.getSize());
 
         Sort sort = Sort.by(Sort.Direction.DESC, "orderSubmitTime");
-        Pageable pageable = PageRequest.of(page, size, sort);
-        Page<HistoryOrder> result = historyOrderRepository.findAll(pageable);
+        Pageable pageable = PageRequest.of(
+                request.getPage() != null ? request.getPage() : 0,
+                request.getSize() != null ? request.getSize() : 20,
+                sort
+        );
 
-        return result.map(this::toDTO);
+        Page<HistoryOrder> page = historyOrderRepository.findByConditions(
+                request.getStockCode(),
+                request.getStockName(),
+                request.getDirection(),
+                request.getStartDate(),
+                request.getEndDate(),
+                pageable
+        );
+
+        List<HistoryOrderDTO> dtoList = page.getContent().stream().map(this::toDTO).toList();
+
+        PageResult<HistoryOrderDTO> pageResult = PageResult.<HistoryOrderDTO>builder()
+                .list(dtoList)
+                .total(page.getTotalElements())
+                .build();
+
+        log.info("查询完成: 共 {} 条记录", page.getTotalElements());
+        return ResponseDTO.success(pageResult);
     }
 
+    /**
+     * 根据ID查询历史订单详情
+     *
+     * @param id 订单ID
+     * @return 统一封装响应
+     */
     @GetMapping("/{id}")
-    public HistoryOrderDTO getById(@PathVariable Long id) {
+    public ResponseDTO<HistoryOrderDTO> getById(@PathVariable Long id) {
         log.info("查询历史订单详情: id={}", id);
         return historyOrderRepository.findById(id)
-                .map(this::toDTO)
-                .orElse(null);
+                .map(order -> ResponseDTO.success(toDTO(order)))
+                .orElse(ResponseDTO.error("订单不存在"));
     }
 
+    /**
+     * 查询历史订单总数
+     *
+     * @return 统一封装响应
+     */
     @GetMapping("/count")
-    public long count() {
+    public ResponseDTO<Long> count() {
         long total = historyOrderRepository.count();
         log.info("查询历史订单总数: {}", total);
-        return total;
+        return ResponseDTO.success(total);
     }
 
     private HistoryOrderDTO toDTO(HistoryOrder entity) {

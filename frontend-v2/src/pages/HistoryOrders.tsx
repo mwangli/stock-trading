@@ -26,12 +26,15 @@ interface HistoryOrder {
   lastSyncTime: string;
 }
 
-interface PageData {
-  content: HistoryOrder[];
-  totalElements: number;
-  totalPages: number;
-  size: number;
-  number: number;
+interface PageResult {
+  list: HistoryOrder[];
+  total: number;
+}
+
+interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T;
 }
 
 const HistoryOrders: React.FC = () => {
@@ -51,22 +54,33 @@ const HistoryOrders: React.FC = () => {
 
       if (searchText) {
         params.stockCode = searchText;
+        params.stockName = searchText;
       }
       if (directionFilter) {
         params.direction = directionFilter;
       }
 
-      const response = await axios.get('/api/history-orders/page', { params });
-      const pageData: PageData = response.data;
+      const response = await axios.get<ApiResponse<PageResult>>('/api/historyOrders/page', { params });
+      const result = response.data;
 
-      setData(pageData.content || []);
-      setPagination(prev => ({
-        ...prev,
-        total: pageData.totalElements || 0
-      }));
-    } catch (error) {
+      if (result.success && result.data) {
+        setData(result.data.list || []);
+        setPagination(prev => ({
+          ...prev,
+          total: result.data.total || 0
+        }));
+      } else {
+        message.error(result.message || '获取历史订单数据失败');
+      }
+    } catch (error: any) {
       console.error('Failed to fetch history orders:', error);
-      message.error('获取历史订单数据失败');
+      if (error.response?.status === 401) {
+        message.error('未授权，请先登录');
+      } else if (error.code === 'ERR_NETWORK') {
+        message.error('网络连接失败，请检查后端服务是否启动');
+      } else {
+        message.error('获取历史订单数据失败');
+      }
     } finally {
       setLoading(false);
     }
@@ -220,7 +234,7 @@ const HistoryOrders: React.FC = () => {
       <Card bordered={false} className="glass p-4">
         <div className="flex flex-wrap gap-4 mb-4">
           <Input
-            placeholder="搜索股票代码"
+            placeholder="搜索股票代码或名称"
             prefix={<SearchOutlined className="text-gray-500" />}
             className="bg-black/20 border-gray-700 text-white w-48"
             value={searchText}

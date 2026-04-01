@@ -138,4 +138,23 @@ public interface HistoryOrderRepository extends JpaRepository<HistoryOrder, Long
             @Param("lastSyncTime") LocalDateTime lastSyncTime,
             @Param("orderSubmitTime") LocalDateTime orderSubmitTime
     );
+
+    /**
+     * 根据多条件动态查询（支持模糊匹配）
+     */
+    @Query("SELECT h FROM HistoryOrder h WHERE " +
+           "(:stockCode IS NULL OR h.stockCode LIKE %:stockCode%) AND " +
+           "(:stockName IS NULL OR h.stockName LIKE %:stockName%) AND " +
+           "(:direction IS NULL OR h.direction = :direction) AND " +
+           "(:startDate IS NULL OR h.orderDate >= :startDate) AND " +
+           "(:endDate IS NULL OR h.orderDate <= :endDate) " +
+           "ORDER BY h.orderSubmitTime DESC")
+    Page<HistoryOrder> findByConditions(
+            @Param("stockCode") String stockCode,
+            @Param("stockName") String stockName,
+            @Param("direction") String direction,
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate,
+            Pageable pageable
+    );
 }

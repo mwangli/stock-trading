@@ -27,12 +27,15 @@ interface HistoryOrder {
   lastSyncTime: string;
 }
 
-interface PageData {
-  content: HistoryOrder[];
-  totalElements: number;
-  totalPages: number;
-  size: number;
-  number: number;
+interface PageResult {
+  list: HistoryOrder[];
+  total: number;
+}
+
+interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T;
 }
 
 const Transactions: React.FC = () => {
@@ -53,19 +56,24 @@ const Transactions: React.FC = () => {
 
       if (searchText) {
         params.stockCode = searchText;
+        params.stockName = searchText;
       }
       if (sideFilter !== 'ALL') {
         params.direction = sideFilter;
       }
 
-      const response = await axios.get('/api/history-orders/page', { params });
-      const pageData: PageData = response.data;
+      const response = await axios.get<ApiResponse<PageResult>>('/api/historyOrders/page', { params });
+      const result = response.data;
 
-      setOrders(pageData.content || []);
-      setPagination(prev => ({
-        ...prev,
-        total: pageData.totalElements || 0
-      }));
+      if (result.success && result.data) {
+        setOrders(result.data.list || []);
+        setPagination(prev => ({
+          ...prev,
+          total: result.data.total || 0
+        }));
+      } else {
+        message.error(result.message || '获取订单数据失败');
+      }
     } catch (error: any) {
       console.error('Failed to fetch orders:', error);
       if (error.response?.status === 401) {
@@ -198,7 +206,7 @@ const Transactions: React.FC = () => {
           <Space className="w-full justify-between flex-wrap">
             <Space>
               <Input
-                placeholder="搜索股票代码"
+                placeholder="搜索股票代码或名称"
                 prefix={<SearchOutlined className="text-gray-500" />}
                 className="bg-black/20 border-gray-700 text-white w-64"
                 value={searchText}
