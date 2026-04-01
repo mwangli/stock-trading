@@ -141,7 +141,6 @@ public class HistoryOrderController {
         dto.setSerialNo(entity.getSerialNo());
         dto.setOrderTime(entity.getOrderTime());
         dto.setRemark(entity.getRemark());
-        dto.setFullName(entity.getFullName());
         dto.setSyncBatchNo(entity.getSyncBatchNo());
         dto.setLastSyncTime(entity.getLastSyncTime());
         dto.setOrderSubmitTime(entity.getOrderSubmitTime());

@@ -15,7 +15,7 @@ spring:
   # MySQL配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://124.220.36.95:6033/stock_trading?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
+    url: jdbc:mysql://124.220.36.95:6033/stock_trading?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&rewriteBatchedStatements=true
     username: root
     password: ${GLOBAL_DB_PASSWORD}
   # 如果你使用远程 Redis，只需要修改 host/port/password 即可
@@ -45,6 +45,14 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 100
+          batch_versioned_data: true
+        order_inserts: true
+        order_updates: true
+        default_batch_fetch_size: 100
 
   # 邮箱配置（用于获取短信验证码）
   email:

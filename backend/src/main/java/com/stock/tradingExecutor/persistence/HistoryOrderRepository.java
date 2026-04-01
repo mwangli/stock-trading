@@ -10,8 +10,10 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 历史订单Repository
@@ -23,6 +25,11 @@ import java.util.Optional;
 public interface HistoryOrderRepository extends JpaRepository<HistoryOrder, Long> {
 
     /**
+     * 根据委托编号查询订单（唯一标识）
+     */
+    Optional<HistoryOrder> findByOrderNo(String orderNo);
+
+    /**
      * 根据委托编号和委托日期查询唯一订单
      */
     Optional<HistoryOrder> findByOrderNoAndOrderDate(String orderNo, String orderDate);
@@ -30,7 +37,13 @@ public interface HistoryOrderRepository extends JpaRepository<HistoryOrder, Long
     /**
      * 检查订单是否已存在
      */
-    boolean existsByOrderNoAndOrderDate(String orderNo, String orderDate);
+    boolean existsByOrderNo(String orderNo);
+
+    /**
+     * 批量检查订单是否存在（用于批量去重）
+     */
+    @Query("SELECT h.orderNo FROM HistoryOrder h WHERE h.orderNo IN :orderNos")
+    Set<String> findExistingOrderNos(@Param("orderNos") Collection<String> orderNos);
 
     /**
      * 根据股票代码查询历史订单
@@ -80,26 +93,17 @@ public interface HistoryOrderRepository extends JpaRepository<HistoryOrder, Long
     List<String> findLatestSyncBatchNo(Pageable pageable);
 
     /**
-     * 批量查询已存在的订单（用于upsert前检查）
+     * 原生单条Upsert（使用INSERT ... ON DUPLICATE KEY UPDATE）
      */
-    @Query("SELECT h FROM HistoryOrder h WHERE h.orderNo IN :orderNos AND h.orderDate IN :orderDates")
-    List<HistoryOrder> findExistingByOrderNosAndDates(
-            @Param("orderNos") List<String> orderNos,
-            @Param("orderDates") List<String> orderDates);
-
-    /**
-     * 原生批量Upsert（使用INSERT ... ON DUPLICATE KEY UPDATE）
-     * 性能高效，适合大量数据
-     */
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query(value = """
         INSERT INTO history_order (
             order_date, order_no, market_type, stock_account, stock_code, stock_name,
-            direction, price, quantity, amount, serial_no, order_time, remark, full_name,
+            direction, price, quantity, amount, serial_no, order_time, remark,
             sync_batch_no, last_sync_time, order_submit_time, create_time, update_time
         ) VALUES (
             :orderDate, :orderNo, :marketType, :stockAccount, :stockCode, :stockName,
-            :direction, :price, :quantity, :amount, :serialNo, :orderTime, :remark, :fullName,
+            :direction, :price, :quantity, :amount, :serialNo, :orderTime, :remark,
             :syncBatchNo, :lastSyncTime, :orderSubmitTime, NOW(), NOW()
         ) ON DUPLICATE KEY UPDATE
             market_type = VALUES(market_type),
@@ -113,7 +117,6 @@ public interface HistoryOrderRepository extends JpaRepository<HistoryOrder, Long
             serial_no = VALUES(serial_no),
             order_time = VALUES(order_time),
             remark = VALUES(remark),
-            full_name = VALUES(full_name),
             sync_batch_no = VALUES(sync_batch_no),
             last_sync_time = VALUES(last_sync_time),
             order_submit_time = VALUES(order_submit_time),
@@ -133,7 +136,6 @@ public interface HistoryOrderRepository extends JpaRepository<HistoryOrder, Long
             @Param("serialNo") String serialNo,
             @Param("orderTime") String orderTime,
             @Param("remark") String remark,
-            @Param("fullName") String fullName,
             @Param("syncBatchNo") String syncBatchNo,
             @Param("lastSyncTime") LocalDateTime lastSyncTime,
             @Param("orderSubmitTime") LocalDateTime orderSubmitTime

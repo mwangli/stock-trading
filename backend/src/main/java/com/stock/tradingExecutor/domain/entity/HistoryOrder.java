@@ -21,7 +21,7 @@ import java.time.LocalDateTime;
 @Data
 @Entity
 @Table(name = "history_order", indexes = {
-    @Index(name = "idx_order_no_date", columnList = "orderNo, orderDate", unique = true),
+    @Index(name = "idx_order_no", columnList = "orderNo", unique = true),
     @Index(name = "idx_stock_code", columnList = "stockCode"),
     @Index(name = "idx_order_date", columnList = "orderDate")
 })
@@ -40,9 +40,9 @@ public class HistoryOrder {
     private String orderDate;
 
     /**
-     * 委托编号
+     * 委托编号（唯一标识）
      */
-    @Column(nullable = false, length = 32)
+    @Column(nullable = false, length = 32, unique = true)
     private String orderNo;
 
     /**
@@ -114,12 +114,6 @@ public class HistoryOrder {
      */
     @Column(length = 128)
     private String remark;
-
-    /**
-     * 证券全称
-     */
-    @Column(length = 128)
-    private String fullName;
 
     /**
      * 同步批次号，用于断点续传

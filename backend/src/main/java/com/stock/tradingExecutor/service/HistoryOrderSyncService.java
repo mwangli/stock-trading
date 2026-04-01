@@ -44,12 +44,15 @@ public class HistoryOrderSyncService {
 
     private final HistoryOrderRepository historyOrderRepository;
     private final StringRedisTemplate stringRedisTemplate;
+    private final HistoryOrderPersistenceService historyOrderPersistenceService;
 
     @Autowired
     public HistoryOrderSyncService(HistoryOrderRepository historyOrderRepository,
-                                   @Autowired(required = false) StringRedisTemplate stringRedisTemplate) {
+                                   @Autowired(required = false) StringRedisTemplate stringRedisTemplate,
+                                   HistoryOrderPersistenceService historyOrderPersistenceService) {
         this.historyOrderRepository = historyOrderRepository;
         this.stringRedisTemplate = stringRedisTemplate;
+        this.historyOrderPersistenceService = historyOrderPersistenceService;
     }
 
     /**
@@ -107,7 +110,7 @@ public class HistoryOrderSyncService {
 
         log.info("[历史订单同步] 共扫描 {} 个月份，累计获取 {} 条订单，开始批量写入数据库", totalMonths, allOrders.size());
 
-        SyncPageResult finalResult = saveOrdersWithDedup(allOrders, batchNo);
+        HistoryOrderPersistenceService.SyncPageResult finalResult = historyOrderPersistenceService.saveOrders(allOrders, batchNo);
 
         long costTime = System.currentTimeMillis() - startTime;
         log.info("[历史订单同步] 同步完成, 批次号: {}, 总获取: {}, 新增: {}, 重复: {}, 失败: {}, 耗时: {}ms",
@@ -160,7 +163,7 @@ public class HistoryOrderSyncService {
         long startTime = System.currentTimeMillis();
 
         List<HistoryOrder> orders = fetchAllOrdersInRange(startDate, endDate);
-        SyncPageResult result = saveOrdersWithDedup(orders, batchNo);
+        HistoryOrderPersistenceService.SyncPageResult result = historyOrderPersistenceService.saveOrders(orders, batchNo);
 
         long costTime = System.currentTimeMillis() - startTime;
         log.info("[历史订单同步] 同步完成, 批次号: {}, 总获取: {}, 新增: {}, 重复: {}, 失败: {}, 耗时: {}ms",
@@ -392,71 +395,10 @@ public class HistoryOrderSyncService {
         }
     }
 
-    /**
-     * 批量保存订单并进行去重（使用原生Upsert，性能高效）
-     */
-    @Transactional
-    private SyncPageResult saveOrdersWithDedup(List<HistoryOrder> orders, String batchNo) {
-        if (orders.isEmpty()) {
-            return new SyncPageResult(0, 0, 0);
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-        int insertCount = 0;
-        int updateCount = 0;
-        int failedCount = 0;
-
-        int batchSize = 100;
-        for (int i = 0; i < orders.size(); i += batchSize) {
-            int end = Math.min(i + batchSize, orders.size());
-            List<HistoryOrder> batch = orders.subList(i, end);
-
-            for (HistoryOrder order : batch) {
-                try {
-                    order.setSyncBatchNo(batchNo);
-                    order.setLastSyncTime(now);
-
-                    historyOrderRepository.upsertOrder(
-                            order.getOrderDate(),
-                            order.getOrderNo(),
-                            order.getMarketType(),
-                            order.getStockAccount(),
-                            order.getStockCode(),
-                            order.getStockName(),
-                            order.getDirection(),
-                            order.getPrice(),
-                            order.getQuantity(),
-                            order.getAmount(),
-                            order.getSerialNo(),
-                            order.getOrderTime(),
-                            order.getRemark(),
-                            order.getFullName(),
-                            batchNo,
-                            now,
-                            order.getOrderSubmitTime()
-                    );
-
-                    insertCount++;
-
-                } catch (Exception e) {
-                    log.warn("[历史订单同步] Upsert订单失败: {}, {}", order.getOrderNo(), e.getMessage());
-                    failedCount++;
-                }
-            }
-
-            log.debug("[历史订单同步] 已处理 {}/{} 条订单", Math.min(end, orders.size()), orders.size());
-        }
-
-        log.info("[历史订单同步] 批量写入完成, 新增/更新: {}, 失败: {}", insertCount, failedCount);
-        return new SyncPageResult(insertCount, 0, failedCount);
-    }
-
     private String generateBatchNo() {
         return "HO-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
                 + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
-
-    private record SyncPageResult(int saved, int duplicate, int failed) {}
 
     /**
      * 获取最近一次同步的订单数量
