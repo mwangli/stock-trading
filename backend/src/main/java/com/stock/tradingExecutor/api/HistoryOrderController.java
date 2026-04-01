@@ -33,15 +33,16 @@ public class HistoryOrderController {
     private final HistoryOrderSyncService historyOrderSyncService;
 
     /**
-     * 分页查询历史订单（支持多条件过滤）
+     * 分页查询历史订单（支持关键字和方向过滤）
+     * keyword 模糊匹配股票代码和名称，direction 过滤买卖方向
      *
-     * @param request 查询条件
+     * @param request 查询条件（keyword、direction、startDate、endDate、page、size）
      * @return 统一封装响应
      */
-    @GetMapping("/page")
-    public ResponseDTO<PageResult<HistoryOrderDTO>> page(HistoryOrderPageRequest request) {
-        log.info("分页查询历史订单: stockCode={}, stockName={}, direction={}, startDate={}, endDate={}, page={}, size={}",
-                request.getStockCode(), request.getStockName(), request.getDirection(),
+    @PostMapping("/page")
+    public ResponseDTO<PageResult<HistoryOrderDTO>> page(@RequestBody HistoryOrderPageRequest request) {
+        log.info("分页查询历史订单: keyword={}, direction={}, startDate={}, endDate={}, page={}, size={}",
+                request.getKeyword(), request.getDirection(),
                 request.getStartDate(), request.getEndDate(), request.getPage(), request.getSize());
 
         Sort sort = Sort.by(Sort.Direction.DESC, "orderSubmitTime");
@@ -52,8 +53,7 @@ public class HistoryOrderController {
         );
 
         Page<HistoryOrder> page = historyOrderRepository.findByConditions(
-                request.getStockCode(),
-                request.getStockName(),
+                request.getKeyword(),
                 request.getDirection(),
                 request.getStartDate(),
                 request.getEndDate(),

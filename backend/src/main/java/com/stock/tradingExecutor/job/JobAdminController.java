@@ -28,12 +28,35 @@ public class JobAdminController {
     private final JobConfigRepository jobConfigRepository;
 
     /**
-     * 获取任务列表
+     * 获取任务列表（支持分页）
+     *
+     * @param pageNum  页码，默认为1
+     * @param pageSize 每页大小，默认为10
      */
     @GetMapping
-    public ResponseDTO<List<JobConfig>> listJobs() {
-        log.info("获取任务列表");
-        return ResponseDTO.success(jobConfigRepository.findAll());
+    public ResponseDTO<PageResult<JobConfig>> listJobs(
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "10") int pageSize) {
+        log.info("获取任务列表，页码: {}, 每页大小: {}", pageNum, pageSize);
+        
+        // 构建分页查询
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                pageNum - 1, // JPA页码从0开始
+                pageSize
+        );
+        
+        // 执行分页查询
+        org.springframework.data.domain.Page<JobConfig> page = jobConfigRepository.findAll(pageable);
+        
+        // 构建分页结果
+        PageResult<JobConfig> pageResult = new PageResult<>(
+                page.getContent(),
+                page.getTotalElements(),
+                pageNum,
+                pageSize
+        );
+        
+        return ResponseDTO.success(pageResult);
     }
 
     /**

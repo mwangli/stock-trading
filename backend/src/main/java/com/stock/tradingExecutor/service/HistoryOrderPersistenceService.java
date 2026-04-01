@@ -37,7 +37,6 @@ public class HistoryOrderPersistenceService {
      * @param batchNo 批次号
      * @return 保存结果
      */
-    @Transactional
     public SyncPageResult saveOrders(List<HistoryOrder> orders, String batchNo) {
         if (orders.isEmpty()) {
             return new SyncPageResult(0, 0, 0);

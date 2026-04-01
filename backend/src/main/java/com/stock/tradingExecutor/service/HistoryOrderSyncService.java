@@ -45,14 +45,17 @@ public class HistoryOrderSyncService {
     private final HistoryOrderRepository historyOrderRepository;
     private final StringRedisTemplate stringRedisTemplate;
     private final HistoryOrderPersistenceService historyOrderPersistenceService;
+    private final TradeRecordAssembleService tradeRecordAssembleService;
 
     @Autowired
     public HistoryOrderSyncService(HistoryOrderRepository historyOrderRepository,
                                    @Autowired(required = false) StringRedisTemplate stringRedisTemplate,
-                                   HistoryOrderPersistenceService historyOrderPersistenceService) {
+                                   HistoryOrderPersistenceService historyOrderPersistenceService,
+                                   TradeRecordAssembleService tradeRecordAssembleService) {
         this.historyOrderRepository = historyOrderRepository;
         this.stringRedisTemplate = stringRedisTemplate;
         this.historyOrderPersistenceService = historyOrderPersistenceService;
+        this.tradeRecordAssembleService = tradeRecordAssembleService;
     }
 
     /**
@@ -116,6 +119,9 @@ public class HistoryOrderSyncService {
         log.info("[历史订单同步] 同步完成, 批次号: {}, 总获取: {}, 新增: {}, 重复: {}, 失败: {}, 耗时: {}ms",
                 batchNo, allOrders.size(), finalResult.saved(), finalResult.duplicate(), finalResult.failed(), costTime);
 
+        // 同步完成后组装交易记录
+        tradeRecordAssembleService.assembleAfterSync();
+
         return new SyncResult(allOrders.size(), finalResult.saved(), finalResult.duplicate(), finalResult.failed(), batchNo, costTime);
     }
 
@@ -168,6 +174,9 @@ public class HistoryOrderSyncService {
         long costTime = System.currentTimeMillis() - startTime;
         log.info("[历史订单同步] 同步完成, 批次号: {}, 总获取: {}, 新增: {}, 重复: {}, 失败: {}, 耗时: {}ms",
                 batchNo, orders.size(), result.saved(), result.duplicate(), result.failed(), costTime);
+
+        // 同步完成后组装交易记录
+        tradeRecordAssembleService.assembleAfterSync();
 
         return new SyncResult(orders.size(), result.saved(), result.duplicate(), result.failed(), batchNo, costTime);
     }
@@ -333,10 +342,13 @@ public class HistoryOrderSyncService {
         order.setPrice(parseDecimal(fields[7].trim()));
         order.setQuantity(parseInteger(fields[8].trim()));
         order.setOrderNo(fields[9].trim());
-        order.setAmount(parseDecimal(fields[10].trim()));
         order.setSerialNo(fields[11].trim());
         order.setStockAccount(fields[12].trim());
         order.setMarketType(fields[13].trim());
+
+        if (order.getPrice() != null && order.getQuantity() != null) {
+            order.setAmount(order.getPrice().multiply(BigDecimal.valueOf(order.getQuantity())));
+        }
 
         // 设置订单提交时间（委托日期+委托时间）
         order.setOrderSubmitTime(parseOrderSubmitTime(order.getOrderDate(), order.getOrderTime()));

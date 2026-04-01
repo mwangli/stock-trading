@@ -40,6 +40,11 @@ public interface HistoryOrderRepository extends JpaRepository<HistoryOrder, Long
     boolean existsByOrderNo(String orderNo);
 
     /**
+     * 根据委托编号和委托日期检查订单是否存在
+     */
+    boolean existsByOrderNoAndOrderDate(String orderNo, String orderDate);
+
+    /**
      * 批量检查订单是否存在（用于批量去重）
      */
     @Query("SELECT h.orderNo FROM HistoryOrder h WHERE h.orderNo IN :orderNos")
@@ -85,6 +90,11 @@ public interface HistoryOrderRepository extends JpaRepository<HistoryOrder, Long
      * 删除指定批次的订单（用于同步失败回滚）
      */
     void deleteBySyncBatchNo(String syncBatchNo);
+
+    /**
+     * 根据同步批次号查询订单
+     */
+    List<HistoryOrder> findBySyncBatchNo(String syncBatchNo);
 
     /**
      * 查询最新同步的一批订单
@@ -142,18 +152,17 @@ public interface HistoryOrderRepository extends JpaRepository<HistoryOrder, Long
     );
 
     /**
-     * 根据多条件动态查询（支持模糊匹配）
+     * 根据多条件动态查询（支持关键字模糊匹配）
+     * keyword 同时匹配股票代码和名称
      */
     @Query("SELECT h FROM HistoryOrder h WHERE " +
-           "(:stockCode IS NULL OR h.stockCode LIKE %:stockCode%) AND " +
-           "(:stockName IS NULL OR h.stockName LIKE %:stockName%) AND " +
+           "(:keyword IS NULL OR h.stockCode LIKE %:keyword% OR h.stockName LIKE %:keyword%) AND " +
            "(:direction IS NULL OR h.direction = :direction) AND " +
            "(:startDate IS NULL OR h.orderDate >= :startDate) AND " +
            "(:endDate IS NULL OR h.orderDate <= :endDate) " +
            "ORDER BY h.orderSubmitTime DESC")
     Page<HistoryOrder> findByConditions(
-            @Param("stockCode") String stockCode,
-            @Param("stockName") String stockName,
+            @Param("keyword") String keyword,
             @Param("direction") String direction,
             @Param("startDate") String startDate,
             @Param("endDate") String endDate,

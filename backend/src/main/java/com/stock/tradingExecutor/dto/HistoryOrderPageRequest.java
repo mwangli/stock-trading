@@ -18,14 +18,9 @@ import lombok.NoArgsConstructor;
 public class HistoryOrderPageRequest {
 
     /**
-     * 股票代码（模糊查询）
+     * 关键字（模糊匹配股票代码和名称）
      */
-    private String stockCode;
-
-    /**
-     * 股票名称（模糊查询）
-     */
-    private String stockName;
+    private String keyword;
 
     /**
      * 买卖方向：B=买入，S=卖出

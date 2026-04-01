@@ -116,6 +116,12 @@ public class HistoryOrder {
     private String remark;
 
     /**
+     * 证券全称
+     */
+    @Column(length = 128)
+    private String fullName;
+
+    /**
      * 同步批次号，用于断点续传
      */
     @Column(length = 64)
