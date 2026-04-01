@@ -10,104 +10,23 @@ const Settings: React.FC = () => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
-  const [encryptionKey, setEncryptionKey] = useState<string>('');
-  const [hasApiKey, setHasApiKey] = useState(false);
 
   useEffect(() => {
-    Promise.all([fetchEncryptionKey(), fetchConfig()]);
+    fetchConfig();
   }, []);
-
-  const fetchEncryptionKey = async (): Promise<string> => {
-    try {
-      const res = await request.get('/system/encryptionKey') as { success: boolean; data?: { encryptionKey: string } };
-      if (res.success && res.data?.encryptionKey) {
-        setEncryptionKey(res.data.encryptionKey);
-        return res.data.encryptionKey;
-      }
-    } catch (error) {
-      console.error('获取加密密钥失败:', error);
-    }
-    return '';
-  };
 
   const fetchConfig = async () => {
     try {
-      const res = await request.get('/system/config') as { success: boolean; data?: { apiKey?: string } };
-      if (res.success && res.data) {
-        if (res.data.apiKey) {
-          setHasApiKey(true);
-        }
-      }
+      await request.get('/system/config');
     } catch (error) {
       console.error('获取配置失败:', error);
     }
   };
 
-  const base64ToBytes = (base64: string): Uint8Array => {
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
-  };
-
-  const bytesToBase64 = (bytes: Uint8Array): string => {
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
-  };
-
-  const encrypt = async (plainText: string, key: string): Promise<string> => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(plainText);
-    const keyBytes = base64ToBytes(key);
-
-    const cryptoKey = await window.crypto.subtle.importKey(
-      'raw',
-      keyBytes.buffer as ArrayBuffer,
-      { name: 'AES-ECB' },
-      false,
-      ['encrypt']
-    );
-
-    const encrypted = await window.crypto.subtle.encrypt(
-      { name: 'AES-ECB' },
-      cryptoKey,
-      data
-    );
-
-    return bytesToBase64(new Uint8Array(encrypted));
-  };
-
   const onFinish = async (values: any) => {
     setLoading(true);
     try {
-      let apiKeyToSave = values.apiKey;
-
-      if (!apiKeyToSave || apiKeyToSave === '************************') {
-        apiKeyToSave = undefined;
-      } else if (encryptionKey) {
-        apiKeyToSave = await encrypt(apiKeyToSave, encryptionKey);
-        console.log('API Key 已加密:', apiKeyToSave);
-      } else {
-        console.warn('加密密钥未加载，尝试重新获取...');
-        const key = await fetchEncryptionKey();
-        if (key) {
-          apiKeyToSave = await encrypt(apiKeyToSave, key);
-          console.log('API Key 已加密:', apiKeyToSave);
-        }
-      }
-
-      const submitData = {
-        ...values,
-        apiKey: apiKeyToSave
-      };
-
-      await request.put('/system/config', submitData);
-      setHasApiKey(true);
+      await request.put('/system/config', values);
       message.success(t('settings.successMsg'));
     } catch (error) {
       message.error(t('settings.saveFailed') || '保存失败，请检查后端服务');
@@ -194,15 +113,8 @@ const Settings: React.FC = () => {
                 </span>
               </a>
             </h3>
-            <Form.Item
-              label={t('settings.fields.apiKey')}
-              name="apiKey"
-              extra={hasApiKey ? t('settings.apiKeyChanged') : t('settings.apiKeyEmpty')}
-            >
-              <Input.Password
-                className="bg-white/5 border-white/10 text-white"
-                placeholder={hasApiKey ? '••••••••••••' : t('settings.apiKeyPlaceholder')}
-              />
+            <Form.Item label={t('settings.fields.apiKey')} name="apiKey">
+              <Input.Password className="bg-white/5 border-white/10 text-white" />
             </Form.Item>
             <Form.Item label={t('settings.fields.refreshRate')} name="refreshRate">
                <Input type="number" className="bg-white/5 border-white/10 text-white" />

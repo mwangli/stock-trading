@@ -387,10 +387,7 @@
     "openBrokerPlatform": "打开平台地址",
     "testConnection": "测试连接",
     "successMsg": "设置保存成功",
-    "saveFailed": "保存失败，请重试",
-    "apiKeyChanged": "已设置密钥，如需修改请输入新密钥",
-    "apiKeyEmpty": "请输入平台登录API密钥",
-    "apiKeyPlaceholder": "输入API密钥"
+    "saveFailed": "保存失败，请重试"
   },
   "transactions": {
     "title": "交易记录",

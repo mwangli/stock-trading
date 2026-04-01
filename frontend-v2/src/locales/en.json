@@ -355,10 +355,7 @@
     "openBrokerPlatform": "Open Platform",
     "testConnection": "Test Connection",
     "successMsg": "Settings Saved Successfully",
-    "saveFailed": "Save failed, please retry",
-    "apiKeyChanged": "API key is set. Enter new key to update.",
-    "apiKeyEmpty": "Please enter the Platform Login API Key",
-    "apiKeyPlaceholder": "Enter API Key"
+    "saveFailed": "Save failed, please retry"
   },
   "transactions": {
     "title": "Trade History",
