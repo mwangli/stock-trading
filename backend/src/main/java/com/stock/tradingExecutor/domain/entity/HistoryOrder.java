@@ -105,6 +105,11 @@ public class HistoryOrder {
     private String orderTime;
 
     /**
+     * 订单原始提交时间（委托日期+委托时间，用于展示和排序）
+     */
+    private LocalDateTime orderSubmitTime;
+
+    /**
      * 备注
      */
     @Column(length = 128)

@@ -75,6 +75,7 @@ const DashboardLayout: React.FC = () => {
     { key: '/models', icon: <FundOutlined />, label: t('layout.models') },
     { key: '/analysis', icon: <PieChartOutlined />, label: t('layout.analysis') },
     { key: '/transactions', icon: <HistoryOutlined />, label: t('layout.transactions') },
+    { key: '/history-orders', icon: <HistoryOutlined />, label: '历史订单' },
     { key: '/jobs', icon: <ScheduleOutlined />, label: t('layout.jobs') },
     { key: '/logs', icon: <FileTextOutlined />, label: t('layout.logs') },
     { key: '/settings', icon: <SettingOutlined />, label: t('layout.settings') },

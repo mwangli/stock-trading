@@ -50,11 +50,9 @@ public class HistoryOrderSyncServiceTest {
         long countBefore = historyOrderRepository.count();
         System.out.println("同步前数据库订单数: " + countBefore);
 
-        // 调用真实API进行同步（使用10年时间范围）
-        HistoryOrderSyncService.SyncResult result = historyOrderSyncService.syncHistoryOrdersByDateRange(
-                LocalDate.now().minusYears(10),  // 最近10年
-                LocalDate.now()
-        );
+        // 调用真实API进行同步（按月查询，最后批量写入）
+        System.out.println("使用按月查询模式 (syncAllHistoryOrders)");
+        HistoryOrderSyncService.SyncResult result = historyOrderSyncService.syncAllHistoryOrders();
 
         System.out.println("\n========== 同步结果 ==========");
         System.out.println("API返回总记录数: " + result.totalFetched());

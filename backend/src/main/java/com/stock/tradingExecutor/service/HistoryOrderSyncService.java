@@ -38,7 +38,7 @@ public class HistoryOrderSyncService {
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final String REDIS_TOKEN_KEY = "LOGIN_TOKEN";
 
-    private static final int DEFAULT_MAX_COUNT = 100;
+    private static final int DEFAULT_MAX_COUNT = 1000;
     private static final int MAX_RETRY_TIMES = 3;
     private static final int BATCH_SIZE = 50;
 
@@ -65,18 +65,92 @@ public class HistoryOrderSyncService {
     ) {}
 
     /**
-     * 执行全量历史订单同步
-     * 从当前日期往前推3年的数据
+     * 执行全量历史订单同步（按月查询，最后批量写入）
+     * 从2023年1月开始，按月同步到当前月份
      */
     public SyncResult syncAllHistoryOrders() {
-        return syncHistoryOrdersByDateRange(
-                LocalDate.now().minusYears(3),
-                LocalDate.now()
-        );
+        LocalDate startDate = LocalDate.of(2023, 1, 1);
+        LocalDate endDate = LocalDate.now();
+        return syncHistoryOrdersByMonth(startDate, endDate);
     }
 
     /**
-     * 按指定日期范围同步历史订单
+     * 按月查询历史订单，最后批量写入数据库
+     */
+    public SyncResult syncHistoryOrdersByMonth(LocalDate startDate, LocalDate endDate) {
+        String batchNo = generateBatchNo();
+        log.info("[历史订单同步] 开始按月同步任务, 批次号: {}, 日期范围: {} ~ {}",
+                batchNo, startDate.format(DATE_FORMATTER), endDate.format(DATE_FORMATTER));
+
+        long startTime = System.currentTimeMillis();
+        List<HistoryOrder> allOrders = new ArrayList<>();
+        int totalMonths = 0;
+
+        LocalDate monthStart = startDate.withDayOfMonth(1);
+        while (!monthStart.isAfter(endDate)) {
+            LocalDate monthEnd = monthStart.withDayOfMonth(monthStart.lengthOfMonth());
+            if (monthEnd.isAfter(endDate)) {
+                monthEnd = endDate;
+            }
+
+            totalMonths++;
+            log.info("[历史订单同步] 正在查询第 {}/{} 月: {} ~ {}",
+                    totalMonths, "?", monthStart.format(DATE_FORMATTER), monthEnd.format(DATE_FORMATTER));
+
+            List<HistoryOrder> monthOrders = fetchAllOrdersInRange(monthStart, monthEnd);
+            log.info("[历史订单同步] {} 年 {} 月获取 {} 条订单",
+                    monthStart.getYear(), monthStart.getMonthValue(), monthOrders.size());
+            allOrders.addAll(monthOrders);
+
+            monthStart = monthStart.plusMonths(1);
+        }
+
+        log.info("[历史订单同步] 共扫描 {} 个月份，累计获取 {} 条订单，开始批量写入数据库", totalMonths, allOrders.size());
+
+        SyncPageResult finalResult = saveOrdersWithDedup(allOrders, batchNo);
+
+        long costTime = System.currentTimeMillis() - startTime;
+        log.info("[历史订单同步] 同步完成, 批次号: {}, 总获取: {}, 新增: {}, 重复: {}, 失败: {}, 耗时: {}ms",
+                batchNo, allOrders.size(), finalResult.saved(), finalResult.duplicate(), finalResult.failed(), costTime);
+
+        return new SyncResult(allOrders.size(), finalResult.saved(), finalResult.duplicate(), finalResult.failed(), batchNo, costTime);
+    }
+
+    /**
+     * 获取指定日期范围内的所有订单（自动翻页）
+     */
+    private List<HistoryOrder> fetchAllOrdersInRange(LocalDate startDate, LocalDate endDate) {
+        List<HistoryOrder> allOrders = new ArrayList<>();
+        int startPos = 0;
+        boolean hasMore = true;
+
+        while (hasMore) {
+            List<HistoryOrder> pageOrders = fetchOrdersByPage(startDate, endDate, startPos, DEFAULT_MAX_COUNT);
+
+            if (pageOrders.isEmpty()) {
+                hasMore = false;
+                break;
+            }
+
+            allOrders.addAll(pageOrders);
+
+            if (pageOrders.size() < DEFAULT_MAX_COUNT) {
+                hasMore = false;
+            } else {
+                startPos += DEFAULT_MAX_COUNT;
+            }
+
+            if (startPos >= 5000) {
+                log.warn("[历史订单同步] 单月超过5000条，提前结束");
+                break;
+            }
+        }
+
+        return allOrders;
+    }
+
+    /**
+     * 按指定日期范围同步历史订单（原有方法保留）
      */
     public SyncResult syncHistoryOrdersByDateRange(LocalDate startDate, LocalDate endDate) {
         String batchNo = generateBatchNo();
@@ -84,54 +158,15 @@ public class HistoryOrderSyncService {
                 batchNo, startDate.format(DATE_FORMATTER), endDate.format(DATE_FORMATTER));
 
         long startTime = System.currentTimeMillis();
-        int totalFetched = 0;
-        int savedCount = 0;
-        int duplicateCount = 0;
-        int failedCount = 0;
 
-        int startPos = 0;
-        boolean hasMore = true;
+        List<HistoryOrder> orders = fetchAllOrdersInRange(startDate, endDate);
+        SyncPageResult result = saveOrdersWithDedup(orders, batchNo);
 
-        try {
-            while (hasMore) {
-                List<HistoryOrder> orders = fetchOrdersByPage(startDate, endDate, startPos, DEFAULT_MAX_COUNT);
+        long costTime = System.currentTimeMillis() - startTime;
+        log.info("[历史订单同步] 同步完成, 批次号: {}, 总获取: {}, 新增: {}, 重复: {}, 失败: {}, 耗时: {}ms",
+                batchNo, orders.size(), result.saved(), result.duplicate(), result.failed(), costTime);
 
-                if (orders.isEmpty()) {
-                    log.debug("[历史订单同步] 第{}页数据为空，停止同步", startPos / DEFAULT_MAX_COUNT + 1);
-                    hasMore = false;
-                    break;
-                }
-
-                totalFetched += orders.size();
-                log.info("[历史订单同步] 第{}页获取 {} 条订单", startPos / DEFAULT_MAX_COUNT + 1, orders.size());
-
-                SyncPageResult pageResult = saveOrdersWithDedup(orders, batchNo);
-                savedCount += pageResult.saved();
-                duplicateCount += pageResult.duplicate();
-                failedCount += pageResult.failed();
-
-                if (orders.size() < DEFAULT_MAX_COUNT) {
-                    hasMore = false;
-                } else {
-                    startPos += DEFAULT_MAX_COUNT;
-                }
-
-                if (startPos >= 5000) {
-                    log.warn("[历史订单同步] 单次同步超过5000条，提前结束以避免接口限制");
-                    break;
-                }
-            }
-
-            long costTime = System.currentTimeMillis() - startTime;
-            log.info("[历史订单同步] 同步完成, 批次号: {}, 总获取: {}, 新增: {}, 重复: {}, 失败: {}, 耗时: {}ms",
-                    batchNo, totalFetched, savedCount, duplicateCount, failedCount, costTime);
-
-            return new SyncResult(totalFetched, savedCount, duplicateCount, failedCount, batchNo, costTime);
-
-        } catch (Exception e) {
-            log.error("[历史订单同步] 同步过程发生异常, 批次号: {}", batchNo, e);
-            throw new RuntimeException("历史订单同步失败: " + e.getMessage(), e);
-        }
+        return new SyncResult(orders.size(), result.saved(), result.duplicate(), result.failed(), batchNo, costTime);
     }
 
     /**
@@ -201,7 +236,7 @@ public class HistoryOrderSyncService {
         params.put("Reqno", System.currentTimeMillis());
         params.put("ReqlinkType", "1");
         params.put("newindex", "1");
-        params.put("action", "115");
+        params.put("action", "5018");
         params.put("StartPos", startPos);
         params.put("MaxCount", maxCount);
         params.put("intacttoserver", "@ClZvbHVtZUluZm8JAAAAMTdBQy00QzAx");
@@ -249,8 +284,8 @@ public class HistoryOrderSyncService {
                     continue;
                 }
 
-                // 跳过表头行（第一行通常是表头）
-                if (row.contains("日期|委托编号") || row.startsWith("日期|")) {
+                // 跳过表头行（第一行通常是表头，包含"委托日期"或"日期"字段）
+                if (row.contains("委托日期|") || row.startsWith("日期|") || row.contains("证券代码|证券")) {
                     log.debug("[历史订单同步] 跳过表头行: {}", row);
                     continue;
                 }
@@ -274,7 +309,8 @@ public class HistoryOrderSyncService {
 
     /**
      * 解析单行订单数据
-     * 格式: "日期|委托编号|市场类型|股东帐号|代码|名称|买卖方向|价格|数量|成交金额|流水号|时间|备注|证券全称|"
+     * action=5018 格式: "委托日期|时间|证券代码|证券名称|委托类别|买卖方向|委托状态|委托价格|数量|委托编号|均价|成交数量|股东代码|交易类别|"
+     * 例如: "20240506|093258|603098|森特股份|委托|卖出|全部成交|9.6700|100|6906|9.6700|100|A826158733|上海|"
      */
     private HistoryOrder parseOrderRow(String row) {
         String[] fields = row.split("\\|");
@@ -286,21 +322,21 @@ public class HistoryOrderSyncService {
 
         HistoryOrder order = new HistoryOrder();
         order.setOrderDate(fields[0].trim());
-        order.setOrderNo(fields[1].trim());
-        order.setMarketType(fields[2].trim());
-        order.setStockAccount(fields[3].trim());
-        order.setStockCode(fields[4].trim());
-        order.setStockName(fields[5].trim());
-        order.setDirection(fields[6].trim());
+        order.setOrderTime(fields[1].trim());
+        order.setStockCode(fields[2].trim());
+        order.setStockName(fields[3].trim());
+        order.setRemark(fields[4].trim());
+        order.setDirection(mapDirection(fields[5].trim()));
         order.setPrice(parseDecimal(fields[7].trim()));
         order.setQuantity(parseInteger(fields[8].trim()));
-        order.setAmount(parseDecimal(fields[9].trim()));
-        order.setSerialNo(fields[10].trim());
-        order.setOrderTime(fields[11].trim());
-        order.setRemark(fields[12].trim());
-        if (fields.length > 13) {
-            order.setFullName(fields[13].trim());
-        }
+        order.setOrderNo(fields[9].trim());
+        order.setAmount(parseDecimal(fields[10].trim()));
+        order.setSerialNo(fields[11].trim());
+        order.setStockAccount(fields[12].trim());
+        order.setMarketType(fields[13].trim());
+
+        // 设置订单提交时间（委托日期+委托时间）
+        order.setOrderSubmitTime(parseOrderSubmitTime(order.getOrderDate(), order.getOrderTime()));
 
         if (order.getOrderNo() == null || order.getOrderNo().isEmpty()) {
             log.debug("[历史订单同步] 委托编号为空，跳过");
@@ -308,6 +344,30 @@ public class HistoryOrderSyncService {
         }
 
         return order;
+    }
+
+    /**
+     * 解析订单提交时间
+     */
+    private LocalDateTime parseOrderSubmitTime(String orderDate, String orderTime) {
+        try {
+            String dateTimeStr = orderDate + orderTime;
+            return LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        } catch (Exception e) {
+            return LocalDateTime.now();
+        }
+    }
+
+    /**
+     * 映射买卖方向
+     */
+    private String mapDirection(String direction) {
+        if (direction == null) return direction;
+        return switch (direction) {
+            case "买入" -> "B";
+            case "卖出" -> "S";
+            default -> direction;
+        };
     }
 
     private BigDecimal parseDecimal(String value) {
@@ -333,46 +393,62 @@ public class HistoryOrderSyncService {
     }
 
     /**
-     * 批量保存订单并进行去重
+     * 批量保存订单并进行去重（使用原生Upsert，性能高效）
      */
     @Transactional
     private SyncPageResult saveOrdersWithDedup(List<HistoryOrder> orders, String batchNo) {
-        int saved = 0;
-        int duplicate = 0;
-        int failed = 0;
+        if (orders.isEmpty()) {
+            return new SyncPageResult(0, 0, 0);
+        }
+
         LocalDateTime now = LocalDateTime.now();
+        int insertCount = 0;
+        int updateCount = 0;
+        int failedCount = 0;
 
-        List<HistoryOrder> toSave = new ArrayList<>();
+        int batchSize = 100;
+        for (int i = 0; i < orders.size(); i += batchSize) {
+            int end = Math.min(i + batchSize, orders.size());
+            List<HistoryOrder> batch = orders.subList(i, end);
 
-        for (HistoryOrder order : orders) {
-            try {
-                if (historyOrderRepository.existsByOrderNoAndOrderDate(order.getOrderNo(), order.getOrderDate())) {
-                    duplicate++;
-                    continue;
+            for (HistoryOrder order : batch) {
+                try {
+                    order.setSyncBatchNo(batchNo);
+                    order.setLastSyncTime(now);
+
+                    historyOrderRepository.upsertOrder(
+                            order.getOrderDate(),
+                            order.getOrderNo(),
+                            order.getMarketType(),
+                            order.getStockAccount(),
+                            order.getStockCode(),
+                            order.getStockName(),
+                            order.getDirection(),
+                            order.getPrice(),
+                            order.getQuantity(),
+                            order.getAmount(),
+                            order.getSerialNo(),
+                            order.getOrderTime(),
+                            order.getRemark(),
+                            order.getFullName(),
+                            batchNo,
+                            now,
+                            order.getOrderSubmitTime()
+                    );
+
+                    insertCount++;
+
+                } catch (Exception e) {
+                    log.warn("[历史订单同步] Upsert订单失败: {}, {}", order.getOrderNo(), e.getMessage());
+                    failedCount++;
                 }
-
-                order.setSyncBatchNo(batchNo);
-                order.setLastSyncTime(now);
-                toSave.add(order);
-
-            } catch (Exception e) {
-                log.warn("[历史订单同步] 处理订单失败: {}, {}", order.getOrderNo(), e.getMessage());
-                failed++;
             }
+
+            log.debug("[历史订单同步] 已处理 {}/{} 条订单", Math.min(end, orders.size()), orders.size());
         }
 
-        if (!toSave.isEmpty()) {
-            try {
-                historyOrderRepository.saveAll(toSave);
-                saved = toSave.size();
-            } catch (Exception e) {
-                log.error("[历史订单同步] 批量保存失败: {}", e.getMessage(), e);
-                failed += toSave.size();
-                saved = 0;
-            }
-        }
-
-        return new SyncPageResult(saved, duplicate, failed);
+        log.info("[历史订单同步] 批量写入完成, 新增/更新: {}, 失败: {}", insertCount, failedCount);
+        return new SyncPageResult(insertCount, 0, failedCount);
     }
 
     private String generateBatchNo() {
