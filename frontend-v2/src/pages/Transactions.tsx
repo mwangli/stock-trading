@@ -1,152 +1,147 @@
-import React, { useState } from 'react';
-import { Card, Table, Tag, Input, Select, Space, Typography, Tabs } from 'antd';
-import { SearchOutlined, HistoryOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Card, Table, Tag, Input, Select, Space, Typography, Tabs, Spin, message } from 'antd';
+import { SearchOutlined, HistoryOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
+import axios from 'axios';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-interface Transaction {
-  key: string;
-  time: string;
-  symbol: string;
-  side: 'BUY' | 'SELL';
+interface HistoryOrder {
+  id: number;
+  orderDate: string;
+  orderNo: string;
+  marketType: string;
+  stockAccount: string;
+  stockCode: string;
+  stockName: string;
+  direction: string;
   price: number;
   quantity: number;
-  totalValue: number;
-  status: 'FILLED' | 'PENDING' | 'CANCELLED';
+  amount: number;
+  serialNo: string;
+  orderTime: string;
+  remark: string;
+  fullName: string;
+  orderSubmitTime: string;
+  lastSyncTime: string;
 }
 
-interface Trade {
-  key: string;
-  openTime: string;
-  closeTime: string;
-  symbol: string;
-  quantity: number;
-  buyPrice: number;
-  sellPrice: number;
-  totalAmount: number;
-  fees: number;
-  profit: number;
-  returnRate: number;
+interface PageData {
+  content: HistoryOrder[];
+  totalElements: number;
+  totalPages: number;
+  size: number;
+  number: number;
 }
 
 const Transactions: React.FC = () => {
   const { t } = useTranslation();
+  const [loading, setLoading] = useState(false);
+  const [orders, setOrders] = useState<HistoryOrder[]>([]);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [searchText, setSearchText] = useState('');
-  const [sideFilter, setSideFilter] = useState<'ALL' | 'BUY' | 'SELL'>('ALL');
+  const [sideFilter, setSideFilter] = useState<'ALL' | 'B' | 'S'>('ALL');
 
-  // Mock Data - Orders
-  const data: Transaction[] = [
-    { key: '1', time: '2023-10-27 10:30:00', symbol: 'AAPL', side: 'BUY', price: 150.23, quantity: 100, totalValue: 15023.00, status: 'FILLED' },
-    { key: '2', time: '2023-10-27 11:15:00', symbol: 'TSLA', side: 'SELL', price: 890.11, quantity: 50, totalValue: 44505.50, status: 'FILLED' },
-    { key: '3', time: '2023-10-27 14:20:00', symbol: 'NVDA', side: 'BUY', price: 420.69, quantity: 200, totalValue: 84138.00, status: 'PENDING' },
-    { key: '4', time: '2023-10-26 09:45:00', symbol: 'AMD', side: 'SELL', price: 95.00, quantity: 150, totalValue: 14250.00, status: 'CANCELLED' },
-    { key: '5', time: '2023-10-26 13:10:00', symbol: 'MSFT', side: 'BUY', price: 330.50, quantity: 80, totalValue: 26440.00, status: 'FILLED' },
-    { key: '6', time: '2023-10-25 15:55:00', symbol: 'GOOGL', side: 'SELL', price: 2800.00, quantity: 10, totalValue: 28000.00, status: 'FILLED' },
-    { key: '7', time: '2023-10-25 10:00:00', symbol: 'AMZN', side: 'BUY', price: 3400.00, quantity: 5, totalValue: 17000.00, status: 'FILLED' },
-    { key: '8', time: '2023-10-24 11:30:00', symbol: 'META', side: 'BUY', price: 320.00, quantity: 60, totalValue: 19200.00, status: 'FILLED' },
-    { key: '9', time: '2023-10-24 14:00:00', symbol: 'NFLX', side: 'SELL', price: 650.00, quantity: 20, totalValue: 13000.00, status: 'FILLED' },
-    { key: '10', time: '2023-10-23 09:30:00', symbol: 'BABA', side: 'BUY', price: 160.00, quantity: 100, totalValue: 16000.00, status: 'PENDING' },
-    { key: '11', time: '2023-10-23 10:45:00', symbol: 'JD', side: 'SELL', price: 70.00, quantity: 200, totalValue: 14000.00, status: 'FILLED' },
-    { key: '12', time: '2023-10-22 13:20:00', symbol: 'PDD', side: 'BUY', price: 90.00, quantity: 50, totalValue: 4500.00, status: 'CANCELLED' },
-  ];
+  const fetchOrders = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params: Record<string, any> = {
+        page: pagination.current - 1,
+        size: pagination.pageSize
+      };
 
-  // Mock Data - Trades (Aggregated Buy -> Sell)
-  const tradesData: Trade[] = [
-    { 
-      key: '1', 
-      openTime: '2023-10-27 10:30:00', 
-      closeTime: '2023-10-27 14:45:00', 
-      symbol: 'AAPL', 
-      quantity: 100, 
-      buyPrice: 150.23, 
-      sellPrice: 155.50, 
-      totalAmount: 15550.00, 
-      fees: 15.50, 
-      profit: 511.50, 
-      returnRate: 3.40 
-    },
-    { 
-      key: '2', 
-      openTime: '2023-10-26 09:30:00', 
-      closeTime: '2023-10-27 11:15:00', 
-      symbol: 'TSLA', 
-      quantity: 50, 
-      buyPrice: 850.00, 
-      sellPrice: 890.11, 
-      totalAmount: 44505.50, 
-      fees: 44.50, 
-      profit: 1961.00, 
-      returnRate: 4.61 
-    },
-    { 
-      key: '3', 
-      openTime: '2023-10-25 13:00:00', 
-      closeTime: '2023-10-25 15:55:00', 
-      symbol: 'GOOGL', 
-      quantity: 10, 
-      buyPrice: 2820.00, 
-      sellPrice: 2800.00, 
-      totalAmount: 28000.00, 
-      fees: 28.00, 
-      profit: -228.00, 
-      returnRate: -0.81 
-    },
-    { 
-      key: '4', 
-      openTime: '2023-10-24 10:15:00', 
-      closeTime: '2023-10-24 14:00:00', 
-      symbol: 'NFLX', 
-      quantity: 20, 
-      buyPrice: 630.00, 
-      sellPrice: 650.00, 
-      totalAmount: 13000.00, 
-      fees: 13.00, 
-      profit: 387.00, 
-      returnRate: 3.07 
-    },
-    { 
-      key: '5', 
-      openTime: '2023-10-23 09:45:00', 
-      closeTime: '2023-10-23 10:45:00', 
-      symbol: 'JD', 
-      quantity: 200, 
-      buyPrice: 72.00, 
-      sellPrice: 70.00, 
-      totalAmount: 14000.00, 
-      fees: 14.00, 
-      profit: -414.00, 
-      returnRate: -2.87 
-    },
-  ];
+      if (searchText) {
+        params.stockCode = searchText;
+      }
+      if (sideFilter !== 'ALL') {
+        params.direction = sideFilter;
+      }
 
-  const filteredData = data.filter(item => {
-    const matchSymbol = item.symbol.toLowerCase().includes(searchText.toLowerCase());
-    const matchSide = sideFilter === 'ALL' || item.side === sideFilter;
-    return matchSymbol && matchSide;
-  });
+      const response = await axios.get('/api/history-orders/page', { params });
+      const pageData: PageData = response.data;
+
+      setOrders(pageData.content || []);
+      setPagination(prev => ({
+        ...prev,
+        total: pageData.totalElements || 0
+      }));
+    } catch (error: any) {
+      console.error('Failed to fetch orders:', error);
+      if (error.response?.status === 401) {
+        message.error('未授权，请先登录');
+      } else if (error.code === 'ERR_NETWORK') {
+        message.error('网络连接失败，请检查后端服务是否启动');
+      } else {
+        message.error('获取订单数据失败: ' + (error.message || '未知错误'));
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [pagination.current, pagination.pageSize, searchText, sideFilter]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  const handleTableChange = (pag: any) => {
+    setPagination(prev => ({
+      ...prev,
+      current: pag.current,
+      pageSize: pag.pageSize
+    }));
+  };
+
+  const handleSearch = () => {
+    setPagination(prev => ({ ...prev, current: 1 }));
+    fetchOrders();
+  };
+
+  const formatDateTime = (dateStr: string | null) => {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
 
   const columns = [
     {
       title: t('transactions.table.time'),
-      dataIndex: 'time',
-      key: 'time',
-      render: (text: string) => <span className="text-gray-400">{text}</span>
+      dataIndex: 'orderSubmitTime',
+      key: 'orderSubmitTime',
+      width: 160,
+      render: (text: string, record: HistoryOrder) => (
+        <span className="text-gray-400">{formatDateTime(text || record.orderSubmitTime)}</span>
+      )
     },
     {
       title: t('transactions.table.symbol'),
-      dataIndex: 'symbol',
-      key: 'symbol',
+      dataIndex: 'stockCode',
+      key: 'stockCode',
+      width: 100,
       render: (text: string) => <span className="text-[#00e396] font-bold">{text}</span>
     },
     {
+      title: '名称',
+      dataIndex: 'stockName',
+      key: 'stockName',
+      width: 100,
+      render: (text: string) => <span className="text-white">{text}</span>
+    },
+    {
       title: t('transactions.table.side'),
-      dataIndex: 'side',
-      key: 'side',
-      render: (side: 'BUY' | 'SELL') => (
-        <Tag color={side === 'BUY' ? 'success' : 'error'}>
-          {side === 'BUY' ? t('transactions.filters.buy') : t('transactions.filters.sell')}
+      dataIndex: 'direction',
+      key: 'direction',
+      width: 80,
+      render: (direction: string) => (
+        <Tag color={direction === 'B' ? 'success' : 'error'}>
+          {direction === 'B' ? t('transactions.filters.buy') : t('transactions.filters.sell')}
         </Tag>
       )
     },
@@ -154,102 +149,43 @@ const Transactions: React.FC = () => {
       title: t('transactions.table.price'),
       dataIndex: 'price',
       key: 'price',
-      render: (price: number) => <span className="text-white">¥{price.toFixed(2)}</span>
+      width: 120,
+      render: (price: number) => <span className="text-white">¥{price?.toFixed(4) || '0.0000'}</span>
     },
     {
       title: t('transactions.table.quantity'),
       dataIndex: 'quantity',
       key: 'quantity',
+      width: 80,
       render: (qty: number) => <span className="text-white">{qty}</span>
     },
     {
       title: t('transactions.table.totalValue'),
-      dataIndex: 'totalValue',
-      key: 'totalValue',
-      render: (val: number) => <span className="text-[#ffbd2e] font-mono">¥{val.toFixed(2)}</span>
+      dataIndex: 'amount',
+      key: 'amount',
+      width: 120,
+      render: (val: number) => <span className="text-[#ffbd2e] font-mono">¥{val?.toFixed(2) || '0.00'}</span>
     },
     {
-      title: t('transactions.table.status'),
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: string) => {
-        let color = 'default';
-        if (status === 'FILLED') color = 'success';
-        if (status === 'PENDING') color = 'processing';
-        if (status === 'CANCELLED') color = 'error';
-        return <Tag color={color}>{t(`transactions.status.${status.toLowerCase()}`)}</Tag>;
-      }
-    }
-  ];
-
-  const tradeColumns = [
-    {
-      title: t('transactions.tradesTable.openTime'),
-      dataIndex: 'openTime',
-      key: 'openTime',
-      render: (text: string) => <span className="text-gray-400">{text}</span>
+      title: '委托编号',
+      dataIndex: 'orderNo',
+      key: 'orderNo',
+      width: 100,
+      render: (text: string) => <span className="text-gray-400 text-xs">{text}</span>
     },
     {
-      title: t('transactions.tradesTable.closeTime'),
-      dataIndex: 'closeTime',
-      key: 'closeTime',
-      render: (text: string) => <span className="text-gray-400">{text}</span>
+      title: '市场',
+      dataIndex: 'marketType',
+      key: 'marketType',
+      width: 80,
+      render: (text: string) => <Tag>{text}</Tag>
     },
     {
-      title: t('transactions.table.symbol'),
-      dataIndex: 'symbol',
-      key: 'symbol',
-      render: (text: string) => <span className="text-[#00e396] font-bold">{text}</span>
-    },
-    {
-      title: t('transactions.table.quantity'),
-      dataIndex: 'quantity',
-      key: 'quantity',
-      render: (qty: number) => <span className="text-white">{qty}</span>
-    },
-    {
-      title: t('transactions.tradesTable.buyPrice'),
-      dataIndex: 'buyPrice',
-      key: 'buyPrice',
-      render: (price: number) => <span className="text-gray-300">¥{price.toFixed(2)}</span>
-    },
-    {
-      title: t('transactions.tradesTable.sellPrice'),
-      dataIndex: 'sellPrice',
-      key: 'sellPrice',
-      render: (price: number) => <span className="text-gray-300">¥{price.toFixed(2)}</span>
-    },
-    {
-      title: t('transactions.table.totalValue'),
-      dataIndex: 'totalAmount',
-      key: 'totalAmount',
-      render: (val: number) => <span className="text-[#ffbd2e] font-mono">¥{val.toFixed(2)}</span>
-    },
-    {
-      title: t('transactions.tradesTable.fees'),
-      dataIndex: 'fees',
-      key: 'fees',
-      render: (val: number) => <span className="text-gray-400">¥{val.toFixed(2)}</span>
-    },
-    {
-      title: t('transactions.tradesTable.profit'),
-      dataIndex: 'profit',
-      key: 'profit',
-      render: (val: number) => (
-        <span className={`font-bold ${val >= 0 ? 'text-[#00e396]' : 'text-[#ff4560]'}`}>
-          {val >= 0 ? '+' : ''}{val.toFixed(2)}
-        </span>
-      )
-    },
-    {
-      title: t('transactions.tradesTable.returnRate'),
-      dataIndex: 'returnRate',
-      key: 'returnRate',
-      render: (val: number) => (
-        <Tag color={val >= 0 ? 'success' : 'error'}>
-          {val >= 0 ? '+' : ''}{val.toFixed(2)}%
-        </Tag>
-      )
+      title: '同步时间',
+      dataIndex: 'lastSyncTime',
+      key: 'lastSyncTime',
+      width: 160,
+      render: (text: string) => <span className="text-gray-500 text-xs">{formatDateTime(text)}</span>
     }
   ];
 
@@ -262,30 +198,58 @@ const Transactions: React.FC = () => {
           <Space className="w-full justify-between flex-wrap">
             <Space>
               <Input
-                placeholder={t('transactions.filters.searchPlaceholder')}
+                placeholder="搜索股票代码"
                 prefix={<SearchOutlined className="text-gray-500" />}
                 className="bg-black/20 border-gray-700 text-white w-64"
+                value={searchText}
                 onChange={e => setSearchText(e.target.value)}
+                onPressEnter={handleSearch}
                 allowClear
               />
               <Select
-                defaultValue="ALL"
+                value={sideFilter}
                 className="w-40"
-                onChange={(value: 'ALL' | 'BUY' | 'SELL') => setSideFilter(value)}
+                onChange={(value: 'ALL' | 'B' | 'S') => {
+                  setSideFilter(value);
+                  setPagination(prev => ({ ...prev, current: 1 }));
+                }}
                 dropdownClassName="glass-dropdown"
               >
                 <Option value="ALL">{t('transactions.filters.all')}</Option>
-                <Option value="BUY">{t('transactions.filters.buy')}</Option>
-                <Option value="SELL">{t('transactions.filters.sell')}</Option>
+                <Option value="B">{t('transactions.filters.buy')}</Option>
+                <Option value="S">{t('transactions.filters.sell')}</Option>
               </Select>
+              <Input.Search
+                className="bg-black/20"
+                placeholder="搜索"
+                prefix={<SearchOutlined />}
+                onSearch={handleSearch}
+              />
+            </Space>
+            <Space>
+              <Text className="text-gray-400">共 {pagination.total} 条</Text>
+              <Tag color="blue">真实数据</Tag>
+              <Tag color="green">API</Tag>
             </Space>
           </Space>
-          <Table
-            columns={columns}
-            dataSource={filteredData}
-            pagination={{ pageSize: 10, position: ['bottomRight'] }}
-            rowClassName={() => 'bg-transparent text-gray-300 hover:bg-white/5'}
-          />
+          <Spin spinning={loading}>
+            <Table
+              columns={columns}
+              dataSource={orders}
+              loading={loading}
+              rowKey="id"
+              pagination={{
+                ...pagination,
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total: number) => `共 ${total} 条`,
+                position: ['bottomRight']
+              }}
+              onChange={handleTableChange}
+              rowClassName={() => 'bg-transparent text-gray-300 hover:bg-white/5'}
+              locale={{ emptyText: loading ? '加载中...' : '暂无数据' }}
+            />
+          </Spin>
         </div>
       )
     },
@@ -293,12 +257,11 @@ const Transactions: React.FC = () => {
       key: 'trades',
       label: t('transactions.tabs.trades'),
       children: (
-        <Table
-          columns={tradeColumns}
-          dataSource={tradesData}
-          pagination={{ pageSize: 10, position: ['bottomRight'] }}
-          rowClassName={() => 'bg-transparent text-gray-300 hover:bg-white/5'}
-        />
+        <div className="text-center py-8">
+          <Text className="text-gray-400">交易记录功能开发中...</Text>
+          <br />
+          <Text className="text-gray-500 text-sm">可从"历史订单"页面查看完整的委托记录</Text>
+        </div>
       )
     }
   ];
@@ -313,6 +276,14 @@ const Transactions: React.FC = () => {
           </Title>
           <Text className="text-gray-400">{t('transactions.subtitle')}</Text>
         </div>
+        <Space>
+          <Text className="text-gray-400">
+            {loading ? '加载中...' : `共 ${pagination.total} 条记录`}
+          </Text>
+          <Tag icon={<ReloadOutlined spin={loading} />} color="processing" onClick={fetchOrders} className="cursor-pointer">
+            刷新
+          </Tag>
+        </Space>
       </div>
 
       <Card bordered={false} className="glass p-4">
