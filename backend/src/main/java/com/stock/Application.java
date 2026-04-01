@@ -1,8 +1,5 @@
 package com.stock;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -12,7 +9,6 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
@@ -69,6 +65,7 @@ public class Application {
     /**
      * RedisTemplate 配置
      * 用于缓存和状态管理
+     * 注意：统一使用 StringRedisSerializer 避免 JSON 序列化导致的双引号问题
      */
     @Bean
     @ConditionalOnMissingBean(name = "redisTemplate")
@@ -76,30 +73,13 @@ public class Application {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
-        // 使用 StringRedisSerializer 作为 key 的序列化方式
         StringRedisSerializer stringSerializer = new StringRedisSerializer();
         template.setKeySerializer(stringSerializer);
         template.setHashKeySerializer(stringSerializer);
-
-        // 使用 GenericJackson2JsonRedisSerializer，并注册 Java 8 时间模块以支持 LocalDateTime 等
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new JavaTimeModule());
-        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(mapper);
-        template.setValueSerializer(jsonSerializer);
-        template.setHashValueSerializer(jsonSerializer);
+        template.setValueSerializer(stringSerializer);
+        template.setHashValueSerializer(stringSerializer);
 
         template.afterPropertiesSet();
         return template;
-    }
-
-    /**
-     * StringRedisTemplate 配置
-     * 用于简单字符串的读取（如Token），避免JSON序列化问题
-     */
-    @Bean
-    @ConditionalOnMissingBean(name = "stringRedisTemplate")
-    public StringRedisSerializer stringRedisSerializer() {
-        return new StringRedisSerializer();
     }
 }
