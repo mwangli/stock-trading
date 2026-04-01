@@ -14,19 +14,20 @@ const Settings: React.FC = () => {
   const [hasApiKey, setHasApiKey] = useState(false);
 
   useEffect(() => {
-    fetchEncryptionKey();
-    fetchConfig();
+    Promise.all([fetchEncryptionKey(), fetchConfig()]);
   }, []);
 
-  const fetchEncryptionKey = async () => {
+  const fetchEncryptionKey = async (): Promise<string> => {
     try {
       const res = await request.get('/system/encryptionKey') as { success: boolean; data?: { encryptionKey: string } };
       if (res.success && res.data?.encryptionKey) {
         setEncryptionKey(res.data.encryptionKey);
+        return res.data.encryptionKey;
       }
     } catch (error) {
       console.error('获取加密密钥失败:', error);
     }
+    return '';
   };
 
   const fetchConfig = async () => {
@@ -86,10 +87,18 @@ const Settings: React.FC = () => {
     try {
       let apiKeyToSave = values.apiKey;
 
-      if (apiKeyToSave && apiKeyToSave !== '************************' && encryptionKey) {
-        apiKeyToSave = await encrypt(apiKeyToSave, encryptionKey);
-      } else if (apiKeyToSave === '************************') {
+      if (!apiKeyToSave || apiKeyToSave === '************************') {
         apiKeyToSave = undefined;
+      } else if (encryptionKey) {
+        apiKeyToSave = await encrypt(apiKeyToSave, encryptionKey);
+        console.log('API Key 已加密:', apiKeyToSave);
+      } else {
+        console.warn('加密密钥未加载，尝试重新获取...');
+        const key = await fetchEncryptionKey();
+        if (key) {
+          apiKeyToSave = await encrypt(apiKeyToSave, key);
+          console.log('API Key 已加密:', apiKeyToSave);
+        }
       }
 
       const submitData = {
