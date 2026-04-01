@@ -6,6 +6,7 @@ import com.stock.tradingExecutor.domain.entity.HistoryOrder;
 import com.stock.tradingExecutor.dto.HistoryOrderDTO;
 import com.stock.tradingExecutor.dto.HistoryOrderPageRequest;
 import com.stock.tradingExecutor.persistence.HistoryOrderRepository;
+import com.stock.tradingExecutor.service.HistoryOrderSyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -29,6 +30,7 @@ import java.util.List;
 public class HistoryOrderController {
 
     private final HistoryOrderRepository historyOrderRepository;
+    private final HistoryOrderSyncService historyOrderSyncService;
 
     /**
      * 分页查询历史订单（支持多条件过滤）
@@ -93,6 +95,34 @@ public class HistoryOrderController {
         long total = historyOrderRepository.count();
         log.info("查询历史订单总数: {}", total);
         return ResponseDTO.success(total);
+    }
+
+    /**
+     * 手动触发历史订单全量同步
+     * 从2023年1月开始同步到当前月份
+     *
+     * @return 统一封装响应
+     */
+    @PostMapping("/sync")
+    public ResponseDTO<HistoryOrderSyncService.SyncResult> triggerSync() {
+        log.info("手动触发历史订单全量同步");
+
+        try {
+            HistoryOrderSyncService.SyncResult result = historyOrderSyncService.syncAllHistoryOrders();
+
+            log.info("手动同步完成: 总获取={}, 新增={}, 重复={}, 失败={}, 批次={}, 耗时={}ms",
+                    result.totalFetched(),
+                    result.savedCount(),
+                    result.duplicateCount(),
+                    result.failedCount(),
+                    result.syncBatchNo(),
+                    result.costTimeMs());
+
+            return ResponseDTO.success(result, "同步完成");
+        } catch (Exception e) {
+            log.error("手动同步失败: {}", e.getMessage(), e);
+            return ResponseDTO.error("同步失败: " + e.getMessage());
+        }
     }
 
     private HistoryOrderDTO toDTO(HistoryOrder entity) {
