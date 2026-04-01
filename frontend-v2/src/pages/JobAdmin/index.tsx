@@ -88,27 +88,52 @@ const JobAdmin: React.FC = () => {
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState<Job[]>(MOCK_JOBS);
+  const [pagination, setPagination] = useState({
+    current: 1,
+    pageSize: 10,
+    total: MOCK_JOBS.length,
+    showSizeChanger: true,
+    pageSizeOptions: ['10', '20', '50'],
+  });
 
-  const fetchJobs = async () => {
+  const fetchJobs = async (pageNum: number = 1, pageSize: number = 10) => {
     setLoading(true);
     try {
-      const res = await getJobList();
+      const res = await getJobList(pageNum, pageSize);
       // 正确的逻辑：HTTP 200 时使用接口数据
-      if (Array.isArray(res) && res.length > 0) {
+      if (res && res.records) {
         // 过滤关键字段有效的记录
-        const validJobs = res.filter(job => job.id && job.jobName);
+        const validJobs = res.records.filter(job => job.id && job.jobName);
         if (validJobs.length > 0) {
           setJobs(validJobs);
+          setPagination(prev => ({
+            ...prev,
+            current: pageNum,
+            pageSize: pageSize,
+            total: res.total,
+          }));
           return;
         }
       }
       // 接口返回空数据时使用 mock
       console.warn('API returned empty jobs, using mock data.');
       setJobs(MOCK_JOBS);
+      setPagination(prev => ({
+        ...prev,
+        current: 1,
+        pageSize: 10,
+        total: MOCK_JOBS.length,
+      }));
     } catch (error) {
       // HTTP 500 或网络错误时使用 mock 数据
       console.error('Failed to fetch jobs, using mock data:', error);
       setJobs(MOCK_JOBS);
+      setPagination(prev => ({
+        ...prev,
+        current: 1,
+        pageSize: 10,
+        total: MOCK_JOBS.length,
+      }));
     } finally {
       setLoading(false);
     }
@@ -117,6 +142,14 @@ const JobAdmin: React.FC = () => {
   useEffect(() => {
     fetchJobs();
   }, []);
+
+  const handlePaginationChange = (page: number, pageSize: number) => {
+    fetchJobs(page, pageSize);
+  };
+
+  const handlePageSizeChange = (_: number, size: number) => {
+    fetchJobs(1, size);
+  };
 
   const handleRun = async (job: Job) => {
     message.loading({ content: t('jobs.messages.starting', { name: job.jobName }), key: 'runJob' });
@@ -245,7 +278,7 @@ const JobAdmin: React.FC = () => {
         </div>
         <Button 
             icon={<ReloadOutlined />} 
-            onClick={fetchJobs} 
+            onClick={() => fetchJobs()} 
             loading={loading}
             className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 hover:text-[#00e396]"
         >
@@ -259,7 +292,17 @@ const JobAdmin: React.FC = () => {
           dataSource={jobs}
           rowKey="id"
           loading={loading}
-          pagination={false}
+          pagination={{
+            current: pagination.current,
+            pageSize: pagination.pageSize,
+            total: pagination.total,
+            showSizeChanger: pagination.showSizeChanger,
+            pageSizeOptions: pagination.pageSizeOptions,
+            onChange: handlePaginationChange,
+            onShowSizeChange: handlePageSizeChange,
+            showTotal: (total) => t('jobs.pagination.total', { total }),
+            showQuickJumper: true,
+          }}
           rowClassName="hover:bg-white/5 transition-colors"
         />
       </Card>

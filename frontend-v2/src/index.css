@@ -45,7 +45,7 @@
 
 @layer base {
   body {
-    @apply bg-black text-white font-sans overflow-hidden antialiased;
+    @apply bg-black text-white font-sans antialiased;
   }
 }
 

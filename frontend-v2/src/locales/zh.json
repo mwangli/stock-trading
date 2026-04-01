@@ -350,6 +350,12 @@
         "resumed": "任务已恢复",
         "paused": "任务已暂停",
         "updated": "调度规则已更新"
+      },
+      "pagination": {
+        "total": "共 {{total}} 条",
+        "pageSize": "每页显示",
+        "jumpTo": "跳至",
+        "page": "页"
       }
     },
   "settings": {

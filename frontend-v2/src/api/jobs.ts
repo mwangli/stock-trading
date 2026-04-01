@@ -9,11 +9,19 @@ export interface Job {
   status: number;
 }
 
+export interface PageResult<T> {
+  records: T[];
+  total: number;
+  pages: number;
+  current: number;
+  size: number;
+}
+
 /**
- * 获取任务列表
+ * 获取任务列表（支持分页）
  */
-export async function getJobList(): Promise<Job[]> {
-  return await request.get('/jobs') as unknown as Job[];
+export async function getJobList(pageNum: number = 1, pageSize: number = 10): Promise<PageResult<Job>> {
+  return await request.get('/jobs', { params: { pageNum, pageSize } }) as unknown as PageResult<Job>;
 }
 
 /**

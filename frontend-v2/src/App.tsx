@@ -12,7 +12,6 @@ const Strategies = lazy(() => import('./pages/Strategies'));
 const Analysis = lazy(() => import('./pages/Analysis'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Transactions = lazy(() => import('./pages/Transactions'));
-const HistoryOrders = lazy(() => import('./pages/HistoryOrders'));
 const Logs = lazy(() => import('./pages/Logs'));
 const JobAdmin = lazy(() => import('./pages/JobAdmin'));
 
@@ -41,7 +40,6 @@ function App() {
           <Route path="models" element={<Strategies />} />
           <Route path="analysis" element={<Analysis />} />
           <Route path="transactions" element={<Transactions />} />
-          <Route path="history-orders" element={<HistoryOrders />} />
           <Route path="jobs" element={<JobAdmin />} />
           <Route path="logs" element={<Logs />} />
           <Route path="settings" element={<Settings />} />
