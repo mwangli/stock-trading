@@ -46,6 +46,27 @@ spring:
       ddl-auto: update
     show-sql: false
 
+  # 自动登录配置
+  auto-login:
+    # 默认登录账号（资金账号）
+    account: 13278828091
+    # 默认登录密码
+    password: "132553"
+    # 临时文件目录（验证码截图、SMS文件）
+    tmp-dir: ""
+    # 手机验证码邮件转发读取配置：默认关闭，建议通过 IDEA 环境变量覆盖
+    sms-mail:
+      enabled: ${AUTO_LOGIN_SMS_MAIL_ENABLED:false}
+      host: ${AUTO_LOGIN_SMS_MAIL_HOST:}
+      port: ${AUTO_LOGIN_SMS_MAIL_PORT:993}
+      username: ${AUTO_LOGIN_SMS_MAIL_USERNAME:}
+      password: ${AUTO_LOGIN_SMS_MAIL_PASSWORD:}
+      folder: ${AUTO_LOGIN_SMS_MAIL_FOLDER:INBOX}
+      sender-keyword: ${AUTO_LOGIN_SMS_MAIL_SENDER_KEYWORD:}
+      content-keyword: ${AUTO_LOGIN_SMS_MAIL_CONTENT_KEYWORD:中信}
+      scan-limit: ${AUTO_LOGIN_SMS_MAIL_SCAN_LIMIT:20}
+      mark-seen: ${AUTO_LOGIN_SMS_MAIL_MARK_SEEN:false}
+
 # DJL模型配置（Windows 使用 pytorch-native-cu121 时需安装 NVIDIA 驱动 + CUDA 12.1）
 djl:
   model:
@@ -87,26 +108,16 @@ logging:
     ai.djl: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-
-  # 自动登录配置
-  auto-login:
-    # 默认登录账号（资金账号）
-    account: 13278828091
-    # 默认登录密码
-    password: "132553"
-    # 临时文件目录（验证码截图、SMS文件）
-    tmp-dir: ""
-
 app:
   startup:
     history-sync:
-      enabled: false  # 历史数据初始化开关，启动时执行全量历史价格同步
+      enabled: true  # 历史数据初始化开关，启动时执行全量历史价格同步
     # 新闻采集开关：启动时遍历所有股票，先采集标题再获取详情写入数据库
     news-sync:
-      enabled: false
+      enabled: true
     # 模型训练开关：启动后是否自动检查并训练缺失的 LSTM 模型
     model-training:
-      enabled: false
+      enabled: true
 
   # 证券平台 HTTP 代理（用于解决云服务器 IP 被 weixin.citicsinfo.com 拦截 403 的问题）
   # 当远程部署返回 403 而本地可访问时，在本地/可访问机器搭建代理，远程通过此配置转发请求

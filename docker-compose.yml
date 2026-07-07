@@ -58,7 +58,7 @@ services:
       # 宿主机 6033 -> 容器 3306，对外暴露 6033
       - "6033:3306"
     volumes:
-      - mysql-data:/var/lib/mysql
+      - D:/app/data/mysql:/var/lib/mysql
       - ./infrastructure/mysql/init:/docker-entrypoint-initdb.d
     networks:
       - stock-network
@@ -82,7 +82,7 @@ services:
     ports:
       - "27017:27017"
     volumes:
-      - mongo-data:/data/db
+      - D:/app/data/mongo:/data/db
     networks:
       - stock-network
     restart: unless-stopped
