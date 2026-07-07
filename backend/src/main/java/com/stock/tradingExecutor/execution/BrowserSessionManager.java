@@ -38,19 +38,19 @@ public class BrowserSessionManager {
     /**
      * 远程 Selenium Grid / standalone-chrome 地址，例如 http://chrome:4444/wd/hub；为空则使用本地 Chrome。
      */
-    @Value("${chrome.remote.url:}")
+    @Value("${CHROME_REMOTE_URL:${chrome.remote.url:}}")
     private String chromeRemoteUrl;
 
     /**
      * 是否在本地启动无头 Chrome（远程模式下忽略）。
      */
-    @Value("${chrome.headless:false}")
+    @Value("${CHROME_HEADLESS:${chrome.headless:false}}")
     private boolean chromeHeadless;
 
     /**
      * 短信验证码、图片验证码人工介入文件的目录，默认项目根下 .tmp。
      */
-    @Value("${stock.auto-login.tmp-dir:}")
+    @Value("${STOCK_AUTO_LOGIN_TMP_DIR:${stock.auto-login.tmp-dir:${spring.auto-login.tmp-dir:}}}")
     private String configuredTmpDir;
 
     private WebDriver driver;

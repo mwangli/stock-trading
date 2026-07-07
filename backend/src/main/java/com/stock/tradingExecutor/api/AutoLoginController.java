@@ -51,8 +51,7 @@ public class AutoLoginController {
 
         if (account == null || account.isBlank() || pwd == null || pwd.isBlank()) {
             log.error("[AutoLoginController] 账号或密码为空，请传入参数或在配置文件中配置默认值");
-            return ResponseEntity.badRequest().body(AutoLoginResponseDto.builder()
-                    .success(false).message("账号或密码为空").build());
+            return ResponseEntity.badRequest().body(buildResponse(false, "账号或密码为空"));
         }
 
         log.info("[AutoLoginController] 接收登录请求: account={}", account);
@@ -62,11 +61,7 @@ public class AutoLoginController {
 
         autoLoginService.printLoginStatus();
 
-        AutoLoginResponseDto response = AutoLoginResponseDto.builder()
-                .success(success)
-                .token(autoLoginService.getLoginToken())
-                .message(success ? "登录成功" : "登录失败")
-                .build();
+        AutoLoginResponseDto response = buildResponse(success, success ? "登录成功" : "登录失败");
 
         if (success) {
             return ResponseEntity.ok(response);
@@ -77,11 +72,8 @@ public class AutoLoginController {
 
     @GetMapping("/status")
     public ResponseEntity<AutoLoginResponseDto> getStatus() {
-        AutoLoginResponseDto response = AutoLoginResponseDto.builder()
-                .success(autoLoginService.isLoggedIn())
-                .token(autoLoginService.getLoginToken())
-                .message(autoLoginService.isLoggedIn() ? "已登录" : "未登录")
-                .build();
+        boolean loggedIn = autoLoginService.isLoggedIn();
+        AutoLoginResponseDto response = buildResponse(loggedIn, loggedIn ? "已登录" : "未登录");
         return ResponseEntity.ok(response);
     }
 
@@ -96,4 +88,28 @@ public class AutoLoginController {
             return ResponseEntity.status(500).build();
         }
     }
+
+    // AI_GENERATED_START
+    /**
+     * 构建自动登录统一响应，补充浏览器诊断信息与人工介入路径。
+     *
+     * @param success 当前操作是否成功
+     * @param message 当前结果提示
+     * @return 自动登录响应 DTO
+     */
+    private AutoLoginResponseDto buildResponse(boolean success, String message) {
+        return AutoLoginResponseDto.builder()
+                .success(success)
+                .message(message)
+                .token(autoLoginService.getLoginToken())
+                .stage(autoLoginService.getCurrentStage())
+                .currentUrl(browserSessionManager.getCurrentUrl())
+                .pageTitle(browserSessionManager.getPageTitle())
+                .nextAction(autoLoginService.getNextAction())
+                .smsCodeFile(browserSessionManager.getAutoLoginTmpDir().resolve("sms_code.txt").toString())
+                .captchaCodeFile(browserSessionManager.getAutoLoginTmpDir().resolve("captcha_code.txt").toString())
+                .noVncUrl("http://localhost:7900")
+                .build();
+    }
+    // AI_GENERATED_END
 }

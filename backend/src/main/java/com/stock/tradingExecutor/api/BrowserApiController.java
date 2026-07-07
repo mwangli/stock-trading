@@ -274,7 +274,8 @@ public class BrowserApiController {
         steps.put("7. POST /api/browser/quit", "关闭浏览器");
 
         result.put("steps", steps);
-        result.put("note", "验证码文件路径: d:/ai-stock-trading/.tmp/sms_code.txt (6位数字) 和 captcha_code.txt (4位字符)");
+        result.put("note", "验证码文件路径: " + browserSession.getAutoLoginTmpDir()
+                + "/sms_code.txt (6位数字) 和 captcha_code.txt (4位字符)");
         return ResponseEntity.ok(result);
     }
 }

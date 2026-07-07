@@ -35,18 +35,21 @@ public class AutoLoginService {
     private final CookieManager cookieManager;
     private final CaptchaService captchaService;
     private final ZXRequestUtils requestUtils;
+    private final EmailSmsCodeService emailSmsCodeService;
     private final Random random = new Random();
 
     public AutoLoginService(BrowserSessionManager browserSessionManager,
                             LoginPageHandler loginPageHandler,
                             CookieManager cookieManager,
                             CaptchaService captchaService,
-                            ZXRequestUtils requestUtils) {
+                            ZXRequestUtils requestUtils,
+                            EmailSmsCodeService emailSmsCodeService) {
         this.browserSessionManager = browserSessionManager;
         this.loginPageHandler = loginPageHandler;
         this.cookieManager = cookieManager;
         this.captchaService = captchaService;
         this.requestUtils = requestUtils;
+        this.emailSmsCodeService = emailSmsCodeService;
     }
 
     /**
@@ -232,7 +235,7 @@ public class AutoLoginService {
     /**
      * 登录提交后的滑块：无滑块则视为不需要。
      */
-    private boolean handleSliderCaptcha() {
+    private boolean handleSliderCaptcha() throws InterruptedException {
         log.info("[AutoLoginService] 检查滑块验证码（登录流程）");
         browserSessionManager.switchToDefaultContent();
         WebDriver driver = browserSessionManager.getDriver();
@@ -243,7 +246,7 @@ public class AutoLoginService {
             log.info("[AutoLoginService] 未检测到滑块验证码");
             return true;
         }
-        return runSliderCaptchaSolveLoop();
+        return waitForManualSliderCaptcha("登录提交后");
     }
 
     /**
@@ -270,18 +273,41 @@ public class AutoLoginService {
             log.error("[AutoLoginService] 超时未检测到滑块（获取验证码后）");
             return false;
         }
-        browserSessionManager.switchToDefaultContent();
-        if (isSliderCaptchaPresent() && runSliderCaptchaSolveLoop()) {
-            return true;
-        }
-        log.info("[AutoLoginService] 在顶层未完成滑块，切换到手机验证表单上下文重试");
-        browserSessionManager.ensureActivePhoneFrame();
-        if (isSliderCaptchaPresent()) {
-            return runSliderCaptchaSolveLoop();
-        }
-        log.info("[AutoLoginService] 滑块层已关闭，继续短信验证流程");
-        return true;
+        return waitForManualSliderCaptcha("手机验证码发送前");
     }
+
+    // AI_GENERATED_START
+    /**
+     * 等待用户在 Docker Chrome/noVNC 中手动完成滑块验证。
+     * 不破解或模拟绕过滑块，仅轮询滑块是否消失、页面是否跳转或登录态是否出现。
+     *
+     * @param scenario 当前滑块出现的业务场景
+     * @return 人工验证是否完成
+     */
+    private boolean waitForManualSliderCaptcha(String scenario) throws InterruptedException {
+        log.info("[AutoLoginService] 检测到滑块验证码，进入人工接管模式，场景={}", scenario);
+        log.info("[AutoLoginService] 请在 Docker Chrome/noVNC 中手动拖动滑块。默认 noVNC 地址: http://localhost:7900");
+        long deadline = System.currentTimeMillis() + Duration.ofMinutes(5).toMillis();
+        while (System.currentTimeMillis() < deadline) {
+            browserSessionManager.switchToDefaultContent();
+            if (!isSliderCaptchaPresent() || browserSessionManager.isLoginSuccess()) {
+                log.info("[AutoLoginService] 滑块已消失或页面已通过验证，继续后续流程");
+                return true;
+            }
+            browserSessionManager.ensureActivePhoneFrame();
+            if (!isSliderCaptchaPresent()) {
+                browserSessionManager.switchToDefaultContent();
+                if (!isSliderCaptchaPresent()) {
+                    log.info("[AutoLoginService] 滑块已消失，继续后续流程");
+                    return true;
+                }
+            }
+            Thread.sleep(1_000);
+        }
+        log.error("[AutoLoginService] 等待人工完成滑块验证超时");
+        return false;
+    }
+    // AI_GENERATED_END
 
     /**
      * 在滑块已存在的前提下，多次尝试计算距离并拖动直至消失或次数用尽。
@@ -505,7 +531,12 @@ public class AutoLoginService {
                 return false;
             }
 
-            String smsCode = browserSessionManager.waitForSmsCode();
+            String smsCode = emailSmsCodeService.fetchLatestCodeToFile(
+                    browserSessionManager.getAutoLoginTmpDir().resolve("sms_code.txt"),
+                    Duration.ofSeconds(90));
+            if (smsCode == null || smsCode.isEmpty()) {
+                smsCode = browserSessionManager.waitForSmsCode();
+            }
             if (smsCode == null || smsCode.isEmpty()) {
                 log.error("[AutoLoginService] 手机验证码输入超时或为空");
                 return false;
@@ -851,6 +882,46 @@ public class AutoLoginService {
         String cached = requestUtils.getToken();
         return cached != null && !cached.isBlank() ? cached : null;
     }
+
+    // AI_GENERATED_START
+    /**
+     * 获取当前自动登录阶段。
+     * 根据浏览器运行状态、页面路由与 Token 状态判断当前处于哪个可恢复步骤。
+     *
+     * @return 当前阶段编码
+     */
+    public String getCurrentStage() {
+        if (isLoggedIn()) {
+            return "AUTHENTICATED";
+        }
+        if (!browserSessionManager.isRunning()) {
+            return "NOT_STARTED";
+        }
+        if (browserSessionManager.isOnActivePhonePage()) {
+            return "ACTIVE_PHONE";
+        }
+        if (browserSessionManager.isOnLoginPage()) {
+            return "LOGIN_FORM";
+        }
+        return "UNKNOWN";
+    }
+
+    /**
+     * 获取当前阶段的下一步操作建议。
+     * 用于状态接口提示人工滑块、短信码和会话复用等动作。
+     *
+     * @return 下一步动作说明
+     */
+    public String getNextAction() {
+        return switch (getCurrentStage()) {
+            case "AUTHENTICATED" -> "已登录，可继续使用会话";
+            case "NOT_STARTED" -> "调用 /api/auto-login/login 启动登录";
+            case "ACTIVE_PHONE" -> "等待手机验证码和滑块验证；滑块请在 noVNC 中人工完成";
+            case "LOGIN_FORM" -> "等待账号密码登录或图片验证码处理";
+            default -> "查看浏览器当前页面并按提示处理";
+        };
+    }
+    // AI_GENERATED_END
 
     /**
      * 打印当前登录与浏览器诊断信息。
