@@ -72,3 +72,4 @@ application-prod.yml
 /.sisyphus/
 .worktrees/
 models/
+.understand-anything/
