@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Tag, Table, Spin, Empty, Tooltip, message, Input, Select, Modal, Tabs } from 'antd';
 const { TextArea } = Input;
@@ -67,62 +68,6 @@ const SENTIMENT_TEST_SAMPLES: SentimentTestSample[] = [
   },
 ];
 
-/** Mock 模型列表，用于接口不可用或空数据时展示比对效果 */
-function getMockLstmList(): LstmModelListItem[] {
-  const now = new Date();
-  const fmt = (d: Date, daysAgo: number) => {
-    const x = new Date(d);
-    x.setDate(x.getDate() - daysAgo);
-    return x.toISOString();
-  };
-  const toScore = (v: number) => Math.max(0, Math.min(100, (1 - v) * 100));
-
-  const makeItem = (
-    idx: number,
-    stockCode: string,
-    stockName: string,
-    epoch: number,
-    score: number | null,
-    daysAgo: number,
-    modelVersion: string | null = 'v1'
-  ): LstmModelListItem => {
-    const ts = fmt(now, daysAgo);
-    const baseScore = score != null ? toScore(score) : null;
-    return {
-      id: -idx, // 负数 ID 标记为 Mock 数据
-      stockCode,
-      stockName,
-      trained: true,
-      training: false,
-      lastTrainTime: ts,
-      lastDurationSeconds: null,
-      lastEpochs: epoch,
-      lastTrainLoss: null,
-      lastValLoss: null,
-      lastModelId: null,
-      createdAt: ts,
-      updatedAt: ts,
-      modelName: stockCode,
-      name: stockName,
-      epoch,
-      modelVersion,
-      profitAmount: null,
-      score: baseScore,
-    };
-  };
-
-  return [
-    makeItem(1, '600519', '贵州茅台', 100, 0.0281, 1),
-    makeItem(2, '000858', '五粮液', 80, 0.0356, 2),
-    makeItem(3, '601318', '中国平安', 120, 0.0245, 3, 'v2'),
-    makeItem(4, '000333', '美的集团', 60, 0.0489, 5),
-    makeItem(5, '300750', '宁德时代', 150, 0.0189, 7),
-    makeItem(6, '600036', '招商银行', 90, 0.0312, 10),
-    makeItem(7, '000001', '平安银行', 70, null, 14, 'v2'),
-    makeItem(8, '601012', '隆基绿能', 110, 0.0267, 21),
-  ];
-}
-
 /** 相对时间文案（依赖 i18n，在组件内调用时传入 t） */
 function formatRelativeTime(
   dateStr: string,
@@ -145,8 +90,8 @@ function formatRelativeTime(
 
 const Strategies: React.FC = () => {
   const { t } = useTranslation();
-  const [lstmList, setLstmList] = useState<LstmModelListItem[]>(() => getMockLstmList());
-  const [lstmTotal, setLstmTotal] = useState(() => getMockLstmList().length);
+  const [lstmList, setLstmList] = useState<LstmModelListItem[]>([]);
+  const [lstmTotal, setLstmTotal] = useState(0);
   const [lstmLoading, setLstmLoading] = useState(true);
   const [lstmError, setLstmError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -181,8 +126,8 @@ const Strategies: React.FC = () => {
       const params: LstmModelListParams = { current: page, pageSize: ps, sortBy: sb, sortOrder: so };
       if (kw.trim()) params.keyword = kw.trim();
       const result = await getLstmModelList(params);
-      const list = result.list?.length ? result.list : getMockLstmList();
-      const total = result.list?.length ? result.total : list.length;
+      const list = result.list ?? [];
+      const total = result.total ?? 0;
       setLstmList(list);
       setLstmTotal(total);
       setLstmError(null);
@@ -192,11 +137,10 @@ const Strategies: React.FC = () => {
       if (opts?.sortBy !== undefined) setSortBy(opts.sortBy);
       if (opts?.sortOrder !== undefined) setSortOrder(opts.sortOrder);
       if (isRefresh) message.success(t('models.lstm.refreshSuccess'));
-    } catch {
-      const mock = getMockLstmList();
-      setLstmList(mock);
-      setLstmTotal(mock.length);
-      setLstmError(null);
+    } catch (error) {
+      setLstmList([]);
+      setLstmTotal(0);
+      setLstmError(error instanceof Error ? error.message : '获取模型列表失败');
     } finally {
       setLstmLoading(false);
       setRefreshing(false);
@@ -486,11 +430,6 @@ const Strategies: React.FC = () => {
           <h2 className="text-lg font-bold flex items-center gap-2">
             <ThunderboltOutlined className="text-[#00e396]" />
             {t('models.lstm.listTitle')}
-            {lstmList.length > 0 && lstmList.every((m) => typeof m.id === 'number' && m.id < 0) && (
-              <Tag color="orange" className="border-none text-xs font-normal">
-                当前为 Mock 数据，仅用于展示表格比对效果
-              </Tag>
-            )}
           </h2>
           <div className="flex items-center gap-2">
             <Button
@@ -964,3 +903,4 @@ const Strategies: React.FC = () => {
 };
 
 export default Strategies;
+// AI_GENERATE_END -

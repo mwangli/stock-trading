@@ -1,42 +1,37 @@
+// AI_GENERATE_START -
 package com.stock;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration;
-import org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
-import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
- * 股票交易系统主应用启动类
- * 
- * 启动命令: mvn spring-boot:run
- * 端口: 8080
+ * 股票交易系统主应用启动类。
+ *
+ * @author mwangli
+ * @since 2026-09-25
  */
-@SpringBootApplication(
-        exclude = {
-                RedisAutoConfiguration.class,
-                RedisRepositoriesAutoConfiguration.class
-        }
-)
+@SpringBootApplication
 @EnableScheduling
-public class Application { 
+public class Application {
 
-    /** 进程启动时间戳，用于计算启动耗时 */
+    /** 进程启动时间戳，用于计算启动耗时。 */
     private static long startTimeMs;
 
+    /**
+     * 获取应用启动时间戳。
+     *
+     * @return 启动时间戳，单位毫秒
+     */
     public static long getStartTimeMs() {
         return startTimeMs;
     }
 
+    /**
+     * 启动股票交易系统。
+     *
+     * @param args 启动参数
+     */
     public static void main(String[] args) {
         startTimeMs = System.currentTimeMillis();
         SpringApplication.run(Application.class, args);
@@ -47,31 +42,5 @@ public class Application {
         System.out.println("  访问地址: http://localhost:8080");
         System.out.println("========================================");
     }
-
-    /**
-     * RedisTemplate 配置
-     * 用于缓存和状态管理
-     */
-    @Bean
-    @ConditionalOnBean(RedisConnectionFactory.class)
-    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
-        RedisTemplate<String, Object> template = new RedisTemplate<>();
-        template.setConnectionFactory(connectionFactory);
-        
-        // 使用 StringRedisSerializer 作为 key 的序列化方式
-        StringRedisSerializer stringSerializer = new StringRedisSerializer();
-        template.setKeySerializer(stringSerializer);
-        template.setHashKeySerializer(stringSerializer);
-        
-        // 使用 GenericJackson2JsonRedisSerializer，并注册 Java 8 时间模块以支持 LocalDateTime 等
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new JavaTimeModule());
-        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(mapper);
-        template.setValueSerializer(jsonSerializer);
-        template.setHashValueSerializer(jsonSerializer);
-        
-        template.afterPropertiesSet();
-        return template;
-    }
 }
+// AI_GENERATE_END -

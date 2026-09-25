@@ -1,3 +1,4 @@
+// AI_GENERATE_START --
 package com.stock.modelService.persistence;
 
 import com.stock.modelService.domain.entity.ModelTrainingRecord;
@@ -39,5 +40,12 @@ public interface ModelTrainingRecordRepository extends JpaRepository<ModelTraini
      * @return 记录列表
      */
     List<ModelTrainingRecord> findByStockCodeIn(Collection<String> stockCodes);
-}
 
+    /**
+     * 查询已经完成训练的 LSTM 股票模型。
+     *
+     * @return 按股票代码排序的已训练模型记录
+     */
+    List<ModelTrainingRecord> findByTrainedTrueOrderByStockCodeAsc();
+}
+// AI_GENERATE_END --

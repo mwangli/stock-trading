@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 package com.stock.tradingExecutor.execution;
 
 import com.stock.tradingExecutor.config.MonitorConfig;
@@ -60,7 +61,7 @@ public class TradeExecutor {
         RiskCheckResult riskCheck = riskController.checkBeforeBuy(stockCode, amount);
         if (!riskCheck.isPassed()) {
             log.warn("买入风控检查未通过: {}", riskCheck.getViolations());
-            return OrderResult.fail("风控检查未通过", riskCheck.getViolations());
+            return publishResult(OrderResult.fail("风控检查未通过", riskCheck.getViolations()), "BUY");
         }
 
         priceMonitor.startMonitor(stockCode, "BUY");
@@ -106,7 +107,7 @@ public class TradeExecutor {
         RiskCheckResult riskCheck = riskController.checkBeforeBuy(stockCode, amount);
         if (!riskCheck.isPassed()) {
             log.warn("买入风控检查未通过: {}", riskCheck.getViolations());
-            return OrderResult.fail("风控检查未通过", riskCheck.getViolations());
+            return publishResult(OrderResult.fail("风控检查未通过", riskCheck.getViolations()), "BUY");
         }
 
         return doExecuteBuy(stockCode, amount);
@@ -118,7 +119,7 @@ public class TradeExecutor {
 
             int quantity = calculateBuyQuantity(amount, price);
             if (quantity < 100) {
-                return OrderResult.fail("买入金额不足，无法购买最小单位");
+                return publishResult(OrderResult.fail("买入金额不足，无法购买最小单位"), "BUY");
             }
 
             BigDecimal tradeAmount = price.multiply(BigDecimal.valueOf(quantity));
@@ -127,7 +128,7 @@ public class TradeExecutor {
             OrderResult result = brokerAdapter.submitOrder("BUY", stockCode, price, quantity);
 
             if (!result.isSuccess()) {
-                return result;
+                return publishResult(result, result.getDirection() == null ? "ORDER" : result.getDirection());
             }
 
             log.info("买入订单提交成功: {} 价格={} 数量={} 手续费={}", stockCode, price, quantity, fee);
@@ -148,12 +149,11 @@ public class TradeExecutor {
                 result.setMessage("买入失败: " + finalStatus.getName());
             }
 
-            eventPublisher.publishEvent(new OrderNotificationEvent(this, result, "BUY"));
-            return result;
+            return publishResult(result, "BUY");
 
         } catch (Exception e) {
             log.error("买入下单失败: {}", stockCode, e);
-            return OrderResult.fail("买入下单失败: " + e.getMessage());
+            return publishResult(OrderResult.fail("买入下单失败: " + e.getMessage()), "BUY");
         }
     }
 
@@ -168,12 +168,13 @@ public class TradeExecutor {
             return OrderResult.fail("无该股票持仓");
         }
 
-        BigDecimal quantity = BigDecimal.valueOf(position.getQuantity());
+        int availableQuantity = position.getAvailableQuantity() == null ? 0 : position.getAvailableQuantity();
+        BigDecimal quantity = BigDecimal.valueOf(availableQuantity);
 
         RiskCheckResult riskCheck = riskController.checkBeforeSell(stockCode, quantity);
         if (!riskCheck.isPassed()) {
             log.warn("卖出风控检查未通过: {}", riskCheck.getViolations());
-            return OrderResult.fail("风控检查未通过", riskCheck.getViolations());
+            return publishResult(OrderResult.fail("风控检查未通过", riskCheck.getViolations()), "SELL");
         }
 
         priceMonitor.startMonitor(stockCode, "SELL");
@@ -187,7 +188,7 @@ public class TradeExecutor {
 
             if (priceMonitor.shouldExecuteSell(stockCode)) {
                 log.info("触发卖出条件，执行卖出: {}", stockCode);
-                OrderResult result = doExecuteSell(stockCode, position);
+                OrderResult result = doExecuteSell(stockCode, position, availableQuantity);
                 priceMonitor.stopMonitor(stockCode);
                 return result;
             }
@@ -219,7 +220,7 @@ public class TradeExecutor {
         RiskCheckResult riskCheck = riskController.checkBeforeSell(stockCode, quantity);
         if (!riskCheck.isPassed()) {
             log.warn("卖出风控检查未通过: {}", riskCheck.getViolations());
-            return OrderResult.fail("风控检查未通过", riskCheck.getViolations());
+            return publishResult(OrderResult.fail("风控检查未通过", riskCheck.getViolations()), "SELL");
         }
 
         Position position = getPosition(stockCode);
@@ -227,12 +228,17 @@ public class TradeExecutor {
             return OrderResult.fail("无该股票持仓");
         }
 
-        return doExecuteSell(stockCode, position);
+        int requestedQuantity;
+        try {
+            requestedQuantity = quantity.intValueExact();
+        } catch (ArithmeticException exception) {
+            return publishResult(OrderResult.fail("卖出数量必须是整数"), "SELL");
+        }
+        return doExecuteSell(stockCode, position, requestedQuantity);
     }
 
-    private OrderResult doExecuteSell(String stockCode, Position position) {
+    private OrderResult doExecuteSell(String stockCode, Position position, int quantity) {
         try {
-            int quantity = position.getQuantity();
             BigDecimal price = brokerAdapter.getRealtimePrice(stockCode);
 
             BigDecimal tradeAmount = price.multiply(BigDecimal.valueOf(quantity));
@@ -241,7 +247,7 @@ public class TradeExecutor {
             OrderResult result = brokerAdapter.submitOrder("SELL", stockCode, price, quantity);
 
             if (!result.isSuccess()) {
-                return result;
+                return publishResult(result, result.getDirection() == null ? "ORDER" : result.getDirection());
             }
 
             log.info("卖出订单提交成功: {} 价格={} 数量={} 手续费={}", stockCode, price, quantity, fee);
@@ -266,12 +272,11 @@ public class TradeExecutor {
                 result.setMessage("卖出失败: " + finalStatus.getName());
             }
 
-            eventPublisher.publishEvent(new OrderNotificationEvent(this, result, "SELL"));
-            return result;
+            return publishResult(result, "SELL");
 
         } catch (Exception e) {
             log.error("卖出下单失败: {}", stockCode, e);
-            return OrderResult.fail("卖出下单失败: " + e.getMessage());
+            return publishResult(OrderResult.fail("卖出下单失败: " + e.getMessage()), "SELL");
         }
     }
 
@@ -286,7 +291,8 @@ public class TradeExecutor {
             return OrderResult.fail("无该股票持仓");
         }
 
-        return doExecuteSell(stockCode, position);
+        int availableQuantity = position.getAvailableQuantity() == null ? 0 : position.getAvailableQuantity();
+        return executeSell(stockCode, BigDecimal.valueOf(availableQuantity));
     }
 
     /**
@@ -300,7 +306,8 @@ public class TradeExecutor {
 
         for (Position position : positions) {
             try {
-                OrderResult result = doExecuteSell(position.getStockCode(), position);
+                int availableQuantity = position.getAvailableQuantity() == null ? 0 : position.getAvailableQuantity();
+                OrderResult result = executeSell(position.getStockCode(), BigDecimal.valueOf(availableQuantity));
                 if (result.isSuccess() && result.getStatus() == OrderStatus.FILLED) {
                     successCount++;
                 }
@@ -364,6 +371,11 @@ public class TradeExecutor {
         this.interrupted = false;
     }
 
+    private OrderResult publishResult(OrderResult result, String type) {
+        eventPublisher.publishEvent(new OrderNotificationEvent(this, result, type));
+        return result;
+    }
+
     private Position getPosition(String stockCode) {
         return brokerAdapter.getPositions().stream()
                 .filter(p -> stockCode.equals(p.getStockCode()))
@@ -394,3 +406,4 @@ public class TradeExecutor {
         private BigDecimal amount;
     }
 }
+// AI_GENERATE_END -

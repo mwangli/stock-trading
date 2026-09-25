@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 package com.stock.strategyAnalysis.engine;
 
 import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
@@ -20,7 +21,7 @@ public class TrailingStopCalculator {
     private static final String STOP_LOSS_KEY = "stock:%s:stopLoss:";
 
     /**
-     * 本地内存存储，用于替代 Redis 保存当日最高价和止损线
+     * 本地内存保存当日最高价和止损线
      */
     private final ConcurrentMap<String, Double> highPriceStore = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Double> stopLossStore = new ConcurrentHashMap<>();
@@ -148,3 +149,4 @@ public class TrailingStopCalculator {
         return baseTolerance;
     }
 }
+// AI_GENERATE_END -

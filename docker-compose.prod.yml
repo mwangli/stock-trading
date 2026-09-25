@@ -1,0 +1,36 @@
+services:
+  stock-web:
+    ports:
+      - "${PROD_BIND_ADDRESS:-0.0.0.0}:${PROD_WEB_HTTP_PORT:-80}:80"
+    restart: always
+    mem_limit: ${WEB_MEMORY_LIMIT:-256m}
+    cpus: ${WEB_CPU_LIMIT:-0.50}
+    security_opt:
+      - no-new-privileges:true
+
+  stock-backend:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      TRADING_MODE: ${TRADING_MODE:-LIVE_MANUAL}
+      TRADING_REAL_WRITE_ENABLED: ${TRADING_REAL_WRITE_ENABLED:-false}
+      ZXBROKER_ENABLED: ${ZXBROKER_ENABLED:-false}
+    restart: always
+    mem_limit: ${BACKEND_MEMORY_LIMIT:-4g}
+    cpus: ${BACKEND_CPU_LIMIT:-2.0}
+    security_opt:
+      - no-new-privileges:true
+
+  chrome:
+    restart: always
+    mem_limit: ${CHROME_MEMORY_LIMIT:-2g}
+    cpus: ${CHROME_CPU_LIMIT:-1.0}
+
+  stock-mysql:
+    restart: always
+    mem_limit: ${MYSQL_MEMORY_LIMIT:-2g}
+    cpus: ${MYSQL_CPU_LIMIT:-1.0}
+
+  stock-mongo:
+    restart: always
+    mem_limit: ${MONGO_MEMORY_LIMIT:-2g}
+    cpus: ${MONGO_CPU_LIMIT:-1.0}

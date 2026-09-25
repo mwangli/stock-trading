@@ -1,3 +1,4 @@
+// AI_GENERATE_START ---
 package com.stock.tradingExecutor.job;
 
 import lombok.extern.slf4j.Slf4j;
@@ -13,7 +14,11 @@ import java.util.List;
 import java.util.concurrent.Executor;
 
 /**
- * 应用启动时初始化默认定时任务并启动调度器，在独立线程中执行不阻塞启动
+ * 应用启动时初始化默认定时任务并启动统一调度器。
+ * 只注册数据同步、真实模型选股和必要的维护任务。
+ *
+ * @author mwangli
+ * @since 2026-09-25
  */
 @Slf4j
 @Component
@@ -23,6 +28,13 @@ public class JobBootstrap implements ApplicationRunner {
     private final JobSchedulerService jobSchedulerService;
     private final Executor applicationTaskExecutor;
 
+    /**
+     * 创建默认任务引导器。
+     *
+     * @param jobConfigRepository 任务配置仓库
+     * @param jobSchedulerService 统一任务调度服务
+     * @param applicationTaskExecutor 应用异步线程池
+     */
     public JobBootstrap(JobConfigRepository jobConfigRepository,
                         JobSchedulerService jobSchedulerService,
                         @Qualifier("applicationTaskExecutor") Executor applicationTaskExecutor) {
@@ -31,12 +43,22 @@ public class JobBootstrap implements ApplicationRunner {
         this.applicationTaskExecutor = applicationTaskExecutor;
     }
 
+    /**
+     * 提交默认任务初始化流程到应用线程池。
+     *
+     * @param args 应用启动参数
+     */
     @Override
     public void run(ApplicationArguments args) {
         log.info("========== [任务初始化] 已提交后台执行，不阻塞启动 ==========");
         applicationTaskExecutor.execute(this::initJobsAsync);
     }
 
+    /**
+     * 创建缺失的默认任务并启动当前数据库中明确启用的任务。
+     *
+     * 资源消耗较高的模型任务默认禁用，由用户在任务页面按需开启。
+     */
     @Transactional
     protected void initJobsAsync() {
         try {
@@ -85,52 +107,35 @@ public class JobBootstrap implements ApplicationRunner {
 
             defaultJobs.add(new JobConfig()
                     .setJobName("stockSelection")
-                    .setDescription("运行双因子模型选出次日优选股")
+                    .setDescription("使用已训练 LSTM 与近期新闻情感生成真实交易候选")
                     .setBeanName("strategyScheduler")
                     .setMethodName("runStockSelection")
                     .setCronExpression("0 0 17 * * MON-FRI")
-                    .setStatus(1));
+                    .setStatus(0));
 
             defaultJobs.add(new JobConfig()
-                    .setJobName("signalGeneration")
-                    .setDescription("基于选股结果生成买入/卖出信号")
-                    .setBeanName("strategyScheduler")
-                    .setMethodName("runSignalGeneration")
-                    .setCronExpression("0 30 17 * * MON-FRI")
-                    .setStatus(1));
+                    .setJobName("realTradingAutoBuy")
+                    .setDescription("无人值守模式执行当日真实模型候选买入")
+                    .setBeanName("realTradingJob")
+                    .setMethodName("executeAutoBuys")
+                    .setCronExpression("0 35 9 * * MON-FRI")
+                    .setStatus(0));
 
             defaultJobs.add(new JobConfig()
-                    .setJobName("intradayRiskControl")
-                    .setDescription("T+1 卖出检查、止损和止盈")
-                    .setBeanName("strategyScheduler")
-                    .setMethodName("checkIntradaySell")
-                    .setCronExpression("0 * 9-15 * * MON-FRI")
-                    .setStatus(1));
+                    .setJobName("realTradingT1Exit")
+                    .setDescription("无人值守模式检查真实持仓止损、止盈和尾盘退出")
+                    .setBeanName("realTradingJob")
+                    .setMethodName("checkT1Exits")
+                    .setCronExpression("0 50 14 * * MON-FRI")
+                    .setStatus(0));
 
-            defaultJobs.add(new JobConfig()
-                    .setJobName("forceSellCheck")
-                    .setDescription("收盘前强制卖出所有 T+1 持仓")
-                    .setBeanName("strategyScheduler")
-                    .setMethodName("checkForceSell")
-                    .setCronExpression("0 57 14 * * MON-FRI")
-                    .setStatus(1));
-
-            defaultJobs.add(new JobConfig()
-                    .setJobName("strategySwitcher")
-                    .setDescription("检查市场状况以切换活跃策略")
-                    .setBeanName("strategyScheduler")
-                    .setMethodName("checkTimeBasedSwitch")
-                    .setCronExpression("0 * 9-15 * * MON-FRI")
-                    .setStatus(1));
-
-            // 模型训练记录全量同步（每日凌晨 03:30）
             defaultJobs.add(new JobConfig()
                     .setJobName("modelTrainingRecordSync")
-                    .setDescription("每日对齐股票基础表、LSTM 模型与训练记录表")
+                    .setDescription("同步逐股票 LSTM 训练记录")
                     .setBeanName("modelTrainingRecordSyncJob")
                     .setMethodName("syncAllStocks")
                     .setCronExpression("0 30 3 * * ?")
-                    .setStatus(1));
+                    .setStatus(0));
 
             for (JobConfig job : defaultJobs) {
                 if (jobConfigRepository.findByJobName(job.getJobName()).isEmpty()) {
@@ -148,3 +153,4 @@ public class JobBootstrap implements ApplicationRunner {
         }
     }
 }
+// AI_GENERATE_END ---

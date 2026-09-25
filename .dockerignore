@@ -1,0 +1,11 @@
+.git
+.github
+.idea
+.tmp
+.understand-anything
+**/node_modules
+**/dist
+**/target
+**/*.log
+**/.env*
+models
