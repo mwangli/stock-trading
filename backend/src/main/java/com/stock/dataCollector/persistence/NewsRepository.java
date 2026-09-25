@@ -1,3 +1,4 @@
+// AI_GENERATE_START --
 package com.stock.dataCollector.persistence;
 
 import com.stock.dataCollector.domain.entity.StockNews;
@@ -19,6 +20,16 @@ import java.util.Optional;
 public interface NewsRepository extends MongoRepository<StockNews, String> {
 
     List<StockNews> findByStockCodeOrderByPublishTimeDesc(String stockCode);
+
+    /**
+     * 查询指定时间之后最近的股票新闻和公告。
+     *
+     * @param stockCode 股票代码
+     * @param publishTime 最早发布时间
+     * @return 最近最多 20 条新闻和公告
+     */
+    List<StockNews> findTop20ByStockCodeAndPublishTimeAfterOrderByPublishTimeDesc(
+            String stockCode, LocalDateTime publishTime);
 
     /**
      * 统计指定股票的新闻+公告总数，用于采集前判断是否可跳过
@@ -50,3 +61,4 @@ public interface NewsRepository extends MongoRepository<StockNews, String> {
     @Query(value = "{ 'stockCode' : ?0, 'externalId' : { $in : ?1 } }", fields = "{ 'externalId' : 1, '_id' : 0 }")
     List<StockNews> findExternalIdsByStockCodeAndExternalIdIn(String stockCode, List<String> externalIds);
 }
+// AI_GENERATE_END --

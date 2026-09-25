@@ -1,3 +1,4 @@
+// AI_GENERATE_START --
 package com.stock.tradingExecutor.domain.entity;
 
 import lombok.Data;
@@ -7,7 +8,10 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 
 /**
- * 持仓信息
+ * 持仓信息。
+ *
+ * @author mwangli
+ * @since 2026-09-25
  */
 @Data
 public class Position {
@@ -15,6 +19,8 @@ public class Position {
     private String stockCode;
     private String stockName;
     private Integer quantity;
+    private Integer availableQuantity;
+    private Integer frozenQuantity;
     private BigDecimal avgCost;
     private BigDecimal currentPrice;
     private BigDecimal profitLoss;
@@ -22,6 +28,8 @@ public class Position {
     private LocalDate buyDate;
     private BigDecimal marketValue;
     private String industry;
+    private String market;
+    private String shareholderAccount;
 
     public BigDecimal getMarketValue() {
         if (currentPrice != null && quantity != null) {
@@ -45,3 +53,4 @@ public class Position {
         return BigDecimal.ZERO;
     }
 }
+// AI_GENERATE_END --

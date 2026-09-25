@@ -1,10 +1,10 @@
+// AI_GENERATE_START -
 package com.stock.strategyAnalysis.config;
 
 import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
 import com.stock.strategyAnalysis.persistence.StrategyConfigRepository;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,53 +13,36 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * 策略配置服务
- * 管理策略配置的获取、更新和持久化（MySQL + 可选 Redis 缓存）
+ * 策略配置服务。
+ * 直接使用 MySQL 保存和读取单用户策略配置，不引入额外缓存组件。
+ *
+ * @author mwangli
+ * @since 2026-09-25
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class StrategyConfigService {
-
-    private static final String REDIS_CONFIG_KEY = "strategy:config:current";
 
     private final StrategyConfigRepository strategyConfigRepository;
 
-    @Autowired(required = false)
-    private RedisTemplate<String, Object> redisTemplate;
-
-    public StrategyConfigService(StrategyConfigRepository strategyConfigRepository) {
-        this.strategyConfigRepository = strategyConfigRepository;
-    }
-
     /**
-     * 获取当前配置
-     * 优先从 Redis 获取（如可用），否则从 MySQL 获取，无则返回默认配置
+     * 获取当前启用的策略配置。
+     *
+     * @return 当前配置；未配置时返回默认配置
      */
     public StrategyConfig getCurrentConfig() {
-        if (redisTemplate != null) {
-            Object cached = redisTemplate.opsForValue().get(REDIS_CONFIG_KEY);
-            if (cached instanceof StrategyConfig) {
-                return (StrategyConfig) cached;
-            }
-        } else {
-            log.debug("Redis 未启用，跳过策略配置缓存读取");
-        }
-
-        Optional<StrategyConfig> dbConfig = strategyConfigRepository.findFirstByEnabledTrueOrderByUpdateTimeDesc();
-        if (dbConfig.isPresent()) {
-            StrategyConfig config = dbConfig.get();
-            if (redisTemplate != null) {
-                redisTemplate.opsForValue().set(REDIS_CONFIG_KEY, config);
-            }
-            return config;
-        }
-
-        log.info("使用默认策略配置");
-        return StrategyConfig.defaultConfig();
+        return strategyConfigRepository.findFirstByEnabledTrueOrderByUpdateTimeDesc()
+                .orElseGet(() -> {
+                    log.info("数据库中没有启用的策略配置，使用默认配置");
+                    return StrategyConfig.defaultConfig();
+                });
     }
 
     /**
-     * 更新配置并写入 MySQL，并在 Redis 可用时刷新缓存
+     * 更新并持久化策略配置。
+     *
+     * @param config 新策略配置
      */
     @Transactional(rollbackFor = Exception.class)
     public void updateConfig(StrategyConfig config) {
@@ -79,7 +62,8 @@ public class StrategyConfigService {
                 copyTo(config, toSave);
             }
         } else {
-            Optional<StrategyConfig> existing = strategyConfigRepository.findFirstByEnabledTrueOrderByUpdateTimeDesc();
+            Optional<StrategyConfig> existing = strategyConfigRepository
+                    .findFirstByEnabledTrueOrderByUpdateTimeDesc();
             if (existing.isPresent()) {
                 toSave = existing.get();
                 copyTo(config, toSave);
@@ -91,12 +75,35 @@ public class StrategyConfigService {
             }
         }
         StrategyConfig saved = strategyConfigRepository.save(toSave);
-        if (redisTemplate != null) {
-            redisTemplate.opsForValue().set(REDIS_CONFIG_KEY, saved);
-        } else {
-            log.debug("Redis 未启用，跳过策略配置缓存刷新");
-        }
-        log.info("策略配置已更新(MySQL): id={}, version={}, mode={}", saved.getId(), saved.getVersion(), saved.getMode());
+        log.info("策略配置已更新: id={}, version={}, mode={}",
+                saved.getId(), saved.getVersion(), saved.getMode());
+    }
+
+    /**
+     * 重置为默认策略配置。
+     */
+    public void resetToDefault() {
+        updateConfig(StrategyConfig.defaultConfig());
+        log.info("策略配置已重置为默认值");
+    }
+
+    /**
+     * 获取全部策略配置版本。
+     *
+     * @return 按更新时间倒序的配置
+     */
+    public Iterable<StrategyConfig> getConfigVersions() {
+        return strategyConfigRepository.findAllByOrderByUpdateTimeDesc();
+    }
+
+    /**
+     * 根据版本号查询策略配置。
+     *
+     * @param version 配置版本
+     * @return 对应配置
+     */
+    public Optional<StrategyConfig> getConfigByVersion(String version) {
+        return strategyConfigRepository.findByVersion(version);
     }
 
     private void copyTo(StrategyConfig from, StrategyConfig to) {
@@ -126,26 +133,5 @@ public class StrategyConfigService {
         to.setEnabled(from.isEnabled());
         to.setUpdateTime(from.getUpdateTime());
     }
-
-    /**
-     * 重置为默认配置（写入 MySQL）
-     */
-    public void resetToDefault() {
-        updateConfig(StrategyConfig.defaultConfig());
-        log.info("策略配置已重置为默认值");
-    }
-
-    /**
-     * 获取配置版本列表
-     */
-    public Iterable<StrategyConfig> getConfigVersions() {
-        return strategyConfigRepository.findAllByOrderByUpdateTimeDesc();
-    }
-
-    /**
-     * 根据版本号获取配置
-     */
-    public Optional<StrategyConfig> getConfigByVersion(String version) {
-        return strategyConfigRepository.findByVersion(version);
-    }
 }
+// AI_GENERATE_END -

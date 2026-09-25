@@ -1,114 +1,227 @@
+name: stock-trading
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 services:
-  # ===================
-  # Chrome Headless服务 (用于自动化登录)
-  # ===================
-  chrome:
-    image: selenium/standalone-chrome:latest
-    container_name: stock-chrome
-    ports:
-      - "4444:4444"    # Selenium Grid端口
-      - "7900:7900"    # VNC可视化端口（可选）
-    shm_size: '2gb'
-    environment:
-      - SE_NODE_MAX_SESSIONS=1
-      - SE_SESSION_REQUEST_TIMEOUT=300
-    networks:
-      - stock-network
-    restart: unless-stopped
-
-  # ===================
-  # Backend Service（CI 推送至阿里云 ACR，服务器拉取）
-  # ===================
-  stock-backend:
-    # 阿里云镜像（固定地址）
-    image: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-trading:latest
-    container_name: stock-backend
-    ports:
-      - "8080:8080"
-    volumes:
-      # 统一模型资源数据卷，容器内挂载到 /models
-      - models-data:/models
-    environment:
-      - SPRING_PROFILES_ACTIVE=prod
-      - GLOBAL_DB_PASSWORD=${GLOBAL_DB_PASSWORD}
-      - SPRING_DATASOURCE_URL=jdbc:mysql://stock-mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
-      - SPRING_DATA_MONGODB_URI=mongodb://admin:${GLOBAL_DB_PASSWORD}@stock-mongo:27017/stock_trading?authSource=admin
-      - SPRING_REDIS_HOST=stock-redis
-      - CHROME_REMOTE_URL=http://chrome:4444/wd/hub
+  stock-web:
+    image: ${STOCK_WEB_IMAGE:-stock-trading-web:local}
+    container_name: stock-web
     depends_on:
-      - stock-mysql
-      - stock-mongo
-      - stock-redis
-      - chrome
+      stock-backend:
+        condition: service_healthy
+    expose:
+      - "80"
     networks:
-      - stock-network
+      - stock-frontend
     restart: unless-stopped
+    logging: *default-logging
 
-  # ===================
-  # MySQL Database
-  # ===================
+  stock-backend:
+    image: ${STOCK_BACKEND_IMAGE:-stock-trading-backend:local}
+    container_name: stock-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
+      SPRING_DATASOURCE_URL: jdbc:mysql://stock-mysql:3306/${MYSQL_DATABASE:-stock_trading}?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_APP_USER:-stock}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_APP_PASSWORD}
+      SPRING_DATA_MONGODB_HOST: stock-mongo
+      SPRING_DATA_MONGODB_PORT: 27017
+      SPRING_DATA_MONGODB_DATABASE: ${MONGO_DATABASE:-stock_trading}
+      SPRING_DATA_MONGODB_AUTHENTICATION_DATABASE: admin
+      SPRING_DATA_MONGODB_USERNAME: ${MONGO_APP_USER:-stock}
+      SPRING_DATA_MONGODB_PASSWORD: ${MONGO_APP_PASSWORD}
+      STOCK_AUTO_LOGIN_ACCOUNT: ${STOCK_AUTO_LOGIN_ACCOUNT:-}
+      STOCK_AUTO_LOGIN_PASSWORD: ${STOCK_AUTO_LOGIN_PASSWORD:-}
+      AUTO_LOGIN_SMS_MAIL_ENABLED: ${AUTO_LOGIN_SMS_MAIL_ENABLED:-false}
+      AUTO_LOGIN_SMS_MAIL_HOST: ${AUTO_LOGIN_SMS_MAIL_HOST:-}
+      AUTO_LOGIN_SMS_MAIL_PORT: ${AUTO_LOGIN_SMS_MAIL_PORT:-993}
+      AUTO_LOGIN_SMS_MAIL_USERNAME: ${AUTO_LOGIN_SMS_MAIL_USERNAME:-}
+      AUTO_LOGIN_SMS_MAIL_PASSWORD: ${AUTO_LOGIN_SMS_MAIL_PASSWORD:-}
+      CHROME_REMOTE_URL: http://chrome:4444/wd/hub
+      STOCK_AUTO_LOGIN_TMP_DIR: /app/.tmp
+      TRADING_MODE: ${TRADING_MODE:-LIVE_MANUAL}
+      TRADING_REAL_WRITE_ENABLED: ${TRADING_REAL_WRITE_ENABLED:-false}
+      TRADING_HISTORY_MONTH_INTERVAL_MS: ${TRADING_HISTORY_MONTH_INTERVAL_MS:-500}
+      TRADING_AUTO_BUY_AMOUNT: ${TRADING_AUTO_BUY_AMOUNT:-1000}
+      TRADING_AUTO_CANDIDATE_LIMIT: ${TRADING_AUTO_CANDIDATE_LIMIT:-1}
+      TRADING_TAKE_PROFIT_PERCENT: ${TRADING_TAKE_PROFIT_PERCENT:-3}
+      TRADING_FORCE_EXIT_TIME: ${TRADING_FORCE_EXIT_TIME:-14:50}
+      ZXBROKER_ENABLED: ${ZXBROKER_ENABLED:-false}
+      ZXBROKER_MOBILE_CODE: ${ZXBROKER_MOBILE_CODE:-}
+      ZXBROKER_ACCOUNT: ${ZXBROKER_ACCOUNT:-}
+      ZXBROKER_SIGN_KEY: ${ZXBROKER_SIGN_KEY:-}
+      ZXBROKER_INTACT_TO_SERVER: ${ZXBROKER_INTACT_TO_SERVER:-}
+      ZXBROKER_HISTORY_PAGE_SIZE: ${ZXBROKER_HISTORY_PAGE_SIZE:-500}
+      ZXBROKER_HISTORY_MAX_RECORDS_PER_WINDOW: ${ZXBROKER_HISTORY_MAX_RECORDS_PER_WINDOW:-5000}
+      ZXBROKER_HISTORY_REQUEST_INTERVAL_MS: ${ZXBROKER_HISTORY_REQUEST_INTERVAL_MS:-200}
+      APP_STARTUP_HISTORY_SYNC_ENABLED: ${APP_STARTUP_HISTORY_SYNC_ENABLED:-false}
+      APP_STARTUP_NEWS_SYNC_ENABLED: ${APP_STARTUP_NEWS_SYNC_ENABLED:-false}
+      APP_STARTUP_MODEL_TRAINING_ENABLED: ${APP_STARTUP_MODEL_TRAINING_ENABLED:-false}
+      WECHAT_NOTIFICATION_ENABLED: ${WECHAT_NOTIFICATION_ENABLED:-false}
+      WECHAT_MINIPROGRAM_APP_ID: ${WECHAT_MINIPROGRAM_APP_ID:-}
+      WECHAT_MINIPROGRAM_APP_SECRET: ${WECHAT_MINIPROGRAM_APP_SECRET:-}
+      WECHAT_MINIPROGRAM_OPEN_ID: ${WECHAT_MINIPROGRAM_OPEN_ID:-}
+      WECHAT_MINIPROGRAM_TEMPLATE_ID: ${WECHAT_MINIPROGRAM_TEMPLATE_ID:-}
+      WECHAT_MINIPROGRAM_PAGE: ${WECHAT_MINIPROGRAM_PAGE:-pages/index/index}
+      WECHAT_MINIPROGRAM_TITLE_FIELD: ${WECHAT_MINIPROGRAM_TITLE_FIELD:-thing1}
+      WECHAT_MINIPROGRAM_CONTENT_FIELD: ${WECHAT_MINIPROGRAM_CONTENT_FIELD:-thing2}
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=75.0 -Duser.timezone=Asia/Shanghai}
+    volumes:
+      - models-data:/models
+      - runtime-tmp:/app/.tmp
+    depends_on:
+      stock-mysql:
+        condition: service_healthy
+      stock-mongo:
+        condition: service_healthy
+      chrome:
+        condition: service_healthy
+    expose:
+      - "8080"
+    networks:
+      - stock-frontend
+      - stock-backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8080'"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 5
+    logging: *default-logging
+
+  chrome:
+    image: ${CHROME_IMAGE:-selenium/standalone-chrome:4.35.0-20250828}
+    container_name: stock-chrome
+    shm_size: 2gb
+    environment:
+      SE_NODE_MAX_SESSIONS: 1
+      SE_SESSION_REQUEST_TIMEOUT: 300
+    expose:
+      - "4444"
+      - "7900"
+    networks:
+      - stock-backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/opt/bin/check-grid.sh"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
+    logging: *default-logging
+
   stock-mysql:
-    image: mysql:8.0
+    image: ${MYSQL_IMAGE:-mysql:8.0.43}
     container_name: stock-mysql
     environment:
-      - MYSQL_ROOT_PASSWORD=${GLOBAL_DB_PASSWORD}
-      - MYSQL_DATABASE=stock_trading
-      - MYSQL_ROOT_HOST=%
-    ports:
-      # 宿主机 6033 -> 容器 3306，对外暴露 6033
-      - "6033:3306"
-    volumes:
-      - D:/app/data/mysql:/var/lib/mysql
-      - ./infrastructure/mysql/init:/docker-entrypoint-initdb.d
-    networks:
-      - stock-network
-    restart: unless-stopped
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-stock_trading}
+      MYSQL_USER: ${MYSQL_APP_USER:-stock}
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD}
     command:
-      --default-authentication-plugin=mysql_native_password
-      --character-set-server=utf8mb4
-      --collation-server=utf8mb4_unicode_ci
-      --bind-address=0.0.0.0
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --bind-address=0.0.0.0
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./infrastructure/mysql/init:/docker-entrypoint-initdb.d:ro
+    expose:
+      - "3306"
+    networks:
+      - stock-backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+    logging: *default-logging
 
-  # ===================
-  # MongoDB
-  # ===================
   stock-mongo:
-    image: mongo:6.0
+    image: ${MONGO_IMAGE:-mongo:6.0.26}
     container_name: stock-mongo
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=admin
-      - MONGO_INITDB_ROOT_PASSWORD=${GLOBAL_DB_PASSWORD}
-      - MONGO_INITDB_DATABASE=stock_trading
-    ports:
-      - "27017:27017"
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-stock_trading}
+      MONGO_APP_USER: ${MONGO_APP_USER:-stock}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD}
     volumes:
-      - D:/app/data/mongo:/data/db
+      - mongo-data:/data/db
+      - ./infrastructure/mongo/init:/docker-entrypoint-initdb.d:ro
+    expose:
+      - "27017"
     networks:
-      - stock-network
+      - stock-backend
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --username $${MONGO_INITDB_ROOT_USERNAME} --password $${MONGO_INITDB_ROOT_PASSWORD} --authenticationDatabase admin --eval \"quit(db.adminCommand('ping').ok ? 0 : 2)\""]
+      interval: 15s
+      timeout: 10s
+      start_period: 30s
+      retries: 10
+    logging: *default-logging
 
-  # ===================
-  # Redis Cache
-  # ===================
-  stock-redis:
-    image: redis:7-alpine
-    container_name: stock-redis
-    ports:
-      - "6379:6379"
+  mysql-backup:
+    image: ${MYSQL_IMAGE:-mysql:8.0.43}
+    profiles: ["backup"]
+    environment:
+      MYSQL_PWD: ${MYSQL_ROOT_PASSWORD}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mkdir -p /backup/mysql &&
+        mysqldump -h stock-mysql -uroot --single-transaction --routines --events
+        ${MYSQL_DATABASE:-stock_trading} >
+        /backup/mysql/${MYSQL_DATABASE:-stock_trading}-$$(date +%Y%m%d-%H%M%S).sql
     volumes:
-      - redis-data:/data
+      - ./backups:/backup
+    depends_on:
+      stock-mysql:
+        condition: service_healthy
     networks:
-      - stock-network
-    restart: unless-stopped
-    command: redis-server --requirepass ${GLOBAL_DB_PASSWORD} --appendonly yes
+      - stock-backend
+    restart: "no"
+
+  mongo-backup:
+    image: ${MONGO_IMAGE:-mongo:6.0.26}
+    profiles: ["backup"]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mkdir -p /backup/mongo &&
+        mongodump --host stock-mongo --port 27017
+        --username ${MONGO_ROOT_USER:-root} --password "$${MONGO_ROOT_PASSWORD}"
+        --authenticationDatabase admin --db ${MONGO_DATABASE:-stock_trading}
+        --archive=/backup/mongo/${MONGO_DATABASE:-stock_trading}-$$(date +%Y%m%d-%H%M%S).archive.gz
+        --gzip
+    environment:
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    volumes:
+      - ./backups:/backup
+    depends_on:
+      stock-mongo:
+        condition: service_healthy
+    networks:
+      - stock-backend
+    restart: "no"
 
 networks:
-  stock-network:
+  stock-frontend:
     driver: bridge
+  stock-backend:
+    driver: bridge
+    internal: true
 
 volumes:
   mysql-data:
   mongo-data:
-  redis-data:
-  # 模型资源持久化卷（LSTM / 情感等模型统一挂载到 /models）
   models-data:
+  runtime-tmp:

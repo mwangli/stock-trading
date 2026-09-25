@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 import React, { useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Table, Input, Button, Select } from 'antd';
@@ -57,28 +58,6 @@ interface KlineData {
 }
 
 
-const MOCK_WATCHLIST: WatchlistItem[] = [
-  { key: '1', symbol: 'AAPL', name: 'Apple Inc.', price: 173.50, change: 1.25, volume: '42.5M', volumeValue: 42500000, starred: true },
-  { key: '2', symbol: 'MSFT', name: 'Microsoft Corp.', price: 320.80, change: 0.85, volume: '28.1M', volumeValue: 28100000, starred: true },
-  { key: '3', symbol: 'GOOGL', name: 'Alphabet Inc.', price: 140.20, change: -0.50, volume: '18.3M', volumeValue: 18300000, starred: false },
-  { key: '4', symbol: 'AMZN', name: 'Amazon.com', price: 178.35, change: 2.10, volume: '35.2M', volumeValue: 35200000, starred: true },
-  { key: '5', symbol: 'TSLA', name: 'Tesla Inc.', price: 210.45, change: -3.20, volume: '55.8M', volumeValue: 55800000, starred: false },
-  { key: '6', symbol: 'NVDA', name: 'NVIDIA Corp.', price: 850.10, change: 5.60, volume: '62.1M', volumeValue: 62100000, starred: true },
-  { key: '7', symbol: 'META', name: 'Meta Platforms', price: 485.90, change: 1.80, volume: '22.5M', volumeValue: 22500000, starred: false },
-  { key: '8', symbol: 'AMD', name: 'AMD Inc.', price: 180.25, change: 4.20, volume: '45.6M', volumeValue: 45600000, starred: true },
-  { key: '9', symbol: 'INTC', name: 'Intel Corp.', price: 42.15, change: -1.50, volume: '38.2M', volumeValue: 38200000, starred: false },
-  { key: '10', symbol: 'NFLX', name: 'Netflix Inc.', price: 610.50, change: 0.95, volume: '12.4M', volumeValue: 12400000, starred: false },
-  { key: '11', symbol: 'BABA', name: 'Alibaba Group', price: 72.35, change: -0.45, volume: '15.2M', volumeValue: 15200000, starred: false },
-  { key: '12', symbol: 'TCEHY', name: 'Tencent Holdings', price: 35.60, change: 1.10, volume: '8.5M', volumeValue: 8500000, starred: true },
-  { key: '13', symbol: 'ORCL', name: 'Oracle Corp.', price: 112.40, change: 0.75, volume: '9.3M', volumeValue: 9300000, starred: false },
-  { key: '14', symbol: 'CRM', name: 'Salesforce', price: 295.10, change: 1.30, volume: '6.7M', volumeValue: 6700000, starred: true },
-  { key: '15', symbol: 'ADBE', name: 'Adobe Inc.', price: 480.50, change: -1.20, volume: '4.2M', volumeValue: 4200000, starred: false },
-  { key: '16', symbol: 'CSCO', name: 'Cisco Systems', price: 48.90, change: -0.15, volume: '14.1M', volumeValue: 14100000, starred: false },
-  { key: '17', symbol: 'AVGO', name: 'Broadcom Inc.', price: 1250.60, change: 8.50, volume: '5.6M', volumeValue: 5600000, starred: true },
-  { key: '18', symbol: 'QCOM', name: 'Qualcomm Inc.', price: 155.30, change: 2.40, volume: '10.8M', volumeValue: 10800000, starred: true },
-  { key: '19', symbol: 'TXN', name: 'Texas Inst.', price: 168.40, change: -0.80, volume: '7.4M', volumeValue: 7400000, starred: false },
-  { key: '20', symbol: 'IBM', name: 'IBM Corp.', price: 192.15, change: 0.65, volume: '5.9M', volumeValue: 5900000, starred: false },
-];
 const Market: React.FC = () => {
   const { t } = useTranslation();
 
@@ -241,15 +220,14 @@ const Market: React.FC = () => {
           pageSize: size,
           total: res.total ?? 0,
         }));
-        return; // 成功获取接口数据，不再使用 mock
+        return;
       }
-      // 如果到这里，说明接口返回的数据无效，使用 mock
-      console.warn('API returned invalid data, using mock data.');
-      setWatchlist(MOCK_WATCHLIST);
+      setWatchlist([]);
+      setPagination(prev => ({ ...prev, current: page, pageSize: size, total: 0 }));
     } catch (error) {
-      // HTTP 500 或网络错误时使用 mock 数据
-      console.error('Failed to fetch stock list, using mock data:', error);
-      setWatchlist(MOCK_WATCHLIST);
+      console.error('获取股票列表失败:', error);
+      setWatchlist([]);
+      setPagination(prev => ({ ...prev, current: page, pageSize: size, total: 0 }));
     } finally {
       setLoading(false);
     }
@@ -623,3 +601,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
+// AI_GENERATE_END -

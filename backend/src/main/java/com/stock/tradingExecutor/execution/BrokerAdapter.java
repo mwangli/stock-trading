@@ -1,16 +1,23 @@
+// AI_GENERATE_START ---
 package com.stock.tradingExecutor.execution;
 
 import com.stock.tradingExecutor.domain.vo.AccountStatus;
+import com.stock.tradingExecutor.domain.vo.BrokerFillSnapshot;
+import com.stock.tradingExecutor.domain.vo.BrokerOrderSnapshot;
 import com.stock.tradingExecutor.domain.vo.OrderResult;
 import com.stock.tradingExecutor.domain.entity.OrderStatus;
 import com.stock.tradingExecutor.domain.entity.Position;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
  * 券商适配器接口
  * 抽象不同券商API的差异，统一接口
+ *
+ * @author mwangli
+ * @since 2026-09-25
  */
 public interface BrokerAdapter {
 
@@ -67,4 +74,44 @@ public interface BrokerAdapter {
      * @return 持仓列表
      */
     List<Position> getPositions();
+
+    /**
+     * 判断当前券商会话是否可用于账户类只读查询。
+     *
+     * @return 会话有效时返回 true
+     */
+    boolean isAuthenticated();
+
+    /**
+     * 查询当日全部委托，包含未成交、撤单和废单。
+     *
+     * @return 标准化委托快照
+     */
+    List<BrokerOrderSnapshot> getTodayOrderSnapshots();
+
+    /**
+     * 查询当日成交明细。
+     *
+     * @return 标准化成交快照
+     */
+    List<BrokerFillSnapshot> getTodayFillSnapshots();
+
+    /**
+     * 查询指定日期范围的历史委托。
+     *
+     * @param startDate 开始日期，包含当天
+     * @param endDate   结束日期，包含当天
+     * @return 标准化历史委托快照
+     */
+    List<BrokerOrderSnapshot> getHistoryOrderSnapshots(LocalDate startDate, LocalDate endDate);
+
+    /**
+     * 查询指定日期范围的历史成交。
+     *
+     * @param startDate 开始日期，包含当天
+     * @param endDate   结束日期，包含当天
+     * @return 标准化历史成交快照
+     */
+    List<BrokerFillSnapshot> getHistoryFillSnapshots(LocalDate startDate, LocalDate endDate);
 }
+// AI_GENERATE_END ---

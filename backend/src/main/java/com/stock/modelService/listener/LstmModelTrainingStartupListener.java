@@ -1,3 +1,4 @@
+// AI_GENERATE_START --
 package com.stock.modelService.listener;
 
 import com.stock.dataCollector.persistence.StockInfoRepository;
@@ -32,17 +33,17 @@ import java.util.stream.Collectors;
  *
  * <p>该监听器通过配置项进行精细控制：</p>
  * <ul>
- *     <li>{@code app.startup.model-training.enabled}：是否启用启动时自动训练（默认 true）</li>
+ *     <li>{@code app.startup.model-training.enabled}：是否启用 Legacy 启动训练（默认 false）</li>
  *     <li>训练为串行执行，依赖 GPU 加速（pytorch-native-cu121）提升单次训练速度</li>
  * </ul>
  *
- * @author AI Assistant
- * @since 1.0
+ * @author mwangli
+ * @since 2026-09-25
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "app.startup.model-training", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "app.startup.model-training", name = "enabled", havingValue = "true")
 public class LstmModelTrainingStartupListener {
 
     private static final int DEFAULT_TRAIN_DAYS = 500;
@@ -188,3 +189,4 @@ public class LstmModelTrainingStartupListener {
         }
     }
 }
+// AI_GENERATE_END --

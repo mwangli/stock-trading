@@ -1,22 +1,39 @@
-########## 运行阶段：使用 CI 预先构建好的 JAR ##########
-FROM eclipse-temurin:17-jre-jammy
+# AI_GENERATE_START -
+ARG MAVEN_IMAGE=maven:3.9.11-eclipse-temurin-17
+ARG JRE_IMAGE=eclipse-temurin:17.0.16_8-jre-jammy
+
+FROM ${MAVEN_IMAGE} AS builder
+
+WORKDIR /workspace
+
+COPY pom.xml ./pom.xml
+COPY backend/pom.xml ./backend/pom.xml
+COPY frontend-v2/pom.xml ./frontend-v2/pom.xml
+
+RUN mvn -pl backend -am dependency:go-offline -DskipTests
+
+COPY backend/src ./backend/src
+
+RUN mvn -pl backend -am clean package -DskipTests \
+    && cp backend/target/*.jar /workspace/app.jar
+
+FROM ${JRE_IMAGE}
 
 WORKDIR /app
 
-# 创建非 root 用户
-RUN groupadd -r stock && useradd -r -g stock stock
+RUN groupadd --system stock \
+    && useradd --system --gid stock --home-dir /app stock \
+    && mkdir -p /app/.tmp /models \
+    && chown -R stock:stock /app /models
 
-# 拷贝由 GitHub Actions 预先打好的 JAR（在构建上下文中命名为 app.jar）
-COPY app.jar app.jar
+COPY --from=builder --chown=stock:stock /workspace/app.jar /app/app.jar
 
-# 设置文件所有权
-RUN chown stock:stock app.jar
-
-# 切换到非 root 用户
 USER stock
 
-# 暴露端口
 EXPOSE 8080
 
-# 启动应用
-ENTRYPOINT ["java", "-jar", "app.jar"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
+    CMD bash -c 'echo > /dev/tcp/127.0.0.1/8080' || exit 1
+
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+# AI_GENERATE_END -

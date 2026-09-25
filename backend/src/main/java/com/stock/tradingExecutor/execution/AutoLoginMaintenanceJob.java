@@ -1,8 +1,9 @@
+// AI_GENERATE_START --
 package com.stock.tradingExecutor.execution;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -20,17 +21,24 @@ public class AutoLoginMaintenanceJob {
     private final AutoLoginService autoLoginService;
     private final BrowserSessionManager browserSessionManager;
     
-    // 从配置文件读取账号密码
-    private static final String USERNAME = "13278828091";
-    private static final String PASSWORD = "132553";
+    @Value("${spring.auto-login.account:}")
+    private String username;
+
+    @Value("${spring.auto-login.password:}")
+    private String password;
 
     /**
-     * 每30分钟检查一次登录状态
+     * 检查并维护登录状态。
+     * 调用周期由统一的 JobSchedulerService 管理。
      */
-    @Scheduled(fixedDelay = 30 * 60 * 1000)
     public void maintainLoginStatus() {
         try {
             log.info("[AutoLoginMaintenance] 开始检查登录状态");
+
+            if (username == null || username.isBlank() || password == null || password.isBlank()) {
+                log.warn("[AutoLoginMaintenance] 未配置登录凭据，跳过自动登录维护");
+                return;
+            }
             
             if (!autoLoginService.isLoggedIn()) {
                 log.warn("[AutoLoginMaintenance] 检测到未登录状态，开始自动登录");
@@ -40,7 +48,7 @@ public class AutoLoginMaintenanceJob {
                     browserSessionManager.startBrowser();
                 }
                 
-                boolean success = autoLoginService.login(USERNAME, PASSWORD);
+                boolean success = autoLoginService.login(username, password);
                 if (success) {
                     log.info("[AutoLoginMaintenance] 自动登录成功");
                 } else {
@@ -55,3 +63,4 @@ public class AutoLoginMaintenanceJob {
         }
     }
 }
+// AI_GENERATE_END --

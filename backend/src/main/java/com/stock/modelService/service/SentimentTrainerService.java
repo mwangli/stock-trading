@@ -1,3 +1,4 @@
+// AI_GENERATE_START --
 package com.stock.modelService.service;
 
 import ai.djl.inference.Predictor;
@@ -28,12 +29,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.Arrays;
 
 import jakarta.annotation.PostConstruct;
-    /**
-     * 情感分析模型训练服务
-     *
-     * @author mwangli
-     * @since 2026-03-10
-     */
+
+/**
+ * 情感分析模型训练与推理服务。
+ *
+ * @author mwangli
+ * @since 2026-09-25
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -552,6 +554,46 @@ public class SentimentTrainerService {
         return modelDir.toAbsolutePath().toString();
     }
 
+
+    /**
+     * 使用已配置的情感模型执行交易选股所需的严格推理。
+     * 模型无法加载或单次推理失败时直接抛出异常，禁止使用规则结果替代真实模型。
+     *
+     * @param text 新闻或公告文本
+     * @return 情感标签、分数和置信度
+     */
+    public SentimentAnalysisResult analyzeSentimentRequired(String text) {
+        if (text == null || text.isBlank()) {
+            throw new IllegalArgumentException("情感分析文本不能为空");
+        }
+        if ((!isModelLoaded || loadedModel == null) && !loadModel()) {
+            throw new IllegalStateException("情感分析模型未加载，停止生成交易候选");
+        }
+        try (Predictor<String, Classifications> predictor = loadedModel.newPredictor()) {
+            Classifications result = predictor.predict(text);
+            Map<String, Double> probabilities = new HashMap<>();
+            String bestLabel = null;
+            double bestProbability = 0D;
+            for (Classifications.Classification classification : result.items()) {
+                probabilities.put(classification.getClassName(), classification.getProbability());
+                if (classification.getProbability() > bestProbability) {
+                    bestProbability = classification.getProbability();
+                    bestLabel = classification.getClassName();
+                }
+            }
+            return SentimentAnalysisResult.builder()
+                    .label(bestLabel)
+                    .score(calculateSentimentScore(probabilities))
+                    .normalizedScore(calculateNormalizedScore(bestLabel, bestProbability))
+                    .confidence(bestProbability)
+                    .probabilities(probabilities)
+                    .text(text)
+                    .build();
+        } catch (Exception exception) {
+            throw new IllegalStateException("情感分析模型推理失败", exception);
+        }
+    }
+
     public TrainingStatus getTrainingStatus(String trainingId) {
         return trainingStatusMap.get(trainingId);
     }
@@ -625,3 +667,4 @@ public class SentimentTrainerService {
         private int totalEpochs = 0;
     }
 }
+// AI_GENERATE_END --

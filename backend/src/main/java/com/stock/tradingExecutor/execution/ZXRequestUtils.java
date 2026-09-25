@@ -1,3 +1,4 @@
+// AI_GENERATE_START ---
 package com.stock.tradingExecutor.execution;
 
 import cn.hutool.http.HttpUtil;
@@ -29,9 +30,10 @@ public class ZXRequestUtils {
     private static final int MAX_CAPTCHA_RETRY = 3;
 
     private final CaptchaService captchaService;
+    private final ZXBrokerConfig brokerConfig;
 
     /**
-     * 使用本地内存缓存请求 Token，替代 Redis 存储
+     * 使用本地内存缓存请求 Token
      */
     private volatile String token;
     private volatile long tokenExpireAtMs;
@@ -46,8 +48,8 @@ public class ZXRequestUtils {
         paramMap.put("cfrom", "H5");
         paramMap.put("tfrom", "PC");
         paramMap.put("newindex", "1");
-        paramMap.put("MobileCode", "13278828091");
-        paramMap.put("intacttoserver", "@ClZvbHVtZUluZm8JAAAANTI1QS00Qjc4");
+        paramMap.put("MobileCode", brokerConfig.getMobileCode());
+        paramMap.put("intacttoserver", brokerConfig.getIntactToServer());
         paramMap.put("reqno", System.currentTimeMillis());
         return paramMap;
     }
@@ -67,10 +69,10 @@ public class ZXRequestUtils {
      * 设置Token
      */
     public void setToken(String token) {
-        if (token != null) {
+        if (token != null && !token.isBlank()) {
             this.token = token;
-            // 默认缓存30分钟
-            this.tokenExpireAtMs = System.currentTimeMillis() + 30L * 60L * 1000L;
+            this.tokenExpireAtMs = System.currentTimeMillis()
+                    + brokerConfig.getTokenExpireMinutes() * 60L * 1000L;
         }
     }
 
@@ -94,10 +96,8 @@ public class ZXRequestUtils {
             // 发送 POST 请求
             String response = HttpUtil.createPost(url).form(formParam).execute().body();
 
-            // 日志太长截取前1000个字符
             if (log.isDebugEnabled()) {
-                log.debug("[ZXBroker] 响应: {}",
-                    response.length() > 1000 ? response.substring(0, 1000) : response);
+                log.debug("[ZXBroker] 收到券商响应，长度={}", response.length());
             }
 
             JSONObject res = JSONObject.parseObject(response);
@@ -161,8 +161,8 @@ public class ZXRequestUtils {
                 continue;
             }
 
-            // 打印登录响应的详细信息，以便调试
-            log.info("[ZXRequestUtils] 登录响应: {}", loginResponse.toJSONString());
+            // 登录响应可能包含 Token、账号或验证码上下文，只记录流程状态。
+            log.info("[ZXRequestUtils] 已收到登录响应");
 
             if (!loginResponse.containsKey("need_captcha") || !loginResponse.getBoolean("need_captcha")) {
                 String token = loginResponse.getString("token");
@@ -330,3 +330,4 @@ public class ZXRequestUtils {
         }
     }
 }
+// AI_GENERATE_END ---

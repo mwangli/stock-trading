@@ -1,3 +1,4 @@
+// AI_GENERATE_START --
 package com.stock.strategyAnalysis.engine;
 
 import com.stock.strategyAnalysis.config.StrategyStateManager;
@@ -5,14 +6,16 @@ import com.stock.strategyAnalysis.domain.dto.CircuitBreakerStatusDto;
 import com.stock.strategyAnalysis.domain.entity.CircuitBreakerState;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 
 /**
- * 熔断器
- * 监控策略失败情况，触发熔断保护
+ * 策略熔断器。
+ * 监控策略失败情况、暴露熔断状态，并在恢复时间到达后解除熔断。
+ *
+ * @author mwangli
+ * @since 2026-09-25
  */
 @Slf4j
 @Component
@@ -22,14 +25,18 @@ public class CircuitBreaker {
     private final StrategyStateManager stateManager;
 
     /**
-     * 记录失败
+     * 记录指定指标执行失败。
+     *
+     * @param indicator 指标标识
      */
     public void recordFailure(String indicator) {
         stateManager.recordIndicatorFailure(indicator);
     }
 
     /**
-     * 检查是否触发熔断
+     * 检查当前是否已触发熔断。
+     *
+     * @return true 表示已触发熔断
      */
     public boolean isTriggered() {
         CircuitBreakerStatusDto status = stateManager.getCircuitBreakerStatus();
@@ -37,14 +44,16 @@ public class CircuitBreaker {
     }
 
     /**
-     * 获取熔断状态
+     * 获取当前熔断状态。
+     *
+     * @return 熔断状态
      */
     public CircuitBreakerState getState() {
         return stateManager.getCircuitBreakerStatus().getState();
     }
 
     /**
-     * 重置熔断器
+     * 重置熔断器并恢复策略执行。
      */
     public void reset() {
         stateManager.resetCircuitBreaker();
@@ -55,10 +64,9 @@ public class CircuitBreaker {
     private boolean schedulingEnabled;
 
     /**
-     * 定时检查熔断恢复
-     * 每分钟执行一次
+     * 检查熔断恢复时间是否已到。
+     * 调用周期由统一的 JobSchedulerService 管理。
      */
-    @Scheduled(fixedRate = 60000)
     public void checkRecovery() {
         if (!schedulingEnabled) {
             return;
@@ -74,3 +82,4 @@ public class CircuitBreaker {
         }
     }
 }
+// AI_GENERATE_END --

@@ -1,3 +1,4 @@
+// AI_GENERATE_START --
 package com.stock.tradingExecutor.api;
 
 import com.stock.tradingExecutor.domain.dto.AutoLoginResponseDto;
@@ -54,7 +55,7 @@ public class AutoLoginController {
             return ResponseEntity.badRequest().body(buildResponse(false, "账号或密码为空"));
         }
 
-        log.info("[AutoLoginController] 接收登录请求: account={}", account);
+        log.info("[AutoLoginController] 接收登录请求: account={}", maskAccount(account));
         autoLoginService.printLoginStatus();
 
         boolean success = autoLoginService.login(account, pwd);
@@ -101,7 +102,8 @@ public class AutoLoginController {
         return AutoLoginResponseDto.builder()
                 .success(success)
                 .message(message)
-                .token(autoLoginService.getLoginToken())
+                // Token 仅保存在后端会话中，不返回给 PC 或小程序。
+                .token(null)
                 .stage(autoLoginService.getCurrentStage())
                 .currentUrl(browserSessionManager.getCurrentUrl())
                 .pageTitle(browserSessionManager.getPageTitle())
@@ -111,5 +113,17 @@ public class AutoLoginController {
                 .noVncUrl("http://localhost:7900")
                 .build();
     }
+
+    private String maskAccount(String account) {
+        if (account == null || account.isBlank()) {
+            return "****";
+        }
+        String trimmed = account.trim();
+        if (trimmed.length() <= 4) {
+            return "****";
+        }
+        return "****" + trimmed.substring(trimmed.length() - 4);
+    }
     // AI_GENERATED_END
 }
+// AI_GENERATE_END --

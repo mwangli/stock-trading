@@ -60,6 +60,7 @@ Thumbs.db
 # Application
 *.env
 *.env.local
+!.env.example
 application-local.yml
 application-dev.yml
 application-prod.yml
@@ -72,4 +73,5 @@ application-prod.yml
 /.sisyphus/
 .worktrees/
 models/
+backups/
 .understand-anything/

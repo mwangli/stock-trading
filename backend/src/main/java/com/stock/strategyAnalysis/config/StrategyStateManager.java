@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 package com.stock.strategyAnalysis.config;
 
 import com.stock.strategyAnalysis.domain.dto.CircuitBreakerStatusDto;
@@ -31,7 +32,7 @@ public class StrategyStateManager {
     private static final String CIRCUIT_KEY = "strategy:circuit";
 
     /**
-     * 使用本地内存 Map 替代 Redis 存储策略状态和熔断状态
+     * 使用本地内存保存单实例运行所需的策略状态和熔断状态
      */
     private final ConcurrentMap<String, Object> stateStore = new ConcurrentHashMap<>();
 
@@ -208,3 +209,4 @@ public class StrategyStateManager {
         switchLogRepository.save(log);
     }
 }
+// AI_GENERATE_END -

@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Tag, Button, Switch, Modal, Form, Input, Space, Typography, Tooltip, message } from 'antd';
 import { ScheduleOutlined, PlayCircleOutlined, EditOutlined, ClockCircleOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -14,80 +15,11 @@ interface Job {
   status: number; // 1: Active, 0: Paused
 }
 
-const MOCK_JOBS: Job[] = [
-  {
-    id: 1,
-    jobName: 'stockListSync',
-    description: '每周同步证券 API 股票代码和名称',
-    cronExpression: '0 0 1 * * SUN',
-    lastRunTime: '2024-03-03 01:00:00',
-    status: 1,
-  },
-  {
-    id: 2,
-    jobName: 'dailyStockDataSync',
-    description: '每日收盘后同步所有股票日 K 线数据',
-    cronExpression: '0 0 18 * * MON-FRI',
-    lastRunTime: '2024-03-08 18:00:00',
-    status: 1,
-  },
-  {
-    id: 3,
-    jobName: 'historicalDataSync',
-    description: '深度同步所有股票历史数据 (周维护)',
-    cronExpression: '0 0 2 * * SUN',
-    lastRunTime: '2024-03-03 02:00:00',
-    status: 1,
-  },
-  {
-    id: 4,
-    jobName: 'newsCrawler',
-    description: '每小时抓取财经新闻进行情感分析',
-    cronExpression: '0 0 * * * *',
-    lastRunTime: '2024-03-08 10:00:00',
-    status: 0,
-  },
-  {
-    id: 5,
-    jobName: 'stockSelection',
-    description: '运行双因子模型选出次日优选股',
-    cronExpression: '0 0 17 ? * MON-FRI',
-    lastRunTime: '2024-03-07 17:00:00',
-    status: 1,
-  },
-  {
-    id: 6,
-    jobName: 'signalGeneration',
-    description: '基于选股结果生成买入/卖出信号',
-    cronExpression: '0 30 17 ? * MON-FRI',
-    lastRunTime: '2024-03-07 17:30:00',
-    status: 1,
-  },
-  {
-    id: 7,
-    jobName: 'intradayRiskControl',
-    description: 'T+1 卖出检查、止损和止盈 (每分钟)',
-    cronExpression: '0 * 9-11,13-15 ? * MON-FRI',
-    lastRunTime: '2024-03-08 10:35:00',
-    status: 1,
-  },
-  {
-    id: 8,
-    jobName: 'forceSellCheck',
-    description: '收盘前强制卖出所有 T+1 持仓 (14:57)',
-    cronExpression: '0 57 14 ? * MON-FRI',
-    lastRunTime: '2024-03-07 14:57:00',
-    status: 1,
-  },
-  {
-    id: 9,
-    jobName: 'strategySwitcher',
-    description: '检查市场状况以切换活跃策略',
-    cronExpression: '0 * 9-15 ? * MON-FRI',
-    lastRunTime: '2024-03-08 10:35:00',
-    status: 1,
-  }
-];
+interface ApiResponse<T> {
+  success: boolean;
+  message?: string;
+  data: T;
+}
 
 const JobAdmin: React.FC = () => {
   const { t } = useTranslation();
@@ -95,28 +27,22 @@ const JobAdmin: React.FC = () => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(false);
-  const [jobs, setJobs] = useState<Job[]>(MOCK_JOBS);
+  const [jobs, setJobs] = useState<Job[]>([]);
 
   const fetchJobs = async () => {
     setLoading(true);
     try {
-      const res = await request.get('/jobs') as unknown as Job[];
-      // 正确的逻辑：HTTP 200 时使用接口数据
-      if (Array.isArray(res) && res.length > 0) {
-        // 过滤关键字段有效的记录
-        const validJobs = res.filter(job => job.id && job.jobName);
-        if (validJobs.length > 0) {
-          setJobs(validJobs);
-          return;
-        }
+      const res = await request.get('/jobs') as ApiResponse<Job[]>;
+      if (res.success && Array.isArray(res.data)) {
+        setJobs(res.data.filter(job => job.id && job.jobName));
+      } else {
+        setJobs([]);
+        message.error(res.message || '获取任务列表失败');
       }
-      // 接口返回空数据时使用 mock
-      console.warn('API returned empty jobs, using mock data.');
-      setJobs(MOCK_JOBS);
     } catch (error) {
-      // HTTP 500 或网络错误时使用 mock 数据
-      console.error('Failed to fetch jobs, using mock data:', error);
-      setJobs(MOCK_JOBS);
+      console.error('获取任务列表失败:', error);
+      setJobs([]);
+      message.error('获取任务列表失败');
     } finally {
       setLoading(false);
     }
@@ -129,7 +55,7 @@ const JobAdmin: React.FC = () => {
   const handleRun = async (job: Job) => {
     message.loading({ content: t('jobs.messages.starting', { name: job.jobName }), key: 'runJob' });
     try {
-      await request.post(`/jobs/${job.id}/run`);
+      await request.post(`/jobs/run/${job.id}`);
       message.success({ content: t('jobs.messages.started', { name: job.jobName }), key: 'runJob' });
       setTimeout(fetchJobs, 1000);
     } catch (error) {
@@ -140,7 +66,7 @@ const JobAdmin: React.FC = () => {
 
   const toggleStatus = async (id: number, checked: boolean) => {
     try {
-      await request.post(`/jobs/${id}/status`, { active: checked });
+      await request.post(`/jobs/status/${id}`, { active: checked });
       setJobs(jobs.map(j => j.id === id ? { ...j, status: checked ? 1 : 0 } : j));
       message.success(checked ? t('jobs.messages.resumed') : t('jobs.messages.paused'));
     } catch (error) {
@@ -160,7 +86,7 @@ const JobAdmin: React.FC = () => {
       if (!editingJob) return;
 
       try {
-        await request.post(`/jobs/${editingJob.id}/cron`, { cron: values.cronExpression });
+        await request.post(`/jobs/cron/${editingJob.id}`, { cron: values.cronExpression });
         setJobs(jobs.map(j => j.id === editingJob.id ? { ...j, cronExpression: values.cronExpression, description: values.description } : j));
         setIsModalVisible(false);
         message.success(t('jobs.messages.updated'));
@@ -216,7 +142,7 @@ const JobAdmin: React.FC = () => {
     {
       title: t('jobs.table.actions'),
       key: 'actions',
-      render: (_: any, record: Job) => (
+      render: (_: unknown, record: Job) => (
         <Space size="middle">
           <Tooltip title={t('jobs.actions.run')}>
             <Button 
@@ -308,3 +234,4 @@ const JobAdmin: React.FC = () => {
 };
 
 export default JobAdmin;
+// AI_GENERATE_END -
