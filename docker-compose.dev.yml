@@ -23,7 +23,23 @@ services:
   stock-mysql:
     ports:
       - "127.0.0.1:${MYSQL_HOST_PORT:-6033}:3306"
+    volumes:
+      - type: bind
+        source: ${MYSQL_DATA_DIR:-D:/docker-data/stock-trading4/mysql}
+        target: /var/lib/mysql
+      - type: bind
+        source: ./infrastructure/mysql/init
+        target: /docker-entrypoint-initdb.d
+        read_only: true
 
   stock-mongo:
     ports:
       - "127.0.0.1:${MONGO_HOST_PORT:-27017}:27017"
+    volumes:
+      - type: bind
+        source: ${MONGO_DATA_DIR:-D:/docker-data/stock-trading4/mongo}
+        target: /data/db
+      - type: bind
+        source: ./infrastructure/mongo/init
+        target: /docker-entrypoint-initdb.d
+        read_only: true
