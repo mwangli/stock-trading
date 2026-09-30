@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.BrokerHistoryQueryRequest;
@@ -227,9 +227,7 @@ public class BrokerDataSyncService {
     }
 
     private void ensureAuthenticated() {
-        if (!brokerAdapter.isAuthenticated()) {
-            throw new IllegalStateException("券商会话无效，无法执行只读事实同步");
-        }
+        brokerAdapter.ensureAuthenticated();
     }
 
     private void pauseBetweenMonths() {
@@ -265,4 +263,4 @@ public class BrokerDataSyncService {
         }
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

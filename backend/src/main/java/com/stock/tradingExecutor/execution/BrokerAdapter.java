@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.tradingExecutor.execution;
 
 import com.stock.tradingExecutor.domain.vo.AccountStatus;
@@ -83,6 +83,14 @@ public interface BrokerAdapter {
     boolean isAuthenticated();
 
     /**
+     * 确保当前存在可用券商会话。
+     * 缓存缺失时允许适配器按配置自动登录，失败时必须中断业务流程。
+     *
+     * @throws IllegalStateException 无法获得有效 Token 时抛出
+     */
+    void ensureAuthenticated();
+
+    /**
      * 查询当日全部委托，包含未成交、撤单和废单。
      *
      * @return 标准化委托快照
@@ -114,4 +122,4 @@ public interface BrokerAdapter {
      */
     List<BrokerFillSnapshot> getHistoryFillSnapshots(LocalDate startDate, LocalDate endDate);
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

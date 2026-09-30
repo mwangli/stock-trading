@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.tradingExecutor.service;
 
 import com.stock.strategyAnalysis.domain.dto.StockRankingDto;
@@ -175,9 +175,7 @@ public class RealTradingService {
     }
 
     private void requireBrokerSession() {
-        if (!brokerAdapter.isAuthenticated()) {
-            throw new IllegalStateException("券商会话无效，请先完成真实账户登录");
-        }
+        brokerAdapter.ensureAuthenticated();
     }
 
     private void requireWriteGate() {
@@ -269,4 +267,4 @@ public class RealTradingService {
                 .build();
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

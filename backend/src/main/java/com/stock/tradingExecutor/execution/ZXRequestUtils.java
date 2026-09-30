@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ---------
 package com.stock.tradingExecutor.execution;
 
 import cn.hutool.http.HttpUtil;
@@ -9,13 +9,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.Base64;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
- * 中信证券API请求工具类
- * 封装HTTP请求和Token管理
+ * 中信证券 API 请求工具类。
+ * 封装 HTTP 请求、Token 管理以及算术验证码登录流程。
  *
  * @author mwangli
  * @since 2026-03-21
@@ -26,308 +26,228 @@ import java.util.Map;
 public class ZXRequestUtils {
 
     private static final String REQUEST_URL = "https://weixin.citicsinfo.com/reqxml";
-    private static final int RETRY_TIMES = 10;
-    private static final int MAX_CAPTCHA_RETRY = 3;
-
-    private final CaptchaService captchaService;
+    private final ArithmeticCaptchaSolver captchaSolver;
     private final ZXBrokerConfig brokerConfig;
+    private final ZXBrokerTokenStore tokenStore;
+    private final Object loginLock = new Object();
 
     /**
-     * 使用本地内存缓存请求 Token
-     */
-    private volatile String token;
-    private volatile long tokenExpireAtMs;
-
-    /**
-     * 构建通用请求参数
+     * 构建券商通用请求参数。
+     *
+     * @param paramMap 业务参数
+     * @return 补充通用字段后的参数
      */
     public Map<String, Object> buildParams(Map<String, Object> paramMap) {
-        if (paramMap == null) {
-            paramMap = new HashMap<>();
-        }
-        paramMap.put("cfrom", "H5");
-        paramMap.put("tfrom", "PC");
-        paramMap.put("newindex", "1");
-        paramMap.put("MobileCode", brokerConfig.getMobileCode());
-        paramMap.put("intacttoserver", brokerConfig.getIntactToServer());
-        paramMap.put("reqno", System.currentTimeMillis());
-        return paramMap;
-    }
-
-    /**
-     * 获取Token
-     */
-    public String getToken() {
-        long now = System.currentTimeMillis();
-        if (token != null && now < tokenExpireAtMs) {
-            return token;
-        }
-        return null;
-    }
-
-    /**
-     * 设置Token
-     */
-    public void setToken(String token) {
-        if (token != null && !token.isBlank()) {
-            this.token = token;
-            this.tokenExpireAtMs = System.currentTimeMillis()
-                    + brokerConfig.getTokenExpireMinutes() * 60L * 1000L;
-        }
-    }
-
-    /**
-     * 发送HTTP请求，返回JSONObject
-     */
-    public JSONObject request(Map<String, Object> formParam) {
-        return request(REQUEST_URL, formParam, 0);
-    }
-
-    /**
-     * 发送HTTP请求，返回JSONObject
-     */
-    public JSONObject request(String url, Map<String, Object> formParam, int times) {
-        try {
-            if (times > RETRY_TIMES) {
-                log.error("[ZXBroker] 请求错误次数过多,请检查程序代码!");
-                return new JSONObject();
-            }
-
-            // 发送 POST 请求
-            String response = HttpUtil.createPost(url).form(formParam).execute().body();
-
-            if (log.isDebugEnabled()) {
-                log.debug("[ZXBroker] 收到券商响应，长度={}", response.length());
-            }
-
-            JSONObject res = JSONObject.parseObject(response);
-            String newToken = res.getString("TOKEN");
-            if (newToken != null) {
-                setToken(newToken);
-            }
-            return res;
-        } catch (JSONException e) {
-            log.error("[ZXBroker] 请求数据异常: {}", e.getMessage());
-            return new JSONObject();
-        } catch (Exception e) {
-            log.error("[ZXBroker] 请求异常: {}", e.getMessage());
-            return new JSONObject();
-        }
-    }
-
-    /**
-     * 发送HTTP请求，返回JSONArray (GRID0字段)
-     */
-    public JSONArray requestArray(Map<String, Object> formParam) {
-        JSONObject res = request(REQUEST_URL, formParam, 0);
-        return res.getJSONArray("GRID0");
-    }
-
-    /**
-     * 发送HTTP请求，返回JSONArray (BINDATA.results字段)
-     */
-    public JSONArray requestBindata(Map<String, Object> formParam) {
-        JSONObject res = request(REQUEST_URL + "?action=1230", formParam, 0);
-        JSONObject data = res.getJSONObject("BINDATA");
-        if (data != null && data.getJSONArray("results") != null) {
-            return data.getJSONArray("results");
-        }
-        return new JSONArray();
-    }
-
-    /**
-     * 构建带Token的参数
-     */
-    public Map<String, Object> buildParamsWithToken(Map<String, Object> paramMap) {
-        Map<String, Object> params = buildParams(paramMap);
-        params.put("token", getToken());
+        Map<String, Object> params = paramMap == null ? new HashMap<>() : paramMap;
+        params.put("cfrom", "H5");
+        params.put("tfrom", "PC");
+        params.put("newindex", "1");
+        params.put("MobileCode", brokerConfig.getMobileCode());
+        params.put("intacttoserver", brokerConfig.getIntactToServer());
         params.put("reqno", System.currentTimeMillis());
         return params;
     }
 
     /**
-     * 带滑块验证码的登录
+     * 从 Redis 获取当前有效 Token。
+     * 本方法只检查缓存，不触发登录，供状态查询使用。
      *
-     * @param username 用户名
-     * @param password 密码
-     * @return 登录成功后的Token，失败返回null
+     * @return 有效 Token，不存在或过期时返回 null
      */
-    public String loginWithCaptcha(String username, String password) {
-        for (int retry = 0; retry < MAX_CAPTCHA_RETRY; retry++) {
-            JSONObject loginResponse = sendLoginRequest(username, password);
+    public String getToken() {
+        return tokenStore.getToken();
+    }
 
-            if (loginResponse == null) {
-                log.error("[ZXRequestUtils] 登录请求失败");
-                continue;
-            }
+    /**
+     * 将券商 Token 写入 Redis。
+     *
+     * @param token 新 Token
+     */
+    public void setToken(String token) {
+        if (token != null && !token.isBlank()) {
+            tokenStore.saveToken(token);
+        }
+    }
 
-            // 登录响应可能包含 Token、账号或验证码上下文，只记录流程状态。
-            log.info("[ZXRequestUtils] 已收到登录响应");
-
-            if (!loginResponse.containsKey("need_captcha") || !loginResponse.getBoolean("need_captcha")) {
-                String token = loginResponse.getString("token");
-                if (token != null) {
-                    log.info("[ZXRequestUtils] 登录成功，无需验证码");
-                    return token;
-                }
-            }
-
-            String captchaToken = loginResponse.getString("token");
-            String bgImageUrl = loginResponse.getString("bg_image_url");
-            String sliderImageUrl = loginResponse.getString("slider_image_url");
-
-            if (bgImageUrl == null || sliderImageUrl == null) {
-                log.error("[ZXRequestUtils] 验证码图片URL为空，captchaToken: {}", captchaToken);
-                continue;
-            }
-
-            byte[] bgImage = getCaptchaImage(bgImageUrl);
-            byte[] sliderImage = getCaptchaImage(sliderImageUrl);
-
-            if (bgImage.length == 0 || sliderImage.length == 0) {
-                log.error("[ZXRequestUtils] 获取验证码图片失败");
-                continue;
-            }
-
-            int distance = captchaService.calculateDistance(bgImage, sliderImage);
-            log.info("[ZXRequestUtils] 计算滑块距离: {}px", distance);
-
-            List<Integer> track = captchaService.generateSlideTrack(distance);
-
-            boolean verifySuccess = submitCaptchaResult(captchaToken, distance, track);
-            if (verifySuccess) {
-                JSONObject finalResponse = sendLoginRequest(username, password);
-                String token = finalResponse != null ? finalResponse.getString("token") : null;
-                if (token != null) {
-                    log.info("[ZXRequestUtils] 验证码验证后登录成功");
-                    return token;
-                }
-            }
-
-            log.warn("[ZXRequestUtils] 第{}次验证码验证失败", retry + 1);
+    /**
+     * 获取业务调用必须使用的 Token。
+     * Redis 中不存在 Token 时自动调用验证码登录；登录流程最多尝试三次。
+     *
+     * @return 可用于券商业务接口的 Token
+     * @throws IllegalStateException 券商未启用、登录三次失败或 Redis 不可用时抛出
+     */
+    public String requireToken() {
+        if (!Boolean.TRUE.equals(brokerConfig.getEnabled())) {
+            throw new IllegalStateException("中信证券接入未启用");
+        }
+        String cachedToken = getToken();
+        if (cachedToken != null && !cachedToken.isBlank()) {
+            return cachedToken;
         }
 
-        log.error("[ZXRequestUtils] 验证码验证失败次数过多");
+        synchronized (loginLock) {
+            cachedToken = getToken();
+            if (cachedToken != null && !cachedToken.isBlank()) {
+                return cachedToken;
+            }
+            log.warn("[ZXBroker] Redis 中无可用 Token，开始验证码登录，最多尝试 {} 次",
+                    brokerConfig.getCaptchaMaxRetries());
+            String loginToken = loginConfiguredAccount();
+            if (loginToken == null || loginToken.isBlank()) {
+                log.error("[ZXBroker] 验证码登录连续 {} 次失败，无可用 Token，中断业务流程",
+                        brokerConfig.getCaptchaMaxRetries());
+                throw new IllegalStateException("券商登录连续三次失败，无可用 Token");
+            }
+            String storedToken = getToken();
+            if (storedToken == null || storedToken.isBlank()) {
+                log.error("[ZXBroker] 登录成功但 Redis 中未读取到 Token，中断业务流程");
+                throw new IllegalStateException("券商 Token 未成功写入 Redis");
+            }
+            return storedToken;
+        }
+    }
+
+    /**
+     * 向券商标准地址发送请求。
+     *
+     * @param formParam 表单参数
+     * @return 券商 JSON 响应
+     */
+    public JSONObject request(Map<String, Object> formParam) {
+        return request(REQUEST_URL, formParam);
+    }
+
+    private JSONObject request(String url, Map<String, Object> formParam) {
+        try {
+            String response = HttpUtil.createPost(url).form(formParam).execute().body();
+            JSONObject result = JSONObject.parseObject(response);
+            String newToken = result.getString("TOKEN");
+            if (newToken != null && !newToken.isBlank()) {
+                setToken(newToken);
+            }
+            return result;
+        } catch (IllegalStateException exception) {
+            throw exception;
+        } catch (JSONException exception) {
+            log.error("[ZXBroker] 请求数据异常: {}", exception.getMessage());
+            return new JSONObject();
+        } catch (Exception exception) {
+            log.error("[ZXBroker] 请求异常: {}", exception.getMessage());
+            return new JSONObject();
+        }
+    }
+
+    /**
+     * 获取券商响应中的 GRID0 数组。
+     *
+     * @param formParam 表单参数
+     * @return GRID0 数组
+     */
+    public JSONArray requestArray(Map<String, Object> formParam) {
+        return request(REQUEST_URL, formParam).getJSONArray("GRID0");
+    }
+
+    /**
+     * 获取券商响应中的 BINDATA.results 数组。
+     *
+     * @param formParam 表单参数
+     * @return results 数组
+     */
+    public JSONArray requestBindata(Map<String, Object> formParam) {
+        JSONObject data = request(REQUEST_URL + "?action=1230", formParam).getJSONObject("BINDATA");
+        return data != null && data.getJSONArray("results") != null ? data.getJSONArray("results") : new JSONArray();
+    }
+
+    /**
+     * 构建带当前 Token 的请求参数。
+     *
+     * @param paramMap 业务参数
+     * @return 带 Token 的参数
+     */
+    public Map<String, Object> buildParamsWithToken(Map<String, Object> paramMap) {
+        Map<String, Object> params = buildParams(paramMap);
+        params.put("token", requireToken());
+        params.put("reqno", System.currentTimeMillis());
+        return params;
+    }
+
+    /**
+     * 获取算术验证码并登录券商协议接口。
+     * 任何识别不一致都会丢弃当前 CheckToken 并申请新的验证码。
+     *
+     * @param account 资金账号
+     * @param encodedPassword 网页协议使用的加密密码
+     * @return 登录成功后的 Token，失败返回 null
+     */
+    private String loginWithCaptcha(String account, String encodedPassword) {
+        int maxRetries = Math.max(1, Math.min(brokerConfig.getCaptchaMaxRetries(), 3));
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                CaptchaChallenge challenge = requestArithmeticCaptcha();
+                int checkCode = captchaSolver.solve(challenge.imageBytes());
+                JSONObject response = sendLoginRequest(account, encodedPassword, checkCode, challenge.checkToken());
+                String loginToken = response.getString("TOKEN");
+                if (loginToken != null && !loginToken.isBlank()) {
+                    setToken(loginToken);
+                    log.info("[ZXBroker] 券商协议登录成功");
+                    return loginToken;
+                }
+                log.warn("[ZXBroker] 第 {} 次登录失败，错误码={}", attempt, response.getString("ERRORNO"));
+            } catch (Exception exception) {
+                log.warn("[ZXBroker] 第 {} 次验证码处理失败: {}", attempt, exception.getMessage());
+            }
+        }
+        log.error("[ZXBroker] 登录失败，已达到验证码最大重试次数={}", maxRetries);
         return null;
     }
 
     /**
-     * 发送登录请求
-     */
-    private JSONObject sendLoginRequest(String username, String password) {
-        Map<String, Object> loginParams = new HashMap<>();
-        loginParams.put("username", username);
-        loginParams.put("password", password);
-        loginParams.put("reqno", System.currentTimeMillis());
-
-        try {
-            String response = HttpUtil.createPost(REQUEST_URL + "?action=1001")
-                    .form(buildParams(loginParams))
-                    .execute()
-                    .body();
-            return JSONObject.parseObject(response);
-        } catch (Exception e) {
-            log.error("[ZXRequestUtils] 登录请求异常: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * 提交验证码验证结果
-     */
-    private boolean submitCaptchaResult(String captchaToken, int distance, List<Integer> track) {
-        Map<String, Object> captchaParams = new HashMap<>();
-        captchaParams.put("captcha_token", captchaToken);
-        captchaParams.put("distance", distance);
-        captchaParams.put("track", String.join(",", track.stream().map(String::valueOf).toList()));
-        captchaParams.put("reqno", System.currentTimeMillis());
-
-        try {
-            String response = HttpUtil.createPost(REQUEST_URL + "?action=1002")
-                    .form(buildParams(captchaParams))
-                    .execute()
-                    .body();
-            JSONObject res = JSONObject.parseObject(response);
-            return res != null && "0".equals(res.getString("error_no"));
-        } catch (Exception e) {
-            log.error("[ZXRequestUtils] 验证码提交异常: {}", e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * 获取验证码图片
+     * 使用运行环境中的资金账号和加密密码登录。
      *
-     * @param imageUrl 图片URL
-     * @return 图片字节数组
+     * @return 登录成功后的 Token，失败返回 null
      */
-    public byte[] getCaptchaImage(String imageUrl) {
+    public String loginConfiguredAccount() {
+        if (brokerConfig.getAccount().isBlank() || brokerConfig.getEncodedPassword().isBlank()) {
+            throw new IllegalStateException("未配置券商资金账号或加密密码");
+        }
+        return loginWithCaptcha(brokerConfig.getAccount(), brokerConfig.getEncodedPassword());
+    }
+
+    private CaptchaChallenge requestArithmeticCaptcha() {
+        Map<String, Object> params = new HashMap<>();
+        params.put("action", 41092);
+        JSONObject response = request(buildParams(params));
+        String dataUri = response.getString("MESSAGE");
+        String checkToken = response.getString("CHECKTOKEN");
+        if (dataUri == null || dataUri.isBlank() || checkToken == null || checkToken.isBlank()) {
+            throw new IllegalStateException("验证码接口未返回图片或 CheckToken");
+        }
+        String base64 = dataUri.substring(dataUri.indexOf(',') + 1);
         try {
-            return HttpUtil.createGet(imageUrl).execute().bodyBytes();
-        } catch (Exception e) {
-            log.error("[ZXRequestUtils] 获取验证码图片失败: {}", e.getMessage());
-            return new byte[0];
+            return new CaptchaChallenge(Base64.getDecoder().decode(base64), checkToken);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException("验证码图片无法解码", exception);
         }
     }
 
-    /**
-     * 发送HTTP GET请求
-     *
-     * @param url 请求URL
-     * @return 响应字符串
-     */
-    public static String httpGet(String url) {
-        try {
-            return HttpUtil.createGet(url).execute().body();
-        } catch (Exception e) {
-            return null;
-        }
+    private JSONObject sendLoginRequest(String account, String encodedPassword, int checkCode, String checkToken) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("action", 100);
+        params.put("modulus_id", 2);
+        params.put("MobileType", 3);
+        params.put("accounttype", "ZJACCOUNT");
+        params.put("account", account);
+        params.put("password", encodedPassword);
+        params.put("signkey", brokerConfig.getSignKey());
+        params.put("CheckCode", checkCode);
+        params.put("CheckToken", checkToken);
+        params.put("code", "");
+        params.put("maxcount", 100);
+        params.put("CHANNEL", "");
+        return request(buildParams(params));
     }
 
-    /**
-     * 下载图片
-     *
-     * @param url 图片URL
-     * @return 图片字节数组
-     */
-    public static byte[] httpGetImage(String url) {
-        try {
-            return HttpUtil.createGet(url).execute().bodyBytes();
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * 发送带请求头的HTTP GET请求
-     *
-     * @param url 请求URL
-     * @return 响应字符串
-     */
-    public static String httpGetWithHeaders(String url) {
-        try {
-            return HttpUtil.createGet(url)
-                    .header("accept", "*")
-                    .header("accept-encoding", "gzip, deflate, br, zstd")
-                    .header("accept-language", "zh-CN,zh;q=0.9")
-                    .header("cache-control", "no-cache")
-                    .header("connection", "keep-alive")
-                    .header("host", "c.dun.163.com")
-                    .header("pragma", "no-cache")
-                    .header("referer", "https://weixin.citicsinfo.com/")
-                    .header("sec-ch-ua", "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Google Chrome\";v=\"146\"")
-                    .header("sec-ch-ua-mobile", "?0")
-                    .header("sec-ch-ua-platform", "\"Windows\"")
-                    .header("sec-fetch-dest", "script")
-                    .header("sec-fetch-mode", "no-cors")
-                    .header("sec-fetch-site", "cross-site")
-                    .header("sec-fetch-storage-access", "active")
-                    .header("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
-                    .execute()
-                    .body();
-        } catch (Exception e) {
-            return null;
-        }
+    private record CaptchaChallenge(byte[] imageBytes, String checkToken) {
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ---------
