@@ -19,6 +19,13 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:stock}
     password: ${SPRING_DATASOURCE_PASSWORD:}
   data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      database: ${SPRING_DATA_REDIS_DATABASE:0}
+      connect-timeout: ${SPRING_DATA_REDIS_CONNECT_TIMEOUT:3s}
+      timeout: ${SPRING_DATA_REDIS_TIMEOUT:3s}
 
     mongodb:
       auto-index-creation: true
@@ -44,34 +51,21 @@ spring:
     baseline-version: 0
     locations: classpath:db/migration
 
-  # 自动登录配置
-  auto-login:
-    account: ${STOCK_AUTO_LOGIN_ACCOUNT:}
-    password: ${STOCK_AUTO_LOGIN_PASSWORD:}
-    # 临时文件目录（验证码截图、SMS文件）
-    tmp-dir: ""
-    # 手机验证码邮件转发读取配置：默认关闭，建议通过 IDEA 环境变量覆盖
-    sms-mail:
-      enabled: ${AUTO_LOGIN_SMS_MAIL_ENABLED:false}
-      host: ${AUTO_LOGIN_SMS_MAIL_HOST:}
-      port: ${AUTO_LOGIN_SMS_MAIL_PORT:993}
-      username: ${AUTO_LOGIN_SMS_MAIL_USERNAME:}
-      password: ${AUTO_LOGIN_SMS_MAIL_PASSWORD:}
-      folder: ${AUTO_LOGIN_SMS_MAIL_FOLDER:INBOX}
-      sender-keyword: ${AUTO_LOGIN_SMS_MAIL_SENDER_KEYWORD:}
-      content-keyword: ${AUTO_LOGIN_SMS_MAIL_CONTENT_KEYWORD:中信}
-      scan-limit: ${AUTO_LOGIN_SMS_MAIL_SCAN_LIMIT:20}
-      mark-seen: ${AUTO_LOGIN_SMS_MAIL_MARK_SEEN:false}
-
 # 中信证券协议参数。默认关闭，真实值必须由运行环境注入。
 zxbroker:
   enabled: ${ZXBROKER_ENABLED:false}
   mobile-code: ${ZXBROKER_MOBILE_CODE:}
   account: ${ZXBROKER_ACCOUNT:}
-  encoded-password-key: ${ZXBROKER_ENCODED_PASSWORD_KEY:ENCODE_ACCOUNT_PASSWORD}
+  encoded-password: ${ZXBROKER_ENCODED_PASSWORD:}
+  ocr-min-agreement: ${ZXBROKER_OCR_MIN_AGREEMENT:2}
+  ocr-timeout-ms: ${ZXBROKER_OCR_TIMEOUT_MS:20000}
+  baidu-ocr-api-key: ${BAIDU_OCR_API_KEY:}
+  baidu-ocr-secret-key: ${BAIDU_OCR_SECRET_KEY:}
+  captcha-max-retries: ${ZXBROKER_CAPTCHA_MAX_RETRIES:3}
   sign-key: ${ZXBROKER_SIGN_KEY:}
   intact-to-server: ${ZXBROKER_INTACT_TO_SERVER:}
   token-expire-minutes: ${ZXBROKER_TOKEN_EXPIRE_MINUTES:30}
+  token-redis-key: ${ZXBROKER_TOKEN_REDIS_KEY:stock-trading:zxbroker:token}
   history-page-size: ${ZXBROKER_HISTORY_PAGE_SIZE:500}
   history-max-records-per-window: ${ZXBROKER_HISTORY_MAX_RECORDS_PER_WINDOW:5000}
   history-request-interval-ms: ${ZXBROKER_HISTORY_REQUEST_INTERVAL_MS:200}

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START --------
 package com.stock.tradingExecutor.execution;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -260,6 +260,11 @@ public class ZXBrokerAdapter implements BrokerAdapter {
     public boolean isAuthenticated() {
         return Boolean.TRUE.equals(config.getEnabled()) && requestUtils.getToken() != null;
     }
+    /** {@inheritDoc} */
+    @Override
+    public void ensureAuthenticated() {
+        requestUtils.requireToken();
+    }
 
     /** {@inheritDoc} */
     @Override
@@ -298,20 +303,14 @@ public class ZXBrokerAdapter implements BrokerAdapter {
     }
 
     /**
-     * 登录券商平台。
+     * 使用运行环境配置的资金账号和加密密码登录券商平台。
      *
-     * @param username 用户名
-     * @param password 密码
      * @return 登录是否成功
      */
-    public boolean login(String username, String password) {
-        log.info("[ZXBroker] 登录券商平台");
-        String token = requestUtils.loginWithCaptcha(username, password);
-        if (token == null || token.isBlank()) {
-            return false;
-        }
-        requestUtils.setToken(token);
-        return true;
+    public boolean loginConfiguredAccount() {
+        log.info("[ZXBroker] 使用配置账号登录券商平台");
+        String token = requestUtils.loginConfiguredAccount();
+        return token != null && !token.isBlank();
     }
 
     /**
@@ -402,16 +401,7 @@ public class ZXBrokerAdapter implements BrokerAdapter {
     }
 
     private String requireToken() {
-        if (!Boolean.TRUE.equals(config.getEnabled())) {
-            log.warn("[ZXBroker] 中信证券接入未启用");
-            return null;
-        }
-        String token = requestUtils.getToken();
-        if (token == null || token.isBlank()) {
-            log.warn("[ZXBroker] 券商会话无效，请先登录");
-            return null;
-        }
-        return token;
+        return requestUtils.requireToken();
     }
 
     private List<BrokerOrderSnapshot> parseOrderRows(JSONArray rows) {
@@ -610,4 +600,4 @@ public class ZXBrokerAdapter implements BrokerAdapter {
         }
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END --------

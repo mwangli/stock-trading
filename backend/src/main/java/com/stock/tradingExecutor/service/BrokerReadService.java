@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.BrokerAccountDto;
@@ -154,9 +154,7 @@ public class BrokerReadService {
     }
 
     private void ensureAuthenticated() {
-        if (!brokerAdapter.isAuthenticated()) {
-            throw new IllegalStateException("券商会话无效，请先完成登录");
-        }
+        brokerAdapter.ensureAuthenticated();
     }
 
     private BrokerOrderListResponseDto buildOrderResponse(List<BrokerOrderSnapshot> snapshots,
@@ -239,4 +237,4 @@ public class BrokerReadService {
         return "****" + trimmed.substring(trimmed.length() - 4);
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

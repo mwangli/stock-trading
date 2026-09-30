@@ -34,15 +34,10 @@ services:
       SPRING_DATA_MONGODB_AUTHENTICATION_DATABASE: admin
       SPRING_DATA_MONGODB_USERNAME: ${MONGO_APP_USER:-stock}
       SPRING_DATA_MONGODB_PASSWORD: ${MONGO_APP_PASSWORD}
-      STOCK_AUTO_LOGIN_ACCOUNT: ${STOCK_AUTO_LOGIN_ACCOUNT:-}
-      STOCK_AUTO_LOGIN_PASSWORD: ${STOCK_AUTO_LOGIN_PASSWORD:-}
-      AUTO_LOGIN_SMS_MAIL_ENABLED: ${AUTO_LOGIN_SMS_MAIL_ENABLED:-false}
-      AUTO_LOGIN_SMS_MAIL_HOST: ${AUTO_LOGIN_SMS_MAIL_HOST:-}
-      AUTO_LOGIN_SMS_MAIL_PORT: ${AUTO_LOGIN_SMS_MAIL_PORT:-993}
-      AUTO_LOGIN_SMS_MAIL_USERNAME: ${AUTO_LOGIN_SMS_MAIL_USERNAME:-}
-      AUTO_LOGIN_SMS_MAIL_PASSWORD: ${AUTO_LOGIN_SMS_MAIL_PASSWORD:-}
-      CHROME_REMOTE_URL: http://chrome:4444/wd/hub
-      STOCK_AUTO_LOGIN_TMP_DIR: /app/.tmp
+      SPRING_DATA_REDIS_HOST: stock-redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SPRING_DATA_REDIS_DATABASE: ${REDIS_DATABASE:-0}
       TRADING_MODE: ${TRADING_MODE:-LIVE_MANUAL}
       TRADING_REAL_WRITE_ENABLED: ${TRADING_REAL_WRITE_ENABLED:-false}
       TRADING_HISTORY_MONTH_INTERVAL_MS: ${TRADING_HISTORY_MONTH_INTERVAL_MS:-500}
@@ -53,6 +48,14 @@ services:
       ZXBROKER_ENABLED: ${ZXBROKER_ENABLED:-false}
       ZXBROKER_MOBILE_CODE: ${ZXBROKER_MOBILE_CODE:-}
       ZXBROKER_ACCOUNT: ${ZXBROKER_ACCOUNT:-}
+      ZXBROKER_ENCODED_PASSWORD: ${ZXBROKER_ENCODED_PASSWORD:-}
+      ZXBROKER_OCR_MIN_AGREEMENT: ${ZXBROKER_OCR_MIN_AGREEMENT:-2}
+      ZXBROKER_OCR_TIMEOUT_MS: ${ZXBROKER_OCR_TIMEOUT_MS:-20000}
+      BAIDU_OCR_API_KEY: ${BAIDU_OCR_API_KEY:-}
+      BAIDU_OCR_SECRET_KEY: ${BAIDU_OCR_SECRET_KEY:-}
+      ZXBROKER_CAPTCHA_MAX_RETRIES: ${ZXBROKER_CAPTCHA_MAX_RETRIES:-3}
+      ZXBROKER_TOKEN_EXPIRE_MINUTES: ${ZXBROKER_TOKEN_EXPIRE_MINUTES:-30}
+      ZXBROKER_TOKEN_REDIS_KEY: ${ZXBROKER_TOKEN_REDIS_KEY:-stock-trading:zxbroker:token}
       ZXBROKER_SIGN_KEY: ${ZXBROKER_SIGN_KEY:-}
       ZXBROKER_INTACT_TO_SERVER: ${ZXBROKER_INTACT_TO_SERVER:-}
       ZXBROKER_HISTORY_PAGE_SIZE: ${ZXBROKER_HISTORY_PAGE_SIZE:-500}
@@ -78,7 +81,7 @@ services:
         condition: service_healthy
       stock-mongo:
         condition: service_healthy
-      chrome:
+      stock-redis:
         condition: service_healthy
     expose:
       - "8080"
@@ -94,27 +97,29 @@ services:
       retries: 5
     logging: *default-logging
 
-  chrome:
-    image: ${CHROME_IMAGE:-selenium/standalone-chrome:4.35.0-20250828}
-    container_name: stock-chrome
-    shm_size: 2gb
+  stock-redis:
+    image: ${REDIS_IMAGE:-redis:7.4-alpine}
+    container_name: stock-redis
     environment:
-      SE_NODE_MAX_SESSIONS: 1
-      SE_SESSION_REQUEST_TIMEOUT: 300
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command:
+      - /bin/sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"
+    volumes:
+      - redis-data:/data
     expose:
-      - "4444"
-      - "7900"
+      - "6379"
     networks:
       - stock-backend
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "/opt/bin/check-grid.sh"]
-      interval: 30s
-      timeout: 10s
-      start_period: 30s
-      retries: 5
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 10
     logging: *default-logging
-
   stock-mysql:
     image: ${MYSQL_IMAGE:-mysql:8.0.43}
     container_name: stock-mysql
@@ -221,6 +226,7 @@ networks:
     internal: true
 
 volumes:
+  redis-data:
   mysql-data:
   mongo-data:
   models-data:
