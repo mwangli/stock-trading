@@ -1,3 +1,4 @@
+// AI_GENERATE_START --
 package com.stock.modelService.config;
 
 import lombok.Data;
@@ -72,9 +73,29 @@ public class LstmTrainingConfig {
     private double trainRatio = 0.8;
 
     /**
+     * 训练集与验证集之间隔离的样本数，避免重叠窗口造成近邻泄漏。
+     */
+    private int validationGap = 2;
+
+    /**
+     * 下一交易日收益率标签缩放值，0.1 表示百分之十收益映射为 1。
+     */
+    private double targetReturnScale = 0.1D;
+
+    /**
+     * 单次共享训练允许保留的最大面板样本数量。
+     */
+    private int maxPanelSamples = 100000;
+
+    /**
+     * 单只股票允许保留的最大均匀时间窗口数量。
+     */
+    private int maxSamplesPerStock = 80;
+
+    /**
      * 特征维度（开、高、低、收、量）
      */
-    private int inputSize = 11;
+    private int inputSize = 15;
 
     /**
      * 是否启用早停
@@ -91,3 +112,4 @@ public class LstmTrainingConfig {
      */
     private double minDelta = 0.0001;
 }
+// AI_GENERATE_END --

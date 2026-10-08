@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.BrokerAccountDto;
@@ -48,7 +48,7 @@ public class BrokerReadService {
     public BrokerReadStatusDto getStatus() {
         return BrokerReadStatusDto.builder()
                 .brokerName(brokerAdapter.getName())
-                .tradingMode(tradingProperties.getMode().name())
+                .tradingMode("AUTOMATIC")
                 .authenticated(brokerAdapter.isAuthenticated())
                 .realWriteEnabled(tradingProperties.isRealWriteEnabled())
                 .liveWriteAllowed(tradingProperties.isLiveWriteAllowed())
@@ -237,4 +237,4 @@ public class BrokerReadService {
         return "****" + trimmed.substring(trimmed.length() - 4);
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

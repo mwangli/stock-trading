@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 package com.stock.modelService.persistence;
 
 import com.stock.modelService.domain.entity.LstmModelDocument;
@@ -13,8 +14,8 @@ import java.util.Optional;
 /**
  * LSTM 模型在 MongoDB 中的存储仓库
  *
- * @author AI Assistant
- * @since 1.0
+ * @author mwangli
+ * @since 2026-10-08
  */
 @Repository
 public interface LstmModelRepository extends MongoRepository<LstmModelDocument, String>, LstmModelRepositoryCustom {
@@ -25,6 +26,14 @@ public interface LstmModelRepository extends MongoRepository<LstmModelDocument, 
     LstmModelDocument findTopByOrderByCreatedAtDesc();
 
     void deleteByModelName(String modelName);
+
+    /**
+     * 删除指定名称下除当前新版本之外的旧模型。
+     *
+     * @param modelName 模型名称
+     * @param id 当前保留模型文档 ID
+     */
+    void deleteByModelNameAndIdNot(String modelName, String id);
 
     boolean existsByModelName(String modelName);
 
@@ -62,3 +71,4 @@ public interface LstmModelRepository extends MongoRepository<LstmModelDocument, 
     @Query(value = "{ '_id' : ?0 }", fields = "{ 'params' : 0, 'normalizationParams' : 0 }")
     Optional<LstmModelDocument> findByIdForResult(String id);
 }
+// AI_GENERATE_END -

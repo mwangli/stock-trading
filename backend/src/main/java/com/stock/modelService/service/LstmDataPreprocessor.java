@@ -1,169 +1,200 @@
+// AI_GENERATE_START ---
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockPrice;
 import com.stock.modelService.config.LstmTrainingConfig;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.Arrays;
-import java.util.Map;
+import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * LSTM 数据预处理器
- * 将股票价格数据转换为LSTM训练所需的格式
+ * LSTM 面板数据预处理器。
+ * 使用收益率、滚动量价指标以及股票和行业静态特征构建共享模型输入，
+ * 所有特征只依赖当前及以前交易日，训练与推理执行同一套计算逻辑。
+ *
+ * @author mwangli
+ * @since 2026-10-08
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class LstmDataPreprocessor {
 
+    /** 当前共享模型特征定义版本。 */
+    public static final String FEATURE_VERSION = "panel-relative-v2";
+
+    /** 当前特征数量。 */
+    public static final int FEATURE_COUNT = 15;
+
+    private static final int VOLUME_LOOKBACK = 20;
+    private static final double MIN_VALUE = 1.0E-8D;
+
     private final LstmTrainingConfig config;
-private final TechnicalIndicatorService technicalIndicatorService;
+    private final TechnicalIndicatorService technicalIndicatorService;
 
     /**
-     * 处理训练数据
-     * 
-     * @param prices 股票价格列表
-     * @return 处理后的训练数据
+     * 处理单只股票训练数据。
+     *
+     * @param prices 股票价格列表，必须按日期升序排列
+     * @return 训练集和验证集
      */
     public ProcessedData processData(List<StockPrice> prices) {
-        if (prices == null || prices.size() < config.getSequenceLength() + 1) {
-            log.warn("数据不足: 需要至少 {} 条记录，实际 {}", config.getSequenceLength() + 1, 
-                    prices == null ? 0 : prices.size());
+        String stockCode = prices == null || prices.isEmpty() ? "unknown" : prices.get(0).getCode();
+        Map<String, List<StockPrice>> priceSeries = Map.of(stockCode, prices == null ? List.of() : prices);
+        return processPanelData(priceSeries, Map.of(stockCode, StockContext.basic(stockCode)));
+    }
+
+    /**
+     * 按股票分别构造滑动窗口后合并为全市场面板数据。
+     * 不允许把不同股票的相邻记录拼接成同一个时间窗口。
+     *
+     * @param priceSeries 股票代码到历史价格序列的映射
+     * @param contexts 股票代码到静态特征的映射
+     * @return 合并后的训练集和验证集
+     */
+    public ProcessedData processPanelData(Map<String, List<StockPrice>> priceSeries,
+                                          Map<String, StockContext> contexts) {
+        validateFeatureCount();
+        List<TrainingSample> trainSamples = new ArrayList<>();
+        List<TrainingSample> valSamples = new ArrayList<>();
+        Map<String, Integer> sampleCounts = new LinkedHashMap<>();
+
+        if (priceSeries == null || priceSeries.isEmpty()) {
             return null;
         }
 
-        log.info("开始处理 {} 条价格数据", prices.size());
+        int stockCount = Math.max(1, priceSeries.size());
+        int panelLimitPerStock = Math.max(4, config.getMaxPanelSamples() / stockCount);
+        int sampleLimitPerStock = Math.max(4,
+                Math.min(config.getMaxSamplesPerStock(), panelLimitPerStock));
 
-        // 1. 数据归一化参数
-        double maxPrice = prices.stream()
-                .mapToDouble(p -> p.getHighPrice() != null ? p.getHighPrice().doubleValue() : 0)
-                .max()
-                .orElse(1.0);
-        
-        double maxVolume = prices.stream()
-                .mapToDouble(p -> p.getVolume() != null ? p.getVolume().doubleValue() : 0)
-                .max()
-                .orElse(1.0);
-
-        log.info("归一化参数 - 最高价: {}, 最大成交量: {}", maxPrice, maxVolume);
-
-        log.info("开始计算技术指标...");
-        Map<String, double[]> indicators = technicalIndicatorService.calculateIndicators(prices);
-        double[] rsi = indicators.get("RSI");
-        double[] macd = indicators.get("MACD");
-        double[] sma = indicators.get("SMA");
-        double[] upperBoll = indicators.get("UpperBoll");
-        double[] lowerBoll = indicators.get("LowerBoll");
-        double[] obv = indicators.get("OBV");
-
-        // 为指标找到归一化参数 (使用最大绝对值)
-        double maxRsi = Arrays.stream(rsi).max().orElse(1.0);
-        double minRsi = Arrays.stream(rsi).min().orElse(0.0);
-        double maxMacd = Arrays.stream(macd).map(Math::abs).max().orElse(1.0);
-        double maxSma = Arrays.stream(sma).max().orElse(1.0);
-        double maxUpperBoll = Arrays.stream(upperBoll).max().orElse(1.0);
-        double maxLowerBoll = Arrays.stream(lowerBoll).max().orElse(1.0);
-        double maxObv = Arrays.stream(obv).map(Math::abs).max().orElse(1.0);
-
-        log.info("技术指标计算完成.");
-
-
-        // 2. 转换为特征矩阵
-        List<double[]> features = new ArrayList<>();
-        List<Double> targets = new ArrayList<>();
-
-        for (int i = 0; i < prices.size(); i++) {
-            StockPrice price = prices.get(i);
-            double[] feature = new double[config.getInputSize()];
-            
-            // 特征: [开盘价/最高价, 最高价/最高价, 最低价/最高价, 收盘价/最高价, 成交量/最大成交量]
-            feature[0] = normalize(price.getOpenPrice(), maxPrice);
-            feature[1] = normalize(price.getHighPrice(), maxPrice);
-            feature[2] = normalize(price.getLowPrice(), maxPrice);
-            feature[3] = normalize(price.getClosePrice(), maxPrice);
-            feature[4] = normalizeVolume(price.getVolume(), maxVolume);
-            feature[5] = (rsi[i] - minRsi) / (maxRsi - minRsi); // Min-Max scaling for RSI
-            feature[6] = macd[i] / maxMacd; // Normalize MACD
-            feature[7] = sma[i] / maxSma; // Normalize SMA
-            feature[8] = upperBoll[i] / maxUpperBoll;
-            feature[9] = lowerBoll[i] / maxLowerBoll;
-            feature[10] = obv[i] / maxObv;
-            
-            features.add(feature);
-            
-            // 目标: 下一天的收盘价
-            if (i < prices.size() - 1) {
-                targets.add(prices.get(i + 1).getClosePrice().doubleValue() / maxPrice);
+        for (Map.Entry<String, List<StockPrice>> entry : priceSeries.entrySet()) {
+            String stockCode = entry.getKey();
+            List<StockPrice> prices = entry.getValue();
+            StockContext context = contexts == null
+                    ? StockContext.basic(stockCode)
+                    : contexts.getOrDefault(stockCode, StockContext.basic(stockCode));
+            SeriesSamples seriesSamples = createSeriesSamples(prices, context, sampleLimitPerStock);
+            if (seriesSamples == null || seriesSamples.allSamples().isEmpty()) {
+                continue;
             }
+
+            int total = seriesSamples.allSamples().size();
+            int trainEnd = Math.max(1, Math.min(total, (int) Math.floor(total * config.getTrainRatio())));
+            int validationStart = Math.min(total, trainEnd + Math.max(0, config.getValidationGap()));
+            if (validationStart >= total && trainEnd < total) {
+                validationStart = trainEnd;
+            }
+
+            trainSamples.addAll(seriesSamples.allSamples().subList(0, trainEnd));
+            if (validationStart < total) {
+                valSamples.addAll(seriesSamples.allSamples().subList(validationStart, total));
+            }
+            sampleCounts.put(stockCode, total);
         }
 
-        // 3. 构建训练样本
-        List<TrainingSample> samples = createSamples(features, targets);
-
-        // 4. 划分训练集和验证集
-        int trainSize = (int) (samples.size() * config.getTrainRatio());
-        // 确保至少有一个训练样本（当样本总数 > 0 时）
-        if (trainSize == 0 && samples.size() > 0) {
-            trainSize = 1;
+        if (trainSamples.isEmpty()) {
+            return null;
         }
-        // 防止 trainSize 等于 samples.size() 导致验证集为空（这是允许的）
-        List<TrainingSample> trainSamples = samples.subList(0, Math.min(trainSize, samples.size()));
-        List<TrainingSample> valSamples = samples.subList(Math.min(trainSize, samples.size()), samples.size());
 
-        log.info("数据预处理完成 - 总样本: {}, 训练集: {}, 验证集: {}", 
-                samples.size(), trainSamples.size(), valSamples.size());
-
+        log.info("LSTM 面板数据完成: stocks={}, sampleLimitPerStock={}, trainSamples={}, valSamples={}, featureVersion={}",
+                sampleCounts.size(), sampleLimitPerStock, trainSamples.size(), valSamples.size(), FEATURE_VERSION);
         return ProcessedData.builder()
                 .trainSamples(trainSamples)
                 .valSamples(valSamples)
-                .maxPrice(maxPrice)
-                .maxVolume(maxVolume)
-                .maxRsi(maxRsi)
-                .minRsi(minRsi)
-                .maxMacd(maxMacd)
-                .maxSma(maxSma)
-                .maxUpperBoll(maxUpperBoll)
-                .maxLowerBoll(maxLowerBoll)
-                .maxObv(maxObv)
-                .featureCount(config.getInputSize())
+                .sampleCounts(sampleCounts)
+                .featureCount(FEATURE_COUNT)
                 .sequenceLength(config.getSequenceLength())
+                .targetReturnScale(config.getTargetReturnScale())
+                .featureVersion(FEATURE_VERSION)
                 .build();
     }
 
     /**
-     * 构建预测所需的最新序列输入
+     * 使用与训练阶段相同的特征口径构造最新预测窗口。
      *
-     * 使用与训练阶段完全一致的归一化和技术指标计算方式，
-     * 从价格列表末尾截取 sequenceLength 条记录，生成单条预测输入样本。
-     *
-     * @param prices 股票价格列表（按日期升序排列）
-     * @return 预测输入包装对象，包含归一化后的特征序列、最大价格和最新收盘价
+     * @param prices 股票价格列表，必须按日期升序排列
+     * @param context 股票静态特征
+     * @return 最新预测输入
      */
-    public PredictionInput buildPredictionInput(List<StockPrice> prices) {
-        if (prices == null || prices.size() < config.getSequenceLength()) {
-            log.warn("构建预测输入数据不足: 需要至少 {} 条记录，实际 {}",
-                    config.getSequenceLength(), prices == null ? 0 : prices.size());
+    public PredictionInput buildPredictionInput(List<StockPrice> prices, StockContext context) {
+        validateFeatureCount();
+        int sequenceLength = config.getSequenceLength();
+        if (prices == null || prices.size() < sequenceLength + 1) {
+            log.warn("构建 LSTM 预测输入数据不足: required={}, actual={}",
+                    sequenceLength + 1, prices == null ? 0 : prices.size());
             return null;
         }
 
-        // 1. 计算价格与成交量归一化参数（与 processData 保持一致）
-        double maxPrice = prices.stream()
-                .mapToDouble(p -> p.getHighPrice() != null ? p.getHighPrice().doubleValue() : 0)
-                .max()
-                .orElse(1.0);
+        StockContext safeContext = context == null
+                ? StockContext.basic(prices.get(0).getCode())
+                : context;
+        List<double[]> features = buildFeatures(prices, safeContext);
+        int start = features.size() - sequenceLength;
+        float[][] input = new float[sequenceLength][FEATURE_COUNT];
+        for (int timeStep = 0; timeStep < sequenceLength; timeStep++) {
+            double[] feature = features.get(start + timeStep);
+            for (int featureIndex = 0; featureIndex < FEATURE_COUNT; featureIndex++) {
+                input[timeStep][featureIndex] = (float) feature[featureIndex];
+            }
+        }
 
-        double maxVolume = prices.stream()
-                .mapToDouble(p -> p.getVolume() != null ? p.getVolume().doubleValue() : 0)
-                .max()
-                .orElse(1.0);
+        return PredictionInput.builder()
+                .input(input)
+                .lastClosePrice(safeNumber(prices.get(prices.size() - 1).getClosePrice()))
+                .featureVersion(FEATURE_VERSION)
+                .build();
+    }
 
-        log.info("构建预测输入 - 归一化参数: maxPrice={}, maxVolume={}", maxPrice, maxVolume);
+    private SeriesSamples createSeriesSamples(List<StockPrice> prices, StockContext context,
+                                              int sampleLimit) {
+        int sequenceLength = config.getSequenceLength();
+        if (prices == null || prices.size() < sequenceLength + 2) {
+            log.warn("跳过 LSTM 样本不足股票: stockCode={}, required={}, actual={}",
+                    context.getStockCode(), sequenceLength + 2, prices == null ? 0 : prices.size());
+            return null;
+        }
 
-        // 2. 计算技术指标并获取归一化参数（与 processData 保持一致）
+        List<double[]> features = buildFeatures(prices, context);
+        List<TrainingSample> samples = new ArrayList<>();
+        int possibleSampleCount = prices.size() - sequenceLength;
+        int retainedSampleCount = Math.min(possibleSampleCount, Math.max(1, sampleLimit));
+        for (int sampleIndex = 0; sampleIndex < retainedSampleCount; sampleIndex++) {
+            int start = retainedSampleCount == 1
+                    ? possibleSampleCount - 1
+                    : (int) Math.round(sampleIndex * (possibleSampleCount - 1D) / (retainedSampleCount - 1D));
+            int targetIndex = start + sequenceLength;
+            double previousClose = safeNumber(prices.get(targetIndex - 1).getClosePrice());
+            double targetClose = safeNumber(prices.get(targetIndex).getClosePrice());
+            if (previousClose <= 0D || targetClose <= 0D) {
+                continue;
+            }
+
+            float[][] input = new float[sequenceLength][FEATURE_COUNT];
+            for (int timeStep = 0; timeStep < sequenceLength; timeStep++) {
+                double[] feature = features.get(start + timeStep);
+                for (int featureIndex = 0; featureIndex < FEATURE_COUNT; featureIndex++) {
+                    input[timeStep][featureIndex] = (float) feature[featureIndex];
+                }
+            }
+
+            double nextReturn = targetClose / previousClose - 1D;
+            double scaledTarget = clamp(nextReturn / config.getTargetReturnScale(), -1D, 1D);
+            samples.add(new TrainingSample(input, (float) scaledTarget, context.getStockCode()));
+        }
+        return new SeriesSamples(samples);
+    }
+
+    private List<double[]> buildFeatures(List<StockPrice> prices, StockContext context) {
         Map<String, double[]> indicators = technicalIndicatorService.calculateIndicators(prices);
         double[] rsi = indicators.get("RSI");
         double[] macd = indicators.get("MACD");
@@ -172,189 +203,253 @@ private final TechnicalIndicatorService technicalIndicatorService;
         double[] lowerBoll = indicators.get("LowerBoll");
         double[] obv = indicators.get("OBV");
 
-        double maxRsi = Arrays.stream(rsi).max().orElse(1.0);
-        double minRsi = Arrays.stream(rsi).min().orElse(0.0);
-        double maxMacd = Arrays.stream(macd).map(Math::abs).max().orElse(1.0);
-        double maxSma = Arrays.stream(sma).max().orElse(1.0);
-        double maxUpperBoll = Arrays.stream(upperBoll).max().orElse(1.0);
-        double maxLowerBoll = Arrays.stream(lowerBoll).max().orElse(1.0);
-        double maxObv = Arrays.stream(obv).map(Math::abs).max().orElse(1.0);
+        List<double[]> features = new ArrayList<>(prices.size());
+        for (int index = 0; index < prices.size(); index++) {
+            StockPrice current = prices.get(index);
+            double close = safeNumber(current.getClosePrice());
+            double previousClose = index == 0
+                    ? close
+                    : safeNumber(prices.get(index - 1).getClosePrice());
+            double rollingVolumeMean = rollingVolumeMean(prices, index, VOLUME_LOOKBACK);
+            double rollingVolumeSum = rollingVolumeSum(prices, index, VOLUME_LOOKBACK);
+            double currentVolume = Math.max(0D, safeNumber(current.getVolume()));
 
-        int seqLen = config.getSequenceLength();
-        int featureSize = config.getInputSize();
-        float[][] input = new float[seqLen][featureSize];
-
-        // 3. 从价格序列末尾截取 sequenceLength 条记录，构建特征矩阵
-        int startIndex = prices.size() - seqLen;
-        for (int j = 0; j < seqLen; j++) {
-            int idx = startIndex + j;
-            StockPrice price = prices.get(idx);
-            double[] feature = new double[featureSize];
-
-            feature[0] = normalize(price.getOpenPrice(), maxPrice);
-            feature[1] = normalize(price.getHighPrice(), maxPrice);
-            feature[2] = normalize(price.getLowPrice(), maxPrice);
-            feature[3] = normalize(price.getClosePrice(), maxPrice);
-            feature[4] = normalizeVolume(price.getVolume(), maxVolume);
-            feature[5] = (rsi[idx] - minRsi) / (maxRsi - minRsi);
-            feature[6] = macd[idx] / maxMacd;
-            feature[7] = sma[idx] / maxSma;
-            feature[8] = upperBoll[idx] / maxUpperBoll;
-            feature[9] = lowerBoll[idx] / maxLowerBoll;
-            feature[10] = obv[idx] / maxObv;
-
-            for (int k = 0; k < feature.length && k < featureSize; k++) {
-                input[j][k] = (float) feature[k];
-            }
+            double[] feature = new double[FEATURE_COUNT];
+            feature[0] = relativeChange(safeNumber(current.getOpenPrice()), previousClose);
+            feature[1] = relativeChange(safeNumber(current.getHighPrice()), previousClose);
+            feature[2] = relativeChange(safeNumber(current.getLowPrice()), previousClose);
+            feature[3] = relativeChange(close, previousClose);
+            feature[4] = clamp(Math.log((currentVolume + 1D) / (rollingVolumeMean + 1D)) / 5D, -1D, 1D);
+            feature[5] = clamp(safeArrayValue(rsi, index) / 100D, 0D, 1D);
+            feature[6] = safeDivide(safeArrayValue(macd, index), close);
+            feature[7] = relativeChange(safeArrayValue(sma, index), close);
+            feature[8] = relativeChange(safeArrayValue(upperBoll, index), close);
+            feature[9] = relativeChange(safeArrayValue(lowerBoll, index), close);
+            feature[10] = clamp(safeDivide(safeArrayValue(obv, index), rollingVolumeSum), -1D, 1D);
+            feature[11] = stableIdentity(context.getStockCode());
+            feature[12] = stableIdentity(context.getIndustryCode() == null ? "unknown" : context.getIndustryCode().toString());
+            feature[13] = stableIdentity(context.getMarket());
+            double rollingAmountMean = rollingAmountMean(prices, index, VOLUME_LOOKBACK);
+            double currentAmount = Math.max(0D, safeNumber(current.getAmount()));
+            feature[14] = clamp(Math.log((currentAmount + 1D) / (rollingAmountMean + 1D)) / 5D, -1D, 1D);
+            features.add(feature);
         }
-
-        double lastClosePrice = prices.get(prices.size() - 1).getClosePrice() != null
-                ? prices.get(prices.size() - 1).getClosePrice().doubleValue()
-                : 0.0;
-
-        return PredictionInput.builder()
-                .input(input)
-                .maxPrice(maxPrice)
-                .lastClosePrice(lastClosePrice)
-                .build();
+        return features;
     }
 
-    /**
-     * 创建训练样本
-     * 使用滑动窗口方式构建序列
-     */
-    private List<TrainingSample> createSamples(List<double[]> features, List<Double> targets) {
-        List<TrainingSample> samples = new ArrayList<>();
-        int seqLen = config.getSequenceLength();
+    private double rollingVolumeMean(List<StockPrice> prices, int endIndex, int lookback) {
+        int start = Math.max(0, endIndex - lookback + 1);
+        return rollingVolumeSum(prices, endIndex, lookback) / Math.max(1, endIndex - start + 1);
+    }
 
-        for (int i = 0; i <= features.size() - seqLen - 1; i++) {
-            float[][] input = new float[seqLen][config.getInputSize()];
-            
-            for (int j = 0; j < seqLen; j++) {
-                double[] feature = features.get(i + j);
-                for (int k = 0; k < feature.length && k < config.getInputSize(); k++) {
-                    input[j][k] = (float) feature[k];
-                }
-            }
-            
-            float target = targets.get(i + seqLen - 1).floatValue();
-            samples.add(new TrainingSample(input, target));
+    private double rollingVolumeSum(List<StockPrice> prices, int endIndex, int lookback) {
+        int start = Math.max(0, endIndex - lookback + 1);
+        double total = 0D;
+        for (int index = start; index <= endIndex; index++) {
+            total += Math.max(0D, safeNumber(prices.get(index).getVolume()));
         }
+        return total;
+    }
 
-        return samples;
+    private double rollingAmountMean(List<StockPrice> prices, int endIndex, int lookback) {
+        int start = Math.max(0, endIndex - lookback + 1);
+        double total = 0D;
+        for (int index = start; index <= endIndex; index++) {
+            total += Math.max(0D, safeNumber(prices.get(index).getAmount()));
+        }
+        return total / Math.max(1, endIndex - start + 1);
+    }
+
+    private double relativeChange(double value, double reference) {
+        return reference > MIN_VALUE ? clamp(value / reference - 1D, -1D, 1D) : 0D;
+    }
+
+    private double safeDivide(double value, double divisor) {
+        return Math.abs(divisor) > MIN_VALUE ? value / divisor : 0D;
+    }
+
+    private double stableIdentity(String value) {
+        if (value == null || value.isBlank()) {
+            return 0D;
+        }
+        return (value.hashCode() & 0x7fffffff) / (double) Integer.MAX_VALUE;
+    }
+
+    private double safeArrayValue(double[] values, int index) {
+        if (values == null || index < 0 || index >= values.length) {
+            return 0D;
+        }
+        return sanitize(values[index]);
+    }
+
+    private double safeNumber(BigDecimal value) {
+        return value == null ? 0D : sanitize(value.doubleValue());
+    }
+
+    private double sanitize(double value) {
+        return Double.isFinite(value) ? value : 0D;
+    }
+
+    private double clamp(double value, double minimum, double maximum) {
+        return Math.max(minimum, Math.min(maximum, sanitize(value)));
+    }
+
+    private void validateFeatureCount() {
+        if (config.getInputSize() != FEATURE_COUNT) {
+            throw new IllegalStateException("LSTM inputSize 必须为 " + FEATURE_COUNT
+                    + "，当前配置为 " + config.getInputSize());
+        }
+        if (config.getTargetReturnScale() <= 0D) {
+            throw new IllegalStateException("LSTM targetReturnScale 必须大于 0");
+        }
+        if (config.getMaxPanelSamples() <= 0 || config.getMaxSamplesPerStock() <= 0) {
+            throw new IllegalStateException("LSTM 面板样本上限必须大于 0");
+        }
+    }
+
+    private record SeriesSamples(List<TrainingSample> allSamples) {
     }
 
     /**
-     * 归一化价格
+     * 单条 LSTM 训练样本。
+     *
+     * @author mwangli
+     * @since 2026-10-08
      */
-    private double normalize(java.math.BigDecimal value, double max) {
-        if (value == null || max == 0) return 0;
-        return value.doubleValue() / max;
-    }
-
-    /**
-     * 归一化成交量
-     */
-    private double normalizeVolume(java.math.BigDecimal volume, double max) {
-        if (volume == null || max == 0) return 0;
-        return volume.doubleValue() / max;
-    }
-
-    /**
-     * 训练样本
-     */
-    @lombok.Data
-    @lombok.AllArgsConstructor
+    @Data
+    @AllArgsConstructor
     public static class TrainingSample {
-        private float[][] input;  // [sequenceLength, inputSize]
-        private float target;     // 预测目标
+        /** 输入序列，形状为 sequenceLength x featureCount。 */
+        private float[][] input;
+
+        /** 缩放后的下一交易日收益率。 */
+        private float target;
+
+        /** 样本所属股票代码，用于审计面板样本边界。 */
+        private String stockCode;
     }
 
     /**
-     * 处理后的数据
+     * 股票静态特征上下文。
+     *
+     * @author mwangli
+     * @since 2026-10-08
      */
-    @lombok.Data
-    @lombok.Builder
+    @Data
+    @Builder
+    public static class StockContext {
+        /** 股票代码。 */
+        private String stockCode;
+
+        /** 行业代码。 */
+        private Integer industryCode;
+
+        /** 股票所属市场，如 SH、SZ、BJ。 */
+        private String market;
+
+        /**
+         * 构建只有股票代码的默认上下文。
+         *
+         * @param stockCode 股票代码
+         * @return 默认上下文
+         */
+        public static StockContext basic(String stockCode) {
+            return StockContext.builder().stockCode(stockCode == null ? "unknown" : stockCode).build();
+        }
+    }
+
+    /**
+     * 面板训练和验证数据。
+     *
+     * @author mwangli
+     * @since 2026-10-08
+     */
+    @Data
+    @Builder
     public static class ProcessedData {
+        /** 训练样本。 */
         private List<TrainingSample> trainSamples;
+
+        /** 验证样本。 */
         private List<TrainingSample> valSamples;
-        private double maxPrice;
-        private double maxVolume;
-        private double maxRsi;
-        private double minRsi;
-        private double maxMacd;
-        private double maxSma;
-        private double maxUpperBoll;
-        private double maxLowerBoll;
-        private double maxObv;
+
+        /** 各股票样本数量。 */
+        private Map<String, Integer> sampleCounts;
+
+        /** 特征数量。 */
         private int featureCount;
+
+        /** 输入序列长度。 */
         private int sequenceLength;
 
+        /** 标签缩放值。 */
+        private double targetReturnScale;
+
+        /** 特征定义版本。 */
+        private String featureVersion;
+
         /**
-         * 获取训练输入数据
+         * 获取训练输入。
+         *
+         * @return 三维训练输入
          */
         public float[][][] getTrainInputs() {
-            float[][][] inputs = new float[trainSamples.size()][][];
-            for (int i = 0; i < trainSamples.size(); i++) {
-                inputs[i] = trainSamples.get(i).getInput();
-            }
-            return inputs;
+            return trainSamples.stream().map(TrainingSample::getInput).toArray(float[][][]::new);
         }
 
         /**
-         * 获取训练目标数据
+         * 获取训练标签。
+         *
+         * @return 一维训练标签
          */
         public float[] getTrainTargets() {
             float[] targets = new float[trainSamples.size()];
-            for (int i = 0; i < trainSamples.size(); i++) {
-                targets[i] = trainSamples.get(i).getTarget();
+            for (int index = 0; index < trainSamples.size(); index++) {
+                targets[index] = trainSamples.get(index).getTarget();
             }
             return targets;
         }
 
         /**
-         * 获取验证输入数据
+         * 获取验证输入。
+         *
+         * @return 三维验证输入
          */
         public float[][][] getValInputs() {
-            float[][][] inputs = new float[valSamples.size()][][];
-            for (int i = 0; i < valSamples.size(); i++) {
-                inputs[i] = valSamples.get(i).getInput();
-            }
-            return inputs;
+            return valSamples.stream().map(TrainingSample::getInput).toArray(float[][][]::new);
         }
 
         /**
-         * 获取验证目标数据
+         * 获取验证标签。
+         *
+         * @return 一维验证标签
          */
         public float[] getValTargets() {
             float[] targets = new float[valSamples.size()];
-            for (int i = 0; i < valSamples.size(); i++) {
-                targets[i] = valSamples.get(i).getTarget();
+            for (int index = 0; index < valSamples.size(); index++) {
+                targets[index] = valSamples.get(index).getTarget();
             }
             return targets;
         }
     }
 
     /**
-     * 单条预测输入包装类
-     * 用于封装 LSTM 预测所需的序列特征和反归一化参数
+     * 单只股票最新预测输入。
+     *
+     * @author mwangli
+     * @since 2026-10-08
      */
-    @lombok.Data
-    @lombok.Builder
+    @Data
+    @Builder
     public static class PredictionInput {
-        /**
-         * 预测输入特征，形状为 [sequenceLength, inputSize]
-         */
+        /** 预测输入特征。 */
         private float[][] input;
 
-        /**
-         * 价格归一化时使用的最大价格（用于反归一化预测结果）
-         */
-        private double maxPrice;
-
-        /**
-         * 最新一个交易日的收盘价（原始价格）
-         */
+        /** 最新收盘价。 */
         private double lastClosePrice;
+
+        /** 特征定义版本。 */
+        private String featureVersion;
     }
 }
+// AI_GENERATE_END ---

@@ -1,7 +1,5 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 import React, { useState } from 'react';
-import NotificationBell from '../components/NotificationBell';
-import NotificationListener from '../components/NotificationListener';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu, Button } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -9,13 +7,11 @@ import {
   DesktopOutlined,
   SettingOutlined,
   StockOutlined,
-  FundOutlined,
   MenuUnfoldOutlined,
 MenuFoldOutlined,
   HistoryOutlined,
   TransactionOutlined,
-  FileTextOutlined,
-  ScheduleOutlined
+  FileTextOutlined
 } from '@ant-design/icons';
 
 const { Header, Content, Sider } = Layout;
@@ -35,10 +31,8 @@ const DashboardLayout: React.FC = () => {
   const menuItems = [
     { key: '/dashboard', icon: <DesktopOutlined />, label: t('layout.dashboard') },
     { key: '/market', icon: <StockOutlined />, label: t('layout.market') },
-    { key: '/models', icon: <FundOutlined />, label: t('layout.models') },
     { key: '/transactions', icon: <HistoryOutlined />, label: t('layout.transactions') },
     { key: '/real-trading', icon: <TransactionOutlined />, label: '真实交易' },
-    { key: '/jobs', icon: <ScheduleOutlined />, label: t('layout.jobs') },
     { key: '/logs', icon: <FileTextOutlined />, label: t('layout.logs') },
     { key: '/settings', icon: <SettingOutlined />, label: t('layout.settings') },
   ];
@@ -110,7 +104,6 @@ const DashboardLayout: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4 sm:gap-6">
-            <NotificationBell />
             <Button 
               type="text" 
               className="text-[#00e396] border border-[#00e396]/20 hover:bg-[#00e396]/10 font-mono text-xs px-3 h-8 shrink-0"
@@ -133,10 +126,9 @@ const DashboardLayout: React.FC = () => {
           <Outlet />
         </Content>
       </Layout>
-      <NotificationListener />
     </Layout>
   );
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

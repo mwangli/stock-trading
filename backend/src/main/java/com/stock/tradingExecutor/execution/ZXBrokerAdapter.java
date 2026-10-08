@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ---------
 package com.stock.tradingExecutor.execution;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -119,7 +119,7 @@ public class ZXBrokerAdapter implements BrokerAdapter {
         log.info("[ZXBroker] 请求提交委托: direction={}, stockCode={}, price={}, quantity={}",
                 direction, stockCode, price, quantity);
         if (!tradingProperties.isLiveWriteAllowed()) {
-            log.warn("[ZXBroker] 真实委托被交易写入总门禁阻止: mode={}", tradingProperties.getMode());
+            log.warn("[ZXBroker] 真实委托被交易写入总门禁阻止");
             return OrderResult.fail("真实交易写入门禁未开启");
         }
 
@@ -180,7 +180,7 @@ public class ZXBrokerAdapter implements BrokerAdapter {
     public Boolean cancelOrder(String orderId) {
         log.info("[ZXBroker] 请求撤销委托: orderId={}", orderId);
         if (!tradingProperties.isLiveWriteAllowed()) {
-            log.warn("[ZXBroker] 真实撤单被交易写入总门禁阻止: mode={}", tradingProperties.getMode());
+            log.warn("[ZXBroker] 真实撤单被交易写入总门禁阻止");
             return false;
         }
         String token = requireToken();
@@ -600,4 +600,4 @@ public class ZXBrokerAdapter implements BrokerAdapter {
         }
     }
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------
