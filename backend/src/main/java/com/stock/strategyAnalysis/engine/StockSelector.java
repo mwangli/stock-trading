@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START --------
 package com.stock.strategyAnalysis.engine;
 
 import com.stock.dataCollector.domain.entity.StockNews;
@@ -40,6 +40,9 @@ public class StockSelector {
 
     private static final int SENTIMENT_LOOKBACK_HOURS = 36;
     private static final double LSTM_SCORE_SCALE = 20D;
+    private static final double RETURN_TASK_WEIGHT = 0.55D;
+    private static final double DIRECTION_TASK_WEIGHT = 0.30D;
+    private static final double RISK_TASK_WEIGHT = 0.15D;
 
     private final ScoreCalculator scoreCalculator;
     private final StrategyConfigService configService;
@@ -174,11 +177,19 @@ public class StockSelector {
         Map<String, LstmPredictionResultDto> batchResults = lstmTrainerService.predictNextBatch(stockCodes);
         batchResults.forEach((code, prediction) -> {
             Double changeRatio = prediction.getPredictedChangeRatio();
-            if (changeRatio == null || !Double.isFinite(changeRatio)) {
-                log.warn("跳过无有效预测收益率的股票, stockCode={}", code);
+            Double directionProbability = prediction.getDirectionProbability();
+            Double downsideRisk = prediction.getDownsideRisk();
+            if (changeRatio == null || !Double.isFinite(changeRatio)
+                    || directionProbability == null || !Double.isFinite(directionProbability)
+                    || downsideRisk == null || !Double.isFinite(downsideRisk)) {
+                log.warn("跳过无有效多任务预测的股票, stockCode={}", code);
             } else {
-                double score = 1D / (1D + Math.exp(-LSTM_SCORE_SCALE * changeRatio));
-                predictions.put(code, score);
+                double returnScore = 1D / (1D + Math.exp(-LSTM_SCORE_SCALE * changeRatio));
+                double directionScore = Math.max(0D, Math.min(1D, directionProbability));
+                double riskScore = 1D - Math.max(0D, Math.min(1D, downsideRisk));
+                predictions.put(code, returnScore * RETURN_TASK_WEIGHT
+                        + directionScore * DIRECTION_TASK_WEIGHT
+                        + riskScore * RISK_TASK_WEIGHT);
             }
         });
         return predictions;
@@ -279,4 +290,4 @@ public class StockSelector {
                 .build();
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END --------

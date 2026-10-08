@@ -97,15 +97,31 @@ djl:
   model:
     dir: ./models
     lstm:
+      # 在线节点默认禁用训练；本地离线训练节点显式设置 LSTM_TRAINING_ENABLED=true
+      training-enabled: ${LSTM_TRAINING_ENABLED:false}
       # 本地 LSTM 模型目录（用于 DJL 加载）
       path: ./models/lstm
       # 模型存储类型：mongo（默认，存到 MongoDB）或 local（存到本地卷 /models/lstm）
       storage-type: mongo
       # 当 storage-type=local 时，本地模型根目录（容器内部路径，挂载自 models-data 卷）
       local-base-path: /models/lstm
-      # 共享模型固定使用 60 日窗口和 15 个量价、股票、行业静态特征
+      # 共享模型固定使用 60 日窗口、13 个连续特征和 3 个离散索引
       sequence-length: 60
-      input-size: 15
+      input-size: 16
+      # 股票和行业使用固定哈希桶的可训练 Embedding，索引 0 保留给未知值
+      stock-embedding-buckets: 8192
+      stock-embedding-size: 16
+      industry-embedding-buckets: 512
+      industry-embedding-size: 8
+      # 少量分组 Head 和轻量个股 Residual Head 只校正共享输出
+      group-head-count: 8
+      residual-head-enabled: true
+      group-head-scale: 0.1
+      residual-head-scale: 0.1
+      # 收益率、方向概率和下行风险三任务损失权重
+      return-loss-weight: 0.5
+      direction-loss-weight: 0.3
+      downside-loss-weight: 0.2
       # 均匀抽样窗口之间再隔离 2 个样本，降低近邻泄漏
       validation-gap: 2
       # 下一交易日收益率按 10% 缩放到模型输出区间

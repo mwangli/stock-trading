@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START ----------
 package com.stock.modelService.service;
 
 import ai.djl.Device;
@@ -27,12 +27,14 @@ import com.stock.modelService.config.LstmTrainingConfig;
 import com.stock.modelService.domain.dto.LstmPredictionResultDto;
 import com.stock.modelService.domain.entity.LstmModelDocument;
 import com.stock.modelService.model.ModelBinaryCodec;
+import com.stock.modelService.model.MultiTaskStockLoss;
 import com.stock.modelService.model.StockLSTMModel;
 import com.stock.modelService.persistence.LstmModelRepository;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
@@ -47,6 +49,7 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -72,7 +75,7 @@ public class LstmTrainerService {
     public static final String SHARED_MODEL_NAME = "global-shared-base";
 
     /** 当前网络结构与标签口径版本。 */
-    public static final String MODEL_VERSION = "v2-panel-return";
+    public static final String MODEL_VERSION = "v3-embedding-multitask";
 
     private final LstmTrainingConfig config;
     private final PriceRepository priceRepository;
@@ -175,7 +178,10 @@ public class LstmTrainerService {
                         .build();
                 Device[] availableDevices = Engine.getInstance().getDevices(1);
                 Device device = availableDevices.length == 0 ? Device.cpu() : availableDevices[0];
-                DefaultTrainingConfig trainingConfig = new DefaultTrainingConfig(Loss.l2Loss())
+                DefaultTrainingConfig trainingConfig = new DefaultTrainingConfig(new MultiTaskStockLoss(
+                        (float) config.getReturnLossWeight(),
+                        (float) config.getDirectionLossWeight(),
+                        (float) config.getDownsideLossWeight()))
                         .optOptimizer(optimizer)
                         .optDevices(new Device[]{device})
                         .addTrainingListeners(TrainingListener.Defaults.logging());
@@ -331,16 +337,22 @@ public class LstmTrainerService {
             try (NDList output = model.getBlock().forward(
                     parameterStore, new NDList(inputArray), false)) {
                 float[] values = output.singletonOrThrow().toFloatArray();
-                if (values.length != validCodes.size()) {
-                    throw new IllegalStateException("共享 LSTM 批量输出数量不匹配");
+                int expectedOutputCount = validCodes.size() * StockLSTMModel.OUTPUT_SIZE;
+                if (values.length != expectedOutputCount) {
+                    throw new IllegalStateException("共享 LSTM 多任务批量输出数量不匹配");
                 }
                 Map<String, LstmPredictionResultDto> results = new LinkedHashMap<>();
-                for (int index = 0; index < values.length; index++) {
-                    if (!Float.isFinite(values[index])) {
-                        log.warn("跳过共享 LSTM 输出无效股票: stockCode={}", validCodes.get(index));
+                for (int index = 0; index < validCodes.size(); index++) {
+                    int outputOffset = index * StockLSTMModel.OUTPUT_SIZE;
+                    float scaledReturn = values[outputOffset];
+                    float directionProbability = values[outputOffset + 1];
+                    float downsideRisk = values[outputOffset + 2];
+                    if (!Float.isFinite(scaledReturn) || !Float.isFinite(directionProbability)
+                            || !Float.isFinite(downsideRisk)) {
+                        log.warn("跳过共享 LSTM 多任务输出无效股票: stockCode={}", validCodes.get(index));
                         continue;
                     }
-                    double predictedReturn = values[index] * config.getTargetReturnScale();
+                    double predictedReturn = scaledReturn * config.getTargetReturnScale();
                     double lastClose = lastClosePrices.get(index);
                     double predictedPrice = lastClose > 0D
                             ? lastClose * (1D + predictedReturn)
@@ -350,6 +362,8 @@ public class LstmTrainerService {
                             .predictedClosePrice(predictedPrice)
                             .lastClosePrice(lastClose > 0D ? lastClose : null)
                             .predictedChangeRatio(predictedReturn)
+                            .directionProbability((double) directionProbability)
+                            .downsideRisk((double) downsideRisk)
                             .modelId(artifact.modelId())
                             .build());
                 }
@@ -427,7 +441,15 @@ public class LstmTrainerService {
                 config.getHiddenSize(),
                 config.getNumLayers(),
                 (float) config.getDropout(),
-                config.getSequenceLength());
+                config.getSequenceLength(),
+                config.getStockEmbeddingBuckets(),
+                config.getStockEmbeddingSize(),
+                config.getIndustryEmbeddingBuckets(),
+                config.getIndustryEmbeddingSize(),
+                config.getGroupHeadCount(),
+                config.isResidualHeadEnabled(),
+                (float) config.getGroupHeadScale(),
+                (float) config.getResidualHeadScale());
     }
 
     private float trainEpoch(Trainer trainer, ArrayDataset trainDataset)
@@ -472,12 +494,12 @@ public class LstmTrainerService {
     }
 
     private ArrayDataset createDataset(NDManager manager, float[][] inputs,
-                                       float[] targets, int batchSize) {
+                                       float[][] targets, int batchSize) {
         if (inputs == null || inputs.length == 0 || targets == null || targets.length == 0) {
             return null;
         }
         NDArray inputArray = manager.create(inputs);
-        NDArray targetArray = manager.create(targets).reshape(targets.length, 1);
+        NDArray targetArray = manager.create(targets);
         return new ArrayDataset.Builder()
                 .setData(inputArray)
                 .optLabels(targetArray)
@@ -503,13 +525,16 @@ public class LstmTrainerService {
 
     private Map<String, List<StockPrice>> loadPriceSeries(List<String> stockCodes, int days) {
         Map<String, List<StockPrice>> result = new LinkedHashMap<>();
+        int queryLimit = Math.max(1, days);
+        PageRequest pageRequest = PageRequest.of(0, queryLimit);
         for (String stockCode : stockCodes) {
-            List<StockPrice> prices = priceRepository.findByCodeOrderByDateAsc(stockCode);
+            List<StockPrice> prices = new ArrayList<>(
+                    priceRepository.findByCodeOrderByDateDesc(stockCode, pageRequest));
             if (prices.isEmpty()) {
                 continue;
             }
-            int start = Math.max(0, prices.size() - days);
-            result.put(stockCode, new ArrayList<>(prices.subList(start, prices.size())));
+            Collections.reverse(prices);
+            result.put(stockCode, prices);
         }
         return result;
     }
@@ -543,9 +568,20 @@ public class LstmTrainerService {
         Properties properties = new Properties();
         properties.setProperty("modelVersion", MODEL_VERSION);
         properties.setProperty("featureVersion", processedData.getFeatureVersion());
-        properties.setProperty("labelVersion", "next-day-return-v2");
+        properties.setProperty("labelVersion", "return-direction-downside-v3");
         properties.setProperty("sequenceLength", String.valueOf(processedData.getSequenceLength()));
         properties.setProperty("inputSize", String.valueOf(processedData.getFeatureCount()));
+        properties.setProperty("outputSize", String.valueOf(StockLSTMModel.OUTPUT_SIZE));
+        properties.setProperty("stockEmbeddingBuckets", String.valueOf(config.getStockEmbeddingBuckets()));
+        properties.setProperty("stockEmbeddingSize", String.valueOf(config.getStockEmbeddingSize()));
+        properties.setProperty("industryEmbeddingBuckets", String.valueOf(config.getIndustryEmbeddingBuckets()));
+        properties.setProperty("industryEmbeddingSize", String.valueOf(config.getIndustryEmbeddingSize()));
+        properties.setProperty("groupHeadCount", String.valueOf(config.getGroupHeadCount()));
+        properties.setProperty("residualHeadEnabled", String.valueOf(config.isResidualHeadEnabled()));
+        properties.setProperty("groupHeadScale", String.valueOf(config.getGroupHeadScale()));
+        properties.setProperty("residualHeadScale", String.valueOf(config.getResidualHeadScale()));
+        properties.setProperty("hashAlgorithm", "java-string-hashcode-floor-mod-v1");
+        properties.setProperty("lossVersion", "huber-bce-huber-v1");
         properties.setProperty("hiddenSize", String.valueOf(config.getHiddenSize()));
         properties.setProperty("numLayers", String.valueOf(config.getNumLayers()));
         properties.setProperty("targetReturnScale", String.valueOf(processedData.getTargetReturnScale()));
@@ -665,6 +701,17 @@ public class LstmTrainerService {
         requireMetadata(properties, "featureVersion", LstmDataPreprocessor.FEATURE_VERSION);
         requireMetadata(properties, "sequenceLength", String.valueOf(config.getSequenceLength()));
         requireMetadata(properties, "inputSize", String.valueOf(config.getInputSize()));
+        requireMetadata(properties, "outputSize", String.valueOf(StockLSTMModel.OUTPUT_SIZE));
+        requireMetadata(properties, "stockEmbeddingBuckets", String.valueOf(config.getStockEmbeddingBuckets()));
+        requireMetadata(properties, "stockEmbeddingSize", String.valueOf(config.getStockEmbeddingSize()));
+        requireMetadata(properties, "industryEmbeddingBuckets", String.valueOf(config.getIndustryEmbeddingBuckets()));
+        requireMetadata(properties, "industryEmbeddingSize", String.valueOf(config.getIndustryEmbeddingSize()));
+        requireMetadata(properties, "groupHeadCount", String.valueOf(config.getGroupHeadCount()));
+        requireMetadata(properties, "residualHeadEnabled", String.valueOf(config.isResidualHeadEnabled()));
+        requireMetadata(properties, "groupHeadScale", String.valueOf(config.getGroupHeadScale()));
+        requireMetadata(properties, "residualHeadScale", String.valueOf(config.getResidualHeadScale()));
+        requireMetadata(properties, "hashAlgorithm", "java-string-hashcode-floor-mod-v1");
+        requireMetadata(properties, "lossVersion", "huber-bce-huber-v1");
         requireMetadata(properties, "targetReturnScale", String.valueOf(config.getTargetReturnScale()));
     }
 
@@ -719,4 +766,4 @@ public class LstmTrainerService {
         private List<Map<String, Object>> details;
     }
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END ----------
