@@ -34,10 +34,6 @@ services:
       SPRING_DATA_MONGODB_AUTHENTICATION_DATABASE: admin
       SPRING_DATA_MONGODB_USERNAME: ${MONGO_APP_USER:-stock}
       SPRING_DATA_MONGODB_PASSWORD: ${MONGO_APP_PASSWORD}
-      SPRING_DATA_REDIS_HOST: stock-redis
-      SPRING_DATA_REDIS_PORT: 6379
-      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
-      SPRING_DATA_REDIS_DATABASE: ${REDIS_DATABASE:-0}
       TRADING_REAL_WRITE_ENABLED: ${TRADING_REAL_WRITE_ENABLED:-false}
       LSTM_TRAINING_ENABLED: ${LSTM_TRAINING_ENABLED:-false}
       TRADING_HISTORY_MONTH_INTERVAL_MS: ${TRADING_HISTORY_MONTH_INTERVAL_MS:-500}
@@ -55,7 +51,6 @@ services:
       BAIDU_OCR_SECRET_KEY: ${BAIDU_OCR_SECRET_KEY:-}
       ZXBROKER_CAPTCHA_MAX_RETRIES: ${ZXBROKER_CAPTCHA_MAX_RETRIES:-3}
       ZXBROKER_TOKEN_EXPIRE_MINUTES: ${ZXBROKER_TOKEN_EXPIRE_MINUTES:-30}
-      ZXBROKER_TOKEN_REDIS_KEY: ${ZXBROKER_TOKEN_REDIS_KEY:-stock-trading:zxbroker:token}
       ZXBROKER_SIGN_KEY: ${ZXBROKER_SIGN_KEY:-}
       ZXBROKER_INTACT_TO_SERVER: ${ZXBROKER_INTACT_TO_SERVER:-}
       ZXBROKER_HISTORY_PAGE_SIZE: ${ZXBROKER_HISTORY_PAGE_SIZE:-500}
@@ -72,8 +67,6 @@ services:
         condition: service_healthy
       stock-mongo:
         condition: service_healthy
-      stock-redis:
-        condition: service_healthy
     expose:
       - "8080"
     networks:
@@ -88,29 +81,6 @@ services:
       retries: 5
     logging: *default-logging
 
-  stock-redis:
-    image: ${REDIS_IMAGE:-redis:7.4-alpine}
-    container_name: stock-redis
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-    command:
-      - /bin/sh
-      - -c
-      - exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"
-    volumes:
-      - redis-data:/data
-    expose:
-      - "6379"
-    networks:
-      - stock-backend
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep PONG"]
-      interval: 10s
-      timeout: 5s
-      start_period: 10s
-      retries: 10
-    logging: *default-logging
   stock-mysql:
     image: ${MYSQL_IMAGE:-mysql:8.0.43}
     container_name: stock-mysql
@@ -217,7 +187,6 @@ networks:
     internal: true
 
 volumes:
-  redis-data:
   mysql-data:
   mongo-data:
   models-data:

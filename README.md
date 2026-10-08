@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START - -->
+<!-- AI_GENERATE_START -- -->
 # Stock Trading - AI 股票自动交易系统
 
 # 项目演示
@@ -15,7 +15,7 @@
 
 - **后端服务** (Java Spring Boot 3.2): 提供 RESTful API，业务逻辑处理，AI 模型推理
 - **前端应用** (React 19 + Vite 7 + Ant Design 6): 可视化 Dashboard，数据展示，交易操作
-- **数据存储**: MySQL (业务数据) + MongoDB (文档数据/模型存储) + Redis (缓存)
+- **数据存储**: MySQL (业务数据) + MongoDB (文档数据/模型存储)
 
 ### 核心特性
 
@@ -43,7 +43,7 @@
 | JDK | OpenJDK | 17 |
 | ORM | Spring Data JPA | 自动建表 |
 | 数据库 | MySQL / MongoDB | 8.0 / 6.0 |
-| 缓存 | Redis | 7.x |
+
 | HTTP | OkHttp | 4.12 |
 | 工具 | Hutool / FastJSON2 | 5.8 / 2.0 |
 | AI 框架 | DJL (Deep Java Library) | 0.28.0 |
@@ -176,8 +176,8 @@ stock-trading/
 #### 1. 启动基础设施
 
 ```bash
-# 使用 Docker Compose 启动数据库和缓存
-docker-compose up -d mysql redis mongo
+# 使用 Docker Compose 启动数据库
+docker compose up -d stock-mysql stock-mongo
 ```
 
 #### 2. 启动后端
@@ -393,7 +393,7 @@ docker-compose logs -f backend
 | 前端开发 | 5173 | Vite 开发服务器 |
 | MySQL | 3306 | 数据库 |
 | MongoDB | 27017 | 文档数据库 |
-| Redis | 6379 | 缓存服务 |
+
 
 ---
 
@@ -505,4 +505,4 @@ MIT License
 ## 联系方式
 
 如有问题请提交 Issue 或联系开发团队。
-<!-- AI_GENERATE_END - -->
+<!-- AI_GENERATE_END -- -->

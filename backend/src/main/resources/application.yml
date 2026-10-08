@@ -19,14 +19,6 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:stock}
     password: ${SPRING_DATASOURCE_PASSWORD:}
   data:
-    redis:
-      host: ${SPRING_DATA_REDIS_HOST:localhost}
-      port: ${SPRING_DATA_REDIS_PORT:6379}
-      password: ${SPRING_DATA_REDIS_PASSWORD:}
-      database: ${SPRING_DATA_REDIS_DATABASE:0}
-      connect-timeout: ${SPRING_DATA_REDIS_CONNECT_TIMEOUT:3s}
-      timeout: ${SPRING_DATA_REDIS_TIMEOUT:3s}
-
     mongodb:
       auto-index-creation: true
       host: ${SPRING_DATA_MONGODB_HOST:localhost}
@@ -57,15 +49,16 @@ zxbroker:
   mobile-code: ${ZXBROKER_MOBILE_CODE:}
   account: ${ZXBROKER_ACCOUNT:}
   encoded-password: ${ZXBROKER_ENCODED_PASSWORD:}
-  ocr-min-agreement: ${ZXBROKER_OCR_MIN_AGREEMENT:2}
+
+  captcha-auto-submit-enabled: ${ZXBROKER_CAPTCHA_AUTO_SUBMIT_ENABLED:false}
   ocr-timeout-ms: ${ZXBROKER_OCR_TIMEOUT_MS:20000}
+  ocr-request-interval-ms: ${ZXBROKER_OCR_REQUEST_INTERVAL_MS:1050}
   baidu-ocr-api-key: ${BAIDU_OCR_API_KEY:}
   baidu-ocr-secret-key: ${BAIDU_OCR_SECRET_KEY:}
   captcha-max-retries: ${ZXBROKER_CAPTCHA_MAX_RETRIES:3}
   sign-key: ${ZXBROKER_SIGN_KEY:}
   intact-to-server: ${ZXBROKER_INTACT_TO_SERVER:}
   token-expire-minutes: ${ZXBROKER_TOKEN_EXPIRE_MINUTES:30}
-  token-redis-key: ${ZXBROKER_TOKEN_REDIS_KEY:stock-trading:zxbroker:token}
   history-page-size: ${ZXBROKER_HISTORY_PAGE_SIZE:500}
   history-max-records-per-window: ${ZXBROKER_HISTORY_MAX_RECORDS_PER_WINDOW:5000}
   history-request-interval-ms: ${ZXBROKER_HISTORY_REQUEST_INTERVAL_MS:200}

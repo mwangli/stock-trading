@@ -6,6 +6,7 @@ HELP.md
 # Maven
 target/
 frontend/target/
+backend/cp.txt
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

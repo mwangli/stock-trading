@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ----------
 package com.stock.tradingExecutor.execution;
 
 import cn.hutool.http.HttpUtil;
@@ -49,7 +49,7 @@ public class ZXRequestUtils {
     }
 
     /**
-     * 从 Redis 获取当前有效 Token。
+     * 从当前 Backend 进程内缓存获取有效 Token。
      * 本方法只检查缓存，不触发登录，供状态查询使用。
      *
      * @return 有效 Token，不存在或过期时返回 null
@@ -59,7 +59,7 @@ public class ZXRequestUtils {
     }
 
     /**
-     * 将券商 Token 写入 Redis。
+     * 将券商 Token 写入当前 Backend 进程内缓存。
      *
      * @param token 新 Token
      */
@@ -71,10 +71,10 @@ public class ZXRequestUtils {
 
     /**
      * 获取业务调用必须使用的 Token。
-     * Redis 中不存在 Token 时自动调用验证码登录；登录流程最多尝试三次。
+     * 进程内缓存不存在 Token 时自动调用验证码登录；登录流程最多尝试三次。
      *
      * @return 可用于券商业务接口的 Token
-     * @throws IllegalStateException 券商未启用、登录三次失败或 Redis 不可用时抛出
+     * @throws IllegalStateException 券商未启用或登录三次失败时抛出
      */
     public String requireToken() {
         if (!Boolean.TRUE.equals(brokerConfig.getEnabled())) {
@@ -90,7 +90,7 @@ public class ZXRequestUtils {
             if (cachedToken != null && !cachedToken.isBlank()) {
                 return cachedToken;
             }
-            log.warn("[ZXBroker] Redis 中无可用 Token，开始验证码登录，最多尝试 {} 次",
+            log.warn("[ZXBroker] 进程内缓存中无可用 Token，开始验证码登录，最多尝试 {} 次",
                     brokerConfig.getCaptchaMaxRetries());
             String loginToken = loginConfiguredAccount();
             if (loginToken == null || loginToken.isBlank()) {
@@ -100,8 +100,8 @@ public class ZXRequestUtils {
             }
             String storedToken = getToken();
             if (storedToken == null || storedToken.isBlank()) {
-                log.error("[ZXBroker] 登录成功但 Redis 中未读取到 Token，中断业务流程");
-                throw new IllegalStateException("券商 Token 未成功写入 Redis");
+                log.error("[ZXBroker] 登录成功但进程内缓存中未读取到 Token，中断业务流程");
+                throw new IllegalStateException("券商 Token 未成功写入进程内缓存");
             }
             return storedToken;
         }
@@ -250,4 +250,4 @@ public class ZXRequestUtils {
     private record CaptchaChallenge(byte[] imageBytes, String checkToken) {
     }
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ----------

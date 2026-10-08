@@ -19,13 +19,6 @@ services:
     security_opt:
       - no-new-privileges:true
 
-  stock-redis:
-    restart: always
-    mem_limit: ${REDIS_MEMORY_LIMIT:-128m}
-    cpus: ${REDIS_CPU_LIMIT:-0.10}
-    security_opt:
-      - no-new-privileges:true
-
   stock-mysql:
     restart: always
     mem_limit: ${MYSQL_MEMORY_LIMIT:-512m}
