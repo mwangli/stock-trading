@@ -1,3 +1,4 @@
+<!-- AI_GENERATE_START - -->
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -32,7 +33,7 @@ npm run lint                 # ESLint
 ### Docker (infrastructure for local dev)
 
 ```bash
-docker-compose up -d mysql redis mongo   # Start databases only
+docker compose up -d stock-mysql stock-mongo   # Start databases only
 docker-compose up -d --build             # Full stack deployment
 ```
 
@@ -70,7 +71,7 @@ Each domain module follows: `controller/` -> `service/` -> `repository/` (JPA fo
 
 - **MySQL 8**: Business data (stocks, prices, trades, positions, job configs). JPA `ddl-auto: update` — no migration scripts.
 - **MongoDB 6**: Model weights (binary), training records. Dynamic collections per model.
-- **Redis 7**: Caching layer for predictions and strategy state.
+- **Broker Token cache**: In-memory TTL cache inside the single backend instance; restart triggers re-login.
 
 ### Data Flow (T+1 trade cycle)
 
@@ -116,4 +117,5 @@ Each domain module follows: `controller/` -> `service/` -> `repository/` (JPA fo
 - Temporary files go in `.tmp/` (gitignored).
 - Sentiment model files (`models/sentiment/`) are managed by Git LFS.
 - Database credentials use `${GLOBAL_DB_PASSWORD}` env var.
-- Ports: backend 8080, frontend dev 5173, MySQL 3306, MongoDB 27017, Redis 6379.
+- Ports: backend 8080, frontend dev 5173, MySQL 3306, MongoDB 27017.
+<!-- AI_GENERATE_END - -->

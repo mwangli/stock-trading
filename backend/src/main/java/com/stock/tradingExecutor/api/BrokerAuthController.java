@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ---
 package com.stock.tradingExecutor.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 券商本地验证码登录接口。
+ * 券商验证码登录接口。
  * 登录凭据只从运行环境读取，接口不接收密码且不向调用方返回 Token。
  *
  * @author mwangli
@@ -28,13 +28,14 @@ public class BrokerAuthController {
     private final ZXBrokerConfig brokerConfig;
 
     /**
-     * 使用本地多引擎 OCR 和配置中的加密密码登录券商。
+     * 使用受控百度云 OCR 和配置中的加密密码登录券商。
      *
      * @return 登录状态和脱敏账号
      */
     @PostMapping("/login")
     public ResponseDTO<BrokerLoginResultDto> login() {
-        log.info("使用本地验证码识别登录券商");
+        log.info("请求使用受控百度云 OCR 登录券商，自动提交开关={}",
+                brokerConfig.getCaptchaAutoSubmitEnabled());
         try {
             boolean authenticated = brokerAdapter.loginConfiguredAccount();
             BrokerLoginResultDto result = BrokerLoginResultDto.builder()
@@ -58,4 +59,4 @@ public class BrokerAuthController {
         return "****" + account.substring(account.length() - 4);
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END ---

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ------------
 package com.stock.tradingExecutor.execution;
 
 import lombok.Data;
@@ -54,23 +54,28 @@ public class ZXBrokerConfig {
 
 
     /**
-     * OCR 最低一致票数
+     * 是否允许将未达到准确率验收标准的 OCR 结果提交给券商
      */
-    private Integer ocrMinAgreement = 2;
+    private Boolean captchaAutoSubmitEnabled = false;
 
     /**
-     * OCR 远程补票请求超时时间，单位毫秒
+     * 百度 OCR 请求超时时间，单位毫秒
      */
     private Integer ocrTimeoutMs = 20000;
 
     /**
-     * 百度 OCR API Key，仅作为本地识别不足时的补票来源
+     * 百度 OCR 请求最小间隔，单位毫秒
+     */
+    private Integer ocrRequestIntervalMs = 1050;
+
+    /**
+     * 百度 OCR API Key
      */
     @ToString.Exclude
     private String baiduOcrApiKey = "";
 
     /**
-     * 百度 OCR Secret Key，仅作为本地识别不足时的补票来源
+     * 百度 OCR Secret Key
      */
     @ToString.Exclude
     private String baiduOcrSecretKey = "";
@@ -84,11 +89,6 @@ public class ZXBrokerConfig {
      * Token过期时间(分钟)
      */
     private Integer tokenExpireMinutes = 30;
-
-    /**
-     * Token 在 Redis 中使用的键
-     */
-    private String tokenRedisKey = "stock-trading:zxbroker:token";
 
     /**
      * 订单查询最大数量
@@ -125,4 +125,4 @@ public class ZXBrokerConfig {
      */
     private Integer cancelWaitTimes = 6;
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ------------
