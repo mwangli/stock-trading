@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START -----
 package com.stock.tradingExecutor.job;
 
 import lombok.extern.slf4j.Slf4j;
@@ -57,7 +57,7 @@ public class JobBootstrap implements ApplicationRunner {
     /**
      * 创建缺失的默认任务并启动当前数据库中明确启用的任务。
      *
-     * 资源消耗较高的模型任务默认禁用，由用户在任务页面按需开启。
+     * 固定任务由代码维护，不提供通用动态任务管理入口。
      */
     @Transactional
     protected void initJobsAsync() {
@@ -103,15 +103,23 @@ public class JobBootstrap implements ApplicationRunner {
                     .setBeanName("dataSyncScheduler")
                     .setMethodName("collectNewsDailySync")
                     .setCronExpression("0 0 6 * * MON-FRI")
-                    .setStatus(0));
+                    .setStatus(1));
+
+            defaultJobs.add(new JobConfig()
+                    .setJobName("lstmOfflineTraining")
+                    .setDescription("收盘后更新缺失或过期的 LSTM 股票模型")
+                    .setBeanName("offlineLstmTrainingJob")
+                    .setMethodName("trainStaleModels")
+                    .setCronExpression("0 0 19 * * MON-FRI")
+                    .setStatus(1));
 
             defaultJobs.add(new JobConfig()
                     .setJobName("stockSelection")
                     .setDescription("使用已训练 LSTM 与近期新闻情感生成真实交易候选")
                     .setBeanName("strategyScheduler")
                     .setMethodName("runStockSelection")
-                    .setCronExpression("0 0 17 * * MON-FRI")
-                    .setStatus(0));
+                    .setCronExpression("0 30 6 * * MON-FRI")
+                    .setStatus(1));
 
             defaultJobs.add(new JobConfig()
                     .setJobName("realTradingAutoBuy")
@@ -119,7 +127,7 @@ public class JobBootstrap implements ApplicationRunner {
                     .setBeanName("realTradingJob")
                     .setMethodName("executeAutoBuys")
                     .setCronExpression("0 35 9 * * MON-FRI")
-                    .setStatus(0));
+                    .setStatus(1));
 
             defaultJobs.add(new JobConfig()
                     .setJobName("realTradingT1Exit")
@@ -127,23 +135,21 @@ public class JobBootstrap implements ApplicationRunner {
                     .setBeanName("realTradingJob")
                     .setMethodName("checkT1Exits")
                     .setCronExpression("0 50 14 * * MON-FRI")
-                    .setStatus(0));
+                    .setStatus(1));
 
-            defaultJobs.add(new JobConfig()
-                    .setJobName("modelTrainingRecordSync")
-                    .setDescription("同步逐股票 LSTM 训练记录")
-                    .setBeanName("modelTrainingRecordSyncJob")
-                    .setMethodName("syncAllStocks")
-                    .setCronExpression("0 30 3 * * ?")
-                    .setStatus(0));
+            jobConfigRepository.deleteByJobName("modelTrainingRecordSync");
 
             for (JobConfig job : defaultJobs) {
-                if (jobConfigRepository.findByJobName(job.getJobName()).isEmpty()) {
-                    job.setCreateTime(LocalDateTime.now());
-                    job.setUpdateTime(LocalDateTime.now());
-                    jobConfigRepository.save(job);
-                    log.info("[任务初始化] 创建默认任务: {}", job.getJobName());
-                }
+                JobConfig fixedJob = jobConfigRepository.findByJobName(job.getJobName())
+                        .orElseGet(() -> job.setCreateTime(LocalDateTime.now()));
+                fixedJob.setDescription(job.getDescription());
+                fixedJob.setBeanName(job.getBeanName());
+                fixedJob.setMethodName(job.getMethodName());
+                fixedJob.setCronExpression(job.getCronExpression());
+                fixedJob.setStatus(job.getStatus());
+                fixedJob.setUpdateTime(LocalDateTime.now());
+                jobConfigRepository.save(fixedJob);
+                log.info("[任务初始化] 应用固定任务配置: {}", fixedJob.getJobName());
             }
 
             jobSchedulerService.startAllActiveJobs();
@@ -153,4 +159,4 @@ public class JobBootstrap implements ApplicationRunner {
         }
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END -----

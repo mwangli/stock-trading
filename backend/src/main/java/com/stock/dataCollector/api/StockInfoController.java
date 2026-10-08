@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 package com.stock.dataCollector.api;
 
 import com.stock.dataCollector.domain.vo.MarketStatsDto;
@@ -5,7 +6,6 @@ import com.stock.dataCollector.domain.entity.StockInfo;
 import com.stock.dataCollector.domain.entity.StockPrice;
 import com.stock.dataCollector.domain.dto.StockInfoListResponseDto;
 import com.stock.dataCollector.domain.dto.HistoryPriceListResponseDto;
-import com.stock.dataCollector.domain.dto.SimpleFlagResponseDto;
 import com.stock.dataCollector.domain.dto.TopIncreaseItemDto;
 import com.stock.dataCollector.domain.dto.TopIncreaseListResponseDto;
 import com.stock.dataCollector.domain.dto.MarketStatsResponseDto;
@@ -15,10 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -27,7 +24,7 @@ import java.util.stream.Collectors;
 /**
  * 股票信息控制器
  * <p>
- * 对应前端 /api/stockInfo/* 接口，提供股票列表、历史价格、自选、涨幅榜、市场统计等。
+ * 对应前端 /api/stockInfo/* 接口，提供股票列表、历史价格、涨幅榜和市场统计。
  * </p>
  *
  * @author mwangli
@@ -42,8 +39,12 @@ public class StockInfoController {
     private final StockDataService stockDataService;
 
     /**
-     * 获取股票列表 (使用数据库分页)
-     * 前端参数: current, pageSize, keywords
+     * 使用数据库分页查询股票列表。
+     *
+     * @param current 当前页码，从 1 开始
+     * @param pageSize 每页数量
+     * @param keywords 股票名称或代码关键字
+     * @return 股票分页结果
      */
     @GetMapping("/list")
     public ResponseEntity<StockInfoListResponseDto> listStockInfo(
@@ -71,7 +72,10 @@ public class StockInfoController {
     }
 
     /**
-     * 获取历史价格
+     * 查询指定股票的历史价格。
+     *
+     * @param code 股票代码
+     * @return 历史价格列表
      */
     @GetMapping("/listHistoryPrices")
     public ResponseEntity<HistoryPriceListResponseDto> listHistoryPrices(@RequestParam String code) {
@@ -87,35 +91,9 @@ public class StockInfoController {
     }
 
     /**
-     * 加入自选 (模拟)
-     */
-    @GetMapping("/selectStockInfo")
-    public ResponseEntity<SimpleFlagResponseDto> selectStockInfo(@RequestParam String code) {
-        log.info("加入自选: {}", code);
-        // TODO: 实现真正的自选逻辑 (可能需要用户系统)
-
-        SimpleFlagResponseDto response = SimpleFlagResponseDto.builder()
-                .success(true)
-                .build();
-        return ResponseEntity.ok(response);
-    }
-
-    /**
-     * 取消自选 (模拟)
-     */
-    @GetMapping("/cancelStockInfo")
-    public ResponseEntity<SimpleFlagResponseDto> cancelStockInfo(@RequestParam String code) {
-        log.info("取消自选: {}", code);
-
-        SimpleFlagResponseDto response = SimpleFlagResponseDto.builder()
-                .success(true)
-                .build();
-        return ResponseEntity.ok(response);
-    }
-
-    /**
-     * 获取涨幅榜TOP10
-     * 返回格式: [{code, name, changePercent}, ...]
+     * 查询涨幅榜前十名。
+     *
+     * @return 涨幅榜结果
      */
     @GetMapping("/listIncreaseRate")
     public ResponseEntity<TopIncreaseListResponseDto> listIncreaseRate() {
@@ -139,39 +117,20 @@ public class StockInfoController {
     }
 
     /**
-     * 获取市场统计信息
-     * 从stock_info表中聚合提取市场基本数据。
-     * 发生异常时返回兜底数据，确保前端始终能拿到响应，避免请求挂起。
+     * 从 stock_info 表聚合市场统计信息。
+     *
+     * @return 真实市场统计结果
      */
     @GetMapping("/marketStats")
     public ResponseEntity<MarketStatsResponseDto> getMarketStats() {
         log.info("[StockInfo] 请求到达 GET /api/stockInfo/marketStats");
-        try {
-            MarketStatsDto stats = stockDataService.getMarketStats();
-            MarketStatsResponseDto response = MarketStatsResponseDto.builder()
-                    .success(true)
-                    .data(stats)
-                    .build();
-            log.info("[StockInfo] marketStats 即将返回 success=true");
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.warn("[StockInfo] 获取市场统计失败，返回兜底数据: {}", e.getMessage());
-            MarketStatsDto fallback = MarketStatsDto.builder()
-                    .marketStatus("休市")
-                    .changePercent(BigDecimal.ZERO)
-                    .upCount(0)
-                    .downCount(0)
-                    .flatCount(0)
-                    .totalAmount(BigDecimal.ZERO)
-                    .totalVolume(BigDecimal.ZERO)
-                    .totalCount(0)
-                    .avgTurnoverRate(BigDecimal.ZERO)
-                    .build();
-            MarketStatsResponseDto response = MarketStatsResponseDto.builder()
-                    .success(true)
-                    .data(fallback)
-                    .build();
-            return ResponseEntity.ok(response);
-        }
+        MarketStatsDto stats = stockDataService.getMarketStats();
+        MarketStatsResponseDto response = MarketStatsResponseDto.builder()
+                .success(true)
+                .data(stats)
+                .build();
+        log.info("[StockInfo] marketStats 即将返回 success=true");
+        return ResponseEntity.ok(response);
     }
 }
+// AI_GENERATE_END -

@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.modelService.service;
 
 import ai.djl.inference.Predictor;
@@ -6,15 +6,11 @@ import ai.djl.modality.Classifications;
 import ai.djl.repository.zoo.Criteria;
 import ai.djl.repository.zoo.ZooModel;
 import ai.djl.training.util.ProgressBar;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
 import ai.djl.huggingface.translator.TextClassificationTranslator;
 import ai.djl.translate.Translator;
 import com.stock.modelService.config.SentimentTrainingConfig;
 import com.stock.modelService.domain.vo.SentimentAnalysisResult;
-import com.stock.modelService.domain.param.SentimentTrainingRequest;
-import com.stock.modelService.domain.vo.SentimentTrainingResponse;
-import com.stock.modelService.domain.dto.TrainingSample;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,7 +21,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.Arrays;
 
 import jakarta.annotation.PostConstruct;
@@ -43,7 +38,6 @@ public class SentimentTrainerService {
 
     private final SentimentTrainingConfig config;
     private final SentimentDataPreprocessor dataPreprocessor;
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 应用启动初始化
@@ -68,127 +62,6 @@ public class SentimentTrainerService {
     private ZooModel<String, Classifications> loadedModel = null;
     private boolean isModelLoaded = false;
     private LocalDateTime lastLoadedTime = null;
-    private final Map<String, TrainingStatus> trainingStatusMap = new ConcurrentHashMap<>();
-
-    /**
-     * 训练情感分析模型
-     */
-    public SentimentTrainingResponse trainModel(SentimentTrainingRequest request) {
-        String trainingId = "sentiment_training_" + System.currentTimeMillis();
-        TrainingStatus status = new TrainingStatus();
-        trainingStatusMap.put(trainingId, status);
-
-        try {
-            int trainEpochs = request.getEpochs() != null ? request.getEpochs() : config.getEpochs();
-            int trainBatchSize = request.getBatchSize() != null ? request.getBatchSize() : config.getBatchSize();
-
-            log.info("开始情感分析模型训练流程 - 训练ID:{}, 计划轮次:{}, 批次大小:{}", trainingId, trainEpochs, trainBatchSize);
-
-            status.setStatus("加载数据 - 训练ID: " + trainingId);
-            status.setProgress(10);
-
-            List<TrainingSample> allSamples = dataPreprocessor.loadTrainingData(
-                    request.getNumSamples(), request.getAutoLabel());
-
-            if (allSamples.isEmpty()) {
-                throw new RuntimeException("没有训练数据");
-            }
-
-            SentimentDataPreprocessor.DatasetSplit split = dataPreprocessor.splitDataset(allSamples);
-            int trainSize = split.getTrainData().size();
-            int valSize = split.getValData().size();
-
-            log.info("训练集样本数:{}, 验证集样本数:{}", trainSize, valSize);
-
-            // 统计标签分布，便于评估数据质量
-            // 统计标签分布 (0=Neutral, 1=Positive, 2=Negative)
-            long trainNeu = split.getTrainData().stream().filter(s -> s.getLabel() == 0).count();
-            long trainPos = split.getTrainData().stream().filter(s -> s.getLabel() == 1).count();
-            long trainNeg = split.getTrainData().stream().filter(s -> s.getLabel() == 2).count();
-
-            long valNeu = split.getValData().stream().filter(s -> s.getLabel() == 0).count();
-            long valPos = split.getValData().stream().filter(s -> s.getLabel() == 1).count();
-            long valNeg = split.getValData().stream().filter(s -> s.getLabel() == 2).count();
-
-            log.info("训练集标签分布 - 中性:{}, 正面:{}, 负面:{}", trainNeu, trainPos, trainNeg);
-            log.info("验证集标签分布 - 中性:{}, 正面:{}, 负面:{}", valNeu, valPos, valNeg);
-
-            status.setStatus("数据加载与统计完成");
-            status.setProgress(40);
-
-            // 检查预训练模型是否可用（仅做加载验证，不在此处做真实微调）
-            boolean modelReady = loadModel();
-            if (modelReady) {
-                log.info("预训练情感分析模型已就绪，可用于推理");
-                status.setStatus("模型已加载，可用于推理");
-            } else {
-                log.warn("预训练情感分析模型未加载，将使用规则模式推理");
-                status.setStatus("模型未加载，将使用规则模式推理");
-            }
-            status.setProgress(80);
-
-            // 组装训练日志，记录数据与模型状态
-            List<Map<String, Object>> trainingLog = new ArrayList<>();
-            Map<String, Object> summary = new HashMap<>();
-            summary.put("trainEpochsPlanned", trainEpochs);
-            summary.put("trainBatchSize", trainBatchSize);
-            summary.put("trainSize", trainSize);
-            summary.put("valSize", valSize);
-            summary.put("trainNeg", trainNeg);
-            summary.put("trainNeu", trainNeu);
-            summary.put("trainPos", trainPos);
-            summary.put("valNeg", valNeg);
-            summary.put("valNeu", valNeu);
-            summary.put("valPos", valPos);
-            summary.put("pretrainedModel", config.getPretrainedModel());
-            summary.put("modelPath", resolveSentimentModelDir().toAbsolutePath().toString());
-            summary.put("modelLoaded", modelReady);
-            trainingLog.add(summary);
-
-            // 暂未在 Java 侧执行真实 BERT 微调，先返回数据统计结果
-            String modelPath = resolveSentimentModelDir().toAbsolutePath().toString();
-
-            status.setStatus("训练完成");
-            status.setProgress(100);
-
-            return SentimentTrainingResponse.builder()
-                    .success(true)
-                    .message("训练完成")
-                    .trainingId(trainingId)
-                    .epochs(trainEpochs)
-                    .trainLoss(null)
-                    .valAccuracy(null)
-                    .modelPath(modelPath)
-                    .trainSamples(trainSize)
-                    .valSamples(valSize)
-                    .details(trainingLog)
-                    .build();
-
-        } catch (Exception e) {
-            log.error("情感分析模型训练失败", e);
-            status.setStatus("训练失败：" + e.getMessage());
-            status.setProgress(-1);
-
-            return SentimentTrainingResponse.builder()
-                    .success(false)
-                    .trainingId(trainingId)
-                    .message("训练失败：" + e.getMessage())
-                    .build();
-        }
-    }
-
-    /**
-     * 下载预训练模型（支持中文）
-     *
-     * 该方法仅用于记录配置中的预训练模型信息，本地实际使用的模型文件
-     * 优先来自 {@code models/sentiment} 目录（或由环境变量 {@code STOCK_TRADING_MODELS_DIR}
-     * 指定的根目录下的 {@code sentiment} 子目录），无法通过网络下载时会自动
-     * 回退为规则模式推理。
-     */
-    public String downloadPretrainedModel() {
-        log.info("DJL 将根据配置自动从 HuggingFace 下载并缓存模型: {}", config.getPretrainedModel());
-        return resolveSentimentModelDir().toAbsolutePath().toString();
-    }
 
     /**
      * 解析情感模型所在的本地目录
@@ -474,93 +347,11 @@ public class SentimentTrainerService {
     }
 
     /**
-     * 基于规则的情感分析（备用）
-     */
-    private SentimentAnalysisResult analyzeWithRules(String text) {
-        Integer label = dataPreprocessor.autoLabelSentiment(text);
-        String[] labels = config.getLabels();
-        String labelStr = labels[label];
-        Map<String, Double> probs = new HashMap<>();
-        // 0=Neutral, 1=Positive, 2=Negative
-        probs.put("neutral", label == 0 ? 0.7 : 0.15);
-        probs.put("positive", label == 1 ? 0.7 : 0.15);
-        probs.put("negative", label == 2 ? 0.7 : 0.15);
-
-        double score = label == 2 ? -0.7 : (label == 1 ? 0.7 : 0.0);
-        double normalizedScore = calculateNormalizedScore(labelStr, 0.7);
-
-        return SentimentAnalysisResult.builder()
-                .label(labelStr)
-                .score(score)
-                .normalizedScore(normalizedScore)
-                .confidence(0.7)
-                .probabilities(probs)
-                .text(text)
-                .build();
-    }
-
-    private double calculateNormalizedScore(String label, double probability) {
-        if ("negative".equalsIgnoreCase(label)) {
-            // Negative: 0-40 (Strong Negative = 0)
-            return 40.0 - (probability * 40.0);
-        } else if ("neutral".equalsIgnoreCase(label)) {
-            // Neutral: 40-60
-            return 40.0 + (probability * 20.0);
-        } else if ("positive".equalsIgnoreCase(label)) {
-            // Positive: 60-100 (Strong Positive = 100)
-            return 60.0 + (probability * 40.0);
-        }
-        return 50.0; // Default
-    }
-
-
-    private double calculateSentimentScore(Map<String, Double> probabilities) {
-        double positive = 0.0;
-        double negative = 0.0;
-
-        if (probabilities != null && !probabilities.isEmpty()) {
-            for (Map.Entry<String, Double> entry : probabilities.entrySet()) {
-                String key = entry.getKey();
-                Double value = entry.getValue();
-                if (key == null || value == null) {
-                    continue;
-                }
-                if ("positive".equalsIgnoreCase(key)) {
-                    positive = value;
-                } else if ("negative".equalsIgnoreCase(key)) {
-                    negative = value;
-                }
-            }
-        }
-
-        return positive - negative;
-    }
-
-    @SuppressWarnings("unused")
-    private String saveModel() throws IOException {
-        Path modelDir = Paths.get(config.getModelPath());
-        Files.createDirectories(modelDir);
-
-        Path configPath = modelDir.resolve("config.json");
-        Map<String, Object> modelConfig = new HashMap<>();
-        modelConfig.put("modelType", "distilbert");
-        modelConfig.put("numLabels", config.getNumLabels());
-        modelConfig.put("labels", config.getLabels());
-        modelConfig.put("maxSequenceLength", config.getMaxSequenceLength());
-        modelConfig.put("pretrainedModel", config.getPretrainedModel());
-
-        objectMapper.writeValue(configPath.toFile(), modelConfig);
-
-        return modelDir.toAbsolutePath().toString();
-    }
-
-
-    /**
-     * 使用已配置的情感模型执行交易选股所需的严格推理。
-     * 模型无法加载或单次推理失败时直接抛出异常，禁止使用规则结果替代真实模型。
+     * 使用真实情感模型执行交易候选所需的严格推理。
+     * 模型无法加载或单次推理失败时直接抛出异常，禁止用规则结果替代。
      *
      * @param text 新闻或公告文本
-     * @return 情感标签、分数和置信度
+     * @return 情感标签、连续分数和置信度
      */
     public SentimentAnalysisResult analyzeSentimentRequired(String text) {
         if (text == null || text.isBlank()) {
@@ -570,11 +361,11 @@ public class SentimentTrainerService {
             throw new IllegalStateException("情感分析模型未加载，停止生成交易候选");
         }
         try (Predictor<String, Classifications> predictor = loadedModel.newPredictor()) {
-            Classifications result = predictor.predict(text);
+            Classifications classifications = predictor.predict(text);
             Map<String, Double> probabilities = new HashMap<>();
             String bestLabel = null;
             double bestProbability = 0D;
-            for (Classifications.Classification classification : result.items()) {
+            for (Classifications.Classification classification : classifications.items()) {
                 probabilities.put(classification.getClassName(), classification.getProbability());
                 if (classification.getProbability() > bestProbability) {
                     bestProbability = classification.getProbability();
@@ -594,21 +385,77 @@ public class SentimentTrainerService {
         }
     }
 
-    public TrainingStatus getTrainingStatus(String trainingId) {
-        return trainingStatusMap.get(trainingId);
-    }
-
+    /**
+     * 查询情感模型是否已成功加载。
+     *
+     * @return true 表示当前可执行真实模型推理
+     */
     public boolean isModelLoaded() {
         return isModelLoaded;
     }
 
+    /**
+     * 卸载当前情感模型并释放底层资源。
+     */
     public void unloadModel() {
         if (loadedModel != null) {
             loadedModel.close();
             loadedModel = null;
-            isModelLoaded = false;
-            log.info("模型已卸载");
         }
+        isModelLoaded = false;
+        lastLoadedTime = null;
+        log.info("情感分析模型已卸载");
+    }
+
+    private SentimentAnalysisResult analyzeWithRules(String text) {
+        Integer label = dataPreprocessor.autoLabelSentiment(text);
+        String[] labels = config.getLabels();
+        String labelText = labels[label];
+        Map<String, Double> probabilities = new HashMap<>();
+        probabilities.put("neutral", label == 0 ? 0.7D : 0.15D);
+        probabilities.put("positive", label == 1 ? 0.7D : 0.15D);
+        probabilities.put("negative", label == 2 ? 0.7D : 0.15D);
+        double score = label == 2 ? -0.7D : label == 1 ? 0.7D : 0D;
+        return SentimentAnalysisResult.builder()
+                .label(labelText)
+                .score(score)
+                .normalizedScore(calculateNormalizedScore(labelText, 0.7D))
+                .confidence(0.7D)
+                .probabilities(probabilities)
+                .text(text)
+                .build();
+    }
+
+    private double calculateNormalizedScore(String label, double probability) {
+        if ("negative".equalsIgnoreCase(label)) {
+            return 40D - probability * 40D;
+        }
+        if ("neutral".equalsIgnoreCase(label)) {
+            return 40D + probability * 20D;
+        }
+        if ("positive".equalsIgnoreCase(label)) {
+            return 60D + probability * 40D;
+        }
+        return 50D;
+    }
+
+    private double calculateSentimentScore(Map<String, Double> probabilities) {
+        if (probabilities == null || probabilities.isEmpty()) {
+            return 0D;
+        }
+        double positive = probabilities.entrySet().stream()
+                .filter(entry -> "positive".equalsIgnoreCase(entry.getKey()))
+                .map(Map.Entry::getValue)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(0D);
+        double negative = probabilities.entrySet().stream()
+                .filter(entry -> "negative".equalsIgnoreCase(entry.getKey()))
+                .map(Map.Entry::getValue)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(0D);
+        return Math.max(-1D, Math.min(1D, positive - negative));
     }
 
     /**
@@ -659,12 +506,5 @@ public class SentimentTrainerService {
         return response;
     }
 
-    @lombok.Data
-    public static class TrainingStatus {
-        private String status = "等待中";
-        private double progress = 0;
-        private int currentEpoch = 0;
-        private int totalEpochs = 0;
-    }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

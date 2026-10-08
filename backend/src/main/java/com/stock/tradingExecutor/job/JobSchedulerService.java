@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 package com.stock.tradingExecutor.job;
 
 import lombok.RequiredArgsConstructor;
@@ -10,7 +11,6 @@ import org.springframework.stereotype.Service;
 import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 
@@ -65,43 +65,6 @@ public class JobSchedulerService {
         }
     }
 
-    public void runJobNow(Long jobId) {
-        Optional<JobConfig> jobOpt = jobConfigRepository.findById(jobId);
-        if (jobOpt.isEmpty()) {
-            throw new RuntimeException("任务不存在");
-        }
-
-        JobConfig jobConfig = jobOpt.get();
-        log.info("[任务调度] 手动触发任务: {}", jobConfig.getJobName());
-        new Thread(createRunnable(jobConfig)).start();
-    }
-
-    public void updateJobCron(Long jobId, String newCron) {
-        JobConfig jobConfig = jobConfigRepository.findById(jobId)
-                .orElseThrow(() -> new RuntimeException("任务不存在"));
-
-        jobConfig.setCronExpression(newCron);
-        jobConfigRepository.save(jobConfig);
-
-        if (Integer.valueOf(1).equals(jobConfig.getStatus())) {
-            startJob(jobConfig);
-        }
-    }
-
-    public void toggleJobStatus(Long jobId, boolean active) {
-        JobConfig jobConfig = jobConfigRepository.findById(jobId)
-                .orElseThrow(() -> new RuntimeException("任务不存在"));
-
-        jobConfig.setStatus(active ? 1 : 0);
-        jobConfigRepository.save(jobConfig);
-
-        if (active) {
-            startJob(jobConfig);
-        } else {
-            stopJob(jobConfig.getJobName());
-        }
-    }
-
     private Runnable createRunnable(JobConfig jobConfig) {
         return () -> {
             long startTime = System.currentTimeMillis();
@@ -139,3 +102,4 @@ public class JobSchedulerService {
         }
     }
 }
+// AI_GENERATE_END -

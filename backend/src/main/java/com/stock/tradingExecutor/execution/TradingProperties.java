@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.tradingExecutor.execution;
 
 import lombok.Data;
@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * 真实交易运行配置。
- * 只保留人工确认和无人值守两种真实交易方式，所有写操作继续受独立总门禁保护。
+ * 自动交易固定参数，所有写操作继续受独立总门禁保护。
  *
  * @author mwangli
  * @since 2026-09-25
@@ -19,9 +19,6 @@ import org.springframework.stereotype.Component;
 @Component
 @ConfigurationProperties(prefix = "trading")
 public class TradingProperties {
-
-    /** 当前真实交易方式，默认每笔人工确认。 */
-    private TradingMode mode = TradingMode.LIVE_MANUAL;
 
     /** 真实下单和撤单总门禁，默认关闭。 */
     private boolean realWriteEnabled = false;
@@ -50,4 +47,4 @@ public class TradingProperties {
         return realWriteEnabled;
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

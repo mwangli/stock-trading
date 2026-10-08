@@ -1,7 +1,6 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.tradingExecutor.domain.dto;
 
-import com.stock.tradingExecutor.execution.TradingMode;
 import lombok.Builder;
 import lombok.Data;
 
@@ -15,9 +14,6 @@ import lombok.Data;
 @Builder
 public class RealTradingStatusDto {
 
-    /** 当前交易模式。 */
-    private TradingMode mode;
-
     /** 真实交易写入总门禁是否开启。 */
     private boolean realWriteEnabled;
 
@@ -27,4 +23,4 @@ public class RealTradingStatusDto {
     /** 是否允许无人值守执行。 */
     private boolean automaticExecutionEnabled;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

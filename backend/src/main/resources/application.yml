@@ -71,25 +71,13 @@ zxbroker:
   history-request-interval-ms: ${ZXBROKER_HISTORY_REQUEST_INTERVAL_MS:200}
 
 trading:
-  # 仅保留真实交易方式；真实委托仍必须显式开启总门禁。
-  mode: ${TRADING_MODE:LIVE_MANUAL}
+  # 自动真实交易固定参数；真实委托仍必须显式开启总门禁。
   real-write-enabled: ${TRADING_REAL_WRITE_ENABLED:false}
   history-month-interval-ms: ${TRADING_HISTORY_MONTH_INTERVAL_MS:500}
   auto-buy-amount: ${TRADING_AUTO_BUY_AMOUNT:1000}
   auto-candidate-limit: ${TRADING_AUTO_CANDIDATE_LIMIT:1}
   take-profit-percent: ${TRADING_TAKE_PROFIT_PERCENT:3}
   force-exit-time: ${TRADING_FORCE_EXIT_TIME:14:50}
-
-notification:
-  wechat:
-    enabled: ${WECHAT_NOTIFICATION_ENABLED:false}
-    app-id: ${WECHAT_MINIPROGRAM_APP_ID:}
-    app-secret: ${WECHAT_MINIPROGRAM_APP_SECRET:}
-    open-id: ${WECHAT_MINIPROGRAM_OPEN_ID:}
-    template-id: ${WECHAT_MINIPROGRAM_TEMPLATE_ID:}
-    page: ${WECHAT_MINIPROGRAM_PAGE:pages/index/index}
-    title-field: ${WECHAT_MINIPROGRAM_TITLE_FIELD:thing1}
-    content-field: ${WECHAT_MINIPROGRAM_CONTENT_FIELD:thing2}
 
 backtest:
   universe-limit: ${BACKTEST_UNIVERSE_LIMIT:500}
@@ -115,6 +103,17 @@ djl:
       storage-type: mongo
       # 当 storage-type=local 时，本地模型根目录（容器内部路径，挂载自 models-data 卷）
       local-base-path: /models/lstm
+      # 共享模型固定使用 60 日窗口和 15 个量价、股票、行业静态特征
+      sequence-length: 60
+      input-size: 15
+      # 均匀抽样窗口之间再隔离 2 个样本，降低近邻泄漏
+      validation-gap: 2
+      # 下一交易日收益率按 10% 缩放到模型输出区间
+      target-return-scale: 0.1
+      # 全市场面板样本上限，防止重叠窗口占用过量内存
+      max-panel-samples: 100000
+      # 单只股票最多保留的均匀时间窗口数量
+      max-samples-per-stock: 80
     sentiment:
       path: ./models/sentiment
 
@@ -152,10 +151,6 @@ app:
     # 新闻采集开关：启动时遍历所有股票，先采集标题再获取详情写入数据库
     news-sync:
       enabled: true
-    # Legacy 模型训练开关：默认关闭，避免应用启动后逐股票训练占用交易资源
-    model-training:
-      enabled: ${APP_STARTUP_MODEL_TRAINING_ENABLED:false}
-
   # 证券平台 HTTP 代理（用于解决云服务器 IP 被 weixin.citicsinfo.com 拦截 403 的问题）
   # 当远程部署返回 403 而本地可访问时，在本地/可访问机器搭建代理，远程通过此配置转发请求
   securities:

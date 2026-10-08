@@ -1,14 +1,13 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ------
 package com.stock.strategyAnalysis.engine;
 
 import com.stock.dataCollector.domain.entity.StockNews;
 import com.stock.dataCollector.persistence.NewsRepository;
 import com.stock.modelService.domain.dto.LstmPredictionResultDto;
-import com.stock.modelService.domain.entity.ModelTrainingRecord;
-import com.stock.modelService.domain.vo.SentimentAnalysisResult;
-import com.stock.modelService.persistence.ModelTrainingRecordRepository;
+import com.stock.modelService.domain.vo.SentimentAggregateResult;
+import com.stock.dataCollector.persistence.StockInfoRepository;
 import com.stock.modelService.service.LstmTrainerService;
-import com.stock.modelService.service.SentimentTrainerService;
+import com.stock.modelService.service.SentimentAggregationService;
 import com.stock.strategyAnalysis.config.StrategyConfigService;
 import com.stock.strategyAnalysis.domain.dto.StockRankingDto;
 import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
@@ -40,16 +39,15 @@ import java.util.stream.Collectors;
 public class StockSelector {
 
     private static final int SENTIMENT_LOOKBACK_HOURS = 36;
-    private static final int MAX_SENTIMENT_TEXT_LENGTH = 2000;
     private static final double LSTM_SCORE_SCALE = 20D;
 
     private final ScoreCalculator scoreCalculator;
     private final StrategyConfigService configService;
     private final RankingRepository rankingRepository;
-    private final ModelTrainingRecordRepository modelTrainingRecordRepository;
+    private final StockInfoRepository stockInfoRepository;
     private final LstmTrainerService lstmTrainerService;
     private final NewsRepository newsRepository;
-    private final SentimentTrainerService sentimentTrainerService;
+    private final SentimentAggregationService sentimentAggregationService;
 
     /**
      * 执行真实模型选股并返回前 N 个候选。
@@ -63,9 +61,9 @@ public class StockSelector {
 
         try {
             StrategyConfig config = configService.getCurrentConfig();
-            List<ModelTrainingRecord> modelRecords = getTradableStocks();
+            List<String> stockCodes = getTradableStockCodes();
 
-            if (modelRecords.isEmpty()) {
+            if (stockCodes.isEmpty()) {
                 log.warn("没有已完成训练的 LSTM 股票模型");
                 return SelectionResult.builder()
                         .success(false)
@@ -73,17 +71,35 @@ public class StockSelector {
                         .build();
             }
 
-            Map<String, String> stockNames = modelRecords.stream().collect(Collectors.toMap(
-                    ModelTrainingRecord::getStockCode,
-                    record -> record.getStockName() == null ? record.getStockCode() : record.getStockName(),
+            Map<String, String> stockNames = stockInfoRepository.findByCodeIn(stockCodes).stream().collect(Collectors.toMap(
+                    item -> item.getCode(),
+                    item -> item.getName() == null ? item.getCode() : item.getName(),
                     (left, right) -> left,
                     LinkedHashMap::new));
-            List<String> stockCodes = new ArrayList<>(stockNames.keySet());
+            stockCodes.forEach(code -> stockNames.putIfAbsent(code, code));
             Map<String, Double> lstmPredictions = getLstmPredictions(stockCodes);
             if (lstmPredictions.isEmpty()) {
                 throw new IllegalStateException("已训练股票均未能完成 LSTM 推理，停止生成交易候选");
             }
-            Map<String, Double> sentimentScores = getSentimentScores(new ArrayList<>(lstmPredictions.keySet()));
+            Map<String, SentimentAggregateResult> sentimentResults =
+                    getSentimentResults(new ArrayList<>(lstmPredictions.keySet()));
+            sentimentResults.forEach((stockCode, result) -> {
+                if (result.isStrongNegative()) {
+                    lstmPredictions.remove(stockCode);
+                    log.warn("强负面事件阻断买入候选: stockCode={}, event={}",
+                            stockCode, result.getStrongNegativeTitle());
+                }
+            });
+            if (lstmPredictions.isEmpty()) {
+                throw new IllegalStateException("所有模型候选均被强负面事件或推理异常阻断");
+            }
+            Map<String, Double> sentimentScores = sentimentResults.entrySet().stream()
+                    .filter(entry -> lstmPredictions.containsKey(entry.getKey()))
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            entry -> entry.getValue().getScore(),
+                            (left, right) -> left,
+                            LinkedHashMap::new));
             Map<String, Double> totalScores = scoreCalculator.calculateTotalScores(
                     lstmPredictions, sentimentScores, config);
 
@@ -138,10 +154,16 @@ public class StockSelector {
     }
 
     /**
-     * 获取具有已训练 LSTM 模型的股票记录。
+     * 获取共享模型覆盖的全市场股票记录。
      */
-    private List<ModelTrainingRecord> getTradableStocks() {
-        return modelTrainingRecordRepository.findByTrainedTrueOrderByStockCodeAsc();
+    private List<String> getTradableStockCodes() {
+        if (!lstmTrainerService.hasSharedModel()) {
+            return List.of();
+        }
+        return stockInfoRepository.findAllCodes().stream()
+                .filter(code -> code != null && !code.isBlank())
+                .sorted()
+                .toList();
     }
 
     /**
@@ -149,62 +171,33 @@ public class StockSelector {
      */
     private Map<String, Double> getLstmPredictions(List<String> stockCodes) {
         Map<String, Double> predictions = new LinkedHashMap<>();
-        for (String code : stockCodes) {
-            try {
-                LstmPredictionResultDto prediction = lstmTrainerService.predictNext(code);
-                Double changeRatio = prediction.getPredictedChangeRatio();
-                if (changeRatio == null || !Double.isFinite(changeRatio)) {
-                    log.warn("跳过无有效预测收益率的股票, stockCode={}", code);
-                    continue;
-                }
+        Map<String, LstmPredictionResultDto> batchResults = lstmTrainerService.predictNextBatch(stockCodes);
+        batchResults.forEach((code, prediction) -> {
+            Double changeRatio = prediction.getPredictedChangeRatio();
+            if (changeRatio == null || !Double.isFinite(changeRatio)) {
+                log.warn("跳过无有效预测收益率的股票, stockCode={}", code);
+            } else {
                 double score = 1D / (1D + Math.exp(-LSTM_SCORE_SCALE * changeRatio));
                 predictions.put(code, score);
-            } catch (RuntimeException exception) {
-                log.warn("跳过 LSTM 推理失败的股票, stockCode={}, reason={}", code, exception.getMessage());
             }
-        }
+        });
         return predictions;
     }
 
     /**
-     * 使用近期真实新闻和公告计算股票情感得分。
-     * 无新闻时返回中性分数；模型加载或推理失败时终止整次选股。
+     * 使用近期真实新闻和公告计算事件级情感结果。
+     * 无新闻时返回低置信度中性结果；模型加载或推理失败时终止整次选股。
      */
-    private Map<String, Double> getSentimentScores(List<String> stockCodes) {
-        Map<String, Double> sentiments = new LinkedHashMap<>();
-        LocalDateTime earliestPublishTime = LocalDateTime.now().minusHours(SENTIMENT_LOOKBACK_HOURS);
+    private Map<String, SentimentAggregateResult> getSentimentResults(List<String> stockCodes) {
+        Map<String, SentimentAggregateResult> sentiments = new LinkedHashMap<>();
+        LocalDateTime evaluationTime = LocalDateTime.now();
+        LocalDateTime earliestPublishTime = evaluationTime.minusHours(SENTIMENT_LOOKBACK_HOURS);
         for (String code : stockCodes) {
             List<StockNews> newsItems = newsRepository
                     .findTop20ByStockCodeAndPublishTimeAfterOrderByPublishTimeDesc(code, earliestPublishTime);
-            if (newsItems.isEmpty()) {
-                sentiments.put(code, 0D);
-                continue;
-            }
-
-            double weightedScore = 0D;
-            double confidenceSum = 0D;
-            for (StockNews news : newsItems) {
-                String text = buildSentimentText(news);
-                if (text.isBlank()) {
-                    continue;
-                }
-                SentimentAnalysisResult result = sentimentTrainerService.analyzeSentimentRequired(text);
-                double confidence = Math.max(0D, result.getConfidence());
-                weightedScore += result.getScore() * confidence;
-                confidenceSum += confidence;
-            }
-            sentiments.put(code, confidenceSum > 0D ? weightedScore / confidenceSum : 0D);
+            sentiments.put(code, sentimentAggregationService.aggregate(newsItems, evaluationTime));
         }
         return sentiments;
-    }
-
-    private String buildSentimentText(StockNews news) {
-        String title = news.getTitle() == null ? "" : news.getTitle().trim();
-        String content = news.getContent() == null ? "" : news.getContent().trim();
-        String text = (title + "。" + content).trim();
-        return text.length() <= MAX_SENTIMENT_TEXT_LENGTH
-                ? text
-                : text.substring(0, MAX_SENTIMENT_TEXT_LENGTH);
     }
 
     /**
@@ -286,4 +279,4 @@ public class StockSelector {
                 .build();
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ------

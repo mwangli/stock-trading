@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockNews;
@@ -17,7 +18,10 @@ import java.util.regex.Pattern;
 
 /**
  * 情感分析训练数据预处理服务
- * 负责文本清洗、自动标注、数据集构建
+ * 负责真实新闻文本清洗、自动标注和数据集构建。
+ *
+ * @author mwangli
+ * @since 2026-03-10
  */
 @Slf4j
 @Service
@@ -43,7 +47,12 @@ public class SentimentDataPreprocessor {
     private static final Pattern EXTRA_SPACE_PATTERN = Pattern.compile("\\s+");
 
     /**
-     * 从新闻数据加载并准备训练样本
+     * 从 MongoDB 中加载真实新闻并准备训练样本。
+     *
+     * @param numSamples 最大样本数，-1 表示全部
+     * @param autoLabel 是否使用规则自动标注
+     * @return 真实新闻训练样本
+     * @throws IllegalStateException 新闻数据为空或加载失败时抛出
      */
     public List<TrainingSample> loadTrainingData(int numSamples, boolean autoLabel) {
         log.info("加载情感训练数据，样本数：{}, 自动标注：{}", 
@@ -54,8 +63,7 @@ public class SentimentDataPreprocessor {
             List<StockNews> allNews = newsRepository.findAll();
             
             if (allNews.isEmpty()) {
-                log.warn("没有找到新闻数据，生成模拟数据");
-                return generateSyntheticData(numSamples);
+                throw new IllegalStateException("没有可用的真实新闻训练数据");
             }
 
             // 2. 限制样本数
@@ -84,15 +92,19 @@ public class SentimentDataPreprocessor {
             log.info("成功加载 {} 个训练样本", samples.size());
             return samples;
 
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
             log.error("加载训练数据失败", e);
-            return generateSyntheticData(numSamples > 0 ? numSamples : 100);
+            throw new IllegalStateException("加载真实新闻训练数据失败", e);
         }
     }
 
     /**
-     * 自动标注情感（基于规则）
-     * 0 = negative, 1 = neutral, 2 = positive
+     * 使用关键词规则自动标注情感。
+     *
+     * @param text 已清洗的新闻文本
+     * @return 情感标签：0 中性、1 正面、2 负面
      */
     public Integer autoLabelSentiment(String text) {
         int positiveCount = 0;
@@ -120,7 +132,10 @@ public class SentimentDataPreprocessor {
     }
 
     /**
-     * 文本预处理
+     * 清洗新闻文本中的 HTML、URL 和无关字符。
+     *
+     * @param text 原始新闻文本
+     * @return 清洗后的文本
      */
     public String preprocessText(String text) {
         if (text == null || text.trim().isEmpty()) {
@@ -146,68 +161,10 @@ public class SentimentDataPreprocessor {
     }
 
     /**
-     * 生成模拟训练数据（用于测试）
-     */
-    public List<TrainingSample> generateSyntheticData(int count) {
-        log.info("生成 {} 个模拟训练数据", count > 0 ? count : 100);
-        
-        List<TrainingSample> samples = new ArrayList<>();
-        
-        // 正面样本
-        String[] positiveTexts = {
-            "公司业绩大幅增长，净利润再创新高",
-            "股票价格持续上涨，突破历史新高",
-            "年度报告显示盈利超预期，投资者信心增强",
-            "新产品发布市场反应热烈，订单激增",
-            "行业利好政策出台，公司发展前景向好"
-        };
-
-        // 负面样本
-        String[] negativeTexts = {
-            "公司业绩下滑，亏损严重",
-            "股票价格暴跌，市值缩水",
-            "收到监管警告，面临处罚风险",
-            "大股东减持，市场信心受挫",
-            "行业低迷，公司经营承压"
-        };
-
-        // 中性样本
-        String[] neutralTexts = {
-            "公司发布日常经营公告",
-            "股票价格波动不大，成交量平稳",
-            "行业保持稳定发展态势",
-            "公司召开董事会会议",
-            "市场整体表现平淡"
-        };
-
-        int n = count > 0 ? count : 100;
-        for (int i = 0; i < n; i++) {
-            if (i % 3 == 0) {
-                samples.add(TrainingSample.builder()
-                        .text(positiveTexts[i % positiveTexts.length] + " " + i)
-                        .label(1) // positive
-                        .source("synthetic")
-                        .build());
-            } else if (i % 3 == 1) {
-                samples.add(TrainingSample.builder()
-                        .text(negativeTexts[i % negativeTexts.length] + " " + i)
-                        .label(2) // negative
-                        .source("synthetic")
-                        .build());
-            } else {
-                samples.add(TrainingSample.builder()
-                        .text(neutralTexts[i % neutralTexts.length] + " " + i)
-                        .label(0) // neutral
-                        .source("synthetic")
-                        .build());
-            }
-        }
-
-        return samples;
-    }
-
-    /**
-     * 划分训练集和验证集
+     * 按配置比例划分训练集和验证集。
+     *
+     * @param samples 真实新闻训练样本
+     * @return 数据集划分结果
      */
     public DatasetSplit splitDataset(List<TrainingSample> samples) {
         int trainSize = (int) (samples.size() * config.getTrainRatio());
@@ -225,7 +182,12 @@ public class SentimentDataPreprocessor {
     }
 
     /**
-     * 基于训练样本和 tokenizer 构建 DJL 数据集
+     * 基于训练样本和 tokenizer 构建 DJL 数据集。
+     *
+     * @param samples 真实新闻训练样本
+     * @param tokenizer 文本分词器
+     * @return DJL 新闻情感数据集
+     * @throws java.io.IOException 数据集构建失败时抛出
      */
     public NewsSentimentDataset buildDataset(List<TrainingSample> samples, HuggingFaceTokenizer tokenizer) throws java.io.IOException {
         return NewsSentimentDataset.builder()
@@ -237,7 +199,7 @@ public class SentimentDataPreprocessor {
     }
 
     /**
-     * 数据集划分结果
+     * 数据集划分结果。
      */
     @lombok.Data
     @lombok.RequiredArgsConstructor
@@ -246,3 +208,4 @@ public class SentimentDataPreprocessor {
         private final List<TrainingSample> valData;
     }
 }
+// AI_GENERATE_END -

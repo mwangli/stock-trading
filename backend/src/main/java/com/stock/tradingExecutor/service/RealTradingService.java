@@ -1,11 +1,9 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.tradingExecutor.service;
 
 import com.stock.strategyAnalysis.domain.dto.StockRankingDto;
 import com.stock.strategyAnalysis.engine.StockSelector;
 import com.stock.tradingExecutor.config.RiskConfig;
-import com.stock.tradingExecutor.domain.dto.RealBuyRequestDto;
-import com.stock.tradingExecutor.domain.dto.RealSellRequestDto;
 import com.stock.tradingExecutor.domain.dto.RealTradingStatusDto;
 import com.stock.tradingExecutor.domain.dto.TradeExecutionBatchResponseDto;
 import com.stock.tradingExecutor.domain.dto.TradeExecutionResponseDto;
@@ -16,7 +14,6 @@ import com.stock.tradingExecutor.domain.vo.BrokerOrderSnapshot;
 import com.stock.tradingExecutor.domain.vo.OrderResult;
 import com.stock.tradingExecutor.execution.BrokerAdapter;
 import com.stock.tradingExecutor.execution.TradeExecutor;
-import com.stock.tradingExecutor.execution.TradingMode;
 import com.stock.tradingExecutor.execution.TradingProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +28,7 @@ import java.util.stream.Collectors;
 
 /**
  * 真实交易业务入口。
- * 只连接真实模型候选、券商事实、风控和真实委托，不提供模拟或降级数据。
+ * 只连接真实模型候选、券商事实、风控和真实委托。
  *
  * @author mwangli
  * @since 2026-09-25
@@ -55,12 +52,10 @@ public class RealTradingService {
     public RealTradingStatusDto getStatus() {
         boolean authenticated = brokerAdapter.isAuthenticated();
         return RealTradingStatusDto.builder()
-                .mode(tradingProperties.getMode())
                 .realWriteEnabled(tradingProperties.isLiveWriteAllowed())
                 .brokerAuthenticated(authenticated)
                 .automaticExecutionEnabled(authenticated
-                        && tradingProperties.isLiveWriteAllowed()
-                        && tradingProperties.getMode().isAutomatic())
+                        && tradingProperties.isLiveWriteAllowed())
                 .build();
     }
 
@@ -78,40 +73,6 @@ public class RealTradingService {
                 .map(item -> toCandidate(item, heldCodes.contains(item.getStockCode())))
                 .toList();
         return TradingCandidateListResponseDto.builder().items(items).build();
-    }
-
-    /**
-     * 人工确认买入当日模型候选。
-     *
-     * @param request 买入请求
-     * @return 真实委托执行结果
-     */
-    public TradeExecutionResponseDto executeManualBuy(RealBuyRequestDto request) {
-        validateBuyRequest(request);
-        if (tradingProperties.getMode() != TradingMode.LIVE_MANUAL) {
-            throw new IllegalStateException("当前不是人工确认交易模式");
-        }
-        requireWriteGate();
-        ensureCurrentCandidate(request.getStockCode());
-        ensureNoDuplicateOrder(request.getStockCode(), "BUY");
-        OrderResult result = request.isMonitorPrice()
-                ? tradeExecutor.executeBuyWithMonitor(request.getStockCode(), request.getAmount())
-                : tradeExecutor.executeBuy(request.getStockCode(), request.getAmount());
-        return toExecution(result);
-    }
-
-    /**
-     * 人工卖出指定的可用持仓数量。
-     * 该入口保留给人工止损和紧急退出，自动模式下也允许人工主动调用。
-     *
-     * @param request 卖出请求
-     * @return 真实委托执行结果
-     */
-    public TradeExecutionResponseDto executeManualSell(RealSellRequestDto request) {
-        validateSellRequest(request);
-        requireWriteGate();
-        ensureNoDuplicateOrder(request.getStockCode(), "SELL");
-        return toExecution(tradeExecutor.executeSell(request.getStockCode(), request.getQuantity()));
     }
 
     /**
@@ -187,28 +148,6 @@ public class RealTradingService {
 
     private void requireAutomaticExecution() {
         requireWriteGate();
-        if (!tradingProperties.getMode().isAutomatic()) {
-            throw new IllegalStateException("当前不是无人值守交易模式");
-        }
-    }
-
-    private void validateBuyRequest(RealBuyRequestDto request) {
-        if (request == null || request.getStockCode() == null || request.getStockCode().isBlank()) {
-            throw new IllegalArgumentException("股票代码不能为空");
-        }
-        if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("买入金额必须大于零");
-        }
-    }
-
-    private void validateSellRequest(RealSellRequestDto request) {
-        if (request == null || request.getStockCode() == null || request.getStockCode().isBlank()) {
-            throw new IllegalArgumentException("股票代码不能为空");
-        }
-        if (request.getQuantity() == null || request.getQuantity().compareTo(BigDecimal.ZERO) <= 0
-                || request.getQuantity().stripTrailingZeros().scale() > 0) {
-            throw new IllegalArgumentException("卖出数量必须是正整数");
-        }
     }
 
     private void ensureNoDuplicateOrder(String stockCode, String direction) {
@@ -219,14 +158,6 @@ public class RealTradingService {
                 .anyMatch(status -> status == null || !status.isFinal() || status.isSuccess());
         if (duplicated) {
             throw new IllegalStateException("当日已存在同方向委托或成交，禁止重复下单");
-        }
-    }
-
-    private void ensureCurrentCandidate(String stockCode) {
-        boolean matched = stockSelector.getAllRankings().stream()
-                .anyMatch(item -> stockCode.equals(item.getStockCode()));
-        if (!matched) {
-            throw new IllegalArgumentException("该股票不在当日真实模型候选中");
         }
     }
 
@@ -267,4 +198,4 @@ public class RealTradingService {
                 .build();
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

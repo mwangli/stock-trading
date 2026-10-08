@@ -11,7 +11,6 @@ services:
   stock-backend:
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      TRADING_MODE: ${TRADING_MODE:-LIVE_MANUAL}
       TRADING_REAL_WRITE_ENABLED: ${TRADING_REAL_WRITE_ENABLED:-false}
       ZXBROKER_ENABLED: ${ZXBROKER_ENABLED:-false}
     restart: always

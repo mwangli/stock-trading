@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.tradingExecutor.job;
 
 import com.stock.tradingExecutor.domain.dto.TradeExecutionBatchResponseDto;
@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * 真实交易统一调度入口。
- * 任务默认禁用，且执行时仍受 LIVE_AUTO、券商会话和真实写入总门禁共同约束。
+ * 固定任务执行时仍受券商会话、真实写入总门禁和交易风控共同约束。
  *
  * @author mwangli
  * @since 2026-09-25
@@ -39,4 +39,4 @@ public class RealTradingJob {
                 result.getItems().size(), result.getSuccessCount());
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --
