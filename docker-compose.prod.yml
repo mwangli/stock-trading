@@ -3,8 +3,8 @@ services:
     ports:
       - "${PROD_BIND_ADDRESS:-0.0.0.0}:${PROD_WEB_HTTP_PORT:-80}:80"
     restart: always
-    mem_limit: ${WEB_MEMORY_LIMIT:-256m}
-    cpus: ${WEB_CPU_LIMIT:-0.50}
+    mem_limit: ${WEB_MEMORY_LIMIT:-96m}
+    cpus: ${WEB_CPU_LIMIT:-0.25}
     security_opt:
       - no-new-privileges:true
 
@@ -14,22 +14,24 @@ services:
       TRADING_REAL_WRITE_ENABLED: ${TRADING_REAL_WRITE_ENABLED:-false}
       ZXBROKER_ENABLED: ${ZXBROKER_ENABLED:-false}
     restart: always
-    mem_limit: ${BACKEND_MEMORY_LIMIT:-4g}
-    cpus: ${BACKEND_CPU_LIMIT:-2.0}
+    mem_limit: ${BACKEND_MEMORY_LIMIT:-1500m}
+    cpus: ${BACKEND_CPU_LIMIT:-1.25}
     security_opt:
       - no-new-privileges:true
 
-  chrome:
+  stock-redis:
     restart: always
-    mem_limit: ${CHROME_MEMORY_LIMIT:-2g}
-    cpus: ${CHROME_CPU_LIMIT:-1.0}
+    mem_limit: ${REDIS_MEMORY_LIMIT:-128m}
+    cpus: ${REDIS_CPU_LIMIT:-0.10}
+    security_opt:
+      - no-new-privileges:true
 
   stock-mysql:
     restart: always
-    mem_limit: ${MYSQL_MEMORY_LIMIT:-2g}
-    cpus: ${MYSQL_CPU_LIMIT:-1.0}
+    mem_limit: ${MYSQL_MEMORY_LIMIT:-512m}
+    cpus: ${MYSQL_CPU_LIMIT:-0.50}
 
   stock-mongo:
     restart: always
-    mem_limit: ${MONGO_MEMORY_LIMIT:-2g}
-    cpus: ${MONGO_CPU_LIMIT:-1.0}
+    mem_limit: ${MONGO_MEMORY_LIMIT:-640m}
+    cpus: ${MONGO_CPU_LIMIT:-0.50}

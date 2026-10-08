@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START -----
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockPrice;
@@ -30,10 +30,10 @@ import java.util.Map;
 public class LstmDataPreprocessor {
 
     /** 当前共享模型特征定义版本。 */
-    public static final String FEATURE_VERSION = "panel-relative-v2";
+    public static final String FEATURE_VERSION = "panel-embedding-v3";
 
     /** 当前特征数量。 */
-    public static final int FEATURE_COUNT = 15;
+    public static final int FEATURE_COUNT = 16;
 
     private static final int VOLUME_LOOKBACK = 20;
     private static final double MIN_VALUE = 1.0E-8D;
@@ -189,7 +189,10 @@ public class LstmDataPreprocessor {
 
             double nextReturn = targetClose / previousClose - 1D;
             double scaledTarget = clamp(nextReturn / config.getTargetReturnScale(), -1D, 1D);
-            samples.add(new TrainingSample(input, (float) scaledTarget, context.getStockCode()));
+            float directionTarget = nextReturn > 0D ? 1F : 0F;
+            float downsideTarget = (float) clamp(-nextReturn / config.getTargetReturnScale(), 0D, 1D);
+            samples.add(new TrainingSample(input, (float) scaledTarget, directionTarget,
+                    downsideTarget, context.getStockCode()));
         }
         return new SeriesSamples(samples);
     }
@@ -226,12 +229,16 @@ public class LstmDataPreprocessor {
             feature[8] = relativeChange(safeArrayValue(upperBoll, index), close);
             feature[9] = relativeChange(safeArrayValue(lowerBoll, index), close);
             feature[10] = clamp(safeDivide(safeArrayValue(obv, index), rollingVolumeSum), -1D, 1D);
-            feature[11] = stableIdentity(context.getStockCode());
-            feature[12] = stableIdentity(context.getIndustryCode() == null ? "unknown" : context.getIndustryCode().toString());
-            feature[13] = stableIdentity(context.getMarket());
+            int stockIndex = categoricalIndex(context.getStockCode(), config.getStockEmbeddingBuckets());
+            int industryIndex = categoricalIndex(context.getIndustryCode() == null
+                    ? null : context.getIndustryCode().toString(), config.getIndustryEmbeddingBuckets());
+            feature[11] = stockIndex;
+            feature[12] = industryIndex;
+            feature[13] = groupIndex(industryIndex);
+            feature[14] = stableIdentity(context.getMarket());
             double rollingAmountMean = rollingAmountMean(prices, index, VOLUME_LOOKBACK);
             double currentAmount = Math.max(0D, safeNumber(current.getAmount()));
-            feature[14] = clamp(Math.log((currentAmount + 1D) / (rollingAmountMean + 1D)) / 5D, -1D, 1D);
+            feature[15] = clamp(Math.log((currentAmount + 1D) / (rollingAmountMean + 1D)) / 5D, -1D, 1D);
             features.add(feature);
         }
         return features;
@@ -266,6 +273,20 @@ public class LstmDataPreprocessor {
 
     private double safeDivide(double value, double divisor) {
         return Math.abs(divisor) > MIN_VALUE ? value / divisor : 0D;
+    }
+
+    private int categoricalIndex(String value, int bucketCount) {
+        if (value == null || value.isBlank() || bucketCount <= 1) {
+            return 0;
+        }
+        return 1 + Math.floorMod(value.hashCode(), bucketCount - 1);
+    }
+
+    private int groupIndex(int industryIndex) {
+        if (industryIndex <= 0 || config.getGroupHeadCount() <= 1) {
+            return 0;
+        }
+        return 1 + Math.floorMod(industryIndex - 1, config.getGroupHeadCount() - 1);
     }
 
     private double stableIdentity(String value) {
@@ -305,6 +326,19 @@ public class LstmDataPreprocessor {
         if (config.getMaxPanelSamples() <= 0 || config.getMaxSamplesPerStock() <= 0) {
             throw new IllegalStateException("LSTM 面板样本上限必须大于 0");
         }
+        if (config.getStockEmbeddingBuckets() <= 1 || config.getIndustryEmbeddingBuckets() <= 1
+                || config.getGroupHeadCount() <= 1) {
+            throw new IllegalStateException("Embedding 哈希桶和分组 Head 数量必须大于 1");
+        }
+        if (config.getGroupHeadScale() < 0D || config.getResidualHeadScale() < 0D) {
+            throw new IllegalStateException("分组和个股 Head 缩放系数不能小于 0");
+        }
+        double totalLossWeight = config.getReturnLossWeight()
+                + config.getDirectionLossWeight() + config.getDownsideLossWeight();
+        if (config.getReturnLossWeight() <= 0D || config.getDirectionLossWeight() <= 0D
+                || config.getDownsideLossWeight() <= 0D || totalLossWeight <= 0D) {
+            throw new IllegalStateException("多任务损失权重必须全部大于 0");
+        }
     }
 
     private record SeriesSamples(List<TrainingSample> allSamples) {
@@ -323,7 +357,13 @@ public class LstmDataPreprocessor {
         private float[][] input;
 
         /** 缩放后的下一交易日收益率。 */
-        private float target;
+        private float returnTarget;
+
+        /** 下一交易日上涨方向标签。 */
+        private float directionTarget;
+
+        /** 下一交易日下行幅度风险标签。 */
+        private float downsideTarget;
 
         /** 样本所属股票代码，用于审计面板样本边界。 */
         private String stockCode;
@@ -400,14 +440,12 @@ public class LstmDataPreprocessor {
         /**
          * 获取训练标签。
          *
-         * @return 一维训练标签
+         * @return 每条样本包含收益率、方向概率和下行风险三个标签
          */
-        public float[] getTrainTargets() {
-            float[] targets = new float[trainSamples.size()];
-            for (int index = 0; index < trainSamples.size(); index++) {
-                targets[index] = trainSamples.get(index).getTarget();
-            }
-            return targets;
+        public float[][] getTrainTargets() {
+            return trainSamples.stream()
+                    .map(this::toTargetVector)
+                    .toArray(float[][]::new);
         }
 
         /**
@@ -422,14 +460,20 @@ public class LstmDataPreprocessor {
         /**
          * 获取验证标签。
          *
-         * @return 一维验证标签
+         * @return 每条样本包含收益率、方向概率和下行风险三个标签
          */
-        public float[] getValTargets() {
-            float[] targets = new float[valSamples.size()];
-            for (int index = 0; index < valSamples.size(); index++) {
-                targets[index] = valSamples.get(index).getTarget();
-            }
-            return targets;
+        public float[][] getValTargets() {
+            return valSamples.stream()
+                    .map(this::toTargetVector)
+                    .toArray(float[][]::new);
+        }
+
+        private float[] toTargetVector(TrainingSample sample) {
+            return new float[]{
+                    sample.getReturnTarget(),
+                    sample.getDirectionTarget(),
+                    sample.getDownsideTarget()
+            };
         }
     }
 
@@ -452,4 +496,4 @@ public class LstmDataPreprocessor {
         private String featureVersion;
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END -----

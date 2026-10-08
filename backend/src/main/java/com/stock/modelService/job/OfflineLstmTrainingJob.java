@@ -1,8 +1,9 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.modelService.job;
 
 import com.stock.dataCollector.persistence.StockInfoRepository;
 import com.stock.modelService.config.LstmDataQualityConfig;
+import com.stock.modelService.config.LstmTrainingConfig;
 import com.stock.modelService.service.LstmTrainerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,12 +29,17 @@ public class OfflineLstmTrainingJob {
     private final StockInfoRepository stockInfoRepository;
     private final LstmTrainerService lstmTrainerService;
     private final LstmDataQualityConfig lstmDataQualityConfig;
+    private final LstmTrainingConfig lstmTrainingConfig;
 
     /**
      * 更新缺失或过期的全市场共享基础模型。
      * 固定训练窗口和模型有效期，避免引入在线参数优化和逐股模型维护。
      */
     public void trainStaleModels() {
+        if (!lstmTrainingConfig.isTrainingEnabled()) {
+            log.info("当前节点未启用 LSTM 离线训练，跳过共享模型更新");
+            return;
+        }
         List<String> stockCodes = stockInfoRepository.findAllCodes().stream()
                 .filter(code -> !lstmDataQualityConfig.getSkipTrainingCodes().contains(code))
                 .toList();
@@ -52,4 +58,4 @@ public class OfflineLstmTrainingJob {
                 stockCodes.size(), result.getTrainSamples(), result.getValSamples(), result.getModelPath());
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------
