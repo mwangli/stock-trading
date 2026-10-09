@@ -1,0 +1,14 @@
+{
+  "schema_version": "training-snapshot-v1",
+  "dataset_type": "lstm-panel",
+  "columns": [
+    {"name": "split", "dtype": "string", "nullable": false, "shape": null},
+    {"name": "sample_index", "dtype": "int64", "nullable": false, "shape": null},
+    {"name": "stock_code", "dtype": "string", "nullable": false, "shape": null},
+    {"name": "target_date", "dtype": "date", "nullable": false, "shape": null},
+    {"name": "features", "dtype": "float32_matrix", "nullable": false, "shape": [2, 3]},
+    {"name": "return_target", "dtype": "float32", "nullable": false, "shape": null},
+    {"name": "direction_target", "dtype": "float32", "nullable": false, "shape": null},
+    {"name": "downside_target", "dtype": "float32", "nullable": false, "shape": null}
+  ]
+}

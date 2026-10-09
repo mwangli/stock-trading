@@ -1,0 +1,1 @@
+{"split":"train","sample_index":0,"stock_code":"600519","target_date":"2026-10-08","features":[[0.1,0.2,0.3],[0.4,0.5,0.6]],"return_target":0.12,"direction_target":1.0,"downside_target":0.0}

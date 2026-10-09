@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------
+// AI_GENERATE_START -----------
 package com.stock.modelService.service;
 
 import ai.djl.Device;
@@ -83,6 +83,7 @@ public class LstmTrainerService {
     private final LstmDataPreprocessor dataPreprocessor;
     private final LstmModelRepository lstmModelRepository;
     private final ModelBinaryCodec modelBinaryCodec;
+    private final LstmOnnxShadowService lstmOnnxShadowService;
     private String currentModelPath;
 
     /**
@@ -369,6 +370,7 @@ public class LstmTrainerService {
                 }
                 log.info("共享 LSTM 批量预测完成: requested={}, succeeded={}, modelVersion={}",
                         codes.size(), results.size(), MODEL_VERSION);
+                lstmOnnxShadowService.compare(validCodes, inputs, results);
                 return results;
             }
         } catch (Exception exception) {
@@ -766,4 +768,4 @@ public class LstmTrainerService {
         private List<Map<String, Object>> details;
     }
 }
-// AI_GENERATE_END ----------
+// AI_GENERATE_END -----------

@@ -1,3 +1,4 @@
+<!-- AI_GENERATE_START --- -->
 # 交互语言要求
 
 1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
@@ -16,28 +17,31 @@
 
 ## 项目结构
 
-本项目采用前后端分离架构，包含以下两个主要部分：
+本项目采用三端分工架构，包含前端、Java 后端和 Python 模型端，系统文档与三端平级：
 
-```
-stock-trading/
-├── backend/                        # Java Spring Boot 单体应用
-│   ├── src/main/java/com/stock/
-│   │   ├── config/                # 全局配置
-│   │   ├── dataCollector/        # 数据采集
-│   │   ├── modelService/         # AI 模型（LSTM、情感分析）
-│   │   ├── strategyAnalysis/    # 策略分析
-│   │   ├── tradingExecutor/     # 交易执行（含 job 调度）
-│   │   ├── event/、handler/、logging/、service/
-│   │   └── ...
-│   └── pom.xml
-│
-├── frontend-v2/                    # React + Vite 前端
+```text
+stock-trading4/
+├── frontend/                       # React + Vite 前端
 │   ├── src/pages/、components/、layouts/、store/、locales/
 │   ├── package.json、vite.config.ts
-│   └── ...
+│   └── Dockerfile
 │
-├── models/sentiment/               # 情感模型（TorchScript，Git LFS）
-├── docs/                           # 文档（00~04 模块需求与设计）
+├── backend/                        # Java Spring Boot 在线业务和推理
+│   ├── src/main/java/com/stock/
+│   │   ├── dataCollector/          # 数据采集和训练快照来源
+│   │   ├── modelService/           # 在线特征、模型推理和过渡期 DJL 路径
+│   │   ├── strategyAnalysis/       # 策略分析
+│   │   ├── tradingExecutor/        # 风控、调度和交易执行
+│   │   └── ...
+│   └── Dockerfile
+│
+├── python/                         # Python 3.14 离线模型端
+│   ├── src/stock_models/           # 训练、评估、ONNX 和制品代码
+│   ├── configs/                    # 训练配置
+│   ├── tests/                      # 契约和模型测试
+│   └── runtime/                    # 数据、缓存和制品，不提交
+│
+├── docs/                           # 与三端平级的需求、设计和运维文档
 ├── .tmp/                           # 临时文件（不提交）
 ├── docker-compose.yml
 └── pom.xml
@@ -80,9 +84,28 @@ npm run build
 npm run lint
 ```
 
+### Python Model Training
+
+工作目录: `python/`
+
+```bash
+# Python 3.14 虚拟环境
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install -e ".[dev]"
+
+# 查看和校验配置
+python -m stock_models inspect-config --config configs/base.yaml
+
+# Docker 训练 Profile，默认不会随在线服务启动
+docker compose --profile training run --rm stock-python --help
+```
+
+Python 代码必须使用中文 Docstring/注释解释业务用途、输入输出、失败条件和生产边界，Python 语法、框架名和标准类型保留英文。禁止为空间赋值或显而易见的语句添加重复注释。
+
 ## 测试说明
 
-本项目**不维护自动化测试**（无单元测试、集成测试）。原因与说明见 [README - 关于测试](./README.md#关于测试)。构建时使用 `mvn package -DskipTests` 跳过测试。
+Java 后端当前不维护标准自动化测试；涉及后端行为重构前必须补充特征化测试或明确验证边界。Python 模型端维护 `pytest` 契约和模型测试。构建命令不得被描述为功能验证。
 
 ## 代码规范
 
@@ -384,3 +407,4 @@ public [返回值类型] [methodName]([参数列表]) {
 **Agent 特别指令**:
 - 本项目无自动化测试，不要生成或要求补充测试用例；质量依赖代码审查与手工验证。
 - 后端是单体应用结构，不要尝试寻找子模块的 `pom.xml` 进行独立构建，始终在 `backend` 目录下操作。
+<!-- AI_GENERATE_END --- -->

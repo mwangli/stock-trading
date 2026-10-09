@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.modelService.service;
 
 import ai.djl.inference.Predictor;
@@ -38,6 +38,7 @@ public class SentimentTrainerService {
 
     private final SentimentTrainingConfig config;
     private final SentimentDataPreprocessor dataPreprocessor;
+    private final SentimentOnnxShadowService sentimentOnnxShadowService;
 
     /**
      * 应用启动初始化
@@ -372,7 +373,7 @@ public class SentimentTrainerService {
                     bestLabel = classification.getClassName();
                 }
             }
-            return SentimentAnalysisResult.builder()
+            SentimentAnalysisResult result = SentimentAnalysisResult.builder()
                     .label(bestLabel)
                     .score(calculateSentimentScore(probabilities))
                     .normalizedScore(calculateNormalizedScore(bestLabel, bestProbability))
@@ -380,6 +381,8 @@ public class SentimentTrainerService {
                     .probabilities(probabilities)
                     .text(text)
                     .build();
+            sentimentOnnxShadowService.compare(text, result);
+            return result;
         } catch (Exception exception) {
             throw new IllegalStateException("情感分析模型推理失败", exception);
         }
@@ -507,4 +510,4 @@ public class SentimentTrainerService {
     }
 
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

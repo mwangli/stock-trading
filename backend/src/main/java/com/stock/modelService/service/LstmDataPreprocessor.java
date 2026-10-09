@@ -1,9 +1,8 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START -------
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockPrice;
 import com.stock.modelService.config.LstmTrainingConfig;
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -191,8 +191,14 @@ public class LstmDataPreprocessor {
             double scaledTarget = clamp(nextReturn / config.getTargetReturnScale(), -1D, 1D);
             float directionTarget = nextReturn > 0D ? 1F : 0F;
             float downsideTarget = (float) clamp(-nextReturn / config.getTargetReturnScale(), 0D, 1D);
-            samples.add(new TrainingSample(input, (float) scaledTarget, directionTarget,
-                    downsideTarget, context.getStockCode()));
+            samples.add(TrainingSample.builder()
+                    .input(input)
+                    .returnTarget((float) scaledTarget)
+                    .directionTarget(directionTarget)
+                    .downsideTarget(downsideTarget)
+                    .stockCode(context.getStockCode())
+                    .targetDate(prices.get(targetIndex).getDate())
+                    .build());
         }
         return new SeriesSamples(samples);
     }
@@ -351,7 +357,7 @@ public class LstmDataPreprocessor {
      * @since 2026-10-08
      */
     @Data
-    @AllArgsConstructor
+    @Builder
     public static class TrainingSample {
         /** 输入序列，形状为 sequenceLength x featureCount。 */
         private float[][] input;
@@ -367,6 +373,9 @@ public class LstmDataPreprocessor {
 
         /** 样本所属股票代码，用于审计面板样本边界。 */
         private String stockCode;
+
+        /** 标签对应的目标交易日，用于时间切分和防止未来数据泄漏。 */
+        private LocalDate targetDate;
     }
 
     /**
@@ -496,4 +505,4 @@ public class LstmDataPreprocessor {
         private String featureVersion;
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END -------

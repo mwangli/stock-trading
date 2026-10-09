@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START -- -->
+<!-- AI_GENERATE_START ------- -->
 # Stock Trading - AI 股票自动交易系统
 
 # 项目演示
@@ -11,10 +11,11 @@
 
 ## 项目简介
 
-这是一个完整的 AI 股票交易系统，采用前后端分离架构设计：
+这是一个采用前端、Java 后端和 Python 模型端分工的 AI 股票交易系统：
 
-- **后端服务** (Java Spring Boot 3.2): 提供 RESTful API，业务逻辑处理，AI 模型推理
-- **前端应用** (React 19 + Vite 7 + Ant Design 6): 可视化 Dashboard，数据展示，交易操作
+- **后端服务** (Java Spring Boot 3.2): 提供 RESTful API、在线推理、策略、风控和交易执行
+- **前端应用** (React 19 + Vite 7 + Ant Design 6): 可视化 Dashboard、数据展示和操作
+- **Python 模型端** (Python 3.14): 离线训练、评估、ONNX 导出和候选制品构建
 - **数据存储**: MySQL (业务数据) + MongoDB (文档数据/模型存储)
 
 ### 核心特性
@@ -29,7 +30,7 @@
 - **运行日志查看**: 通过 WebSocket 查看运行日志，业务通知渠道暂不实现
 - **Docker 一键部署**: 使用 Docker Compose 快速部署
 - **CI/CD 自动化**: GitHub Actions 自动构建和部署
-- **无文件 I/O 模型管理**: 模型直接序列化为内存字节流 (`byte[] params`) 并通过 MongoDB Binary Storage 持久化，推理时通过 MongoDB 标识符（`mongo:ID`）动态加载，完全消除本地磁盘文件依赖。
+- **版本化模型制品**: Python 构建候选 ONNX 制品，Java 校验、影子推理、激活和回滚；迁移期仍保留 DJL 兼容路径。
 
 ---
 
@@ -42,11 +43,11 @@
 | 框架 | Spring Boot | 3.2.2 |
 | JDK | OpenJDK | 17 |
 | ORM | Spring Data JPA | 自动建表 |
-| 数据库 | MySQL / MongoDB | 8.0 / 6.0 |
+| 数据库 | MySQL / MongoDB | 8.0 / 8.0 |
 
 | HTTP | OkHttp | 4.12 |
 | 工具 | Hutool / FastJSON2 | 5.8 / 2.0 |
-| AI 框架 | DJL (Deep Java Library) | 0.28.0 |
+| AI 框架 | ONNX Runtime（目标）/ DJL（迁移期） | Python 3.14 + Java 17 |
 | 技术分析 | TA4J | 0.15 |
 
 
@@ -67,98 +68,25 @@
 
 ## 项目结构
 
+```text
+stock-trading4/
+├── frontend/                       # React + Vite 前端
+├── backend/                        # Java 在线业务、ONNX 推理、风控和交易
+├── python/                         # Python 离线训练、评估和 ONNX 制品构建
+├── docs/                           # 与三端平级的系统设计和运维文档
+├── docker-compose.yml              # 在线服务及可选 training Profile
+├── .env.example
+├── pom.xml
+├── AGENTS.md
+└── README.md
 ```
-stock-trading/
-├── backend/                        # Java Spring Boot 后端服务
-│   ├── src/main/java/com/stock/
-│   │   ├── Application.java       # 主启动类
-│   │   ├── config/                # 全局配置
-│   │   │   ├── SchedulingConfig.java    # 定时任务配置
-│   │   │   └── WebSocketConfig.java      # WebSocket 配置
-│   │   ├── dataCollector/         # 数据采集模块
-│   │   │   ├── client/            # API 客户端
-│   │   │   ├── controller/        # 控制器
-│   │   │   ├── entity/            # 数据实体
-│   │   │   ├── listener/          # 事件监听
-│   │   │   ├── repository/        # 数据访问层
-│   │   │   ├── scheduled/         # 定时任务
-│   │   │   ├── service/           # 服务层
-│   │   │   └── util/              # 工具类
-│   │   ├── modelService/          # AI 模型模块
-│   │   │   ├── config/            # 配置
-│   │   │   ├── controller/        # 控制器
-│   │   │   ├── dataset/           # 数据集处理
-│   │   │   ├── dto/               # 数据传输对象
-│   │   │   ├── entity/            # 实体
-│   │   │   ├── inference/         # 模型推理
-│   │   │   ├── listener/          # 事件监听
-│   │   │   ├── model/             # LSTM 模型
-│   │   │   ├── repository/        # 数据访问层
-│   │   │   └── service/           # 服务层
-│   │   ├── strategyAnalysis/     # 策略分析模块
-│   │   │   ├── config/            # 配置
-│   │   │   ├── controller/        # 控制器
-│   │   │   ├── decision/          # 决策引擎
-│   │   │   ├── dto/               # 数据传输对象
-│   │   │   ├── entity/            # 实体
-│   │   │   ├── enums/             # 枚举定义
-│   │   │   ├── intraday/          # 日内交易策略 (T+1 卖出)
-│   │   │   ├── optimizer/         # 策略优化
-│   │   │   ├── repository/        # 数据访问层
-│   │   │   ├── scheduled/         # 定时任务
-│   │   │   ├── selector/          # 股票筛选
-│   │   │   └── switcher/          # 策略开关
-│   │   ├── tradingExecutor/      # 交易执行模块
-│   │   │   ├── broker/            # 券商接口
-│   │   │   ├── config/            # 配置
-│   │   │   ├── controller/        # 控制器
-│   │   │   ├── entity/            # 实体
-│   │   │   ├── enums/             # 枚举定义
-│   │   │   ├── execution/         # 交易执行
-│   │   │   ├── fee/               # 手续费计算
-│   │   │   ├── risk/              # 风控管理
-│   │   │   └── time/              # 时间控制
-│   │   ├── job/                   # 动态任务模块
-│   │   │   ├── bootstrap/         # 任务引导
-│   │   │   ├── controller/        # 控制器
-│   │   │   ├── entity/            # 实体
-│   │   │   ├── repository/        # 数据访问层
-│   │   │   └── service/           # 服务层
-│   │   ├── event/                 # 事件处理
-│   │   ├── handler/               # WebSocket 处理器
-│   │   ├── logging/               # 日志模块
-│   │   └── service/               # 通用服务
-│   ├── src/main/resources/
-│   │   ├── application.yml       # 应用配置
-│   │   └── logback-spring.xml    # 日志配置
-│   ├── pom.xml                   # Maven 配置
-│   └── Dockerfile                # Docker 构建配置
-│
-├── frontend/                   # React 前端应用
-│   ├── src/
-│   │   ├── App.tsx               # 主应用组件
-│   │   ├── main.tsx              # 入口文件
-│   │   ├── components/           # 通用组件
-│   │   ├── layouts/              # 布局组件
-│   │   ├── locales/              # 国际化资源
-│   │   ├── pages/                # 页面组件
-│   │   ├── store/                # 状态管理
-│   │   └── utils/                # 工具函数
-│   ├── index.html
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── tailwind.config.js
-│
-├── docs/                          # 项目文档
-│   ├── requirement/              # 需求文档
-│   ├── design/                   # 设计文档
-│   └── plans/                    # 实施计划
-│
-├── docker-compose.yml            # Docker 编排配置
-├── pom.xml                       # 父项目配置
-├── AGENTS.md                     # 项目开发指南
-└── README.md                     # 项目说明
-```
+
+职责边界：
+
+- `frontend/` 只负责页面展示和操作。
+- `backend/` 负责数据采集、在线特征、模型推理、策略、风控、调度和券商调用。
+- `python/` 负责离线训练、评估、ONNX 导出和候选制品构建，不激活生产模型。
+- `docs/` 保存跨端需求、架构、模型契约、部署和回滚文档。
 
 ---
 
@@ -168,6 +96,7 @@ stock-trading/
 
 - Java 17+
 - Node.js 18+
+- Python 3.14
 - Maven 3.6+
 - Docker & Docker Compose (可选)
 
@@ -210,16 +139,17 @@ npm run dev
 
 ```bash
 # 一键启动所有服务
-docker-compose up -d --build
+docker compose --env-file .env up -d --build
 
 # 查看服务状态
-docker-compose ps
+docker compose --env-file .env ps
 
 # 查看日志
-docker-compose logs -f
+docker compose --env-file .env logs -f
 
 # 访问
-# 前端 + 后端 API: http://localhost:8080
+# 前端: http://localhost:3000
+# 后端 API: http://localhost:8080
 ```
 
 ---
@@ -235,58 +165,24 @@ docker-compose logs -f
 - 财经新闻采集 (证券平台)
 
 
-### AI 模型模块 (com.stock.modelService)
+### AI 模型模块
 
-- LSTM 价格预测模型
-- 情感分析推理
-- 模型加载与管理 (MongoDB 存储)
-- 预测结果缓存
+模型能力采用“Python 离线训练、Java 在线推理”的目标架构：
 
-#### 情感分析模型（FinBERT 中文版）部署说明
+- Python 模型端读取 Java 导出的标准数据快照。
+- LSTM 和情感模型默认导出 FP32 ONNX。
+- 情感模型只有在 2C4G FP32 实测资源不足时才评估 INT8 降级。
+- Java 使用 ONNX Runtime 执行在线推理，并继续负责候选排名、风控和交易。
+- Python 只能生成候选制品，不能调用券商或修改生产模型指针。
 
-情感分析使用 DJL 加载本地 TorchScript 模型，目录 `models/sentiment/`（项目根目录）。
+当前处于迁移过渡期：Java/DJL 训练和推理路径仍然保留，必须等 Python 模型、ONNX 输出、影子推理、2C4G 资源和回滚演练全部通过后再删除。
 
-**DJL 所需文件：**
+详细设计：
 
-| 文件 | 说明 |
-|------|------|
-| `sentiment.pt` | TorchScript 模型权重 |
-| `tokenizer.json` | 分词器配置 |
-| `config.json` | 模型配置 |
-| `serving.properties` | DJL 服务配置（`engine=PyTorch`、`option.modelName=sentiment`） |
-
-**DJL 格式转换：**
-
-Hugging Face 原始格式需转换为 TorchScript（`.pt`）后 DJL 才能加载。使用官方 **djl-convert** 工具：
-
-```bash
-pip install https://publish.djl.ai/djl_converter
-djl-convert -m yiyanghkust/finbert-tone-chinese -o models/sentiment -t text-classification
-```
-
-完整步骤与排错见 [情感分析模型格式转换指南](docs/02-模型服务/模型格式转换.md)。
-
-**配置（application.yml）：**
-
-```yaml
-models:
-  sentiment:
-    model-path: "models/sentiment"
-    model-source: "local"
-    download-pretrained: false
-```
-
-**接口：**
-
-- 健康检查：`GET /api/models/sentiment/health`
-- 重新加载：`POST /api/models/sentiment/reload`
-
-`modelLoaded=true` 表示 FinBERT 已加载；`false` 时回退到规则模式。
-
-#### Git LFS 与 CI/CD
-
-模型文件由 Git LFS 管理（`.gitattributes`: `models/** filter=lfs diff=lfs merge=lfs -text`）。
-CI/CD 部署：push tag 触发，服务器执行 `git clone + lfs pull + mvn + docker build + compose up`。
+- [模型服务需求](docs/02-模型服务/需求.md)
+- [模型服务设计](docs/02-模型服务/设计.md)
+- [三端目录简化与 Python 模型迁移执行计划](docs/2026-10-09-三端目录简化与Python模型迁移执行计划.md)
+- [轻量模型 ONNX 迁移实施计划](docs/2026-10-09-轻量模型ONNX迁移实施计划.md)
 
 ### 策略分析模块 (com.stock.strategyAnalysis)
 
@@ -376,13 +272,13 @@ CI/CD 部署：push tag 触发，服务器执行 `git clone + lfs pull + mvn + d
 
 ```bash
 # 生产环境部署
-docker-compose up -d
+docker compose --env-file .env up -d
 
 # 服务状态
-docker-compose ps
+docker compose --env-file .env ps
 
 # 日志查看
-docker-compose logs -f backend
+docker compose --env-file .env logs -f backend
 ```
 
 ### 端口映射
@@ -479,7 +375,7 @@ docker-compose logs -f backend
 
 检查 Docker 容器是否正常运行：
 ```bash
-docker-compose ps
+docker compose --env-file .env ps
 ```
 
 ### 2. 前端白屏
@@ -505,4 +401,4 @@ MIT License
 ## 联系方式
 
 如有问题请提交 Issue 或联系开发团队。
-<!-- AI_GENERATE_END -- -->
+<!-- AI_GENERATE_END ------- -->
