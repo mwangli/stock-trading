@@ -23,6 +23,7 @@
         <easyexcel.version>3.3.4</easyexcel.version>
         <djl.version>0.31.1</djl.version>
         <djl.pytorch.version>2.2.2</djl.pytorch.version>
+        <onnxruntime.version>1.30.0</onnxruntime.version>
         <lombok.version>1.18.30</lombok.version>
     </properties>
 
@@ -119,6 +120,11 @@
             <groupId>ai.djl</groupId>
             <artifactId>model-zoo</artifactId>
             <version>${djl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.microsoft.onnxruntime</groupId>
+            <artifactId>onnxruntime</artifactId>
+            <version>${onnxruntime.version}</version>
         </dependency>
         <dependency>
             <groupId>ai.djl.sentencepiece</groupId>

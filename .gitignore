@@ -30,6 +30,7 @@ docs/plans/
 
 # 临时文件与中间脚本
 .tmp/
+/graft/
 
 # NetBeans
 /nbproject/private/
@@ -76,3 +77,9 @@ application-prod.yml
 models/
 backups/
 .understand-anything/
+/python/runtime/
+/python/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+*.pyc

@@ -1,0 +1,13 @@
+{
+  "schema_version": "training-snapshot-v1",
+  "dataset_type": "sentiment-text",
+  "columns": [
+    {"name": "split", "dtype": "string", "nullable": false, "shape": null},
+    {"name": "sample_index", "dtype": "int64", "nullable": false, "shape": null},
+    {"name": "sample_id", "dtype": "string", "nullable": false, "shape": null},
+    {"name": "published_at", "dtype": "datetime", "nullable": false, "shape": null},
+    {"name": "stock_code", "dtype": "string", "nullable": false, "shape": null},
+    {"name": "text", "dtype": "string", "nullable": false, "shape": null},
+    {"name": "label", "dtype": "int64", "nullable": false, "shape": null}
+  ]
+}

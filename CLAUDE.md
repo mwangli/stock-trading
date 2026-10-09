@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START - -->
+<!-- AI_GENERATE_START ---- -->
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -17,7 +17,7 @@ mvn compile                  # Compile only (use for quick verification after ch
 mvn clean package -DskipTests  # Build JAR (no automated tests in this project)
 ```
 
-### Frontend (React/Vite) — working directory: `frontend-v2/`
+### Frontend (React/Vite) — working directory: `frontend/`
 
 ```bash
 npm install                  # Install dependencies
@@ -26,9 +26,19 @@ npm run build                # Production build (runs tsc + vite build)
 npm run lint                 # ESLint
 ```
 
+### Python model workspace — working directory: `python/`
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install -e ".[dev]"
+python -m stock_models inspect-config --config configs/base.yaml
+```
+
+Use Python 3.14. Python is an offline training and artifact workspace, not an online trading service.
 ### After every code change, verify compilation:
 - Backend: `cd backend && mvn compile`
-- Frontend: `cd frontend-v2 && npm run build`
+- Frontend: `cd frontend && npm run build`
 
 ### Docker (infrastructure for local dev)
 
@@ -39,7 +49,7 @@ docker-compose up -d --build             # Full stack deployment
 
 ## Architecture
 
-Maven multi-module project: parent POM (`pom.xml`) aggregates `backend/` and `frontend-v2/`. In production, frontend is built via Maven and bundled into the backend JAR as static resources — single deployable artifact on port 8080.
+The repository has three code workspaces: `frontend/`, `backend/`, and `python/`, plus peer-level `docs/`. The Maven parent aggregates `backend/` and `frontend/`; Python uses `pyproject.toml`. Production keeps frontend and backend as separate containers, while the Python training profile is opt-in and does not start by default.
 
 ### Backend: Single Spring Boot app (Java 17, Spring Boot 3.2.10)
 
@@ -48,7 +58,7 @@ Organized by **business domain**, not by layer:
 | Package (`com.stock.*`) | Purpose |
 |---|---|
 | `dataCollector` | Stock list sync, real-time quotes, historical K-lines, news scraping |
-| `modelService` | LSTM price prediction + FinBERT sentiment analysis via DJL (Deep Java Library). Models stored in MongoDB as binary, loaded by `mongo:ID` identifier — no local file I/O |
+| `modelService` | Online features, model artifact validation, inference, sentiment aggregation, and the transitional DJL compatibility path. Target production inference uses ONNX Runtime. |
 | `strategyAnalysis` | Daily stock selection (LSTM 60% + sentiment 40%) and T+1 intraday sell strategy (moving stop-loss, RSI, volume divergence, Bollinger bands, forced close at 14:57) |
 | `tradingExecutor` | Risk controls, order execution (simulated), position/holding management, fee calculation |
 | `job` | Unified dynamic task scheduler — all scheduled tasks go through `JobConfig` table + `JobSchedulerService` |
@@ -67,6 +77,14 @@ Each domain module follows: `controller/` -> `service/` -> `repository/` (JPA fo
 - **Charts**: ECharts
 - **Routing**: React Router 7
 
+### Python model workspace: Python 3.14
+
+- **Training**: PyTorch and Transformers.
+- **Artifacts**: ONNX, ONNX Runtime validation, Pydantic contracts, SHA-256 manifests.
+- **Data**: Java-exported immutable snapshots through Pandas/PyArrow.
+- **Precision**: FP32 by default; sentiment INT8 is allowed only after FP32 fails measured 2C4G resource gates and INT8 passes business validation.
+- **Boundary**: Python never calls the broker, executes risk rules, or activates the production model pointer.
+- **Comments**: Use Chinese docstrings/comments for business purpose, inputs, outputs, failure conditions, and production boundaries.
 ### Databases
 
 - **MySQL 8**: Business data (stocks, prices, trades, positions, job configs). JPA `ddl-auto: update` — no migration scripts.
@@ -115,7 +133,7 @@ Each domain module follows: `controller/` -> `service/` -> `repository/` (JPA fo
 - **No automated tests** — quality relies on code review and manual verification. Do not generate test cases.
 - Backend is a single monolith — always build from `backend/` directory, do not look for sub-module POMs.
 - Temporary files go in `.tmp/` (gitignored).
-- Sentiment model files (`models/sentiment/`) are managed by Git LFS.
+- Model binaries, training datasets, caches, and `python/runtime/` are not committed. Versioned ONNX artifacts are released through the documented artifact workflow.
 - Database credentials use `${GLOBAL_DB_PASSWORD}` env var.
 - Ports: backend 8080, frontend dev 5173, MySQL 3306, MongoDB 27017.
-<!-- AI_GENERATE_END - -->
+<!-- AI_GENERATE_END ---- -->

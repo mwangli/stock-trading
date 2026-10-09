@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ----
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockNews;
@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -60,16 +61,27 @@ public class SentimentDataPreprocessor {
 
         try {
             // 1. 从 MongoDB 获取新闻数据
-            List<StockNews> allNews = newsRepository.findAll();
+            List<StockNews> allNews = new ArrayList<>(newsRepository.findAll());
             
             if (allNews.isEmpty()) {
                 throw new IllegalStateException("没有可用的真实新闻训练数据");
             }
 
-            // 2. 限制样本数
-            List<StockNews> newsList = numSamples > 0 && numSamples < allNews.size()
-                    ? allNews.subList(0, numSamples)
-                    : allNews;
+            // 2. 先选最近 N 条，再恢复时间升序，兼顾数据新鲜度和可重复时间切分。
+            Comparator<StockNews> chronologicalOrder = Comparator
+                    .comparing(StockNews::getPublishTime,
+                            Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(news -> news.getId() == null ? "" : news.getId());
+            Comparator<StockNews> newestFirst = Comparator
+                    .comparing(StockNews::getPublishTime,
+                            Comparator.nullsLast(Comparator.reverseOrder()))
+                    .thenComparing(news -> news.getId() == null ? "" : news.getId());
+            allNews.sort(newestFirst);
+            List<StockNews> newsList = new ArrayList<>(
+                    numSamples > 0 && numSamples < allNews.size()
+                            ? allNews.subList(0, numSamples)
+                            : allNews);
+            newsList.sort(chronologicalOrder);
 
             // 3. 预处理和标注
             List<TrainingSample> samples = new ArrayList<>();
@@ -85,6 +97,9 @@ public class SentimentDataPreprocessor {
                             .text(text)
                             .label(label)
                             .source(news.getStockCode())
+                            .sampleId(buildSampleId(news))
+                            .publishedAt(news.getPublishTime() != null
+                                    ? news.getPublishTime() : news.getCreateTime())
                             .build());
                 }
             }
@@ -98,6 +113,13 @@ public class SentimentDataPreprocessor {
             log.error("加载训练数据失败", e);
             throw new IllegalStateException("加载真实新闻训练数据失败", e);
         }
+    }
+
+    private String buildSampleId(StockNews news) {
+        String stockCode = news.getStockCode() == null ? "unknown" : news.getStockCode();
+        String newsId = news.getExternalId() != null && !news.getExternalId().isBlank()
+                ? news.getExternalId() : news.getId();
+        return stockCode + ":" + (newsId == null ? "unknown" : newsId);
     }
 
     /**
@@ -208,4 +230,4 @@ public class SentimentDataPreprocessor {
         private final List<TrainingSample> valData;
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END ----

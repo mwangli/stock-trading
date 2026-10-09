@@ -126,6 +126,16 @@ djl:
     sentiment:
       path: ./models/sentiment
 
+models:
+  onnx:
+    enabled: ${ONNX_INFERENCE_ENABLED:false}
+    shadow-enabled: ${ONNX_SHADOW_ENABLED:true}
+    lstm-artifact-dir: ${ONNX_LSTM_ARTIFACT_DIR:./models/onnx/lstm}
+    sentiment-artifact-dir: ${ONNX_SENTIMENT_ARTIFACT_DIR:./models/onnx/sentiment}
+    intra-op-threads: ${ONNX_INTRA_OP_THREADS:1}
+    inter-op-threads: ${ONNX_INTER_OP_THREADS:1}
+    output-tolerance: ${ONNX_OUTPUT_TOLERANCE:0.0001}
+
 # 训练配置
 training:
   lstm:
