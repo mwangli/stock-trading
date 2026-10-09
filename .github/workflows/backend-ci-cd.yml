@@ -19,7 +19,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_REPOSITORY: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/stock-trading
+  ACR_REGISTRY: registry.cn-shenzhen.aliyuncs.com
+  ACR_NAMESPACE: mwangli
+  SERVER_HOST: 124.220.36.95
+  SERVER_FINGERPRINT: SHA256:82CaLvT6pyHT8iXQWbYIX7elzrwOoXcJBNx932qI7bU
+  IMAGE_REPOSITORY: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-trading
 
 jobs:
   build-and-push:
@@ -64,7 +68,7 @@ jobs:
       - name: Log in to ACR
         uses: docker/login-action@v4
         with:
-          registry: ${{ secrets.ACR_REGISTRY }}
+          registry: ${{ env.ACR_REGISTRY }}
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
@@ -102,11 +106,11 @@ jobs:
       - name: Upload Docker Compose configuration
         uses: appleboy/scp-action@v1.0.0
         with:
-          host: ${{ secrets.SERVER_HOST }}
+          host: ${{ env.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ secrets.SERVER_PORT || 22 }}
-          fingerprint: ${{ secrets.SERVER_FINGERPRINT }}
+          fingerprint: ${{ env.SERVER_FINGERPRINT }}
           source: docker-compose.yml
           target: ${{ secrets.SERVER_DEPLOY_DIR }}
           overwrite: true
@@ -116,15 +120,15 @@ jobs:
         env:
           DEPLOY_IMAGE: ${{ needs.build-and-push.outputs.image }}
           DEPLOY_DIR: ${{ secrets.SERVER_DEPLOY_DIR }}
-          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_REGISTRY: ${{ env.ACR_REGISTRY }}
           ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
         with:
-          host: ${{ secrets.SERVER_HOST }}
+          host: ${{ env.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ secrets.SERVER_PORT || 22 }}
-          fingerprint: ${{ secrets.SERVER_FINGERPRINT }}
+          fingerprint: ${{ env.SERVER_FINGERPRINT }}
           envs: DEPLOY_IMAGE,DEPLOY_DIR,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
           command_timeout: 12m
           script: |

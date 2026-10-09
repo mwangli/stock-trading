@@ -30,7 +30,7 @@ services:
     cpus: 6.0
     logging: *default-logging
   stock-web:
-    image: ${STOCK_WEB_IMAGE:-stock-trading-web:local}
+    image: ${STOCK_WEB_IMAGE:-stock-front:local}
     build:
       context: ./frontend
       dockerfile: Dockerfile

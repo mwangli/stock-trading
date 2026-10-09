@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START -------------- -->
+<!-- AI_GENERATE_START --------------- -->
 # Stock Trading - AI 股票自动交易系统
 
 # 项目演示
@@ -178,12 +178,11 @@ docker compose --env-file .env logs -f
 4. 只重建 `stock-web`，不重启后端或数据库。
 5. 等待容器健康检查；失败时自动恢复上一个前端镜像。
 
-仓库或 `production` Environment 需要配置：
+ACR 地址、命名空间、服务器地址和 SSH 主机指纹已固化在工作流配置中。仓库或 `production` Environment 只需配置：
 
-- `ACR_REGISTRY`、`ACR_NAMESPACE`、`ACR_USERNAME`、`ACR_PASSWORD`
-- `SERVER_HOST`、`SERVER_USER`、`SERVER_PASSWORD`、`SERVER_DEPLOY_DIR`
+- `ACR_USERNAME`、`ACR_PASSWORD`
+- `SERVER_USER`、`SERVER_PASSWORD`、`SERVER_DEPLOY_DIR`
 - 可选 `SERVER_PORT`，默认 `22`
-- `SERVER_FINGERPRINT`，用于校验 SSH 主机身份
 
 ---
 
@@ -434,4 +433,4 @@ MIT License
 ## 联系方式
 
 如有问题请提交 Issue 或联系开发团队。
-<!-- AI_GENERATE_END -------------- -->
+<!-- AI_GENERATE_END --------------- -->
