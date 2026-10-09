@@ -1,0 +1,184 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - backend/**
+      - pom.xml
+      - docker-compose.yml
+      - .github/workflows/backend-ci-cd.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-production
+  cancel-in-progress: false
+
+env:
+  IMAGE_REPOSITORY: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/stock-trading
+
+jobs:
+  build-and-push:
+    name: Build and push backend image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      image: ${{ steps.image.outputs.value }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: |
+            pom.xml
+            backend/pom.xml
+          verify-signature: true
+
+      - name: Package backend
+        run: |
+          set -Eeuo pipefail
+          mvn --batch-mode --no-transfer-progress \
+            --file backend/pom.xml \
+            clean package -DskipTests
+
+          jar_path="$(find backend/target -maxdepth 1 -type f \
+            -name 'stock-trading-backend-*.jar' \
+            ! -name '*.original' -print -quit)"
+          test -n "$jar_path"
+          install -m 0644 "$jar_path" backend/app.jar
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to ACR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ secrets.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Resolve immutable image tag
+        id: image
+        run: echo "value=${IMAGE_REPOSITORY}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.value }}
+            ${{ env.IMAGE_REPOSITORY }}:latest
+          cache-from: type=gha,scope=stock-backend
+          cache-to: type=gha,mode=max,scope=stock-backend
+          provenance: false
+
+  deploy:
+    name: Deploy backend to production
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Checkout deployment files
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: docker-compose.yml
+          sparse-checkout-cone-mode: false
+
+      - name: Upload Docker Compose configuration
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          fingerprint: ${{ secrets.SERVER_FINGERPRINT }}
+          source: docker-compose.yml
+          target: ${{ secrets.SERVER_DEPLOY_DIR }}
+          overwrite: true
+
+      - name: Pull image and restart backend
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          DEPLOY_IMAGE: ${{ needs.build-and-push.outputs.image }}
+          DEPLOY_DIR: ${{ secrets.SERVER_DEPLOY_DIR }}
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          fingerprint: ${{ secrets.SERVER_FINGERPRINT }}
+          envs: DEPLOY_IMAGE,DEPLOY_DIR,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
+          command_timeout: 12m
+          script: |
+            bash -se <<'DEPLOY_SCRIPT'
+            set -Eeuo pipefail
+
+            cd "$DEPLOY_DIR"
+            test -f .env
+            test -f docker-compose.yml
+
+            previous_image="$(docker inspect --format '{{.Config.Image}}' stock-backend 2>/dev/null || true)"
+
+            rollback() {
+              exit_code=$?
+              trap - ERR
+              echo "Backend deployment failed; collecting logs."
+              docker compose --env-file .env logs --tail=150 stock-backend || true
+              if [ -n "$previous_image" ]; then
+                echo "Rolling back to the previous backend image."
+                STOCK_BACKEND_IMAGE="$previous_image" \
+                  docker compose --env-file .env up -d --no-deps --force-recreate stock-backend || true
+              fi
+              exit "$exit_code"
+            }
+            trap rollback INT TERM HUP ERR
+
+            printf '%s' "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" \
+              --username "$ACR_USERNAME" --password-stdin
+            docker pull "$DEPLOY_IMAGE"
+
+            STOCK_BACKEND_IMAGE="$DEPLOY_IMAGE" docker compose --env-file .env config --quiet
+            STOCK_BACKEND_IMAGE="$DEPLOY_IMAGE" \
+              docker compose --env-file .env up -d --no-deps --force-recreate stock-backend
+
+            container_id="$(docker compose --env-file .env ps -q stock-backend)"
+            test -n "$container_id"
+
+            healthy=0
+            attempt=1
+            while [ "$attempt" -le 36 ]; do
+              status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")"
+              if [ "$status" = healthy ] || [ "$status" = running ]; then
+                healthy=1
+                break
+              fi
+              if [ "$status" = unhealthy ] || [ "$status" = exited ] || [ "$status" = dead ]; then
+                break
+              fi
+              sleep 5
+              attempt=$((attempt + 1))
+            done
+
+            test "$healthy" -eq 1
+            trap - INT TERM HUP ERR
+            docker compose --env-file .env ps stock-backend
+            docker logout "$ACR_REGISTRY" >/dev/null 2>&1 || true
+            DEPLOY_SCRIPT

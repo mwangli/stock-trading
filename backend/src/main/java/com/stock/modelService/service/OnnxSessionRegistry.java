@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.service;
 
 import ai.onnxruntime.OrtEnvironment;
@@ -49,7 +49,7 @@ public class OnnxSessionRegistry {
             options.setIntraOpNumThreads(config.getIntraOpThreads());
             options.setInterOpNumThreads(config.getInterOpThreads());
             OrtSession session = environment.createSession(artifact.modelPath().toString(), options);
-            return new SessionHandle(session, artifact);
+            return new SessionHandle(environment, session, artifact);
         } catch (OrtException exception) {
             throw new IllegalStateException("创建 ONNX Session 失败", exception);
         }
@@ -68,9 +68,11 @@ public class OnnxSessionRegistry {
         sessions.clear();
     }
 
-    /** Session 与其已验证元数据。 */
+    /** Environment、Session 与其已验证元数据。 */
     public record SessionHandle(
-            OrtSession session, OnnxArtifactValidator.ValidatedOnnxArtifact artifact) {
+            OrtEnvironment environment,
+            OrtSession session,
+            OnnxArtifactValidator.ValidatedOnnxArtifact artifact) {
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

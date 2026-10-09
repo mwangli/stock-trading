@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -6,8 +6,8 @@ import com.stock.dataCollector.domain.entity.StockInfo;
 import com.stock.dataCollector.domain.entity.StockPrice;
 import com.stock.dataCollector.persistence.PriceRepository;
 import com.stock.dataCollector.persistence.StockInfoRepository;
-import com.stock.modelService.config.LstmTrainingConfig;
-import com.stock.modelService.config.SentimentTrainingConfig;
+import com.stock.modelService.config.LstmModelConfig;
+import com.stock.modelService.config.SentimentModelConfig;
 import com.stock.modelService.domain.dto.TrainingSample;
 import com.stock.modelService.domain.dto.TrainingSnapshotManifest;
 import lombok.RequiredArgsConstructor;
@@ -68,8 +68,8 @@ public class TrainingSnapshotExportService {
     private final StockInfoRepository stockInfoRepository;
     private final LstmDataPreprocessor lstmDataPreprocessor;
     private final SentimentDataPreprocessor sentimentDataPreprocessor;
-    private final LstmTrainingConfig lstmTrainingConfig;
-    private final SentimentTrainingConfig sentimentTrainingConfig;
+    private final LstmModelConfig lstmModelConfig;
+    private final SentimentModelConfig sentimentModelConfig;
 
     /**
      * 导出 LSTM 面板训练快照。
@@ -86,7 +86,7 @@ public class TrainingSnapshotExportService {
             throw new IllegalArgumentException("LSTM 快照股票代码不能为空");
         }
         int fetchDays = Math.max(days,
-                lstmTrainingConfig.getSequenceLength() + lstmTrainingConfig.getValidationGap() + 2);
+                lstmModelConfig.getSequenceLength() + lstmModelConfig.getValidationGap() + 2);
         Map<String, List<StockPrice>> priceSeries = loadPriceSeries(codes, fetchDays);
         Map<String, LstmDataPreprocessor.StockContext> contexts = loadStockContexts(codes);
         LstmDataPreprocessor.ProcessedData processedData =
@@ -121,7 +121,7 @@ public class TrainingSnapshotExportService {
         metadata.put("sequence_length", processedData.getSequenceLength());
         metadata.put("feature_count", processedData.getFeatureCount());
         metadata.put("target_return_scale", processedData.getTargetReturnScale());
-        metadata.put("validation_gap", lstmTrainingConfig.getValidationGap());
+        metadata.put("validation_gap", lstmModelConfig.getValidationGap());
         metadata.put("sample_counts_by_stock", processedData.getSampleCounts());
         metadata.put("split_strategy", "per-stock-time-order-with-purge-gap");
         metadata.put("stock_codes", codes);
@@ -167,7 +167,7 @@ public class TrainingSnapshotExportService {
         }
 
         int trainEnd = Math.max(1, Math.min(samples.size(),
-                (int) Math.floor(samples.size() * sentimentTrainingConfig.getTrainRatio())));
+                (int) Math.floor(samples.size() * sentimentModelConfig.getTrainRatio())));
         List<TrainingSample> trainSamples = samples.subList(0, trainEnd);
         List<TrainingSample> validationSamples = samples.subList(trainEnd, samples.size());
         OffsetDateTime createdAt = OffsetDateTime.now(ZoneOffset.UTC);
@@ -193,7 +193,7 @@ public class TrainingSnapshotExportService {
         metadata.put("format", "jsonl");
         metadata.put("encoding", "utf-8");
         metadata.put("split_strategy", "global-publish-time-order");
-        metadata.put("train_ratio", sentimentTrainingConfig.getTrainRatio());
+        metadata.put("train_ratio", sentimentModelConfig.getTrainRatio());
         metadata.put("auto_label", autoLabel);
         metadata.put("label_mapping", Map.of("neutral", 0, "positive", 1, "negative", 2));
 
@@ -420,4 +420,4 @@ public class TrainingSnapshotExportService {
         }
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

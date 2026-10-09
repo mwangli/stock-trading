@@ -1,18 +1,14 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockNews;
 import com.stock.dataCollector.persistence.NewsRepository;
-import com.stock.modelService.config.SentimentTrainingConfig;
-import com.stock.modelService.model.NewsSentimentDataset;
-import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
 import com.stock.modelService.domain.dto.TrainingSample;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -30,8 +26,6 @@ import java.util.regex.Pattern;
 public class SentimentDataPreprocessor {
 
     private final NewsRepository newsRepository;
-    private final SentimentTrainingConfig config;
-
     // 情感关键词（用于自动标注）
     private static final String[] POSITIVE_WORDS = {
         "增长", "盈利", "上涨", "突破", "利好", "推荐", "买入", "收益", "业绩", "向好",
@@ -182,52 +176,5 @@ public class SentimentDataPreprocessor {
         return cleaned;
     }
 
-    /**
-     * 按配置比例划分训练集和验证集。
-     *
-     * @param samples 真实新闻训练样本
-     * @return 数据集划分结果
-     */
-    public DatasetSplit splitDataset(List<TrainingSample> samples) {
-        int trainSize = (int) (samples.size() * config.getTrainRatio());
-        int valSize = samples.size() - trainSize;
-
-        // 随机打乱
-        Collections.shuffle(samples);
-
-        List<TrainingSample> trainData = samples.subList(0, trainSize);
-        List<TrainingSample> valData = samples.subList(trainSize, trainSize + valSize);
-
-        log.info("数据集划分：训练集={}, 验证集={}", trainData.size(), valData.size());
-
-        return new DatasetSplit(trainData, valData);
-    }
-
-    /**
-     * 基于训练样本和 tokenizer 构建 DJL 数据集。
-     *
-     * @param samples 真实新闻训练样本
-     * @param tokenizer 文本分词器
-     * @return DJL 新闻情感数据集
-     * @throws java.io.IOException 数据集构建失败时抛出
-     */
-    public NewsSentimentDataset buildDataset(List<TrainingSample> samples, HuggingFaceTokenizer tokenizer) throws java.io.IOException {
-        return NewsSentimentDataset.builder()
-                .setSamples(samples)
-                .setTokenizer(tokenizer)
-                .setMaxLength(config.getMaxSequenceLength())
-                .setSampling(config.getBatchSize(), true)
-                .build();
-    }
-
-    /**
-     * 数据集划分结果。
-     */
-    @lombok.Data
-    @lombok.RequiredArgsConstructor
-    public static class DatasetSplit {
-        private final List<TrainingSample> trainData;
-        private final List<TrainingSample> valData;
-    }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

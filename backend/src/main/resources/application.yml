@@ -2,6 +2,10 @@ server:
   port: 8080
 
 spring:
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:../.env[.properties]
   application:
     name: stock-trading
   main:
@@ -15,18 +19,18 @@ spring:
   # MySQL配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:6033/stock_trading?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false}
-    username: ${SPRING_DATASOURCE_USERNAME:stock}
-    password: ${SPRING_DATASOURCE_PASSWORD:}
+    url: jdbc:mysql://${DATABASE_HOST:localhost}:6033/stock_trading?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
+    username: root
+    password: ${MYSQL_ROOT_PASSWORD:}
   data:
     mongodb:
       auto-index-creation: true
-      host: ${SPRING_DATA_MONGODB_HOST:localhost}
-      port: ${SPRING_DATA_MONGODB_PORT:27017}
-      database: ${SPRING_DATA_MONGODB_DATABASE:stock_trading}
-      authentication-database: ${SPRING_DATA_MONGODB_AUTHENTICATION_DATABASE:admin}
-      username: ${SPRING_DATA_MONGODB_USERNAME:stock}
-      password: ${SPRING_DATA_MONGODB_PASSWORD:}
+      host: ${DATABASE_HOST:localhost}
+      port: 27017
+      database: stock_trading
+      authentication-database: admin
+      username: admin
+      password: ${MONGO_ROOT_PASSWORD:}
 
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
@@ -51,101 +55,68 @@ zxbroker:
   encoded-password: ${ZXBROKER_ENCODED_PASSWORD:}
 
   captcha-auto-submit-enabled: ${ZXBROKER_CAPTCHA_AUTO_SUBMIT_ENABLED:false}
-  ocr-timeout-ms: ${ZXBROKER_OCR_TIMEOUT_MS:20000}
-  ocr-request-interval-ms: ${ZXBROKER_OCR_REQUEST_INTERVAL_MS:1050}
+  ocr-timeout-ms: 20000
+  ocr-request-interval-ms: 1050
   baidu-ocr-api-key: ${BAIDU_OCR_API_KEY:}
   baidu-ocr-secret-key: ${BAIDU_OCR_SECRET_KEY:}
-  captcha-max-retries: ${ZXBROKER_CAPTCHA_MAX_RETRIES:3}
+  captcha-max-retries: 3
   sign-key: ${ZXBROKER_SIGN_KEY:}
   intact-to-server: ${ZXBROKER_INTACT_TO_SERVER:}
-  token-expire-minutes: ${ZXBROKER_TOKEN_EXPIRE_MINUTES:30}
-  history-page-size: ${ZXBROKER_HISTORY_PAGE_SIZE:500}
-  history-max-records-per-window: ${ZXBROKER_HISTORY_MAX_RECORDS_PER_WINDOW:5000}
-  history-request-interval-ms: ${ZXBROKER_HISTORY_REQUEST_INTERVAL_MS:200}
+  token-expire-minutes: 30
+  history-page-size: 500
+  history-max-records-per-window: 5000
+  history-request-interval-ms: 200
 
 trading:
   # 自动真实交易固定参数；真实委托仍必须显式开启总门禁。
   real-write-enabled: ${TRADING_REAL_WRITE_ENABLED:false}
-  history-month-interval-ms: ${TRADING_HISTORY_MONTH_INTERVAL_MS:500}
-  auto-buy-amount: ${TRADING_AUTO_BUY_AMOUNT:1000}
-  auto-candidate-limit: ${TRADING_AUTO_CANDIDATE_LIMIT:1}
-  take-profit-percent: ${TRADING_TAKE_PROFIT_PERCENT:3}
-  force-exit-time: ${TRADING_FORCE_EXIT_TIME:14:50}
+  history-month-interval-ms: 500
+  auto-buy-amount: 1000
+  auto-candidate-limit: 1
+  take-profit-percent: 3
+  force-exit-time: "14:50"
 
 backtest:
-  universe-limit: ${BACKTEST_UNIVERSE_LIMIT:500}
-  lookback-days: ${BACKTEST_LOOKBACK_DAYS:5}
-  random-seed: ${BACKTEST_RANDOM_SEED:20260925}
-  commission-rate: ${BACKTEST_COMMISSION_RATE:0.0005}
-  minimum-commission: ${BACKTEST_MINIMUM_COMMISSION:5}
-  stamp-duty-rate: ${BACKTEST_STAMP_DUTY_RATE:0.0005}
-  transfer-fee-rate: ${BACKTEST_TRANSFER_FEE_RATE:0}
-  slippage-bps: ${BACKTEST_SLIPPAGE_BPS:5}
-  fallback-price-limit-rate: ${BACKTEST_FALLBACK_PRICE_LIMIT_RATE:0.10}
-  fee-version: ${BACKTEST_FEE_VERSION:CN_A_SHARE_ASSUMPTION_2026-09-25}
-  code-version: ${APP_CODE_VERSION:WORKTREE_UNCOMMITTED}
-
-# DJL模型配置（Windows 使用 pytorch-native-cu121 时需安装 NVIDIA 驱动 + CUDA 12.1）
-djl:
-  model:
-    dir: ./models
-    lstm:
-      # 在线节点默认禁用训练；本地离线训练节点显式设置 LSTM_TRAINING_ENABLED=true
-      training-enabled: ${LSTM_TRAINING_ENABLED:false}
-      # 本地 LSTM 模型目录（用于 DJL 加载）
-      path: ./models/lstm
-      # 模型存储类型：mongo（默认，存到 MongoDB）或 local（存到本地卷 /models/lstm）
-      storage-type: mongo
-      # 当 storage-type=local 时，本地模型根目录（容器内部路径，挂载自 models-data 卷）
-      local-base-path: /models/lstm
-      # 共享模型固定使用 60 日窗口、13 个连续特征和 3 个离散索引
-      sequence-length: 60
-      input-size: 16
-      # 股票和行业使用固定哈希桶的可训练 Embedding，索引 0 保留给未知值
-      stock-embedding-buckets: 8192
-      stock-embedding-size: 16
-      industry-embedding-buckets: 512
-      industry-embedding-size: 8
-      # 少量分组 Head 和轻量个股 Residual Head 只校正共享输出
-      group-head-count: 8
-      residual-head-enabled: true
-      group-head-scale: 0.1
-      residual-head-scale: 0.1
-      # 收益率、方向概率和下行风险三任务损失权重
-      return-loss-weight: 0.5
-      direction-loss-weight: 0.3
-      downside-loss-weight: 0.2
-      # 均匀抽样窗口之间再隔离 2 个样本，降低近邻泄漏
-      validation-gap: 2
-      # 下一交易日收益率按 10% 缩放到模型输出区间
-      target-return-scale: 0.1
-      # 全市场面板样本上限，防止重叠窗口占用过量内存
-      max-panel-samples: 100000
-      # 单只股票最多保留的均匀时间窗口数量
-      max-samples-per-stock: 80
-    sentiment:
-      path: ./models/sentiment
+  universe-limit: 500
+  lookback-days: 5
+  random-seed: 20260925
+  commission-rate: 0.0005
+  minimum-commission: 5
+  stamp-duty-rate: 0.0005
+  transfer-fee-rate: 0
+  slippage-bps: 5
+  fallback-price-limit-rate: 0.10
+  fee-version: CN_A_SHARE_ASSUMPTION_2026-09-25
+  code-version: WORKTREE_UNCOMMITTED
 
 models:
-  onnx:
-    enabled: ${ONNX_INFERENCE_ENABLED:false}
-    shadow-enabled: ${ONNX_SHADOW_ENABLED:true}
-    lstm-artifact-dir: ${ONNX_LSTM_ARTIFACT_DIR:./models/onnx/lstm}
-    sentiment-artifact-dir: ${ONNX_SENTIMENT_ARTIFACT_DIR:./models/onnx/sentiment}
-    intra-op-threads: ${ONNX_INTRA_OP_THREADS:1}
-    inter-op-threads: ${ONNX_INTER_OP_THREADS:1}
-    output-tolerance: ${ONNX_OUTPUT_TOLERANCE:0.0001}
-
-# 训练配置
-training:
+  # Java 只维护训练快照与在线特征契约；所有超参数和训练过程位于 python/。
   lstm:
-    epochs: 100
-    batchSize: 32
-    learningRate: 0.001
+    sequence-length: 60
+    input-size: 16
+    train-ratio: 0.8
+    validation-gap: 2
+    target-return-scale: 0.1
+    max-panel-samples: 100000
+    max-samples-per-stock: 80
+    stock-embedding-buckets: 8192
+    stock-embedding-size: 16
+    industry-embedding-buckets: 512
+    industry-embedding-size: 8
+    group-head-count: 8
+    residual-head-enabled: true
+    group-head-scale: 0.1
+    residual-head-scale: 0.1
   sentiment:
-    epochs: 50
-    batchSize: 16
-    learningRate: 0.0001
+    train-ratio: 0.8
+    max-sequence-length: 128
+    labels: [neutral, positive, negative]
+  onnx:
+    enabled: true
+    lstm-artifact-dir: ./models/onnx/lstm
+    sentiment-artifact-dir: ./models/onnx/sentiment
+    intra-op-threads: 1
+    inter-op-threads: 1
 
 # 策略配置
 strategy:
@@ -160,16 +131,16 @@ logging:
   level:
     root: INFO
     com.stock: INFO
-    ai.djl: INFO
+    ai.onnxruntime: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 app:
   startup:
     history-sync:
-      enabled: true  # 历史数据初始化开关，启动时执行全量历史价格同步
+      enabled: false  # 重任务由统一调度中心按需执行
     # 新闻采集开关：启动时遍历所有股票，先采集标题再获取详情写入数据库
     news-sync:
-      enabled: true
+      enabled: false
   # 证券平台 HTTP 代理（用于解决云服务器 IP 被 weixin.citicsinfo.com 拦截 403 的问题）
   # 当远程部署返回 403 而本地可访问时，在本地/可访问机器搭建代理，远程通过此配置转发请求
   securities:

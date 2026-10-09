@@ -26,7 +26,7 @@ backend/cp.txt
 .sts4-cache
 
 # Docs 临时任务计划（不纳入版本控制）
-docs/plans/
+documents/plans/
 
 # 临时文件与中间脚本
 .tmp/

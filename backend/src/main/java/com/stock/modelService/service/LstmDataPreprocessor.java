@@ -1,8 +1,8 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START --------
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockPrice;
-import com.stock.modelService.config.LstmTrainingConfig;
+import com.stock.modelService.config.LstmModelConfig;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -38,7 +38,7 @@ public class LstmDataPreprocessor {
     private static final int VOLUME_LOOKBACK = 20;
     private static final double MIN_VALUE = 1.0E-8D;
 
-    private final LstmTrainingConfig config;
+    private final LstmModelConfig config;
     private final TechnicalIndicatorService technicalIndicatorService;
 
     /**
@@ -339,12 +339,6 @@ public class LstmDataPreprocessor {
         if (config.getGroupHeadScale() < 0D || config.getResidualHeadScale() < 0D) {
             throw new IllegalStateException("分组和个股 Head 缩放系数不能小于 0");
         }
-        double totalLossWeight = config.getReturnLossWeight()
-                + config.getDirectionLossWeight() + config.getDownsideLossWeight();
-        if (config.getReturnLossWeight() <= 0D || config.getDirectionLossWeight() <= 0D
-                || config.getDownsideLossWeight() <= 0D || totalLossWeight <= 0D) {
-            throw new IllegalStateException("多任务损失权重必须全部大于 0");
-        }
     }
 
     private record SeriesSamples(List<TrainingSample> allSamples) {
@@ -505,4 +499,4 @@ public class LstmDataPreprocessor {
         private String featureVersion;
     }
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END --------

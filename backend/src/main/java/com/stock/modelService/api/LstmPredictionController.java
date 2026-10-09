@@ -1,9 +1,9 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.modelService.domain.dto.LstmPredictionResultDto;
-import com.stock.modelService.service.LstmTrainerService;
+import com.stock.modelService.service.LstmInferenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class LstmPredictionController {
 
-    private final LstmTrainerService lstmTrainerService;
+    private final LstmInferenceService lstmInferenceService;
 
     /**
      * 使用当前生效模型预测下一交易日价格。
@@ -36,11 +36,11 @@ public class LstmPredictionController {
     public ResponseDTO<LstmPredictionResultDto> predictNext(@RequestParam String stockCode) {
         log.info("执行 LSTM 预测: stockCode={}", stockCode);
         try {
-            return ResponseDTO.success(lstmTrainerService.predictNext(stockCode));
+            return ResponseDTO.success(lstmInferenceService.predictNext(stockCode));
         } catch (RuntimeException exception) {
             log.error("LSTM 预测失败: stockCode={}", stockCode, exception);
             return ResponseDTO.error("预测失败：" + exception.getMessage());
         }
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --
