@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START ------- -->
+<!-- AI_GENERATE_START -------------- -->
 # Stock Trading - AI 股票自动交易系统
 
 # 项目演示
@@ -16,7 +16,7 @@
 - **后端服务** (Java Spring Boot 3.2): 提供 RESTful API、在线推理、策略、风控和交易执行
 - **前端应用** (React 19 + Vite 7 + Ant Design 6): 可视化 Dashboard、数据展示和操作
 - **Python 模型端** (Python 3.14): 离线训练、评估、ONNX 导出和候选制品构建
-- **数据存储**: MySQL (业务数据) + MongoDB (文档数据/模型存储)
+- **数据存储**: MySQL (业务数据) + MongoDB (行情、新闻和文档数据)
 
 ### 核心特性
 
@@ -30,7 +30,7 @@
 - **运行日志查看**: 通过 WebSocket 查看运行日志，业务通知渠道暂不实现
 - **Docker 一键部署**: 使用 Docker Compose 快速部署
 - **CI/CD 自动化**: GitHub Actions 自动构建和部署
-- **版本化模型制品**: Python 构建候选 ONNX 制品，Java 校验、影子推理、激活和回滚；迁移期仍保留 DJL 兼容路径。
+- **版本化模型制品**: Python 完成训练、评估和 ONNX 制品构建，Java 只校验并执行在线推理。
 
 ---
 
@@ -47,7 +47,7 @@
 
 | HTTP | OkHttp | 4.12 |
 | 工具 | Hutool / FastJSON2 | 5.8 / 2.0 |
-| AI 框架 | ONNX Runtime（目标）/ DJL（迁移期） | Python 3.14 + Java 17 |
+| AI 框架 | Python PyTorch 训练 / Java ONNX Runtime 推理 | Python 3.14 + Java 17 |
 | 技术分析 | TA4J | 0.15 |
 
 
@@ -138,6 +138,9 @@ npm run dev
 ### Docker 部署
 
 ```bash
+# 首次部署仅需填写数据库密码、券商/OCR 凭据和高风险能力门禁。
+Copy-Item .env.example .env
+
 # 一键启动所有服务
 docker compose --env-file .env up -d --build
 
@@ -151,6 +154,36 @@ docker compose --env-file .env logs -f
 # 前端: http://localhost:3000
 # 后端 API: http://localhost:8080
 ```
+
+常规运行参数已经直接写入 `docker-compose.yml` 或 `backend/src/main/resources/application.yml`。
+`.env` 仅保留敏感凭据、高风险能力门禁和数据库持久化约束，避免重复维护普通配置。CI/CD 在部署命令中分别注入前端、后端不可变镜像标签，不会并发改写服务器 `.env`。
+
+### 前后端自动部署
+
+推送到 `master` 后，GitHub Actions 会按变更目录分别执行后端或前端流水线。两条流水线使用独立并发组，可以同时构建、推送和部署；每条流水线仅重建自己的容器。
+
+后端改动涉及 `backend/`、根 `pom.xml` 或 `docker-compose.yml` 时：
+
+1. 使用 Java 17 打包后端。
+2. 构建并推送 `latest` 和提交 SHA 两个 ACR 镜像标签。
+3. 将 Compose 配置同步到服务器。
+4. 只重建 `stock-backend`，不重启 MySQL、MongoDB 或前端。
+5. 等待容器健康检查；失败时自动恢复上一个后端镜像。
+
+前端改动涉及 `frontend/` 或 `docker-compose.yml` 时：
+
+1. 使用前端 Dockerfile 完成依赖安装和生产构建。
+2. 构建并推送 `latest` 和提交 SHA 两个 ACR 镜像标签。
+3. 将 Compose 配置同步到服务器。
+4. 只重建 `stock-web`，不重启后端或数据库。
+5. 等待容器健康检查；失败时自动恢复上一个前端镜像。
+
+仓库或 `production` Environment 需要配置：
+
+- `ACR_REGISTRY`、`ACR_NAMESPACE`、`ACR_USERNAME`、`ACR_PASSWORD`
+- `SERVER_HOST`、`SERVER_USER`、`SERVER_PASSWORD`、`SERVER_DEPLOY_DIR`
+- 可选 `SERVER_PORT`，默认 `22`
+- `SERVER_FINGERPRINT`，用于校验 SSH 主机身份
 
 ---
 
@@ -167,7 +200,7 @@ docker compose --env-file .env logs -f
 
 ### AI 模型模块
 
-模型能力采用“Python 离线训练、Java 在线推理”的目标架构：
+模型能力采用“Python 离线训练、Java ONNX 在线推理”的当前架构：
 
 - Python 模型端读取 Java 导出的标准数据快照。
 - LSTM 和情感模型默认导出 FP32 ONNX。
@@ -175,14 +208,14 @@ docker compose --env-file .env logs -f
 - Java 使用 ONNX Runtime 执行在线推理，并继续负责候选排名、风控和交易。
 - Python 只能生成候选制品，不能调用券商或修改生产模型指针。
 
-当前处于迁移过渡期：Java/DJL 训练和推理路径仍然保留，必须等 Python 模型、ONNX 输出、影子推理、2C4G 资源和回滚演练全部通过后再删除。
+Java 侧已移除模型训练、DJL/PyTorch 推理和旧模型仓储代码。部署前必须先由 Python 生成通过指标门槛的 LSTM 与情感 ONNX 制品；制品缺失或不兼容时，真实候选生成会失败关闭。
 
 详细设计：
 
-- [模型服务需求](docs/02-模型服务/需求.md)
-- [模型服务设计](docs/02-模型服务/设计.md)
-- [三端目录简化与 Python 模型迁移执行计划](docs/2026-10-09-三端目录简化与Python模型迁移执行计划.md)
-- [轻量模型 ONNX 迁移实施计划](docs/2026-10-09-轻量模型ONNX迁移实施计划.md)
+- [模型服务需求](documents/02-模型服务/需求.md)
+- [模型服务设计](documents/02-模型服务/设计.md)
+- [三端目录简化与 Python 模型迁移执行计划](documents/2026-10-09-三端目录简化与Python模型迁移执行计划.md)
+- [轻量模型 ONNX 迁移实施计划](documents/2026-10-09-轻量模型ONNX迁移实施计划.md)
 
 ### 策略分析模块 (com.stock.strategyAnalysis)
 
@@ -354,18 +387,18 @@ docker compose --env-file .env logs -f backend
 
 所有核心需求与设计文档位于 `docs/` 目录：
 
-- [文档索引](./docs/README.md) - 文档结构和快速入口
-- [00-系统架构 - 需求](./docs/00-系统架构/需求.md)
-- [00-系统架构 - 设计](./docs/00-系统架构/设计.md)
+- [文档索引](documents/README.md) - 文档结构和快速入口
+- [00-系统架构 - 需求](documents/00-系统架构/需求.md)
+- [00-系统架构 - 设计](documents/00-系统架构/设计.md)
 
 ### 模块文档
 
 | 模块 | 需求文档 | 设计文档 | 测试文档 |
 |------|----------|----------|----------|
-| 数据采集 | [01-数据采集 - 需求](./docs/01-数据采集/需求.md) | [01-数据采集 - 设计](./docs/01-数据采集/设计.md) | - |
-| AI 模型 | [02-模型服务 - 需求](./docs/02-模型服务/需求.md) | [02-模型服务 - 设计](./docs/02-模型服务/设计.md) | - |
-| 交易策略 | [03-策略分析 - 需求](./docs/03-策略分析/需求.md) | [03-策略分析 - 设计](./docs/03-策略分析/设计.md) | - |
-| 交易执行 | [04-交易执行 - 需求](./docs/04-交易执行/需求.md) | [04-交易执行 - 设计](./docs/04-交易执行/设计.md) | - |
+| 数据采集 | [01-数据采集 - 需求](documents/01-数据采集/需求.md) | [01-数据采集 - 设计](documents/01-数据采集/设计.md) | - |
+| AI 模型 | [02-模型服务 - 需求](documents/02-模型服务/需求.md) | [02-模型服务 - 设计](documents/02-模型服务/设计.md) | - |
+| 交易策略 | [03-策略分析 - 需求](documents/03-策略分析/需求.md) | [03-策略分析 - 设计](documents/03-策略分析/设计.md) | - |
+| 交易执行 | [04-交易执行 - 需求](documents/04-交易执行/需求.md) | [04-交易执行 - 设计](documents/04-交易执行/设计.md) | - |
 
 ---
 
@@ -401,4 +434,4 @@ MIT License
 ## 联系方式
 
 如有问题请提交 Issue 或联系开发团队。
-<!-- AI_GENERATE_END ------- -->
+<!-- AI_GENERATE_END -------------- -->

@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START ---- -->
+<!-- AI_GENERATE_START ----- -->
 # Python 模型端
 
 该目录负责 `stock-trading4` 的离线模型训练、评估、ONNX 导出和模型制品构建。
@@ -44,6 +44,8 @@ docker compose --profile training run --rm stock-python inspect-config --config 
 - 配置读取与校验。
 - Run ID 和运行目录创建。
 - LSTM 与情感 JSONL 数据快照的 Manifest、Schema、字段顺序、类型、Shape、记录数与 SHA-256 校验。
+- 共享多任务 LSTM 训练、评估、Early Stopping 和 FP32 ONNX 导出。
+- 金融情感模型微调、评估、Tokenizer 打包和 FP32 ONNX 导出。
 - ONNX 制品目录打包。
 
 Java 导出的单个快照目录结构为：
@@ -62,7 +64,14 @@ Java 导出的单个快照目录结构为：
 python -m stock_models validate-data --manifest runtime/datasets/<dataset-id>/manifest.json
 ```
 
+训练命令：
+
+```text
+python -m stock_models train-lstm --config configs/base.yaml --manifest runtime/datasets/<dataset-id>/manifest.json
+python -m stock_models train-sentiment --config configs/base.yaml --manifest runtime/datasets/<dataset-id>/manifest.json
+```
+
 快照文件必须使用无 BOM UTF-8。JSONL 字段顺序由 `schema.json` 固定，任何字段错位、Shape 变化、摘要变化或记录数不一致都会被拒绝。
 
-LSTM 和情感训练在后续批次实现，不提供无实现的占位训练命令。
-<!-- AI_GENERATE_END ---- -->
+训练完成后先写入独立 Run 目录；只有验证集、ONNX 输出误差和模型指标通过时才构建候选制品。Python 不直接激活生产模型。
+<!-- AI_GENERATE_END ----- -->

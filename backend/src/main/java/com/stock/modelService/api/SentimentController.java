@@ -1,11 +1,11 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.modelService.domain.dto.SentimentAnalyzeRequestDto;
 import com.stock.modelService.domain.dto.SentimentAnalyzeResultDto;
 import com.stock.modelService.domain.dto.SentimentHealthDto;
-import com.stock.modelService.service.SentimentTrainerService;
+import com.stock.modelService.service.SentimentInferenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,7 +30,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class SentimentController {
 
-    private final SentimentTrainerService trainerService;
+    private final SentimentInferenceService inferenceService;
 
     /**
      * 分析单条新闻或公告文本。
@@ -46,7 +46,7 @@ public class SentimentController {
             return ResponseDTO.error("文本不能为空");
         }
         try {
-            return ResponseDTO.success(toDto(trainerService.analyzeSentimentWithDetails(text)));
+            return ResponseDTO.success(toDto(inferenceService.analyzeSentimentWithDetails(text)));
         } catch (RuntimeException exception) {
             log.error("情感模型推理失败", exception);
             return ResponseDTO.error("情感模型推理失败：" + exception.getMessage());
@@ -62,10 +62,10 @@ public class SentimentController {
     public ResponseDTO<SentimentHealthDto> health() {
         log.info("查询情感模型健康状态");
         return ResponseDTO.success(SentimentHealthDto.builder()
-                .status(trainerService.isModelLoaded() ? "UP" : "NOT_LOADED")
+                .status(inferenceService.isModelLoaded() ? "UP" : "NOT_LOADED")
                 .service("Sentiment Analysis Service")
-                .modelLoaded(trainerService.isModelLoaded())
-                .lastLoadedTime(trainerService.getLastLoadedTime())
+                .modelLoaded(inferenceService.isModelLoaded())
+                .lastLoadedTime(inferenceService.getLastLoadedTime())
                 .build());
     }
 
@@ -99,4 +99,4 @@ public class SentimentController {
         return result;
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

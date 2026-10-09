@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ---------
 package com.stock.strategyAnalysis.engine;
 
 import com.stock.dataCollector.domain.entity.StockNews;
@@ -6,7 +6,7 @@ import com.stock.dataCollector.persistence.NewsRepository;
 import com.stock.modelService.domain.dto.LstmPredictionResultDto;
 import com.stock.modelService.domain.vo.SentimentAggregateResult;
 import com.stock.dataCollector.persistence.StockInfoRepository;
-import com.stock.modelService.service.LstmTrainerService;
+import com.stock.modelService.service.LstmInferenceService;
 import com.stock.modelService.service.SentimentAggregationService;
 import com.stock.strategyAnalysis.config.StrategyConfigService;
 import com.stock.strategyAnalysis.domain.dto.StockRankingDto;
@@ -48,7 +48,7 @@ public class StockSelector {
     private final StrategyConfigService configService;
     private final RankingRepository rankingRepository;
     private final StockInfoRepository stockInfoRepository;
-    private final LstmTrainerService lstmTrainerService;
+    private final LstmInferenceService lstmInferenceService;
     private final NewsRepository newsRepository;
     private final SentimentAggregationService sentimentAggregationService;
 
@@ -67,10 +67,10 @@ public class StockSelector {
             List<String> stockCodes = getTradableStockCodes();
 
             if (stockCodes.isEmpty()) {
-                log.warn("没有已完成训练的 LSTM 股票模型");
+                log.warn("没有可用的 LSTM ONNX 模型制品");
                 return SelectionResult.builder()
                         .success(false)
-                        .errorMessage("没有已完成训练的 LSTM 股票模型")
+                        .errorMessage("没有可用的 LSTM ONNX 模型制品")
                         .build();
             }
 
@@ -160,7 +160,7 @@ public class StockSelector {
      * 获取共享模型覆盖的全市场股票记录。
      */
     private List<String> getTradableStockCodes() {
-        if (!lstmTrainerService.hasSharedModel()) {
+        if (!lstmInferenceService.hasModel()) {
             return List.of();
         }
         return stockInfoRepository.findAllCodes().stream()
@@ -174,7 +174,7 @@ public class StockSelector {
      */
     private Map<String, Double> getLstmPredictions(List<String> stockCodes) {
         Map<String, Double> predictions = new LinkedHashMap<>();
-        Map<String, LstmPredictionResultDto> batchResults = lstmTrainerService.predictNextBatch(stockCodes);
+        Map<String, LstmPredictionResultDto> batchResults = lstmInferenceService.predictNextBatch(stockCodes);
         batchResults.forEach((code, prediction) -> {
             Double changeRatio = prediction.getPredictedChangeRatio();
             Double directionProbability = prediction.getDirectionProbability();
@@ -290,4 +290,4 @@ public class StockSelector {
                 .build();
     }
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------

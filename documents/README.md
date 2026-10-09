@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START - -->
+<!-- AI_GENERATE_START -- -->
 # 项目文档索引
 
 `docs/` 与 `frontend/`、`backend/`、`python/` 三个代码端平级，保存跨端需求、设计、部署和迁移证据，不归属于任何单一代码端。
@@ -24,7 +24,8 @@
 ## 迁移状态
 
 - 顶层目录已收敛为 `frontend/`、`backend/`、`python/` 和平级 `docs/`。
-- Python 工程底座已建立，但 LSTM、情感训练和 Java ONNX 推理仍按执行计划分批迁移。
-- 在验收完成前，Java/DJL 路径仍是现有生产兼容路径。
+- Python 已提供 LSTM、情感训练、评估和 ONNX 导出命令。
+- Java 已移除训练与 PyTorch 依赖，ONNX 是唯一模型推理路径。
+- 尚未完成真实数据训练、制品部署、2C4G 资源验证和生产回滚演练。
 - 详细批次和门槛见 [三端目录简化与 Python 模型迁移执行计划](2026-10-09-三端目录简化与Python模型迁移执行计划.md)。
-<!-- AI_GENERATE_END - -->
+<!-- AI_GENERATE_END -- -->

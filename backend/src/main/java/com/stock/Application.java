@@ -1,6 +1,7 @@
 // AI_GENERATE_START -
 package com.stock;
 
+import lombok.Getter;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -15,17 +16,14 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class Application {
 
-    /** 进程启动时间戳，用于计算启动耗时。 */
-    private static long startTimeMs;
-
-    /**
-     * 获取应用启动时间戳。
+    /** 进程启动时间戳，用于计算启动耗时。
+     * -- GETTER --
+     *  获取应用启动时间戳。
      *
      * @return 启动时间戳，单位毫秒
      */
-    public static long getStartTimeMs() {
-        return startTimeMs;
-    }
+    @Getter
+    private static long startTimeMs;
 
     /**
      * 启动股票交易系统。

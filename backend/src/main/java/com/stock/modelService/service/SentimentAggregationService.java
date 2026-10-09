@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockNews;
@@ -32,7 +32,7 @@ public class SentimentAggregationService {
             "退市", "财务造假", "立案调查", "重大违法", "暂停上市", "终止上市",
             "债务违约", "破产重整", "实控人被捕", "资金占用", "审计无法表示意见");
 
-    private final SentimentTrainerService sentimentTrainerService;
+    private final SentimentInferenceService sentimentInferenceService;
 
     /**
      * 聚合一只股票指定时间窗口内的新闻和公告情感。
@@ -59,7 +59,7 @@ public class SentimentAggregationService {
             if (text.isBlank()) {
                 continue;
             }
-            SentimentAnalysisResult modelResult = sentimentTrainerService.analyzeSentimentRequired(text);
+            SentimentAnalysisResult modelResult = sentimentInferenceService.analyzeSentimentRequired(text);
             double weight = calculateWeight(primary, group.size(), now, modelResult.getConfidence());
             weightedScore += modelResult.getScore() * weight;
             weightedConfidence += modelResult.getConfidence() * weight;
@@ -205,4 +205,4 @@ public class SentimentAggregationService {
         return Math.max(minimum, Math.min(maximum, value));
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

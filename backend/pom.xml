@@ -22,7 +22,6 @@
         <fastjson2.version>2.0.53</fastjson2.version>
         <easyexcel.version>3.3.4</easyexcel.version>
         <djl.version>0.31.1</djl.version>
-        <djl.pytorch.version>2.2.2</djl.pytorch.version>
         <onnxruntime.version>1.30.0</onnxruntime.version>
         <lombok.version>1.18.30</lombok.version>
     </properties>
@@ -94,42 +93,16 @@
             <version>${easyexcel.version}</version>
         </dependency>
 
-        <!-- DJL -->
-        <dependency>
-            <groupId>ai.djl</groupId>
-            <artifactId>api</artifactId>
-            <version>${djl.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>ai.djl.pytorch</groupId>
-            <artifactId>pytorch-engine</artifactId>
-            <version>${djl.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>ai.djl.pytorch</groupId>
-            <artifactId>pytorch-model-zoo</artifactId>
-            <version>${djl.version}</version>
-        </dependency>
-        <!-- PyTorch 原生库：默认 CPU（mvn package），本地 GPU 用 mvn package -P gpu -->
+        <!-- Hugging Face Tokenizer 仅用于构造 ONNX 输入，不加载或训练 PyTorch 模型。 -->
         <dependency>
             <groupId>ai.djl.huggingface</groupId>
             <artifactId>tokenizers</artifactId>
             <version>${djl.version}</version>
         </dependency>
         <dependency>
-            <groupId>ai.djl</groupId>
-            <artifactId>model-zoo</artifactId>
-            <version>${djl.version}</version>
-        </dependency>
-        <dependency>
             <groupId>com.microsoft.onnxruntime</groupId>
             <artifactId>onnxruntime</artifactId>
             <version>${onnxruntime.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>ai.djl.sentencepiece</groupId>
-            <artifactId>sentencepiece</artifactId>
-            <version>${djl.version}</version>
         </dependency>
 
         <!-- Lombok -->
@@ -224,22 +197,6 @@
     </build>
 
     <profiles>
-        <!-- 默认：CPU（Linux），CI/生产，JAR ~200MB -->
-        <profile>
-            <id>cpu</id>
-            <activation>
-                <activeByDefault>true</activeByDefault>
-            </activation>
-            <dependencies>
-                <dependency>
-                    <groupId>ai.djl.pytorch</groupId>
-                    <artifactId>pytorch-native-cpu</artifactId>
-                    <classifier>linux-x86_64</classifier>
-                    <version>${djl.pytorch.version}</version>
-                    <scope>runtime</scope>
-                </dependency>
-            </dependencies>
-        </profile>
         <!-- 浏览器 E2E：覆盖 Surefire 的 excludedGroups，否则 @Tag("e2e") 测试默认 0 条 -->
         <profile>
             <id>e2e</id>
@@ -254,19 +211,6 @@
                     </plugin>
                 </plugins>
             </build>
-        </profile>
-        <!-- 本地 GPU：mvn package -P gpu，需 NVIDIA + CUDA 12.1，JAR ~2.4GB -->
-        <profile>
-            <id>gpu</id>
-            <dependencies>
-                <dependency>
-                    <groupId>ai.djl.pytorch</groupId>
-                    <artifactId>pytorch-native-cu121</artifactId>
-                    <classifier>win-x86_64</classifier>
-                    <version>${djl.pytorch.version}</version>
-                    <scope>runtime</scope>
-                </dependency>
-            </dependencies>
         </profile>
     </profiles>
 </project>
