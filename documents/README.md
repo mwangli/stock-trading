@@ -1,7 +1,7 @@
-<!-- AI_GENERATE_START --- -->
+<!-- AI_GENERATE_START ----- -->
 # 项目文档索引
 
-`documents/` 与 `frontend/`、`backend/` 平级，保存跨端需求、设计、部署和迁移证据，不归属于任何单一代码端。
+`documents/` 与 `stock-frontend/`、`stock-backend/` 平级，保存跨端需求、设计和部署文档，不归属于任何单一代码端。
 
 ## 文档结构
 
@@ -13,18 +13,19 @@
 | **03-策略分析** | Java 候选排名与 T+1 策略 | [需求](03-策略分析/需求.md)、[设计](03-策略分析/设计.md) |
 | **04-交易执行** | Java 风控、订单、持仓和券商调用 | [需求](04-交易执行/需求.md)、[设计](04-交易执行/设计.md) |
 
-## 三端对应关系
+## 前后端对应关系
 
 | 代码端 | 路径 | 职责概要 |
 |---|---|---|
-| 前端 | `frontend/` | React 页面、状态展示和操作入口 |
-| 后端 | `backend/` | 数据、DJL 训练、PyTorch Engine 推理、策略、风控、调度和交易 |
+| 前端 | `stock-frontend/` | React 页面、状态展示和操作入口 |
+| 后端 | `stock-backend/` | 数据、DJL 训练、PyTorch Engine 推理、策略、风控、调度和交易 |
 
 ## 迁移状态
 
-- 顶层代码目录已收敛为 `frontend/`、`backend/` 和平级 `documents/`。
+- 顶层代码目录已收敛为 `stock-frontend/`、`stock-backend/` 和平级 `documents/`。
 - Python 与 ONNX Runtime 已移除，Java 同时承担 LSTM 训练和模型推理。
 - LSTM 小型参数与版本信息持久化到 MongoDB；情感大模型权重使用版本化本地目录。
 - 尚未完成真实数据训练、制品部署、2C4G 资源验证和生产回滚演练。
-- 2026-10-09 的 Python/ONNX 迁移文档仅作为历史决策证据，不再代表当前实现。
-<!-- AI_GENERATE_END --- -->
+- 模型训练与推理统一使用 Java DJL API + PyTorch Engine，不维护 Python 或 ONNX 旁路。
+- 线上节点可通过显式开关启用训练能力，但必须经过训练门禁，且候选版本与生产激活分离。
+<!-- AI_GENERATE_END ----- -->

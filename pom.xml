@@ -14,8 +14,8 @@
     <description>AI股票自动交易系统 - 父项目</description>
 
     <modules>
-        <module>backend</module>
-        <module>frontend</module>
+        <module>stock-backend</module>
+        <module>stock-frontend</module>
     </modules>
 
     <properties>
