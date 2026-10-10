@@ -21,7 +21,7 @@ env:
   ACR_REGISTRY: registry.cn-shenzhen.aliyuncs.com
   ACR_NAMESPACE: mwangli
   SERVER_HOST: 117.72.216.67
-  SERVER_FINGERPRINT: SHA256:ZzS3L/fa4kbpqQgBm25LN+8NvDnc7bmle9FI7f+3zEw
+  SERVER_FINGERPRINT: SHA256:gDa/rAj8rEMknPbae3cdGqaE4MFTROW6wuXA1bj7C8E
   IMAGE_REPOSITORY: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-front
 
 jobs:
