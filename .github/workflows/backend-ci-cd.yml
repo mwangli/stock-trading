@@ -21,7 +21,7 @@ concurrency:
 env:
   ACR_REGISTRY: registry.cn-shenzhen.aliyuncs.com
   ACR_NAMESPACE: mwangli
-  SERVER_HOST: 124.220.36.95
+  SERVER_HOST: ${{ secrets.SERVER_HOST }}
   SERVER_FINGERPRINT: SHA256:ZzS3L/fa4kbpqQgBm25LN+8NvDnc7bmle9FI7f+3zEw
   IMAGE_REPOSITORY: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-trading
 
