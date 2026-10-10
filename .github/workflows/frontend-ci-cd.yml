@@ -118,6 +118,14 @@ jobs:
             test -f .env
             test -f docker-compose.yml
 
+            docker_config="$(mktemp -d)"
+            export DOCKER_CONFIG="$docker_config"
+            cleanup_registry() {
+              docker logout "$ACR_REGISTRY" >/dev/null 2>&1 || true
+              rm -rf "$docker_config"
+            }
+            trap cleanup_registry EXIT
+
             previous_image="$(docker inspect --format '{{.Config.Image}}' stock-web 2>/dev/null || true)"
 
             rollback() {
@@ -163,5 +171,4 @@ jobs:
             test "$healthy" -eq 1
             trap - INT TERM HUP ERR
             docker compose --env-file .env ps stock-web
-            docker logout "$ACR_REGISTRY" >/dev/null 2>&1 || true
             DEPLOY_SCRIPT
