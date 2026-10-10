@@ -10,7 +10,7 @@ services:
   stock-web:
     image: ${STOCK_WEB_IMAGE:-stock-front:local}
     build:
-      context: ./frontend
+      context: ./stock-frontend
       dockerfile: Dockerfile
     container_name: stock-web
     depends_on:
@@ -30,7 +30,7 @@ services:
   stock-backend:
     image: ${STOCK_BACKEND_IMAGE:-stock-trading-backend:local}
     build:
-      context: ./backend
+      context: ./stock-backend
       dockerfile: Dockerfile
     container_name: stock-backend
     environment:

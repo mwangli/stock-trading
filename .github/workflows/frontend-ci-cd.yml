@@ -5,7 +5,7 @@ on:
     branches:
       - master
     paths:
-      - frontend/**
+      - stock-frontend/**
       - docker-compose.yml
       - .github/workflows/frontend-ci-cd.yml
   workflow_dispatch:
@@ -58,8 +58,8 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v7
         with:
-          context: frontend
-          file: frontend/Dockerfile
+          context: stock-frontend
+          file: stock-frontend/Dockerfile
           push: true
           tags: |
             ${{ steps.image.outputs.value }}

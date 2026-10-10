@@ -5,8 +5,9 @@ HELP.md
 
 # Maven
 target/
-frontend/target/
-backend/cp.txt
+stock-frontend/target/
+stock-backend/cp.txt
+stock-backend/app.jar
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
