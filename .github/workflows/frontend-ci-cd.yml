@@ -18,9 +18,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
-  ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
-  IMAGE_REPOSITORY: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/stock-front
+  ACR_REGISTRY: registry.cn-shenzhen.aliyuncs.com
+  ACR_NAMESPACE: mwangli
+  SERVER_HOST: 124.220.36.95
+  SERVER_FINGERPRINT: SHA256:82CaLvT6pyHT8iXQWbYIX7elzrwOoXcJBNx932qI7bU
+  IMAGE_REPOSITORY: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-front
 
 jobs:
   build-and-push:
