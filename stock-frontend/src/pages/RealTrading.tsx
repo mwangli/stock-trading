@@ -1,6 +1,6 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ---
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Card, Empty, Space, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Empty, Table, Tag, Typography } from 'antd';
 import { ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import request from '../utils/request';
 
@@ -85,23 +85,22 @@ const RealTrading: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+    <div className="app-page">
+      <div className="page-heading">
         <div>
-          <Title level={2} className="!mb-1 !text-white"><SafetyCertificateOutlined className="mr-2" />自动真实交易</Title>
-          <Text className="text-gray-400">模型自动选股、风控校验、真实委托和结果留痕</Text>
+          <Title level={2} className="page-title"><SafetyCertificateOutlined className="mr-2 text-blue-500" />自动真实交易</Title>
+          <Text className="page-subtitle">模型自动选股、风控校验、真实委托和结果留痕</Text>
         </div>
         <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadData()}>刷新</Button>
       </div>
 
       {error && <Alert type="warning" showIcon message={error} />}
-      <Card>
-        <Space wrap size="large">
-          <span>券商会话：<Tag color={status?.brokerAuthenticated ? 'green' : 'red'}>{status?.brokerAuthenticated ? '有效' : '无效'}</Tag></span>
-          <span>真实写入：<Tag color={status?.realWriteEnabled ? 'red' : 'default'}>{status?.realWriteEnabled ? '已开启' : '已关闭'}</Tag></span>
-          <span>自动执行：<Tag color={status?.automaticExecutionEnabled ? 'green' : 'default'}>{status?.automaticExecutionEnabled ? '就绪' : '停止'}</Tag></span>
-        </Space>
-      </Card>
+      <div className="metric-strip">
+        <div className="metric-strip-item"><div className="metric-label">券商会话</div><div className="metric-value">{status?.brokerAuthenticated ? '有效' : '无效'}</div><Tag color={status?.brokerAuthenticated ? 'green' : 'red'}>{status?.brokerAuthenticated ? '运行正常' : '需要登录'}</Tag></div>
+        <div className="metric-strip-item"><div className="metric-label">真实写入</div><div className="metric-value">{status?.realWriteEnabled ? '已开启' : '已关闭'}</div><Tag color={status?.realWriteEnabled ? 'red' : 'blue'}>{status?.realWriteEnabled ? '生产写入' : '只读观察'}</Tag></div>
+        <div className="metric-strip-item"><div className="metric-label">自动执行</div><div className="metric-value">{status?.automaticExecutionEnabled ? '就绪' : '停止'}</div><Tag color={status?.automaticExecutionEnabled ? 'green' : 'default'}>{status?.automaticExecutionEnabled ? '允许执行' : '受控状态'}</Tag></div>
+        <div className="metric-strip-item"><div className="metric-label">今日候选</div><div className="metric-value">{candidates.length}</div><Tag color="blue">模型信号</Tag></div>
+      </div>
 
       <Alert
         type={status?.automaticExecutionEnabled ? 'error' : 'info'}
@@ -109,7 +108,7 @@ const RealTrading: React.FC = () => {
         message={status?.automaticExecutionEnabled ? '自动交易已具备真实下单条件' : '自动交易未就绪，不会提交真实委托'}
       />
 
-      <Card>
+      <Card className="surface-card" title="今日模型候选">
         <Table
           rowKey="stockCode"
           columns={columns}
@@ -125,4 +124,4 @@ const RealTrading: React.FC = () => {
 };
 
 export default RealTrading;
-// AI_GENERATE_END -
+// AI_GENERATE_END ---

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Col, Empty, Row, Statistic, Table, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
@@ -76,11 +76,11 @@ const Dashboard: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="app-page">
+      <div className="page-heading">
         <div>
-          <Title level={2} className="!mb-1 !text-white">真实账户总览</Title>
-          <Text className="text-gray-400">数据直接来自中信证券只读接口</Text>
+          <Title level={2} className="page-title">真实账户总览</Title>
+          <Text className="page-subtitle">数据直接来自中信证券只读接口</Text>
         </div>
         <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadBrokerData()}>
           刷新
@@ -90,13 +90,13 @@ const Dashboard: React.FC = () => {
       {error && <Alert type="error" showIcon message={error} />}
 
       <Row gutter={[16, 16]}>
-        <Col xs={24} md={6}><Card loading={loading}><Statistic title="总资产" value={account?.totalAssets} precision={2} prefix="¥" /></Card></Col>
-        <Col xs={24} md={6}><Card loading={loading}><Statistic title="可用资金" value={account?.availableCash} precision={2} prefix="¥" /></Card></Col>
-        <Col xs={24} md={6}><Card loading={loading}><Statistic title="持仓市值" value={account?.totalPosition} precision={2} prefix="¥" /></Card></Col>
-        <Col xs={24} md={6}><Card loading={loading}><Statistic title="冻结资金" value={account?.frozenAmount} precision={2} prefix="¥" /></Card></Col>
+        <Col xs={24} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title="总资产" value={account?.totalAssets} precision={2} prefix="¥" /></Card></Col>
+        <Col xs={24} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title="可用资金" value={account?.availableCash} precision={2} prefix="¥" /></Card></Col>
+        <Col xs={24} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title="持仓市值" value={account?.totalPosition} precision={2} prefix="¥" /></Card></Col>
+        <Col xs={24} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title="冻结资金" value={account?.frozenAmount} precision={2} prefix="¥" /></Card></Col>
       </Row>
 
-      <Card title="当前持仓">
+      <Card className="surface-card" title="当前持仓">
         <Table
           rowKey={(record) => record.stockCode}
           columns={columns}
@@ -111,4 +111,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-// AI_GENERATE_END -
+// AI_GENERATE_END --

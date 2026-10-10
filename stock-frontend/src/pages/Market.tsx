@@ -1,12 +1,17 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 import React, { useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { Table, Input, Button, Select } from 'antd';
+import { Table, Input, Button, Select, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { SorterResult } from 'antd/es/table/interface';
+import type { EChartsOption, TooltipComponentFormatterCallbackParams } from 'echarts';
 import type { InputRef } from 'antd';
 import { SearchOutlined, ThunderboltOutlined, RiseOutlined, StarOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import request from '../utils/request';
+import { useAppTheme } from '../theme/AppThemeProvider';
+
+const { Text, Title } = Typography;
 interface StockInfo {
   code: string;
   name: string;
@@ -57,9 +62,22 @@ interface KlineData {
   volumes: number[];
 }
 
+interface MarketStatCard {
+  label: string;
+  value: React.ReactNode;
+  color: string;
+  icon: React.ReactNode;
+  isTopGainer?: boolean;
+  gainerProgress?: number;
+}
 
 const Market: React.FC = () => {
   const { t } = useTranslation();
+  const { mode } = useAppTheme();
+  const isDark = mode === 'dark';
+  const chartTextColor = isDark ? '#a9b6ca' : '#526078';
+  const chartBorderColor = isDark ? '#253047' : '#dce3ed';
+  const chartTooltipBackground = isDark ? 'rgba(13, 21, 36, 0.96)' : 'rgba(255, 255, 255, 0.98)';
 
   // 市场统计数据状态
   const [marketStats, setMarketStats] = useState<MarketStats | null>(null);
@@ -107,46 +125,50 @@ const Market: React.FC = () => {
     }
   };
 
-  // 动态生成K线图表配置
-  const chartOption = {
+  // 动态生成 K 线图表配置，并与全局明暗主题保持一致
+  const chartOption: EChartsOption = {
     backgroundColor: 'transparent',
+    textStyle: { color: chartTextColor },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'cross' },
-      backgroundColor: 'rgba(30, 30, 30, 0.9)',
-      borderColor: '#444',
-      textStyle: { color: '#fff' },
-      formatter: (params: any) => {
-        if (!params || params.length === 0) return '';
-        const data = params[0];
-        const date = data.name;
-        const klineData = data.data;
-        if (!klineData) return '';
-        const [open, close, lowest, highest] = klineData;
+      backgroundColor: chartTooltipBackground,
+      borderColor: chartBorderColor,
+      textStyle: { color: isDark ? '#eef4ff' : '#172033' },
+      formatter: (params: TooltipComponentFormatterCallbackParams) => {
+        const entries = Array.isArray(params) ? params : [params];
+        const data = entries[0];
+        const values = Array.isArray(data?.data) ? data.data : [];
+        const [open, close, lowest, highest] = values.map((value) => typeof value === 'number' ? value : undefined);
+        const formatPrice = (value: number | undefined) => value?.toFixed(2) ?? '--';
+        const labelColor = isDark ? '#8a96a8' : '#526078';
+        const valueColor = isDark ? '#eef4ff' : '#172033';
+
         return `
           <div style="font-size: 12px; line-height: 1.8;">
-            <div style="font-weight: bold; margin-bottom: 4px;">${date}</div>
-            <div><span style="color: #888;">${t('market.kline.open')}:</span> <span style="color: #fff;">¥${open?.toFixed(2) || '--'}</span></div>
-            <div><span style="color: #888;">${t('market.kline.close')}:</span> <span style="color: #fff;">¥${close?.toFixed(2) || '--'}</span></div>
-            <div><span style="color: #888;">${t('market.kline.lowest')}:</span> <span style="color: #ff4560;">¥${lowest?.toFixed(2) || '--'}</span></div>
-            <div><span style="color: #888;">${t('market.kline.highest')}:</span> <span style="color: #00e396;">¥${highest?.toFixed(2) || '--'}</span></div>
+            <div style="font-weight: 600; margin-bottom: 4px; color: ${valueColor};">${String(data?.name ?? '')}</div>
+            <div><span style="color: ${labelColor};">${t('market.kline.open')}:</span> <span style="color: ${valueColor};">¥${formatPrice(open)}</span></div>
+            <div><span style="color: ${labelColor};">${t('market.kline.close')}:</span> <span style="color: ${valueColor};">¥${formatPrice(close)}</span></div>
+            <div><span style="color: ${labelColor};">${t('market.kline.lowest')}:</span> <span style="color: #ef4444;">¥${formatPrice(lowest)}</span></div>
+            <div><span style="color: ${labelColor};">${t('market.kline.highest')}:</span> <span style="color: #16a34a;">¥${formatPrice(highest)}</span></div>
           </div>
         `;
       }
     },
-    grid: { left: '3%', right: '3%', bottom: '10%' },
+    grid: { left: '3%', right: '3%', bottom: '10%', containLabel: true },
     xAxis: {
       type: 'category',
       data: klineData.dates,
-      scale: true,
       boundaryGap: false,
-      axisLine: { lineStyle: { color: '#555' } },
+      axisLabel: { color: chartTextColor },
+      axisLine: { lineStyle: { color: chartBorderColor } },
       splitLine: { show: false }
     },
     yAxis: {
       scale: true,
-      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
-      axisLine: { lineStyle: { color: '#555' } }
+      axisLabel: { color: chartTextColor },
+      splitLine: { lineStyle: { color: chartBorderColor, opacity: 0.55 } },
+      axisLine: { lineStyle: { color: chartBorderColor } }
     },
     dataZoom: [{ type: 'inside', start: 50, end: 100 }],
     series: [
@@ -154,10 +176,10 @@ const Market: React.FC = () => {
         type: 'candlestick',
         data: klineData.kline,
         itemStyle: {
-          color: '#00e396',
-          color0: '#ff4560',
-          borderColor: '#00e396',
-          borderColor0: '#ff4560'
+          color: '#16a34a',
+          color0: '#ef4444',
+          borderColor: '#16a34a',
+          borderColor0: '#ef4444'
         }
       }
     ]
@@ -339,7 +361,7 @@ const Market: React.FC = () => {
       title: t('market.columns.symbol'),
       dataIndex: 'symbol',
       key: 'symbol',
-      render: (text: string, record: any) => (
+      render: (text: string, record: WatchlistItem) => (
         <div className="flex flex-col">
           <span className="font-bold text-white text-base tracking-wide">{text}</span>
           <span className="text-xs text-gray-500 truncate max-w-[100px]">{record.name}</span>
@@ -383,7 +405,7 @@ const Market: React.FC = () => {
       key: 'action',
       align: 'center',
       render: () => (
-        <Button size="small" type="primary" className="bg-[#00e396]/20 border border-[#00e396] text-[#00e396] hover:bg-[#00e396] hover:text-black">
+        <Button size="small" type="primary">
           {t('market.watchlist.trade')}
         </Button>
       )
@@ -400,7 +422,7 @@ const Market: React.FC = () => {
   };
 
   // 获取市场统计数据用于展示
-  const getStatsData = () => {
+  const getStatsData = (): MarketStatCard[] => {
     const stats = marketStats;
     return [
       {
@@ -425,7 +447,7 @@ const Market: React.FC = () => {
       {
         label: t('market.stats.totalVolume'),
         value: stats ? formatAmount(stats.totalAmount || 0) : '--',
-        color: '#fff',
+        color: 'var(--text-primary)',
         icon: <StarOutlined />
       },
       {
@@ -456,11 +478,18 @@ const Market: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex flex-col gap-6">
+    <div className="app-page">
+      <div className="page-heading">
+        <div>
+          <Title level={2} className="page-title">市场行情</Title>
+          <Text className="page-subtitle">查看市场广度、自选列表与股票 K 线走势</Text>
+        </div>
+      </div>
+
       {/* Top Bar Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {getStatsData().map((stat: any, idx: number) => (
-          <div key={idx} className="glass p-4 pl-6 flex items-center justify-between rounded-xl relative overflow-hidden">
+      <div className="metric-strip">
+        {getStatsData().map((stat, idx) => (
+          <div key={idx} className="metric-strip-item relative flex items-center justify-between overflow-hidden">
             {/* 领涨卡片的纵向进度条 */}
             {stat.isTopGainer && (
               <div className="absolute left-1 top-3 bottom-3 w-1 bg-white/10 rounded-full overflow-hidden">
@@ -471,8 +500,8 @@ const Market: React.FC = () => {
               </div>
             )}
             <div className="flex-1 ml-2">
-              <div className="text-gray-500 text-xs uppercase">{stat.label}</div>
-              <div className="text-xl font-bold font-mono mt-1" style={{ color: stat.color }}>{stat.value}</div>
+              <div className="metric-label">{stat.label}</div>
+              <div className="metric-value font-mono" style={{ color: stat.color }}>{stat.value}</div>
             </div>
             <div className="text-2xl opacity-20" style={{ color: stat.color }}>{stat.icon}</div>
           </div>
@@ -481,13 +510,13 @@ const Market: React.FC = () => {
 
       <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
         {/* Left: Watchlist */}
-        <div className="w-full lg:w-1/3 flex flex-col glass rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-white/10">
+        <div className="surface-card flex w-full flex-col overflow-hidden lg:w-1/3">
+          <div className="border-b border-[var(--border-color)] p-4">
             <Input
               ref={searchInputRef}
               prefix={<SearchOutlined className="text-gray-500" />}
               placeholder="搜索股票名称或代码"
-              className="bg-black/20 border-white/10 text-white rounded-lg"
+              className="!rounded"
               value={searchKeyword}
               onChange={(e) => setSearchKeyword(e.target.value)}
               onPressEnter={() => {
@@ -531,12 +560,13 @@ const Market: React.FC = () => {
                 fetchStocks(page, 9, searchKeyword);
               }
             }}
-            onChange={(_pagination, _filters, sorter: any) => {
-              if (sorter.field) {
-                const field = sorter.field as 'price' | 'change' | 'volumeValue';
+            onChange={(_pagination, _filters, sorter: SorterResult<WatchlistItem> | SorterResult<WatchlistItem>[]) => {
+              const activeSorter = Array.isArray(sorter) ? sorter[0] : sorter;
+              if (activeSorter?.field) {
+                const field = activeSorter.field as 'price' | 'change' | 'volumeValue';
                 setTableSorter({
                   field,
-                  order: sorter.order || null,
+                  order: activeSorter.order ?? null,
                 });
               }
             }}
@@ -548,10 +578,10 @@ const Market: React.FC = () => {
         </div>
 
         {/* Right: Chart */}
-        <div className="flex-1 glass rounded-xl p-6 flex flex-col min-h-[500px]">
+        <div className="surface-card flex min-h-[500px] flex-1 flex-col p-5">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h2 className="text-3xl font-bold text-white flex items-center gap-3">
+              <h2 className="flex items-center gap-3 text-2xl font-semibold text-[var(--text-primary)]">
                 {selectedStock?.code || '--'} <span className="text-lg text-gray-500 font-normal">{selectedStock?.name || '--'}</span>
               </h2>
               <div className="text-4xl font-mono font-bold text-[#00e396] mt-2">
@@ -568,7 +598,6 @@ const Market: React.FC = () => {
                 onChange={handleTimeRangeChange}
                 options={timeRangeOptions}
                 className="w-28"
-                popupClassName="dark-dropdown"
                 placeholder="选择时间范围"
               />
               {[
@@ -579,7 +608,7 @@ const Market: React.FC = () => {
                 <button 
                   key={item.key} 
                   onClick={() => handleKlineTypeChange(item.key as 'daily' | 'weekly' | 'monthly')}
-                  className={`px-3 py-1 rounded text-xs transition-colors ${klineType === item.key ? 'bg-[#00e396] text-black' : 'bg-white/5 hover:bg-[#00e396] hover:text-black'}`}
+                  className={`rounded px-3 py-1.5 text-xs transition-colors ${klineType === item.key ? 'bg-blue-600 text-white' : 'border border-[var(--border-color)] bg-[var(--panel-muted)] text-[var(--text-secondary)] hover:border-blue-500 hover:text-blue-600'}`}
                 >
                   {item.label}
                 </button>
@@ -601,4 +630,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END -
+// AI_GENERATE_END --

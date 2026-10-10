@@ -337,8 +337,8 @@
     },
     "options": {
       "theme": {
-        "dark": "Cyberpunk Dark",
-        "light": "Light (Coming Soon)"
+        "dark": "Dark Mode",
+        "light": "Light Mode"
       },
       "language": {
         "en": "English",
