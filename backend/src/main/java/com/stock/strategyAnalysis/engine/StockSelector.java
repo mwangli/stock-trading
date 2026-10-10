@@ -67,10 +67,10 @@ public class StockSelector {
             List<String> stockCodes = getTradableStockCodes();
 
             if (stockCodes.isEmpty()) {
-                log.warn("没有可用的 LSTM ONNX 模型制品");
+                log.warn("没有可用的 LSTM 激活模型版本");
                 return SelectionResult.builder()
                         .success(false)
-                        .errorMessage("没有可用的 LSTM ONNX 模型制品")
+                        .errorMessage("没有可用的 LSTM 激活模型版本")
                         .build();
             }
 

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------
+// AI_GENERATE_START -------------
 package com.stock.tradingExecutor.execution;
 
 import cn.hutool.http.HttpUtil;
@@ -30,6 +30,7 @@ public class ZXRequestUtils {
     private final ZXBrokerConfig brokerConfig;
     private final ZXBrokerTokenStore tokenStore;
     private final Object loginLock = new Object();
+    private volatile long loginBlockedUntilMillis;
 
     /**
      * 构建券商通用请求参数。
@@ -74,7 +75,7 @@ public class ZXRequestUtils {
      * 进程内缓存不存在 Token 时自动调用验证码登录；登录流程最多尝试三次。
      *
      * @return 可用于券商业务接口的 Token
-     * @throws IllegalStateException 券商未启用或登录三次失败时抛出
+     * @throws IllegalStateException 券商未启用、配置不完整、处于冷却期或登录失败时抛出
      */
     public String requireToken() {
         if (!Boolean.TRUE.equals(brokerConfig.getEnabled())) {
@@ -84,26 +85,17 @@ public class ZXRequestUtils {
         if (cachedToken != null && !cachedToken.isBlank()) {
             return cachedToken;
         }
+        validateLoginConfiguration();
 
         synchronized (loginLock) {
             cachedToken = getToken();
             if (cachedToken != null && !cachedToken.isBlank()) {
                 return cachedToken;
             }
+            rejectLoginDuringCooldown();
             log.warn("[ZXBroker] 进程内缓存中无可用 Token，开始验证码登录，最多尝试 {} 次",
-                    brokerConfig.getCaptchaMaxRetries());
-            String loginToken = loginConfiguredAccount();
-            if (loginToken == null || loginToken.isBlank()) {
-                log.error("[ZXBroker] 验证码登录连续 {} 次失败，无可用 Token，中断业务流程",
-                        brokerConfig.getCaptchaMaxRetries());
-                throw new IllegalStateException("券商登录连续三次失败，无可用 Token");
-            }
-            String storedToken = getToken();
-            if (storedToken == null || storedToken.isBlank()) {
-                log.error("[ZXBroker] 登录成功但进程内缓存中未读取到 Token，中断业务流程");
-                throw new IllegalStateException("券商 Token 未成功写入进程内缓存");
-            }
-            return storedToken;
+                    resolveCaptchaMaxRetries());
+            return executeConfiguredLogin();
         }
     }
 
@@ -180,7 +172,7 @@ public class ZXRequestUtils {
      * @return 登录成功后的 Token，失败返回 null
      */
     private String loginWithCaptcha(String account, String encodedPassword) {
-        int maxRetries = Math.max(1, Math.min(brokerConfig.getCaptchaMaxRetries(), 3));
+        int maxRetries = resolveCaptchaMaxRetries();
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 CaptchaChallenge challenge = requestArithmeticCaptcha();
@@ -204,13 +196,81 @@ public class ZXRequestUtils {
     /**
      * 使用运行环境中的资金账号和加密密码登录。
      *
-     * @return 登录成功后的 Token，失败返回 null
+     * @return 登录成功后的 Token
+     * @throws IllegalStateException 接入未启用、配置不完整、处于冷却期或登录失败时抛出
      */
     public String loginConfiguredAccount() {
-        if (brokerConfig.getAccount().isBlank() || brokerConfig.getEncodedPassword().isBlank()) {
+        if (!Boolean.TRUE.equals(brokerConfig.getEnabled())) {
+            throw new IllegalStateException("中信证券接入未启用");
+        }
+        String cachedToken = getToken();
+        if (cachedToken != null && !cachedToken.isBlank()) {
+            return cachedToken;
+        }
+        validateLoginConfiguration();
+        synchronized (loginLock) {
+            cachedToken = getToken();
+            if (cachedToken != null && !cachedToken.isBlank()) {
+                return cachedToken;
+            }
+            rejectLoginDuringCooldown();
+            log.warn("[ZXBroker] 收到显式登录请求，开始验证码登录，最多尝试 {} 次",
+                    resolveCaptchaMaxRetries());
+            return executeConfiguredLogin();
+        }
+    }
+
+    private String executeConfiguredLogin() {
+        String loginToken = loginWithCaptcha(brokerConfig.getAccount(), brokerConfig.getEncodedPassword());
+        if (loginToken == null || loginToken.isBlank()) {
+            int cooldownSeconds = resolveLoginFailureCooldownSeconds();
+            loginBlockedUntilMillis = System.currentTimeMillis() + cooldownSeconds * 1000L;
+            log.error("[ZXBroker] 验证码登录连续 {} 次失败，暂停自动重试 {} 秒",
+                    resolveCaptchaMaxRetries(), cooldownSeconds);
+            throw new IllegalStateException("券商登录失败，已进入 " + cooldownSeconds + " 秒冷却期");
+        }
+        String storedToken = getToken();
+        if (storedToken == null || storedToken.isBlank()) {
+            log.error("[ZXBroker] 登录成功但进程内缓存中未读取到 Token，中断业务流程");
+            throw new IllegalStateException("券商 Token 未成功写入进程内缓存");
+        }
+        loginBlockedUntilMillis = 0L;
+        return storedToken;
+    }
+
+    private void validateLoginConfiguration() {
+        if (isBlank(brokerConfig.getAccount()) || isBlank(brokerConfig.getEncodedPassword())) {
             throw new IllegalStateException("未配置券商资金账号或加密密码");
         }
-        return loginWithCaptcha(brokerConfig.getAccount(), brokerConfig.getEncodedPassword());
+        if (!Boolean.TRUE.equals(brokerConfig.getCaptchaAutoSubmitEnabled())) {
+            throw new IllegalStateException("券商验证码自动提交未启用，请设置 ZXBROKER_CAPTCHA_AUTO_SUBMIT_ENABLED=true");
+        }
+        if (isBlank(brokerConfig.getBaiduOcrApiKey()) || isBlank(brokerConfig.getBaiduOcrSecretKey())) {
+            throw new IllegalStateException("未配置百度 OCR 凭据");
+        }
+    }
+
+    private void rejectLoginDuringCooldown() {
+        long remainingMillis = loginBlockedUntilMillis - System.currentTimeMillis();
+        if (remainingMillis <= 0) {
+            return;
+        }
+        long remainingSeconds = Math.max(1L, (remainingMillis + 999L) / 1000L);
+        throw new IllegalStateException("券商登录处于失败冷却期，请在 " + remainingSeconds + " 秒后重试");
+    }
+
+    private int resolveCaptchaMaxRetries() {
+        Integer configured = brokerConfig.getCaptchaMaxRetries();
+        return configured == null ? 3 : Math.max(1, Math.min(configured, 3));
+    }
+
+    private int resolveLoginFailureCooldownSeconds() {
+        Integer configured = brokerConfig.getLoginFailureCooldownSeconds();
+        return configured == null ? 30 : Math.max(1, configured);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private CaptchaChallenge requestArithmeticCaptcha() {
@@ -250,4 +310,4 @@ public class ZXRequestUtils {
     private record CaptchaChallenge(byte[] imageBytes, String checkToken) {
     }
 }
-// AI_GENERATE_END ----------
+// AI_GENERATE_END -------------
