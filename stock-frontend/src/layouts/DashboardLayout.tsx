@@ -1,27 +1,32 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START --------
 import React, { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Button } from 'antd';
+import { Avatar, Badge, Button, Layout, Menu, Tooltip } from 'antd';
 import { useTranslation } from 'react-i18next';
 import {
+  BellOutlined,
   DesktopOutlined,
   SettingOutlined,
   StockOutlined,
   MenuUnfoldOutlined,
-  MenuFoldOutlined,
   HistoryOutlined,
   TransactionOutlined,
   FileTextOutlined,
   ExperimentOutlined,
+  MoonOutlined,
+  SunOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
+import { useAppTheme } from '../theme/AppThemeProvider';
 
 const { Header, Content, Sider } = Layout;
 
 const DashboardLayout: React.FC = () => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [mobileCollapsed, setMobileCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
+  const { mode, toggleMode } = useAppTheme();
 
   const changeLanguage = () => {
     const newLang = i18n.language === 'en' ? 'zh' : 'en';
@@ -39,92 +44,86 @@ const DashboardLayout: React.FC = () => {
     { key: '/settings', icon: <SettingOutlined />, label: t('layout.settings') },
   ];
 
+  const pageTitles: Record<string, string> = {
+    '/dashboard': '数据总览',
+    '/market': '市场行情',
+    '/transactions': '交易记录',
+    '/real-trading': '真实交易',
+    '/logs': '运行日志',
+    '/model-operations': '模型运维',
+    '/settings': '系统设置',
+  };
+
   return (
-    <Layout style={{ minHeight: '100vh', background: '#050505' }}>
-      <Sider 
-        trigger={null} 
-        collapsible 
-        collapsed={collapsed}
-        width={250}
-        style={{ 
-          background: '#0a0c10', 
-          borderRight: '1px solid rgba(255,255,255,0.05)',
-        }}
-        className="shadow-2xl z-20"
+    <Layout className="app-shell">
+      <Sider
+        trigger={null}
+        collapsible
+        collapsed={mobileCollapsed}
+        collapsedWidth={0}
+        breakpoint="lg"
+        onBreakpoint={setMobileCollapsed}
+        width={76}
+        className="app-sidebar"
       >
-        <div className="h-16 flex items-center justify-center border-b border-white/5 mx-4 mb-4">
-          {!collapsed ? (
-            <span className="text-xl font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[#00e396] to-[#00b374]">
-              {t('layout.title')}
-            </span>
-          ) : (
-            <StockOutlined className="text-2xl text-[#00e396]" />
-          )}
+        <div className="app-logo" title={t('layout.title')}>
+          <StockOutlined />
         </div>
 
         <Menu
-          theme="dark"
+          theme={mode}
           mode="inline"
+          inlineCollapsed
           defaultSelectedKeys={[location.pathname]}
           selectedKeys={[location.pathname]}
-          style={{ background: 'transparent', borderRight: 0 }}
           items={menuItems}
-          onClick={({ key }) => navigate(key)}
-          className="px-2"
+          onClick={({ key }) => {
+            navigate(key);
+            if (window.innerWidth < 992) {
+              setMobileCollapsed(true);
+            }
+          }}
+          className="app-menu"
         />
-
       </Sider>
 
-      <Layout style={{ background: '#050505' }}>
-        <Header 
-          style={{ 
-            padding: '0 24px', 
-            background: 'rgba(5, 5, 5, 0.8)', 
-            backdropFilter: 'blur(10px)',
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            height: '64px',
-            position: 'sticky',
-            top: 0,
-            zIndex: 10
-          }}
-        >
-          <div className="flex items-center gap-4">
-             <Button
-                type="text"
-                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                onClick={() => setCollapsed(!collapsed)}
-                style={{
-                  fontSize: '16px',
-                  width: 64,
-                  height: 64,
-                  color: '#fff'
-                }}
-              />
+      <Layout className="app-main-layout">
+        <Header className="app-header">
+          <div className="flex min-w-0 items-center gap-3">
+            <Button
+              type="text"
+              className="lg:!hidden"
+              icon={<MenuUnfoldOutlined />}
+              onClick={() => setMobileCollapsed(false)}
+            />
+            <div className="min-w-0">
+              <div className="truncate text-base font-semibold">{pageTitles[location.pathname] ?? '智能交易终端'}</div>
+              <div className="text-xs text-[var(--text-muted)]">Stock Operations Console</div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-4 sm:gap-6">
-            <Button 
-              type="text" 
-              className="text-[#00e396] border border-[#00e396]/20 hover:bg-[#00e396]/10 font-mono text-xs px-3 h-8 shrink-0"
+          <div className="flex items-center gap-2">
+            <div className="hidden items-center gap-2 rounded border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] md:flex">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />系统在线
+            </div>
+            <Tooltip title={mode === 'dark' ? '切换浅色模式' : '切换深色模式'}>
+              <Button type="text" icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />} onClick={toggleMode} />
+            </Tooltip>
+            <Button
+              type="text"
+              className="!h-8 !px-2 text-xs"
               onClick={changeLanguage}
             >
               {i18n.language === 'en' ? 'EN' : '中文'}
             </Button>
+            <Badge dot color="#22c55e">
+              <Button type="text" icon={<BellOutlined />} />
+            </Badge>
+            <Avatar size={30} icon={<UserOutlined />} className="!bg-blue-100 !text-blue-700" />
           </div>
         </Header>
 
-        <Content 
-          style={{ 
-            margin: '24px 16px', 
-            padding: 24, 
-            minHeight: 280, 
-            background: 'transparent',
-            overflowY: 'auto'
-          }}
-        >
+        <Content className="app-content">
           <Outlet />
         </Content>
       </Layout>
@@ -133,4 +132,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END ------
+// AI_GENERATE_END --------

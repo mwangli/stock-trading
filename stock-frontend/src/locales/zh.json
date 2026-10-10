@@ -339,8 +339,8 @@
     },
     "options": {
       "theme": {
-        "dark": "赛博朋克暗色",
-        "light": "亮色 (即将推出)"
+        "dark": "深色模式",
+        "light": "浅色模式"
       },
       "language": {
         "en": "English",

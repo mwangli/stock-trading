@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Card, Empty, Input, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
 import { HistoryOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
@@ -111,16 +111,16 @@ const Transactions: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="app-page">
+      <div className="page-heading">
         <div>
-          <Title level={2} className="!mb-1 !text-white"><HistoryOutlined className="mr-2" />真实交易记录</Title>
-          <Text className="text-gray-400">仅展示中信证券返回的委托和成交</Text>
+          <Title level={2} className="page-title"><HistoryOutlined className="mr-2 text-blue-500" />真实交易记录</Title>
+          <Text className="page-subtitle">仅展示中信证券返回的委托和成交</Text>
         </div>
         <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadTransactions()}>刷新</Button>
       </div>
       {error && <Alert type="error" showIcon message={error} />}
-      <Card>
+      <Card className="surface-card">
         <Space className="mb-4">
           <Input prefix={<SearchOutlined />} placeholder="股票代码或名称" value={searchText} onChange={(event) => setSearchText(event.target.value)} allowClear />
           <Select value={direction} onChange={setDirection} options={[{ value: 'ALL', label: '全部方向' }, { value: 'BUY', label: '买入' }, { value: 'SELL', label: '卖出' }]} />
@@ -132,4 +132,4 @@ const Transactions: React.FC = () => {
 };
 
 export default Transactions;
-// AI_GENERATE_END -
+// AI_GENERATE_END --

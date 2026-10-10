@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START ------
 import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Spin } from 'antd';
@@ -43,4 +43,4 @@ function App() {
 }
 
 export default App;
-// AI_GENERATE_END ----
+// AI_GENERATE_END ------

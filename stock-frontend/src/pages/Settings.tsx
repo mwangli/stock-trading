@@ -1,107 +1,124 @@
+// AI_GENERATE_START -
 import React, { useState } from 'react';
-import { Form, Input, Switch, Button, Select, Divider, message } from 'antd';
-import { SaveOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button, Card, Form, Input, InputNumber, Select, Switch, Typography, message } from 'antd';
+import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
+import { useAppTheme, type ThemeMode } from '../theme/AppThemeProvider';
 
-const { Option } = Select;
+const { Text, Title } = Typography;
+
+interface SettingsFormValues {
+  theme: ThemeMode;
+  language: 'en' | 'zh';
+  notifications: boolean;
+  apiKey: string;
+  refreshRate: number;
+  riskLevel: 'conservative' | 'moderate' | 'aggressive';
+  maxDrawdown: number;
+}
 
 const Settings: React.FC = () => {
-  const [form] = Form.useForm();
-  const { t } = useTranslation();
+  const [form] = Form.useForm<SettingsFormValues>();
+  const { t, i18n } = useTranslation();
+  const { mode, setMode } = useAppTheme();
   const [loading, setLoading] = useState(false);
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: SettingsFormValues) => {
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log(values);
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 500));
+    setMode(values.theme);
+    await i18n.changeLanguage(values.language);
     message.success(t('settings.successMsg'));
     setLoading(false);
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 glass rounded-2xl">
-      <div className="flex justify-between items-center mb-8 border-b border-white/10 pb-4">
-        <h1 className="text-3xl font-bold text-white">{t('settings.title')}</h1>
-        <Button 
-          type="primary" 
-          icon={<SaveOutlined />} 
+    <div className="app-page max-w-6xl">
+      <div className="page-heading">
+        <div>
+          <Title level={2} className="page-title">{t('settings.title')}</Title>
+          <Text className="page-subtitle">管理界面偏好、数据连接与交易风险参数</Text>
+        </div>
+        <Button
+          type="primary"
+          icon={<SaveOutlined />}
           loading={loading}
           onClick={() => form.submit()}
-          className="bg-[#00e396] text-black border-none font-bold"
         >
           {t('settings.save')}
         </Button>
       </div>
 
-      <Form
+      <Form<SettingsFormValues>
         form={form}
         layout="vertical"
         onFinish={onFinish}
         initialValues={{
-          theme: 'dark',
-          language: 'en',
+          theme: mode,
+          language: i18n.language.startsWith('zh') ? 'zh' : 'en',
           notifications: true,
           apiKey: '************************',
+          refreshRate: 1000,
           riskLevel: 'moderate',
           maxDrawdown: 15,
         }}
-        className="space-y-8"
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* General Settings */}
-          <section>
-            <h3 className="text-xl font-bold text-[#00e396] mb-4">{t('settings.sections.general')}</h3>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <Card className="surface-card" title={t('settings.sections.general')}>
             <Form.Item label={t('settings.fields.theme')} name="theme">
-              <Select className="bg-white/5 border-white/10 text-white">
-                <Option value="dark">{t('settings.options.theme.dark')}</Option>
-                <Option value="light" disabled>{t('settings.options.theme.light')}</Option>
-              </Select>
+              <Select
+                options={[
+                  { value: 'light', label: t('settings.options.theme.light') },
+                  { value: 'dark', label: t('settings.options.theme.dark') },
+                ]}
+              />
             </Form.Item>
             <Form.Item label={t('settings.fields.language')} name="language">
-              <Select className="bg-white/5 border-white/10 text-white">
-                <Option value="en">{t('settings.options.language.en')}</Option>
-                <Option value="zh">{t('settings.options.language.zh')}</Option>
-              </Select>
+              <Select
+                options={[
+                  { value: 'zh', label: t('settings.options.language.zh') },
+                  { value: 'en', label: t('settings.options.language.en') },
+                ]}
+              />
             </Form.Item>
-            <Form.Item label={t('settings.fields.notifications')} name="notifications" valuePropName="checked">
-              <Switch className="bg-gray-600" />
+            <Form.Item label={t('settings.fields.notifications')} name="notifications" valuePropName="checked" className="!mb-0">
+              <Switch />
             </Form.Item>
-          </section>
+          </Card>
 
-          {/* API & Data */}
-          <section>
-            <h3 className="text-xl font-bold text-[#00e396] mb-4">{t('settings.sections.api')}</h3>
+          <Card className="surface-card" title={t('settings.sections.api')}>
             <Form.Item label={t('settings.fields.apiKey')} name="apiKey">
-              <Input.Password className="bg-white/5 border-white/10 text-white" />
+              <Input.Password />
             </Form.Item>
-            <Form.Item label={t('settings.fields.refreshRate')} name="refreshRate" initialValue={1000}>
-               <Input type="number" className="bg-white/5 border-white/10 text-white" />
+            <Form.Item label={t('settings.fields.refreshRate')} name="refreshRate">
+              <InputNumber min={250} max={60000} step={250} className="!w-full" />
             </Form.Item>
-            <Button icon={<ReloadOutlined />} className="mt-2 bg-transparent text-[#00e396] border-[#00e396]">{t('settings.testConnection')}</Button>
-          </section>
-        </div>
+            <Button icon={<ReloadOutlined />} onClick={() => message.info('连接检测请求已发送')}>
+              {t('settings.testConnection')}
+            </Button>
+          </Card>
 
-        <Divider className="border-white/10" />
-
-        {/* Risk Management */}
-          <section>
-            <h3 className="text-xl font-bold text-[#ff4560] mb-4">{t('settings.sections.risk')}</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <Card className="surface-card lg:col-span-2" title={t('settings.sections.risk')}>
+            <div className="grid grid-cols-1 gap-x-6 md:grid-cols-2">
               <Form.Item label={t('settings.fields.riskLevel')} name="riskLevel">
-                <Select className="bg-white/5 border-white/10 text-white">
-                  <Option value="conservative">{t('settings.options.risk.conservative')}</Option>
-                  <Option value="moderate">{t('settings.options.risk.moderate')}</Option>
-                  <Option value="aggressive">{t('settings.options.risk.aggressive')}</Option>
-                </Select>
+                <Select
+                  options={[
+                    { value: 'conservative', label: t('settings.options.risk.conservative') },
+                    { value: 'moderate', label: t('settings.options.risk.moderate') },
+                    { value: 'aggressive', label: t('settings.options.risk.aggressive') },
+                  ]}
+                />
               </Form.Item>
               <Form.Item label={t('settings.fields.maxDrawdown')} name="maxDrawdown">
-                 <Input type="number" suffix="%" className="bg-white/5 border-white/10 text-white" />
+                <InputNumber min={1} max={100} suffix="%" className="!w-full" />
               </Form.Item>
             </div>
-          </section>
+          </Card>
+        </div>
       </Form>
     </div>
   );
 };
 
 export default Settings;
+// AI_GENERATE_END -

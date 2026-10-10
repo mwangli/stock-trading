@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START ------
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import {
@@ -379,13 +379,13 @@ const ModelOperations: React.FC = () => {
   const switchBlocked = Boolean(overview?.tradingTime || overview?.trainingRunning);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div className="app-page">
+      <div className="page-heading flex-col lg:flex-row">
         <div>
-          <Title level={2} className="!mb-1 !text-white">
-            <ExperimentOutlined className="mr-2" />模型运维
+          <Title level={2} className="page-title">
+            <ExperimentOutlined className="mr-2 text-blue-500" />模型运维
           </Title>
-          <Text className="text-gray-400">模型版本、训练门禁、候选激活与生产回滚</Text>
+          <Text className="page-subtitle">模型版本、训练门禁、候选激活与生产回滚</Text>
         </div>
         <Space wrap>
           <Input
@@ -422,7 +422,7 @@ const ModelOperations: React.FC = () => {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} md={12} xl={6}>
-          <Card loading={loading}>
+          <Card className="surface-card compact-card" loading={loading}>
             <Statistic
               title="生产版本"
               value={overview?.activeVersion?.modelVersion || '未激活'}
@@ -436,7 +436,7 @@ const ModelOperations: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <Card loading={loading}>
+          <Card className="surface-card compact-card" loading={loading}>
             <Statistic
               title="上一版本"
               value={overview?.previousVersion?.modelVersion || '无'}
@@ -463,7 +463,7 @@ const ModelOperations: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <Card loading={loading}>
+          <Card className="surface-card compact-card" loading={loading}>
             <Statistic
               title="节点训练能力"
               value={overview?.trainingEnabled ? '已开启' : '已关闭'}
@@ -477,7 +477,7 @@ const ModelOperations: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <Card loading={loading}>
+          <Card className="surface-card compact-card" loading={loading}>
             <Statistic
               title="最近训练"
               value={overview?.latestTrainingRun?.status || '无记录'}
@@ -490,7 +490,7 @@ const ModelOperations: React.FC = () => {
         </Col>
       </Row>
 
-      <Card title="模型版本">
+      <Card className="surface-card" title="模型版本">
         <Table<ModelVersion>
           rowKey="id"
           columns={versionColumns}
@@ -506,15 +506,12 @@ const ModelOperations: React.FC = () => {
             showTotal: (total) => `共 ${total} 个版本`,
             onChange: (current) => {
               setVersionPage(current);
-              void loadVersions(current).catch((cause: unknown) => {
-                setError(getErrorMessage(cause, '读取模型版本失败'));
-              });
             },
           }}
         />
       </Card>
 
-      <Card title="训练记录">
+      <Card className="surface-card" title="训练记录">
         <Table<TrainingRun>
           rowKey="id"
           columns={runColumns}
@@ -530,9 +527,6 @@ const ModelOperations: React.FC = () => {
             showTotal: (total) => `共 ${total} 次训练`,
             onChange: (current) => {
               setRunPage(current);
-              void loadTrainingRuns(current).catch((cause: unknown) => {
-                setError(getErrorMessage(cause, '读取训练记录失败'));
-              });
             },
           }}
         />
@@ -627,4 +621,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END ----
+// AI_GENERATE_END ------
