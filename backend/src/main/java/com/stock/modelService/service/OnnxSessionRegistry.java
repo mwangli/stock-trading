@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.modelService.service;
 
 import ai.onnxruntime.OrtEnvironment;
@@ -25,7 +25,7 @@ public class OnnxSessionRegistry {
 
     private final OnnxInferenceConfig config;
     private final OnnxArtifactValidator artifactValidator;
-    private final OrtEnvironment environment = OrtEnvironment.getEnvironment();
+    private volatile OrtEnvironment environment;
     private final Map<Path, SessionHandle> sessions = new ConcurrentHashMap<>();
 
     /**
@@ -45,13 +45,27 @@ public class OnnxSessionRegistry {
     private SessionHandle createSession(Path artifactDir) {
         OnnxArtifactValidator.ValidatedOnnxArtifact artifact = artifactValidator.validate(artifactDir);
         try {
+            OrtEnvironment currentEnvironment = environment();
             OrtSession.SessionOptions options = new OrtSession.SessionOptions();
             options.setIntraOpNumThreads(config.getIntraOpThreads());
             options.setInterOpNumThreads(config.getInterOpThreads());
-            OrtSession session = environment.createSession(artifact.modelPath().toString(), options);
-            return new SessionHandle(environment, session, artifact);
+            OrtSession session = currentEnvironment.createSession(artifact.modelPath().toString(), options);
+            return new SessionHandle(currentEnvironment, session, artifact);
         } catch (OrtException exception) {
             throw new IllegalStateException("创建 ONNX Session 失败", exception);
+        }
+    }
+
+    private OrtEnvironment environment() {
+        OrtEnvironment currentEnvironment = environment;
+        if (currentEnvironment != null) {
+            return currentEnvironment;
+        }
+        synchronized (this) {
+            if (environment == null) {
+                environment = OrtEnvironment.getEnvironment();
+            }
+            return environment;
         }
     }
 
@@ -75,4 +89,4 @@ public class OnnxSessionRegistry {
             OnnxArtifactValidator.ValidatedOnnxArtifact artifact) {
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---
