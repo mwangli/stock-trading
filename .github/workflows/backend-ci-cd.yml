@@ -19,11 +19,15 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  ACR_REGISTRY: registry.cn-shenzhen.aliyuncs.com
-  ACR_NAMESPACE: mwangli
-  SERVER_HOST: 117.72.216.67
-  SERVER_FINGERPRINT: SHA256:gDa/rAj8rEMknPbae3cdGqaE4MFTROW6wuXA1bj7C8E
-  IMAGE_REPOSITORY: registry.cn-shenzhen.aliyuncs.com/mwangli/stock-trading
+  ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
+  ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+  ACR_USERNAME: ${{ vars.ACR_USERNAME }}
+  SERVER_HOST: ${{ vars.SERVER_HOST }}
+  SERVER_PORT: ${{ vars.SERVER_PORT }}
+  SERVER_USER: ${{ vars.SERVER_USER }}
+  SERVER_DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
+  SERVER_FINGERPRINT: ${{ vars.SERVER_FINGERPRINT }}
+  IMAGE_REPOSITORY: ${{ format('{0}/{1}/{2}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME) }}
 
 jobs:
   build-and-push:
@@ -69,7 +73,7 @@ jobs:
         uses: docker/login-action@v4
         with:
           registry: ${{ env.ACR_REGISTRY }}
-          username: ${{ secrets.ACR_USERNAME }}
+          username: ${{ env.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
       - name: Resolve immutable image tag
@@ -107,27 +111,27 @@ jobs:
         uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ env.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
+          username: ${{ env.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
-          port: ${{ secrets.SERVER_PORT || 22 }}
+          port: ${{ env.SERVER_PORT }}
           fingerprint: ${{ env.SERVER_FINGERPRINT }}
           source: docker-compose.yml
-          target: ${{ secrets.SERVER_DEPLOY_DIR }}
+          target: ${{ env.SERVER_DEPLOY_DIR }}
           overwrite: true
 
       - name: Pull image and restart backend
         uses: appleboy/ssh-action@v1.2.5
         env:
           DEPLOY_IMAGE: ${{ needs.build-and-push.outputs.image }}
-          DEPLOY_DIR: ${{ secrets.SERVER_DEPLOY_DIR }}
+          DEPLOY_DIR: ${{ env.SERVER_DEPLOY_DIR }}
           ACR_REGISTRY: ${{ env.ACR_REGISTRY }}
-          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_USERNAME: ${{ env.ACR_USERNAME }}
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
         with:
           host: ${{ env.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
+          username: ${{ env.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
-          port: ${{ secrets.SERVER_PORT || 22 }}
+          port: ${{ env.SERVER_PORT }}
           fingerprint: ${{ env.SERVER_FINGERPRINT }}
           envs: DEPLOY_IMAGE,DEPLOY_DIR,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
           command_timeout: 12m
