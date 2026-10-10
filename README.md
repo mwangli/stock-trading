@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START ---------------- -->
+<!-- AI_GENERATE_START ------------------- -->
 # Stock Trading - AI 股票自动交易系统
 
 # 项目演示
@@ -69,8 +69,8 @@
 
 ```text
 stock-trading4/
-├── frontend/                       # React + Vite 前端
-├── backend/                        # Java 训练、DJL/PyTorch 推理、风控和交易
+├── stock-frontend/                 # React + Vite 前端
+├── stock-backend/                  # Java 训练、DJL/PyTorch 推理、风控和交易
 ├── documents/                      # 与前后端平级的系统设计和运维文档
 ├── docker-compose.yml              # 在线服务、数据库和模型运行环境
 ├── .env.example
@@ -81,8 +81,8 @@ stock-trading4/
 
 职责边界：
 
-- `frontend/` 只负责页面展示和操作。
-- `backend/` 负责数据采集、DJL 模型训练、PyTorch Engine 推理、策略、风控、调度和券商调用。
+- `stock-frontend/` 只负责页面展示和操作。
+- `stock-backend/` 负责数据采集、DJL 模型训练、PyTorch Engine 推理、策略、风控、调度和券商调用。
 - `documents/` 保存跨端需求、架构、模型契约、部署和回滚文档。
 
 ---
@@ -108,7 +108,7 @@ docker compose up -d stock-mysql stock-mongo
 #### 2. 启动后端
 
 ```bash
-cd backend
+cd stock-backend
 
 # 编译并启动
 mvn spring-boot:run
@@ -120,7 +120,7 @@ mvn spring-boot:run
 #### 3. 启动前端 (开发模式)
 
 ```bash
-cd frontend
+cd stock-frontend
 
 # 安装依赖
 npm install
@@ -151,14 +151,14 @@ docker compose --env-file .env logs -f
 # 后端 API: http://localhost:8080
 ```
 
-常规运行参数已经直接写入 `docker-compose.yml` 或 `backend/src/main/resources/application.yml`。
+常规运行参数已经直接写入 `docker-compose.yml` 或 `stock-backend/src/main/resources/application.yml`。
 `.env` 仅保留敏感凭据、高风险能力门禁和数据库持久化约束，避免重复维护普通配置。CI/CD 在部署命令中分别注入前端、后端不可变镜像标签，不会并发改写服务器 `.env`。
 
 ### 前后端自动部署
 
 推送到 `master` 后，GitHub Actions 会按变更目录分别执行后端或前端流水线。两条流水线使用独立并发组，可以同时构建、推送和部署；每条流水线仅重建自己的容器。
 
-后端改动涉及 `backend/`、根 `pom.xml` 或 `docker-compose.yml` 时：
+后端改动涉及 `stock-backend/`、根 `pom.xml` 或 `docker-compose.yml` 时：
 
 1. 使用 Java 17 打包后端。
 2. 构建并推送 `latest` 和提交 SHA 两个 ACR 镜像标签。
@@ -166,7 +166,7 @@ docker compose --env-file .env logs -f
 4. 只重建 `stock-backend`，不重启 MySQL、MongoDB 或前端。
 5. 等待容器健康检查；失败时自动恢复上一个后端镜像。
 
-前端改动涉及 `frontend/` 或 `docker-compose.yml` 时：
+前端改动涉及 `stock-frontend/` 或 `docker-compose.yml` 时：
 
 1. 使用前端 Dockerfile 完成依赖安装和生产构建。
 2. 构建并推送 `latest` 和提交 SHA 两个 ACR 镜像标签。
@@ -228,7 +228,7 @@ Python 和 ONNX Runtime 已移除。生产容器必须包含与 DJL 版本匹配
 
 ### 交易执行模块 (com.stock.tradingExecutor)
 
-- 风控检查 (止损/仓位/熔断)
+- 风控检查 (止损/仓位)
 - 订单执行
 - 持仓管理
 - 交易记录
@@ -272,7 +272,7 @@ Python 和 ONNX Runtime 已移除。生产容器必须包含与 DJL 版本匹配
 
 ## 开发流程
 
-1. **需求分析**: 更新 `docs/` 下的需求与设计文档
+1. **需求分析**: 更新 `documents/` 下的需求与设计文档
 2. **设计评审**: 按模块维护设计文档
 3. **代码实现**: 按照 AGENTS.md 规范编写代码
 4. **代码审查**: 确保 lint 通过、逻辑与文档一致
@@ -378,7 +378,7 @@ docker compose --env-file .env logs -f backend
 
 ### 文档中心
 
-所有核心需求与设计文档位于 `docs/` 目录：
+所有核心需求与设计文档位于 `documents/` 目录：
 
 - [文档索引](documents/README.md) - 文档结构和快速入口
 - [00-系统架构 - 需求](documents/00-系统架构/需求.md)
@@ -406,7 +406,7 @@ docker compose --env-file .env ps
 
 ### 2. 前端白屏
 
-检查后端是否正常启动，前端静态文件是否正确打包到 `backend/src/main/resources/static`
+检查后端是否正常启动，并确认 `stock-frontend` 镜像中的静态文件已正确生成和由 Nginx 提供服务。
 
 ### 3. 数据采集失败
 
@@ -427,4 +427,4 @@ MIT License
 ## 联系方式
 
 如有问题请提交 Issue 或联系开发团队。
-<!-- AI_GENERATE_END ---------------- -->
+<!-- AI_GENERATE_END ------------------- -->

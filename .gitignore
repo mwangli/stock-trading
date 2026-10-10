@@ -83,3 +83,8 @@ backups/
 **/.pytest_cache/
 **/.ruff_cache/
 *.pyc
+
+graft
+.idea
+.tmp
+.env
