@@ -5,7 +5,7 @@ on:
     branches:
       - master
     paths:
-      - backend/**
+      - stock-backend/**
       - pom.xml
       - docker-compose.yml
       - .github/workflows/backend-ci-cd.yml
@@ -50,21 +50,21 @@ jobs:
           cache: maven
           cache-dependency-path: |
             pom.xml
-            backend/pom.xml
+            stock-backend/pom.xml
           verify-signature: true
 
       - name: Package backend
         run: |
           set -Eeuo pipefail
           mvn --batch-mode --no-transfer-progress \
-            --file backend/pom.xml \
+            --file stock-backend/pom.xml \
             clean package -DskipTests
 
-          jar_path="$(find backend/target -maxdepth 1 -type f \
-            -name 'stock-trading-backend-*.jar' \
+          jar_path="$(find stock-backend/target -maxdepth 1 -type f \
+            -name 'stock-backend-*.jar' \
             ! -name '*.original' -print -quit)"
           test -n "$jar_path"
-          install -m 0644 "$jar_path" backend/app.jar
+          install -m 0644 "$jar_path" stock-backend/app.jar
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -83,8 +83,8 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v7
         with:
-          context: backend
-          file: backend/Dockerfile
+          context: stock-backend
+          file: stock-backend/Dockerfile
           push: true
           tags: |
             ${{ steps.image.outputs.value }}
