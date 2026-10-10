@@ -1,11 +1,11 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-/** LSTM 特征契约、快照切分和 ONNX 兼容参数。 */
+/** LSTM 特征契约、面板切分和 DJL 模型输入参数。 */
 @Data
 @Component
 @ConfigurationProperties(prefix = "models.lstm")
@@ -27,4 +27,4 @@ public class LstmModelConfig {
     private double groupHeadScale = 0.1D;
     private double residualHeadScale = 0.1D;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

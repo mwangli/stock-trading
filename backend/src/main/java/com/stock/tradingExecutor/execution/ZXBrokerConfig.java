@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START -------------
 package com.stock.tradingExecutor.execution;
 
 import lombok.Data;
@@ -86,6 +86,11 @@ public class ZXBrokerConfig {
     private Integer captchaMaxRetries = 3;
 
     /**
+     * 登录连续失败后的冷却时间，单位秒
+     */
+    private Integer loginFailureCooldownSeconds = 30;
+
+    /**
      * Token过期时间(分钟)
      */
     private Integer tokenExpireMinutes = 30;
@@ -125,4 +130,4 @@ public class ZXBrokerConfig {
      */
     private Integer cancelWaitTimes = 6;
 }
-// AI_GENERATE_END ------------
+// AI_GENERATE_END -------------

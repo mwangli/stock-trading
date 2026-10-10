@@ -90,8 +90,9 @@ backtest:
   code-version: WORKTREE_UNCOMMITTED
 
 models:
-  # Java 只维护训练快照与在线特征契约；所有超参数和训练过程位于 python/。
+  # Java 使用 DJL + PyTorch Engine 完成 LSTM 训练、模型结构重建和在线推理。
   lstm:
+    model-name: global-shared-lstm
     sequence-length: 60
     input-size: 16
     train-ratio: 0.8
@@ -107,16 +108,29 @@ models:
     residual-head-enabled: true
     group-head-scale: 0.1
     residual-head-scale: 0.1
+    training-enabled: ${LSTM_TRAINING_ENABLED:false}
+    hidden-size: 50
+    num-layers: 2
+    dropout: 0.2
+    epochs: 100
+    batch-size: 32
+    learning-rate: 0.001
+    return-loss-weight: 0.5
+    direction-loss-weight: 0.3
+    downside-loss-weight: 0.2
+    early-stopping: true
+    patience: 10
+    min-delta: 0.0001
   sentiment:
     train-ratio: 0.8
     max-sequence-length: 128
     labels: [neutral, positive, negative]
-  onnx:
-    enabled: true
-    lstm-artifact-dir: ./models/onnx/lstm
-    sentiment-artifact-dir: ./models/onnx/sentiment
-    intra-op-threads: 1
-    inter-op-threads: 1
+    model-name: sentiment-finbert
+    model-version: local-current
+    model-source: local
+    model-path: ${SENTIMENT_MODEL_PATH:./models/sentiment}
+    pretrained-model: ProsusAI/finbert
+    download-pretrained: false
 
 # 策略配置
 strategy:
@@ -131,7 +145,7 @@ logging:
   level:
     root: INFO
     com.stock: INFO
-    ai.onnxruntime: INFO
+    ai.djl: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 app:

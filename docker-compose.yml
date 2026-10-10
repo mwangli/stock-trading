@@ -7,28 +7,6 @@ x-default-logging: &default-logging
     max-file: "5"
 
 services:
-  stock-python:
-    profiles: ["training"]
-    image: stock-trading-python:local
-    build:
-      context: ./python
-      dockerfile: Dockerfile
-    container_name: stock-python
-    environment:
-      HF_HOME: /workspace/runtime/cache/huggingface
-    volumes:
-      - type: bind
-        source: ./python/configs
-        target: /workspace/configs
-        read_only: true
-      - type: bind
-        source: ./python/runtime
-        target: /workspace/runtime
-    command: ["--help"]
-    restart: "no"
-    mem_limit: 24g
-    cpus: 6.0
-    logging: *default-logging
   stock-web:
     image: ${STOCK_WEB_IMAGE:-stock-front:local}
     build:
@@ -39,7 +17,7 @@ services:
       stock-backend:
         condition: service_healthy
     ports:
-      - "127.0.0.1:3000:80"
+      - "0.0.0.0:80:80"
     networks:
       - stock-frontend
     restart: unless-stopped
@@ -67,8 +45,9 @@ services:
       SPRING_DATA_MONGODB_USERNAME: admin
       SPRING_DATA_MONGODB_PASSWORD: ${MONGO_ROOT_PASSWORD}
       TRADING_REAL_WRITE_ENABLED: ${TRADING_REAL_WRITE_ENABLED:-false}
-      ONNX_LSTM_ARTIFACT_DIR: /models/onnx/lstm
-      ONNX_SENTIMENT_ARTIFACT_DIR: /models/onnx/sentiment
+      LSTM_TRAINING_ENABLED: ${LSTM_TRAINING_ENABLED:-false}
+      DJL_DEFAULT_ENGINE: PyTorch
+      SENTIMENT_MODEL_PATH: /models/sentiment
       ZXBROKER_ENABLED: ${ZXBROKER_ENABLED:-false}
       ZXBROKER_MOBILE_CODE: ${ZXBROKER_MOBILE_CODE:-}
       ZXBROKER_ACCOUNT: ${ZXBROKER_ACCOUNT:-}
@@ -88,7 +67,7 @@ services:
       stock-mongo:
         condition: service_healthy
     ports:
-      - "127.0.0.1:8080:8080"
+      - "0.0.0.0:8080:8080"
     networks:
       - stock-frontend
       - stock-backend

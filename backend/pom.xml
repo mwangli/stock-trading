@@ -22,7 +22,7 @@
         <fastjson2.version>2.0.53</fastjson2.version>
         <easyexcel.version>3.3.4</easyexcel.version>
         <djl.version>0.31.1</djl.version>
-        <onnxruntime.version>1.30.0</onnxruntime.version>
+        <pytorch.version>2.5.1</pytorch.version>
         <lombok.version>1.18.30</lombok.version>
     </properties>
 
@@ -97,16 +97,31 @@
             <version>${easyexcel.version}</version>
         </dependency>
 
-        <!-- Hugging Face Tokenizer 仅用于构造 ONNX 输入，不加载或训练 PyTorch 模型。 -->
+        <!-- DJL API 与 PyTorch Engine 同时存在：DJL 提供统一 Java API，PyTorch Engine 提供实际训练和推理能力。 -->
+        <dependency>
+            <groupId>ai.djl</groupId>
+            <artifactId>api</artifactId>
+            <version>${djl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ai.djl.pytorch</groupId>
+            <artifactId>pytorch-engine</artifactId>
+            <version>${djl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ai.djl.pytorch</groupId>
+            <artifactId>pytorch-model-zoo</artifactId>
+            <version>${djl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ai.djl</groupId>
+            <artifactId>model-zoo</artifactId>
+            <version>${djl.version}</version>
+        </dependency>
         <dependency>
             <groupId>ai.djl.huggingface</groupId>
             <artifactId>tokenizers</artifactId>
             <version>${djl.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.microsoft.onnxruntime</groupId>
-            <artifactId>onnxruntime</artifactId>
-            <version>${onnxruntime.version}</version>
         </dependency>
 
         <!-- Lombok -->
@@ -201,6 +216,31 @@
     </build>
 
     <profiles>
+        <!-- 生产容器为 Linux x86_64，显式打包 PyTorch 原生库，避免运行时联网下载。 -->
+        <profile>
+            <id>pytorch-linux-x86_64</id>
+            <activation>
+                <os>
+                    <family>unix</family>
+                    <arch>amd64</arch>
+                </os>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>ai.djl.pytorch</groupId>
+                    <artifactId>pytorch-native-cpu</artifactId>
+                    <version>${pytorch.version}</version>
+                    <classifier>linux-x86_64</classifier>
+                    <scope>runtime</scope>
+                </dependency>
+                <dependency>
+                    <groupId>ai.djl.pytorch</groupId>
+                    <artifactId>pytorch-jni</artifactId>
+                    <version>${pytorch.version}-${djl.version}</version>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
         <!-- 浏览器 E2E：覆盖 Surefire 的 excludedGroups，否则 @Tag("e2e") 测试默认 0 条 -->
         <profile>
             <id>e2e</id>

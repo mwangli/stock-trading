@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START --------------- -->
+<!-- AI_GENERATE_START ---------------- -->
 # Stock Trading - AI 股票自动交易系统
 
 # 项目演示
@@ -11,12 +11,11 @@
 
 ## 项目简介
 
-这是一个采用前端、Java 后端和 Python 模型端分工的 AI 股票交易系统：
+这是一个采用前端与 Java 后端分工的 AI 股票交易系统：
 
-- **后端服务** (Java Spring Boot 3.2): 提供 RESTful API、在线推理、策略、风控和交易执行
+- **后端服务** (Java Spring Boot 3.2): 使用 DJL + PyTorch Engine 完成 LSTM 训练、模型加载、在线推理、策略、风控和交易执行
 - **前端应用** (React 19 + Vite 7 + Ant Design 6): 可视化 Dashboard、数据展示和操作
-- **Python 模型端** (Python 3.14): 离线训练、评估、ONNX 导出和候选制品构建
-- **数据存储**: MySQL (业务数据) + MongoDB (行情、新闻和文档数据)
+- **数据存储**: MySQL (业务数据) + MongoDB (行情、新闻、模型版本、指标和小型 LSTM 参数)
 
 ### 核心特性
 
@@ -30,7 +29,7 @@
 - **运行日志查看**: 通过 WebSocket 查看运行日志，业务通知渠道暂不实现
 - **Docker 一键部署**: 使用 Docker Compose 快速部署
 - **CI/CD 自动化**: GitHub Actions 自动构建和部署
-- **版本化模型制品**: Python 完成训练、评估和 ONNX 制品构建，Java 只校验并执行在线推理。
+- **版本化模型制品**: Java 训练后将 LSTM 参数、配置、指标、状态和摘要保存到 MongoDB，通过独立激活指针支持回滚。
 
 ---
 
@@ -47,7 +46,7 @@
 
 | HTTP | OkHttp | 4.12 |
 | 工具 | Hutool / FastJSON2 | 5.8 / 2.0 |
-| AI 框架 | Python PyTorch 训练 / Java ONNX Runtime 推理 | Python 3.14 + Java 17 |
+| AI 框架 | DJL + PyTorch Engine | DJL 0.31.1 + PyTorch 2.5.1 |
 | 技术分析 | TA4J | 0.15 |
 
 
@@ -71,10 +70,9 @@
 ```text
 stock-trading4/
 ├── frontend/                       # React + Vite 前端
-├── backend/                        # Java 在线业务、ONNX 推理、风控和交易
-├── python/                         # Python 离线训练、评估和 ONNX 制品构建
-├── docs/                           # 与三端平级的系统设计和运维文档
-├── docker-compose.yml              # 在线服务及可选 training Profile
+├── backend/                        # Java 训练、DJL/PyTorch 推理、风控和交易
+├── documents/                      # 与前后端平级的系统设计和运维文档
+├── docker-compose.yml              # 在线服务、数据库和模型运行环境
 ├── .env.example
 ├── pom.xml
 ├── AGENTS.md
@@ -84,9 +82,8 @@ stock-trading4/
 职责边界：
 
 - `frontend/` 只负责页面展示和操作。
-- `backend/` 负责数据采集、在线特征、模型推理、策略、风控、调度和券商调用。
-- `python/` 负责离线训练、评估、ONNX 导出和候选制品构建，不激活生产模型。
-- `docs/` 保存跨端需求、架构、模型契约、部署和回滚文档。
+- `backend/` 负责数据采集、DJL 模型训练、PyTorch Engine 推理、策略、风控、调度和券商调用。
+- `documents/` 保存跨端需求、架构、模型契约、部署和回滚文档。
 
 ---
 
@@ -96,7 +93,6 @@ stock-trading4/
 
 - Java 17+
 - Node.js 18+
-- Python 3.14
 - Maven 3.6+
 - Docker & Docker Compose (可选)
 
@@ -199,22 +195,20 @@ ACR 地址、命名空间、服务器地址和 SSH 主机指纹已固化在工�
 
 ### AI 模型模块
 
-模型能力采用“Python 离线训练、Java ONNX 在线推理”的当前架构：
+模型能力采用“Java DJL API + PyTorch Engine”的统一架构：
 
-- Python 模型端读取 Java 导出的标准数据快照。
-- LSTM 和情感模型默认导出 FP32 ONNX。
-- 情感模型只有在 2C4G FP32 实测资源不足时才评估 INT8 降级。
-- Java 使用 ONNX Runtime 执行在线推理，并继续负责候选排名、风控和交易。
-- Python 只能生成候选制品，不能调用券商或修改生产模型指针。
+- LSTM 使用原有 `StockLSTMModel`，由统一调度任务离线训练并通过 PyTorch Engine 推理。
+- MongoDB 保存 LSTM 参数、训练配置、输入契约、指标、状态和 SHA-256；激活指针与版本文档分离。
+- 情感模型由 DJL 加载版本化本地 Hugging Face PyTorch 制品；大体积 Transformer 权重不写入 MongoDB。
+- 模型不可用或参数摘要不匹配时，真实候选生成失败关闭。
 
-Java 侧已移除模型训练、DJL/PyTorch 推理和旧模型仓储代码。部署前必须先由 Python 生成通过指标门槛的 LSTM 与情感 ONNX 制品；制品缺失或不兼容时，真实候选生成会失败关闭。
+Python 和 ONNX Runtime 已移除。生产容器必须包含与 DJL 版本匹配的 PyTorch Engine、JNI 和原生 CPU 运行库；正式训练默认关闭，只能通过 `LSTM_TRAINING_ENABLED=true` 显式开启。
 
 详细设计：
 
 - [模型服务需求](documents/02-模型服务/需求.md)
 - [模型服务设计](documents/02-模型服务/设计.md)
-- [三端目录简化与 Python 模型迁移执行计划](documents/2026-10-09-三端目录简化与Python模型迁移执行计划.md)
-- [轻量模型 ONNX 迁移实施计划](documents/2026-10-09-轻量模型ONNX迁移实施计划.md)
+- [模型训练与推理架构方案评估](documents/00-系统架构/2026-10-10-模型训练与推理架构方案评估.md)
 
 ### 策略分析模块 (com.stock.strategyAnalysis)
 
@@ -433,4 +427,4 @@ MIT License
 ## 联系方式
 
 如有问题请提交 Issue 或联系开发团队。
-<!-- AI_GENERATE_END --------------- -->
+<!-- AI_GENERATE_END ---------------- -->
