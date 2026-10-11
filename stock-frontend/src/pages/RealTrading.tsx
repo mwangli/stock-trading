@@ -1,10 +1,9 @@
-// AI_GENERATE_START ---
-import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Card, Empty, Table, Tag, Typography } from 'antd';
-import { ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+// AI_GENERATE_START -------
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, Button, Card, Empty, Table, Tag } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
 import request from '../utils/request';
-
-const { Title, Text } = Typography;
+import { usePageHeader } from '../layouts/PageHeaderContext';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -41,7 +40,7 @@ const RealTrading: React.FC = () => {
   const [status, setStatus] = useState<TradingStatus | null>(null);
   const [candidates, setCandidates] = useState<TradingCandidate[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -84,17 +83,14 @@ const RealTrading: React.FC = () => {
     { title: '依据', dataIndex: 'reason', key: 'reason' },
   ];
 
+  const headerActions = useMemo(() => (
+    <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadData()}>刷新</Button>
+  ), [loadData, loading]);
+
+  usePageHeader('模型自动选股、风控校验、真实委托和结果留痕', headerActions);
+
   return (
     <div className="app-page">
-      <div className="page-heading">
-        <div>
-          <Title level={2} className="page-title"><SafetyCertificateOutlined className="mr-2 text-blue-500" />自动真实交易</Title>
-          <Text className="page-subtitle">模型自动选股、风控校验、真实委托和结果留痕</Text>
-        </div>
-        <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadData()}>刷新</Button>
-      </div>
-
-      {error && <Alert type="warning" showIcon message={error} />}
       <div className="metric-strip">
         <div className="metric-strip-item"><div className="metric-label">券商会话</div><div className="metric-value">{status?.brokerAuthenticated ? '有效' : '无效'}</div><Tag color={status?.brokerAuthenticated ? 'green' : 'red'}>{status?.brokerAuthenticated ? '运行正常' : '需要登录'}</Tag></div>
         <div className="metric-strip-item"><div className="metric-label">真实写入</div><div className="metric-value">{status?.realWriteEnabled ? '已开启' : '已关闭'}</div><Tag color={status?.realWriteEnabled ? 'red' : 'blue'}>{status?.realWriteEnabled ? '生产写入' : '只读观察'}</Tag></div>
@@ -124,4 +120,4 @@ const RealTrading: React.FC = () => {
 };
 
 export default RealTrading;
-// AI_GENERATE_END ---
+// AI_GENERATE_END -------

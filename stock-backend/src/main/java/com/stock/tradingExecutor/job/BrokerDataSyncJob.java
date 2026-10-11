@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * 券商只读事实同步调度入口。
- * 方法保持无参 public 形式，由统一 JobSchedulerService 反射调用。
+ * 方法由固定 Quartz Job 类直接调用。
  *
  * @author mwangli
  * @since 2026-09-25

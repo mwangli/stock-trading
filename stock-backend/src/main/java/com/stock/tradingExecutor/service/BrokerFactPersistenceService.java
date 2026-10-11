@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.entity.AccountSnapshotEntity;
@@ -179,6 +179,17 @@ public class BrokerFactPersistenceService {
             }
         }
         return new PersistenceResult(orders.size(), inserted, updated, skipped);
+    }
+
+    /**
+     * 清理当前账户中已经入库但没有真实成交数量或成交均价的成交委托。
+     *
+     * @return 清理的无效订单数量
+     */
+    @Transactional
+    public int removeInvalidFilledOrders() {
+        return brokerOrderRepository.deleteInvalidFilledOrders(
+                brokerIdentityService.getBrokerCode(), brokerIdentityService.getAccountId());
     }
 
     /**
@@ -418,4 +429,4 @@ public class BrokerFactPersistenceService {
     public record PersistenceResult(int received, int inserted, int updated, int skipped) {
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

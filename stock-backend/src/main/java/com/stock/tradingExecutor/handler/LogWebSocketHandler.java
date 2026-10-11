@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 package com.stock.tradingExecutor.handler;
 
 import com.stock.tradingExecutor.logging.LogBroadcastService;
@@ -8,37 +9,40 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
-import java.util.Collections;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-
+/**
+ * 后台运行日志 WebSocket 连接处理器。
+ *
+ * @author mwangli
+ * @since 2026-10-11
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class LogWebSocketHandler extends TextWebSocketHandler {
 
     private final LogBroadcastService logBroadcastService;
-    private static final Set<WebSocketSession> SESSIONS = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
+    /**
+     * 注册新建立的日志 WebSocket 会话并回放近期日志。
+     *
+     * @param session WebSocket 会话
+     */
     @Override
-    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        SESSIONS.add(session);
+    public void afterConnectionEstablished(WebSocketSession session) {
         logBroadcastService.registerSession(session);
-        log.info("New WebSocket connection established: {}", session.getId());
-    }
-
-    @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
-        SESSIONS.remove(session);
-        logBroadcastService.removeSession(session);
-        log.info("WebSocket connection closed: {}", session.getId());
+        log.info("运行日志 WebSocket 连接已建立: sessionId={}", session.getId());
     }
 
     /**
-     * 向所有已连接客户端广播日志消息
+     * 移除已关闭的日志 WebSocket 会话。
+     *
+     * @param session WebSocket 会话
+     * @param status  关闭状态
      */
-    public static void broadcast(String message) {
-        int sessionCount = SESSIONS.size();
-        log.debug("WebSocket broadcast invoked (legacy static), sessions={}, message={}", sessionCount, message);
+    @Override
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+        logBroadcastService.removeSession(session);
+        log.info("运行日志 WebSocket 连接已关闭: sessionId={}, status={}", session.getId(), status);
     }
 }
+// AI_GENERATE_END -

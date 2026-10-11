@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.strategyAnalysis.engine;
 
 import lombok.RequiredArgsConstructor;
@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * 真实模型选股任务入口。
- * 只能通过 JobConfig 和 JobSchedulerService 调度，不允许添加 @Scheduled。
+ * 由固定 Quartz Job 类调用，不允许在业务类上添加 @Scheduled。
  *
  * @author mwangli
  * @since 2026-09-25
@@ -33,4 +33,4 @@ public class StrategyScheduler {
     }
 
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

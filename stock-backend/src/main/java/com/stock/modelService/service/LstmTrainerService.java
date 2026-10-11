@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START -----------------
 package com.stock.modelService.service;
 
 import ai.djl.Device;
@@ -23,10 +23,12 @@ import com.stock.dataCollector.domain.entity.StockInfo;
 import com.stock.dataCollector.domain.entity.StockPrice;
 import com.stock.dataCollector.persistence.PriceRepository;
 import com.stock.dataCollector.persistence.StockInfoRepository;
+import com.stock.modelService.config.LstmDataQualityConfig;
 import com.stock.modelService.config.LstmTrainingConfig;
 import com.stock.modelService.domain.dto.LstmPredictionResultDto;
 import com.stock.modelService.domain.entity.LstmModelDocument;
 import com.stock.modelService.domain.entity.ModelActivationDocument;
+import com.stock.modelService.domain.entity.TrainingDatasetSnapshotDocument;
 import com.stock.modelService.model.ModelBinaryCodec;
 import com.stock.modelService.model.MultiTaskStockLoss;
 import com.stock.modelService.model.StockLSTMModel;
@@ -46,6 +48,8 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -70,6 +74,8 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class LstmTrainerService {
 
+    private static final TrainingProgressListener NO_OP_PROGRESS_LISTENER = progress -> { };
+
     /** 当前共享模型固定名称。 */
     public static final String DEFAULT_SHARED_MODEL_NAME = "global-shared-lstm";
 
@@ -77,11 +83,13 @@ public class LstmTrainerService {
     public static final String MODEL_VERSION = "v3-embedding-multitask";
 
     private final LstmTrainingConfig config;
+    private final LstmDataQualityConfig dataQualityConfig;
     private final PriceRepository priceRepository;
     private final StockInfoRepository stockInfoRepository;
     private final LstmDataPreprocessor dataPreprocessor;
     private final LstmModelRepository lstmModelRepository;
     private final ModelActivationRepository modelActivationRepository;
+    private final TrainingDatasetSnapshotService snapshotService;
     private final ModelBinaryCodec modelBinaryCodec;
     private final ObjectMapper objectMapper;
     private String currentModelPath;
@@ -132,7 +140,53 @@ public class LstmTrainerService {
      */
     public TrainingResult trainSharedModel(List<String> stockCodes, int days, Integer epochs,
                                            Integer batchSize, Double learningRate) {
+        return trainSharedModel(stockCodes, days, epochs, batchSize, learningRate,
+                NO_OP_PROGRESS_LISTENER);
+    }
+
+    /**
+     * 训练全市场共享基础模型，并持续上报数据准备和逐轮训练进度。
+     *
+     * @param stockCodes 参与训练的股票代码
+     * @param days 每只股票读取的交易日数量
+     * @param epochs 训练轮次，可为空
+     * @param batchSize 批次大小，可为空
+     * @param learningRate 学习率，可为空
+     * @param progressListener 训练进度监听器
+     * @return 训练结果
+     */
+    public TrainingResult trainSharedModel(List<String> stockCodes, int days, Integer epochs,
+                                           Integer batchSize, Double learningRate,
+                                           TrainingProgressListener progressListener) {
+        return trainSharedModel(stockCodes, days, epochs, batchSize, learningRate,
+                progressListener, null, null, 0, null);
+    }
+
+    /**
+     * 训练全市场共享基础模型，并支持从已保存的参数检查点继续训练。
+     *
+     * @param stockCodes 参与训练的股票代码
+     * @param days 每只股票读取的交易日数量
+     * @param epochs 训练轮次，可为空
+     * @param batchSize 批次大小，可为空
+     * @param learningRate 学习率，可为空
+     * @param progressListener 训练进度监听器
+     * @param snapshotId 指定训练数据快照 ID，可为空
+     * @param checkpointPath 检查点文件路径，可为空
+     * @param resumeEpoch 已完成轮次
+     * @param checkpointParams 检查点模型参数，可为空
+     * @return 训练结果
+     */
+    public TrainingResult trainSharedModel(List<String> stockCodes, int days, Integer epochs,
+                                           Integer batchSize, Double learningRate,
+                                           TrainingProgressListener progressListener,
+                                           String snapshotId,
+                                           String checkpointPath, int resumeEpoch,
+                                           byte[] checkpointParams) {
         String trainingId = "shared_training_" + System.currentTimeMillis();
+        long trainingStartedNanos = System.nanoTime();
+        TrainingProgressListener listener = progressListener == null
+                ? NO_OP_PROGRESS_LISTENER : progressListener;
         try {
             List<String> codes = stockCodes == null ? List.of() : stockCodes.stream()
                     .filter(code -> code != null && !code.isBlank())
@@ -148,21 +202,85 @@ public class LstmTrainerService {
             float trainLearningRate = learningRate != null
                     ? learningRate.floatValue()
                     : (float) config.getLearningRate();
+            validateTrainingConfiguration(trainEpochs, trainBatchSize, trainLearningRate);
             int fetchDays = Math.max(days, config.getSequenceLength() + config.getValidationGap() + 2);
 
             log.info("开始共享 LSTM 离线训练: stocks={}, days={}, epochs={}, batchSize={}, learningRate={}",
                     codes.size(), fetchDays, trainEpochs, trainBatchSize, trainLearningRate);
+            reportProgress(listener, TrainingProgress.builder()
+                    .stage("PREPARING_DATA")
+                    .message("正在加载股票历史行情")
+                    .progressPercent(5)
+                    .currentEpoch(0)
+                    .totalEpochs(trainEpochs)
+                    .elapsedSeconds(elapsedSeconds(trainingStartedNanos))
+                    .build());
 
-            Map<String, List<StockPrice>> priceSeries = loadPriceSeries(codes, fetchDays);
-            Map<String, LstmDataPreprocessor.StockContext> contexts = loadStockContexts(codes);
-            LstmDataPreprocessor.ProcessedData processedData =
-                    dataPreprocessor.processPanelData(priceSeries, contexts);
+            TrainingDatasetSnapshotDocument snapshot = snapshotId == null
+                    ? snapshotService.findReusableSnapshot(modelName(), codes, fetchDays).orElse(null)
+                    : snapshotService.findById(snapshotId)
+                    .orElseThrow(() -> new IllegalStateException("指定训练数据快照不存在: " + snapshotId));
+            LstmDataPreprocessor.ProcessedData processedData;
+            if (snapshot != null) {
+                reportProgress(listener, TrainingProgress.builder()
+                        .stage("PREPARING_DATA")
+                        .message("复用训练数据快照 " + snapshot.getId())
+                        .progressPercent(35)
+                        .currentEpoch(0)
+                        .totalEpochs(trainEpochs)
+                        .elapsedSeconds(elapsedSeconds(trainingStartedNanos))
+                        .snapshotId(snapshot.getId())
+                        .build());
+                processedData = snapshotService.loadSnapshot(snapshot);
+                log.info("共享 LSTM 复用训练数据快照: snapshotId={}, endDate={}, trainSamples={}, valSamples={}",
+                        snapshot.getId(), snapshot.getDatasetEndDate(), snapshot.getTrainSamples(), snapshot.getValSamples());
+            } else {
+                Map<String, List<StockPrice>> priceSeries = loadPriceSeries(
+                        codes, fetchDays, listener, trainEpochs, trainingStartedNanos);
+                reportProgress(listener, TrainingProgress.builder()
+                        .stage("PREPARING_DATA")
+                        .message("历史行情加载完成，正在加载股票上下文")
+                        .progressPercent(20)
+                        .currentEpoch(0)
+                        .totalEpochs(trainEpochs)
+                        .elapsedSeconds(elapsedSeconds(trainingStartedNanos))
+                        .build());
+                Map<String, LstmDataPreprocessor.StockContext> contexts = loadStockContexts(codes);
+                processedData = dataPreprocessor.processPanelData(priceSeries, contexts);
+                if (processedData != null) {
+                    snapshot = snapshotService.saveSnapshot(modelName(), codes, fetchDays, processedData);
+                }
+            }
             if (processedData == null || processedData.getTrainSamples().isEmpty()) {
                 return TrainingResult.builder().success(false).message("共享训练数据不足").build();
             }
 
+            int trainedStocks = processedData.getSampleCounts().size();
             int trainSize = processedData.getTrainSamples().size();
             int valSize = processedData.getValSamples().size();
+            reportProgress(listener, TrainingProgress.builder()
+                    .stage("PROCESSING_SAMPLES")
+                    .message("训练样本构建完成")
+                    .progressPercent(35)
+                    .currentEpoch(0)
+                    .totalEpochs(trainEpochs)
+                    .elapsedSeconds(elapsedSeconds(trainingStartedNanos))
+                    .trainedStocks(trainedStocks)
+                    .trainSamples(trainSize)
+                    .valSamples(valSize)
+                    .snapshotId(snapshot == null ? null : snapshot.getId())
+                    .build());
+            String dataQualityError = validateTrainingData(trainedStocks, trainSize, valSize);
+            if (dataQualityError != null) {
+                return TrainingResult.builder()
+                        .success(false)
+                        .message(dataQualityError)
+                        .trainingId(trainingId)
+                        .trainedStocks(trainedStocks)
+                        .trainSamples(trainSize)
+                    .valSamples(valSize)
+                        .build();
+            }
             List<Map<String, Object>> trainingLog = new ArrayList<>();
             byte[] bestParams = null;
             double bestValLoss = Double.MAX_VALUE;
@@ -191,6 +309,10 @@ public class LstmTrainerService {
                     int initBatchSize = Math.min(trainBatchSize, Math.max(1, trainSize));
                     trainer.initialize(new Shape(initBatchSize,
                             config.getSequenceLength() * config.getInputSize()));
+                    if (checkpointParams != null && checkpointParams.length > 0) {
+                        modelBinaryCodec.deserialize(checkpointParams, model);
+                        log.info("共享 LSTM 从检查点恢复参数: epoch={}, path={}", resumeEpoch, checkpointPath);
+                    }
                     ArrayDataset trainDataset = createDataset(
                             trainer.getManager(),
                             flattenInputs(processedData.getTrainInputs()),
@@ -201,8 +323,20 @@ public class LstmTrainerService {
                             flattenInputs(processedData.getValInputs()),
                             processedData.getValTargets(),
                             Math.min(trainBatchSize, Math.max(1, valSize)));
+                    long epochTrainingStartedNanos = System.nanoTime();
+                    reportProgress(listener, TrainingProgress.builder()
+                            .stage("TRAINING")
+                            .message("模型训练已开始")
+                            .progressPercent(40)
+                            .currentEpoch(0)
+                            .totalEpochs(trainEpochs)
+                            .elapsedSeconds(elapsedSeconds(trainingStartedNanos))
+                            .trainedStocks(trainedStocks)
+                            .trainSamples(trainSize)
+                            .valSamples(valSize)
+                            .build());
 
-                    for (int epoch = 0; epoch < trainEpochs; epoch++) {
+                    for (int epoch = Math.max(0, resumeEpoch); epoch < trainEpochs; epoch++) {
                         float trainLoss = trainEpoch(trainer, trainDataset);
                         float valLoss = valDataset == null ? trainLoss : evaluateModel(trainer, valDataset);
                         Map<String, Object> entry = new LinkedHashMap<>();
@@ -210,21 +344,50 @@ public class LstmTrainerService {
                         entry.put("trainLoss", (double) trainLoss);
                         entry.put("valLoss", (double) valLoss);
                         trainingLog.add(entry);
-                        log.info("共享 LSTM Epoch {}/{}: trainLoss={}, valLoss={}",
-                                epoch + 1, trainEpochs, trainLoss, valLoss);
 
+                        boolean improved = false;
                         if (valLoss < bestValLoss - config.getMinDelta()) {
                             bestValLoss = valLoss;
                             bestTrainLoss = trainLoss;
                             bestEpoch = epoch + 1;
                             bestParams = modelBinaryCodec.serialize(model);
                             patienceCounter = 0;
+                            improved = true;
                         } else if (config.isEarlyStopping()) {
                             patienceCounter++;
-                            if (patienceCounter >= config.getPatience()) {
-                                log.info("共享 LSTM 早停: bestEpoch={}, patience={}", bestEpoch, patienceCounter);
-                                break;
-                            }
+                        }
+                        int completedEpochs = epoch + 1;
+                        int progressPercent = 40 + (int) Math.round(
+                                completedEpochs * 50D / trainEpochs);
+                        long elapsedSeconds = elapsedSeconds(trainingStartedNanos);
+                        long estimatedRemainingSeconds = estimateRemainingSeconds(
+                                epochTrainingStartedNanos, completedEpochs,
+                                trainEpochs - completedEpochs);
+                        log.info("共享 LSTM 训练迭代 {}/{}: progress={}%, trainLoss={}, valLoss={}, "
+                                        + "bestValLoss={}, improved={}, patience={}/{}, elapsedSeconds={}, "
+                                        + "estimatedRemainingSeconds={}",
+                                completedEpochs, trainEpochs, progressPercent, trainLoss, valLoss,
+                                bestValLoss, improved, patienceCounter, config.getPatience(),
+                                elapsedSeconds, estimatedRemainingSeconds);
+                        saveCheckpoint(checkpointPath, model, completedEpochs);
+                        reportProgress(listener, TrainingProgress.builder()
+                                .stage("TRAINING")
+                                .message(improved ? "验证损失改善" : "验证损失未改善")
+                                .progressPercent(progressPercent)
+                                .currentEpoch(completedEpochs)
+                                .totalEpochs(trainEpochs)
+                                .elapsedSeconds(elapsedSeconds)
+                                .estimatedRemainingSeconds(estimatedRemainingSeconds)
+                                .trainLoss((double) trainLoss)
+                                .valLoss((double) valLoss)
+                                .trainedStocks(trainedStocks)
+                                .trainSamples(trainSize)
+                                .valSamples(valSize)
+                                .build());
+                        if (config.isEarlyStopping() && patienceCounter >= config.getPatience()) {
+                            log.info("共享 LSTM 早停: currentEpoch={}, bestEpoch={}, bestValLoss={}, patience={}",
+                                    completedEpochs, bestEpoch, bestValLoss, patienceCounter);
+                            break;
                         }
                     }
 
@@ -238,6 +401,20 @@ public class LstmTrainerService {
                 }
             }
 
+            reportProgress(listener, TrainingProgress.builder()
+                    .stage("SAVING_MODEL")
+                    .message("正在保存最佳模型参数")
+                    .progressPercent(95)
+                    .currentEpoch(trainingLog.size())
+                    .totalEpochs(trainEpochs)
+                    .elapsedSeconds(elapsedSeconds(trainingStartedNanos))
+                    .estimatedRemainingSeconds(0L)
+                    .trainLoss(bestTrainLoss)
+                    .valLoss(bestValLoss)
+                    .trainedStocks(trainedStocks)
+                    .trainSamples(trainSize)
+                    .valSamples(valSize)
+                    .build());
             currentModelPath = saveModel(bestParams, processedData, bestEpoch,
                     bestTrainLoss, bestValLoss);
             return TrainingResult.builder()
@@ -248,10 +425,14 @@ public class LstmTrainerService {
                     .trainLoss(bestTrainLoss)
                     .valLoss(bestValLoss)
                     .modelPath(currentModelPath)
+                    .trainedStocks(trainedStocks)
                     .trainSamples(trainSize)
                     .valSamples(valSize)
+                    .snapshotId(snapshot == null ? null : snapshot.getId())
                     .details(trainingLog)
                     .build();
+        } catch (TrainingCancelledException exception) {
+            throw exception;
         } catch (Exception exception) {
             log.error("共享 LSTM 训练失败", exception);
             return TrainingResult.builder()
@@ -260,6 +441,54 @@ public class LstmTrainerService {
                     .message("共享 LSTM 训练失败：" + exception.getMessage())
                     .build();
         }
+    }
+
+    private void reportProgress(TrainingProgressListener listener, TrainingProgress progress) {
+        try {
+            listener.onProgress(progress);
+        } catch (TrainingCancelledException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            log.warn("共享 LSTM 训练进度上报失败: stage={}, epoch={}, reason={}",
+                    progress.getStage(), progress.getCurrentEpoch(), exception.getMessage());
+        }
+    }
+
+    private void saveCheckpoint(String checkpointPath, Model model, int completedEpochs) {
+        if (checkpointPath == null || checkpointPath.isBlank()) {
+            return;
+        }
+        try {
+            Path path = Path.of(checkpointPath).toAbsolutePath().normalize();
+            Files.createDirectories(path.getParent());
+            Files.write(path, modelBinaryCodec.serialize(model));
+            log.info("共享 LSTM 检查点已保存: epoch={}, path={}", completedEpochs, path);
+        } catch (IOException exception) {
+            throw new IllegalStateException("保存 LSTM 训练检查点失败", exception);
+        }
+    }
+
+    /**
+     * 训练任务取消信号，允许停止请求穿透进度回调和训练服务异常兜底。
+     */
+    public static class TrainingCancelledException extends RuntimeException {
+
+        public TrainingCancelledException(String message) {
+            super(message);
+        }
+    }
+
+    private long elapsedSeconds(long startedNanos) {
+        return Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000_000L);
+    }
+
+    private long estimateRemainingSeconds(long startedNanos, int completedEpochs, int remainingEpochs) {
+        if (completedEpochs <= 0 || remainingEpochs <= 0) {
+            return 0L;
+        }
+        long elapsedNanos = Math.max(0L, System.nanoTime() - startedNanos);
+        double remainingNanos = (double) elapsedNanos * remainingEpochs / completedEpochs;
+        return Math.max(1L, (long) Math.ceil(remainingNanos / 1_000_000_000D));
     }
 
     /**
@@ -442,6 +671,34 @@ public class LstmTrainerService {
                 (float) config.getResidualHeadScale());
     }
 
+    private void validateTrainingConfiguration(int epochs, int batchSize, float learningRate) {
+        double lossWeightTotal = config.getReturnLossWeight()
+                + config.getDirectionLossWeight()
+                + config.getDownsideLossWeight();
+        if (epochs <= 0 || batchSize <= 0 || !Float.isFinite(learningRate) || learningRate <= 0F) {
+            throw new IllegalArgumentException("LSTM 训练轮次、批次大小和学习率必须大于 0");
+        }
+        if (!Double.isFinite(lossWeightTotal) || lossWeightTotal <= 0D) {
+            throw new IllegalArgumentException("LSTM 多任务损失权重总和必须大于 0");
+        }
+    }
+
+    private String validateTrainingData(int trainedStocks, int trainSamples, int validationSamples) {
+        if (trainedStocks < dataQualityConfig.getMinimumTrainingStockCount()) {
+            return "有效训练股票数量不足，要求至少 "
+                    + dataQualityConfig.getMinimumTrainingStockCount() + "，实际 " + trainedStocks;
+        }
+        if (trainSamples < dataQualityConfig.getMinimumTrainSamples()) {
+            return "训练样本数量不足，要求至少 "
+                    + dataQualityConfig.getMinimumTrainSamples() + "，实际 " + trainSamples;
+        }
+        if (validationSamples < dataQualityConfig.getMinimumValidationSamples()) {
+            return "验证样本数量不足，要求至少 "
+                    + dataQualityConfig.getMinimumValidationSamples() + "，实际 " + validationSamples;
+        }
+        return null;
+    }
+
     private float trainEpoch(Trainer trainer, ArrayDataset trainDataset)
             throws IOException, ai.djl.translate.TranslateException {
         float totalLoss = 0F;
@@ -529,6 +786,60 @@ public class LstmTrainerService {
         return result;
     }
 
+    private Map<String, List<StockPrice>> loadPriceSeries(
+            List<String> stockCodes,
+            int days,
+            TrainingProgressListener listener,
+            int totalEpochs,
+            long trainingStartedNanos) {
+        Map<String, List<StockPrice>> result = new LinkedHashMap<>();
+        int queryLimit = Math.max(1, days);
+        int totalStocks = stockCodes.size();
+        int reportInterval = Math.max(1, totalStocks / 40);
+        PageRequest pageRequest = PageRequest.of(0, queryLimit);
+        log.info("共享 LSTM 数据准备开始: stocks={}, days={}", totalStocks, queryLimit);
+        int emptyStocks = 0;
+        for (int index = 0; index < totalStocks; index++) {
+            String stockCode = stockCodes.get(index);
+            List<StockPrice> prices = new ArrayList<>(
+                    priceRepository.findByCodeOrderByDateDesc(stockCode, pageRequest));
+            if (!prices.isEmpty()) {
+                Collections.reverse(prices);
+                result.put(stockCode, prices);
+            } else {
+                emptyStocks++;
+            }
+            int completedStocks = index + 1;
+            if (completedStocks == totalStocks || completedStocks % reportInterval == 0) {
+                int progressPercent = 5 + (int) Math.round(completedStocks * 15D / totalStocks);
+                long elapsedSeconds = elapsedSeconds(trainingStartedNanos);
+                log.info(
+                        "共享 LSTM 数据准备进度: stocks={}/{}, loadedStocks={}, emptyStocks={}, progress={}%, elapsedSeconds={}",
+                        completedStocks,
+                        totalStocks,
+                        result.size(),
+                        emptyStocks,
+                        progressPercent,
+                        elapsedSeconds);
+                reportProgress(listener, TrainingProgress.builder()
+                        .stage("PREPARING_DATA")
+                        .message("正在加载历史行情 " + completedStocks + "/" + totalStocks)
+                        .progressPercent(progressPercent)
+                        .currentEpoch(0)
+                        .totalEpochs(totalEpochs)
+                        .elapsedSeconds(elapsedSeconds)
+                        .build());
+            }
+        }
+        log.info(
+                "共享 LSTM 数据准备完成: loadedStocks={}/{}, emptyStocks={}, elapsedSeconds={}",
+                result.size(),
+                totalStocks,
+                emptyStocks,
+                elapsedSeconds(trainingStartedNanos));
+        return result;
+    }
+
     private Map<String, LstmDataPreprocessor.StockContext> loadStockContexts(List<String> stockCodes) {
         return stockInfoRepository.findByCodeIn(stockCodes).stream()
                 .collect(Collectors.toMap(
@@ -607,6 +918,7 @@ public class LstmTrainerService {
                     "trainLoss", trainLoss,
                     "valLoss", valLoss,
                     "bestEpoch", epoch,
+                    "trainedStocks", processedData.getSampleCounts().size(),
                     "trainSamples", processedData.getTrainSamples().size(),
                     "valSamples", processedData.getValSamples().size())));
             document.setFeatureVersion(processedData.getFeatureVersion());
@@ -750,6 +1062,72 @@ public class LstmTrainerService {
     }
 
     /**
+     * 训练进度监听器。
+     *
+     * @author mwangli
+     * @since 2026-10-11
+     */
+    @FunctionalInterface
+    public interface TrainingProgressListener {
+
+        /**
+         * 接收最新训练进度。
+         *
+         * @param progress 最新训练进度
+         */
+        void onProgress(TrainingProgress progress);
+    }
+
+    /**
+     * LSTM 训练进度快照。
+     *
+     * @author mwangli
+     * @since 2026-10-11
+     */
+    @Data
+    @Builder
+    public static class TrainingProgress {
+        /** 当前训练阶段。 */
+        private String stage;
+
+        /** 当前阶段说明。 */
+        private String message;
+
+        /** 当前完成比例，范围 0-100。 */
+        private int progressPercent;
+
+        /** 当前已完成轮次。 */
+        private int currentEpoch;
+
+        /** 计划总轮次。 */
+        private int totalEpochs;
+
+        /** 已耗时，单位秒。 */
+        private long elapsedSeconds;
+
+        /** 预计剩余时间，单位秒。 */
+        private Long estimatedRemainingSeconds;
+
+        /** 当前训练损失。 */
+        private Double trainLoss;
+
+        /** 当前验证损失。 */
+        private Double valLoss;
+
+        /** 有效训练股票数量。 */
+        private Integer trainedStocks;
+
+        /** 训练样本数量。 */
+        private Integer trainSamples;
+
+        /** 验证样本数量。 */
+        private Integer valSamples;
+
+        /** 当前使用的训练数据快照 ID。 */
+        private String snapshotId;
+    }
+
+    /**
      * LSTM 离线训练结果。
      *
      * @author mwangli
@@ -779,6 +1157,9 @@ public class LstmTrainerService {
         /** 模型保存路径或文档标识。 */
         private String modelPath;
 
+        /** 实际参与训练并产生有效样本的股票数量。 */
+        private int trainedStocks;
+
         /** 训练样本数量。 */
         private int trainSamples;
 
@@ -787,6 +1168,9 @@ public class LstmTrainerService {
 
         /** 每轮训练摘要。 */
         private List<Map<String, Object>> details;
+
+        /** 本次训练使用的数据快照 ID。 */
+        private String snapshotId;
     }
 }
-// AI_GENERATE_END ------------
+// AI_GENERATE_END -----------------

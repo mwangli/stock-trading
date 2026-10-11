@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START -------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.BrokerAccountDto;
@@ -10,17 +10,20 @@ import com.stock.tradingExecutor.domain.dto.BrokerOrderListResponseDto;
 import com.stock.tradingExecutor.domain.dto.BrokerPositionDto;
 import com.stock.tradingExecutor.domain.dto.BrokerPositionListResponseDto;
 import com.stock.tradingExecutor.domain.dto.BrokerReadStatusDto;
-import com.stock.tradingExecutor.domain.entity.Position;
-import com.stock.tradingExecutor.domain.vo.AccountStatus;
+import com.stock.tradingExecutor.domain.entity.AccountSnapshotEntity;
+import com.stock.tradingExecutor.domain.entity.PositionSnapshotEntity;
+import com.stock.tradingExecutor.domain.entity.PositionSnapshotItemEntity;
 import com.stock.tradingExecutor.domain.vo.BrokerFillSnapshot;
 import com.stock.tradingExecutor.domain.vo.BrokerOrderSnapshot;
 import com.stock.tradingExecutor.execution.BrokerAdapter;
 import com.stock.tradingExecutor.execution.TradingProperties;
+import com.stock.tradingExecutor.persistence.AccountSnapshotRepository;
+import com.stock.tradingExecutor.persistence.PositionSnapshotItemRepository;
+import com.stock.tradingExecutor.persistence.PositionSnapshotRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
@@ -39,6 +42,10 @@ public class BrokerReadService {
 
     private final BrokerAdapter brokerAdapter;
     private final TradingProperties tradingProperties;
+    private final BrokerIdentityService brokerIdentityService;
+    private final AccountSnapshotRepository accountSnapshotRepository;
+    private final PositionSnapshotRepository positionSnapshotRepository;
+    private final PositionSnapshotItemRepository positionSnapshotItemRepository;
 
     /**
      * 获取券商只读网关状态。
@@ -56,39 +63,42 @@ public class BrokerReadService {
     }
 
     /**
-     * 查询账户资金。
+     * 从数据库查询定时同步得到的最新账户资金快照。
      *
      * @return 账户资金快照
      */
     public BrokerAccountDto getAccount() {
-        ensureAuthenticated();
-        AccountStatus account = brokerAdapter.getAccountInfo();
-        if (account == null) {
-            throw new IllegalStateException("未获得有效账户资金，请检查券商启用状态和登录会话");
-        }
+        AccountSnapshotEntity account = accountSnapshotRepository
+                .findFirstByBrokerCodeAndAccountIdOrderByCapturedAtDesc(
+                        brokerIdentityService.getBrokerCode(), brokerIdentityService.getAccountId())
+                .orElseThrow(() -> new IllegalStateException("暂无账户资金快照，请等待券商定时同步任务执行"));
         return BrokerAccountDto.builder()
                 .totalAssets(account.getTotalAssets())
                 .availableCash(account.getAvailableCash())
-                .frozenAmount(account.getFrozenAmount())
-                .totalPosition(account.getTotalPosition())
-                .capturedAt(LocalDateTime.now())
+                .frozenAmount(account.getFrozenCash())
+                .totalPosition(account.getMarketValue())
+                .capturedAt(account.getCapturedAt())
                 .build();
     }
 
     /**
-     * 查询当前持仓。
+     * 从数据库查询定时同步得到的最新持仓快照。
      *
      * @return 持仓列表
      */
     public BrokerPositionListResponseDto getPositions() {
-        ensureAuthenticated();
-        List<BrokerPositionDto> items = brokerAdapter.getPositions().stream()
+        PositionSnapshotEntity snapshot = positionSnapshotRepository
+                .findFirstByBrokerCodeAndAccountIdOrderByCapturedAtDesc(
+                        brokerIdentityService.getBrokerCode(), brokerIdentityService.getAccountId())
+                .orElseThrow(() -> new IllegalStateException("暂无持仓快照，请等待券商定时同步任务执行"));
+        List<BrokerPositionDto> items = positionSnapshotItemRepository
+                .findBySnapshotIdOrderByStockCodeAsc(snapshot.getSnapshotId()).stream()
                 .map(this::toPositionDto)
                 .toList();
         return BrokerPositionListResponseDto.builder()
                 .items(items)
                 .total(items.size())
-                .capturedAt(LocalDateTime.now())
+                .capturedAt(snapshot.getCapturedAt())
                 .build();
     }
 
@@ -179,18 +189,18 @@ public class BrokerReadService {
                 .build();
     }
 
-    private BrokerPositionDto toPositionDto(Position position) {
+    private BrokerPositionDto toPositionDto(PositionSnapshotItemEntity position) {
         return BrokerPositionDto.builder()
                 .stockCode(position.getStockCode())
                 .stockName(position.getStockName())
-                .totalQuantity(position.getQuantity())
+                .totalQuantity(position.getTotalQuantity())
                 .availableQuantity(position.getAvailableQuantity())
                 .frozenQuantity(position.getFrozenQuantity())
-                .averageCost(position.getAvgCost())
+                .averageCost(position.getAverageCost())
                 .currentPrice(position.getCurrentPrice())
                 .marketValue(position.getMarketValue())
                 .market(position.getMarket())
-                .shareholderAccountMasked(maskAccount(position.getShareholderAccount()))
+                .shareholderAccountMasked(null)
                 .build();
     }
 
@@ -237,4 +247,4 @@ public class BrokerReadService {
         return "****" + trimmed.substring(trimmed.length() - 4);
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END -------

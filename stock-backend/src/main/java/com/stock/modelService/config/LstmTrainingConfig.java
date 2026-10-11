@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.modelService.config;
 
 import lombok.Data;
@@ -159,5 +159,8 @@ public class LstmTrainingConfig {
      * 最小 delta（早停判断）
      */
     private double minDelta = 0.0001;
+
+    /** 训练数据快照和训练检查点的持久化目录。 */
+    private String artifactDirectory = "data/lstm-artifacts";
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

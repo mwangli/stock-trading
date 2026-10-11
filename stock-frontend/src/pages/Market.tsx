@@ -1,7 +1,7 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START -----
 import React, { useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { Table, Input, Button, Select, Typography } from 'antd';
+import { Table, Input, Button, Select } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { SorterResult } from 'antd/es/table/interface';
 import type { EChartsOption, TooltipComponentFormatterCallbackParams } from 'echarts';
@@ -10,8 +10,8 @@ import { SearchOutlined, ThunderboltOutlined, RiseOutlined, StarOutlined } from 
 import { useTranslation } from 'react-i18next';
 import request from '../utils/request';
 import { useAppTheme } from '../theme/AppThemeProvider';
+import { usePageHeader } from '../layouts/PageHeaderContext';
 
-const { Text, Title } = Typography;
 interface StockInfo {
   code: string;
   name: string;
@@ -76,6 +76,7 @@ const Market: React.FC = () => {
   const { mode } = useAppTheme();
   const isDark = mode === 'dark';
   const chartTextColor = isDark ? '#a9b6ca' : '#526078';
+  usePageHeader('查看市场广度、自选列表与股票 K 线走势');
   const chartBorderColor = isDark ? '#253047' : '#dce3ed';
   const chartTooltipBackground = isDark ? 'rgba(13, 21, 36, 0.96)' : 'rgba(255, 255, 255, 0.98)';
 
@@ -96,7 +97,7 @@ const Market: React.FC = () => {
   });
   const [selectedStock, setSelectedStock] = useState<{ code: string; name: string; price?: number; change?: number } | null>(null);
   const [klineType, setKlineType] = useState<'daily' | 'weekly' | 'monthly'>('daily');
-  const [timeRange, setTimeRange] = useState<'last1Week' | 'last1Month' | 'last1Year' | 'last3Years'>('last1Month');
+  const [timeRange, setTimeRange] = useState<'last1Week' | 'last1Month' | 'last1Year' | 'last3Years'>('last3Years');
   const [searchKeyword, setSearchKeyword] = useState('');
   const searchInputRef = useRef<InputRef>(null);
 
@@ -479,13 +480,6 @@ const Market: React.FC = () => {
 
   return (
     <div className="app-page">
-      <div className="page-heading">
-        <div>
-          <Title level={2} className="page-title">市场行情</Title>
-          <Text className="page-subtitle">查看市场广度、自选列表与股票 K 线走势</Text>
-        </div>
-      </div>
-
       {/* Top Bar Stats */}
       <div className="metric-strip">
         {getStatsData().map((stat, idx) => (
@@ -630,4 +624,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END --
+// AI_GENERATE_END -----

@@ -1,3 +1,4 @@
+// AI_GENERATE_START --
 package com.stock.modelService.config;
 
 import lombok.Data;
@@ -14,8 +15,8 @@ import java.util.Set;
  * 这些股票会在启动训练时直接跳过，避免陷入“清理-重拉-再失败”的死循环。
  * </p>
  *
- * @author AI Assistant
- * @since 1.0
+ * @author mwangli
+ * @since 2026-10-11
  */
 @Data
 @Component
@@ -30,5 +31,30 @@ public class LstmDataQualityConfig {
      * </p>
      */
     private Set<String> skipTrainingCodes = new HashSet<>();
-}
 
+    /**
+     * 单次共享训练要求的最小有效股票数量。
+     */
+    private int minimumTrainingStockCount = 100;
+
+    /**
+     * 单次训练要求的最小训练样本数量。
+     */
+    private int minimumTrainSamples = 1000;
+
+    /**
+     * 单次训练要求的最小验证样本数量。
+     */
+    private int minimumValidationSamples = 200;
+
+    /**
+     * 候选模型允许的最大验证损失。
+     */
+    private double maximumValidationLoss = 1.0D;
+
+    /**
+     * 启动训练要求的最小 JVM 可用内存，单位 MB。
+     */
+    private long minimumAvailableMemoryMb = 256L;
+}
+// AI_GENERATE_END --

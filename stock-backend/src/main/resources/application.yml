@@ -41,6 +41,15 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: false
+  quartz:
+    job-store-type: memory
+    auto-startup: true
+    startup-delay: 5s
+    wait-for-jobs-to-complete-on-shutdown: true
+    properties:
+      org.quartz.scheduler.instanceName: stock-trading-quartz
+      org.quartz.threadPool.threadCount: 5
+      org.quartz.jobStore.misfireThreshold: 60000
   flyway:
     enabled: true
     baseline-on-migrate: true
@@ -121,6 +130,7 @@ models:
     early-stopping: true
     patience: 10
     min-delta: 0.0001
+    artifact-directory: ${LSTM_ARTIFACT_DIRECTORY:data/lstm-artifacts}
   sentiment:
     train-ratio: 0.8
     max-sequence-length: 128
@@ -149,6 +159,14 @@ logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 app:
+  lstm:
+    data-quality:
+      minimum-training-stock-count: 100
+      minimum-train-samples: 1000
+      minimum-validation-samples: 200
+      maximum-validation-loss: 1.0
+      minimum-available-memory-mb: 256
+      skip-training-codes: []
   startup:
     history-sync:
       enabled: false  # 重任务由统一调度中心按需执行

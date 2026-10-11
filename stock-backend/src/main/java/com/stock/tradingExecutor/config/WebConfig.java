@@ -1,8 +1,11 @@
 package com.stock.tradingExecutor.config;
 
+import com.stock.user.web.AuthInterceptor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.resource.PathResourceResolver;
@@ -14,7 +17,17 @@ import java.io.IOException;
  * 将所有未知路径的请求转发到前端 index.html，支持 React Router 的 history 模式
  */
 @Configuration
+@RequiredArgsConstructor
 public class WebConfig implements WebMvcConfigurer {
+
+    private final AuthInterceptor authInterceptor;
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(authInterceptor)
+                .addPathPatterns("/api/**")
+                .excludePathPatterns("/api/auth/login", "/api/auth/me", "/api/auth/logout");
+    }
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {

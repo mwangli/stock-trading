@@ -8,6 +8,7 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
+import java.util.List;
 
 /**
  * 模型训练运行记录仓库。
@@ -35,6 +36,15 @@ public interface ModelTrainingRunRepository extends MongoRepository<ModelTrainin
      * @return 训练记录分页结果
      */
     Page<ModelTrainingRunDocument> findByModelName(String modelName, Pageable pageable);
+
+    /**
+     * 查询指定模型尚未结束的训练任务。
+     *
+     * @param modelName 模型名称
+     * @param statuses 未结束状态集合
+     * @return 未结束训练任务
+     */
+    List<ModelTrainingRunDocument> findByModelNameAndStatusIn(String modelName, Collection<String> statuses);
 
     /**
      * 查询指定模型最近一次训练记录。

@@ -1,9 +1,11 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START ---------
 export { default as Market } from './Market';
+export { default as StockInformation } from './StockInformation';
 export { default as Settings } from './Settings';
 export { default as Dashboard } from './Dashboard';
-export { default as Transactions } from './Transactions';
-export { default as RealTrading } from './RealTrading';
+export { default as HistoryOrders } from './HistoryOrders';
+export { default as TradeRecords } from './TradeRecords';
 export { default as Logs } from './Logs';
 export { default as ModelOperations } from './ModelOperations';
-// AI_GENERATE_END ----
+export { default as JobManagement } from './JobManagement';
+// AI_GENERATE_END ---------

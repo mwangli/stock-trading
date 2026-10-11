@@ -1,5 +1,6 @@
-// AI_GENERATE_START ------
-import React, { useCallback, useEffect, useState } from 'react';
+// AI_GENERATE_START --------------
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { formatDateTime } from '../utils/dateTime';
 import axios from 'axios';
 import {
   Alert,
@@ -14,6 +15,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Progress,
   Row,
   Space,
   Statistic,
@@ -30,8 +32,10 @@ import {
   ReloadOutlined,
   RollbackOutlined,
   SafetyCertificateOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import request from '../utils/request';
+import { usePageHeader } from '../layouts/PageHeaderContext';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -77,7 +81,18 @@ interface TrainingRun {
   startedAt?: string;
   finishedAt?: string;
   candidateModelVersionId?: string;
+  datasetSnapshotId?: string;
+  resumedFromRunId?: string;
   errorMessage?: string;
+  trainedStocks?: number;
+  progressStage?: string;
+  progressMessage?: string;
+  progressPercent?: number;
+  currentEpoch?: number;
+  totalEpochs?: number;
+  elapsedSeconds?: number;
+  estimatedRemainingSeconds?: number;
+  lastProgressAt?: string;
   trainSamples?: number;
   valSamples?: number;
   trainLoss?: number;
@@ -111,6 +126,7 @@ interface StartTrainingRequest {
   batchSize?: number;
   learningRate?: number;
   operatorName?: string;
+  resumeFromRunId?: string;
 }
 
 interface OperationResponse {
@@ -118,6 +134,13 @@ interface OperationResponse {
   operationId: string;
   message: string;
 }
+
+const defaultTrainingValues: StartTrainingRequest = {
+  days: 1000,
+  epochs: 100,
+  batchSize: 32,
+  learningRate: 0.001,
+};
 
 const statusColors: Record<string, string> = {
   ACTIVE: 'green',
@@ -128,19 +151,10 @@ const statusColors: Record<string, string> = {
   RUNNING: 'processing',
   SUCCEEDED: 'green',
   FAILED: 'red',
+  STOPPING: 'orange',
+  CANCELLED: 'default',
 };
 
-const formatDateTime = (value?: string) => value
-  ? new Intl.DateTimeFormat('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    }).format(new Date(value))
-  : '-';
 
 const formatLoss = (value?: number) => value === undefined || value === null
   ? '-'
@@ -151,6 +165,33 @@ const formatBytes = (value: number) => {
     return '-';
   }
   return `${(value / 1024 / 1024).toFixed(2)} MB`;
+};
+
+const progressStageLabels: Record<string, string> = {
+  QUEUED: '排队中',
+  PREPARING_DATA: '准备数据',
+  PROCESSING_SAMPLES: '构建样本',
+  TRAINING: '模型训练',
+  SAVING_MODEL: '保存模型',
+  VALIDATING_MODEL: '候选校验',
+  COMPLETED: '已完成',
+  FAILED: '已失败',
+};
+
+const formatDuration = (seconds?: number) => {
+  if (seconds === undefined || seconds === null || seconds < 0) {
+    return '-';
+  }
+  if (seconds < 60) {
+    return `${seconds} 秒`;
+  }
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+  if (hours > 0) {
+    return `${hours} 小时 ${minutes} 分`;
+  }
+  return `${minutes} 分 ${remainingSeconds} 秒`;
 };
 
 const getErrorMessage = (cause: unknown, fallback: string) => {
@@ -183,11 +224,11 @@ const ModelOperations: React.FC = () => {
   const [operatorName, setOperatorName] = useState('web-console');
   const [loading, setLoading] = useState(false);
   const [operating, setOperating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [trainingModalOpen, setTrainingModalOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<ModelVersion | null>(null);
+  const [progressClock, setProgressClock] = useState(() => Date.now());
 
   const loadOverview = useCallback(async () => {
     const response = await request.get('/model-operations/overview') as ApiResponse<Overview>;
@@ -216,7 +257,6 @@ const ModelOperations: React.FC = () => {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       await Promise.all([
         loadOverview(),
@@ -224,7 +264,7 @@ const ModelOperations: React.FC = () => {
         loadTrainingRuns(runPage),
       ]);
     } catch (cause) {
-      setError(getErrorMessage(cause, '读取模型运维数据失败'));
+      message.error(getErrorMessage(cause, '读取模型运维数据失败'));
     } finally {
       setLoading(false);
     }
@@ -233,6 +273,26 @@ const ModelOperations: React.FC = () => {
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    if (!overview?.trainingRunning) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      void Promise.all([loadOverview(), loadTrainingRuns(runPage)]).catch((cause) => {
+        message.error(getErrorMessage(cause, '刷新训练进度失败'));
+      });
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [loadOverview, loadTrainingRuns, overview?.trainingRunning, runPage]);
+
+  useEffect(() => {
+    if (!overview?.trainingRunning) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => setProgressClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [overview?.trainingRunning]);
 
   const refreshAfterOperation = async () => {
     await Promise.all([loadOverview(), loadVersions(1), loadTrainingRuns(1)]);
@@ -253,6 +313,22 @@ const ModelOperations: React.FC = () => {
       await refreshAfterOperation();
     } catch (cause) {
       message.error(getErrorMessage(cause, '提交训练失败'));
+    } finally {
+      setOperating(false);
+    }
+  };
+
+  const stopTraining = async (runId: string) => {
+    setOperating(true);
+    try {
+      const response = await request.post(`/model-training-runs/stop/${runId}`, undefined, {
+        params: { operatorName: operatorName.trim() || 'web-console' },
+      }) as ApiResponse<OperationResponse>;
+      const result = responseData(response, '停止训练失败');
+      message.success(result.message);
+      await refreshAfterOperation();
+    } catch (cause) {
+      message.error(getErrorMessage(cause, '停止训练失败'));
     } finally {
       setOperating(false);
     }
@@ -356,7 +432,7 @@ const ModelOperations: React.FC = () => {
           cancelText="取消"
           onConfirm={() => void activateVersion(record.id)}
         >
-          <Button type="primary" size="small" disabled={operating || overview?.tradingTime}>激活</Button>
+          <Button type="primary" size="small">激活</Button>
         </Popconfirm>
       ) : <Text type="secondary">-</Text>,
     },
@@ -367,6 +443,29 @@ const ModelOperations: React.FC = () => {
     { title: '状态', dataIndex: 'status', key: 'status', width: 110, render: (status: string) => <Tag color={statusColors[status] ?? 'default'}>{status}</Tag> },
     { title: '来源', dataIndex: 'triggerSource', key: 'triggerSource', width: 140 },
     { title: '操作人', dataIndex: 'triggeredBy', key: 'triggeredBy', width: 130 },
+    {
+      title: '训练进度',
+      key: 'progress',
+      width: 300,
+      render: (_, record) => (
+        <Space direction="vertical" size={0} className="w-full">
+          <Progress
+            percent={record.progressPercent ?? (record.status === 'SUCCEEDED' ? 100 : 0)}
+            size="small"
+            status={record.status === 'FAILED'
+              ? 'exception'
+              : record.status === 'SUCCEEDED' ? 'success' : 'active'}
+          />
+          <Text type="secondary" className="text-xs break-words">
+            {record.progressMessage
+              || progressStageLabels[record.progressStage ?? '']
+              || record.progressStage
+              || '-'}
+            {record.totalEpochs ? ` · ${record.currentEpoch ?? 0}/${record.totalEpochs} 轮` : ''}
+          </Text>
+        </Space>
+      ),
+    },
     { title: '训练样本', dataIndex: 'trainSamples', key: 'trainSamples', width: 100, render: (value?: number) => value ?? '-' },
     { title: '验证样本', dataIndex: 'valSamples', key: 'valSamples', width: 100, render: (value?: number) => value ?? '-' },
     { title: '验证损失', dataIndex: 'valLoss', key: 'valLoss', width: 110, render: formatLoss },
@@ -376,48 +475,52 @@ const ModelOperations: React.FC = () => {
     { title: '失败原因', dataIndex: 'errorMessage', key: 'errorMessage', width: 220, ellipsis: true, render: (value?: string) => value ?? '-' },
   ];
 
-  const switchBlocked = Boolean(overview?.tradingTime || overview?.trainingRunning);
+  const latestTraining = overview?.latestTrainingRun;
+  const legacyProgress = latestTraining?.status === 'RUNNING'
+    && latestTraining.progressStage == null
+    && latestTraining.progressPercent == null
+    && latestTraining.currentEpoch == null;
+  const displayedElapsedSeconds = latestTraining?.startedAt && latestTraining.status === 'RUNNING'
+    ? Math.max(
+        latestTraining.elapsedSeconds ?? 0,
+        Math.floor((progressClock - new Date(latestTraining.startedAt).getTime()) / 1000),
+      )
+    : latestTraining?.elapsedSeconds;
+
+  const headerActions = useMemo(() => (
+    <Space wrap>
+      <Input
+        className="w-44"
+        value={operatorName}
+        maxLength={64}
+        placeholder="操作人"
+        onChange={(event) => setOperatorName(event.target.value)}
+      />
+      <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadAll()}>刷新</Button>
+      <Button
+        type="primary"
+        icon={<ExperimentOutlined />}
+        onClick={() => {
+          form.setFieldsValue({
+            ...defaultTrainingValues,
+            operatorName: operatorName.trim() || 'web-console',
+          });
+          setTrainingModalOpen(true);
+        }}
+      >
+        触发训练
+      </Button>
+    </Space>
+  ), [form, loadAll, loading, operatorName]);
+
+  usePageHeader('模型版本、训练门禁、候选激活与生产回滚', headerActions);
 
   return (
     <div className="app-page">
-      <div className="page-heading flex-col lg:flex-row">
-        <div>
-          <Title level={2} className="page-title">
-            <ExperimentOutlined className="mr-2 text-blue-500" />模型运维
-          </Title>
-          <Text className="page-subtitle">模型版本、训练门禁、候选激活与生产回滚</Text>
-        </div>
-        <Space wrap>
-          <Input
-            className="w-44"
-            value={operatorName}
-            maxLength={64}
-            placeholder="操作人"
-            onChange={(event) => setOperatorName(event.target.value)}
-          />
-          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadAll()}>刷新</Button>
-          <Button
-            type="primary"
-            icon={<ExperimentOutlined />}
-            disabled={!overview?.trainingAllowed}
-            onClick={() => {
-              form.setFieldValue('operatorName', operatorName);
-              setTrainingModalOpen(true);
-            }}
-          >
-            触发训练
-          </Button>
-        </Space>
-      </div>
-
-      {error && <Alert type="error" showIcon message="模型运维接口不可用" description={error} />}
       {overview && (
-        <Alert
-          type={overview.trainingAllowed ? 'success' : 'warning'}
-          showIcon
-          message={overview.trainingAllowed ? '训练门禁已通过' : '当前不可触发训练'}
-          description={overview.gateMessage}
-        />
+        <Tag color={overview.trainingAllowed ? 'green' : 'orange'}>
+          {overview.trainingAllowed ? '训练门禁已通过' : '训练门禁当前不通过'}
+        </Tag>
       )}
 
       <Row gutter={[16, 16]}>
@@ -454,7 +557,6 @@ const ModelOperations: React.FC = () => {
                   danger
                   size="small"
                   icon={<RollbackOutlined />}
-                  disabled={!overview?.previousVersion || switchBlocked || operating}
                 >
                   执行回滚
                 </Button>
@@ -490,6 +592,85 @@ const ModelOperations: React.FC = () => {
         </Col>
       </Row>
 
+      {latestTraining && (
+        <Card className="surface-card" title="训练进度">
+          <Space direction="vertical" size="middle" className="w-full">
+            <div className="flex flex-wrap items-center gap-2">
+              <Tag color={statusColors[latestTraining.status] ?? 'default'}>
+                {latestTraining.status}
+              </Tag>
+              <Tag color="blue">
+                {legacyProgress
+                  ? '数据处理中'
+                  : progressStageLabels[latestTraining.progressStage ?? '']
+                    ?? latestTraining.progressStage
+                    ?? '等待进度'}
+              </Tag>
+              <Text>
+                {legacyProgress
+                  ? '当前任务由旧版后端启动，暂未上报轮次和损失；已运行时长仍实时更新。'
+                  : latestTraining.progressMessage || '等待训练进度更新'}
+              </Text>
+              {(latestTraining.status === 'QUEUED' || latestTraining.status === 'RUNNING' || latestTraining.status === 'STOPPING') && (
+                <Button
+                  danger
+                  size="small"
+                  icon={<StopOutlined />}
+                  onClick={() => void stopTraining(latestTraining.id)}
+                >
+                  停止训练
+                </Button>
+              )}
+            </div>
+            <Progress
+              percent={legacyProgress
+                ? 0
+                : latestTraining.progressPercent
+                  ?? (latestTraining.status === 'SUCCEEDED' ? 100 : 0)}
+              status={latestTraining.status === 'FAILED'
+                ? 'exception'
+                : latestTraining.status === 'SUCCEEDED' ? 'success' : 'active'}
+            />
+            <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }}>
+              <Descriptions.Item label="训练轮次">
+                {legacyProgress
+                  ? '待后端上报'
+                  : latestTraining.totalEpochs
+                    ? `${latestTraining.currentEpoch ?? 0} / ${latestTraining.totalEpochs}`
+                    : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="已耗时">
+                {formatDuration(displayedElapsedSeconds)}
+              </Descriptions.Item>
+              <Descriptions.Item label="预计剩余">
+                {legacyProgress
+                  ? '待后端上报'
+                  : latestTraining.status === 'RUNNING' && !latestTraining.currentEpoch
+                    ? '计算中'
+                    : formatDuration(latestTraining.estimatedRemainingSeconds)}
+              </Descriptions.Item>
+              <Descriptions.Item label="最近更新">
+                {formatDateTime(latestTraining.lastProgressAt || latestTraining.startedAt)}
+              </Descriptions.Item>
+              <Descriptions.Item label="训练损失">
+                {legacyProgress ? '待后端上报' : formatLoss(latestTraining.trainLoss)}
+              </Descriptions.Item>
+              <Descriptions.Item label="验证损失">
+                {legacyProgress ? '待后端上报' : formatLoss(latestTraining.valLoss)}
+              </Descriptions.Item>
+              <Descriptions.Item label="有效股票">
+                {legacyProgress ? '待后端上报' : latestTraining.trainedStocks ?? '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="样本规模">
+                {legacyProgress
+                  ? '待后端上报'
+                  : `${latestTraining.trainSamples ?? '-'} / ${latestTraining.valSamples ?? '-'}`}
+              </Descriptions.Item>
+            </Descriptions>
+          </Space>
+        </Card>
+      )}
+
       <Card className="surface-card" title="模型版本">
         <Table<ModelVersion>
           rowKey="id"
@@ -518,7 +699,7 @@ const ModelOperations: React.FC = () => {
           dataSource={trainingRuns}
           loading={loading}
           locale={{ emptyText: <Empty description="暂无训练记录" /> }}
-          scroll={{ x: 1760 }}
+          scroll={{ x: 1980 }}
           pagination={{
             current: runPage,
             pageSize,
@@ -621,4 +802,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END ------
+// AI_GENERATE_END --------------

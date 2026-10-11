@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 package com.stock.dataCollector.support;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -18,8 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 数据同步定时任务
  * <p>
- * 说明：本类由动态任务调度中心 {@link com.stock.tradingExecutor.job.JobSchedulerService}
- * 通过 JobConfig 中的 beanName + methodName 反射调用，无需使用 @Scheduled 注解。
+ * 说明：本类提供数据同步业务方法，由固定 Quartz Job 类直接调用。
  * 默认任务配置见 {@link com.stock.tradingExecutor.job.JobBootstrap}。
  * </p>
  *
@@ -211,4 +211,5 @@ public class DataSyncScheduler {
         log.info("========== [数据同步任务] 每日增量新闻采集结束 ==========");
     }
 }
+// AI_GENERATE_END -
 
