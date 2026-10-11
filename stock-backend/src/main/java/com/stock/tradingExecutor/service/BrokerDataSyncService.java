@@ -1,12 +1,12 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START ------------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.BrokerHistoryQueryRequest;
 import com.stock.tradingExecutor.domain.dto.BrokerSyncResultDto;
 import com.stock.tradingExecutor.domain.entity.BrokerSyncBatchEntity;
+import com.stock.tradingExecutor.domain.entity.OrderStatus;
 import com.stock.tradingExecutor.domain.entity.Position;
 import com.stock.tradingExecutor.domain.vo.AccountStatus;
-import com.stock.tradingExecutor.domain.vo.BrokerFillSnapshot;
 import com.stock.tradingExecutor.domain.vo.BrokerOrderSnapshot;
 import com.stock.tradingExecutor.execution.BrokerAdapter;
 import com.stock.tradingExecutor.execution.TradingProperties;
@@ -38,20 +38,20 @@ public class BrokerDataSyncService {
     private static final String ACCOUNT = "ACCOUNT";
     private static final String POSITION = "POSITION";
     private static final String TODAY_ORDER = "TODAY_ORDER";
-    private static final String TODAY_FILL = "TODAY_FILL";
     private static final String HISTORY_ORDER = "HISTORY_ORDER";
-    private static final String HISTORY_FILL = "HISTORY_FILL";
 
     private final ReentrantLock syncLock = new ReentrantLock();
     private final BrokerAdapter brokerAdapter;
     private final BrokerFactPersistenceService persistenceService;
+    private final TradeRecordAggregationService tradeRecordAggregationService;
+    private final PerformanceReportService performanceReportService;
     private final TradingProperties tradingProperties;
     private volatile String activeOperation;
 
     /**
-     * 同步当前账户、持仓、当日委托和当日成交。
+     * 同步当前账户、持仓和当日已成交委托。
      *
-     * @return 四类当前事实的汇总结果
+     * @return 三类当前事实的汇总结果
      */
     public BrokerSyncResultDto syncCurrentFacts() {
         return executeExclusively("CURRENT_FACTS", this::doSyncCurrentFacts);
@@ -79,35 +79,36 @@ public class BrokerDataSyncService {
         }));
 
         executions.add(runBatch(TODAY_ORDER, today, today, false, () -> {
-            List<BrokerOrderSnapshot> orders = brokerAdapter.getTodayOrderSnapshots();
+            List<BrokerOrderSnapshot> orders = brokerAdapter.getTodayOrderSnapshots().stream()
+                    .filter(this::isFilledOrder)
+                    .toList();
             return persistenceService.upsertOrders(orders);
         }));
 
-        executions.add(runBatch(TODAY_FILL, today, today, false, () -> {
-            List<BrokerFillSnapshot> fills = brokerAdapter.getTodayFillSnapshots();
-            return persistenceService.upsertFills(fills);
-        }));
-
-        return aggregate("CURRENT_FACTS", today, today, executions);
+        BrokerSyncResultDto result = aggregate("CURRENT_FACTS", today, today, executions);
+        assembleTradeRecords();
+        return result;
     }
 
     /**
-     * 同步指定日期窗口的历史委托和成交。
+     * 同步指定日期窗口的已成交历史委托。
      * 手动查询窗口最多为 31 个自然日，成功窗口也会重新查询并执行幂等更新。
      *
      * @param request 日期范围
-     * @return 历史委托和成交同步结果
+     * @return 已成交历史委托同步结果
      */
     public BrokerSyncResultDto syncHistoryWindow(BrokerHistoryQueryRequest request) {
         return executeExclusively("HISTORY_WINDOW", () -> {
             validateManualWindow(request);
             ensureAuthenticated();
-            return syncHistoryWindow(request.getStartDate(), request.getEndDate(), false);
+            BrokerSyncResultDto result = syncHistoryOrdersWindow(request.getStartDate(), request.getEndDate(), false);
+            assembleTradeRecords();
+            return result;
         });
     }
 
     /**
-     * 按自然月同步最近五年历史委托和成交。
+     * 按自然月同步最近五年已成交历史委托。
      * 已成功的月份直接跳过，失败或部分成功月份会在下次运行时重试。
      *
      * @return 五年历史同步汇总结果
@@ -128,12 +129,14 @@ public class BrokerDataSyncService {
             if (monthEnd.isAfter(endDate)) {
                 monthEnd = endDate;
             }
-            BrokerSyncResultDto windowResult = syncHistoryWindow(cursor, monthEnd, true);
+            BrokerSyncResultDto windowResult = syncHistoryOrdersWindow(cursor, monthEnd, true);
             executions.add(BatchExecution.fromAggregate(windowResult));
             cursor = monthEnd.plusDays(1);
             pauseBetweenMonths();
         }
-        return aggregate("HISTORY_FIVE_YEARS", startDate, endDate, executions);
+        BrokerSyncResultDto result = aggregate("HISTORY_FIVE_YEARS", startDate, endDate, executions);
+        assembleTradeRecords();
+        return result;
     }
 
     private BrokerSyncResultDto executeExclusively(String operation, Supplier<BrokerSyncResultDto> action) {
@@ -151,18 +154,45 @@ public class BrokerDataSyncService {
         }
     }
 
-    private BrokerSyncResultDto syncHistoryWindow(LocalDate startDate, LocalDate endDate,
-                                                   boolean skipSuccessful) {
+    private BrokerSyncResultDto syncHistoryOrdersWindow(LocalDate startDate, LocalDate endDate,
+                                                          boolean skipSuccessful) {
         List<BatchExecution> executions = new ArrayList<>();
         executions.add(runBatch(HISTORY_ORDER, startDate, endDate, skipSuccessful, () -> {
-            List<BrokerOrderSnapshot> orders = brokerAdapter.getHistoryOrderSnapshots(startDate, endDate);
+            List<BrokerOrderSnapshot> orders = brokerAdapter.getHistoryOrderSnapshots(startDate, endDate).stream()
+                    .filter(this::isFilledOrder)
+                    .toList();
             return persistenceService.upsertOrders(orders);
         }));
-        executions.add(runBatch(HISTORY_FILL, startDate, endDate, skipSuccessful, () -> {
-            List<BrokerFillSnapshot> fills = brokerAdapter.getHistoryFillSnapshots(startDate, endDate);
-            return persistenceService.upsertFills(fills);
-        }));
+
         return aggregate("HISTORY_WINDOW", startDate, endDate, executions);
+    }
+
+    private boolean isFilledOrder(BrokerOrderSnapshot order) {
+        return order != null
+                && order.getStatus() == OrderStatus.FILLED
+                && order.getFilledQuantity() != null
+                && order.getFilledQuantity() > 0
+                && order.getAverageFillPrice() != null
+                && order.getAverageFillPrice().signum() > 0;
+    }
+
+    /**
+     * 根据当前账户全部已成交历史订单重新组装交易记录。
+     * 该方法独立于券商订单同步，可重复调用且不会产生重复数据。
+     *
+     * @return 交易记录组装结果
+     */
+    public TradeRecordAggregationService.AggregationResult assembleTradeRecords() {
+        int removedInvalidOrders = persistenceService.removeInvalidFilledOrders();
+        if (removedInvalidOrders > 0) {
+            log.info("[BrokerSync] 已清理无效成交委托: count={}", removedInvalidOrders);
+        }
+        TradeRecordAggregationService.AggregationResult result =
+                tradeRecordAggregationService.rebuildCurrentAccountTradeRecords();
+        log.info("[BrokerSync] 交易记录组装完成: records={}, skippedOrders={}, unmatchedSellQuantity={}",
+                result.recordCount(), result.skippedOrderCount(), result.unmatchedSellQuantity());
+        performanceReportService.refreshDailySnapshot();
+        return result;
     }
 
     private BatchExecution runBatch(String syncType, LocalDate startDate, LocalDate endDate,
@@ -263,4 +293,4 @@ public class BrokerDataSyncService {
         }
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END ------------

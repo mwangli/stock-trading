@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.tradingExecutor.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -52,7 +52,7 @@ public class BrokerReadController {
      */
     @GetMapping("/account")
     public ResponseDTO<BrokerAccountDto> getAccount() {
-        log.info("查询券商账户资金");
+        log.info("查询数据库中的最新券商账户资金快照");
         return executeQuery(brokerReadService::getAccount);
     }
 
@@ -63,7 +63,7 @@ public class BrokerReadController {
      */
     @GetMapping("/positions")
     public ResponseDTO<BrokerPositionListResponseDto> getPositions() {
-        log.info("查询券商当前持仓");
+        log.info("查询数据库中的最新券商持仓快照");
         return executeQuery(brokerReadService::getPositions);
     }
 
@@ -131,4 +131,4 @@ public class BrokerReadController {
         }
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 package com.stock.dataCollector.service;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -39,6 +40,9 @@ import com.stock.dataCollector.domain.vo.MarketStatsDto;
 /**
  * 股票数据服务
  * 统一处理股票信息的采集、存储和查询
+ *
+ * @author mwangli
+ * @since 2026-03-10
  */
 @Slf4j
 @Service
@@ -443,26 +447,27 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
     }
 
     /**
-     * 使用 keywords 模糊查询股票，支持 name 或 code 任一匹配
+     * 分页查询具有有效总市值的股票，并支持名称或代码模糊匹配。
+     *
+     * 总市值为空或小于等于 0 的记录属于行情字段不完整数据，不进入股票信息页面。
      *
      * @param keywords 搜索关键词
      * @param pageable 分页参数
-     * @return 分页结果
+     * @return 已排除无效总市值记录的分页结果
      */
     public Page<StockInfo> findStocksWithKeywords(String keywords, Pageable pageable) {
         return stockInfoRepository.findAll((root, query, cb) -> {
-            // 如果没有关键词，返回所有数据
-            if (keywords == null || keywords.isEmpty()) {
-                return null;
+            // 股票列表只展示具备有效市值的可交易标的，保证分页数量与页面内容一致。
+            var validMarketValue = cb.greaterThan(root.<BigDecimal>get("totalMarketValue"), BigDecimal.ZERO);
+            if (keywords == null || keywords.isBlank()) {
+                return validMarketValue;
             }
 
             // 使用 OR 条件：name LIKE %keywords% OR code LIKE %keywords%
             var nameCondition = cb.like(root.get("name"), "%" + keywords + "%");
             var codeCondition = cb.like(root.get("code"), "%" + keywords + "%");
             var orCondition = cb.or(nameCondition, codeCondition);
-
-            query.where(orCondition);
-            return query.getRestriction();
+            return cb.and(validMarketValue, orCondition);
         }, pageable);
     }
 
@@ -1038,3 +1043,4 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
         private String errorMessage;
     }
 }
+// AI_GENERATE_END -

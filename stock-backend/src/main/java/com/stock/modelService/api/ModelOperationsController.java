@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -128,12 +128,73 @@ public class ModelOperationsController {
     }
 
     /**
+     * 预先构建 LSTM 训练数据快照，供后续训练复用。
+     *
+     * @param request 快照构建参数
+     * @return 快照构建结果
+     */
+    @PostMapping("/model-training-snapshots/build")
+    public ResponseDTO<ModelOperationsDto.OperationResponse> buildTrainingSnapshot(
+            @RequestBody(required = false) ModelOperationsDto.StartTrainingRequest request) {
+        log.info("[ModelOperations] 构建 LSTM 训练数据快照: days={}, operator={}",
+                request == null ? null : request.getDays(),
+                request == null ? null : request.getOperatorName());
+        try {
+            return ResponseDTO.success(modelOperationsService.prepareTrainingSnapshot(request));
+        } catch (RuntimeException exception) {
+            log.warn("[ModelOperations] 构建训练数据快照失败: {}", exception.getMessage());
+            return ResponseDTO.error(exception.getMessage());
+        }
+    }
+
+    /**
      * 激活已通过完整性校验的 READY 模型版本。
      *
      * @param versionId 模型版本 ID
      * @param operatorName 操作人名称
      * @return 激活结果
      */
+    /**
+     * 停止排队或运行中的模型训练任务。
+     *
+     * @param runId 训练运行 ID
+     * @param operatorName 操作人名称
+     * @return 停止结果
+     */
+    @PostMapping("/model-training-runs/stop/{runId}")
+    public ResponseDTO<ModelOperationsDto.OperationResponse> stopTraining(
+            @PathVariable String runId, @RequestParam(required = false) String operatorName) {
+        log.info("[ModelOperations] 停止模型训练: runId={}, operator={}", runId, operatorName);
+        try {
+            return ResponseDTO.success(modelOperationsService.stopTraining(runId, operatorName));
+        } catch (RuntimeException exception) {
+            log.warn("[ModelOperations] 停止模型训练失败: runId={}, reason={}", runId, exception.getMessage());
+            return ResponseDTO.error(exception.getMessage());
+        }
+    }
+
+    /**
+     * 从已中断或失败任务的最近检查点恢复训练。
+     *
+     * @param runId 原训练运行 ID
+     * @param operatorName 操作人名称
+     * @return 新恢复任务的提交结果
+     */
+    @PostMapping("/model-training-runs/resume/{runId}")
+    public ResponseDTO<ModelOperationsDto.OperationResponse> resumeTraining(
+            @PathVariable String runId, @RequestParam(required = false) String operatorName) {
+        log.info("[ModelOperations] 恢复模型训练: runId={}, operator={}", runId, operatorName);
+        try {
+            ModelOperationsDto.StartTrainingRequest request = new ModelOperationsDto.StartTrainingRequest();
+            request.setOperatorName(operatorName);
+            request.setResumeFromRunId(runId);
+            return ResponseDTO.success(modelOperationsService.startTraining(request));
+        } catch (RuntimeException exception) {
+            log.warn("[ModelOperations] 恢复模型训练失败: runId={}, reason={}", runId, exception.getMessage());
+            return ResponseDTO.error(exception.getMessage());
+        }
+    }
+
     @PostMapping("/model-versions/activate/{versionId}")
     public ResponseDTO<ModelOperationsDto.OperationResponse> activateVersion(
             @PathVariable String versionId,
@@ -169,4 +230,4 @@ public class ModelOperationsController {
         }
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

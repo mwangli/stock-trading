@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 package com.stock.dataCollector.api;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -307,19 +308,40 @@ public class StockDataController {
                 return ResponseEntity.ok(result);
             }
 
+            // 统一过滤完整 OHLC 数据，保证日期、K线和成交量按同一索引对齐。
+            List<? extends StockPrice> validPrices = prices.stream()
+                    .filter(p -> p.getDate() != null
+                            && p.getOpenPrice() != null
+                            && p.getClosePrice() != null
+                            && p.getLowPrice() != null
+                            && p.getHighPrice() != null)
+                    .toList();
+            if (validPrices.isEmpty()) {
+                log.warn("股票 {} 没有完整的K线数据", code);
+                KlineDataResponseDto.KlineDataWrapper emptyData = KlineDataResponseDto.KlineDataWrapper.builder()
+                        .dates(List.of())
+                        .kline(List.of())
+                        .volumes(List.of())
+                        .build();
+                return ResponseEntity.ok(KlineDataResponseDto.builder()
+                        .success(true)
+                        .data(emptyData)
+                        .total(0)
+                        .build());
+            }
             // 调试日志：记录实际返回的数据日期范围
-            LocalDate firstDate = prices.get(0).getDate();
-            LocalDate lastDate = prices.get(prices.size() - 1).getDate();
+            LocalDate firstDate = validPrices.get(0).getDate();
+            LocalDate lastDate = validPrices.get(validPrices.size() - 1).getDate();
             log.info("返回数据: code={}, 数量={}, 日期范围={} 到 {}, type={}",
-                    code, prices.size(), firstDate, lastDate, type);
+                    code, validPrices.size(), firstDate, lastDate, type);
 
             // 转换为ECharts需要的格式
-            List<String> dates = prices.stream()
+            List<String> dates = validPrices.stream()
                 .filter(p -> p.getDate() != null)
                 .map(p -> p.getDate().toString())
                 .toList();
 
-            List<List<Object>> klineData = prices.stream()
+            List<List<Object>> klineData = validPrices.stream()
                 .filter(p -> p.getOpenPrice() != null && p.getClosePrice() != null
                     && p.getLowPrice() != null && p.getHighPrice() != null)
                 .map(p -> {
@@ -332,9 +354,9 @@ public class StockDataController {
                 })
                 .toList();
 
-            List<Object> volumes = prices.stream()
-                .filter(p -> p.getVolume() != null)
-                .map(p -> (Object) p.getVolume().doubleValue())
+            List<Object> volumes = validPrices.stream()
+                .map(p -> p.getVolume() == null ? 0D : p.getVolume().doubleValue())
+                .map(value -> (Object) value)
                 .toList();
             KlineDataResponseDto.KlineDataWrapper data = KlineDataResponseDto.KlineDataWrapper.builder()
                     .dates(dates)
@@ -364,3 +386,4 @@ public class StockDataController {
         }
     }
 }
+// AI_GENERATE_END -

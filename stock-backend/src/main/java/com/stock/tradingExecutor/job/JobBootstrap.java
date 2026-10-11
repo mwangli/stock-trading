@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START ---------
 package com.stock.tradingExecutor.job;
 
 import lombok.extern.slf4j.Slf4j;
@@ -80,7 +80,7 @@ public class JobBootstrap implements ApplicationRunner {
                 .setDescription("每周同步证券 API 股票代码和名称")
                 .setBeanName("dataSyncScheduler")
                 .setMethodName("syncStockListDaily")
-                .setCronExpression("0 0 1 * * SUN")
+                .setCronExpression("0 0 1 ? * SUN")
                 .setStatus(1));
 
         defaultJobs.add(new JobConfig()
@@ -88,7 +88,7 @@ public class JobBootstrap implements ApplicationRunner {
                 .setDescription("每日收盘后同步所有股票日 K 线数据")
                 .setBeanName("dataSyncScheduler")
                 .setMethodName("syncDailyStockData")
-                .setCronExpression("0 0 18 * * MON-FRI")
+                .setCronExpression("0 0 18 ? * MON-FRI")
                 .setStatus(1));
 
         defaultJobs.add(new JobConfig()
@@ -96,7 +96,7 @@ public class JobBootstrap implements ApplicationRunner {
                 .setDescription("深度同步所有股票历史数据 (周维护)")
                 .setBeanName("dataSyncScheduler")
                 .setMethodName("syncAllHistoricalData")
-                .setCronExpression("0 0 2 * * SUN")
+                .setCronExpression("0 0 2 ? * SUN")
                 .setStatus(1));
 
         defaultJobs.add(new JobConfig()
@@ -104,7 +104,7 @@ public class JobBootstrap implements ApplicationRunner {
                 .setDescription("全量新闻采集：每周日 6:00 全股票最新 100 条新闻/公告")
                 .setBeanName("dataSyncScheduler")
                 .setMethodName("collectNewsFullSync")
-                .setCronExpression("0 0 6 * * SUN")
+                .setCronExpression("0 0 6 ? * SUN")
                 .setStatus(0));
 
         defaultJobs.add(new JobConfig()
@@ -112,7 +112,7 @@ public class JobBootstrap implements ApplicationRunner {
                 .setDescription("每日增量新闻采集：每交易日 6:00 全股票最新 100 条新闻/公告")
                 .setBeanName("dataSyncScheduler")
                 .setMethodName("collectNewsDailySync")
-                .setCronExpression("0 0 6 * * MON-FRI")
+                .setCronExpression("0 0 6 ? * MON-FRI")
                 .setStatus(1));
 
         defaultJobs.add(new JobConfig()
@@ -120,7 +120,7 @@ public class JobBootstrap implements ApplicationRunner {
                 .setDescription("收盘后更新缺失或过期的 LSTM 股票模型")
                 .setBeanName("offlineLstmTrainingJob")
                 .setMethodName("trainStaleModels")
-                .setCronExpression("0 0 19 * * MON-FRI")
+                .setCronExpression("0 0 19 ? * MON-FRI")
                 .setStatus(1));
 
         defaultJobs.add(new JobConfig()
@@ -128,7 +128,7 @@ public class JobBootstrap implements ApplicationRunner {
                 .setDescription("使用已训练 LSTM 与近期新闻情感生成真实交易候选")
                 .setBeanName("strategyScheduler")
                 .setMethodName("runStockSelection")
-                .setCronExpression("0 30 6 * * MON-FRI")
+                .setCronExpression("0 30 6 ? * MON-FRI")
                 .setStatus(1));
 
         defaultJobs.add(new JobConfig()
@@ -136,7 +136,7 @@ public class JobBootstrap implements ApplicationRunner {
                 .setDescription("无人值守模式执行当日真实模型候选买入")
                 .setBeanName("realTradingJob")
                 .setMethodName("executeAutoBuys")
-                .setCronExpression("0 35 9 * * MON-FRI")
+                .setCronExpression("0 35 9 ? * MON-FRI")
                 .setStatus(1));
 
         defaultJobs.add(new JobConfig()
@@ -144,7 +144,7 @@ public class JobBootstrap implements ApplicationRunner {
                 .setDescription("无人值守模式检查真实持仓止损、止盈和尾盘退出")
                 .setBeanName("realTradingJob")
                 .setMethodName("checkT1Exits")
-                .setCronExpression("0 50 14 * * MON-FRI")
+                .setCronExpression("0 50 14 ? * MON-FRI")
                 .setStatus(1));
 
         jobConfigRepository.deleteByJobName("modelTrainingRecordSync");
@@ -160,10 +160,16 @@ public class JobBootstrap implements ApplicationRunner {
             fixedJob.setUpdateTime(LocalDateTime.now());
             jobConfigRepository.save(fixedJob);
             log.info("[任务初始化] 应用固定任务配置: {}", fixedJob.getJobName());
+            try {
+                jobSchedulerService.registerJob(fixedJob);
+            } catch (RuntimeException exception) {
+                log.error("[任务初始化] 固定任务即时注册失败，将在全量注册阶段重试: jobName={}",
+                        fixedJob.getJobName(), exception);
+            }
         }
 
         jobSchedulerService.startAllActiveJobs();
         log.info("========== [任务初始化] 完成 ==========");
     }
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END ---------

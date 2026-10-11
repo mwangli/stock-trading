@@ -1,10 +1,12 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ---------
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockPrice;
 import com.stock.modelService.config.LstmModelConfig;
 import lombok.Builder;
 import lombok.Data;
+import lombok.AllArgsConstructor;
+import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -352,6 +354,8 @@ public class LstmDataPreprocessor {
      */
     @Data
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class TrainingSample {
         /** 输入序列，形状为 sequenceLength x featureCount。 */
         private float[][] input;
@@ -380,6 +384,8 @@ public class LstmDataPreprocessor {
      */
     @Data
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class StockContext {
         /** 股票代码。 */
         private String stockCode;
@@ -409,6 +415,8 @@ public class LstmDataPreprocessor {
      */
     @Data
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class ProcessedData {
         /** 训练样本。 */
         private List<TrainingSample> trainSamples;
@@ -499,4 +507,4 @@ public class LstmDataPreprocessor {
         private String featureVersion;
     }
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------
