@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -121,6 +121,20 @@ public class ModelPredictionAnalysisService {
             batch.setUpdatedAt(LocalDateTime.now());
             batchRepository.save(batch);
             log.warn("恢复遗留预测批次: batchId={}, previousStatus=RUNNING", batch.getId());
+        }
+        for (ModelPredictionBatchDocument batch : batchRepository.findByCalendarFallbackIsNull()) {
+            if (batch.getBaseTradeDate() == null) {
+                continue;
+            }
+            TradeDateResolution resolution = resolveNextTradeDate(batch.getBaseTradeDate());
+            batch.setCalendarFallback(resolution.calendarFallback());
+            if (batch.getInformationCutoffAt() == null) {
+                batch.setInformationCutoffAt(batch.getCreatedAt());
+            }
+            batch.setUpdatedAt(LocalDateTime.now());
+            batchRepository.save(batch);
+            log.info("已回填历史预测批次日历来源: batchId={}, calendarFallback={}",
+                    batch.getId(), resolution.calendarFallback());
         }
     }
 
@@ -624,7 +638,7 @@ public class ModelPredictionAnalysisService {
                 .id(item.getId()).modelName(item.getModelName()).modelId(item.getModelId())
                 .modelVersion(item.getModelVersion()).baseTradeDate(item.getBaseTradeDate())
                 .targetTradeDate(item.getTargetTradeDate()).informationCutoffAt(item.getInformationCutoffAt())
-                .calendarFallback(item.isCalendarFallback()).status(item.getStatus())
+                .calendarFallback(item.getCalendarFallback()).status(item.getStatus())
                 .totalStocks(item.getTotalStocks()).processedStocks(item.getProcessedStocks())
                 .successCount(item.getSuccessCount()).failedCount(item.getFailedCount())
                 .evaluatedCount(item.getEvaluatedCount()).noMarketDataCount(item.getNoMarketDataCount())
@@ -642,7 +656,7 @@ public class ModelPredictionAnalysisService {
                 .stockName(item.getStockName()).industryCode(item.getIndustryCode())
                 .modelId(item.getModelId()).modelVersion(item.getModelVersion())
                 .baseTradeDate(item.getBaseTradeDate()).targetTradeDate(item.getTargetTradeDate())
-                .calendarFallback(item.isCalendarFallback())
+                .calendarFallback(item.getCalendarFallback())
                 .baseClosePrice(item.getBaseClosePrice()).predictedClosePrice(item.getPredictedClosePrice())
                 .predictedReturn(item.getPredictedReturn()).directionProbability(item.getDirectionProbability())
                 .downsideRisk(item.getDownsideRisk()).actualClosePrice(item.getActualClosePrice())
@@ -731,4 +745,4 @@ public class ModelPredictionAnalysisService {
     private record TradeDateResolution(LocalDate tradeDate, boolean calendarFallback) {
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

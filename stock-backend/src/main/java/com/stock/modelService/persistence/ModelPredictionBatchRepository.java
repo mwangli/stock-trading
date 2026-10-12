@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.persistence;
 
 import com.stock.modelService.domain.entity.ModelPredictionBatchDocument;
@@ -19,6 +19,13 @@ import java.util.List;
  */
 @Repository
 public interface ModelPredictionBatchRepository extends MongoRepository<ModelPredictionBatchDocument, String> {
+
+    /**
+     * 查询尚未记录交易日历来源的历史批次。
+     *
+     * @return 待回填日历来源的批次
+     */
+    List<ModelPredictionBatchDocument> findByCalendarFallbackIsNull();
 
     /**
      * 判断是否存在未结束预测批次。
@@ -61,4 +68,4 @@ public interface ModelPredictionBatchRepository extends MongoRepository<ModelPre
     ModelPredictionBatchDocument findFirstByModelIdAndBaseTradeDateOrderByCreatedAtDesc(
             String modelId, LocalDate baseTradeDate);
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --
