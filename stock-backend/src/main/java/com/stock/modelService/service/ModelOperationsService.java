@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------
+// AI_GENERATE_START -----------
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -131,6 +131,7 @@ public class ModelOperationsService {
             run.setEstimatedRemainingSeconds(0L);
             run.setFinishedAt(LocalDateTime.now());
             run.setLastProgressAt(LocalDateTime.now());
+            clearMissingCheckpointReference(run);
             trainingRunRepository.save(run);
             saveAudit(modelName, "TRAIN_CANCELLED", run.getTriggeredBy(),
                     null, null, true, "应用重启，原训练任务已中断");
@@ -985,4 +986,4 @@ public class ModelOperationsService {
     }
 
     }
-// AI_GENERATE_END ----------
+// AI_GENERATE_END -----------
