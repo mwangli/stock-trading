@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.modelService.domain.entity;
 
 import lombok.Data;
@@ -56,7 +56,7 @@ public class ModelPredictionDocument {
     private LocalDate targetTradeDate;
 
     /** 目标交易日是否由工作日规则降级推算。 */
-    private boolean calendarFallback;
+    private Boolean calendarFallback;
 
     /** 基准日实际收盘价。 */
     private Double baseClosePrice;
@@ -100,4 +100,4 @@ public class ModelPredictionDocument {
     /** 实际结果评估时间。 */
     private LocalDateTime evaluatedAt;
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

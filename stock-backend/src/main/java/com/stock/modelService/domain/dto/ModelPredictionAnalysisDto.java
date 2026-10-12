@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.modelService.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -107,7 +107,7 @@ public final class ModelPredictionAnalysisDto {
         private LocalDateTime informationCutoffAt;
 
         /** 目标交易日是否由工作日规则降级推算。 */
-        private boolean calendarFallback;
+        private Boolean calendarFallback;
 
         /** 批次状态。 */
         private String status;
@@ -232,7 +232,7 @@ public final class ModelPredictionAnalysisDto {
         private LocalDate targetTradeDate;
 
         /** 目标交易日是否由工作日规则降级推算。 */
-        private boolean calendarFallback;
+        private Boolean calendarFallback;
 
         /** 基准日收盘价。 */
         private Double baseClosePrice;
@@ -375,4 +375,4 @@ public final class ModelPredictionAnalysisDto {
         private String abilityMessage;
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---
