@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.persistence;
 
 import com.stock.modelService.domain.entity.TrainingDatasetSnapshotDocument;
@@ -37,5 +37,13 @@ public interface TrainingDatasetSnapshotRepository
      */
     List<TrainingDatasetSnapshotDocument> findByModelNameAndStatusOrderByCreatedAtDesc(
             String modelName, String status);
+
+    /**
+     * 查询指定状态的全部快照，用于启动阶段清理中断构建。
+     *
+     * @param status 快照状态
+     * @return 指定状态的快照列表
+     */
+    List<TrainingDatasetSnapshotDocument> findByStatus(String status);
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START ---------
 package com.stock.modelService.service;
 
 import com.mongodb.client.gridfs.model.GridFSFile;
@@ -10,6 +10,7 @@ import com.stock.dataCollector.persistence.StockInfoRepository;
 import com.stock.modelService.config.LstmTrainingConfig;
 import com.stock.modelService.domain.entity.TrainingDatasetSnapshotDocument;
 import com.stock.modelService.persistence.TrainingDatasetSnapshotRepository;
+import jakarta.annotation.PostConstruct;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -80,6 +81,28 @@ public class TrainingDatasetSnapshotService {
     private final TrainingDatasetSnapshotRepository snapshotRepository;
     private final GridFsTemplate gridFsTemplate;
     private final ObjectMapper objectMapper;
+
+    /**
+     * 应用启动时清理上次进程中断留下的快照半成品和已持久化快照的本地副本。
+     */
+    @PostConstruct
+    public void cleanupInterruptedSnapshotArtifacts() {
+        Path artifactRoot = artifactRoot();
+        List<TrainingDatasetSnapshotDocument> interrupted = snapshotRepository.findByStatus("BUILDING");
+        for (TrainingDatasetSnapshotDocument snapshot : interrupted) {
+            deleteGridFsSnapshot(snapshot.getId());
+            cleanupSnapshotDirectory(snapshotDirectory(artifactRoot, snapshot.getId()), artifactRoot);
+            snapshot.setStatus("FAILED");
+            snapshot.setFinishedAt(LocalDateTime.now());
+            snapshot.setErrorMessage("应用重启，已清理未完成的训练快照工件");
+            snapshotRepository.save(snapshot);
+            log.warn("已清理应用重启前遗留的训练快照: snapshotId={}", snapshot.getId());
+        }
+        snapshotRepository.findByStatus(READY).stream()
+                .filter(snapshot -> STORAGE_MONGO_GRIDFS.equals(snapshot.getArtifactStorage()))
+                .forEach(snapshot -> cleanupSnapshotDirectory(
+                        snapshotDirectory(artifactRoot, snapshot.getId()), artifactRoot));
+    }
 
     /**
      * 计算训练数据契约摘要。
@@ -234,10 +257,14 @@ public class TrainingDatasetSnapshotService {
             if (!snapshot.getArtifactSha256().equalsIgnoreCase(hashFile(artifactPath))) {
                 throw new IllegalStateException("训练数据快照校验摘要不一致");
             }
+            LstmDataPreprocessor.ProcessedData processedData;
             if (artifactPath.getFileName().toString().endsWith(".json.gz")) {
-                return readLegacySnapshot(artifactPath);
+                processedData = readLegacySnapshot(artifactPath);
+            } else {
+                processedData = readChunkedSnapshot(artifactPath);
             }
-            return readChunkedSnapshot(artifactPath);
+            migrateLocalSnapshotToGridFs(snapshot, artifactPath);
+            return processedData;
         } catch (IOException exception) {
             throw new IllegalStateException("读取训练数据快照失败", exception);
         }
@@ -505,6 +532,9 @@ public class TrainingDatasetSnapshotService {
         if (manifestFile == null) {
             throw new IllegalStateException("训练数据快照 GridFS 清单不存在: " + snapshot.getId());
         }
+        if (!CHUNKED_FORMAT.equals(snapshot.getArtifactFormat())) {
+            return readLegacyGridFsSnapshot(snapshot, manifestFile);
+        }
         try {
             GridFsResource manifestResource = gridFsTemplate.getResource(manifestFile);
             byte[] manifestBytes;
@@ -518,6 +548,22 @@ public class TrainingDatasetSnapshotService {
             return readGridFsChunks(snapshot.getId(), manifest);
         } catch (IOException exception) {
             throw new IllegalStateException("读取 MongoDB GridFS 训练快照失败", exception);
+        }
+    }
+
+    private LstmDataPreprocessor.ProcessedData readLegacyGridFsSnapshot(
+            TrainingDatasetSnapshotDocument snapshot, GridFSFile artifactFile) {
+        if (snapshot.getArtifactSize() > 0 && artifactFile.getLength() != snapshot.getArtifactSize()) {
+            throw new IllegalStateException("历史训练快照 GridFS 文件大小不一致");
+        }
+        if (!snapshot.getArtifactSha256().equalsIgnoreCase(hashGridFsFile(artifactFile))) {
+            throw new IllegalStateException("历史训练快照 GridFS 摘要不一致");
+        }
+        try (InputStream source = gridFsTemplate.getResource(artifactFile).getInputStream();
+             InputStream gzip = new GZIPInputStream(source)) {
+            return objectMapper.readValue(gzip, LstmDataPreprocessor.ProcessedData.class);
+        } catch (IOException exception) {
+            throw new IllegalStateException("读取历史 MongoDB GridFS 训练快照失败", exception);
         }
     }
 
@@ -535,16 +581,14 @@ public class TrainingDatasetSnapshotService {
                 throw new IllegalStateException("训练数据快照 GridFS 分片不存在或大小不一致: "
                         + descriptor.getFileName());
             }
-            MessageDigest digest = messageDigest();
-            SnapshotChunk chunk;
-            try (InputStream source = gridFsTemplate.getResource(chunkFile).getInputStream();
-                 DigestInputStream digestInput = new DigestInputStream(source, digest);
-                 InputStream gzip = new GZIPInputStream(digestInput)) {
-                chunk = objectMapper.readValue(gzip, SnapshotChunk.class);
-            }
-            if (!descriptor.getSha256().equalsIgnoreCase(hexDigest(digest))) {
+            if (!descriptor.getSha256().equalsIgnoreCase(hashGridFsFile(chunkFile))) {
                 throw new IllegalStateException("训练数据快照 GridFS 分片摘要不一致: "
                         + descriptor.getFileName());
+            }
+            SnapshotChunk chunk;
+            try (InputStream source = gridFsTemplate.getResource(chunkFile).getInputStream();
+                 InputStream gzip = new GZIPInputStream(source)) {
+                chunk = objectMapper.readValue(gzip, SnapshotChunk.class);
             }
             trainSamples.addAll(chunk.getTrainSamples());
             valSamples.addAll(chunk.getValSamples());
@@ -585,6 +629,43 @@ public class TrainingDatasetSnapshotService {
         }
     }
 
+    private void migrateLocalSnapshotToGridFs(
+            TrainingDatasetSnapshotDocument snapshot, Path artifactPath) {
+        String artifactFileId;
+        try {
+            if (artifactPath.getFileName().toString().endsWith(".json.gz")) {
+                deleteGridFsSnapshot(snapshot.getId());
+                artifactFileId = storeGridFsFile(snapshot.getId(), artifactPath.getFileName().toString(),
+                        "application/gzip", artifactPath).toHexString();
+            } else {
+                SnapshotManifest manifest = objectMapper.readValue(artifactPath.toFile(), SnapshotManifest.class);
+                artifactFileId = persistSnapshotToGridFs(
+                        snapshot.getId(), artifactPath.getParent(), artifactPath, manifest.getChunks());
+            }
+            snapshot.setArtifactStorage(STORAGE_MONGO_GRIDFS);
+            snapshot.setArtifactFileId(artifactFileId);
+            snapshot.setArtifactPath(null);
+            snapshotRepository.save(snapshot);
+        } catch (Exception exception) {
+            deleteGridFsSnapshot(snapshot.getId());
+            log.warn("历史本地训练快照迁移 GridFS 失败，继续保留原文件: snapshotId={}, path={}, reason={}",
+                    snapshot.getId(), artifactPath, exception.getMessage());
+            return;
+        }
+        try {
+            if (artifactPath.getFileName().toString().endsWith(".json.gz")) {
+                Files.deleteIfExists(artifactPath);
+            } else {
+                cleanupSnapshotDirectory(artifactPath.getParent(), artifactRoot());
+            }
+            log.info("历史本地训练快照已迁移到 MongoDB GridFS: snapshotId={}, fileId={}",
+                    snapshot.getId(), artifactFileId);
+        } catch (Exception exception) {
+            log.warn("历史本地训练快照已迁移 GridFS，但原文件清理失败: snapshotId={}, path={}, reason={}",
+                    snapshot.getId(), artifactPath, exception.getMessage());
+        }
+    }
+
     private ObjectId storeGridFsFile(
             String snapshotId, String fileName, String contentType, Path path) throws IOException {
         Document metadata = new Document("snapshotId", snapshotId)
@@ -605,6 +686,17 @@ public class TrainingDatasetSnapshotService {
             return null;
         }
         return gridFsTemplate.findOne(Query.query(Criteria.where("_id").is(new ObjectId(fileId))));
+    }
+
+    private String hashGridFsFile(GridFSFile file) {
+        MessageDigest digest = messageDigest();
+        try (InputStream source = gridFsTemplate.getResource(file).getInputStream();
+             DigestInputStream digestInput = new DigestInputStream(source, digest)) {
+            digestInput.transferTo(OutputStream.nullOutputStream());
+            return hexDigest(digest);
+        } catch (IOException exception) {
+            throw new IllegalStateException("计算 MongoDB GridFS 文件摘要失败", exception);
+        }
     }
 
     private void deleteGridFsSnapshot(String snapshotId) {
@@ -903,4 +995,4 @@ public class TrainingDatasetSnapshotService {
         private Map<String, Integer> sampleCounts;
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END ---------
