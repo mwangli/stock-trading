@@ -1,6 +1,7 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.modelService.service;
 
+import com.mongodb.client.gridfs.model.GridFSFile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.dataCollector.domain.entity.StockInfo;
 import com.stock.dataCollector.domain.entity.StockPrice;
@@ -15,7 +16,13 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.bson.Document;
+import org.bson.types.ObjectId;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.gridfs.GridFsResource;
+import org.springframework.data.mongodb.gridfs.GridFsTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -59,6 +66,8 @@ public class TrainingDatasetSnapshotService {
 
     private static final String READY = "READY";
     private static final String CHUNKED_FORMAT = "CHUNKED_JSON_GZIP_V1";
+    private static final String STORAGE_MONGO_GRIDFS = "MONGO_GRIDFS";
+    private static final String STORAGE_LOCAL_FILE = "LOCAL_FILE";
     private static final int STOCK_BATCH_SIZE = 100;
     private static final int PRICE_QUERY_THREADS = 6;
     private static final int PROGRESS_LOG_INTERVAL = 100;
@@ -69,6 +78,7 @@ public class TrainingDatasetSnapshotService {
     private final StockInfoRepository stockInfoRepository;
     private final LstmDataPreprocessor dataPreprocessor;
     private final TrainingDatasetSnapshotRepository snapshotRepository;
+    private final GridFsTemplate gridFsTemplate;
     private final ObjectMapper objectMapper;
 
     /**
@@ -161,6 +171,7 @@ public class TrainingDatasetSnapshotService {
             stage = "WRITE_MANIFEST";
             return completeSnapshot(document, snapshotDirectory, accumulator, sampleLimit, startedNanos);
         } catch (Exception exception) {
+            deleteGridFsSnapshot(document.getId());
             cleanupSnapshotDirectory(snapshotDirectory, artifactRoot);
             markFailed(document, stage, startedNanos, exception);
             throw new IllegalStateException("构建 LSTM 训练数据快照失败", exception);
@@ -196,6 +207,7 @@ public class TrainingDatasetSnapshotService {
             return completeSnapshot(document, snapshotDirectory, accumulator,
                     dataPreprocessor.resolveSampleLimit(codes.size()), startedNanos);
         } catch (Exception exception) {
+            deleteGridFsSnapshot(document.getId());
             cleanupSnapshotDirectory(snapshotDirectory, artifactRoot);
             markFailed(document, "WRITE_PROCESSED_DATA", startedNanos, exception);
             throw new IllegalStateException("构建 LSTM 训练数据快照失败", exception);
@@ -213,6 +225,9 @@ public class TrainingDatasetSnapshotService {
     public LstmDataPreprocessor.ProcessedData loadSnapshot(TrainingDatasetSnapshotDocument snapshot) {
         if (snapshot == null || !READY.equals(snapshot.getStatus()) || !isArtifactReadable(snapshot)) {
             throw new IllegalStateException("训练数据快照不存在、未完成或工件不可读");
+        }
+        if (STORAGE_MONGO_GRIDFS.equals(snapshot.getArtifactStorage())) {
+            return readGridFsSnapshot(snapshot);
         }
         Path artifactPath = Path.of(snapshot.getArtifactPath()).toAbsolutePath().normalize();
         try {
@@ -238,6 +253,7 @@ public class TrainingDatasetSnapshotService {
         document.setDays(days);
         document.setStockCount(stockCodes.size());
         document.setArtifactFormat(CHUNKED_FORMAT);
+        document.setArtifactStorage(STORAGE_LOCAL_FILE);
         document.setCreatedAt(LocalDateTime.now());
         return snapshotRepository.save(document);
     }
@@ -379,8 +395,12 @@ public class TrainingDatasetSnapshotService {
         Path manifestPath = snapshotDirectory.resolve("manifest.json");
         WrittenFile manifestFile = writeJson(manifestPath, manifest);
         long artifactSize = manifestFile.size() + accumulator.getChunkBytes();
+        String manifestFileId = persistSnapshotToGridFs(
+                document.getId(), snapshotDirectory, manifestPath, accumulator.getChunks());
 
-        document.setArtifactPath(manifestPath.toString());
+        document.setArtifactStorage(STORAGE_MONGO_GRIDFS);
+        document.setArtifactFileId(manifestFileId);
+        document.setArtifactPath(null);
         document.setArtifactSha256(manifestFile.sha256());
         document.setArtifactSize(artifactSize);
         document.setArtifactFormat(CHUNKED_FORMAT);
@@ -392,6 +412,7 @@ public class TrainingDatasetSnapshotService {
         document.setStatus(READY);
         document.setFinishedAt(LocalDateTime.now());
         TrainingDatasetSnapshotDocument saved = snapshotRepository.save(document);
+        cleanupSnapshotDirectory(snapshotDirectory, artifactRoot());
         log.info("LSTM 训练数据快照流式构建完成: snapshotId={}, stocks={}, trainSamples={}, valSamples={}, "
                         + "chunks={}, bytes={}, elapsedSeconds={}",
                 document.getId(), document.getTrainedStocks(), document.getTrainSamples(),
@@ -478,6 +499,121 @@ public class TrainingDatasetSnapshotService {
                 .build();
     }
 
+    private LstmDataPreprocessor.ProcessedData readGridFsSnapshot(
+            TrainingDatasetSnapshotDocument snapshot) {
+        GridFSFile manifestFile = findGridFsFileById(snapshot.getArtifactFileId());
+        if (manifestFile == null) {
+            throw new IllegalStateException("训练数据快照 GridFS 清单不存在: " + snapshot.getId());
+        }
+        try {
+            GridFsResource manifestResource = gridFsTemplate.getResource(manifestFile);
+            byte[] manifestBytes;
+            try (InputStream input = manifestResource.getInputStream()) {
+                manifestBytes = input.readAllBytes();
+            }
+            if (!snapshot.getArtifactSha256().equalsIgnoreCase(sha256(manifestBytes))) {
+                throw new IllegalStateException("训练数据快照 GridFS 清单摘要不一致");
+            }
+            SnapshotManifest manifest = objectMapper.readValue(manifestBytes, SnapshotManifest.class);
+            return readGridFsChunks(snapshot.getId(), manifest);
+        } catch (IOException exception) {
+            throw new IllegalStateException("读取 MongoDB GridFS 训练快照失败", exception);
+        }
+    }
+
+    private LstmDataPreprocessor.ProcessedData readGridFsChunks(
+            String snapshotId, SnapshotManifest manifest) throws IOException {
+        if (!CHUNKED_FORMAT.equals(manifest.getFormatVersion())) {
+            throw new IllegalStateException("不支持的训练快照格式: " + manifest.getFormatVersion());
+        }
+        List<LstmDataPreprocessor.TrainingSample> trainSamples = new ArrayList<>(manifest.getTrainSamples());
+        List<LstmDataPreprocessor.TrainingSample> valSamples = new ArrayList<>(manifest.getValSamples());
+        Map<String, Integer> sampleCounts = new LinkedHashMap<>();
+        for (ChunkDescriptor descriptor : manifest.getChunks()) {
+            GridFSFile chunkFile = findGridFsSnapshotFile(snapshotId, descriptor.getFileName());
+            if (chunkFile == null || chunkFile.getLength() != descriptor.getSize()) {
+                throw new IllegalStateException("训练数据快照 GridFS 分片不存在或大小不一致: "
+                        + descriptor.getFileName());
+            }
+            MessageDigest digest = messageDigest();
+            SnapshotChunk chunk;
+            try (InputStream source = gridFsTemplate.getResource(chunkFile).getInputStream();
+                 DigestInputStream digestInput = new DigestInputStream(source, digest);
+                 InputStream gzip = new GZIPInputStream(digestInput)) {
+                chunk = objectMapper.readValue(gzip, SnapshotChunk.class);
+            }
+            if (!descriptor.getSha256().equalsIgnoreCase(hexDigest(digest))) {
+                throw new IllegalStateException("训练数据快照 GridFS 分片摘要不一致: "
+                        + descriptor.getFileName());
+            }
+            trainSamples.addAll(chunk.getTrainSamples());
+            valSamples.addAll(chunk.getValSamples());
+            sampleCounts.putAll(chunk.getSampleCounts());
+        }
+        if (trainSamples.size() != manifest.getTrainSamples()
+                || valSamples.size() != manifest.getValSamples()
+                || sampleCounts.size() != manifest.getTrainedStocks()) {
+            throw new IllegalStateException("训练数据快照 GridFS 分片汇总数量不一致");
+        }
+        return LstmDataPreprocessor.ProcessedData.builder()
+                .trainSamples(trainSamples)
+                .valSamples(valSamples)
+                .sampleCounts(sampleCounts)
+                .featureCount(manifest.getFeatureCount())
+                .sequenceLength(manifest.getSequenceLength())
+                .targetReturnScale(manifest.getTargetReturnScale())
+                .featureVersion(manifest.getFeatureVersion())
+                .build();
+    }
+
+    private String persistSnapshotToGridFs(
+            String snapshotId,
+            Path snapshotDirectory,
+            Path manifestPath,
+            List<ChunkDescriptor> chunks) throws IOException {
+        deleteGridFsSnapshot(snapshotId);
+        try {
+            for (ChunkDescriptor descriptor : chunks) {
+                Path chunkPath = resolveChunkPath(snapshotDirectory, descriptor.getFileName());
+                storeGridFsFile(snapshotId, descriptor.getFileName(), "application/gzip", chunkPath);
+            }
+            return storeGridFsFile(snapshotId, manifestPath.getFileName().toString(),
+                    "application/json", manifestPath).toHexString();
+        } catch (RuntimeException | IOException exception) {
+            deleteGridFsSnapshot(snapshotId);
+            throw exception;
+        }
+    }
+
+    private ObjectId storeGridFsFile(
+            String snapshotId, String fileName, String contentType, Path path) throws IOException {
+        Document metadata = new Document("snapshotId", snapshotId)
+                .append("artifactType", "LSTM_TRAINING_SNAPSHOT")
+                .append("fileName", fileName);
+        try (InputStream input = Files.newInputStream(path)) {
+            return gridFsTemplate.store(input, fileName, contentType, metadata);
+        }
+    }
+
+    private GridFSFile findGridFsSnapshotFile(String snapshotId, String fileName) {
+        return gridFsTemplate.findOne(Query.query(Criteria.where("metadata.snapshotId").is(snapshotId)
+                .and("metadata.fileName").is(fileName)));
+    }
+
+    private GridFSFile findGridFsFileById(String fileId) {
+        if (fileId == null || !ObjectId.isValid(fileId)) {
+            return null;
+        }
+        return gridFsTemplate.findOne(Query.query(Criteria.where("_id").is(new ObjectId(fileId))));
+    }
+
+    private void deleteGridFsSnapshot(String snapshotId) {
+        if (snapshotId == null || snapshotId.isBlank()) {
+            return;
+        }
+        gridFsTemplate.delete(Query.query(Criteria.where("metadata.snapshotId").is(snapshotId)));
+    }
+
     private Map<String, LstmDataPreprocessor.StockContext> loadStockContexts(List<String> stockCodes) {
         return stockInfoRepository.findByCodeIn(stockCodes).stream()
                 .collect(java.util.stream.Collectors.toMap(
@@ -525,6 +661,9 @@ public class TrainingDatasetSnapshotService {
     }
 
     private boolean isArtifactReadable(TrainingDatasetSnapshotDocument document) {
+        if (STORAGE_MONGO_GRIDFS.equals(document.getArtifactStorage())) {
+            return findGridFsFileById(document.getArtifactFileId()) != null;
+        }
         return document.getArtifactPath() != null && document.getArtifactSha256() != null
                 && Files.isRegularFile(Path.of(document.getArtifactPath()));
     }
@@ -764,4 +903,4 @@ public class TrainingDatasetSnapshotService {
         private Map<String, Integer> sampleCounts;
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

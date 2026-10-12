@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ----------
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -295,6 +295,7 @@ public class ModelOperationsService {
         }
         String operator = normalizeOperator(operatorName);
         if ("QUEUED".equals(run.getStatus())) {
+            cleanupCheckpoint(run);
             markTrainingCancelled(run, "训练任务在排队阶段被停止");
         } else {
             run.setStatus("STOPPING");
@@ -562,6 +563,12 @@ public class ModelOperationsService {
                     null, null, false, run.getErrorMessage());
         } finally {
             run.setFinishedAt(LocalDateTime.now());
+            if ("SUCCEEDED".equals(run.getStatus())) {
+                cleanupCheckpoint(run);
+                cleanupResumedCheckpoint(run.getResumedFromRunId());
+            } else {
+                clearMissingCheckpointReference(run);
+            }
             trainingRunRepository.save(run);
         }
     }
@@ -860,6 +867,45 @@ public class ModelOperationsService {
         }
     }
 
+    private void cleanupCheckpoint(ModelTrainingRunDocument run) {
+        if (run == null || run.getCheckpointPath() == null || run.getCheckpointPath().isBlank()) {
+            return;
+        }
+        Path checkpoint = Path.of(run.getCheckpointPath()).toAbsolutePath().normalize();
+        Path artifactRoot = Path.of(trainingConfig.getArtifactDirectory()).toAbsolutePath().normalize();
+        if (!checkpoint.startsWith(artifactRoot) || checkpoint.equals(artifactRoot)) {
+            log.warn("拒绝清理训练工件目录之外的检查点: runId={}, path={}", run.getId(), checkpoint);
+            return;
+        }
+        try {
+            Files.deleteIfExists(checkpoint);
+            run.setCheckpointPath(null);
+            log.info("训练检查点已清理: runId={}, path={}", run.getId(), checkpoint);
+        } catch (Exception exception) {
+            log.warn("训练检查点清理失败: runId={}, path={}, reason={}",
+                    run.getId(), checkpoint, exception.getMessage());
+        }
+    }
+
+    private void cleanupResumedCheckpoint(String resumedFromRunId) {
+        if (resumedFromRunId == null || resumedFromRunId.isBlank()) {
+            return;
+        }
+        trainingRunRepository.findById(resumedFromRunId).ifPresent(sourceRun -> {
+            cleanupCheckpoint(sourceRun);
+            trainingRunRepository.save(sourceRun);
+        });
+    }
+
+    private void clearMissingCheckpointReference(ModelTrainingRunDocument run) {
+        if (run.getCheckpointPath() == null || run.getCheckpointPath().isBlank()) {
+            return;
+        }
+        if (!Files.isRegularFile(Path.of(run.getCheckpointPath()))) {
+            run.setCheckpointPath(null);
+        }
+    }
+
     private int configInt(ModelTrainingRunDocument run, String key, int fallback) {
         try {
             return objectMapper.readTree(run.getEffectiveConfigJson()).path(key).asInt(fallback);
@@ -939,4 +985,4 @@ public class ModelOperationsService {
     }
 
     }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ----------
