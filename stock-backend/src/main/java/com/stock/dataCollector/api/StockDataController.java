@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.dataCollector.api;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -10,6 +10,7 @@ import com.stock.dataCollector.domain.dto.StockStatisticsResponseDto;
 import com.stock.dataCollector.domain.dto.StockListPageResponseDto;
 import com.stock.dataCollector.domain.dto.StockDataValidationResponseDto;
 import com.stock.dataCollector.domain.dto.KlineDataResponseDto;
+import com.stock.systemConfig.service.SystemRuntimeConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -37,6 +38,7 @@ public class StockDataController {
 
     private final StockDataService stockDataService;
     private final PriceRepository priceRepository;
+    private final SystemRuntimeConfigService runtimeConfigService;
 
     /**
      * 手动触发股票列表同步
@@ -46,6 +48,7 @@ public class StockDataController {
         log.info("手动触发股票列表同步");
         
         try {
+            runtimeConfigService.requireDataCollectionEnabled();
             StockDataService.SyncResult result = stockDataService.syncStockList();
 
             SyncStockListResponseDto response = SyncStockListResponseDto.builder()
@@ -386,4 +389,4 @@ public class StockDataController {
         }
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

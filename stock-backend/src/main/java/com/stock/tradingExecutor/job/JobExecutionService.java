@@ -1,7 +1,8 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.tradingExecutor.job;
 
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
+import com.stock.systemConfig.service.SystemRuntimeConfigService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +43,7 @@ public class JobExecutionService {
     private final JobConfigRepository jobConfigRepository;
     private final JobExecutionRecordRepository executionRecordRepository;
     private final JobSchedulerService jobSchedulerService;
+    private final SystemRuntimeConfigService runtimeConfigService;
 
     /**
      * 手动触发已注册且启用的固定任务。
@@ -51,6 +53,9 @@ public class JobExecutionService {
      * @return 新建的运行标识
      */
     public String triggerManually(String jobName, String operator) {
+        if (!runtimeConfigService.isSchedulerEnabled()) {
+            throw new IllegalStateException("系统配置已关闭统一任务调度");
+        }
         JobConfig jobConfig = jobConfigRepository.findByJobName(jobName)
                 .orElseThrow(() -> new IllegalArgumentException("任务不存在: " + jobName));
         if (!Integer.valueOf(1).equals(jobConfig.getStatus())) {
@@ -90,6 +95,10 @@ public class JobExecutionService {
                 : executionRecordRepository.findByRunId(runId)
                 .orElseGet(() -> createQueuedRecord(jobName, source, normalizeOperator(triggeredBy),
                         scheduledFireTime, runId));
+        if (!runtimeConfigService.isSchedulerEnabled()) {
+            markCancelled(record, "系统配置已关闭统一任务调度");
+            return;
+        }
         if (isCancellationRequested(record)) {
             markCancelled(record, "任务在开始执行前已被停止");
             cancellationRequests.remove(record.getRunId());
@@ -329,4 +338,4 @@ public class JobExecutionService {
     }
 
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

@@ -1,0 +1,136 @@
+// AI_GENERATE_START --
+package com.stock.modelService.domain.entity;
+
+import lombok.Data;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.Indexed;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+/**
+ * 全市场模型预测批次文档。
+ * 记录批次绑定的模型版本、交易日、执行进度和能力评估汇总。
+ *
+ * @author mwangli
+ * @since 2026-10-12
+ */
+@Data
+@Document(collection = "model_prediction_batches")
+@CompoundIndex(name = "idx_prediction_batch_model_date", def = "{'modelId': 1, 'baseTradeDate': -1}")
+public class ModelPredictionBatchDocument {
+
+    /** MongoDB 文档 ID。 */
+    @Id
+    private String id;
+
+    /** 模型逻辑名称。 */
+    private String modelName;
+
+    /** 本批次固定使用的模型文档 ID。 */
+    private String modelId;
+
+    /** 模型业务版本号。 */
+    private String modelVersion;
+
+    /** 预测基准交易日。 */
+    private LocalDate baseTradeDate;
+
+    /** 预测目标交易日。 */
+    private LocalDate targetTradeDate;
+
+    /** 本批次允许使用信息的自然时间截止点。 */
+    private LocalDateTime informationCutoffAt;
+
+    /** 目标交易日是否由工作日规则降级推算。 */
+    private boolean calendarFallback;
+
+    /** 批次状态。 */
+    @Indexed
+    private String status;
+
+    /** 股票池总数。 */
+    private int totalStocks;
+
+    /** 已处理股票数。 */
+    private int processedStocks;
+
+    /** 成功预测数量。 */
+    private int successCount;
+
+    /** 失败预测数量。 */
+    private int failedCount;
+
+    /** 已评估数量。 */
+    private int evaluatedCount;
+
+    /** 缺少目标日行情数量。 */
+    private int noMarketDataCount;
+
+    /** 预测覆盖率。 */
+    private Double coverageRate;
+
+    /** 评估完成率。 */
+    private Double evaluationRate;
+
+    /** 方向准确率。 */
+    private Double directionAccuracy;
+
+    /** 收益率平均绝对误差。 */
+    private Double returnMae;
+
+    /** 收益率均方根误差。 */
+    private Double returnRmse;
+
+    /** Pearson 横截面相关系数。 */
+    private Double pearsonIc;
+
+    /** Spearman 排序相关系数。 */
+    private Double spearmanRankIc;
+
+    /** 预测收益最高 10% 股票的实际平均收益率。 */
+    private Double topDecileAverageReturn;
+
+    /** 预测收益最高 10% 股票的上涨命中率。 */
+    private Double topDecileDirectionAccuracy;
+
+    /** 高置信度方向准确率。 */
+    private Double highConfidenceAccuracy;
+
+    /** 高下行风险样本的实际下跌识别率。 */
+    private Double downsideRiskHitRate;
+
+    /** 模型能力等级。 */
+    private String abilityLevel;
+
+    /** 是否建议进入模型优化评估。 */
+    private boolean iterationRecommended;
+
+    /** 能力结论说明。 */
+    private String abilityMessage;
+
+    /** 批次进度说明。 */
+    private String progressMessage;
+
+    /** 操作人。 */
+    private String triggeredBy;
+
+    /** 执行开始时间。 */
+    private LocalDateTime startedAt;
+
+    /** 执行完成时间。 */
+    private LocalDateTime finishedAt;
+
+    /** 失败原因。 */
+    private String errorMessage;
+
+    /** 文档创建时间。 */
+    @Indexed(name = "idx_prediction_batch_created")
+    private LocalDateTime createdAt;
+
+    /** 最近更新时间。 */
+    private LocalDateTime updatedAt;
+}
+// AI_GENERATE_END --

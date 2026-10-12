@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.dataCollector.persistence;
 
 import com.stock.dataCollector.domain.entity.TradeCalendarEntity;
@@ -85,6 +85,14 @@ public interface TradeCalendarRepository extends JpaRepository<TradeCalendarEnti
     Optional<TradeCalendarEntity> findFirstByOrderByTradeDateDesc();
 
     /**
+     * 查询指定日期之后的首个交易日。
+     *
+     * @param tradeDate 基准日期
+     * @return 下一交易日日历记录
+     */
+    Optional<TradeCalendarEntity> findFirstByTradingDayTrueAndTradeDateAfterOrderByTradeDateAsc(LocalDate tradeDate);
+
+    /**
      * 查询日期区间内去重后的交易日。
      *
      * @param startDate 开始日期
@@ -97,4 +105,4 @@ public interface TradeCalendarRepository extends JpaRepository<TradeCalendarEnti
     List<LocalDate> findTradingDates(@Param("startDate") LocalDate startDate,
                                      @Param("endDate") LocalDate endDate);
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

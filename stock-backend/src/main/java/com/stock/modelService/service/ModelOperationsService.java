@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START ---------
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -17,6 +17,7 @@ import com.stock.modelService.persistence.ModelActivationRepository;
 import com.stock.modelService.persistence.ModelOperationAuditRepository;
 import com.stock.modelService.persistence.ModelTrainingRunRepository;
 import com.stock.tradingExecutor.execution.TradingTimeChecker;
+import com.stock.systemConfig.service.SystemRuntimeConfigService;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -62,6 +63,7 @@ public class ModelOperationsService {
     private final ModelTrainingRunRepository trainingRunRepository;
     private final ModelOperationAuditRepository auditRepository;
     private final TradingTimeChecker tradingTimeChecker;
+    private final SystemRuntimeConfigService runtimeConfigService;
     private final ObjectMapper objectMapper;
     private final Executor applicationTaskExecutor;
 
@@ -78,6 +80,7 @@ public class ModelOperationsService {
      * @param trainingRunRepository 训练运行仓库
      * @param auditRepository 模型操作审计仓库
      * @param tradingTimeChecker 交易时间检查器
+     * @param runtimeConfigService 系统运行控制配置服务
      * @param objectMapper JSON 序列化器
      * @param applicationTaskExecutor 应用异步执行器
      */
@@ -91,6 +94,7 @@ public class ModelOperationsService {
                                   ModelTrainingRunRepository trainingRunRepository,
                                   ModelOperationAuditRepository auditRepository,
                                   TradingTimeChecker tradingTimeChecker,
+                                   SystemRuntimeConfigService runtimeConfigService,
                                   ObjectMapper objectMapper,
                                   @Qualifier("applicationTaskExecutor") Executor applicationTaskExecutor) {
         this.trainingConfig = trainingConfig;
@@ -103,6 +107,7 @@ public class ModelOperationsService {
         this.trainingRunRepository = trainingRunRepository;
         this.auditRepository = auditRepository;
         this.tradingTimeChecker = tradingTimeChecker;
+        this.runtimeConfigService = runtimeConfigService;
         this.objectMapper = objectMapper;
         this.applicationTaskExecutor = applicationTaskExecutor;
     }
@@ -155,7 +160,7 @@ public class ModelOperationsService {
                 .previousVersion(previousVersion)
                 .latestTrainingRun(toTrainingRunItem(
                         trainingRunRepository.findTopByModelNameOrderByCreatedAtDesc(modelName)))
-                .trainingEnabled(trainingConfig.isTrainingEnabled())
+                .trainingEnabled(runtimeConfigService.isModelTrainingEnabled())
                 .trainingAllowed(gateResult.allowed())
                 .trainingRunning(trainingRunning)
                 .tradingTime(tradingTimeChecker.isTradingTime())
@@ -247,14 +252,15 @@ public class ModelOperationsService {
                 ? new ModelOperationsDto.StartTrainingRequest() : request;
         int days = safeRequest.getDays() == null ? DEFAULT_TRAIN_DAYS : safeRequest.getDays();
         validateRange("训练天数", days, 90, 2000);
-        GateResult gateResult = evaluateEnvironmentGate();
-        if (!gateResult.allowed()) {
-            throw new IllegalStateException(gateResult.message());
-        }
         List<String> stockCodes = stockInfoRepository.findAllCodes().stream()
                 .filter(code -> dataQualityConfig.getSkipTrainingCodes() == null
                         || !dataQualityConfig.getSkipTrainingCodes().contains(code))
                 .toList();
+        if (stockCodes.isEmpty()) {
+            throw new IllegalStateException("股票基础数据为空，无法构建训练数据快照");
+        }
+        log.info("构建训练数据快照不受训练开关和训练时间窗口限制: modelName={}, days={}, stocks={}",
+                lstmTrainerService.getModelName(), days, stockCodes.size());
         TrainingDatasetSnapshotDocument snapshot = snapshotService.buildSnapshot(
                 lstmTrainerService.getModelName(), stockCodes, days);
         saveAudit(lstmTrainerService.getModelName(), "SNAPSHOT_BUILT",
@@ -625,14 +631,16 @@ public class ModelOperationsService {
     }
 
     private GateResult evaluateEnvironmentGate() {
-        if (!trainingConfig.isTrainingEnabled()) {
+        if (!runtimeConfigService.isModelTrainingEnabled()) {
             return new GateResult(false, "当前节点未开启 LSTM 训练能力");
         }
-        if (tradingTimeChecker.isTradingTime()) {
-            return new GateResult(false, "交易时段禁止执行模型训练");
-        }
-        if (!isTrainingWindowOpen(LocalDateTime.now())) {
-            return new GateResult(false, "工作日仅允许在 18:30 至 23:30 提交训练");
+        if (trainingConfig.isTrainingTimeGuardEnabled()) {
+            if (tradingTimeChecker.isTradingTime()) {
+                return new GateResult(false, "交易时段禁止执行模型训练");
+            }
+            if (!isTrainingWindowOpen(LocalDateTime.now())) {
+                return new GateResult(false, "工作日仅允许在 18:30 至 23:30 提交训练");
+            }
         }
         if (stockInfoRepository.countBy() <= 0) {
             return new GateResult(false, "股票基础数据为空，无法训练");
@@ -931,4 +939,4 @@ public class ModelOperationsService {
     }
 
     }
-// AI_GENERATE_END ------
+// AI_GENERATE_END ---------
