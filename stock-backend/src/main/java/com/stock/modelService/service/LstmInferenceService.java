@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.modelService.service;
 
 import com.stock.modelService.domain.dto.LstmPredictionResultDto;
@@ -42,6 +42,18 @@ public class LstmInferenceService {
     }
 
     /**
+     * 使用指定模型版本批量预测股票下一交易日结果。
+     *
+     * @param stockCodes 股票代码集合
+     * @param modelVersionId 固定使用的模型文档 ID
+     * @return 股票代码到预测结果的映射
+     */
+    public Map<String, LstmPredictionResultDto> predictNextBatch(
+            List<String> stockCodes, String modelVersionId) {
+        return lstmTrainerService.predictNextBatch(stockCodes, modelVersionId);
+    }
+
+    /**
      * 判断是否存在可校验、可加载的激活模型。
      *
      * @return true 表示模型可用于推理
@@ -50,4 +62,4 @@ public class LstmInferenceService {
         return lstmTrainerService.hasSharedModel();
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

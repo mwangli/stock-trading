@@ -1,9 +1,10 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ---
 package com.stock.dataCollector.support;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
 import com.stock.dataCollector.service.StockDataService;
 import com.stock.dataCollector.service.StockNewsService;
+import com.stock.systemConfig.service.SystemRuntimeConfigService;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +39,7 @@ public class DataSyncScheduler {
 
     private final StockDataService stockDataService;
     private final StockNewsService stockNewsService;
+    private final SystemRuntimeConfigService runtimeConfigService;
 
     private final ExecutorService priceSyncExecutor = Executors.newFixedThreadPool(PRICE_SYNC_THREADS,
             r -> {
@@ -66,6 +68,7 @@ public class DataSyncScheduler {
      * Cron: 0 0 1 * * SUN
      */
     public void syncStockListDaily() {
+        runtimeConfigService.requireDataCollectionEnabled();
         log.info("========== [数据同步任务] 开始执行股票列表同步 ==========");
         try {
             StockDataService.SyncResult result = stockDataService.syncStockList();
@@ -95,6 +98,7 @@ public class DataSyncScheduler {
      * </p>
      */
     public void syncDailyStockData() {
+        runtimeConfigService.requireDataCollectionEnabled();
         log.info("========== [数据同步任务] 开始执行每日收盘后日K数据增量同步（{} 线程并行） ==========", PRICE_SYNC_THREADS);
         try {
             List<String> codes = stockDataService.findAllCodes();
@@ -157,6 +161,7 @@ public class DataSyncScheduler {
      * </p>
      */
     public void syncAllHistoricalData() {
+        runtimeConfigService.requireDataCollectionEnabled();
         log.info("========== [数据同步任务] 深度同步所有股票历史数据 (周维护) 开始 ==========");
         try {
             // 这里暂时只记录日志，避免与冷启动全量同步重复拉取过多数据。
@@ -178,6 +183,7 @@ public class DataSyncScheduler {
      * </p>
      */
     public void collectNewsFullSync() {
+        runtimeConfigService.requireNewsCollectionEnabled();
         log.info("========== [数据同步任务] 开始执行全量新闻采集 ==========");
         try {
             StockNewsService.CollectResult result = stockNewsService.collectAllStockNews(0);
@@ -199,6 +205,7 @@ public class DataSyncScheduler {
      * </p>
      */
     public void collectNewsDailySync() {
+        runtimeConfigService.requireNewsCollectionEnabled();
         log.info("========== [数据同步任务] 开始执行每日增量新闻采集 ==========");
         try {
             StockNewsService.CollectResult result = stockNewsService.collectAllStockNews(NEWS_DAILY_MAX_STOCKS);
@@ -211,5 +218,4 @@ public class DataSyncScheduler {
         log.info("========== [数据同步任务] 每日增量新闻采集结束 ==========");
     }
 }
-// AI_GENERATE_END -
-
+// AI_GENERATE_END ---

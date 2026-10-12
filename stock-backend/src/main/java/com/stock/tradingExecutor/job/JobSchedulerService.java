@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START -------
 package com.stock.tradingExecutor.job;
 
 import lombok.RequiredArgsConstructor;
@@ -9,6 +9,7 @@ import org.quartz.JobBuilder;
 import org.quartz.JobDataMap;
 import org.quartz.JobDetail;
 import org.quartz.JobKey;
+import org.quartz.ObjectAlreadyExistsException;
 import org.quartz.Scheduler;
 import org.quartz.SchedulerException;
 import org.quartz.Trigger;
@@ -42,6 +43,8 @@ public class JobSchedulerService {
             Map.entry("newsFullSync", NewsFullSyncQuartzJob.class),
             Map.entry("newsDailySync", NewsDailySyncQuartzJob.class),
             Map.entry("lstmOfflineTraining", LstmOfflineTrainingQuartzJob.class),
+            Map.entry("dailyModelPrediction", DailyModelPredictionQuartzJob.class),
+            Map.entry("modelPredictionEvaluation", ModelPredictionEvaluationQuartzJob.class),
             Map.entry("stockSelection", StockSelectionQuartzJob.class),
             Map.entry("realTradingAutoBuy", RealTradingAutoBuyQuartzJob.class),
             Map.entry("realTradingT1Exit", RealTradingT1ExitQuartzJob.class),
@@ -54,10 +57,10 @@ public class JobSchedulerService {
     private final Scheduler quartzScheduler;
 
     /**
-     * 将数据库中启用的固定任务注册到 Quartz。
+     * 将数据库中的固定任务配置幂等同步到 Quartz 持久化存储。
      */
-    public void startAllActiveJobs() {
-        log.info("========== [任务调度] 开始加载 Quartz 固定任务 ==========");
+    public void reconcileAllJobs() {
+        log.info("========== [任务调度] 开始协调 Quartz 持久化任务 ==========");
         List<JobConfig> jobs = jobConfigRepository.findAll();
         for (JobConfig job : jobs) {
             if (!JOB_CLASSES.containsKey(job.getJobName())) {
@@ -71,7 +74,7 @@ public class JobSchedulerService {
                         job.getJobName(), exception);
             }
         }
-        log.info("========== [任务调度] Quartz 固定任务加载完成，共检查 {} 个任务 ==========", jobs.size());
+        log.info("========== [任务调度] Quartz 持久化任务协调完成，共检查 {} 个任务 ==========", jobs.size());
     }
 
     /**
@@ -119,7 +122,11 @@ public class JobSchedulerService {
             if (quartzScheduler.checkExists(triggerKey)) {
                 quartzScheduler.rescheduleJob(triggerKey, trigger);
             } else {
-                quartzScheduler.scheduleJob(trigger);
+                try {
+                    quartzScheduler.scheduleJob(trigger);
+                } catch (ObjectAlreadyExistsException exception) {
+                    quartzScheduler.rescheduleJob(triggerKey, trigger);
+                }
             }
             quartzScheduler.resumeJob(jobKey);
             log.info("[任务调度] Quartz 启动任务成功: jobName={}, cron={}",
@@ -297,4 +304,4 @@ public class JobSchedulerService {
     public record QuartzRuntimeState(String triggerState, LocalDateTime nextFireTime, boolean registered) {
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END -------

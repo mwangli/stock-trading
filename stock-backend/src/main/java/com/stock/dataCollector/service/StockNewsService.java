@@ -1,13 +1,19 @@
+// AI_GENERATE_START ---
 package com.stock.dataCollector.service;
 
 import com.stock.dataCollector.domain.entity.StockNews;
 import com.stock.dataCollector.persistence.NewsRepository;
 import com.stock.dataCollector.persistence.StockInfoRepository;
 import com.stock.dataCollector.support.SecuritiesClient;
+import com.stock.systemConfig.service.SystemRuntimeConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PreDestroy;
@@ -16,6 +22,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -50,6 +57,14 @@ public class StockNewsService {
     /** 批量写入阈值，与每页 50 条对齐，一次写入整页 */
     private static final int BATCH_INSERT_SIZE = 50;
 
+    /** 新闻发布时间保留天数，0 表示不按时间清理。 */
+    @Value("${app.runtime.news.retention-days:365}")
+    private int newsRetentionDays;
+
+    /** 每只股票最多保留的新闻和公告数量，0 表示不按数量清理。 */
+    @Value("${app.runtime.news.max-records-per-stock:300}")
+    private int maxNewsRecordsPerStock;
+
     /** 采集来源：新闻(20002)、公告(20001) */
     private static final List<NewsSource> NEWS_SOURCES = List.of(
             new NewsSource(SecuritiesClient.MENU_ID_NEWS, "新闻"),
@@ -60,6 +75,7 @@ public class StockNewsService {
     private final NewsRepository newsRepository;
     private final StockInfoRepository stockInfoRepository;
     private final MongoTemplate mongoTemplate;
+    private final SystemRuntimeConfigService runtimeConfigService;
 
     private final ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_THREADS,
             r -> {
@@ -91,6 +107,7 @@ public class StockNewsService {
      * @return 本次采集新增的新闻数量
      */
     public int collectStockNewsByCode(String stockCode) {
+        runtimeConfigService.requireNewsCollectionEnabled();
         return collectStockNewsByCode(stockCode, getCodeToNameCache());
     }
 
@@ -101,16 +118,11 @@ public class StockNewsService {
      * @param codeToNameCache 代码→名称缓存，批量采集时传入可避免 N 次查询
      * @return 本次采集新增的新闻数量
      */
-    public int collectStockNewsByCode(String stockCode, Map<String, String> codeToNameCache) {
+    private int collectStockNewsByCode(String stockCode, Map<String, String> codeToNameCache) {
         String stockName = resolveStockName(stockCode, codeToNameCache);
         String label = stockCode + (stockName != null && !stockName.isEmpty() ? " " + stockName : "");
 
         long existingCount = newsRepository.countByStockCode(stockCode);
-        if (existingCount >= PAGE_SIZE) {
-            log.info("股票 {} 已有 {} 条数据，跳过采集", label, existingCount);
-            return 0;
-        }
-
         log.info("开始采集股票 {} 的新闻与公告（当前 {} 条）", label, existingCount);
         int totalSaved = 0;
         int sourceTotal = NEWS_SOURCES.size();
@@ -120,6 +132,7 @@ public class StockNewsService {
             int saved = collectBySource(stockCode, stockName, label, src, i + 1, sourceTotal);
             totalSaved += saved;
         }
+        cleanupStockNews(stockCode, label);
         return totalSaved;
     }
 
@@ -136,6 +149,7 @@ public class StockNewsService {
         int totalSkipped = 0;
         int page = 1;
         boolean hasMore = true;
+        Set<String> seenIdsInRun = new HashSet<>();
 
         while (hasMore && page <= MAX_PAGES) {
             Map<String, Object> listResp = securitiesClient.requestNewsList(stockCode, page, PAGE_SIZE, src.menuId);
@@ -193,7 +207,7 @@ public class StockNewsService {
 
             for (int i = 0; i < externalIds.size(); i++) {
                 String externalId = externalIds.get(i);
-                if (existingIds.contains(externalId)) {
+                if (existingIds.contains(externalId) || !seenIdsInRun.add(externalId)) {
                     log.debug("{} externalId={} 已存在，跳过", src.category, externalId);
                     continue;
                 }
@@ -202,8 +216,7 @@ public class StockNewsService {
                 if (news != null) {
                     batch.add(news);
                     if (batch.size() >= BATCH_INSERT_SIZE) {
-                        batchInsert(batch, src.category);
-                        totalSaved += batch.size();
+                        totalSaved += batchInsert(batch, src.category);
                         batch.clear();
                     }
                 }
@@ -219,8 +232,7 @@ public class StockNewsService {
         }
 
         if (!batch.isEmpty()) {
-            batchInsert(batch, src.category);
-            totalSaved += batch.size();
+            totalSaved += batchInsert(batch, src.category);
         }
 
         log.info("股票 {} {} 采集完成，新增 {} 条，已存在跳过 {} 条（单股进度 {}/{}）", label, src.category, totalSaved, totalSkipped, sourceIndex, sourceTotal);
@@ -230,9 +242,9 @@ public class StockNewsService {
     /**
      * 批量插入 MongoDB
      */
-    private void batchInsert(List<StockNews> batch, String category) {
+    private int batchInsert(List<StockNews> batch, String category) {
         if (batch.isEmpty()) {
-            return;
+            return 0;
         }
         StockNews first = batch.get(0);
         String label = first.getStockCode() + (first.getStockName() != null && !first.getStockName().isEmpty()
@@ -244,15 +256,62 @@ public class StockNewsService {
             }
             bulkOps.execute();
             log.info("股票 {} {} 批量写入 {} 条", label, category, batch.size());
+            return batch.size();
         } catch (Exception e) {
             log.warn("股票 {} {} 批量写入失败，回退逐条保存: {}", label, category, e.getMessage());
+            int savedCount = 0;
             for (StockNews news : batch) {
                 try {
                     newsRepository.save(news);
+                    savedCount++;
                 } catch (Exception ex) {
                     log.warn("保存失败 externalId={}: {}", news.getExternalId(), ex.getMessage());
                 }
             }
+            log.info("股票 {} {} 逐条回退实际写入 {} 条", label, category, savedCount);
+            return savedCount;
+        }
+    }
+
+    /**
+     * 清理指定股票的过期新闻，并限制单股历史记录数量，避免增量采集造成 MongoDB 无限增长。
+     */
+    private void cleanupStockNews(String stockCode, String label) {
+        long deletedByAge = 0;
+        long deletedByLimit = 0;
+
+        if (newsRetentionDays > 0) {
+            LocalDateTime cutoff = LocalDateTime.now().minusDays(newsRetentionDays);
+            Query expiredQuery = Query.query(Criteria.where("stockCode").is(stockCode)
+                    .and("publishTime").lt(cutoff));
+            deletedByAge = mongoTemplate.remove(expiredQuery, StockNews.class).getDeletedCount();
+        }
+
+        if (maxNewsRecordsPerStock > 0) {
+            Query stockQuery = Query.query(Criteria.where("stockCode").is(stockCode));
+            long currentCount = mongoTemplate.count(stockQuery, StockNews.class);
+            if (currentCount > maxNewsRecordsPerStock) {
+                int excessCount = Math.toIntExact(Math.min(
+                        currentCount - maxNewsRecordsPerStock, Integer.MAX_VALUE));
+                Query excessQuery = Query.query(Criteria.where("stockCode").is(stockCode))
+                        .with(Sort.by(Sort.Direction.ASC, "publishTime"))
+                        .limit(excessCount);
+                excessQuery.fields().include("id");
+                List<String> excessIds = mongoTemplate.find(excessQuery, StockNews.class).stream()
+                        .map(StockNews::getId)
+                        .filter(Objects::nonNull)
+                        .toList();
+                if (!excessIds.isEmpty()) {
+                    deletedByLimit = mongoTemplate.remove(
+                            Query.query(Criteria.where("_id").in(excessIds)), StockNews.class)
+                            .getDeletedCount();
+                }
+            }
+        }
+
+        if (deletedByAge > 0 || deletedByLimit > 0) {
+            log.info("股票 {} 新闻数据清理完成: 按时间删除 {} 条，按数量删除 {} 条，保留上限 {} 条/股",
+                    label, deletedByAge, deletedByLimit, maxNewsRecordsPerStock);
         }
     }
 
@@ -263,6 +322,7 @@ public class StockNewsService {
      * @return 采集结果统计
      */
     public CollectResult collectAllStockNews(int maxStocks) {
+        runtimeConfigService.requireNewsCollectionEnabled();
         log.info("开始批量采集股票新闻（{} 线程并行），最多 {} 只股票", PARALLEL_THREADS, maxStocks <= 0 ? "全部" : maxStocks);
         List<String> codes = stockInfoRepository.findAllCodes();
         if (codes == null || codes.isEmpty()) {
@@ -456,3 +516,4 @@ public class StockNewsService {
     /** 采集来源（新闻/公告） */
     private record NewsSource(String menuId, String category) {}
 }
+// AI_GENERATE_END ---

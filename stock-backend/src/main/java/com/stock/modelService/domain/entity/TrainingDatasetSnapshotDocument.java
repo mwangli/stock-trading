@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.domain.entity;
 
 import lombok.Data;
@@ -64,6 +64,12 @@ public class TrainingDatasetSnapshotDocument {
     /** 快照文件大小，单位字节。 */
     private long artifactSize;
 
+    /** 快照制品格式，如 CHUNKED_JSON_GZIP_V1。 */
+    private String artifactFormat;
+
+    /** 快照分片数量，历史单文件快照为 0。 */
+    private int chunkCount;
+
     /** 创建时间。 */
     private LocalDateTime createdAt;
 
@@ -73,4 +79,4 @@ public class TrainingDatasetSnapshotDocument {
     /** 失败原因。 */
     private String errorMessage;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
@@ -56,6 +56,11 @@ interface PerformancePeriodItem {
 }
 
 interface PerformanceOverview {
+  capturedAt?: string;
+  totalAssets: number;
+  availableCash: number;
+  marketValue: number;
+  frozenCash: number;
   cumulativeProfit: number;
   cumulativeReturnRate: number;
   dailyProfit: number;
@@ -231,4 +236,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

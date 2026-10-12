@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------------
+// AI_GENERATE_START ------------------
 package com.stock.modelService.service;
 
 import ai.djl.Device;
@@ -517,6 +517,19 @@ public class LstmTrainerService {
      * @return 股票代码到预测结果的映射
      */
     public Map<String, LstmPredictionResultDto> predictNextBatch(List<String> stockCodes) {
+        return predictNextBatch(stockCodes, null);
+    }
+
+    /**
+     * 使用指定模型版本批量预测股票下一交易日结果。
+     * 指定版本可保证长批次预测不受执行期间激活指针切换影响。
+     *
+     * @param stockCodes 股票代码集合
+     * @param modelVersionId 固定使用的模型文档 ID；为空时使用当前激活版本
+     * @return 股票代码到预测结果的映射
+     */
+    public Map<String, LstmPredictionResultDto> predictNextBatch(
+            List<String> stockCodes, String modelVersionId) {
         List<String> codes = stockCodes == null ? List.of() : stockCodes.stream()
                 .filter(code -> code != null && !code.isBlank())
                 .map(String::trim)
@@ -525,7 +538,7 @@ public class LstmTrainerService {
         if (codes.isEmpty()) {
             return Map.of();
         }
-        ModelArtifact artifact = loadCurrentArtifact();
+        ModelArtifact artifact = loadArtifact(modelVersionId);
         validateMetadata(artifact.metadata());
 
         int fetchDays = Math.max(config.getSequenceLength() + 21, config.getSequenceLength() * 2);
@@ -534,6 +547,7 @@ public class LstmTrainerService {
         List<String> validCodes = new ArrayList<>();
         List<float[][]> inputs = new ArrayList<>();
         List<Double> lastClosePrices = new ArrayList<>();
+        List<java.time.LocalDate> baseTradeDates = new ArrayList<>();
         for (String code : codes) {
             List<StockPrice> prices = priceSeries.getOrDefault(code, List.of());
             LstmDataPreprocessor.PredictionInput input = dataPreprocessor.buildPredictionInput(
@@ -546,6 +560,7 @@ public class LstmTrainerService {
             validCodes.add(code);
             inputs.add(input.getInput());
             lastClosePrices.add(input.getLastClosePrice());
+            baseTradeDates.add(input.getBaseTradeDate());
         }
         if (validCodes.isEmpty()) {
             return Map.of();
@@ -589,6 +604,7 @@ public class LstmTrainerService {
                             : 0D;
                     results.put(validCodes.get(index), LstmPredictionResultDto.builder()
                             .stockCode(validCodes.get(index))
+                            .baseTradeDate(baseTradeDates.get(index))
                             .predictedClosePrice(predictedPrice)
                             .lastClosePrice(lastClose > 0D ? lastClose : null)
                             .predictedChangeRatio(predictedReturn)
@@ -942,7 +958,14 @@ public class LstmTrainerService {
     }
 
     private ModelArtifact loadCurrentArtifact() {
-        LstmModelDocument document = loadActiveDocument();
+        return loadArtifact(null);
+    }
+
+    private ModelArtifact loadArtifact(String modelVersionId) {
+        LstmModelDocument document = modelVersionId == null || modelVersionId.isBlank()
+                ? loadActiveDocument()
+                : lstmModelRepository.findById(modelVersionId)
+                .orElseThrow(() -> new IllegalStateException("指定 LSTM 模型版本不存在"));
         if (document.getParams() == null || document.getParams().length == 0) {
             throw new IllegalStateException("共享 LSTM 模型参数为空");
         }
@@ -1173,4 +1196,4 @@ public class LstmTrainerService {
         private String snapshotId;
     }
 }
-// AI_GENERATE_END -----------------
+// AI_GENERATE_END ------------------

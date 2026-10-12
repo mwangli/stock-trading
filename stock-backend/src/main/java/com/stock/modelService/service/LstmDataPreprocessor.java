@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START -----------
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockPrice;
@@ -74,10 +74,7 @@ public class LstmDataPreprocessor {
             return null;
         }
 
-        int stockCount = Math.max(1, priceSeries.size());
-        int panelLimitPerStock = Math.max(4, config.getMaxPanelSamples() / stockCount);
-        int sampleLimitPerStock = Math.max(4,
-                Math.min(config.getMaxSamplesPerStock(), panelLimitPerStock));
+        int sampleLimitPerStock = resolveSampleLimit(priceSeries.size());
 
         for (Map.Entry<String, List<StockPrice>> entry : priceSeries.entrySet()) {
             String stockCode = entry.getKey();
@@ -85,23 +82,13 @@ public class LstmDataPreprocessor {
             StockContext context = contexts == null
                     ? StockContext.basic(stockCode)
                     : contexts.getOrDefault(stockCode, StockContext.basic(stockCode));
-            SeriesSamples seriesSamples = createSeriesSamples(prices, context, sampleLimitPerStock);
-            if (seriesSamples == null || seriesSamples.allSamples().isEmpty()) {
+            StockProcessedData stockData = processStockData(prices, context, sampleLimitPerStock);
+            if (stockData == null) {
                 continue;
             }
-
-            int total = seriesSamples.allSamples().size();
-            int trainEnd = Math.max(1, Math.min(total, (int) Math.floor(total * config.getTrainRatio())));
-            int validationStart = Math.min(total, trainEnd + Math.max(0, config.getValidationGap()));
-            if (validationStart >= total && trainEnd < total) {
-                validationStart = trainEnd;
-            }
-
-            trainSamples.addAll(seriesSamples.allSamples().subList(0, trainEnd));
-            if (validationStart < total) {
-                valSamples.addAll(seriesSamples.allSamples().subList(validationStart, total));
-            }
-            sampleCounts.put(stockCode, total);
+            trainSamples.addAll(stockData.getTrainSamples());
+            valSamples.addAll(stockData.getValSamples());
+            sampleCounts.put(stockCode, stockData.getSampleCount());
         }
 
         if (trainSamples.isEmpty()) {
@@ -118,6 +105,63 @@ public class LstmDataPreprocessor {
                 .sequenceLength(config.getSequenceLength())
                 .targetReturnScale(config.getTargetReturnScale())
                 .featureVersion(FEATURE_VERSION)
+                .build();
+    }
+
+    /**
+     * 根据面板股票数量计算每只股票允许保留的样本上限。
+     *
+     * @param stockCount 面板股票数量
+     * @return 每只股票样本上限
+     */
+    public int resolveSampleLimit(int stockCount) {
+        validateFeatureCount();
+        int safeStockCount = Math.max(1, stockCount);
+        int panelLimitPerStock = Math.max(4, config.getMaxPanelSamples() / safeStockCount);
+        return Math.max(4, Math.min(config.getMaxSamplesPerStock(), panelLimitPerStock));
+    }
+
+    /**
+     * 处理单只股票并完成训练集、验证集时间切分。
+     *
+     * 该入口供快照构建按股票流式处理，避免将全市场原始行情和样本同时保存在内存中。
+     *
+     * @param prices 股票价格列表，必须按日期升序排列
+     * @param context 股票静态特征上下文
+     * @param sampleLimit 单只股票允许保留的样本上限
+     * @return 单股票处理结果，数据不足时返回空
+     */
+    public StockProcessedData processStockData(List<StockPrice> prices, StockContext context, int sampleLimit) {
+        validateFeatureCount();
+        StockContext safeContext = context == null
+                ? StockContext.basic(prices == null || prices.isEmpty() ? null : prices.get(0).getCode())
+                : context;
+        SeriesSamples seriesSamples = createSeriesSamples(prices, safeContext, sampleLimit);
+        if (seriesSamples == null || seriesSamples.allSamples().isEmpty()) {
+            return null;
+        }
+
+        int total = seriesSamples.allSamples().size();
+        int trainEnd = Math.max(1, Math.min(total, (int) Math.floor(total * config.getTrainRatio())));
+        int validationStart = Math.min(total, trainEnd + Math.max(0, config.getValidationGap()));
+        if (validationStart >= total && trainEnd < total) {
+            validationStart = trainEnd;
+        }
+        List<TrainingSample> trainSamples = new ArrayList<>(seriesSamples.allSamples().subList(0, trainEnd));
+        List<TrainingSample> valSamples = validationStart < total
+                ? new ArrayList<>(seriesSamples.allSamples().subList(validationStart, total))
+                : new ArrayList<>();
+        LocalDate datasetEndDate = seriesSamples.allSamples().stream()
+                .map(TrainingSample::getTargetDate)
+                .filter(java.util.Objects::nonNull)
+                .max(LocalDate::compareTo)
+                .orElse(null);
+        return StockProcessedData.builder()
+                .stockCode(safeContext.getStockCode())
+                .trainSamples(trainSamples)
+                .valSamples(valSamples)
+                .sampleCount(total)
+                .datasetEndDate(datasetEndDate)
                 .build();
     }
 
@@ -153,6 +197,7 @@ public class LstmDataPreprocessor {
         return PredictionInput.builder()
                 .input(input)
                 .lastClosePrice(safeNumber(prices.get(prices.size() - 1).getClosePrice()))
+                .baseTradeDate(prices.get(prices.size() - 1).getDate())
                 .featureVersion(FEATURE_VERSION)
                 .build();
     }
@@ -489,6 +534,33 @@ public class LstmDataPreprocessor {
     }
 
     /**
+     * 单只股票的训练样本处理结果。
+     *
+     * @author mwangli
+     * @since 2026-10-12
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class StockProcessedData {
+        /** 股票代码。 */
+        private String stockCode;
+
+        /** 训练样本。 */
+        private List<TrainingSample> trainSamples;
+
+        /** 验证样本。 */
+        private List<TrainingSample> valSamples;
+
+        /** 切分前的有效样本总数。 */
+        private int sampleCount;
+
+        /** 当前股票样本的数据截止日期。 */
+        private LocalDate datasetEndDate;
+    }
+
+    /**
      * 单只股票最新预测输入。
      *
      * @author mwangli
@@ -503,8 +575,11 @@ public class LstmDataPreprocessor {
         /** 最新收盘价。 */
         private double lastClosePrice;
 
+        /** 推理输入最后一条行情的交易日。 */
+        private LocalDate baseTradeDate;
+
         /** 特征定义版本。 */
         private String featureVersion;
     }
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ----------

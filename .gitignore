@@ -32,6 +32,7 @@ documents/plans/
 # 临时文件与中间脚本
 .tmp/
 /graft/
+stock-backend/data/lstm-artifacts/
 
 # NetBeans
 /nbproject/private/

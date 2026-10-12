@@ -42,13 +42,22 @@ spring:
       ddl-auto: update
     show-sql: false
   quartz:
-    job-store-type: memory
-    auto-startup: true
+    job-store-type: jdbc
+    jdbc:
+      initialize-schema: never
+    auto-startup: ${SPRING_QUARTZ_AUTO_STARTUP:true}
     startup-delay: 5s
+    overwrite-existing-jobs: false
     wait-for-jobs-to-complete-on-shutdown: true
     properties:
       org.quartz.scheduler.instanceName: stock-trading-quartz
+      org.quartz.scheduler.instanceId: AUTO
       org.quartz.threadPool.threadCount: 5
+      org.quartz.jobStore.driverDelegateClass: org.quartz.impl.jdbcjobstore.StdJDBCDelegate
+      org.quartz.jobStore.tablePrefix: QRTZ_
+      org.quartz.jobStore.isClustered: true
+      org.quartz.jobStore.clusterCheckinInterval: 20000
+      org.quartz.jobStore.acquireTriggersWithinLock: true
       org.quartz.jobStore.misfireThreshold: 60000
   flyway:
     enabled: true
@@ -118,6 +127,7 @@ models:
     group-head-scale: 0.1
     residual-head-scale: 0.1
     training-enabled: ${LSTM_TRAINING_ENABLED:false}
+    training-time-guard-enabled: ${LSTM_TRAINING_TIME_GUARD_ENABLED:true}
     hidden-size: 50
     num-layers: 2
     dropout: 0.2
@@ -159,6 +169,17 @@ logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 app:
+  runtime:
+    # 节点标识必须在共享数据库的不同运行节点之间保持唯一；未配置时使用主机名。
+    node-id: ${APP_NODE_ID:}
+    # 当前节点尚未生成运行配置时使用以下环境默认值；页面保存后以数据库值为准。
+    data-collection-enabled: ${DATA_COLLECTION_ENABLED:true}
+    news-collection-enabled: ${NEWS_COLLECTION_ENABLED:true}
+    news:
+      # 新闻按发布时间保留的天数，0 表示不启用时间清理。
+      retention-days: ${NEWS_RETENTION_DAYS:365}
+      # 单只股票最多保留的新闻和公告总条数，0 表示不启用数量限制。
+      max-records-per-stock: ${NEWS_MAX_RECORDS_PER_STOCK:300}
   lstm:
     data-quality:
       minimum-training-stock-count: 100
@@ -168,11 +189,13 @@ app:
       minimum-available-memory-mb: 256
       skip-training-codes: []
   startup:
+    listener:
+      enabled: ${APP_STARTUP_LISTENER_ENABLED:true}
     history-sync:
-      enabled: false  # 重任务由统一调度中心按需执行
+      enabled: ${APP_STARTUP_HISTORY_SYNC_ENABLED:false}  # 重任务由统一调度中心按需执行
     # 新闻采集开关：启动时遍历所有股票，先采集标题再获取详情写入数据库
     news-sync:
-      enabled: false
+      enabled: ${APP_STARTUP_NEWS_SYNC_ENABLED:false}
   # 证券平台 HTTP 代理（用于解决云服务器 IP 被 weixin.citicsinfo.com 拦截 403 的问题）
   # 当远程部署返回 403 而本地可访问时，在本地/可访问机器搭建代理，远程通过此配置转发请求
   securities:

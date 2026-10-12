@@ -1,10 +1,11 @@
+// AI_GENERATE_START -
 package com.stock.dataCollector.support;
 
 import com.stock.dataCollector.persistence.StockInfoRepository;
 import com.stock.dataCollector.service.StockNewsService;
+import com.stock.systemConfig.service.SystemRuntimeConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
@@ -23,16 +24,20 @@ import java.util.concurrent.CompletableFuture;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "app.startup.news-sync.enabled", havingValue = "true")
 public class NewsStartupListener {
 
     private final StockNewsService stockNewsService;
     private final StockInfoRepository stockInfoRepository;
+    private final SystemRuntimeConfigService runtimeConfigService;
 
     @Async
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
         CompletableFuture.runAsync(() -> {
+            if (!runtimeConfigService.isStartupNewsSyncEnabled()) {
+                log.info("[启动监听] 系统配置已关闭启动新闻采集，跳过执行");
+                return;
+            }
             log.info("========== [启动监听] 新闻采集任务开始 ==========");
             try {
                 List<String> codes = stockInfoRepository.findAllCodes();
@@ -52,3 +57,4 @@ public class NewsStartupListener {
         });
     }
 }
+// AI_GENERATE_END -

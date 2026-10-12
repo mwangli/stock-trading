@@ -1,10 +1,12 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.domain.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
 
 /**
  * LSTM 单只股票多任务预测结果 DTO。
@@ -24,6 +26,11 @@ public class LstmPredictionResultDto {
      * 股票代码。
      */
     private String stockCode;
+
+    /**
+     * 推理输入最后一条行情的交易日。
+     */
+    private LocalDate baseTradeDate;
 
     /**
      * 使用模型推导的下一交易日收盘价，单位与行情源一致。
@@ -55,4 +62,4 @@ public class LstmPredictionResultDto {
      */
     private String modelId;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --
