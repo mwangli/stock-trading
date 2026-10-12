@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------------
+// AI_GENERATE_START -------------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDateTime } from '../utils/dateTime';
 import axios from 'axios';
@@ -146,7 +146,7 @@ interface PredictionBatch {
   baseTradeDate?: string;
   targetTradeDate?: string;
   informationCutoffAt?: string;
-  calendarFallback: boolean;
+  calendarFallback?: boolean;
   status: string;
   totalStocks: number;
   processedStocks: number;
@@ -178,7 +178,7 @@ interface PredictionResult {
   modelVersion: string;
   baseTradeDate?: string;
   targetTradeDate?: string;
-  calendarFallback: boolean;
+  calendarFallback?: boolean;
   baseClosePrice?: number;
   predictedClosePrice?: number;
   predictedReturn?: number;
@@ -704,7 +704,9 @@ const ModelOperations: React.FC = () => {
     { title: '信息截止', dataIndex: 'informationCutoffAt', key: 'informationCutoffAt', width: 180, render: formatDateTime },
     {
       title: '日历来源', dataIndex: 'calendarFallback', key: 'calendarFallback', width: 120,
-      render: (value: boolean) => <Tag color={value ? 'warning' : 'green'}>{value ? '工作日推算' : '正式日历'}</Tag>,
+      render: (value?: boolean) => value === undefined || value === null
+        ? <Tag>未知</Tag>
+        : <Tag color={value ? 'warning' : 'green'}>{value ? '工作日推算' : '正式日历'}</Tag>,
     },
     { title: '状态', dataIndex: 'status', key: 'status', width: 110, render: (value: string) => <Tag color={statusColors[value] ?? 'default'}>{value}</Tag> },
     {
@@ -730,7 +732,9 @@ const ModelOperations: React.FC = () => {
     { title: '目标日', dataIndex: 'targetTradeDate', key: 'targetTradeDate', width: 110 },
     {
       title: '日历来源', dataIndex: 'calendarFallback', key: 'calendarFallback', width: 120,
-      render: (value: boolean) => <Tag color={value ? 'warning' : 'green'}>{value ? '工作日推算' : '正式日历'}</Tag>,
+      render: (value?: boolean) => value === undefined || value === null
+        ? <Tag>未知</Tag>
+        : <Tag color={value ? 'warning' : 'green'}>{value ? '工作日推算' : '正式日历'}</Tag>,
     },
     { title: '基准收盘', dataIndex: 'baseClosePrice', key: 'baseClosePrice', width: 110, render: (value?: number) => formatNumber(value, 3) },
     { title: '预测收盘', dataIndex: 'predictedClosePrice', key: 'predictedClosePrice', width: 110, render: (value?: number) => formatNumber(value, 3) },
@@ -1193,4 +1197,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END ------------------
+// AI_GENERATE_END -------------------

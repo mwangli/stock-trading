@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.modelService.domain.entity;
 
 import lombok.Data;
@@ -55,7 +55,13 @@ public class TrainingDatasetSnapshotDocument {
     /** 验证样本数量。 */
     private int valSamples;
 
-    /** 快照文件路径。 */
+    /** 工件存储类型，如 MONGO_GRIDFS 或 LOCAL_FILE。 */
+    private String artifactStorage;
+
+    /** MongoDB GridFS 中的清单或单文件工件 ID。 */
+    private String artifactFileId;
+
+    /** 兼容历史快照的本地文件路径。 */
     private String artifactPath;
 
     /** 快照文件 SHA-256。 */
@@ -79,4 +85,4 @@ public class TrainingDatasetSnapshotDocument {
     /** 失败原因。 */
     private String errorMessage;
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---
