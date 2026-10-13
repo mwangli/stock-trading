@@ -1,7 +1,9 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.dataCollector.service;
 
+import com.stock.dataCollector.domain.entity.StockInfo;
 import com.stock.dataCollector.domain.entity.StockNews;
+import com.stock.dataCollector.domain.enums.NewsSyncStatus;
 import com.stock.dataCollector.persistence.NewsRepository;
 import com.stock.dataCollector.persistence.StockInfoRepository;
 import com.stock.dataCollector.support.SecuritiesClient;
@@ -27,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -101,39 +104,75 @@ public class StockNewsService {
     }
 
     /**
-     * 采集指定股票的新闻和公告（单只调用，使用全局缓存）
+     * 采集指定股票的新闻和公告（单只调用，使用全局缓存）。
      *
      * @param stockCode 股票代码，如 600519
      * @return 本次采集新增的新闻数量
+     * @throws IllegalStateException 新闻或公告来源未全部同步成功时抛出
      */
     public int collectStockNewsByCode(String stockCode) {
         runtimeConfigService.requireNewsCollectionEnabled();
-        return collectStockNewsByCode(stockCode, getCodeToNameCache());
+        String batchId = UUID.randomUUID().toString();
+        StockCollectResult result = collectStockNewsByCode(stockCode, getCodeToNameCache(), batchId);
+        if (!result.isFullySuccessful()) {
+            throw new IllegalStateException("股票 " + stockCode + " 新闻同步未完整成功，状态=" + result.status());
+        }
+        return result.savedCount();
     }
 
     /**
-     * 采集指定股票的新闻和公告
+     * 采集指定股票的新闻和公告，并在 MySQL 中记录本次同步水位。
      *
-     * @param stockCode       股票代码，如 600519
-     * @param codeToNameCache 代码→名称缓存，批量采集时传入可避免 N 次查询
-     * @return 本次采集新增的新闻数量
+     * @param stockCode 股票代码
+     * @param codeToNameCache 代码到名称缓存
+     * @param batchId 批次 ID
+     * @return 单只股票采集结果
      */
-    private int collectStockNewsByCode(String stockCode, Map<String, String> codeToNameCache) {
+    private StockCollectResult collectStockNewsByCode(String stockCode, Map<String, String> codeToNameCache,
+                                                       String batchId) {
         String stockName = resolveStockName(stockCode, codeToNameCache);
         String label = stockCode + (stockName != null && !stockName.isEmpty() ? " " + stockName : "");
+        StockInfo stockInfo = markSyncStarted(stockCode, batchId);
 
         long existingCount = newsRepository.countByStockCode(stockCode);
-        log.info("开始采集股票 {} 的新闻与公告（当前 {} 条）", label, existingCount);
+        log.info("开始采集股票 {} 的新闻与公告（当前 {} 条，batchId={}）", label, existingCount, batchId);
         int totalSaved = 0;
+        int successfulSources = 0;
+        List<String> errorCodes = new ArrayList<>();
         int sourceTotal = NEWS_SOURCES.size();
+
         for (int i = 0; i < sourceTotal; i++) {
             NewsSource src = NEWS_SOURCES.get(i);
             log.info("股票 {} 开始采集 {}/{} {}", label, i + 1, sourceTotal, src.category);
-            int saved = collectBySource(stockCode, stockName, label, src, i + 1, sourceTotal);
-            totalSaved += saved;
+            try {
+                int saved = collectBySource(stockCode, stockName, label, src, i + 1, sourceTotal);
+                totalSaved += saved;
+                successfulSources++;
+            } catch (Exception e) {
+                String errorCode = "NEWS_SOURCE_" + src.menuId + "_FAILED";
+                errorCodes.add(errorCode);
+                log.error("股票 {} {} 来源同步失败，errorCode={}: {}", label, src.category,
+                        errorCode, e.getMessage(), e);
+            }
         }
-        cleanupStockNews(stockCode, label);
-        return totalSaved;
+
+        try {
+            cleanupStockNews(stockCode, label);
+        } catch (Exception e) {
+            log.warn("股票 {} 新闻历史清理失败，不影响本次同步水位判定: {}", label, e.getMessage(), e);
+        }
+
+        NewsSyncStatus status;
+        if (successfulSources == sourceTotal) {
+            status = totalSaved > 0 ? NewsSyncStatus.SUCCESS_WITH_CHANGE : NewsSyncStatus.SUCCESS_NO_CHANGE;
+        } else if (successfulSources > 0) {
+            status = NewsSyncStatus.PARTIAL;
+        } else {
+            status = NewsSyncStatus.FAILED;
+        }
+        String errorCode = errorCodes.isEmpty() ? null : String.join(",", errorCodes);
+        updateSyncWatermark(stockInfo, status, totalSaved, errorCode);
+        return new StockCollectResult(stockCode, totalSaved, status, errorCode);
     }
 
     /**
@@ -153,14 +192,9 @@ public class StockNewsService {
 
         while (hasMore && page <= MAX_PAGES) {
             Map<String, Object> listResp = securitiesClient.requestNewsList(stockCode, page, PAGE_SIZE, src.menuId);
-            if (listResp.isEmpty()) {
-                log.info("股票 {} {} 第 {} 页列表返回为空，跳过", label, src.category, page);
-                break;
-            }
-
             Object grid0Obj = listResp.get("GRID0");
             if (!(grid0Obj instanceof List<?> grid0)) {
-                break;
+                throw new IllegalStateException("证券平台" + src.category + "列表缺少 GRID0");
             }
 
             if (grid0.isEmpty()) {
@@ -269,6 +303,9 @@ public class StockNewsService {
                 }
             }
             log.info("股票 {} {} 逐条回退实际写入 {} 条", label, category, savedCount);
+            if (savedCount != batch.size()) {
+                throw new IllegalStateException("MongoDB 批量及逐条回退写入均未完整成功");
+            }
             return savedCount;
         }
     }
@@ -316,18 +353,20 @@ public class StockNewsService {
     }
 
     /**
-     * 批量采集所有股票的新闻（多线程并行）
+     * 批量采集所有股票的新闻（多线程并行）。
      *
      * @param maxStocks 最多采集的股票数量，0 表示不限制
      * @return 采集结果统计
      */
     public CollectResult collectAllStockNews(int maxStocks) {
         runtimeConfigService.requireNewsCollectionEnabled();
-        log.info("开始批量采集股票新闻（{} 线程并行），最多 {} 只股票", PARALLEL_THREADS, maxStocks <= 0 ? "全部" : maxStocks);
+        String batchId = UUID.randomUUID().toString();
+        log.info("开始批量采集股票新闻（{} 线程并行），最多 {} 只股票，batchId={}",
+                PARALLEL_THREADS, maxStocks <= 0 ? "全部" : maxStocks, batchId);
         List<String> codes = stockInfoRepository.findAllCodes();
         if (codes == null || codes.isEmpty()) {
             log.warn("未找到任何股票代码，跳过新闻采集");
-            return new CollectResult(0, 0, 0);
+            return new CollectResult(batchId, 0, 0, 0, 0, 0, 0);
         }
 
         int limit = maxStocks > 0 ? Math.min(maxStocks, codes.size()) : codes.size();
@@ -335,43 +374,58 @@ public class StockNewsService {
 
         AtomicInteger totalSaved = new AtomicInteger(0);
         AtomicInteger processedCount = new AtomicInteger(0);
+        AtomicInteger withChangeCount = new AtomicInteger(0);
+        AtomicInteger noChangeCount = new AtomicInteger(0);
+        AtomicInteger partialCount = new AtomicInteger(0);
         AtomicInteger failedCount = new AtomicInteger(0);
         CountDownLatch latch = new CountDownLatch(limit);
-
         long startMs = System.currentTimeMillis();
 
         for (int i = 0; i < limit; i++) {
             String code = codes.get(i);
             executor.submit(() -> {
                 try {
-                    int saved = collectStockNewsByCode(code, codeToName);
-                    totalSaved.addAndGet(saved);
-                    int p = processedCount.incrementAndGet();
-                    String label = resolveStockLabel(code, codeToName);
-                    log.info("股票 {} 采集完成（整体进度 {}/{}，本股新增 {} 条）", label, p, limit, saved);
-                    if (p % 20 == 0) {
-                        log.info("新闻采集整体进度: {}/{} 只股票，累计新增 {} 条", p, limit, totalSaved.get());
+                    StockCollectResult result = collectStockNewsByCode(code, codeToName, batchId);
+                    totalSaved.addAndGet(result.savedCount());
+                    switch (result.status()) {
+                        case SUCCESS_WITH_CHANGE -> withChangeCount.incrementAndGet();
+                        case SUCCESS_NO_CHANGE -> noChangeCount.incrementAndGet();
+                        case PARTIAL -> partialCount.incrementAndGet();
+                        case FAILED -> failedCount.incrementAndGet();
+                        default -> failedCount.incrementAndGet();
                     }
+                    log.info("股票 {} 采集完成（状态={}，本股新增 {} 条）",
+                            resolveStockLabel(code, codeToName), result.status(), result.savedCount());
                 } catch (Exception e) {
                     failedCount.incrementAndGet();
                     log.error("股票 {} 新闻采集失败: {}", resolveStockLabel(code, codeToName), e.getMessage(), e);
                 } finally {
+                    int processed = processedCount.incrementAndGet();
+                    if (processed % 20 == 0 || processed == limit) {
+                        log.info("新闻采集整体进度: {}/{} 只股票，累计新增 {} 条，部分失败 {} 只，失败 {} 只",
+                                processed, limit, totalSaved.get(), partialCount.get(), failedCount.get());
+                    }
                     latch.countDown();
                 }
             });
         }
 
         try {
-            latch.await(24, TimeUnit.HOURS);
+            boolean completed = latch.await(24, TimeUnit.HOURS);
+            if (!completed) {
+                throw new IllegalStateException("新闻采集等待超过 24 小时，仍有任务未完成");
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.warn("新闻采集被中断");
+            throw new IllegalStateException("新闻采集被中断", e);
         }
 
         long costMs = System.currentTimeMillis() - startMs;
-        log.info("批量新闻采集完成: 处理 {} 只股票，新增 {} 条，失败 {} 只，耗时 {} 分钟",
-                processedCount.get(), totalSaved.get(), failedCount.get(), costMs / 60_000);
-        return new CollectResult(processedCount.get(), totalSaved.get(), failedCount.get());
+        log.info("批量新闻采集完成: batchId={}，处理 {} 只，新增 {} 条，有新增 {} 只，无新增 {} 只，部分失败 {} 只，失败 {} 只，耗时 {} 分钟",
+                batchId, processedCount.get(), totalSaved.get(), withChangeCount.get(), noChangeCount.get(),
+                partialCount.get(), failedCount.get(), costMs / 60_000);
+        return new CollectResult(batchId, processedCount.get(), totalSaved.get(), withChangeCount.get(),
+                noChangeCount.get(), partialCount.get(), failedCount.get());
     }
 
     /**
@@ -445,6 +499,58 @@ public class StockNewsService {
         return LocalDateTime.now();
     }
 
+    /**
+     * 将股票新闻同步状态更新为运行中。
+     *
+     * @param stockCode 股票代码
+     * @param batchId 批次 ID
+     * @return 已持久化的股票实体
+     */
+    private StockInfo markSyncStarted(String stockCode, String batchId) {
+        StockInfo stockInfo = stockInfoRepository.findByCode(stockCode)
+                .orElseThrow(() -> new IllegalArgumentException("股票代码不存在: " + stockCode));
+        stockInfo.setNewsLastAttemptAt(LocalDateTime.now());
+        stockInfo.setNewsSyncBatchId(batchId);
+        stockInfo.setNewsSyncStatus(NewsSyncStatus.RUNNING);
+        stockInfo.setNewsSyncErrorCode(null);
+        return stockInfoRepository.save(stockInfo);
+    }
+
+    /**
+     * 在 MongoDB 处理完成后更新 MySQL 新闻同步水位。
+     *
+     * @param stockInfo 股票实体
+     * @param status 最终同步状态
+     * @param savedCount 本次新增数量
+     * @param errorCode 标准错误码
+     */
+    private void updateSyncWatermark(StockInfo stockInfo, NewsSyncStatus status, int savedCount, String errorCode) {
+        LocalDateTime completedAt = LocalDateTime.now();
+        newsRepository.findFirstByStockCodeOrderByPublishTimeDesc(stockInfo.getCode())
+                .map(StockNews::getPublishTime)
+                .ifPresent(stockInfo::setNewsLastPublishTime);
+        stockInfo.setNewsSyncStatus(status);
+        stockInfo.setNewsSyncErrorCode(errorCode);
+
+        if (status == NewsSyncStatus.SUCCESS_WITH_CHANGE || status == NewsSyncStatus.SUCCESS_NO_CHANGE) {
+            stockInfo.setNewsLastSuccessAt(completedAt);
+            int previousNoChangeCount = stockInfo.getNewsConsecutiveNoChangeCount() == null
+                    ? 0 : stockInfo.getNewsConsecutiveNoChangeCount();
+            stockInfo.setNewsConsecutiveNoChangeCount(savedCount > 0 ? 0 : previousNoChangeCount + 1);
+            stockInfo.setNewsNextSyncAt(completedAt.plusDays(1));
+        } else {
+            stockInfo.setNewsNextSyncAt(completedAt.plusMinutes(15));
+        }
+
+        try {
+            stockInfoRepository.save(stockInfo);
+        } catch (Exception e) {
+            log.error("股票 {} 新闻 MongoDB 处理完成，但 MySQL 水位更新失败，batchId={}",
+                    stockInfo.getCode(), stockInfo.getNewsSyncBatchId(), e);
+            throw new IllegalStateException("新闻同步水位更新失败", e);
+        }
+    }
+
     private void sleep(long ms) {
         try {
             TimeUnit.MILLISECONDS.sleep(ms);
@@ -509,11 +615,33 @@ public class StockNewsService {
     }
 
     /**
-     * 新闻采集结果
+     * 新闻采集批次结果。
+     *
+     * @param batchId 批次 ID
+     * @param processedCount 已处理股票数量
+     * @param savedCount 新增新闻数量
+     * @param withChangeCount 有新增股票数量
+     * @param noChangeCount 无新增股票数量
+     * @param partialCount 部分失败股票数量
+     * @param failedCount 失败股票数量
      */
-    public record CollectResult(int processedCount, int savedCount, int failedCount) {}
+    public record CollectResult(String batchId, int processedCount, int savedCount, int withChangeCount,
+                                int noChangeCount, int partialCount, int failedCount) {}
 
-    /** 采集来源（新闻/公告） */
+    /** 单只股票采集结果。 */
+    private record StockCollectResult(String stockCode, int savedCount, NewsSyncStatus status, String errorCode) {
+
+        /**
+         * 判断新闻和公告两个来源是否均同步成功。
+         *
+         * @return 两个来源均成功时返回 true
+         */
+        private boolean isFullySuccessful() {
+            return status == NewsSyncStatus.SUCCESS_WITH_CHANGE || status == NewsSyncStatus.SUCCESS_NO_CHANGE;
+        }
+    }
+
+    /** 采集来源（新闻/公告）。 */
     private record NewsSource(String menuId, String category) {}
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

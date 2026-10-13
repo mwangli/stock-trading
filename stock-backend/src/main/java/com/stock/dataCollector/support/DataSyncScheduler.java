@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.dataCollector.support;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -200,8 +200,8 @@ public class DataSyncScheduler {
      * 每日增量新闻采集
      * <p>
      * 对应任务: newsDailySync
-     * Cron: 0 0 6 * * MON-FRI（每交易日 6:00）
-     * 每只股票每来源采集最新 100 条，已存在则跳过，仅入库新数据
+     * Cron: 0 0 5 * * MON-FRI（每交易日 5:00）
+     * 每只股票每来源检查最新一页，已存在则跳过详情请求，仅入库新数据并记录同步水位
      * </p>
      */
     public void collectNewsDailySync() {
@@ -209,8 +209,12 @@ public class DataSyncScheduler {
         log.info("========== [数据同步任务] 开始执行每日增量新闻采集 ==========");
         try {
             StockNewsService.CollectResult result = stockNewsService.collectAllStockNews(NEWS_DAILY_MAX_STOCKS);
-            log.info("[数据同步任务] 每日增量新闻采集完成: 处理 {} 只股票，新增 {} 条，失败 {} 只",
-                    result.processedCount(), result.savedCount(), result.failedCount());
+            log.info("[数据同步任务] 每日增量新闻采集完成: batchId={}，处理 {} 只，新增 {} 条，有新增 {} 只，无新增 {} 只，部分失败 {} 只，失败 {} 只",
+                    result.batchId(), result.processedCount(), result.savedCount(), result.withChangeCount(),
+                    result.noChangeCount(), result.partialCount(), result.failedCount());
+            if (result.partialCount() > 0 || result.failedCount() > 0) {
+                throw new IllegalStateException("每日新闻同步存在部分失败或失败股票");
+            }
         } catch (Exception e) {
             log.error("[数据同步任务] 每日增量新闻采集失败", e);
             throw new RuntimeException("每日增量新闻采集失败: " + e.getMessage(), e);
@@ -218,4 +222,4 @@ public class DataSyncScheduler {
         log.info("========== [数据同步任务] 每日增量新闻采集结束 ==========");
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----
