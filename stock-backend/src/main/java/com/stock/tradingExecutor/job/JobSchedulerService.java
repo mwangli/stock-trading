@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START --------
 package com.stock.tradingExecutor.job;
 
 import lombok.RequiredArgsConstructor;
@@ -42,6 +42,7 @@ public class JobSchedulerService {
             Map.entry("historicalDataSync", HistoricalDataSyncQuartzJob.class),
             Map.entry("newsFullSync", NewsFullSyncQuartzJob.class),
             Map.entry("newsDailySync", NewsDailySyncQuartzJob.class),
+            Map.entry("tradeCalendarMonthlySync", TradeCalendarMonthlySyncQuartzJob.class),
             Map.entry("lstmOfflineTraining", LstmOfflineTrainingQuartzJob.class),
             Map.entry("dailyModelPrediction", DailyModelPredictionQuartzJob.class),
             Map.entry("modelPredictionEvaluation", ModelPredictionEvaluationQuartzJob.class),
@@ -304,4 +305,4 @@ public class JobSchedulerService {
     public record QuartzRuntimeState(String triggerState, LocalDateTime nextFireTime, boolean registered) {
     }
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END --------

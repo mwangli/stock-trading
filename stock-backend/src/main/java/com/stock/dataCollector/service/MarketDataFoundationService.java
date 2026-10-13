@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.dataCollector.service;
 
 import com.stock.dataCollector.domain.dto.AdjustmentFactorImportRequestDto;
@@ -17,6 +17,9 @@ import com.stock.dataCollector.domain.entity.StockMinuteBar;
 import com.stock.dataCollector.domain.entity.StockDailyTradabilityFact;
 import com.stock.dataCollector.domain.entity.OpenTradabilityStatus;
 import com.stock.dataCollector.domain.entity.TradeCalendarEntity;
+import com.stock.dataCollector.domain.enums.CalendarClosureType;
+import com.stock.dataCollector.domain.enums.CalendarDayStatus;
+import com.stock.dataCollector.domain.enums.CalendarVerificationStatus;
 import com.stock.dataCollector.persistence.HistoricalStockUniverseRepository;
 import com.stock.dataCollector.persistence.TradeCalendarRepository;
 import lombok.RequiredArgsConstructor;
@@ -115,10 +118,15 @@ public class MarketDataFoundationService {
                             .createdAt(now)
                             .build());
             entity.setTradingDay(item.isTradingDay());
+            entity.setDayStatus(item.isTradingDay() ? CalendarDayStatus.OPEN : CalendarDayStatus.CLOSED);
+            entity.setClosureType(item.isTradingDay() ? CalendarClosureType.NONE : CalendarClosureType.UNKNOWN);
+            entity.setVerificationStatus(CalendarVerificationStatus.CONFIRMED);
             entity.setPreviousTradingDay(item.getPreviousTradingDay());
             entity.setNextTradingDay(item.getNextTradingDay());
             entity.setSource(request.getSource().trim());
             entity.setSourceVersion(request.getSourceVersion().trim());
+            entity.setSourceFetchedAt(now);
+            entity.setConfirmedAt(now);
             entity.setUpdatedAt(now);
             entities.add(entity);
         }
@@ -466,4 +474,4 @@ public class MarketDataFoundationService {
                 .build();
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

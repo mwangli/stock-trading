@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ---
 package com.stock.dataCollector.service;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -55,6 +55,7 @@ public class StockDataService {
     private final MongoTemplate mongoTemplate;
     private final WeeklyPriceRepository weeklyPriceRepository;
     private final MonthlyPriceRepository monthlyPriceRepository;
+    private final TradingCalendarService tradingCalendarService;
 
     // ==================== 股票列表同步 ====================
 
@@ -512,12 +513,11 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
                     .build();
         }
 
-        // 市场状态 (9:30-15:00 周一到周五)
+        // 市场状态必须同时满足已确认交易日和盘中时间。
         LocalTime now = LocalTime.now();
         LocalDate today = LocalDate.now();
-        DayOfWeek dayOfWeek = today.getDayOfWeek();
-        boolean isWeekday = dayOfWeek != DayOfWeek.SATURDAY && dayOfWeek != DayOfWeek.SUNDAY;
-        boolean isMarketOpen = isWeekday && now.isAfter(LocalTime.of(9, 30)) && now.isBefore(LocalTime.of(15, 0));
+        boolean isMarketOpen = tradingCalendarService.isTradingDay(today)
+                && now.isAfter(LocalTime.of(9, 30)) && now.isBefore(LocalTime.of(15, 0));
         String marketStatus = isMarketOpen ? "开盘" : "休市";
 
         // 涨跌平数量（聚合查询，不加载实体）
@@ -1043,4 +1043,4 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
         private String errorMessage;
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END ---

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START -------------
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -26,7 +26,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
-import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.nio.file.Files;
@@ -663,8 +662,7 @@ public class ModelOperationsService {
     }
 
     private boolean isTrainingWindowOpen(LocalDateTime now) {
-        DayOfWeek day = now.getDayOfWeek();
-        if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
+        if (!tradingTimeChecker.isTradingDay(now.toLocalDate())) {
             return true;
         }
         LocalTime time = now.toLocalTime();
@@ -986,4 +984,4 @@ public class ModelOperationsService {
     }
 
     }
-// AI_GENERATE_END ------------
+// AI_GENERATE_END -------------
