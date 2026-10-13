@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 package com.stock.dataCollector.support;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -243,14 +244,13 @@ public class SecuritiesClient {
             params.add("CHANNEL", "");
             HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(params, headers);
             Map<String, Object> response = restTemplate.postForObject(NEWS_API_URL, requestEntity, Map.class);
-            if (response == null) {
-                log.warn("证券平台新闻列表返回为空");
-                return java.util.Collections.emptyMap();
+            if (response == null || response.isEmpty()) {
+                throw new IllegalStateException("证券平台新闻列表响应为空");
             }
             return response;
         } catch (Exception e) {
-            log.error("获取股票 {} 新闻列表失败", stockCode, e);
-            return java.util.Collections.emptyMap();
+            log.error("获取股票 {} 新闻列表失败，menuId={}", stockCode, menuId, e);
+            throw new IllegalStateException("证券平台新闻列表请求失败", e);
         }
     }
 
@@ -276,14 +276,15 @@ public class SecuritiesClient {
             params.add("CHANNEL", "");
             HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(params, headers);
             Map<String, Object> response = restTemplate.postForObject(NEWS_API_URL, requestEntity, Map.class);
-            if (response == null) {
-                log.warn("证券平台新闻详情返回为空");
-                return java.util.Collections.emptyMap();
+            if (response == null || response.isEmpty()) {
+                throw new IllegalStateException("证券平台新闻详情响应为空");
             }
             return response;
         } catch (Exception e) {
-            log.error("获取新闻详情失败，ID: {}", externalId, e);
-            return java.util.Collections.emptyMap();
+            log.error("获取新闻详情失败，ID: {}, menuId={}", externalId, menuId, e);
+            throw new IllegalStateException("证券平台新闻详情请求失败", e);
         }
     }
+
 }
+// AI_GENERATE_END -
