@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -22,6 +22,9 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.index.Index;
+import org.springframework.data.mongodb.core.index.IndexOperations;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -56,6 +59,8 @@ public class ModelPredictionAnalysisService {
     private static final int MINIMUM_ABILITY_SAMPLE_COUNT = 100;
     private static final List<String> RUNNING_STATUSES = List.of("QUEUED", "RUNNING");
     private static final List<String> EVALUATABLE_STATUSES = List.of("COMPLETED", "PARTIAL", "EVALUATED");
+    private static final String LEGACY_PREDICTION_IDENTITY_INDEX = "uk_prediction_identity";
+    private static final String BATCH_STOCK_UNIQUE_INDEX = "uk_prediction_batch_stock";
 
     private final LstmInferenceService inferenceService;
     private final LstmTrainerService trainerService;
@@ -66,6 +71,7 @@ public class ModelPredictionAnalysisService {
     private final LstmModelRepository modelRepository;
     private final ModelPredictionBatchRepository batchRepository;
     private final ModelPredictionRepository predictionRepository;
+    private final MongoTemplate mongoTemplate;
     private final Executor applicationTaskExecutor;
     private final AtomicBoolean predictionRunning = new AtomicBoolean(false);
 
@@ -81,6 +87,7 @@ public class ModelPredictionAnalysisService {
      * @param modelRepository 模型版本仓库
      * @param batchRepository 预测批次仓库
      * @param predictionRepository 预测明细仓库
+     * @param mongoTemplate MongoDB 操作模板
      * @param applicationTaskExecutor 应用异步执行器
      */
     public ModelPredictionAnalysisService(
@@ -93,6 +100,7 @@ public class ModelPredictionAnalysisService {
             LstmModelRepository modelRepository,
             ModelPredictionBatchRepository batchRepository,
             ModelPredictionRepository predictionRepository,
+            MongoTemplate mongoTemplate,
             @Qualifier("applicationTaskExecutor") Executor applicationTaskExecutor) {
         this.inferenceService = inferenceService;
         this.trainerService = trainerService;
@@ -103,6 +111,7 @@ public class ModelPredictionAnalysisService {
         this.modelRepository = modelRepository;
         this.batchRepository = batchRepository;
         this.predictionRepository = predictionRepository;
+        this.mongoTemplate = mongoTemplate;
         this.applicationTaskExecutor = applicationTaskExecutor;
     }
 
@@ -113,6 +122,7 @@ public class ModelPredictionAnalysisService {
      */
     @PostConstruct
     public void recoverInterruptedPredictionBatches() {
+        reconcilePredictionIndexes();
         for (ModelPredictionBatchDocument batch : batchRepository.findByStatusIn(RUNNING_STATUSES)) {
             batch.setStatus("FAILED");
             batch.setErrorMessage("应用重启，原预测任务已中断");
@@ -136,6 +146,21 @@ public class ModelPredictionAnalysisService {
             log.info("已回填历史预测批次日历来源: batchId={}, calendarFallback={}",
                     batch.getId(), resolution.calendarFallback());
         }
+    }
+
+    private void reconcilePredictionIndexes() {
+        IndexOperations indexOperations = mongoTemplate.indexOps(ModelPredictionDocument.class);
+        boolean legacyIndexExists = indexOperations.getIndexInfo().stream()
+                .anyMatch(indexInfo -> LEGACY_PREDICTION_IDENTITY_INDEX.equals(indexInfo.getName()));
+        if (legacyIndexExists) {
+            indexOperations.dropIndex(LEGACY_PREDICTION_IDENTITY_INDEX);
+            log.warn("已删除跨批次冲突的旧预测唯一索引: index={}", LEGACY_PREDICTION_IDENTITY_INDEX);
+        }
+        indexOperations.ensureIndex(new Index()
+                .on("batchId", Sort.Direction.ASC)
+                .on("stockCode", Sort.Direction.ASC)
+                .unique()
+                .named(BATCH_STOCK_UNIQUE_INDEX));
     }
 
     /**
@@ -745,4 +770,4 @@ public class ModelPredictionAnalysisService {
     private record TradeDateResolution(LocalDate tradeDate, boolean calendarFallback) {
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----
