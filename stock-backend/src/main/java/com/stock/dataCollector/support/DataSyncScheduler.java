@@ -1,10 +1,10 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.dataCollector.support;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
 import com.stock.dataCollector.service.StockDataService;
 import com.stock.dataCollector.service.StockNewsService;
-import com.stock.systemConfig.service.SystemRuntimeConfigService;
+import com.stock.tradingExecutor.runtime.service.SystemRuntimeConfigService;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -218,4 +218,4 @@ public class DataSyncScheduler {
         log.info("========== [数据同步任务] 每日增量新闻采集结束 ==========");
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

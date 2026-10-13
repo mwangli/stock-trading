@@ -1,7 +1,8 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.modelService.service;
 
 import com.stock.modelService.domain.vo.SentimentAnalysisResult;
+import com.stock.modelService.domain.vo.SentimentArtifactInspection;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -77,5 +78,23 @@ public class SentimentInferenceService {
     public LocalDateTime getLastLoadedTime() {
         return sentimentTrainerService.getLastLoadedTime();
     }
+
+    /**
+     * 返回当前情感模型制品检查结果。
+     *
+     * @return 制品目录、版本、大小、摘要和评估摘要
+     */
+    public SentimentArtifactInspection getArtifactInspection() {
+        return sentimentTrainerService.getArtifactInspection();
+    }
+
+    /**
+     * 返回最近一次模型加载错误。
+     *
+     * @return 错误信息，无错误时为空
+     */
+    public String getLastLoadError() {
+        return sentimentTrainerService.getLastLoadError();
+    }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

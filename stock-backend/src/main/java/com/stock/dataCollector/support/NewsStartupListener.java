@@ -1,9 +1,9 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.dataCollector.support;
 
 import com.stock.dataCollector.persistence.StockInfoRepository;
 import com.stock.dataCollector.service.StockNewsService;
-import com.stock.systemConfig.service.SystemRuntimeConfigService;
+import com.stock.tradingExecutor.runtime.service.SystemRuntimeConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -57,4 +57,4 @@ public class NewsStartupListener {
         });
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

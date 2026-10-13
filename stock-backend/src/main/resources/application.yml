@@ -146,11 +146,14 @@ models:
     max-sequence-length: 128
     labels: [neutral, positive, negative]
     model-name: sentiment-finbert
-    model-version: local-current
+    model-version: ${SENTIMENT_MODEL_VERSION:finbert-tone-chinese-e91b1a3a}
     model-source: local
     model-path: ${SENTIMENT_MODEL_PATH:./models/sentiment}
-    pretrained-model: ProsusAI/finbert
+    pretrained-model: yiyanghkust/finbert-tone-chinese
     download-pretrained: false
+    allow-legacy-layout: ${SENTIMENT_ALLOW_LEGACY_LAYOUT:false}
+    max-single-file-bytes: ${SENTIMENT_MAX_SINGLE_FILE_BYTES:2147483648}
+    max-total-artifact-bytes: ${SENTIMENT_MAX_TOTAL_ARTIFACT_BYTES:4294967296}
 
 # 策略配置
 strategy:

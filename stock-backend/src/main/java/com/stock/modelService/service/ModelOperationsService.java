@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------
+// AI_GENERATE_START ------------
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -17,7 +17,7 @@ import com.stock.modelService.persistence.ModelActivationRepository;
 import com.stock.modelService.persistence.ModelOperationAuditRepository;
 import com.stock.modelService.persistence.ModelTrainingRunRepository;
 import com.stock.tradingExecutor.execution.TradingTimeChecker;
-import com.stock.systemConfig.service.SystemRuntimeConfigService;
+import com.stock.tradingExecutor.runtime.service.SystemRuntimeConfigService;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -986,4 +986,4 @@ public class ModelOperationsService {
     }
 
     }
-// AI_GENERATE_END -----------
+// AI_GENERATE_END ------------

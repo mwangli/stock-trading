@@ -1,10 +1,12 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.modelService.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.modelService.domain.dto.SentimentAnalyzeRequestDto;
 import com.stock.modelService.domain.dto.SentimentAnalyzeResultDto;
 import com.stock.modelService.domain.dto.SentimentHealthDto;
+import com.stock.modelService.domain.vo.SentimentArtifactInspection;
+import com.stock.modelService.domain.vo.SentimentArtifactManifest;
 import com.stock.modelService.service.SentimentInferenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +24,7 @@ import java.util.Map;
  * 生产服务只开放推理和健康检查，不允许在线训练、下载或切换模型。
  *
  * @author mwangli
- * @since 2026-10-08
+ * @since 2026-10-12
  */
 @Slf4j
 @RestController
@@ -54,18 +56,39 @@ public class SentimentController {
     }
 
     /**
-     * 查询当前情感模型是否已加载。
+     * 查询情感模型、制品校验和离线评估摘要。
      *
      * @return 模型健康状态
      */
     @GetMapping("/health")
     public ResponseDTO<SentimentHealthDto> health() {
         log.info("查询情感模型健康状态");
+        boolean modelLoaded = inferenceService.isModelLoaded();
+        SentimentArtifactInspection inspection = inferenceService.getArtifactInspection();
+        SentimentArtifactManifest.EvaluationMetrics metrics = inspection.getMetrics();
+        String loadError = inferenceService.getLastLoadError();
+        String error = loadError != null ? loadError : inspection.getErrorMessage();
         return ResponseDTO.success(SentimentHealthDto.builder()
-                .status(inferenceService.isModelLoaded() ? "UP" : "NOT_LOADED")
+                .status(modelLoaded ? "UP" : inspection.isAvailable() ? "ARTIFACT_READY" : "NOT_READY")
                 .service("Sentiment Analysis Service")
-                .modelLoaded(inferenceService.isModelLoaded())
+                .modelLoaded(modelLoaded)
                 .lastLoadedTime(inferenceService.getLastLoadedTime())
+                .artifactAvailable(inspection.isAvailable())
+                .manifestPresent(inspection.isManifestPresent())
+                .checksumsVerified(inspection.isChecksumsVerified())
+                .modelVersion(inspection.getModelVersion())
+                .artifactPath(inspection.getModelDirectory() == null
+                        ? null : inspection.getModelDirectory().toString())
+                .totalSizeBytes(inspection.getTotalSizeBytes())
+                .manifestSha256(inspection.getManifestSha256())
+                .evaluationDatasetVersion(metrics == null ? null : metrics.getDatasetVersion())
+                .evaluationSampleCount(metrics == null ? null : metrics.getSampleCount())
+                .macroF1(metrics == null ? null : metrics.getMacroF1())
+                .negativeRecall(metrics == null ? null : metrics.getNegativeRecall())
+                .expectedCalibrationError(metrics == null ? null : metrics.getExpectedCalibrationError())
+                .p95LatencyMs(metrics == null ? null : metrics.getP95LatencyMs())
+                .evaluationConclusion(metrics == null ? null : metrics.getConclusion())
+                .lastError(error)
                 .build());
     }
 
@@ -99,4 +122,4 @@ public class SentimentController {
         return result;
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

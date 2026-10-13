@@ -55,6 +55,7 @@ services:
       LSTM_TRAINING_ENABLED: ${LSTM_TRAINING_ENABLED:-false}
       DJL_DEFAULT_ENGINE: PyTorch
       SENTIMENT_MODEL_PATH: /models/sentiment
+      SENTIMENT_MODEL_VERSION: ${SENTIMENT_MODEL_VERSION:-unconfigured}
       ZXBROKER_ENABLED: ${ZXBROKER_ENABLED:-false}
       ZXBROKER_MOBILE_CODE: ${ZXBROKER_MOBILE_CODE:-}
       ZXBROKER_ACCOUNT: ${ZXBROKER_ACCOUNT:-}
@@ -66,7 +67,7 @@ services:
       ZXBROKER_INTACT_TO_SERVER: ${ZXBROKER_INTACT_TO_SERVER:-}
       JAVA_TOOL_OPTIONS: -Xms256m -Xmx720m -XX:MaxDirectMemorySize=192m -Duser.timezone=Asia/Shanghai
     volumes:
-      - models-data:/models
+      - ${SENTIMENT_ARTIFACT_HOST_DIR:-./deploy/models/sentiment}:/models/sentiment:ro
       - runtime-tmp:/app/.tmp
     depends_on:
       stock-mysql:
@@ -150,50 +151,6 @@ services:
       retries: 10
     logging: *default-logging
 
-  mysql-backup:
-    image: public.ecr.aws/docker/library/mysql:8.0.43
-    profiles: ["backup"]
-    environment:
-      MYSQL_PWD: ${MYSQL_ROOT_PASSWORD}
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - >-
-        mkdir -p /backup/mysql &&
-        mysqldump -h stock-mysql -uroot --single-transaction --routines --events
-        stock_trading | gzip -1 >
-        /backup/mysql/stock_trading-$$(date +%Y%m%d-%H%M%S).sql.gz
-    volumes:
-      - ./backups:/backup
-    depends_on:
-      stock-mysql:
-        condition: service_healthy
-    networks:
-      - stock-backend
-    restart: "no"
-
-  mongo-backup:
-    image: public.ecr.aws/docker/library/mongo:8.0.32
-    profiles: ["backup"]
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - >-
-        mkdir -p /backup/mongo &&
-        mongodump --host stock-mongo --port 27017
-        --username admin --password "$$MONGO_ROOT_PASSWORD"
-        --authenticationDatabase admin --db stock_trading
-        --archive=/backup/mongo/stock_trading-$$(date +%Y%m%d-%H%M%S).archive.gz
-        --gzip
-    environment:
-      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
-    volumes:
-      - ./backups:/backup
-    depends_on:
-      stock-mongo:
-        condition: service_healthy
-    networks:
-      - stock-backend
-    restart: "no"
-
 networks:
   stock-frontend:
     driver: bridge
@@ -204,5 +161,4 @@ networks:
     driver: bridge
 
 volumes:
-  models-data:
   runtime-tmp:
