@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.modelService.domain.entity;
 
 import lombok.Data;
@@ -20,8 +20,8 @@ import java.time.LocalDateTime;
 @Data
 @Document(collection = "model_predictions")
 @CompoundIndexes({
-        @CompoundIndex(name = "uk_prediction_identity",
-                def = "{'modelId': 1, 'stockCode': 1, 'baseTradeDate': 1, 'targetTradeDate': 1}", unique = true),
+        @CompoundIndex(name = "uk_prediction_batch_stock",
+                def = "{'batchId': 1, 'stockCode': 1}", unique = true),
         @CompoundIndex(name = "idx_prediction_batch_status", def = "{'batchId': 1, 'evaluationStatus': 1}"),
         @CompoundIndex(name = "idx_prediction_batch_return", def = "{'batchId': 1, 'predictedReturn': -1}")
 })
@@ -100,4 +100,4 @@ public class ModelPredictionDocument {
     /** 实际结果评估时间。 */
     private LocalDateTime evaluatedAt;
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----
