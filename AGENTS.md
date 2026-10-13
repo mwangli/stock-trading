@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START ------ -->
+<!-- AI_GENERATE_START ------- -->
 # 交互语言要求
 
 1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
@@ -359,6 +359,93 @@ public [返回值类型] [methodName]([参数列表]) {
   };
   ```
 
+## 线上运行环境与故障处理基准（强制）
+
+### 1. 生产环境基准信息
+
+- **生产服务器**：`117.72.216.67`
+- **生产访问入口**：`http://117.72.216.67`
+- **服务器部署目录**：`/srv/stock-trading`
+- **核心 Docker 容器**：
+  - `stock-backend`：Spring Boot 后端
+  - `stock-web`：React 前端
+  - `stock-mysql`：MySQL 业务库和 Quartz 任务库
+  - `stock-mongo`：MongoDB 行情、模型和预测数据
+- 线上登录密码、数据库密码、Cookie、Token、私钥等敏感信息只能通过当前安全环境或用户临时授权获取，**禁止写入 AGENTS.md、源码、文档、日志、提交记录或其他受版本控制文件**。
+
+### 2. 线上环境是运行问题和数据问题的事实基准
+
+1. 后续排查线上功能失败、任务异常、接口错误、数据缺失、状态不一致、调度失败、模型训练或预测失败时，必须优先以 `117.72.216.67` 上的实际运行环境为准。
+2. 本地源码、编译结果、静态分析和本地数据库只能证明代码或本地环境状态，不能替代以下线上证据：
+   - 实际部署镜像 SHA 和容器启动时间；
+   - 容器健康状态、重启次数和资源状态；
+   - 故障发生时间窗口内的完整后端日志和异常堆栈；
+   - 线上 MySQL/MongoDB 的实际记录、数量、索引和任务状态；
+   - 线上 HTTP API 的真实响应以及异步任务最终状态。
+3. 汇报结论时必须明确区分：`源码确认`、`本地编译确认`、`线上日志确认`、`线上数据库确认`、`线上接口确认`。不得用其中一种证据冒充另一种证据。
+4. 截图或页面提示只能用于定位时间、批次和现象，最终根因必须回到线上日志、数据库记录或真实 API 响应进行验证。
+
+### 3. 线上只读取证流程
+
+排查开始时默认只读，按以下顺序收集证据：
+
+```bash
+# 1. 登录生产服务器后进入部署目录
+cd /srv/stock-trading
+
+# 2. 核对实际运行镜像、容器状态和启动信息
+docker compose --env-file .env ps
+docker inspect --format '{{.Config.Image}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}} {{.State.StartedAt}} {{.RestartCount}}' stock-backend
+
+# 3. 按明确时间窗口或业务标识查询日志
+docker compose --env-file .env logs --since '<开始时间>' --until '<结束时间>' stock-backend
+docker logs --since '<开始时间>' stock-backend 2>&1 | grep '<批次ID/任务名/异常关键字>'
+
+# 4. 使用容器内环境变量只读查询 MongoDB，禁止在命令中明文写密码
+docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin stock_trading --eval '\''<只读查询>'\'''
+
+# 5. 使用容器内环境变量只读查询 MySQL
+docker exec stock-mysql sh -lc 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" stock_trading -e "<只读 SQL>"'
+```
+
+取证要求：
+
+- 日志查询必须尽量限定时间窗口、批次 ID、任务名或异常关键字，避免只看截断的末尾日志。
+- 数据库检查必须同时关注业务数据、任务/批次状态、数量、唯一索引和关联记录，不能只查询单条表面数据。
+- 异步任务必须持续观察到终态，如 `COMPLETED`、`PARTIAL`、`FAILED`、`CANCELLED` 或 `EVALUATED`，不能把接口已受理、任务已启动或进度增长当成最终成功。
+- 生产环境默认禁止执行 `UPDATE`、`DELETE`、`DROP`、批量修复、手工改状态、重建索引或重新触发高风险任务。确需线上写操作时，必须先说明影响范围、回滚方式并取得用户明确授权。
+
+### 4. 修复、部署和线上复验闭环
+
+1. **线上取证**：先确认失败对象、发生时间、完整异常、关联数据和当前镜像 SHA，未定位根因前不得猜测式修改。
+2. **本地最小修复**：只修改根因相关文件，保留工作区其他差异；数据库结构或索引变更必须考虑已有生产数据和应用启动顺序。
+3. **本地检查**：按项目规则执行 Java 17 编译或前端构建。编译成功只代表代码可构建，不代表线上功能已恢复。
+4. **提交与推送**：按 Git 工作流创建原子提交；只有用户明确要求推送时才执行 `git push`。
+5. **等待线上部署**：推送后如触发 CI/CD，必须持续等待对应提交的流水线完成，不得在镜像仍构建或容器仍启动时提前验证。
+6. **部署一致性确认**：通过 GitHub Actions 和线上 `docker inspect` 双重确认：
+   - 流水线 `headSha` 与目标提交一致；
+   - `stock-backend` 实际镜像标签包含目标完整 SHA；
+   - 容器为 `running/healthy`；
+   - 重启次数和启动日志无异常。
+7. **重新触发业务接口**：容器健康后，使用真实线上 API 重新触发原失败流程。需要登录时通过 `/api/auth/login` 建立临时会话，Cookie 只保存在项目 `.tmp/`，验证结束后删除。
+8. **等待业务终态**：轮询批次或任务接口，记录总数、已处理数、成功数、失败数、进度信息和错误信息，直到进入最终状态。
+9. **交叉验证结果**：最终至少同时核对：
+   - API 返回的批次/任务状态；
+   - 后端日志中的完成记录及是否仍有原异常；
+   - MySQL/MongoDB 中的实际明细数量和状态；
+   - 修复涉及索引或配置时，核对线上实际索引或配置值。
+10. **完成标准**：只有代码提交、生产部署、容器健康、真实接口重跑、日志无原异常、数据库结果一致全部满足后，才能声明线上问题已修复。
+
+### 5. 预测任务专项复验要求
+
+对于 `/api/model-predictions/run` 等全市场预测任务：
+
+1. 触发后记录返回的 `batchId`，按该 ID 查询，禁止只看“最新批次”。
+2. 必须确认 `processedStocks` 能越过原故障发生批次，并最终等于 `totalStocks`。
+3. `PARTIAL` 不等于批次异常，需结合 `successCount`、`failedCount`、`errorMessage` 和日志判断；输入数据不足导致的个股跳过与批次级异常必须分开说明。
+4. 验证 MongoDB 中该 `batchId` 的预测明细数量应与 `successCount` 一致。
+5. 索引相关修复必须通过 `db.model_predictions.getIndexes()` 验证线上实际索引，并检查日志中不再出现 `E11000` 等原始异常。
+6. 目标交易日尚未收盘时，`evaluationStatus=PENDING` 和能力指标未形成属于正常等待状态，不能误报为预测失败或评估完成。
 ## Git 工作流
 
 1. **原子提交**: 每次 commit 只包含一个逻辑变更。
@@ -391,4 +478,4 @@ public [返回值类型] [methodName]([参数列表]) {
 **Agent 特别指令**:
 - 本项目无自动化测试，不要生成或要求补充测试用例；质量依赖代码审查与手工验证。
 - 后端是单体应用结构，不要尝试寻找更深层子模块的 `pom.xml` 进行独立构建，始终在 `stock-backend` 目录下操作。
-<!-- AI_GENERATE_END ------ -->
+<!-- AI_GENERATE_END ------- -->
