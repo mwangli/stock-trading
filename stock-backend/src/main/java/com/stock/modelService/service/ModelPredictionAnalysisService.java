@@ -1,11 +1,11 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
 import com.stock.dataCollector.domain.entity.StockPrice;
 import com.stock.dataCollector.persistence.PriceRepository;
 import com.stock.dataCollector.persistence.StockInfoRepository;
-import com.stock.dataCollector.persistence.TradeCalendarRepository;
+import com.stock.dataCollector.service.TradingCalendarService;
 import com.stock.modelService.domain.dto.LstmPredictionResultDto;
 import com.stock.modelService.domain.dto.ModelPredictionAnalysisDto;
 import com.stock.modelService.domain.entity.LstmModelDocument;
@@ -28,9 +28,9 @@ import org.springframework.data.mongodb.core.index.IndexOperations;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -61,12 +61,13 @@ public class ModelPredictionAnalysisService {
     private static final List<String> EVALUATABLE_STATUSES = List.of("COMPLETED", "PARTIAL", "EVALUATED");
     private static final String LEGACY_PREDICTION_IDENTITY_INDEX = "uk_prediction_identity";
     private static final String BATCH_STOCK_UNIQUE_INDEX = "uk_prediction_batch_stock";
+    private static final ZoneId MARKET_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final LstmInferenceService inferenceService;
     private final LstmTrainerService trainerService;
     private final StockInfoRepository stockInfoRepository;
     private final PriceRepository priceRepository;
-    private final TradeCalendarRepository tradeCalendarRepository;
+    private final TradingCalendarService tradingCalendarService;
     private final ModelActivationRepository activationRepository;
     private final LstmModelRepository modelRepository;
     private final ModelPredictionBatchRepository batchRepository;
@@ -82,7 +83,7 @@ public class ModelPredictionAnalysisService {
      * @param trainerService LSTM 训练与模型元数据服务
      * @param stockInfoRepository 股票基础信息仓库
      * @param priceRepository 股票日线仓库
-     * @param tradeCalendarRepository 交易日历仓库
+     * @param tradingCalendarService 可靠交易日解析服务
      * @param activationRepository 模型激活指针仓库
      * @param modelRepository 模型版本仓库
      * @param batchRepository 预测批次仓库
@@ -95,7 +96,7 @@ public class ModelPredictionAnalysisService {
             LstmTrainerService trainerService,
             StockInfoRepository stockInfoRepository,
             PriceRepository priceRepository,
-            TradeCalendarRepository tradeCalendarRepository,
+            TradingCalendarService tradingCalendarService,
             ModelActivationRepository activationRepository,
             LstmModelRepository modelRepository,
             ModelPredictionBatchRepository batchRepository,
@@ -106,7 +107,7 @@ public class ModelPredictionAnalysisService {
         this.trainerService = trainerService;
         this.stockInfoRepository = stockInfoRepository;
         this.priceRepository = priceRepository;
-        this.tradeCalendarRepository = tradeCalendarRepository;
+        this.tradingCalendarService = tradingCalendarService;
         this.activationRepository = activationRepository;
         this.modelRepository = modelRepository;
         this.batchRepository = batchRepository;
@@ -136,15 +137,20 @@ public class ModelPredictionAnalysisService {
             if (batch.getBaseTradeDate() == null) {
                 continue;
             }
-            TradeDateResolution resolution = resolveNextTradeDate(batch.getBaseTradeDate());
-            batch.setCalendarFallback(resolution.calendarFallback());
-            if (batch.getInformationCutoffAt() == null) {
-                batch.setInformationCutoffAt(batch.getCreatedAt());
+            try {
+                TradeDateResolution resolution = resolveNextTradeDate(batch.getBaseTradeDate());
+                batch.setCalendarFallback(resolution.calendarFallback());
+                if (batch.getInformationCutoffAt() == null) {
+                    batch.setInformationCutoffAt(batch.getCreatedAt());
+                }
+                batch.setUpdatedAt(LocalDateTime.now());
+                batchRepository.save(batch);
+                log.info("已回填历史预测批次日历来源: batchId={}, calendarFallback={}",
+                        batch.getId(), resolution.calendarFallback());
+            } catch (IllegalStateException exception) {
+                log.warn("历史预测批次暂无法绑定已确认交易日历: batchId={}, baseTradeDate={}, reason={}",
+                        batch.getId(), batch.getBaseTradeDate(), exception.getMessage());
             }
-            batch.setUpdatedAt(LocalDateTime.now());
-            batchRepository.save(batch);
-            log.info("已回填历史预测批次日历来源: batchId={}, calendarFallback={}",
-                    batch.getId(), resolution.calendarFallback());
         }
     }
 
@@ -231,8 +237,14 @@ public class ModelPredictionAnalysisService {
 
             LocalDateTime now = LocalDateTime.now();
             TradeDateResolution tradeDateResolution = resolveNextTradeDate(baseTradeDate);
-            if (scheduled && tradeDateResolution.tradeDate().isBefore(LocalDate.now())) {
-                throw new IllegalStateException("最新日线过旧，无法生成当日预测: baseTradeDate=" + baseTradeDate);
+            if (scheduled) {
+                LocalDate today = LocalDate.now(MARKET_ZONE);
+                tradingCalendarService.requireTradingDay(today);
+                if (!tradeDateResolution.tradeDate().equals(today)) {
+                    throw new IllegalStateException("最新完整日线未对齐当日 T+1 预测: baseTradeDate="
+                            + baseTradeDate + ", targetTradeDate=" + tradeDateResolution.tradeDate()
+                            + ", today=" + today);
+                }
             }
             ModelPredictionBatchDocument batch = new ModelPredictionBatchDocument();
             batch.setModelName(modelName);
@@ -481,6 +493,12 @@ public class ModelPredictionAnalysisService {
                             || result.getPredictedChangeRatio() == null) {
                         continue;
                     }
+                    if (!batch.getBaseTradeDate().equals(result.getBaseTradeDate())) {
+                        log.warn("跳过基准交易日落后的个股预测: batchId={}, stockCode={}, expectedBaseDate={}, actualBaseDate={}",
+                                batch.getId(), result.getStockCode(), batch.getBaseTradeDate(),
+                                result.getBaseTradeDate());
+                        continue;
+                    }
                     StockInfo stockInfo = stockInfoMap.get(result.getStockCode());
                     ModelPredictionDocument document = new ModelPredictionDocument();
                     document.setBatchId(batch.getId());
@@ -643,19 +661,7 @@ public class ModelPredictionAnalysisService {
     }
 
     private TradeDateResolution resolveNextTradeDate(LocalDate baseTradeDate) {
-        return tradeCalendarRepository
-                .findFirstByTradingDayTrueAndTradeDateAfterOrderByTradeDateAsc(baseTradeDate)
-                .map(item -> new TradeDateResolution(item.getTradeDate(), false))
-                .orElseGet(() -> {
-                    LocalDate candidate = baseTradeDate.plusDays(1);
-                    while (candidate.getDayOfWeek() == DayOfWeek.SATURDAY
-                            || candidate.getDayOfWeek() == DayOfWeek.SUNDAY) {
-                        candidate = candidate.plusDays(1);
-                    }
-                    log.warn("交易日历未覆盖基准日后的日期，按工作日兜底: baseDate={}, targetDate={}",
-                            baseTradeDate, candidate);
-                    return new TradeDateResolution(candidate, true);
-                });
+        return new TradeDateResolution(tradingCalendarService.nextTradingDay(baseTradeDate), false);
     }
 
     private ModelPredictionAnalysisDto.BatchItem toBatchItem(ModelPredictionBatchDocument item) {
@@ -770,4 +776,4 @@ public class ModelPredictionAnalysisService {
     private record TradeDateResolution(LocalDate tradeDate, boolean calendarFallback) {
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

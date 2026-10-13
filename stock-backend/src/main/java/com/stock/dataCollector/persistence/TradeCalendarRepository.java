@@ -1,6 +1,8 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START --------
 package com.stock.dataCollector.persistence;
 
+import com.stock.dataCollector.domain.enums.CalendarDayStatus;
+import com.stock.dataCollector.domain.enums.CalendarVerificationStatus;
 import com.stock.dataCollector.domain.entity.TradeCalendarEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -19,6 +21,52 @@ import java.util.Optional;
  */
 @Repository
 public interface TradeCalendarRepository extends JpaRepository<TradeCalendarEntity, Long> {
+
+    /**
+     * 查询指定市场和自然日期的唯一日历记录。
+     *
+     * @param market 市场代码
+     * @param tradeDate 自然日期
+     * @return 日历记录
+     */
+    Optional<TradeCalendarEntity> findByMarketAndTradeDate(String market, LocalDate tradeDate);
+
+    /**
+     * 查询市场日期区间内的全部日历记录。
+     *
+     * @param market 市场代码
+     * @param startDate 开始日期
+     * @param endDate 结束日期
+     * @return 按日期升序排列的日历记录
+     */
+    List<TradeCalendarEntity> findByMarketAndTradeDateBetweenOrderByTradeDateAsc(
+            String market, LocalDate startDate, LocalDate endDate);
+
+    /**
+     * 查询指定日期之后首个已确认交易日。
+     *
+     * @param market 市场代码
+     * @param dayStatus 单日状态
+     * @param verificationStatus 确认状态
+     * @param tradeDate 基准日期
+     * @return 下一交易日记录
+     */
+    Optional<TradeCalendarEntity> findFirstByMarketAndDayStatusAndVerificationStatusAndTradeDateAfterOrderByTradeDateAsc(
+            String market, CalendarDayStatus dayStatus, CalendarVerificationStatus verificationStatus,
+            LocalDate tradeDate);
+
+    /**
+     * 查询指定日期之前最近的已确认交易日。
+     *
+     * @param market 市场代码
+     * @param dayStatus 单日状态
+     * @param verificationStatus 确认状态
+     * @param tradeDate 基准日期
+     * @return 前一交易日记录
+     */
+    Optional<TradeCalendarEntity> findFirstByMarketAndDayStatusAndVerificationStatusAndTradeDateBeforeOrderByTradeDateDesc(
+            String market, CalendarDayStatus dayStatus, CalendarVerificationStatus verificationStatus,
+            LocalDate tradeDate);
 
     /**
      * 查询指定市场、自然日期、来源和来源版本的日历记录。
@@ -85,14 +133,6 @@ public interface TradeCalendarRepository extends JpaRepository<TradeCalendarEnti
     Optional<TradeCalendarEntity> findFirstByOrderByTradeDateDesc();
 
     /**
-     * 查询指定日期之后的首个交易日。
-     *
-     * @param tradeDate 基准日期
-     * @return 下一交易日日历记录
-     */
-    Optional<TradeCalendarEntity> findFirstByTradingDayTrueAndTradeDateAfterOrderByTradeDateAsc(LocalDate tradeDate);
-
-    /**
      * 查询日期区间内去重后的交易日。
      *
      * @param startDate 开始日期
@@ -105,4 +145,4 @@ public interface TradeCalendarRepository extends JpaRepository<TradeCalendarEnti
     List<LocalDate> findTradingDates(@Param("startDate") LocalDate startDate,
                                      @Param("endDate") LocalDate endDate);
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END --------

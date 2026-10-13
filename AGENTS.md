@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START ------- -->
+<!-- AI_GENERATE_START -------- -->
 # 交互语言要求
 
 1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
@@ -446,6 +446,14 @@ docker exec stock-mysql sh -lc 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" stock_trad
 4. 验证 MongoDB 中该 `batchId` 的预测明细数量应与 `successCount` 一致。
 5. 索引相关修复必须通过 `db.model_predictions.getIndexes()` 验证线上实际索引，并检查日志中不再出现 `E11000` 等原始异常。
 6. 目标交易日尚未收盘时，`evaluationStatus=PENDING` 和能力指标未形成属于正常等待状态，不能误报为预测失败或评估完成。
+
+### 6. 交易日历处理规范
+
+1. 生产预测、回填、风控和交易时段判断必须统一使用 `TradingCalendarService`，禁止自行通过 `DayOfWeek` 或“周一至周五”推算交易日。
+2. 公开休市日历只在来源已覆盖对应年份时才能确认普通工作日；未覆盖年份的工作日必须保持 `UNKNOWN/UNVERIFIED`，不得静默降级。
+3. `tradeCalendarMonthlySync` 每月刷新公开休市安排，并维持从项目基准日期到未来一年月末的连续自然日窗口；表内日期缺口就是断点，下一次任务必须自动往前回补。
+4. 日历同步后必须在线上核对日期范围、状态分布、节假日样例和 `source_version`。至少验证普通工作日、周末、春节/国庆跨假期以及未确认年份门禁。
+5. 临时休市或公开源修订必须以新的同步结果覆盖原记录，并重新计算前后交易日；禁止手工仅修改 `trading_day` 而不更新确认状态和相邻关系。
 ## Git 工作流
 
 1. **原子提交**: 每次 commit 只包含一个逻辑变更。
@@ -478,4 +486,4 @@ docker exec stock-mysql sh -lc 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" stock_trad
 **Agent 特别指令**:
 - 本项目无自动化测试，不要生成或要求补充测试用例；质量依赖代码审查与手工验证。
 - 后端是单体应用结构，不要尝试寻找更深层子模块的 `pom.xml` 进行独立构建，始终在 `stock-backend` 目录下操作。
-<!-- AI_GENERATE_END ------- -->
+<!-- AI_GENERATE_END -------- -->

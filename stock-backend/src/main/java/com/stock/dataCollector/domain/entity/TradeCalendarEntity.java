@@ -1,8 +1,13 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.dataCollector.domain.entity;
 
+import com.stock.dataCollector.domain.enums.CalendarClosureType;
+import com.stock.dataCollector.domain.enums.CalendarDayStatus;
+import com.stock.dataCollector.domain.enums.CalendarVerificationStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -47,6 +52,21 @@ public class TradeCalendarEntity {
     @Column(name = "trading_day", nullable = false)
     private boolean tradingDay;
 
+    /** 单日交易状态。 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "day_status", nullable = false, length = 16)
+    private CalendarDayStatus dayStatus;
+
+    /** 休市类型，开市日固定为 NONE。 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "closure_type", nullable = false, length = 16)
+    private CalendarClosureType closureType;
+
+    /** 日历确认状态。 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "verification_status", nullable = false, length = 16)
+    private CalendarVerificationStatus verificationStatus;
+
     /** 前一交易日。 */
     @Column(name = "previous_trading_day")
     private LocalDate previousTradingDay;
@@ -63,6 +83,14 @@ public class TradeCalendarEntity {
     @Column(name = "source_version", nullable = false, length = 128)
     private String sourceVersion;
 
+    /** 本次日历来源抓取时间。 */
+    @Column(name = "source_fetched_at")
+    private LocalDateTime sourceFetchedAt;
+
+    /** 日期被可靠来源确认的时间。 */
+    @Column(name = "confirmed_at")
+    private LocalDateTime confirmedAt;
+
     /** 数据库创建时间。 */
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -71,4 +99,4 @@ public class TradeCalendarEntity {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

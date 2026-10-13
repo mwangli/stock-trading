@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.tradingExecutor.job;
 
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
@@ -117,6 +117,8 @@ public class JobExecutionService {
             } else {
                 markSuccess(record, startedAt);
             }
+        } catch (JobSkippedException exception) {
+            markSkipped(record, exception.getMessage(), startedAt);
         } catch (Exception exception) {
             if (isCancellationRequested(record) || Thread.currentThread().isInterrupted()) {
                 markCancelled(record, "任务执行期间收到停止请求");
@@ -276,6 +278,19 @@ public class JobExecutionService {
                 record.getJobName(), record.getRunId(), throwable);
     }
 
+    private void markSkipped(JobExecutionRecord record, String summary, LocalDateTime startedAt) {
+        LocalDateTime finishedAt = LocalDateTime.now();
+        long duration = java.time.Duration.between(startedAt, finishedAt).toMillis();
+        record.setStatus(JobExecutionStatus.SKIPPED)
+                .setFinishedTime(finishedAt)
+                .setDurationMs(duration)
+                .setResultSummary(summary);
+        executionRecordRepository.save(record);
+        updateLatestJobStatus(record, 1, null, duration);
+        log.info("[任务执行] 任务按业务条件跳过: jobName={}, runId={}, summary={}",
+                record.getJobName(), record.getRunId(), summary);
+    }
+
     private void markCancelled(JobExecutionRecord record, String summary) {
         JobExecutionRecord current = executionRecordRepository.findByRunId(record.getRunId()).orElse(record);
         LocalDateTime finishedAt = current.getFinishedTime() != null
@@ -338,4 +353,4 @@ public class JobExecutionService {
     }
 
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

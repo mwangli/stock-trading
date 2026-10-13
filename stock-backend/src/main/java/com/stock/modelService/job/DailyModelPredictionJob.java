@@ -1,11 +1,16 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.job;
 
+import com.stock.dataCollector.service.TradingCalendarService;
 import com.stock.modelService.domain.dto.ModelPredictionAnalysisDto;
 import com.stock.modelService.service.ModelPredictionAnalysisService;
+import com.stock.tradingExecutor.job.JobSkippedException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+
+import java.time.LocalDate;
+import java.time.ZoneId;
 
 /**
  * 每日模型预测和实际结果评估业务任务。
@@ -19,12 +24,22 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class DailyModelPredictionJob {
 
+    private static final ZoneId MARKET_ZONE = ZoneId.of("Asia/Shanghai");
+
     private final ModelPredictionAnalysisService predictionAnalysisService;
+    private final TradingCalendarService tradingCalendarService;
 
     /**
      * 使用当前激活模型同步执行每日全市场预测。
      */
     public void runDailyPrediction() {
+        LocalDate today = LocalDate.now(MARKET_ZONE);
+        if (!tradingCalendarService.isConfirmedDate(today)) {
+            throw new IllegalStateException("当日交易日历缺失或尚未确认: " + today);
+        }
+        if (!tradingCalendarService.isTradingDay(today)) {
+            throw new JobSkippedException("当日休市，跳过模型预测: " + today);
+        }
         ModelPredictionAnalysisDto.OperationResponse result = predictionAnalysisService.startScheduledPrediction();
         log.info("每日全市场预测任务完成: batchId={}, status={}, message={}",
                 result.getBatchId(), result.getStatus(), result.getMessage());
@@ -37,4 +52,4 @@ public class DailyModelPredictionJob {
         predictionAnalysisService.evaluatePendingBatches();
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --
