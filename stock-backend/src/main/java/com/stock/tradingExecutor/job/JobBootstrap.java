@@ -1,7 +1,7 @@
-// AI_GENERATE_START -----------
+// AI_GENERATE_START ------------
 package com.stock.tradingExecutor.job;
 
-import com.stock.systemConfig.service.SystemRuntimeConfigService;
+import com.stock.tradingExecutor.runtime.service.SystemRuntimeConfigService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ApplicationArguments;
@@ -62,4 +62,4 @@ public class JobBootstrap implements ApplicationRunner {
         }
     }
 }
-// AI_GENERATE_END -----------
+// AI_GENERATE_END ------------

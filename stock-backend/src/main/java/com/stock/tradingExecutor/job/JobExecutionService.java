@@ -1,8 +1,8 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.tradingExecutor.job;
 
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
-import com.stock.systemConfig.service.SystemRuntimeConfigService;
+import com.stock.tradingExecutor.runtime.service.SystemRuntimeConfigService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -338,4 +338,4 @@ public class JobExecutionService {
     }
 
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

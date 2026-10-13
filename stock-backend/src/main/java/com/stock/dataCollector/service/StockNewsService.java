@@ -1,11 +1,11 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.dataCollector.service;
 
 import com.stock.dataCollector.domain.entity.StockNews;
 import com.stock.dataCollector.persistence.NewsRepository;
 import com.stock.dataCollector.persistence.StockInfoRepository;
 import com.stock.dataCollector.support.SecuritiesClient;
-import com.stock.systemConfig.service.SystemRuntimeConfigService;
+import com.stock.tradingExecutor.runtime.service.SystemRuntimeConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -516,4 +516,4 @@ public class StockNewsService {
     /** 采集来源（新闻/公告） */
     private record NewsSource(String menuId, String category) {}
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

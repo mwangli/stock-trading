@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ---
 package com.stock.modelService.config;
 
 import lombok.Data;
@@ -6,8 +6,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * DJL PyTorch 情感模型加载配置。
- * 大模型权重保存在版本化目录，配置和加载状态同步记录到 MongoDB。
+ * DJL PyTorch 情感模型配置。
+ * 大体积权重使用版本化外部目录，应用只保存版本引用和校验约束。
  *
  * @author mwangli
  * @since 2026-10-10
@@ -20,92 +20,52 @@ public class SentimentTrainingConfig {
     /** 模型逻辑名称。 */
     private String modelName = "sentiment-finbert";
 
-    /** 外部制品版本。 */
-    private String modelVersion = "local-current";
+    /** 不可变制品版本。 */
+    private String modelVersion = "unconfigured";
 
-    /**
-     * 模型保存路径
-     *
-     * 支持绝对路径或相对路径：
-     * - 绝对路径示例: D:/ai-stock-trading/backend/models/sentiment
-     * - 相对路径示例: backend/models/sentiment 或 models/sentiment
-     */
+    /** 情感模型版本根目录。 */
     private String modelPath = "models/sentiment";
 
-    /**
-     * 模型加载来源
-     *
-     * 可选值:
-     * - local: 使用本地模型文件
-     * - huggingface: 从 HuggingFace 下载并缓存模型
-     */
+    /** 模型加载来源：local 或 huggingface。 */
     private String modelSource = "local";
 
-    /**
-     * 预训练模型名称（HuggingFace）
-     *
-     * 中文通用模型选项：
-     * - hfl/chinese-bert-wwm-ext (哈工大 BERT 中文，推荐快速启动)
-     * - hfl/chinese-roberta-wwm-ext (哈工大 RoBERTa 中文，更准确)
-     * - hfl/chinese-macbert-base (哈工大 MacBERT 中文)
-     *
-     * 中文金融专用模型选项（推荐用于生产）：
-     * - local/finbert-entropy (熵简科技 FinBERT，金融领域专用，需手动下载)
-     * - local/finbert-tushare (基于 Tushare 财经新闻微调，需手动下载)
-     *
-     * 推荐：
-     * - 快速启动：hfl/chinese-bert-wwm-ext
-     * - 生产环境：熵简 FinBERT（金融领域准确率更高）
-     */
+    /** 远程或制品清单标识的基础模型。 */
     private String pretrainedModel = "yiyanghkust/finbert-tone-chinese";
 
-    /**
-     * 最大序列长度
-     */
+    /** 最大输入序列长度。 */
     private int maxSequenceLength = 128;
 
-    /**
-     * 训练轮次
-     */
+    /** 预留训练轮次，仅用于后续真实训练流水线。 */
     private int epochs = 5;
 
-    /**
-     * 批次大小
-     */
+    /** 预留训练批次大小，仅用于后续真实训练流水线。 */
     private int batchSize = 16;
 
-    /**
-     * 学习率
-     */
+    /** 预留训练学习率，仅用于后续真实训练流水线。 */
     private double learningRate = 2e-5;
 
-    /**
-     * 训练集比例
-     */
+    /** 预留训练集比例，仅用于后续真实训练流水线。 */
     private double trainRatio = 0.8;
 
-    /**
-     * 标签数量（正面、负面、中性）
-     */
+    /** 情感分类标签数量。 */
     private int numLabels = 3;
 
-    /**
-     * 是否下载预训练模型
-     */
+    /** 是否允许 DJL 在线下载预训练模型。生产环境必须关闭。 */
     private boolean downloadPretrained = false;
 
-    /**
-     * 模型缓存目录
-     */
+    /** DJL 模型缓存目录。 */
     private String cacheDir = "models/cache";
 
-    /**
-     * 情感标签映射（中文）
-     */
-    /**
-     * 情感标签映射（注意：需与模型输出对齐）
-     * yiyanghkust/finbert-tone-chinese 标签定义: 0=Neutral, 1=Positive, 2=Negative
-     */
+    /** 是否允许没有 manifest 的历史平铺目录。 */
+    private boolean allowLegacyLayout = false;
+
+    /** 单个模型文件最大字节数。 */
+    private long maxSingleFileBytes = 2L * 1024 * 1024 * 1024;
+
+    /** 单个模型版本总字节数上限。 */
+    private long maxTotalArtifactBytes = 4L * 1024 * 1024 * 1024;
+
+    /** 情感标签顺序，必须与 manifest 和模型输出一致。 */
     private String[] labels = {"neutral", "positive", "negative"};
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END ---

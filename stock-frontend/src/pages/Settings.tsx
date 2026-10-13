@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ---------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import {
@@ -71,6 +71,21 @@ interface SentimentHealth {
   service: string;
   modelLoaded: boolean;
   lastLoadedTime?: string;
+  artifactAvailable: boolean;
+  manifestPresent: boolean;
+  checksumsVerified: boolean;
+  modelVersion?: string;
+  artifactPath?: string;
+  totalSizeBytes?: number;
+  manifestSha256?: string;
+  evaluationDatasetVersion?: string;
+  evaluationSampleCount?: number;
+  macroF1?: number;
+  negativeRecall?: number;
+  expectedCalibrationError?: number;
+  p95LatencyMs?: number;
+  evaluationConclusion?: string;
+  lastError?: string;
 }
 
 interface RuntimeSettings {
@@ -125,6 +140,20 @@ const formatDateTime = (value?: string) => {
   }).format(date);
 };
 
+const formatBytes = (value?: number) => {
+  if (value === undefined || value < 0) {
+    return '未知';
+  }
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+  if (value < 1024 * 1024 * 1024) {
+    return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  }
+  return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
+};
+
+const formatRatio = (value?: number) => value === undefined ? '未提供' : `${(value * 100).toFixed(2)}%`;
 const getErrorMessage = (cause: unknown, fallback: string) => {
   if (axios.isAxiosError<ApiResponse<unknown>>(cause)) {
     return cause.response?.data?.message || cause.message || fallback;
@@ -320,7 +349,19 @@ const Settings: React.FC = () => {
         <Col xs={24} md={12} xl={8}>
           <Card className="surface-card compact-card" loading={checking}>
             <Statistic title="情感模型" value={sentimentHealth.data?.modelLoaded ? '已加载' : '未加载'} prefix={<CheckCircleOutlined />} />
-            <div className="mt-3">{healthTag(sentimentHealth.state)} <Text type="secondary" className="ml-2">{formatDateTime(sentimentHealth.data?.lastLoadedTime)}</Text></div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {healthTag(sentimentHealth.state)}
+              <Tag color={sentimentHealth.data?.artifactAvailable ? 'green' : 'red'}>{sentimentHealth.data?.artifactAvailable ? '制品可用' : '制品不可用'}</Tag>
+              <Tag color={sentimentHealth.data?.checksumsVerified ? 'green' : 'gold'}>{sentimentHealth.data?.checksumsVerified ? '摘要已校验' : '摘要未校验'}</Tag>
+            </div>
+            <div className="mt-3 grid gap-1 text-sm">
+              <Text>版本：{sentimentHealth.data?.modelVersion || '未配置'}</Text>
+              <Text>制品大小：{formatBytes(sentimentHealth.data?.totalSizeBytes)}</Text>
+              <Text>Macro-F1：{formatRatio(sentimentHealth.data?.macroF1)}</Text>
+              <Text>负面召回率：{formatRatio(sentimentHealth.data?.negativeRecall)}</Text>
+              <Text type="secondary">最近加载：{formatDateTime(sentimentHealth.data?.lastLoadedTime)}</Text>
+              {sentimentHealth.data?.lastError && <Text type="danger">{sentimentHealth.data.lastError}</Text>}
+            </div>
           </Card>
         </Col>
       </Row>
@@ -450,4 +491,4 @@ const Settings: React.FC = () => {
 };
 
 export default Settings;
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------

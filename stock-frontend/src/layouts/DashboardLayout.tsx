@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------------------
+// AI_GENERATE_START ----------------------
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, Badge, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
@@ -21,6 +21,7 @@ import {
   SunOutlined,
   UserOutlined,
   HolderOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
 import { useAppTheme } from '../theme/AppThemeProvider';
 import { PageHeaderContext, type PageHeaderState } from './PageHeaderContext';
@@ -38,6 +39,7 @@ const DEFAULT_MENU_ORDER = [
   '/trade-records',
   '/logs',
   '/model-operations',
+  '/sentiment-model',
   '/jobs',
   '/settings',
 ];
@@ -161,7 +163,8 @@ const DashboardLayout: React.FC = () => {
     { key: '/history-orders', icon: <HistoryOutlined />, label: '历史订单' },
     { key: '/trade-records', icon: <LineChartOutlined />, label: '交易记录' },
     { key: '/logs', icon: <FileTextOutlined />, label: t('layout.logs') },
-    { key: '/model-operations', icon: <ExperimentOutlined />, label: '模型运维' },
+    { key: '/model-operations', icon: <ExperimentOutlined />, label: '涨跌预测' },
+    { key: '/sentiment-model', icon: <MessageOutlined />, label: '情感模型' },
     { key: '/jobs', icon: <ScheduleOutlined />, label: '任务管理' },
     { key: '/settings', icon: <SettingOutlined />, label: t('layout.settings') },
   ], [t]);
@@ -211,7 +214,8 @@ const DashboardLayout: React.FC = () => {
     '/history-orders': '历史订单',
     '/trade-records': '交易记录',
     '/logs': '运行日志',
-    '/model-operations': '模型运维',
+    '/model-operations': '涨跌预测',
+    '/sentiment-model': '情感模型',
     '/jobs': '任务管理',
     '/settings': '系统设置',
   };
@@ -318,4 +322,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END ---------------------
+// AI_GENERATE_END ----------------------
