@@ -1,9 +1,12 @@
+// AI_GENERATE_START -
 package com.stock.dataCollector.domain.entity;
 
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.IndexDirection;
+import org.springframework.data.mongodb.core.index.Indexed;
 
 import java.time.LocalDateTime;
 
@@ -62,6 +65,7 @@ public class StockNews {
     /**
      * 新闻发布时间
      */
+    @Indexed(name = "idx_publish_time", direction = IndexDirection.DESCENDING)
     private LocalDateTime publishTime;
 
     /**
@@ -69,3 +73,4 @@ public class StockNews {
      */
     private LocalDateTime createTime;
 }
+// AI_GENERATE_END -
