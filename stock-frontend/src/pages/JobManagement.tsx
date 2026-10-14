@@ -1,8 +1,8 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START --------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDateTime } from '../utils/dateTime';
-import axios from 'axios';
 import {
+  Alert,
   Button,
   Card,
   Descriptions,
@@ -13,6 +13,7 @@ import {
   Space,
   Table,
   Tag,
+  Tabs,
   Tooltip,
   Typography,
   message,
@@ -28,15 +29,10 @@ import {
   StopOutlined,
 } from '@ant-design/icons';
 import request from '../utils/request';
+import { getApiErrorMessage, readApiData, type ApiResponse } from '../utils/api';
 import { usePageHeader } from '../layouts/PageHeaderContext';
 
 const { Text } = Typography;
-
-interface ApiResponse<T> {
-  success: boolean;
-  message?: string;
-  data: T;
-}
 
 interface ExecutionItem {
   runId: string;
@@ -136,18 +132,23 @@ const formatDuration = (value?: number) => {
   return value < 1000 ? `${value} ms` : `${(value / 1000).toFixed(2)} s`;
 };
 
-const getErrorMessage = (cause: unknown, fallback: string) => {
-  if (axios.isAxiosError<ApiResponse<unknown>>(cause)) {
-    return cause.response?.data?.message || cause.message || fallback;
-  }
-  return cause instanceof Error ? cause.message : fallback;
-};
+type JobDomain = 'data' | 'model' | 'strategy' | 'trading' | 'maintenance';
 
-const responseData = <T,>(response: ApiResponse<T>, fallback: string): T => {
-  if (!response.success) {
-    throw new Error(response.message || fallback);
-  }
-  return response.data;
+const jobDomains: Array<{ key: JobDomain; label: string }> = [
+  { key: 'data', label: '数据采集' },
+  { key: 'model', label: '模型任务' },
+  { key: 'strategy', label: '策略分析' },
+  { key: 'trading', label: '交易执行' },
+  { key: 'maintenance', label: '系统维护' },
+];
+
+const resolveJobDomain = (jobName: string): JobDomain => {
+  const normalized = jobName.toLowerCase();
+  if (normalized.includes('lstm') || normalized.includes('modelprediction') || normalized.includes('sentiment')) return 'model';
+  if (normalized.includes('strategy') || normalized.includes('selection') || normalized.includes('backtest')) return 'strategy';
+  if (normalized.includes('trading') || normalized.includes('broker') || normalized.includes('performance')) return 'trading';
+  if (normalized.includes('sync') || normalized.includes('news') || normalized.includes('calendar') || normalized.includes('stockdata')) return 'data';
+  return 'maintenance';
 };
 
 const renderStatus = (status?: string) => {
@@ -162,7 +163,7 @@ const JobManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [operatingJob, setOperatingJob] = useState<string | null>(null);
   const [operatingRun, setOperatingRun] = useState<string | null>(null);
-  const [, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyJob, setHistoryJob] = useState<JobItem | null>(null);
@@ -180,7 +181,7 @@ const JobManagement: React.FC = () => {
 
   const loadJobs = useCallback(async () => {
     const response = await request.get('/jobs') as ApiResponse<JobListResponse>;
-    const data = responseData(response, '读取任务状态失败');
+    const data = readApiData(response, '读取任务状态失败');
     setJobs(data.items ?? []);
   }, []);
 
@@ -196,12 +197,12 @@ const JobManagement: React.FC = () => {
           pageSize: historyPageSize,
         },
       }) as ApiResponse<ExecutionPageResponse>;
-      const data = responseData(response, '读取任务执行历史失败');
+      const data = readApiData(response, '读取任务执行历史失败');
       setHistoryRuns(data.items ?? []);
       setHistoryTotal(data.total);
       setHistoryPage(data.current);
     } catch (cause) {
-      message.error(getErrorMessage(cause, '读取任务执行历史失败'));
+      message.error(getApiErrorMessage(cause, '读取任务执行历史失败'));
     } finally {
       setHistoryLoading(false);
     }
@@ -216,7 +217,7 @@ const JobManagement: React.FC = () => {
         await loadHistory(historyJob.jobName, historyPage);
       }
     } catch (cause) {
-      setError(getErrorMessage(cause, '读取任务管理数据失败'));
+      setError(getApiErrorMessage(cause, '读取任务管理数据失败'));
     } finally {
       setLoading(false);
     }
@@ -249,7 +250,7 @@ const JobManagement: React.FC = () => {
         refreshRequests.push(loadHistory(historyJob.jobName, historyPage));
       }
       void Promise.all(refreshRequests).catch((cause: unknown) => {
-        setError(getErrorMessage(cause, '刷新任务执行状态失败'));
+        setError(getApiErrorMessage(cause, '刷新任务执行状态失败'));
       });
     }, 3000);
     return () => window.clearInterval(timer);
@@ -269,17 +270,17 @@ const JobManagement: React.FC = () => {
         const response = await request.post(`/jobs/trigger/${encodeURIComponent(job.jobName)}`, undefined, {
           params: { operator: 'web-console' },
         }) as ApiResponse<TriggerResponse>;
-        const result = responseData(response, '提交手动任务失败');
+        const result = readApiData(response, '提交手动任务失败');
         message.success(`${result.message}，运行 ID：${result.runId}`);
       } else {
         const endpoint = action === 'pause' ? 'pause' : 'resume';
         const response = await request.post(`/jobs/${endpoint}/${encodeURIComponent(job.jobName)}`) as ApiResponse<null>;
-        responseData(response, action === 'pause' ? '暂停任务失败' : '恢复任务失败');
+        readApiData(response, action === 'pause' ? '暂停任务失败' : '恢复任务失败');
         message.success(action === 'pause' ? '任务已暂停' : '任务已启用');
       }
       await refreshAfterOperation();
     } catch (cause) {
-      message.error(getErrorMessage(cause, '任务操作失败'));
+      message.error(getApiErrorMessage(cause, '任务操作失败'));
     } finally {
       setOperatingJob(null);
     }
@@ -300,11 +301,11 @@ const JobManagement: React.FC = () => {
           const response = await request.post(`/job-runs/stop/${encodeURIComponent(run.runId)}`, undefined, {
             params: { operator: 'web-console' },
           }) as ApiResponse<StopResponse>;
-          const result = responseData(response, '停止任务失败');
+          const result = readApiData(response, '停止任务失败');
           message.success(result.message);
           await refreshAfterOperation();
         } catch (cause) {
-          message.error(getErrorMessage(cause, '停止任务失败'));
+          message.error(getApiErrorMessage(cause, '停止任务失败'));
         } finally {
           setOperatingRun(null);
         }
@@ -327,9 +328,9 @@ const JobManagement: React.FC = () => {
     setSelectedRun(null);
     try {
       const response = await request.get(`/job-runs/details/${encodeURIComponent(runId)}`) as ApiResponse<ExecutionItem>;
-      setSelectedRun(responseData(response, '读取执行记录详情失败'));
+      setSelectedRun(readApiData(response, '读取执行记录详情失败'));
     } catch (cause) {
-      message.error(getErrorMessage(cause, '读取执行记录详情失败'));
+      message.error(getApiErrorMessage(cause, '读取执行记录详情失败'));
       setDetailsOpen(false);
     } finally {
       setDetailsLoading(false);
@@ -405,21 +406,15 @@ const JobManagement: React.FC = () => {
           && (record.latestRun.status === 'QUEUED' || record.latestRun.status === 'RUNNING')
           ? record.latestRun
           : undefined;
-        const triggerDisabled = !record.enabled
-          || record.taskStatus === 'NOT_REGISTERED'
-          || record.taskStatus === 'QUEUED'
-          || record.taskStatus === 'RUNNING'
-          || operating;
         return (
           <Space size="small">
             {record.enabled && (
-              <Tooltip title={triggerDisabled ? '任务需已注册、启用且当前没有排队或执行中的实例' : '立即提交一次手动执行'}>
+              <Tooltip title="立即提交一次手动执行；重复执行由后端返回明确错误">
                 <span>
                   <Button
                     type="primary"
                     size="small"
                     icon={<PlayCircleOutlined />}
-                    disabled={triggerDisabled}
                     loading={operating}
                     onClick={() => void operateJob(record, 'trigger')}
                   >
@@ -429,11 +424,11 @@ const JobManagement: React.FC = () => {
               </Tooltip>
             )}
             {record.enabled ? (
-              <Button size="small" icon={<PauseCircleOutlined />} disabled={operating} onClick={() => void operateJob(record, 'pause')}>
+              <Button size="small" icon={<PauseCircleOutlined />} loading={operating} onClick={() => void operateJob(record, 'pause')}>
                 暂停
               </Button>
             ) : (
-              <Button type="primary" size="small" icon={<PlayCircleOutlined />} disabled={operating} loading={operating} onClick={() => void operateJob(record, 'resume')}>
+              <Button type="primary" size="small" icon={<PlayCircleOutlined />} loading={operating} onClick={() => void operateJob(record, 'resume')}>
                 启用
               </Button>
             )}
@@ -478,19 +473,31 @@ const JobManagement: React.FC = () => {
 
   return (
     <div className="app-page">
+      {error && <Alert className="mb-4" type="error" showIcon message="任务管理数据读取失败" description={error} closable onClose={() => setError(null)} />}
       <Card className="surface-card" title={<Space><ControlOutlined />任务状态</Space>}>
-        <Table<JobItem>
-          rowKey="jobName"
-          columns={jobColumns}
-          dataSource={jobs}
-          loading={loading}
-          locale={{ emptyText: <Empty description="暂无任务配置" /> }}
-          scroll={{ x: 1200 }}
-          pagination={{
-            pageSize: 10,
-            showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 个任务`,
-          }}
+        <Tabs
+          items={jobDomains.map((domain) => {
+            const domainJobs = jobs.filter((job) => resolveJobDomain(job.jobName) === domain.key);
+            return {
+              key: domain.key,
+              label: domain.label + ' (' + domainJobs.length + ')',
+              children: (
+                <Table<JobItem>
+                  rowKey="jobName"
+                  columns={jobColumns}
+                  dataSource={domainJobs}
+                  loading={loading}
+                  locale={{ emptyText: <Empty description="该分组暂无任务配置" /> }}
+                  scroll={{ x: 1200 }}
+                  pagination={{
+                    pageSize: 10,
+                    showSizeChanger: true,
+                    showTotal: (total) => '共 ' + total + ' 个任务',
+                  }}
+                />
+              ),
+            };
+          })}
         />
       </Card>
 
@@ -566,4 +573,4 @@ const JobManagement: React.FC = () => {
 };
 
 export default JobManagement;
-// AI_GENERATE_END -------
+// AI_GENERATE_END --------

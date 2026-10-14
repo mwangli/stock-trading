@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 import axios from 'axios';
 
 const request = axios.create({
@@ -22,16 +22,13 @@ request.interceptors.response.use(
       error.code === 'ERR_NETWORK' ||
       (error.message && String(error.message).includes('ECONNREFUSED'));
     if (isBackendDown) {
-      console.warn(
-        '[API] 后端未响应（连接被拒绝）。请先启动后端: cd stock-backend && mvn spring-boot:run',
-        is502 ? '(代理返回 502)' : '(网络错误)'
-      );
+      console.warn('[API] 后端未响应', is502 ? '代理返回 502' : '网络连接失败');
     } else {
-      console.error('Request Error:', error);
+      console.error('[API] 请求失败', error);
     }
     return Promise.reject(error);
   }
 );
 
 export default request;
-// AI_GENERATE_END -
+// AI_GENERATE_END --

@@ -1,7 +1,6 @@
-// AI_GENERATE_START -------------------
+// AI_GENERATE_START ---------------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDateTime } from '../utils/dateTime';
-import axios from 'axios';
 import {
   Alert,
   Button,
@@ -38,15 +37,10 @@ import {
   SyncOutlined,
 } from '@ant-design/icons';
 import request from '../utils/request';
+import { getApiErrorMessage, readApiData, type ApiResponse } from '../utils/api';
 import { usePageHeader } from '../layouts/PageHeaderContext';
 
 const { Title, Text, Paragraph } = Typography;
-
-interface ApiResponse<T> {
-  success: boolean;
-  message?: string;
-  data: T;
-}
 
 interface ModelVersion {
   id: string;
@@ -301,20 +295,6 @@ const formatDuration = (seconds?: number) => {
   return `${minutes} 分 ${remainingSeconds} 秒`;
 };
 
-const getErrorMessage = (cause: unknown, fallback: string) => {
-  if (axios.isAxiosError<ApiResponse<unknown>>(cause)) {
-    return cause.response?.data?.message || cause.message || fallback;
-  }
-  return cause instanceof Error ? cause.message : fallback;
-};
-
-const responseData = <T,>(response: ApiResponse<T>, fallback: string): T => {
-  if (!response.success) {
-    throw new Error(response.message || fallback);
-  }
-  return response.data;
-};
-
 /**
  * 模型版本、训练和生产切换运维页面。
  */
@@ -349,14 +329,14 @@ const ModelOperations: React.FC = () => {
 
   const loadOverview = useCallback(async () => {
     const response = await request.get('/model-operations/overview') as ApiResponse<Overview>;
-    setOverview(responseData(response, '读取模型运维概览失败'));
+    setOverview(readApiData(response, '读取模型运维概览失败'));
   }, []);
 
   const loadVersions = useCallback(async (current: number) => {
     const response = await request.get('/model-versions', {
       params: { current, pageSize },
     }) as ApiResponse<PageResponse<ModelVersion>>;
-    const page = responseData(response, '读取模型版本失败');
+    const page = readApiData(response, '读取模型版本失败');
     setVersions(page.items ?? []);
     setVersionTotal(page.total);
     setVersionPage(page.current);
@@ -366,7 +346,7 @@ const ModelOperations: React.FC = () => {
     const response = await request.get('/model-training-runs', {
       params: { current, pageSize },
     }) as ApiResponse<PageResponse<TrainingRun>>;
-    const page = responseData(response, '读取训练记录失败');
+    const page = readApiData(response, '读取训练记录失败');
     setTrainingRuns(page.items ?? []);
     setRunTotal(page.total);
     setRunPage(page.current);
@@ -384,11 +364,11 @@ const ModelOperations: React.FC = () => {
       }) as Promise<ApiResponse<PageResponse<PredictionResult>>>,
       request.get('/model-predictions/ability', { params: { batchId } }) as Promise<ApiResponse<ModelAbility>>,
     ]);
-    const resultPage = responseData(await resultResponse, '读取预测结果失败');
+    const resultPage = readApiData(await resultResponse, '读取预测结果失败');
     setPredictionResults(resultPage.items ?? []);
     setPredictionResultTotal(resultPage.total);
     setPredictionResultPage(resultPage.current);
-    setModelAbility(responseData(await abilityResponse, '读取模型能力失败'));
+    setModelAbility(readApiData(await abilityResponse, '读取模型能力失败'));
   }, [predictionResultPage, predictionStatus]);
 
   const loadPredictionData = useCallback(async () => {
@@ -397,7 +377,7 @@ const ModelOperations: React.FC = () => {
       const response = await request.get('/model-predictions/batches', {
         params: { current: 1, pageSize: 10 },
       }) as ApiResponse<PageResponse<PredictionBatch>>;
-      const page = responseData(response, '读取预测批次失败');
+      const page = readApiData(response, '读取预测批次失败');
       const batches = page.items ?? [];
       setPredictionBatches(batches);
       setPredictionBatchTotal(page.total);
@@ -413,7 +393,7 @@ const ModelOperations: React.FC = () => {
         setModelAbility(null);
       }
     } catch (cause) {
-      message.error(getErrorMessage(cause, '读取预测分析数据失败'));
+      message.error(getApiErrorMessage(cause, '读取预测分析数据失败'));
     } finally {
       setPredictionLoading(false);
     }
@@ -429,7 +409,7 @@ const ModelOperations: React.FC = () => {
         loadPredictionData(),
       ]);
     } catch (cause) {
-      message.error(getErrorMessage(cause, '读取模型运维数据失败'));
+      message.error(getApiErrorMessage(cause, '读取模型运维数据失败'));
     } finally {
       setLoading(false);
     }
@@ -445,7 +425,7 @@ const ModelOperations: React.FC = () => {
     }
     const timer = window.setInterval(() => {
       void Promise.all([loadOverview(), loadTrainingRuns(runPage)]).catch((cause) => {
-        message.error(getErrorMessage(cause, '刷新训练进度失败'));
+        message.error(getApiErrorMessage(cause, '刷新训练进度失败'));
       });
     }, 3000);
     return () => window.clearInterval(timer);
@@ -483,13 +463,13 @@ const ModelOperations: React.FC = () => {
         ...values,
         operatorName: values.operatorName?.trim() || operatorName.trim() || 'web-console',
       }) as ApiResponse<OperationResponse>;
-      const result = responseData(response, '提交训练失败');
+      const result = readApiData(response, '提交训练失败');
       message.success(result.message);
       setTrainingModalOpen(false);
       form.resetFields();
       await refreshAfterOperation();
     } catch (cause) {
-      message.error(getErrorMessage(cause, '提交训练失败'));
+      message.error(getApiErrorMessage(cause, '提交训练失败'));
     } finally {
       setOperating(false);
     }
@@ -501,11 +481,11 @@ const ModelOperations: React.FC = () => {
       const response = await request.post(`/model-training-runs/stop/${runId}`, undefined, {
         params: { operatorName: operatorName.trim() || 'web-console' },
       }) as ApiResponse<OperationResponse>;
-      const result = responseData(response, '停止训练失败');
+      const result = readApiData(response, '停止训练失败');
       message.success(result.message);
       await refreshAfterOperation();
     } catch (cause) {
-      message.error(getErrorMessage(cause, '停止训练失败'));
+      message.error(getApiErrorMessage(cause, '停止训练失败'));
     } finally {
       setOperating(false);
     }
@@ -517,11 +497,11 @@ const ModelOperations: React.FC = () => {
       const response = await request.post(`/model-versions/activate/${versionId}`, undefined, {
         params: { operatorName: operatorName.trim() || 'web-console' },
       }) as ApiResponse<OperationResponse>;
-      const result = responseData(response, '激活模型版本失败');
+      const result = readApiData(response, '激活模型版本失败');
       message.success(result.message);
       await refreshAfterOperation();
     } catch (cause) {
-      message.error(getErrorMessage(cause, '激活模型版本失败'));
+      message.error(getApiErrorMessage(cause, '激活模型版本失败'));
     } finally {
       setOperating(false);
     }
@@ -538,11 +518,11 @@ const ModelOperations: React.FC = () => {
         undefined,
         { params: { operatorName: operatorName.trim() || 'web-console' } },
       ) as ApiResponse<OperationResponse>;
-      const result = responseData(response, '回滚模型版本失败');
+      const result = readApiData(response, '回滚模型版本失败');
       message.success(result.message);
       await refreshAfterOperation();
     } catch (cause) {
-      message.error(getErrorMessage(cause, '回滚模型版本失败'));
+      message.error(getApiErrorMessage(cause, '回滚模型版本失败'));
     } finally {
       setOperating(false);
     }
@@ -554,9 +534,9 @@ const ModelOperations: React.FC = () => {
     setSelectedVersion(null);
     try {
       const response = (await request.get(`/model-versions/details/${versionId}`)) as unknown as ApiResponse<ModelVersion>;
-      setSelectedVersion(responseData(response, '读取模型版本详情失败'));
+      setSelectedVersion(readApiData(response, '读取模型版本详情失败'));
     } catch (cause) {
-      message.error(getErrorMessage(cause, '读取模型版本详情失败'));
+      message.error(getApiErrorMessage(cause, '读取模型版本详情失败'));
       setDetailsOpen(false);
     } finally {
       setDetailsLoading(false);
@@ -570,12 +550,12 @@ const ModelOperations: React.FC = () => {
       const response = await request.post('/model-predictions/run', {
         operatorName: operatorName.trim() || 'web-console',
       }) as ApiResponse<{ batchId: string; status: string; message: string }>;
-      const result = responseData(response, '提交全市场预测失败');
+      const result = readApiData(response, '提交全市场预测失败');
       message.success(result.message);
       setSelectedPredictionBatchId(result.batchId);
       await loadPredictionData();
     } catch (cause) {
-      message.error(getErrorMessage(cause, '提交全市场预测失败'));
+      message.error(getApiErrorMessage(cause, '提交全市场预测失败'));
     } finally {
       setPredictionOperating(false);
     }
@@ -587,11 +567,11 @@ const ModelOperations: React.FC = () => {
       const response = await request.post('/model-predictions/evaluate', {
         batchId: selectedPredictionBatchId,
       }) as ApiResponse<{ batchId: string; status: string; message: string }>;
-      const result = responseData(response, '刷新预测实际结果失败');
+      const result = readApiData(response, '刷新预测实际结果失败');
       message.success(result.message);
       await loadPredictionData();
     } catch (cause) {
-      message.error(getErrorMessage(cause, '刷新预测实际结果失败'));
+      message.error(getApiErrorMessage(cause, '刷新预测实际结果失败'));
     } finally {
       setPredictionOperating(false);
     }
@@ -1197,4 +1177,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END -------------------
+// AI_GENERATE_END ---------------------

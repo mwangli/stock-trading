@@ -1,18 +1,13 @@
-// AI_GENERATE_START ----------
+// AI_GENERATE_START -----------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Empty, Input, Pagination, Space, Table, Tag, Typography } from 'antd';
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import request from '../utils/request';
+import type { ApiResponse } from '../utils/api';
 import { formatDateTime } from '../utils/dateTime';
 import { usePageHeader } from '../layouts/PageHeaderContext';
 
 const { Text } = Typography;
-
-interface ApiResponse<T> {
-  success: boolean;
-  message?: string;
-  data: T;
-}
 
 interface TradeRecord {
   stockCode: string;
@@ -223,4 +218,4 @@ const TradeRecords: React.FC = () => {
 };
 
 export default TradeRecords;
-// AI_GENERATE_END ----------
+// AI_GENERATE_END -----------

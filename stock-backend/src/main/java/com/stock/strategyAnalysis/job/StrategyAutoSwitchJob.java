@@ -1,11 +1,10 @@
-// AI_GENERATE_START
+// AI_GENERATE_START -
 package com.stock.strategyAnalysis.job;
 
 import com.stock.dataCollector.domain.entity.ModelReferenceDailyBar;
 import com.stock.dataCollector.domain.entity.ReferenceSeriesType;
 import com.stock.dataCollector.persistence.ModelReferenceDailyBarRepository;
 import com.stock.strategyAnalysis.engine.StrategySwitcher;
-import com.stock.strategyAnalysis.config.StrategyStateManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -29,14 +28,12 @@ public class StrategyAutoSwitchJob {
 
     private final ModelReferenceDailyBarRepository referenceBarRepository;
     private final StrategySwitcher strategySwitcher;
-    private final StrategyStateManager stateManager;
 
     /**
      * 使用最近两个交易日市场收盘价执行一次规则评估。
      * 数据不足、序列不完整或涨跌幅不可计算时保持当前模式。
      */
     public void runAutoSwitch() {
-        stateManager.setAutoSwitchEnabled(true);
         List<ModelReferenceDailyBar> bars = referenceBarRepository
                 .findTop100BySeriesTypeOrderByTradeDateDesc(ReferenceSeriesType.MARKET);
         List<ModelReferenceDailyBar> latestSeries = selectLatestCompleteSeries(bars);
@@ -74,4 +71,4 @@ public class StrategyAutoSwitchJob {
                 .orElseGet(List::of);
     }
 }
-// AI_GENERATE_END
+// AI_GENERATE_END -

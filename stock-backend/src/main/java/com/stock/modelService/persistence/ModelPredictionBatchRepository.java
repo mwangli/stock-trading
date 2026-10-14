@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.modelService.persistence;
 
 import com.stock.modelService.domain.entity.ModelPredictionBatchDocument;
@@ -67,5 +67,15 @@ public interface ModelPredictionBatchRepository extends MongoRepository<ModelPre
      */
     ModelPredictionBatchDocument findFirstByModelIdAndBaseTradeDateOrderByCreatedAtDesc(
             String modelId, LocalDate baseTradeDate);
+
+    /**
+     * 查询目标交易日最新可用于策略候选的预测批次。
+     *
+     * @param targetTradeDate 目标交易日
+     * @param statuses 可用批次状态
+     * @return 最新匹配批次，不存在时返回 null
+     */
+    ModelPredictionBatchDocument findFirstByTargetTradeDateAndStatusInOrderByCreatedAtDesc(
+            LocalDate targetTradeDate, Collection<String> statuses);
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

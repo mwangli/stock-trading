@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.dataCollector.service;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -429,20 +429,6 @@ public class StockNewsService {
     }
 
     /**
-     * 采集股票新闻（兼容原有方法签名，默认采集全部）
-     */
-    public void collectStockNews() {
-        collectAllStockNews(0);
-    }
-
-    /**
-     * 采集股票新闻（兼容原有方法签名）
-     */
-    public void collectAllStockNews() {
-        collectAllStockNews(0);
-    }
-
-    /**
      * 拉取新闻/公告详情（不写入，由调用方批量写入）
      */
     private StockNews fetchDetail(String externalId, String listTitle, String dateStr,
@@ -644,4 +630,4 @@ public class StockNewsService {
     /** 采集来源（新闻/公告）。 */
     private record NewsSource(String menuId, String category) {}
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

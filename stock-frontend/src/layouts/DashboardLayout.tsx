@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------------------
+// AI_GENERATE_START ------------------------
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, Badge, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
@@ -23,6 +23,7 @@ import {
   HolderOutlined,
   MessageOutlined,
   SlidersOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { useAppTheme } from '../theme/AppThemeProvider';
 import { PageHeaderContext, type PageHeaderState } from './PageHeaderContext';
@@ -42,6 +43,7 @@ const DEFAULT_MENU_ORDER = [
   '/model-operations',
   '/sentiment-model',
   '/strategy-config',
+  '/real-trading',
   '/jobs',
   '/settings',
 ];
@@ -168,6 +170,7 @@ const DashboardLayout: React.FC = () => {
     { key: '/model-operations', icon: <ExperimentOutlined />, label: '涨跌预测' },
     { key: '/sentiment-model', icon: <MessageOutlined />, label: '情感模型' },
     { key: '/strategy-config', icon: <SlidersOutlined />, label: '策略配置' },
+    { key: '/real-trading', icon: <SafetyCertificateOutlined />, label: '真实交易' },
     { key: '/jobs', icon: <ScheduleOutlined />, label: '任务管理' },
     { key: '/settings', icon: <SettingOutlined />, label: t('layout.settings') },
   ], [t]);
@@ -220,6 +223,7 @@ const DashboardLayout: React.FC = () => {
     '/model-operations': '涨跌预测',
     '/sentiment-model': '情感模型',
     '/strategy-config': '策略配置',
+    '/real-trading': '真实交易',
     '/jobs': '任务管理',
     '/settings': '系统设置',
   };
@@ -326,4 +330,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END -----------------------
+// AI_GENERATE_END ------------------------

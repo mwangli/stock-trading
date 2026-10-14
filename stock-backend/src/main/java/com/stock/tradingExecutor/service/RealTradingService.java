@@ -1,6 +1,7 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START ---------
 package com.stock.tradingExecutor.service;
 
+import com.stock.dataCollector.service.TradingCalendarService;
 import com.stock.strategyAnalysis.domain.dto.StockRankingDto;
 import com.stock.strategyAnalysis.engine.StockSelector;
 import com.stock.tradingExecutor.config.RiskConfig;
@@ -20,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +45,8 @@ public class RealTradingService {
     private final TradeExecutor tradeExecutor;
     private final TradingProperties tradingProperties;
     private final RiskConfig riskConfig;
+    private final TradingCalendarService tradingCalendarService;
+    private final AutomaticTradeExecutionBatchService executionBatchService;
 
     /**
      * 查询真实交易运行状态。
@@ -65,14 +69,29 @@ public class RealTradingService {
      * @return 当日候选列表
      */
     public TradingCandidateListResponseDto getCandidates() {
-        requireBrokerSession();
-        Set<String> heldCodes = brokerAdapter.getPositions().stream()
-                .map(Position::getStockCode)
-                .collect(Collectors.toSet());
-        List<TradingCandidateDto> items = stockSelector.getAllRankings().stream()
+        List<StockRankingDto> rankings = loadTodayCandidates();
+        boolean positionSnapshotAvailable = brokerAdapter.isAuthenticated();
+        Set<String> heldCodes = positionSnapshotAvailable
+                ? brokerAdapter.getPositions().stream()
+                        .map(Position::getStockCode)
+                        .collect(Collectors.toSet())
+                : Set.of();
+        List<TradingCandidateDto> items = rankings.stream()
                 .map(item -> toCandidate(item, heldCodes.contains(item.getStockCode())))
                 .toList();
-        return TradingCandidateListResponseDto.builder().items(items).build();
+        StockRankingDto first = rankings.get(0);
+        return TradingCandidateListResponseDto.builder()
+                .candidateBatchId(first.getCandidateBatchId())
+                .predictionBatchId(first.getPredictionBatchId())
+                .modelVersion(first.getModelVersion())
+                .sentimentModelVersion(first.getSentimentModelVersion())
+                .strategyConfigVersion(first.getStrategyConfigVersion())
+                .baseTradeDate(first.getBaseTradeDate())
+                .targetTradeDate(first.getTargetTradeDate())
+                .informationCutoffAt(first.getInformationCutoffAt())
+                .positionSnapshotAvailable(positionSnapshotAvailable)
+                .items(items)
+                .build();
     }
 
     /**
@@ -82,26 +101,41 @@ public class RealTradingService {
      */
     public TradeExecutionBatchResponseDto executeAutomaticBuys() {
         requireAutomaticExecution();
-        List<Position> positions = brokerAdapter.getPositions();
-        Set<String> heldCodes = positions.stream().map(Position::getStockCode).collect(Collectors.toSet());
-        List<TradeExecutionResponseDto> results = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+        tradingCalendarService.requireTradingDay(today);
+        List<StockRankingDto> rankings = loadTodayCandidates();
+        String executionBatchId = executionBatchService
+                .begin("BUY", today, rankings.get(0).getCandidateBatchId())
+                .getBatchId();
+        try {
+            List<Position> positions = brokerAdapter.getPositions();
+            Set<String> heldCodes = positions.stream().map(Position::getStockCode).collect(Collectors.toSet());
+            List<TradeExecutionResponseDto> results = new ArrayList<>();
 
-        for (StockRankingDto candidate : stockSelector.getAllRankings()) {
-            if (results.size() >= tradingProperties.getAutoCandidateLimit()) {
-                break;
+            for (StockRankingDto candidate : rankings) {
+                if (results.size() >= tradingProperties.getAutoCandidateLimit()) {
+                    break;
+                }
+                if (heldCodes.contains(candidate.getStockCode())) {
+                    continue;
+                }
+                ensureNoDuplicateOrder(candidate.getStockCode(), "BUY");
+                OrderResult result = tradeExecutor.executeBuy(
+                        candidate.getStockCode(), tradingProperties.getAutoBuyAmount());
+                results.add(toExecution(result));
+                if (result.isSuccess()) {
+                    heldCodes.add(candidate.getStockCode());
+                }
             }
-            if (heldCodes.contains(candidate.getStockCode())) {
-                continue;
-            }
-            ensureNoDuplicateOrder(candidate.getStockCode(), "BUY");
-            OrderResult result = tradeExecutor.executeBuy(
-                    candidate.getStockCode(), tradingProperties.getAutoBuyAmount());
-            results.add(toExecution(result));
-            if (result.isSuccess()) {
-                heldCodes.add(candidate.getStockCode());
-            }
+            TradeExecutionBatchResponseDto response = buildBatch(
+                    executionBatchId, results, "无人值守买入检查完成");
+            executionBatchService.complete(executionBatchId, results.size(),
+                    response.getSuccessCount(), response.getMessage());
+            return response;
+        } catch (RuntimeException exception) {
+            markExecutionBatchFailed(executionBatchId, exception);
+            throw exception;
         }
-        return buildBatch(results, "无人值守买入检查完成");
     }
 
     /**
@@ -111,28 +145,40 @@ public class RealTradingService {
      */
     public TradeExecutionBatchResponseDto executeAutomaticExits() {
         requireAutomaticExecution();
-        List<TradeExecutionResponseDto> results = new ArrayList<>();
-        boolean forceExit = !LocalTime.now().isBefore(tradingProperties.getForceExitTime());
+        LocalDate today = LocalDate.now();
+        tradingCalendarService.requireTradingDay(today);
+        String executionBatchId = executionBatchService.begin("EXIT", today, null).getBatchId();
+        try {
+            List<TradeExecutionResponseDto> results = new ArrayList<>();
+            boolean forceExit = !LocalTime.now().isBefore(tradingProperties.getForceExitTime());
 
-        for (Position position : brokerAdapter.getPositions()) {
-            Integer availableQuantity = position.getAvailableQuantity();
-            if (availableQuantity == null || availableQuantity <= 0) {
-                continue;
+            for (Position position : brokerAdapter.getPositions()) {
+                Integer availableQuantity = position.getAvailableQuantity();
+                if (availableQuantity == null || availableQuantity <= 0) {
+                    continue;
+                }
+                BigDecimal profitLossPercent = position.getProfitLossPercent();
+                boolean stopLoss = profitLossPercent != null
+                        && profitLossPercent.compareTo(BigDecimal.valueOf(-riskConfig.getSingleStockStopLoss())) <= 0;
+                boolean takeProfit = profitLossPercent != null
+                        && profitLossPercent.compareTo(BigDecimal.valueOf(tradingProperties.getTakeProfitPercent())) >= 0;
+                if (!stopLoss && !takeProfit && !forceExit) {
+                    continue;
+                }
+                ensureNoDuplicateOrder(position.getStockCode(), "SELL");
+                OrderResult result = tradeExecutor.executeSell(
+                        position.getStockCode(), BigDecimal.valueOf(availableQuantity));
+                results.add(toExecution(result));
             }
-            BigDecimal profitLossPercent = position.getProfitLossPercent();
-            boolean stopLoss = profitLossPercent != null
-                    && profitLossPercent.compareTo(BigDecimal.valueOf(-riskConfig.getSingleStockStopLoss())) <= 0;
-            boolean takeProfit = profitLossPercent != null
-                    && profitLossPercent.compareTo(BigDecimal.valueOf(tradingProperties.getTakeProfitPercent())) >= 0;
-            if (!stopLoss && !takeProfit && !forceExit) {
-                continue;
-            }
-            ensureNoDuplicateOrder(position.getStockCode(), "SELL");
-            OrderResult result = tradeExecutor.executeSell(
-                    position.getStockCode(), BigDecimal.valueOf(availableQuantity));
-            results.add(toExecution(result));
+            TradeExecutionBatchResponseDto response = buildBatch(
+                    executionBatchId, results, "无人值守 T+1 退出检查完成");
+            executionBatchService.complete(executionBatchId, results.size(),
+                    response.getSuccessCount(), response.getMessage());
+            return response;
+        } catch (RuntimeException exception) {
+            markExecutionBatchFailed(executionBatchId, exception);
+            throw exception;
         }
-        return buildBatch(results, "无人值守 T+1 退出检查完成");
     }
 
     private void requireBrokerSession() {
@@ -150,6 +196,23 @@ public class RealTradingService {
         requireWriteGate();
     }
 
+    private List<StockRankingDto> loadTodayCandidates() {
+        LocalDate today = LocalDate.now();
+        List<StockRankingDto> rankings = stockSelector.getExecutableRankings(today);
+        if (rankings.isEmpty()) {
+            throw new IllegalStateException("当前交易日没有元数据完整的可执行候选: " + today);
+        }
+        StockRankingDto first = rankings.get(0);
+        boolean inconsistent = rankings.stream().anyMatch(item ->
+                !first.getCandidateBatchId().equals(item.getCandidateBatchId())
+                        || !first.getPredictionBatchId().equals(item.getPredictionBatchId())
+                        || !today.equals(item.getTargetTradeDate()));
+        if (inconsistent) {
+            throw new IllegalStateException("候选批次元数据不一致，禁止进入真实交易");
+        }
+        return rankings;
+    }
+
     private void ensureNoDuplicateOrder(String stockCode, String direction) {
         boolean duplicated = brokerAdapter.getTodayOrderSnapshots().stream()
                 .filter(order -> stockCode.equals(order.getStockCode()))
@@ -158,6 +221,15 @@ public class RealTradingService {
                 .anyMatch(status -> status == null || !status.isFinal() || status.isSuccess());
         if (duplicated) {
             throw new IllegalStateException("当日已存在同方向委托或成交，禁止重复下单");
+        }
+    }
+
+    private void markExecutionBatchFailed(String executionBatchId, RuntimeException exception) {
+        try {
+            executionBatchService.fail(executionBatchId, exception.getMessage());
+        } catch (RuntimeException persistenceException) {
+            log.error("自动交易执行批次失败状态保存异常, executionBatchId={}",
+                    executionBatchId, persistenceException);
         }
     }
 
@@ -189,13 +261,15 @@ public class RealTradingService {
                 .build();
     }
 
-    private TradeExecutionBatchResponseDto buildBatch(List<TradeExecutionResponseDto> results, String message) {
+    private TradeExecutionBatchResponseDto buildBatch(
+            String executionBatchId, List<TradeExecutionResponseDto> results, String message) {
         int successCount = (int) results.stream().filter(TradeExecutionResponseDto::isSuccess).count();
         return TradeExecutionBatchResponseDto.builder()
+                .executionBatchId(executionBatchId)
                 .items(results)
                 .successCount(successCount)
                 .message(message)
                 .build();
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END ---------

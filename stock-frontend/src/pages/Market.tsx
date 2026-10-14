@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 import React, { useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Table, Input, Button, Select } from 'antd';
@@ -9,6 +9,7 @@ import type { InputRef } from 'antd';
 import { SearchOutlined, ThunderboltOutlined, RiseOutlined, StarOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import request from '../utils/request';
+import type { ApiResponse } from '../utils/api';
 import { useAppTheme } from '../theme/AppThemeProvider';
 import { usePageHeader } from '../layouts/PageHeaderContext';
 
@@ -18,12 +19,6 @@ interface StockInfo {
   price: number;
   changePercent: number;
   totalMarketValue: number;
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  total?: number;
 }
 
 /** 与后端 StockInfoController#getMarketStats / MarketStatsDto 一致 */
@@ -624,4 +619,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.tradingExecutor.domain.dto;
 
 import lombok.Builder;
@@ -16,6 +16,9 @@ import java.util.List;
 @Builder
 public class TradeExecutionBatchResponseDto {
 
+    /** 自动交易执行批次 ID。 */
+    private String executionBatchId;
+
     /** 实际执行的委托结果。 */
     private List<TradeExecutionResponseDto> items;
 
@@ -25,4 +28,4 @@ public class TradeExecutionBatchResponseDto {
     /** 执行结果摘要。 */
     private String message;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

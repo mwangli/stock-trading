@@ -1,13 +1,15 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.modelService.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.modelService.domain.dto.SentimentAnalyzeRequestDto;
 import com.stock.modelService.domain.dto.SentimentAnalyzeResultDto;
 import com.stock.modelService.domain.dto.SentimentHealthDto;
+import com.stock.modelService.domain.dto.SentimentEvaluationDto;
 import com.stock.modelService.domain.vo.SentimentArtifactInspection;
 import com.stock.modelService.domain.vo.SentimentArtifactManifest;
 import com.stock.modelService.service.SentimentInferenceService;
+import com.stock.modelService.service.SentimentEvaluationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,6 +35,7 @@ import java.util.Map;
 public class SentimentController {
 
     private final SentimentInferenceService inferenceService;
+    private final SentimentEvaluationService evaluationService;
 
     /**
      * 分析单条新闻或公告文本。
@@ -92,6 +95,17 @@ public class SentimentController {
                 .build());
     }
 
+    /**
+     * 查询最近一次人工标注集独立评估结果。
+     *
+     * @return 独立评估指标
+     */
+    @GetMapping("/evaluation/latest")
+    public ResponseDTO<SentimentEvaluationDto> latestEvaluation() {
+        log.info("查询情感模型最近独立评估结果");
+        return ResponseDTO.success(evaluationService.getLatest());
+    }
+
     private SentimentAnalyzeResultDto toDto(Map<String, Object> result) {
         return SentimentAnalyzeResultDto.builder()
                 .success(true)
@@ -122,4 +136,4 @@ public class SentimentController {
         return result;
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

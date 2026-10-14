@@ -1,6 +1,5 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ----------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import axios from 'axios';
 import {
   Alert,
   Button,
@@ -28,6 +27,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useAppTheme, type ThemeMode } from '../theme/AppThemeProvider';
 import request from '../utils/request';
+import { getApiErrorMessage, readApiData, type ApiResponse } from '../utils/api';
 import { usePageHeader } from '../layouts/PageHeaderContext';
 
 const { Text } = Typography;
@@ -44,12 +44,6 @@ interface SettingsFormValues {
   startupHistorySyncEnabled: boolean;
   startupNewsSyncEnabled: boolean;
   modelTrainingEnabled: boolean;
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  message?: string;
-  data: T;
 }
 
 interface BrokerReadStatus {
@@ -154,20 +148,6 @@ const formatBytes = (value?: number) => {
 };
 
 const formatRatio = (value?: number) => value === undefined ? '未提供' : `${(value * 100).toFixed(2)}%`;
-const getErrorMessage = (cause: unknown, fallback: string) => {
-  if (axios.isAxiosError<ApiResponse<unknown>>(cause)) {
-    return cause.response?.data?.message || cause.message || fallback;
-  }
-  return cause instanceof Error ? cause.message : fallback;
-};
-
-const responseData = <T,>(response: ApiResponse<T>, fallback: string): T => {
-  if (!response.success) {
-    throw new Error(response.message || fallback);
-  }
-  return response.data;
-};
-
 const healthTag = (state: ServiceHealth<unknown>['state']) => {
   if (state === 'up') {
     return <Tag color="green">正常</Tag>;
@@ -198,11 +178,11 @@ const Settings: React.FC = () => {
     setRuntimeLoading(true);
     try {
       const response = await request.get('/system-settings/runtime') as ApiResponse<RuntimeSettings>;
-      const settings = responseData(response, '读取运行控制配置失败');
+      const settings = readApiData(response, '读取运行控制配置失败');
       setRuntimeSettings(settings);
       form.setFieldsValue(settings);
     } catch (cause) {
-      message.error(getErrorMessage(cause, '读取运行控制配置失败'));
+      message.error(getApiErrorMessage(cause, '读取运行控制配置失败'));
     } finally {
       setRuntimeLoading(false);
     }
@@ -219,32 +199,32 @@ const Settings: React.FC = () => {
 
     if (brokerResult.status === 'fulfilled') {
       try {
-        setBrokerHealth({ state: 'up', data: responseData(brokerResult.value, '读取券商状态失败') });
+        setBrokerHealth({ state: 'up', data: readApiData(brokerResult.value, '读取券商状态失败') });
       } catch (cause) {
-        setBrokerHealth({ state: 'down', error: getErrorMessage(cause, '读取券商状态失败') });
+        setBrokerHealth({ state: 'down', error: getApiErrorMessage(cause, '读取券商状态失败') });
       }
     } else {
-      setBrokerHealth({ state: 'down', error: getErrorMessage(brokerResult.reason, '券商状态接口不可用') });
+      setBrokerHealth({ state: 'down', error: getApiErrorMessage(brokerResult.reason, '券商状态接口不可用') });
     }
 
     if (tradingResult.status === 'fulfilled') {
       try {
-        setTradingHealth({ state: 'up', data: responseData(tradingResult.value, '读取真实交易状态失败') });
+        setTradingHealth({ state: 'up', data: readApiData(tradingResult.value, '读取真实交易状态失败') });
       } catch (cause) {
-        setTradingHealth({ state: 'down', error: getErrorMessage(cause, '读取真实交易状态失败') });
+        setTradingHealth({ state: 'down', error: getApiErrorMessage(cause, '读取真实交易状态失败') });
       }
     } else {
-      setTradingHealth({ state: 'down', error: getErrorMessage(tradingResult.reason, '真实交易状态接口不可用') });
+      setTradingHealth({ state: 'down', error: getApiErrorMessage(tradingResult.reason, '真实交易状态接口不可用') });
     }
 
     if (sentimentResult.status === 'fulfilled') {
       try {
-        setSentimentHealth({ state: 'up', data: responseData(sentimentResult.value, '读取情感模型状态失败') });
+        setSentimentHealth({ state: 'up', data: readApiData(sentimentResult.value, '读取情感模型状态失败') });
       } catch (cause) {
-        setSentimentHealth({ state: 'down', error: getErrorMessage(cause, '读取情感模型状态失败') });
+        setSentimentHealth({ state: 'down', error: getApiErrorMessage(cause, '读取情感模型状态失败') });
       }
     } else {
-      setSentimentHealth({ state: 'down', error: getErrorMessage(sentimentResult.reason, '情感模型状态接口不可用') });
+      setSentimentHealth({ state: 'down', error: getApiErrorMessage(sentimentResult.reason, '情感模型状态接口不可用') });
     }
 
     if ([brokerResult, tradingResult, sentimentResult].every((result) => result.status === 'rejected')) {
@@ -279,14 +259,14 @@ const Settings: React.FC = () => {
         modelTrainingEnabled: values.modelTrainingEnabled,
       };
       const response = await request.put('/system-settings/runtime', runtimeRequest) as ApiResponse<RuntimeSettings>;
-      setRuntimeSettings(responseData(response, '保存运行控制配置失败'));
+      setRuntimeSettings(readApiData(response, '保存运行控制配置失败'));
       window.localStorage.setItem(STORAGE_KEYS.notifications, String(values.notifications));
       window.localStorage.setItem(STORAGE_KEYS.refreshRate, String(values.refreshRate));
       setMode(values.theme);
       await i18n.changeLanguage(values.language);
       message.success(t('settings.successMsg'));
     } catch (cause) {
-      message.error(getErrorMessage(cause, '保存系统配置失败'));
+      message.error(getApiErrorMessage(cause, '保存系统配置失败'));
     } finally {
       setSaving(false);
     }
@@ -491,4 +471,4 @@ const Settings: React.FC = () => {
 };
 
 export default Settings;
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ----------

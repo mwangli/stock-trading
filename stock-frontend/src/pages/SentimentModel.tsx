@@ -1,6 +1,5 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 import React, { useCallback, useMemo, useState } from 'react';
-import axios from 'axios';
 import {
   Alert,
   Button,
@@ -27,16 +26,11 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 import request from '../utils/request';
+import { getApiErrorMessage, readApiData, type ApiResponse } from '../utils/api';
 import { usePageHeader } from '../layouts/PageHeaderContext';
 
 const { Paragraph, Text } = Typography;
 const { TextArea } = Input;
-
-interface ApiResponse<T> {
-  success: boolean;
-  message?: string;
-  data: T;
-}
 
 interface SentimentHealth {
   status: string;
@@ -72,6 +66,22 @@ interface SentimentAnalyzeResult {
   modelLoaded?: boolean;
 }
 
+interface SentimentEvaluation {
+  evaluationRunId?: string;
+  modelVersion?: string;
+  datasetVersion?: string;
+  status: string;
+  sampleCount: number;
+  correctCount: number;
+  accuracy?: number;
+  macroF1?: number;
+  negativeRecall?: number;
+  expectedCalibrationError?: number;
+  p95LatencyMs?: number;
+  conclusion: string;
+  evaluatedAt?: string;
+}
+
 type SentimentLabel = 'positive' | 'neutral' | 'negative';
 
 interface SentimentTestCase {
@@ -87,20 +97,6 @@ interface SentimentTestGroup {
   label: string;
   cases: SentimentTestCase[];
 }
-
-const responseData = <T,>(response: ApiResponse<T>, fallback: string): T => {
-  if (!response.success) {
-    throw new Error(response.message || fallback);
-  }
-  return response.data;
-};
-
-const getErrorMessage = (cause: unknown, fallback: string) => {
-  if (axios.isAxiosError<ApiResponse<unknown>>(cause)) {
-    return cause.response?.data?.message || cause.message || fallback;
-  }
-  return cause instanceof Error ? cause.message : fallback;
-};
 
 const formatDateTime = (value?: string) => {
   if (!value) {
@@ -189,6 +185,7 @@ const sentimentTestGroups: SentimentTestGroup[] = [
 
 const SentimentModel: React.FC = () => {
   const [health, setHealth] = useState<SentimentHealth | null>(null);
+  const [evaluation, setEvaluation] = useState<SentimentEvaluation | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
@@ -201,10 +198,14 @@ const SentimentModel: React.FC = () => {
     setLoading(true);
     setHealthError(null);
     try {
-      const response = await request.get('/model-sentiment/health') as ApiResponse<SentimentHealth>;
-      setHealth(responseData(response, '读取情感模型状态失败'));
+      const [healthResponse, evaluationResponse] = await Promise.all([
+        request.get('/model-sentiment/health') as Promise<ApiResponse<SentimentHealth>>,
+        request.get('/model-sentiment/evaluation/latest') as Promise<ApiResponse<SentimentEvaluation>>,
+      ]);
+      setHealth(readApiData(healthResponse, '读取情感模型状态失败'));
+      setEvaluation(readApiData(evaluationResponse, '读取情感模型独立评估失败'));
     } catch (cause) {
-      setHealthError(getErrorMessage(cause, '情感模型状态接口不可用'));
+      setHealthError(getApiErrorMessage(cause, '情感模型状态接口不可用'));
     } finally {
       setLoading(false);
     }
@@ -224,9 +225,9 @@ const SentimentModel: React.FC = () => {
     setAnalyzingCaseId(caseId ?? null);
     try {
       const response = await request.post('/model-sentiment/analyze', { text: content }) as ApiResponse<SentimentAnalyzeResult>;
-      setAnalysis(responseData(response, '情感分析失败'));
+      setAnalysis(readApiData(response, '情感分析失败'));
     } catch (cause) {
-      message.error(getErrorMessage(cause, '情感分析失败'));
+      message.error(getApiErrorMessage(cause, '情感分析失败'));
     } finally {
       setAnalyzing(false);
       setAnalyzingCaseId(null);
@@ -314,6 +315,24 @@ const SentimentModel: React.FC = () => {
           </Card>
         </Col>
       </Row>
+
+      <Card title={<Space><ExperimentOutlined />项目独立评估</Space>} loading={loading}>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <Tag color={evaluation?.status === 'PASSED' ? 'green' : evaluation?.status === 'OBSERVE' ? 'orange' : evaluation?.status === 'REJECTED' ? 'red' : 'default'}>{evaluation?.status || 'NOT_EVALUATED'}</Tag>
+          <Text type="secondary">模型版本：{evaluation?.modelVersion || '未评估'}</Text>
+          <Text type="secondary">评估集：{evaluation?.datasetVersion || '未提供'}</Text>
+          <Text type="secondary">评估时间：{formatDateTime(evaluation?.evaluatedAt)}</Text>
+        </div>
+        <Row gutter={[12, 16]}>
+          <Col xs={12} md={4}><Statistic title="样本数" value={evaluation?.sampleCount ?? 0} /></Col>
+          <Col xs={12} md={4}><Statistic title="准确率" value={formatPercent(evaluation?.accuracy)} /></Col>
+          <Col xs={12} md={4}><Statistic title="Macro-F1" value={formatPercent(evaluation?.macroF1)} /></Col>
+          <Col xs={12} md={4}><Statistic title="负面召回率" value={formatPercent(evaluation?.negativeRecall)} /></Col>
+          <Col xs={12} md={4}><Statistic title="ECE" value={formatPercent(evaluation?.expectedCalibrationError)} /></Col>
+          <Col xs={12} md={4}><Statistic title="P95 延迟" value={evaluation?.p95LatencyMs ?? '未提供'} suffix={evaluation?.p95LatencyMs === undefined ? undefined : 'ms'} /></Col>
+        </Row>
+        <Paragraph className="!mb-0 !mt-4" type="secondary">{evaluation?.conclusion || '尚未执行项目人工标注集独立评估任务。'}</Paragraph>
+      </Card>
 
       <section className="rounded-lg border border-[var(--border-color)] bg-[var(--surface-color)] p-4">
         <div className="mb-3">
@@ -417,4 +436,4 @@ const SentimentModel: React.FC = () => {
 };
 
 export default SentimentModel;
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

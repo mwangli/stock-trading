@@ -1,16 +1,11 @@
-// AI_GENERATE_START ----------
+// AI_GENERATE_START -----------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Empty, Input, Pagination, Select, Space, Table, Tag } from 'antd';
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import request from '../utils/request';
+import type { ApiResponse } from '../utils/api';
 import { formatDateTime } from '../utils/dateTime';
 import { usePageHeader } from '../layouts/PageHeaderContext';
-
-interface ApiResponse<T> {
-  success: boolean;
-  message?: string;
-  data: T;
-}
 
 interface BrokerOrder {
   orderId: string;
@@ -202,4 +197,4 @@ const HistoryOrders: React.FC = () => {
 };
 
 export default HistoryOrders;
-// AI_GENERATE_END ----------
+// AI_GENERATE_END -----------

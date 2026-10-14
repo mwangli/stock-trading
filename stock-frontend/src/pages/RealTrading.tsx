@@ -1,15 +1,10 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START ----------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Empty, Table, Tag } from 'antd';
+import { Alert, Button, Card, Descriptions, Empty, Table, Tag } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import request from '../utils/request';
+import type { ApiResponse } from '../utils/api';
 import { usePageHeader } from '../layouts/PageHeaderContext';
-
-interface ApiResponse<T> {
-  success: boolean;
-  message?: string;
-  data: T;
-}
 
 interface TradingStatus {
   realWriteEnabled: boolean;
@@ -29,6 +24,15 @@ interface TradingCandidate {
 }
 
 interface CandidateList {
+  candidateBatchId: string;
+  predictionBatchId: string;
+  modelVersion: string;
+  sentimentModelVersion: string;
+  strategyConfigVersion: string;
+  baseTradeDate: string;
+  targetTradeDate: string;
+  informationCutoffAt: string;
+  positionSnapshotAvailable: boolean;
   items: TradingCandidate[];
 }
 
@@ -38,9 +42,10 @@ interface CandidateList {
  */
 const RealTrading: React.FC = () => {
   const [status, setStatus] = useState<TradingStatus | null>(null);
+  const [candidateBatch, setCandidateBatch] = useState<CandidateList | null>(null);
   const [candidates, setCandidates] = useState<TradingCandidate[]>([]);
   const [loading, setLoading] = useState(false);
-  const [, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -51,17 +56,14 @@ const RealTrading: React.FC = () => {
         throw new Error(statusResponse.message || '读取自动交易状态失败');
       }
       setStatus(statusResponse.data);
-      if (!statusResponse.data.brokerAuthenticated) {
-        setCandidates([]);
-        setError('券商会话尚未建立，自动交易不会执行');
-        return;
-      }
       const candidateResponse = await request.get('/real-trading/candidates') as ApiResponse<CandidateList>;
       if (!candidateResponse.success) {
         throw new Error(candidateResponse.message || '读取模型候选失败');
       }
+      setCandidateBatch(candidateResponse.data);
       setCandidates(candidateResponse.data?.items ?? []);
     } catch (cause) {
+      setCandidateBatch(null);
       setCandidates([]);
       setError(cause instanceof Error ? cause.message : '读取自动交易数据失败');
     } finally {
@@ -79,7 +81,14 @@ const RealTrading: React.FC = () => {
     { title: 'LSTM', dataIndex: 'lstmScore', key: 'lstmScore', render: (value: number) => value.toFixed(4) },
     { title: '情感', dataIndex: 'sentimentScore', key: 'sentimentScore', render: (value: number) => value.toFixed(4) },
     { title: '综合', dataIndex: 'totalScore', key: 'totalScore', render: (value: number) => value.toFixed(4) },
-    { title: '持仓', dataIndex: 'held', key: 'held', render: (held: boolean) => <Tag color={held ? 'blue' : 'default'}>{held ? '已持有' : '未持有'}</Tag> },
+    {
+      title: '持仓',
+      dataIndex: 'held',
+      key: 'held',
+      render: (held: boolean) => candidateBatch?.positionSnapshotAvailable
+        ? <Tag color={held ? 'blue' : 'default'}>{held ? '已持有' : '未持有'}</Tag>
+        : <Tag>未知</Tag>,
+    },
     { title: '依据', dataIndex: 'reason', key: 'reason' },
   ];
 
@@ -104,6 +113,21 @@ const RealTrading: React.FC = () => {
         message={status?.automaticExecutionEnabled ? '自动交易已具备真实下单条件' : '自动交易未就绪，不会提交真实委托'}
       />
 
+      {error && <Alert type="warning" showIcon message={error} />}
+
+      <Card className="surface-card" title="候选批次追溯">
+        <Descriptions column={{ xs: 1, sm: 2, lg: 4 }} size="small">
+          <Descriptions.Item label="候选批次">{candidateBatch?.candidateBatchId ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="预测批次">{candidateBatch?.predictionBatchId ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="涨跌模型">{candidateBatch?.modelVersion ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="情感模型">{candidateBatch?.sentimentModelVersion ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="策略版本">{candidateBatch?.strategyConfigVersion ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="基准交易日">{candidateBatch?.baseTradeDate ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="目标交易日">{candidateBatch?.targetTradeDate ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="信息截止时间">{candidateBatch?.informationCutoffAt ?? '-'}</Descriptions.Item>
+        </Descriptions>
+      </Card>
+
       <Card className="surface-card" title="今日模型候选">
         <Table
           rowKey="stockCode"
@@ -120,4 +144,4 @@ const RealTrading: React.FC = () => {
 };
 
 export default RealTrading;
-// AI_GENERATE_END -------
+// AI_GENERATE_END ----------
