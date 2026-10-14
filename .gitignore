@@ -32,7 +32,7 @@ documents/plans/
 # 临时文件与中间脚本
 .tmp/
 /graft/
-stock-backend/data/lstm-artifacts/
+stock-backend/data/
 
 # NetBeans
 /nbproject/private/
@@ -76,7 +76,6 @@ application-prod.yml
 
 /.sisyphus/
 .worktrees/
-models/
 backups/
 .understand-anything/
 /python/runtime/

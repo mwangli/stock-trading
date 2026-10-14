@@ -24,7 +24,7 @@ public class SentimentTrainingConfig {
     private String modelVersion = "unconfigured";
 
     /** 情感模型版本根目录。 */
-    private String modelPath = "models/sentiment";
+    private String modelPath = "data/models/sentiment";
 
     /** 模型加载来源：local 或 huggingface。 */
     private String modelSource = "local";
@@ -54,7 +54,7 @@ public class SentimentTrainingConfig {
     private boolean downloadPretrained = false;
 
     /** DJL 模型缓存目录。 */
-    private String cacheDir = "models/cache";
+    private String cacheDir = "data/models/cache";
 
     /** 是否允许没有 manifest 的历史平铺目录。 */
     private boolean allowLegacyLayout = false;

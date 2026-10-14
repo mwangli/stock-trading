@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.strategyAnalysis.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -6,11 +6,12 @@ import com.stock.strategyAnalysis.config.StrategyConfigService;
 import com.stock.strategyAnalysis.config.StrategyModeManager;
 import com.stock.strategyAnalysis.config.StrategyStateManager;
 import com.stock.strategyAnalysis.domain.vo.SelectionResult;
-import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
+import com.stock.strategyAnalysis.domain.dto.StrategyConfigDto;
 import com.stock.strategyAnalysis.domain.entity.StrategyMode;
 import com.stock.strategyAnalysis.domain.dto.StrategyStateDto;
 import com.stock.strategyAnalysis.domain.dto.StockRankingDto;
 import com.stock.strategyAnalysis.engine.StockSelector;
+import com.stock.tradingExecutor.service.JobManagementService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -37,6 +38,7 @@ public class StrategyController {
     private final StrategyConfigService configService;
     private final StrategyModeManager modeManager;
     private final StrategyStateManager stateManager;
+    private final JobManagementService jobManagementService;
 
     /**
      * 执行选股
@@ -69,6 +71,24 @@ public class StrategyController {
     }
 
     /**
+     * 设置规则自动切换开关。
+     *
+     * @param enabled 是否启用市场规则自动切换
+     * @return 更新后的策略状态
+     */
+    @PostMapping("/auto-switch")
+    public ResponseDTO<StrategyStateDto> setAutoSwitch(@RequestParam boolean enabled) {
+        log.info("[Strategy] 设置规则自动切换 | enabled={}", enabled);
+        if (enabled) {
+            jobManagementService.resume("strategy-auto-switch");
+        } else {
+            jobManagementService.pause("strategy-auto-switch");
+        }
+        stateManager.setAutoSwitchEnabled(enabled);
+        return ResponseDTO.success(stateManager.getCurrentState());
+    }
+
+    /**
      * 切换策略模式
      */
     @PostMapping("/mode")
@@ -82,30 +102,32 @@ public class StrategyController {
      * 获取策略配置
      */
     @GetMapping("/config")
-    public ResponseDTO<StrategyConfig> getConfig() {
+    public ResponseDTO<StrategyConfigDto> getConfig() {
         log.info("[Strategy] 获取策略配置");
-        return ResponseDTO.success(configService.getCurrentConfig());
+        return ResponseDTO.success(configService.getCurrentConfigDto());
     }
 
     /**
      * 更新策略配置
      */
     @PutMapping("/config")
-    public ResponseDTO<String> updateConfig(@RequestBody StrategyConfig config) {
+    public ResponseDTO<StrategyConfigDto> updateConfig(@RequestBody StrategyConfigDto config) {
         log.info("[Strategy] 更新策略配置");
-        configService.updateConfig(config);
-        return ResponseDTO.success("策略配置已更新");
+        StrategyConfigDto saved = configService.updateConfig(config);
+        stateManager.updateMode(saved.getMode(), "页面保存策略配置");
+        return ResponseDTO.success(saved);
     }
 
     /**
      * 重置策略配置
      */
     @PostMapping("/config/reset")
-    public ResponseDTO<String> resetConfig() {
+    public ResponseDTO<StrategyConfigDto> resetConfig() {
         log.info("[Strategy] 重置策略配置");
-        configService.resetToDefault();
-        return ResponseDTO.success("策略配置已重置为默认值");
+        StrategyConfigDto reset = configService.resetToDefaultDto();
+        stateManager.updateMode(reset.getMode(), "页面恢复默认策略配置");
+        return ResponseDTO.success(reset);
     }
 
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

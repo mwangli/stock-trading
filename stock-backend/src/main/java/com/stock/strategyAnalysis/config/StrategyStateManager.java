@@ -4,6 +4,7 @@ package com.stock.strategyAnalysis.config;
 import com.stock.strategyAnalysis.domain.dto.StrategyStateDto;
 import com.stock.strategyAnalysis.domain.entity.StrategyMode;
 import com.stock.strategyAnalysis.domain.entity.SwitchLog;
+import com.stock.strategyAnalysis.domain.entity.SwitchType;
 import com.stock.strategyAnalysis.persistence.SwitchLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,9 +52,10 @@ public class StrategyStateManager {
                 .enabled(true)
                 .currentMode(StrategyMode.BALANCED)
                 .disabledIndicators(new ArrayList<>())
-                .lastSwitchTime(LocalDateTime.now())
+                .lastSwitchTime(null)
                 .lastSwitchReason("初始化")
                 .configVersion("1.0.0")
+                .autoSwitchEnabled(false)
                 .build();
     }
 
@@ -78,18 +80,64 @@ public class StrategyStateManager {
      * @param reason 切换原因
      */
     public void updateMode(StrategyMode newMode, String reason) {
+        updateMode(newMode, reason, SwitchType.MANUAL, "manual", "user");
+    }
+
+    /**
+     * 更新策略模式并记录完整的切换审计信息。
+     *
+     * @param newMode 新策略模式
+     * @param reason 切换原因
+     * @param switchType 切换类型
+     * @param trigger 触发来源
+     * @param operator 操作主体
+     */
+    public void updateMode(StrategyMode newMode, String reason, SwitchType switchType,
+                           String trigger, String operator) {
         StrategyStateDto state = getCurrentState();
         StrategyMode oldMode = state.getCurrentMode();
-        
+        if (oldMode == newMode) {
+            return;
+        }
         state.setCurrentMode(newMode);
         state.setLastSwitchTime(LocalDateTime.now());
         state.setLastSwitchReason(reason);
+        if (switchType == SwitchType.AUTO) {
+            state.setLastAutoSwitchTime(LocalDateTime.now());
+        }
         stateStore.put(STATE_KEY, state);
         
         // 记录切换日志
-        saveSwitchLog(oldMode, newMode, reason);
+        saveSwitchLog(oldMode, newMode, reason, switchType, trigger, operator);
         
         log.info("策略模式更新: {} -> {}, 原因: {}", oldMode, newMode, reason);
+    }
+
+    /**
+     * 设置规则自动切换开关。
+     *
+     * @param enabled 是否启用
+     */
+    public void setAutoSwitchEnabled(boolean enabled) {
+        StrategyStateDto state = getCurrentState();
+        state.setAutoSwitchEnabled(enabled);
+        stateStore.put(STATE_KEY, state);
+        log.info("策略规则自动切换已{}", enabled ? "启用" : "禁用");
+    }
+
+    /**
+     * 判断规则自动切换是否可执行。
+     *
+     * @param cooldownHours 自动切换冷却小时数
+     * @return 是否允许执行
+     */
+    public boolean canAutoSwitch(long cooldownHours) {
+        StrategyStateDto state = getCurrentState();
+        if (!state.isAutoSwitchEnabled()) {
+            return false;
+        }
+        LocalDateTime lastSwitchTime = state.getLastSwitchTime();
+        return lastSwitchTime == null || lastSwitchTime.plusHours(cooldownHours).isBefore(LocalDateTime.now());
     }
 
     /**
@@ -130,13 +178,17 @@ public class StrategyStateManager {
     /**
      * 保存切换日志
      */
-    private void saveSwitchLog(StrategyMode fromMode, StrategyMode toMode, String reason) {
+    private void saveSwitchLog(StrategyMode fromMode, StrategyMode toMode, String reason,
+                               SwitchType switchType, String trigger, String operator) {
         SwitchLog log = SwitchLog.builder()
                 .logId(java.util.UUID.randomUUID().toString())
                 .switchTime(LocalDateTime.now())
+                .switchType(switchType)
                 .fromMode(fromMode)
                 .toMode(toMode)
                 .reason(reason)
+                .trigger(trigger)
+                .operator(operator)
                 .build();
         
         switchLogRepository.save(log);

@@ -52,6 +52,7 @@ public class JobSchedulerService {
             Map.entry("broker-current-facts-sync", BrokerCurrentFactsSyncQuartzJob.class),
             Map.entry("broker-five-year-history-sync", BrokerFiveYearHistorySyncQuartzJob.class),
             Map.entry("daily-five-year-baseline-backtest", DailyBaselineBacktestQuartzJob.class),
+            Map.entry("strategy-auto-switch", StrategyAutoSwitchQuartzJob.class),
             Map.entry("daily-trade-performance-snapshot", PerformanceReportQuartzJob.class));
 
     private final JobConfigRepository jobConfigRepository;

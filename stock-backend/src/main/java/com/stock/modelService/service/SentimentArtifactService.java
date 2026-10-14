@@ -125,7 +125,7 @@ public class SentimentArtifactService {
     private Path resolveConfiguredRoot() {
         String configuredPath = config.getModelPath();
         Path configured = Paths.get(configuredPath == null || configuredPath.isBlank()
-                ? "models/sentiment" : configuredPath.trim());
+                ? "data/models/sentiment" : configuredPath.trim());
         if (configured.isAbsolute()) {
             return configured.normalize();
         }
