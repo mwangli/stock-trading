@@ -4,11 +4,13 @@ import com.stock.strategyAnalysis.config.StrategyConfigService;
 import com.stock.strategyAnalysis.config.StrategyModeManager;
 import com.stock.strategyAnalysis.config.StrategyStateManager;
 import com.stock.strategyAnalysis.domain.entity.StrategyMode;
+import com.stock.strategyAnalysis.domain.entity.SwitchType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalTime;
+import java.time.LocalDate;
 
 /**
  * 策略切换器
@@ -36,24 +38,46 @@ public class StrategySwitcher {
      * 根据市场状态自动调整
      */
     public void autoSwitchByMarket(double marketChangePercent) {
+        autoSwitchByMarket(marketChangePercent, null);
+    }
+
+    /**
+     * 根据市场涨跌幅和数据日期执行规则自动切换。
+     *
+     * @param marketChangePercent 市场相对前一交易日的涨跌幅，单位为百分比
+     * @param marketDate 市场数据所属交易日
+     */
+    public void autoSwitchByMarket(double marketChangePercent, LocalDate marketDate) {
+        if (!Double.isFinite(marketChangePercent)) {
+            log.warn("市场涨跌幅无效，跳过自动切换: {}", marketChangePercent);
+            return;
+        }
+        if (!stateManager.canAutoSwitch(24)) {
+            log.info("自动切换未执行：开关未启用或仍处于冷却期");
+            return;
+        }
         StrategyMode currentMode = modeManager.getCurrentMode();
         StrategyMode targetMode = currentMode;
-        String reason = "";
+        String reason;
 
         // 大盘跌超5% -> 保守模式
-        if (marketChangePercent < -5) {
+        if (marketChangePercent <= -5) {
             targetMode = StrategyMode.CONSERVATIVE;
             reason = "大盘跌超5%，自动切换到保守模式";
         }
         // 大盘涨幅超3% -> 激进模式
-        else if (marketChangePercent > 3) {
+        else if (marketChangePercent >= 3) {
             targetMode = StrategyMode.AGGRESSIVE;
             reason = "大盘涨幅超3%，自动切换到激进模式";
+        } else {
+            targetMode = StrategyMode.BALANCED;
+            reason = "市场波动回到常态，自动切换到均衡模式";
         }
 
         if (targetMode != currentMode) {
             log.info("自动切换策略: {} -> {}, 原因: {}", currentMode, targetMode, reason);
-            modeManager.switchMode(targetMode);
+            String trigger = marketDate == null ? "market-rule" : "market-rule:" + marketDate;
+            modeManager.switchMode(targetMode, SwitchType.AUTO, trigger, "system-auto");
         }
     }
 

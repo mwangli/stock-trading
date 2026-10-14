@@ -148,7 +148,7 @@ models:
     model-name: sentiment-finbert
     model-version: ${SENTIMENT_MODEL_VERSION:finbert-tone-chinese-e91b1a3a}
     model-source: local
-    model-path: ${SENTIMENT_MODEL_PATH:./models/sentiment}
+    model-path: ${SENTIMENT_MODEL_PATH:./data/models/sentiment}
     pretrained-model: yiyanghkust/finbert-tone-chinese
     download-pretrained: false
     allow-legacy-layout: ${SENTIMENT_ALLOW_LEGACY_LAYOUT:false}

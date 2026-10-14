@@ -52,5 +52,11 @@ public class StrategyStateDto {
      * 当前策略配置版本
      */
     private String configVersion;
+
+    /** 是否允许规则自动切换策略模式。 */
+    private boolean autoSwitchEnabled;
+
+    /** 最近一次自动切换时间。 */
+    private LocalDateTime lastAutoSwitchTime;
 }
 // AI_GENERATE_END --

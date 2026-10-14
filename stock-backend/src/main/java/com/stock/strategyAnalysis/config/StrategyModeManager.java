@@ -2,6 +2,7 @@ package com.stock.strategyAnalysis.config;
 
 import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
 import com.stock.strategyAnalysis.domain.entity.StrategyMode;
+import com.stock.strategyAnalysis.domain.entity.SwitchType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,9 +23,23 @@ public class StrategyModeManager {
      * 切换到指定模式
      */
     public void switchMode(StrategyMode mode) {
+        switchMode(mode, SwitchType.MANUAL, "manual", "user");
+    }
+
+    /**
+     * 按指定来源切换策略模式。
+     *
+     * @param mode 目标模式
+     * @param switchType 切换类型
+     * @param trigger 触发来源
+     * @param operator 操作主体
+     */
+    public void switchMode(StrategyMode mode, SwitchType switchType, String trigger, String operator) {
+        String previousVersion = configService.getCurrentConfig().getVersion();
         StrategyConfig config = getModeConfig(mode);
+        config.setVersion(nextVersion(previousVersion));
         configService.updateConfig(config);
-        stateManager.updateMode(mode, "切换到" + mode.getName() + "模式");
+        stateManager.updateMode(mode, "切换到" + mode.getName() + "模式", switchType, trigger, operator);
         
         log.info("策略模式切换: {}", mode.getName());
     }
@@ -111,5 +126,16 @@ public class StrategyModeManager {
      */
     public StrategyMode getCurrentMode() {
         return stateManager.getCurrentState().getCurrentMode();
+    }
+
+    private String nextVersion(String version) {
+        if (version == null || version.isBlank()) {
+            return "1";
+        }
+        try {
+            return String.valueOf(Long.parseLong(version) + 1);
+        } catch (NumberFormatException exception) {
+            return version + "-switch";
+        }
     }
 }

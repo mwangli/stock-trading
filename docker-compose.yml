@@ -67,7 +67,7 @@ services:
       ZXBROKER_INTACT_TO_SERVER: ${ZXBROKER_INTACT_TO_SERVER:-}
       JAVA_TOOL_OPTIONS: -Xms256m -Xmx720m -XX:MaxDirectMemorySize=192m -Duser.timezone=Asia/Shanghai
     volumes:
-      - ${SENTIMENT_ARTIFACT_HOST_DIR:-./deploy/models/sentiment}:/models/sentiment:ro
+      - ${SENTIMENT_ARTIFACT_HOST_DIR:-./stock-backend/data/models/sentiment}:/models/sentiment:ro
       - runtime-tmp:/app/.tmp
     depends_on:
       stock-mysql:

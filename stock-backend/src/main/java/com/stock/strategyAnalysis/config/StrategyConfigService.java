@@ -1,7 +1,9 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.strategyAnalysis.config;
 
 import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
+import com.stock.strategyAnalysis.domain.dto.StrategyConfigDto;
+import com.stock.strategyAnalysis.domain.entity.StrategyMode;
 import com.stock.strategyAnalysis.persistence.StrategyConfigRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +39,15 @@ public class StrategyConfigService {
                     log.info("数据库中没有启用的策略配置，使用默认配置");
                     return StrategyConfig.defaultConfig();
                 });
+    }
+
+    /**
+     * 获取当前策略配置 DTO。
+     *
+     * @return 当前策略配置
+     */
+    public StrategyConfigDto getCurrentConfigDto() {
+        return toDto(getCurrentConfig());
     }
 
     /**
@@ -80,11 +91,45 @@ public class StrategyConfigService {
     }
 
     /**
+     * 校验并保存页面提交的策略配置。
+     *
+     * @param dto 页面提交的策略配置
+     * @return 持久化后的策略配置
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public StrategyConfigDto updateConfig(StrategyConfigDto dto) {
+        validate(dto);
+        StrategyConfig config = dto.getId() == null
+                ? getCurrentConfig()
+                : strategyConfigRepository.findById(dto.getId()).orElseGet(StrategyConfig::defaultConfig);
+        String previousVersion = config.getVersion();
+        applyDto(dto, config);
+        config.setVersion(nextVersion(previousVersion));
+        updateConfig(config);
+        return toDto(strategyConfigRepository.findFirstByEnabledTrueOrderByUpdateTimeDesc().orElse(config));
+    }
+
+    /**
      * 重置为默认策略配置。
      */
     public void resetToDefault() {
-        updateConfig(StrategyConfig.defaultConfig());
+        StrategyConfig current = getCurrentConfig();
+        StrategyConfig defaults = StrategyConfig.defaultConfig();
+        defaults.setId(current.getId());
+        defaults.setConfigId(current.getConfigId());
+        defaults.setVersion(nextVersion(current.getVersion()));
+        updateConfig(defaults);
         log.info("策略配置已重置为默认值");
+    }
+
+    /**
+     * 重置并返回默认策略配置。
+     *
+     * @return 默认策略配置
+     */
+    public StrategyConfigDto resetToDefaultDto() {
+        resetToDefault();
+        return getCurrentConfigDto();
     }
 
     /**
@@ -104,6 +149,139 @@ public class StrategyConfigService {
      */
     public Optional<StrategyConfig> getConfigByVersion(String version) {
         return strategyConfigRepository.findByVersion(version);
+    }
+
+    private void validate(StrategyConfigDto dto) {
+        if (dto == null || dto.getMode() == null) {
+            throw new IllegalArgumentException("策略模式不能为空");
+        }
+        requireFinite("LSTM 权重", dto.getLstmWeight());
+        requireFinite("情感权重", dto.getSentimentWeight());
+        requireFinite("最低综合得分", dto.getMinScore());
+        requireFinite("移动止损权重", dto.getTrailingStopWeight());
+        requireFinite("移动止损容忍度", dto.getTrailingStopTolerance());
+        requireFinite("RSI 权重", dto.getRsiWeight());
+        requireFinite("RSI 超买阈值", dto.getRsiOverboughtThreshold());
+        requireFinite("成交量权重", dto.getVolumeWeight());
+        requireFinite("成交量萎缩阈值", dto.getVolumeShrinkThreshold());
+        requireFinite("布林带权重", dto.getBollingerWeight());
+        requireFinite("布林带突破阈值", dto.getBollingerBreakoutThreshold());
+        if (dto.getLstmWeight() < 0 || dto.getLstmWeight() > 1
+                || dto.getSentimentWeight() < 0 || dto.getSentimentWeight() > 1
+                || Math.abs(dto.getLstmWeight() + dto.getSentimentWeight() - 1D) > 0.0001D) {
+            throw new IllegalArgumentException("LSTM 与情感权重必须在 0 至 1 之间且合计为 1");
+        }
+        if (dto.getTopN() < 1 || dto.getTopN() > 100) {
+            throw new IllegalArgumentException("选股数量必须在 1 至 100 之间");
+        }
+        if (dto.getMinScore() < 0 || dto.getMinScore() > 1) {
+            throw new IllegalArgumentException("最低综合得分必须在 0 至 1 之间");
+        }
+        if (dto.getHighReturnThreshold() < dto.getNormalReturnThreshold()
+                || dto.getNormalReturnThreshold() < dto.getLowReturnThreshold()
+                || dto.getLowReturnThreshold() < dto.getLossReturnThreshold()) {
+            throw new IllegalArgumentException("收益退出阈值必须按高收益、正常、低收益、亏损顺序递减");
+        }
+        validateRange("移动止损权重", dto.getTrailingStopWeight());
+        validateRange("RSI 权重", dto.getRsiWeight());
+        validateRange("成交量权重", dto.getVolumeWeight());
+        validateRange("布林带权重", dto.getBollingerWeight());
+        validateRange("移动止损容忍度", dto.getTrailingStopTolerance());
+        validateRange("成交量萎缩阈值", dto.getVolumeShrinkThreshold());
+        if (dto.getRsiOverboughtThreshold() < 50 || dto.getRsiOverboughtThreshold() > 100) {
+            throw new IllegalArgumentException("RSI 超买阈值必须在 50 至 100 之间");
+        }
+        if (dto.getBollingerBreakoutThreshold() < 0 || dto.getBollingerBreakoutThreshold() > 2) {
+            throw new IllegalArgumentException("布林带突破阈值必须在 0 至 2 之间");
+        }
+    }
+
+    private void requireFinite(String name, double value) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException(name + "必须是有限数值");
+        }
+    }
+
+    private void validateRange(String name, double value) {
+        if (value < 0 || value > 1) {
+            throw new IllegalArgumentException(name + "必须在 0 至 1 之间");
+        }
+    }
+
+    private String nextVersion(String version) {
+        if (version == null || version.isBlank()) {
+            return "1";
+        }
+        try {
+            return String.valueOf(Long.parseLong(version) + 1);
+        } catch (NumberFormatException exception) {
+            return version + "-updated";
+        }
+    }
+
+    private StrategyConfigDto toDto(StrategyConfig config) {
+        java.util.Map<String, Boolean> indicators = config.getIndicatorEnabled();
+        return StrategyConfigDto.builder()
+                .id(config.getId())
+                .configId(config.getConfigId())
+                .version(config.getVersion())
+                .mode(config.getMode())
+                .lstmWeight(config.getLstmWeight())
+                .sentimentWeight(config.getSentimentWeight())
+                .topN(config.getTopN())
+                .minScore(config.getMinScore())
+                .trailingStopWeight(config.getTrailingStopWeight())
+                .trailingStopTolerance(config.getTrailingStopTolerance())
+                .rsiWeight(config.getRsiWeight())
+                .rsiOverboughtThreshold(config.getRsiOverboughtThreshold())
+                .volumeWeight(config.getVolumeWeight())
+                .volumeShrinkThreshold(config.getVolumeShrinkThreshold())
+                .bollingerWeight(config.getBollingerWeight())
+                .bollingerBreakoutThreshold(config.getBollingerBreakoutThreshold())
+                .highReturnThreshold(config.getHighReturnThreshold())
+                .normalReturnThreshold(config.getNormalReturnThreshold())
+                .lowReturnThreshold(config.getLowReturnThreshold())
+                .lossReturnThreshold(config.getLossReturnThreshold())
+                .trailingStopEnabled(isEnabled(indicators, "trailingStop"))
+                .rsiEnabled(isEnabled(indicators, "rsi"))
+                .volumeEnabled(isEnabled(indicators, "volume"))
+                .bollingerEnabled(isEnabled(indicators, "bollinger"))
+                .enabled(config.isEnabled())
+                .updateTime(config.getUpdateTime() == null ? null : config.getUpdateTime().toString())
+                .build();
+    }
+
+    private boolean isEnabled(java.util.Map<String, Boolean> indicators, String key) {
+        return indicators == null || indicators.getOrDefault(key, true);
+    }
+
+    private void applyDto(StrategyConfigDto dto, StrategyConfig config) {
+        config.setConfigId(dto.getConfigId());
+        config.setVersion(dto.getVersion());
+        config.setMode(dto.getMode() == null ? StrategyMode.BALANCED : dto.getMode());
+        config.setLstmWeight(dto.getLstmWeight());
+        config.setSentimentWeight(dto.getSentimentWeight());
+        config.setTopN(dto.getTopN());
+        config.setMinScore(dto.getMinScore());
+        config.setTrailingStopWeight(dto.getTrailingStopWeight());
+        config.setTrailingStopTolerance(dto.getTrailingStopTolerance());
+        config.setRsiWeight(dto.getRsiWeight());
+        config.setRsiOverboughtThreshold(dto.getRsiOverboughtThreshold());
+        config.setVolumeWeight(dto.getVolumeWeight());
+        config.setVolumeShrinkThreshold(dto.getVolumeShrinkThreshold());
+        config.setBollingerWeight(dto.getBollingerWeight());
+        config.setBollingerBreakoutThreshold(dto.getBollingerBreakoutThreshold());
+        config.setHighReturnThreshold(dto.getHighReturnThreshold());
+        config.setNormalReturnThreshold(dto.getNormalReturnThreshold());
+        config.setLowReturnThreshold(dto.getLowReturnThreshold());
+        config.setLossReturnThreshold(dto.getLossReturnThreshold());
+        java.util.Map<String, Boolean> indicators = new java.util.HashMap<>();
+        indicators.put("trailingStop", dto.isTrailingStopEnabled());
+        indicators.put("rsi", dto.isRsiEnabled());
+        indicators.put("volume", dto.isVolumeEnabled());
+        indicators.put("bollinger", dto.isBollingerEnabled());
+        config.setIndicatorEnabled(indicators);
+        config.setEnabled(dto.isEnabled());
     }
 
     private void copyTo(StrategyConfig from, StrategyConfig to) {
@@ -131,4 +309,4 @@ public class StrategyConfigService {
         to.setUpdateTime(from.getUpdateTime());
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

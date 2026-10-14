@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ----------
 package com.stock.strategyAnalysis.engine;
 
 import com.stock.dataCollector.domain.entity.StockNews;
@@ -64,6 +64,10 @@ public class StockSelector {
 
         try {
             StrategyConfig config = configService.getCurrentConfig();
+            if (!config.isEnabled()) {
+                log.info("策略总开关已关闭，跳过本次选股");
+                return SelectionResult.builder().success(false).errorMessage("策略总开关已关闭").build();
+            }
             List<String> stockCodes = getTradableStockCodes();
 
             if (stockCodes.isEmpty()) {
@@ -290,4 +294,4 @@ public class StockSelector {
                 .build();
     }
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ----------

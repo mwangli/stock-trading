@@ -1,8 +1,9 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAnalysis.engine;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.stock.strategyAnalysis.config.StrategyConfigService;
 import org.springframework.stereotype.Component;
 
 /**
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Component;
 public class StrategyScheduler {
 
     private final StockSelector stockSelector;
+    private final StrategyConfigService configService;
 
     /**
      * 执行 LSTM 与情感分析综合选股任务。
@@ -25,7 +27,7 @@ public class StrategyScheduler {
     public void runStockSelection() {
         log.info("========== 开始执行选股任务 ==========");
         try {
-            stockSelector.selectTopN(10);
+            stockSelector.selectTopN(configService.getCurrentConfig().getTopN());
             log.info("========== 选股任务完成 ==========");
         } catch (Exception e) {
             log.error("选股任务执行失败", e);
@@ -33,4 +35,4 @@ public class StrategyScheduler {
     }
 
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----
