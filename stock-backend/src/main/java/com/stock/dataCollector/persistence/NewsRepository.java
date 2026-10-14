@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.dataCollector.persistence;
 
 import com.stock.dataCollector.domain.entity.StockNews;
@@ -40,6 +40,16 @@ public interface NewsRepository extends MongoRepository<StockNews, String> {
             String stockCode, LocalDateTime publishTime);
 
     /**
+     * 批量查询多个股票在指定时间之后的新闻和公告。
+     *
+     * @param stockCodes 股票代码集合
+     * @param publishTime 最早发布时间
+     * @return 按发布时间倒序排列的新闻和公告
+     */
+    List<StockNews> findByStockCodeInAndPublishTimeAfterOrderByPublishTimeDesc(
+            List<String> stockCodes, LocalDateTime publishTime);
+
+    /**
      * 统计指定股票的新闻+公告总数，用于采集前判断是否可跳过
      */
     long countByStockCode(String stockCode);
@@ -69,4 +79,4 @@ public interface NewsRepository extends MongoRepository<StockNews, String> {
     @Query(value = "{ 'stockCode' : ?0, 'externalId' : { $in : ?1 } }", fields = "{ 'externalId' : 1, '_id' : 0 }")
     List<StockNews> findExternalIdsByStockCodeAndExternalIdIn(String stockCode, List<String> externalIds);
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

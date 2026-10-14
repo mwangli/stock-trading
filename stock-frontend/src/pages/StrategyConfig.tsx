@@ -1,9 +1,9 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import axios from 'axios';
 import { Alert, Button, Card, Col, Form, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Typography, message } from 'antd';
 import { PlayCircleOutlined, ReloadOutlined, RollbackOutlined, SaveOutlined, SettingOutlined } from '@ant-design/icons';
 import request from '../utils/request';
+import { getApiErrorMessage, readApiData, type ApiResponse } from '../utils/api';
 import { usePageHeader } from '../layouts/PageHeaderContext';
 
 const { Text } = Typography;
@@ -60,12 +60,6 @@ interface Ranking {
   reason: string;
 }
 
-interface ApiResponse<T> {
-  success: boolean;
-  message?: string;
-  data: T;
-}
-
 const defaultValues: StrategyConfigValues = {
   mode: 'BALANCED', lstmWeight: 0.5, sentimentWeight: 0.5, topN: 10, minScore: 0.5,
   trailingStopWeight: 0.25, trailingStopTolerance: 0.02, rsiWeight: 0.25, rsiOverboughtThreshold: 70,
@@ -74,15 +68,34 @@ const defaultValues: StrategyConfigValues = {
   trailingStopEnabled: true, rsiEnabled: true, volumeEnabled: true, bollingerEnabled: true, enabled: true,
 };
 
-const getErrorMessage = (cause: unknown, fallback: string) => {
-  if (axios.isAxiosError<ApiResponse<unknown>>(cause)) return cause.response?.data?.message || cause.message || fallback;
-  return cause instanceof Error ? cause.message : fallback;
-};
+interface StrategyModeEvaluation {
+  mode: StrategyMode;
+  modeName: string;
+  status: string;
+  sourceType: string;
+  windowStart?: string;
+  windowEnd?: string;
+  validationStart?: string;
+  validationEnd?: string;
+  sampleCount: number;
+  batchCount: number;
+  netReturn?: number;
+  maxDrawdown?: number;
+  winRate?: number;
+  profitLossRatio?: number;
+  stabilityScore?: number;
+  outOfSample: boolean;
+  dataComplete: boolean;
+  sampleSufficient: boolean;
+  conclusion: string;
+}
 
-const readData = <T,>(response: ApiResponse<T>, fallback: string) => {
-  if (!response.success) throw new Error(response.message || fallback);
-  return response.data;
-};
+interface StrategyEvaluation {
+  evaluationRunId?: string;
+  calculatedAt?: string;
+  modes: StrategyModeEvaluation[];
+  summary: string;
+}
 
 const formatDate = (value?: string) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '未记录';
 const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
@@ -92,6 +105,7 @@ const StrategyConfig: React.FC = () => {
   const [config, setConfig] = useState<StrategyConfigValues | null>(null);
   const [state, setState] = useState<StrategyState | null>(null);
   const [rankings, setRankings] = useState<Ranking[]>([]);
+  const [evaluation, setEvaluation] = useState<StrategyEvaluation | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
@@ -99,18 +113,20 @@ const StrategyConfig: React.FC = () => {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [configResponse, stateResponse, rankingsResponse] = await Promise.all([
+      const [configResponse, stateResponse, rankingsResponse, evaluationResponse] = await Promise.all([
         request.get('/strategy/config') as Promise<ApiResponse<StrategyConfigValues>>,
         request.get('/strategy/state') as Promise<ApiResponse<StrategyState>>,
         request.get('/strategy/rankings') as Promise<ApiResponse<Ranking[]>>,
+        request.get('/strategy/evaluation/latest') as Promise<ApiResponse<StrategyEvaluation>>,
       ]);
-      const nextConfig = readData(configResponse, '读取策略配置失败') || defaultValues;
+      const nextConfig = readApiData(configResponse, '读取策略配置失败') || defaultValues;
       form.setFieldsValue(nextConfig);
       setConfig(nextConfig);
-      setState(readData(stateResponse, '读取策略状态失败'));
-      setRankings(readData(rankingsResponse, '读取选股排名失败') || []);
+      setState(readApiData(stateResponse, '读取策略状态失败'));
+      setRankings(readApiData(rankingsResponse, '读取选股排名失败') || []);
+      setEvaluation(readApiData(evaluationResponse, '读取策略评估失败'));
     } catch (cause) {
-      message.error(getErrorMessage(cause, '读取策略配置失败'));
+      message.error(getApiErrorMessage(cause, '读取策略配置失败'));
       form.setFieldsValue(defaultValues);
     } finally {
       setLoading(false);
@@ -123,13 +139,13 @@ const StrategyConfig: React.FC = () => {
     setSaving(true);
     try {
       const response = await request.put('/strategy/config', values) as ApiResponse<StrategyConfigValues>;
-      const saved = readData(response, '保存策略配置失败');
+      const saved = readApiData(response, '保存策略配置失败');
       setConfig(saved);
       form.setFieldsValue(saved);
       message.success(`策略配置已保存，当前版本 ${saved.version || '未标记'}`);
       await loadData();
     } catch (cause) {
-      message.error(getErrorMessage(cause, '保存策略配置失败'));
+      message.error(getApiErrorMessage(cause, '保存策略配置失败'));
     } finally {
       setSaving(false);
     }
@@ -138,13 +154,13 @@ const StrategyConfig: React.FC = () => {
   const resetConfig = async () => {
     try {
       const response = await request.post('/strategy/config/reset') as ApiResponse<StrategyConfigValues>;
-      const reset = readData(response, '恢复默认策略失败');
+      const reset = readApiData(response, '恢复默认策略失败');
       form.setFieldsValue(reset);
       setConfig(reset);
       message.success('策略配置已恢复默认值');
       await loadData();
     } catch (cause) {
-      message.error(getErrorMessage(cause, '恢复默认策略失败'));
+      message.error(getApiErrorMessage(cause, '恢复默认策略失败'));
     }
   };
 
@@ -153,11 +169,11 @@ const StrategyConfig: React.FC = () => {
     setRunning(true);
     try {
       const response = await request.post(`/strategy/select?n=${topN}`) as ApiResponse<{ success: boolean; topN: Ranking[] }> ;
-      const result = readData(response, '执行选股失败');
+      const result = readApiData(response, '执行选股失败');
       message.success(`选股完成，生成 ${result.topN?.length || 0} 条候选`);
       await loadData();
     } catch (cause) {
-      message.error(getErrorMessage(cause, '执行选股失败'));
+      message.error(getApiErrorMessage(cause, '执行选股失败'));
     } finally {
       setRunning(false);
     }
@@ -166,10 +182,10 @@ const StrategyConfig: React.FC = () => {
   const toggleAutoSwitch = async (enabled: boolean) => {
     try {
       const response = await request.post(`/strategy/auto-switch?enabled=${enabled}`) as ApiResponse<StrategyState>;
-      setState(readData(response, '更新自动切换开关失败'));
+      setState(readApiData(response, '更新自动切换开关失败'));
       message.success(enabled ? '规则自动切换已开启' : '规则自动切换已关闭');
     } catch (cause) {
-      message.error(getErrorMessage(cause, '更新自动切换开关失败'));
+      message.error(getApiErrorMessage(cause, '更新自动切换开关失败'));
     }
   };
 
@@ -184,6 +200,29 @@ const StrategyConfig: React.FC = () => {
       <Col xs={24} md={6}><Card className="surface-card compact-card"><Statistic title="当前候选" value={rankings.length} suffix={config ? `/ ${config.topN}` : ''} /><Text type="secondary">最近更新时间：{formatDate(config?.updateTime)}</Text></Card></Col>
       <Col xs={24} md={4}><Card className="surface-card compact-card"><Text strong>自动切换</Text><div className="mt-3"><Switch checked={state?.autoSwitchEnabled ?? false} onChange={(checked) => void toggleAutoSwitch(checked)} checkedChildren="开" unCheckedChildren="关" /></div><Text type="secondary">最近：{formatDate(state?.lastAutoSwitchTime)}</Text></Card></Col></Row>
     <Alert className="mb-4" type="info" showIcon message="配置边界" description="参数表单只影响策略评分和候选生成；自动切换开关仅控制策略自动切换任务，不修改系统采集、模型训练、券商凭据或真实委托写入开关。" />
+    <Card className="surface-card" title="策略模式样本外评估" extra={<Text type="secondary">{formatDate(evaluation?.calculatedAt)}</Text>}>
+      <Alert className="mb-4" type={evaluation?.modes.some((item) => item.status === 'AVAILABLE') ? 'success' : 'warning'} showIcon message={evaluation?.summary || '尚未执行策略评估'} />
+      <Table<StrategyModeEvaluation>
+        rowKey="mode"
+        loading={loading}
+        dataSource={evaluation?.modes || []}
+        pagination={false}
+        scroll={{ x: 1180 }}
+        columns={[
+          { title: '模式', dataIndex: 'modeName', width: 110 },
+          { title: '结论状态', dataIndex: 'status', width: 130, render: (value: string) => <Tag color={value === 'AVAILABLE' ? 'green' : value === 'NOT_EVALUATED' ? 'default' : 'orange'}>{value === 'AVAILABLE' ? '可评估' : value === 'NOT_EVALUATED' ? '未评估' : '样本不足'}</Tag> },
+          { title: '批次/候选', width: 120, render: (_, row) => row.batchCount + '/' + row.sampleCount },
+          { title: '净收益', dataIndex: 'netReturn', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : percent(value) },
+          { title: '最大回撤', dataIndex: 'maxDrawdown', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : percent(value) },
+          { title: '胜率', dataIndex: 'winRate', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : percent(value) },
+          { title: '盈亏比', dataIndex: 'profitLossRatio', width: 90, render: (value?: number) => value === undefined || value === null ? '-' : value.toFixed(2) },
+          { title: '稳定性', dataIndex: 'stabilityScore', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : percent(value) },
+          { title: '数据门禁', width: 150, render: (_, row) => <Space size={4}><Tag color={row.dataComplete ? 'green' : 'orange'}>{row.dataComplete ? '数据完整' : '数据不完整'}</Tag><Tag color={row.sampleSufficient ? 'green' : 'orange'}>{row.sampleSufficient ? '样本充分' : '样本不足'}</Tag></Space> },
+          { title: '结论', dataIndex: 'conclusion', width: 360 },
+        ]}
+        locale={{ emptyText: '暂无策略评估结果' }}
+      />
+    </Card>
     <Form<StrategyConfigValues> form={form} layout="vertical" initialValues={defaultValues} onFinish={(values) => void saveConfig(values)}>
       <Card className="surface-card" title="模式与选股参数"><Row gutter={[24, 8]}>
         <Col xs={24} md={8}><Form.Item label="策略模式" name="mode"><Select options={[{ value: 'CONSERVATIVE', label: '保守模式' }, { value: 'BALANCED', label: '均衡模式' }, { value: 'AGGRESSIVE', label: '激进模式' }]} /></Form.Item></Col>
@@ -207,4 +246,4 @@ const StrategyConfig: React.FC = () => {
 };
 
 export default StrategyConfig;
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

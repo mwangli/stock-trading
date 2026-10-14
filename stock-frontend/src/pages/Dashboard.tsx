@@ -1,18 +1,13 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START -------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import request from '../utils/request';
+import type { ApiResponse } from '../utils/api';
 import { formatDateTime } from '../utils/dateTime';
 import { usePageHeader } from '../layouts/PageHeaderContext';
 
 const { Text } = Typography;
-
-interface ApiResponse<T> {
-  success: boolean;
-  message?: string;
-  data: T | null;
-}
 
 interface BrokerAccount {
   totalAssets: number;
@@ -236,4 +231,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAnalysis.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -10,7 +10,9 @@ import com.stock.strategyAnalysis.domain.dto.StrategyConfigDto;
 import com.stock.strategyAnalysis.domain.entity.StrategyMode;
 import com.stock.strategyAnalysis.domain.dto.StrategyStateDto;
 import com.stock.strategyAnalysis.domain.dto.StockRankingDto;
+import com.stock.strategyAnalysis.domain.dto.StrategyEvaluationDto;
 import com.stock.strategyAnalysis.engine.StockSelector;
+import com.stock.strategyAnalysis.service.StrategyEvaluationService;
 import com.stock.tradingExecutor.service.JobManagementService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +41,7 @@ public class StrategyController {
     private final StrategyModeManager modeManager;
     private final StrategyStateManager stateManager;
     private final JobManagementService jobManagementService;
+    private final StrategyEvaluationService evaluationService;
 
     /**
      * 执行选股
@@ -59,6 +62,17 @@ public class StrategyController {
     public ResponseDTO<List<StockRankingDto>> getRankings() {
         log.info("[Strategy] 获取选股排行榜");
         return ResponseDTO.success(stockSelector.getAllRankings());
+    }
+
+    /**
+     * 获取最近一次三模式策略评估。
+     *
+     * @return 样本量、数据完整性和样本外指标
+     */
+    @GetMapping("/evaluation/latest")
+    public ResponseDTO<StrategyEvaluationDto> getLatestEvaluation() {
+        log.info("[Strategy] 获取最近策略模式评估");
+        return ResponseDTO.success(evaluationService.getLatest());
     }
 
     /**
@@ -130,4 +144,4 @@ public class StrategyController {
     }
 
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

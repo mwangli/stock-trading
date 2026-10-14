@@ -1,24 +1,28 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START -----
 package com.stock.strategyAnalysis.config;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.strategyAnalysis.domain.dto.StrategyStateDto;
 import com.stock.strategyAnalysis.domain.entity.StrategyMode;
+import com.stock.strategyAnalysis.domain.entity.StrategyRuntimeState;
 import com.stock.strategyAnalysis.domain.entity.SwitchLog;
 import com.stock.strategyAnalysis.domain.entity.SwitchType;
+import com.stock.strategyAnalysis.persistence.StrategyRuntimeStateRepository;
 import com.stock.strategyAnalysis.persistence.SwitchLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 /**
  * 策略状态管理器。
- * 管理单实例运行时的策略开关、策略模式和指标启停状态。
+ * 使用 MySQL 保存策略开关、模式和指标状态，保证重启恢复与多实例一致性。
  *
  * @author mwangli
  * @since 2026-09-25
@@ -29,47 +33,36 @@ import java.util.concurrent.ConcurrentMap;
 public class StrategyStateManager {
 
     private static final String STATE_KEY = "strategy:state";
-    /**
-     * 使用本地内存保存单实例运行所需的策略状态
-     */
-    private final ConcurrentMap<String, Object> stateStore = new ConcurrentHashMap<>();
+    private static final TypeReference<List<String>> STRING_LIST_TYPE = new TypeReference<>() { };
 
+    private final StrategyRuntimeStateRepository stateRepository;
     private final SwitchLogRepository switchLogRepository;
+    private final StrategyConfigService configService;
+    private final ObjectMapper objectMapper;
 
     /**
      * 获取当前策略状态。
      *
-     * @return 当前策略状态；未初始化时返回默认状态
+     * @return 数据库中的当前策略状态
      */
     public StrategyStateDto getCurrentState() {
-        Object cached = stateStore.get(STATE_KEY);
-        if (cached instanceof StrategyStateDto) {
-            return (StrategyStateDto) cached;
-        }
-        
-        // 返回默认状态
-        return StrategyStateDto.builder()
-                .enabled(true)
-                .currentMode(StrategyMode.BALANCED)
-                .disabledIndicators(new ArrayList<>())
-                .lastSwitchTime(null)
-                .lastSwitchReason("初始化")
-                .configVersion("1.0.0")
-                .autoSwitchEnabled(false)
-                .build();
+        StrategyRuntimeState state = stateRepository.findById(STATE_KEY)
+                .orElseGet(this::createDefaultState);
+        return toDto(state);
     }
 
     /**
-     * 设置整体策略是否启用（选股/策略总开关）
+     * 设置整体策略是否启用。
      *
      * @param enabled true 启用，false 禁用
      */
+    @Transactional(rollbackFor = Exception.class)
     public void setEnabled(boolean enabled) {
-        StrategyStateDto state = getCurrentState();
+        StrategyRuntimeState state = loadForUpdate();
         state.setEnabled(enabled);
         state.setLastSwitchTime(LocalDateTime.now());
         state.setLastSwitchReason(enabled ? "用户启用" : "用户禁用");
-        stateStore.put(STATE_KEY, state);
+        saveState(state);
         log.info("策略总开关已{}", enabled ? "启用" : "禁用");
     }
 
@@ -92,24 +85,24 @@ public class StrategyStateManager {
      * @param trigger 触发来源
      * @param operator 操作主体
      */
+    @Transactional(rollbackFor = Exception.class)
     public void updateMode(StrategyMode newMode, String reason, SwitchType switchType,
                            String trigger, String operator) {
-        StrategyStateDto state = getCurrentState();
-        StrategyMode oldMode = state.getCurrentMode();
+        StrategyRuntimeState state = loadForUpdate();
+        StrategyMode oldMode = parseMode(state.getCurrentMode());
         if (oldMode == newMode) {
+            saveState(state);
             return;
         }
-        state.setCurrentMode(newMode);
-        state.setLastSwitchTime(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        state.setCurrentMode(newMode.name());
+        state.setLastSwitchTime(now);
         state.setLastSwitchReason(reason);
         if (switchType == SwitchType.AUTO) {
-            state.setLastAutoSwitchTime(LocalDateTime.now());
+            state.setLastAutoSwitchTime(now);
         }
-        stateStore.put(STATE_KEY, state);
-        
-        // 记录切换日志
+        saveState(state);
         saveSwitchLog(oldMode, newMode, reason, switchType, trigger, operator);
-        
         log.info("策略模式更新: {} -> {}, 原因: {}", oldMode, newMode, reason);
     }
 
@@ -118,10 +111,11 @@ public class StrategyStateManager {
      *
      * @param enabled 是否启用
      */
+    @Transactional(rollbackFor = Exception.class)
     public void setAutoSwitchEnabled(boolean enabled) {
-        StrategyStateDto state = getCurrentState();
+        StrategyRuntimeState state = loadForUpdate();
         state.setAutoSwitchEnabled(enabled);
-        stateStore.put(STATE_KEY, state);
+        saveState(state);
         log.info("策略规则自动切换已{}", enabled ? "启用" : "禁用");
     }
 
@@ -145,16 +139,14 @@ public class StrategyStateManager {
      *
      * @param indicator 指标标识
      */
+    @Transactional(rollbackFor = Exception.class)
     public void disableIndicator(String indicator) {
-        StrategyStateDto state = getCurrentState();
-        List<String> disabled = state.getDisabledIndicators();
-        if (disabled == null) {
-            disabled = new ArrayList<>();
-        }
+        StrategyRuntimeState state = loadForUpdate();
+        List<String> disabled = readDisabledIndicators(state);
         if (!disabled.contains(indicator)) {
             disabled.add(indicator);
-            state.setDisabledIndicators(disabled);
-            stateStore.put(STATE_KEY, state);
+            state.setDisabledIndicatorsJson(writeDisabledIndicators(disabled));
+            saveState(state);
             log.info("指标 {} 已禁用", indicator);
         }
     }
@@ -164,23 +156,90 @@ public class StrategyStateManager {
      *
      * @param indicator 指标标识
      */
+    @Transactional(rollbackFor = Exception.class)
     public void enableIndicator(String indicator) {
-        StrategyStateDto state = getCurrentState();
-        List<String> disabled = state.getDisabledIndicators();
-        if (disabled != null && disabled.contains(indicator)) {
-            disabled.remove(indicator);
-            state.setDisabledIndicators(disabled);
-            stateStore.put(STATE_KEY, state);
+        StrategyRuntimeState state = loadForUpdate();
+        List<String> disabled = readDisabledIndicators(state);
+        if (disabled.remove(indicator)) {
+            state.setDisabledIndicatorsJson(writeDisabledIndicators(disabled));
+            saveState(state);
             log.info("指标 {} 已启用", indicator);
         }
     }
 
-    /**
-     * 保存切换日志
-     */
+    private StrategyRuntimeState loadForUpdate() {
+        return stateRepository.findForUpdate(STATE_KEY).orElseGet(this::createDefaultState);
+    }
+
+    private StrategyRuntimeState createDefaultState() {
+        StrategyRuntimeState state = StrategyRuntimeState.builder()
+                .stateKey(STATE_KEY)
+                .enabled(true)
+                .currentMode(StrategyMode.BALANCED.name())
+                .disabledIndicatorsJson("[]")
+                .lastSwitchReason("初始化")
+                .configVersion(currentConfigVersion())
+                .autoSwitchEnabled(false)
+                .updatedAt(LocalDateTime.now())
+                .build();
+        return stateRepository.save(state);
+    }
+
+    private void saveState(StrategyRuntimeState state) {
+        state.setConfigVersion(currentConfigVersion());
+        state.setUpdatedAt(LocalDateTime.now());
+        stateRepository.save(state);
+    }
+
+    private String currentConfigVersion() {
+        String version = configService.getCurrentConfig().getVersion();
+        return version == null || version.isBlank() ? "1" : version;
+    }
+
+    private StrategyStateDto toDto(StrategyRuntimeState state) {
+        return StrategyStateDto.builder()
+                .enabled(state.isEnabled())
+                .currentMode(parseMode(state.getCurrentMode()))
+                .disabledIndicators(readDisabledIndicators(state))
+                .lastSwitchTime(state.getLastSwitchTime())
+                .lastSwitchReason(state.getLastSwitchReason())
+                .configVersion(state.getConfigVersion())
+                .autoSwitchEnabled(state.isAutoSwitchEnabled())
+                .lastAutoSwitchTime(state.getLastAutoSwitchTime())
+                .build();
+    }
+
+    private StrategyMode parseMode(String mode) {
+        try {
+            return StrategyMode.valueOf(mode);
+        } catch (IllegalArgumentException | NullPointerException exception) {
+            log.warn("策略运行状态中的模式无效，按 BALANCED 处理: {}", mode);
+            return StrategyMode.BALANCED;
+        }
+    }
+
+    private List<String> readDisabledIndicators(StrategyRuntimeState state) {
+        try {
+            String json = state.getDisabledIndicatorsJson();
+            return json == null || json.isBlank()
+                    ? new ArrayList<>()
+                    : new ArrayList<>(objectMapper.readValue(json, STRING_LIST_TYPE));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("策略禁用指标状态无法解析", exception);
+        }
+    }
+
+    private String writeDisabledIndicators(List<String> indicators) {
+        try {
+            return objectMapper.writeValueAsString(indicators);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("策略禁用指标状态无法保存", exception);
+        }
+    }
+
     private void saveSwitchLog(StrategyMode fromMode, StrategyMode toMode, String reason,
                                SwitchType switchType, String trigger, String operator) {
-        SwitchLog log = SwitchLog.builder()
+        SwitchLog switchLog = SwitchLog.builder()
                 .logId(java.util.UUID.randomUUID().toString())
                 .switchTime(LocalDateTime.now())
                 .switchType(switchType)
@@ -190,8 +249,7 @@ public class StrategyStateManager {
                 .trigger(trigger)
                 .operator(operator)
                 .build();
-        
-        switchLogRepository.save(log);
+        switchLogRepository.save(switchLog);
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END -----

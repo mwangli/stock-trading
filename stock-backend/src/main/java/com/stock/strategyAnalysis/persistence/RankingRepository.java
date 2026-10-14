@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START -----
 package com.stock.strategyAnalysis.persistence;
 
 import com.stock.strategyAnalysis.domain.entity.StockRanking;
@@ -13,17 +13,27 @@ import java.util.Optional;
 /**
  * 股票排名Repository
  * 使用MongoDB存储排名结果
+ *
+ * @author mwangli
+ * @since 2026-10-14
  */
 @Repository
 public interface RankingRepository extends MongoRepository<StockRanking, String> {
 
     /**
-     * 根据股票代码查询最新排名
+     * 根据股票代码查询最新排名。
+     *
+     * @param stockCode 股票代码
+     * @return 最新排名，不存在时返回 null
      */
     StockRanking findFirstByStockCodeOrderByCalculateTimeDesc(String stockCode);
 
     /**
-     * 根据计算日期查询排名列表
+     * 根据计算日期范围查询排名列表。
+     *
+     * @param startTime 起始日期
+     * @param endTime 结束日期
+     * @return 区间内排名列表
      */
     List<StockRanking> findByCalculateTimeBetween(
             LocalDate startTime,
@@ -31,7 +41,11 @@ public interface RankingRepository extends MongoRepository<StockRanking, String>
     );
 
     /**
-     * 查询指定日期的Top N排名
+     * 查询指定时间范围内最新排名。
+     *
+     * @param startTime 起始时间
+     * @param endTime 结束时间
+     * @return 最新排名
      */
     Optional<StockRanking> findFirstByCalculateTimeBetweenOrderByCalculateTimeDesc(
             LocalDateTime startTime,
@@ -47,8 +61,39 @@ public interface RankingRepository extends MongoRepository<StockRanking, String>
     List<StockRanking> findByCalculateTimeOrderByRankAsc(LocalDateTime calculateTime);
 
     /**
-     * 根据股票代码和日期查询排名
+     * 查询目标交易日最新候选记录。
+     *
+     * @param targetTradeDate 目标交易日
+     * @return 最新候选记录
+     */
+    Optional<StockRanking> findFirstByTargetTradeDateOrderByCalculateTimeDesc(LocalDate targetTradeDate);
+
+    /**
+     * 查询可执行候选批次的完整排名。
+     *
+     * @param candidateBatchId 候选批次 ID
+     * @param status 候选状态
+     * @return 按排名升序排列的候选
+     */
+    List<StockRanking> findByCandidateBatchIdAndStatusOrderByRankAsc(String candidateBatchId, String status);
+
+    /**
+     * 查询评估窗口内的历史候选，按目标交易日和排名排序。
+     *
+     * @param startDate 评估窗口起始日
+     * @param endDate 评估窗口结束日
+     * @return 历史候选快照
+     */
+    List<StockRanking> findByTargetTradeDateBetweenOrderByTargetTradeDateAscRankAsc(
+            LocalDate startDate, LocalDate endDate);
+
+    /**
+     * 根据股票代码和计算日期查询排名。
+     *
+     * @param stockCode 股票代码
+     * @param calculateTime 计算日期
+     * @return 匹配的排名列表
      */
     List<StockRanking> findByStockCodeAndCalculateTime(String stockCode, LocalDate calculateTime);
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END -----

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.modelService.persistence;
 
 import com.stock.modelService.domain.entity.ModelPredictionDocument;
@@ -61,5 +61,13 @@ public interface ModelPredictionRepository extends MongoRepository<ModelPredicti
      * @return 预测明细列表
      */
     List<ModelPredictionDocument> findByBatchId(String batchId);
+
+    /**
+     * 批量查询多个预测批次的全部明细，用于策略候选样本外评估。
+     *
+     * @param batchIds 预测批次 ID
+     * @return 预测明细
+     */
+    List<ModelPredictionDocument> findByBatchIdIn(List<String> batchIds);
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

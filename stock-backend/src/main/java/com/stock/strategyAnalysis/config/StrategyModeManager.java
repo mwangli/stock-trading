@@ -1,3 +1,4 @@
+// AI_GENERATE_START --
 package com.stock.strategyAnalysis.config;
 
 import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
@@ -10,6 +11,9 @@ import org.springframework.stereotype.Service;
 /**
  * 策略模式管理器
  * 管理预设的策略模式和自定义模式
+ *
+ * @author mwangli
+ * @since 2026-10-14
  */
 @Slf4j
 @Service
@@ -48,7 +52,7 @@ public class StrategyModeManager {
      * 获取模式配置
      */
     public StrategyConfig getModeConfig(StrategyMode mode) {
-        StrategyConfig baseConfig = configService.getCurrentConfig();
+        StrategyConfig baseConfig = configService.copyCurrentForNewVersion();
         
         switch (mode) {
             case CONSERVATIVE:
@@ -75,9 +79,10 @@ public class StrategyModeManager {
         config.setVolumeShrinkThreshold(0.85);
         config.setBollingerWeight(0.20);
         config.setBollingerBreakoutThreshold(1.003);
-        config.setHighReturnThreshold(45);
-        config.setNormalReturnThreshold(55);
-        config.setLowReturnThreshold(65);
+        config.setHighReturnThreshold(3);
+        config.setNormalReturnThreshold(2);
+        config.setLowReturnThreshold(1);
+        config.setLossReturnThreshold(0);
         return config;
     }
 
@@ -95,9 +100,10 @@ public class StrategyModeManager {
         config.setVolumeShrinkThreshold(0.80);
         config.setBollingerWeight(0.20);
         config.setBollingerBreakoutThreshold(1.005);
-        config.setHighReturnThreshold(50);
-        config.setNormalReturnThreshold(60);
-        config.setLowReturnThreshold(70);
+        config.setHighReturnThreshold(5);
+        config.setNormalReturnThreshold(3);
+        config.setLowReturnThreshold(1);
+        config.setLossReturnThreshold(0);
         return config;
     }
 
@@ -115,9 +121,10 @@ public class StrategyModeManager {
         config.setVolumeShrinkThreshold(0.75);
         config.setBollingerWeight(0.20);
         config.setBollingerBreakoutThreshold(1.008);
-        config.setHighReturnThreshold(60);
-        config.setNormalReturnThreshold(70);
-        config.setLowReturnThreshold(80);
+        config.setHighReturnThreshold(8);
+        config.setNormalReturnThreshold(5);
+        config.setLowReturnThreshold(2);
+        config.setLossReturnThreshold(-2);
         return config;
     }
 
@@ -139,3 +146,4 @@ public class StrategyModeManager {
         }
     }
 }
+// AI_GENERATE_END --

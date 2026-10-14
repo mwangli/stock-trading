@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAnalysis.config;
 
 import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
@@ -58,33 +58,13 @@ public class StrategyConfigService {
     @Transactional(rollbackFor = Exception.class)
     public void updateConfig(StrategyConfig config) {
         LocalDateTime now = LocalDateTime.now();
-        config.setUpdateTime(now);
-        if (config.getConfigId() == null || config.getConfigId().isBlank()) {
-            config.setConfigId(UUID.randomUUID().toString());
-        }
-        if (config.getVersion() == null || config.getVersion().isBlank()) {
-            config.setVersion("1");
-        }
-
-        StrategyConfig toSave;
-        if (config.getId() != null) {
-            toSave = strategyConfigRepository.findById(config.getId()).orElse(config);
-            if (toSave != config) {
-                copyTo(config, toSave);
-            }
-        } else {
-            Optional<StrategyConfig> existing = strategyConfigRepository
-                    .findFirstByEnabledTrueOrderByUpdateTimeDesc();
-            if (existing.isPresent()) {
-                toSave = existing.get();
-                copyTo(config, toSave);
-            } else {
-                toSave = config;
-                if (toSave.getCreateTime() == null) {
-                    toSave.setCreateTime(now);
-                }
-            }
-        }
+        StrategyConfig toSave = copyForNewVersion(config);
+        toSave.setConfigId(config.getConfigId() == null || config.getConfigId().isBlank()
+                ? UUID.randomUUID().toString() : config.getConfigId());
+        toSave.setVersion(config.getVersion() == null || config.getVersion().isBlank()
+                ? "1" : config.getVersion());
+        toSave.setCreateTime(now);
+        toSave.setUpdateTime(now);
         StrategyConfig saved = strategyConfigRepository.save(toSave);
         log.info("策略配置已更新: id={}, version={}, mode={}",
                 saved.getId(), saved.getVersion(), saved.getMode());
@@ -99,9 +79,9 @@ public class StrategyConfigService {
     @Transactional(rollbackFor = Exception.class)
     public StrategyConfigDto updateConfig(StrategyConfigDto dto) {
         validate(dto);
-        StrategyConfig config = dto.getId() == null
+        StrategyConfig config = copyForNewVersion(dto.getId() == null
                 ? getCurrentConfig()
-                : strategyConfigRepository.findById(dto.getId()).orElseGet(StrategyConfig::defaultConfig);
+                : strategyConfigRepository.findById(dto.getId()).orElseGet(StrategyConfig::defaultConfig));
         String previousVersion = config.getVersion();
         applyDto(dto, config);
         config.setVersion(nextVersion(previousVersion));
@@ -115,7 +95,6 @@ public class StrategyConfigService {
     public void resetToDefault() {
         StrategyConfig current = getCurrentConfig();
         StrategyConfig defaults = StrategyConfig.defaultConfig();
-        defaults.setId(current.getId());
         defaults.setConfigId(current.getConfigId());
         defaults.setVersion(nextVersion(current.getVersion()));
         updateConfig(defaults);
@@ -149,6 +128,15 @@ public class StrategyConfigService {
      */
     public Optional<StrategyConfig> getConfigByVersion(String version) {
         return strategyConfigRepository.findByVersion(version);
+    }
+
+    /**
+     * 复制当前配置用于创建不可变的新版本。
+     *
+     * @return 不含数据库主键的新配置对象
+     */
+    public StrategyConfig copyCurrentForNewVersion() {
+        return copyForNewVersion(getCurrentConfig());
     }
 
     private void validate(StrategyConfigDto dto) {
@@ -308,5 +296,14 @@ public class StrategyConfigService {
         to.setEnabled(from.isEnabled());
         to.setUpdateTime(from.getUpdateTime());
     }
+
+    private StrategyConfig copyForNewVersion(StrategyConfig source) {
+        StrategyConfig target = new StrategyConfig();
+        copyTo(source, target);
+        target.setId(null);
+        target.setCreateTime(null);
+        target.setUpdateTime(null);
+        return target;
+    }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----
