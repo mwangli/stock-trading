@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -67,6 +67,9 @@ public class PredictionCandidateBatchDto {
         /** 股票名称。 */
         private String stockName;
 
+        /** 模型输入基准日的收盘价，作为页面展示的股票价格。 */
+        private Double currentPrice;
+
         /** 预测收益率。 */
         private Double predictedReturn;
 
@@ -83,4 +86,4 @@ public class PredictionCandidateBatchDto {
         private Double directionProbabilityPercentile;
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

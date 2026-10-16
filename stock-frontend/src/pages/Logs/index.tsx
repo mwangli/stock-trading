@@ -1,5 +1,5 @@
 // AI_GENERATE_START ----
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Space, Switch, Tag } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -90,25 +90,22 @@ const Logs: React.FC = () => {
     setLogs([]);
   }, []);
 
-  const headerActions = useMemo(() => (
-    <Space wrap>
-      <Tag color={isConnected ? 'blue' : 'red'}>
-        {isConnected ? t('logs.live') : t('logs.offline')}
-      </Tag>
-      <Space className="rounded border border-[var(--border-color)] px-3 py-1.5">
-        <span className="text-sm text-[var(--text-secondary)]">{t('logs.autoScroll')}</span>
-        <Switch size="small" checked={autoScroll} onChange={setAutoScroll} />
-      </Space>
-      <Button icon={<DeleteOutlined />} onClick={clearLogs} danger>
-        {t('logs.clear')}
-      </Button>
-    </Space>
-  ), [autoScroll, clearLogs, isConnected, t]);
-
-  usePageHeader(t('logs.subtitle'), headerActions);
+  usePageHeader(t('logs.subtitle'));
 
   return (
     <div className="app-page h-full min-h-[520px]">
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <Tag color={isConnected ? 'blue' : 'red'}>
+          {isConnected ? t('logs.live') : t('logs.offline')}
+        </Tag>
+        <Space className="rounded border border-[var(--border-color)] px-3 py-1.5">
+          <span className="text-sm text-[var(--text-secondary)]">{t('logs.autoScroll')}</span>
+          <Switch size="small" checked={autoScroll} onChange={setAutoScroll} />
+        </Space>
+        <Button icon={<DeleteOutlined />} onClick={clearLogs} danger>
+          {t('logs.clear')}
+        </Button>
+      </div>
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-[#23314a] bg-[#080d16] p-4 font-mono text-sm shadow-sm">
         <div
           ref={logsContainerRef}

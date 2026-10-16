@@ -1,5 +1,5 @@
-// AI_GENERATE_START ----------
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+// AI_GENERATE_START ------------
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Button,
@@ -163,7 +163,7 @@ const Settings: React.FC = () => {
   const [form] = Form.useForm<SettingsFormValues>();
   const configuredRefreshRate = Form.useWatch('refreshRate', form);
   const { t, i18n } = useTranslation();
-  const { mode, setMode } = useAppTheme();
+  const { mode, setMode, resetToAutomatic } = useAppTheme();
   const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(false);
   const [runtimeLoading, setRuntimeLoading] = useState(true);
@@ -276,9 +276,9 @@ const Settings: React.FC = () => {
   const resetPreferences = () => {
     window.localStorage.removeItem(STORAGE_KEYS.notifications);
     window.localStorage.removeItem(STORAGE_KEYS.refreshRate);
-    setMode('light');
+    const automaticMode = resetToAutomatic();
     form.setFieldsValue({
-      theme: 'light',
+      theme: automaticMode,
       language: i18n.language.startsWith('zh') ? 'zh' : 'en',
       notifications: true,
       refreshRate: 30000,
@@ -300,17 +300,14 @@ const Settings: React.FC = () => {
     modelTrainingEnabled: false,
   };
 
-  const headerActions = useMemo(() => (
-    <Space wrap>
-      <Button icon={<ReloadOutlined />} loading={checking} onClick={() => void checkSystemStatus()}>{t('settings.checkStatus')}</Button>
-      <Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={!runtimeSettings} onClick={() => form.submit()}>{t('settings.save')}</Button>
-    </Space>
-  ), [checkSystemStatus, checking, form, runtimeSettings, saving, t]);
-
-  usePageHeader(t('settings.title'), headerActions);
+  usePageHeader(t('settings.title'));
 
   return (
     <div className="app-page">
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button icon={<ReloadOutlined />} loading={checking} onClick={() => void checkSystemStatus()}>{t('settings.checkStatus')}</Button>
+        <Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={!runtimeSettings} onClick={() => form.submit()}>{t('settings.save')}</Button>
+      </div>
       <Row gutter={[16, 16]}>
         <Col xs={24} md={12} xl={8}>
           <Card className="surface-card compact-card" loading={checking}>
@@ -472,4 +469,4 @@ const Settings: React.FC = () => {
 };
 
 export default Settings;
-// AI_GENERATE_END ----------
+// AI_GENERATE_END ------------

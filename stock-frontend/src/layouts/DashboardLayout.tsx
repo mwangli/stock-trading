@@ -285,12 +285,6 @@ const DashboardLayout: React.FC = () => {
             </div>
           </div>
 
-          {pageHeader?.actions && (
-            <div className="app-header-actions">
-              {pageHeader.actions}
-            </div>
-          )}
-
           <div className="app-header-tools">
             <div className="app-system-status">
               <span className={`h-2 w-2 rounded-full ${backendStatus === 'online' ? 'bg-emerald-500' : backendStatus === 'offline' ? 'bg-red-500' : 'bg-amber-500'}`} />

@@ -1,5 +1,5 @@
-// AI_GENERATE_START ------
-import React, { useState, useEffect, useRef } from 'react';
+// AI_GENERATE_START -------
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Table, Input, Button, Select } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -123,7 +123,10 @@ const Market: React.FC = () => {
   };
 
   // 动态生成 K 线图表配置，并与全局明暗主题保持一致
-  const chartOption: EChartsOption = {
+  const chartOption = useMemo<EChartsOption>(() => ({
+    animation: false,
+    animationDuration: 0,
+    animationDurationUpdate: 0,
     backgroundColor: 'transparent',
     textStyle: { color: chartTextColor },
     tooltip: {
@@ -180,7 +183,7 @@ const Market: React.FC = () => {
         }
       }
     ]
-  };
+  }), [chartBorderColor, chartTextColor, chartTooltipBackground, isDark, klineData.dates, klineData.kline, t]);
 
   // Watchlist Data
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
@@ -611,6 +614,7 @@ const Market: React.FC = () => {
               option={chartOption} 
               style={{ height: '100%', minHeight: '400px', width: '100%' }} 
               notMerge={true}
+              lazyUpdate={false}
             />
           </div>
         </div>
@@ -620,4 +624,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------

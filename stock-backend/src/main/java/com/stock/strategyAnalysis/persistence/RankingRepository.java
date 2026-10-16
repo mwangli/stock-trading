@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.strategyAnalysis.persistence;
 
 import com.stock.strategyAnalysis.domain.entity.StockRanking;
@@ -78,6 +78,14 @@ public interface RankingRepository extends MongoRepository<StockRanking, String>
     List<StockRanking> findByCandidateBatchIdAndStatusOrderByRankAsc(String candidateBatchId, String status);
 
     /**
+     * 查询候选批次的完整评分排名。
+     *
+     * @param candidateBatchId 候选批次 ID
+     * @return 按排名升序排列的完整评分列表
+     */
+    List<StockRanking> findByCandidateBatchIdOrderByRankAsc(String candidateBatchId);
+
+    /**
      * 查询评估窗口内的历史候选，按目标交易日和排名排序。
      *
      * @param startDate 评估窗口起始日
@@ -96,4 +104,4 @@ public interface RankingRepository extends MongoRepository<StockRanking, String>
      */
     List<StockRanking> findByStockCodeAndCalculateTime(String stockCode, LocalDate calculateTime);
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

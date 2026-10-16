@@ -1,5 +1,5 @@
 // AI_GENERATE_START -------
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import request from '../utils/request';
@@ -163,17 +163,15 @@ const Dashboard: React.FC = () => {
     { title: t('dashboard.columns.winningTradeCount'), dataIndex: 'winningTradeCount', key: 'winningTradeCount' },
   ];
 
-  const headerActions = useMemo(() => (
-    <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadBrokerData()}>{t('common.refresh')}</Button>
-  ), [loadBrokerData, loading]);
-
   usePageHeader(
     `${t('dashboard.subtitle')}${account?.capturedAt ? `, ${t('dashboard.lastSync')}: ${formatDateTime(account.capturedAt)}` : ''}`,
-    headerActions,
   );
 
   return (
     <div className="app-page">
+      <div className="flex justify-end">
+        <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadBrokerData()}>{t('common.refresh')}</Button>
+      </div>
       <Row gutter={[16, 16]}>
         <Col xs={24} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.totalAssets')} value={account?.totalAssets} precision={2} prefix="¥" /></Card></Col>
         <Col xs={24} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.availableCash')} value={account?.availableCash} precision={2} prefix="¥" /></Card></Col>

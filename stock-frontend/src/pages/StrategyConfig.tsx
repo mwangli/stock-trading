@@ -1,5 +1,5 @@
-// AI_GENERATE_START ------
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+// AI_GENERATE_START -------
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Col, Descriptions, Form, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
 import { InfoCircleOutlined, PlayCircleOutlined, ReloadOutlined, RollbackOutlined, SaveOutlined, SettingOutlined } from '@ant-design/icons';
 import request from '../utils/request';
@@ -55,6 +55,7 @@ interface StrategyState {
 interface Ranking {
   stockCode: string;
   stockName: string;
+  currentPrice?: number;
   lstmScore: number;
   sentimentScore: number;
   totalScore: number;
@@ -247,12 +248,16 @@ const StrategyConfig: React.FC = () => {
     }
   };
 
-  const headerActions = useMemo(() => (<Space wrap><Button icon={<ReloadOutlined />} loading={loading || tradingLoading} onClick={() => { void loadData(); void loadTradingData(); }}>{t('strategyPage.refresh')}</Button><Button icon={<RollbackOutlined />} onClick={() => void resetConfig()}>{t('strategyPage.reset')}</Button><Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => form.submit()}>{t('strategyPage.save')}</Button></Space>), [form, loadData, loadTradingData, loading, saving, t, tradingLoading]);
-  usePageHeader(t('strategyPage.subtitle'), headerActions);
+  usePageHeader(t('strategyPage.subtitle'));
 
   const number = (label: string, name: keyof StrategyConfigValues, min: number, max: number, step: number, extra: string) => (<Form.Item label={label} name={name} extra={extra} rules={[{ required: true, message: `${label}${localizedText('不能为空', ' is required')}` }]}><InputNumber min={min} max={max} step={step} className="!w-full" /></Form.Item>);
 
   return (<div className="app-page">
+    <div className="flex flex-wrap justify-end gap-2">
+      <Button icon={<ReloadOutlined />} loading={loading || tradingLoading} onClick={() => { void loadData(); void loadTradingData(); }}>{t('strategyPage.refresh')}</Button>
+      <Button icon={<RollbackOutlined />} onClick={() => void resetConfig()}>{t('strategyPage.reset')}</Button>
+      <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => form.submit()}>{t('strategyPage.save')}</Button>
+    </div>
     <Row gutter={[16, 16]}>      <Col xs={24} md={6}><Card className="surface-card compact-card"><Statistic title={localizedText('当前策略模式', 'Current Strategy Mode')} value={state?.currentMode || config?.mode || 'BALANCED'} prefix={<SettingOutlined />} /><Text type="secondary">{localizedText('配置版本', 'Config Version')}：{config?.version || state?.configVersion || localizedText('未标记', 'Unmarked')}</Text></Card></Col>
       <Col xs={24} md={8}><Card className="surface-card compact-card"><Statistic title={localizedText('策略状态', 'Strategy Status')} value={config?.enabled ? localizedText('已启用', 'Enabled') : localizedText('已停用', 'Disabled')} /><Text type="secondary">{localizedText('最近切换', 'Last Switch')}：{formatDate(state?.lastSwitchTime)}</Text></Card></Col>
       <Col xs={24} md={6}><Card className="surface-card compact-card"><Statistic title={localizedText('当前候选', 'Current Candidates')} value={tradingCandidates.length || rankings.length} suffix={config ? `/ ${config.topN}` : ''} /><Text type="secondary">{localizedText('最近更新时间', 'Last Updated')}：{formatDate(config?.updateTime)}</Text></Card></Col>
@@ -366,9 +371,9 @@ const StrategyConfig: React.FC = () => {
     </Card>
       <Card className="surface-card" title={localizedText('收益退出阈值', 'Return Exit Thresholds')}><Row gutter={[24, 8]}>{number(localizedText('高收益阈值', 'High Return Threshold'), 'highReturnThreshold', -100, 100, 1, localizedText('高收益场景退出阈值', 'Exit threshold for high-return scenarios'))}{number(localizedText('正常收益阈值', 'Normal Return Threshold'), 'normalReturnThreshold', -100, 100, 1, localizedText('正常收益场景退出阈值', 'Exit threshold for normal-return scenarios'))}{number(localizedText('低收益阈值', 'Low Return Threshold'), 'lowReturnThreshold', -100, 100, 1, localizedText('低收益场景退出阈值', 'Exit threshold for low-return scenarios'))}{number(localizedText('亏损阈值', 'Loss Threshold'), 'lossReturnThreshold', -100, 100, 1, localizedText('亏损场景退出阈值', 'Exit threshold for loss scenarios'))}</Row></Card>
     </Form>
-    <Card className="surface-card" title={t('strategyPage.candidates')} extra={<Button type="primary" icon={<PlayCircleOutlined />} loading={running} onClick={() => void runSelection()}>{t('strategyPage.select')}</Button>}><Table rowKey="stockCode" loading={loading || tradingLoading} dataSource={tradingCandidates.length > 0 ? tradingCandidates : rankings} pagination={{ pageSize: 10 }} columns={[{ title: '排名', dataIndex: 'rank', width: 72 }, { title: '股票', dataIndex: 'stockName', render: (value: string, row: Ranking) => `${value} (${row.stockCode})` }, { title: 'LSTM', dataIndex: 'lstmScore', render: (value: number) => percent(value) }, { title: '情感', dataIndex: 'sentimentScore', render: (value: number) => value.toFixed(3) }, { title: '综合得分', dataIndex: 'totalScore', render: (value: number) => <Tag color={value >= 0.7 ? 'green' : value >= 0.5 ? 'blue' : 'default'}>{value.toFixed(3)}</Tag> }, { title: '持仓', dataIndex: 'held', render: (value?: boolean) => value === undefined ? <Tag>未知</Tag> : <Tag color={value ? 'blue' : 'default'}>{value ? '已持有' : '未持有'}</Tag> }, { title: '说明', dataIndex: 'reason' }]} locale={{ emptyText: '暂无交易候选' }} /></Card>
+    <Card className="surface-card" title={t('strategyPage.candidates')} extra={<Button type="primary" icon={<PlayCircleOutlined />} loading={running} onClick={() => void runSelection()}>{t('strategyPage.select')}</Button>}><Table<Ranking> rowKey="stockCode" loading={loading || tradingLoading} dataSource={rankings} pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], showTotal: (total) => `共 ${total} 只` }} columns={[{ title: '排名', dataIndex: 'rank', width: 72 }, { title: '股票', dataIndex: 'stockName', render: (value: string, row: Ranking) => `${value} (${row.stockCode})` }, { title: '价格', dataIndex: 'currentPrice', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : `¥${value.toFixed(2)}` }, { title: 'LSTM', dataIndex: 'lstmScore', render: (value: number) => percent(value) }, { title: '情感', dataIndex: 'sentimentScore', render: (value: number) => value.toFixed(3) }, { title: '综合得分', dataIndex: 'totalScore', render: (value: number) => <Tag color={value >= 0.7 ? 'green' : value >= 0.5 ? 'blue' : 'default'}>{value.toFixed(3)}</Tag> }, { title: '持仓', dataIndex: 'held', render: (value?: boolean) => value === undefined ? <Tag>未知</Tag> : <Tag color={value ? 'blue' : 'default'}>{value ? '已持有' : '未持有'}</Tag> }, { title: '说明', dataIndex: 'reason' }]} locale={{ emptyText: '暂无交易候选' }} /></Card>
   </div>);
 };
 
 export default StrategyConfig;
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------

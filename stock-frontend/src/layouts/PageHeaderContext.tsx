@@ -4,7 +4,6 @@ import React, { createContext, useContext, useLayoutEffect, useRef, type ReactNo
 export interface PageHeaderState {
   registrationId: symbol;
   subtitle?: ReactNode;
-  actions?: ReactNode;
 }
 
 type PageHeaderSetter = React.Dispatch<React.SetStateAction<PageHeaderState | null>>;
@@ -12,12 +11,11 @@ type PageHeaderSetter = React.Dispatch<React.SetStateAction<PageHeaderState | nu
 export const PageHeaderContext = createContext<PageHeaderSetter | null>(null);
 
 /**
- * 将页面副标题和操作控件注册到全局头部，并在页面卸载时清理。
+ * 将页面副标题注册到全局头部，并在页面卸载时清理。
  *
  * @param subtitle 页面业务副标题
- * @param actions 页面级操作控件
  */
-export const usePageHeader = (subtitle?: ReactNode, actions?: ReactNode) => {
+export const usePageHeader = (subtitle?: ReactNode) => {
   const setPageHeader = useContext(PageHeaderContext);
   const registrationId = useRef(Symbol('page-header')).current;
 
@@ -26,10 +24,10 @@ export const usePageHeader = (subtitle?: ReactNode, actions?: ReactNode) => {
       return undefined;
     }
 
-    setPageHeader({ registrationId, subtitle, actions });
+    setPageHeader({ registrationId, subtitle });
     return () => {
       setPageHeader((current) => current?.registrationId === registrationId ? null : current);
     };
-  }, [actions, registrationId, setPageHeader, subtitle]);
+  }, [registrationId, setPageHeader, subtitle]);
 };
 // AI_GENERATE_END --

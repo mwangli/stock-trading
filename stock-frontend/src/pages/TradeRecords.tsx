@@ -168,11 +168,7 @@ const TradeRecords: React.FC = () => {
     { title: '日收益率', dataIndex: 'dailyReturnRate', key: 'dailyReturnRate', render: (value: number, item: TradeRecord) => item.soldQuantity > 0 ? rate(value) : '-' },
   ];
 
-  const headerActions = useMemo(() => (
-    <Button icon={<ReloadOutlined />} loading={loading} onClick={() => setRefreshToken((value) => value + 1)}>{t('common.refresh')}</Button>
-  ), [loading]);
-
-  usePageHeader(t('tradeRecords.subtitle'), headerActions);
+  usePageHeader(t('tradeRecords.subtitle'));
 
   return (
     <div className="app-page">
@@ -189,6 +185,7 @@ const TradeRecords: React.FC = () => {
           <Input type="date" value={draftFilters.startDate} onChange={(event) => setDraftFilters((current) => ({ ...current, startDate: event.target.value }))} />
           <Input type="date" value={draftFilters.endDate} onChange={(event) => setDraftFilters((current) => ({ ...current, endDate: event.target.value }))} />
           <Button type="primary" icon={<SearchOutlined />} onClick={applyFilters}>{t('common.search')}</Button>
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => setRefreshToken((value) => value + 1)}>{t('common.refresh')}</Button>
         </Space>
         <Table
           rowKey={(item, index) => `${item.stockCode}-${item.buyTime}-${index ?? 0}`}
