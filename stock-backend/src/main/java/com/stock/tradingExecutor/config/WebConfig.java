@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.tradingExecutor.config;
 
 import org.springframework.context.annotation.Configuration;
@@ -36,9 +36,12 @@ public class WebConfig implements WebMvcConfigurer {
                         if (requestedResource.exists() && requestedResource.isReadable()) {
                             return requestedResource;
                         }
-                        return location.createRelative("index.html");
+                        Resource fallbackResource = location.createRelative("index.html");
+                        return fallbackResource.exists() && fallbackResource.isReadable()
+                                ? fallbackResource
+                                : null;
                     }
                 });
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---
