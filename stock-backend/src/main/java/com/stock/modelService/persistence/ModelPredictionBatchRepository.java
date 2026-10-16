@@ -77,5 +77,15 @@ public interface ModelPredictionBatchRepository extends MongoRepository<ModelPre
      */
     ModelPredictionBatchDocument findFirstByTargetTradeDateAndStatusInOrderByCreatedAtDesc(
             LocalDate targetTradeDate, Collection<String> statuses);
+
+    /**
+     * 查询同一模型最近完成的预测批次，用于滚动窗口评估。
+     *
+     * @param modelId 模型文档 ID
+     * @param statuses 可参与滚动统计的批次状态
+     * @return 按目标交易日倒序排列的批次
+     */
+    List<ModelPredictionBatchDocument> findByModelIdAndStatusInOrderByTargetTradeDateDesc(
+            String modelId, Collection<String> statuses);
 }
 // AI_GENERATE_END ---

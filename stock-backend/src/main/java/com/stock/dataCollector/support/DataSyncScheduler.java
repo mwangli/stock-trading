@@ -1,9 +1,12 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START -------
 package com.stock.dataCollector.support;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
 import com.stock.dataCollector.service.StockDataService;
 import com.stock.dataCollector.service.StockNewsService;
+import com.stock.dataCollector.service.TradingCalendarService;
+import com.stock.tradingExecutor.job.JobSkippedException;
+import com.stock.tradingExecutor.sync.SyncStateService;
 import com.stock.tradingExecutor.runtime.service.SystemRuntimeConfigService;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.time.LocalDate;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -40,6 +44,8 @@ public class DataSyncScheduler {
     private final StockDataService stockDataService;
     private final StockNewsService stockNewsService;
     private final SystemRuntimeConfigService runtimeConfigService;
+    private final TradingCalendarService tradingCalendarService;
+    private final SyncStateService syncStateService;
 
     private final ExecutorService priceSyncExecutor = Executors.newFixedThreadPool(PRICE_SYNC_THREADS,
             r -> {
@@ -97,81 +103,71 @@ public class DataSyncScheduler {
      * 平台接口不支持单日区间，默认拉取最近约 500 条，内存过滤后仅保存新数据
      * </p>
      */
+/**
+     * 同步当前交易日，并回补最近三年的缺失交易日。
+     */
     public void syncDailyStockData() {
         runtimeConfigService.requireDataCollectionEnabled();
-        log.info("========== [数据同步任务] 开始执行每日收盘后日K数据增量同步（{} 线程并行） ==========", PRICE_SYNC_THREADS);
-        try {
-            List<String> codes = stockDataService.findAllCodes();
-            if (codes == null || codes.isEmpty()) {
-                log.warn("[数据同步任务] 未找到任何股票代码，跳过日K同步");
-                return;
-            }
+        LocalDate today = LocalDate.now();
+        if (!tradingCalendarService.isConfirmedDate(today)) {
+            throw new JobSkippedException("交易日历尚未确认: " + today);
+        }
+        if (!tradingCalendarService.isTradingDay(today)) {
+            throw new JobSkippedException("当前日期不是交易日: " + today);
+        }
 
-            int total = codes.size();
-            AtomicInteger successCount = new AtomicInteger(0);
-            AtomicInteger noChangeCount = new AtomicInteger(0);
-            AtomicInteger processedCount = new AtomicInteger(0);
-            CountDownLatch latch = new CountDownLatch(total);
+        LocalDate earliestDate = today.minusYears(3);
+        List<LocalDate> tradingDays = tradingCalendarService.tradingDaysBetween(earliestDate, today);
+        List<String> codes = stockDataService.findAllCodes();
+        if (codes == null || codes.isEmpty()) {
+            throw new IllegalStateException("未找到任何股票代码，无法执行日线同步");
+        }
 
-            for (String code : codes) {
-                priceSyncExecutor.submit(() -> {
-                    try {
-                        int added = stockDataService.syncLatestPriceData(code);
-                        if (added > 0) {
-                            successCount.incrementAndGet();
-                            int p = processedCount.incrementAndGet();
-                            log.info("[数据同步任务] 股票 {} 日K 增量同步新增 {} 条记录，进度: {}/{} ({}%)",
-                                    code, added, p, total, String.format("%.2f", p * 100.0 / total));
-                        } else {
-                            noChangeCount.incrementAndGet();
-                            processedCount.incrementAndGet();
-                        }
-                    } catch (Exception e) {
-                        log.error("[数据同步任务] 股票 {} 日K 同步失败: {}", code, e.getMessage(), e);
-                        processedCount.incrementAndGet();
-                    } finally {
-                        latch.countDown();
+        AtomicInteger todaySaved = new AtomicInteger();
+        AtomicInteger backfillSaved = new AtomicInteger();
+        AtomicInteger unresolved = new AtomicInteger();
+        AtomicInteger failed = new AtomicInteger();
+        CountDownLatch latch = new CountDownLatch(codes.size());
+        for (String code : codes) {
+            priceSyncExecutor.submit(() -> {
+                try {
+                    StockDataService.PriceSyncResult result = stockDataService
+                            .syncTodayAndBackfill(code, today, earliestDate, tradingDays);
+                    todaySaved.addAndGet(result.todaySaved());
+                    backfillSaved.addAndGet(result.backfillSaved());
+                    unresolved.addAndGet(result.unresolvedDates().size());
+                    if (result.unresolvedDates().isEmpty()) {
+                        syncStateService.markSuccess("stock-price", code, today);
+                        syncStateService.resolveGaps("stock-price", code);
+                    } else {
+                        syncStateService.recordGap("stock-price", code,
+                                result.unresolvedDates().get(0),
+                                result.unresolvedDates().get(result.unresolvedDates().size() - 1),
+                                "供应商三年窗口未覆盖全部缺失交易日");
                     }
-                });
-            }
-
-            latch.await(4, TimeUnit.HOURS);
-
-            log.info("========== [数据同步任务] 每日日K增量同步完成：共 {} 只股票，新增数据股票 {} 只，无更新股票 {} 只 ==========",
-                    total, successCount.get(), noChangeCount.get());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.warn("[数据同步任务] 每日日K同步被中断");
-            throw new RuntimeException("每日日K增量同步任务被中断", e);
-        } catch (Exception e) {
-            log.error("[数据同步任务] 每日日K增量同步任务执行失败", e);
-            throw new RuntimeException("每日日K增量同步任务失败: " + e.getMessage(), e);
+                } catch (Exception exception) {
+                    failed.incrementAndGet();
+                    syncStateService.recordGap("stock-price", code, today, today, exception.getMessage());
+                    log.error("[数据同步任务] 股票 {} 日线同步失败: {}", code, exception.getMessage(), exception);
+                } finally {
+                    latch.countDown();
+                }
+            });
         }
-    }
 
-    /**
-     * 深度同步所有股票历史数据 (周维护)
-     * <p>
-     * 对应任务: historicalDataSync
-     * Cron: 0 0 2 * * SUN
-     *
-     * 说明：适合作为“周维护”任务，在冷启动后定期做一次深度校正，
-     * 内部可调用 StockDataService.syncHistoricalData / reaggregateAllKLineData 等方法。
-     * 当前先保留占位实现，后续可根据实际需要补充更细致的逻辑。
-     * </p>
-     */
-    public void syncAllHistoricalData() {
-        runtimeConfigService.requireDataCollectionEnabled();
-        log.info("========== [数据同步任务] 深度同步所有股票历史数据 (周维护) 开始 ==========");
         try {
-            // 这里暂时只记录日志，避免与冷启动全量同步重复拉取过多数据。
-            // 后续可以按需补充：例如对指定问题股票做完整历史重拉 + K线重聚合。
-            log.info("[数据同步任务] 当前版本仅记录任务触发，如需具体逻辑请在 DataSyncScheduler.syncAllHistoricalData 中补充实现。");
-        } catch (Exception e) {
-            log.error("[数据同步任务] 深度同步所有股票历史数据任务执行失败", e);
-            throw new RuntimeException("深度历史同步任务失败: " + e.getMessage(), e);
+            if (!latch.await(4, TimeUnit.HOURS)) {
+                throw new IllegalStateException("日线同步超过四小时仍未完成");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("日线同步被中断", exception);
         }
-        log.info("========== [数据同步任务] 深度同步所有股票历史数据 (周维护) 结束 ==========");
+        log.info("[数据同步任务] 日线同步完成: todaySaved={}, backfillSaved={}, unresolved={}, failed={}",
+                todaySaved.get(), backfillSaved.get(), unresolved.get(), failed.get());
+        if (failed.get() > 0 || unresolved.get() > 0) {
+            throw new IllegalStateException("日线同步存在失败或三年窗口内未回补数据");
+        }
     }
 
     /**
@@ -222,4 +218,4 @@ public class DataSyncScheduler {
         log.info("========== [数据同步任务] 每日增量新闻采集结束 ==========");
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END -------

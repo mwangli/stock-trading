@@ -5,6 +5,7 @@ import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import request from '../utils/request';
 import { formatDateTime } from '../utils/dateTime';
 import { usePageHeader } from '../layouts/PageHeaderContext';
+import { useTranslation } from 'react-i18next';
 
 interface StockInfo {
   id: number;
@@ -53,6 +54,7 @@ const compactAmountFormatter = new Intl.NumberFormat('en-US', {
 });
 
 const StockInformation: React.FC = () => {
+  const { t } = useTranslation();
   const [keyword, setKeyword] = useState('');
   const [appliedKeyword, setAppliedKeyword] = useState('');
   const [stocks, setStocks] = useState<StockInfo[]>([]);
@@ -72,7 +74,7 @@ const StockInformation: React.FC = () => {
         },
       }) as StockInfoResponse;
       if (!response.success) {
-        throw new Error(response.message || '股票信息读取失败');
+        throw new Error(response.message || t('stockInformation.loadError'));
       }
       setStocks(response.data ?? []);
       setTotal(response.total ?? 0);
@@ -81,7 +83,7 @@ const StockInformation: React.FC = () => {
     } catch (cause) {
       setStocks([]);
       setTotal(0);
-      message.error(cause instanceof Error ? cause.message : '股票信息读取失败');
+      message.error(cause instanceof Error ? cause.message : t('stockInformation.loadError'));
     } finally {
       setLoading(false);
     }
@@ -103,24 +105,24 @@ const StockInformation: React.FC = () => {
   const formatSecurityCategory = (value?: number) => value == null ? '-' : securityCategoryLabels[value] ?? `其他类别（${value}）`;
 
   const columns = [
-    { title: '股票代码', dataIndex: 'code', key: 'code', width: 110, fixed: 'left' as const },
-    { title: '股票名称', dataIndex: 'name', key: 'name', width: 140, fixed: 'left' as const },
-    { title: '市场', dataIndex: 'market', key: 'market', width: 90, render: formatMarket },
-    { title: '最新价', dataIndex: 'price', key: 'price', width: 100, align: 'right' as const, render: (value?: number) => numberValue(value, 3) },
-    { title: '涨跌额', dataIndex: 'changeAmount', key: 'changeAmount', width: 100, align: 'right' as const, render: (value?: number) => numberValue(value, 3) },
-    { title: '涨跌幅', dataIndex: 'changePercent', key: 'changePercent', width: 100, align: 'right' as const, render: (value?: number) => formatPercent(value) },
+    { title: t('stockInformation.columns.code'), dataIndex: 'code', key: 'code', width: 110, fixed: 'left' as const },
+    { title: t('stockInformation.columns.name'), dataIndex: 'name', key: 'name', width: 140, fixed: 'left' as const },
+    { title: t('stockInformation.columns.market'), dataIndex: 'market', key: 'market', width: 90, render: formatMarket },
+    { title: t('stockInformation.columns.price'), dataIndex: 'price', key: 'price', width: 100, align: 'right' as const, render: (value?: number) => numberValue(value, 3) },
+    { title: t('stockInformation.columns.changeAmount'), dataIndex: 'changeAmount', key: 'changeAmount', width: 100, align: 'right' as const, render: (value?: number) => numberValue(value, 3) },
+    { title: t('stockInformation.columns.changePercent'), dataIndex: 'changePercent', key: 'changePercent', width: 100, align: 'right' as const, render: (value?: number) => formatPercent(value) },
     {
-      title: '总市值',
+      title: t('stockInformation.columns.marketCap'),
       dataIndex: 'totalMarketValue',
       key: 'totalMarketValue',
       width: 120,
       align: 'right' as const,
       render: (value?: number) => <Tooltip title={formatFullAmount(value)}>{formatAmount(value)}</Tooltip>,
     },
-    { title: '换手率', dataIndex: 'turnoverRate', key: 'turnoverRate', width: 100, align: 'right' as const, render: formatPercent },
-    { title: '量比', dataIndex: 'volumeRatio', key: 'volumeRatio', width: 90, align: 'right' as const, render: (value?: number) => numberValue(value) },
-    { title: '证券类别', dataIndex: 'industryCode', key: 'industryCode', width: 170, render: formatSecurityCategory },
-    { title: '更新时间', dataIndex: 'updateTime', key: 'updateTime', width: 180, render: formatDateTime },
+    { title: t('stockInformation.columns.turnover'), dataIndex: 'turnoverRate', key: 'turnoverRate', width: 100, align: 'right' as const, render: formatPercent },
+    { title: t('stockInformation.columns.volumeRatio'), dataIndex: 'volumeRatio', key: 'volumeRatio', width: 90, align: 'right' as const, render: (value?: number) => numberValue(value) },
+    { title: t('stockInformation.columns.category'), dataIndex: 'industryCode', key: 'industryCode', width: 170, render: formatSecurityCategory },
+    { title: t('stockInformation.columns.updatedAt'), dataIndex: 'updateTime', key: 'updateTime', width: 180, render: formatDateTime },
   ];
 
   const tableActions = useMemo(() => (
@@ -128,7 +130,7 @@ const StockInformation: React.FC = () => {
       <Input
         className="w-56"
         prefix={<SearchOutlined />}
-        placeholder="搜索股票代码或名称"
+        placeholder={t('stockInformation.searchPlaceholder')}
         value={keyword}
         allowClear
         onChange={(event) => setKeyword(event.target.value)}
@@ -139,19 +141,19 @@ const StockInformation: React.FC = () => {
         className="inline-flex h-8 items-center gap-1 rounded border border-[var(--border-color)] px-3 text-sm text-[var(--text-primary)] hover:border-blue-500"
         onClick={search}
       >
-        <SearchOutlined />查询
+        <SearchOutlined />{t('common.search')}
       </button>
       <button
         type="button"
         className="inline-flex h-8 items-center gap-1 rounded border border-[var(--border-color)] px-3 text-sm text-[var(--text-primary)] hover:border-blue-500"
         onClick={() => void loadStocks(current, pageSize, appliedKeyword)}
       >
-        <ReloadOutlined />刷新
+        <ReloadOutlined />{t('common.refresh')}
       </button>
     </Space>
   ), [appliedKeyword, current, keyword, loadStocks, pageSize, search]);
 
-  usePageHeader('展示系统已维护的股票基础信息');
+  usePageHeader(t('stockInformation.subtitle'));
 
   return (
     <div className="app-page">
@@ -164,7 +166,7 @@ const StockInformation: React.FC = () => {
           columns={columns}
           dataSource={stocks}
           loading={loading}
-          locale={{ emptyText: <Empty description="暂无股票基础信息" /> }}
+          locale={{ emptyText: <Empty description={t('stockInformation.empty')} /> }}
           scroll={{ x: 1250, y: 'calc(100vh - 330px)' }}
           pagination={false}
         />
@@ -178,7 +180,7 @@ const StockInformation: React.FC = () => {
               showQuickJumper
               responsive
               pageSizeOptions={[10, 20, 50, 100]}
-              showTotal={(value, range) => `第 ${range[0]}-${range[1]} 条，共 ${value} 条`}
+              showTotal={(value, range) => t('common.pagination', { start: range[0], end: range[1], total: value })}
               onChange={(page, size) => {
                 setCurrent(size === pageSize ? page : 1);
                 setPageSize(size);

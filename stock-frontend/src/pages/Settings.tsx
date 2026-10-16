@@ -29,6 +29,7 @@ import { useAppTheme, type ThemeMode } from '../theme/AppThemeProvider';
 import request from '../utils/request';
 import { getApiErrorMessage, readApiData, type ApiResponse } from '../utils/api';
 import { usePageHeader } from '../layouts/PageHeaderContext';
+import i18n from '../i18n';
 
 const { Text } = Typography;
 
@@ -150,12 +151,12 @@ const formatBytes = (value?: number) => {
 const formatRatio = (value?: number) => value === undefined ? '未提供' : `${(value * 100).toFixed(2)}%`;
 const healthTag = (state: ServiceHealth<unknown>['state']) => {
   if (state === 'up') {
-    return <Tag color="green">正常</Tag>;
+    return <Tag color="green">{i18n.t('settings.status.normal')}</Tag>;
   }
   if (state === 'down') {
-    return <Tag color="red">异常</Tag>;
+    return <Tag color="red">{i18n.t('settings.status.error')}</Tag>;
   }
-  return <Tag>未检查</Tag>;
+  return <Tag>{i18n.t('settings.status.unchecked')}</Tag>;
 };
 
 const Settings: React.FC = () => {
@@ -301,38 +302,38 @@ const Settings: React.FC = () => {
 
   const headerActions = useMemo(() => (
     <Space wrap>
-      <Button icon={<ReloadOutlined />} loading={checking} onClick={() => void checkSystemStatus()}>检查服务状态</Button>
+      <Button icon={<ReloadOutlined />} loading={checking} onClick={() => void checkSystemStatus()}>{t('settings.checkStatus')}</Button>
       <Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={!runtimeSettings} onClick={() => form.submit()}>{t('settings.save')}</Button>
     </Space>
   ), [checkSystemStatus, checking, form, runtimeSettings, saving, t]);
 
-  usePageHeader('管理界面偏好、服务健康状态与生产安全边界', headerActions);
+  usePageHeader(t('settings.title'), headerActions);
 
   return (
     <div className="app-page">
       <Row gutter={[16, 16]}>
         <Col xs={24} md={12} xl={8}>
           <Card className="surface-card compact-card" loading={checking}>
-            <Statistic title="券商只读网关" value={brokerHealth.data?.brokerName || '未配置'} prefix={<CloudServerOutlined />} />
-            <div className="mt-3">{healthTag(brokerHealth.state)} <Text type="secondary" className="ml-2">{brokerHealth.data?.authenticated ? '会话有效' : '会话未建立'}</Text></div>
+            <Statistic title="券商只读网关" value={brokerHealth.data?.brokerName || t('settings.status.notConfigured')} prefix={<CloudServerOutlined />} />
+            <div className="mt-3">{healthTag(brokerHealth.state)} <Text type="secondary" className="ml-2">{brokerHealth.data?.authenticated ? t('settings.status.sessionValid') : t('settings.status.sessionMissing')}</Text></div>
           </Card>
         </Col>
         <Col xs={24} md={12} xl={8}>
           <Card className="surface-card compact-card" loading={checking}>
-            <Statistic title="真实交易门禁" value={tradingHealth.data?.automaticExecutionEnabled ? '自动执行就绪' : '受控停止'} prefix={<LockOutlined />} />
+            <Statistic title="真实交易门禁" value={tradingHealth.data?.automaticExecutionEnabled ? t('settings.status.autoReady') : t('settings.status.controlledStop')} prefix={<LockOutlined />} />
             <div className="mt-3">
-              <Tag color={tradingHealth.data?.realWriteEnabled ? 'red' : 'blue'}>{tradingHealth.data?.realWriteEnabled ? '真实写入开启' : '只读观察'}</Tag>
+              <Tag color={tradingHealth.data?.realWriteEnabled ? 'red' : 'blue'}>{tradingHealth.data?.realWriteEnabled ? t('settings.status.realWriteOn') : t('settings.status.readOnly')}</Tag>
               {healthTag(tradingHealth.state)}
             </div>
           </Card>
         </Col>
         <Col xs={24} md={12} xl={8}>
           <Card className="surface-card compact-card" loading={checking}>
-            <Statistic title="情感模型" value={sentimentHealth.data?.modelLoaded ? '已加载' : '未加载'} prefix={<CheckCircleOutlined />} />
+            <Statistic title={t('layout.sentimentModel')} value={sentimentHealth.data?.modelLoaded ? t('settings.status.loaded') : t('settings.status.notLoaded')} prefix={<CheckCircleOutlined />} />
             <div className="mt-3 flex flex-wrap gap-2">
               {healthTag(sentimentHealth.state)}
-              <Tag color={sentimentHealth.data?.artifactAvailable ? 'green' : 'red'}>{sentimentHealth.data?.artifactAvailable ? '制品可用' : '制品不可用'}</Tag>
-              <Tag color={sentimentHealth.data?.checksumsVerified ? 'green' : 'gold'}>{sentimentHealth.data?.checksumsVerified ? '摘要已校验' : '摘要未校验'}</Tag>
+              <Tag color={sentimentHealth.data?.artifactAvailable ? 'green' : 'red'}>{sentimentHealth.data?.artifactAvailable ? t('settings.status.artifactAvailable') : t('settings.status.artifactMissing')}</Tag>
+              <Tag color={sentimentHealth.data?.checksumsVerified ? 'green' : 'gold'}>{sentimentHealth.data?.checksumsVerified ? t('settings.status.verified') : t('settings.status.unverified')}</Tag>
             </div>
             <div className="mt-3 grid gap-1 text-sm">
               <Text>版本：{sentimentHealth.data?.modelVersion || '未配置'}</Text>
@@ -352,7 +353,7 @@ const Settings: React.FC = () => {
         initialValues={formInitialValues}
         onFinish={onFinish}
       >
-        <Card className="surface-card" title="界面偏好">
+        <Card className="surface-card" title={t('settings.generalTitle')}>
           <Row gutter={[24, 8]}>
             <Col xs={24} md={12}>
               <Form.Item label={t('settings.fields.theme')} name="theme">
@@ -366,21 +367,21 @@ const Settings: React.FC = () => {
             </Col>
             <Col xs={24} md={12}>
               <Form.Item label={t('settings.fields.notifications')} name="notifications" valuePropName="checked">
-                <Switch checkedChildren="开" unCheckedChildren="关" />
+                <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="服务状态自动检查间隔" name="refreshRate" extra="仅影响本页面状态检查，不会改变 Quartz 后端任务调度频率">
+              <Form.Item label={t('settings.fields.refreshRate')} name="refreshRate" extra={t('settings.refreshHint')}>
                 <InputNumber min={5000} max={60000} step={5000} addonAfter="ms" className="!w-full" />
               </Form.Item>
             </Col>
           </Row>
-          <Button onClick={resetPreferences}>恢复默认偏好</Button>
+          <Button onClick={resetPreferences}>{t('settings.resetPreferences')}</Button>
         </Card>
 
         <Card
           className="surface-card"
-          title="运行控制"
+          title={t('settings.runtimeTitle')}
           loading={runtimeLoading}
           extra={<Text type="secondary">最后更新：{formatDateTime(runtimeSettings?.updatedAt)}</Text>}
         >
@@ -393,15 +394,15 @@ const Settings: React.FC = () => {
           />
           <Row gutter={[24, 8]}>
             <Col xs={24} md={12} xl={8}>
-              <Form.Item label="统一任务调度" name="schedulerEnabled" valuePropName="checked" extra="关闭后禁止定时和手动触发 Quartz 固定任务">
-                <Switch checkedChildren="开" unCheckedChildren="关" />
+              <Form.Item label={t('settings.fieldsRuntime.scheduler')} name="schedulerEnabled" valuePropName="checked" extra="关闭后禁止定时和手动触发 Quartz 固定任务">
+                <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12} xl={8}>
-              <Form.Item label="数据采集总开关" name="dataCollectionEnabled" valuePropName="checked" extra="控制股票列表、行情、历史数据和新闻采集">
+              <Form.Item label={t('settings.fieldsRuntime.dataCollection')} name="dataCollectionEnabled" valuePropName="checked" extra="控制股票列表、行情、历史数据和新闻采集">
                 <Switch
-                  checkedChildren="开"
-                  unCheckedChildren="关"
+                  checkedChildren={t('settings.switchOn')}
+                  unCheckedChildren={t('settings.switchOff')}
                   onChange={(checked) => {
                     if (!checked) {
                       form.setFieldsValue({
@@ -416,10 +417,10 @@ const Settings: React.FC = () => {
               </Form.Item>
             </Col>
             <Col xs={24} md={12} xl={8}>
-              <Form.Item label="新闻采集" name="newsCollectionEnabled" valuePropName="checked" extra="控制新闻和公告的定时及手动采集">
+              <Form.Item label={t('settings.fieldsRuntime.newsCollection')} name="newsCollectionEnabled" valuePropName="checked" extra="控制新闻和公告的定时及手动采集">
                 <Switch
-                  checkedChildren="开"
-                  unCheckedChildren="关"
+                  checkedChildren={t('settings.switchOn')}
+                  unCheckedChildren={t('settings.switchOff')}
                   disabled={!dataCollectionEnabled}
                   onChange={(checked) => {
                     if (!checked) {
@@ -430,23 +431,23 @@ const Settings: React.FC = () => {
               </Form.Item>
             </Col>
             <Col xs={24} md={12} xl={8}>
-              <Form.Item label="启动数据初始化" name="startupDataSyncEnabled" valuePropName="checked" extra="下次应用启动时检查并补充股票基础数据">
-                <Switch checkedChildren="开" unCheckedChildren="关" disabled={!dataCollectionEnabled} />
+              <Form.Item label={t('settings.fieldsRuntime.startupData')} name="startupDataSyncEnabled" valuePropName="checked" extra="下次应用启动时检查并补充股票基础数据">
+                <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} disabled={!dataCollectionEnabled} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12} xl={8}>
-              <Form.Item label="启动历史行情同步" name="startupHistorySyncEnabled" valuePropName="checked" extra="下次应用启动时执行全量历史行情同步">
-                <Switch checkedChildren="开" unCheckedChildren="关" disabled={!dataCollectionEnabled} />
+              <Form.Item label={t('settings.fieldsRuntime.startupHistory')} name="startupHistorySyncEnabled" valuePropName="checked" extra="下次应用启动时执行全量历史行情同步">
+                <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} disabled={!dataCollectionEnabled} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12} xl={8}>
-              <Form.Item label="启动新闻同步" name="startupNewsSyncEnabled" valuePropName="checked" extra="下次应用启动时执行全量新闻采集">
-                <Switch checkedChildren="开" unCheckedChildren="关" disabled={!dataCollectionEnabled || !newsCollectionEnabled} />
+              <Form.Item label={t('settings.fieldsRuntime.startupNews')} name="startupNewsSyncEnabled" valuePropName="checked" extra="下次应用启动时执行全量新闻采集">
+                <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} disabled={!dataCollectionEnabled || !newsCollectionEnabled} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12} xl={8}>
-              <Form.Item label="LSTM 模型训练" name="modelTrainingEnabled" valuePropName="checked" extra="只开放训练资格，交易时段、资源和数据质量门禁仍会继续生效">
-                <Switch checkedChildren="开" unCheckedChildren="关" />
+              <Form.Item label={t('settings.fieldsRuntime.training')} name="modelTrainingEnabled" valuePropName="checked" extra="只开放训练资格，交易时段、资源和数据质量门禁仍会继续生效">
+                <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} />
               </Form.Item>
             </Col>
           </Row>

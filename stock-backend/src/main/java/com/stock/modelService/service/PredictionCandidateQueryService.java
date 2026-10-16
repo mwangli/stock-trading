@@ -41,6 +41,11 @@ public class PredictionCandidateQueryService {
         if (batch == null) {
             throw new IllegalStateException("目标交易日没有可用预测批次: " + targetTradeDate);
         }
+        if (!"TRADE_ELIGIBLE".equals(batch.getTradingEligibility())) {
+            throw new IllegalStateException("预测批次未通过交易门禁: "
+                    + (batch.getTradingEligibilityReason() == null
+                    ? batch.getTradingEligibility() : batch.getTradingEligibilityReason()));
+        }
         List<ModelPredictionDocument> predictions = predictionRepository.findByBatchId(batch.getId());
         if (predictions.isEmpty() || predictions.size() != batch.getSuccessCount()) {
             throw new IllegalStateException("预测批次明细数量与成功数量不一致: batchId=" + batch.getId());
@@ -59,6 +64,8 @@ public class PredictionCandidateQueryService {
                 .baseTradeDate(batch.getBaseTradeDate())
                 .targetTradeDate(batch.getTargetTradeDate())
                 .informationCutoffAt(batch.getInformationCutoffAt())
+                .tradingEligibility(batch.getTradingEligibility())
+                .tradingEligibilityReason(batch.getTradingEligibilityReason())
                 .items(items)
                 .build();
     }
@@ -72,7 +79,11 @@ public class PredictionCandidateQueryService {
                 && batch.getTargetTradeDate() != null && batch.getTargetTradeDate().equals(item.getTargetTradeDate())
                 && item.getPredictedReturn() != null && Double.isFinite(item.getPredictedReturn())
                 && item.getDirectionProbability() != null && Double.isFinite(item.getDirectionProbability())
-                && item.getDownsideRisk() != null && Double.isFinite(item.getDownsideRisk());
+                && item.getDownsideRisk() != null && Double.isFinite(item.getDownsideRisk())
+                && item.getPredictedReturnPercentile() != null
+                && Double.isFinite(item.getPredictedReturnPercentile())
+                && item.getDirectionProbabilityPercentile() != null
+                && Double.isFinite(item.getDirectionProbabilityPercentile());
     }
 
     private PredictionCandidateBatchDto.PredictionCandidateItemDto toItem(ModelPredictionDocument item) {
@@ -82,6 +93,8 @@ public class PredictionCandidateQueryService {
                 .predictedReturn(item.getPredictedReturn())
                 .directionProbability(item.getDirectionProbability())
                 .downsideRisk(item.getDownsideRisk())
+                .predictedReturnPercentile(item.getPredictedReturnPercentile())
+                .directionProbabilityPercentile(item.getDirectionProbabilityPercentile())
                 .build();
     }
 }

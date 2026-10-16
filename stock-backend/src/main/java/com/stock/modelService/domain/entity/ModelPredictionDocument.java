@@ -73,6 +73,12 @@ public class ModelPredictionDocument {
     /** 预测下行风险。 */
     private Double downsideRisk;
 
+    /** 预测收益率在本批次横截面中的百分位，范围 0 到 1。 */
+    private Double predictedReturnPercentile;
+
+    /** 上涨概率在本批次横截面中的百分位，范围 0 到 1。 */
+    private Double directionProbabilityPercentile;
+
     /** 目标日实际收盘价。 */
     private Double actualClosePrice;
 

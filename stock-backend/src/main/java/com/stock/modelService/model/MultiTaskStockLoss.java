@@ -19,6 +19,8 @@ public class MultiTaskStockLoss extends Loss {
     private final float returnWeight;
     private final float directionWeight;
     private final float downsideWeight;
+    private final float directionPositiveWeight;
+    private final float directionNegativeWeight;
 
     /**
      * 创建多任务损失。
@@ -28,10 +30,26 @@ public class MultiTaskStockLoss extends Loss {
      * @param downsideWeight 下行风险任务权重
      */
     public MultiTaskStockLoss(float returnWeight, float directionWeight, float downsideWeight) {
+        this(returnWeight, directionWeight, downsideWeight, 1F, 1F);
+    }
+
+    /**
+     * 创建支持类别加权的多任务损失。
+     *
+     * @param returnWeight 收益率任务权重
+     * @param directionWeight 方向概率任务权重
+     * @param downsideWeight 下行风险任务权重
+     * @param directionPositiveWeight 上涨样本权重
+     * @param directionNegativeWeight 下跌样本权重
+     */
+    public MultiTaskStockLoss(float returnWeight, float directionWeight, float downsideWeight,
+                              float directionPositiveWeight, float directionNegativeWeight) {
         super("multi_task_stock_loss");
         this.returnWeight = returnWeight;
         this.directionWeight = directionWeight;
         this.downsideWeight = downsideWeight;
+        this.directionPositiveWeight = directionPositiveWeight;
+        this.directionNegativeWeight = directionNegativeWeight;
     }
 
     /**
@@ -68,8 +86,8 @@ public class MultiTaskStockLoss extends Loss {
 
     private NDArray binaryCrossEntropy(NDArray prediction, NDArray label) {
         NDArray safePrediction = prediction.clip(1.0E-7F, 1F - 1.0E-7F);
-        NDArray positive = label.mul(safePrediction.log());
-        NDArray negative = label.mul(-1F).add(1F)
+        NDArray positive = label.mul(directionPositiveWeight).mul(safePrediction.log());
+        NDArray negative = label.mul(-1F).add(1F).mul(directionNegativeWeight)
                 .mul(safePrediction.mul(-1F).add(1F).log());
         return positive.add(negative).mul(-1F).mean();
     }

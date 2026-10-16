@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START ---------------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.BrokerHistoryQueryRequest;
@@ -10,6 +10,9 @@ import com.stock.tradingExecutor.domain.vo.AccountStatus;
 import com.stock.tradingExecutor.domain.vo.BrokerOrderSnapshot;
 import com.stock.tradingExecutor.execution.BrokerAdapter;
 import com.stock.tradingExecutor.execution.TradingProperties;
+import com.stock.tradingExecutor.sync.SyncWindow;
+import com.stock.tradingExecutor.sync.SyncWindowExecutor;
+import com.stock.tradingExecutor.sync.SyncWindowResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,6 +38,7 @@ import java.util.function.Supplier;
 public class BrokerDataSyncService {
 
     private static final int MAX_MANUAL_WINDOW_DAYS = 31;
+    private static final int MAX_HISTORY_YEARS = 3;
     private static final String ACCOUNT = "ACCOUNT";
     private static final String POSITION = "POSITION";
     private static final String TODAY_ORDER = "TODAY_ORDER";
@@ -46,6 +50,7 @@ public class BrokerDataSyncService {
     private final TradeRecordAggregationService tradeRecordAggregationService;
     private final PerformanceReportService performanceReportService;
     private final TradingProperties tradingProperties;
+    private final SyncWindowExecutor syncWindowExecutor;
     private volatile String activeOperation;
 
     /**
@@ -108,19 +113,19 @@ public class BrokerDataSyncService {
     }
 
     /**
-     * 按自然月同步最近五年已成交历史委托。
+     * 按自然月同步最近三年已成交历史委托。
      * 已成功的月份直接跳过，失败或部分成功月份会在下次运行时重试。
      *
-     * @return 五年历史同步汇总结果
+     * @return 最近三年历史同步汇总结果
      */
-    public BrokerSyncResultDto syncLastFiveYears() {
-        return executeExclusively("HISTORY_FIVE_YEARS", this::doSyncLastFiveYears);
+    public BrokerSyncResultDto syncHistoryBackfill() {
+        return executeExclusively("HISTORY_BACKFILL", this::doSyncHistoryBackfill);
     }
 
-    private BrokerSyncResultDto doSyncLastFiveYears() {
+    private BrokerSyncResultDto doSyncHistoryBackfill() {
         ensureAuthenticated();
         LocalDate endDate = LocalDate.now();
-        LocalDate startDate = endDate.minusYears(5);
+        LocalDate startDate = endDate.minusYears(MAX_HISTORY_YEARS);
         LocalDate cursor = startDate;
         List<BatchExecution> executions = new ArrayList<>();
 
@@ -134,7 +139,7 @@ public class BrokerDataSyncService {
             cursor = monthEnd.plusDays(1);
             pauseBetweenMonths();
         }
-        BrokerSyncResultDto result = aggregate("HISTORY_FIVE_YEARS", startDate, endDate, executions);
+        BrokerSyncResultDto result = aggregate("HISTORY_BACKFILL", startDate, endDate, executions);
         assembleTradeRecords();
         return result;
     }
@@ -198,24 +203,27 @@ public class BrokerDataSyncService {
     private BatchExecution runBatch(String syncType, LocalDate startDate, LocalDate endDate,
                                     boolean skipSuccessful,
                                     Supplier<BrokerFactPersistenceService.PersistenceResult> action) {
-        if (skipSuccessful && persistenceService.isWindowSuccessful(syncType, startDate, endDate)) {
-            log.info("[BrokerSync] 跳过已成功窗口: type={}, start={}, end={}", syncType, startDate, endDate);
-            return BatchExecution.skipped();
-        }
-
-        BrokerSyncBatchEntity batch = persistenceService.beginBatch(syncType, startDate, endDate);
-        try {
-            BrokerFactPersistenceService.PersistenceResult result = action.get();
-            persistenceService.completeBatch(batch.getId(), result);
-            return BatchExecution.success(result);
-        } catch (RuntimeException exception) {
-            persistenceService.failBatch(batch.getId(), exception);
-            log.error("[BrokerSync] 同步窗口失败: type={}, start={}, end={}, reason={}",
-                    syncType, startDate, endDate, exception.getMessage());
-            return BatchExecution.failed();
-        }
+        SyncWindow window = new SyncWindow(syncType, startDate, endDate);
+        BrokerSyncBatchEntity batch = skipSuccessful
+                ? null
+                : persistenceService.beginBatch(syncType, startDate, endDate);
+        boolean skipped = skipSuccessful && persistenceService.isWindowSuccessful(syncType, startDate, endDate);
+        SyncWindowResult<BrokerFactPersistenceService.PersistenceResult> result = syncWindowExecutor.execute(
+                window,
+                skipped,
+                action,
+                value -> persistenceService.completeBatch(batch.getId(), value),
+                exception -> {
+                    persistenceService.failBatch(batch.getId(), exception);
+                    log.error("[BrokerSync] 同步窗口失败: type={}, start={}, end={}, reason={}",
+                            syncType, startDate, endDate, exception.getMessage());
+                });
+        return switch (result.status()) {
+            case SUCCESS -> BatchExecution.success(result.value());
+            case SKIPPED -> BatchExecution.skipped();
+            case FAILED -> BatchExecution.failed();
+        };
     }
-
     private BrokerSyncResultDto aggregate(String operation, LocalDate startDate, LocalDate endDate,
                                           List<BatchExecution> executions) {
         int successfulWindows = executions.stream().mapToInt(BatchExecution::successfulWindows).sum();
@@ -265,7 +273,7 @@ public class BrokerDataSyncService {
             Thread.sleep(Math.max(0, tradingProperties.getHistoryMonthIntervalMs()));
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("五年历史同步被中断", exception);
+            throw new IllegalStateException("历史同步被中断", exception);
         }
     }
 
@@ -293,4 +301,4 @@ public class BrokerDataSyncService {
         }
     }
 }
-// AI_GENERATE_END ------------
+// AI_GENERATE_END ---------------

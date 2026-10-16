@@ -15,7 +15,9 @@
     "search": "Search",
     "status": "Status",
     "loading": "Loading...",
-    "retry": "Retry"
+    "retry": "Retry",
+    "refresh": "Refresh",
+    "pagination": "{{start}}-{{end}} of {{total}}"
   },
   "layout": {
     "dashboard": "Dashboard",
@@ -36,8 +38,78 @@
       "week": "Weekly P&L",
       "month": "Monthly P&L"
     },
-    "title": "AI TRADER"
+    "title": "AI TRADER",
+    "stockInformation": "Stock Information",
+    "historyOrders": "Order History",
+    "tradeRecords": "Trade Records",
+    "modelOperations": "Price Prediction",
+    "sentimentModel": "Sentiment Model",
+    "strategyConfig": "Trading Strategy",
+    "jobs": "Job Management",
+    "pageTitles": {
+      "dashboard": "Dashboard",
+      "market": "Market Overview",
+      "stockInformation": "Stock Information",
+      "historyOrders": "Order History",
+      "tradeRecords": "Trade Records",
+      "logs": "Run Logs",
+      "modelOperations": "Price Prediction",
+      "sentimentModel": "Sentiment Model",
+      "strategyConfig": "Trading Strategy",
+      "jobs": "Job Management",
+      "settings": "Settings"
+    },
+    "expandMenu": "Expand navigation",
+    "collapseMenu": "Collapse navigation",
+    "dragToReorder": "Drag to reorder",
+    "userMenu": "User menu",
+    "currentUser": "Current user",
+    "online": "System online",
+    "offline": "System offline",
+    "checking": "Checking",
+    "lightMode": "Switch to light mode",
+    "darkMode": "Switch to dark mode"
   },
+  "stockInformation": {
+    "subtitle": "Browse maintained stock reference information",
+    "loadError": "Failed to load stock information",
+    "searchPlaceholder": "Search stock code or name",
+    "empty": "No stock information",
+    "columns": { "code": "Stock Code", "name": "Stock Name", "market": "Market", "price": "Last Price", "changeAmount": "Change", "changePercent": "Change %", "marketCap": "Market Cap", "turnover": "Turnover", "volumeRatio": "Volume Ratio", "category": "Security Type", "updatedAt": "Updated At" }
+  },
+  "historyOrders": {
+    "subtitle": "Filled orders returned by the broker and stored locally",
+    "loadError": "Failed to load order history",
+    "searchPlaceholder": "Stock code, name or order ID",
+    "empty": "No synced order history",
+    "allDirections": "All Directions",
+    "buy": "Buy",
+    "sell": "Sell",
+    "columns": { "time": "Order Time", "stock": "Stock", "direction": "Direction", "orderPrice": "Order Price", "orderQuantity": "Order Quantity", "filledQuantity": "Filled Quantity", "averageFillPrice": "Average Fill Price", "status": "Status", "orderId": "Order ID" },
+    "filled": "Filled",
+    "dateError": "Start date cannot be later than end date"
+  },
+  "modelOperations": {
+    "subtitle": "Manage model versions, training gates and prediction analysis",
+    "trainingGatePassed": "Training gate passed",
+    "trainingGateBlocked": "Training gate is currently blocked",
+    "productionVersion": "Production Version",
+    "previousVersion": "Previous Version",
+    "trainingCapability": "Node Training Capability",
+    "latestTraining": "Latest Training",
+    "trainingProgress": "Training Progress",
+    "predictionAnalysis": "Prediction Analysis",
+    "modelVersions": "Model Versions",
+    "trainingRecords": "Training Records",
+    "predictionEmpty": "No prediction results",
+    "versionsEmpty": "No model versions",
+    "runsEmpty": "No training records"
+  },
+  "tradeRecords": { "subtitle": "Aggregate filled orders into FIFO trade records", "searchPlaceholder": "Stock code, name or order ID", "empty": "No assembled trade records", "columns": { "stock": "Stock", "buyTime": "Buy Time", "sellTime": "Sell Time", "buyPrice": "Buy Price", "sellPrice": "Sell Price", "buyAmount": "Buy Amount", "sellAmount": "Sell Amount", "grossProfit": "Gross Profit", "netProfit": "Net Profit", "grossReturn": "Gross Return", "returnRate": "Return Rate", "holdingTime": "Holding Time", "dailyReturn": "Daily Return" } },
+  "marketPage": { "subtitle": "Explore market breadth, watchlists and stock candlestick trends", "searchPlaceholder": "Search stock name or code", "timeRange": "Select time range", "daily": "Daily", "weekly": "Weekly", "monthly": "Monthly", "noData": "No data" },
+  "jobsPage": { "subtitle": "Monitor, trigger and stop scheduled jobs", "refresh": "Refresh", "status": "Task Status", "emptyGroup": "No jobs in this group", "emptyRuns": "No execution records", "history": "History", "details": "Execution Details" },
+  "strategyPage": { "subtitle": "Manage trading strategies, model candidates and execution gates", "refresh": "Refresh", "reset": "Restore Defaults", "save": "Save Configuration", "candidates": "Current Trade Candidates", "select": "Select Stocks" },
+  "sentimentPage": { "subtitle": "Inspect sentiment artifacts, offline evaluation and online inference", "runStatus": "Run Status", "artifact": "Model Artifact", "offline": "Offline Evaluation", "single": "Single Text Validation" },
   "login": {
     "systemOnline": "SYSTEM ONLINE",
     "algoTrading": "Algorithmic Trading Intelligence",
@@ -59,6 +131,14 @@
     "footer": "AI STOCK TRADING SYSTEM ©2024"
   },
   "dashboard": {
+    "subtitle": "Account assets, realized returns and trading statistics",
+    "lastSync": "Last sync",
+    "cards": { "totalAssets": "Total Assets", "availableCash": "Available Cash", "positionValue": "Position Value", "frozenCash": "Frozen Cash", "realizedTotal": "Total Realized P&L", "realizedToday": "Today's Realized P&L", "realizedMonth": "This Month's Realized P&L", "realizedRate": "Realized Return", "dailyRate": "Daily Return", "monthlyRate": "Monthly Return" },
+    "sections": { "returnStats": "Return Statistics", "completedTrades": "Completed Trades", "winRate": "Win Rate", "averageReturn": "Average Return", "profitLoss": "Profit / Loss", "ranking": "Return Ranking", "daily": "Daily Return", "monthly": "Monthly Return", "positions": "Current Positions", "best": "Best Return", "worst": "Worst Return", "basis": "Metrics are calculated from realized FIFO trade records" },
+    "columns": { "stockCode": "Stock Code", "stockName": "Stock Name", "totalQuantity": "Quantity Held", "availableQuantity": "Available to Sell", "averageCost": "Average Cost", "currentPrice": "Current Price", "marketValue": "Market Value", "stock": "Stock", "netProfit": "Net Profit", "returnRate": "Return Rate", "dailyReturnRate": "Daily Return", "holdingDays": "Holding Days", "status": "Status", "period": "Period", "tradeCount": "Trades", "winningTradeCount": "Winning Trades" },
+    "units": { "days": "days" },
+    "status": { "completed": "Completed", "partial": "Partially Sold" },
+    "empty": { "ranking": "No realized trade ranking", "daily": "No daily return data", "monthly": "No monthly return data", "positions": "No live positions" },
     "stats": {
       "totalBalance": "Total Balance",
       "activePositions": "Active Positions",
@@ -351,7 +431,17 @@
       }
     },
     "testConnection": "Test Connection",
-    "successMsg": "Settings Saved Successfully"
+    "successMsg": "Settings Saved Successfully",
+    "checkStatus": "Check Service Status",
+    "resetPreferences": "Restore Default Preferences",
+    "generalTitle": "Interface Preferences",
+    "runtimeTitle": "Runtime Controls",
+    "securityTitle": "Production Safety Boundary",
+    "refreshHint": "Only affects status checks on this page; Quartz scheduling is unchanged",
+    "switchOn": "On",
+    "switchOff": "Off",
+    "fieldsRuntime": { "scheduler": "Unified Scheduler", "dataCollection": "Data Collection", "newsCollection": "News Collection", "startupData": "Startup Data Initialization", "startupHistory": "Startup Historical Sync", "startupNews": "Startup News Sync", "training": "LSTM Model Training" }
+    ,"status": { "normal": "Healthy", "error": "Error", "unchecked": "Unchecked", "notConfigured": "Not configured", "sessionValid": "Session valid", "sessionMissing": "Session not established", "autoReady": "Automatic execution ready", "controlledStop": "Controlled stop", "realWriteOn": "Real writes enabled", "readOnly": "Read-only observation", "loaded": "Loaded", "notLoaded": "Not loaded", "artifactAvailable": "Artifact available", "artifactMissing": "Artifact unavailable", "verified": "Digest verified", "unverified": "Digest not verified" }
   },
   "transactions": {
     "title": "Trade History",
@@ -400,7 +490,8 @@
 "clear": "Clear",
 "waiting": "Waiting for system logs...",
 "connected": ">>> Connected to log stream <<<",
-"reconnecting": ">>> Connection closed. Reconnecting in 3s... <<<"
+    "reconnecting": ">>> Connection closed. Reconnecting in 3s... <<<",
+    "subtitle": "Backend real-time events and connection status"
     },
     "notifications": {
       "title": "Notifications",

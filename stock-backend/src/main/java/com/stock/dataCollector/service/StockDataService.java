@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.dataCollector.service;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -33,6 +33,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.stock.dataCollector.domain.vo.MarketStatsDto;
@@ -326,6 +327,46 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
         return 0;
     }
     /**
+     * 同步当前交易日并回补最近三年的缺失交易日。
+     *
+     * @param stockCode 股票代码
+     * @param today 当前交易日
+     * @param earliestDate 最早允许回补日期
+     * @param tradingDays 已确认交易日
+     * @return 当前日、回补和未能从供应商窗口获取的数据统计
+     */
+    public PriceSyncResult syncTodayAndBackfill(String stockCode, LocalDate today,
+                                                 LocalDate earliestDate,
+                                                 List<LocalDate> tradingDays) {
+        List<StockPrice> fetchedPrices = getHistoryPrices(stockCode);
+        if (fetchedPrices.stream().noneMatch(price -> today.equals(price.getDate()))) {
+            throw new IllegalStateException("供应商未返回当前交易日数据: " + stockCode + ", " + today);
+        }
+
+        Map<LocalDate, StockPrice> fetchedByDate = fetchedPrices.stream()
+                .filter(price -> price.getDate() != null)
+                .collect(Collectors.toMap(StockPrice::getDate, price -> price, (left, right) -> left));
+        Set<LocalDate> existingDates = priceRepository
+                .findByCodeAndDateBetweenOrderByDateAsc(stockCode, earliestDate, today).stream()
+                .map(StockPrice::getDate)
+                .collect(Collectors.toSet());
+        List<LocalDate> missingDates = tradingDays.stream()
+                .filter(date -> !date.isAfter(today) && !existingDates.contains(date))
+                .toList();
+        List<StockPrice> toSave = missingDates.stream()
+                .map(fetchedByDate::get)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (!toSave.isEmpty()) {
+            saveStockPrices(toSave);
+        }
+        int todaySaved = toSave.stream().anyMatch(price -> today.equals(price.getDate())) ? 1 : 0;
+        List<LocalDate> unresolvedDates = missingDates.stream()
+                .filter(date -> !fetchedByDate.containsKey(date))
+                .toList();
+        return new PriceSyncResult(todaySaved, toSave.size() - todaySaved, unresolvedDates);
+    }
+    /**
      * 智能增量同步单只股票数据
      * 逻辑：
      * 1. 获取接口返回的默认历史数据（通常为最近500条）
@@ -590,6 +631,9 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
     }
 
     // ==================== 同步结果 ====================
+
+    public record PriceSyncResult(int todaySaved, int backfillSaved, List<LocalDate> unresolvedDates) {
+    }
 
     @lombok.Data
     public static class SyncResult {
@@ -1043,4 +1087,4 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
         private String errorMessage;
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

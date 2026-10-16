@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------------------
+// AI_GENERATE_START -------------------------
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, Badge, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
@@ -23,7 +23,6 @@ import {
   HolderOutlined,
   MessageOutlined,
   SlidersOutlined,
-  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { useAppTheme } from '../theme/AppThemeProvider';
 import { PageHeaderContext, type PageHeaderState } from './PageHeaderContext';
@@ -43,7 +42,6 @@ const DEFAULT_MENU_ORDER = [
   '/model-operations',
   '/sentiment-model',
   '/strategy-config',
-  '/real-trading',
   '/jobs',
   '/settings',
 ];
@@ -81,6 +79,7 @@ const DraggableSidebarItem: React.FC<DraggableSidebarItemProps> = ({
   onSelect,
 }) => {
   const dragControls = useDragControls();
+  const { t } = useTranslation();
 
   return (
     <Reorder.Item
@@ -102,11 +101,11 @@ const DraggableSidebarItem: React.FC<DraggableSidebarItemProps> = ({
         </button>
       </Tooltip>
       {!collapsed && (
-        <Tooltip title="拖拽调整顺序" placement="right">
+        <Tooltip title={t('layout.dragToReorder')} placement="right">
           <button
             type="button"
             className="app-menu-drag-handle"
-            aria-label={`拖拽调整${item.label}顺序`}
+            aria-label={`${t('layout.dragToReorder')}: ${item.label}`}
             onPointerDown={(event) => {
               event.preventDefault();
               dragControls.start(event);
@@ -163,15 +162,14 @@ const DashboardLayout: React.FC = () => {
   const menuItems = useMemo<SidebarMenuItem[]>(() => [
     { key: '/dashboard', icon: <DesktopOutlined />, label: t('layout.dashboard') },
     { key: '/market', icon: <StockOutlined />, label: t('layout.market') },
-    { key: '/stock-information', icon: <DatabaseOutlined />, label: '股票信息' },
-    { key: '/history-orders', icon: <HistoryOutlined />, label: '历史订单' },
-    { key: '/trade-records', icon: <LineChartOutlined />, label: '交易记录' },
+    { key: '/stock-information', icon: <DatabaseOutlined />, label: t('layout.stockInformation') },
+    { key: '/history-orders', icon: <HistoryOutlined />, label: t('layout.historyOrders') },
+    { key: '/trade-records', icon: <LineChartOutlined />, label: t('layout.tradeRecords') },
     { key: '/logs', icon: <FileTextOutlined />, label: t('layout.logs') },
-    { key: '/model-operations', icon: <ExperimentOutlined />, label: '涨跌预测' },
-    { key: '/sentiment-model', icon: <MessageOutlined />, label: '情感模型' },
-    { key: '/strategy-config', icon: <SlidersOutlined />, label: '策略配置' },
-    { key: '/real-trading', icon: <SafetyCertificateOutlined />, label: '真实交易' },
-    { key: '/jobs', icon: <ScheduleOutlined />, label: '任务管理' },
+    { key: '/model-operations', icon: <ExperimentOutlined />, label: t('layout.modelOperations') },
+    { key: '/sentiment-model', icon: <MessageOutlined />, label: t('layout.sentimentModel') },
+    { key: '/strategy-config', icon: <SlidersOutlined />, label: t('layout.strategyConfig') },
+    { key: '/jobs', icon: <ScheduleOutlined />, label: t('layout.jobs') },
     { key: '/settings', icon: <SettingOutlined />, label: t('layout.settings') },
   ], [t]);
 
@@ -214,18 +212,17 @@ const DashboardLayout: React.FC = () => {
   };
 
   const pageTitles: Record<string, string> = {
-    '/dashboard': '数据总览',
-    '/market': '市场行情',
-    '/stock-information': '股票信息',
-    '/history-orders': '历史订单',
-    '/trade-records': '交易记录',
-    '/logs': '运行日志',
-    '/model-operations': '涨跌预测',
-    '/sentiment-model': '情感模型',
-    '/strategy-config': '策略配置',
-    '/real-trading': '真实交易',
-    '/jobs': '任务管理',
-    '/settings': '系统设置',
+    '/dashboard': t('layout.pageTitles.dashboard'),
+    '/market': t('layout.pageTitles.market'),
+    '/stock-information': t('layout.pageTitles.stockInformation'),
+    '/history-orders': t('layout.pageTitles.historyOrders'),
+    '/trade-records': t('layout.pageTitles.tradeRecords'),
+    '/logs': t('layout.pageTitles.logs'),
+    '/model-operations': t('layout.pageTitles.modelOperations'),
+    '/sentiment-model': t('layout.pageTitles.sentimentModel'),
+    '/strategy-config': t('layout.pageTitles.strategyConfig'),
+    '/jobs': t('layout.pageTitles.jobs'),
+    '/settings': t('layout.pageTitles.settings'),
   };
 
   return (
@@ -244,7 +241,7 @@ const DashboardLayout: React.FC = () => {
           }
         }}
         onCollapse={setSidebarCollapsed}
-        width={160}
+        width={192}
         className="app-sidebar"
       >
         <div className="app-logo" title={t('layout.title')}>
@@ -273,7 +270,7 @@ const DashboardLayout: React.FC = () => {
       <Layout className="app-main-layout">
         <Header className="app-header">
           <div className="app-header-identity">
-            <Tooltip title={sidebarCollapsed ? '展开导航菜单' : '收缩导航菜单'}>
+            <Tooltip title={sidebarCollapsed ? t('layout.expandMenu') : t('layout.collapseMenu')}>
               <Button
                 type="text"
                 icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
@@ -297,9 +294,9 @@ const DashboardLayout: React.FC = () => {
           <div className="app-header-tools">
             <div className="app-system-status">
               <span className={`h-2 w-2 rounded-full ${backendStatus === 'online' ? 'bg-emerald-500' : backendStatus === 'offline' ? 'bg-red-500' : 'bg-amber-500'}`} />
-              {backendStatus === 'online' ? '系统在线' : backendStatus === 'offline' ? '系统离线' : '检测中'}
+              {backendStatus === 'online' ? t('layout.online') : backendStatus === 'offline' ? t('layout.offline') : t('layout.checking')}
             </div>
-            <Tooltip title={mode === 'dark' ? '切换浅色模式' : '切换深色模式'}>
+            <Tooltip title={mode === 'dark' ? t('layout.lightMode') : t('layout.darkMode')}>
               <Button type="text" icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />} onClick={toggleMode} />
             </Tooltip>
             <Button
@@ -313,7 +310,7 @@ const DashboardLayout: React.FC = () => {
               <Button type="text" icon={<BellOutlined />} />
             </Badge>
             <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} trigger={['click']}>
-              <Button type="text" className="!h-8 !px-1" aria-label="用户菜单">
+              <Button type="text" className="!h-8 !px-1" aria-label={t('layout.userMenu')}>
                 <Avatar size={30} icon={<UserOutlined />} className="app-header-avatar !bg-blue-100 !text-blue-700" />
               </Button>
             </Dropdown>
@@ -330,4 +327,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END ------------------------
+// AI_GENERATE_END -------------------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.dataCollector.service;
 
 import com.stock.dataCollector.domain.entity.TradeCalendarEntity;
@@ -49,6 +49,29 @@ public class TradingCalendarService {
         return tradeCalendarRepository.findByMarketAndTradeDate(MARKET, date)
                 .map(this::isConfirmed)
                 .orElse(false);
+    }
+
+    /**
+     * 查询日期范围内已确认的交易日。
+     *
+     * @param startDate 起始日期
+     * @param endDate 结束日期
+     * @return 按日期升序排列的交易日
+     */
+    public List<LocalDate> tradingDaysBetween(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null || startDate.isAfter(endDate)) {
+            throw new IllegalArgumentException("交易日历范围无效");
+        }
+        List<TradeCalendarEntity> records = tradeCalendarRepository
+                .findByMarketAndTradeDateBetweenOrderByTradeDateAsc(MARKET, startDate, endDate);
+        long expectedDays = java.time.temporal.ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        if (records.size() != expectedDays || records.stream().anyMatch(item -> !isConfirmed(item))) {
+            throw new IllegalStateException("交易日历区间存在缺口或未确认日期: " + startDate + "~" + endDate);
+        }
+        return records.stream()
+                .filter(item -> item.getDayStatus() == CalendarDayStatus.OPEN && item.isTradingDay())
+                .map(TradeCalendarEntity::getTradeDate)
+                .toList();
     }
 
     /**
@@ -119,4 +142,4 @@ public class TradingCalendarService {
         }
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

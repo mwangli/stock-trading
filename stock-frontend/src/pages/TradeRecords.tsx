@@ -6,6 +6,7 @@ import request from '../utils/request';
 import type { ApiResponse } from '../utils/api';
 import { formatDateTime } from '../utils/dateTime';
 import { usePageHeader } from '../layouts/PageHeaderContext';
+import { useTranslation } from 'react-i18next';
 
 const { Text } = Typography;
 
@@ -71,6 +72,7 @@ const percent = (value?: number) => value == null ? '-' : `${(Number(value) * 10
 const days = (value?: number) => value == null ? '-' : `${Number(value).toFixed(2)} 天`;
 
 const TradeRecords: React.FC = () => {
+  const { t } = useTranslation();
   const defaultFilters = useMemo(buildDefaultFilters, []);
   const [draftFilters, setDraftFilters] = useState<TradeFilters>(defaultFilters);
   const [filters, setFilters] = useState<TradeFilters>(defaultFilters);
@@ -167,10 +169,10 @@ const TradeRecords: React.FC = () => {
   ];
 
   const headerActions = useMemo(() => (
-    <Button icon={<ReloadOutlined />} loading={loading} onClick={() => setRefreshToken((value) => value + 1)}>刷新</Button>
+    <Button icon={<ReloadOutlined />} loading={loading} onClick={() => setRefreshToken((value) => value + 1)}>{t('common.refresh')}</Button>
   ), [loading]);
 
-  usePageHeader('按 FIFO 规则将已成交历史订单汇总为买入批次交易记录', headerActions);
+  usePageHeader(t('tradeRecords.subtitle'), headerActions);
 
   return (
     <div className="app-page">
@@ -178,7 +180,7 @@ const TradeRecords: React.FC = () => {
         <Space wrap className="mb-4">
           <Input
             prefix={<SearchOutlined />}
-            placeholder="股票代码、名称或委托编号"
+            placeholder={t('tradeRecords.searchPlaceholder')}
             value={draftFilters.keyword}
             onChange={(event) => setDraftFilters((current) => ({ ...current, keyword: event.target.value }))}
             onPressEnter={applyFilters}
@@ -186,14 +188,14 @@ const TradeRecords: React.FC = () => {
           />
           <Input type="date" value={draftFilters.startDate} onChange={(event) => setDraftFilters((current) => ({ ...current, startDate: event.target.value }))} />
           <Input type="date" value={draftFilters.endDate} onChange={(event) => setDraftFilters((current) => ({ ...current, endDate: event.target.value }))} />
-          <Button type="primary" icon={<SearchOutlined />} onClick={applyFilters}>查询</Button>
+          <Button type="primary" icon={<SearchOutlined />} onClick={applyFilters}>{t('common.search')}</Button>
         </Space>
         <Table
           rowKey={(item, index) => `${item.stockCode}-${item.buyTime}-${index ?? 0}`}
           columns={columns}
           dataSource={records}
           loading={loading}
-          locale={{ emptyText: <Empty description="暂无已组装交易记录" /> }}
+          locale={{ emptyText: <Empty description={t('tradeRecords.empty')} /> }}
           scroll={{ x: 2400, y: 'calc(100vh - 390px)' }}
           pagination={false}
         />

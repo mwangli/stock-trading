@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.tradingExecutor.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -56,6 +56,12 @@ public final class JobManagementDto {
 
         /** Cron 表达式。 */
         private String cronExpression;
+
+        /** 所属业务模块。 */
+        private String module;
+
+        /** 同步模式或任务类型。 */
+        private String syncMode;
 
         /** 是否启用。 */
         private boolean enabled;
@@ -194,4 +200,4 @@ public final class JobManagementDto {
         private String message;
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

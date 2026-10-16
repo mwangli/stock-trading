@@ -145,6 +145,12 @@ public final class ModelPredictionAnalysisDto {
         /** 能力结论说明。 */
         private String abilityMessage;
 
+        /** 交易门禁状态。 */
+        private String tradingEligibility;
+
+        /** 交易门禁原因。 */
+        private String tradingEligibilityReason;
+
         /** 批次进度说明。 */
         private String progressMessage;
 
@@ -249,6 +255,12 @@ public final class ModelPredictionAnalysisDto {
         /** 下行风险。 */
         private Double downsideRisk;
 
+        /** 预测收益率横截面百分位。 */
+        private Double predictedReturnPercentile;
+
+        /** 上涨概率横截面百分位。 */
+        private Double directionProbabilityPercentile;
+
         /** 实际收盘价。 */
         private Double actualClosePrice;
 
@@ -341,6 +353,30 @@ public final class ModelPredictionAnalysisDto {
         /** 方向准确率。 */
         private Double directionAccuracy;
 
+        /** 实际上涨比例。 */
+        private Double actualUpRate;
+
+        /** 常数方向基线准确率。 */
+        private Double constantBaselineAccuracy;
+
+        /** 上涨概率标准差。 */
+        private Double directionProbabilityStd;
+
+        /** 预测收益率标准差。 */
+        private Double predictedReturnStd;
+
+        /** 最近滚动窗口批次数。 */
+        private Integer rollingWindowBatchCount;
+
+        /** 最近滚动窗口有效样本数。 */
+        private Integer rollingWindowSampleCount;
+
+        /** 最近滚动窗口平均排序 IC。 */
+        private Double rollingAverageSpearmanRankIc;
+
+        /** 最近滚动窗口 Top 10% 平均收益。 */
+        private Double rollingAverageTopDecileReturn;
+
         /** 收益率平均绝对误差。 */
         private Double returnMae;
 
@@ -373,6 +409,12 @@ public final class ModelPredictionAnalysisDto {
 
         /** 能力结论说明。 */
         private String abilityMessage;
+
+        /** 交易门禁状态。 */
+        private String tradingEligibility;
+
+        /** 交易门禁原因。 */
+        private String tradingEligibilityReason;
     }
 }
 // AI_GENERATE_END ---

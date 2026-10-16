@@ -15,7 +15,9 @@
     "search": "搜索",
     "status": "状态",
     "loading": "加载中...",
-    "retry": "重试"
+    "retry": "重试",
+    "refresh": "刷新",
+    "pagination": "第 {{start}}-{{end}} 条，共 {{total}} 条"
   },
   "layout": {
     "dashboard": "数据总览",
@@ -36,8 +38,78 @@
       "week": "本周收益",
       "month": "本月收益"
     },
-    "title": "智能交易终端"
+    "title": "智能交易终端",
+    "stockInformation": "股票信息",
+    "historyOrders": "历史订单",
+    "tradeRecords": "交易记录",
+    "modelOperations": "涨跌预测",
+    "sentimentModel": "情感模型",
+    "strategyConfig": "交易策略",
+    "jobs": "任务管理",
+    "pageTitles": {
+      "dashboard": "数据总览",
+      "market": "市场行情",
+      "stockInformation": "股票信息",
+      "historyOrders": "历史订单",
+      "tradeRecords": "交易记录",
+      "logs": "运行日志",
+      "modelOperations": "涨跌预测",
+      "sentimentModel": "情感模型",
+      "strategyConfig": "交易策略",
+      "jobs": "任务管理",
+      "settings": "系统设置"
+    },
+    "expandMenu": "展开导航菜单",
+    "collapseMenu": "收缩导航菜单",
+    "dragToReorder": "拖拽调整顺序",
+    "userMenu": "用户菜单",
+    "currentUser": "当前用户",
+    "online": "系统在线",
+    "offline": "系统离线",
+    "checking": "检测中",
+    "lightMode": "切换浅色模式",
+    "darkMode": "切换深色模式"
   },
+  "stockInformation": {
+    "subtitle": "展示系统已维护的股票基础信息",
+    "loadError": "股票信息读取失败",
+    "searchPlaceholder": "搜索股票代码或名称",
+    "empty": "暂无股票基础信息",
+    "columns": { "code": "股票代码", "name": "股票名称", "market": "市场", "price": "最新价", "changeAmount": "涨跌额", "changePercent": "涨跌幅", "marketCap": "总市值", "turnover": "换手率", "volumeRatio": "量比", "category": "证券类别", "updatedAt": "更新时间" }
+  },
+  "historyOrders": {
+    "subtitle": "仅展示券商返回并已落库的全部成交委托",
+    "loadError": "历史订单读取失败",
+    "searchPlaceholder": "股票代码、名称或委托编号",
+    "empty": "暂无已同步历史订单",
+    "allDirections": "全部方向",
+    "buy": "买入",
+    "sell": "卖出",
+    "columns": { "time": "委托时间", "stock": "股票", "direction": "方向", "orderPrice": "委托价", "orderQuantity": "委托数量", "filledQuantity": "成交数量", "averageFillPrice": "成交均价", "status": "状态", "orderId": "委托编号" },
+    "filled": "已成交",
+    "dateError": "开始日期不能晚于结束日期"
+  },
+  "modelOperations": {
+    "subtitle": "模型版本、训练门禁、候选激活与生产回滚",
+    "trainingGatePassed": "训练门禁已通过",
+    "trainingGateBlocked": "训练门禁当前不通过",
+    "productionVersion": "生产版本",
+    "previousVersion": "上一版本",
+    "trainingCapability": "节点训练能力",
+    "latestTraining": "最近训练",
+    "trainingProgress": "训练进度",
+    "predictionAnalysis": "预测分析",
+    "modelVersions": "模型版本",
+    "trainingRecords": "训练记录",
+    "predictionEmpty": "暂无预测结果",
+    "versionsEmpty": "暂无模型版本",
+    "runsEmpty": "暂无训练记录"
+  },
+  "tradeRecords": { "subtitle": "按 FIFO 规则将已成交历史订单汇总为买入批次交易记录", "searchPlaceholder": "股票代码、名称或委托编号", "empty": "暂无已组装交易记录", "columns": { "stock": "股票", "buyTime": "买入时间", "sellTime": "卖出时间", "buyPrice": "买入均价", "sellPrice": "卖出均价", "buyAmount": "买入金额", "sellAmount": "卖出金额", "grossProfit": "毛收益", "netProfit": "净收益", "grossReturn": "毛收益率", "returnRate": "收益率", "holdingTime": "持仓时间", "dailyReturn": "日收益率" } },
+  "marketPage": { "subtitle": "查看市场广度、自选列表与股票 K 线走势", "searchPlaceholder": "搜索股票名称或代码", "timeRange": "选择时间范围", "daily": "日K", "weekly": "周K", "monthly": "月K", "noData": "无数据" },
+  "jobsPage": { "subtitle": "查询任务运行状态，手动触发或停止任务并按任务追踪执行历史", "refresh": "刷新", "status": "任务状态", "emptyGroup": "该分组暂无任务配置", "emptyRuns": "该任务暂无执行记录", "history": "历史", "details": "执行记录详情" },
+  "strategyPage": { "subtitle": "管理交易策略、模型候选和真实执行门禁", "refresh": "刷新", "reset": "恢复默认", "save": "保存配置", "candidates": "当前交易候选", "select": "立即选股" },
+  "sentimentPage": { "subtitle": "情感模型制品、离线评估与在线推理验证", "runStatus": "运行状态", "artifact": "模型制品", "offline": "离线评估", "single": "单条文本验证" },
   "login": {
     "systemOnline": "系统在线",
     "algoTrading": "智能算法交易系统",
@@ -59,6 +131,14 @@
     "footer": "AI 股票交易系统 ©2024"
   },
   "dashboard": {
+    "subtitle": "账户资产、已实现收益和交易统计报表",
+    "lastSync": "最近同步",
+    "cards": { "totalAssets": "总资产", "availableCash": "可用资金", "positionValue": "持仓市值", "frozenCash": "冻结资金", "realizedTotal": "累计已实现收益", "realizedToday": "今日已实现收益", "realizedMonth": "本月已实现收益", "realizedRate": "累计收益率", "dailyRate": "日收益率", "monthlyRate": "月收益率" },
+    "sections": { "returnStats": "收益率统计", "completedTrades": "已完成交易", "winRate": "胜率", "averageReturn": "平均收益率", "profitLoss": "盈利 / 亏损", "ranking": "收益率排行", "daily": "日收益率", "monthly": "月收益率", "positions": "当前持仓", "best": "最高收益率", "worst": "最低收益率", "basis": "收益指标基于已实现 FIFO 交易记录计算" },
+    "columns": { "stockCode": "股票代码", "stockName": "股票名称", "totalQuantity": "持仓数量", "availableQuantity": "可卖数量", "averageCost": "成本价", "currentPrice": "现价", "marketValue": "市值", "stock": "股票", "netProfit": "净收益", "returnRate": "收益率", "dailyReturnRate": "日收益率", "holdingDays": "持仓天数", "status": "状态", "period": "周期", "tradeCount": "交易笔数", "winningTradeCount": "盈利笔数" },
+    "units": { "days": "天" },
+    "status": { "completed": "已完成", "partial": "部分卖出" },
+    "empty": { "ranking": "暂无已实现交易收益排行", "daily": "暂无日收益数据", "monthly": "暂无月收益数据", "positions": "暂无真实持仓数据" },
     "stats": {
       "totalBalance": "总资产",
       "activePositions": "当前持仓",
@@ -353,7 +433,17 @@
       }
     },
     "testConnection": "测试连接",
-    "successMsg": "设置保存成功"
+    "successMsg": "设置保存成功",
+    "checkStatus": "检查服务状态",
+    "resetPreferences": "恢复默认偏好",
+    "generalTitle": "界面偏好",
+    "runtimeTitle": "运行控制",
+    "securityTitle": "生产安全边界",
+    "refreshHint": "仅影响本页面状态检查，不会改变 Quartz 后端任务调度频率",
+    "switchOn": "开",
+    "switchOff": "关",
+    "fieldsRuntime": { "scheduler": "统一任务调度", "dataCollection": "数据采集总开关", "newsCollection": "新闻采集", "startupData": "启动数据初始化", "startupHistory": "启动历史行情同步", "startupNews": "启动新闻同步", "training": "LSTM 模型训练" }
+    ,"status": { "normal": "正常", "error": "异常", "unchecked": "未检查", "notConfigured": "未配置", "sessionValid": "会话有效", "sessionMissing": "会话未建立", "autoReady": "自动执行就绪", "controlledStop": "受控停止", "realWriteOn": "真实写入开启", "readOnly": "只读观察", "loaded": "已加载", "notLoaded": "未加载", "artifactAvailable": "制品可用", "artifactMissing": "制品不可用", "verified": "摘要已校验", "unverified": "摘要未校验" }
   },
   "transactions": {
     "title": "交易记录",
@@ -402,7 +492,8 @@
 "clear": "清空",
 "waiting": "等待系统日志...",
 "connected": ">>> 已连接到日志流 <<<",
-"reconnecting": ">>> 连接断开。3秒后重连... <<<"
+    "reconnecting": ">>> 连接断开。3秒后重连... <<<",
+    "subtitle": "后端实时运行事件与连接状态"
     },
     "notifications": {
       "title": "系统通知",

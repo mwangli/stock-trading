@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
@@ -7,27 +7,28 @@ import {
   Col,
   Descriptions,
   Input,
-  List,
   Progress,
+  Select,
   Row,
   Space,
   Statistic,
   Tag,
-  Tabs,
   Typography,
   message,
 } from 'antd';
 import {
   CheckCircleOutlined,
   ExperimentOutlined,
-  PlayCircleOutlined,
   ReloadOutlined,
   SafetyCertificateOutlined,
+  SwapOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
 import request from '../utils/request';
 import { getApiErrorMessage, readApiData, type ApiResponse } from '../utils/api';
 import { usePageHeader } from '../layouts/PageHeaderContext';
+import { useTranslation } from 'react-i18next';
+import { localizedText } from '../utils/localizedText';
 
 const { Paragraph, Text } = Typography;
 const { TextArea } = Input;
@@ -100,7 +101,7 @@ interface SentimentTestGroup {
 
 const formatDateTime = (value?: string) => {
   if (!value) {
-    return '未加载';
+    return localizedText('未加载', 'Not loaded');
   }
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
@@ -108,7 +109,7 @@ const formatDateTime = (value?: string) => {
 
 const formatBytes = (value?: number) => {
   if (value === undefined || value < 0) {
-    return '未知';
+    return localizedText('未知', 'Unknown');
   }
   if (value < 1024 * 1024) {
     return `${(value / 1024).toFixed(1)} KB`;
@@ -119,12 +120,18 @@ const formatBytes = (value?: number) => {
   return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
 };
 
-const formatPercent = (value?: number) => value === undefined ? '未提供' : `${(value * 100).toFixed(2)}%`;
+const formatPercent = (value?: number) => value === undefined ? localizedText('未提供', 'Not provided') : `${(value * 100).toFixed(2)}%`;
 
 const labelMeta: Record<string, { text: string; color: string }> = {
   positive: { text: '正面', color: 'green' },
   neutral: { text: '中性', color: 'blue' },
   negative: { text: '负面', color: 'red' },
+};
+
+const labelMetaEn: Record<string, string> = {
+  positive: 'Positive',
+  neutral: 'Neutral',
+  negative: 'Negative',
 };
 
 const sentimentTestGroups: SentimentTestGroup[] = [
@@ -183,16 +190,21 @@ const sentimentTestGroups: SentimentTestGroup[] = [
   },
 ];
 
+const allSentimentTestCases = sentimentTestGroups.flatMap((group) => group.cases);
+
+const pickRandomTestCase = () => allSentimentTestCases[Math.floor(Math.random() * allSentimentTestCases.length)];
+
 const SentimentModel: React.FC = () => {
+  const { t } = useTranslation();
   const [health, setHealth] = useState<SentimentHealth | null>(null);
   const [evaluation, setEvaluation] = useState<SentimentEvaluation | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
-  const [text, setText] = useState('');
+  const [initialTestCase] = useState(pickRandomTestCase);
+  const [text, setText] = useState(initialTestCase.text);
   const [analysis, setAnalysis] = useState<SentimentAnalyzeResult | null>(null);
-  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
-  const [analyzingCaseId, setAnalyzingCaseId] = useState<string | null>(null);
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(initialTestCase.id);
 
   const loadHealth = useCallback(async () => {
     setLoading(true);
@@ -215,174 +227,154 @@ const SentimentModel: React.FC = () => {
     void loadHealth();
   }, [loadHealth]);
 
-  const analyzeText = async (contentOverride?: string, caseId?: string) => {
+  const analyzeText = async (contentOverride?: string) => {
     const content = (contentOverride ?? text).trim();
     if (!content) {
-      message.warning('请输入需要分析的新闻或公告文本');
+      message.warning(localizedText('请输入需要分析的新闻或公告文本', 'Enter news or announcement text to analyze'));
       return;
     }
     setAnalyzing(true);
-    setAnalyzingCaseId(caseId ?? null);
     try {
       const response = await request.post('/model-sentiment/analyze', { text: content }) as ApiResponse<SentimentAnalyzeResult>;
-      setAnalysis(readApiData(response, '情感分析失败'));
+      setAnalysis(readApiData(response, localizedText('情感分析失败', 'Sentiment analysis failed')));
     } catch (cause) {
-      message.error(getApiErrorMessage(cause, '情感分析失败'));
+      message.error(getApiErrorMessage(cause, localizedText('情感分析失败', 'Sentiment analysis failed')));
     } finally {
       setAnalyzing(false);
-      setAnalyzingCaseId(null);
     }
   };
 
-  const analyzeTestCase = (testCase: SentimentTestCase) => {
+  const applyTestCase = (testCase: SentimentTestCase) => {
     setText(testCase.text);
     setAnalysis(null);
     setSelectedCaseId(testCase.id);
-    void analyzeText(testCase.text, testCase.id);
+  };
+
+  const randomizeTestCase = () => {
+    const candidates = allSentimentTestCases.filter((testCase) => testCase.id !== selectedCaseId);
+    applyTestCase(candidates[Math.floor(Math.random() * candidates.length)] ?? allSentimentTestCases[0]);
   };
 
   const headerActions = useMemo(() => (
     <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadHealth()}>
-      刷新状态
+      {localizedText('刷新状态', 'Refresh Status')}
     </Button>
   ), [loadHealth, loading]);
 
-  usePageHeader('情感模型制品、离线评估与在线推理验证', headerActions);
+  usePageHeader(t('sentimentPage.subtitle'), headerActions);
 
   const currentLabel = analysis?.label ? labelMeta[analysis.label] : undefined;
   const probabilities = Object.entries(analysis?.probabilities ?? {}).sort((left, right) => right[1] - left[1]);
-  const selectedCase = sentimentTestGroups
-    .flatMap((group) => group.cases)
-    .find((testCase) => testCase.id === selectedCaseId);
+  const selectedCase = allSentimentTestCases.find((testCase) => testCase.id === selectedCaseId);
   const expectedMatch = Boolean(analysis?.label && selectedCase?.expectedLabel === analysis.label);
 
   return (
     <div className="space-y-4">
       {healthError && (
-        <Alert type="error" showIcon message="情感模型状态读取失败" description={healthError} />
+        <Alert type="error" showIcon message={localizedText('情感模型状态读取失败', 'Failed to load sentiment model status')} description={healthError} />
       )}
 
       <section className="rounded-lg border border-[var(--border-color)] bg-[var(--surface-color)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-base font-semibold text-[var(--text-primary)]">运行状态</div>
-            <div className="mt-1 text-sm text-[var(--text-muted)]">区分真实模型推理、制品就绪和规则降级状态</div>
+            <div className="text-base font-semibold text-[var(--text-primary)]">{t('sentimentPage.runStatus')}</div>
+            <div className="mt-1 text-sm text-[var(--text-muted)]">{localizedText('区分真实模型推理、制品就绪和规则降级状态', 'Distinguish real model inference, artifact readiness and rule fallback')}</div>
           </div>
           <Space wrap>
             <Tag color={health?.modelLoaded ? 'green' : 'default'} icon={health?.modelLoaded ? <CheckCircleOutlined /> : <WarningOutlined />}>
-              {health?.modelLoaded ? '真实模型已加载' : '真实模型未加载'}
+              {health?.modelLoaded ? localizedText('真实模型已加载', 'Real model loaded') : localizedText('真实模型未加载', 'Real model not loaded')}
             </Tag>
             <Tag color={health?.artifactAvailable ? 'blue' : 'orange'}>
-              {health?.artifactAvailable ? '制品可用' : '制品未就绪'}
+              {health?.artifactAvailable ? localizedText('制品可用', 'Artifact available') : localizedText('制品未就绪', 'Artifact not ready')}
             </Tag>
             <Tag color={health?.checksumsVerified ? 'green' : 'default'}>
-              {health?.checksumsVerified ? 'SHA-256 已校验' : 'SHA-256 未校验'}
+              {health?.checksumsVerified ? 'SHA-256 verified' : 'SHA-256 not verified'}
             </Tag>
           </Space>
         </div>
-        {health?.lastError && <Alert className="mt-4" type="warning" showIcon message="最近检查异常" description={health.lastError} />}
+        {health?.lastError && <Alert className="mt-4" type="warning" showIcon message={localizedText('最近检查异常', 'Latest check reported an error')} description={health.lastError} />}
       </section>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={14}>
-          <Card title={<Space><SafetyCertificateOutlined />模型制品</Space>} loading={loading} className="h-full">
+          <Card title={<Space><SafetyCertificateOutlined />{t('sentimentPage.artifact')}</Space>} loading={loading} className="h-full">
             <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-              <Descriptions.Item label="服务状态">{health?.status ?? '未知'}</Descriptions.Item>
-              <Descriptions.Item label="模型版本">{health?.modelVersion ?? '未配置'}</Descriptions.Item>
-              <Descriptions.Item label="制品大小">{formatBytes(health?.totalSizeBytes)}</Descriptions.Item>
-              <Descriptions.Item label="最近加载">{formatDateTime(health?.lastLoadedTime)}</Descriptions.Item>
-              <Descriptions.Item label="Manifest">{health?.manifestPresent ? '存在且可解析' : '缺失或无效'}</Descriptions.Item>
-              <Descriptions.Item label="Manifest SHA">{health?.manifestSha256 ?? '未提供'}</Descriptions.Item>
-              <Descriptions.Item label="制品目录" span={2}>
-                <Text copyable={Boolean(health?.artifactPath)} className="break-all">{health?.artifactPath ?? '未配置'}</Text>
+              <Descriptions.Item label={localizedText('服务状态', 'Service Status')}>{health?.status ?? localizedText('未知', 'Unknown')}</Descriptions.Item>
+              <Descriptions.Item label={localizedText('模型版本', 'Model Version')}>{health?.modelVersion ?? localizedText('未配置', 'Not configured')}</Descriptions.Item>
+              <Descriptions.Item label={localizedText('制品大小', 'Artifact Size')}>{formatBytes(health?.totalSizeBytes)}</Descriptions.Item>
+              <Descriptions.Item label={localizedText('最近加载', 'Last Loaded')}>{formatDateTime(health?.lastLoadedTime)}</Descriptions.Item>
+              <Descriptions.Item label="Manifest">{health?.manifestPresent ? localizedText('存在且可解析', 'Present and readable') : localizedText('缺失或无效', 'Missing or invalid')}</Descriptions.Item>
+              <Descriptions.Item label="Manifest SHA">{health?.manifestSha256 ?? localizedText('未提供', 'Not provided')}</Descriptions.Item>
+              <Descriptions.Item label={localizedText('制品目录', 'Artifact Directory')} span={2}>
+                <Text copyable={Boolean(health?.artifactPath)} className="break-all">{health?.artifactPath ?? localizedText('未配置', 'Not configured')}</Text>
               </Descriptions.Item>
             </Descriptions>
           </Card>
         </Col>
         <Col xs={24} xl={10}>
-          <Card title={<Space><ExperimentOutlined />离线评估</Space>} loading={loading} className="h-full">
+          <Card title={<Space><ExperimentOutlined />{t('sentimentPage.offline')}</Space>} loading={loading} className="h-full">
             <Row gutter={[12, 16]}>
               <Col span={12}><Statistic title="Macro-F1" value={formatPercent(health?.macroF1)} /></Col>
-              <Col span={12}><Statistic title="负面召回率" value={formatPercent(health?.negativeRecall)} /></Col>
+              <Col span={12}><Statistic title={localizedText('负面召回率', 'Negative Recall')} value={formatPercent(health?.negativeRecall)} /></Col>
               <Col span={12}><Statistic title="ECE" value={formatPercent(health?.expectedCalibrationError)} /></Col>
-              <Col span={12}><Statistic title="P95 延迟" value={health?.p95LatencyMs ?? '未提供'} suffix={health?.p95LatencyMs === undefined ? undefined : 'ms'} /></Col>
+              <Col span={12}><Statistic title={localizedText('P95 延迟', 'P95 Latency')} value={health?.p95LatencyMs ?? localizedText('未提供', 'Not provided')} suffix={health?.p95LatencyMs === undefined ? undefined : 'ms'} /></Col>
             </Row>
             <div className="mt-4 border-t border-[var(--border-color)] pt-3 text-sm">
-              <div className="flex justify-between gap-3"><Text type="secondary">评估集</Text><Text>{health?.evaluationDatasetVersion ?? '未提供'}</Text></div>
-              <div className="mt-2 flex justify-between gap-3"><Text type="secondary">样本数</Text><Text>{health?.evaluationSampleCount ?? '未提供'}</Text></div>
-              <Paragraph className="!mb-0 !mt-3" type="secondary">{health?.evaluationConclusion ?? '当前制品没有提供离线评估结论。'}</Paragraph>
+              <div className="flex justify-between gap-3"><Text type="secondary">{localizedText('评估集', 'Evaluation Set')}</Text><Text>{health?.evaluationDatasetVersion ?? localizedText('未提供', 'Not provided')}</Text></div>
+              <div className="mt-2 flex justify-between gap-3"><Text type="secondary">{localizedText('样本数', 'Samples')}</Text><Text>{health?.evaluationSampleCount ?? localizedText('未提供', 'Not provided')}</Text></div>
+              <Paragraph className="!mb-0 !mt-3" type="secondary">{health?.evaluationConclusion ?? localizedText('当前制品没有提供离线评估结论。', 'The current artifact has no offline evaluation conclusion.')}</Paragraph>
             </div>
           </Card>
         </Col>
       </Row>
 
-      <Card title={<Space><ExperimentOutlined />项目独立评估</Space>} loading={loading}>
+      <Card title={<Space><ExperimentOutlined />{localizedText('项目独立评估', 'Independent Project Evaluation')}</Space>} loading={loading}>
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Tag color={evaluation?.status === 'PASSED' ? 'green' : evaluation?.status === 'OBSERVE' ? 'orange' : evaluation?.status === 'REJECTED' ? 'red' : 'default'}>{evaluation?.status || 'NOT_EVALUATED'}</Tag>
-          <Text type="secondary">模型版本：{evaluation?.modelVersion || '未评估'}</Text>
-          <Text type="secondary">评估集：{evaluation?.datasetVersion || '未提供'}</Text>
-          <Text type="secondary">评估时间：{formatDateTime(evaluation?.evaluatedAt)}</Text>
+          <Text type="secondary">{localizedText('模型版本', 'Model Version')}：{evaluation?.modelVersion || localizedText('未评估', 'Not evaluated')}</Text>
+          <Text type="secondary">{localizedText('评估集', 'Evaluation Set')}：{evaluation?.datasetVersion || localizedText('未提供', 'Not provided')}</Text>
+          <Text type="secondary">{localizedText('评估时间', 'Evaluated At')}：{formatDateTime(evaluation?.evaluatedAt)}</Text>
         </div>
         <Row gutter={[12, 16]}>
-          <Col xs={12} md={4}><Statistic title="样本数" value={evaluation?.sampleCount ?? 0} /></Col>
-          <Col xs={12} md={4}><Statistic title="准确率" value={formatPercent(evaluation?.accuracy)} /></Col>
+          <Col xs={12} md={4}><Statistic title={localizedText('样本数', 'Samples')} value={evaluation?.sampleCount ?? 0} /></Col>
+          <Col xs={12} md={4}><Statistic title={localizedText('准确率', 'Accuracy')} value={formatPercent(evaluation?.accuracy)} /></Col>
           <Col xs={12} md={4}><Statistic title="Macro-F1" value={formatPercent(evaluation?.macroF1)} /></Col>
-          <Col xs={12} md={4}><Statistic title="负面召回率" value={formatPercent(evaluation?.negativeRecall)} /></Col>
+          <Col xs={12} md={4}><Statistic title={localizedText('负面召回率', 'Negative Recall')} value={formatPercent(evaluation?.negativeRecall)} /></Col>
           <Col xs={12} md={4}><Statistic title="ECE" value={formatPercent(evaluation?.expectedCalibrationError)} /></Col>
-          <Col xs={12} md={4}><Statistic title="P95 延迟" value={evaluation?.p95LatencyMs ?? '未提供'} suffix={evaluation?.p95LatencyMs === undefined ? undefined : 'ms'} /></Col>
+          <Col xs={12} md={4}><Statistic title={localizedText('P95 延迟', 'P95 Latency')} value={evaluation?.p95LatencyMs ?? localizedText('未提供', 'Not provided')} suffix={evaluation?.p95LatencyMs === undefined ? undefined : 'ms'} /></Col>
         </Row>
-        <Paragraph className="!mb-0 !mt-4" type="secondary">{evaluation?.conclusion || '尚未执行项目人工标注集独立评估任务。'}</Paragraph>
+        <Paragraph className="!mb-0 !mt-4" type="secondary">{evaluation?.conclusion || localizedText('尚未执行项目人工标注集独立评估任务。', 'No independent evaluation has been run on the project-labeled set.')}</Paragraph>
       </Card>
 
       <section className="rounded-lg border border-[var(--border-color)] bg-[var(--surface-color)] p-4">
         <div className="mb-3">
-          <div className="text-base font-semibold text-[var(--text-primary)]">单条文本验证</div>
-          <div className="mt-1 text-sm text-[var(--text-muted)]">用于核对在线标签、置信度和真实模型加载状态，不替代正式评估集</div>
+          <div className="text-base font-semibold text-[var(--text-primary)]">{t('sentimentPage.single')}</div>
+          <div className="mt-1 text-sm text-[var(--text-muted)]">{localizedText('输入新闻、公告或事件描述，快速核对在线标签、置信度和真实模型加载状态', 'Enter a news item, announcement or event description to inspect the online label, confidence and model status')}</div>
         </div>
-        <Tabs
-          className="mb-4"
-          items={sentimentTestGroups.map((group) => ({
-            key: group.key,
-            label: `${group.label} (${group.cases.length})`,
-            children: (
-              <List
-                className="max-h-[360px] overflow-y-auto pr-1"
-                dataSource={group.cases}
-                renderItem={(testCase) => (
-                  <List.Item
-                    key={testCase.id}
-                    className={`!items-start !gap-3 rounded-md !px-3 ${selectedCaseId === testCase.id ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
-                    actions={[
-                      <Button
-                        key="analyze"
-                        type="primary"
-                        size="small"
-                        icon={<PlayCircleOutlined />}
-                        loading={analyzingCaseId === testCase.id}
-                        onClick={() => analyzeTestCase(testCase)}
-                      >
-                        测试
-                      </Button>,
-                    ]}
-                  >
-                    <List.Item.Meta
-                      title={(
-                        <Space wrap size={6}>
-                          <Text strong>{testCase.title}</Text>
-                          <Tag color={labelMeta[testCase.expectedLabel].color}>
-                            预期{labelMeta[testCase.expectedLabel].text}
-                          </Tag>
-                          <Text type="secondary" className="text-xs">{testCase.focus}</Text>
-                        </Space>
-                      )}
-                      description={<Text className="text-sm">{testCase.text}</Text>}
-                    />
-                  </List.Item>
-                )}
-              />
-            ),
-          }))}
-        />
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <Space wrap size={8}>
+            <Text type="secondary">{localizedText('快速样例', 'Quick Sample')}</Text>
+            <Select
+              className="min-w-[220px]"
+              value={selectedCaseId ?? undefined}
+              placeholder={localizedText('选择一条测试文本', 'Select a test text')}
+              options={allSentimentTestCases.map((testCase) => ({
+                value: testCase.id,
+                label: `${testCase.title} · ${localizedText(labelMeta[testCase.expectedLabel].text, labelMetaEn[testCase.expectedLabel])}`,
+              }))}
+              onChange={(caseId: string) => {
+                const testCase = allSentimentTestCases.find((item) => item.id === caseId);
+                if (testCase) {
+                  applyTestCase(testCase);
+                }
+              }}
+            />
+            <Button icon={<SwapOutlined />} onClick={randomizeTestCase}>{localizedText('随机换一条', 'Randomize')}</Button>
+          </Space>
+          {selectedCase && (
+            <Text type="secondary" className="text-xs">{selectedCase.focus}</Text>
+          )}
+        </div>
         <TextArea
           value={text}
           onChange={(event) => {
@@ -392,36 +384,38 @@ const SentimentModel: React.FC = () => {
               setSelectedCaseId(null);
             }
           }}
-          rows={5}
+          autoSize={{ minRows: 8, maxRows: 14 }}
           maxLength={4000}
           showCount
-          placeholder="输入新闻、公告或事件描述"
+          className="!min-h-[220px]"
+          placeholder={localizedText('输入新闻、公告或事件描述', 'Enter a news item, announcement or event description')}
         />
-        <div className="mt-3 flex justify-end">
-          <Button type="primary" icon={<ExperimentOutlined />} loading={analyzing && !analyzingCaseId} onClick={() => void analyzeText()}>
-            执行情感分析
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <Text type="secondary" className="text-xs">{localizedText('样例仅用于快速验证，不替代正式评估集', 'Samples are for quick validation and do not replace the formal evaluation set')}</Text>
+          <Button type="primary" icon={<ExperimentOutlined />} loading={analyzing} onClick={() => void analyzeText()}>
+            {localizedText('执行情感分析', 'Run Sentiment Analysis')}
           </Button>
         </div>
 
         {analysis && (
           <div className="mt-4 border-t border-[var(--border-color)] pt-4">
             <div className="flex flex-wrap items-center gap-3">
-              <Tag color={currentLabel?.color ?? 'default'}>{currentLabel?.text ?? analysis.label ?? '未知'}</Tag>
-              <Tag color={analysis.modelLoaded ? 'green' : 'orange'}>{analysis.modelLoaded ? '真实模型结果' : '规则降级结果'}</Tag>
+              <Tag color={currentLabel?.color ?? 'default'}>{currentLabel ? localizedText(currentLabel.text, labelMetaEn[analysis.label ?? '']) : analysis.label ?? localizedText('未知', 'Unknown')}</Tag>
+              <Tag color={analysis.modelLoaded ? 'green' : 'orange'}>{analysis.modelLoaded ? localizedText('真实模型结果', 'Real Model Result') : localizedText('规则降级结果', 'Rule Fallback Result')}</Tag>
               {selectedCase && (
                 <>
-                  <Tag color={labelMeta[selectedCase.expectedLabel].color}>预期{labelMeta[selectedCase.expectedLabel].text}</Tag>
-                  <Tag color={expectedMatch ? 'green' : 'red'}>{expectedMatch ? '符合预期' : '与预期不一致'}</Tag>
+                  <Tag color={labelMeta[selectedCase.expectedLabel].color}>{localizedText(`预期${labelMeta[selectedCase.expectedLabel].text}`, `Expected ${labelMetaEn[selectedCase.expectedLabel]}`)}</Tag>
+                  <Tag color={expectedMatch ? 'green' : 'red'}>{expectedMatch ? localizedText('符合预期', 'Matches Expected') : localizedText('与预期不一致', 'Does Not Match')}</Tag>
                 </>
               )}
-              <Text>置信度：{formatPercent(analysis.confidence)}</Text>
-              <Text>归一化得分：{analysis.normalizedScore?.toFixed(2) ?? '未提供'}</Text>
+              <Text>{localizedText('置信度', 'Confidence')}：{formatPercent(analysis.confidence)}</Text>
+              <Text>{localizedText('归一化得分', 'Normalized Score')}：{analysis.normalizedScore?.toFixed(2) ?? localizedText('未提供', 'Not provided')}</Text>
             </div>
             <Row gutter={[20, 12]} className="mt-4">
               {probabilities.map(([label, probability]) => (
                 <Col xs={24} md={8} key={label}>
                   <div className="mb-1 flex justify-between text-sm">
-                    <span>{labelMeta[label]?.text ?? label}</span>
+                    <span>{labelMeta[label] ? localizedText(labelMeta[label].text, labelMetaEn[label] ?? label) : label}</span>
                     <span>{formatPercent(probability)}</span>
                   </div>
                   <Progress percent={Number((probability * 100).toFixed(2))} showInfo={false} />
@@ -436,4 +430,4 @@ const SentimentModel: React.FC = () => {
 };
 
 export default SentimentModel;
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----
