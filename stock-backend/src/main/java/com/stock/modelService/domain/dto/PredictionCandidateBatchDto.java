@@ -40,6 +40,12 @@ public class PredictionCandidateBatchDto {
     /** 预测批次信息截止时间。 */
     private LocalDateTime informationCutoffAt;
 
+    /** 模型交易门禁状态。 */
+    private String tradingEligibility;
+
+    /** 模型交易门禁原因。 */
+    private String tradingEligibilityReason;
+
     /** 可用于策略排序的预测明细。 */
     private List<PredictionCandidateItemDto> items;
 
@@ -69,6 +75,12 @@ public class PredictionCandidateBatchDto {
 
         /** 下行风险。 */
         private Double downsideRisk;
+
+        /** 预测收益率横截面百分位。 */
+        private Double predictedReturnPercentile;
+
+        /** 上涨概率横截面百分位。 */
+        private Double directionProbabilityPercentile;
     }
 }
 // AI_GENERATE_END -

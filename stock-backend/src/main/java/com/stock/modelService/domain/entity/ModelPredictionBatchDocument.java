@@ -78,6 +78,39 @@ public class ModelPredictionBatchDocument {
     /** 方向准确率。 */
     private Double directionAccuracy;
 
+    /** 实际上涨比例，用于构造常数方向基线。 */
+    private Double actualUpRate;
+
+    /** 始终预测多数方向时的准确率基线。 */
+    private Double constantBaselineAccuracy;
+
+    /** 上涨概率均值。 */
+    private Double directionProbabilityMean;
+
+    /** 上涨概率标准差，用于检测输出塌缩。 */
+    private Double directionProbabilityStd;
+
+    /** 上涨概率最小值。 */
+    private Double directionProbabilityMin;
+
+    /** 上涨概率最大值。 */
+    private Double directionProbabilityMax;
+
+    /** 预测收益率标准差，用于衡量横截面区分度。 */
+    private Double predictedReturnStd;
+
+    /** 最近滚动评估窗口包含的批次数。 */
+    private Integer rollingWindowBatchCount;
+
+    /** 最近滚动评估窗口的有效样本数。 */
+    private Integer rollingWindowSampleCount;
+
+    /** 最近滚动窗口平均排序 IC。 */
+    private Double rollingAverageSpearmanRankIc;
+
+    /** 最近滚动窗口 Top 10% 平均收益。 */
+    private Double rollingAverageTopDecileReturn;
+
     /** 收益率平均绝对误差。 */
     private Double returnMae;
 
@@ -110,6 +143,12 @@ public class ModelPredictionBatchDocument {
 
     /** 能力结论说明。 */
     private String abilityMessage;
+
+    /** 交易门禁状态：DISABLED、OBSERVE_ONLY 或 TRADE_ELIGIBLE。 */
+    private String tradingEligibility;
+
+    /** 交易门禁原因，禁止仅以能力等级代替交易准入结论。 */
+    private String tradingEligibilityReason;
 
     /** 批次进度说明。 */
     private String progressMessage;

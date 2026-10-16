@@ -1,0 +1,145 @@
+<!-- AI_GENERATE_START -- -->
+# 任务统一编排方案
+
+## 1. 目标
+
+将数据采集、模型任务、策略分析、交易执行四个模块中的任务统一成“同一任务定义、同一运行记录、同一幂等门禁”的执行模型，同时保留增量采集、历史回补和受控全量同步的差异。
+
+核心原则：
+
+- 增量是默认路径，全量不是日常兜底路径。
+- 每次任务都必须有运行记录、目标时间范围、来源和最终状态。
+- 同一 `jobName` 在排队、运行期间只能存在一个活动运行占用。
+- 任务失败后通过缺口表或水位表重新生成回补窗口，不靠人工猜日期。
+
+## 2. 统一任务定义
+
+`job_config` 维护任务的稳定定义：
+
+- `module`：`data`、`model`、`strategy`、`trading`。
+- `sync_mode`：`INCREMENTAL`（每日水位推进）、`BACKFILL`（缺口窗口回补）、`FULL`（受控全量校正）。
+- `cron_expression`：只描述触发时机，不描述业务日期范围。
+- `bean_name`、`method_name`：保留兼容字段，但执行入口统一经过 Quartz 固定 Job 和 `JobExecutionService`。
+
+`job_execution_record` 保存一次运行的完整生命周期，并增加数据库唯一 `active_lock_key=jobName`。任务创建排队记录时占用该键，成功、失败、跳过或取消时清空该键，因此手动触发与定时触发共享同一并发门禁。
+
+## 3. 增量、回补、全量编排
+
+### 3.1 增量任务
+
+每日任务按“业务对象 + 数据日期”计算目标窗口：
+
+1. 读取 `sync_watermark` 中每个数据集和股票的 `last_success_date`。
+2. 结合交易日历计算下一个应同步交易日，不能用周一至周五替代交易日历。
+3. 请求供应商数据并按业务唯一键幂等写入。
+4. 只有该窗口完整成功后才推进水位；部分失败保持原水位并登记缺口。
+
+这样可以在任务重跑时重复请求而不重复落库，也不会把“接口已受理”误认为同步成功。
+
+### 3.2 历史回补任务
+
+每日增量结束后或失败重试时，由缺口扫描器生成 `sync_gap` 窗口。窗口按股票、数据集、开始日期、结束日期合并，优先处理最早缺口，并限制单次窗口大小和并发数。回补成功后关闭缺口；仍失败则保留错误摘要、重试次数和下次重试时间。
+
+历史全量任务只负责初始化、供应商修订或人工指定范围校正。执行时拆分为有限窗口，复用同一增量写入器和幂等键，不能一次性把全部历史数据加载到内存。
+
+## 3.4 统一同步骨架
+
+不要为日线、订单和新闻分别复制“查窗口、请求、写入、重试、推进水位”的流程。建议抽象一个模板服务，领域任务只实现适配器：
+
+```java
+public abstract class AbstractSyncJob<T> {
+
+    public final SyncRunResult execute(SyncRequest request) {
+        SyncScope scope = scopeResolver.resolve(request);
+        SyncWindow current = windowPlanner.planCurrent(scope);
+        SyncRunResult result = runWindow(current, SyncPhase.INCREMENTAL);
+        if (!result.isSuccess()) {
+            return result;
+        }
+
+        for (SyncWindow gap : gapStore.findBackwardGaps(scope, request.maxBackfillDate())) {
+            SyncRunResult backfill = runWindow(gap, SyncPhase.BACKFILL);
+            if (!backfill.isSuccess()) {
+                break;
+            }
+        }
+        checkpointStore.advanceOnlyWhenComplete(scope);
+        return result;
+    }
+
+    protected abstract List<T> read(SyncWindow window);
+
+    protected abstract PersistResult upsert(List<T> records, SyncWindow window);
+
+    protected abstract CompletenessResult verify(SyncWindow window);
+}
+```
+
+骨架固定处理以下步骤：
+
+1. 生成 `SyncScope`，包括数据集、账户或股票、当前业务日期和最远回补日期。
+2. 当前窗口只取当天或当前账户事实，成功后再进入历史缺口扫描。
+3. 缺口按最早日期优先、固定窗口大小合并，逐窗口执行，不按单条记录递归请求。
+4. 读取失败、写入失败和完整性校验失败都写入 `sync_batch`，不推进水位。
+5. 只有窗口完整成功才推进 `sync_checkpoint`；失败窗口写入 `sync_gap`，下一次任务继续处理。
+6. 每个窗口使用领域唯一键幂等 upsert，重复执行只产生更新或跳过，不产生重复业务记录。
+
+建议的接口边界：
+
+- `SyncWindowPlanner`：计算当前窗口、前序交易日窗口和最大历史边界。
+- `SyncReader<T>`：从供应商按窗口读取数据，负责分页、限流和供应商协议转换。
+- `SyncWriter<T>`：批量 upsert，并返回接收、新增、更新、跳过数量。
+- `SyncCompletenessChecker`：按交易日、订单日期或供应商游标检查窗口是否完整。
+- `SyncCheckpointStore`：保存每个数据集和业务对象的成功水位。
+- `SyncGapStore`：保存缺失窗口、失败原因、重试次数和下次重试时间。
+- `SyncBatchStore`：保存 `runId`、阶段、窗口、统计、错误和终态。
+
+领域适配器只保留四类代码：
+
+| 数据集 | 当前窗口 | 历史回补窗口 | 唯一键 | 完整性判断 |
+| --- | --- | --- | --- | --- |
+| 股票日线 | 当前交易日 | 前序交易日，最多三年 | `code + tradeDate` | 交易日应有日线或明确停牌 |
+| 券商订单/成交 | 当日账户事实 | 按月或供应商允许的最大窗口 | `account + orderId/fillId` | 窗口查询完成且分页游标闭合 |
+| 新闻 | 最新发布时间水位 | 水位前的时间窗口 | `stockCode + externalId` | 分页结束或达到已知旧水位 |
+| 复权因子 | 当前公告/生效日 | 生效日期间 | `code + effectiveDate` | 日期窗口覆盖完整 |
+
+订单同步可以直接复用该骨架：每日先同步账户、持仓和当日成交；随后扫描最近三年内尚未成功的月份窗口。由于券商接口单次最多 31 天，`SyncWindowPlanner` 将月份拆成不超过 31 天的窗口；成功窗口跳过，失败窗口保留并在下次运行优先重试。五年历史配置可迁移为三年边界，或作为明确的人工扩展参数，但不能绕过统一的最大历史边界。
+
+### 3.3 编排顺序
+
+推荐顺序为：
+
+1. 股票列表和交易日历维护。
+2. 日线、复权因子、新闻等增量采集。
+3. 缺口扫描和限流回补。
+4. 模型训练、预测和评估。
+5. 策略候选生成。
+6. 交易执行与收盘后统计。
+
+依赖未达到终态时，下游任务以 `SKIPPED` 结束并记录原因，不启动并行的无效工作。
+
+## 4. 性能和可靠性约束
+
+- 使用固定大小线程池和供应商限流，避免每个任务自行创建线程。
+- 单股票、单数据集写入使用批量 upsert；查询缺口和水位必须有组合索引。
+- 任务状态刷新采用 3 秒轮询或后续改为 SSE，不在页面端猜测运行状态。
+- 运行记录保留明细摘要和错误，不把大批量数据写入任务表；详细结果存业务批次表。
+- 失败重试采用指数退避并限制次数，超过上限转为待人工处理的缺口。
+- 全量任务默认关闭或低频启用，并设置交易时段、资源余量和单次窗口门禁。
+- 同一数据集的当前同步和历史回补使用同一个 `jobName` 锁；不再为“每日”和“全量”各建一个可并行入口。
+- 大窗口只在规划层拆分，读取和写入层始终批量处理；禁止按每个交易日创建一个线程或一个数据库事务。
+
+## 5. 可追溯性
+
+每次同步至少关联：`runId`、数据集、股票代码、目标日期窗口、触发来源、代码/供应商版本、读取条数、新增条数、更新条数、失败条数和错误摘要。页面显示最近执行时间和状态，历史抽屉显示完整运行记录；数据缺口可以按日期窗口回放，不依赖日志文本推断。
+
+## 6. 迁移步骤
+
+1. 先上线任务元数据和运行占用键，不改变现有业务同步逻辑。
+2. 将已有任务补齐四模块和同步模式，页面移除“系统维护”第五页。
+3. 建立通用 `sync_checkpoint`、`sync_gap`、`sync_batch` 表和模板骨架，先接入股票日线。
+4. 将券商订单按月窗口迁移到同一骨架，保留现有 `BrokerFactPersistenceService` 作为 `SyncWriter` 实现。
+5. 再接入新闻、复权因子等数据集，逐步删除各服务中的重复窗口循环。
+6. 最后把模型、策略、交易任务的前置依赖接入统一编排图，并用运行记录验证终态。
+
+<!-- AI_GENERATE_END - -->

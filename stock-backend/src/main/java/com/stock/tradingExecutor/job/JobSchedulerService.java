@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------
+// AI_GENERATE_START -----------
 package com.stock.tradingExecutor.job;
 
 import lombok.RequiredArgsConstructor;
@@ -39,7 +39,6 @@ public class JobSchedulerService {
     private static final Map<String, Class<? extends Job>> JOB_CLASSES = Map.ofEntries(
             Map.entry("stockListSync", StockListSyncQuartzJob.class),
             Map.entry("dailyStockDataSync", DailyStockDataSyncQuartzJob.class),
-            Map.entry("historicalDataSync", HistoricalDataSyncQuartzJob.class),
             Map.entry("newsFullSync", NewsFullSyncQuartzJob.class),
             Map.entry("newsDailySync", NewsDailySyncQuartzJob.class),
             Map.entry("tradeCalendarMonthlySync", TradeCalendarMonthlySyncQuartzJob.class),
@@ -50,7 +49,7 @@ public class JobSchedulerService {
             Map.entry("realTradingAutoBuy", RealTradingAutoBuyQuartzJob.class),
             Map.entry("realTradingT1Exit", RealTradingT1ExitQuartzJob.class),
             Map.entry("broker-current-facts-sync", BrokerCurrentFactsSyncQuartzJob.class),
-            Map.entry("broker-five-year-history-sync", BrokerFiveYearHistorySyncQuartzJob.class),
+            Map.entry("broker-history-backfill", BrokerHistoryBackfillQuartzJob.class),
             Map.entry("daily-five-year-baseline-backtest", DailyBaselineBacktestQuartzJob.class),
             Map.entry("strategy-auto-switch", StrategyAutoSwitchQuartzJob.class),
             Map.entry("strategy-evaluation", StrategyEvaluationQuartzJob.class),
@@ -308,4 +307,4 @@ public class JobSchedulerService {
     public record QuartzRuntimeState(String triggerState, LocalDateTime nextFireTime, boolean registered) {
     }
 }
-// AI_GENERATE_END ----------
+// AI_GENERATE_END -----------

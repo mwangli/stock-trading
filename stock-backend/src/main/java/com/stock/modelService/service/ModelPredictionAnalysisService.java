@@ -57,6 +57,11 @@ public class ModelPredictionAnalysisService {
 
     private static final int PREDICTION_BATCH_SIZE = 100;
     private static final int MINIMUM_ABILITY_SAMPLE_COUNT = 100;
+    private static final double MIN_DIRECTION_PROBABILITY_STD = 0.005D;
+    private static final double MIN_PREDICTED_RETURN_STD = 0.0005D;
+    private static final double MIN_BASELINE_ACCURACY_LIFT = 0.02D;
+    private static final int ROLLING_WINDOW_BATCHES = 20;
+    private static final int MINIMUM_ROLLING_SAMPLE_COUNT = 5000;
     private static final List<String> RUNNING_STATUSES = List.of("QUEUED", "RUNNING");
     private static final List<String> EVALUATABLE_STATUSES = List.of("COMPLETED", "PARTIAL", "EVALUATED");
     private static final String LEGACY_PREDICTION_IDENTITY_INDEX = "uk_prediction_identity";
@@ -562,6 +567,7 @@ public class ModelPredictionAnalysisService {
     }
 
     private void refreshAbility(ModelPredictionBatchDocument batch, List<ModelPredictionDocument> allPredictions) {
+        updateCrossSectionalPercentiles(allPredictions);
         List<ModelPredictionDocument> evaluated = allPredictions.stream()
                 .filter(item -> "EVALUATED".equals(item.getEvaluationStatus()))
                 .filter(item -> item.getPredictedReturn() != null && item.getActualReturn() != null)
@@ -575,6 +581,8 @@ public class ModelPredictionAnalysisService {
             batch.setAbilityLevel("INSUFFICIENT_DATA");
             batch.setIterationRecommended(false);
             batch.setAbilityMessage("目标交易日行情尚未形成，需继续等待实际结果");
+            batch.setTradingEligibility("DISABLED");
+            batch.setTradingEligibilityReason("尚无可评估的样本，禁止进入买入流程");
             batch.setUpdatedAt(LocalDateTime.now());
             batchRepository.save(batch);
             return;
@@ -587,6 +595,16 @@ public class ModelPredictionAnalysisService {
                 .average().orElse(0D));
         double[] predicted = evaluated.stream().mapToDouble(ModelPredictionDocument::getPredictedReturn).toArray();
         double[] actual = evaluated.stream().mapToDouble(ModelPredictionDocument::getActualReturn).toArray();
+        List<ModelPredictionDocument> withProbability = evaluated.stream()
+                .filter(item -> item.getDirectionProbability() != null
+                        && Double.isFinite(item.getDirectionProbability()))
+                .toList();
+        double actualUpRate = evaluated.stream().filter(item -> item.getActualReturn() > 0D).count()
+                / (double) evaluated.size();
+        double constantBaselineAccuracy = Math.max(actualUpRate, 1D - actualUpRate);
+        double directionProbabilityStd = standardDeviation(withProbability.stream()
+                .mapToDouble(ModelPredictionDocument::getDirectionProbability).toArray());
+        double predictedReturnStd = standardDeviation(predicted);
         double pearson = correlation(predicted, actual);
         double spearman = correlation(rank(predicted), rank(actual));
         List<ModelPredictionDocument> sorted = evaluated.stream()
@@ -627,7 +645,33 @@ public class ModelPredictionAnalysisService {
             abilityMessage = "核心预测指标低于基线，建议检查数据周期、特征和训练参数";
         }
 
+        boolean collapsed = directionProbabilityStd < MIN_DIRECTION_PROBABILITY_STD
+                || predictedReturnStd < MIN_PREDICTED_RETURN_STD;
+        boolean beatsBaseline = directionAccuracy >= constantBaselineAccuracy + MIN_BASELINE_ACCURACY_LIFT;
+        String tradingEligibility = "OBSERVE_ONLY";
+        String tradingEligibilityReason;
+        if (evaluated.size() < MINIMUM_ABILITY_SAMPLE_COUNT) {
+            tradingEligibility = "DISABLED";
+            tradingEligibilityReason = "有效回填样本不足，不能证明模型具备交易能力";
+        } else if (collapsed) {
+            tradingEligibilityReason = "模型输出区分度不足：上涨概率或预测收益标准差过低";
+        } else if (!beatsBaseline || spearman <= 0D || topAverageReturn <= 0D) {
+            tradingEligibilityReason = "模型未稳定超过多数方向基线，或 Top 10% 排序收益未为正";
+        } else {
+            tradingEligibilityReason = "单个交易日不能授予真实交易资格，需通过滚动窗口和模拟交易门禁";
+        }
+
         batch.setDirectionAccuracy(directionAccuracy);
+        batch.setActualUpRate(actualUpRate);
+        batch.setConstantBaselineAccuracy(constantBaselineAccuracy);
+        batch.setDirectionProbabilityMean(withProbability.stream()
+                .mapToDouble(ModelPredictionDocument::getDirectionProbability).average().orElse(0D));
+        batch.setDirectionProbabilityStd(directionProbabilityStd);
+        batch.setDirectionProbabilityMin(withProbability.stream()
+                .mapToDouble(ModelPredictionDocument::getDirectionProbability).min().orElse(0D));
+        batch.setDirectionProbabilityMax(withProbability.stream()
+                .mapToDouble(ModelPredictionDocument::getDirectionProbability).max().orElse(0D));
+        batch.setPredictedReturnStd(predictedReturnStd);
         batch.setReturnMae(mae);
         batch.setReturnRmse(rmse);
         batch.setPearsonIc(pearson);
@@ -638,7 +682,10 @@ public class ModelPredictionAnalysisService {
         batch.setDownsideRiskHitRate(downsideHitRate);
         batch.setAbilityLevel(abilityLevel);
         batch.setIterationRecommended("WEAK".equals(abilityLevel));
-        batch.setAbilityMessage(abilityMessage);
+        batch.setAbilityMessage(abilityMessage + "；交易门禁：" + tradingEligibilityReason);
+        batch.setTradingEligibility(tradingEligibility);
+        batch.setTradingEligibilityReason(tradingEligibilityReason);
+        refreshRollingAssessment(batch);
         long pendingCount = allPredictions.stream()
                 .filter(item -> "PENDING".equals(item.getEvaluationStatus())).count();
         if (pendingCount == 0 && !RUNNING_STATUSES.contains(batch.getStatus())) {
@@ -675,7 +722,9 @@ public class ModelPredictionAnalysisService {
                 .evaluatedCount(item.getEvaluatedCount()).noMarketDataCount(item.getNoMarketDataCount())
                 .coverageRate(item.getCoverageRate()).evaluationRate(item.getEvaluationRate())
                 .abilityLevel(item.getAbilityLevel()).iterationRecommended(item.isIterationRecommended())
-                .abilityMessage(item.getAbilityMessage()).progressMessage(item.getProgressMessage())
+                .abilityMessage(item.getAbilityMessage()).tradingEligibility(item.getTradingEligibility())
+                .tradingEligibilityReason(item.getTradingEligibilityReason())
+                .progressMessage(item.getProgressMessage())
                 .triggeredBy(item.getTriggeredBy()).startedAt(item.getStartedAt())
                 .finishedAt(item.getFinishedAt()).errorMessage(item.getErrorMessage())
                 .createdAt(item.getCreatedAt()).updatedAt(item.getUpdatedAt()).build();
@@ -690,7 +739,10 @@ public class ModelPredictionAnalysisService {
                 .calendarFallback(item.getCalendarFallback())
                 .baseClosePrice(item.getBaseClosePrice()).predictedClosePrice(item.getPredictedClosePrice())
                 .predictedReturn(item.getPredictedReturn()).directionProbability(item.getDirectionProbability())
-                .downsideRisk(item.getDownsideRisk()).actualClosePrice(item.getActualClosePrice())
+                .downsideRisk(item.getDownsideRisk())
+                .predictedReturnPercentile(item.getPredictedReturnPercentile())
+                .directionProbabilityPercentile(item.getDirectionProbabilityPercentile())
+                .actualClosePrice(item.getActualClosePrice())
                 .actualReturn(item.getActualReturn()).returnError(item.getReturnError())
                 .absoluteError(item.getAbsoluteError()).directionCorrect(item.getDirectionCorrect())
                 .evaluationStatus(item.getEvaluationStatus()).predictedAt(item.getPredictedAt())
@@ -703,7 +755,15 @@ public class ModelPredictionAnalysisService {
                 .baseTradeDate(item.getBaseTradeDate()).targetTradeDate(item.getTargetTradeDate())
                 .predictedCount(item.getSuccessCount()).evaluatedCount(item.getEvaluatedCount())
                 .coverageRate(item.getCoverageRate()).evaluationRate(item.getEvaluationRate())
-                .directionAccuracy(item.getDirectionAccuracy()).returnMae(item.getReturnMae())
+                .directionAccuracy(item.getDirectionAccuracy()).actualUpRate(item.getActualUpRate())
+                .constantBaselineAccuracy(item.getConstantBaselineAccuracy())
+                .directionProbabilityStd(item.getDirectionProbabilityStd())
+                .predictedReturnStd(item.getPredictedReturnStd())
+                .rollingWindowBatchCount(item.getRollingWindowBatchCount())
+                .rollingWindowSampleCount(item.getRollingWindowSampleCount())
+                .rollingAverageSpearmanRankIc(item.getRollingAverageSpearmanRankIc())
+                .rollingAverageTopDecileReturn(item.getRollingAverageTopDecileReturn())
+                .returnMae(item.getReturnMae())
                 .returnRmse(item.getReturnRmse()).pearsonIc(item.getPearsonIc())
                 .spearmanRankIc(item.getSpearmanRankIc())
                 .topDecileAverageReturn(item.getTopDecileAverageReturn())
@@ -711,7 +771,80 @@ public class ModelPredictionAnalysisService {
                 .highConfidenceAccuracy(item.getHighConfidenceAccuracy())
                 .downsideRiskHitRate(item.getDownsideRiskHitRate())
                 .abilityLevel(item.getAbilityLevel()).iterationRecommended(item.isIterationRecommended())
-                .abilityMessage(item.getAbilityMessage()).build();
+                .abilityMessage(item.getAbilityMessage()).tradingEligibility(item.getTradingEligibility())
+                .tradingEligibilityReason(item.getTradingEligibilityReason()).build();
+    }
+
+    private void refreshRollingAssessment(ModelPredictionBatchDocument batch) {
+        List<ModelPredictionBatchDocument> history = batchRepository
+                .findByModelIdAndStatusInOrderByTargetTradeDateDesc(
+                        batch.getModelId(), List.of("COMPLETED", "PARTIAL", "EVALUATED"))
+                .stream()
+                .filter(item -> item.getEvaluatedCount() >= MINIMUM_ABILITY_SAMPLE_COUNT)
+                .limit(ROLLING_WINDOW_BATCHES)
+                .collect(Collectors.toCollection(ArrayList::new));
+        if (history.stream().noneMatch(item -> batch.getId().equals(item.getId()))) {
+            history.add(0, batch);
+        }
+        history = history.stream().limit(ROLLING_WINDOW_BATCHES).toList();
+        int sampleCount = history.stream().mapToInt(ModelPredictionBatchDocument::getEvaluatedCount).sum();
+        double averageSpearman = history.stream().map(ModelPredictionBatchDocument::getSpearmanRankIc)
+                .filter(Objects::nonNull).mapToDouble(Double::doubleValue).average().orElse(0D);
+        double averageTopReturn = history.stream().map(ModelPredictionBatchDocument::getTopDecileAverageReturn)
+                .filter(Objects::nonNull).mapToDouble(Double::doubleValue).average().orElse(0D);
+        batch.setRollingWindowBatchCount(history.size());
+        batch.setRollingWindowSampleCount(sampleCount);
+        batch.setRollingAverageSpearmanRankIc(averageSpearman);
+        batch.setRollingAverageTopDecileReturn(averageTopReturn);
+        if (!"DISABLED".equals(batch.getTradingEligibility())) {
+            batch.setTradingEligibility("OBSERVE_ONLY");
+            batch.setTradingEligibilityReason("滚动窗口 " + history.size() + "/" + ROLLING_WINDOW_BATCHES
+                    + " 个批次、" + sampleCount + "/" + MINIMUM_ROLLING_SAMPLE_COUNT
+                    + " 个样本；且需完成模拟交易验证后才能开放买入");
+        }
+    }
+
+    private void updateCrossSectionalPercentiles(List<ModelPredictionDocument> predictions) {
+        List<ModelPredictionDocument> returnRankable = predictions.stream()
+                .filter(item -> item.getPredictedReturn() != null && Double.isFinite(item.getPredictedReturn()))
+                .toList();
+        List<ModelPredictionDocument> probabilityRankable = predictions.stream()
+                .filter(item -> item.getDirectionProbability() != null
+                        && Double.isFinite(item.getDirectionProbability()))
+                .toList();
+        assignPercentiles(returnRankable, true);
+        assignPercentiles(probabilityRankable, false);
+        if (!returnRankable.isEmpty() || !probabilityRankable.isEmpty()) {
+            predictionRepository.saveAll(predictions);
+        }
+    }
+
+    private void assignPercentiles(List<ModelPredictionDocument> items, boolean returnMetric) {
+        if (items.isEmpty()) {
+            return;
+        }
+        List<ModelPredictionDocument> sorted = items.stream()
+                .sorted(Comparator.comparingDouble(item -> returnMetric
+                        ? item.getPredictedReturn() : item.getDirectionProbability()))
+                .toList();
+        int denominator = Math.max(1, sorted.size() - 1);
+        for (int index = 0; index < sorted.size(); index++) {
+            double percentile = index / (double) denominator;
+            if (returnMetric) {
+                sorted.get(index).setPredictedReturnPercentile(percentile);
+            } else {
+                sorted.get(index).setDirectionProbabilityPercentile(percentile);
+            }
+        }
+    }
+
+    private double standardDeviation(double[] values) {
+        if (values.length < 2) {
+            return 0D;
+        }
+        double mean = java.util.Arrays.stream(values).average().orElse(0D);
+        return Math.sqrt(java.util.Arrays.stream(values)
+                .map(value -> Math.pow(value - mean, 2D)).average().orElse(0D));
     }
 
     private double[] rank(double[] values) {

@@ -39,6 +39,8 @@ import {
 import request from '../utils/request';
 import { getApiErrorMessage, readApiData, type ApiResponse } from '../utils/api';
 import { usePageHeader } from '../layouts/PageHeaderContext';
+import { useTranslation } from 'react-i18next';
+import { localizedText } from '../utils/localizedText';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -153,6 +155,8 @@ interface PredictionBatch {
   abilityLevel?: string;
   iterationRecommended: boolean;
   abilityMessage?: string;
+  tradingEligibility?: string;
+  tradingEligibilityReason?: string;
   progressMessage?: string;
   triggeredBy?: string;
   startedAt?: string;
@@ -178,6 +182,8 @@ interface PredictionResult {
   predictedReturn?: number;
   directionProbability?: number;
   downsideRisk?: number;
+  predictedReturnPercentile?: number;
+  directionProbabilityPercentile?: number;
   actualClosePrice?: number;
   actualReturn?: number;
   returnError?: number;
@@ -199,6 +205,14 @@ interface ModelAbility {
   coverageRate?: number;
   evaluationRate?: number;
   directionAccuracy?: number;
+  actualUpRate?: number;
+  constantBaselineAccuracy?: number;
+  directionProbabilityStd?: number;
+  predictedReturnStd?: number;
+  rollingWindowBatchCount?: number;
+  rollingWindowSampleCount?: number;
+  rollingAverageSpearmanRankIc?: number;
+  rollingAverageTopDecileReturn?: number;
   returnMae?: number;
   returnRmse?: number;
   pearsonIc?: number;
@@ -210,6 +224,8 @@ interface ModelAbility {
   abilityLevel?: string;
   iterationRecommended: boolean;
   abilityMessage?: string;
+  tradingEligibility?: string;
+  tradingEligibilityReason?: string;
 }
 
 const defaultTrainingValues: StartTrainingRequest = {
@@ -248,6 +264,13 @@ const abilityLabels: Record<string, string> = {
   INSUFFICIENT_DATA: '样本不足',
 };
 
+const abilityLabelsEn: Record<string, string> = {
+  STRONG: 'Strong',
+  ACCEPTABLE: 'Acceptable',
+  WEAK: 'Weak',
+  INSUFFICIENT_DATA: 'Insufficient Data',
+};
+
 
 const formatLoss = (value?: number) => value === undefined || value === null
   ? '-'
@@ -279,26 +302,38 @@ const progressStageLabels: Record<string, string> = {
   FAILED: '已失败',
 };
 
+const progressStageLabelsEn: Record<string, string> = {
+  QUEUED: 'Queued',
+  PREPARING_DATA: 'Preparing Data',
+  PROCESSING_SAMPLES: 'Building Samples',
+  TRAINING: 'Training Model',
+  SAVING_MODEL: 'Saving Model',
+  VALIDATING_MODEL: 'Validating Candidate',
+  COMPLETED: 'Completed',
+  FAILED: 'Failed',
+};
+
 const formatDuration = (seconds?: number) => {
   if (seconds === undefined || seconds === null || seconds < 0) {
     return '-';
   }
   if (seconds < 60) {
-    return `${seconds} 秒`;
+    return `${seconds} ${localizedText('秒', 's')}`;
   }
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const remainingSeconds = seconds % 60;
   if (hours > 0) {
-    return `${hours} 小时 ${minutes} 分`;
+    return `${hours} ${localizedText('小时', 'h')} ${minutes} ${localizedText('分', 'm')}`;
   }
-  return `${minutes} 分 ${remainingSeconds} 秒`;
+  return `${minutes} ${localizedText('分', 'm')} ${remainingSeconds} ${localizedText('秒', 's')}`;
 };
 
 /**
  * 模型版本、训练和生产切换运维页面。
  */
 const ModelOperations: React.FC = () => {
+  const { t } = useTranslation();
   const [form] = Form.useForm<StartTrainingRequest>();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [versions, setVersions] = useState<ModelVersion[]>([]);
@@ -329,14 +364,14 @@ const ModelOperations: React.FC = () => {
 
   const loadOverview = useCallback(async () => {
     const response = await request.get('/model-operations/overview') as ApiResponse<Overview>;
-    setOverview(readApiData(response, '读取模型运维概览失败'));
+    setOverview(readApiData(response, localizedText('读取模型运维概览失败', 'Failed to load model operations overview')));
   }, []);
 
   const loadVersions = useCallback(async (current: number) => {
     const response = await request.get('/model-versions', {
       params: { current, pageSize },
     }) as ApiResponse<PageResponse<ModelVersion>>;
-    const page = readApiData(response, '读取模型版本失败');
+    const page = readApiData(response, localizedText('读取模型版本失败', 'Failed to load model versions'));
     setVersions(page.items ?? []);
     setVersionTotal(page.total);
     setVersionPage(page.current);
@@ -346,7 +381,7 @@ const ModelOperations: React.FC = () => {
     const response = await request.get('/model-training-runs', {
       params: { current, pageSize },
     }) as ApiResponse<PageResponse<TrainingRun>>;
-    const page = readApiData(response, '读取训练记录失败');
+    const page = readApiData(response, localizedText('读取训练记录失败', 'Failed to load training records'));
     setTrainingRuns(page.items ?? []);
     setRunTotal(page.total);
     setRunPage(page.current);
@@ -364,11 +399,11 @@ const ModelOperations: React.FC = () => {
       }) as Promise<ApiResponse<PageResponse<PredictionResult>>>,
       request.get('/model-predictions/ability', { params: { batchId } }) as Promise<ApiResponse<ModelAbility>>,
     ]);
-    const resultPage = readApiData(await resultResponse, '读取预测结果失败');
+      const resultPage = readApiData(await resultResponse, localizedText('读取预测结果失败', 'Failed to load prediction results'));
     setPredictionResults(resultPage.items ?? []);
     setPredictionResultTotal(resultPage.total);
     setPredictionResultPage(resultPage.current);
-    setModelAbility(readApiData(await abilityResponse, '读取模型能力失败'));
+      setModelAbility(readApiData(await abilityResponse, localizedText('读取模型能力失败', 'Failed to load model capability')));
   }, [predictionResultPage, predictionStatus]);
 
   const loadPredictionData = useCallback(async () => {
@@ -377,7 +412,7 @@ const ModelOperations: React.FC = () => {
       const response = await request.get('/model-predictions/batches', {
         params: { current: 1, pageSize: 10 },
       }) as ApiResponse<PageResponse<PredictionBatch>>;
-      const page = readApiData(response, '读取预测批次失败');
+      const page = readApiData(response, localizedText('读取预测批次失败', 'Failed to load prediction batches'));
       const batches = page.items ?? [];
       setPredictionBatches(batches);
       setPredictionBatchTotal(page.total);
@@ -393,7 +428,7 @@ const ModelOperations: React.FC = () => {
         setModelAbility(null);
       }
     } catch (cause) {
-      message.error(getApiErrorMessage(cause, '读取预测分析数据失败'));
+      message.error(getApiErrorMessage(cause, localizedText('读取预测分析数据失败', 'Failed to load prediction analysis')));
     } finally {
       setPredictionLoading(false);
     }
@@ -409,7 +444,7 @@ const ModelOperations: React.FC = () => {
         loadPredictionData(),
       ]);
     } catch (cause) {
-      message.error(getApiErrorMessage(cause, '读取模型运维数据失败'));
+      message.error(getApiErrorMessage(cause, localizedText('读取模型运维数据失败', 'Failed to load model operations data')));
     } finally {
       setLoading(false);
     }
@@ -425,7 +460,7 @@ const ModelOperations: React.FC = () => {
     }
     const timer = window.setInterval(() => {
       void Promise.all([loadOverview(), loadTrainingRuns(runPage)]).catch((cause) => {
-        message.error(getApiErrorMessage(cause, '刷新训练进度失败'));
+        message.error(getApiErrorMessage(cause, localizedText('刷新训练进度失败', 'Failed to refresh training progress')));
       });
     }, 3000);
     return () => window.clearInterval(timer);
@@ -463,13 +498,13 @@ const ModelOperations: React.FC = () => {
         ...values,
         operatorName: values.operatorName?.trim() || operatorName.trim() || 'web-console',
       }) as ApiResponse<OperationResponse>;
-      const result = readApiData(response, '提交训练失败');
+      const result = readApiData(response, localizedText('提交训练失败', 'Failed to submit training'));
       message.success(result.message);
       setTrainingModalOpen(false);
       form.resetFields();
       await refreshAfterOperation();
     } catch (cause) {
-      message.error(getApiErrorMessage(cause, '提交训练失败'));
+      message.error(getApiErrorMessage(cause, localizedText('提交训练失败', 'Failed to submit training')));
     } finally {
       setOperating(false);
     }
@@ -481,11 +516,11 @@ const ModelOperations: React.FC = () => {
       const response = await request.post(`/model-training-runs/stop/${runId}`, undefined, {
         params: { operatorName: operatorName.trim() || 'web-console' },
       }) as ApiResponse<OperationResponse>;
-      const result = readApiData(response, '停止训练失败');
+      const result = readApiData(response, localizedText('停止训练失败', 'Failed to stop training'));
       message.success(result.message);
       await refreshAfterOperation();
     } catch (cause) {
-      message.error(getApiErrorMessage(cause, '停止训练失败'));
+      message.error(getApiErrorMessage(cause, localizedText('停止训练失败', 'Failed to stop training')));
     } finally {
       setOperating(false);
     }
@@ -497,11 +532,11 @@ const ModelOperations: React.FC = () => {
       const response = await request.post(`/model-versions/activate/${versionId}`, undefined, {
         params: { operatorName: operatorName.trim() || 'web-console' },
       }) as ApiResponse<OperationResponse>;
-      const result = readApiData(response, '激活模型版本失败');
+      const result = readApiData(response, localizedText('激活模型版本失败', 'Failed to activate model version'));
       message.success(result.message);
       await refreshAfterOperation();
     } catch (cause) {
-      message.error(getApiErrorMessage(cause, '激活模型版本失败'));
+      message.error(getApiErrorMessage(cause, localizedText('激活模型版本失败', 'Failed to activate model version')));
     } finally {
       setOperating(false);
     }
@@ -518,11 +553,11 @@ const ModelOperations: React.FC = () => {
         undefined,
         { params: { operatorName: operatorName.trim() || 'web-console' } },
       ) as ApiResponse<OperationResponse>;
-      const result = readApiData(response, '回滚模型版本失败');
+      const result = readApiData(response, localizedText('回滚模型版本失败', 'Failed to roll back model version'));
       message.success(result.message);
       await refreshAfterOperation();
     } catch (cause) {
-      message.error(getApiErrorMessage(cause, '回滚模型版本失败'));
+      message.error(getApiErrorMessage(cause, localizedText('回滚模型版本失败', 'Failed to roll back model version')));
     } finally {
       setOperating(false);
     }
@@ -534,9 +569,9 @@ const ModelOperations: React.FC = () => {
     setSelectedVersion(null);
     try {
       const response = (await request.get(`/model-versions/details/${versionId}`)) as unknown as ApiResponse<ModelVersion>;
-      setSelectedVersion(readApiData(response, '读取模型版本详情失败'));
+      setSelectedVersion(readApiData(response, localizedText('读取模型版本详情失败', 'Failed to load model version details')));
     } catch (cause) {
-      message.error(getApiErrorMessage(cause, '读取模型版本详情失败'));
+      message.error(getApiErrorMessage(cause, localizedText('读取模型版本详情失败', 'Failed to load model version details')));
       setDetailsOpen(false);
     } finally {
       setDetailsLoading(false);
@@ -550,12 +585,12 @@ const ModelOperations: React.FC = () => {
       const response = await request.post('/model-predictions/run', {
         operatorName: operatorName.trim() || 'web-console',
       }) as ApiResponse<{ batchId: string; status: string; message: string }>;
-      const result = readApiData(response, '提交全市场预测失败');
+      const result = readApiData(response, localizedText('提交全市场预测失败', 'Failed to start full-market prediction'));
       message.success(result.message);
       setSelectedPredictionBatchId(result.batchId);
       await loadPredictionData();
     } catch (cause) {
-      message.error(getApiErrorMessage(cause, '提交全市场预测失败'));
+      message.error(getApiErrorMessage(cause, localizedText('提交全市场预测失败', 'Failed to start full-market prediction')));
     } finally {
       setPredictionOperating(false);
     }
@@ -567,11 +602,11 @@ const ModelOperations: React.FC = () => {
       const response = await request.post('/model-predictions/evaluate', {
         batchId: selectedPredictionBatchId,
       }) as ApiResponse<{ batchId: string; status: string; message: string }>;
-      const result = readApiData(response, '刷新预测实际结果失败');
+      const result = readApiData(response, localizedText('刷新预测实际结果失败', 'Failed to refresh actual prediction results'));
       message.success(result.message);
       await loadPredictionData();
     } catch (cause) {
-      message.error(getApiErrorMessage(cause, '刷新预测实际结果失败'));
+      message.error(getApiErrorMessage(cause, localizedText('刷新预测实际结果失败', 'Failed to refresh actual prediction results')));
     } finally {
       setPredictionOperating(false);
     }
@@ -579,7 +614,7 @@ const ModelOperations: React.FC = () => {
 
   const versionColumns: ColumnsType<ModelVersion> = [
     {
-      title: '版本',
+      title: localizedText('版本', 'Version'),
       key: 'version',
       width: 220,
       render: (_, record) => (
@@ -592,50 +627,50 @@ const ModelOperations: React.FC = () => {
       ),
     },
     {
-      title: '状态',
+      title: localizedText('状态', 'Status'),
       dataIndex: 'status',
       key: 'status',
       width: 120,
       render: (status: string, record) => (
         <Space size={4} wrap>
           <Tag color={statusColors[status] ?? 'default'}>{status}</Tag>
-          {record.active && <Tag color="green">生产</Tag>}
-          {record.previous && <Tag color="blue">可回滚</Tag>}
+          {record.active && <Tag color="green">{localizedText('生产', 'Production')}</Tag>}
+          {record.previous && <Tag color="blue">{localizedText('可回滚', 'Rollback Available')}</Tag>}
         </Space>
       ),
     },
-    { title: '特征版本', dataIndex: 'featureVersion', key: 'featureVersion', width: 140 },
-    { title: '轮次', dataIndex: 'epoch', key: 'epoch', width: 80 },
-    { title: '训练损失', dataIndex: 'trainLoss', key: 'trainLoss', width: 110, render: formatLoss },
-    { title: '验证损失', dataIndex: 'valLoss', key: 'valLoss', width: 110, render: formatLoss },
-    { title: '参数大小', dataIndex: 'parameterSize', key: 'parameterSize', width: 110, render: formatBytes },
-    { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 180, render: formatDateTime },
+    { title: localizedText('特征版本', 'Feature Version'), dataIndex: 'featureVersion', key: 'featureVersion', width: 140 },
+    { title: localizedText('轮次', 'Epoch'), dataIndex: 'epoch', key: 'epoch', width: 80 },
+    { title: localizedText('训练损失', 'Training Loss'), dataIndex: 'trainLoss', key: 'trainLoss', width: 110, render: formatLoss },
+    { title: localizedText('验证损失', 'Validation Loss'), dataIndex: 'valLoss', key: 'valLoss', width: 110, render: formatLoss },
+    { title: localizedText('参数大小', 'Parameter Size'), dataIndex: 'parameterSize', key: 'parameterSize', width: 110, render: formatBytes },
+    { title: localizedText('创建时间', 'Created At'), dataIndex: 'createdAt', key: 'createdAt', width: 180, render: formatDateTime },
     {
-      title: '操作',
+      title: localizedText('操作', 'Actions'),
       key: 'actions',
       fixed: 'right',
       width: 100,
       render: (_, record) => record.status === 'READY' ? (
         <Popconfirm
-          title="激活该模型版本？"
-          description="生产推理指针将切换到该版本，当前版本会成为回滚版本。"
-          okText="确认激活"
-          cancelText="取消"
+          title={localizedText('激活该模型版本？', 'Activate this model version?')}
+          description={localizedText('生产推理指针将切换到该版本，当前版本会成为回滚版本。', 'The production inference pointer will switch to this version, and the current version will become the rollback version.')}
+          okText={localizedText('确认激活', 'Activate')}
+          cancelText={localizedText('取消', 'Cancel')}
           onConfirm={() => void activateVersion(record.id)}
         >
-          <Button type="primary" size="small">激活</Button>
+          <Button type="primary" size="small">{localizedText('激活', 'Activate')}</Button>
         </Popconfirm>
       ) : <Text type="secondary">-</Text>,
     },
   ];
 
   const runColumns: ColumnsType<TrainingRun> = [
-    { title: '运行 ID', dataIndex: 'id', key: 'id', width: 220, ellipsis: true },
-    { title: '状态', dataIndex: 'status', key: 'status', width: 110, render: (status: string) => <Tag color={statusColors[status] ?? 'default'}>{status}</Tag> },
-    { title: '来源', dataIndex: 'triggerSource', key: 'triggerSource', width: 140 },
-    { title: '操作人', dataIndex: 'triggeredBy', key: 'triggeredBy', width: 130 },
+    { title: localizedText('运行 ID', 'Run ID'), dataIndex: 'id', key: 'id', width: 220, ellipsis: true },
+    { title: localizedText('状态', 'Status'), dataIndex: 'status', key: 'status', width: 110, render: (status: string) => <Tag color={statusColors[status] ?? 'default'}>{status}</Tag> },
+    { title: localizedText('来源', 'Source'), dataIndex: 'triggerSource', key: 'triggerSource', width: 140 },
+    { title: localizedText('操作人', 'Operator'), dataIndex: 'triggeredBy', key: 'triggeredBy', width: 130 },
     {
-      title: '训练进度',
+      title: localizedText('训练进度', 'Training Progress'),
       key: 'progress',
       width: 300,
       render: (_, record) => (
@@ -649,27 +684,27 @@ const ModelOperations: React.FC = () => {
           />
           <Text type="secondary" className="text-xs break-words">
             {record.progressMessage
-              || progressStageLabels[record.progressStage ?? '']
+              || localizedText(progressStageLabels[record.progressStage ?? ''] ?? '', progressStageLabelsEn[record.progressStage ?? ''] ?? '')
               || record.progressStage
               || '-'}
-            {record.totalEpochs ? ` · ${record.currentEpoch ?? 0}/${record.totalEpochs} 轮` : ''}
+            {record.totalEpochs ? ` · ${record.currentEpoch ?? 0}/${record.totalEpochs} ${localizedText('轮', 'epochs')}` : ''}
           </Text>
         </Space>
       ),
     },
-    { title: '训练样本', dataIndex: 'trainSamples', key: 'trainSamples', width: 100, render: (value?: number) => value ?? '-' },
-    { title: '验证样本', dataIndex: 'valSamples', key: 'valSamples', width: 100, render: (value?: number) => value ?? '-' },
-    { title: '验证损失', dataIndex: 'valLoss', key: 'valLoss', width: 110, render: formatLoss },
-    { title: '候选版本', dataIndex: 'candidateModelVersionId', key: 'candidateModelVersionId', width: 200, ellipsis: true, render: (value?: string) => value ?? '-' },
-    { title: '开始时间', dataIndex: 'startedAt', key: 'startedAt', width: 180, render: formatDateTime },
-    { title: '结束时间', dataIndex: 'finishedAt', key: 'finishedAt', width: 180, render: formatDateTime },
-    { title: '失败原因', dataIndex: 'errorMessage', key: 'errorMessage', width: 220, ellipsis: true, render: (value?: string) => value ?? '-' },
+    { title: localizedText('训练样本', 'Training Samples'), dataIndex: 'trainSamples', key: 'trainSamples', width: 100, render: (value?: number) => value ?? '-' },
+    { title: localizedText('验证样本', 'Validation Samples'), dataIndex: 'valSamples', key: 'valSamples', width: 100, render: (value?: number) => value ?? '-' },
+    { title: localizedText('验证损失', 'Validation Loss'), dataIndex: 'valLoss', key: 'valLoss', width: 110, render: formatLoss },
+    { title: localizedText('候选版本', 'Candidate Version'), dataIndex: 'candidateModelVersionId', key: 'candidateModelVersionId', width: 200, ellipsis: true, render: (value?: string) => value ?? '-' },
+    { title: localizedText('开始时间', 'Started At'), dataIndex: 'startedAt', key: 'startedAt', width: 180, render: formatDateTime },
+    { title: localizedText('结束时间', 'Finished At'), dataIndex: 'finishedAt', key: 'finishedAt', width: 180, render: formatDateTime },
+    { title: localizedText('失败原因', 'Failure Reason'), dataIndex: 'errorMessage', key: 'errorMessage', width: 220, ellipsis: true, render: (value?: string) => value ?? '-' },
   ];
 
 
   const predictionBatchColumns: ColumnsType<PredictionBatch> = [
     {
-      title: '批次', dataIndex: 'id', key: 'id', width: 210, ellipsis: true,
+      title: localizedText('批次', 'Batch'), dataIndex: 'id', key: 'id', width: 210, ellipsis: true,
       render: (value: string, record) => (
         <Button type="link" className="!px-0" onClick={() => {
           setSelectedPredictionBatchId(record.id);
@@ -678,19 +713,19 @@ const ModelOperations: React.FC = () => {
         }}>{value}</Button>
       ),
     },
-    { title: '模型版本', dataIndex: 'modelVersion', key: 'modelVersion', width: 210, ellipsis: true },
-    { title: '基准日', dataIndex: 'baseTradeDate', key: 'baseTradeDate', width: 110 },
-    { title: '目标日', dataIndex: 'targetTradeDate', key: 'targetTradeDate', width: 110 },
-    { title: '信息截止', dataIndex: 'informationCutoffAt', key: 'informationCutoffAt', width: 180, render: formatDateTime },
+    { title: localizedText('模型版本', 'Model Version'), dataIndex: 'modelVersion', key: 'modelVersion', width: 210, ellipsis: true },
+    { title: localizedText('基准日', 'Base Date'), dataIndex: 'baseTradeDate', key: 'baseTradeDate', width: 110 },
+    { title: localizedText('目标日', 'Target Date'), dataIndex: 'targetTradeDate', key: 'targetTradeDate', width: 110 },
+    { title: localizedText('信息截止', 'Information Cutoff'), dataIndex: 'informationCutoffAt', key: 'informationCutoffAt', width: 180, render: formatDateTime },
     {
-      title: '日历来源', dataIndex: 'calendarFallback', key: 'calendarFallback', width: 120,
+      title: localizedText('日历来源', 'Calendar Source'), dataIndex: 'calendarFallback', key: 'calendarFallback', width: 120,
       render: (value?: boolean) => value === undefined || value === null
-        ? <Tag>未知</Tag>
-        : <Tag color={value ? 'warning' : 'green'}>{value ? '工作日推算' : '正式日历'}</Tag>,
+        ? <Tag>{localizedText('未知', 'Unknown')}</Tag>
+        : <Tag color={value ? 'warning' : 'green'}>{value ? localizedText('工作日推算', 'Weekday Estimate') : localizedText('正式日历', 'Official Calendar')}</Tag>,
     },
-    { title: '状态', dataIndex: 'status', key: 'status', width: 110, render: (value: string) => <Tag color={statusColors[value] ?? 'default'}>{value}</Tag> },
+    { title: localizedText('状态', 'Status'), dataIndex: 'status', key: 'status', width: 110, render: (value: string) => <Tag color={statusColors[value] ?? 'default'}>{value}</Tag> },
     {
-      title: '进度', key: 'progress', width: 230,
+      title: localizedText('进度', 'Progress'), key: 'progress', width: 230,
       render: (_, record) => (
         <Space direction="vertical" size={0} className="w-full">
           <Progress percent={record.totalStocks ? Math.round(record.processedStocks * 100 / record.totalStocks) : 0} size="small" />
@@ -698,41 +733,44 @@ const ModelOperations: React.FC = () => {
         </Space>
       ),
     },
-    { title: '成功/失败', key: 'counts', width: 120, render: (_, record) => `${record.successCount} / ${record.failedCount}` },
-    { title: '覆盖率', dataIndex: 'coverageRate', key: 'coverageRate', width: 100, render: (value?: number) => formatPercent(value) },
-    { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 180, render: formatDateTime },
+    { title: localizedText('成功/失败', 'Success / Failed'), key: 'counts', width: 120, render: (_, record) => `${record.successCount} / ${record.failedCount}` },
+    { title: localizedText('覆盖率', 'Coverage'), dataIndex: 'coverageRate', key: 'coverageRate', width: 100, render: (value?: number) => formatPercent(value) },
+    { title: localizedText('交易门禁', 'Trading Eligibility'), dataIndex: 'tradingEligibility', key: 'tradingEligibility', width: 130, render: (value?: string) => <Tag color={value === 'TRADE_ELIGIBLE' ? 'green' : value === 'DISABLED' ? 'red' : 'orange'}>{value || 'DISABLED'}</Tag> },
+    { title: localizedText('创建时间', 'Created At'), dataIndex: 'createdAt', key: 'createdAt', width: 180, render: formatDateTime },
   ];
 
   const predictionResultColumns: ColumnsType<PredictionResult> = [
     {
-      title: '股票', key: 'stock', fixed: 'left', width: 150,
+      title: localizedText('股票', 'Stock'), key: 'stock', fixed: 'left', width: 150,
       render: (_, record) => <Space direction="vertical" size={0}><Text>{record.stockCode}</Text><Text type="secondary" className="text-xs">{record.stockName || '-'}</Text></Space>,
     },
-    { title: '基准日', dataIndex: 'baseTradeDate', key: 'baseTradeDate', width: 110 },
-    { title: '目标日', dataIndex: 'targetTradeDate', key: 'targetTradeDate', width: 110 },
+    { title: localizedText('基准日', 'Base Date'), dataIndex: 'baseTradeDate', key: 'baseTradeDate', width: 110 },
+    { title: localizedText('目标日', 'Target Date'), dataIndex: 'targetTradeDate', key: 'targetTradeDate', width: 110 },
     {
-      title: '日历来源', dataIndex: 'calendarFallback', key: 'calendarFallback', width: 120,
+      title: localizedText('日历来源', 'Calendar Source'), dataIndex: 'calendarFallback', key: 'calendarFallback', width: 120,
       render: (value?: boolean) => value === undefined || value === null
-        ? <Tag>未知</Tag>
-        : <Tag color={value ? 'warning' : 'green'}>{value ? '工作日推算' : '正式日历'}</Tag>,
+        ? <Tag>{localizedText('未知', 'Unknown')}</Tag>
+        : <Tag color={value ? 'warning' : 'green'}>{value ? localizedText('工作日推算', 'Weekday Estimate') : localizedText('正式日历', 'Official Calendar')}</Tag>,
     },
-    { title: '基准收盘', dataIndex: 'baseClosePrice', key: 'baseClosePrice', width: 110, render: (value?: number) => formatNumber(value, 3) },
-    { title: '预测收盘', dataIndex: 'predictedClosePrice', key: 'predictedClosePrice', width: 110, render: (value?: number) => formatNumber(value, 3) },
-    { title: '实际收盘', dataIndex: 'actualClosePrice', key: 'actualClosePrice', width: 110, render: (value?: number) => formatNumber(value, 3) },
-    { title: '预测收益', dataIndex: 'predictedReturn', key: 'predictedReturn', width: 110, render: (value?: number) => formatPercent(value) },
-    { title: '实际收益', dataIndex: 'actualReturn', key: 'actualReturn', width: 110, render: (value?: number) => formatPercent(value) },
-    { title: '绝对误差', dataIndex: 'absoluteError', key: 'absoluteError', width: 110, render: (value?: number) => formatPercent(value) },
-    { title: '上涨概率', dataIndex: 'directionProbability', key: 'directionProbability', width: 110, render: (value?: number) => formatPercent(value) },
-    { title: '下行风险', dataIndex: 'downsideRisk', key: 'downsideRisk', width: 110, render: (value?: number) => formatPercent(value) },
+    { title: localizedText('基准收盘', 'Base Close'), dataIndex: 'baseClosePrice', key: 'baseClosePrice', width: 110, render: (value?: number) => formatNumber(value, 3) },
+    { title: localizedText('预测收盘', 'Predicted Close'), dataIndex: 'predictedClosePrice', key: 'predictedClosePrice', width: 110, render: (value?: number) => formatNumber(value, 3) },
+    { title: localizedText('实际收盘', 'Actual Close'), dataIndex: 'actualClosePrice', key: 'actualClosePrice', width: 110, render: (value?: number) => formatNumber(value, 3) },
+    { title: localizedText('预测收益', 'Predicted Return'), dataIndex: 'predictedReturn', key: 'predictedReturn', width: 110, render: (value?: number) => formatPercent(value) },
+    { title: localizedText('收益分位', 'Return Percentile'), dataIndex: 'predictedReturnPercentile', key: 'predictedReturnPercentile', width: 100, render: (value?: number) => formatPercent(value) },
+    { title: localizedText('实际收益', 'Actual Return'), dataIndex: 'actualReturn', key: 'actualReturn', width: 110, render: (value?: number) => formatPercent(value) },
+    { title: localizedText('绝对误差', 'Absolute Error'), dataIndex: 'absoluteError', key: 'absoluteError', width: 110, render: (value?: number) => formatPercent(value) },
+    { title: localizedText('上涨概率', 'Upside Probability'), dataIndex: 'directionProbability', key: 'directionProbability', width: 110, render: (value?: number) => formatPercent(value) },
+    { title: localizedText('概率分位', 'Probability Percentile'), dataIndex: 'directionProbabilityPercentile', key: 'directionProbabilityPercentile', width: 100, render: (value?: number) => formatPercent(value) },
+    { title: localizedText('下行风险', 'Downside Risk'), dataIndex: 'downsideRisk', key: 'downsideRisk', width: 110, render: (value?: number) => formatPercent(value) },
     {
-      title: '方向命中', dataIndex: 'directionCorrect', key: 'directionCorrect', width: 100,
-      render: (value?: boolean) => value === undefined || value === null ? '-' : <Tag color={value ? 'green' : 'red'}>{value ? '命中' : '未命中'}</Tag>,
+      title: localizedText('方向命中', 'Direction Correct'), dataIndex: 'directionCorrect', key: 'directionCorrect', width: 100,
+      render: (value?: boolean) => value === undefined || value === null ? '-' : <Tag color={value ? 'green' : 'red'}>{value ? localizedText('命中', 'Hit') : localizedText('未命中', 'Miss')}</Tag>,
     },
     {
-      title: '评估状态', dataIndex: 'evaluationStatus', key: 'evaluationStatus', width: 130,
+      title: localizedText('评估状态', 'Evaluation Status'), dataIndex: 'evaluationStatus', key: 'evaluationStatus', width: 130,
       render: (value: string) => <Tag color={evaluationStatusColors[value] ?? 'default'}>{value}</Tag>,
     },
-    { title: '预测生成时间', dataIndex: 'predictedAt', key: 'predictedAt', width: 180, render: formatDateTime },
+    { title: localizedText('预测生成时间', 'Prediction Time'), dataIndex: 'predictedAt', key: 'predictedAt', width: 180, render: formatDateTime },
   ];
 
   const latestTraining = overview?.latestTrainingRun;
@@ -753,10 +791,10 @@ const ModelOperations: React.FC = () => {
         className="w-44"
         value={operatorName}
         maxLength={64}
-        placeholder="操作人"
+        placeholder={localizedText('操作人', 'Operator')}
         onChange={(event) => setOperatorName(event.target.value)}
       />
-      <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadAll()}>刷新</Button>
+      <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadAll()}>{localizedText('刷新', 'Refresh')}</Button>
       <Button
         type="primary"
         icon={<ExperimentOutlined />}
@@ -768,18 +806,18 @@ const ModelOperations: React.FC = () => {
           setTrainingModalOpen(true);
         }}
       >
-        触发训练
+        {localizedText('触发训练', 'Start Training')}
       </Button>
     </Space>
   ), [form, loadAll, loading, operatorName]);
 
-  usePageHeader('模型版本、训练门禁、候选激活与生产回滚', headerActions);
+  usePageHeader(t('modelOperations.subtitle'), headerActions);
 
   return (
     <div className="app-page">
       {overview && (
         <Tag color={overview.trainingAllowed ? 'green' : 'orange'}>
-          {overview.trainingAllowed ? '训练门禁已通过' : '训练门禁当前不通过'}
+          {overview.trainingAllowed ? t('modelOperations.trainingGatePassed') : t('modelOperations.trainingGateBlocked')}
         </Tag>
       )}
 
@@ -787,13 +825,13 @@ const ModelOperations: React.FC = () => {
         <Col xs={24} md={12} xl={6}>
           <Card className="surface-card compact-card" loading={loading}>
             <Statistic
-              title="生产版本"
-              value={overview?.activeVersion?.modelVersion || '未激活'}
+              title={t('modelOperations.productionVersion')}
+              value={overview?.activeVersion?.modelVersion || localizedText('未激活', 'Not Active')}
               prefix={<CloudServerOutlined />}
             />
             <div className="mt-3">
               <Tag color={overview?.activeModelHealthy ? 'green' : 'red'}>
-                {overview?.activeModelHealthy ? '校验正常' : '未通过校验'}
+                {overview?.activeModelHealthy ? localizedText('校验正常', 'Healthy') : localizedText('未通过校验', 'Validation Failed')}
               </Tag>
             </div>
           </Card>
@@ -801,16 +839,16 @@ const ModelOperations: React.FC = () => {
         <Col xs={24} md={12} xl={6}>
           <Card className="surface-card compact-card" loading={loading}>
             <Statistic
-              title="上一版本"
-              value={overview?.previousVersion?.modelVersion || '无'}
+              title={localizedText('上一版本', 'Previous Version')}
+              value={overview?.previousVersion?.modelVersion || localizedText('无', 'None')}
               prefix={<RollbackOutlined />}
             />
             <div className="mt-3">
               <Popconfirm
-                title="回滚到上一版本？"
-                description="当前生产版本和上一版本指针将交换。"
-                okText="确认回滚"
-                cancelText="取消"
+                title={localizedText('回滚到上一版本？', 'Rollback to previous version?')}
+                description={localizedText('当前生产版本和上一版本指针将交换。', 'The current production pointer and previous version pointer will be exchanged.')}
+                okText={localizedText('确认回滚', 'Confirm Rollback')}
+                cancelText={localizedText('取消', 'Cancel')}
                 onConfirm={() => void rollback()}
               >
                 <Button
@@ -818,7 +856,7 @@ const ModelOperations: React.FC = () => {
                   size="small"
                   icon={<RollbackOutlined />}
                 >
-                  执行回滚
+                  {localizedText('执行回滚', 'Rollback')}
                 </Button>
               </Popconfirm>
             </div>
@@ -827,13 +865,13 @@ const ModelOperations: React.FC = () => {
         <Col xs={24} md={12} xl={6}>
           <Card className="surface-card compact-card" loading={loading}>
             <Statistic
-              title="节点训练能力"
-              value={overview?.trainingEnabled ? '已开启' : '已关闭'}
+              title={t('modelOperations.trainingCapability')}
+              value={overview?.trainingEnabled ? localizedText('已开启', 'Enabled') : localizedText('已关闭', 'Disabled')}
               prefix={<SafetyCertificateOutlined />}
             />
             <div className="mt-3">
               <Tag color={overview?.tradingTime ? 'red' : 'green'}>
-                {overview?.tradingTime ? '交易时段' : '非交易时段'}
+                {overview?.tradingTime ? localizedText('交易时段', 'Trading Hours') : localizedText('非交易时段', 'Outside Trading Hours')}
               </Tag>
             </div>
           </Card>
@@ -841,8 +879,8 @@ const ModelOperations: React.FC = () => {
         <Col xs={24} md={12} xl={6}>
           <Card className="surface-card compact-card" loading={loading}>
             <Statistic
-              title="最近训练"
-              value={overview?.latestTrainingRun?.status || '无记录'}
+              title={t('modelOperations.latestTraining')}
+              value={overview?.latestTrainingRun?.status || localizedText('无记录', 'No Record')}
               prefix={<CheckCircleOutlined />}
             />
             <div className="mt-3 text-xs text-gray-400">
@@ -853,7 +891,7 @@ const ModelOperations: React.FC = () => {
       </Row>
 
       {latestTraining && (
-        <Card className="surface-card" title="训练进度">
+      <Card className="surface-card" title={t('modelOperations.trainingProgress')}>
           <Space direction="vertical" size="middle" className="w-full">
             <div className="flex flex-wrap items-center gap-2">
               <Tag color={statusColors[latestTraining.status] ?? 'default'}>
@@ -861,15 +899,15 @@ const ModelOperations: React.FC = () => {
               </Tag>
               <Tag color="blue">
                 {legacyProgress
-                  ? '数据处理中'
-                  : progressStageLabels[latestTraining.progressStage ?? '']
-                    ?? latestTraining.progressStage
-                    ?? '等待进度'}
+                  ? localizedText('数据处理中', 'Processing Data')
+                  : (localizedText(progressStageLabels[latestTraining.progressStage ?? ''] ?? '', progressStageLabelsEn[latestTraining.progressStage ?? ''] ?? '')
+                    || latestTraining.progressStage)
+                    ?? localizedText('等待进度', 'Waiting for Progress')}
               </Tag>
               <Text>
                 {legacyProgress
-                  ? '当前任务由旧版后端启动，暂未上报轮次和损失；已运行时长仍实时更新。'
-                  : latestTraining.progressMessage || '等待训练进度更新'}
+                  ? localizedText('当前任务由旧版后端启动，暂未上报轮次和损失；已运行时长仍实时更新。', 'This run was started by a legacy backend and has not reported epochs or loss; elapsed time is still updated.')
+                  : latestTraining.progressMessage || localizedText('等待训练进度更新', 'Waiting for training progress')}
               </Text>
               {(latestTraining.status === 'QUEUED' || latestTraining.status === 'RUNNING' || latestTraining.status === 'STOPPING') && (
                 <Button
@@ -878,7 +916,7 @@ const ModelOperations: React.FC = () => {
                   icon={<StopOutlined />}
                   onClick={() => void stopTraining(latestTraining.id)}
                 >
-                  停止训练
+                  {localizedText('停止训练', 'Stop Training')}
                 </Button>
               )}
             </div>
@@ -934,13 +972,13 @@ const ModelOperations: React.FC = () => {
 
       <Card
         className="surface-card"
-        title="预测分析"
+        title={t('modelOperations.predictionAnalysis')}
         extra={(
           <Space wrap>
             <Select
               className="w-56"
               value={selectedPredictionBatchId}
-              placeholder="选择预测批次"
+              placeholder={localizedText('选择预测批次', 'Select Prediction Batch')}
               options={predictionBatches.map((item) => ({
                 value: item.id,
                 label: `${item.baseTradeDate || '-'} · ${item.status}`,
@@ -951,9 +989,9 @@ const ModelOperations: React.FC = () => {
                 void loadPredictionResults(value, 1, predictionStatus);
               }}
             />
-            <Button icon={<ReloadOutlined />} loading={predictionLoading} onClick={() => void loadPredictionData()}>刷新数据</Button>
-            <Button icon={<SyncOutlined />} loading={predictionOperating} onClick={() => void evaluatePrediction()}>刷新实际结果</Button>
-            <Button type="primary" icon={<LineChartOutlined />} loading={predictionOperating} onClick={() => void runPrediction()}>执行全市场预测</Button>
+            <Button icon={<ReloadOutlined />} loading={predictionLoading} onClick={() => void loadPredictionData()}>{localizedText('刷新数据', 'Refresh Data')}</Button>
+            <Button icon={<SyncOutlined />} loading={predictionOperating} onClick={() => void evaluatePrediction()}>{localizedText('刷新实际结果', 'Refresh Actual Results')}</Button>
+            <Button type="primary" icon={<LineChartOutlined />} loading={predictionOperating} onClick={() => void runPrediction()}>{localizedText('执行全市场预测', 'Run Full-market Prediction')}</Button>
           </Space>
         )}
       >
@@ -963,20 +1001,27 @@ const ModelOperations: React.FC = () => {
               <Alert
                 type="warning"
                 showIcon
-                message="交易日历缺失或覆盖不足"
-                description="当前目标日由工作日规则推算。行情基准日仍是模型实际使用的最后交易日，请在正式使用前补齐证券交易日历。"
+                message={localizedText('交易日历缺失或覆盖不足', 'Trading calendar missing or incomplete')}
+                description={localizedText('当前目标日由工作日规则推算。行情基准日仍是模型实际使用的最后交易日，请在正式使用前补齐证券交易日历。', 'The target date was estimated from weekdays. The market base date remains the last trading date used by the model; complete the official trading calendar before production use.')}
               />
             )}
             <Alert
-              type={modelAbility.abilityLevel === 'WEAK' ? 'warning' : modelAbility.abilityLevel === 'STRONG' ? 'success' : 'info'}
+              type={modelAbility.tradingEligibility === 'DISABLED' || modelAbility.abilityLevel === 'WEAK' ? 'warning' : modelAbility.tradingEligibility === 'TRADE_ELIGIBLE' ? 'success' : 'info'}
               showIcon
-              message={`${abilityLabels[modelAbility.abilityLevel || ''] || modelAbility.abilityLevel || '待评估'} · ${modelAbility.iterationRecommended ? '建议优化迭代' : '暂不建议自动迭代'}`}
-              description={modelAbility.abilityMessage || '等待能力评估'}
+              message={`${localizedText(abilityLabels[modelAbility.abilityLevel || ''] || '', abilityLabelsEn[modelAbility.abilityLevel || ''] || '') || modelAbility.abilityLevel || localizedText('待评估', 'Pending Evaluation')} · ${modelAbility.tradingEligibility || 'DISABLED'}`}
+              description={`${modelAbility.abilityMessage || '等待能力评估'}${modelAbility.tradingEligibilityReason ? `；${modelAbility.tradingEligibilityReason}` : ''}`}
             />
             <Row gutter={[16, 16]}>
-              <Col xs={12} md={6} xl={3}><Statistic title="预测覆盖率" value={formatPercent(modelAbility.coverageRate)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="评估完成率" value={formatPercent(modelAbility.evaluationRate)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="方向准确率" value={formatPercent(modelAbility.directionAccuracy)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title={localizedText('预测覆盖率', 'Prediction Coverage')} value={formatPercent(modelAbility.coverageRate)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title={localizedText('评估完成率', 'Evaluation Completion')} value={formatPercent(modelAbility.evaluationRate)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title={localizedText('方向准确率', 'Direction Accuracy')} value={formatPercent(modelAbility.directionAccuracy)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="常数基线准确率" value={formatPercent(modelAbility.constantBaselineAccuracy)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="上涨概率标准差" value={formatPercent(modelAbility.directionProbabilityStd)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="预测收益标准差" value={formatPercent(modelAbility.predictedReturnStd)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="滚动评估批次" value={modelAbility.rollingWindowBatchCount ?? 0} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="滚动有效样本" value={modelAbility.rollingWindowSampleCount ?? 0} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="滚动 Spearman IC" value={formatNumber(modelAbility.rollingAverageSpearmanRankIc)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="滚动 Top 10% 收益" value={formatPercent(modelAbility.rollingAverageTopDecileReturn)} /></Col>
               <Col xs={12} md={6} xl={3}><Statistic title="收益 MAE" value={formatPercent(modelAbility.returnMae)} /></Col>
               <Col xs={12} md={6} xl={3}><Statistic title="收益 RMSE" value={formatPercent(modelAbility.returnRmse)} /></Col>
               <Col xs={12} md={6} xl={3}><Statistic title="Pearson IC" value={formatNumber(modelAbility.pearsonIc)} /></Col>
@@ -984,7 +1029,7 @@ const ModelOperations: React.FC = () => {
               <Col xs={12} md={6} xl={3}><Statistic title="Top 10% 实际收益" value={formatPercent(modelAbility.topDecileAverageReturn)} /></Col>
             </Row>
           </Space>
-        ) : <Empty description="暂无预测批次" />}
+        ) : <Empty description={localizedText('暂无预测批次', 'No prediction batches')} />}
       </Card>
 
       <Card className="surface-card" title={`预测批次（共 ${predictionBatchTotal} 个）`}>
@@ -1028,7 +1073,7 @@ const ModelOperations: React.FC = () => {
           columns={predictionResultColumns}
           dataSource={predictionResults}
           loading={predictionLoading}
-          locale={{ emptyText: <Empty description="暂无预测结果" /> }}
+          locale={{ emptyText: <Empty description={t('modelOperations.predictionEmpty')} /> }}
           scroll={{ x: 1940 }}
           pagination={{
             current: predictionResultPage,
@@ -1046,13 +1091,13 @@ const ModelOperations: React.FC = () => {
         />
       </Card>
 
-      <Card className="surface-card" title="模型版本">
+      <Card className="surface-card" title={t('modelOperations.modelVersions')}>
         <Table<ModelVersion>
           rowKey="id"
           columns={versionColumns}
           dataSource={versions}
           loading={loading}
-          locale={{ emptyText: <Empty description="暂无模型版本" /> }}
+          locale={{ emptyText: <Empty description={t('modelOperations.versionsEmpty')} /> }}
           scroll={{ x: 1380 }}
           pagination={{
             current: versionPage,
@@ -1067,13 +1112,13 @@ const ModelOperations: React.FC = () => {
         />
       </Card>
 
-      <Card className="surface-card" title="训练记录">
+      <Card className="surface-card" title={t('modelOperations.trainingRecords')}>
         <Table<TrainingRun>
           rowKey="id"
           columns={runColumns}
           dataSource={trainingRuns}
           loading={loading}
-          locale={{ emptyText: <Empty description="暂无训练记录" /> }}
+          locale={{ emptyText: <Empty description={t('modelOperations.runsEmpty')} /> }}
           scroll={{ x: 1980 }}
           pagination={{
             current: runPage,

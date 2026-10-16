@@ -196,8 +196,12 @@ public class StockSelector {
             List<PredictionCandidateBatchDto.PredictionCandidateItemDto> items) {
         Map<String, Double> scores = new LinkedHashMap<>();
         for (PredictionCandidateBatchDto.PredictionCandidateItemDto item : items) {
-            double returnScore = 1D / (1D + Math.exp(-LSTM_SCORE_SCALE * item.getPredictedReturn()));
-            double directionScore = clamp(item.getDirectionProbability());
+            double absoluteReturnScore = 1D / (1D + Math.exp(-LSTM_SCORE_SCALE * item.getPredictedReturn()));
+            double absoluteDirectionScore = clamp(item.getDirectionProbability());
+            double returnScore = 0.7D * clamp(item.getPredictedReturnPercentile())
+                    + 0.3D * absoluteReturnScore;
+            double directionScore = 0.7D * clamp(item.getDirectionProbabilityPercentile())
+                    + 0.3D * absoluteDirectionScore;
             double riskScore = 1D - clamp(item.getDownsideRisk());
             scores.put(item.getStockCode(), returnScore * RETURN_TASK_WEIGHT
                     + directionScore * DIRECTION_TASK_WEIGHT

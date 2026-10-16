@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.tradingExecutor.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -54,17 +54,17 @@ public class BrokerSyncController {
     }
 
     /**
-     * 手动按月同步最近五年的已成交历史委托。
+     * 手动按月同步最近三年的已成交历史委托。
      *
      * 已成功窗口会跳过，失败或部分成功窗口会继续重试，
      * 整个过程仅调用券商只读查询并执行本地数据库幂等写入。
      *
-     * @return 最近五年历史同步汇总结果
+     * @return 最近三年历史同步汇总结果
      */
-    @PostMapping("/history-last-five-years")
-    public ResponseDTO<BrokerSyncResultDto> syncLastFiveYears() {
-        log.info("手动按月同步最近五年券商已成交历史委托");
-        return executeSync(brokerDataSyncService::syncLastFiveYears);
+    @PostMapping("/history-backfill")
+    public ResponseDTO<BrokerSyncResultDto> syncHistoryBackfill() {
+        log.info("手动按月同步最近三年券商已成交历史委托");
+        return executeSync(brokerDataSyncService::syncHistoryBackfill);
     }
 
     private ResponseDTO<BrokerSyncResultDto> executeSync(SyncAction action) {
@@ -91,4 +91,4 @@ public class BrokerSyncController {
         BrokerSyncResultDto execute();
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

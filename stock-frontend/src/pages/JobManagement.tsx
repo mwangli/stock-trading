@@ -31,6 +31,8 @@ import {
 import request from '../utils/request';
 import { getApiErrorMessage, readApiData, type ApiResponse } from '../utils/api';
 import { usePageHeader } from '../layouts/PageHeaderContext';
+import { useTranslation } from 'react-i18next';
+import { localizedText } from '../utils/localizedText';
 
 const { Text } = Typography;
 
@@ -56,6 +58,8 @@ interface JobItem {
   jobName: string;
   description?: string;
   cronExpression: string;
+  module?: JobDomain;
+  syncMode?: string;
   enabled: boolean;
   taskStatus: string;
   latestRun?: ExecutionItem;
@@ -124,6 +128,17 @@ const sourceLabels: Record<string, string> = {
   RECOVERY: '恢复触发',
 };
 
+const sourceLabelsEn: Record<string, string> = {
+  SCHEDULED: 'Scheduled',
+  MANUAL: 'Manual',
+  RECOVERY: 'Recovery',
+};
+
+const statusLabelsEn: Record<string, string> = {
+  QUEUED: 'Queued', RUNNING: 'Running', SUCCESS: 'Success', FAILED: 'Failed', SKIPPED: 'Skipped',
+  REJECTED: 'Rejected', CANCELLED: 'Cancelled', PAUSED: 'Paused', NORMAL: 'Normal', BLOCKED: 'Blocked',
+  ERROR: 'Error', ENABLED: 'Enabled', STOPPED: 'Stopped', NOT_REGISTERED: 'Not Registered',
+};
 
 const formatDuration = (value?: number) => {
   if (value === undefined || value === null) {
@@ -142,7 +157,18 @@ const jobDomains: Array<{ key: JobDomain; label: string }> = [
   { key: 'maintenance', label: '系统维护' },
 ];
 
-const resolveJobDomain = (jobName: string): JobDomain => {
+const jobDomainLabelsEn: Record<JobDomain, string> = {
+  data: 'Data Collection',
+  model: 'Model Tasks',
+  strategy: 'Strategy Analysis',
+  trading: 'Trading Execution',
+  maintenance: 'System Maintenance',
+};
+
+const resolveJobDomain = (jobName: string, module?: JobDomain): JobDomain => {
+  if (module && jobDomains.some((domain) => domain.key === module)) {
+    return module;
+  }
   const normalized = jobName.toLowerCase();
   if (normalized.includes('lstm') || normalized.includes('modelprediction') || normalized.includes('sentiment')) return 'model';
   if (normalized.includes('strategy') || normalized.includes('selection') || normalized.includes('backtest')) return 'strategy';
@@ -155,10 +181,11 @@ const renderStatus = (status?: string) => {
   if (!status) {
     return <Text type="secondary">-</Text>;
   }
-  return <Tag color={statusColors[status] ?? 'default'}>{statusLabels[status] ?? status}</Tag>;
+  return <Tag color={statusColors[status] ?? 'default'}>{localizedText(statusLabels[status] ?? status, statusLabelsEn[status] ?? status)}</Tag>;
 };
 
 const JobManagement: React.FC = () => {
+  const { t } = useTranslation();
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [operatingJob, setOperatingJob] = useState<string | null>(null);
@@ -271,12 +298,12 @@ const JobManagement: React.FC = () => {
           params: { operator: 'web-console' },
         }) as ApiResponse<TriggerResponse>;
         const result = readApiData(response, '提交手动任务失败');
-        message.success(`${result.message}，运行 ID：${result.runId}`);
+        message.success(`${result.message}, ${localizedText('运行 ID', 'Run ID')}: ${result.runId}`);
       } else {
         const endpoint = action === 'pause' ? 'pause' : 'resume';
         const response = await request.post(`/jobs/${endpoint}/${encodeURIComponent(job.jobName)}`) as ApiResponse<null>;
         readApiData(response, action === 'pause' ? '暂停任务失败' : '恢复任务失败');
-        message.success(action === 'pause' ? '任务已暂停' : '任务已启用');
+        message.success(action === 'pause' ? localizedText('任务已暂停', 'Job paused') : localizedText('任务已启用', 'Job enabled'));
       }
       await refreshAfterOperation();
     } catch (cause) {
@@ -288,12 +315,12 @@ const JobManagement: React.FC = () => {
 
   const confirmStopRun = (run: ExecutionItem) => {
     Modal.confirm({
-      title: '停止任务执行',
+      title: localizedText('停止任务执行', 'Stop Job Run'),
       content: run.status === 'QUEUED'
-        ? '该任务仍在排队，停止后将取消本次执行。'
-        : '系统将发送线程中断请求。任务只能在业务代码响应中断后真正停止。',
-      okText: '停止任务',
-      cancelText: '取消',
+        ? localizedText('该任务仍在排队，停止后将取消本次执行。', 'The job is queued and this run will be cancelled.')
+        : localizedText('系统将发送线程中断请求。任务只能在业务代码响应中断后真正停止。', 'The system will request a thread interrupt; the job stops only after business code responds.'),
+      okText: localizedText('停止任务', 'Stop Run'),
+      cancelText: localizedText('取消', 'Cancel'),
       okButtonProps: { danger: true },
       onOk: async () => {
         setOperatingRun(run.runId);
@@ -339,7 +366,7 @@ const JobManagement: React.FC = () => {
 
   const historyColumns: ColumnsType<ExecutionItem> = [
     {
-      title: '运行 ID',
+      title: localizedText('运行 ID', 'Run ID'),
       dataIndex: 'runId',
       key: 'runId',
       width: 230,
@@ -348,15 +375,15 @@ const JobManagement: React.FC = () => {
         <Button type="link" className="!px-0" onClick={() => void showRunDetails(value)}>{value}</Button>
       ),
     },
-    { title: '状态', dataIndex: 'status', key: 'status', width: 100, render: renderStatus },
-    { title: '触发来源', dataIndex: 'triggerSource', key: 'triggerSource', width: 110, render: (value: string) => sourceLabels[value] ?? value },
-    { title: '操作人', dataIndex: 'triggeredBy', key: 'triggeredBy', width: 130, render: (value?: string) => value || '-' },
-    { title: '开始时间', dataIndex: 'startedTime', key: 'startedTime', width: 180, render: formatDateTime },
-    { title: '结束时间', dataIndex: 'finishedTime', key: 'finishedTime', width: 180, render: formatDateTime },
-    { title: '耗时', dataIndex: 'durationMs', key: 'durationMs', width: 100, render: formatDuration },
-    { title: '错误摘要', dataIndex: 'errorMessage', key: 'errorMessage', width: 220, ellipsis: true, render: (value?: string) => value || '-' },
+    { title: t('common.status'), dataIndex: 'status', key: 'status', width: 100, render: renderStatus },
+    { title: localizedText('触发来源', 'Trigger Source'), dataIndex: 'triggerSource', key: 'triggerSource', width: 110, render: (value: string) => localizedText(sourceLabels[value] ?? value, sourceLabelsEn[value] ?? value) },
+    { title: localizedText('操作人', 'Operator'), dataIndex: 'triggeredBy', key: 'triggeredBy', width: 130, render: (value?: string) => value || '-' },
+    { title: localizedText('开始时间', 'Started At'), dataIndex: 'startedTime', key: 'startedTime', width: 180, render: formatDateTime },
+    { title: localizedText('结束时间', 'Finished At'), dataIndex: 'finishedTime', key: 'finishedTime', width: 180, render: formatDateTime },
+    { title: localizedText('耗时', 'Duration'), dataIndex: 'durationMs', key: 'durationMs', width: 100, render: formatDuration },
+    { title: localizedText('错误摘要', 'Error Summary'), dataIndex: 'errorMessage', key: 'errorMessage', width: 220, ellipsis: true, render: (value?: string) => value || '-' },
     {
-      title: '操作',
+      title: localizedText('操作', 'Actions'),
       key: 'actions',
       fixed: 'right',
       width: 90,
@@ -371,7 +398,7 @@ const JobManagement: React.FC = () => {
               loading={operatingRun === record.runId}
               onClick={() => confirmStopRun(record)}
             >
-              停止
+              {localizedText('停止', 'Stop')}
             </Button>
           )
           : <Text type="secondary">-</Text>
@@ -381,7 +408,7 @@ const JobManagement: React.FC = () => {
 
   const jobColumns: ColumnsType<JobItem> = [
     {
-      title: '任务名称',
+      title: localizedText('任务名称', 'Job Name'),
       dataIndex: 'jobName',
       key: 'jobName',
       width: 230,
@@ -393,10 +420,20 @@ const JobManagement: React.FC = () => {
       ),
     },
     { title: 'Cron', dataIndex: 'cronExpression', key: 'cronExpression', width: 170, render: (value: string) => <Text code>{value}</Text> },
-    { title: '任务状态', dataIndex: 'taskStatus', key: 'taskStatus', width: 120, render: renderStatus },
-    { title: '最近执行', key: 'latestRun', width: 150, render: (_, record) => record.latestRun ? renderStatus(record.latestRun.status) : <Text type="secondary">暂无记录</Text> },
+    { title: localizedText('任务状态', 'Job Status'), dataIndex: 'taskStatus', key: 'taskStatus', width: 120, render: renderStatus },
     {
-      title: '操作',
+      title: localizedText('最近执行', 'Latest Run'),
+      key: 'latestRun',
+      width: 190,
+      render: (_, record) => record.latestRun ? (
+        <Space direction="vertical" size={0}>
+          {renderStatus(record.latestRun.status)}
+          <Text type="secondary">{formatDateTime(record.latestRun.finishedTime ?? record.latestRun.createdAt)}</Text>
+        </Space>
+      ) : <Text type="secondary">{localizedText('暂无记录', 'No record')}</Text>,
+    },
+    {
+      title: localizedText('操作', 'Actions'),
       key: 'actions',
       fixed: 'right',
       width: 390,
@@ -409,7 +446,7 @@ const JobManagement: React.FC = () => {
         return (
           <Space size="small">
             {record.enabled && (
-              <Tooltip title="立即提交一次手动执行；重复执行由后端返回明确错误">
+              <Tooltip title={localizedText('立即提交一次手动执行；重复执行由后端返回明确错误', 'Submit one manual run now; duplicate runs are rejected by the backend')}>
                 <span>
                   <Button
                     type="primary"
@@ -418,18 +455,18 @@ const JobManagement: React.FC = () => {
                     loading={operating}
                     onClick={() => void operateJob(record, 'trigger')}
                   >
-                    触发
+                    {localizedText('触发', 'Trigger')}
                   </Button>
                 </span>
               </Tooltip>
             )}
             {record.enabled ? (
               <Button size="small" icon={<PauseCircleOutlined />} loading={operating} onClick={() => void operateJob(record, 'pause')}>
-                暂停
+                {localizedText('暂停', 'Pause')}
               </Button>
             ) : (
               <Button type="primary" size="small" icon={<PlayCircleOutlined />} loading={operating} onClick={() => void operateJob(record, 'resume')}>
-                启用
+                {localizedText('启用', 'Enable')}
               </Button>
             )}
             {activeRun && (
@@ -440,10 +477,10 @@ const JobManagement: React.FC = () => {
                 loading={operatingRun === activeRun.runId}
                 onClick={() => confirmStopRun(activeRun)}
               >
-                停止
+                {localizedText('停止', 'Stop')}
               </Button>
             )}
-            <Button type="text" size="small" icon={<HistoryOutlined />} onClick={() => openHistory(record)}>历史</Button>
+            <Button type="text" size="small" icon={<HistoryOutlined />} onClick={() => openHistory(record)}>{localizedText('历史', 'History')}</Button>
           </Space>
         );
       },
@@ -466,33 +503,33 @@ const JobManagement: React.FC = () => {
   };
 
   const headerActions = useMemo(() => (
-    <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadAll()}>刷新</Button>
+    <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadAll()}>{t('jobsPage.refresh')}</Button>
   ), [loadAll, loading]);
 
-  usePageHeader('查询任务运行状态，手动触发或停止任务并按任务追踪执行历史', headerActions);
+  usePageHeader(t('jobsPage.subtitle'), headerActions);
 
   return (
     <div className="app-page">
-      {error && <Alert className="mb-4" type="error" showIcon message="任务管理数据读取失败" description={error} closable onClose={() => setError(null)} />}
-      <Card className="surface-card" title={<Space><ControlOutlined />任务状态</Space>}>
+      {error && <Alert className="mb-4" type="error" showIcon message={localizedText('任务管理数据读取失败', 'Failed to load job management data')} description={error} closable onClose={() => setError(null)} />}
+      <Card className="surface-card" title={<Space><ControlOutlined />{t('jobsPage.status')}</Space>}>
         <Tabs
           items={jobDomains.map((domain) => {
-            const domainJobs = jobs.filter((job) => resolveJobDomain(job.jobName) === domain.key);
+          const domainJobs = jobs.filter((job) => resolveJobDomain(job.jobName, job.module) === domain.key);
             return {
               key: domain.key,
-              label: domain.label + ' (' + domainJobs.length + ')',
+              label: `${localizedText(domain.label, jobDomainLabelsEn[domain.key])} (${domainJobs.length})`,
               children: (
                 <Table<JobItem>
                   rowKey="jobName"
                   columns={jobColumns}
                   dataSource={domainJobs}
                   loading={loading}
-                  locale={{ emptyText: <Empty description="该分组暂无任务配置" /> }}
+                  locale={{ emptyText: <Empty description={t('jobsPage.emptyGroup')} /> }}
                   scroll={{ x: 1200 }}
                   pagination={{
                     pageSize: 10,
                     showSizeChanger: true,
-                    showTotal: (total) => '共 ' + total + ' 个任务',
+                    showTotal: (total) => localizedText(`共 ${total} 个任务`, `${total} jobs`),
                   }}
                 />
               ),
@@ -502,7 +539,7 @@ const JobManagement: React.FC = () => {
       </Card>
 
       <Modal
-        title={historyJob ? `执行历史：${historyJob.description || historyJob.jobName}` : '执行历史'}
+        title={historyJob ? `${t('jobsPage.history')}: ${historyJob.description || historyJob.jobName}` : t('jobsPage.history')}
         width="80vw"
         centered
         open={historyOpen}
@@ -513,7 +550,7 @@ const JobManagement: React.FC = () => {
             <Select
               allowClear
               className="w-36"
-              placeholder="按状态筛选"
+              placeholder={localizedText('按状态筛选', 'Filter by status')}
               value={historyStatus}
               options={Object.entries(statusLabels).map(([value, label]) => ({ label, value }))}
               onChange={(value: string | undefined) => setHistoryStatus(value)}
@@ -521,50 +558,50 @@ const JobManagement: React.FC = () => {
             <Select
               allowClear
               className="w-36"
-              placeholder="按来源筛选"
+              placeholder={localizedText('按来源筛选', 'Filter by source')}
               value={historySource}
               options={Object.entries(sourceLabels).map(([value, label]) => ({ label, value }))}
               onChange={(value: string | undefined) => setHistorySource(value)}
             />
-            <Button icon={<ClockCircleOutlined />} onClick={applyHistoryFilter}>查询</Button>
+            <Button icon={<ClockCircleOutlined />} onClick={applyHistoryFilter}>{localizedText('查询', 'Query')}</Button>
           </Space>
           <Table<ExecutionItem>
             rowKey="runId"
             columns={historyColumns}
             dataSource={historyRuns}
             loading={historyLoading}
-            locale={{ emptyText: <Empty description="该任务暂无执行记录" /> }}
+          locale={{ emptyText: <Empty description={t('jobsPage.emptyRuns')} /> }}
             scroll={{ x: 1360, y: 'calc(80vh - 270px)' }}
             pagination={{
               current: historyPage,
               pageSize: historyPageSize,
               total: historyTotal,
               showSizeChanger: false,
-              showTotal: (total) => `共 ${total} 条记录`,
+              showTotal: (total) => localizedText(`共 ${total} 条记录`, `${total} records`),
             }}
             onChange={handleHistoryTableChange}
           />
         </div>
       </Modal>
 
-      <Drawer title="执行记录详情" width={680} open={detailsOpen} loading={detailsLoading} onClose={() => setDetailsOpen(false)}>
+      <Drawer title={t('jobsPage.details')} width={680} open={detailsOpen} loading={detailsLoading} onClose={() => setDetailsOpen(false)}>
         {selectedRun && (
           <Descriptions bordered column={1} size="small">
-            <Descriptions.Item label="运行 ID">{selectedRun.runId}</Descriptions.Item>
-            <Descriptions.Item label="任务名称">{selectedRun.jobName}</Descriptions.Item>
-            <Descriptions.Item label="运行状态">{renderStatus(selectedRun.status)}</Descriptions.Item>
-            <Descriptions.Item label="触发来源">{sourceLabels[selectedRun.triggerSource] ?? selectedRun.triggerSource}</Descriptions.Item>
-            <Descriptions.Item label="操作人">{selectedRun.triggeredBy || '-'}</Descriptions.Item>
-            <Descriptions.Item label="计划时间">{formatDateTime(selectedRun.scheduledTime)}</Descriptions.Item>
-            <Descriptions.Item label="排队时间">{formatDateTime(selectedRun.queuedTime)}</Descriptions.Item>
-            <Descriptions.Item label="开始时间">{formatDateTime(selectedRun.startedTime)}</Descriptions.Item>
-            <Descriptions.Item label="结束时间">{formatDateTime(selectedRun.finishedTime)}</Descriptions.Item>
-            <Descriptions.Item label="执行耗时">{formatDuration(selectedRun.durationMs)}</Descriptions.Item>
-            <Descriptions.Item label="执行节点">{selectedRun.hostName || '-'}</Descriptions.Item>
-            <Descriptions.Item label="结果摘要">{selectedRun.resultSummary || '-'}</Descriptions.Item>
-            <Descriptions.Item label="异常类型">{selectedRun.errorType || '-'}</Descriptions.Item>
-            <Descriptions.Item label="错误信息">{selectedRun.errorMessage || '-'}</Descriptions.Item>
-            <Descriptions.Item label="创建时间">{formatDateTime(selectedRun.createdAt)}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('运行 ID', 'Run ID')}>{selectedRun.runId}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('任务名称', 'Job Name')}>{selectedRun.jobName}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('运行状态', 'Run Status')}>{renderStatus(selectedRun.status)}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('触发来源', 'Trigger Source')}>{localizedText(sourceLabels[selectedRun.triggerSource] ?? selectedRun.triggerSource, sourceLabelsEn[selectedRun.triggerSource] ?? selectedRun.triggerSource)}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('操作人', 'Operator')}>{selectedRun.triggeredBy || '-'}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('计划时间', 'Scheduled At')}>{formatDateTime(selectedRun.scheduledTime)}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('排队时间', 'Queued At')}>{formatDateTime(selectedRun.queuedTime)}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('开始时间', 'Started At')}>{formatDateTime(selectedRun.startedTime)}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('结束时间', 'Finished At')}>{formatDateTime(selectedRun.finishedTime)}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('执行耗时', 'Duration')}>{formatDuration(selectedRun.durationMs)}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('执行节点', 'Execution Node')}>{selectedRun.hostName || '-'}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('结果摘要', 'Result Summary')}>{selectedRun.resultSummary || '-'}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('异常类型', 'Error Type')}>{selectedRun.errorType || '-'}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('错误信息', 'Error Message')}>{selectedRun.errorMessage || '-'}</Descriptions.Item>
+            <Descriptions.Item label={localizedText('创建时间', 'Created At')}>{formatDateTime(selectedRun.createdAt)}</Descriptions.Item>
           </Descriptions>
         )}
       </Drawer>

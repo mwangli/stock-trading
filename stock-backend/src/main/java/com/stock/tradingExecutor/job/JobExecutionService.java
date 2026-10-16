@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.tradingExecutor.job;
 
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
@@ -6,6 +6,7 @@ import com.stock.tradingExecutor.runtime.service.SystemRuntimeConfigService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -52,6 +53,7 @@ public class JobExecutionService {
      * @param operator 操作人
      * @return 新建的运行标识
      */
+    @Transactional
     public String triggerManually(String jobName, String operator) {
         if (!runtimeConfigService.isSchedulerEnabled()) {
             throw new IllegalStateException("系统配置已关闭统一任务调度");
@@ -90,11 +92,19 @@ public class JobExecutionService {
      */
     public void execute(String jobName, JobTriggerSource source, String triggeredBy,
                         String runId, Date scheduledFireTime, Runnable action) {
-        JobExecutionRecord record = runId == null || runId.isBlank()
-                ? createQueuedRecord(jobName, source, normalizeOperator(triggeredBy), scheduledFireTime, null)
-                : executionRecordRepository.findByRunId(runId)
-                .orElseGet(() -> createQueuedRecord(jobName, source, normalizeOperator(triggeredBy),
-                        scheduledFireTime, runId));
+        JobExecutionRecord record;
+        if (runId == null || runId.isBlank()) {
+            try {
+                record = createQueuedRecord(jobName, source, normalizeOperator(triggeredBy), scheduledFireTime, null);
+            } catch (DataIntegrityViolationException exception) {
+                log.info("[任务执行] 检测到已有活动执行，跳过重复定时触发: jobName={}", jobName);
+                return;
+            }
+        } else {
+            record = executionRecordRepository.findByRunId(runId)
+                    .orElseGet(() -> createQueuedRecord(jobName, source, normalizeOperator(triggeredBy),
+                            scheduledFireTime, runId));
+        }
         if (!runtimeConfigService.isSchedulerEnabled()) {
             markCancelled(record, "系统配置已关闭统一任务调度");
             return;
@@ -243,6 +253,7 @@ public class JobExecutionService {
                 .setJobName(jobName)
                 .setTriggerSource(source)
                 .setTriggeredBy(operator)
+                .setActiveLockKey(jobName)
                 .setStatus(JobExecutionStatus.QUEUED)
                 .setScheduledTime(toLocalDateTime(scheduledFireTime))
                 .setQueuedTime(now)
@@ -255,6 +266,7 @@ public class JobExecutionService {
         LocalDateTime finishedAt = LocalDateTime.now();
         long duration = java.time.Duration.between(startedAt, finishedAt).toMillis();
         record.setStatus(JobExecutionStatus.SUCCESS)
+                .setActiveLockKey(null)
                 .setFinishedTime(finishedAt)
                 .setDurationMs(duration)
                 .setResultSummary("任务执行完成");
@@ -268,6 +280,7 @@ public class JobExecutionService {
         LocalDateTime finishedAt = LocalDateTime.now();
         long duration = java.time.Duration.between(startedAt, finishedAt).toMillis();
         record.setStatus(JobExecutionStatus.FAILED)
+                .setActiveLockKey(null)
                 .setFinishedTime(finishedAt)
                 .setDurationMs(duration)
                 .setErrorType(throwable.getClass().getName())
@@ -282,6 +295,7 @@ public class JobExecutionService {
         LocalDateTime finishedAt = LocalDateTime.now();
         long duration = java.time.Duration.between(startedAt, finishedAt).toMillis();
         record.setStatus(JobExecutionStatus.SKIPPED)
+                .setActiveLockKey(null)
                 .setFinishedTime(finishedAt)
                 .setDurationMs(duration)
                 .setResultSummary(summary);
@@ -303,6 +317,7 @@ public class JobExecutionService {
                 ? 0L
                 : Math.max(0L, java.time.Duration.between(durationStart, finishedAt).toMillis());
         current.setStatus(JobExecutionStatus.CANCELLED)
+                .setActiveLockKey(null)
                 .setFinishedTime(finishedAt)
                 .setDurationMs(duration)
                 .setResultSummary(summary);
@@ -353,4 +368,4 @@ public class JobExecutionService {
     }
 
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

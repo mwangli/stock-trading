@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.tradingExecutor.job;
 
 import com.stock.tradingExecutor.domain.dto.BrokerSyncResultDto;
@@ -32,12 +32,12 @@ public class BrokerDataSyncJob {
     }
 
     /**
-     * 按月同步最近五年历史委托和成交。
+     * 按月同步最近三年历史委托和成交。
      */
-    public void syncLastFiveYears() {
-        BrokerSyncResultDto result = brokerDataSyncService.syncLastFiveYears();
-        log.info("[BrokerDataSyncJob] 五年历史同步完成: success={}, windows={}, failed={}, received={}",
+    public void syncHistoryBackfill() {
+        BrokerSyncResultDto result = brokerDataSyncService.syncHistoryBackfill();
+        log.info("[BrokerDataSyncJob] 三年历史回补完成: success={}, windows={}, failed={}, received={}",
                 result.isSuccess(), result.getTotalWindows(), result.getFailedWindows(), result.getReceivedCount());
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

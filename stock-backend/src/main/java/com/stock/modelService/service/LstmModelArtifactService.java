@@ -37,7 +37,10 @@ public class LstmModelArtifactService {
     /** 当前共享模型固定名称。 */
     public static final String DEFAULT_SHARED_MODEL_NAME = "global-shared-lstm";
     /** 当前网络结构与标签口径版本。 */
-    public static final String MODEL_VERSION = "v3-embedding-multitask";
+    public static final String MODEL_VERSION = "v4-balanced-direction";
+    private static final String LEGACY_MODEL_VERSION = "v3-embedding-multitask";
+    private static final String LEGACY_LOSS_VERSION = "huber-bce-huber-v1";
+    private static final String LOSS_VERSION = "huber-weighted-bce-huber-v2";
 
     private final LstmTrainingConfig config;
     private final LstmModelRepository lstmModelRepository;
@@ -151,7 +154,7 @@ public class LstmModelArtifactService {
         } catch (IOException exception) {
             throw new IllegalStateException("共享 LSTM 元数据无法解析", exception);
         }
-        requireMetadata(properties, "modelVersion", MODEL_VERSION);
+        requireOneOfMetadata(properties, "modelVersion", MODEL_VERSION, LEGACY_MODEL_VERSION);
         requireMetadata(properties, "featureVersion", LstmDataPreprocessor.FEATURE_VERSION);
         requireMetadata(properties, "sequenceLength", String.valueOf(config.getSequenceLength()));
         requireMetadata(properties, "inputSize", String.valueOf(config.getInputSize()));
@@ -165,7 +168,7 @@ public class LstmModelArtifactService {
         requireMetadata(properties, "groupHeadScale", String.valueOf(config.getGroupHeadScale()));
         requireMetadata(properties, "residualHeadScale", String.valueOf(config.getResidualHeadScale()));
         requireMetadata(properties, "hashAlgorithm", "java-string-hashcode-floor-mod-v1");
-        requireMetadata(properties, "lossVersion", "huber-bce-huber-v1");
+        requireOneOfMetadata(properties, "lossVersion", LOSS_VERSION, LEGACY_LOSS_VERSION);
         requireMetadata(properties, "targetReturnScale", String.valueOf(config.getTargetReturnScale()));
     }
 
@@ -196,7 +199,7 @@ public class LstmModelArtifactService {
         properties.setProperty("groupHeadScale", String.valueOf(config.getGroupHeadScale()));
         properties.setProperty("residualHeadScale", String.valueOf(config.getResidualHeadScale()));
         properties.setProperty("hashAlgorithm", "java-string-hashcode-floor-mod-v1");
-        properties.setProperty("lossVersion", "huber-bce-huber-v1");
+        properties.setProperty("lossVersion", LOSS_VERSION);
         properties.setProperty("hiddenSize", String.valueOf(config.getHiddenSize()));
         properties.setProperty("numLayers", String.valueOf(config.getNumLayers()));
         properties.setProperty("targetReturnScale", String.valueOf(data.getTargetReturnScale()));
@@ -249,6 +252,17 @@ public class LstmModelArtifactService {
             throw new IllegalStateException("共享 LSTM 元数据不兼容: " + key
                     + ", expected=" + expected + ", actual=" + actual);
         }
+    }
+
+    private void requireOneOfMetadata(Properties properties, String key, String... expectedValues) {
+        String actual = properties.getProperty(key);
+        for (String expected : expectedValues) {
+            if (expected.equals(actual)) {
+                return;
+            }
+        }
+        throw new IllegalStateException("共享 LSTM 元数据不兼容: " + key
+                + ", expectedOneOf=" + String.join(",", expectedValues) + ", actual=" + actual);
     }
 
     /**

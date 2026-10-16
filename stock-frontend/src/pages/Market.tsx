@@ -12,6 +12,7 @@ import request from '../utils/request';
 import type { ApiResponse } from '../utils/api';
 import { useAppTheme } from '../theme/AppThemeProvider';
 import { usePageHeader } from '../layouts/PageHeaderContext';
+import { localizedText } from '../utils/localizedText';
 
 interface StockInfo {
   code: string;
@@ -71,7 +72,7 @@ const Market: React.FC = () => {
   const { mode } = useAppTheme();
   const isDark = mode === 'dark';
   const chartTextColor = isDark ? '#a9b6ca' : '#526078';
-  usePageHeader('查看市场广度、自选列表与股票 K 线走势');
+  usePageHeader(t('marketPage.subtitle'));
   const chartBorderColor = isDark ? '#253047' : '#dce3ed';
   const chartTooltipBackground = isDark ? 'rgba(13, 21, 36, 0.96)' : 'rgba(255, 255, 255, 0.98)';
 
@@ -98,10 +99,10 @@ const Market: React.FC = () => {
 
   // 时间范围选项（保留最近三年，去掉最近三月避免与「最近3年」混淆）
   const timeRangeOptions = [
-    { value: 'last1Week', label: '最近一周' },
-    { value: 'last1Month', label: '最近一月' },
-    { value: 'last1Year', label: '最近一年' },
-    { value: 'last3Years', label: '最近三年' },
+    { value: 'last1Week', label: localizedText('最近一周', 'Last Week') },
+    { value: 'last1Month', label: localizedText('最近一月', 'Last Month') },
+    { value: 'last1Year', label: localizedText('最近一年', 'Last Year') },
+    { value: 'last3Years', label: localizedText('最近三年', 'Last 3 Years') },
   ];
 
   // 表格排序配置
@@ -411,9 +412,9 @@ const Market: React.FC = () => {
   // 格式化金额显示
   const formatAmount = (amount: number) => {
     if (!amount) return '0';
-    if (amount >= 1e12) return (amount / 1e12).toFixed(2) + '万亿';
-    if (amount >= 1e8) return (amount / 1e8).toFixed(2) + '亿';
-    if (amount >= 1e4) return (amount / 1e4).toFixed(2) + '万';
+    if (amount >= 1e12) return (amount / 1e12).toFixed(2) + localizedText('万亿', 'T');
+    if (amount >= 1e8) return (amount / 1e8).toFixed(2) + localizedText('亿', 'B');
+    if (amount >= 1e4) return (amount / 1e4).toFixed(2) + localizedText('万', '万');
     return amount.toFixed(2);
   };
 
@@ -504,7 +505,7 @@ const Market: React.FC = () => {
             <Input
               ref={searchInputRef}
               prefix={<SearchOutlined className="text-gray-500" />}
-              placeholder="搜索股票名称或代码"
+                placeholder={t('marketPage.searchPlaceholder')}
               className="!rounded"
               value={searchKeyword}
               onChange={(e) => setSearchKeyword(e.target.value)}
@@ -544,7 +545,7 @@ const Market: React.FC = () => {
               className: 'glass-pagination',
               showSizeChanger: false,
               showQuickJumper: false,
-              showTotal: (total) => total > 0 ? `共 ${Math.ceil(total / 9)} 页` : '无数据',
+              showTotal: (total) => total > 0 ? localizedText(`共 ${Math.ceil(total / 9)} 页`, `${Math.ceil(total / 9)} pages`) : localizedText('无数据', 'No data'),
               onChange: (page) => {
                 fetchStocks(page, 9, searchKeyword);
               }
@@ -587,12 +588,12 @@ const Market: React.FC = () => {
                 onChange={handleTimeRangeChange}
                 options={timeRangeOptions}
                 className="w-28"
-                placeholder="选择时间范围"
+                placeholder={localizedText('选择时间范围', 'Select time range')}
               />
               {[
-                { key: 'daily', label: '日K' },
-                { key: 'weekly', label: '周K' },
-                { key: 'monthly', label: '月K' }
+                { key: 'daily', label: t('marketPage.daily') },
+                { key: 'weekly', label: t('marketPage.weekly') },
+                { key: 'monthly', label: t('marketPage.monthly') }
               ].map(item => (
                 <button 
                   key={item.key} 

@@ -105,7 +105,7 @@ const Logs: React.FC = () => {
     </Space>
   ), [autoScroll, clearLogs, isConnected, t]);
 
-  usePageHeader('后端实时运行事件与连接状态', headerActions);
+  usePageHeader(t('logs.subtitle'), headerActions);
 
   return (
     <div className="app-page h-full min-h-[520px]">

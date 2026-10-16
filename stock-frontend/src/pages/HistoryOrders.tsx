@@ -6,6 +6,7 @@ import request from '../utils/request';
 import type { ApiResponse } from '../utils/api';
 import { formatDateTime } from '../utils/dateTime';
 import { usePageHeader } from '../layouts/PageHeaderContext';
+import { useTranslation } from 'react-i18next';
 
 interface BrokerOrder {
   orderId: string;
@@ -60,6 +61,7 @@ const buildDefaultFilters = (): OrderFilters => {
 const money = (value?: number) => value == null ? '-' : `¥${Number(value).toFixed(2)}`;
 
 const HistoryOrders: React.FC = () => {
+  const { t } = useTranslation();
   const defaultFilters = useMemo(buildDefaultFilters, []);
   const [draftFilters, setDraftFilters] = useState<OrderFilters>(defaultFilters);
   const [filters, setFilters] = useState<OrderFilters>(defaultFilters);
@@ -84,14 +86,14 @@ const HistoryOrders: React.FC = () => {
         },
       }) as ApiResponse<BrokerPage<BrokerOrder>>;
       if (!response.success) {
-        throw new Error(response.message || '历史订单读取失败');
+        throw new Error(response.message || t('historyOrders.loadError'));
       }
       setOrders(response.data?.items ?? []);
       setPage((current) => ({ ...current, total: response.data?.total ?? 0 }));
     } catch (cause) {
       setOrders([]);
       setPage((current) => ({ ...current, total: 0 }));
-      setError(cause instanceof Error ? cause.message : '历史订单读取失败');
+      setError(cause instanceof Error ? cause.message : t('historyOrders.loadError'));
     } finally {
       setLoading(false);
     }
@@ -103,7 +105,7 @@ const HistoryOrders: React.FC = () => {
 
   const applyFilters = () => {
     if (draftFilters.startDate && draftFilters.endDate && draftFilters.startDate > draftFilters.endDate) {
-      setError('开始日期不能晚于结束日期');
+      setError(t('historyOrders.dateError'));
       return;
     }
     setPage((current) => ({ ...current, current: 1 }));
@@ -120,27 +122,27 @@ const HistoryOrders: React.FC = () => {
 
   const directionTag = (value: string) => {
     const color = value === 'BUY' ? 'red' : value === 'SELL' ? 'green' : 'default';
-    const label = value === 'BUY' ? '买入' : value === 'SELL' ? '卖出' : value;
+    const label = value === 'BUY' ? t('historyOrders.buy') : value === 'SELL' ? t('historyOrders.sell') : value;
     return <Tag color={color}>{label}</Tag>;
   };
 
   const columns = [
-    { title: '委托时间', dataIndex: 'orderTime', key: 'orderTime', render: formatDateTime },
-    { title: '股票', key: 'stock', render: (_: unknown, item: BrokerOrder) => `${item.stockCode} ${item.stockName ?? ''}` },
-    { title: '方向', dataIndex: 'direction', key: 'direction', render: directionTag },
-    { title: '委托价', dataIndex: 'orderPrice', key: 'orderPrice', render: money },
-    { title: '委托数量', dataIndex: 'orderQuantity', key: 'orderQuantity' },
-    { title: '成交数量', dataIndex: 'filledQuantity', key: 'filledQuantity' },
-    { title: '成交均价', dataIndex: 'averageFillPrice', key: 'averageFillPrice', render: money },
-    { title: '状态', dataIndex: 'status', key: 'status', render: () => '已成交' },
-    { title: '委托编号', dataIndex: 'orderId', key: 'orderId' },
+    { title: t('historyOrders.columns.time'), dataIndex: 'orderTime', key: 'orderTime', render: formatDateTime },
+    { title: t('historyOrders.columns.stock'), key: 'stock', render: (_: unknown, item: BrokerOrder) => `${item.stockCode} ${item.stockName ?? ''}` },
+    { title: t('historyOrders.columns.direction'), dataIndex: 'direction', key: 'direction', render: directionTag },
+    { title: t('historyOrders.columns.orderPrice'), dataIndex: 'orderPrice', key: 'orderPrice', render: money },
+    { title: t('historyOrders.columns.orderQuantity'), dataIndex: 'orderQuantity', key: 'orderQuantity' },
+    { title: t('historyOrders.columns.filledQuantity'), dataIndex: 'filledQuantity', key: 'filledQuantity' },
+    { title: t('historyOrders.columns.averageFillPrice'), dataIndex: 'averageFillPrice', key: 'averageFillPrice', render: money },
+    { title: t('historyOrders.columns.status'), dataIndex: 'status', key: 'status', render: () => t('historyOrders.filled') },
+    { title: t('historyOrders.columns.orderId'), dataIndex: 'orderId', key: 'orderId' },
   ];
 
   const headerActions = useMemo(() => (
-    <Button icon={<ReloadOutlined />} loading={loading} onClick={() => setRefreshToken((value) => value + 1)}>刷新</Button>
+    <Button icon={<ReloadOutlined />} loading={loading} onClick={() => setRefreshToken((value) => value + 1)}>{t('common.refresh')}</Button>
   ), [loading]);
 
-  usePageHeader('仅展示券商返回并已落库的全部成交委托', headerActions);
+  usePageHeader(t('historyOrders.subtitle'), headerActions);
 
   return (
     <div className="app-page">
@@ -148,7 +150,7 @@ const HistoryOrders: React.FC = () => {
         <Space wrap className="mb-4">
           <Input
             prefix={<SearchOutlined />}
-            placeholder="股票代码、名称或委托编号"
+            placeholder={t('historyOrders.searchPlaceholder')}
             value={draftFilters.keyword}
             onChange={(event) => setDraftFilters((current) => ({ ...current, keyword: event.target.value }))}
             onPressEnter={applyFilters}
@@ -158,21 +160,21 @@ const HistoryOrders: React.FC = () => {
             value={draftFilters.direction}
             onChange={(value) => setDraftFilters((current) => ({ ...current, direction: value }))}
             options={[
-              { value: 'ALL', label: '全部方向' },
-              { value: 'BUY', label: '买入' },
-              { value: 'SELL', label: '卖出' },
+              { value: 'ALL', label: t('historyOrders.allDirections') },
+              { value: 'BUY', label: t('historyOrders.buy') },
+              { value: 'SELL', label: t('historyOrders.sell') },
             ]}
           />
           <Input type="date" value={draftFilters.startDate} onChange={(event) => setDraftFilters((current) => ({ ...current, startDate: event.target.value }))} />
           <Input type="date" value={draftFilters.endDate} onChange={(event) => setDraftFilters((current) => ({ ...current, endDate: event.target.value }))} />
-          <Button type="primary" icon={<SearchOutlined />} onClick={applyFilters}>查询</Button>
+          <Button type="primary" icon={<SearchOutlined />} onClick={applyFilters}>{t('common.search')}</Button>
         </Space>
         <Table
           rowKey={(item) => `${item.orderId}-${item.orderTime}`}
           columns={columns}
           dataSource={orders}
           loading={loading}
-          locale={{ emptyText: <Empty description="暂无已同步历史订单" /> }}
+          locale={{ emptyText: <Empty description={t('historyOrders.empty')} /> }}
           scroll={{ x: 1200, y: 'calc(100vh - 390px)' }}
           pagination={false}
         />
@@ -186,7 +188,7 @@ const HistoryOrders: React.FC = () => {
               showQuickJumper
               responsive
               pageSizeOptions={[10, 20, 50, 100]}
-              showTotal={(total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`}
+              showTotal={(total, range) => t('common.pagination', { start: range[0], end: range[1], total })}
               onChange={changePage}
             />
           </div>

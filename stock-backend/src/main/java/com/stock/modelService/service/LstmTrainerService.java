@@ -291,10 +291,15 @@ public class LstmTrainerService {
                         .build();
                 Device[] availableDevices = Engine.getInstance().getDevices(1);
                 Device device = availableDevices.length == 0 ? Device.cpu() : availableDevices[0];
+                DirectionClassWeights directionClassWeights = calculateDirectionClassWeights(
+                        processedData.getTrainTargets());
+                log.info("共享 LSTM 方向任务启用自动类别加权: positiveWeight={}, negativeWeight={}",
+                        directionClassWeights.positiveWeight(), directionClassWeights.negativeWeight());
                 DefaultTrainingConfig trainingConfig = new DefaultTrainingConfig(new MultiTaskStockLoss(
                         (float) config.getReturnLossWeight(),
                         (float) config.getDirectionLossWeight(),
-                        (float) config.getDownsideLossWeight()))
+                        (float) config.getDownsideLossWeight(),
+                        directionClassWeights.positiveWeight(), directionClassWeights.negativeWeight()))
                         .optOptimizer(optimizer)
                         .optDevices(new Device[]{device})
                         .addTrainingListeners(TrainingListener.Defaults.logging());
@@ -679,6 +684,39 @@ public class LstmTrainerService {
                 config.isResidualHeadEnabled(),
                 (float) config.getGroupHeadScale(),
                 (float) config.getResidualHeadScale());
+    }
+
+    /**
+     * 根据训练集方向标签计算平衡权重，避免模型仅学习全市场多数方向先验。
+     * 权重限制在 0.25 到 4.0 之间，防止极端样本比例导致训练梯度失控。
+     *
+     * @param targets 训练标签，第二列为方向标签
+     * @return 上涨和下跌类别权重
+     */
+    private DirectionClassWeights calculateDirectionClassWeights(float[][] targets) {
+        int positiveCount = 0;
+        int negativeCount = 0;
+        for (float[] target : targets) {
+            if (target != null && target.length > 1 && target[1] >= 0.5F) {
+                positiveCount++;
+            } else {
+                negativeCount++;
+            }
+        }
+        int total = positiveCount + negativeCount;
+        if (positiveCount == 0 || negativeCount == 0 || total == 0) {
+            return new DirectionClassWeights(1F, 1F);
+        }
+        float positiveWeight = clampClassWeight(total / (2F * positiveCount));
+        float negativeWeight = clampClassWeight(total / (2F * negativeCount));
+        return new DirectionClassWeights(positiveWeight, negativeWeight);
+    }
+
+    private float clampClassWeight(float weight) {
+        return Math.max(0.25F, Math.min(4F, weight));
+    }
+
+    private record DirectionClassWeights(float positiveWeight, float negativeWeight) {
     }
 
     private void validateTrainingConfiguration(int epochs, int batchSize, float learningRate) {

@@ -7,6 +7,7 @@ import com.stock.dataCollector.domain.entity.StockInfo;
 import com.stock.dataCollector.domain.entity.StockPrice;
 import com.stock.dataCollector.persistence.PriceRepository;
 import com.stock.dataCollector.persistence.StockInfoRepository;
+import com.stock.dataCollector.service.TradingCalendarService;
 import com.stock.modelService.config.LstmTrainingConfig;
 import com.stock.modelService.domain.entity.TrainingDatasetSnapshotDocument;
 import com.stock.modelService.persistence.TrainingDatasetSnapshotRepository;
@@ -77,6 +78,7 @@ public class TrainingDatasetSnapshotService {
     private final LstmTrainingConfig config;
     private final PriceRepository priceRepository;
     private final StockInfoRepository stockInfoRepository;
+    private final TradingCalendarService tradingCalendarService;
     private final LstmDataPreprocessor dataPreprocessor;
     private final TrainingDatasetSnapshotRepository snapshotRepository;
     private final GridFsTemplate gridFsTemplate;
@@ -132,7 +134,38 @@ public class TrainingDatasetSnapshotService {
             String modelName, List<String> stockCodes, int days) {
         return snapshotRepository.findFirstByModelNameAndContractHashAndStatusOrderByCreatedAtDesc(
                 modelName, contractHash(modelName, stockCodes, days), READY)
-                .filter(this::isArtifactReadable);
+                .filter(this::isArtifactReadable)
+                .filter(this::isFreshEnoughForNewTraining);
+    }
+
+    /**
+     * 判断快照是否仍可用于一次新的训练任务。
+     *
+     * 每日预测不调用此方法；只有训练任务准备数据时才会检查。快照最多允许落后一个已确认交易日，
+     * 超过该范围则返回空值，由训练流程构建新快照，避免把旧快照误认为实时数据。
+     *
+     * @param snapshot 待复用快照
+     * @return 是否允许复用
+     */
+    private boolean isFreshEnoughForNewTraining(TrainingDatasetSnapshotDocument snapshot) {
+        LocalDate latestMarketDate = priceRepository.findTopByOrderByDateDesc()
+                .map(StockPrice::getDate).orElse(null);
+        LocalDate datasetEndDate = snapshot.getDatasetEndDate();
+        if (latestMarketDate == null || datasetEndDate == null || !latestMarketDate.isAfter(datasetEndDate)) {
+            return latestMarketDate != null && datasetEndDate != null;
+        }
+        LocalDate cursor = datasetEndDate;
+        int tradingDayGap = 0;
+        while (cursor.isBefore(latestMarketDate) && tradingDayGap <= 1) {
+            cursor = tradingCalendarService.nextTradingDay(cursor);
+            tradingDayGap++;
+        }
+        boolean reusable = !cursor.isBefore(latestMarketDate) && tradingDayGap <= 1;
+        if (!reusable) {
+            log.info("训练快照超过允许的新鲜度，仅在新训练任务中重建: snapshotId={}, datasetEndDate={}, latestMarketDate={}, tradingDayGap={}",
+                    snapshot.getId(), datasetEndDate, latestMarketDate, tradingDayGap);
+        }
+        return reusable;
     }
 
     /**
