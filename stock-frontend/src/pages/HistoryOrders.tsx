@@ -138,11 +138,7 @@ const HistoryOrders: React.FC = () => {
     { title: t('historyOrders.columns.orderId'), dataIndex: 'orderId', key: 'orderId' },
   ];
 
-  const headerActions = useMemo(() => (
-    <Button icon={<ReloadOutlined />} loading={loading} onClick={() => setRefreshToken((value) => value + 1)}>{t('common.refresh')}</Button>
-  ), [loading]);
-
-  usePageHeader(t('historyOrders.subtitle'), headerActions);
+  usePageHeader(t('historyOrders.subtitle'));
 
   return (
     <div className="app-page">
@@ -168,6 +164,7 @@ const HistoryOrders: React.FC = () => {
           <Input type="date" value={draftFilters.startDate} onChange={(event) => setDraftFilters((current) => ({ ...current, startDate: event.target.value }))} />
           <Input type="date" value={draftFilters.endDate} onChange={(event) => setDraftFilters((current) => ({ ...current, endDate: event.target.value }))} />
           <Button type="primary" icon={<SearchOutlined />} onClick={applyFilters}>{t('common.search')}</Button>
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => setRefreshToken((value) => value + 1)}>{t('common.refresh')}</Button>
         </Space>
         <Table
           rowKey={(item) => `${item.orderId}-${item.orderTime}`}

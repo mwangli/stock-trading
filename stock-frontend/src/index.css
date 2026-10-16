@@ -229,16 +229,6 @@ select { letter-spacing: 0; }
   gap: 12px;
 }
 
-.app-header-actions {
-  display: flex;
-  min-width: 0;
-  flex: 0 1 auto;
-  align-items: center;
-  justify-content: flex-end;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
 .app-header-tools {
   display: flex;
   flex: 0 0 auto;
@@ -428,14 +418,6 @@ select { letter-spacing: 0; }
   }
 
   .app-header-identity { min-width: 0; }
-
-  .app-header-actions {
-    order: 3;
-    width: 100%;
-    flex-basis: 100%;
-    justify-content: flex-start;
-    padding-left: 44px;
-  }
 
   .app-system-status,
   .app-header-language,

@@ -1,5 +1,5 @@
 // AI_GENERATE_START ---------------------
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { formatDateTime } from '../utils/dateTime';
 import {
   Alert,
@@ -773,6 +773,8 @@ const ModelOperations: React.FC = () => {
     { title: localizedText('预测生成时间', 'Prediction Time'), dataIndex: 'predictedAt', key: 'predictedAt', width: 180, render: formatDateTime },
   ];
 
+  usePageHeader(t('modelOperations.subtitle'));
+
   const latestTraining = overview?.latestTrainingRun;
   const legacyProgress = latestTraining?.status === 'RUNNING'
     && latestTraining.progressStage == null
@@ -785,41 +787,37 @@ const ModelOperations: React.FC = () => {
       )
     : latestTraining?.elapsedSeconds;
 
-  const headerActions = useMemo(() => (
-    <Space wrap>
-      <Input
-        className="w-44"
-        value={operatorName}
-        maxLength={64}
-        placeholder={localizedText('操作人', 'Operator')}
-        onChange={(event) => setOperatorName(event.target.value)}
-      />
-      <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadAll()}>{localizedText('刷新', 'Refresh')}</Button>
-      <Button
-        type="primary"
-        icon={<ExperimentOutlined />}
-        onClick={() => {
-          form.setFieldsValue({
-            ...defaultTrainingValues,
-            operatorName: operatorName.trim() || 'web-console',
-          });
-          setTrainingModalOpen(true);
-        }}
-      >
-        {localizedText('触发训练', 'Start Training')}
-      </Button>
-    </Space>
-  ), [form, loadAll, loading, operatorName]);
-
-  usePageHeader(t('modelOperations.subtitle'), headerActions);
-
   return (
     <div className="app-page">
-      {overview && (
-        <Tag color={overview.trainingAllowed ? 'green' : 'orange'}>
-          {overview.trainingAllowed ? t('modelOperations.trainingGatePassed') : t('modelOperations.trainingGateBlocked')}
-        </Tag>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {overview && (
+          <Tag color={overview.trainingAllowed ? 'green' : 'orange'}>
+            {overview.trainingAllowed ? t('modelOperations.trainingGatePassed') : t('modelOperations.trainingGateBlocked')}
+          </Tag>
+        )}
+        <Space wrap className="ml-auto">
+          <Input
+            className="w-44"
+            value={operatorName}
+            maxLength={64}
+            placeholder={localizedText('操作人', 'Operator')}
+            onChange={(event) => setOperatorName(event.target.value)}
+          />
+          <Button
+            type="primary"
+            icon={<ExperimentOutlined />}
+            onClick={() => {
+              form.setFieldsValue({
+                ...defaultTrainingValues,
+                operatorName: operatorName.trim() || 'web-console',
+              });
+              setTrainingModalOpen(true);
+            }}
+          >
+            {localizedText('触发训练', 'Start Training')}
+          </Button>
+        </Space>
+      </div>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} md={12} xl={6}>

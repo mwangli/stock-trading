@@ -1,13 +1,15 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Input, message } from 'antd';
 import { LockOutlined, LoginOutlined, UserOutlined } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
+import { useAppTheme } from '../theme/AppThemeProvider';
 
 const AnimatedMarketBackground: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { mode } = useAppTheme();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -21,16 +23,17 @@ const AnimatedMarketBackground: React.FC = () => {
     let animationFrame = 0;
     let reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const isDark = mode === 'dark';
 
     const draw = (time: number) => {
       context.clearRect(0, 0, width, height);
-      context.fillStyle = '#080d17';
+      context.fillStyle = isDark ? '#080d17' : '#f4f7fb';
       context.fillRect(0, 0, width, height);
 
       const gridSize = width < 640 ? 44 : 64;
       const gridOffset = reduceMotion ? 0 : (time * 0.012) % gridSize;
       context.save();
-      context.strokeStyle = 'rgba(105, 128, 158, 0.13)';
+      context.strokeStyle = isDark ? 'rgba(105, 128, 158, 0.13)' : 'rgba(100, 125, 155, 0.16)';
       context.lineWidth = 1;
       for (let x = -gridOffset; x <= width + gridSize; x += gridSize) {
         context.beginPath();
@@ -62,7 +65,7 @@ const AnimatedMarketBackground: React.FC = () => {
           context.lineTo(x, y);
         }
       }
-      context.strokeStyle = 'rgba(45, 212, 191, 0.55)';
+      context.strokeStyle = isDark ? 'rgba(45, 212, 191, 0.55)' : 'rgba(8, 145, 178, 0.44)';
       context.lineWidth = 2;
       context.stroke();
       context.restore();
@@ -85,7 +88,9 @@ const AnimatedMarketBackground: React.FC = () => {
         const high = Math.min(open, close) - height * (0.025 + Math.abs(Math.sin(index)) * 0.025);
         const low = Math.max(open, close) + height * (0.025 + Math.abs(Math.cos(index)) * 0.025);
         const rising = close <= open;
-        const color = rising ? 'rgba(34, 197, 94, 0.48)' : 'rgba(248, 113, 113, 0.45)';
+        const color = isDark
+          ? (rising ? 'rgba(34, 197, 94, 0.48)' : 'rgba(248, 113, 113, 0.45)')
+          : (rising ? 'rgba(22, 163, 74, 0.42)' : 'rgba(220, 38, 38, 0.38)');
 
         context.strokeStyle = color;
         context.fillStyle = color;
@@ -97,7 +102,9 @@ const AnimatedMarketBackground: React.FC = () => {
         context.fillRect(x - candleWidth / 2, Math.min(open, close), candleWidth, Math.max(3, Math.abs(close - open)));
 
         const volumeHeight = height * (0.035 + Math.abs(Math.sin(index * 0.83)) * 0.085);
-        context.fillStyle = rising ? 'rgba(34, 197, 94, 0.16)' : 'rgba(248, 113, 113, 0.14)';
+        context.fillStyle = isDark
+          ? (rising ? 'rgba(34, 197, 94, 0.16)' : 'rgba(248, 113, 113, 0.14)')
+          : (rising ? 'rgba(22, 163, 74, 0.11)' : 'rgba(220, 38, 38, 0.09)');
         context.fillRect(x - candleWidth, height - volumeHeight - 28, candleWidth * 2, volumeHeight);
       }
       context.restore();
@@ -137,7 +144,7 @@ const AnimatedMarketBackground: React.FC = () => {
       resizeObserver.disconnect();
       motionPreference.removeEventListener('change', handleMotionPreference);
     };
-  }, []);
+  }, [mode]);
 
   return <canvas ref={canvasRef} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" />;
 };
@@ -145,6 +152,7 @@ const AnimatedMarketBackground: React.FC = () => {
 const Login: React.FC = () => {
   const { t } = useTranslation();
   const { login } = useAuth();
+  const { mode } = useAppTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [username, setUsername] = useState('admin');
@@ -169,9 +177,9 @@ const Login: React.FC = () => {
   };
 
   return (
-    <main className="relative isolate flex min-h-screen items-center justify-center overflow-hidden bg-[#080d17] px-4">
+    <main className={`relative isolate flex min-h-screen items-center justify-center overflow-hidden px-4 ${mode === 'dark' ? 'bg-[#080d17]' : 'bg-[#f4f7fb]'}`}>
       <AnimatedMarketBackground />
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-black/20" />
+      <div aria-hidden="true" className={`pointer-events-none absolute inset-0 ${mode === 'dark' ? 'bg-black/20' : 'bg-white/20'}`} />
       <section className="relative z-10 w-full max-w-[420px] rounded-md border border-[var(--border-color)] bg-[var(--panel-bg)] p-8 shadow-2xl">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded bg-blue-600 text-white shadow-lg shadow-blue-950/30">
@@ -208,4 +216,4 @@ const Login: React.FC = () => {
 };
 
 export default Login;
-// AI_GENERATE_END -
+// AI_GENERATE_END --

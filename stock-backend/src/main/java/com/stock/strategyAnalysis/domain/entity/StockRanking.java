@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.strategyAnalysis.domain.entity;
 
 import lombok.AllArgsConstructor;
@@ -58,6 +58,9 @@ public class StockRanking {
     /** 股票名称。 */
     private String stockName;
 
+    /** 页面展示的股票价格，取预测基准日收盘价。 */
+    private Double currentPrice;
+
     /** LSTM 归一化分数。 */
     private double lstmScore;
 
@@ -76,4 +79,4 @@ public class StockRanking {
     /** 候选原因。 */
     private String reason;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

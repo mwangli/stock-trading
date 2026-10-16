@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START -------------
 package com.stock.strategyAnalysis.engine;
 
 import com.stock.dataCollector.domain.entity.StockNews;
@@ -42,6 +42,7 @@ import java.util.stream.Collectors;
 public class StockSelector {
 
     private static final String CANDIDATE_STATUS_ELIGIBLE = "ELIGIBLE";
+    private static final String CANDIDATE_STATUS_RANKED = "RANKED";
     private static final int SENTIMENT_LOOKBACK_HOURS = 36;
     private static final double LSTM_SCORE_SCALE = 20D;
     private static final double RETURN_TASK_WEIGHT = 0.55D;
@@ -106,8 +107,15 @@ public class StockSelector {
                     lstmScores, sentimentScores, config);
             String candidateBatchId = UUID.randomUUID().toString();
             LocalDateTime calculatedAt = LocalDateTime.now();
+            Map<String, Double> currentPrices = predictionBatch.getItems().stream()
+                    .filter(item -> item.getCurrentPrice() != null)
+                    .collect(Collectors.toMap(
+                            PredictionCandidateBatchDto.PredictionCandidateItemDto::getStockCode,
+                            PredictionCandidateBatchDto.PredictionCandidateItemDto::getCurrentPrice,
+                            (left, right) -> left,
+                            LinkedHashMap::new));
             List<StockRankingDto> rankings = rankAndSelect(
-                    totalScores, lstmScores, sentimentScores, stockNames, n, config,
+                    totalScores, lstmScores, sentimentScores, currentPrices, stockNames, n, config,
                     predictionBatch, sentimentModelVersion, candidateBatchId,
                     informationCutoffAt, calculatedAt);
 
@@ -118,7 +126,9 @@ public class StockSelector {
             return SelectionResult.builder()
                     .executeTime(calculatedAt)
                     .totalStocks(lstmScores.size())
-                    .topN(rankings)
+                    .topN(rankings.stream()
+                            .filter(item -> CANDIDATE_STATUS_ELIGIBLE.equals(item.getStatus()))
+                            .toList())
                     .costTimeMs(costTime)
                     .success(true)
                     .build();
@@ -140,12 +150,12 @@ public class StockSelector {
     }
 
     /**
-     * 获取今天目标交易日的最新可执行候选。
+     * 获取今天目标交易日的完整评分排名。
      *
-     * @return 当日候选列表
+     * @return 当日完整评分列表
      */
     public List<StockRankingDto> getAllRankings() {
-        return getExecutableRankings(LocalDate.now());
+        return getRankings(LocalDate.now());
     }
 
     /**
@@ -155,9 +165,14 @@ public class StockSelector {
      * @return 元数据完整且状态为可执行的候选列表
      */
     public List<StockRankingDto> getExecutableRankings(LocalDate targetTradeDate) {
+        return getRankings(targetTradeDate).stream()
+                .filter(item -> CANDIDATE_STATUS_ELIGIBLE.equals(item.getStatus()))
+                .toList();
+    }
+
+    private List<StockRankingDto> getRankings(LocalDate targetTradeDate) {
         return rankingRepository.findFirstByTargetTradeDateOrderByCalculateTimeDesc(targetTradeDate)
-                .map(latest -> rankingRepository.findByCandidateBatchIdAndStatusOrderByRankAsc(
-                        latest.getCandidateBatchId(), CANDIDATE_STATUS_ELIGIBLE))
+                .map(latest -> rankingRepository.findByCandidateBatchIdOrderByRankAsc(latest.getCandidateBatchId()))
                 .orElseGet(List::of)
                 .stream()
                 .filter(this::hasCompleteTraceMetadata)
@@ -243,6 +258,7 @@ public class StockSelector {
             Map<String, Double> totalScores,
             Map<String, Double> lstmScores,
             Map<String, Double> sentimentScores,
+            Map<String, Double> currentPrices,
             Map<String, String> stockNames,
             int n,
             StrategyConfig config,
@@ -259,12 +275,8 @@ public class StockSelector {
         List<StockRankingDto> rankings = new ArrayList<>();
         int rank = 1;
         for (Map.Entry<String, Double> entry : sortedEntries) {
-            if (rank > n) {
-                break;
-            }
-            if (!scoreCalculator.meetsMinScoreRequirement(entry.getValue(), config)) {
-                continue;
-            }
+            boolean eligible = rank <= n
+                    && scoreCalculator.meetsMinScoreRequirement(entry.getValue(), config);
             rankings.add(StockRankingDto.builder()
                     .candidateBatchId(candidateBatchId)
                     .predictionBatchId(predictionBatch.getBatchId())
@@ -275,9 +287,10 @@ public class StockSelector {
                     .baseTradeDate(predictionBatch.getBaseTradeDate())
                     .targetTradeDate(predictionBatch.getTargetTradeDate())
                     .informationCutoffAt(informationCutoffAt)
-                    .status(CANDIDATE_STATUS_ELIGIBLE)
+                    .status(eligible ? CANDIDATE_STATUS_ELIGIBLE : CANDIDATE_STATUS_RANKED)
                     .stockCode(entry.getKey())
                     .stockName(stockNames.getOrDefault(entry.getKey(), entry.getKey()))
+                    .currentPrice(currentPrices.get(entry.getKey()))
                     .lstmScore(lstmScores.get(entry.getKey()))
                     .sentimentScore(sentimentScores.get(entry.getKey()))
                     .totalScore(entry.getValue())
@@ -319,6 +332,7 @@ public class StockSelector {
                 .status(dto.getStatus())
                 .stockCode(dto.getStockCode())
                 .stockName(dto.getStockName())
+                .currentPrice(dto.getCurrentPrice())
                 .lstmScore(dto.getLstmScore())
                 .sentimentScore(dto.getSentimentScore())
                 .totalScore(dto.getTotalScore())
@@ -352,6 +366,7 @@ public class StockSelector {
                 .status(ranking.getStatus())
                 .stockCode(ranking.getStockCode())
                 .stockName(ranking.getStockName())
+                .currentPrice(ranking.getCurrentPrice())
                 .lstmScore(ranking.getLstmScore())
                 .sentimentScore(ranking.getSentimentScore())
                 .totalScore(ranking.getTotalScore())
@@ -361,4 +376,4 @@ public class StockSelector {
                 .build();
     }
 }
-// AI_GENERATE_END ------------
+// AI_GENERATE_END -------------

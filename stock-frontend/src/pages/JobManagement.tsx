@@ -502,16 +502,16 @@ const JobManagement: React.FC = () => {
     }
   };
 
-  const headerActions = useMemo(() => (
-    <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadAll()}>{t('jobsPage.refresh')}</Button>
-  ), [loadAll, loading]);
-
-  usePageHeader(t('jobsPage.subtitle'), headerActions);
+  usePageHeader(t('jobsPage.subtitle'));
 
   return (
     <div className="app-page">
       {error && <Alert className="mb-4" type="error" showIcon message={localizedText('任务管理数据读取失败', 'Failed to load job management data')} description={error} closable onClose={() => setError(null)} />}
-      <Card className="surface-card" title={<Space><ControlOutlined />{t('jobsPage.status')}</Space>}>
+      <Card
+        className="surface-card"
+        title={<Space><ControlOutlined />{t('jobsPage.status')}</Space>}
+        extra={<Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadAll()}>{t('jobsPage.refresh')}</Button>}
+      >
         <Tabs
           items={jobDomains.map((domain) => {
           const domainJobs = jobs.filter((job) => resolveJobDomain(job.jobName, job.module) === domain.key);

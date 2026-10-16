@@ -1,5 +1,5 @@
-// AI_GENERATE_START -
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+// AI_GENERATE_START ----
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { App as AntdApp, ConfigProvider, theme } from 'antd';
 
 export type ThemeMode = 'light' | 'dark';
@@ -8,35 +8,84 @@ interface AppThemeContextValue {
   mode: ThemeMode;
   setMode: (mode: ThemeMode) => void;
   toggleMode: () => void;
+  resetToAutomatic: () => ThemeMode;
 }
 
 const AppThemeContext = createContext<AppThemeContextValue | null>(null);
 
-const resolveInitialMode = (): ThemeMode => {
+const readStoredMode = (): ThemeMode | null => {
   const storedMode = window.localStorage.getItem('stock-theme');
   if (storedMode === 'light' || storedMode === 'dark') {
     return storedMode;
   }
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return null;
 };
+
+/**
+ * 根据北京时间判断当前是否处于白天时段。
+ * 06:00-18:00 使用浅色模式，其余时间使用深色模式。
+ */
+const resolveBeijingMode = (): ThemeMode => {
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 0);
+  return hour >= 6 && hour < 18 ? 'light' : 'dark';
+};
+
+const resolveInitialMode = (): ThemeMode => readStoredMode() ?? resolveBeijingMode();
 
 /**
  * 全局应用主题提供器。
  * 同步管理 Ant Design 主题、页面 data-theme 属性和本地持久化偏好。
  */
 export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
+  const hasManualPreference = useRef(readStoredMode() !== null);
   const [mode, setMode] = useState<ThemeMode>(resolveInitialMode);
+
+  const applyManualMode = useCallback((nextMode: ThemeMode) => {
+    hasManualPreference.current = true;
+    window.localStorage.setItem('stock-theme', nextMode);
+    setMode(nextMode);
+  }, []);
+
+  const resetToAutomatic = useCallback(() => {
+    hasManualPreference.current = false;
+    window.localStorage.removeItem('stock-theme');
+    const automaticMode = resolveBeijingMode();
+    setMode(automaticMode);
+    return automaticMode;
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = mode;
-    window.localStorage.setItem('stock-theme', mode);
   }, [mode]);
+
+  useEffect(() => {
+    if (hasManualPreference.current) {
+      return undefined;
+    }
+
+    const syncWithBeijingTime = () => {
+      if (hasManualPreference.current) {
+        return;
+      }
+      setMode(resolveBeijingMode());
+    };
+
+    syncWithBeijingTime();
+    const timer = window.setInterval(syncWithBeijingTime, 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const contextValue = useMemo<AppThemeContextValue>(() => ({
     mode,
-    setMode,
-    toggleMode: () => setMode((current) => current === 'light' ? 'dark' : 'light'),
-  }), [mode]);
+    setMode: applyManualMode,
+    toggleMode: () => applyManualMode(mode === 'light' ? 'dark' : 'light'),
+    resetToAutomatic,
+  }), [applyManualMode, mode, resetToAutomatic]);
 
   return (
     <AppThemeContext.Provider value={contextValue}>
@@ -87,4 +136,4 @@ export const useAppTheme = (): AppThemeContextValue => {
   }
   return context;
 };
-// AI_GENERATE_END -
+// AI_GENERATE_END ----

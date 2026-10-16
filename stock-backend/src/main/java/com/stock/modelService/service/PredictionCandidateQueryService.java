@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.modelService.service;
 
 import com.stock.modelService.domain.dto.PredictionCandidateBatchDto;
@@ -90,6 +90,7 @@ public class PredictionCandidateQueryService {
         return PredictionCandidateBatchDto.PredictionCandidateItemDto.builder()
                 .stockCode(item.getStockCode())
                 .stockName(item.getStockName())
+                .currentPrice(item.getBaseClosePrice())
                 .predictedReturn(item.getPredictedReturn())
                 .directionProbability(item.getDirectionProbability())
                 .downsideRisk(item.getDownsideRisk())
@@ -98,4 +99,4 @@ public class PredictionCandidateQueryService {
                 .build();
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

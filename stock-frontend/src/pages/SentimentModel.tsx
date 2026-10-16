@@ -1,5 +1,5 @@
-// AI_GENERATE_START ----
-import React, { useCallback, useMemo, useState } from 'react';
+// AI_GENERATE_START -----
+import React, { useCallback, useState } from 'react';
 import {
   Alert,
   Button,
@@ -237,6 +237,7 @@ const SentimentModel: React.FC = () => {
     try {
       const response = await request.post('/model-sentiment/analyze', { text: content }) as ApiResponse<SentimentAnalyzeResult>;
       setAnalysis(readApiData(response, localizedText('情感分析失败', 'Sentiment analysis failed')));
+      void loadHealth();
     } catch (cause) {
       message.error(getApiErrorMessage(cause, localizedText('情感分析失败', 'Sentiment analysis failed')));
     } finally {
@@ -255,13 +256,7 @@ const SentimentModel: React.FC = () => {
     applyTestCase(candidates[Math.floor(Math.random() * candidates.length)] ?? allSentimentTestCases[0]);
   };
 
-  const headerActions = useMemo(() => (
-    <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadHealth()}>
-      {localizedText('刷新状态', 'Refresh Status')}
-    </Button>
-  ), [loadHealth, loading]);
-
-  usePageHeader(t('sentimentPage.subtitle'), headerActions);
+  usePageHeader(t('sentimentPage.subtitle'));
 
   const currentLabel = analysis?.label ? labelMeta[analysis.label] : undefined;
   const probabilities = Object.entries(analysis?.probabilities ?? {}).sort((left, right) => right[1] - left[1]);
@@ -281,6 +276,9 @@ const SentimentModel: React.FC = () => {
             <div className="mt-1 text-sm text-[var(--text-muted)]">{localizedText('区分真实模型推理、制品就绪和规则降级状态', 'Distinguish real model inference, artifact readiness and rule fallback')}</div>
           </div>
           <Space wrap>
+            <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadHealth()}>
+              {localizedText('刷新状态', 'Refresh Status')}
+            </Button>
             <Tag color={health?.modelLoaded ? 'green' : 'default'} icon={health?.modelLoaded ? <CheckCircleOutlined /> : <WarningOutlined />}>
               {health?.modelLoaded ? localizedText('真实模型已加载', 'Real model loaded') : localizedText('真实模型未加载', 'Real model not loaded')}
             </Tag>
@@ -430,4 +428,4 @@ const SentimentModel: React.FC = () => {
 };
 
 export default SentimentModel;
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----
