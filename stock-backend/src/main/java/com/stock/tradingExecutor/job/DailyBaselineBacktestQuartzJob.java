@@ -1,7 +1,7 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.tradingExecutor.job;
 
-import com.stock.strategyAnalysis.job.DailyBaselineBacktestJob;
+import com.stock.strategyAgent.strategy.job.DailyBaselineBacktestJob;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,4 +34,4 @@ public class DailyBaselineBacktestQuartzJob extends InterruptibleQuartzJob {
                 dailyBaselineBacktestJob::runFiveYearMomentumBaseline);
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

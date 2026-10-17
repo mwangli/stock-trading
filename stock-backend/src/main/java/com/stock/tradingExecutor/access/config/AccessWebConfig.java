@@ -29,7 +29,11 @@ public class AccessWebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(authInterceptor)
                 .addPathPatterns("/api/**")
-                .excludePathPatterns("/api/auth/login", "/api/auth/me", "/api/auth/logout");
+                .excludePathPatterns(
+                        "/api/auth/login",
+                        "/api/auth/me",
+                        "/api/auth/logout",
+                        "/api/system/health");
     }
 }
 // AI_GENERATE_END -

@@ -1,7 +1,7 @@
 server:
   port: 8080
 
-# AI_GENERATE_START ---
+# AI_GENERATE_START ----
 spring:
   config:
     import:
@@ -20,7 +20,7 @@ spring:
   # MySQL配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://${DATABASE_HOST:localhost}:6033/stock_trading?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
+    url: jdbc:mysql://${DATABASE_HOST:localhost}:6033/stock_trading?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
     password: ${MYSQL_ROOT_PASSWORD:}
   data:
@@ -66,7 +66,7 @@ spring:
     baseline-version: 0
     locations: classpath:db/migration
 
-# 中信证券协议参数。默认关闭，真实值必须由运行环境注入。
+# ZX证券协议参数。默认关闭，真实值必须由运行环境注入。
 zxbroker:
   enabled: ${ZXBROKER_ENABLED:false}
   mobile-code: ${ZXBROKER_MOBILE_CODE:}
@@ -95,6 +95,30 @@ trading:
   take-profit-percent: 3
   force-exit-time: "14:50"
 
+agent:
+  enabled: ${AGENT_ENABLED:false}
+  provider: ${AGENT_PROVIDER:disabled}
+  api-url: ${AGENT_API_URL:}
+  api-key: ${AGENT_API_KEY:}
+  model: ${AGENT_MODEL:}
+  max-steps: ${AGENT_MAX_STEPS:6}
+  max-model-rounds: ${AGENT_MAX_MODEL_ROUNDS:3}
+  timeout-ms: ${AGENT_TIMEOUT_MS:30000}
+  max-output-chars: ${AGENT_MAX_OUTPUT_CHARS:12000}
+  max-concurrency: ${AGENT_MAX_CONCURRENCY:1}
+  report-enabled: ${AGENT_REPORT_ENABLED:false}
+  trade-plan-enabled: ${AGENT_TRADE_PLAN_ENABLED:false}
+  rag-enabled: ${AGENT_RAG_ENABLED:false}
+  memory-enabled: ${AGENT_MEMORY_ENABLED:true}
+  rag-collection: ${AGENT_RAG_COLLECTION:agent_rag_chunks}
+  memory-default-ttl-days: ${AGENT_MEMORY_DEFAULT_TTL_DAYS:90}
+  chat-memory-max-messages: ${AGENT_CHAT_MEMORY_MAX_MESSAGES:20}
+  tool-timeout-ms: ${AGENT_TOOL_TIMEOUT_MS:5000}
+  audit-enabled: ${AGENT_AUDIT_ENABLED:true}
+  vector-store: ${AGENT_VECTOR_STORE:mongodb}
+  embedding-model: ${AGENT_EMBEDDING_MODEL:}
+  embedding-model-version: ${AGENT_EMBEDDING_MODEL_VERSION:}
+
 backtest:
   universe-limit: 500
   lookback-days: 5
@@ -110,7 +134,7 @@ backtest:
   minimum-candidate-net-return-rate: 0.0020
   code-version: WORKTREE_UNCOMMITTED
 
-# AI_GENERATE_END ---
+# AI_GENERATE_END ----
 
 models:
   # Java 使用 DJL + PyTorch Engine 完成 LSTM 训练、模型结构重建和在线推理。

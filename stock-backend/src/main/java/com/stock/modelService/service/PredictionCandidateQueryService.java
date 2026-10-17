@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.modelService.service;
 
 import com.stock.modelService.domain.dto.PredictionCandidateBatchDto;
@@ -6,7 +6,7 @@ import com.stock.modelService.domain.entity.ModelPredictionBatchDocument;
 import com.stock.modelService.domain.entity.ModelPredictionDocument;
 import com.stock.modelService.persistence.ModelPredictionBatchRepository;
 import com.stock.modelService.persistence.ModelPredictionRepository;
-import com.stock.strategyAnalysis.config.BacktestProperties;
+import com.stock.modelService.config.PredictionCostProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -29,7 +29,7 @@ public class PredictionCandidateQueryService {
 
     private final ModelPredictionBatchRepository batchRepository;
     private final ModelPredictionRepository predictionRepository;
-    private final BacktestProperties backtestProperties;
+    private final PredictionCostProperties predictionCostProperties;
 
     /**
      * 查询指定目标交易日最新可用预测批次。
@@ -117,15 +117,15 @@ public class PredictionCandidateQueryService {
         if (predictedReturn == null || !Double.isFinite(predictedReturn)) {
             return null;
         }
-        BigDecimal slippageRate = backtestProperties.getSlippageBps()
+        BigDecimal slippageRate = predictionCostProperties.getSlippageBps()
                 .multiply(BigDecimal.valueOf(2D))
                 .divide(BigDecimal.valueOf(10000D), 10, java.math.RoundingMode.HALF_UP);
-        BigDecimal roundTripVariableCost = backtestProperties.getCommissionRate().multiply(BigDecimal.valueOf(2D))
-                .add(backtestProperties.getTransferFeeRate().multiply(BigDecimal.valueOf(2D)))
-                .add(backtestProperties.getStampDutyRate())
+        BigDecimal roundTripVariableCost = predictionCostProperties.getCommissionRate().multiply(BigDecimal.valueOf(2D))
+                .add(predictionCostProperties.getTransferFeeRate().multiply(BigDecimal.valueOf(2D)))
+                .add(predictionCostProperties.getStampDutyRate())
                 .add(slippageRate)
-                .add(backtestProperties.getCandidateSafetyMarginRate());
+                .add(predictionCostProperties.getCandidateSafetyMarginRate());
         return BigDecimal.valueOf(predictedReturn).subtract(roundTripVariableCost).doubleValue();
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

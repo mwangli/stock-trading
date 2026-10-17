@@ -34,7 +34,7 @@ public class ModelOperationsController {
      *
      * @return 模型运维概览
      */
-    @GetMapping("/model-operations/overview")
+    @GetMapping("/modelOperations/overview")
     public ResponseDTO<ModelOperationsDto.OverviewResponse> getOverview() {
         log.info("[ModelOperations] 查询模型运维概览");
         try {
@@ -52,7 +52,7 @@ public class ModelOperationsController {
      * @param pageSize 每页大小
      * @return 模型版本分页结果
      */
-    @GetMapping("/model-versions")
+    @GetMapping("/modelVersions")
     public ResponseDTO<ModelOperationsDto.ModelVersionPageResponse> listVersions(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int pageSize) {
@@ -71,7 +71,7 @@ public class ModelOperationsController {
      * @param versionId 模型版本 ID
      * @return 模型版本详情
      */
-    @GetMapping("/model-versions/details/{versionId}")
+    @GetMapping("/modelVersions/details/{versionId}")
     public ResponseDTO<ModelOperationsDto.ModelVersionItem> getVersionDetails(
             @PathVariable String versionId) {
         log.info("[ModelOperations] 查询模型版本详情: versionId={}", versionId);
@@ -91,7 +91,7 @@ public class ModelOperationsController {
      * @param pageSize 每页大小
      * @return 训练运行分页结果
      */
-    @GetMapping("/model-training-runs")
+    @GetMapping("/modelTrainingRuns")
     public ResponseDTO<ModelOperationsDto.TrainingRunPageResponse> listTrainingRuns(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int pageSize) {
@@ -110,7 +110,7 @@ public class ModelOperationsController {
      * @param request 训练参数和操作人
      * @return 训练任务提交结果
      */
-    @PostMapping("/model-training-runs/start")
+    @PostMapping("/modelTrainingRuns/start")
     public ResponseDTO<ModelOperationsDto.OperationResponse> startTraining(
             @RequestBody(required = false) ModelOperationsDto.StartTrainingRequest request) {
         log.info("[ModelOperations] 提交模型训练: days={}, epochs={}, batchSize={}, learningRate={}, operator={}",
@@ -133,7 +133,7 @@ public class ModelOperationsController {
      * @param request 快照构建参数
      * @return 快照构建结果
      */
-    @PostMapping("/model-training-snapshots/build")
+    @PostMapping("/modelTrainingSnapshots/build")
     public ResponseDTO<ModelOperationsDto.OperationResponse> buildTrainingSnapshot(
             @RequestBody(required = false) ModelOperationsDto.StartTrainingRequest request) {
         log.info("[ModelOperations] 构建 LSTM 训练数据快照: days={}, operator={}",
@@ -161,7 +161,7 @@ public class ModelOperationsController {
      * @param operatorName 操作人名称
      * @return 停止结果
      */
-    @PostMapping("/model-training-runs/stop/{runId}")
+    @PostMapping("/modelTrainingRuns/stop/{runId}")
     public ResponseDTO<ModelOperationsDto.OperationResponse> stopTraining(
             @PathVariable String runId, @RequestParam(required = false) String operatorName) {
         log.info("[ModelOperations] 停止模型训练: runId={}, operator={}", runId, operatorName);
@@ -180,7 +180,7 @@ public class ModelOperationsController {
      * @param operatorName 操作人名称
      * @return 新恢复任务的提交结果
      */
-    @PostMapping("/model-training-runs/resume/{runId}")
+    @PostMapping("/modelTrainingRuns/resume/{runId}")
     public ResponseDTO<ModelOperationsDto.OperationResponse> resumeTraining(
             @PathVariable String runId, @RequestParam(required = false) String operatorName) {
         log.info("[ModelOperations] 恢复模型训练: runId={}, operator={}", runId, operatorName);
@@ -195,7 +195,7 @@ public class ModelOperationsController {
         }
     }
 
-    @PostMapping("/model-versions/activate/{versionId}")
+    @PostMapping("/modelVersions/activate/{versionId}")
     public ResponseDTO<ModelOperationsDto.OperationResponse> activateVersion(
             @PathVariable String versionId,
             @RequestParam(required = false) String operatorName) {
@@ -216,7 +216,7 @@ public class ModelOperationsController {
      * @param operatorName 操作人名称
      * @return 回滚结果
      */
-    @PostMapping("/model-versions/rollback/{modelName}")
+    @PostMapping("/modelVersions/rollback/{modelName}")
     public ResponseDTO<ModelOperationsDto.OperationResponse> rollback(
             @PathVariable String modelName,
             @RequestParam(required = false) String operatorName) {

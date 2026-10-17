@@ -22,7 +22,7 @@ import java.util.function.Supplier;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/real-trading")
+@RequestMapping("/api/realTrading")
 @RequiredArgsConstructor
 public class RealTradingController {
 

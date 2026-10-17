@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START ---------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.BrokerAccountDto;
@@ -11,11 +11,13 @@ import com.stock.tradingExecutor.domain.dto.BrokerPositionDto;
 import com.stock.tradingExecutor.domain.dto.BrokerPositionListResponseDto;
 import com.stock.tradingExecutor.domain.dto.BrokerReadStatusDto;
 import com.stock.tradingExecutor.domain.entity.AccountSnapshotEntity;
+import com.stock.tradingExecutor.domain.entity.OrderStatus;
 import com.stock.tradingExecutor.domain.entity.PositionSnapshotEntity;
 import com.stock.tradingExecutor.domain.entity.PositionSnapshotItemEntity;
 import com.stock.tradingExecutor.domain.vo.BrokerFillSnapshot;
 import com.stock.tradingExecutor.domain.vo.BrokerOrderSnapshot;
 import com.stock.tradingExecutor.execution.BrokerAdapter;
+import com.stock.tradingExecutor.execution.FeeCalculator;
 import com.stock.tradingExecutor.execution.TradingProperties;
 import com.stock.tradingExecutor.persistence.AccountSnapshotRepository;
 import com.stock.tradingExecutor.persistence.PositionSnapshotItemRepository;
@@ -23,6 +25,7 @@ import com.stock.tradingExecutor.persistence.PositionSnapshotRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -41,6 +44,7 @@ public class BrokerReadService {
     private static final int MAX_HISTORY_DAYS = 31;
 
     private final BrokerAdapter brokerAdapter;
+    private final FeeCalculator feeCalculator;
     private final TradingProperties tradingProperties;
     private final BrokerIdentityService brokerIdentityService;
     private final AccountSnapshotRepository accountSnapshotRepository;
@@ -131,8 +135,12 @@ public class BrokerReadService {
     public BrokerOrderListResponseDto getHistoryOrders(BrokerHistoryQueryRequest request) {
         ensureAuthenticated();
         validateHistoryRange(request);
+        List<BrokerOrderSnapshot> filledOrders = brokerAdapter
+                .getHistoryOrderSnapshots(request.getStartDate(), request.getEndDate()).stream()
+                .filter(snapshot -> snapshot.getStatus() == OrderStatus.FILLED)
+                .toList();
         return buildOrderResponse(
-                brokerAdapter.getHistoryOrderSnapshots(request.getStartDate(), request.getEndDate()),
+                filledOrders,
                 request.getStartDate(), request.getEndDate());
     }
 
@@ -205,6 +213,7 @@ public class BrokerReadService {
     }
 
     private BrokerOrderDto toOrderDto(BrokerOrderSnapshot snapshot) {
+        BigDecimal transactionAmount = calculateTransactionAmount(snapshot);
         return BrokerOrderDto.builder()
                 .orderId(snapshot.getOrderId())
                 .stockCode(snapshot.getStockCode())
@@ -214,12 +223,24 @@ public class BrokerReadService {
                 .orderQuantity(snapshot.getOrderQuantity())
                 .filledQuantity(snapshot.getFilledQuantity())
                 .averageFillPrice(snapshot.getAverageFillPrice())
+                .transactionAmount(transactionAmount)
+                .commission(feeCalculator.calculate(transactionAmount))
                 .status(snapshot.getStatus() != null ? snapshot.getStatus().getCode() : "UNKNOWN")
                 .rawStatus(snapshot.getRawStatus())
                 .shareholderAccountMasked(maskAccount(snapshot.getShareholderAccount()))
                 .market(snapshot.getMarket())
                 .orderTime(snapshot.getOrderTime())
                 .build();
+    }
+
+    private BigDecimal calculateTransactionAmount(BrokerOrderSnapshot snapshot) {
+        if (snapshot.getAverageFillPrice() == null
+                || snapshot.getFilledQuantity() == null
+                || snapshot.getFilledQuantity() <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return snapshot.getAverageFillPrice()
+                .multiply(BigDecimal.valueOf(snapshot.getFilledQuantity()));
     }
 
     private BrokerFillDto toFillDto(BrokerFillSnapshot snapshot) {
@@ -247,4 +268,4 @@ public class BrokerReadService {
         return "****" + trimmed.substring(trimmed.length() - 4);
     }
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END ---------

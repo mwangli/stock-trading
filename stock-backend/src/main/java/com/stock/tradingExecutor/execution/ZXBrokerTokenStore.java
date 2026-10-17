@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.tradingExecutor.execution;
 
 import lombok.RequiredArgsConstructor;
@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 
 /**
- * 中信证券 Token 进程内缓存组件。
+ * ZX证券 Token 进程内缓存组件。
  * Token 仅在当前 Backend 进程内保存，并按照券商配置设置过期时间；
  * 应用重启后缓存自动清空，由登录流程重新获取 Token。
  *
@@ -64,4 +64,4 @@ public class ZXBrokerTokenStore {
     private record TokenEntry(String token, long expireAtMillis) {
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

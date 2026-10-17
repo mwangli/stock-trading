@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------
+// AI_GENERATE_START --------------
 package com.stock.tradingExecutor.execution;
 
 import cn.hutool.http.HttpUtil;
@@ -14,7 +14,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 中信证券 API 请求工具类。
+ * ZX证券 API 请求工具类。
  * 封装 HTTP 请求、Token 管理以及算术验证码登录流程。
  *
  * @author mwangli
@@ -79,7 +79,7 @@ public class ZXRequestUtils {
      */
     public String requireToken() {
         if (!Boolean.TRUE.equals(brokerConfig.getEnabled())) {
-            throw new IllegalStateException("中信证券接入未启用");
+            throw new IllegalStateException("ZX证券接入未启用");
         }
         String cachedToken = getToken();
         if (cachedToken != null && !cachedToken.isBlank()) {
@@ -201,7 +201,7 @@ public class ZXRequestUtils {
      */
     public String loginConfiguredAccount() {
         if (!Boolean.TRUE.equals(brokerConfig.getEnabled())) {
-            throw new IllegalStateException("中信证券接入未启用");
+            throw new IllegalStateException("ZX证券接入未启用");
         }
         String cachedToken = getToken();
         if (cachedToken != null && !cachedToken.isBlank()) {
@@ -310,4 +310,4 @@ public class ZXRequestUtils {
     private record CaptchaChallenge(byte[] imageBytes, String checkToken) {
     }
 }
-// AI_GENERATE_END -------------
+// AI_GENERATE_END --------------

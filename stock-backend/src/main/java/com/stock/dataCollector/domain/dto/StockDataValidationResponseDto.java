@@ -10,7 +10,7 @@ import java.util.Map;
 /**
  * 股票数据完整性校验响应 DTO
  *
- * 对应 /api/stock-data/validate 接口。
+ * 对应 /api/stockData/validate 接口。
  *
  * @author AI Assistant
  * @since 1.0

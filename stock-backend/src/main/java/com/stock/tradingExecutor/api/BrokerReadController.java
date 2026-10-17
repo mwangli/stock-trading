@@ -28,7 +28,7 @@ import java.util.function.Supplier;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/broker-query")
+@RequestMapping("/api/brokerQuery")
 @RequiredArgsConstructor
 public class BrokerReadController {
 
@@ -72,7 +72,7 @@ public class BrokerReadController {
      *
      * @return 当日委托列表
      */
-    @GetMapping("/today-orders")
+    @GetMapping("/todayOrders")
     public ResponseDTO<BrokerOrderListResponseDto> getTodayOrders() {
         log.info("查询券商当日全部委托");
         return executeQuery(brokerReadService::getTodayOrders);
@@ -83,7 +83,7 @@ public class BrokerReadController {
      *
      * @return 当日成交列表
      */
-    @GetMapping("/today-fills")
+    @GetMapping("/todayFills")
     public ResponseDTO<BrokerFillListResponseDto> getTodayFills() {
         log.info("查询券商当日成交");
         return executeQuery(brokerReadService::getTodayFills);
@@ -95,7 +95,7 @@ public class BrokerReadController {
      * @param request 日期范围
      * @return 历史委托列表
      */
-    @PostMapping("/history-orders")
+    @PostMapping("/historyOrders")
     public ResponseDTO<BrokerOrderListResponseDto> getHistoryOrders(
             @RequestBody BrokerHistoryQueryRequest request) {
         log.info("查询券商历史委托: startDate={}, endDate={}",
@@ -110,7 +110,7 @@ public class BrokerReadController {
      * @param request 日期范围
      * @return 历史成交列表
      */
-    @PostMapping("/history-fills")
+    @PostMapping("/historyFills")
     public ResponseDTO<BrokerFillListResponseDto> getHistoryFills(
             @RequestBody BrokerHistoryQueryRequest request) {
         log.info("查询券商历史成交: startDate={}, endDate={}",

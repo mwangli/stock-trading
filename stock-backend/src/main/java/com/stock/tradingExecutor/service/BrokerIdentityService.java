@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START -----
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.execution.ZXBrokerConfig;
@@ -40,7 +40,7 @@ public class BrokerIdentityService {
     public String getAccountId() {
         String account = zxBrokerConfig.getAccount();
         if (account == null || account.isBlank()) {
-            throw new IllegalStateException("中信券商账户未配置，无法生成稳定账户标识");
+            throw new IllegalStateException("ZX证券账户未配置，无法生成稳定账户标识");
         }
         return "acct_" + sha256(account.trim()).substring(0, 24);
     }
@@ -77,4 +77,4 @@ public class BrokerIdentityService {
         }
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END -----

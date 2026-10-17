@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START -----
 package com.stock.dataCollector.api;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -32,7 +32,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/stock-data")
+@RequestMapping("/api/stockData")
 @RequiredArgsConstructor
 public class StockDataController {
 
@@ -88,40 +88,52 @@ public class StockDataController {
             marketCount.merge(market, 1L, Long::sum);
         }
         
-        int withPrice = 0, withName = 0, withMarket = 0, withChangePercent = 0, withTotalMarketValue = 0, withTurnoverRate = 0, withVolumeRatio = 0, withIndustryCode = 0;
+        int withPrice = 0, withName = 0, withMarket = 0, withChangePercent = 0, withChangeAmount = 0,
+                withVolume = 0, withTotalMarketValue = 0, withTurnoverRate = 0, withVolumeRatio = 0,
+                withBidAsk = 0, withCombination = 0;
         
         for (StockInfo stock : allStocks) {
             if (stock.getPrice() != null) withPrice++;
             if (stock.getName() != null && !stock.getName().isEmpty()) withName++;
             if (stock.getMarket() != null && !stock.getMarket().isEmpty()) withMarket++;
             if (stock.getChangePercent() != null) withChangePercent++;
+            if (stock.getChangeAmount() != null) withChangeAmount++;
+            if (stock.getVolume() != null) withVolume++;
             if (stock.getTotalMarketValue() != null) withTotalMarketValue++;
             if (stock.getTurnoverRate() != null) withTurnoverRate++;
             if (stock.getVolumeRatio() != null) withVolumeRatio++;
-            if (stock.getIndustryCode() != null) withIndustryCode++;
+            if (stock.getBidPrice() != null && stock.getAskPrice() != null) withBidAsk++;
+            if (stock.getVolumePriceSignal() != null && stock.getMomentumStrength() != null) withCombination++;
         }
         
-        Map<String, Long> fieldCompleteness = Map.of(
-                "name", (long) withName,
-                "price", (long) withPrice,
-                "market", (long) withMarket,
-                "changePercent", (long) withChangePercent,
-                "totalMarketValue", (long) withTotalMarketValue,
-                "turnoverRate", (long) withTurnoverRate,
-                "volumeRatio", (long) withVolumeRatio,
-                "industryCode", (long) withIndustryCode
-        );
-        Map<String, String> completenessRate = Map.of(
-                "name", String.format("%.2f%%", totalCount > 0 ? (withName * 100.0 / totalCount) : 0),
-                "price", String.format("%.2f%%", totalCount > 0 ? (withPrice * 100.0 / totalCount) : 0),
-                "market", String.format("%.2f%%", totalCount > 0 ? (withMarket * 100.0 / totalCount) : 0),
-                "changePercent", String.format("%.2f%%", totalCount > 0 ? (withChangePercent * 100.0 / totalCount) : 0),
-                "totalMarketValue", String.format("%.2f%%", totalCount > 0 ? (withTotalMarketValue * 100.0 / totalCount) : 0),
-                "turnoverRate", String.format("%.2f%%", totalCount > 0 ? (withTurnoverRate * 100.0 / totalCount) : 0),
-                "volumeRatio", String.format("%.2f%%", totalCount > 0 ? (withVolumeRatio * 100.0 / totalCount) : 0),
-                "industryCode", String.format("%.2f%%", totalCount > 0 ? (withIndustryCode * 100.0 / totalCount) : 0)
+        Map<String, Long> fieldCompleteness = Map.ofEntries(
+                Map.entry("name", (long) withName),
+                Map.entry("price", (long) withPrice),
+                Map.entry("market", (long) withMarket),
+                Map.entry("changePercent", (long) withChangePercent),
+                Map.entry("changeAmount", (long) withChangeAmount),
+                Map.entry("volume", (long) withVolume),
+                Map.entry("totalMarketValue", (long) withTotalMarketValue),
+                Map.entry("turnoverRate", (long) withTurnoverRate),
+                Map.entry("volumeRatio", (long) withVolumeRatio),
+                Map.entry("bidAsk", (long) withBidAsk),
+                Map.entry("combinationSignals", (long) withCombination)
         );
 
+
+        Map<String, String> completenessRate = Map.ofEntries(
+                Map.entry("name", String.format("%.2f%%", totalCount > 0 ? (withName * 100.0 / totalCount) : 0)),
+                Map.entry("price", String.format("%.2f%%", totalCount > 0 ? (withPrice * 100.0 / totalCount) : 0)),
+                Map.entry("market", String.format("%.2f%%", totalCount > 0 ? (withMarket * 100.0 / totalCount) : 0)),
+                Map.entry("changePercent", String.format("%.2f%%", totalCount > 0 ? (withChangePercent * 100.0 / totalCount) : 0)),
+                Map.entry("changeAmount", String.format("%.2f%%", totalCount > 0 ? (withChangeAmount * 100.0 / totalCount) : 0)),
+                Map.entry("volume", String.format("%.2f%%", totalCount > 0 ? (withVolume * 100.0 / totalCount) : 0)),
+                Map.entry("totalMarketValue", String.format("%.2f%%", totalCount > 0 ? (withTotalMarketValue * 100.0 / totalCount) : 0)),
+                Map.entry("turnoverRate", String.format("%.2f%%", totalCount > 0 ? (withTurnoverRate * 100.0 / totalCount) : 0)),
+                Map.entry("volumeRatio", String.format("%.2f%%", totalCount > 0 ? (withVolumeRatio * 100.0 / totalCount) : 0)),
+                Map.entry("bidAsk", String.format("%.2f%%", totalCount > 0 ? (withBidAsk * 100.0 / totalCount) : 0)),
+                Map.entry("combinationSignals", String.format("%.2f%%", totalCount > 0 ? (withCombination * 100.0 / totalCount) : 0))
+        );
         StockStatisticsResponseDto statistics = StockStatisticsResponseDto.builder()
                 .totalCount(totalCount)
                 .marketDistribution(marketCount)
@@ -220,7 +232,6 @@ public class StockDataController {
 
     /**
      * 获取股票历史K线数据
-     * 优化：周K和月K使用预聚合数据，直接从数据库查询，无需实时计算
      * 日K线支持timeRange参数过滤，并限制最大返回数据量
      */
     @GetMapping("/kline/{code}")
@@ -266,35 +277,17 @@ public class StockDataController {
             List<? extends StockPrice> prices;
 
             if (queryStartDate != null && queryEndDate != null) {
-                // 有日期范围，使用日期范围查询
-                if ("weekly".equals(type)) {
-                    prices = stockDataService.getWeeklyPricesByDateRange(code, queryStartDate, queryEndDate);
-                } else if ("monthly".equals(type)) {
-                    prices = stockDataService.getMonthlyPricesByDateRange(code, queryStartDate, queryEndDate);
-                } else {
-                    // 日K线使用日期范围查询
-                    prices = priceRepository.findByCodeAndDateBetweenOrderByDateAsc(code, queryStartDate, queryEndDate);
-                    // 限制返回数量（从最新数据开始）
-                    if (prices != null && prices.size() > limit) {
-                        prices = prices.subList(prices.size() - limit, prices.size());
-                    }
+                prices = priceRepository.findByCodeAndDateBetweenOrderByDateAsc(code, queryStartDate, queryEndDate);
+                if (prices != null && prices.size() > limit) {
+                    prices = prices.subList(prices.size() - limit, prices.size());
                 }
             } else {
-                // 无日期范围时，根据type使用预聚合数据或带限制的日K数据
-                if ("weekly".equals(type)) {
-                    prices = stockDataService.getWeeklyPrices(code);
-                } else if ("monthly".equals(type)) {
-                    prices = stockDataService.getMonthlyPrices(code);
-                } else {
-                    // 日K线：默认查询最近一年的数据，避免返回过多
-                    LocalDate oneYearAgo = LocalDate.now().minusYears(1);
-                    prices = priceRepository.findByCodeAndDateBetweenOrderByDateAsc(code, oneYearAgo, LocalDate.now());
-                    if (prices != null && prices.size() > limit) {
-                        prices = prices.subList(prices.size() - limit, prices.size());
-                    }
+                LocalDate oneYearAgo = LocalDate.now().minusYears(1);
+                prices = priceRepository.findByCodeAndDateBetweenOrderByDateAsc(code, oneYearAgo, LocalDate.now());
+                if (prices != null && prices.size() > limit) {
+                    prices = prices.subList(prices.size() - limit, prices.size());
                 }
             }
-
             // 如果没有数据，返回空结果
             if (prices == null || prices.isEmpty()) {
                 log.warn("股票 {} 没有K线数据", code);
@@ -389,4 +382,4 @@ public class StockDataController {
         }
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END -----

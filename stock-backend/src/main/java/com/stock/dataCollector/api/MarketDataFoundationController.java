@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/market-data-foundation")
+@RequestMapping("/api/marketDataFoundation")
 @RequiredArgsConstructor
 public class MarketDataFoundationController {
 
@@ -40,7 +40,7 @@ public class MarketDataFoundationController {
      * @param request 历史股票池批次
      * @return 导入统计
      */
-    @PostMapping("/historical-universe/import")
+    @PostMapping("/historicalUniverse/import")
     public ResponseDTO<MarketDataImportResultDto> importHistoricalUniverse(
             @Valid @RequestBody HistoricalUniverseImportRequestDto request) {
         log.info("[MarketDataFoundation] 导入历史股票池: source={}, version={}, count={}",
@@ -54,7 +54,7 @@ public class MarketDataFoundationController {
      * @param request 交易日历批次
      * @return 导入统计
      */
-    @PostMapping("/trade-calendar/import")
+    @PostMapping("/tradeCalendar/import")
     public ResponseDTO<MarketDataImportResultDto> importTradeCalendar(
             @Valid @RequestBody TradeCalendarImportRequestDto request) {
         log.info("[MarketDataFoundation] 导入交易日历: source={}, version={}, count={}",
@@ -68,7 +68,7 @@ public class MarketDataFoundationController {
      * @param request 复权因子批次
      * @return 导入统计
      */
-    @PostMapping("/adjustment-factors/import")
+    @PostMapping("/adjustmentFactors/import")
     public ResponseDTO<MarketDataImportResultDto> importAdjustmentFactors(
             @Valid @RequestBody AdjustmentFactorImportRequestDto request) {
         log.info("[MarketDataFoundation] 导入复权因子: source={}, version={}, count={}",
@@ -82,7 +82,7 @@ public class MarketDataFoundationController {
      * @param request 5 分钟行情批次
      * @return 导入统计
      */
-    @PostMapping("/minute-bars/import")
+    @PostMapping("/minuteBars/import")
     public ResponseDTO<MarketDataImportResultDto> importMinuteBars(
             @Valid @RequestBody MinuteBarImportRequestDto request) {
         log.info("[MarketDataFoundation] 导入 5 分钟 K 线: source={}, version={}, count={}, volumeUnit={}",
@@ -97,7 +97,7 @@ public class MarketDataFoundationController {
      * @param request 股票日线批次
      * @return 导入统计
      */
-    @PostMapping("/model-stock-daily-bars/import")
+    @PostMapping("/modelStockDailyBars/import")
     public ResponseDTO<MarketDataImportResultDto> importModelStockDailyBars(
             @Valid @RequestBody ModelStockDailyBarImportRequestDto request) {
         log.info("[MarketDataFoundation] 导入模型股票日线: source={}, version={}, count={}, volumeUnit={}",
@@ -112,7 +112,7 @@ public class MarketDataFoundationController {
      * @param request 参考序列日线批次
      * @return 导入统计
      */
-    @PostMapping("/model-reference-daily-bars/import")
+    @PostMapping("/modelReferenceDailyBars/import")
     public ResponseDTO<MarketDataImportResultDto> importModelReferenceDailyBars(
             @Valid @RequestBody ModelReferenceDailyBarImportRequestDto request) {
         log.info("[MarketDataFoundation] 导入模型参考日线: type={}, source={}, version={}, count={}",
@@ -127,7 +127,7 @@ public class MarketDataFoundationController {
      * @param request 可成交性事实批次
      * @return 导入统计
      */
-    @PostMapping("/stock-daily-tradability/import")
+    @PostMapping("/stockDailyTradability/import")
     public ResponseDTO<MarketDataImportResultDto> importStockDailyTradability(
             @Valid @RequestBody StockDailyTradabilityImportRequestDto request) {
         log.info("[MarketDataFoundation] 导入股票开盘可成交性: source={}, version={}, count={}",

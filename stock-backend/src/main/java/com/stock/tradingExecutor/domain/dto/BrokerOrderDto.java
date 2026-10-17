@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.tradingExecutor.domain.dto;
 
 import lombok.Builder;
@@ -41,6 +41,12 @@ public class BrokerOrderDto {
     /** 成交均价，单位为元。 */
     private BigDecimal averageFillPrice;
 
+    /** 成交金额，单位为元。 */
+    private BigDecimal transactionAmount;
+
+    /** 按当前手续费配置估算的佣金，单位为元。 */
+    private BigDecimal commission;
+
     /** 标准委托状态。 */
     private String status;
 
@@ -56,4 +62,4 @@ public class BrokerOrderDto {
     /** 委托时间。 */
     private LocalDateTime orderTime;
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ----
 package com.stock.dataCollector.domain.entity;
 
 import com.stock.dataCollector.domain.enums.NewsSyncStatus;
@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -45,6 +46,10 @@ public class StockInfo {
     @Column(name = "change_percent", precision = 10, scale = 4)
     private BigDecimal changePercent;
 
+    /** 当日成交量，数据源原始单位。 */
+    @Column(name = "volume", precision = 24, scale = 4)
+    private BigDecimal volume;
+
     @Column(name = "total_market_value", precision = 20, scale = 2)
     private BigDecimal totalMarketValue;
 
@@ -54,8 +59,54 @@ public class StockInfo {
     @Column(name = "volume_ratio", precision = 10, scale = 4)
     private BigDecimal volumeRatio;
 
+    /** 当前买一价。 */
+    @Column(name = "bid_price", precision = 10, scale = 3)
+    private BigDecimal bidPrice;
+
+    /** 当前卖一价。 */
+    @Column(name = "ask_price", precision = 10, scale = 3)
+    private BigDecimal askPrice;
+
+    /** 数据源证券类别编码，用于区分主板、创业板等交易规则。 */
+    @Column(name = "security_category", length = 32)
+    private String securityCategory;
+
+    /** 数据源市场代码，如 SH、SZ、BJ。 */
+    @Column(name = "market_code", length = 10)
+    private String marketCode;
+
+    /** 涨跌幅、涨跌额、量比、换手率组合得到的动量强度。 */
+    @Column(name = "momentum_strength", precision = 12, scale = 6)
+    private BigDecimal momentumStrength;
+
+    /** 量价组合信号，正值代表价格与成交量方向一致。 */
+    @Column(name = "volume_price_signal", precision = 12, scale = 6)
+    private BigDecimal volumePriceSignal;
+
+    /** 换手率异常分数，按当前量比和换手率共同计算。 */
+    @Column(name = "turnover_anomaly", precision = 12, scale = 6)
+    private BigDecimal turnoverAnomaly;
+
+    /** 是否存在放量下跌或缩量上涨等异常量价关系。 */
+    @Column(name = "abnormal_volume_flag", nullable = false)
+    private boolean abnormalVolumeFlag;
+
+    /** 买一卖一价差。 */
+    @Column(name = "bid_ask_spread", precision = 10, scale = 3)
+    private BigDecimal bidAskSpread;
+
+    /** 买卖价差相对最新价的比例。 */
+    @Column(name = "bid_ask_spread_rate", precision = 12, scale = 8)
+    private BigDecimal bidAskSpreadRate;
+
     @Column(name = "industry_code")
     private Integer industryCode;
+
+    /**
+     * 股票首次在交易所公开上市的日期。
+     */
+    @Column(name = "listed_date")
+    private LocalDate listedDate;
 
     @Column(name = "create_time", updatable = false)
     private LocalDateTime createTime;
@@ -123,4 +174,4 @@ public class StockInfo {
         updateTime = LocalDateTime.now();
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END ----

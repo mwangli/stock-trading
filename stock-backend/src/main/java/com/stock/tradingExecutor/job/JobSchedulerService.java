@@ -58,6 +58,8 @@ public class JobSchedulerService {
             Map.entry("strategy-auto-switch", StrategyAutoSwitchQuartzJob.class),
             Map.entry("strategy-evaluation", StrategyEvaluationQuartzJob.class),
             Map.entry("sentiment-model-evaluation", SentimentEvaluationQuartzJob.class),
+            Map.entry("agent-daily-research-report", AgentDailyReportQuartzJob.class),
+            Map.entry("agent-trade-plan-execution", TradePlanExecutionQuartzJob.class),
             Map.entry("daily-trade-performance-snapshot", PerformanceReportQuartzJob.class));
 
     private final JobConfigRepository jobConfigRepository;

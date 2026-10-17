@@ -30,7 +30,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/model-sentiment")
+@RequestMapping("/api/modelSentiment")
 @RequiredArgsConstructor
 public class SentimentController {
 

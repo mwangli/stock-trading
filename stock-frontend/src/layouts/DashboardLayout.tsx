@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------------------
+// AI_GENERATE_START --------------------------
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, Badge, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
@@ -26,25 +26,31 @@ import {
 } from '@ant-design/icons';
 import { useAppTheme } from '../theme/AppThemeProvider';
 import { PageHeaderContext, type PageHeaderState } from './PageHeaderContext';
-import request from '../utils/request';
+import { checkBackendHealth } from '../utils/backendHealth';
 import { useAuth } from '../auth/AuthContext';
+import SystemMark from '../components/SystemMark';
+import request from '../utils/request';
+import { type ApiResponse } from '../utils/api';
 
 const { Header, Content, Sider } = Layout;
 
-const MENU_ORDER_STORAGE_KEY = 'stock-trading.sidebar.menuOrder';
 const DEFAULT_MENU_ORDER = [
   '/dashboard',
   '/market',
-  '/stock-information',
-  '/history-orders',
-  '/trade-records',
+  '/stockInformation',
+  '/historyOrders',
+  '/tradeRecords',
   '/logs',
-  '/model-operations',
-  '/sentiment-model',
-  '/strategy-config',
+  '/modelOperations',
+  '/sentimentModel',
+  '/strategyConfig',
   '/jobs',
   '/settings',
 ];
+
+interface UserMenuPreferenceResponse {
+  menuOrder: string[];
+}
 
 interface SidebarMenuItem {
   key: string;
@@ -59,17 +65,11 @@ interface DraggableSidebarItemProps {
   onSelect: (key: string) => void;
 }
 
-const readStoredMenuOrder = () => {
-  try {
-    const storedValue = window.localStorage.getItem(MENU_ORDER_STORAGE_KEY);
-    const parsedValue: unknown = storedValue ? JSON.parse(storedValue) : [];
-    const validKeys = Array.isArray(parsedValue)
-      ? parsedValue.filter((key): key is string => typeof key === 'string' && DEFAULT_MENU_ORDER.includes(key))
-      : [];
-    return [...validKeys, ...DEFAULT_MENU_ORDER.filter((key) => !validKeys.includes(key))];
-  } catch {
-    return DEFAULT_MENU_ORDER;
-  }
+const normalizeMenuOrder = (menuOrder: unknown) => {
+  const validKeys = Array.isArray(menuOrder)
+    ? menuOrder.filter((key): key is string => typeof key === 'string' && DEFAULT_MENU_ORDER.includes(key))
+    : [];
+  return [...new Set(validKeys), ...DEFAULT_MENU_ORDER.filter((key) => !validKeys.includes(key))];
 };
 
 const DraggableSidebarItem: React.FC<DraggableSidebarItemProps> = ({
@@ -128,16 +128,42 @@ const DashboardLayout: React.FC = () => {
   const { mode, toggleMode } = useAppTheme();
   const { user, logout } = useAuth();
   const [pageHeader, setPageHeader] = useState<PageHeaderState | null>(null);
-  const [menuOrder, setMenuOrder] = useState<string[]>(readStoredMenuOrder);
+  const [menuOrder, setMenuOrder] = useState<string[]>(DEFAULT_MENU_ORDER);
+  const [menuOrderLoaded, setMenuOrderLoaded] = useState(false);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+
+  useEffect(() => {
+    let active = true;
+    setMenuOrderLoaded(false);
+    void (request.get('/userPreferences/menuOrder') as unknown as Promise<ApiResponse<UserMenuPreferenceResponse>>)
+      .then((response) => {
+        if (!active) {
+          return;
+        }
+        setMenuOrder(normalizeMenuOrder(response.success ? response.data?.menuOrder : undefined));
+      })
+      .catch(() => {
+        if (active) {
+          setMenuOrder(DEFAULT_MENU_ORDER);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setMenuOrderLoaded(true);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     let active = true;
     const checkBackendStatus = async () => {
       try {
-        await request.get('/broker-query/status');
+        const online = await checkBackendHealth();
         if (active) {
-          setBackendStatus('online');
+          setBackendStatus(online ? 'online' : 'offline');
         }
       } catch {
         if (active) {
@@ -162,13 +188,13 @@ const DashboardLayout: React.FC = () => {
   const menuItems = useMemo<SidebarMenuItem[]>(() => [
     { key: '/dashboard', icon: <DesktopOutlined />, label: t('layout.dashboard') },
     { key: '/market', icon: <StockOutlined />, label: t('layout.market') },
-    { key: '/stock-information', icon: <DatabaseOutlined />, label: t('layout.stockInformation') },
-    { key: '/history-orders', icon: <HistoryOutlined />, label: t('layout.historyOrders') },
-    { key: '/trade-records', icon: <LineChartOutlined />, label: t('layout.tradeRecords') },
+    { key: '/stockInformation', icon: <DatabaseOutlined />, label: t('layout.stockInformation') },
+    { key: '/historyOrders', icon: <HistoryOutlined />, label: t('layout.historyOrders') },
+    { key: '/tradeRecords', icon: <LineChartOutlined />, label: t('layout.tradeRecords') },
     { key: '/logs', icon: <FileTextOutlined />, label: t('layout.logs') },
-    { key: '/model-operations', icon: <ExperimentOutlined />, label: t('layout.modelOperations') },
-    { key: '/sentiment-model', icon: <MessageOutlined />, label: t('layout.sentimentModel') },
-    { key: '/strategy-config', icon: <SlidersOutlined />, label: t('layout.strategyConfig') },
+    { key: '/modelOperations', icon: <ExperimentOutlined />, label: t('layout.modelOperations') },
+    { key: '/sentimentModel', icon: <MessageOutlined />, label: t('layout.sentimentModel') },
+    { key: '/strategyConfig', icon: <SlidersOutlined />, label: t('layout.strategyConfig') },
     { key: '/jobs', icon: <ScheduleOutlined />, label: t('layout.jobs') },
     { key: '/settings', icon: <SettingOutlined />, label: t('layout.settings') },
   ], [t]);
@@ -182,8 +208,13 @@ const DashboardLayout: React.FC = () => {
   }, [menuItems, menuOrder]);
 
   const reorderMenu = (nextOrder: string[]) => {
-    setMenuOrder(nextOrder);
-    window.localStorage.setItem(MENU_ORDER_STORAGE_KEY, JSON.stringify(nextOrder));
+    const normalizedOrder = normalizeMenuOrder(nextOrder);
+    setMenuOrder(normalizedOrder);
+    if (!menuOrderLoaded) {
+      return;
+    }
+    void (request.put('/userPreferences/menuOrder', { menuOrder: normalizedOrder }) as unknown as Promise<ApiResponse<UserMenuPreferenceResponse>>)
+      .catch(() => undefined);
   };
 
   const selectMenuItem = (key: string) => {
@@ -214,13 +245,13 @@ const DashboardLayout: React.FC = () => {
   const pageTitles: Record<string, string> = {
     '/dashboard': t('layout.pageTitles.dashboard'),
     '/market': t('layout.pageTitles.market'),
-    '/stock-information': t('layout.pageTitles.stockInformation'),
-    '/history-orders': t('layout.pageTitles.historyOrders'),
-    '/trade-records': t('layout.pageTitles.tradeRecords'),
+    '/stockInformation': t('layout.pageTitles.stockInformation'),
+    '/historyOrders': t('layout.pageTitles.historyOrders'),
+    '/tradeRecords': t('layout.pageTitles.tradeRecords'),
     '/logs': t('layout.pageTitles.logs'),
-    '/model-operations': t('layout.pageTitles.modelOperations'),
-    '/sentiment-model': t('layout.pageTitles.sentimentModel'),
-    '/strategy-config': t('layout.pageTitles.strategyConfig'),
+    '/modelOperations': t('layout.pageTitles.modelOperations'),
+    '/sentimentModel': t('layout.pageTitles.sentimentModel'),
+    '/strategyConfig': t('layout.pageTitles.strategyConfig'),
     '/jobs': t('layout.pageTitles.jobs'),
     '/settings': t('layout.pageTitles.settings'),
   };
@@ -244,8 +275,14 @@ const DashboardLayout: React.FC = () => {
         width={192}
         className="app-sidebar"
       >
-        <div className="app-logo" title={t('layout.title')}>
-          <StockOutlined />
+        <div className="app-brand" title={t('layout.title')}>
+          <SystemMark size="small" title={t('layout.title')} />
+          {!sidebarCollapsed && (
+            <div className="app-brand-copy">
+              <strong>{t('login.algoTrading')}</strong>
+              <span>AI TRADING CONSOLE</span>
+            </div>
+          )}
         </div>
 
         <Reorder.Group
@@ -278,7 +315,7 @@ const DashboardLayout: React.FC = () => {
               />
             </Tooltip>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-base font-semibold">{pageTitles[location.pathname] ?? '智能交易终端'}</div>
+              <div className="app-page-title truncate">{pageTitles[location.pathname] ?? '智能交易终端'}</div>
               <div className="truncate text-xs text-[var(--text-muted)]">
                 {pageHeader?.subtitle ?? 'Stock Operations Console'}
               </div>
@@ -321,4 +358,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END -------------------------
+// AI_GENERATE_END ---------------------------

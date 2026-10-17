@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * StockDataController 中分页股票列表响应 DTO
  *
- * 对应 /api/stock-data/list 接口。
+ * 对应 /api/stockData/list 接口。
  *
  * @author AI Assistant
  * @since 1.0

@@ -1,0 +1,21 @@
+/* AI_GENERATE_START - */
+.indicator-guide { margin-bottom: 16px; }
+.indicator-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.indicator-panel { min-width: 0; padding: 16px; border: 1px solid var(--border-color); border-radius: 4px; background: color-mix(in srgb, var(--panel-bg) 88%, var(--app-bg)); }
+.indicator-panel-stop { border-top: 3px solid #3b82f6; }
+.indicator-panel-rsi { border-top: 3px solid #a855f7; }
+.indicator-panel-volume { border-top: 3px solid #14b8a6; }
+.indicator-panel-bollinger { border-top: 3px solid #f59e0b; }
+.indicator-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.indicator-title { display: flex; align-items: center; gap: 6px; color: var(--text-primary); font-size: 15px; font-weight: 650; }
+.indicator-title .anticon { color: var(--text-muted); font-size: 13px; }
+.indicator-purpose { min-height: 38px; margin-bottom: 14px; padding: 9px 10px; border-radius: 3px; background: color-mix(in srgb, var(--app-bg) 76%, transparent); color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
+.indicator-panel .ant-form-item { margin-bottom: 14px; }
+.indicator-panel .ant-form-item:last-child { margin-bottom: 0; }
+.indicator-panel .ant-form-item-extra { min-height: 18px; }
+
+@media (max-width: 767px) {
+  .indicator-grid { grid-template-columns: minmax(0, 1fr); }
+  .indicator-panel-head { align-items: center; }
+}
+/* AI_GENERATE_END - */
