@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 import React, { useCallback, useState } from 'react';
 import {
   Alert,
@@ -262,6 +262,7 @@ const SentimentModel: React.FC = () => {
   const probabilities = Object.entries(analysis?.probabilities ?? {}).sort((left, right) => right[1] - left[1]);
   const selectedCase = allSentimentTestCases.find((testCase) => testCase.id === selectedCaseId);
   const expectedMatch = Boolean(analysis?.label && selectedCase?.expectedLabel === analysis.label);
+  const modelUnavailable = health?.status === 'NOT_READY' && !health.modelLoaded;
 
   return (
     <div className="space-y-4">
@@ -291,6 +292,15 @@ const SentimentModel: React.FC = () => {
           </Space>
         </div>
         {health?.lastError && <Alert className="mt-4" type="warning" showIcon message={localizedText('最近检查异常', 'Latest check reported an error')} description={health.lastError} />}
+        {modelUnavailable && (
+          <Alert
+            className="mt-4"
+            type="error"
+            showIcon
+            message={localizedText('真实模型未就绪，暂不能执行单条验证', 'The real model is not ready; single-text validation is unavailable')}
+            description={localizedText('请先准备并校验情感模型制品目录。规则引擎结果不会作为模型验证结果返回。', 'Prepare and verify the sentiment model artifact before validating text. Rule-engine output is not returned as a model result.')}
+          />
+        )}
       </section>
 
       <Row gutter={[16, 16]}>
@@ -390,7 +400,7 @@ const SentimentModel: React.FC = () => {
         />
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <Text type="secondary" className="text-xs">{localizedText('样例仅用于快速验证，不替代正式评估集', 'Samples are for quick validation and do not replace the formal evaluation set')}</Text>
-          <Button type="primary" icon={<ExperimentOutlined />} loading={analyzing} onClick={() => void analyzeText()}>
+          <Button type="primary" icon={<ExperimentOutlined />} loading={analyzing} disabled={modelUnavailable} onClick={() => void analyzeText()}>
             {localizedText('执行情感分析', 'Run Sentiment Analysis')}
           </Button>
         </div>
@@ -428,4 +438,4 @@ const SentimentModel: React.FC = () => {
 };
 
 export default SentimentModel;
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

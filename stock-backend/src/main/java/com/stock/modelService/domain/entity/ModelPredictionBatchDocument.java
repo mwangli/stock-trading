@@ -84,6 +84,21 @@ public class ModelPredictionBatchDocument {
     /** 始终预测多数方向时的准确率基线。 */
     private Double constantBaselineAccuracy;
 
+    /** 方向上涨概率的 ROC AUC；实际标签只有单一类别时为空。 */
+    private Double directionAuc;
+
+    /** 上涨概率 Brier Score，越低越好。 */
+    private Double brierScore;
+
+    /** 固定使用实际上涨比例的 Brier 基线，越低越好。 */
+    private Double brierBaseline;
+
+    /** 上涨概率期望校准误差，越低越好。 */
+    private Double expectedCalibrationError;
+
+    /** 参与概率校准指标计算的有效样本数。 */
+    private Integer calibrationSampleCount;
+
     /** 上涨概率均值。 */
     private Double directionProbabilityMean;
 

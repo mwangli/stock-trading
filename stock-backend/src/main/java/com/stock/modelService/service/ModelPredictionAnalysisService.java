@@ -57,6 +57,7 @@ public class ModelPredictionAnalysisService {
 
     private static final int PREDICTION_BATCH_SIZE = 100;
     private static final int MINIMUM_ABILITY_SAMPLE_COUNT = 100;
+    private static final int MINIMUM_CALIBRATION_SAMPLE_COUNT = 100;
     private static final double MIN_DIRECTION_PROBABILITY_STD = 0.005D;
     private static final double MIN_PREDICTED_RETURN_STD = 0.0005D;
     private static final double MIN_BASELINE_ACCURACY_LIFT = 0.02D;
@@ -570,7 +571,8 @@ public class ModelPredictionAnalysisService {
         updateCrossSectionalPercentiles(allPredictions);
         List<ModelPredictionDocument> evaluated = allPredictions.stream()
                 .filter(item -> "EVALUATED".equals(item.getEvaluationStatus()))
-                .filter(item -> item.getPredictedReturn() != null && item.getActualReturn() != null)
+                .filter(item -> item.getPredictedReturn() != null && Double.isFinite(item.getPredictedReturn()))
+                .filter(item -> item.getActualReturn() != null && Double.isFinite(item.getActualReturn()))
                 .toList();
         int noMarketDataCount = (int) allPredictions.stream()
                 .filter(item -> "NO_MARKET_DATA".equals(item.getEvaluationStatus())).count();
@@ -578,6 +580,11 @@ public class ModelPredictionAnalysisService {
         batch.setNoMarketDataCount(noMarketDataCount);
         batch.setEvaluationRate(rate(evaluated.size(), Math.max(1, batch.getSuccessCount())));
         if (evaluated.isEmpty()) {
+            batch.setDirectionAuc(null);
+            batch.setBrierScore(null);
+            batch.setBrierBaseline(null);
+            batch.setExpectedCalibrationError(null);
+            batch.setCalibrationSampleCount(0);
             batch.setAbilityLevel("INSUFFICIENT_DATA");
             batch.setIterationRecommended(false);
             batch.setAbilityMessage("目标交易日行情尚未形成，需继续等待实际结果");
@@ -597,11 +604,21 @@ public class ModelPredictionAnalysisService {
         double[] actual = evaluated.stream().mapToDouble(ModelPredictionDocument::getActualReturn).toArray();
         List<ModelPredictionDocument> withProbability = evaluated.stream()
                 .filter(item -> item.getDirectionProbability() != null
-                        && Double.isFinite(item.getDirectionProbability()))
+                        && Double.isFinite(item.getDirectionProbability())
+                        && item.getDirectionProbability() >= 0D
+                        && item.getDirectionProbability() <= 1D)
                 .toList();
         double actualUpRate = evaluated.stream().filter(item -> item.getActualReturn() > 0D).count()
                 / (double) evaluated.size();
         double constantBaselineAccuracy = Math.max(actualUpRate, 1D - actualUpRate);
+        List<ModelPredictionDocument> calibrationSamples = withProbability;
+        Double directionAuc = areaUnderRoc(calibrationSamples);
+        Double brierScore = brierScore(calibrationSamples);
+        double calibrationUpRate = calibrationSamples.stream().filter(item -> item.getActualReturn() > 0D).count()
+                / (double) Math.max(1, calibrationSamples.size());
+        Double brierBaseline = calibrationSamples.isEmpty() ? null
+                : calibrationUpRate * (1D - calibrationUpRate);
+        Double expectedCalibrationError = expectedCalibrationError(calibrationSamples);
         double directionProbabilityStd = standardDeviation(withProbability.stream()
                 .mapToDouble(ModelPredictionDocument::getDirectionProbability).toArray());
         double predictedReturnStd = standardDeviation(predicted);
@@ -650,9 +667,10 @@ public class ModelPredictionAnalysisService {
         boolean beatsBaseline = directionAccuracy >= constantBaselineAccuracy + MIN_BASELINE_ACCURACY_LIFT;
         String tradingEligibility = "OBSERVE_ONLY";
         String tradingEligibilityReason;
-        if (evaluated.size() < MINIMUM_ABILITY_SAMPLE_COUNT) {
+        if (evaluated.size() < MINIMUM_ABILITY_SAMPLE_COUNT
+                || calibrationSamples.size() < MINIMUM_CALIBRATION_SAMPLE_COUNT) {
             tradingEligibility = "DISABLED";
-            tradingEligibilityReason = "有效回填样本不足，不能证明模型具备交易能力";
+            tradingEligibilityReason = "有效回填或概率校准样本不足，不能证明模型具备交易能力";
         } else if (collapsed) {
             tradingEligibilityReason = "模型输出区分度不足：上涨概率或预测收益标准差过低";
         } else if (!beatsBaseline || spearman <= 0D || topAverageReturn <= 0D) {
@@ -664,6 +682,11 @@ public class ModelPredictionAnalysisService {
         batch.setDirectionAccuracy(directionAccuracy);
         batch.setActualUpRate(actualUpRate);
         batch.setConstantBaselineAccuracy(constantBaselineAccuracy);
+        batch.setDirectionAuc(directionAuc);
+        batch.setBrierScore(brierScore);
+        batch.setBrierBaseline(brierBaseline);
+        batch.setExpectedCalibrationError(expectedCalibrationError);
+        batch.setCalibrationSampleCount(calibrationSamples.size());
         batch.setDirectionProbabilityMean(withProbability.stream()
                 .mapToDouble(ModelPredictionDocument::getDirectionProbability).average().orElse(0D));
         batch.setDirectionProbabilityStd(directionProbabilityStd);
@@ -757,6 +780,10 @@ public class ModelPredictionAnalysisService {
                 .coverageRate(item.getCoverageRate()).evaluationRate(item.getEvaluationRate())
                 .directionAccuracy(item.getDirectionAccuracy()).actualUpRate(item.getActualUpRate())
                 .constantBaselineAccuracy(item.getConstantBaselineAccuracy())
+                .directionAuc(item.getDirectionAuc()).brierScore(item.getBrierScore())
+                .brierBaseline(item.getBrierBaseline())
+                .expectedCalibrationError(item.getExpectedCalibrationError())
+                .calibrationSampleCount(item.getCalibrationSampleCount())
                 .directionProbabilityStd(item.getDirectionProbabilityStd())
                 .predictedReturnStd(item.getPredictedReturnStd())
                 .rollingWindowBatchCount(item.getRollingWindowBatchCount())
@@ -845,6 +872,104 @@ public class ModelPredictionAnalysisService {
         double mean = java.util.Arrays.stream(values).average().orElse(0D);
         return Math.sqrt(java.util.Arrays.stream(values)
                 .map(value -> Math.pow(value - mean, 2D)).average().orElse(0D));
+    }
+
+    /**
+     * 计算上涨概率的 ROC AUC。
+     *
+     * 按概率排序并对相同概率使用平均秩，概率更高的正样本获得更高秩；
+     * 实际标签只有单一类别时返回空值，避免把不可计算的 AUC 误记为 0.5。
+     *
+     * @param samples 同时包含预测概率和实际收益的有效样本
+     * @return ROC AUC，或无法计算时的空值
+     */
+    private Double areaUnderRoc(List<ModelPredictionDocument> samples) {
+        long positiveCount = samples.stream().filter(item -> item.getActualReturn() > 0D).count();
+        long negativeCount = samples.size() - positiveCount;
+        if (positiveCount == 0L || negativeCount == 0L) {
+            return null;
+        }
+        List<ModelPredictionDocument> sorted = samples.stream()
+                .sorted(Comparator.comparingDouble(ModelPredictionDocument::getDirectionProbability))
+                .toList();
+        double positiveRankSum = 0D;
+        int position = 0;
+        while (position < sorted.size()) {
+            int end = position + 1;
+            while (end < sorted.size() && Double.compare(
+                    sorted.get(position).getDirectionProbability(),
+                    sorted.get(end).getDirectionProbability()) == 0) {
+                end++;
+            }
+            double averageRank = (position + end - 1) / 2D + 1D;
+            for (int index = position; index < end; index++) {
+                if (sorted.get(index).getActualReturn() > 0D) {
+                    positiveRankSum += averageRank;
+                }
+            }
+            position = end;
+        }
+        double positiveBaselineRankSum = positiveCount * (positiveCount + 1D) / 2D;
+        return (positiveRankSum - positiveBaselineRankSum)
+                / (positiveCount * (double) negativeCount);
+    }
+
+    /**
+     * 计算二分类概率的 Brier Score。
+     *
+     * @param samples 同时包含预测概率和实际收益的有效样本
+     * @return Brier Score，样本为空时返回空值
+     */
+    private Double brierScore(List<ModelPredictionDocument> samples) {
+        if (samples.isEmpty()) {
+            return null;
+        }
+        return samples.stream()
+                .mapToDouble(item -> {
+                    double label = item.getActualReturn() > 0D ? 1D : 0D;
+                    double error = item.getDirectionProbability() - label;
+                    return error * error;
+                })
+                .average()
+                .orElse(0D);
+    }
+
+    /**
+     * 使用十个等宽概率桶计算期望校准误差。
+     *
+     * @param samples 同时包含预测概率和实际收益的有效样本
+     * @return ECE，样本为空时返回空值
+     */
+    private Double expectedCalibrationError(List<ModelPredictionDocument> samples) {
+        if (samples.isEmpty()) {
+            return null;
+        }
+        double weightedError = 0D;
+        for (int bucket = 0; bucket < 10; bucket++) {
+            final int currentBucket = bucket;
+            final double lowerBound = currentBucket / 10D;
+            final double upperBound = (currentBucket + 1) / 10D;
+            List<ModelPredictionDocument> bucketSamples = samples.stream()
+                    .filter(item -> {
+                        double probability = item.getDirectionProbability();
+                        return currentBucket == 9
+                                ? probability >= lowerBound && probability <= upperBound
+                                : probability >= lowerBound && probability < upperBound;
+                    })
+                    .toList();
+            if (bucketSamples.isEmpty()) {
+                continue;
+            }
+            double predictedMean = bucketSamples.stream()
+                    .mapToDouble(ModelPredictionDocument::getDirectionProbability)
+                    .average().orElse(0D);
+            double actualMean = bucketSamples.stream()
+                    .filter(item -> item.getActualReturn() > 0D)
+                    .count() / (double) bucketSamples.size();
+            weightedError += Math.abs(predictedMean - actualMean)
+                    * bucketSamples.size() / samples.size();
+        }
+        return weightedError;
     }
 
     private double[] rank(double[] values) {

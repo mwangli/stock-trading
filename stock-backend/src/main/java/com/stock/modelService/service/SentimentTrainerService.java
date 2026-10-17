@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ----------
 package com.stock.modelService.service;
 
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
@@ -178,6 +178,31 @@ public class SentimentTrainerService {
     }
 
     /**
+     * 情感分析并返回兼容旧调用方的详细字段。
+     * 非交易场景允许在真实模型不可用时返回规则结果；模型验证接口不得调用此方法。
+     *
+     * @param text 待分析文本
+     * @return 标签、分数、概率和真实模型加载标识
+     */
+    public Map<String, Object> analyzeSentimentWithDetails(String text) {
+        if (text != null && !text.isBlank() && !modelLoaded) {
+            loadModel();
+        }
+        SentimentAnalysisResult result = text == null || text.isBlank()
+                ? analyzeWithRules(text == null ? "" : text)
+                : analyzeSentiment(text);
+        Map<String, Object> response = new HashMap<>();
+        response.put("label", result.getLabel());
+        response.put("score", result.getScore());
+        response.put("normalizedScore", result.getNormalizedScore());
+        response.put("confidence", result.getConfidence());
+        response.put("probabilities", result.getProbabilities() == null ? Map.of() : result.getProbabilities());
+        response.put("text", result.getText() == null ? "" : result.getText());
+        response.put("modelLoaded", modelLoaded);
+        return response;
+    }
+
+    /**
      * 查询情感模型是否已成功加载。
      *
      * @return true 表示当前可执行真实模型推理
@@ -230,18 +255,14 @@ public class SentimentTrainerService {
     }
 
     /**
-     * 情感分析并返回兼容旧接口的详细字段。
+     * 使用真实情感模型分析并返回接口需要的详细字段。
+     * 模型制品不存在、校验失败或推理失败时直接抛出异常，禁止把规则结果伪装成模型验证结果。
      *
      * @param text 待分析文本
      * @return 标签、分数、概率和真实模型加载标识
      */
-    public Map<String, Object> analyzeSentimentWithDetails(String text) {
-        if (text != null && !text.isBlank() && !modelLoaded) {
-            loadModel();
-        }
-        SentimentAnalysisResult result = text == null || text.isBlank()
-                ? analyzeWithRules(text == null ? "" : text)
-                : analyzeSentiment(text);
+    public Map<String, Object> analyzeSentimentRequiredWithDetails(String text) {
+        SentimentAnalysisResult result = analyzeSentimentRequired(text);
         Map<String, Object> response = new HashMap<>();
         response.put("label", result.getLabel());
         response.put("score", result.getScore());
@@ -249,7 +270,7 @@ public class SentimentTrainerService {
         response.put("confidence", result.getConfidence());
         response.put("probabilities", result.getProbabilities() == null ? Map.of() : result.getProbabilities());
         response.put("text", result.getText() == null ? "" : result.getText());
-        response.put("modelLoaded", modelLoaded);
+        response.put("modelLoaded", true);
         return response;
     }
 

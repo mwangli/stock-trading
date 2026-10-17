@@ -1,6 +1,7 @@
 server:
   port: 8080
 
+# AI_GENERATE_START ---
 spring:
   config:
     import:
@@ -105,7 +106,11 @@ backtest:
   slippage-bps: 5
   fallback-price-limit-rate: 0.10
   fee-version: CN_A_SHARE_ASSUMPTION_2026-09-25
+  candidate-safety-margin-rate: 0.0010
+  minimum-candidate-net-return-rate: 0.0020
   code-version: WORKTREE_UNCOMMITTED
+
+# AI_GENERATE_END ---
 
 models:
   # Java 使用 DJL + PyTorch Engine 完成 LSTM 训练、模型结构重建和在线推理。

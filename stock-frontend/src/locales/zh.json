@@ -410,6 +410,7 @@
     },
     "fields": {
       "theme": "主题模式",
+      "autoTheme": "主题自适应",
       "language": "语言",
       "notifications": "启用系统通知",
       "apiKey": "数据提供商 API 密钥",
@@ -435,6 +436,7 @@
     "testConnection": "测试连接",
     "successMsg": "设置保存成功",
     "checkStatus": "检查服务状态",
+    "themeAutoHint": "开启后按北京时间 06:00-18:00 使用浅色模式，其余时间使用深色模式",
     "resetPreferences": "恢复默认偏好",
     "generalTitle": "界面偏好",
     "runtimeTitle": "运行控制",

@@ -252,6 +252,9 @@ public class LstmTrainerService {
             int trainedStocks = processedData.getSampleCounts().size();
             int trainSize = processedData.getTrainSamples().size();
             int valSize = processedData.getValSamples().size();
+            DirectionLabelStats trainLabelStats = summarizeDirectionLabels(processedData.getTrainTargets());
+            DirectionLabelStats validationLabelStats = summarizeDirectionLabels(processedData.getValTargets());
+            DirectionClassWeights directionClassWeights = calculateDirectionClassWeights(trainLabelStats);
             reportProgress(listener, TrainingProgress.builder()
                     .stage("PROCESSING_SAMPLES")
                     .message("训练样本构建完成")
@@ -291,8 +294,6 @@ public class LstmTrainerService {
                         .build();
                 Device[] availableDevices = Engine.getInstance().getDevices(1);
                 Device device = availableDevices.length == 0 ? Device.cpu() : availableDevices[0];
-                DirectionClassWeights directionClassWeights = calculateDirectionClassWeights(
-                        processedData.getTrainTargets());
                 log.info("共享 LSTM 方向任务启用自动类别加权: positiveWeight={}, negativeWeight={}",
                         directionClassWeights.positiveWeight(), directionClassWeights.negativeWeight());
                 DefaultTrainingConfig trainingConfig = new DefaultTrainingConfig(new MultiTaskStockLoss(
@@ -415,7 +416,8 @@ public class LstmTrainerService {
                     .valSamples(valSize)
                     .build());
             currentModelPath = artifactService.saveModel(bestParams, processedData, bestEpoch,
-                    bestTrainLoss, bestValLoss);
+                    bestTrainLoss, bestValLoss, trainLabelStats, validationLabelStats,
+                    directionClassWeights);
             return TrainingResult.builder()
                     .success(true)
                     .message("共享基础模型训练完成")
@@ -427,6 +429,12 @@ public class LstmTrainerService {
                     .trainedStocks(trainedStocks)
                     .trainSamples(trainSize)
                     .valSamples(valSize)
+                    .trainUpSamples(trainLabelStats.positiveCount())
+                    .trainDownSamples(trainLabelStats.negativeCount())
+                    .valUpSamples(validationLabelStats.positiveCount())
+                    .valDownSamples(validationLabelStats.negativeCount())
+                    .directionPositiveWeight(directionClassWeights.positiveWeight())
+                    .directionNegativeWeight(directionClassWeights.negativeWeight())
                     .snapshotId(snapshot == null ? null : snapshot.getId())
                     .details(trainingLog)
                     .build();
@@ -687,22 +695,29 @@ public class LstmTrainerService {
     }
 
     /**
-     * 根据训练集方向标签计算平衡权重，避免模型仅学习全市场多数方向先验。
-     * 权重限制在 0.25 到 4.0 之间，防止极端样本比例导致训练梯度失控。
+     * 统计训练或验证数据中的方向标签分布。
      *
-     * @param targets 训练标签，第二列为方向标签
-     * @return 上涨和下跌类别权重
+     * @param targets 训练或验证标签，第二列为方向标签
+     * @return 上涨和下跌样本数量
      */
-    private DirectionClassWeights calculateDirectionClassWeights(float[][] targets) {
+    private DirectionLabelStats summarizeDirectionLabels(float[][] targets) {
         int positiveCount = 0;
         int negativeCount = 0;
-        for (float[] target : targets) {
-            if (target != null && target.length > 1 && target[1] >= 0.5F) {
-                positiveCount++;
-            } else {
-                negativeCount++;
+        if (targets != null) {
+            for (float[] target : targets) {
+                if (target != null && target.length > 1 && target[1] >= 0.5F) {
+                    positiveCount++;
+                } else {
+                    negativeCount++;
+                }
             }
         }
+        return new DirectionLabelStats(positiveCount, negativeCount);
+    }
+
+    private DirectionClassWeights calculateDirectionClassWeights(DirectionLabelStats labelStats) {
+        int positiveCount = labelStats.positiveCount();
+        int negativeCount = labelStats.negativeCount();
         int total = positiveCount + negativeCount;
         if (positiveCount == 0 || negativeCount == 0 || total == 0) {
             return new DirectionClassWeights(1F, 1F);
@@ -716,7 +731,10 @@ public class LstmTrainerService {
         return Math.max(0.25F, Math.min(4F, weight));
     }
 
-    private record DirectionClassWeights(float positiveWeight, float negativeWeight) {
+    static record DirectionClassWeights(float positiveWeight, float negativeWeight) {
+    }
+
+    static record DirectionLabelStats(int positiveCount, int negativeCount) {
     }
 
     private void validateTrainingConfiguration(int epochs, int batchSize, float learningRate) {
@@ -941,6 +959,24 @@ public class LstmTrainerService {
 
         /** 验证样本数量。 */
         private int valSamples;
+
+        /** 训练集上涨方向样本数量。 */
+        private int trainUpSamples;
+
+        /** 训练集下跌方向样本数量。 */
+        private int trainDownSamples;
+
+        /** 验证集上涨方向样本数量。 */
+        private int valUpSamples;
+
+        /** 验证集下跌方向样本数量。 */
+        private int valDownSamples;
+
+        /** 方向任务上涨类别权重。 */
+        private float directionPositiveWeight;
+
+        /** 方向任务下跌类别权重。 */
+        private float directionNegativeWeight;
 
         /** 每轮训练摘要。 */
         private List<Map<String, Object>> details;

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.tradingExecutor.domain.dto;
 
 import lombok.Builder;
@@ -62,6 +62,9 @@ public class TradeRecordDto {
     /** 累计卖出金额，不含费用。 */
     private BigDecimal sellAmount;
 
+    /** 已卖出部分对应的买卖双边手续费合计。 */
+    private BigDecimal totalFee;
+
     /** 毛收益金额。 */
     private BigDecimal grossProfit;
 
@@ -79,5 +82,8 @@ public class TradeRecordDto {
 
     /** 复合日净收益率，小数形式。 */
     private BigDecimal dailyReturnRate;
+
+    /** 按毛收益率和持仓天数折算的复合日毛收益率，小数形式。 */
+    private BigDecimal grossDailyReturnRate;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

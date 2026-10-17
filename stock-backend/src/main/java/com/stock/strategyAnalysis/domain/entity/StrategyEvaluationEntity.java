@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.strategyAnalysis.domain.entity;
 
 import jakarta.persistence.Column;
@@ -77,9 +77,9 @@ public class StrategyEvaluationEntity {
     @Column(name = "batch_count", nullable = false)
     private int batchCount;
 
-    /** 样本外候选组合复合净收益率。 */
+    /** 样本外候选组合复合毛收益率，不扣除交易费用。数据库列名保持兼容。 */
     @Column(name = "net_return")
-    private Double netReturn;
+    private Double grossReturn;
 
     /** 样本外候选组合最大回撤。 */
     @Column(name = "max_drawdown")
@@ -117,4 +117,4 @@ public class StrategyEvaluationEntity {
     @Column(name = "calculated_at", nullable = false)
     private LocalDateTime calculatedAt;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

@@ -408,6 +408,7 @@
     },
     "fields": {
       "theme": "Theme Mode",
+      "autoTheme": "Adaptive Theme",
       "language": "Language",
       "notifications": "Enable System Notifications",
       "apiKey": "Data Provider API Key",
@@ -433,6 +434,7 @@
     "testConnection": "Test Connection",
     "successMsg": "Settings Saved Successfully",
     "checkStatus": "Check Service Status",
+    "themeAutoHint": "Uses light mode from 06:00 to 18:00 Beijing time and dark mode otherwise",
     "resetPreferences": "Restore Default Preferences",
     "generalTitle": "Interface Preferences",
     "runtimeTitle": "Runtime Controls",

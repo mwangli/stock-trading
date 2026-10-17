@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.modelService.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -51,7 +51,7 @@ public class SentimentController {
             return ResponseDTO.error("文本不能为空");
         }
         try {
-            return ResponseDTO.success(toDto(inferenceService.analyzeSentimentWithDetails(text)));
+            return ResponseDTO.success(toDto(inferenceService.analyzeSentimentRequiredWithDetails(text)));
         } catch (RuntimeException exception) {
             log.error("情感模型推理失败", exception);
             return ResponseDTO.error("情感模型推理失败：" + exception.getMessage());
@@ -136,4 +136,4 @@ public class SentimentController {
         return result;
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

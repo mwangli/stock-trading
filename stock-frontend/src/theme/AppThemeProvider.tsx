@@ -1,17 +1,25 @@
-// AI_GENERATE_START ----
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+// AI_GENERATE_START -------
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { App as AntdApp, ConfigProvider, theme } from 'antd';
 
 export type ThemeMode = 'light' | 'dark';
 
 interface AppThemeContextValue {
   mode: ThemeMode;
+  autoThemeEnabled: boolean;
   setMode: (mode: ThemeMode) => void;
+  setAutoThemeEnabled: (enabled: boolean) => void;
   toggleMode: () => void;
   resetToAutomatic: () => ThemeMode;
 }
 
 const AppThemeContext = createContext<AppThemeContextValue | null>(null);
+const AUTO_THEME_STORAGE_KEY = 'stock-theme-auto';
+
+const readAutoThemeEnabled = (): boolean => {
+  const storedValue = window.localStorage.getItem(AUTO_THEME_STORAGE_KEY);
+  return storedValue === null ? true : storedValue === 'true';
+};
 
 const readStoredMode = (): ThemeMode | null => {
   const storedMode = window.localStorage.getItem('stock-theme');
@@ -35,24 +43,35 @@ const resolveBeijingMode = (): ThemeMode => {
   return hour >= 6 && hour < 18 ? 'light' : 'dark';
 };
 
-const resolveInitialMode = (): ThemeMode => readStoredMode() ?? resolveBeijingMode();
+const resolveInitialMode = (): ThemeMode => readAutoThemeEnabled() ? resolveBeijingMode() : (readStoredMode() ?? resolveBeijingMode());
 
 /**
  * 全局应用主题提供器。
  * 同步管理 Ant Design 主题、页面 data-theme 属性和本地持久化偏好。
  */
 export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const hasManualPreference = useRef(readStoredMode() !== null);
+  const [autoThemeEnabled, setAutoThemeEnabledState] = useState<boolean>(readAutoThemeEnabled);
   const [mode, setMode] = useState<ThemeMode>(resolveInitialMode);
 
   const applyManualMode = useCallback((nextMode: ThemeMode) => {
-    hasManualPreference.current = true;
+    setAutoThemeEnabledState(false);
+    window.localStorage.setItem(AUTO_THEME_STORAGE_KEY, 'false');
     window.localStorage.setItem('stock-theme', nextMode);
     setMode(nextMode);
   }, []);
 
+  const setAutoThemeEnabled = useCallback((enabled: boolean) => {
+    setAutoThemeEnabledState(enabled);
+    window.localStorage.setItem(AUTO_THEME_STORAGE_KEY, String(enabled));
+    if (enabled) {
+      window.localStorage.removeItem('stock-theme');
+      setMode(resolveBeijingMode());
+    }
+  }, []);
+
   const resetToAutomatic = useCallback(() => {
-    hasManualPreference.current = false;
+    setAutoThemeEnabledState(true);
+    window.localStorage.setItem(AUTO_THEME_STORAGE_KEY, 'true');
     window.localStorage.removeItem('stock-theme');
     const automaticMode = resolveBeijingMode();
     setMode(automaticMode);
@@ -64,28 +83,27 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
   }, [mode]);
 
   useEffect(() => {
-    if (hasManualPreference.current) {
+    if (!autoThemeEnabled) {
       return undefined;
     }
 
     const syncWithBeijingTime = () => {
-      if (hasManualPreference.current) {
-        return;
-      }
       setMode(resolveBeijingMode());
     };
 
     syncWithBeijingTime();
     const timer = window.setInterval(syncWithBeijingTime, 60 * 1000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [autoThemeEnabled]);
 
   const contextValue = useMemo<AppThemeContextValue>(() => ({
     mode,
+    autoThemeEnabled,
     setMode: applyManualMode,
+    setAutoThemeEnabled,
     toggleMode: () => applyManualMode(mode === 'light' ? 'dark' : 'light'),
     resetToAutomatic,
-  }), [applyManualMode, mode, resetToAutomatic]);
+  }), [applyManualMode, autoThemeEnabled, mode, resetToAutomatic, setAutoThemeEnabled]);
 
   return (
     <AppThemeContext.Provider value={contextValue}>
@@ -136,4 +154,4 @@ export const useAppTheme = (): AppThemeContextValue => {
   }
   return context;
 };
-// AI_GENERATE_END ----
+// AI_GENERATE_END -------

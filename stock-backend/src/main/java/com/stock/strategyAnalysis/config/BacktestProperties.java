@@ -49,6 +49,12 @@ public class BacktestProperties {
     /** 当前费用假设版本。 */
     private String feeVersion = "CN_A_SHARE_ASSUMPTION_2026-09-25";
 
+    /** 预测候选的额外安全边际收益率。 */
+    private BigDecimal candidateSafetyMarginRate = new BigDecimal("0.0010");
+
+    /** 进入策略候选前要求达到的最低成本后净预期收益率。 */
+    private BigDecimal minimumCandidateNetReturnRate = new BigDecimal("0.0020");
+
     /** 当前代码版本，由部署环境覆盖。 */
     private String codeVersion = "WORKTREE_UNCOMMITTED";
 }
