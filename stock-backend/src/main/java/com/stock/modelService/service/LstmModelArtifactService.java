@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.service;
 
 import ai.djl.Model;
@@ -20,6 +20,7 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
 
@@ -82,17 +83,20 @@ public class LstmModelArtifactService {
                     "sequenceLength", processedData.getSequenceLength(), "inputSize", processedData.getFeatureCount(),
                     "outputSize", StockLSTMModel.OUTPUT_SIZE, "featureVersion", processedData.getFeatureVersion(),
                     "labelVersion", "return-direction-downside-v3")));
-            document.setMetricsJson(objectMapper.writeValueAsString(Map.of(
-                    "trainLoss", trainLoss, "valLoss", valLoss, "bestEpoch", epoch,
-                    "trainedStocks", processedData.getSampleCounts().size(),
-                    "trainSamples", processedData.getTrainSamples().size(),
-                    "valSamples", processedData.getValSamples().size(),
-                    "trainUpSamples", trainLabelStats.positiveCount(),
-                    "trainDownSamples", trainLabelStats.negativeCount(),
-                    "valUpSamples", validationLabelStats.positiveCount(),
-                    "valDownSamples", validationLabelStats.negativeCount(),
-                    "directionPositiveWeight", directionClassWeights.positiveWeight(),
-                    "directionNegativeWeight", directionClassWeights.negativeWeight())));
+            Map<String, Object> metrics = new LinkedHashMap<>();
+            metrics.put("trainLoss", trainLoss);
+            metrics.put("valLoss", valLoss);
+            metrics.put("bestEpoch", epoch);
+            metrics.put("trainedStocks", processedData.getSampleCounts().size());
+            metrics.put("trainSamples", processedData.getTrainSamples().size());
+            metrics.put("valSamples", processedData.getValSamples().size());
+            metrics.put("trainUpSamples", trainLabelStats.positiveCount());
+            metrics.put("trainDownSamples", trainLabelStats.negativeCount());
+            metrics.put("valUpSamples", validationLabelStats.positiveCount());
+            metrics.put("valDownSamples", validationLabelStats.negativeCount());
+            metrics.put("directionPositiveWeight", directionClassWeights.positiveWeight());
+            metrics.put("directionNegativeWeight", directionClassWeights.negativeWeight());
+            document.setMetricsJson(objectMapper.writeValueAsString(metrics));
             document.setFeatureVersion(processedData.getFeatureVersion());
             document.setLabelVersion("return-direction-downside-v3");
             document.setEngineName("PyTorch");
@@ -286,4 +290,4 @@ public class LstmModelArtifactService {
      */
     public record ModelArtifact(byte[] params, String metadata, String modelId) { }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --
