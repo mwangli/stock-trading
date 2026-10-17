@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.tradingExecutor.domain.dto;
 
 import lombok.Builder;
@@ -22,6 +22,9 @@ public class PerformancePeriodItemDto {
     /** 周期内已实现净收益，单位为元。 */
     private BigDecimal netProfit;
 
+    /** 截至当前周期累计已实现净收益，单位为元。 */
+    private BigDecimal cumulativeProfit;
+
     /** 周期收益率，小数形式。 */
     private BigDecimal returnRate;
 
@@ -31,4 +34,4 @@ public class PerformancePeriodItemDto {
     /** 周期内盈利交易数量。 */
     private long winningTradeCount;
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------
+// AI_GENERATE_START ---------------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
@@ -48,6 +48,7 @@ interface PerformanceRankingItem {
 interface PerformancePeriodItem {
   period: string;
   netProfit: number;
+  cumulativeProfit: number;
   returnRate: number;
   tradeCount: number;
   winningTradeCount: number;
@@ -99,7 +100,7 @@ const readApiData = <T,>(result: ApiResult<T>): T | null => {
 
 const money = (value?: number) => value == null ? '-' : `¥${Number(value).toFixed(2)}`;
 const percent = (value?: number) => value == null ? '-' : `${(Number(value) * 100).toFixed(2)}%`;
-const profitColor = (value?: number): 'success' | 'danger' => value != null && value >= 0 ? 'success' : 'danger';
+const profitColor = (value?: number): 'success' | 'danger' => value != null && value >= 0 ? 'danger' : 'success';
 
 const Dashboard: React.FC = () => {
   const { t } = useTranslation();
@@ -172,6 +173,7 @@ const Dashboard: React.FC = () => {
   const periodColumns = [
     { title: t('dashboard.columns.period'), dataIndex: 'period', key: 'period' },
     { title: t('dashboard.columns.netProfit'), dataIndex: 'netProfit', key: 'netProfit', render: (value: number) => <Text type={profitColor(value)}>{money(value)}</Text> },
+    { title: t('dashboard.columns.cumulativeNetProfit'), dataIndex: 'cumulativeProfit', key: 'cumulativeProfit', render: (value: number) => <Text type={profitColor(value)}>{money(value)}</Text> },
     { title: t('dashboard.columns.returnRate'), dataIndex: 'returnRate', key: 'returnRate', render: (value: number) => <Text type={profitColor(value)}>{percent(value)}</Text> },
     { title: t('dashboard.columns.tradeCount'), dataIndex: 'tradeCount', key: 'tradeCount' },
     { title: t('dashboard.columns.winningTradeCount'), dataIndex: 'winningTradeCount', key: 'winningTradeCount' },
@@ -181,8 +183,8 @@ const Dashboard: React.FC = () => {
     { title: t('dashboard.columns.period'), dataIndex: 'period', key: 'period' },
     { title: t('dashboard.columns.stock'), key: 'stock', render: (_value: unknown, item: PerformanceDailyReturnItem) => `${item.stockCode} ${item.stockName ?? ''}` },
     { title: t('dashboard.columns.netProfit'), dataIndex: 'netProfit', key: 'netProfit', render: (value: number) => <Text type={profitColor(value)}>{money(value)}</Text> },
-    { title: t('dashboard.columns.transactionAmount'), dataIndex: 'transactionAmount', key: 'transactionAmount', render: money },
     { title: t('dashboard.columns.returnRate'), dataIndex: 'returnRate', key: 'returnRate', render: (value: number) => <Text type={profitColor(value)}>{percent(value)}</Text> },
+    { title: t('dashboard.columns.transactionAmount'), dataIndex: 'transactionAmount', key: 'transactionAmount', render: money },
   ];
 
   usePageHeader(
@@ -215,8 +217,8 @@ const Dashboard: React.FC = () => {
           <Col xs={12} md={6}><Statistic title={t('dashboard.sections.profitLoss')} value={`${performance?.winningTradeCount ?? 0} / ${performance?.losingTradeCount ?? 0}`} /></Col>
         </Row>
         <div className="mt-5 flex flex-wrap gap-3 text-sm">
-          <Tag color="green">{t('dashboard.sections.best')} {percent(performance?.bestReturnRate)}</Tag>
-          <Tag color="red">{t('dashboard.sections.worst')} {percent(performance?.worstReturnRate)}</Tag>
+          <Tag color="red">{t('dashboard.sections.best')} {percent(performance?.bestReturnRate)}</Tag>
+          <Tag color="green">{t('dashboard.sections.worst')} {percent(performance?.worstReturnRate)}</Tag>
           <Text type="secondary">{t('dashboard.sections.basis')}</Text>
         </div>
       </Card>
@@ -254,4 +256,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-// AI_GENERATE_END -------------
+// AI_GENERATE_END ---------------

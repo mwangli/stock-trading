@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.api;
 
 import com.stock.strategyAgent.domain.AgentEnums;
@@ -61,6 +61,12 @@ public final class AgentDtos {
         private String question;
         /** 用户范围。 */
         private String userScope;
+        /** 当前候选批次上下文，可为空。 */
+        private String candidateBatchId;
+        /** 当前股票上下文，可为空。 */
+        private String stockCode;
+        /** 当前策略版本上下文，可为空。 */
+        private String strategyVersion;
     }
 
     /** Diagnostic 任务请求。 */
@@ -75,6 +81,22 @@ public final class AgentDtos {
         private String question;
         /** 用户范围。 */
         private String userScope;
+    }
+
+    /** TradePlanDraft 生成请求。 */
+    @Data
+    @NoArgsConstructor
+    public static class TradePlanDraftRequest {
+        /** 会话标识，可为空。 */
+        private String sessionId;
+        /** 用户问题。 */
+        private String question;
+        /** 用户范围。 */
+        private String userScope;
+        /** 候选批次标识。 */
+        private String candidateBatchId;
+        /** 股票代码，可为空。 */
+        private String stockCode;
     }
 
     /** 日报生成请求。 */
@@ -265,6 +287,14 @@ public final class AgentDtos {
         private long runningTasks;
         /** 当前时间。 */
         private LocalDateTime checkedAt;
+        /** DeepSeek 是否启用。 */
+        private boolean deepseekEnabled;
+        /** DeepSeek 是否完成必要配置。 */
+        private boolean deepseekConfigured;
+        /** Ollama 是否启用。 */
+        private boolean ollamaEnabled;
+        /** Ollama 是否完成必要配置。 */
+        private boolean ollamaConfigured;
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

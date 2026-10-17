@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START --------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.PerformanceOverviewDto;
@@ -24,6 +24,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -177,16 +178,23 @@ public class PerformanceReportService {
                         accumulator.winningCount++;
                     }
                 });
-        return grouped.entrySet().stream()
-                .sorted(Map.Entry.<String, PeriodAccumulator>comparingByKey().reversed())
+        BigDecimal cumulativeProfit = BigDecimal.ZERO;
+        List<PerformancePeriodItemDto> items = new ArrayList<>();
+        for (Map.Entry<String, PeriodAccumulator> entry : grouped.entrySet()) {
+            PeriodAccumulator accumulator = entry.getValue();
+            cumulativeProfit = cumulativeProfit.add(accumulator.netProfit);
+            items.add(PerformancePeriodItemDto.builder()
+                    .period(entry.getKey())
+                    .netProfit(accumulator.netProfit)
+                    .cumulativeProfit(cumulativeProfit)
+                    .returnRate(rate(accumulator.netProfit, accumulator.cost))
+                    .tradeCount(accumulator.count)
+                    .winningTradeCount(accumulator.winningCount)
+                    .build());
+        }
+        return items.stream()
+                .sorted(Comparator.comparing(PerformancePeriodItemDto::getPeriod).reversed())
                 .limit(12)
-                .map(entry -> PerformancePeriodItemDto.builder()
-                        .period(entry.getKey())
-                        .netProfit(entry.getValue().netProfit)
-                        .returnRate(rate(entry.getValue().netProfit, entry.getValue().cost))
-                        .tradeCount(entry.getValue().count)
-                        .winningTradeCount(entry.getValue().winningCount)
-                        .build())
                 .toList();
     }
 
@@ -298,4 +306,4 @@ public class PerformanceReportService {
         private long winningCount;
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END --------

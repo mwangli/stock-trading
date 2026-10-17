@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------------------------
+// AI_GENERATE_START -----------------------------
 import React, { useCallback, useEffect, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
 import {
@@ -16,7 +16,6 @@ import {
   Popconfirm,
   Progress,
   Row,
-  Select,
   Space,
   Statistic,
   Table,
@@ -335,6 +334,27 @@ const formatDuration = (seconds?: number) => {
   return `${minutes} ${localizedText('分', 'm')} ${remainingSeconds} ${localizedText('秒', 's')}`;
 };
 
+interface WideTableModalProps {
+  title: React.ReactNode;
+  open: boolean;
+  onCancel: () => void;
+  children: React.ReactNode;
+}
+
+const WideTableModal: React.FC<WideTableModalProps> = ({ title, open, onCancel, children }) => (
+  <Modal
+    title={title}
+    open={open}
+    width="min(1800px, calc(100vw - 32px))"
+    centered
+    footer={null}
+    destroyOnHidden
+    onCancel={onCancel}
+  >
+    {children}
+  </Modal>
+);
+
 /**
  * 模型版本、训练和生产切换运维页面。
  */
@@ -367,6 +387,8 @@ const ModelOperations: React.FC = () => {
   const [predictionResultTotal, setPredictionResultTotal] = useState(0);
   const [predictionResultPage, setPredictionResultPage] = useState(1);
   const [predictionResultModalOpen, setPredictionResultModalOpen] = useState(false);
+  const [predictionAnalysisModalOpen, setPredictionAnalysisModalOpen] = useState(false);
+  const [predictionAnalysisLoading, setPredictionAnalysisLoading] = useState(false);
   const [predictionDetailsOpen, setPredictionDetailsOpen] = useState(false);
   const [modelAbility, setModelAbility] = useState<ModelAbility | null>(null);
 
@@ -632,6 +654,18 @@ const ModelOperations: React.FC = () => {
     setPredictionResultModalOpen(true);
     void loadPredictionResults(batchId, 1);
   };
+
+  const openPredictionAnalysis = (batchId: string) => {
+    setSelectedPredictionBatchId(batchId);
+    setModelAbility(null);
+    setPredictionAnalysisLoading(true);
+    setPredictionAnalysisModalOpen(true);
+    void loadPredictionResults(batchId, 1)
+      .catch((cause) => {
+        message.error(getApiErrorMessage(cause, localizedText('读取预测分析失败', 'Failed to load prediction analysis')));
+      })
+      .finally(() => setPredictionAnalysisLoading(false));
+  };
   const versionColumns: ColumnsType<ModelVersion> = [
     {
       title: localizedText('版本', 'Version'),
@@ -769,11 +803,16 @@ const ModelOperations: React.FC = () => {
     },
     { title: localizedText('交易门禁', 'Trading Eligibility'), dataIndex: 'tradingEligibility', key: 'tradingEligibility', width: 130, render: (value?: string) => <Tag color={value === 'TRADE_ELIGIBLE' ? 'green' : value === 'DISABLED' ? 'red' : 'orange'}>{value || 'DISABLED'}</Tag> },
     {
-      title: localizedText('操作', 'Actions'), key: 'actions', width: 120,
+      title: localizedText('操作', 'Actions'), key: 'actions', width: 190,
       render: (_, record) => (
-        <Button type="link" className="!px-0" onClick={() => openPredictionResults(record.id)}>
-          {localizedText('预测结果', 'Results')}
-        </Button>
+        <Space size="small">
+          <Button type="link" size="small" className="!px-0" onClick={() => openPredictionAnalysis(record.id)}>
+            {localizedText('预测分析', 'Analysis')}
+          </Button>
+          <Button type="link" size="small" className="!px-0" onClick={() => openPredictionResults(record.id)}>
+            {localizedText('预测结果', 'Results')}
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -1011,68 +1050,15 @@ const ModelOperations: React.FC = () => {
 
       <Card
         className="surface-card"
-        title={t('modelOperations.predictionAnalysis')}
+        title={`预测批次（共 ${predictionBatchTotal} 个）`}
         extra={(
           <Space wrap>
-            <Select
-              className="w-56"
-              value={selectedPredictionBatchId}
-              placeholder={localizedText('选择预测批次', 'Select Prediction Batch')}
-              options={predictionBatches.map((item) => ({
-                value: item.id,
-                label: `${item.baseTradeDate || '-'} · ${item.status}`,
-              }))}
-              onChange={(value) => openPredictionResults(value)}
-            />
             <Button icon={<ReloadOutlined />} loading={predictionLoading} onClick={() => void loadPredictionData()}>{localizedText('刷新数据', 'Refresh Data')}</Button>
-            <Button icon={<SyncOutlined />} loading={predictionOperating} onClick={() => void evaluatePrediction()}>{localizedText('刷新实际结果', 'Refresh Actual Results')}</Button>
+            <Button icon={<SyncOutlined />} loading={predictionOperating} disabled={!selectedPredictionBatchId} onClick={() => void evaluatePrediction()}>{localizedText('刷新实际结果', 'Refresh Actual Results')}</Button>
             <Button type="primary" icon={<LineChartOutlined />} loading={predictionOperating} onClick={() => void runPrediction()}>{localizedText('执行全市场预测', 'Run Full-market Prediction')}</Button>
           </Space>
         )}
       >
-        {modelAbility ? (
-          <Space direction="vertical" size="large" className="w-full">
-            {predictionBatches.find((item) => item.id === selectedPredictionBatchId)?.calendarFallback && (
-              <Alert
-                type="warning"
-                showIcon
-                message={localizedText('交易日历缺失或覆盖不足', 'Trading calendar missing or incomplete')}
-                description={localizedText('当前目标日由工作日规则推算。行情基准日仍是模型实际使用的最后交易日，请在正式使用前补齐证券交易日历。', 'The target date was estimated from weekdays. The market base date remains the last trading date used by the model; complete the official trading calendar before production use.')}
-              />
-            )}
-            <Alert
-              type={modelAbility.tradingEligibility === 'DISABLED' || modelAbility.abilityLevel === 'WEAK' ? 'warning' : modelAbility.tradingEligibility === 'TRADE_ELIGIBLE' ? 'success' : 'info'}
-              showIcon
-              message={`${localizedText(abilityLabels[modelAbility.abilityLevel || ''] || '', abilityLabelsEn[modelAbility.abilityLevel || ''] || '') || modelAbility.abilityLevel || localizedText('待评估', 'Pending Evaluation')} · ${modelAbility.tradingEligibility || 'DISABLED'}`}
-              description={`${modelAbility.abilityMessage || '等待能力评估'}${modelAbility.tradingEligibilityReason ? `；${modelAbility.tradingEligibilityReason}` : ''}`}
-            />
-            <Row gutter={[16, 16]}>
-              <Col xs={12} md={6} xl={3}><Statistic title={localizedText('预测覆盖率', 'Prediction Coverage')} value={formatPercent(modelAbility.coverageRate)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title={localizedText('评估完成率', 'Evaluation Completion')} value={formatPercent(modelAbility.evaluationRate)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title={localizedText('方向准确率', 'Direction Accuracy')} value={formatPercent(modelAbility.directionAccuracy)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="常数基线准确率" value={formatPercent(modelAbility.constantBaselineAccuracy)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="方向 AUC" value={formatNumber(modelAbility.directionAuc)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="Brier Score" value={formatNumber(modelAbility.brierScore)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="Brier 基线" value={formatNumber(modelAbility.brierBaseline)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="ECE" value={formatPercent(modelAbility.expectedCalibrationError)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="校准样本" value={modelAbility.calibrationSampleCount ?? 0} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="上涨概率标准差" value={formatPercent(modelAbility.directionProbabilityStd)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="预测收益标准差" value={formatPercent(modelAbility.predictedReturnStd)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="滚动评估批次" value={modelAbility.rollingWindowBatchCount ?? 0} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="滚动有效样本" value={modelAbility.rollingWindowSampleCount ?? 0} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="滚动 Spearman IC" value={formatNumber(modelAbility.rollingAverageSpearmanRankIc)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="滚动 Top 10% 收益" value={formatPercent(modelAbility.rollingAverageTopDecileReturn)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="收益 MAE" value={formatPercent(modelAbility.returnMae)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="收益 RMSE" value={formatPercent(modelAbility.returnRmse)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="Pearson IC" value={formatNumber(modelAbility.pearsonIc)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="Spearman IC" value={formatNumber(modelAbility.spearmanRankIc)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="Top 10% 实际收益" value={formatPercent(modelAbility.topDecileAverageReturn)} /></Col>
-            </Row>
-          </Space>
-        ) : <Empty description={localizedText('暂无预测批次', 'No prediction batches')} />}
-      </Card>
-
-      <Card className="surface-card" title={`预测批次（共 ${predictionBatchTotal} 个）`}>
         <Table<PredictionBatch>
           rowKey="id"
           columns={predictionBatchColumns}
@@ -1116,13 +1102,55 @@ const ModelOperations: React.FC = () => {
           </Space>
         )}
       </Drawer>
-      <Modal
+      <WideTableModal
+        title={`预测分析：${selectedPredictionBatch?.targetTradeDate || selectedPredictionBatch?.id || '-'}`}
+        open={predictionAnalysisModalOpen}
+        onCancel={() => setPredictionAnalysisModalOpen(false)}
+      >
+        {modelAbility ? (
+          <Space direction="vertical" size="large" className="w-full">
+            {selectedPredictionBatch?.calendarFallback && (
+              <Alert
+                type="warning"
+                showIcon
+                message={localizedText('交易日历缺失或覆盖不足', 'Trading calendar missing or incomplete')}
+                description={localizedText('当前目标日由工作日规则推算。行情基准日仍是模型实际使用的最后交易日，请在正式使用前补齐证券交易日历。', 'The target date was estimated from weekdays. The market base date remains the last trading date used by the model; complete the official trading calendar before production use.')}
+              />
+            )}
+            <Alert
+              type={modelAbility.tradingEligibility === 'DISABLED' || modelAbility.abilityLevel === 'WEAK' ? 'warning' : modelAbility.tradingEligibility === 'TRADE_ELIGIBLE' ? 'success' : 'info'}
+              showIcon
+              message={`${localizedText(abilityLabels[modelAbility.abilityLevel || ''] || '', abilityLabelsEn[modelAbility.abilityLevel || ''] || '') || modelAbility.abilityLevel || localizedText('待评估', 'Pending Evaluation')} · ${modelAbility.tradingEligibility || 'DISABLED'}`}
+              description={`${modelAbility.abilityMessage || '等待能力评估'}${modelAbility.tradingEligibilityReason ? `；${modelAbility.tradingEligibilityReason}` : ''}`}
+            />
+            <Row gutter={[16, 16]}>
+              <Col xs={12} md={6} xl={3}><Statistic title={localizedText('预测覆盖率', 'Prediction Coverage')} value={formatPercent(modelAbility.coverageRate)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title={localizedText('评估完成率', 'Evaluation Completion')} value={formatPercent(modelAbility.evaluationRate)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title={localizedText('方向准确率', 'Direction Accuracy')} value={formatPercent(modelAbility.directionAccuracy)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="常数基线准确率" value={formatPercent(modelAbility.constantBaselineAccuracy)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="方向 AUC" value={formatNumber(modelAbility.directionAuc)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="Brier Score" value={formatNumber(modelAbility.brierScore)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="Brier 基线" value={formatNumber(modelAbility.brierBaseline)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="ECE" value={formatPercent(modelAbility.expectedCalibrationError)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="校准样本" value={modelAbility.calibrationSampleCount ?? 0} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="上涨概率标准差" value={formatPercent(modelAbility.directionProbabilityStd)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="预测收益标准差" value={formatPercent(modelAbility.predictedReturnStd)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="滚动评估批次" value={modelAbility.rollingWindowBatchCount ?? 0} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="滚动有效样本" value={modelAbility.rollingWindowSampleCount ?? 0} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="滚动 Spearman IC" value={formatNumber(modelAbility.rollingAverageSpearmanRankIc)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="滚动 Top 10% 收益" value={formatPercent(modelAbility.rollingAverageTopDecileReturn)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="收益 MAE" value={formatPercent(modelAbility.returnMae)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="收益 RMSE" value={formatPercent(modelAbility.returnRmse)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="Pearson IC" value={formatNumber(modelAbility.pearsonIc)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="Spearman IC" value={formatNumber(modelAbility.spearmanRankIc)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="Top 10% 实际收益" value={formatPercent(modelAbility.topDecileAverageReturn)} /></Col>
+            </Row>
+          </Space>
+        ) : <Empty description={predictionAnalysisLoading ? localizedText('正在加载预测分析', 'Loading prediction analysis') : localizedText('暂无预测分析', 'No prediction analysis')} />}
+      </WideTableModal>
+      <WideTableModal
         title={`预测效果：${selectedPredictionBatch?.targetTradeDate || selectedPredictionBatch?.id || '-'}`}
         open={predictionResultModalOpen}
-        width="min(1280px, 90vw)"
-        centered
-        footer={null}
-        destroyOnHidden
         onCancel={() => setPredictionResultModalOpen(false)}
       >
         <Table<PredictionResult>
@@ -1146,7 +1174,7 @@ const ModelOperations: React.FC = () => {
             },
           }}
         />
-      </Modal>
+      </WideTableModal>
 
       <Card className="surface-card" title={t('modelOperations.modelVersions')}>
         <Table<ModelVersion>
@@ -1169,13 +1197,9 @@ const ModelOperations: React.FC = () => {
         />
       </Card>
 
-      <Modal
+      <WideTableModal
         title={`训练记录：${selectedTrainingVersion?.modelVersion || '-'}`}
         open={trainingRecordsOpen}
-        width="min(1280px, 90vw)"
-        centered
-        footer={null}
-        destroyOnHidden
         onCancel={() => setTrainingRecordsOpen(false)}
       >
         <Table<TrainingRun>
@@ -1187,7 +1211,7 @@ const ModelOperations: React.FC = () => {
           scroll={{ x: 1980, y: 520 }}
           pagination={false}
         />
-      </Modal>
+      </WideTableModal>
 
       <Modal
         title="触发受控模型训练"
@@ -1279,4 +1303,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END --------------------------
+// AI_GENERATE_END -----------------------------

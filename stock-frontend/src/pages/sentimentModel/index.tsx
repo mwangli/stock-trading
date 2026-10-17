@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------
+// AI_GENERATE_START -----------
 import React, { useCallback, useState } from 'react';
 import {
   Alert,
@@ -84,6 +84,16 @@ interface SentimentEvaluation {
   evaluatedAt?: string;
 }
 
+interface NewsSample {
+  title?: string;
+  content?: string;
+  stockCode?: string;
+  stockName?: string;
+  source?: string;
+  category?: string;
+  publishTime?: string;
+}
+
 const formatDateTime = (value?: string) => {
   if (!value) {
     return localizedText('未加载', 'Not loaded');
@@ -125,11 +135,12 @@ const SentimentModel: React.FC = () => {
   const [evaluation, setEvaluation] = useState<SentimentEvaluation | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sampleLoading, setSampleLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
-  const [initialTestCase] = useState(pickRandomTestCase);
-  const [text, setText] = useState(initialTestCase.text);
+  const [text, setText] = useState('');
   const [analysis, setAnalysis] = useState<SentimentAnalyzeResult | null>(null);
-  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(initialTestCase.id);
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [sampleSource, setSampleSource] = useState<'database' | 'mock' | null>(null);
 
   const loadHealth = useCallback(async () => {
     setLoading(true);
@@ -152,6 +163,41 @@ const SentimentModel: React.FC = () => {
     void loadHealth();
   }, [loadHealth]);
 
+  const applyMockTestCase = useCallback((testCase: SentimentTestCase) => {
+    setText(testCase.text);
+    setAnalysis(null);
+    setSelectedCaseId(testCase.id);
+    setSampleSource('mock');
+  }, []);
+
+  const loadRandomNewsSample = useCallback(async () => {
+    setSampleLoading(true);
+    try {
+      const response = await request.get('/news/randomSample') as ApiResponse<NewsSample | null>;
+      const sample = readApiData(response, localizedText('读取信息表样本失败', 'Failed to load information-table sample'));
+      const sampleText = [sample?.title, sample?.content]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .join('\n\n')
+        .trim();
+      if (!sampleText) {
+        applyMockTestCase(pickRandomTestCase());
+        return;
+      }
+      setText(sampleText);
+      setAnalysis(null);
+      setSelectedCaseId(null);
+      setSampleSource('database');
+    } catch {
+      applyMockTestCase(pickRandomTestCase());
+    } finally {
+      setSampleLoading(false);
+    }
+  }, [applyMockTestCase]);
+
+  React.useEffect(() => {
+    void loadRandomNewsSample();
+  }, [loadRandomNewsSample]);
+
   const analyzeText = async (contentOverride?: string) => {
     const content = (contentOverride ?? text).trim();
     if (!content) {
@@ -168,17 +214,6 @@ const SentimentModel: React.FC = () => {
     } finally {
       setAnalyzing(false);
     }
-  };
-
-  const applyTestCase = (testCase: SentimentTestCase) => {
-    setText(testCase.text);
-    setAnalysis(null);
-    setSelectedCaseId(testCase.id);
-  };
-
-  const randomizeTestCase = () => {
-    const candidates = allSentimentTestCases.filter((testCase) => testCase.id !== selectedCaseId);
-    applyTestCase(candidates[Math.floor(Math.random() * candidates.length)] ?? allSentimentTestCases[0]);
   };
 
   usePageHeader(t('sentimentPage.subtitle'));
@@ -290,7 +325,7 @@ const SentimentModel: React.FC = () => {
             <Select
               className="min-w-[220px]"
               value={selectedCaseId ?? undefined}
-              placeholder={localizedText('选择一条测试文本', 'Select a test text')}
+              placeholder={localizedText('选择页面 Mock 样例', 'Select a page Mock sample')}
               options={allSentimentTestCases.map((testCase) => ({
                 value: testCase.id,
                 label: `${testCase.title} · ${localizedText(labelMeta[testCase.expectedLabel].text, labelMetaEn[testCase.expectedLabel])}`,
@@ -298,12 +333,17 @@ const SentimentModel: React.FC = () => {
               onChange={(caseId: string) => {
                 const testCase = allSentimentTestCases.find((item) => item.id === caseId);
                 if (testCase) {
-                  applyTestCase(testCase);
+                  applyMockTestCase(testCase);
                 }
               }}
             />
-            <Button icon={<SwapOutlined />} onClick={randomizeTestCase}>{localizedText('随机换一条', 'Randomize')}</Button>
+            <Button icon={<SwapOutlined />} loading={sampleLoading} onClick={() => void loadRandomNewsSample()}>{localizedText('信息表随机换一条', 'Randomize from Information Table')}</Button>
           </Space>
+          {sampleSource && (
+            <Tag color={sampleSource === 'database' ? 'green' : 'gold'}>
+              {sampleSource === 'database' ? localizedText('信息表真实样本', 'Database sample') : localizedText('页面 Mock 样例', 'Page Mock sample')}
+            </Tag>
+          )}
           {selectedCase && (
             <Text type="secondary" className="text-xs">{selectedCase.focus}</Text>
           )}
@@ -320,6 +360,7 @@ const SentimentModel: React.FC = () => {
           autoSize={{ minRows: 8, maxRows: 14 }}
           maxLength={4000}
           showCount
+          disabled={sampleLoading && !text}
           className="!min-h-[220px]"
           placeholder={localizedText('输入新闻、公告或事件描述', 'Enter a news item, announcement or event description')}
         />
@@ -363,4 +404,4 @@ const SentimentModel: React.FC = () => {
 };
 
 export default SentimentModel;
-// AI_GENERATE_END ----------
+// AI_GENERATE_END -----------

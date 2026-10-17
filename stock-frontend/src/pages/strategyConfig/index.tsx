@@ -1,8 +1,8 @@
-// AI_GENERATE_START ---------------
+// AI_GENERATE_START -----------------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Card, Col, Descriptions, Drawer, Form, Input, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
-import { InfoCircleOutlined, PlayCircleOutlined, ReloadOutlined, RobotOutlined, SaveOutlined, SendOutlined, SettingOutlined } from '@ant-design/icons';
+import { Alert, Badge, Button, Card, Col, Collapse, Descriptions, Form, Input, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
+import { BulbOutlined, InfoCircleOutlined, PlayCircleOutlined, ReloadOutlined, RobotOutlined, SaveOutlined, SendOutlined, SettingOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
 import { getApiErrorMessage, readApiData, type ApiResponse } from '../../utils/api';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
@@ -141,6 +141,16 @@ interface AgentMessage {
   content: string;
 }
 
+interface RuntimeStatus {
+  enabled: boolean;
+  provider: string;
+  runningTasks: number;
+  deepseekEnabled: boolean;
+  deepseekConfigured: boolean;
+  ollamaEnabled: boolean;
+  ollamaConfigured: boolean;
+}
+
 const formatDate = (value?: string) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : localizedText('未记录', 'Not recorded');
 const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
 
@@ -164,6 +174,20 @@ const StrategyConfig: React.FC = () => {
   const [agentQuestion, setAgentQuestion] = useState('');
   const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
+  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
+  const [runtimeLoading, setRuntimeLoading] = useState(false);
+
+  const loadRuntime = useCallback(async () => {
+    setRuntimeLoading(true);
+    try {
+      const response = await request.get('/agent/runtime/status') as ApiResponse<RuntimeStatus>;
+      setRuntime(readApiData(response, localizedText('读取模型连接状态失败', 'Failed to load model connection status')));
+    } catch (cause) {
+      message.error(getApiErrorMessage(cause, localizedText('读取模型连接状态失败', 'Failed to load model connection status')));
+    } finally {
+      setRuntimeLoading(false);
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -212,9 +236,10 @@ const StrategyConfig: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    void loadRuntime();
     void loadData();
     void loadTradingData();
-  }, [loadData, loadTradingData]);
+  }, [loadData, loadTradingData, loadRuntime]);
 
   const saveConfig = async (values: StrategyConfigValues) => {
     setSaving(true);
@@ -258,10 +283,10 @@ const StrategyConfig: React.FC = () => {
     }
   };
 
-  const openAgent = async () => {
+  const openAgent = async (): Promise<string | null> => {
     setAgentOpen(true);
     if (agentSessionId) {
-      return;
+      return agentSessionId;
     }
     try {
       const response = await request.post('/agent/sessions', {
@@ -269,8 +294,10 @@ const StrategyConfig: React.FC = () => {
       }) as ApiResponse<AgentSessionResponse>;
       const session = readApiData(response, localizedText('创建 Agent 会话失败', 'Failed to create Agent session'));
       setAgentSessionId(session.sessionId);
+      return session.sessionId;
     } catch (cause) {
       message.error(getApiErrorMessage(cause, localizedText('创建 Agent 会话失败', 'Failed to create Agent session')));
+      return null;
     }
   };
 
@@ -279,13 +306,19 @@ const StrategyConfig: React.FC = () => {
     if (!question || agentLoading) {
       return;
     }
+    const sessionId = agentSessionId || await openAgent();
+    if (!sessionId) {
+      return;
+    }
     setAgentMessages((current) => [...current, { role: 'user', content: question }]);
     setAgentQuestion('');
     setAgentLoading(true);
     try {
       const response = await request.post('/agent/tasks/research', {
-        sessionId: agentSessionId,
+        sessionId,
         question,
+        candidateBatchId: candidateBatch?.candidateBatchId,
+        strategyVersion: candidateBatch?.strategyConfigVersion,
       }) as ApiResponse<AgentTaskResponse>;
       const task = readApiData(response, localizedText('Agent 分析失败', 'Agent analysis failed'));
       const content = [task.resultSummary, task.evidenceSummary ? `${localizedText('证据摘要', 'Evidence')}: ${task.evidenceSummary}` : '']
@@ -302,21 +335,95 @@ const StrategyConfig: React.FC = () => {
     }
   };
 
-  usePageHeader(t('strategyPage.subtitle'));
+  usePageHeader(localizedText('智能决策', 'Intelligent Decision'));
 
   const number = (label: string, name: keyof StrategyConfigValues, min: number, max: number, step: number, extra: string) => (<Form.Item label={label} name={name} extra={extra} rules={[{ required: true, message: `${label}${localizedText('不能为空', ' is required')}` }]}><InputNumber min={min} max={max} step={step} className="!w-full" /></Form.Item>);
 
   return (<div className="app-page">
-    <div className="flex flex-wrap justify-end gap-2">
-      <Button icon={<RobotOutlined />} onClick={() => void openAgent()}>{localizedText('Agent 对话', 'Agent Chat')}</Button>
-      <Button icon={<ReloadOutlined />} loading={loading || tradingLoading} onClick={() => { void loadData(); void loadTradingData(); }}>{t('strategyPage.refresh')}</Button>
-      <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => form.submit()}>{t('strategyPage.save')}</Button>
-    </div>
+    <Card className="surface-card model-status-card" title={localizedText('模型连接状态', 'Model Provider Status')} extra={<Button icon={<ReloadOutlined />} loading={runtimeLoading} onClick={() => void loadRuntime()}>{t('common.refresh')}</Button>}>
+      <Descriptions column={{ xs: 1, sm: 2, lg: 4 }} size="small">
+        <Descriptions.Item label={localizedText('选择策略', 'Provider Mode')}>{runtime?.provider ?? '-'}</Descriptions.Item>
+        <Descriptions.Item label="DeepSeek"><Space><Badge status={runtime?.deepseekConfigured ? 'success' : 'default'} />{runtime?.deepseekEnabled ? (runtime.deepseekConfigured ? localizedText('已配置', 'Configured') : localizedText('配置不完整', 'Incomplete')) : localizedText('已关闭', 'Disabled')}</Space></Descriptions.Item>
+        <Descriptions.Item label="Ollama"><Space><Badge status={runtime?.ollamaConfigured ? 'success' : 'default'} />{runtime?.ollamaEnabled ? (runtime.ollamaConfigured ? localizedText('已配置', 'Configured') : localizedText('配置不完整', 'Incomplete')) : localizedText('已关闭', 'Disabled')}</Space></Descriptions.Item>
+        <Descriptions.Item label={localizedText('任务状态', 'Tasks')}>{runtime?.runningTasks ?? 0}</Descriptions.Item>
+      </Descriptions>
+      {runtime && !runtime.deepseekConfigured && !runtime.ollamaConfigured && <Alert className="mt-4" type="error" showIcon message={localizedText('DeepSeek 和 Ollama 均不可用', 'Neither DeepSeek nor Ollama is available')} description={localizedText('请在运行环境配置并启用至少一个 Provider；API Key 只放在后端环境变量中。', 'Enable and configure at least one Provider in the backend environment. Keep API keys in backend environment variables only.')} />}
+    </Card>
+    <section className={`agent-command-center ${agentOpen ? 'agent-command-center-active' : ''}`}>
+      <div className="agent-command-header">
+        <div className="agent-command-title-wrap">
+          <div className="agent-command-icon"><RobotOutlined /></div>
+          <div>
+            <div className="agent-command-eyebrow">{localizedText('智能决策工作区', 'Intelligent Decision Workspace')}</div>
+            <h2>{localizedText('和策略 Agent 对话', 'Talk to Strategy Agent')}</h2>
+            <p>{localizedText('直接询问候选原因、模型信号与风险因素，让 Agent 帮你读懂当前策略。', 'Ask about candidates, model signals and risks to understand the current strategy faster.')}</p>
+          </div>
+        </div>
+        <div className="agent-command-status">
+          <span className={`agent-status-dot ${agentOpen ? 'is-active' : ''}`} />
+          {agentOpen ? localizedText('会话已就绪', 'Session ready') : localizedText('等待提问', 'Ready for a question')}
+        </div>
+      </div>
+      <div className="agent-command-body">
+        <div className="agent-conversation">
+          <div className="agent-message-list">
+            {agentMessages.length === 0 && (
+              <div className="agent-empty-state">
+                <BulbOutlined className="agent-empty-icon" />
+                <strong>{localizedText('从一个问题开始', 'Start with a question')}</strong>
+                <span>{localizedText('Agent 会结合当前候选、策略配置和执行状态给出分析。', 'Agent will use the current candidates, configuration and execution status.')}</span>
+              </div>
+            )}
+            {agentMessages.map((item, index) => (
+              <div key={`${item.role}-${index}`} className={`agent-message agent-message-${item.role}`}>
+                <Text strong>{item.role === 'user' ? localizedText('你', 'You') : localizedText('策略 Agent', 'Strategy Agent')}</Text>
+                <div>{item.content}</div>
+              </div>
+            ))}
+          </div>
+          <div className="agent-input-row">
+            <Input.TextArea
+              value={agentQuestion}
+              onChange={(event) => setAgentQuestion(event.target.value)}
+              placeholder={localizedText('例如：为什么当前候选批次没有生成买入计划？', 'For example: why did the current candidate batch not produce a buy plan?')}
+              autoSize={{ minRows: 2, maxRows: 5 }}
+              onPressEnter={(event) => {
+                if (!event.shiftKey) {
+                  event.preventDefault();
+                  void askAgent();
+                }
+              }}
+            />
+            <Button type="primary" icon={<SendOutlined />} loading={agentLoading} disabled={!agentQuestion.trim()} onClick={() => void askAgent()} aria-label={localizedText('发送问题', 'Send question')}>
+              {localizedText('发送', 'Send')}
+            </Button>
+          </div>
+        </div>
+        <div className="agent-prompts">
+          <div className="agent-prompts-title">{localizedText('你可以这样问', 'Try asking')}</div>
+          {[
+            localizedText('当前候选中最值得关注的是谁？', 'Which current candidate deserves attention?'),
+            localizedText('当前策略的主要风险是什么？', 'What are the main risks in this strategy?'),
+            localizedText('为什么没有生成买入计划？', 'Why was no buy plan generated?'),
+          ].map((prompt) => (
+            <button key={prompt} type="button" className="agent-prompt" onClick={() => { setAgentQuestion(prompt); void openAgent(); }}>
+              <span>{prompt}</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          ))}
+          <Button className="agent-start-button" icon={<RobotOutlined />} onClick={() => void openAgent()}>
+            {agentOpen ? localizedText('继续对话', 'Continue conversation') : localizedText('开始 Agent 对话', 'Start Agent chat')}
+          </Button>
+        </div>
+      </div>
+    </section>
     <Row gutter={[16, 16]}>      <Col xs={24} md={6}><Card className="surface-card compact-card"><Statistic title={localizedText('当前策略模式', 'Current Strategy Mode')} value={state?.currentMode || config?.mode || 'BALANCED'} prefix={<SettingOutlined />} /><Text type="secondary">{localizedText('配置版本', 'Config Version')}：{config?.version || state?.configVersion || localizedText('未标记', 'Unmarked')}</Text></Card></Col>
       <Col xs={24} md={8}><Card className="surface-card compact-card"><Statistic title={localizedText('策略状态', 'Strategy Status')} value={config?.enabled ? localizedText('已启用', 'Enabled') : localizedText('已停用', 'Disabled')} /><Text type="secondary">{localizedText('最近切换', 'Last Switch')}：{formatDate(state?.lastSwitchTime)}</Text></Card></Col>
       <Col xs={24} md={6}><Card className="surface-card compact-card"><Statistic title={localizedText('当前候选', 'Current Candidates')} value={tradingCandidates.length || rankings.length} suffix={config ? `/ ${config.topN}` : ''} /><Text type="secondary">{localizedText('最近更新时间', 'Last Updated')}：{formatDate(config?.updateTime)}</Text></Card></Col>
       <Col xs={24} md={4}><Card className="surface-card compact-card"><Text strong>{localizedText('自动切换', 'Auto Switch')}</Text><div className="mt-3"><Switch checked={state?.autoSwitchEnabled ?? false} onChange={(checked) => void toggleAutoSwitch(checked)} checkedChildren={localizedText('开', 'On')} unCheckedChildren={localizedText('关', 'Off')} /></div><Text type="secondary">{localizedText('最近', 'Last')}：{formatDate(state?.lastAutoSwitchTime)}</Text></Card></Col></Row>
-    <Card className="surface-card" title={localizedText('真实执行状态', 'Live Execution Status')}>
+    <Collapse className="strategy-secondary-collapse" ghost>
+      <Collapse.Panel key="runtime" header={localizedText('运行信息与策略评估', 'Runtime and Strategy Evaluation')}>
+      <Card className="surface-card" title={localizedText('真实执行状态', 'Live Execution Status')}>
       <Row gutter={[16, 16]}>
         <Col xs={24} md={8}><Statistic title={localizedText('券商会话', 'Broker Session')} value={tradingStatus?.brokerAuthenticated ? localizedText('有效', 'Valid') : localizedText('无效', 'Invalid')} /><Tag color={tradingStatus?.brokerAuthenticated ? 'green' : 'red'}>{tradingStatus?.brokerAuthenticated ? localizedText('运行正常', 'Healthy') : localizedText('需要登录', 'Login Required')}</Tag></Col>
         <Col xs={24} md={8}><Statistic title={localizedText('真实写入', 'Live Writes')} value={tradingStatus?.realWriteEnabled ? localizedText('已开启', 'Enabled') : localizedText('已关闭', 'Disabled')} /><Tag color={tradingStatus?.realWriteEnabled ? 'red' : 'blue'}>{tradingStatus?.realWriteEnabled ? localizedText('生产写入', 'Production Writes') : localizedText('只读观察', 'Read-only')}</Tag></Col>
@@ -324,8 +431,8 @@ const StrategyConfig: React.FC = () => {
       </Row>
       {tradingError && <Alert className="mt-4" type="warning" showIcon message={tradingError} />}
       <Alert className="mt-4" type={tradingStatus?.automaticExecutionEnabled ? 'error' : 'info'} showIcon message={tradingStatus?.automaticExecutionEnabled ? localizedText('自动任务具备进入真实下单流程的基础条件，最终仍以交易日和风控校验为准', 'Automatic execution can enter the live order flow, subject to trading-day and risk checks') : localizedText('自动交易未就绪，不会提交真实委托', 'Automatic trading is not ready; no live orders will be submitted')} />
-    </Card>
-    <Card className="surface-card" title={localizedText('候选批次追溯', 'Candidate Batch Traceability')}>
+      </Card>
+      <Card className="surface-card" title={localizedText('候选批次追溯', 'Candidate Batch Traceability')}>
       <Descriptions column={{ xs: 1, sm: 2, lg: 4 }} size="small">
         <Descriptions.Item label="候选批次">{candidateBatch?.candidateBatchId ?? '-'}</Descriptions.Item>
         <Descriptions.Item label="预测批次">{candidateBatch?.predictionBatchId ?? '-'}</Descriptions.Item>
@@ -336,9 +443,8 @@ const StrategyConfig: React.FC = () => {
         <Descriptions.Item label="目标交易日">{candidateBatch?.targetTradeDate ?? '-'}</Descriptions.Item>
         <Descriptions.Item label="信息截止时间">{candidateBatch?.informationCutoffAt ?? '-'}</Descriptions.Item>
       </Descriptions>
-    </Card>
-    <Alert className="mb-4" type="info" showIcon message={localizedText('配置边界', 'Configuration Boundary')} description={localizedText('参数表单只影响策略评分和候选生成；自动切换开关仅控制策略自动切换任务，不修改系统采集、模型训练、券商凭据或真实委托写入开关。', 'The form affects strategy scoring and candidate generation only. Auto switch controls the strategy switching job and does not change data collection, training, broker credentials or live order writes.')} />
-    <Card className="surface-card" title={localizedText('策略模式样本外评估', 'Out-of-sample Strategy Evaluation')} extra={<Text type="secondary">{formatDate(evaluation?.calculatedAt)}</Text>}>
+      </Card>
+      <Card className="surface-card" title={localizedText('策略模式样本外评估', 'Out-of-sample Strategy Evaluation')} extra={<Text type="secondary">{formatDate(evaluation?.calculatedAt)}</Text>}>
       <Alert className="mb-4" type={evaluation?.modes.some((item) => item.status === 'AVAILABLE') ? 'success' : 'warning'} showIcon message={evaluation?.summary || localizedText('尚未执行策略评估', 'Strategy evaluation has not run')} />
       <Table<StrategyModeEvaluation>
         rowKey="mode"
@@ -360,7 +466,15 @@ const StrategyConfig: React.FC = () => {
         ]}
         locale={{ emptyText: localizedText('暂无策略评估结果', 'No strategy evaluation results') }}
       />
-    </Card>
+      </Card>
+      </Collapse.Panel>
+    </Collapse>
+    <Collapse className="strategy-secondary-collapse" ghost>
+      <Collapse.Panel key="config" header={localizedText('高级策略配置', 'Advanced Strategy Configuration')}>
+      <Alert className="mb-4" type="info" showIcon message={localizedText('配置边界', 'Configuration Boundary')} description={localizedText('参数表单只影响策略评分和候选生成；自动切换开关仅控制策略自动切换任务，不修改系统采集、模型训练、券商凭据或真实委托写入开关。', 'The form affects strategy scoring and candidate generation only. Auto switch controls the strategy switching job and does not change data collection, training, broker credentials or live order writes.')} />
+    <div className="strategy-config-actions">
+      <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => form.submit()}>{t('strategyPage.save')}</Button>
+    </div>
     <Form<StrategyConfigValues> form={form} layout="vertical" initialValues={defaultValues} onFinish={(values) => void saveConfig(values)}>
       <Card className="surface-card" title={localizedText('模式与选股参数', 'Mode and Stock Selection Parameters')}><Row gutter={[24, 8]}>
         <Col xs={24} md={8}><Form.Item label={localizedText('策略模式', 'Strategy Mode')} name="mode"><Select options={[{ value: 'CONSERVATIVE', label: localizedText('保守模式', 'Conservative') }, { value: 'BALANCED', label: localizedText('均衡模式', 'Balanced') }, { value: 'AGGRESSIVE', label: localizedText('激进模式', 'Aggressive') }]} /></Form.Item></Col>
@@ -426,43 +540,11 @@ const StrategyConfig: React.FC = () => {
     </Card>
       <Card className="surface-card" title={localizedText('收益退出阈值', 'Return Exit Thresholds')}><Row gutter={[24, 8]}>{number(localizedText('高收益阈值', 'High Return Threshold'), 'highReturnThreshold', -100, 100, 1, localizedText('高收益场景退出阈值', 'Exit threshold for high-return scenarios'))}{number(localizedText('正常收益阈值', 'Normal Return Threshold'), 'normalReturnThreshold', -100, 100, 1, localizedText('正常收益场景退出阈值', 'Exit threshold for normal-return scenarios'))}{number(localizedText('低收益阈值', 'Low Return Threshold'), 'lowReturnThreshold', -100, 100, 1, localizedText('低收益场景退出阈值', 'Exit threshold for low-return scenarios'))}{number(localizedText('亏损阈值', 'Loss Threshold'), 'lossReturnThreshold', -100, 100, 1, localizedText('亏损场景退出阈值', 'Exit threshold for loss scenarios'))}</Row></Card>
     </Form>
+      </Collapse.Panel>
+    </Collapse>
     <Card className="surface-card" title={t('strategyPage.candidates')} extra={<Button type="primary" icon={<PlayCircleOutlined />} loading={running} onClick={() => void runSelection()}>{t('strategyPage.select')}</Button>}><Table<Ranking> rowKey="stockCode" loading={loading || tradingLoading} dataSource={rankings} pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], showTotal: (total) => `共 ${total} 只` }} columns={[{ title: '排名', dataIndex: 'rank', width: 72 }, { title: '股票', dataIndex: 'stockName', render: (value: string, row: Ranking) => `${value} (${row.stockCode})` }, { title: '价格', dataIndex: 'currentPrice', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : `¥${value.toFixed(2)}` }, { title: 'LSTM', dataIndex: 'lstmScore', render: (value: number) => percent(value) }, { title: '情感', dataIndex: 'sentimentScore', render: (value: number) => value.toFixed(3) }, { title: '综合得分', dataIndex: 'totalScore', render: (value: number) => <Tag color={value >= 0.7 ? 'green' : value >= 0.5 ? 'blue' : 'default'}>{value.toFixed(3)}</Tag> }, { title: '持仓', dataIndex: 'held', render: (value?: boolean) => value === undefined ? <Tag>未知</Tag> : <Tag color={value ? 'blue' : 'default'}>{value ? '已持有' : '未持有'}</Tag> }, { title: '说明', dataIndex: 'reason' }]} locale={{ emptyText: '暂无交易候选' }} /></Card>
-    <Drawer
-      title={localizedText('策略 Agent 对话', 'Strategy Agent Chat')}
-      width={Math.min(520, window.innerWidth)}
-      open={agentOpen}
-      onClose={() => setAgentOpen(false)}
-      destroyOnClose={false}
-    >
-      <div className="flex min-h-[360px] flex-col gap-3">
-        <div className="flex-1 space-y-3 overflow-y-auto">
-          {agentMessages.length === 0 && <Alert type="info" showIcon message={localizedText('可以询问候选原因、模型信号、风险因素或交易计划依据。', 'Ask about candidate rationale, model signals, risk factors or TradePlan evidence.')} />}
-          {agentMessages.map((item, index) => (
-            <div key={`${item.role}-${index}`} className={`rounded-md border p-3 text-sm whitespace-pre-wrap ${item.role === 'user' ? 'ml-8 border-blue-200 bg-blue-50' : 'mr-8 border-slate-200 bg-slate-50'}`}>
-              <Text strong>{item.role === 'user' ? localizedText('你', 'You') : localizedText('Agent', 'Agent')}</Text>
-              <div className="mt-1">{item.content}</div>
-            </div>
-          ))}
-        </div>
-        <Input.TextArea
-          value={agentQuestion}
-          onChange={(event) => setAgentQuestion(event.target.value)}
-          placeholder={localizedText('例如：为什么当前候选批次没有生成买入计划？', 'For example: why did the current candidate batch not produce a buy plan?')}
-          autoSize={{ minRows: 3, maxRows: 6 }}
-          onPressEnter={(event) => {
-            if (!event.shiftKey) {
-              event.preventDefault();
-              void askAgent();
-            }
-          }}
-        />
-        <Button type="primary" icon={<SendOutlined />} loading={agentLoading} disabled={!agentQuestion.trim()} onClick={() => void askAgent()}>
-          {localizedText('发送问题', 'Send Question')}
-        </Button>
-      </div>
-    </Drawer>
   </div>);
 };
 
 export default StrategyConfig;
-// AI_GENERATE_END ---------------
+// AI_GENERATE_END -----------------

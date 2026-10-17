@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START -------
 package com.stock.tradingExecutor.job;
 
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
@@ -20,7 +20,9 @@ import java.net.InetAddress;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Date;
+import java.util.Collection;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -257,6 +259,20 @@ public class JobExecutionService {
         return executionRecordRepository.findTopByJobNameOrderByCreatedAtDesc(jobName).orElse(null);
     }
 
+    /**
+     * 批量查询多个任务最近一次运行记录。
+     *
+     * @param jobNames 任务名称集合
+     * @return 每个任务对应的最近运行记录
+     */
+    @Transactional
+    public List<JobExecutionRecord> getLatestRuns(Collection<String> jobNames) {
+        if (jobNames == null || jobNames.isEmpty()) {
+            return List.of();
+        }
+        return executionRecordRepository.findLatestByJobNames(jobNames);
+    }
+
     private JobExecutionRecord createQueuedRecord(String jobName, JobTriggerSource source,
                                                    String operator, Date scheduledFireTime,
                                                    String runId) {
@@ -381,4 +397,4 @@ public class JobExecutionService {
     }
 
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------

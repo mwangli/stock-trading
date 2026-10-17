@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.strategyAgent.domain.entity;
 
 import com.stock.strategyAgent.domain.AgentEnums;
@@ -14,6 +14,7 @@ import lombok.experimental.Accessors;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 
 /**
  * Agent 生成的自动交易计划。
@@ -39,6 +40,10 @@ public class AgentTradePlanEntity {
     /** 候选批次标识。 */
     @Column(name = "candidate_batch_id", nullable = false, length = 128)
     private String candidateBatchId;
+
+    /** 预测批次标识。 */
+    @Column(name = "prediction_batch_id", length = 128)
+    private String predictionBatchId;
 
     /** 计划涉及的股票代码。 */
     @Column(name = "stock_code", nullable = false, length = 32)
@@ -84,5 +89,29 @@ public class AgentTradePlanEntity {
     /** 最近一次拒绝或执行摘要。 */
     @Column(name = "decision_message", columnDefinition = "TEXT")
     private String decisionMessage;
+
+    /** 目标交易日。 */
+    @Column(name = "target_trade_date")
+    private LocalDate targetTradeDate;
+
+    /** 策略配置版本。 */
+    @Column(name = "strategy_version", length = 64)
+    private String strategyVersion;
+
+    /** 价格约束说明。 */
+    @Column(name = "price_constraint", columnDefinition = "TEXT")
+    private String priceConstraint;
+
+    /** 计划理由。 */
+    @Column(name = "reason", columnDefinition = "TEXT")
+    private String reason;
+
+    /** 风险提示 JSON。 */
+    @Column(name = "risk_warnings", columnDefinition = "TEXT")
+    private String riskWarnings;
+
+    /** 不确定性说明。 */
+    @Column(name = "uncertainty", columnDefinition = "TEXT")
+    private String uncertainty;
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------
+// AI_GENERATE_START ------------
 package com.stock.tradingExecutor.job;
 
 import lombok.RequiredArgsConstructor;
@@ -21,6 +21,8 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Date;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -321,6 +323,37 @@ public class JobSchedulerService {
         }
     }
 
+    /**
+     * 批量读取任务的 Quartz 状态，减少任务列表查询中的重复元数据访问。
+     *
+     * @param jobNames 任务名称集合
+     * @return 任务名称到 Quartz 状态的映射
+     */
+    public Map<String, QuartzRuntimeState> getRuntimeStates(Collection<String> jobNames) {
+        if (jobNames == null || jobNames.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Set<String> registeredJobs = quartzScheduler
+                    .getJobKeys(GroupMatcher.jobGroupEquals(QUARTZ_GROUP))
+                    .stream()
+                    .map(JobKey::getName)
+                    .collect(Collectors.toSet());
+            Map<String, QuartzRuntimeState> states = new HashMap<>();
+            for (String jobName : jobNames) {
+                if (!registeredJobs.contains(jobName)) {
+                    states.put(jobName, new QuartzRuntimeState("NOT_REGISTERED", null, false));
+                    continue;
+                }
+                Trigger.TriggerState state = quartzScheduler.getTriggerState(triggerKey(jobName));
+                states.put(jobName, new QuartzRuntimeState(state.name(), null, true));
+            }
+            return states;
+        } catch (SchedulerException exception) {
+            throw new IllegalStateException("批量查询任务调度状态失败", exception);
+        }
+    }
+
     private JobKey jobKey(String jobName) {
         return new JobKey(jobName, QUARTZ_GROUP);
     }
@@ -339,4 +372,4 @@ public class JobSchedulerService {
     public record QuartzRuntimeState(String triggerState, LocalDateTime nextFireTime, boolean registered) {
     }
 }
-// AI_GENERATE_END -----------
+// AI_GENERATE_END ------------

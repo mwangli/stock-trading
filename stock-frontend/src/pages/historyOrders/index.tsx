@@ -1,7 +1,7 @@
-// AI_GENERATE_START --------------
+// AI_GENERATE_START ---------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Empty, Input, Pagination, Select, Space, Table, Tag } from 'antd';
-import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { SearchOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
 import type { ApiResponse } from '../../utils/api';
 import { formatDateTime } from '../../utils/dateTime';
@@ -69,7 +69,6 @@ const HistoryOrders: React.FC = () => {
   const [filters, setFilters] = useState<OrderFilters>(defaultFilters);
   const [orders, setOrders] = useState<BrokerOrder[]>([]);
   const [page, setPage] = useState<PageState>({ current: 1, pageSize: 20, total: 0 });
-  const [refreshToken, setRefreshToken] = useState(0);
   const [loading, setLoading] = useState(false);
   const [, setError] = useState<string | null>(null);
 
@@ -99,7 +98,7 @@ const HistoryOrders: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, page.current, page.pageSize, refreshToken]);
+  }, [filters, page.current, page.pageSize]);
 
   useEffect(() => {
     void loadOrders();
@@ -166,7 +165,6 @@ const HistoryOrders: React.FC = () => {
           <Input type="date" value={draftFilters.startDate} onChange={(event) => setDraftFilters((current) => ({ ...current, startDate: event.target.value }))} />
           <Input type="date" value={draftFilters.endDate} onChange={(event) => setDraftFilters((current) => ({ ...current, endDate: event.target.value }))} />
           <Button icon={<SearchOutlined />} onClick={applyFilters}>{t('common.search')}</Button>
-          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => setRefreshToken((value) => value + 1)}>{t('common.refresh')}</Button>
         </Space>
         <Table
           rowKey={(item) => `${item.orderId}-${item.orderTime}`}
@@ -198,4 +196,4 @@ const HistoryOrders: React.FC = () => {
 };
 
 export default HistoryOrders;
-// AI_GENERATE_END --------------
+// AI_GENERATE_END ---------------

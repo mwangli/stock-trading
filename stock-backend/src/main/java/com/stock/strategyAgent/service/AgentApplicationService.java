@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ---------
 package com.stock.strategyAgent.service;
 
 import com.alibaba.fastjson2.JSON;
@@ -7,6 +7,8 @@ import com.stock.strategyAgent.config.AgentProperties;
 import com.stock.strategyAgent.domain.AgentEnums;
 import com.stock.strategyAgent.domain.entity.AgentSessionEntity;
 import com.stock.strategyAgent.domain.entity.AgentTaskEntity;
+import com.stock.strategyAgent.evidence.EvidenceAssembler;
+import com.stock.strategyAgent.evidence.EvidenceBundle;
 import com.stock.strategyAgent.persistence.AgentSessionRepository;
 import com.stock.strategyAgent.persistence.AgentTaskRepository;
 import com.stock.strategyAgent.rag.AgentRagService;
@@ -48,6 +50,7 @@ public class AgentApplicationService {
     private final AgentRuntimeService runtimeService;
     private final AgentProperties properties;
     private final ToolGateway toolGateway;
+    private final EvidenceAssembler evidenceAssembler;
 
     /**
      * 创建 Agent 会话。
@@ -81,6 +84,18 @@ public class AgentApplicationService {
     }
 
     /**
+     * 为交易计划生成流程获取或创建会话。
+     *
+     * @param sessionId 会话标识
+     * @param userScope 用户范围
+     * @return 会话实体
+     */
+    @Transactional
+    public AgentSessionEntity ensureSessionForTradePlan(String sessionId, String userScope) {
+        return ensureSession(sessionId, userScope);
+    }
+
+    /**
      * 执行 Research 任务。
      *
      * @param request Research 请求
@@ -98,13 +113,16 @@ public class AgentApplicationService {
                     ? memoryService.list(session.getUserScope()) : List.of();
             List<AgentDtos.RagResult> evidence = properties.isRagEnabled()
                     ? ragService.search(ragRequest(question, session.getUserScope())) : List.of();
-            String evidenceSummary = buildEvidenceSummary(memories, evidence);
+            EvidenceBundle factEvidence = evidenceAssembler.assemble(AgentEnums.TaskType.RESEARCH,
+                    UUID.randomUUID().toString(), session.getSessionId(), task.getTaskId(), session.getUserScope(),
+                    request == null ? null : request.getCandidateBatchId(), null);
+            String evidenceSummary = factEvidence.getSummary() + buildEvidenceSummary(memories, evidence);
             String prompt = "问题：" + question + "\n结构化证据：" + evidenceSummary;
             AgentRuntimeResponse response = runtimeService.execute(runtimeRequest(
                     task, session, "RESEARCH",
                     "你是股票交易系统的研究 Agent。只能使用给定证据，不得承诺收益，不得生成可直接执行的券商订单。"
                             + "只返回 Research JSON：{summary,status,keyFindings,evidenceRefs,uncertainty,nextActions}。",
-                    prompt, evidenceSummary, "RESEARCH"));
+                    prompt, evidenceSummary, "RESEARCH", factEvidence.getEvidenceRefs()));
             finish(task, response);
         } catch (Exception exception) {
             fail(task, exception);
@@ -127,19 +145,15 @@ public class AgentApplicationService {
                 request == null ? null : request.getUserScope());
         AgentTaskEntity task = createTask(session, AgentEnums.TaskType.DIAGNOSTIC, question);
         String jobName = request == null ? null : request.getJobName();
-        StringBuilder evidence = new StringBuilder();
-        evidence.append("交易日历：必须由 TradingCalendarService 提供；本任务不自行推算周末。\n");
-        if (StringUtils.hasText(jobName)) {
-            evidence.append(queryJobEvidence(task, session, jobName));
-        } else {
-            evidence.append("未指定任务名称，未读取具体任务运行记录。\n");
-        }
+        EvidenceBundle factEvidence = evidenceAssembler.assemble(AgentEnums.TaskType.DIAGNOSTIC,
+                UUID.randomUUID().toString(), session.getSessionId(), task.getTaskId(), session.getUserScope(), null, jobName);
+        String evidence = factEvidence.getSummary();
         try {
             AgentRuntimeResponse response = runtimeService.execute(runtimeRequest(
                     task, session, "DIAGNOSTIC",
                     "你是运行诊断 Agent。只根据结构化检查结果输出 PASS、WARN、BLOCKED 或 UNKNOWN，不要猜测。"
                             + "只返回 Diagnostic JSON：{summary,status,checks,blockedReasons,evidenceRefs,uncertainty}。",
-                    evidence.toString(), evidence.toString(), "DIAGNOSTIC"));
+                    evidence, evidence, "DIAGNOSTIC", factEvidence.getEvidenceRefs()));
             finish(task, response);
         } catch (Exception exception) {
             fail(task, exception);
@@ -165,18 +179,21 @@ public class AgentApplicationService {
                 request == null ? null : request.getUserScope());
         AgentTaskEntity task = createTask(session, AgentEnums.TaskType.REPORT, "生成每日投研报告: " + reportDate);
         try {
+            EvidenceBundle factEvidence = evidenceAssembler.assemble(AgentEnums.TaskType.REPORT,
+                    UUID.randomUUID().toString(), session.getSessionId(), task.getTaskId(), session.getUserScope(), null, null);
             String template = "报告日期：" + reportDate + "\n"
                     + "市场概览：待结构化行情工具提供\n"
                     + "候选摘要：待策略排名工具提供\n"
                     + "模型信号：待模型预测工具提供\n"
                     + "情感信号：待情感工具提供\n"
                     + "风险提示：必须以 Java 风控结果为准\n"
-                    + "数据质量：待任务和批次状态提供\n";
+                    + "数据质量：待任务和批次状态提供\n"
+                    + "结构化事实证据：\n" + factEvidence.getSummary();
             AgentRuntimeResponse response = runtimeService.execute(runtimeRequest(
                     task, session, "REPORT",
                     "你是投研报告 Agent。严格按照固定章节输出，不得补造行情、收益或交易结论。"
                             + "只返回 Report JSON：{reportDate,summary,status,sections,dataQuality,evidenceRefs,uncertainty}。sections 必须包含 marketOverview、candidateSummary、modelSignals、sentimentSignals、strategyStatus、riskWarnings、dataQuality、abnormalJobs。",
-                    template, template, "REPORT"));
+                    template, template, "REPORT", factEvidence.getEvidenceRefs()));
             finish(task, response);
         } catch (Exception exception) {
             fail(task, exception);
@@ -228,6 +245,7 @@ public class AgentApplicationService {
      */
     @Transactional(readOnly = true)
     public AgentDtos.RuntimeStatus runtimeStatus() {
+        var providerStatus = runtimeService.providerStatus();
         return AgentDtos.RuntimeStatus.builder()
                 .enabled(properties.isEnabled())
                 .provider(runtimeService.providerName())
@@ -235,6 +253,10 @@ public class AgentApplicationService {
                 .memoryEnabled(properties.isMemoryEnabled())
                 .runningTasks(taskRepository.countByStatus(AgentEnums.TaskStatus.RUNNING))
                 .checkedAt(LocalDateTime.now())
+                .deepseekEnabled(providerStatus.isDeepseekEnabled())
+                .deepseekConfigured(providerStatus.isDeepseekConfigured())
+                .ollamaEnabled(providerStatus.isOllamaEnabled())
+                .ollamaConfigured(providerStatus.isOllamaConfigured())
                 .build();
     }
 
@@ -290,7 +312,8 @@ public class AgentApplicationService {
 
     private AgentRuntimeRequest runtimeRequest(AgentTaskEntity task, AgentSessionEntity session,
                                                String taskType, String systemPrompt, String userPrompt,
-                                               String evidenceSummary, String outputType) {
+                                               String evidenceSummary, String outputType,
+                                               List<String> evidenceRefs) {
         return AgentRuntimeRequest.builder()
                 .taskType(taskType)
                 .sessionId(session.getSessionId())
@@ -299,6 +322,7 @@ public class AgentApplicationService {
                 .systemPrompt(systemPrompt)
                 .userPrompt(userPrompt)
                 .evidenceSummary(evidenceSummary)
+                .evidenceRefs(evidenceRefs)
                 .outputType(outputType)
                 .build();
     }
@@ -406,4 +430,4 @@ public class AgentApplicationService {
                 ? value.substring(0, properties.getMaxOutputChars()) : value;
     }
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------
