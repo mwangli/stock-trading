@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/trade-records")
+@RequestMapping("/api/tradeRecords")
 @RequiredArgsConstructor
 public class BrokerTransactionController {
 

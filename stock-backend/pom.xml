@@ -66,6 +66,18 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
+
+        <!-- LangChain4j：使用项目自身 Spring Bean 管理，避免引入与 Spring Boot 3.2 不兼容的 Starter。 -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
         <!-- Database -->
         <dependency>
             <groupId>com.mysql</groupId>

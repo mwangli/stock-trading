@@ -1,9 +1,9 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ----------
 package com.stock.tradingExecutor.service;
 
 import com.stock.dataCollector.service.TradingCalendarService;
-import com.stock.strategyAnalysis.domain.dto.StockRankingDto;
-import com.stock.strategyAnalysis.engine.StockSelector;
+import com.stock.strategyAgent.strategy.domain.dto.StockRankingDto;
+import com.stock.strategyAgent.strategy.engine.StockSelector;
 import com.stock.tradingExecutor.config.RiskConfig;
 import com.stock.tradingExecutor.domain.dto.RealTradingStatusDto;
 import com.stock.tradingExecutor.domain.dto.TradeExecutionBatchResponseDto;
@@ -272,4 +272,4 @@ public class RealTradingService {
                 .build();
     }
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ----------

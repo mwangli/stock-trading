@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -129,7 +129,18 @@ public class SentimentArtifactService {
         if (configured.isAbsolute()) {
             return configured.normalize();
         }
-        return Paths.get("").toAbsolutePath().normalize().resolve(configured).normalize();
+        Path workingDirectory = Paths.get("").toAbsolutePath().normalize();
+        Path resolved = workingDirectory.resolve(configured).normalize();
+        if (Files.isDirectory(resolved) || !isDefaultRelativeModelPath(configured)) {
+            return resolved;
+        }
+
+        Path repositoryLayout = workingDirectory.resolve("stock-backend").resolve(configured).normalize();
+        return Files.isDirectory(repositoryLayout) ? repositoryLayout : resolved;
+    }
+
+    private boolean isDefaultRelativeModelPath(Path configured) {
+        return configured.normalize().equals(Paths.get("data", "models", "sentiment"));
     }
 
     private void validateManifestContract(SentimentArtifactManifest manifest) throws IOException {
@@ -281,4 +292,4 @@ public class SentimentArtifactService {
         }
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/system-settings/runtime")
+@RequestMapping("/api/systemSettings/runtime")
 @RequiredArgsConstructor
 public class SystemRuntimeConfigController {
 

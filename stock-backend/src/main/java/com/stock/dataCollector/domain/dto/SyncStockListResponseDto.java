@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 /**
  * 手动同步股票列表响应 DTO
  *
- * 对应 /api/stock-data/sync 接口返回结构。
+ * 对应 /api/stockData/sync 接口返回结构。
  *
  * @author AI Assistant
  * @since 1.0

@@ -1,3 +1,4 @@
+// AI_GENERATE_START -
 package com.stock.dataCollector.support;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -56,28 +57,68 @@ public final class StockDataParser {
         BigDecimal changePercent = parseDecimalField(split[0]);
         if (changePercent != null) entity.setChangePercent(changePercent);
         if (split.length > 5) {
-            BigDecimal volumeRatio = parseDecimalField(split[5]);
-            if (volumeRatio != null) entity.setVolumeRatio(volumeRatio);
+            BigDecimal changeAmount = parseDecimalField(split[5]);
+            if (changeAmount != null) entity.setChangeAmount(changeAmount);
         }
         if (split.length > 6) {
-            BigDecimal turnoverRate = parseDecimalField(split[6]);
-            if (turnoverRate != null) entity.setTurnoverRate(turnoverRate);
+            BigDecimal volume = parseDecimalField(split[6]);
+            if (volume != null) entity.setVolume(volume);
         }
-        if (split.length > 8) {
-            try {
-                if (!clean(split[8]).isEmpty()) {
-                    entity.setIndustryCode(Integer.parseInt(clean(split[8])));
-                }
-            } catch (NumberFormatException ignored) {}
+        if (split.length > 7) {
+            BigDecimal volumeRatio = parseDecimalField(split[7]);
+            if (volumeRatio != null) entity.setVolumeRatio(volumeRatio);
         }
         if (split.length > 9) {
-            BigDecimal totalMv = parseDecimalField(split[9]);
+            BigDecimal turnoverRate = parseDecimalField(split[8]);
+            if (turnoverRate != null) entity.setTurnoverRate(turnoverRate);
+        }
+        if (split.length > 9) {
+            try {
+                if (!clean(split[9]).isEmpty()) {
+                    entity.setSecurityCategory(clean(split[9]));
+                }
+            } catch (Exception ignored) {}
+        }
+        if (split.length > 10) {
+            BigDecimal totalMv = parseDecimalField(split[10]);
             if (totalMv != null) entity.setTotalMarketValue(totalMv);
         }
-        if (entity.getPrice() != null && entity.getChangePercent() != null) {
-            entity.setChangeAmount(entity.getPrice().multiply(entity.getChangePercent()));
+        if (split.length > 3) {
+            entity.setMarketCode(clean(split[3]));
         }
+        if (split.length > 11) {
+            entity.setBidPrice(parseDecimalField(split[11]));
+        }
+        if (split.length > 12) {
+            entity.setAskPrice(parseDecimalField(split[12]));
+        }
+        calculateCombinationSignals(entity);
         return entity;
+    }
+
+    private static void calculateCombinationSignals(StockInfo entity) {
+        BigDecimal changePercent = entity.getChangePercent();
+        BigDecimal volumeRatio = entity.getVolumeRatio();
+        BigDecimal turnoverRate = entity.getTurnoverRate();
+        if (changePercent != null && volumeRatio != null) {
+            entity.setMomentumStrength(changePercent.multiply(volumeRatio));
+            entity.setVolumePriceSignal(changePercent.signum() * volumeRatio.signum() > 0
+                    ? changePercent.abs().multiply(volumeRatio)
+                    : changePercent.abs().negate().multiply(volumeRatio));
+        }
+        if (volumeRatio != null && turnoverRate != null) {
+            entity.setTurnoverAnomaly(volumeRatio.multiply(turnoverRate));
+        }
+        entity.setAbnormalVolumeFlag((changePercent != null && volumeRatio != null)
+                && ((changePercent.signum() > 0 && volumeRatio.compareTo(BigDecimal.ONE) < 0)
+                || (changePercent.signum() < 0 && volumeRatio.compareTo(BigDecimal.ONE) > 0)));
+        if (entity.getBidPrice() != null && entity.getAskPrice() != null) {
+            BigDecimal spread = entity.getAskPrice().subtract(entity.getBidPrice());
+            entity.setBidAskSpread(spread);
+            if (entity.getPrice() != null && entity.getPrice().signum() != 0) {
+                entity.setBidAskSpreadRate(spread.divide(entity.getPrice(), 8, java.math.RoundingMode.HALF_UP));
+            }
+        }
     }
 
     public static List<StockPrice> parsePriceList(JSONArray results, String stockCode) {
@@ -160,3 +201,4 @@ public final class StockDataParser {
         }
     }
 }
+// AI_GENERATE_END -

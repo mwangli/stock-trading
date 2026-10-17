@@ -23,7 +23,7 @@
     "dashboard": "Dashboard",
     "market": "Market Overview",
     "models": "Quant Models",
-    "analysis": "Strategy Analysis",
+    "analysis": "Intelligent Decision",
     "jobs": "Scheduled Jobs",
     "logs": "Run Logs",
     "settings": "Settings",
@@ -75,17 +75,17 @@
     "loadError": "Failed to load stock information",
     "searchPlaceholder": "Search stock code or name",
     "empty": "No stock information",
-    "columns": { "code": "Stock Code", "name": "Stock Name", "market": "Market", "price": "Last Price", "changeAmount": "Change", "changePercent": "Change %", "marketCap": "Market Cap", "turnover": "Turnover", "volumeRatio": "Volume Ratio", "category": "Security Type", "updatedAt": "Updated At" }
+    "columns": { "code": "Stock Code", "name": "Stock Name", "market": "Market", "price": "Last Price", "changeAmount": "Change", "changePercent": "Change %", "marketCap": "Market Cap", "turnover": "Turnover", "volumeRatio": "Volume Ratio", "category": "Security Type", "listedDate": "Listing Date", "updatedAt": "Updated At" }
   },
   "historyOrders": {
     "subtitle": "Filled orders returned by the broker and stored locally",
     "loadError": "Failed to load order history",
-    "searchPlaceholder": "Stock code, name or order ID",
+    "searchPlaceholder": "Stock code or name",
     "empty": "No synced order history",
     "allDirections": "All Directions",
     "buy": "Buy",
     "sell": "Sell",
-    "columns": { "time": "Order Time", "stock": "Stock", "direction": "Direction", "orderPrice": "Order Price", "orderQuantity": "Order Quantity", "filledQuantity": "Filled Quantity", "averageFillPrice": "Average Fill Price", "status": "Status", "orderId": "Order ID" },
+    "columns": { "time": "Order Time", "stock": "Stock", "direction": "Direction", "orderPrice": "Order Price", "orderQuantity": "Order Quantity", "filledQuantity": "Filled Quantity", "averageFillPrice": "Average Fill Price", "transactionAmount": "Transaction Amount", "commission": "Commission", "status": "Status", "orderId": "Order ID" },
     "filled": "Filled",
     "dateError": "Start date cannot be later than end date"
   },
@@ -106,13 +106,15 @@
     "runsEmpty": "No training records"
   },
   "tradeRecords": { "subtitle": "Aggregate filled orders into FIFO trade records", "searchPlaceholder": "Stock code, name or order ID", "empty": "No assembled trade records", "columns": { "stock": "Stock", "buyTime": "Buy Time", "sellTime": "Sell Time", "buyPrice": "Buy Price", "sellPrice": "Sell Price", "buyAmount": "Buy Amount", "sellAmount": "Sell Amount", "grossProfit": "Gross Profit", "netProfit": "Net Profit", "grossReturn": "Gross Return", "returnRate": "Return Rate", "holdingTime": "Holding Time", "dailyReturn": "Daily Return" } },
-  "marketPage": { "subtitle": "Explore market breadth, watchlists and stock candlestick trends", "searchPlaceholder": "Search stock name or code", "timeRange": "Select time range", "daily": "Daily", "weekly": "Weekly", "monthly": "Monthly", "noData": "No data" },
+  "marketPage": { "subtitle": "Explore market breadth, watchlists and stock candlestick trends", "searchPlaceholder": "Search stock name or code", "timeRange": "Select time range", "daily": "Daily", "noData": "No data" },
   "jobsPage": { "subtitle": "Monitor, trigger and stop scheduled jobs", "refresh": "Refresh", "status": "Task Status", "emptyGroup": "No jobs in this group", "emptyRuns": "No execution records", "history": "History", "details": "Execution Details" },
   "strategyPage": { "subtitle": "Manage trading strategies, model candidates and execution gates", "refresh": "Refresh", "reset": "Restore Defaults", "save": "Save Configuration", "candidates": "Current Trade Candidates", "select": "Select Stocks" },
   "sentimentPage": { "subtitle": "Inspect sentiment artifacts, offline evaluation and online inference", "runStatus": "Run Status", "artifact": "Model Artifact", "offline": "Offline Evaluation", "single": "Single Text Validation" },
   "login": {
     "systemOnline": "SYSTEM ONLINE",
-    "algoTrading": "Algorithmic Trading Intelligence",
+    "systemOffline": "SYSTEM OFFLINE",
+    "systemChecking": "CHECKING",
+    "algoTrading": "AI Stock Trading System",
     "subtitle": "Next-generation financial modeling and automated execution strategies. Powered by LSTM neural networks and real-time sentiment analysis.",
     "stats": {
       "uptime": "Uptime",
@@ -135,7 +137,7 @@
     "lastSync": "Last sync",
     "cards": { "totalAssets": "Total Assets", "availableCash": "Available Cash", "positionValue": "Position Value", "frozenCash": "Frozen Cash", "realizedTotal": "Total Realized P&L", "realizedToday": "Today's Realized P&L", "realizedMonth": "This Month's Realized P&L", "realizedRate": "Realized Return", "dailyRate": "Daily Return", "monthlyRate": "Monthly Return" },
     "sections": { "returnStats": "Return Statistics", "completedTrades": "Completed Trades", "winRate": "Win Rate", "averageReturn": "Average Return", "profitLoss": "Profit / Loss", "ranking": "Return Ranking", "daily": "Daily Return", "monthly": "Monthly Return", "positions": "Current Positions", "best": "Best Return", "worst": "Worst Return", "basis": "Metrics are calculated from realized FIFO trade records" },
-    "columns": { "stockCode": "Stock Code", "stockName": "Stock Name", "totalQuantity": "Quantity Held", "availableQuantity": "Available to Sell", "averageCost": "Average Cost", "currentPrice": "Current Price", "marketValue": "Market Value", "stock": "Stock", "netProfit": "Net Profit", "returnRate": "Return Rate", "dailyReturnRate": "Daily Return", "holdingDays": "Holding Days", "status": "Status", "period": "Period", "tradeCount": "Trades", "winningTradeCount": "Winning Trades" },
+    "columns": { "stockCode": "Stock Code", "stockName": "Stock Name", "totalQuantity": "Quantity Held", "availableQuantity": "Available to Sell", "averageCost": "Average Cost", "currentPrice": "Current Price", "marketValue": "Market Value", "stock": "Stock", "netProfit": "Net Profit", "returnRate": "Return Rate", "dailyReturnRate": "Daily Return", "buyTime": "Buy Time", "holdingDays": "Holding Days", "sellTime": "Sell Time", "period": "Period", "transactionAmount": "Transaction Amount", "tradeCount": "Trades", "winningTradeCount": "Winning Trades" },
     "units": { "days": "days" },
     "status": { "completed": "Completed", "partial": "Partially Sold" },
     "empty": { "ranking": "No realized trade ranking", "daily": "No daily return data", "monthly": "No monthly return data", "positions": "No live positions" },
@@ -305,8 +307,8 @@
     }
   },
   "strategyAnalysis": {
-    "title": "Strategy Analysis Center",
-    "subtitle": "Manage Stock Selection & Execution Strategies",
+    "title": "Intelligent Decision Center",
+    "subtitle": "Manage selection, strategy analysis and trading decisions",
     "fetchError": "Failed to load strategy list. Check backend.",
     "toggleError": "Update failed. Please retry.",
     "selection": {

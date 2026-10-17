@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.tradingExecutor.domain.dto;
 
 import lombok.Builder;
@@ -79,10 +79,10 @@ public class PerformanceOverviewDto {
     /** 按收益率倒序排列的交易排行。 */
     private List<PerformanceRankingItemDto> ranking;
 
-    /** 按交易日聚合的已实现收益。 */
-    private List<PerformancePeriodItemDto> dailyReturns;
+    /** 按交易日返回的已实现收益明细，每条对应一笔交易。 */
+    private List<PerformanceDailyReturnItemDto> dailyReturns;
 
     /** 按自然月聚合的已实现收益。 */
     private List<PerformancePeriodItemDto> monthlyReturns;
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

@@ -23,7 +23,7 @@
     "dashboard": "数据总览",
     "market": "市场行情",
     "models": "量化模型",
-    "analysis": "策略分析",
+    "analysis": "智能决策",
     "jobs": "定时任务",
     "logs": "运行日志",
     "settings": "系统设置",
@@ -75,17 +75,17 @@
     "loadError": "股票信息读取失败",
     "searchPlaceholder": "搜索股票代码或名称",
     "empty": "暂无股票基础信息",
-    "columns": { "code": "股票代码", "name": "股票名称", "market": "市场", "price": "最新价", "changeAmount": "涨跌额", "changePercent": "涨跌幅", "marketCap": "总市值", "turnover": "换手率", "volumeRatio": "量比", "category": "证券类别", "updatedAt": "更新时间" }
+    "columns": { "code": "股票代码", "name": "股票名称", "market": "市场", "price": "最新价", "changeAmount": "涨跌额", "changePercent": "涨跌幅", "marketCap": "总市值", "turnover": "换手率", "volumeRatio": "量比", "category": "证券类别", "listedDate": "上市日期", "updatedAt": "更新时间" }
   },
   "historyOrders": {
     "subtitle": "仅展示券商返回并已落库的全部成交委托",
     "loadError": "历史订单读取失败",
-    "searchPlaceholder": "股票代码、名称或委托编号",
+    "searchPlaceholder": "股票代码或名称",
     "empty": "暂无已同步历史订单",
     "allDirections": "全部方向",
     "buy": "买入",
     "sell": "卖出",
-    "columns": { "time": "委托时间", "stock": "股票", "direction": "方向", "orderPrice": "委托价", "orderQuantity": "委托数量", "filledQuantity": "成交数量", "averageFillPrice": "成交均价", "status": "状态", "orderId": "委托编号" },
+    "columns": { "time": "委托时间", "stock": "股票", "direction": "方向", "orderPrice": "委托价", "orderQuantity": "委托数量", "filledQuantity": "成交数量", "averageFillPrice": "成交均价", "transactionAmount": "成交金额", "commission": "手续费", "status": "状态", "orderId": "委托编号" },
     "filled": "已成交",
     "dateError": "开始日期不能晚于结束日期"
   },
@@ -106,13 +106,15 @@
     "runsEmpty": "暂无训练记录"
   },
   "tradeRecords": { "subtitle": "按 FIFO 规则将已成交历史订单汇总为买入批次交易记录", "searchPlaceholder": "股票代码、名称或委托编号", "empty": "暂无已组装交易记录", "columns": { "stock": "股票", "buyTime": "买入时间", "sellTime": "卖出时间", "buyPrice": "买入均价", "sellPrice": "卖出均价", "buyAmount": "买入金额", "sellAmount": "卖出金额", "grossProfit": "毛收益", "netProfit": "净收益", "grossReturn": "毛收益率", "returnRate": "收益率", "holdingTime": "持仓时间", "dailyReturn": "日收益率" } },
-  "marketPage": { "subtitle": "查看市场广度、自选列表与股票 K 线走势", "searchPlaceholder": "搜索股票名称或代码", "timeRange": "选择时间范围", "daily": "日K", "weekly": "周K", "monthly": "月K", "noData": "无数据" },
+  "marketPage": { "subtitle": "查看市场广度、自选列表与股票 K 线走势", "searchPlaceholder": "搜索股票名称或代码", "timeRange": "选择时间范围", "daily": "日K", "noData": "无数据" },
   "jobsPage": { "subtitle": "查询任务运行状态，手动触发或停止任务并按任务追踪执行历史", "refresh": "刷新", "status": "任务状态", "emptyGroup": "该分组暂无任务配置", "emptyRuns": "该任务暂无执行记录", "history": "历史", "details": "执行记录详情" },
   "strategyPage": { "subtitle": "管理交易策略、模型候选和真实执行门禁", "refresh": "刷新", "reset": "恢复默认", "save": "保存配置", "candidates": "当前交易候选", "select": "立即选股" },
   "sentimentPage": { "subtitle": "情感模型制品、离线评估与在线推理验证", "runStatus": "运行状态", "artifact": "模型制品", "offline": "离线评估", "single": "单条文本验证" },
   "login": {
     "systemOnline": "系统在线",
-    "algoTrading": "智能算法交易系统",
+    "systemOffline": "系统离线",
+    "systemChecking": "检测中",
+    "algoTrading": "AI股票交易系统",
     "subtitle": "下一代金融建模与自动执行策略。由 LSTM 神经网络与实时情感分析驱动。",
     "stats": {
       "uptime": "运行时间",
@@ -135,7 +137,7 @@
     "lastSync": "最近同步",
     "cards": { "totalAssets": "总资产", "availableCash": "可用资金", "positionValue": "持仓市值", "frozenCash": "冻结资金", "realizedTotal": "累计已实现收益", "realizedToday": "今日已实现收益", "realizedMonth": "本月已实现收益", "realizedRate": "累计收益率", "dailyRate": "日收益率", "monthlyRate": "月收益率" },
     "sections": { "returnStats": "收益率统计", "completedTrades": "已完成交易", "winRate": "胜率", "averageReturn": "平均收益率", "profitLoss": "盈利 / 亏损", "ranking": "收益率排行", "daily": "日收益率", "monthly": "月收益率", "positions": "当前持仓", "best": "最高收益率", "worst": "最低收益率", "basis": "收益指标基于已实现 FIFO 交易记录计算" },
-    "columns": { "stockCode": "股票代码", "stockName": "股票名称", "totalQuantity": "持仓数量", "availableQuantity": "可卖数量", "averageCost": "成本价", "currentPrice": "现价", "marketValue": "市值", "stock": "股票", "netProfit": "净收益", "returnRate": "收益率", "dailyReturnRate": "日收益率", "holdingDays": "持仓天数", "status": "状态", "period": "周期", "tradeCount": "交易笔数", "winningTradeCount": "盈利笔数" },
+    "columns": { "stockCode": "股票代码", "stockName": "股票名称", "totalQuantity": "持仓数量", "availableQuantity": "可卖数量", "averageCost": "成本价", "currentPrice": "现价", "marketValue": "市值", "stock": "股票", "netProfit": "净收益", "returnRate": "收益率", "dailyReturnRate": "日收益率", "buyTime": "买入时间", "holdingDays": "持仓天数", "sellTime": "卖出时间", "period": "周期", "transactionAmount": "交易金额", "tradeCount": "交易笔数", "winningTradeCount": "盈利笔数" },
     "units": { "days": "天" },
     "status": { "completed": "已完成", "partial": "部分卖出" },
     "empty": { "ranking": "暂无已实现交易收益排行", "daily": "暂无日收益数据", "monthly": "暂无月收益数据", "positions": "暂无真实持仓数据" },
@@ -307,8 +309,8 @@
     }
   },
   "strategyAnalysis": {
-    "title": "策略分析中心",
-    "subtitle": "管理选股与交易执行策略",
+    "title": "智能决策中心",
+    "subtitle": "管理选股、策略分析与交易决策",
     "fetchError": "获取策略列表失败，请检查后端服务",
     "toggleError": "更新失败，请重试",
     "selection": {

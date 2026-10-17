@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ----
 package com.stock.dataCollector.support;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -6,6 +6,7 @@ import com.alibaba.fastjson2.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
@@ -174,8 +175,73 @@ public class SecuritiesClient {
         paramMap.put("c.type", "0:2:9:18");
         paramMap.put("c.curPage", 1);
         paramMap.put("c.rowOfPage", 5000);
-        paramMap.put("c.field", "1:2:22:23:24:3:8:16:21:31");
+        paramMap.put("c.field", "1:2:22:23:24:3:6:8:16:21:31:4:5");
         return requestDataList(paramMap);
+    }
+
+    /**
+     * 获取股票首次上市日期。
+     *
+     * @param stockCode 六位股票代码
+     * @return 上市日期，资料不存在或请求失败时返回 null
+     */
+    @SuppressWarnings("unchecked")
+    public LocalDate getListingDate(String stockCode) {
+        if (stockCode == null || stockCode.isBlank()) {
+            return null;
+        }
+        String marketCode = resolveEastmoneyCode(stockCode);
+        if (marketCode == null) {
+            return null;
+        }
+        try {
+            String url = "https://emweb.securities.eastmoney.com/PC_HSF10/CompanySurvey/PageAjax?code=" + marketCode;
+            HttpHeaders headers = buildHeaders();
+            headers.set("Referer", "https://emweb.securities.eastmoney.com/PC_HSF10/CompanySurvey/Index?type=web&code=" + marketCode);
+            HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
+            Map<String, Object> response = restTemplate.exchange(url, HttpMethod.GET, requestEntity, Map.class).getBody();
+            if (response == null) {
+                return null;
+            }
+            Object issueInfo = response.get("fxxg");
+            if (!(issueInfo instanceof List<?> issueList) || issueList.isEmpty()
+                    || !(issueList.get(0) instanceof Map<?, ?> issueMap)) {
+                return null;
+            }
+            Object listingDate = issueMap.get("LISTING_DATE");
+            if (listingDate == null || listingDate.toString().isBlank()) {
+                return null;
+            }
+            return LocalDateTimeParser.parseDate(listingDate.toString());
+        } catch (Exception e) {
+            log.warn("获取股票 {} 上市日期失败: {}", stockCode, e.getMessage());
+            return null;
+        }
+    }
+
+    private String resolveEastmoneyCode(String stockCode) {
+        String code = stockCode.trim();
+        if (code.length() != 6) {
+            return null;
+        }
+        String market;
+        if (code.startsWith("6")) {
+            market = "SH";
+        } else if (code.startsWith("0") || code.startsWith("3")) {
+            market = "SZ";
+        } else if (code.startsWith("4") || code.startsWith("8")) {
+            market = "BJ";
+        } else {
+            return null;
+        }
+        return market + code;
+    }
+
+    private static final class LocalDateTimeParser {
+        private static LocalDate parseDate(String value) {
+            String datePart = value.length() >= 10 ? value.substring(0, 10) : value;
+            return LocalDate.parse(datePart, DateTimeFormatter.ISO_LOCAL_DATE);
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -287,4 +353,4 @@ public class SecuritiesClient {
     }
 
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END ----

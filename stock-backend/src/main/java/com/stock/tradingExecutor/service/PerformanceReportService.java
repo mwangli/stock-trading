@@ -1,7 +1,8 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.PerformanceOverviewDto;
+import com.stock.tradingExecutor.domain.dto.PerformanceDailyReturnItemDto;
 import com.stock.tradingExecutor.domain.dto.PerformancePeriodItemDto;
 import com.stock.tradingExecutor.domain.dto.PerformanceRankingItemDto;
 import com.stock.tradingExecutor.domain.entity.AccountSnapshotEntity;
@@ -101,7 +102,7 @@ public class PerformanceReportService {
                 .bestReturnRate(extremeRate(realizedRecords, true))
                 .worstReturnRate(extremeRate(realizedRecords, false))
                 .ranking(buildRanking(realizedRecords))
-                .dailyReturns(buildPeriodItems(realizedRecords, true))
+                .dailyReturns(buildDailyItems(realizedRecords))
                 .monthlyReturns(buildPeriodItems(realizedRecords, false))
                 .build();
     }
@@ -151,10 +152,11 @@ public class PerformanceReportService {
                 .map(record -> PerformanceRankingItemDto.builder()
                         .stockCode(record.getStockCode())
                         .stockName(record.getStockName())
-                        .status(record.getStatus())
+                        .transactionAmount(cost(record))
                         .netProfit(zero(record.getNetProfit()))
                         .returnRate(zero(record.getReturnRate()))
                         .dailyReturnRate(zero(record.getDailyReturnRate()))
+                        .buyTime(record.getBuyTime())
                         .holdingDays(zero(record.getHoldingDays()))
                         .sellTime(record.getLastSellTime())
                         .build())
@@ -184,6 +186,22 @@ public class PerformanceReportService {
                         .returnRate(rate(entry.getValue().netProfit, entry.getValue().cost))
                         .tradeCount(entry.getValue().count)
                         .winningTradeCount(entry.getValue().winningCount)
+                        .build())
+                .toList();
+    }
+
+    private List<PerformanceDailyReturnItemDto> buildDailyItems(List<TradeRecordEntity> records) {
+        return records.stream()
+                .filter(record -> record.getLastSellTime() != null)
+                .sorted(Comparator.comparing(TradeRecordEntity::getLastSellTime).reversed())
+                .limit(12)
+                .map(record -> PerformanceDailyReturnItemDto.builder()
+                        .period(record.getLastSellTime().toLocalDate().format(DAY_FORMATTER))
+                        .stockCode(record.getStockCode())
+                        .stockName(record.getStockName())
+                        .netProfit(zero(record.getNetProfit()))
+                        .transactionAmount(cost(record))
+                        .returnRate(safeReturnRate(record))
                         .build())
                 .toList();
     }
@@ -280,4 +298,4 @@ public class PerformanceReportService {
         private long winningCount;
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

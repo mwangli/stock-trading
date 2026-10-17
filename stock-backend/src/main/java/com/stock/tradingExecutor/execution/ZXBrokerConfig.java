@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------
+// AI_GENERATE_START --------------
 package com.stock.tradingExecutor.execution;
 
 import lombok.Data;
@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * 中信证券配置
+ * ZX证券配置
  * 统一承载券商协议所需参数，真实值必须通过环境变量或外部配置注入。
  *
  * @author mwangli
@@ -48,7 +48,7 @@ public class ZXBrokerConfig {
     private String signKey = "";
 
     /**
-     * 中信协议完整性参数
+     * ZX证券协议完整性参数
      */
     private String intactToServer = "";
 
@@ -130,4 +130,4 @@ public class ZXBrokerConfig {
      */
     private Integer cancelWaitTimes = 6;
 }
-// AI_GENERATE_END -------------
+// AI_GENERATE_END --------------

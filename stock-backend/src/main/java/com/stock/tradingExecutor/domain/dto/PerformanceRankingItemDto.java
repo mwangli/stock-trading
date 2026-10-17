@@ -23,8 +23,8 @@ public class PerformanceRankingItemDto {
     /** 股票名称。 */
     private String stockName;
 
-    /** 交易状态。 */
-    private String status;
+    /** 交易金额，按已卖出部分对应的买入成本计算，单位为元。 */
+    private BigDecimal transactionAmount;
 
     /** 净收益金额，单位为元。 */
     private BigDecimal netProfit;
@@ -34,6 +34,9 @@ public class PerformanceRankingItemDto {
 
     /** 复合日净收益率，小数形式。 */
     private BigDecimal dailyReturnRate;
+
+    /** 买入成交时间。 */
+    private LocalDateTime buyTime;
 
     /** 持仓天数。 */
     private BigDecimal holdingDays;

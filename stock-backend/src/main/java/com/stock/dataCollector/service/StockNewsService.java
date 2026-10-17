@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START -------
 package com.stock.dataCollector.service;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -23,6 +23,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -459,9 +461,56 @@ public class StockNewsService {
         news.setStockName(stockName != null && !stockName.isEmpty() ? stockName : null);
         news.setSource(source.isEmpty() ? null : source);
         news.setCategory(src.category);
+        String eventType = classifyEvent(title, content, src.category);
+        news.setEventType(eventType);
+        news.setInformationPriority(eventPriority(eventType));
+        news.setContentHash(sha256(title + "\n" + content));
         news.setPublishTime(publishTime);
         news.setCreateTime(LocalDateTime.now());
         return news;
+    }
+
+    private String classifyEvent(String title, String content, String category) {
+        String text = ((title == null ? "" : title) + " " + (content == null ? "" : content)).toLowerCase();
+        if (text.matches(".*(处罚|监管|问询|警示|立案|违规|诉讼|仲裁|被执行|冻结).*")) {
+            return "REGULATORY_OR_LITIGATION";
+        }
+        if (text.matches(".*(减持|增持|股东持股|高管持股|董事|监事|董秘|辞职|任命|换届).*")) {
+            return "SHAREHOLDER_OR_EXECUTIVE";
+        }
+        if (text.matches(".*(业绩预告|业绩快报|年度报告|半年度报告|季度报告|净利润|营收).*")) {
+            return "EARNINGS";
+        }
+        if (text.matches(".*(合同|订单|中标|项目|投资|收购|并购|合作|战略协议).*")) {
+            return "MATERIAL_BUSINESS";
+        }
+        if (text.matches(".*(解禁|限售|质押|融资|融券|龙虎榜|大宗交易).*")) {
+            return "CAPITAL_RISK";
+        }
+        return "公告".equals(category) ? "GENERAL_ANNOUNCEMENT" : "GENERAL_NEWS";
+    }
+
+    private int eventPriority(String eventType) {
+        return switch (eventType) {
+            case "REGULATORY_OR_LITIGATION", "EARNINGS" -> 5;
+            case "SHAREHOLDER_OR_EXECUTIVE", "MATERIAL_BUSINESS" -> 4;
+            case "CAPITAL_RISK" -> 3;
+            default -> 1;
+        };
+    }
+
+    private String sha256(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.trim().getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte item : digest) {
+                hex.append(String.format("%02x", item));
+            }
+            return hex.toString();
+        } catch (Exception exception) {
+            throw new IllegalStateException("生成新闻内容摘要失败", exception);
+        }
     }
 
     private String getString(Map<String, Object> map, String key, String defaultValue) {
@@ -630,4 +679,4 @@ public class StockNewsService {
     /** 采集来源（新闻/公告）。 */
     private record NewsSource(String menuId, String category) {}
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------

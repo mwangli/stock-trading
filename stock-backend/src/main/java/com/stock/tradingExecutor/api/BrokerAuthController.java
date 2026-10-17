@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/broker-auth")
+@RequestMapping("/api/brokerAuth")
 @RequiredArgsConstructor
 public class BrokerAuthController {
 

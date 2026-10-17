@@ -10,7 +10,7 @@ import java.util.Map;
 /**
  * 股票数据统计响应 DTO
  *
- * 对应 /api/stock-data/statistics 接口的返回结构。
+ * 对应 /api/stockData/statistics 接口的返回结构。
  *
  * @author AI Assistant
  * @since 1.0

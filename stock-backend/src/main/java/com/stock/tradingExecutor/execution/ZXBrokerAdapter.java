@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ----------
 package com.stock.tradingExecutor.execution;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -28,7 +28,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 中信证券适配器。
+ * ZX证券适配器。
  * 首期恢复只读账户、持仓、委托和成交能力，真实写操作由独立总门禁保护。
  *
  * @author mwangli
@@ -57,7 +57,7 @@ public class ZXBrokerAdapter implements BrokerAdapter {
     /** {@inheritDoc} */
     @Override
     public String getName() {
-        return "ZXBroker(中信证券)";
+        return "ZX证券";
     }
 
     /** {@inheritDoc} */
@@ -600,4 +600,4 @@ public class ZXBrokerAdapter implements BrokerAdapter {
         }
     }
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ----------

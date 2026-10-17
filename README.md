@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START -------------------- -->
+<!-- AI_GENERATE_START --------------------- -->
 # AI 股票预测与交易决策系统
 
 > 基于 Java、DJL/PyTorch、LSTM 和财经新闻情感分析的 A 股数据分析、预测、策略评估与交易执行平台。
@@ -16,7 +16,7 @@
 
 ## 项目简介
 
-这是一个前后端分离的 AI 股票交易决策系统，围绕“数据采集 -> 模型预测 -> 策略分析 -> 交易执行”建立完整业务链路。
+这是一个前后端分离的 AI 股票交易决策系统，围绕“数据采集 -> 模型预测 -> 智能决策 -> 交易执行”建立完整业务链路。
 
 系统重点解决以下问题：
 
@@ -44,7 +44,7 @@
 - 模型版本、训练记录、预测批次、评估指标和激活指针分离管理。
 - 训练产物可回滚，候选模型不会自动覆盖当前生产模型。
 
-### 策略分析
+### 智能决策
 
 - LSTM 预测与新闻情感双因子综合评分。
 - 保守、均衡、激进三种策略模式。
@@ -58,7 +58,7 @@
 - 交易前风险门禁、账户和持仓快照校验。
 - T+1 可卖数量校验、涨跌停和停牌校验。
 - 券商适配、委托提交、订单回查、成交和持仓同步。
-- 真实交易写入开关与模型预测、策略分析能力独立控制。
+- 真实交易写入开关与模型预测、智能决策能力独立控制。
 - 敏感凭据仅通过环境变量或受控部署配置管理。
 
 ### 运维与可观测性
@@ -82,7 +82,7 @@
 │      ↓                                            │
 │  modelService                                      │
 │      ↓                                            │
-│  strategyAnalysis                                  │
+│  strategyAgent                                     │
 │      ↓                                            │
 │  tradingExecutor                                   │
 │      ↓                                            │
@@ -98,7 +98,7 @@
 |---|---|---|
 | 数据采集 | `com.stock.dataCollector` | 股票资料、行情、新闻、交易日历和数据质量 |
 | 模型服务 | `com.stock.modelService` | 数据快照、LSTM 训练、情感推理、模型版本、预测和评估 |
-| 策略分析 | `com.stock.strategyAnalysis` | 预测融合、选股排名、技术指标、回测和策略切换 |
+| 智能决策 | `com.stock.strategyAgent` | 确定性策略、预测融合、选股排名、技术指标、回测、Agent 对话和交易计划决策 |
 | 交易执行 | `com.stock.tradingExecutor` | 认证、运行开关、Quartz、风控、券商、订单和审计 |
 
 模块之间通过 DTO、不可变快照和明确的领域结果协作，不直接共享持久化 Entity。
@@ -200,11 +200,11 @@ docker compose --env-file .env logs -f stock-backend
 - Swagger UI：`http://localhost:8080/swagger-ui.html`
 - OpenAPI：`http://localhost:8080/v3/api-docs`
 - 登录接口：`POST /api/auth/login`
-- 模型运维：`/api/model-operations`
-- 预测批次：`/api/model-predictions`
+- 模型运维：`/api/modelOperations`
+- 预测批次：`/api/modelPredictions`
 - 策略配置：`/api/strategy/config`
 - 策略状态：`/api/strategy/state`
-- 自动切换：`POST /api/strategy/auto-switch?enabled=true`
+- 自动切换：`POST /api/strategy/autoSwitch?enabled=true`
 - 任务管理：`/api/jobs`
 
 所有业务接口均需要遵守当前认证和运行开关约束。策略模块只生成候选和信号，不能绕过 `tradingExecutor` 直接调用券商写接口。
@@ -260,8 +260,8 @@ npm run build
 - [数据采集设计](docs/01-数据采集/设计.md)
 - [模型服务需求](docs/02-模型服务/需求.md)
 - [模型服务设计](docs/02-模型服务/设计.md)
-- [策略分析需求](docs/03-策略分析/需求.md)
-- [策略分析设计](docs/03-策略分析/设计.md)
+- [智能决策需求](docs/03-智能决策/需求.md)
+- [智能决策设计](docs/03-智能决策/设计.md)
 - [交易执行需求](docs/04-交易执行/需求.md)
 - [交易执行设计](docs/04-交易执行/设计.md)
 
@@ -287,4 +287,4 @@ MIT License
 ## 反馈与贡献
 
 欢迎通过 GitHub Issue 提交问题、改进建议和使用反馈。涉及真实交易、模型制品或敏感配置的问题，请先脱敏后再公开提交。
-<!-- AI_GENERATE_END -------------------- -->
+<!-- AI_GENERATE_END --------------------- -->

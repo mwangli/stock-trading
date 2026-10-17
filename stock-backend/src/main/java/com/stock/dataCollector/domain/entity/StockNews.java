@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.dataCollector.domain.entity;
 
 import lombok.Data;
@@ -62,6 +62,15 @@ public class StockNews {
      */
     private String category;
 
+    /** 结构化事件类型，用于情感分析和风险门禁。 */
+    private String eventType;
+
+    /** 标题与正文规范化后的 SHA-256 摘要，用于跨来源去重。 */
+    private String contentHash;
+
+    /** 事件采集优先级，数值越高越优先进入情感分析样本。 */
+    private Integer informationPriority;
+
     /**
      * 新闻发布时间
      */
@@ -73,4 +82,4 @@ public class StockNews {
      */
     private LocalDateTime createTime;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

@@ -1,7 +1,7 @@
 // AI_GENERATE_START
 package com.stock.tradingExecutor.job;
 
-import com.stock.strategyAnalysis.job.StrategyAutoSwitchJob;
+import com.stock.strategyAgent.strategy.job.StrategyAutoSwitchJob;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;

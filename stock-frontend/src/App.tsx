@@ -6,18 +6,18 @@ import { Spin } from 'antd';
 import DashboardLayout from './layouts/DashboardLayout';
 import { useAuth } from './auth/AuthContext';
 
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Market = lazy(() => import('./pages/Market'));
-const StockInformation = lazy(() => import('./pages/StockInformation'));
-const Settings = lazy(() => import('./pages/Settings'));
-const HistoryOrders = lazy(() => import('./pages/HistoryOrders'));
-const TradeRecords = lazy(() => import('./pages/TradeRecords'));
-const Logs = lazy(() => import('./pages/Logs'));
-const ModelOperations = lazy(() => import('./pages/ModelOperations'));
-const SentimentModel = lazy(() => import('./pages/SentimentModel'));
-const StrategyConfig = lazy(() => import('./pages/StrategyConfig'));
-const JobManagement = lazy(() => import('./pages/JobManagement'));
-const Login = lazy(() => import('./pages/Login'));
+const Dashboard = lazy(() => import('./pages/dashboard'));
+const Market = lazy(() => import('./pages/market'));
+const StockInformation = lazy(() => import('./pages/stockInformation'));
+const Settings = lazy(() => import('./pages/settings'));
+const HistoryOrders = lazy(() => import('./pages/historyOrders'));
+const TradeRecords = lazy(() => import('./pages/tradeRecords'));
+const Logs = lazy(() => import('./pages/logs'));
+const ModelOperations = lazy(() => import('./pages/modelOperations'));
+const SentimentModel = lazy(() => import('./pages/sentimentModel'));
+const StrategyConfig = lazy(() => import('./pages/strategyConfig'));
+const JobManagement = lazy(() => import('./pages/jobs'));
+const Login = lazy(() => import('./pages/login'));
 
 const PageFallback = (
   <div className="flex min-h-[200px] items-center justify-center">
@@ -36,15 +36,15 @@ function App() {
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="market" element={<Market />} />
-              <Route path="stock-information" element={<StockInformation />} />
-              <Route path="transactions" element={<Navigate to="/history-orders" replace />} />
-              <Route path="history-orders" element={<HistoryOrders />} />
-              <Route path="trade-records" element={<TradeRecords />} />
+              <Route path="stockInformation" element={<StockInformation />} />
+              <Route path="transactions" element={<Navigate to="/historyOrders" replace />} />
+              <Route path="historyOrders" element={<HistoryOrders />} />
+              <Route path="tradeRecords" element={<TradeRecords />} />
               <Route path="logs" element={<Logs />} />
-              <Route path="model-operations" element={<ModelOperations />} />
-              <Route path="sentiment-model" element={<SentimentModel />} />
-              <Route path="strategy-config" element={<StrategyConfig />} />
-              <Route path="real-trading" element={<Navigate to="/strategy-config" replace />} />
+              <Route path="modelOperations" element={<ModelOperations />} />
+              <Route path="sentimentModel" element={<SentimentModel />} />
+              <Route path="strategyConfig" element={<StrategyConfig />} />
+              <Route path="realTrading" element={<Navigate to="/strategyConfig" replace />} />
               <Route path="jobs" element={<JobManagement />} />
               <Route path="settings" element={<Settings />} />
             </Route>

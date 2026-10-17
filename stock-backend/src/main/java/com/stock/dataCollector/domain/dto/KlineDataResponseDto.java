@@ -11,7 +11,7 @@ import java.util.Map;
 /**
  * 股票 K 线数据响应 DTO
  *
- * 对应 /api/stock-data/kline/{code} 接口返回结构。
+ * 对应 /api/stockData/kline/{code} 接口返回结构。
  *
  * @author AI Assistant
  * @since 1.0

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockNews;
@@ -102,6 +102,9 @@ public class SentimentAggregationService {
     }
 
     private String buildFingerprint(StockNews news) {
+        if (news.getContentHash() != null && !news.getContentHash().isBlank()) {
+            return news.getContentHash();
+        }
         String title = normalize(news.getTitle());
         if (!title.isBlank()) {
             return title.length() <= 80 ? title : title.substring(0, 80);
@@ -153,6 +156,15 @@ public class SentimentAggregationService {
     }
 
     private double eventTypeWeight(StockNews news) {
+        String eventType = news.getEventType();
+        if (eventType != null) {
+            return switch (eventType) {
+                case "REGULATORY_OR_LITIGATION", "EARNINGS" -> 1.45D;
+                case "SHAREHOLDER_OR_EXECUTIVE", "MATERIAL_BUSINESS" -> 1.30D;
+                case "CAPITAL_RISK" -> 1.25D;
+                default -> isAnnouncement(news) ? 1.15D : 1D;
+            };
+        }
         String text = normalize((news.getTitle() == null ? "" : news.getTitle())
                 + (news.getContent() == null ? "" : news.getContent()));
         if (containsAny(text, "业绩预告", "业绩快报", "回购", "增持", "减持", "立案调查", "处罚", "退市")) {
@@ -205,4 +217,4 @@ public class SentimentAggregationService {
         return Math.max(minimum, Math.min(maximum, value));
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

@@ -67,7 +67,7 @@ public class JobManagementController {
      * @param pageSize 每页大小
      * @return 执行历史分页结果
      */
-    @GetMapping("/job-runs")
+    @GetMapping("/jobRuns")
     public ResponseDTO<JobManagementDto.ExecutionPageResponse> listRuns(
             @RequestParam(required = false) String jobName,
             @RequestParam(required = false) JobExecutionStatus status,
@@ -88,7 +88,7 @@ public class JobManagementController {
      * @param runId 运行标识
      * @return 执行记录详情
      */
-    @GetMapping("/job-runs/details/{runId}")
+    @GetMapping("/jobRuns/details/{runId}")
     public ResponseDTO<JobManagementDto.ExecutionItem> getRun(@PathVariable String runId) {
         log.info("[JobManagement] 查询执行记录详情: runId={}", runId);
         return ResponseDTO.success(jobManagementService.getRun(runId));
@@ -116,7 +116,7 @@ public class JobManagementController {
      * @param operator 操作人
      * @return 停止结果
      */
-    @PostMapping("/job-runs/stop/{runId}")
+    @PostMapping("/jobRuns/stop/{runId}")
     public ResponseDTO<JobManagementDto.StopResponse> stop(
             @PathVariable String runId,
             @RequestParam(required = false) String operator) {

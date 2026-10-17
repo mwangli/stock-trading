@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/broker-sync")
+@RequestMapping("/api/brokerSync")
 @RequiredArgsConstructor
 public class BrokerSyncController {
 
@@ -44,7 +44,7 @@ public class BrokerSyncController {
      * @param request 历史日期范围
      * @return 历史窗口同步结果
      */
-    @PostMapping("/history-window")
+    @PostMapping("/historyWindow")
     public ResponseDTO<BrokerSyncResultDto> syncHistoryWindow(
             @RequestBody BrokerHistoryQueryRequest request) {
         log.info("手动同步券商已成交历史委托: startDate={}, endDate={}",
@@ -61,7 +61,7 @@ public class BrokerSyncController {
      *
      * @return 最近三年历史同步汇总结果
      */
-    @PostMapping("/history-backfill")
+    @PostMapping("/historyBackfill")
     public ResponseDTO<BrokerSyncResultDto> syncHistoryBackfill() {
         log.info("手动按月同步最近三年券商已成交历史委托");
         return executeSync(brokerDataSyncService::syncHistoryBackfill);
