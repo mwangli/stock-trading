@@ -9,6 +9,7 @@ import {
   Descriptions,
   Drawer,
   Empty,
+  Input,
   Modal,
   Select,
   Space,
@@ -161,22 +162,6 @@ const jobDomainLabelsEn: Record<JobDomain, string> = {
   maintenance: 'System Maintenance',
 };
 
-const jobDomainDescriptions: Record<JobDomain, string> = {
-  data: '负责行情、股票基础信息、新闻与交易日历等外部数据同步。',
-  model: '负责模型训练、预测、评估及模型相关数据处理。',
-  strategy: '负责选股、策略分析、回测和交易信号生成。',
-  trading: '负责券商数据同步、订单执行和交易结果维护。',
-  maintenance: '负责系统状态、清理、补偿和其他基础维护任务。',
-};
-
-const jobDomainDescriptionsEn: Record<JobDomain, string> = {
-  data: 'Synchronizes market data, stock information, news and trading calendars.',
-  model: 'Runs model training, prediction, evaluation and related data processing.',
-  strategy: 'Handles stock selection, strategy analysis, backtesting and signal generation.',
-  trading: 'Manages broker synchronization, order execution and trade result updates.',
-  maintenance: 'Runs system health, cleanup, recovery and other maintenance jobs.',
-};
-
 const resolveJobDomain = (jobName: string, module?: JobDomain): JobDomain => {
   if (module && jobDomains.some((domain) => domain.key === module)) {
     return module;
@@ -203,6 +188,8 @@ const JobManagement: React.FC = () => {
   const [operatingJob, setOperatingJob] = useState<string | null>(null);
   const [operatingRun, setOperatingRun] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [jobModuleFilter, setJobModuleFilter] = useState<JobDomain | undefined>();
+  const [jobNameFilter, setJobNameFilter] = useState('');
 
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyJob, setHistoryJob] = useState<JobItem | null>(null);
@@ -278,6 +265,18 @@ const JobManagement: React.FC = () => {
       || job.latestRun?.status === 'RUNNING'),
     [jobs],
   );
+
+  const filteredJobs = useMemo(() => {
+    const normalizedName = jobNameFilter.trim().toLowerCase();
+    return jobs.filter((job) => {
+      const domain = resolveJobDomain(job.jobName, job.module);
+      const matchesModule = !jobModuleFilter || domain === jobModuleFilter;
+      const matchesName = !normalizedName
+        || job.jobName.toLowerCase().includes(normalizedName)
+        || (job.description ?? '').toLowerCase().includes(normalizedName);
+      return matchesModule && matchesName;
+    });
+  }, [jobModuleFilter, jobNameFilter, jobs]);
 
   useEffect(() => {
     if (!hasActiveJobs && (!historyOpen || !historyJob || !hasActiveHistoryRuns)) {
@@ -518,43 +517,35 @@ const JobManagement: React.FC = () => {
   return (
     <div className="app-page">
       {error && <Alert className="mb-4" type="error" showIcon message={localizedText('任务管理数据读取失败', 'Failed to load job management data')} description={error} closable onClose={() => setError(null)} />}
-      <section className="job-module-guide" aria-labelledby="job-module-guide-title">
-        <div className="job-module-guide-header">
-          <div>
-            <Typography.Title level={5} id="job-module-guide-title" className="!mb-1">{localizedText('任务模块说明', 'Job Modules')}</Typography.Title>
-            <Text type="secondary">{localizedText('统一查看五类自动化任务及其职责范围。', 'Review all five automation modules and their responsibilities in one place.')}</Text>
-          </div>
-          <Tag>{localizedText(`共 ${jobs.length} 个任务`, `${jobs.length} jobs`)}</Tag>
-        </div>
-        <div className="job-module-grid">
-          {jobDomains.map((domain) => {
-            const count = jobs.filter((job) => resolveJobDomain(job.jobName, job.module) === domain.key).length;
-            return (
-              <div className="job-module-item" key={domain.key}>
-                <span className={`job-module-dot job-module-dot-${domain.key}`} />
-                <div className="min-w-0">
-                  <div className="job-module-name">
-                    <Text strong>{localizedText(domain.label, jobDomainLabelsEn[domain.key])}</Text>
-                    <Text type="secondary">{count}</Text>
-                  </div>
-                  <Text type="secondary" className="job-module-description">
-                    {localizedText(jobDomainDescriptions[domain.key], jobDomainDescriptionsEn[domain.key])}
-                  </Text>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
       <Card
         className="surface-card"
         title={<Space><ControlOutlined />{t('jobsPage.status')}</Space>}
         extra={<Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadAll()}>{t('jobsPage.refresh')}</Button>}
       >
+        <Space wrap className="job-filters">
+          <Select<JobDomain>
+            allowClear
+            className="job-module-filter"
+            placeholder={localizedText('按任务模块筛选', 'Filter by module')}
+            value={jobModuleFilter}
+            options={jobDomains.map((domain) => ({
+              label: localizedText(domain.label, jobDomainLabelsEn[domain.key]),
+              value: domain.key,
+            }))}
+            onChange={(value) => setJobModuleFilter(value)}
+          />
+          <Input
+            allowClear
+            className="job-name-filter"
+            placeholder={localizedText('按任务名称搜索', 'Search job name')}
+            value={jobNameFilter}
+            onChange={(event) => setJobNameFilter(event.target.value)}
+          />
+        </Space>
         <Table<JobItem>
           rowKey="jobName"
           columns={jobColumns}
-          dataSource={jobs}
+          dataSource={filteredJobs}
           loading={loading}
           locale={{ emptyText: <Empty description={localizedText('暂无任务配置', 'No job configuration')} /> }}
           scroll={{ x: 1500 }}

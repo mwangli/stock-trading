@@ -1,27 +1,15 @@
 /* AI_GENERATE_START -- */
-.job-module-guide { margin-bottom: 16px; }
-.job-module-guide-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
-.job-module-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
-.job-module-item { display: flex; gap: 10px; min-width: 0; padding: 12px 14px; border: 1px solid var(--border-color); background: var(--panel-bg); }
-.job-module-dot { flex: 0 0 8px; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; }
-.job-module-dot-data { background: #38bdf8; }
-.job-module-dot-model { background: #a78bfa; }
-.job-module-dot-strategy { background: #f59e0b; }
-.job-module-dot-trading { background: #34d399; }
-.job-module-dot-maintenance { background: #94a3b8; }
-.job-module-name { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.job-module-description { display: block; font-size: 12px; line-height: 1.5; }
+.job-filters { width: 100%; margin-bottom: 16px; }
+.job-module-filter { width: 190px; }
+.job-name-filter { width: min(360px, 100%); }
 .job-actions { align-items: center; }
 .job-action { display: inline-flex; min-width: 48px; justify-content: center; white-space: nowrap; font-size: 13px; line-height: 1.5; }
 .job-action:not(.job-action-disabled) { color: var(--brand); cursor: pointer; }
 .job-action:not(.job-action-disabled):hover { text-decoration: underline; }
 .job-action-danger:not(.job-action-disabled) { color: #ef4444; }
 .job-action-disabled { color: var(--text-muted); cursor: not-allowed; }
-@media (max-width: 1200px) {
-  .job-module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 @media (max-width: 640px) {
-  .job-module-guide-header { flex-direction: column; gap: 8px; }
-  .job-module-grid { grid-template-columns: 1fr; }
+  .job-module-filter,
+  .job-name-filter { width: 100%; }
 }
 /* AI_GENERATE_END -- */
