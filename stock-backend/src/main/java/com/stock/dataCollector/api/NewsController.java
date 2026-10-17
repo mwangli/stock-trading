@@ -1,7 +1,10 @@
+// AI_GENERATE_START -
 package com.stock.dataCollector.api;
 
 import com.stock.dataCollector.domain.dto.NewsCollectResponseDto;
+import com.stock.dataCollector.domain.dto.NewsSampleResponseDto;
 import com.stock.dataCollector.domain.dto.ResponseDTO;
+import com.stock.dataCollector.domain.entity.StockNews;
 import com.stock.dataCollector.service.StockNewsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +25,20 @@ import org.springframework.web.bind.annotation.*;
 public class NewsController {
 
     private final StockNewsService stockNewsService;
+
+    /**
+     * 随机读取一条信息表样本，用于情感模型单条验证。
+     *
+     * @return 信息表中的随机新闻或公告；没有可用数据时返回空数据
+     */
+    @GetMapping("/randomSample")
+    public ResponseDTO<NewsSampleResponseDto> randomSample() {
+        log.info("[News] 随机读取情感分析验证样本");
+        return stockNewsService.findRandomNewsSample()
+                .map(this::toSampleResponse)
+                .map(ResponseDTO::success)
+                .orElseGet(() -> ResponseDTO.success(null));
+    }
 
     /**
      * 采集指定股票的新闻
@@ -85,4 +102,23 @@ public class NewsController {
             return ResponseEntity.ok(ResponseDTO.error(e.getMessage()));
         }
     }
+
+    /**
+     * 将新闻实体转换为单条验证样本 DTO。
+     *
+     * @param news 新闻实体
+     * @return 单条验证样本
+     */
+    private NewsSampleResponseDto toSampleResponse(StockNews news) {
+        return NewsSampleResponseDto.builder()
+                .title(news.getTitle())
+                .content(news.getContent())
+                .stockCode(news.getStockCode())
+                .stockName(news.getStockName())
+                .source(news.getSource())
+                .category(news.getCategory())
+                .publishTime(news.getPublishTime() == null ? null : news.getPublishTime().toString())
+                .build();
+    }
 }
+// AI_GENERATE_END -

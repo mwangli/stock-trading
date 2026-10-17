@@ -66,6 +66,9 @@ interface MarketStatCard {
   gainerProgress?: number;
 }
 
+const STOCK_UP_COLOR = '#ef4444';
+const STOCK_DOWN_COLOR = '#22c55e';
+
 const Market: React.FC = () => {
   const { t } = useTranslation();
   const { mode } = useAppTheme();
@@ -172,10 +175,10 @@ const Market: React.FC = () => {
         type: 'candlestick',
         data: klineData.kline,
         itemStyle: {
-          color: '#16a34a',
-          color0: '#ef4444',
-          borderColor: '#16a34a',
-          borderColor0: '#ef4444'
+          color: STOCK_UP_COLOR,
+          color0: STOCK_DOWN_COLOR,
+          borderColor: STOCK_UP_COLOR,
+          borderColor0: STOCK_DOWN_COLOR
         }
       }
     ]
@@ -372,7 +375,7 @@ const Market: React.FC = () => {
       sorter: (a: WatchlistItem, b: WatchlistItem) => a.change - b.change,
       defaultSortOrder: 'descend',
       render: (change: number) => (
-        <span className={`font-mono font-bold text-sm px-2 py-1 rounded ${change >= 0 ? 'bg-[#00e396]/10 text-[#00e396]' : 'bg-[#ff4560]/10 text-[#ff4560]'}`}>
+        <span className={`font-mono font-bold text-sm px-2 py-1 rounded ${change >= 0 ? 'bg-[#ef4444]/10 text-[#ef4444]' : 'bg-[#22c55e]/10 text-[#22c55e]'}`}>
           {change > 0 ? '+' : ''}{change.toFixed(2)}%
         </span>
       )
@@ -412,13 +415,13 @@ const Market: React.FC = () => {
         label: t('market.stats.upDown'),
         value: (
           <span>
-            <span className="text-[#00e396]">{stats?.upCount || 0}</span>
+            <span className="text-[#ef4444]">{stats?.upCount || 0}</span>
             <span className="text-gray-500">↑ / </span>
-            <span className="text-[#ff4560]">{stats?.downCount || 0}</span>
+            <span className="text-[#22c55e]">{stats?.downCount || 0}</span>
             <span className="text-gray-500">↓</span>
           </span>
         ),
-        color: stats?.changePercent && stats.changePercent >= 0 ? '#00e396' : '#ff4560',
+        color: stats?.changePercent && stats.changePercent >= 0 ? STOCK_UP_COLOR : STOCK_DOWN_COLOR,
         icon: <RiseOutlined />
       },
       {
@@ -438,7 +441,7 @@ const Market: React.FC = () => {
               <span>{topGainers[currentGainerIndex]?.code}</span>
               <span className="text-xs text-gray-400">{topGainers[currentGainerIndex]?.name}</span>
               <span className={`text-sm font-mono ${
-                (topGainers[currentGainerIndex]?.changePercent || 0) >= 0 ? 'text-[#00e396]' : 'text-[#ff4560]'
+                (topGainers[currentGainerIndex]?.changePercent || 0) >= 0 ? 'text-[#ef4444]' : 'text-[#22c55e]'
               }`}>
                 {(topGainers[currentGainerIndex]?.changePercent || 0) >= 0 ? '+' : ''}
                 {(topGainers[currentGainerIndex]?.changePercent || 0).toFixed(2)}%
@@ -446,7 +449,7 @@ const Market: React.FC = () => {
             </div>
           </div>
         ) : '--',
-        color: '#00e396',
+        color: STOCK_UP_COLOR,
         icon: <RiseOutlined />,
         isTopGainer: topGainers.length > 1,
         gainerProgress
@@ -464,7 +467,7 @@ const Market: React.FC = () => {
             {stat.isTopGainer && (
               <div className="absolute left-1 top-3 bottom-3 w-1 bg-white/10 rounded-full overflow-hidden">
                 <div
-                  className="w-full bg-[#00e396] transition-all duration-100 ease-linear rounded-full"
+                  className="w-full bg-[#ef4444] transition-all duration-100 ease-linear rounded-full"
                   style={{ height: `${stat.gainerProgress}%` }}
                 />
               </div>
@@ -545,9 +548,9 @@ const Market: React.FC = () => {
               <h2 className="flex items-center gap-3 text-2xl font-semibold text-[var(--text-primary)]">
                 {selectedStock?.code || '--'} <span className="text-lg text-gray-500 font-normal">{selectedStock?.name || '--'}</span>
               </h2>
-              <div className="text-4xl font-mono font-bold text-[#00e396] mt-2">
+              <div className="text-4xl font-mono font-bold text-[var(--text-primary)] mt-2">
                 {selectedStock?.price ? `¥${selectedStock.price.toFixed(2)}` : '¥--'}{' '}
-                <span className={`text-lg ml-2 ${(selectedStock?.change || 0) >= 0 ? 'text-[#00e396]' : 'text-[#ff4560]'}`}>
+                <span className={`text-lg ml-2 ${(selectedStock?.change || 0) >= 0 ? 'text-[#ef4444]' : 'text-[#22c55e]'}`}>
                   {selectedStock?.change !== undefined ? `${selectedStock.change >= 0 ? '+' : ''}${selectedStock.change.toFixed(2)}%` : '--%'}
                 </span>
               </div>

@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.strategyAgent.service;
 
 import com.stock.strategyAgent.api.TradePlanDto;
@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import com.alibaba.fastjson2.JSON;
 import java.util.List;
 import java.util.UUID;
 
@@ -52,6 +53,7 @@ public class TradePlanService {
         AgentTradePlanEntity entity = new AgentTradePlanEntity()
                 .setPlanId(UUID.randomUUID().toString())
                 .setCandidateBatchId(request.getCandidateBatchId().trim())
+                .setPredictionBatchId(request.getPredictionBatchId())
                 .setStockCode(request.getStockCode().trim())
                 .setDirection(request.getDirection().trim().toUpperCase())
                 .setPlannedAmount(request.getPlannedAmount())
@@ -63,6 +65,12 @@ public class TradePlanService {
                 .setCreatedAt(now)
                 .setUpdatedAt(now)
                 .setDecisionMessage("等待 tradingExecutor 重新读取当前事实并执行 Java 风控");
+        entity.setTargetTradeDate(request.getTargetTradeDate())
+                .setStrategyVersion(request.getStrategyVersion())
+                .setPriceConstraint(request.getPriceConstraint())
+                .setReason(request.getReason())
+                .setRiskWarnings(request.getRiskWarnings() == null ? null : JSON.toJSONString(request.getRiskWarnings()))
+                .setUncertainty(request.getUncertainty());
         return toResponse(repository.save(entity));
     }
 
@@ -116,6 +124,7 @@ public class TradePlanService {
         return TradePlanDto.Response.builder()
                 .planId(entity.getPlanId())
                 .candidateBatchId(entity.getCandidateBatchId())
+                .predictionBatchId(entity.getPredictionBatchId())
                 .stockCode(entity.getStockCode())
                 .direction(entity.getDirection())
                 .plannedAmount(entity.getPlannedAmount())
@@ -126,7 +135,14 @@ public class TradePlanService {
                 .status(entity.getStatus().name())
                 .decisionMessage(entity.getDecisionMessage())
                 .updatedAt(entity.getUpdatedAt())
+                .targetTradeDate(entity.getTargetTradeDate())
+                .strategyVersion(entity.getStrategyVersion())
+                .priceConstraint(entity.getPriceConstraint())
+                .reason(entity.getReason())
+                .riskWarnings(StringUtils.hasText(entity.getRiskWarnings())
+                        ? JSON.parseArray(entity.getRiskWarnings(), String.class) : List.of())
+                .uncertainty(entity.getUncertainty())
                 .build();
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

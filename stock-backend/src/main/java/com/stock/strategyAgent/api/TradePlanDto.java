@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.strategyAgent.api;
 
 import lombok.AllArgsConstructor;
@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -27,6 +28,8 @@ public final class TradePlanDto {
     public static class CreateRequest {
         /** 候选批次标识。 */
         private String candidateBatchId;
+        /** 预测批次标识。 */
+        private String predictionBatchId;
         /** 股票代码。 */
         private String stockCode;
         /** 交易方向。 */
@@ -41,6 +44,18 @@ public final class TradePlanDto {
         private LocalDateTime expiresAt;
         /** 幂等键。 */
         private String idempotencyKey;
+        /** 目标交易日。 */
+        private LocalDate targetTradeDate;
+        /** 策略配置版本。 */
+        private String strategyVersion;
+        /** 价格约束说明。 */
+        private String priceConstraint;
+        /** 计划理由。 */
+        private String reason;
+        /** 风险提示。 */
+        private List<String> riskWarnings;
+        /** 不确定性说明。 */
+        private String uncertainty;
     }
 
     /** 交易计划响应。 */
@@ -53,6 +68,8 @@ public final class TradePlanDto {
         private String planId;
         /** 候选批次标识。 */
         private String candidateBatchId;
+        /** 预测批次标识。 */
+        private String predictionBatchId;
         /** 股票代码。 */
         private String stockCode;
         /** 交易方向。 */
@@ -73,6 +90,18 @@ public final class TradePlanDto {
         private String decisionMessage;
         /** 更新时间。 */
         private LocalDateTime updatedAt;
+        /** 目标交易日。 */
+        private LocalDate targetTradeDate;
+        /** 策略配置版本。 */
+        private String strategyVersion;
+        /** 价格约束说明。 */
+        private String priceConstraint;
+        /** 计划理由。 */
+        private String reason;
+        /** 风险提示。 */
+        private List<String> riskWarnings;
+        /** 不确定性说明。 */
+        private String uncertainty;
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

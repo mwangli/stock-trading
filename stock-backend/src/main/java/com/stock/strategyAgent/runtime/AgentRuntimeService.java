@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.runtime;
 
 import com.stock.strategyAgent.config.AgentProperties;
@@ -17,7 +17,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class AgentRuntimeService {
 
-    private static final Set<String> SUPPORTED_OUTPUT_TYPES = Set.of("RESEARCH", "DIAGNOSTIC", "REPORT");
+    private static final Set<String> SUPPORTED_OUTPUT_TYPES = Set.of("RESEARCH", "DIAGNOSTIC", "REPORT", "TRADE_PLAN");
 
     private final AgentModelProvider modelProvider;
     private final AgentProperties properties;
@@ -50,7 +50,7 @@ public class AgentRuntimeService {
         if (response.getStatus() == AgentRuntimeStatus.COMPLETED) {
             try {
                 AgentStructuredOutput structuredOutput = structuredOutputParser.parse(
-                        request.getOutputType(), response.getContent());
+                        request.getOutputType(), response.getContent(), request.getEvidenceRefs());
                 response = AgentRuntimeResponse.builder()
                         .status(response.getStatus())
                         .provider(response.getProvider())
@@ -74,6 +74,15 @@ public class AgentRuntimeService {
      */
     public String providerName() {
         return modelProvider.providerName();
+    }
+
+    /**
+     * 查询模型 Provider 的脱敏状态。
+     *
+     * @return Provider 状态
+     */
+    public AgentModelProviderStatus providerStatus() {
+        return modelProvider.status();
     }
 
     private AgentRuntimeResponse limit(AgentRuntimeResponse response) {
@@ -112,4 +121,4 @@ public class AgentRuntimeService {
                 .build();
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

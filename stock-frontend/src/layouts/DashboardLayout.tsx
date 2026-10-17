@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------------------------
+// AI_GENERATE_START ----------------------------
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, Badge, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
@@ -22,7 +22,7 @@ import {
   UserOutlined,
   HolderOutlined,
   MessageOutlined,
-  SlidersOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import { useAppTheme } from '../theme/AppThemeProvider';
 import { PageHeaderContext, type PageHeaderState } from './PageHeaderContext';
@@ -40,12 +40,12 @@ const DEFAULT_MENU_ORDER = [
   '/stockInformation',
   '/historyOrders',
   '/tradeRecords',
-  '/logs',
   '/modelOperations',
   '/sentimentModel',
-  '/strategyConfig',
+  '/agent',
   '/jobs',
   '/settings',
+  '/logs',
 ];
 
 interface UserMenuPreferenceResponse {
@@ -66,10 +66,17 @@ interface DraggableSidebarItemProps {
 }
 
 const normalizeMenuOrder = (menuOrder: unknown) => {
-  const validKeys = Array.isArray(menuOrder)
-    ? menuOrder.filter((key): key is string => typeof key === 'string' && DEFAULT_MENU_ORDER.includes(key))
-    : [];
-  return [...new Set(validKeys), ...DEFAULT_MENU_ORDER.filter((key) => !validKeys.includes(key))];
+  if (!Array.isArray(menuOrder) || menuOrder.length !== DEFAULT_MENU_ORDER.length) {
+    return DEFAULT_MENU_ORDER;
+  }
+
+  const validKeys = menuOrder.filter(
+    (key): key is string => typeof key === 'string' && DEFAULT_MENU_ORDER.includes(key),
+  );
+  const isCompleteOrder = validKeys.length === DEFAULT_MENU_ORDER.length
+    && new Set(validKeys).size === DEFAULT_MENU_ORDER.length;
+
+  return isCompleteOrder ? validKeys : DEFAULT_MENU_ORDER;
 };
 
 const DraggableSidebarItem: React.FC<DraggableSidebarItemProps> = ({
@@ -194,7 +201,7 @@ const DashboardLayout: React.FC = () => {
     { key: '/logs', icon: <FileTextOutlined />, label: t('layout.logs') },
     { key: '/modelOperations', icon: <ExperimentOutlined />, label: t('layout.modelOperations') },
     { key: '/sentimentModel', icon: <MessageOutlined />, label: t('layout.sentimentModel') },
-    { key: '/strategyConfig', icon: <SlidersOutlined />, label: t('layout.strategyConfig') },
+    { key: '/agent', icon: <RobotOutlined />, label: t('layout.agent') },
     { key: '/jobs', icon: <ScheduleOutlined />, label: t('layout.jobs') },
     { key: '/settings', icon: <SettingOutlined />, label: t('layout.settings') },
   ], [t]);
@@ -251,7 +258,7 @@ const DashboardLayout: React.FC = () => {
     '/logs': t('layout.pageTitles.logs'),
     '/modelOperations': t('layout.pageTitles.modelOperations'),
     '/sentimentModel': t('layout.pageTitles.sentimentModel'),
-    '/strategyConfig': t('layout.pageTitles.strategyConfig'),
+    '/agent': t('layout.pageTitles.agent'),
     '/jobs': t('layout.pageTitles.jobs'),
     '/settings': t('layout.pageTitles.settings'),
   };
@@ -358,4 +365,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END ---------------------------
+// AI_GENERATE_END ----------------------------

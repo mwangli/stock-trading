@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------------
+// AI_GENERATE_START -----------------
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
@@ -315,14 +315,14 @@ const Settings: React.FC = () => {
         <Button icon={<ReloadOutlined />} loading={checking} onClick={() => void checkSystemStatus()}>{t('settings.checkStatus')}</Button>
         <Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={!runtimeSettings} onClick={() => form.submit()}>{t('settings.save')}</Button>
       </div>
-      <Row className="settings-status-cards" gutter={[16, 16]} align="stretch">
-        <Col className="settings-status-col" xs={24} md={12} xl={8}>
+      <div className="settings-status-cards">
+        <div className="settings-status-col">
           <Card className="surface-card compact-card settings-status-card" loading={checking}>
             <Statistic title="券商只读网关" value={brokerHealth.data?.brokerName || t('settings.status.notConfigured')} prefix={<CloudServerOutlined />} />
             <div className="mt-3">{healthTag(brokerHealth.state)} <Text type="secondary" className="ml-2">{brokerHealth.data?.authenticated ? t('settings.status.sessionValid') : t('settings.status.sessionMissing')}</Text></div>
           </Card>
-        </Col>
-        <Col className="settings-status-col" xs={24} md={12} xl={8}>
+        </div>
+        <div className="settings-status-col">
           <Card className="surface-card compact-card settings-status-card" loading={checking}>
             <Statistic title="真实交易门禁" value={tradingHealth.data?.automaticExecutionEnabled ? t('settings.status.autoReady') : t('settings.status.controlledStop')} prefix={<LockOutlined />} />
             <div className="mt-3">
@@ -330,8 +330,8 @@ const Settings: React.FC = () => {
               {healthTag(tradingHealth.state)}
             </div>
           </Card>
-        </Col>
-        <Col className="settings-status-col" xs={24} md={12} xl={8}>
+        </div>
+        <div className="settings-status-col">
           <Card className="surface-card compact-card settings-status-card" loading={checking}>
             <Statistic title={t('layout.sentimentModel')} value={sentimentHealth.data?.modelLoaded ? t('settings.status.loaded') : t('settings.status.notLoaded')} prefix={<CheckCircleOutlined />} />
             <div className="mt-3 flex flex-wrap gap-2">
@@ -339,7 +339,7 @@ const Settings: React.FC = () => {
               <Tag color={sentimentHealth.data?.artifactAvailable ? 'green' : 'red'}>{sentimentHealth.data?.artifactAvailable ? t('settings.status.artifactAvailable') : t('settings.status.artifactMissing')}</Tag>
               <Tag color={sentimentHealth.data?.checksumsVerified ? 'green' : 'gold'}>{sentimentHealth.data?.checksumsVerified ? t('settings.status.verified') : t('settings.status.unverified')}</Tag>
             </div>
-            <div className="mt-3 grid gap-1 text-sm">
+            <div className="settings-status-details mt-3 grid gap-x-4 gap-y-1 text-sm">
               <Text>版本：{sentimentHealth.data?.modelVersion || '未配置'}</Text>
               <Text>制品大小：{formatBytes(sentimentHealth.data?.totalSizeBytes)}</Text>
               <Text>Macro-F1：{formatRatio(sentimentHealth.data?.macroF1)}</Text>
@@ -348,8 +348,8 @@ const Settings: React.FC = () => {
               {sentimentHealth.data?.lastError && <Text type="danger">{sentimentHealth.data.lastError}</Text>}
             </div>
           </Card>
-        </Col>
-      </Row>
+        </div>
+      </div>
 
       <Form<SettingsFormValues>
         form={form}
@@ -481,4 +481,4 @@ const Settings: React.FC = () => {
 };
 
 export default Settings;
-// AI_GENERATE_END ----------------
+// AI_GENERATE_END -----------------

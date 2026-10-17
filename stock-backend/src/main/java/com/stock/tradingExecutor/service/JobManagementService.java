@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
@@ -15,6 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 任务查询和调度操作服务。
@@ -38,8 +41,15 @@ public class JobManagementService {
      */
     @Transactional(readOnly = true)
     public JobManagementDto.JobListResponse listJobs() {
-        List<JobManagementDto.JobItem> items = jobConfigRepository.findAll().stream()
-                .map(this::toJobItem)
+        List<JobConfig> jobs = jobConfigRepository.findAll();
+        List<String> jobNames = jobs.stream().map(JobConfig::getJobName).toList();
+        Map<String, JobExecutionRecord> latestRuns = jobExecutionService.getLatestRuns(jobNames).stream()
+                .collect(Collectors.toMap(JobExecutionRecord::getJobName, Function.identity(),
+                        (first, ignored) -> first));
+        Map<String, JobSchedulerService.QuartzRuntimeState> runtimeStates =
+                jobSchedulerService.getRuntimeStates(jobNames);
+        List<JobManagementDto.JobItem> items = jobs.stream()
+                .map(job -> toJobItem(job, runtimeStates.get(job.getJobName()), latestRuns.get(job.getJobName())))
                 .toList();
         return JobManagementDto.JobListResponse.builder().items(items).build();
     }
@@ -150,6 +160,12 @@ public class JobManagementService {
     private JobManagementDto.JobItem toJobItem(JobConfig job) {
         JobSchedulerService.QuartzRuntimeState runtime = jobSchedulerService.getRuntimeState(job.getJobName());
         JobExecutionRecord latestRun = jobExecutionService.getLatestRun(job.getJobName());
+        return toJobItem(job, runtime, latestRun);
+    }
+
+    private JobManagementDto.JobItem toJobItem(JobConfig job,
+                                               JobSchedulerService.QuartzRuntimeState runtime,
+                                               JobExecutionRecord latestRun) {
         return JobManagementDto.JobItem.builder()
                 .jobName(job.getJobName())
                 .methodName(job.getMethodName())
@@ -216,4 +232,4 @@ public class JobManagementService {
                 .build();
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

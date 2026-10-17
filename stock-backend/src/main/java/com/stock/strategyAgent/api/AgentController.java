@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.strategyAgent.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -6,6 +6,7 @@ import com.stock.strategyAgent.rag.AgentRagService;
 import com.stock.strategyAgent.service.AgentApplicationService;
 import com.stock.strategyAgent.service.AgentMemoryService;
 import com.stock.strategyAgent.service.TradePlanService;
+import com.stock.strategyAgent.service.TradePlanAgentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -34,6 +35,7 @@ public class AgentController {
     private final AgentMemoryService memoryService;
     private final AgentRagService ragService;
     private final TradePlanService tradePlanService;
+    private final TradePlanAgentService tradePlanAgentService;
 
     /**
      * 创建 Agent 会话。
@@ -81,6 +83,19 @@ public class AgentController {
     public ResponseDTO<AgentDtos.TaskResponse> diagnose(@RequestBody AgentDtos.DiagnosticRequest request) {
         log.info("[Agent] 执行运行诊断: jobName={}", request == null ? null : request.getJobName());
         return ResponseDTO.success(applicationService.diagnose(request));
+    }
+
+    /**
+     * 生成结构化交易计划草案。
+     *
+     * @param request 生成请求
+     * @return 待重新复核的交易计划
+     */
+    @PostMapping("/tasks/tradePlan")
+    public ResponseDTO<TradePlanDto.Response> tradePlan(@RequestBody AgentDtos.TradePlanDraftRequest request) {
+        log.info("[Agent] 生成交易计划草案: candidateBatchId={}",
+                request == null ? null : request.getCandidateBatchId());
+        return ResponseDTO.success(tradePlanAgentService.generate(request));
     }
 
     /**
@@ -255,4 +270,4 @@ public class AgentController {
         return ResponseDTO.success(tradePlanService.revalidate(planId));
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

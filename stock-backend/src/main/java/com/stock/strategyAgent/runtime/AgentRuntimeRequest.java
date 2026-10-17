@@ -1,8 +1,10 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.strategyAgent.runtime;
 
 import lombok.Builder;
 import lombok.Value;
+
+import java.util.List;
 
 /**
  * Agent Runtime 受控调用请求。
@@ -35,7 +37,10 @@ public class AgentRuntimeRequest {
     /** 已由结构化查询服务提供的证据摘要。 */
     String evidenceSummary;
 
+    /** 本次任务允许引用的证据编号。 */
+    List<String> evidenceRefs;
+
     /** 结构化输出类型。 */
     String outputType;
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.runtime;
 
 /**
@@ -23,5 +23,14 @@ public interface AgentModelProvider {
      * @return 提供方名称
      */
     String providerName();
+
+    /**
+     * 返回脱敏 Provider 状态。
+     *
+     * @return Provider 状态
+     */
+    default AgentModelProviderStatus status() {
+        return AgentModelProviderStatus.builder().provider(providerName()).build();
+    }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

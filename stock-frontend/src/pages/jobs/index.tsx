@@ -23,6 +23,7 @@ import {
   ClockCircleOutlined,
   ControlOutlined,
   ReloadOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import request from '../../utils/request';
 import { getApiErrorMessage, readApiData, type ApiResponse } from '../../utils/api';
@@ -52,7 +53,9 @@ interface ExecutionItem {
 
 interface JobItem {
   jobName: string;
-  methodName: string;
+  methodName?: string;
+  method?: string;
+  method_name?: string;
   description?: string;
   cronExpression: string;
   module?: JobDomain;
@@ -188,6 +191,8 @@ const JobManagement: React.FC = () => {
   const [operatingJob, setOperatingJob] = useState<string | null>(null);
   const [operatingRun, setOperatingRun] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [jobModuleInput, setJobModuleInput] = useState<JobDomain | undefined>();
+  const [jobNameInput, setJobNameInput] = useState('');
   const [jobModuleFilter, setJobModuleFilter] = useState<JobDomain | undefined>();
   const [jobNameFilter, setJobNameFilter] = useState('');
 
@@ -277,6 +282,11 @@ const JobManagement: React.FC = () => {
       return matchesModule && matchesName;
     });
   }, [jobModuleFilter, jobNameFilter, jobs]);
+
+  const applyJobFilters = () => {
+    setJobModuleFilter(jobModuleInput);
+    setJobNameFilter(jobNameInput);
+  };
 
   useEffect(() => {
     if (!hasActiveJobs && (!historyOpen || !historyJob || !hasActiveHistoryRuns)) {
@@ -426,7 +436,7 @@ const JobManagement: React.FC = () => {
       dataIndex: 'methodName',
       key: 'methodName',
       width: 190,
-      render: (value: string) => <Text code>{value || '-'}</Text>,
+      render: (_, record) => <Text code>{record.methodName || record.method || record.method_name || '-'}</Text>,
     },
     {
       title: localizedText('所属模块', 'Module'),
@@ -527,20 +537,23 @@ const JobManagement: React.FC = () => {
             allowClear
             className="job-module-filter"
             placeholder={localizedText('按任务模块筛选', 'Filter by module')}
-            value={jobModuleFilter}
+            value={jobModuleInput}
             options={jobDomains.map((domain) => ({
               label: localizedText(domain.label, jobDomainLabelsEn[domain.key]),
               value: domain.key,
             }))}
-            onChange={(value) => setJobModuleFilter(value)}
+            onChange={(value) => setJobModuleInput(value)}
           />
           <Input
             allowClear
             className="job-name-filter"
             placeholder={localizedText('按任务名称搜索', 'Search job name')}
-            value={jobNameFilter}
-            onChange={(event) => setJobNameFilter(event.target.value)}
+            value={jobNameInput}
+            onChange={(event) => setJobNameInput(event.target.value)}
           />
+          <Button type="primary" icon={<SearchOutlined />} onClick={applyJobFilters}>
+            {localizedText('查询', 'Search')}
+          </Button>
         </Space>
         <Table<JobItem>
           rowKey="jobName"

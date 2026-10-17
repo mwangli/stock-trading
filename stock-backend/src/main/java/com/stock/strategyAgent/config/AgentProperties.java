@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.strategyAgent.config;
 
 import lombok.Data;
@@ -19,17 +19,14 @@ public class AgentProperties {
     /** Agent 总开关，默认关闭。 */
     private boolean enabled = false;
 
-    /** 模型提供方名称。 */
+    /** 模型选择策略，支持 disabled、deepseek、ollama 和 auto。 */
     private String provider = "disabled";
 
-    /** 外部模型 API 地址。 */
-    private String apiUrl = "";
+    /** DeepSeek API 配置。 */
+    private DeepSeekProperties deepseek = new DeepSeekProperties();
 
-    /** 外部模型 API 密钥。 */
-    private String apiKey = "";
-
-    /** 外部模型名称。 */
-    private String model = "";
+    /** Ollama 本地模型配置。 */
+    private OllamaProperties ollama = new OllamaProperties();
 
     /** 单次任务最大工具调用次数。 */
     private int maxSteps = 6;
@@ -78,5 +75,49 @@ public class AgentProperties {
 
     /** Embedding 模型版本。 */
     private String embeddingModelVersion = "";
+
+    /**
+     * DeepSeek API 连接配置。
+     *
+     * @author mwangli
+     * @since 2026-10-17
+     */
+    @Data
+    public static class DeepSeekProperties {
+
+        /** 是否启用 DeepSeek。 */
+        private boolean enabled = false;
+
+        /** OpenAI-compatible API 地址。 */
+        private String baseUrl = "https://api.deepseek.com/v1";
+
+        /** DeepSeek API Key，仅从运行环境注入。 */
+        private String apiKey = "";
+
+        /** DeepSeek 模型名称。 */
+        private String model = "deepseek-chat";
+    }
+
+    /**
+     * Ollama 本地模型连接配置。
+     *
+     * @author mwangli
+     * @since 2026-10-17
+     */
+    @Data
+    public static class OllamaProperties {
+
+        /** 是否启用 Ollama。 */
+        private boolean enabled = false;
+
+        /** Ollama OpenAI-compatible API 地址。 */
+        private String baseUrl = "http://localhost:11434/v1";
+
+        /** Ollama 协议兼容 Key，不作为真实安全凭据。 */
+        private String apiKey = "ollama";
+
+        /** Ollama 模型名称。 */
+        private String model = "deepseek-r1:7b";
+    }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

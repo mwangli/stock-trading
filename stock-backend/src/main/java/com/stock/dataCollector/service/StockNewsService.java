@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START --------
 package com.stock.dataCollector.service;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -91,6 +93,23 @@ public class StockNewsService {
 
     /** 代码→名称全局缓存，lazy 加载，避免重复 findAll */
     private volatile Map<String, String> codeToNameCache = null;
+
+    /**
+     * 从信息表中随机读取一条包含标题或正文的新闻样本。
+     *
+     * @return 可用于单条情感验证的随机新闻；无可用数据时返回 empty
+     */
+    public Optional<StockNews> findRandomNewsSample() {
+        Criteria usableContent = new Criteria().orOperator(
+                Criteria.where("title").regex("\\S"),
+                Criteria.where("content").regex("\\S"));
+        Aggregation aggregation = Aggregation.newAggregation(
+                Aggregation.match(usableContent),
+                Aggregation.sample(1));
+        List<StockNews> samples = mongoTemplate.aggregate(aggregation, "stock_news", StockNews.class)
+                .getMappedResults();
+        return samples.stream().findFirst();
+    }
 
     @PreDestroy
     public void shutdown() {
@@ -679,4 +698,4 @@ public class StockNewsService {
     /** 采集来源（新闻/公告）。 */
     private record NewsSource(String menuId, String category) {}
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END --------

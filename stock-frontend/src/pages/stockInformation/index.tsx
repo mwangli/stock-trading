@@ -1,7 +1,7 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START -----------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, Empty, Input, Pagination, Space, Table, Tooltip, message } from 'antd';
-import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { SearchOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
 import { formatDateTime } from '../../utils/dateTime';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
@@ -62,6 +62,7 @@ const StockInformation: React.FC = () => {
   const [current, setCurrent] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
+  const [searchToken, setSearchToken] = useState(0);
   const [loading, setLoading] = useState(false);
 
   const loadStocks = useCallback(async (page: number, size: number, search: string) => {
@@ -92,11 +93,12 @@ const StockInformation: React.FC = () => {
 
   useEffect(() => {
     void loadStocks(current, pageSize, appliedKeyword);
-  }, [appliedKeyword, current, loadStocks, pageSize]);
+  }, [appliedKeyword, current, loadStocks, pageSize, searchToken]);
 
   const search = useCallback(() => {
     setCurrent(1);
     setAppliedKeyword(keyword.trim());
+    setSearchToken((value) => value + 1);
   }, [keyword]);
 
   const formatMarket = (value?: string) => value ? marketLabels[value.toUpperCase()] ?? value : '-';
@@ -145,13 +147,6 @@ const StockInformation: React.FC = () => {
       >
         <SearchOutlined />{t('common.search')}
       </button>
-      <button
-        type="button"
-        className="inline-flex h-8 items-center gap-1 rounded border border-[var(--border-color)] px-3 text-sm text-[var(--text-primary)] hover:border-blue-500"
-        onClick={() => void loadStocks(current, pageSize, appliedKeyword)}
-      >
-        <ReloadOutlined />{t('common.refresh')}
-      </button>
     </Space>
   ), [appliedKeyword, current, keyword, loadStocks, pageSize, search]);
 
@@ -196,4 +191,4 @@ const StockInformation: React.FC = () => {
 };
 
 export default StockInformation;
-// AI_GENERATE_END ---------
+// AI_GENERATE_END -----------

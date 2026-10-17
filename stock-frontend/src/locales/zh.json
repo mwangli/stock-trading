@@ -45,6 +45,7 @@
     "modelOperations": "涨跌预测",
     "sentimentModel": "情感模型",
     "strategyConfig": "交易策略",
+    "agent": "智能决策",
     "jobs": "任务管理",
     "pageTitles": {
       "dashboard": "数据总览",
@@ -56,6 +57,7 @@
       "modelOperations": "涨跌预测",
       "sentimentModel": "情感模型",
       "strategyConfig": "交易策略",
+      "agent": "智能决策",
       "jobs": "任务管理",
       "settings": "系统设置"
     },
@@ -137,7 +139,7 @@
     "lastSync": "最近同步",
     "cards": { "totalAssets": "总资产", "availableCash": "可用资金", "positionValue": "持仓市值", "frozenCash": "冻结资金", "realizedTotal": "累计已实现收益", "realizedToday": "今日已实现收益", "realizedMonth": "本月已实现收益", "realizedRate": "累计收益率", "dailyRate": "日收益率", "monthlyRate": "月收益率" },
     "sections": { "returnStats": "收益率统计", "completedTrades": "已完成交易", "winRate": "胜率", "averageReturn": "平均收益率", "profitLoss": "盈利 / 亏损", "ranking": "收益率排行", "daily": "日收益率", "monthly": "月收益率", "positions": "当前持仓", "best": "最高收益率", "worst": "最低收益率", "basis": "收益指标基于已实现 FIFO 交易记录计算" },
-    "columns": { "stockCode": "股票代码", "stockName": "股票名称", "totalQuantity": "持仓数量", "availableQuantity": "可卖数量", "averageCost": "成本价", "currentPrice": "现价", "marketValue": "市值", "stock": "股票", "netProfit": "净收益", "returnRate": "收益率", "dailyReturnRate": "日收益率", "buyTime": "买入时间", "holdingDays": "持仓天数", "sellTime": "卖出时间", "period": "周期", "transactionAmount": "交易金额", "tradeCount": "交易笔数", "winningTradeCount": "盈利笔数" },
+    "columns": { "stockCode": "股票代码", "stockName": "股票名称", "totalQuantity": "持仓数量", "availableQuantity": "可卖数量", "averageCost": "成本价", "currentPrice": "现价", "marketValue": "市值", "stock": "股票", "netProfit": "净收益", "cumulativeNetProfit": "累计净收益", "returnRate": "收益率", "dailyReturnRate": "日收益率", "buyTime": "买入时间", "holdingDays": "持仓天数", "sellTime": "卖出时间", "period": "周期", "transactionAmount": "交易金额", "tradeCount": "交易笔数", "winningTradeCount": "盈利笔数" },
     "units": { "days": "天" },
     "status": { "completed": "已完成", "partial": "部分卖出" },
     "empty": { "ranking": "暂无已实现交易收益排行", "daily": "暂无日收益数据", "monthly": "暂无月收益数据", "positions": "暂无真实持仓数据" },

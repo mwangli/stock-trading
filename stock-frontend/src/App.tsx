@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------------
+// AI_GENERATE_START -----------------
 import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { Spin } from 'antd';
@@ -15,7 +15,7 @@ const TradeRecords = lazy(() => import('./pages/tradeRecords'));
 const Logs = lazy(() => import('./pages/logs'));
 const ModelOperations = lazy(() => import('./pages/modelOperations'));
 const SentimentModel = lazy(() => import('./pages/sentimentModel'));
-const StrategyConfig = lazy(() => import('./pages/strategyConfig'));
+const AgentPage = lazy(() => import('./pages/agent'));
 const JobManagement = lazy(() => import('./pages/jobs'));
 const Login = lazy(() => import('./pages/login'));
 
@@ -43,8 +43,9 @@ function App() {
               <Route path="logs" element={<Logs />} />
               <Route path="modelOperations" element={<ModelOperations />} />
               <Route path="sentimentModel" element={<SentimentModel />} />
-              <Route path="strategyConfig" element={<StrategyConfig />} />
-              <Route path="realTrading" element={<Navigate to="/strategyConfig" replace />} />
+              <Route path="strategyConfig" element={<Navigate to="/agent" replace />} />
+              <Route path="agent" element={<AgentPage />} />
+              <Route path="realTrading" element={<Navigate to="/agent" replace />} />
               <Route path="jobs" element={<JobManagement />} />
               <Route path="settings" element={<Settings />} />
             </Route>
@@ -72,4 +73,4 @@ function PublicOnlyRoute() {
 }
 
 export default App;
-// AI_GENERATE_END ---------------
+// AI_GENERATE_END -----------------

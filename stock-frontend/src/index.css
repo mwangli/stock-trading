@@ -1,4 +1,4 @@
-/* AI_GENERATE_START ------------- */
+/* AI_GENERATE_START -------------- */
 @import "tailwindcss";
 
 :root,
@@ -346,26 +346,44 @@ select { letter-spacing: 0; }
   padding-top: 12px;
 }
 
+.settings-status-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+}
+
 .settings-status-col {
   display: flex;
+  min-width: 0;
 }
 
 .settings-status-card {
   width: 100%;
-  height: 100%;
+  height: auto;
 }
 
 .settings-status-card .ant-card-body {
-  height: 100%;
+  height: auto;
+  padding: 12px 14px;
 }
 
 .settings-status-card .ant-statistic {
-  min-height: 84px;
+  min-height: 0;
 }
 
 .settings-status-card .ant-statistic-content {
-  min-height: 36px;
+  min-height: 0;
   overflow-wrap: anywhere;
+}
+
+.settings-status-details {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 640px) {
+  .settings-status-details {
+    grid-template-columns: 1fr;
+  }
 }
 
 .metric-strip {
@@ -611,4 +629,4 @@ select { letter-spacing: 0; }
     min-width: 96px;
   }
 }
-/* AI_GENERATE_END ------------- */
+/* AI_GENERATE_END -------------- */

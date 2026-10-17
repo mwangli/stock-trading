@@ -97,10 +97,17 @@ trading:
 
 agent:
   enabled: ${AGENT_ENABLED:false}
-  provider: ${AGENT_PROVIDER:disabled}
-  api-url: ${AGENT_API_URL:}
-  api-key: ${AGENT_API_KEY:}
-  model: ${AGENT_MODEL:}
+  provider: ${AGENT_PROVIDER:auto}
+  deepseek:
+    enabled: ${AGENT_DEEPSEEK_ENABLED:false}
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com/v1}
+    api-key: ${DEEPSEEK_API_KEY:${DS_API_KEY:}}
+    model: ${DEEPSEEK_MODEL:deepseek-chat}
+  ollama:
+    enabled: ${AGENT_OLLAMA_ENABLED:false}
+    base-url: ${OLLAMA_BASE_URL:http://localhost:11434/v1}
+    api-key: ${OLLAMA_API_KEY:ollama}
+    model: ${OLLAMA_MODEL:deepseek-r1:7b}
   max-steps: ${AGENT_MAX_STEPS:6}
   max-model-rounds: ${AGENT_MAX_MODEL_ROUNDS:3}
   timeout-ms: ${AGENT_TIMEOUT_MS:30000}
