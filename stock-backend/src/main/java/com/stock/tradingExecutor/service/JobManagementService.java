@@ -175,7 +175,16 @@ public class JobManagementService {
         if (!Integer.valueOf(1).equals(job.getStatus())) {
             return "STOPPED";
         }
-        return runtime.registered() ? "ENABLED" : "NOT_REGISTERED";
+        if (!runtime.registered()) {
+            return "NOT_REGISTERED";
+        }
+        if ("PAUSED".equals(runtime.triggerState())) {
+            return "PAUSED";
+        }
+        if ("ERROR".equals(runtime.triggerState())) {
+            return "ERROR";
+        }
+        return "ENABLED";
     }
 
     private JobConfig getConfig(String jobName) {

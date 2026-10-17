@@ -15,13 +15,17 @@ import org.quartz.SchedulerException;
 import org.quartz.Trigger;
 import org.quartz.TriggerBuilder;
 import org.quartz.TriggerKey;
+import org.quartz.impl.matchers.GroupMatcher;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Quartz 固定任务调度服务。
@@ -65,6 +69,10 @@ public class JobSchedulerService {
     public void reconcileAllJobs() {
         log.info("========== [任务调度] 开始协调 Quartz 持久化任务 ==========");
         List<JobConfig> jobs = jobConfigRepository.findAll();
+        Set<String> configuredJobNames = jobs.stream()
+                .map(JobConfig::getJobName)
+                .filter(JOB_CLASSES::containsKey)
+                .collect(Collectors.toCollection(HashSet::new));
         for (JobConfig job : jobs) {
             if (!JOB_CLASSES.containsKey(job.getJobName())) {
                 log.warn("[任务调度] 忽略未登记的任务: {}", job.getJobName());
@@ -77,9 +85,31 @@ public class JobSchedulerService {
                         job.getJobName(), exception);
             }
         }
+        removeOrphanedJobs(configuredJobNames);
         log.info("========== [任务调度] Quartz 持久化任务协调完成，共检查 {} 个任务 ==========", jobs.size());
     }
 
+    /**
+     * 删除数据库已不存在、但仍残留在本系统 Quartz group 中的任务。
+     *
+     * @param configuredJobNames 当前数据库中有效且已登记的任务名称
+     */
+    private void removeOrphanedJobs(Set<String> configuredJobNames) {
+        try {
+            Set<JobKey> persistedKeys = quartzScheduler
+                    .getJobKeys(GroupMatcher.jobGroupEquals(QUARTZ_GROUP));
+            for (JobKey persistedKey : persistedKeys) {
+                if (configuredJobNames.contains(persistedKey.getName())) {
+                    continue;
+                }
+                boolean deleted = quartzScheduler.deleteJob(persistedKey);
+                log.info("[任务调度] 清理 Quartz 孤儿任务: jobName={}, deleted={}",
+                        persistedKey.getName(), deleted);
+            }
+        } catch (SchedulerException exception) {
+            throw new IllegalStateException("清理 Quartz 孤儿任务失败", exception);
+        }
+    }
     /**
      * 幂等注册固定任务，并根据配置同步启用或暂停状态。
      *

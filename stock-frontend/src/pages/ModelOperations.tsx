@@ -207,6 +207,11 @@ interface ModelAbility {
   directionAccuracy?: number;
   actualUpRate?: number;
   constantBaselineAccuracy?: number;
+  directionAuc?: number;
+  brierScore?: number;
+  brierBaseline?: number;
+  expectedCalibrationError?: number;
+  calibrationSampleCount?: number;
   directionProbabilityStd?: number;
   predictedReturnStd?: number;
   rollingWindowBatchCount?: number;
@@ -1014,6 +1019,11 @@ const ModelOperations: React.FC = () => {
               <Col xs={12} md={6} xl={3}><Statistic title={localizedText('评估完成率', 'Evaluation Completion')} value={formatPercent(modelAbility.evaluationRate)} /></Col>
               <Col xs={12} md={6} xl={3}><Statistic title={localizedText('方向准确率', 'Direction Accuracy')} value={formatPercent(modelAbility.directionAccuracy)} /></Col>
               <Col xs={12} md={6} xl={3}><Statistic title="常数基线准确率" value={formatPercent(modelAbility.constantBaselineAccuracy)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="方向 AUC" value={formatNumber(modelAbility.directionAuc)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="Brier Score" value={formatNumber(modelAbility.brierScore)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="Brier 基线" value={formatNumber(modelAbility.brierBaseline)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="ECE" value={formatPercent(modelAbility.expectedCalibrationError)} /></Col>
+              <Col xs={12} md={6} xl={3}><Statistic title="校准样本" value={modelAbility.calibrationSampleCount ?? 0} /></Col>
               <Col xs={12} md={6} xl={3}><Statistic title="上涨概率标准差" value={formatPercent(modelAbility.directionProbabilityStd)} /></Col>
               <Col xs={12} md={6} xl={3}><Statistic title="预测收益标准差" value={formatPercent(modelAbility.predictedReturnStd)} /></Col>
               <Col xs={12} md={6} xl={3}><Statistic title="滚动评估批次" value={modelAbility.rollingWindowBatchCount ?? 0} /></Col>

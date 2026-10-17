@@ -4,6 +4,8 @@ package com.stock.tradingExecutor.job;
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
 import com.stock.tradingExecutor.runtime.service.SystemRuntimeConfigService;
 import jakarta.transaction.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -68,15 +70,26 @@ public class JobExecutionService {
         }
 
         String runId = UUID.randomUUID().toString();
-        JobExecutionRecord record = createQueuedRecord(jobName, JobTriggerSource.MANUAL,
-                normalizeOperator(operator), null, runId);
+        JobExecutionRecord record;
         try {
-            jobSchedulerService.triggerJob(jobName, record.getRunId(), JobTriggerSource.MANUAL,
-                    record.getTriggeredBy());
-        } catch (RuntimeException exception) {
-            markFailure(record, exception, LocalDateTime.now());
-            throw exception;
+            record = createQueuedRecord(jobName, JobTriggerSource.MANUAL,
+                    normalizeOperator(operator), null, runId);
+        } catch (DataIntegrityViolationException exception) {
+            throw new IllegalStateException("任务已有排队或运行中的执行: " + jobName, exception);
         }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    jobSchedulerService.triggerJob(jobName, record.getRunId(), JobTriggerSource.MANUAL,
+                            record.getTriggeredBy());
+                } catch (RuntimeException exception) {
+                    markFailure(record, exception, LocalDateTime.now());
+                    log.error("[任务执行] 手动任务提交 Quartz 失败: jobName={}, runId={}",
+                            jobName, record.getRunId(), exception);
+                }
+            }
+        });
         return runId;
     }
 

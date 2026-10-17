@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START --------------
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
@@ -35,6 +35,7 @@ const { Text } = Typography;
 
 interface SettingsFormValues {
   theme: ThemeMode;
+  autoThemeEnabled: boolean;
   language: 'en' | 'zh';
   notifications: boolean;
   refreshRate: number;
@@ -163,7 +164,8 @@ const Settings: React.FC = () => {
   const [form] = Form.useForm<SettingsFormValues>();
   const configuredRefreshRate = Form.useWatch('refreshRate', form);
   const { t, i18n } = useTranslation();
-  const { mode, setMode, resetToAutomatic } = useAppTheme();
+  const { mode, autoThemeEnabled, setMode, setAutoThemeEnabled, resetToAutomatic } = useAppTheme();
+  const formAutoThemeEnabled = Form.useWatch('autoThemeEnabled', form);
   const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(false);
   const [runtimeLoading, setRuntimeLoading] = useState(true);
@@ -263,7 +265,10 @@ const Settings: React.FC = () => {
       setRuntimeSettings(readApiData(response, '保存运行控制配置失败'));
       window.localStorage.setItem(STORAGE_KEYS.notifications, String(values.notifications));
       window.localStorage.setItem(STORAGE_KEYS.refreshRate, String(values.refreshRate));
-      setMode(values.theme);
+      setAutoThemeEnabled(values.autoThemeEnabled);
+      if (!values.autoThemeEnabled) {
+        setMode(values.theme);
+      }
       await i18n.changeLanguage(values.language);
       message.success(t('settings.successMsg'));
     } catch (cause) {
@@ -279,6 +284,7 @@ const Settings: React.FC = () => {
     const automaticMode = resetToAutomatic();
     form.setFieldsValue({
       theme: automaticMode,
+      autoThemeEnabled: true,
       language: i18n.language.startsWith('zh') ? 'zh' : 'en',
       notifications: true,
       refreshRate: 30000,
@@ -288,6 +294,7 @@ const Settings: React.FC = () => {
 
   const formInitialValues: SettingsFormValues = {
     theme: mode,
+    autoThemeEnabled,
     language: i18n.language.startsWith('zh') ? 'zh' : 'en',
     notifications: readBoolean(STORAGE_KEYS.notifications, true),
     refreshRate: readNumber(STORAGE_KEYS.refreshRate, 30000),
@@ -353,8 +360,13 @@ const Settings: React.FC = () => {
         <Card className="surface-card" title={t('settings.generalTitle')}>
           <Row gutter={[24, 8]}>
             <Col xs={24} md={12}>
+              <Form.Item label={t('settings.fields.autoTheme')} name="autoThemeEnabled" valuePropName="checked" extra={t('settings.themeAutoHint')}>
+                <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
               <Form.Item label={t('settings.fields.theme')} name="theme">
-                <Select options={[{ value: 'light', label: t('settings.options.theme.light') }, { value: 'dark', label: t('settings.options.theme.dark') }]} />
+                <Select disabled={formAutoThemeEnabled ?? autoThemeEnabled} options={[{ value: 'light', label: t('settings.options.theme.light') }, { value: 'dark', label: t('settings.options.theme.dark') }]} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -469,4 +481,4 @@ const Settings: React.FC = () => {
 };
 
 export default Settings;
-// AI_GENERATE_END ------------
+// AI_GENERATE_END --------------

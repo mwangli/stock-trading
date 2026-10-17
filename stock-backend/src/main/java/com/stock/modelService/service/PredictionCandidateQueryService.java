@@ -6,9 +6,11 @@ import com.stock.modelService.domain.entity.ModelPredictionBatchDocument;
 import com.stock.modelService.domain.entity.ModelPredictionDocument;
 import com.stock.modelService.persistence.ModelPredictionBatchRepository;
 import com.stock.modelService.persistence.ModelPredictionRepository;
+import com.stock.strategyAnalysis.config.BacktestProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -27,6 +29,7 @@ public class PredictionCandidateQueryService {
 
     private final ModelPredictionBatchRepository batchRepository;
     private final ModelPredictionRepository predictionRepository;
+    private final BacktestProperties backtestProperties;
 
     /**
      * 查询指定目标交易日最新可用预测批次。
@@ -79,6 +82,7 @@ public class PredictionCandidateQueryService {
                 && batch.getTargetTradeDate() != null && batch.getTargetTradeDate().equals(item.getTargetTradeDate())
                 && item.getPredictedReturn() != null && Double.isFinite(item.getPredictedReturn())
                 && item.getDirectionProbability() != null && Double.isFinite(item.getDirectionProbability())
+                && item.getDirectionProbability() >= 0D && item.getDirectionProbability() <= 1D
                 && item.getDownsideRisk() != null && Double.isFinite(item.getDownsideRisk())
                 && item.getPredictedReturnPercentile() != null
                 && Double.isFinite(item.getPredictedReturnPercentile())
@@ -92,11 +96,36 @@ public class PredictionCandidateQueryService {
                 .stockName(item.getStockName())
                 .currentPrice(item.getBaseClosePrice())
                 .predictedReturn(item.getPredictedReturn())
+                .estimatedNetExpectedReturn(estimateNetExpectedReturn(item.getPredictedReturn()))
                 .directionProbability(item.getDirectionProbability())
                 .downsideRisk(item.getDownsideRisk())
                 .predictedReturnPercentile(item.getPredictedReturnPercentile())
                 .directionProbabilityPercentile(item.getDirectionProbabilityPercentile())
                 .build();
+    }
+
+    /**
+     * 估算扣除交易成本和安全边际后的单日净预期收益。
+     *
+     * 该值用于候选过滤和审计展示，不等同于真实成交收益；最低佣金、成交失败、
+     * 涨跌停和部分成交需要在后续模拟交易引擎中按订单金额进一步计算。
+     *
+     * @param predictedReturn 模型预测收益率
+     * @return 成本后净预期收益率
+     */
+    private Double estimateNetExpectedReturn(Double predictedReturn) {
+        if (predictedReturn == null || !Double.isFinite(predictedReturn)) {
+            return null;
+        }
+        BigDecimal slippageRate = backtestProperties.getSlippageBps()
+                .multiply(BigDecimal.valueOf(2D))
+                .divide(BigDecimal.valueOf(10000D), 10, java.math.RoundingMode.HALF_UP);
+        BigDecimal roundTripVariableCost = backtestProperties.getCommissionRate().multiply(BigDecimal.valueOf(2D))
+                .add(backtestProperties.getTransferFeeRate().multiply(BigDecimal.valueOf(2D)))
+                .add(backtestProperties.getStampDutyRate())
+                .add(slippageRate)
+                .add(backtestProperties.getCandidateSafetyMarginRate());
+        return BigDecimal.valueOf(predictedReturn).subtract(roundTripVariableCost).doubleValue();
     }
 }
 // AI_GENERATE_END ---

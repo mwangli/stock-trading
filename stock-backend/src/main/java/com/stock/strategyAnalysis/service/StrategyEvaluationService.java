@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.strategyAnalysis.service;
 
 import com.stock.modelService.domain.entity.ModelPredictionDocument;
@@ -163,7 +163,7 @@ public class StrategyEvaluationService {
                 .validationEnd(validation.isEmpty() ? null : validation.get(validation.size() - 1).targetTradeDate())
                 .sampleCount(outcomes.size())
                 .batchCount(dailyOutcomes.size())
-                .netReturn(metrics == null ? null : metrics.netReturn())
+                .grossReturn(metrics == null ? null : metrics.grossReturn())
                 .maxDrawdown(metrics == null ? null : metrics.maxDrawdown())
                 .winRate(metrics == null ? null : metrics.winRate())
                 .profitLossRatio(metrics == null ? null : metrics.profitLossRatio())
@@ -225,8 +225,8 @@ public class StrategyEvaluationService {
             return String.format("%s仅有%d个批次、%d个候选，未达到%d批次且%d候选的门槛",
                     mode.getName(), batchCount, matchedSamples, MINIMUM_BATCH_COUNT, MINIMUM_SAMPLE_COUNT);
         }
-        return String.format("%s样本外窗口包含%d个候选，净收益%.2f%%、最大回撤%.2f%%、胜率%.2f%%",
-                mode.getName(), validationSamples, metrics.netReturn() * 100D,
+        return String.format("%s样本外窗口包含%d个候选，毛收益率%.2f%%、最大回撤%.2f%%、胜率%.2f%%",
+                mode.getName(), validationSamples, metrics.grossReturn() * 100D,
                 metrics.maxDrawdown() * 100D, metrics.winRate() * 100D);
     }
 
@@ -253,7 +253,7 @@ public class StrategyEvaluationService {
                 .sourceType(entity.getSourceType()).windowStart(entity.getWindowStart()).windowEnd(entity.getWindowEnd())
                 .validationStart(entity.getValidationStart()).validationEnd(entity.getValidationEnd())
                 .sampleCount(entity.getSampleCount()).batchCount(entity.getBatchCount())
-                .netReturn(entity.getNetReturn()).maxDrawdown(entity.getMaxDrawdown())
+                .grossReturn(entity.getGrossReturn()).maxDrawdown(entity.getMaxDrawdown())
                 .winRate(entity.getWinRate()).profitLossRatio(entity.getProfitLossRatio())
                 .stabilityScore(entity.getStabilityScore()).outOfSample(entity.isOutOfSample())
                 .dataComplete(entity.isDataComplete()).sampleSufficient(entity.isSampleSufficient())
@@ -277,7 +277,7 @@ public class StrategyEvaluationService {
 
     private record DailyOutcome(LocalDate targetTradeDate, double averageReturn, int sampleCount) { }
 
-    private record Metrics(double netReturn, double maxDrawdown, double winRate,
+    private record Metrics(double grossReturn, double maxDrawdown, double winRate,
                            Double profitLossRatio, double stabilityScore) { }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

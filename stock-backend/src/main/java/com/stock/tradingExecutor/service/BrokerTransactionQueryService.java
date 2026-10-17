@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.BrokerOrderDto;
@@ -19,6 +19,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -33,6 +35,8 @@ import java.util.Locale;
 @Service
 @RequiredArgsConstructor
 public class BrokerTransactionQueryService {
+
+    private static final int RATE_SCALE = 8;
 
     private final BrokerOrderRepository brokerOrderRepository;
     private final TradeRecordRepository tradeRecordRepository;
@@ -192,13 +196,29 @@ public class BrokerTransactionQueryService {
                 .averageSellPrice(entity.getAverageSellPrice())
                 .buyAmount(entity.getBuyAmount())
                 .sellAmount(entity.getSellAmount())
+                .totalFee(zero(entity.getAllocatedBuyFee()).add(zero(entity.getSellFee())))
                 .grossProfit(entity.getGrossProfit())
                 .netProfit(entity.getNetProfit())
                 .grossReturnRate(entity.getGrossReturnRate())
                 .returnRate(entity.getReturnRate())
                 .holdingDays(entity.getHoldingDays())
                 .dailyReturnRate(entity.getDailyReturnRate())
+                .grossDailyReturnRate(calculateDailyReturnRate(entity.getGrossReturnRate(), entity.getHoldingDays()))
                 .build();
+    }
+
+    private BigDecimal calculateDailyReturnRate(BigDecimal returnRate, BigDecimal holdingDays) {
+        double effectiveDays = Math.max(1.0D, zero(holdingDays).doubleValue());
+        double compoundBase = 1.0D + zero(returnRate).doubleValue();
+        if (compoundBase <= 0.0D) {
+            return BigDecimal.valueOf(-1).setScale(RATE_SCALE);
+        }
+        return BigDecimal.valueOf(Math.pow(compoundBase, 1.0D / effectiveDays) - 1.0D)
+                .setScale(RATE_SCALE, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal zero(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
     }
 
     private boolean hasText(String value) {
@@ -212,4 +232,4 @@ public class BrokerTransactionQueryService {
     private record QueryContext(int current, int pageSize) {
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.modelService.service;
 
 import com.stock.modelService.domain.vo.SentimentAnalysisResult;
@@ -62,6 +62,16 @@ public class SentimentInferenceService {
     }
 
     /**
+     * 使用真实情感模型执行单条文本验证，禁止规则降级。
+     *
+     * @param text 待分析文本
+     * @return 情感分析详情
+     */
+    public Map<String, Object> analyzeSentimentRequiredWithDetails(String text) {
+        return sentimentTrainerService.analyzeSentimentRequiredWithDetails(text);
+    }
+
+    /**
      * 查询模型是否已加载。
      *
      * @return true 表示模型已加载
@@ -97,4 +107,4 @@ public class SentimentInferenceService {
         return sentimentTrainerService.getLastLoadError();
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

@@ -73,6 +73,9 @@ public class PredictionCandidateBatchDto {
         /** 预测收益率。 */
         private Double predictedReturn;
 
+        /** 扣除费用、双边滑点和安全边际后的净预期收益率。 */
+        private Double estimatedNetExpectedReturn;
+
         /** 上涨概率。 */
         private Double directionProbability;
 

@@ -359,6 +359,21 @@ public final class ModelPredictionAnalysisDto {
         /** 常数方向基线准确率。 */
         private Double constantBaselineAccuracy;
 
+        /** 方向上涨概率的 ROC AUC；实际标签只有单一类别时为空。 */
+        private Double directionAuc;
+
+        /** 上涨概率 Brier Score，越低越好。 */
+        private Double brierScore;
+
+        /** 固定上涨比例的 Brier 基线。 */
+        private Double brierBaseline;
+
+        /** 上涨概率期望校准误差。 */
+        private Double expectedCalibrationError;
+
+        /** 概率校准有效样本数。 */
+        private Integer calibrationSampleCount;
+
         /** 上涨概率标准差。 */
         private Double directionProbabilityStd;
 

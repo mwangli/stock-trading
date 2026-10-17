@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.strategyAnalysis.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -76,8 +76,8 @@ public class StrategyEvaluationDto {
         /** 已评估候选批次数量。 */
         private int batchCount;
 
-        /** 样本外复合净收益率。 */
-        private Double netReturn;
+        /** 样本外复合毛收益率，不扣除交易费用。 */
+        private Double grossReturn;
 
         /** 样本外最大回撤。 */
         private Double maxDrawdown;
@@ -104,4 +104,4 @@ public class StrategyEvaluationDto {
         private String conclusion;
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

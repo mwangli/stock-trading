@@ -55,11 +55,17 @@ public class LstmModelArtifactService {
      * @param epoch 最佳轮次
      * @param trainLoss 训练损失
      * @param valLoss 验证损失
+     * @param trainLabelStats 训练集方向标签统计
+     * @param validationLabelStats 验证集方向标签统计
+     * @param directionClassWeights 方向任务类别权重
      * @return MongoDB 模型标识
      * @throws IOException 制品序列化或保存失败
      */
     public String saveModel(byte[] paramsBytes, LstmDataPreprocessor.ProcessedData processedData,
-                            int epoch, double trainLoss, double valLoss) throws IOException {
+                            int epoch, double trainLoss, double valLoss,
+                            LstmTrainerService.DirectionLabelStats trainLabelStats,
+                            LstmTrainerService.DirectionLabelStats validationLabelStats,
+                            LstmTrainerService.DirectionClassWeights directionClassWeights) throws IOException {
         String metadata = buildMetadata(processedData, epoch);
         try {
             ModelActivationDocument activation = modelActivationRepository.findByModelName(getModelName()).orElse(null);
@@ -80,7 +86,13 @@ public class LstmModelArtifactService {
                     "trainLoss", trainLoss, "valLoss", valLoss, "bestEpoch", epoch,
                     "trainedStocks", processedData.getSampleCounts().size(),
                     "trainSamples", processedData.getTrainSamples().size(),
-                    "valSamples", processedData.getValSamples().size())));
+                    "valSamples", processedData.getValSamples().size(),
+                    "trainUpSamples", trainLabelStats.positiveCount(),
+                    "trainDownSamples", trainLabelStats.negativeCount(),
+                    "valUpSamples", validationLabelStats.positiveCount(),
+                    "valDownSamples", validationLabelStats.negativeCount(),
+                    "directionPositiveWeight", directionClassWeights.positiveWeight(),
+                    "directionNegativeWeight", directionClassWeights.negativeWeight())));
             document.setFeatureVersion(processedData.getFeatureVersion());
             document.setLabelVersion("return-direction-downside-v3");
             document.setEngineName("PyTorch");

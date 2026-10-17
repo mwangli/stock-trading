@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------
+// AI_GENERATE_START ------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Empty, Input, Pagination, Space, Table, Tag, Typography } from 'antd';
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
@@ -24,12 +24,14 @@ interface TradeRecord {
   averageSellPrice?: number;
   buyAmount: number;
   sellAmount: number;
+  totalFee: number;
   grossProfit: number;
   netProfit: number;
   grossReturnRate: number;
   returnRate: number;
   holdingDays?: number;
   dailyReturnRate: number;
+  grossDailyReturnRate: number;
 }
 
 interface BrokerPage<T> {
@@ -151,21 +153,18 @@ const TradeRecords: React.FC = () => {
     { title: '状态', dataIndex: 'status', key: 'status', fixed: 'left' as const, render: statusTag },
     { title: '股票', key: 'stock', fixed: 'left' as const, render: (_: unknown, item: TradeRecord) => `${item.stockCode} ${item.stockName ?? ''}` },
     { title: '买入时间', dataIndex: 'buyTime', key: 'buyTime', render: formatDateTime },
-    { title: '首次卖出时间', dataIndex: 'firstSellTime', key: 'firstSellTime', render: formatDateTime },
     { title: '最后卖出时间', dataIndex: 'lastSellTime', key: 'lastSellTime', render: formatDateTime },
-    { title: '买入数量', dataIndex: 'buyQuantity', key: 'buyQuantity' },
-    { title: '已卖数量', dataIndex: 'soldQuantity', key: 'soldQuantity' },
-    { title: '剩余数量', dataIndex: 'remainingQuantity', key: 'remainingQuantity' },
+    { title: '交易数量', dataIndex: 'buyQuantity', key: 'buyQuantity' },
     { title: '买入均价', dataIndex: 'buyPrice', key: 'buyPrice', render: money },
     { title: '卖出均价', dataIndex: 'averageSellPrice', key: 'averageSellPrice', render: money },
     { title: '买入金额', dataIndex: 'buyAmount', key: 'buyAmount', render: money },
     { title: '卖出金额', dataIndex: 'sellAmount', key: 'sellAmount', render: money },
+    { title: '手续费', dataIndex: 'totalFee', key: 'totalFee', render: (value: number, item: TradeRecord) => item.soldQuantity > 0 ? money(value) : '-' },
     { title: '毛收益', dataIndex: 'grossProfit', key: 'grossProfit', render: (value: number, item: TradeRecord) => item.soldQuantity > 0 ? profit(value) : '-' },
     { title: '净收益', dataIndex: 'netProfit', key: 'netProfit', render: (value: number, item: TradeRecord) => item.soldQuantity > 0 ? profit(value) : '-' },
     { title: '毛收益率', dataIndex: 'grossReturnRate', key: 'grossReturnRate', render: (value: number, item: TradeRecord) => item.soldQuantity > 0 ? rate(value) : '-' },
-    { title: '收益率', dataIndex: 'returnRate', key: 'returnRate', render: (value: number, item: TradeRecord) => item.soldQuantity > 0 ? rate(value) : '-' },
+    { title: '毛日收益率', dataIndex: 'grossDailyReturnRate', key: 'grossDailyReturnRate', render: (value: number, item: TradeRecord) => item.soldQuantity > 0 ? rate(value) : '-' },
     { title: '持仓时间', dataIndex: 'holdingDays', key: 'holdingDays', render: days },
-    { title: '日收益率', dataIndex: 'dailyReturnRate', key: 'dailyReturnRate', render: (value: number, item: TradeRecord) => item.soldQuantity > 0 ? rate(value) : '-' },
   ];
 
   usePageHeader(t('tradeRecords.subtitle'));
@@ -193,7 +192,7 @@ const TradeRecords: React.FC = () => {
           dataSource={records}
           loading={loading}
           locale={{ emptyText: <Empty description={t('tradeRecords.empty')} /> }}
-          scroll={{ x: 2400, y: 'calc(100vh - 390px)' }}
+          scroll={{ x: 2200, y: 'calc(100vh - 390px)' }}
           pagination={false}
         />
         <div className="mt-4 overflow-x-auto pb-1">
@@ -217,4 +216,4 @@ const TradeRecords: React.FC = () => {
 };
 
 export default TradeRecords;
-// AI_GENERATE_END -----------
+// AI_GENERATE_END ------------

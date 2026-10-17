@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START --------
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Col, Descriptions, Form, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
 import { InfoCircleOutlined, PlayCircleOutlined, ReloadOutlined, RollbackOutlined, SaveOutlined, SettingOutlined } from '@ant-design/icons';
@@ -106,7 +106,7 @@ interface StrategyModeEvaluation {
   validationEnd?: string;
   sampleCount: number;
   batchCount: number;
-  netReturn?: number;
+  grossReturn?: number;
   maxDrawdown?: number;
   winRate?: number;
   profitLossRatio?: number;
@@ -296,7 +296,7 @@ const StrategyConfig: React.FC = () => {
           { title: localizedText('模式', 'Mode'), dataIndex: 'modeName', width: 110 },
           { title: localizedText('结论状态', 'Conclusion Status'), dataIndex: 'status', width: 130, render: (value: string) => <Tag color={value === 'AVAILABLE' ? 'green' : value === 'NOT_EVALUATED' ? 'default' : 'orange'}>{value === 'AVAILABLE' ? localizedText('可评估', 'Available') : value === 'NOT_EVALUATED' ? localizedText('未评估', 'Not Evaluated') : localizedText('样本不足', 'Insufficient Data')}</Tag> },
           { title: localizedText('批次/候选', 'Batches / Candidates'), width: 120, render: (_, row) => row.batchCount + '/' + row.sampleCount },
-          { title: localizedText('净收益', 'Net Return'), dataIndex: 'netReturn', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : percent(value) },
+          { title: localizedText('毛收益率', 'Gross Return'), dataIndex: 'grossReturn', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : percent(value) },
           { title: localizedText('最大回撤', 'Max Drawdown'), dataIndex: 'maxDrawdown', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : percent(value) },
           { title: localizedText('胜率', 'Win Rate'), dataIndex: 'winRate', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : percent(value) },
           { title: localizedText('盈亏比', 'Profit / Loss Ratio'), dataIndex: 'profitLossRatio', width: 90, render: (value?: number) => value === undefined || value === null ? '-' : value.toFixed(2) },
@@ -376,4 +376,4 @@ const StrategyConfig: React.FC = () => {
 };
 
 export default StrategyConfig;
-// AI_GENERATE_END -------
+// AI_GENERATE_END --------

@@ -10,6 +10,7 @@ import com.stock.modelService.service.PredictionCandidateQueryService;
 import com.stock.modelService.service.SentimentAggregationService;
 import com.stock.modelService.service.SentimentInferenceService;
 import com.stock.strategyAnalysis.config.StrategyConfigService;
+import com.stock.strategyAnalysis.config.BacktestProperties;
 import com.stock.strategyAnalysis.domain.dto.StockRankingDto;
 import com.stock.strategyAnalysis.domain.entity.StockRanking;
 import com.stock.strategyAnalysis.domain.entity.StrategyConfig;
@@ -57,6 +58,7 @@ public class StockSelector {
     private final PredictionCandidateQueryService predictionCandidateQueryService;
     private final SentimentAggregationService sentimentAggregationService;
     private final SentimentInferenceService sentimentInferenceService;
+    private final BacktestProperties backtestProperties;
 
     /**
      * 执行真实模型选股并返回前 N 个候选。
@@ -80,6 +82,9 @@ public class StockSelector {
 
             Map<String, String> stockNames = loadStockNames(predictionBatch.getItems());
             Map<String, Double> lstmScores = calculateLstmScores(predictionBatch.getItems());
+            if (lstmScores.isEmpty()) {
+                throw new IllegalStateException("预测收益扣除交易成本和安全边际后没有可选股票");
+            }
             LocalDateTime informationCutoffAt = LocalDateTime.now();
             Map<String, SentimentAggregateResult> sentimentResults =
                     getSentimentResults(new ArrayList<>(lstmScores.keySet()), informationCutoffAt);
@@ -211,6 +216,12 @@ public class StockSelector {
             List<PredictionCandidateBatchDto.PredictionCandidateItemDto> items) {
         Map<String, Double> scores = new LinkedHashMap<>();
         for (PredictionCandidateBatchDto.PredictionCandidateItemDto item : items) {
+            if (item.getEstimatedNetExpectedReturn() == null
+                    || !Double.isFinite(item.getEstimatedNetExpectedReturn())
+                    || item.getEstimatedNetExpectedReturn()
+                    < backtestProperties.getMinimumCandidateNetReturnRate().doubleValue()) {
+                continue;
+            }
             double absoluteReturnScore = 1D / (1D + Math.exp(-LSTM_SCORE_SCALE * item.getPredictedReturn()));
             double absoluteDirectionScore = clamp(item.getDirectionProbability());
             double returnScore = 0.7D * clamp(item.getPredictedReturnPercentile())
