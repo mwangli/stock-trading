@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Space, Switch, Tag } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
@@ -102,7 +102,7 @@ const Logs: React.FC = () => {
           <span className="text-sm text-[var(--text-secondary)]">{t('logs.autoScroll')}</span>
           <Switch size="small" checked={autoScroll} onChange={setAutoScroll} />
         </Space>
-        <Button icon={<DeleteOutlined />} onClick={clearLogs} danger>
+        <Button icon={<DeleteOutlined />} onClick={clearLogs}>
           {t('logs.clear')}
         </Button>
       </div>
@@ -130,4 +130,4 @@ const Logs: React.FC = () => {
 };
 
 export default Logs;
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------
