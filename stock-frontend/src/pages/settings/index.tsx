@@ -315,15 +315,15 @@ const Settings: React.FC = () => {
         <Button icon={<ReloadOutlined />} loading={checking} onClick={() => void checkSystemStatus()}>{t('settings.checkStatus')}</Button>
         <Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={!runtimeSettings} onClick={() => form.submit()}>{t('settings.save')}</Button>
       </div>
-      <Row gutter={[16, 16]}>
-        <Col xs={24} md={12} xl={8}>
-          <Card className="surface-card compact-card" loading={checking}>
+      <Row className="settings-status-cards" gutter={[16, 16]} align="stretch">
+        <Col className="settings-status-col" xs={24} md={12} xl={8}>
+          <Card className="surface-card compact-card settings-status-card" loading={checking}>
             <Statistic title="券商只读网关" value={brokerHealth.data?.brokerName || t('settings.status.notConfigured')} prefix={<CloudServerOutlined />} />
             <div className="mt-3">{healthTag(brokerHealth.state)} <Text type="secondary" className="ml-2">{brokerHealth.data?.authenticated ? t('settings.status.sessionValid') : t('settings.status.sessionMissing')}</Text></div>
           </Card>
         </Col>
-        <Col xs={24} md={12} xl={8}>
-          <Card className="surface-card compact-card" loading={checking}>
+        <Col className="settings-status-col" xs={24} md={12} xl={8}>
+          <Card className="surface-card compact-card settings-status-card" loading={checking}>
             <Statistic title="真实交易门禁" value={tradingHealth.data?.automaticExecutionEnabled ? t('settings.status.autoReady') : t('settings.status.controlledStop')} prefix={<LockOutlined />} />
             <div className="mt-3">
               <Tag color={tradingHealth.data?.realWriteEnabled ? 'red' : 'blue'}>{tradingHealth.data?.realWriteEnabled ? t('settings.status.realWriteOn') : t('settings.status.readOnly')}</Tag>
@@ -331,8 +331,8 @@ const Settings: React.FC = () => {
             </div>
           </Card>
         </Col>
-        <Col xs={24} md={12} xl={8}>
-          <Card className="surface-card compact-card" loading={checking}>
+        <Col className="settings-status-col" xs={24} md={12} xl={8}>
+          <Card className="surface-card compact-card settings-status-card" loading={checking}>
             <Statistic title={t('layout.sentimentModel')} value={sentimentHealth.data?.modelLoaded ? t('settings.status.loaded') : t('settings.status.notLoaded')} prefix={<CheckCircleOutlined />} />
             <div className="mt-3 flex flex-wrap gap-2">
               {healthTag(sentimentHealth.state)}

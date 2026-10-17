@@ -346,6 +346,28 @@ select { letter-spacing: 0; }
   padding-top: 12px;
 }
 
+.settings-status-col {
+  display: flex;
+}
+
+.settings-status-card {
+  width: 100%;
+  height: 100%;
+}
+
+.settings-status-card .ant-card-body {
+  height: 100%;
+}
+
+.settings-status-card .ant-statistic {
+  min-height: 84px;
+}
+
+.settings-status-card .ant-statistic-content {
+  min-height: 36px;
+  overflow-wrap: anywhere;
+}
+
 .metric-strip {
   display: grid;
   overflow: hidden;
