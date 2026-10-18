@@ -1,7 +1,7 @@
-// AI_GENERATE_START -
-package com.stock.tradingExecutor.access.persistence;
+// AI_GENERATE_START --
+package com.stock.tradingExecutor.persistence;
 
-import com.stock.tradingExecutor.access.domain.entity.UserEntity;
+import com.stock.tradingExecutor.domain.entity.UserEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
@@ -17,4 +17,4 @@ public interface UserRepository extends JpaRepository<UserEntity, Long> {
     /** 按用户名查找用户。 */
     Optional<UserEntity> findByUsername(String username);
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

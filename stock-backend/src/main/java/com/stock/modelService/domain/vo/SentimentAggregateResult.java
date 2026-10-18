@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.domain.vo;
 
 import lombok.Builder;
@@ -14,8 +14,20 @@ import lombok.Data;
 @Builder
 public class SentimentAggregateResult {
 
-    /** 按事件权重聚合后的情感得分，范围为 -1 到 1。 */
-    private double score;
+    /** 按事件影响聚合后的新闻影响得分，范围为 -1 到 1。 */
+    private double newsImpactScore;
+
+    /** 事件影响强度，范围为 0 到 1。 */
+    private double impactMagnitude;
+
+    /** 是否达到进入选股排序的最低门槛。 */
+    private boolean actionable;
+
+    /** 聚合窗口内权重最高的事件类型。 */
+    private String dominantEventType;
+
+    /** 事件影响预计持续时间，单位为小时。 */
+    private int effectiveHorizonHours;
 
     /** 新闻覆盖和模型置信度合成值，范围为 0 到 1。 */
     private double confidence;
@@ -32,4 +44,4 @@ public class SentimentAggregateResult {
     /** 触发强负面标志的事件标题。 */
     private String strongNegativeTitle;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

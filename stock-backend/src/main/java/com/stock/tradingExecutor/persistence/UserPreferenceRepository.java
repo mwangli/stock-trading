@@ -1,7 +1,7 @@
-// AI_GENERATE_START -
-package com.stock.tradingExecutor.access.persistence;
+// AI_GENERATE_START --
+package com.stock.tradingExecutor.persistence;
 
-import com.stock.tradingExecutor.access.domain.entity.UserPreferenceEntity;
+import com.stock.tradingExecutor.domain.entity.UserPreferenceEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
@@ -12,4 +12,4 @@ import org.springframework.data.jpa.repository.JpaRepository;
  */
 public interface UserPreferenceRepository extends JpaRepository<UserPreferenceEntity, Long> {
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

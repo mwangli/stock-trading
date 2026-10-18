@@ -1,9 +1,9 @@
-// AI_GENERATE_START --
-package com.stock.tradingExecutor.access.service;
+// AI_GENERATE_START ---
+package com.stock.tradingExecutor.service;
 
-import com.stock.tradingExecutor.access.domain.dto.AuthUserDto;
-import com.stock.tradingExecutor.access.domain.entity.UserEntity;
-import com.stock.tradingExecutor.access.persistence.UserRepository;
+import com.stock.tradingExecutor.domain.dto.AuthUserDto;
+import com.stock.tradingExecutor.domain.entity.UserEntity;
+import com.stock.tradingExecutor.persistence.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -67,4 +67,4 @@ public class UserService {
         userRepository.save(user);
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

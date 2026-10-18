@@ -8,6 +8,7 @@ import com.stock.modelService.domain.dto.SentimentEvaluationDto;
 import com.stock.modelService.domain.entity.SentimentEvaluationEntity;
 import com.stock.modelService.domain.vo.SentimentAnalysisResult;
 import com.stock.modelService.domain.vo.SentimentArtifactInspection;
+import com.stock.dataCollector.service.NewsEventClassifier;
 import com.stock.modelService.persistence.SentimentEvaluationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -36,13 +38,17 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SentimentEvaluationService {
 
-    private static final String DATASET_VERSION = "stock-news-manual-v1";
+    private static final String DATASET_VERSION = "stock-news-manual-v2";
     private static final String DATASET_RESOURCE = "model-evaluation/sentiment-stock-news-v1.json";
     private static final List<String> LABELS = List.of("positive", "neutral", "negative");
+    private static final Set<String> REQUIRED_EVENT_TYPES = Set.of(
+            "EARNINGS", "MATERIAL_BUSINESS", "SHAREHOLDER_OR_EXECUTIVE",
+            "REGULATORY_OR_LITIGATION", "CAPITAL_RISK", "GENERAL_ANNOUNCEMENT", "GENERAL_NEWS");
 
     private final SentimentInferenceService inferenceService;
     private final SentimentEvaluationRepository evaluationRepository;
     private final ObjectMapper objectMapper;
+    private final NewsEventClassifier newsEventClassifier;
 
     /**
      * 使用内置人工标注集执行一次真实模型评估并保存结果。
@@ -65,6 +71,15 @@ public class SentimentEvaluationService {
         List<ConfidenceOutcome> confidenceOutcomes = new ArrayList<>();
         List<Long> latencies = new ArrayList<>();
         int correct = 0;
+        int positiveExpected = 0;
+        int positiveCorrect = 0;
+        int neutralPredicted = 0;
+        int directionCorrect = 0;
+        double impactMagnitudeError = 0D;
+        Set<String> coveredEventTypes = new java.util.HashSet<>();
+        int actionableNewsCount = 0;
+        Map<String, Counts> eventCounts = new HashMap<>();
+        REQUIRED_EVENT_TYPES.forEach(eventType -> eventCounts.put(eventType, new Counts()));
         for (int index = 0; index < cases.size(); index++) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new IllegalStateException("情感模型评估已收到停止请求");
@@ -79,6 +94,31 @@ public class SentimentEvaluationService {
             if (matched) {
                 correct++;
             }
+            if ("positive".equals(expected)) {
+                positiveExpected++;
+                if (matched) {
+                    positiveCorrect++;
+                }
+            }
+            if ("neutral".equals(predicted)) {
+                neutralPredicted++;
+            }
+            String predictedEventType = newsEventClassifier.classify(evaluationCase.getText(), "",
+                    evaluationCase.getSourceCategory());
+            if (evaluationCase.getExpectedEventType() != null) {
+                coveredEventTypes.add(evaluationCase.getExpectedEventType());
+            }
+            updateEventCounts(eventCounts, evaluationCase.getExpectedEventType(), predictedEventType);
+            if (evaluationCase.getExpectedDirection() != null
+                    && evaluationCase.getExpectedDirection().equals(inferDirection(result.getScore()))) {
+                directionCorrect++;
+            }
+            impactMagnitudeError += Math.abs(Math.abs(result.getScore())
+                    - evaluationCase.getExpectedImpactMagnitude());
+            if (evaluationCase.getExpectedAction() != null
+                    && !"NO_ACTION".equals(evaluationCase.getExpectedAction())) {
+                actionableNewsCount++;
+            }
             updateCounts(countsByLabel, expected, predicted);
             confidenceOutcomes.add(new ConfidenceOutcome(result.getConfidence(), matched));
             latencies.add(latencyMs);
@@ -90,17 +130,29 @@ public class SentimentEvaluationService {
         double accuracy = correct / (double) cases.size();
         double macroF1 = LABELS.stream().mapToDouble(label -> f1(countsByLabel.get(label))).average().orElse(0D);
         double negativeRecall = recall(countsByLabel.get("negative"));
+        double positiveRecall = positiveExpected == 0 ? 0D : positiveCorrect / (double) positiveExpected;
+        double predictedNeutralRatio = neutralPredicted / (double) cases.size();
+        double eventTypeCoverage = coveredEventTypes.size() / (double) REQUIRED_EVENT_TYPES.size();
+        double actionableNewsRatio = actionableNewsCount / (double) cases.size();
+        double directionAccuracy = directionCorrect / (double) cases.size();
+        double impactMagnitudeMae = impactMagnitudeError / cases.size();
+        double eventTypeMacroF1 = eventCounts.values().stream().mapToDouble(this::f1).average().orElse(0D);
         double ece = expectedCalibrationError(confidenceOutcomes);
         double p95Latency = percentile95(latencies);
         String status = macroF1 >= 0.80D && negativeRecall >= 0.85D ? "PASSED"
                 : macroF1 >= 0.65D && negativeRecall >= 0.70D ? "OBSERVE" : "REJECTED";
         String conclusion = String.format(Locale.ROOT,
-                "人工评估集%d条，准确率%.2f%%、Macro-F1 %.2f%%、负面召回率%.2f%%，结论%s",
-                cases.size(), accuracy * 100D, macroF1 * 100D, negativeRecall * 100D, status);
+                "人工评估集%d条，准确率%.2f%%、Macro-F1 %.2f%%、正面召回率%.2f%%、负面召回率%.2f%%、方向准确率%.2f%%、影响强度MAE %.3f，结论%s",
+                cases.size(), accuracy * 100D, macroF1 * 100D, positiveRecall * 100D,
+                negativeRecall * 100D, directionAccuracy * 100D, impactMagnitudeMae, status);
         SentimentEvaluationEntity saved = evaluationRepository.save(SentimentEvaluationEntity.builder()
                 .evaluationRunId(UUID.randomUUID().toString()).modelVersion(modelVersion)
                 .datasetVersion(DATASET_VERSION).status(status).sampleCount(cases.size()).correctCount(correct)
                 .accuracy(accuracy).macroF1(macroF1).negativeRecall(negativeRecall)
+                .positiveRecall(positiveRecall).predictedNeutralRatio(predictedNeutralRatio)
+                .eventTypeCoverage(eventTypeCoverage).actionableNewsRatio(actionableNewsRatio)
+                .directionAccuracy(directionAccuracy).impactMagnitudeMae(impactMagnitudeMae)
+                .eventTypeMacroF1(eventTypeMacroF1)
                 .expectedCalibrationError(ece).p95LatencyMs(p95Latency)
                 .conclusion(conclusion).evaluatedAt(LocalDateTime.now()).build());
         log.info("情感模型独立评估完成: runId={}, modelVersion={}, status={}, sampleCount={}",
@@ -135,6 +187,22 @@ public class SentimentEvaluationService {
             } else if (!label.equals(expected) && label.equals(predicted)) {
                 counts.falsePositive++;
             } else if (label.equals(expected)) {
+                counts.falseNegative++;
+            }
+        }
+    }
+
+    private void updateEventCounts(Map<String, Counts> countsByEventType, String expected, String predicted) {
+        if (expected == null || !countsByEventType.containsKey(expected)) {
+            return;
+        }
+        for (String eventType : countsByEventType.keySet()) {
+            Counts counts = countsByEventType.get(eventType);
+            if (eventType.equals(expected) && eventType.equals(predicted)) {
+                counts.truePositive++;
+            } else if (!eventType.equals(expected) && eventType.equals(predicted)) {
+                counts.falsePositive++;
+            } else if (eventType.equals(expected)) {
                 counts.falseNegative++;
             }
         }
@@ -186,6 +254,16 @@ public class SentimentEvaluationService {
         return normalized;
     }
 
+    private String inferDirection(double score) {
+        if (score >= 0.10D) {
+            return "BULLISH";
+        }
+        if (score <= -0.10D) {
+            return "BEARISH";
+        }
+        return "NEUTRAL";
+    }
+
     private SentimentEvaluationDto toDto(SentimentEvaluationEntity entity) {
         return SentimentEvaluationDto.builder()
                 .evaluationRunId(entity.getEvaluationRunId()).modelVersion(entity.getModelVersion())
@@ -193,6 +271,22 @@ public class SentimentEvaluationService {
                 .sampleCount(entity.getSampleCount()).correctCount(entity.getCorrectCount())
                 .accuracy(entity.getAccuracy()).macroF1(entity.getMacroF1())
                 .negativeRecall(entity.getNegativeRecall())
+                .positiveRecall(entity.getPositiveRecall())
+                .predictedNeutralRatio(entity.getPredictedNeutralRatio())
+                .eventTypeCoverage(entity.getEventTypeCoverage())
+                .actionableNewsRatio(entity.getActionableNewsRatio())
+                .directionAccuracy(entity.getDirectionAccuracy())
+                .impactMagnitudeMae(entity.getImpactMagnitudeMae())
+                .eventTypeMacroF1(entity.getEventTypeMacroF1())
+                .t1ExcessReturnIc(entity.getT1ExcessReturnIc())
+                .t3ExcessReturnIc(entity.getT3ExcessReturnIc())
+                .t5ExcessReturnIc(entity.getT5ExcessReturnIc())
+                .topKNewsHitRate(entity.getTopKNewsHitRate())
+                .topKPortfolioReturn(entity.getTopKPortfolioReturn())
+                .maxDrawdown(entity.getMaxDrawdown())
+                .turnoverRate(entity.getTurnoverRate())
+                .netReturnAfterCosts(entity.getNetReturnAfterCosts())
+                .lstmIncrementalReturn(entity.getLstmIncrementalReturn())
                 .expectedCalibrationError(entity.getExpectedCalibrationError())
                 .p95LatencyMs(entity.getP95LatencyMs()).conclusion(entity.getConclusion())
                 .evaluatedAt(entity.getEvaluatedAt()).build();

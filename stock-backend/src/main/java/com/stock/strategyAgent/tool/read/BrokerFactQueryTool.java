@@ -33,7 +33,7 @@ public class BrokerFactQueryTool {
      *
      * @return 券商事实摘要
      */
-    @Tool("查询账户、持仓、当日订单和成交的脱敏摘要")
+    @Tool(name = "queryBrokerFacts", value = "查询账户、持仓、当日订单和成交的脱敏摘要")
     public BrokerFactResult query() {
         return toolSupport.execute("queryBrokerFacts", () -> {
             AccountStatus account = brokerAdapter.getAccountInfo();

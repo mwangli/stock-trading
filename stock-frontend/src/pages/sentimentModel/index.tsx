@@ -1,7 +1,6 @@
-// AI_GENERATE_START -----------
+// AI_GENERATE_START ------------
 import React, { useCallback, useState } from 'react';
 import {
-  Alert,
   Button,
   Card,
   Col,
@@ -78,6 +77,22 @@ interface SentimentEvaluation {
   accuracy?: number;
   macroF1?: number;
   negativeRecall?: number;
+  positiveRecall?: number;
+  predictedNeutralRatio?: number;
+  eventTypeCoverage?: number;
+  actionableNewsRatio?: number;
+  directionAccuracy?: number;
+  impactMagnitudeMae?: number;
+  eventTypeMacroF1?: number;
+  t1ExcessReturnIc?: number | null;
+  t3ExcessReturnIc?: number | null;
+  t5ExcessReturnIc?: number | null;
+  topKNewsHitRate?: number | null;
+  topKPortfolioReturn?: number | null;
+  maxDrawdown?: number | null;
+  turnoverRate?: number | null;
+  netReturnAfterCosts?: number | null;
+  lstmIncrementalReturn?: number | null;
   expectedCalibrationError?: number;
   p95LatencyMs?: number;
   conclusion: string;
@@ -115,7 +130,12 @@ const formatBytes = (value?: number) => {
   return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
 };
 
-const formatPercent = (value?: number) => value === undefined ? localizedText('未提供', 'Not provided') : `${(value * 100).toFixed(2)}%`;
+const formatPercent = (value?: number | null) => value === undefined || value === null
+  ? localizedText('未提供', 'Not provided')
+  : `${(value * 100).toFixed(2)}%`;
+const formatMetric = (value?: number | null, digits = 4) => value === undefined || value === null
+  ? localizedText('未评估', 'Not evaluated')
+  : value.toFixed(digits);
 
 const labelMeta: Record<string, { text: string; color: string }> = {
   positive: { text: '正面', color: 'green' },
@@ -133,7 +153,7 @@ const SentimentModel: React.FC = () => {
   const { t } = useTranslation();
   const [health, setHealth] = useState<SentimentHealth | null>(null);
   const [evaluation, setEvaluation] = useState<SentimentEvaluation | null>(null);
-  const [healthError, setHealthError] = useState<string | null>(null);
+  const [, setHealthError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sampleLoading, setSampleLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
@@ -141,7 +161,7 @@ const SentimentModel: React.FC = () => {
   const [analysis, setAnalysis] = useState<SentimentAnalyzeResult | null>(null);
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [sampleSource, setSampleSource] = useState<'database' | 'mock' | null>(null);
-  const [sampleError, setSampleError] = useState<string | null>(null);
+  const [, setSampleError] = useState<string | null>(null);
 
   const loadHealth = useCallback(async () => {
     setLoading(true);
@@ -230,10 +250,6 @@ const SentimentModel: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {healthError && (
-        <Alert type="error" showIcon message={localizedText('情感模型状态读取失败', 'Failed to load sentiment model status')} description={healthError} />
-      )}
-
       <section className="rounded-lg border border-[var(--border-color)] bg-[var(--surface-color)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -255,16 +271,6 @@ const SentimentModel: React.FC = () => {
             </Tag>
           </Space>
         </div>
-        {health?.lastError && <Alert className="mt-4" type="warning" showIcon message={localizedText('最近检查异常', 'Latest check reported an error')} description={health.lastError} />}
-        {modelUnavailable && (
-          <Alert
-            className="mt-4"
-            type="error"
-            showIcon
-            message={localizedText('真实模型未就绪，暂不能执行单条验证', 'The real model is not ready; single-text validation is unavailable')}
-            description={localizedText('请先准备并校验情感模型制品目录。规则引擎结果不会作为模型验证结果返回。', 'Prepare and verify the sentiment model artifact before validating text. Rule-engine output is not returned as a model result.')}
-          />
-        )}
       </section>
 
       <Row gutter={[16, 16]}>
@@ -308,13 +314,34 @@ const SentimentModel: React.FC = () => {
           <Text type="secondary">{localizedText('评估时间', 'Evaluated At')}：{formatDateTime(evaluation?.evaluatedAt)}</Text>
         </div>
         <Row gutter={[12, 16]}>
-          <Col xs={12} md={4}><Statistic title={localizedText('样本数', 'Samples')} value={evaluation?.sampleCount ?? 0} /></Col>
+          <Col xs={12} md={4}><Statistic title={localizedText('样本数', 'Samples')} value={evaluation?.sampleCount ?? localizedText('未评估', 'Not evaluated')} /></Col>
           <Col xs={12} md={4}><Statistic title={localizedText('准确率', 'Accuracy')} value={formatPercent(evaluation?.accuracy)} /></Col>
           <Col xs={12} md={4}><Statistic title="Macro-F1" value={formatPercent(evaluation?.macroF1)} /></Col>
           <Col xs={12} md={4}><Statistic title={localizedText('负面召回率', 'Negative Recall')} value={formatPercent(evaluation?.negativeRecall)} /></Col>
+          <Col xs={12} md={4}><Statistic title={localizedText('正面召回率', 'Positive Recall')} value={formatPercent(evaluation?.positiveRecall)} /></Col>
+          <Col xs={12} md={4}><Statistic title={localizedText('中性占比', 'Neutral Ratio')} value={formatPercent(evaluation?.predictedNeutralRatio)} /></Col>
+          <Col xs={12} md={4}><Statistic title={localizedText('事件类型覆盖率', 'Event Coverage')} value={formatPercent(evaluation?.eventTypeCoverage)} /></Col>
+          <Col xs={12} md={4}><Statistic title={localizedText('可交易新闻占比', 'Actionable News')} value={formatPercent(evaluation?.actionableNewsRatio)} /></Col>
+          <Col xs={12} md={4}><Statistic title={localizedText('方向准确率', 'Direction Accuracy')} value={formatPercent(evaluation?.directionAccuracy)} /></Col>
+          <Col xs={12} md={4}><Statistic title={localizedText('影响强度 MAE', 'Impact MAE')} value={evaluation?.impactMagnitudeMae?.toFixed(3) ?? localizedText('未提供', 'Not provided')} /></Col>
+          <Col xs={12} md={4}><Statistic title="事件类型 Macro-F1" value={formatPercent(evaluation?.eventTypeMacroF1)} /></Col>
           <Col xs={12} md={4}><Statistic title="ECE" value={formatPercent(evaluation?.expectedCalibrationError)} /></Col>
           <Col xs={12} md={4}><Statistic title={localizedText('P95 延迟', 'P95 Latency')} value={evaluation?.p95LatencyMs ?? localizedText('未提供', 'Not provided')} suffix={evaluation?.p95LatencyMs === undefined ? undefined : 'ms'} /></Col>
         </Row>
+        <div className="mt-4 border-t border-[var(--border-color)] pt-4">
+          <div className="mb-3 text-sm font-medium text-[var(--text-primary)]">{localizedText('历史行情回放与策略指标', 'Historical Replay and Strategy Metrics')}</div>
+          <Row gutter={[12, 16]}>
+            <Col xs={12} md={4}><Statistic title="T+1 Excess Return IC" value={formatMetric(evaluation?.t1ExcessReturnIc)} /></Col>
+            <Col xs={12} md={4}><Statistic title="T+3 Excess Return IC" value={formatMetric(evaluation?.t3ExcessReturnIc)} /></Col>
+            <Col xs={12} md={4}><Statistic title="T+5 Excess Return IC" value={formatMetric(evaluation?.t5ExcessReturnIc)} /></Col>
+            <Col xs={12} md={4}><Statistic title={localizedText('Top-K 新闻命中率', 'Top-K News Hit Rate')} value={formatPercent(evaluation?.topKNewsHitRate)} /></Col>
+            <Col xs={12} md={4}><Statistic title={localizedText('Top-K 组合收益', 'Top-K Portfolio Return')} value={formatPercent(evaluation?.topKPortfolioReturn)} /></Col>
+            <Col xs={12} md={4}><Statistic title={localizedText('最大回撤', 'Max Drawdown')} value={formatPercent(evaluation?.maxDrawdown)} /></Col>
+            <Col xs={12} md={4}><Statistic title={localizedText('换手率', 'Turnover Rate')} value={formatPercent(evaluation?.turnoverRate)} /></Col>
+            <Col xs={12} md={4}><Statistic title={localizedText('成本后收益', 'Net Return After Costs')} value={formatPercent(evaluation?.netReturnAfterCosts)} /></Col>
+            <Col xs={12} md={4}><Statistic title={localizedText('相对 LSTM 增量收益', 'Incremental Return vs LSTM')} value={formatPercent(evaluation?.lstmIncrementalReturn)} /></Col>
+          </Row>
+        </div>
         <Paragraph className="!mb-0 !mt-4" type="secondary">{evaluation?.conclusion || localizedText('尚未执行项目人工标注集独立评估任务。', 'No independent evaluation has been run on the project-labeled set.')}</Paragraph>
       </Card>
 
@@ -352,7 +379,6 @@ const SentimentModel: React.FC = () => {
             <Text type="secondary" className="text-xs">{selectedCase.focus}</Text>
           )}
         </div>
-        {sampleError && <Alert className="mb-3" type="warning" showIcon message={sampleError} />}
         <TextArea
           value={text}
           onChange={(event) => {
@@ -409,4 +435,4 @@ const SentimentModel: React.FC = () => {
 };
 
 export default SentimentModel;
-// AI_GENERATE_END -----------
+// AI_GENERATE_END ------------

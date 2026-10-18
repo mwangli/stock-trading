@@ -69,6 +69,70 @@ public class SentimentEvaluationEntity {
     @Column(name = "negative_recall", nullable = false)
     private double negativeRecall;
 
+    /** 正面类别召回率。 */
+    @Column(name = "positive_recall", nullable = false)
+    private double positiveRecall;
+
+    /** 模型预测为中性的样本占比。 */
+    @Column(name = "predicted_neutral_ratio", nullable = false)
+    private double predictedNeutralRatio;
+
+    /** 评估集事件类型覆盖率。 */
+    @Column(name = "event_type_coverage", nullable = false)
+    private double eventTypeCoverage;
+
+    /** 评估集可交易新闻占比。 */
+    @Column(name = "actionable_news_ratio", nullable = false)
+    private double actionableNewsRatio;
+
+    /** 影响方向预测准确率。 */
+    @Column(name = "direction_accuracy", nullable = false)
+    private double directionAccuracy;
+
+    /** 文本影响强度基线 MAE。 */
+    @Column(name = "impact_magnitude_mae", nullable = false)
+    private double impactMagnitudeMae;
+
+    /** 事件类型 Macro-F1，当前为规则基线评估。 */
+    @Column(name = "event_type_macro_f1", nullable = false)
+    private double eventTypeMacroF1;
+
+    /** T+1 超额收益 IC。 */
+    @Column(name = "t1_excess_return_ic")
+    private Double t1ExcessReturnIc;
+
+    /** T+3 超额收益 IC。 */
+    @Column(name = "t3_excess_return_ic")
+    private Double t3ExcessReturnIc;
+
+    /** T+5 超额收益 IC。 */
+    @Column(name = "t5_excess_return_ic")
+    private Double t5ExcessReturnIc;
+
+    /** Top-K 新闻命中率。 */
+    @Column(name = "top_k_news_hit_rate")
+    private Double topKNewsHitRate;
+
+    /** Top-K 股票组合收益。 */
+    @Column(name = "top_k_portfolio_return")
+    private Double topKPortfolioReturn;
+
+    /** 最大回撤。 */
+    @Column(name = "max_drawdown")
+    private Double maxDrawdown;
+
+    /** 换手率。 */
+    @Column(name = "turnover_rate")
+    private Double turnoverRate;
+
+    /** 扣除交易成本后的收益。 */
+    @Column(name = "net_return_after_costs")
+    private Double netReturnAfterCosts;
+
+    /** 新闻因子相对 LSTM 基线的增量收益。 */
+    @Column(name = "lstm_incremental_return")
+    private Double lstmIncrementalReturn;
+
     /** 期望校准误差。 */
     @Column(name = "expected_calibration_error", nullable = false)
     private double expectedCalibrationError;

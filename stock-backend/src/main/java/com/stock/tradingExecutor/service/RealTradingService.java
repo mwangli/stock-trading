@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------
+// AI_GENERATE_START --------------
 package com.stock.tradingExecutor.service;
 
 import com.stock.dataCollector.service.TradingCalendarService;
@@ -241,7 +241,7 @@ public class RealTradingService {
                 .stockCode(item.getStockCode())
                 .stockName(item.getStockName())
                 .lstmScore(item.getLstmScore())
-                .sentimentScore(item.getSentimentScore())
+                .newsImpactScore(item.getNewsImpactScore())
                 .totalScore(item.getTotalScore())
                 .rank(item.getRank())
                 .reason(item.getReason())
@@ -275,4 +275,4 @@ public class RealTradingService {
                 .build();
     }
 }
-// AI_GENERATE_END -------------
+// AI_GENERATE_END --------------

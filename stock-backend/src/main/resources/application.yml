@@ -1,7 +1,7 @@
 server:
   port: 8080
 
-# AI_GENERATE_START ----
+# AI_GENERATE_START -----
 spring:
   config:
     import:
@@ -11,12 +11,6 @@ spring:
     name: stock-trading
   main:
     allow-bean-definition-overriding: true
-  devtools:
-    restart:
-      enabled: true
-    livereload:
-      enabled: true
-
   # MySQL配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -96,21 +90,23 @@ trading:
   force-exit-time: "14:50"
 
 agent:
-  enabled: false
-  provider: auto
+  enabled: ${AGENT_ENABLED:${DEEPSEEK_API_ENABLE:false}}
+  provider: ${AGENT_PROVIDER:auto}
   deepseek:
-    enabled: false
+    enabled: ${DEEPSEEK_API_ENABLE:false}
     base-url: https://api.deepseek.com/v1
     api-key: ${DEEPSEEK_API_KEY:}
     model: deepseek-chat
   ollama:
-    enabled: false
-    base-url: http://localhost:11434/v1
+    enabled: ${OLLAMA_ENABLED:false}
+    base-url: http://localhost:11434
     api-key: ${OLLAMA_API_KEY:ollama}
     model: deepseek-r1:7b
+    think: ${OLLAMA_THINK:false}
+    max-tokens: ${OLLAMA_MAX_TOKENS:256}
   max-steps: 6
   max-model-rounds: 3
-  timeout-ms: 30000
+  timeout-ms: ${AGENT_TIMEOUT_MS:30000}
   max-output-chars: 12000
   max-concurrency: 1
   report-enabled: false
@@ -149,7 +145,7 @@ backtest:
   minimum-candidate-net-return-rate: 0.0020
   code-version: WORKTREE_UNCOMMITTED
 
-# AI_GENERATE_END ----
+# AI_GENERATE_END -----
 
 models:
   # Java 使用 DJL + PyTorch Engine 完成 LSTM 训练、模型结构重建和在线推理。

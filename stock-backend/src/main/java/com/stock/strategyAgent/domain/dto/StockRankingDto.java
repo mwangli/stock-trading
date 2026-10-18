@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -63,8 +63,8 @@ public class StockRankingDto {
     /** LSTM 归一化分数。 */
     private double lstmScore;
 
-    /** 情感聚合分数。 */
-    private double sentimentScore;
+    /** 可交易新闻影响分数。 */
+    private double newsImpactScore;
 
     /** 综合候选分数。 */
     private double totalScore;
@@ -78,4 +78,4 @@ public class StockRankingDto {
     /** 候选原因。 */
     private String reason;
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

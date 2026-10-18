@@ -1,5 +1,5 @@
-// AI_GENERATE_START -
-package com.stock.tradingExecutor.access.domain.dto;
+// AI_GENERATE_START --
+package com.stock.tradingExecutor.domain.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -22,4 +22,4 @@ public class UserMenuPreferenceRequestDto {
     @Size(max = 64)
     private List<@NotBlank @Size(max = 128) String> menuOrder;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

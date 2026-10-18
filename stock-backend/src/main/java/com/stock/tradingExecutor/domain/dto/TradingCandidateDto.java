@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.tradingExecutor.domain.dto;
 
 import lombok.Builder;
@@ -23,8 +23,8 @@ public class TradingCandidateDto {
     /** LSTM 预测得分。 */
     private double lstmScore;
 
-    /** 新闻情感得分。 */
-    private double sentimentScore;
+    /** 可交易新闻影响分数。 */
+    private double newsImpactScore;
 
     /** 综合得分。 */
     private double totalScore;
@@ -38,4 +38,4 @@ public class TradingCandidateDto {
     /** 当前账户是否已经持有该股票。 */
     private boolean held;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

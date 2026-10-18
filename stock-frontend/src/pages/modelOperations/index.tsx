@@ -1,8 +1,7 @@
-// AI_GENERATE_START -----------------------------
+// AI_GENERATE_START -------------------------------
 import React, { useCallback, useEffect, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
 import {
-  Alert,
   Button,
   Card,
   Col,
@@ -29,12 +28,9 @@ import {
   CheckCircleOutlined,
   CloudServerOutlined,
   ExperimentOutlined,
-  LineChartOutlined,
-  ReloadOutlined,
   RollbackOutlined,
   SafetyCertificateOutlined,
   StopOutlined,
-  SyncOutlined,
 } from '@ant-design/icons';
 import request from '../../utils/request';
 import { getApiErrorMessage, readApiData, type ApiResponse } from '../../utils/api';
@@ -262,21 +258,6 @@ const evaluationStatusColors: Record<string, string> = {
   NO_MARKET_DATA: 'orange',
 };
 
-const abilityLabels: Record<string, string> = {
-  STRONG: '能力较强',
-  ACCEPTABLE: '基本可用',
-  WEAK: '能力较弱',
-  INSUFFICIENT_DATA: '样本不足',
-};
-
-const abilityLabelsEn: Record<string, string> = {
-  STRONG: 'Strong',
-  ACCEPTABLE: 'Acceptable',
-  WEAK: 'Weak',
-  INSUFFICIENT_DATA: 'Insufficient Data',
-};
-
-
 const formatLoss = (value?: number) => value === undefined || value === null
   ? '-'
   : value.toFixed(6);
@@ -379,7 +360,6 @@ const ModelOperations: React.FC = () => {
   const [selectedVersion, setSelectedVersion] = useState<ModelVersion | null>(null);
   const [progressClock, setProgressClock] = useState(() => Date.now());
   const [predictionLoading, setPredictionLoading] = useState(false);
-  const [predictionOperating, setPredictionOperating] = useState(false);
   const [predictionBatches, setPredictionBatches] = useState<PredictionBatch[]>([]);
   const [predictionBatchTotal, setPredictionBatchTotal] = useState(0);
   const [selectedPredictionBatchId, setSelectedPredictionBatchId] = useState<string>();
@@ -610,39 +590,6 @@ const ModelOperations: React.FC = () => {
       message.error(getApiErrorMessage(cause, localizedText('读取训练记录失败', 'Failed to load training records')));
     } finally {
       setTrainingRecordsLoading(false);
-    }
-  };
-
-  const runPrediction = async () => {
-    setPredictionOperating(true);
-    try {
-      const response = await request.post('/modelPredictions/run', {
-        operatorName: operatorName.trim() || 'web-console',
-      }) as ApiResponse<{ batchId: string; status: string; message: string }>;
-      const result = readApiData(response, localizedText('提交全市场预测失败', 'Failed to start full-market prediction'));
-      message.success(result.message);
-      setSelectedPredictionBatchId(result.batchId);
-      await loadPredictionData();
-    } catch (cause) {
-      message.error(getApiErrorMessage(cause, localizedText('提交全市场预测失败', 'Failed to start full-market prediction')));
-    } finally {
-      setPredictionOperating(false);
-    }
-  };
-
-  const evaluatePrediction = async () => {
-    setPredictionOperating(true);
-    try {
-      const response = await request.post('/modelPredictions/evaluate', {
-        batchId: selectedPredictionBatchId,
-      }) as ApiResponse<{ batchId: string; status: string; message: string }>;
-      const result = readApiData(response, localizedText('刷新预测实际结果失败', 'Failed to refresh actual prediction results'));
-      message.success(result.message);
-      await loadPredictionData();
-    } catch (cause) {
-      message.error(getApiErrorMessage(cause, localizedText('刷新预测实际结果失败', 'Failed to refresh actual prediction results')));
-    } finally {
-      setPredictionOperating(false);
     }
   };
 
@@ -1051,13 +998,6 @@ const ModelOperations: React.FC = () => {
       <Card
         className="surface-card"
         title={`预测批次（共 ${predictionBatchTotal} 个）`}
-        extra={(
-          <Space wrap>
-            <Button icon={<ReloadOutlined />} loading={predictionLoading} onClick={() => void loadPredictionData()}>{localizedText('刷新数据', 'Refresh Data')}</Button>
-            <Button icon={<SyncOutlined />} loading={predictionOperating} disabled={!selectedPredictionBatchId} onClick={() => void evaluatePrediction()}>{localizedText('刷新实际结果', 'Refresh Actual Results')}</Button>
-            <Button type="primary" icon={<LineChartOutlined />} loading={predictionOperating} onClick={() => void runPrediction()}>{localizedText('执行全市场预测', 'Run Full-market Prediction')}</Button>
-          </Space>
-        )}
       >
         <Table<PredictionBatch>
           rowKey="id"
@@ -1109,20 +1049,6 @@ const ModelOperations: React.FC = () => {
       >
         {modelAbility ? (
           <Space direction="vertical" size="large" className="w-full">
-            {selectedPredictionBatch?.calendarFallback && (
-              <Alert
-                type="warning"
-                showIcon
-                message={localizedText('交易日历缺失或覆盖不足', 'Trading calendar missing or incomplete')}
-                description={localizedText('当前目标日由工作日规则推算。行情基准日仍是模型实际使用的最后交易日，请在正式使用前补齐证券交易日历。', 'The target date was estimated from weekdays. The market base date remains the last trading date used by the model; complete the official trading calendar before production use.')}
-              />
-            )}
-            <Alert
-              type={modelAbility.tradingEligibility === 'DISABLED' || modelAbility.abilityLevel === 'WEAK' ? 'warning' : modelAbility.tradingEligibility === 'TRADE_ELIGIBLE' ? 'success' : 'info'}
-              showIcon
-              message={`${localizedText(abilityLabels[modelAbility.abilityLevel || ''] || '', abilityLabelsEn[modelAbility.abilityLevel || ''] || '') || modelAbility.abilityLevel || localizedText('待评估', 'Pending Evaluation')} · ${modelAbility.tradingEligibility || 'DISABLED'}`}
-              description={`${modelAbility.abilityMessage || '等待能力评估'}${modelAbility.tradingEligibilityReason ? `；${modelAbility.tradingEligibilityReason}` : ''}`}
-            />
             <Row gutter={[16, 16]}>
               <Col xs={12} md={6} xl={3}><Statistic title={localizedText('预测覆盖率', 'Prediction Coverage')} value={formatPercent(modelAbility.coverageRate)} /></Col>
               <Col xs={12} md={6} xl={3}><Statistic title={localizedText('评估完成率', 'Evaluation Completion')} value={formatPercent(modelAbility.evaluationRate)} /></Col>
@@ -1223,12 +1149,6 @@ const ModelOperations: React.FC = () => {
         onCancel={() => setTrainingModalOpen(false)}
         destroyOnHidden
       >
-        <Alert
-          className="mb-4"
-          type="info"
-          showIcon
-          message="训练成功后仅生成 READY 候选版本，不会自动切换生产模型。"
-        />
         <Form<StartTrainingRequest> form={form} layout="vertical">
           <Form.Item name="operatorName" label="操作人" rules={[{ required: true, message: '请输入操作人' }]}>
             <Input maxLength={64} />
@@ -1303,4 +1223,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END -----------------------------
+// AI_GENERATE_END -------------------------------

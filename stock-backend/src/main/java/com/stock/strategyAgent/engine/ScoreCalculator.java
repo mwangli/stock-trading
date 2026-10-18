@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.strategyAgent.engine;
 
 import com.stock.strategyAgent.domain.entity.StrategyConfig;
@@ -10,8 +10,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 得分计算器
- * 负责因子标准化和综合得分计算
+ * 得分计算器。
+ * 负责 LSTM 因子和可交易新闻影响因子的标准化与综合得分计算。
+ *
+ * @author mwangli
+ * @since 2026-10-18
  */
 @Slf4j
 @Component
@@ -22,21 +25,22 @@ public class ScoreCalculator {
      * 计算综合得分
      *
      * @param lstmProbability LSTM涨的概率 [0, 1]
-     * @param sentimentScore 情感得分 [-1, 1]
+     * @param newsImpactScore 新闻影响得分 [-1, 1]；为空表示没有可交易新闻影响
      * @param config 策略配置
      * @return 综合得分 [0, 1]
      */
-    public double calculateTotalScore(double lstmProbability, double sentimentScore, StrategyConfig config) {
-        // 因子标准化
+    public double calculateTotalScore(double lstmProbability, Double newsImpactScore, StrategyConfig config) {
         double lstmFactor = normalizeLstmFactor(lstmProbability);
-        double sentimentFactor = normalizeSentimentFactor(sentimentScore);
+        if (newsImpactScore == null || Math.abs(newsImpactScore) < 0.000001D) {
+            return lstmFactor;
+        }
+        double newsFactor = normalizeNewsImpactFactor(newsImpactScore);
 
-        // 加权计算综合得分
         double totalScore = lstmFactor * config.getLstmWeight()
-                + sentimentFactor * config.getSentimentWeight();
+                + newsFactor * config.getSentimentWeight();
 
-        log.debug("得分计算: LSTM概率={}, 情感得分={}, LSTM因子={}, 情感因子={}, 综合得分={}",
-                lstmProbability, sentimentScore, lstmFactor, sentimentFactor, totalScore);
+        log.debug("得分计算: LSTM概率={}, 新闻影响得分={}, LSTM因子={}, 新闻因子={}, 综合得分={}",
+                lstmProbability, newsImpactScore, lstmFactor, newsFactor, totalScore);
 
         return totalScore;
     }
@@ -55,16 +59,14 @@ public class ScoreCalculator {
     }
 
     /**
-     * 情感因子标准化
-     * 将情感得分从 [-1, 1] 映射到 [0, 1]
+     * 新闻影响因子标准化。
+     * 只有存在可交易新闻影响时才调用，避免中性新闻注入固定基线分。
      *
-     * @param sentimentScore 情感得分 [-1, 1]
+     * @param newsImpactScore 新闻影响得分 [-1, 1]
      * @return 标准化后的因子得分 [0, 1]
      */
-    public double normalizeSentimentFactor(double sentimentScore) {
-        // 映射公式: (x + 1) / 2
-        // -1 -> 0, 0 -> 0.5, 1 -> 1
-        double normalized = (sentimentScore + 1) / 2;
+    public double normalizeNewsImpactFactor(double newsImpactScore) {
+        double normalized = (newsImpactScore + 1) / 2;
         return Math.max(0, Math.min(1, normalized));
     }
 
@@ -72,13 +74,13 @@ public class ScoreCalculator {
      * 批量计算综合得分
      *
      * @param lstmPredictions LSTM预测结果 Map<股票代码, 涨的概率>
-     * @param sentimentScores 情感得分 Map<股票代码, 情感得分>
+     * @param newsImpactScores 可交易新闻影响得分 Map<股票代码, 新闻影响得分>
      * @param config 策略配置
      * @return 综合得分 Map<股票代码, 综合得分>
      */
     public Map<String, Double> calculateTotalScores(
             Map<String, Double> lstmPredictions,
-            Map<String, Double> sentimentScores,
+            Map<String, Double> newsImpactScores,
             StrategyConfig config) {
 
         Map<String, Double> totalScores = new HashMap<>();
@@ -86,9 +88,9 @@ public class ScoreCalculator {
         // 合并所有股票代码
         lstmPredictions.keySet().forEach(code -> {
             double lstmProb = lstmPredictions.getOrDefault(code, 0.5);
-            double sentiment = sentimentScores.getOrDefault(code, 0.0);
+            Double newsImpact = newsImpactScores.get(code);
 
-            double totalScore = calculateTotalScore(lstmProb, sentiment, config);
+            double totalScore = calculateTotalScore(lstmProb, newsImpact, config);
             totalScores.put(code, totalScore);
         });
 
@@ -132,4 +134,4 @@ public class ScoreCalculator {
         return totalScore >= config.getMinScore();
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

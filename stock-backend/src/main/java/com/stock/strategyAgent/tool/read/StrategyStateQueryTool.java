@@ -26,7 +26,7 @@ public class StrategyStateQueryTool {
      *
      * @return 策略状态
      */
-    @Tool("查询当前策略开关、模式和配置版本")
+    @Tool(name = "queryStrategyState", value = "查询当前策略开关、模式和配置版本")
     public StrategyStateResult query() {
         return toolSupport.execute("queryStrategyState", () -> {
             StrategyStateDto state = strategyStateManager.getCurrentState();

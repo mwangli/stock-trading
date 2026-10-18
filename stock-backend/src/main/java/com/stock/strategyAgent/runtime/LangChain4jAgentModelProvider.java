@@ -13,6 +13,7 @@ import dev.langchain4j.service.AiServices;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.ollama.OllamaChatModel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,7 @@ import org.springframework.util.StringUtils;
 
 import jakarta.annotation.PreDestroy;
 import java.util.Map;
+import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -145,7 +147,9 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                 String errorCode = providerErrorCode(provider, exception);
                 lastErrorCode = errorCode;
                 providerStatuses.put(provider, errorCode);
-                log.warn("[Agent] Provider 调用失败: provider={}, errorCode={}", provider, errorCode);
+                log.warn("[Agent] Provider 调用失败: provider={}, errorCode={}, causeType={}, causeMessage={}",
+                        provider, errorCode, rootCause(exception).getClass().getSimpleName(),
+                        safeErrorMessage(rootCause(exception).getMessage()));
             }
         }
         String errorCode = selection.providers().size() == 1
@@ -241,13 +245,18 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                     .baseUrl(config.getBaseUrl())
                     .apiKey(config.getApiKey())
                     .modelName(config.getModel())
+                    .timeout(Duration.ofMillis(Math.max(properties.getTimeoutMs(), 1L)))
+                    .maxRetries(0)
                     .build();
         }
         AgentProperties.OllamaProperties config = properties.getOllama();
-        return OpenAiChatModel.builder()
+        return OllamaChatModel.builder()
                 .baseUrl(config.getBaseUrl())
-                .apiKey(StringUtils.hasText(config.getApiKey()) ? config.getApiKey() : "ollama")
                 .modelName(config.getModel())
+                .timeout(Duration.ofMillis(Math.max(properties.getTimeoutMs(), 1L)))
+                .maxRetries(0)
+                .think(config.isThink())
+                .numPredict(Math.max(config.getMaxTokens(), 1))
                 .build();
     }
 
@@ -283,6 +292,23 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
             return "MODEL_NOT_FOUND";
         }
         return "ollama".equals(provider) ? "OLLAMA_UNAVAILABLE" : "DEEPSEEK_UNAVAILABLE";
+    }
+
+    private Throwable rootCause(Throwable exception) {
+        Throwable current = exception;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private String safeErrorMessage(String message) {
+        if (!StringUtils.hasText(message)) {
+            return "";
+        }
+        String sanitized = message.replaceAll("(?i)(authorization\\s*:\\s*bearer\\s+|api[-_ ]?key\\s*[=:]\\s*)[^\\s,;]+", "$1***")
+                .replaceAll("(?i)sk-[a-z0-9_-]+", "sk-***");
+        return sanitized.substring(0, Math.min(sanitized.length(), 500));
     }
 
     private String limit(String value) {

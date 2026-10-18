@@ -1,7 +1,6 @@
-// AI_GENERATE_START -----------------
+// AI_GENERATE_START ------------------
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   Button,
   Card,
   Col,
@@ -394,13 +393,6 @@ const Settings: React.FC = () => {
           loading={runtimeLoading}
           extra={<Text type="secondary">最后更新：{formatDateTime(runtimeSettings?.updatedAt)}</Text>}
         >
-          <Alert
-            type="info"
-            showIcon
-            message="页面配置优先生效"
-            description={`当前节点：${runtimeSettings?.nodeId || '未识别'}。环境变量和 application.yml 仅用于该节点首次初始化默认值，保存后写入数据库。不同节点应配置唯一的 APP_NODE_ID。`}
-            className="mb-4"
-          />
           <Row gutter={[24, 8]}>
             <Col xs={24} md={12} xl={8}>
               <Form.Item label={t('settings.fieldsRuntime.scheduler')} name="schedulerEnabled" valuePropName="checked" extra="关闭后禁止定时和手动触发 Quartz 固定任务">
@@ -464,12 +456,6 @@ const Settings: React.FC = () => {
       </Form>
 
       <Card className="surface-card" title={<Space><WarningOutlined />生产安全边界</Space>}>
-        <Alert
-          type="warning"
-          showIcon
-          message="敏感配置不在浏览器中保存"
-          description="券商账号、密码、验证码服务密钥和真实交易写入开关仍只允许通过后端部署配置管理，不会保存到浏览器或运行配置表。"
-        />
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
           <div><Text type="secondary">真实写入</Text><div className="mt-1">{tradingHealth.data?.realWriteEnabled ? <Tag color="red">已开启</Tag> : <Tag color="blue">已关闭</Tag>}</div></div>
           <div><Text type="secondary">无人值守执行</Text><div className="mt-1">{tradingHealth.data?.automaticExecutionEnabled ? <Tag color="orange">已具备条件</Tag> : <Tag>未就绪</Tag>}</div></div>
@@ -481,4 +467,4 @@ const Settings: React.FC = () => {
 };
 
 export default Settings;
-// AI_GENERATE_END -----------------
+// AI_GENERATE_END ------------------

@@ -38,6 +38,7 @@ public class AgentStructuredOutputParser {
             throw new IllegalArgumentException("结构化输出类型或内容不能为空");
         }
         try {
+            content = normalizeJsonContent(content);
             AgentStructuredOutput output = switch (outputType) {
                 case "RESEARCH" -> JSON.parseObject(content, ResearchResult.class);
                 case "DIAGNOSTIC" -> JSON.parseObject(content, DiagnosticResult.class);
@@ -53,6 +54,23 @@ public class AgentStructuredOutputParser {
         } catch (RuntimeException exception) {
             throw new IllegalArgumentException("模型未返回合法的结构化 JSON", exception);
         }
+    }
+
+    private String normalizeJsonContent(String content) {
+        String normalized = content.trim();
+        if (normalized.startsWith("```")) {
+            int firstLineEnd = normalized.indexOf('\n');
+            int closingFence = normalized.lastIndexOf("```");
+            if (firstLineEnd > 0 && closingFence > firstLineEnd) {
+                normalized = normalized.substring(firstLineEnd + 1, closingFence).trim();
+            }
+        }
+        int objectStart = normalized.indexOf('{');
+        int objectEnd = normalized.lastIndexOf('}');
+        if (objectStart >= 0 && objectEnd > objectStart) {
+            return normalized.substring(objectStart, objectEnd + 1);
+        }
+        return normalized;
     }
 
     private void validateEvidenceRefs(AgentStructuredOutput output, List<String> allowedEvidenceRefs) {
@@ -77,6 +95,7 @@ public class AgentStructuredOutputParser {
                 result.setEvidenceRefs(List.of());
             }
         }
+        normalizeResearchStatus(outputType, output);
         Set<String> allowed = switch (outputType) {
             case "RESEARCH" -> RESEARCH_STATUS;
             case "DIAGNOSTIC" -> DIAGNOSTIC_STATUS;
@@ -95,6 +114,17 @@ public class AgentStructuredOutputParser {
         }
         if (output instanceof TradePlanDraft draft) {
             validateTradePlan(draft);
+        }
+    }
+
+    private void normalizeResearchStatus(String outputType, AgentStructuredOutput output) {
+        if (!"RESEARCH".equals(outputType) || !(output instanceof ResearchResult result)) {
+            return;
+        }
+        if ("NO_ACTION".equalsIgnoreCase(result.getStatus())) {
+            result.setStatus("UNKNOWN");
+        } else if ("PARTIAL_EVIDENCE".equalsIgnoreCase(result.getStatus())) {
+            result.setStatus("WARN");
         }
     }
 

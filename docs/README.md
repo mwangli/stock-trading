@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START ---------- -->
+<!-- AI_GENERATE_START ----------- -->
 # AI-AGENT智能股票自动交易系统文档索引
 
 
@@ -71,6 +71,8 @@ dataCollector -> modelService -> strategyAgent -> tradingExecutor -> broker
 
 ## 可简化项
 
+当前跨模块的删除、合并和暂缓项统一记录在[全模块减法优化清单](减法优化清单.md)，该清单优先于各阶段文档中的旧实现计划。
+
 - 不建设通用任务编排平台：固定任务由代码白名单和 Quartz 管理，页面只提供查询、触发、暂停、恢复和停止。
 - 不建设独立用户中心：当前为个人系统，只保留单用户登录、会话和最小权限模型；后续有多用户需求再扩展角色权限。
 - 不把运行开关散落在每个业务模块：统一由 `tradingExecutor.runtime` 提供门禁服务，业务模块只依赖明确的判断接口。
@@ -80,4 +82,4 @@ dataCollector -> modelService -> strategyAgent -> tradingExecutor -> broker
 ## 验证边界
 
 本文档和模块设计属于静态架构说明。它们不能证明真实账户登录、券商委托、模型训练效果、Quartz 重启恢复或生产资源占用；这些能力仍需在目标环境单独验证。
-<!-- AI_GENERATE_END ---------- -->
+<!-- AI_GENERATE_END ----------- -->
