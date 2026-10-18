@@ -13,7 +13,7 @@ const Settings = lazy(() => import('./pages/settings'));
 const HistoryOrders = lazy(() => import('./pages/historyOrders'));
 const TradeRecords = lazy(() => import('./pages/tradeRecords'));
 const TradeRecordDemos = lazy(() => import('./pages/tradeRecordDemos'));
-const Logs = lazy(() => import('./pages/logs'));
+const Logs = lazy(() => import('./pages/Logs'));
 const ModelOperations = lazy(() => import('./pages/modelOperations'));
 const SentimentModel = lazy(() => import('./pages/sentimentModel'));
 const StrategyConfig = lazy(() => import('./pages/strategyConfig'));
