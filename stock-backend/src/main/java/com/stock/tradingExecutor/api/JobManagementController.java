@@ -1,10 +1,10 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START- -
 package com.stock.tradingExecutor.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
-import com.stock.tradingExecutor.job.JobExecutionStatus;
-import com.stock.tradingExecutor.job.JobTriggerSource;
+import com.stock.tradingExecutor.JobExecutionStatus;
+import com.stock.tradingExecutor.JobTriggerSource;
 import com.stock.tradingExecutor.service.JobManagementService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

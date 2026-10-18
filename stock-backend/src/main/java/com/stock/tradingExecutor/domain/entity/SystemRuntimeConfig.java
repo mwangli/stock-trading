@@ -1,5 +1,5 @@
-// AI_GENERATE_START ---
-package com.stock.tradingExecutor.runtime.domain.entity;
+// AI_GENERATE_START- ---
+package com.stock.tradingExecutor.domain.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

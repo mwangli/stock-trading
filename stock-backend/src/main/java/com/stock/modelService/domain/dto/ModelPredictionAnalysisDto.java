@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.modelService.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -49,6 +49,24 @@ public final class ModelPredictionAnalysisDto {
 
         /** 预测批次 ID；为空时评估最新批次。 */
         private String batchId;
+    }
+
+    /**
+     * 历史预测重算请求。
+     *
+     * @author mwangli
+     * @since 2026-10-18
+     */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RerunPredictionRequest {
+
+        /** 原历史预测批次 ID。 */
+        private String batchId;
+
+        /** 发起重算的操作人名称。 */
+        private String operatorName;
     }
 
     /**
@@ -432,4 +450,4 @@ public final class ModelPredictionAnalysisDto {
         private String tradingEligibilityReason;
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

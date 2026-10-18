@@ -2,6 +2,7 @@
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockNews;
+import com.stock.dataCollector.service.NewsEventClassifier;
 import com.stock.modelService.domain.vo.SentimentAggregateResult;
 import com.stock.modelService.domain.vo.SentimentAnalysisResult;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,46 @@ public class SentimentAggregationService {
             "债务违约", "破产重整", "实控人被捕", "资金占用", "审计无法表示意见");
 
     private final SentimentInferenceService sentimentInferenceService;
+    private final NewsEventClassifier newsEventClassifier;
+
+    /**
+     * 分析单条文本并生成与选股聚合一致的业务判断。
+     *
+     * @param text 待分析文本
+     * @param category 来源分类，例如新闻或公告
+     * @param modelResult 已完成的情感模型结果，避免重复推理
+     * @return 单条文本的业务影响结果
+     */
+    public SentimentAggregateResult assessText(String text, String category,
+                                               SentimentAnalysisResult modelResult) {
+        StockNews news = new StockNews();
+        news.setContent(text);
+        news.setCategory(category);
+        news.setPublishTime(LocalDateTime.now());
+        String eventType = resolveEventType(news);
+        double coverage = 0.5D + 1D / 6D;
+        double confidence = clamp(modelResult.getConfidence() * coverage, 0D, 1D);
+        double impactMagnitude = clamp(normalizedPriority(news) * coverage, 0D, 1D);
+        double newsImpactScore = clamp(modelResult.getScore() * impactMagnitude * confidence, -1D, 1D);
+        boolean strongNegative = isStrongNegative(news, modelResult);
+        if (strongNegative) {
+            newsImpactScore = Math.min(newsImpactScore, -0.8D);
+        }
+        boolean actionable = strongNegative || (Math.abs(newsImpactScore) >= 0.12D && confidence >= 0.55D);
+        return SentimentAggregateResult.builder()
+                .newsImpactScore(newsImpactScore)
+                .impactMagnitude(impactMagnitude)
+                .confidence(confidence)
+                .newsCount(1)
+                .uniqueEventCount(1)
+                .strongNegative(strongNegative)
+                .dominantEventType(eventType)
+                .effectiveHorizonHours(resolveEffectiveHorizonHours(eventType))
+                .actionable(actionable)
+                .impactDirection(resolveImpactDirection(newsImpactScore))
+                .strategyAction(resolveStrategyAction(newsImpactScore, strongNegative, actionable))
+                .build();
+    }
 
     /**
      * 聚合一只股票指定时间窗口内的新闻和公告情感。
@@ -93,6 +134,9 @@ public class SentimentAggregationService {
                 .map(Map.Entry::getKey)
                 .orElse(null);
         int effectiveHorizonHours = resolveEffectiveHorizonHours(dominantEventType);
+        String impactDirection = resolveImpactDirection(newsImpactScore);
+        String strategyAction = resolveStrategyAction(newsImpactScore, strongNegative,
+                Math.abs(newsImpactScore) >= 0.12D && confidence >= 0.55D);
         return SentimentAggregateResult.builder()
                 .newsImpactScore(newsImpactScore)
                 .impactMagnitude(impactMagnitude)
@@ -104,6 +148,8 @@ public class SentimentAggregationService {
                 .dominantEventType(dominantEventType)
                 .effectiveHorizonHours(effectiveHorizonHours)
                 .actionable(strongNegative || (Math.abs(newsImpactScore) >= 0.12D && confidence >= 0.55D))
+                .impactDirection(impactDirection)
+                .strategyAction(strategyAction)
                 .build();
     }
 
@@ -157,13 +203,15 @@ public class SentimentAggregationService {
     }
 
     private double normalizedPriority(StockNews news) {
-        int priority = news.getInformationPriority() == null ? 1 : news.getInformationPriority();
+        int priority = news.getInformationPriority() == null
+                ? newsEventClassifier.priority(resolveEventType(news)) : news.getInformationPriority();
         return clamp(priority / 5D, 0D, 1D);
     }
 
     private String resolveEventType(StockNews news) {
         return news.getEventType() == null || news.getEventType().isBlank()
-                ? "GENERAL_NEWS" : news.getEventType();
+                ? newsEventClassifier.classify(news.getTitle(), news.getContent(), news.getCategory())
+                : news.getEventType();
     }
 
     private int resolveEffectiveHorizonHours(String eventType) {
@@ -191,24 +239,12 @@ public class SentimentAggregationService {
     }
 
     private double eventTypeWeight(StockNews news) {
-        String eventType = news.getEventType();
-        if (eventType != null) {
-            return switch (eventType) {
-                case "REGULATORY_OR_LITIGATION", "EARNINGS" -> 1.45D;
-                case "SHAREHOLDER_OR_EXECUTIVE", "MATERIAL_BUSINESS" -> 1.30D;
-                case "CAPITAL_RISK" -> 1.25D;
-                default -> isAnnouncement(news) ? 1.15D : 1D;
-            };
-        }
-        String text = normalize((news.getTitle() == null ? "" : news.getTitle())
-                + (news.getContent() == null ? "" : news.getContent()));
-        if (containsAny(text, "业绩预告", "业绩快报", "回购", "增持", "减持", "立案调查", "处罚", "退市")) {
-            return 1.3D;
-        }
-        if (isAnnouncement(news)) {
-            return 1.15D;
-        }
-        return 1D;
+        return switch (resolveEventType(news)) {
+            case "REGULATORY_OR_LITIGATION", "EARNINGS" -> 1.45D;
+            case "SHAREHOLDER_OR_EXECUTIVE", "MATERIAL_BUSINESS" -> 1.30D;
+            case "CAPITAL_RISK" -> 1.25D;
+            default -> isAnnouncement(news) ? 1.15D : 1D;
+        };
     }
 
     private boolean isStrongNegative(StockNews news, SentimentAnalysisResult result) {
@@ -248,7 +284,29 @@ public class SentimentAggregationService {
                 .strongNegative(false)
                 .actionable(false)
                 .effectiveHorizonHours(0)
+                .impactDirection("NEUTRAL")
+                .strategyAction("NO_ACTION")
                 .build();
+    }
+
+    private String resolveImpactDirection(double newsImpactScore) {
+        if (newsImpactScore >= 0.12D) {
+            return "BULLISH";
+        }
+        if (newsImpactScore <= -0.12D) {
+            return "BEARISH";
+        }
+        return "NEUTRAL";
+    }
+
+    private String resolveStrategyAction(double newsImpactScore, boolean strongNegative, boolean actionable) {
+        if (strongNegative) {
+            return "RISK_BLOCK";
+        }
+        if (!actionable) {
+            return "NO_ACTION";
+        }
+        return newsImpactScore > 0D ? "ENHANCE" : "REDUCE";
     }
 
     private double clamp(double value, double minimum, double maximum) {

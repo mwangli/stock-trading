@@ -1,4 +1,4 @@
-/* AI_GENERATE_START ---------------- */
+/* AI_GENERATE_START ----------------- */
 @import "tailwindcss";
 
 :root,
@@ -567,38 +567,6 @@ select { letter-spacing: 0; }
   .ant-pagination-total-text { margin-inline-end: 0 !important; }
 }
 
-.trade-records-table .trade-record-column-title {
-  cursor: help;
-}
-.trade-records-table .trade-record-split-cell {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  line-height: 20px;
-  white-space: nowrap;
-}
-
-.trade-records-table .trade-record-split-item {
-  display: block;
-  min-height: 20px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.trade-records-table .trade-record-split-item:first-child {
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 2px;
-}
-
-.trade-records-table .trade-record-split-item + .trade-record-split-item {
-  padding-top: 2px;
-}
-
-.trade-records-table .ant-table-cell {
-  vertical-align: middle;
-}
-
 .ant-btn {
   box-shadow: none !important;
 }
@@ -833,4 +801,4 @@ select { letter-spacing: 0; }
     min-width: 96px;
   }
 }
-/* AI_GENERATE_END ---------------- */
+/* AI_GENERATE_END ----------------- */

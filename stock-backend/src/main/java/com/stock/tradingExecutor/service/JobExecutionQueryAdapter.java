@@ -1,10 +1,10 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START- -
 package com.stock.tradingExecutor.service;
 
 import com.stock.strategyAgent.application.JobExecutionQuery;
 import com.stock.strategyAgent.application.JobExecutionSummary;
-import com.stock.tradingExecutor.job.JobExecutionRecord;
-import com.stock.tradingExecutor.job.JobExecutionService;
+import com.stock.tradingExecutor.JobExecutionRecord;
+import com.stock.tradingExecutor.JobExecutionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

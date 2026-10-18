@@ -4,6 +4,7 @@ package com.stock;
 import lombok.Getter;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 
 /**
  * 股票交易系统主应用启动类。
@@ -12,6 +13,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * @since 2026-09-25
  */
 @SpringBootApplication
+@EntityScan(basePackages = "com.stock")
 public class Application {
 
     /** 进程启动时间戳，用于计算启动耗时。

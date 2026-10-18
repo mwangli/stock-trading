@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -43,6 +43,26 @@ public class ModelPredictionController {
             return ResponseDTO.success(predictionAnalysisService.startPrediction(request));
         } catch (RuntimeException exception) {
             log.warn("[ModelPrediction] 发起全市场预测失败: {}", exception.getMessage());
+            return ResponseDTO.error(exception.getMessage());
+        }
+    }
+
+    /**
+     * 使用原模型版本和历史基准日重新生成指定预测批次。
+     *
+     * @param request 历史预测重算请求
+     * @return 新建的历史预测批次信息
+     */
+    @PostMapping("/rerun")
+    public ResponseDTO<ModelPredictionAnalysisDto.OperationResponse> rerunPrediction(
+            @RequestBody ModelPredictionAnalysisDto.RerunPredictionRequest request) {
+        log.info("[ModelPrediction] 重算历史预测批次: batchId={}, operator={}",
+                request == null ? null : request.getBatchId(),
+                request == null ? null : request.getOperatorName());
+        try {
+            return ResponseDTO.success(predictionAnalysisService.rerunPrediction(request));
+        } catch (RuntimeException exception) {
+            log.warn("[ModelPrediction] 重算历史预测批次失败: {}", exception.getMessage());
             return ResponseDTO.error(exception.getMessage());
         }
     }
@@ -130,4 +150,4 @@ public class ModelPredictionController {
         }
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

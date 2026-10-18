@@ -1,13 +1,13 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START-- -------
 package com.stock.dataCollector.support;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
 import com.stock.dataCollector.service.StockDataService;
 import com.stock.dataCollector.service.StockNewsService;
 import com.stock.dataCollector.service.TradingCalendarService;
-import com.stock.tradingExecutor.job.JobSkippedException;
+import com.stock.tradingExecutor.JobSkippedException;
 import com.stock.tradingExecutor.sync.SyncStateService;
-import com.stock.tradingExecutor.runtime.service.SystemRuntimeConfigService;
+import com.stock.tradingExecutor.service.SystemRuntimeConfigService;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 数据同步定时任务
  * <p>
  * 说明：本类提供数据同步业务方法，由固定 Quartz Job 类直接调用。
- * 默认任务配置见 {@link com.stock.tradingExecutor.job.JobBootstrap}。
+ * 默认任务配置见 {@link com.stock.tradingExecutor.JobBootstrap}。
  * </p>
  *
  * @author mwangli
@@ -171,6 +171,21 @@ public class DataSyncScheduler {
     }
 
     /**
+     * 补全历史新闻缺失的事件类型和信息优先级。
+     * <p>
+     * 对应任务: newsMetadataBackfill。任务可重复执行，已完整的新闻不会被修改。
+     * </p>
+     */
+    public void backfillNewsMetadata() {
+        runtimeConfigService.requireNewsCollectionEnabled();
+        log.info("========== [数据同步任务] 开始补全历史新闻元数据 ==========");
+        StockNewsService.NewsMetadataBackfillResult result = stockNewsService.backfillMissingMetadata();
+        log.info("[数据同步任务] 历史新闻元数据补全完成: 扫描 {} 条，更新 {} 条",
+                result.scannedCount(), result.updatedCount());
+        log.info("========== [数据同步任务] 历史新闻元数据补全结束 ==========");
+    }
+
+    /**
      * 全量新闻采集
      * <p>
      * 对应任务: newsFullSync
@@ -218,4 +233,4 @@ public class DataSyncScheduler {
         log.info("========== [数据同步任务] 每日增量新闻采集结束 ==========");
     }
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END --------

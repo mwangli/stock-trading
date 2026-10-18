@@ -32,6 +32,10 @@ public class ModelPredictionBatchDocument {
     /** 本批次固定使用的模型文档 ID。 */
     private String modelId;
 
+    /** 历史重算来源批次 ID；普通预测批次为空。 */
+    @Indexed(unique = true, sparse = true, name = "uk_prediction_batch_rerun_source")
+    private String rerunSourceBatchId;
+
     /** 模型业务版本号。 */
     private String modelVersion;
 

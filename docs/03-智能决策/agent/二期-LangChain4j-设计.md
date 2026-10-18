@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START --- -->
+<!-- AI_GENERATE_START- --- -->
 # AGENT 二期 LangChain4j 设计
 
 ## 1. 设计原则
@@ -319,7 +319,7 @@ TradePlan Agent 不允许直接注入以下类型：
 - `ZXBrokerAdapter`
 - `TradingProperties` 写配置服务
 
-执行服务只能由 `tradingExecutor.job` 或 `tradingExecutor` 内部应用服务触发。
+执行服务只能由 `tradingExecutor` 根包中的调度类或 `tradingExecutor` 内部应用服务触发。
 
 执行前必须重新读取：
 

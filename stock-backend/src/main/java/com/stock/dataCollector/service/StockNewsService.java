@@ -1,13 +1,15 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START-- --------
 package com.stock.dataCollector.service;
 
+import com.mongodb.bulk.BulkWriteResult;
 import com.stock.dataCollector.domain.entity.StockInfo;
 import com.stock.dataCollector.domain.entity.StockNews;
 import com.stock.dataCollector.domain.enums.NewsSyncStatus;
 import com.stock.dataCollector.persistence.NewsRepository;
 import com.stock.dataCollector.persistence.StockInfoRepository;
 import com.stock.dataCollector.support.SecuritiesClient;
-import com.stock.tradingExecutor.runtime.service.SystemRuntimeConfigService;
+import com.stock.dataCollector.support.DelistedStockDetector;
+import com.stock.tradingExecutor.service.SystemRuntimeConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,6 +18,7 @@ import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PreDestroy;
@@ -137,6 +140,12 @@ public class StockNewsService {
      */
     public int collectStockNewsByCode(String stockCode) {
         runtimeConfigService.requireNewsCollectionEnabled();
+        StockInfo stockInfo = stockInfoRepository.findByCode(stockCode)
+                .orElseThrow(() -> new IllegalArgumentException("股票代码不存在: " + stockCode));
+        if (DelistedStockDetector.isDelisted(stockInfo)) {
+            log.warn("跳过退市/ST 股票新闻采集: stockCode={}, name={}", stockCode, stockInfo.getName());
+            return 0;
+        }
         String batchId = UUID.randomUUID().toString();
         StockCollectResult result = collectStockNewsByCode(stockCode, getCodeToNameCache(), batchId);
         if (!result.isFullySuccessful()) {
@@ -454,6 +463,67 @@ public class StockNewsService {
     }
 
     /**
+     * 批量补全历史新闻缺失的事件类型和信息优先级。
+     * <p>
+     * 只处理任一目标字段缺失的文档，并按文档 ID 做局部更新，避免覆盖已有字段或正文数据。
+     * </p>
+     *
+     * @return 回补扫描和更新统计
+     */
+    public NewsMetadataBackfillResult backfillMissingMetadata() {
+        Criteria missingEventType = new Criteria().orOperator(
+                Criteria.where("eventType").exists(false),
+                Criteria.where("eventType").is(null),
+                Criteria.where("eventType").is("")
+        );
+        Criteria missingPriority = new Criteria().orOperator(
+                Criteria.where("informationPriority").exists(false),
+                Criteria.where("informationPriority").is(null)
+        );
+        Query query = Query.query(new Criteria().orOperator(missingEventType, missingPriority))
+                .with(Sort.by(Sort.Direction.ASC, "_id"))
+                .limit(500);
+        int scanned = 0;
+        int updated = 0;
+        while (true) {
+            List<StockNews> batch = mongoTemplate.find(query, StockNews.class, "stock_news");
+            if (batch.isEmpty()) {
+                break;
+            }
+            BulkOperations bulkOps = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, StockNews.class);
+            int queued = 0;
+            for (StockNews news : batch) {
+                if (news.getId() == null) {
+                    continue;
+                }
+                String eventType = news.getEventType();
+                if (eventType == null || eventType.isBlank()) {
+                    eventType = newsEventClassifier.classify(news.getTitle(), news.getContent(), news.getCategory());
+                }
+                Update update = new Update();
+                if (news.getEventType() == null || news.getEventType().isBlank()) {
+                    update.set("eventType", eventType);
+                }
+                if (news.getInformationPriority() == null) {
+                    update.set("informationPriority", newsEventClassifier.priority(eventType));
+                }
+                if (!update.getUpdateObject().isEmpty()) {
+                    bulkOps.updateOne(Query.query(Criteria.where("_id").is(news.getId())), update);
+                    queued++;
+                }
+            }
+            if (queued > 0) {
+                BulkWriteResult result = bulkOps.execute();
+                updated += result.getModifiedCount();
+            }
+            scanned += batch.size();
+            log.info("历史新闻元数据回补批次完成: 扫描={}, 更新={}, 本批={}, 排队={}",
+                    scanned, updated, batch.size(), queued);
+        }
+        return new NewsMetadataBackfillResult(scanned, updated);
+    }
+
+    /**
      * 拉取新闻/公告详情（不写入，由调用方批量写入）
      */
     private StockNews fetchDetail(String externalId, String listTitle, String dateStr,
@@ -599,7 +669,7 @@ public class StockNewsService {
                 cache = codeToNameCache;
                 if (cache == null) {
                     cache = stockInfoRepository.findAll().stream()
-                            .filter(s -> s.getCode() != null)
+                            .filter(s -> s.getCode() != null && !DelistedStockDetector.isDelisted(s))
                             .collect(Collectors.toMap(s -> s.getCode(), s -> s.getName() != null ? s.getName() : "", (a, b) -> a));
                     codeToNameCache = cache;
                     log.debug("股票代码→名称缓存已加载，共 {} 条", cache.size());
@@ -657,6 +727,9 @@ public class StockNewsService {
     public record CollectResult(String batchId, int processedCount, int savedCount, int withChangeCount,
                                 int noChangeCount, int partialCount, int failedCount) {}
 
+    /** 历史新闻元数据回补统计。 */
+    public record NewsMetadataBackfillResult(int scannedCount, int updatedCount) {}
+
     /** 单只股票采集结果。 */
     private record StockCollectResult(String stockCode, int savedCount, NewsSyncStatus status, String errorCode) {
 
@@ -673,4 +746,4 @@ public class StockNewsService {
     /** 采集来源（新闻/公告）。 */
     private record NewsSource(String menuId, String category) {}
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------

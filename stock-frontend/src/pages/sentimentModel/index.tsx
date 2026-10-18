@@ -65,6 +65,14 @@ interface SentimentAnalyzeResult {
   probabilities?: Record<string, number>;
   text?: string;
   modelLoaded?: boolean;
+  eventType?: string;
+  impactDirection?: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  impactMagnitude?: number;
+  newsImpactScore?: number;
+  effectiveHorizonHours?: number;
+  actionable?: boolean;
+  strategyAction?: 'ENHANCE' | 'REDUCE' | 'NO_ACTION' | 'RISK_BLOCK';
+  strongNegative?: boolean;
 }
 
 interface SentimentEvaluation {
@@ -147,6 +155,29 @@ const labelMetaEn: Record<string, string> = {
   positive: 'Positive',
   neutral: 'Neutral',
   negative: 'Negative',
+};
+
+const eventTypeText: Record<string, string> = {
+  EARNINGS: '业绩',
+  MATERIAL_BUSINESS: '重大业务',
+  SHAREHOLDER_OR_EXECUTIVE: '股东/高管',
+  REGULATORY_OR_LITIGATION: '监管/诉讼',
+  CAPITAL_RISK: '资本风险',
+  GENERAL_ANNOUNCEMENT: '一般公告',
+  GENERAL_NEWS: '一般新闻',
+};
+
+const directionText: Record<string, { text: string; color: string }> = {
+  BULLISH: { text: '偏多', color: 'green' },
+  BEARISH: { text: '偏空', color: 'red' },
+  NEUTRAL: { text: '无明显方向', color: 'blue' },
+};
+
+const actionText: Record<string, { text: string; color: string }> = {
+  ENHANCE: { text: '增强', color: 'green' },
+  REDUCE: { text: '减弱', color: 'orange' },
+  NO_ACTION: { text: '不参与', color: 'default' },
+  RISK_BLOCK: { text: '风险阻断', color: 'red' },
 };
 
 const SentimentModel: React.FC = () => {
@@ -416,6 +447,42 @@ const SentimentModel: React.FC = () => {
               <Text>{localizedText('置信度', 'Confidence')}：{formatPercent(analysis.confidence)}</Text>
               <Text>{localizedText('归一化得分', 'Normalized Score')}：{analysis.normalizedScore?.toFixed(2) ?? localizedText('未提供', 'Not provided')}</Text>
             </div>
+            <Descriptions className="mt-4" bordered size="small" column={{ xs: 1, sm: 2, md: 4 }}>
+              <Descriptions.Item label={localizedText('事件类型', 'Event Type')}>
+                {analysis.eventType ? eventTypeText[analysis.eventType] ?? analysis.eventType : localizedText('未识别', 'Unknown')}
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('影响方向', 'Impact Direction')}>
+                {analysis.impactDirection && directionText[analysis.impactDirection]
+                  ? <Tag color={directionText[analysis.impactDirection].color}>{directionText[analysis.impactDirection].text}</Tag>
+                  : localizedText('未评估', 'Not evaluated')}
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('影响强度', 'Impact Magnitude')}>
+                {formatPercent(analysis.impactMagnitude)}
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('有效窗口', 'Effective Window')}>
+                {analysis.effectiveHorizonHours === undefined
+                  ? localizedText('未评估', 'Not evaluated')
+                  : `${analysis.effectiveHorizonHours} 小时`}
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('新闻影响分数', 'News Impact Score')}>
+                {analysis.newsImpactScore?.toFixed(3) ?? localizedText('未评估', 'Not evaluated')}
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('策略动作', 'Strategy Action')}>
+                {analysis.strategyAction && actionText[analysis.strategyAction]
+                  ? <Tag color={actionText[analysis.strategyAction].color}>{actionText[analysis.strategyAction].text}</Tag>
+                  : localizedText('未评估', 'Not evaluated')}
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('可交易', 'Actionable')}>
+                {analysis.actionable === undefined
+                  ? localizedText('未评估', 'Not evaluated')
+                  : analysis.actionable ? localizedText('是', 'Yes') : localizedText('否', 'No')}
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('风险状态', 'Risk Status')}>
+                <Tag color={analysis.strongNegative ? 'red' : 'default'}>
+                  {analysis.strongNegative ? localizedText('强负面阻断', 'Risk Block') : localizedText('正常', 'Normal')}
+                </Tag>
+              </Descriptions.Item>
+            </Descriptions>
             <Row gutter={[20, 12]} className="mt-4">
               {probabilities.map(([label, probability]) => (
                 <Col xs={24} md={8} key={label}>

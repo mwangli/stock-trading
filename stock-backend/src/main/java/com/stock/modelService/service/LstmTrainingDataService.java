@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -15,6 +15,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.time.LocalDate;
 import java.util.stream.Collectors;
 
 /**
@@ -40,7 +41,7 @@ public class LstmTrainingDataService {
      * @return 按股票代码组织且日期升序的行情
      */
     public Map<String, List<StockPrice>> loadPriceSeries(List<String> stockCodes, int days) {
-        return loadPriceSeries(stockCodes, days, null);
+        return loadPriceSeries(stockCodes, days, (PreparationProgressListener) null);
     }
 
     /**
@@ -53,6 +54,24 @@ public class LstmTrainingDataService {
      */
     public Map<String, List<StockPrice>> loadPriceSeries(
             List<String> stockCodes, int days, PreparationProgressListener listener) {
+        return loadPriceSeries(stockCodes, days, null, listener);
+    }
+
+    /**
+     * 加载指定历史截止日的股票行情窗口。
+     *
+     * @param stockCodes 股票代码
+     * @param days 每只股票最大交易日数量
+     * @param endDate 行情截止日期，包含当天；为空时读取最新行情
+     * @return 按股票代码组织且日期升序排列的行情
+     */
+    public Map<String, List<StockPrice>> loadPriceSeries(
+            List<String> stockCodes, int days, LocalDate endDate) {
+        return loadPriceSeries(stockCodes, days, endDate, null);
+    }
+
+    private Map<String, List<StockPrice>> loadPriceSeries(
+            List<String> stockCodes, int days, LocalDate endDate, PreparationProgressListener listener) {
         Map<String, List<StockPrice>> result = new LinkedHashMap<>();
         int queryLimit = Math.max(1, days);
         int totalStocks = stockCodes.size();
@@ -61,8 +80,10 @@ public class LstmTrainingDataService {
         int emptyStocks = 0;
         for (int index = 0; index < totalStocks; index++) {
             String stockCode = stockCodes.get(index);
-            List<StockPrice> prices = new ArrayList<>(
-                    priceRepository.findByCodeOrderByDateDesc(stockCode, pageRequest));
+            List<StockPrice> prices = new ArrayList<>(endDate == null
+                    ? priceRepository.findByCodeOrderByDateDesc(stockCode, pageRequest)
+                    : priceRepository.findByCodeAndDateLessThanEqualOrderByDateDesc(
+                            stockCode, endDate, pageRequest));
             if (prices.isEmpty()) {
                 emptyStocks++;
             } else {
@@ -118,4 +139,4 @@ public class LstmTrainingDataService {
         void onProgress(int completedStocks, int totalStocks, int loadedStocks, int emptyStocks);
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

@@ -29,6 +29,12 @@ public class SentimentAggregateResult {
     /** 事件影响预计持续时间，单位为小时。 */
     private int effectiveHorizonHours;
 
+    /** 新闻影响方向：BULLISH、BEARISH 或 NEUTRAL。 */
+    private String impactDirection;
+
+    /** 策略动作：ENHANCE、REDUCE、NO_ACTION 或 RISK_BLOCK。 */
+    private String strategyAction;
+
     /** 新闻覆盖和模型置信度合成值，范围为 0 到 1。 */
     private double confidence;
 

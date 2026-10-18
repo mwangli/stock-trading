@@ -1,7 +1,7 @@
-// AI_GENERATE_START ----
-package com.stock.tradingExecutor.runtime.persistence;
+// AI_GENERATE_START- ----
+package com.stock.tradingExecutor.persistence;
 
-import com.stock.tradingExecutor.runtime.domain.entity.SystemRuntimeConfig;
+import com.stock.tradingExecutor.domain.entity.SystemRuntimeConfig;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;

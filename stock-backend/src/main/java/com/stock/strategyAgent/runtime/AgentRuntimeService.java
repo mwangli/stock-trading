@@ -5,6 +5,7 @@ import com.stock.strategyAgent.config.AgentProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -61,6 +62,12 @@ public class AgentRuntimeService {
                         .structuredOutput(structuredOutput)
                         .build();
             } catch (IllegalArgumentException exception) {
+                if ("RESEARCH".equals(request.getOutputType())
+                        && response.getProvider() != null
+                        && ("ollama".equalsIgnoreCase(response.getProvider()) || response.getProvider().endsWith(":ollama"))
+                        && StringUtils.hasText(response.getContent())) {
+                    return degradedResearch(response, exception.getMessage());
+                }
                 return failure(request, "STRUCTURED_OUTPUT_INVALID", exception.getMessage());
             }
         }
@@ -83,6 +90,25 @@ public class AgentRuntimeService {
      */
     public AgentModelProviderStatus providerStatus() {
         return modelProvider.status();
+    }
+
+    private AgentRuntimeResponse degradedResearch(AgentRuntimeResponse response, String reason) {
+        ResearchResult fallback = new ResearchResult();
+        fallback.setSummary(response.getContent());
+        fallback.setStatus("UNKNOWN");
+        fallback.setKeyFindings(List.of(response.getContent()));
+        fallback.setEvidenceRefs(List.of());
+        fallback.setUncertainty("本地 Ollama 未返回合法 Research JSON，已保留原文并降级展示：" + reason);
+        fallback.setNextActions(List.of());
+        return AgentRuntimeResponse.builder()
+                .status(AgentRuntimeStatus.COMPLETED)
+                .provider(response.getProvider())
+                .model(response.getModel())
+                .content(response.getContent())
+                .evidenceSummary(response.getEvidenceSummary())
+                .errorCode("OLLAMA_STRUCTURED_OUTPUT_DEGRADED")
+                .structuredOutput(fallback)
+                .build();
     }
 
     private AgentRuntimeResponse limit(AgentRuntimeResponse response) {

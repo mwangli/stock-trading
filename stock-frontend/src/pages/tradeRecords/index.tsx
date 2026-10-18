@@ -1,7 +1,9 @@
-// AI_GENERATE_START ------------------
+// AI_GENERATE_START ---------------------
+import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
-import { Button, Card, DatePicker, Empty, Input, Pagination, Space, Table, Tooltip, Typography } from 'antd';
+import { Button, Card, DatePicker, Empty, Input, Pagination, Space, Table, Typography } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { SearchOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
 import type { ApiResponse } from '../../utils/api';
@@ -142,62 +144,38 @@ const TradeRecords: React.FC = () => {
     ? '-'
     : <Text type={value >= 0 ? 'danger' : 'success'}>{percent(value)}</Text>;
 
-  const stacked = (items: React.ReactNode[]) => (
-    <div className="trade-record-split-cell">
-      {items.map((item, index) => (
-        <span key={index} className="trade-record-split-item">{item}</span>
-      ))}
+  const detailValue = (label: string, value: React.ReactNode, className = '') => (
+    <div className={`trade-record-detail-item ${className}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 
-  const completedValue = (item: TradeRecord, render: () => React.ReactNode) => item.soldQuantity > 0 ? render() : '-';
-
-  const tradeRange = (item: TradeRecord) => stacked([
-    formatDateTime(item.buyTime),
-    formatDateTime(item.lastSellTime),
-  ]);
-
-  const tradeQuantity = (item: TradeRecord) => stacked([
-    item.buyQuantity,
-    item.soldQuantity,
-  ]);
-
-  const tradePrices = (item: TradeRecord) => stacked([
-    money(item.buyPrice),
-    money(item.averageSellPrice),
-  ]);
-
-  const tradeAmounts = (item: TradeRecord) => stacked([
-    money(item.buyAmount),
-    money(item.sellAmount),
-  ]);
-
-  const tradeProfit = (item: TradeRecord) => completedValue(item, () => stacked([
-    profit(item.grossProfit),
-    profit(item.netProfit),
-  ]));
-
-  const tradeRates = (item: TradeRecord) => completedValue(item, () => stacked([
-    rate(item.grossReturnRate),
-    rate(item.returnRate),
-  ]));
-
-  const columnTitle = (label: string, description: string) => (
-    <Tooltip title={description} placement="top">
-      <span className="trade-record-column-title">{label}</span>
-    </Tooltip>
+  const expandedRowRender = (item: TradeRecord) => (
+    <div className="trade-record-expanded">
+      <div className="trade-record-detail-grid">
+        {detailValue('买入数量', item.buyQuantity, 'trade-record-number')}
+        {detailValue('卖出数量', item.soldQuantity || '-', 'trade-record-number')}
+        {detailValue('买入均价', money(item.buyPrice), 'trade-record-number')}
+        {detailValue('卖出均价', money(item.averageSellPrice), 'trade-record-number')}
+        {detailValue('买入金额', money(item.buyAmount), 'trade-record-number')}
+        {detailValue('卖出金额', money(item.sellAmount), 'trade-record-number')}
+        {detailValue('手续费', money(item.totalFee), 'trade-record-number')}
+        {detailValue('毛收益', item.soldQuantity > 0 ? profit(item.grossProfit) : '-', 'trade-record-number')}
+        {detailValue('净收益', item.soldQuantity > 0 ? profit(item.netProfit) : '-', 'trade-record-number')}
+        {detailValue('毛收益率', item.soldQuantity > 0 ? rate(item.grossReturnRate) : '-', 'trade-record-number')}
+        {detailValue('日收益率', item.soldQuantity > 0 ? rate(item.dailyReturnRate) : '-', 'trade-record-number')}
+      </div>
+    </div>
   );
-  const columns = [
-    { title: '股票', key: 'stock', fixed: 'left' as const, render: (_: unknown, item: TradeRecord) => `${item.stockCode} ${item.stockName ?? ''}` },
-    { title: columnTitle('交易区间', '第一行：买入时间；第二行：卖出时间'), key: 'tradeRange', width: 230, render: (_: unknown, item: TradeRecord) => tradeRange(item) },
-    { title: columnTitle('交易数量', '第一行：买入数量；第二行：成交数量'), key: 'tradeQuantity', width: 130, render: (_: unknown, item: TradeRecord) => tradeQuantity(item) },
-    { title: columnTitle('成交均价', '第一行：买入均价；第二行：卖出均价'), key: 'tradePrices', width: 140, render: (_: unknown, item: TradeRecord) => tradePrices(item) },
-    { title: columnTitle('交易金额', '第一行：买入金额；第二行：卖出金额'), key: 'tradeAmounts', width: 150, render: (_: unknown, item: TradeRecord) => tradeAmounts(item) },
-    { title: '手续费', dataIndex: 'totalFee', key: 'totalFee', render: (value: number, item: TradeRecord) => item.soldQuantity > 0 ? money(value) : '-' },
-    { title: columnTitle('收益', '第一行：毛收益；第二行：净收益'), key: 'tradeProfit', width: 140, render: (_: unknown, item: TradeRecord) => tradeProfit(item) },
-    { title: '持仓时间', dataIndex: 'holdingDays', key: 'holdingDays', render: days },
-    { title: columnTitle('收益率', '第一行：毛收益率；第二行：净收益率'), key: 'tradeRates', width: 140, render: (_: unknown, item: TradeRecord) => tradeRates(item) },
-    { title: '日收益率', dataIndex: 'dailyReturnRate', key: 'dailyReturnRate', render: (value: number, item: TradeRecord) => item.soldQuantity > 0 ? rate(value) : '-' },
+
+  const columns: ColumnsType<TradeRecord> = [
+    { title: '股票', key: 'stock', fixed: 'left', width: 190, render: (_: unknown, item) => <div className="trade-record-stock"><strong>{item.stockCode}</strong><span>{item.stockName ?? '-'}</span></div> },
+    { title: '买入时间', dataIndex: 'buyTime', key: 'buyTime', width: 180, render: formatDateTime },
+    { title: '卖出时间', dataIndex: 'lastSellTime', key: 'lastSellTime', width: 180, render: (value?: string) => value ? formatDateTime(value) : <Typography.Text type="secondary">待卖出</Typography.Text> },
+    { title: '净收益', dataIndex: 'netProfit', key: 'netProfit', width: 125, className: 'trade-record-number', render: (value: number, item) => item.soldQuantity > 0 ? <strong className="trade-record-result">{profit(value)}</strong> : '-' },
+    { title: '收益率', dataIndex: 'returnRate', key: 'returnRate', width: 120, className: 'trade-record-number', render: (value: number, item) => item.soldQuantity > 0 ? <strong className="trade-record-result">{rate(value)}</strong> : '-' },
+    { title: '持仓时间', dataIndex: 'holdingDays', key: 'holdingDays', width: 110, className: 'trade-record-number', render: days },
   ];
 
   usePageHeader(t('tradeRecords.subtitle'));
@@ -245,7 +223,8 @@ const TradeRecords: React.FC = () => {
           locale={{ emptyText: <Empty description={t('tradeRecords.empty')} /> }}
           className="trade-records-table"
           tableLayout="fixed"
-          scroll={{ x: 1350, y: 'calc(100vh - 390px)' }}
+          scroll={{ x: 820, y: 'calc(100vh - 390px)' }}
+          expandable={{ expandedRowRender, columnWidth: 44 }}
           pagination={false}
         />
         <div className="mt-4 overflow-x-auto pb-1">
@@ -269,4 +248,4 @@ const TradeRecords: React.FC = () => {
 };
 
 export default TradeRecords;
-// AI_GENERATE_END ------------------
+// AI_GENERATE_END ---------------------

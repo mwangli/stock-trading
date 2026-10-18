@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------------
+// AI_GENERATE_START -----------------
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Table, Input, Select } from 'antd';
@@ -71,6 +71,11 @@ interface MarketStatCard {
 
 const STOCK_UP_COLOR = '#ef4444';
 const STOCK_DOWN_COLOR = '#22c55e';
+
+const isVisibleStock = (stock: StockInfo) => {
+  const name = stock.name?.trim().toUpperCase() ?? '';
+  return !name.includes('退') && !name.includes('ST') && !name.includes('PT');
+};
 
 const Market: React.FC = () => {
   const { t } = useTranslation();
@@ -238,7 +243,7 @@ const Market: React.FC = () => {
       // 正确的逻辑：HTTP 200 且 success: true 时使用接口数据
       if (res && res.success === true && Array.isArray(res.data)) {
         // 过滤掉关键字段为空的记录
-        const validData = res.data.filter(item => item.code && item.name);
+        const validData = res.data.filter(item => item.code && item.name && isVisibleStock(item));
         const mappedData: WatchlistItem[] = validData.map((item, index) => ({
           key: item.code || String(index),
           symbol: item.code,
@@ -622,4 +627,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END ----------------
+// AI_GENERATE_END -----------------

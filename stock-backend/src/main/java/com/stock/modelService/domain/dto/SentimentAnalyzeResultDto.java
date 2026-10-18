@@ -1,3 +1,4 @@
+// AI_GENERATE_START --
 package com.stock.modelService.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -13,8 +14,8 @@ import java.util.Map;
  * 封装情感标签、得分、置信度以及概率分布等信息，
  * 作为对外 API 的统一返回结构，避免直接暴露 Map。
  *
- * @author AI Assistant
- * @since 1.0
+ * @author mwangli
+ * @since 2026-10-18
  */
 @Data
 @Builder
@@ -71,5 +72,29 @@ public class SentimentAnalyzeResultDto {
      * 关联的股票代码（按股票分析时使用，可为空）
      */
     private String stockCode;
-}
 
+    /** 事件类型，与 StockNews.eventType 使用同一枚举值。 */
+    private String eventType;
+
+    /** 影响方向：BULLISH、BEARISH 或 NEUTRAL。 */
+    private String impactDirection;
+
+    /** 影响强度，范围为 0 到 1。 */
+    private Double impactMagnitude;
+
+    /** 新闻影响分数，范围为 -1 到 1。 */
+    private Double newsImpactScore;
+
+    /** 有效窗口，单位为小时。 */
+    private Integer effectiveHorizonHours;
+
+    /** 是否达到进入选股排序的最低门槛。 */
+    private Boolean actionable;
+
+    /** 策略动作：ENHANCE、REDUCE、NO_ACTION 或 RISK_BLOCK。 */
+    private String strategyAction;
+
+    /** 是否触发强负面风险阻断。 */
+    private Boolean strongNegative;
+}
+// AI_GENERATE_END --

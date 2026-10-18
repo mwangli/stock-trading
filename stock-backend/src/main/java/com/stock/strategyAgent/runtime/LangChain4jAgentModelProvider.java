@@ -256,6 +256,7 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                 .timeout(Duration.ofMillis(Math.max(properties.getTimeoutMs(), 1L)))
                 .maxRetries(0)
                 .think(config.isThink())
+                .returnThinking(true)
                 .numPredict(Math.max(config.getMaxTokens(), 1))
                 .build();
     }

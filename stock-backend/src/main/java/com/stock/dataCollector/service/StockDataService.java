@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ---------
 package com.stock.dataCollector.service;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -11,6 +11,7 @@ import com.stock.dataCollector.support.StockDataParser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.data.mongodb.core.BulkOperations;
@@ -51,6 +52,7 @@ public class StockDataService {
     private final SecuritiesClient securitiesClient;
     private final MongoTemplate mongoTemplate;
     private final TradingCalendarService tradingCalendarService;
+    private final DelistedStockCleanupService delistedStockCleanupService;
 
     // ==================== 股票列表同步 ====================
 
@@ -62,41 +64,36 @@ public class StockDataService {
     public SyncResult syncStockList() {
         log.info("========== 开始同步股票列表 ==========");
         long startTime = System.currentTimeMillis();
-        
         SyncResult result = new SyncResult();
-        
-        try {
-            JSONArray stockList = securitiesClient.getStockList();
-            
-            if (stockList == null || stockList.isEmpty()) {
-                log.warn("未获取到股票列表数据");
-                return result;
-            }
-            
-            result.setTotalCount(stockList.size());
-            
-            // 使用解析器解析数据
-            List<StockInfo> stockInfos = StockDataParser.parseStockList(stockList);
-            log.info("解析完成的股票数量: {}", stockInfos.size());
 
-            // 批量保存
-            int[] counts = batchSaveWithStats(stockInfos);
-            result.setSavedCount(counts[0]);
-            result.setUpdatedCount(counts[1]);
-            result.setFailedCount(stockInfos.size() - counts[0] - counts[1]);
-            
-            long costTime = System.currentTimeMillis() - startTime;
-            result.setCostTimeMs(costTime);
-            
-            long dbCount = stockInfoRepository.count();
+        try {
+            List<StockInfo> incomingStocks = parseStockList(fetchStockList());
+            result.setTotalCount(incomingStocks.size());
+            Map<String, StockInfo> existingStocks = loadExistingStocks(incomingStocks);
+            StockSyncPlan syncPlan = classifyStocks(incomingStocks, existingStocks);
+
+            List<StockInfo> confirmedDelistedStocks = findConfirmedDelistedStocks(syncPlan.missingStocks());
+            int cleanedCount = cleanupDelistedStocks(confirmedDelistedStocks);
+            List<StockInfo> insertStocks = prepareInsertStocks(syncPlan.insertStocks());
+            List<StockInfo> updateStocks = prepareUpdateStocks(syncPlan.updateStocks(), existingStocks);
+            int ignoredMissingCount = syncPlan.missingStocks().size() - confirmedDelistedStocks.size();
+
+            batchInsert(insertStocks);
+            batchUpdate(updateStocks);
+
+            result.setSavedCount(insertStocks.size());
+            result.setUpdatedCount(updateStocks.size());
+            result.setCleanedCount(cleanedCount);
+            result.setIgnoredMissingCount(ignoredMissingCount);
+            result.setFailedCount(incomingStocks.size() - insertStocks.size() - updateStocks.size());
+            result.setCostTimeMs(System.currentTimeMillis() - startTime);
 
             log.info("========== 股票列表同步完成 ==========");
-            log.info("总数: {}, 新增: {}, 更新: {}, 失败: {}, 耗时: {}ms, DB当前总数: {}", 
-                result.getTotalCount(), result.getSavedCount(), result.getUpdatedCount(), 
-                result.getFailedCount(), result.getCostTimeMs(), dbCount);
-            
+            log.info("总数: {}, 新增: {}, 更新: {}, 清理退市: {}, 忽略缺失: {}, 失败: {}, 耗时: {}ms, DB当前总数: {}",
+                    result.getTotalCount(), result.getSavedCount(), result.getUpdatedCount(),
+                    result.getCleanedCount(), result.getIgnoredMissingCount(), result.getFailedCount(),
+                    result.getCostTimeMs(), stockInfoRepository.count());
             return result;
-            
         } catch (Exception e) {
             log.error("同步股票列表失败", e);
             result.setErrorMessage(e.getMessage());
@@ -105,72 +102,133 @@ public class StockDataService {
     }
 
     /**
-     * 批量保存并统计新增/更新数量
+     * 获取证券接口返回的全量股票信息。
+     *
+     * @return 接口原始股票列表
+     * @throws IllegalStateException 接口返回为空时抛出
      */
-    private int[] batchSaveWithStats(List<StockInfo> stockInfos) {
-        if (stockInfos == null || stockInfos.isEmpty()) {
-            return new int[]{0, 0};
+    private JSONArray fetchStockList() {
+        JSONArray stockList = securitiesClient.getStockList();
+        if (stockList == null || stockList.isEmpty()) {
+            throw new IllegalStateException("证券接口未返回股票列表");
         }
+        return stockList;
+    }
 
-        // 预处理代码列表
-        List<String> codes = stockInfos.stream()
-            .map(StockInfo::getCode)
-            .filter(code -> code != null && !code.isBlank())
-            .distinct()
-            .toList();
+    /**
+     * 解析、过滤无效代码并按代码去重。
+     */
+    private List<StockInfo> parseStockList(JSONArray stockList) {
+        return StockDataParser.parseStockList(stockList).stream()
+                .filter(stock -> stock.getCode() != null && !stock.getCode().isBlank())
+                .collect(Collectors.toMap(StockInfo::getCode, stock -> stock, (first, ignored) -> first))
+                .values().stream().toList();
+    }
 
-        // 一次性查出已存在的股票，避免逐条 existsByCode / findByCode
-        List<StockInfo> existingList = stockInfoRepository.findByCodeIn(codes);
-        Map<String, StockInfo> existingMap = existingList.stream()
-            .collect(Collectors.toMap(StockInfo::getCode, s -> s));
+    /**
+     * 一次性加载数据库中与接口股票代码相关的现有记录。
+     */
+    private Map<String, StockInfo> loadExistingStocks(List<StockInfo> incomingStocks) {
+        List<String> codes = incomingStocks.stream().map(StockInfo::getCode).toList();
+        return stockInfoRepository.findByCodeIn(codes).stream()
+                .collect(Collectors.toMap(StockInfo::getCode, stock -> stock));
+    }
 
-        List<StockInfo> toInsert = new ArrayList<>();
-        List<StockInfo> toUpdate = new ArrayList<>();
-
-        for (StockInfo incoming : stockInfos) {
-            try {
-                if (incoming.getCode() == null || incoming.getCode().isBlank()) {
-                    continue;
-                }
-                StockInfo existing = existingMap.get(incoming.getCode());
-                if (incoming.getListedDate() == null && (existing == null || existing.getListedDate() == null)) {
-                    incoming.setListedDate(securitiesClient.getListingDate(incoming.getCode()));
-                }
-                if (existing != null) {
-                    updateStockInfo(existing, incoming);
-                    toUpdate.add(existing);
-                } else {
-                    toInsert.add(incoming);
-                }
-            } catch (Exception e) {
-                log.error("处理股票 {} 失败: {}", incoming.getCode(), e.getMessage(), e);
+    /**
+     * 按股票代码生成更新、新增和数据库缺失三类集合。
+     */
+    private StockSyncPlan classifyStocks(List<StockInfo> incomingStocks, Map<String, StockInfo> existingStocks) {
+        List<StockInfo> updateStocks = new ArrayList<>();
+        List<StockInfo> insertStocks = new ArrayList<>();
+        Set<String> incomingCodes = incomingStocks.stream().map(StockInfo::getCode).collect(Collectors.toSet());
+        for (StockInfo incoming : incomingStocks) {
+            if (existingStocks.containsKey(incoming.getCode())) {
+                updateStocks.add(incoming);
+            } else {
+                insertStocks.add(incoming);
             }
         }
+        List<StockInfo> missingStocks = existingStocks.values().stream()
+                .filter(stock -> !incomingCodes.contains(stock.getCode())).toList();
+        return new StockSyncPlan(updateStocks, insertStocks, missingStocks);
+    }
 
-        int savedCount = 0;
-        int updatedCount = 0;
+    /**
+     * 仅为接口新增股票补充上市日期。
+     */
+    private List<StockInfo> prepareInsertStocks(List<StockInfo> insertStocks) {
+        for (StockInfo stock : insertStocks) {
+            if (stock.getListedDate() == null) {
+                stock.setListedDate(securitiesClient.getListingDate(stock.getCode()));
+            }
+        }
+        return insertStocks;
+    }
 
-        // 分批写入，降低单次事务压力
+    /**
+     * 将接口字段应用到数据库现有实体，保留数据库已有上市日期。
+     */
+    private List<StockInfo> prepareUpdateStocks(List<StockInfo> updateStocks,
+                                                Map<String, StockInfo> existingStocks) {
+        for (StockInfo incoming : updateStocks) {
+            updateStockInfo(existingStocks.get(incoming.getCode()), incoming);
+        }
+        return updateStocks.stream().map(stock -> existingStocks.get(stock.getCode())).toList();
+    }
+
+    /**
+     * 从数据库缺失集合中筛选具有明确退市说明的股票。
+     */
+    private List<StockInfo> findConfirmedDelistedStocks(List<StockInfo> missingStocks) {
+        return missingStocks.stream().filter(this::hasConfirmedDelistedDescription).toList();
+    }
+
+    private boolean hasConfirmedDelistedDescription(StockInfo stock) {
+        return containsConfirmedDelistedKeyword(stock.getName())
+                || containsConfirmedDelistedKeyword(stock.getSecurityCategory())
+                || containsConfirmedDelistedKeyword(stock.getMarket());
+    }
+
+    private boolean containsConfirmedDelistedKeyword(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        String normalized = value.trim().toUpperCase(java.util.Locale.ROOT);
+        return normalized.contains("退市")
+                || normalized.contains("终止上市")
+                || normalized.contains("DELIST")
+                || normalized.contains("TERMINATED");
+    }
+
+    /**
+     * 清理确认退市股票及其关联市场、模型数据。
+     */
+    private int cleanupDelistedStocks(List<StockInfo> delistedStocks) {
+        for (StockInfo stock : delistedStocks) {
+            delistedStockCleanupService.cleanup(stock.getCode());
+        }
+        return delistedStocks.size();
+    }
+
+    private void batchInsert(List<StockInfo> stocks) {
+        saveInBatches(stocks, "新增");
+    }
+
+    private void batchUpdate(List<StockInfo> stocks) {
+        saveInBatches(stocks, "更新");
+    }
+
+    private void saveInBatches(List<StockInfo> stocks, String operation) {
         final int batchSize = 200;
-
-        if (!toInsert.isEmpty()) {
-            for (int i = 0; i < toInsert.size(); i += batchSize) {
-                int end = Math.min(i + batchSize, toInsert.size());
-                List<StockInfo> batch = toInsert.subList(i, end);
-                stockInfoRepository.saveAll(batch);
-            }
-            savedCount = toInsert.size();
+        for (int i = 0; i < stocks.size(); i += batchSize) {
+            int end = Math.min(i + batchSize, stocks.size());
+            stockInfoRepository.saveAll(stocks.subList(i, end));
         }
-        if (!toUpdate.isEmpty()) {
-            for (int i = 0; i < toUpdate.size(); i += batchSize) {
-                int end = Math.min(i + batchSize, toUpdate.size());
-                List<StockInfo> batch = toUpdate.subList(i, end);
-                stockInfoRepository.saveAll(batch);
-            }
-            updatedCount = toUpdate.size();
-        }
+        log.info("股票信息{}批量写入完成: {}条", operation, stocks.size());
+    }
 
-        return new int[]{savedCount, updatedCount};
+    private record StockSyncPlan(List<StockInfo> updateStocks, List<StockInfo> insertStocks,
+                                 List<StockInfo> missingStocks) {
     }
 
     /**
@@ -471,7 +529,7 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
      * 涨幅榜 TOP10，按涨跌幅降序，仅查 10 条（避免全表加载）
      */
     public List<StockInfo> findTop10ByIncreaseRate() {
-        return stockInfoRepository.findTop10ByChangePercentIsNotNullOrderByChangePercentDesc();
+        return stockInfoRepository.findTop10TradableByChangePercent(PageRequest.of(0, 10));
     }
 
     /**
@@ -507,6 +565,26 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
         return stockInfoRepository.findAll((root, query, cb) -> {
             // 股票列表只展示具备有效市值的可交易标的，保证分页数量与页面内容一致。
             var validMarketValue = cb.greaterThan(root.<BigDecimal>get("totalMarketValue"), BigDecimal.ZERO);
+            var name = cb.upper(root.get("name"));
+            var activeName = cb.and(
+                    cb.notLike(name, "%ST%"),
+                    cb.notLike(root.get("name"), "%退%"));
+            var securityCategory = cb.upper(root.get("securityCategory"));
+            var activeSecurityCategory = cb.and(
+                    cb.notLike(securityCategory, "%ST%"),
+                    cb.notLike(root.get("securityCategory"), "%退%"),
+                    cb.notLike(securityCategory, "%DELIST%"),
+                    cb.notLike(securityCategory, "%TERMINATED%"));
+            var market = cb.upper(root.get("market"));
+            var activeMarket = cb.and(
+                    cb.notLike(market, "%ST%"),
+                    cb.notLike(root.get("market"), "%退%"),
+                    cb.notLike(market, "%DELIST%"),
+                    cb.notLike(market, "%TERMINATED%"));
+            validMarketValue = cb.and(validMarketValue,
+                    cb.or(cb.isNull(root.get("name")), activeName),
+                    cb.or(cb.isNull(root.get("securityCategory")), activeSecurityCategory),
+                    cb.or(cb.isNull(root.get("market")), activeMarket));
             if (keywords == null || keywords.isBlank()) {
                 return validMarketValue;
             }
@@ -545,7 +623,7 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
      * 使用数据库聚合/单条查询，避免全表加载，提升响应速度
      */
     public MarketStatsDto getMarketStats() {
-        long totalCount = stockInfoRepository.countBy();
+        long totalCount = stockInfoRepository.countTradable();
         if (totalCount == 0) {
             return MarketStatsDto.builder()
                     .marketStatus("休市")
@@ -568,22 +646,27 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
         String marketStatus = isMarketOpen ? "开盘" : "休市";
 
         // 涨跌平数量（聚合查询，不加载实体）
-        int upCount = (int) stockInfoRepository.countByChangePercentGreaterThan(BigDecimal.ZERO);
-        int downCount = (int) stockInfoRepository.countByChangePercentLessThan(BigDecimal.ZERO);
-        long flatCount = stockInfoRepository.countByChangePercentIsNull() + stockInfoRepository.countByChangePercent(BigDecimal.ZERO);
+        int upCount = (int) stockInfoRepository.countTradableByChangePercentGreaterThan(BigDecimal.ZERO);
+        int downCount = (int) stockInfoRepository.countTradableByChangePercentLessThan(BigDecimal.ZERO);
+        long flatCount = stockInfoRepository.countTradableByChangePercentIsNull()
+                + stockInfoRepository.countTradableByChangePercent(BigDecimal.ZERO);
 
-        BigDecimal totalAmount = stockInfoRepository.sumTotalMarketValue() != null ? stockInfoRepository.sumTotalMarketValue() : BigDecimal.ZERO;
+        BigDecimal totalAmount = stockInfoRepository.sumTradableTotalMarketValue() != null
+                ? stockInfoRepository.sumTradableTotalMarketValue() : BigDecimal.ZERO;
         BigDecimal totalVolume = BigDecimal.ZERO;
-        BigDecimal sumTurnover = stockInfoRepository.sumTurnoverRate() != null ? stockInfoRepository.sumTurnoverRate() : BigDecimal.ZERO;
+        BigDecimal sumTurnover = stockInfoRepository.sumTradableTurnoverRate() != null
+                ? stockInfoRepository.sumTradableTurnoverRate() : BigDecimal.ZERO;
         BigDecimal avgTurnoverRate = totalCount > 0
                 ? sumTurnover.divide(BigDecimal.valueOf(totalCount), 4, java.math.RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
-        Double avgChange = stockInfoRepository.avgChangePercent();
+        Double avgChange = stockInfoRepository.avgTradableChangePercent();
         BigDecimal changePercent = (avgChange != null) ? BigDecimal.valueOf(avgChange).setScale(2, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
 
-        StockInfo topGainer = stockInfoRepository.findTop1ByChangePercentIsNotNullOrderByChangePercentDesc().orElse(null);
-        StockInfo topLoser = stockInfoRepository.findTop1ByChangePercentIsNotNullOrderByChangePercentAsc().orElse(null);
+        List<StockInfo> gainers = stockInfoRepository.findTradableByChangePercentDesc(PageRequest.of(0, 1));
+        List<StockInfo> losers = stockInfoRepository.findTradableByChangePercentAsc(PageRequest.of(0, 1));
+        StockInfo topGainer = gainers.isEmpty() ? null : gainers.get(0);
+        StockInfo topLoser = losers.isEmpty() ? null : losers.get(0);
 
         return MarketStatsDto.builder()
                 .marketStatus(marketStatus)
@@ -646,9 +729,11 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
         private int totalCount;
         private int savedCount;
         private int updatedCount;
+        private int cleanedCount;
+        private int ignoredMissingCount;
         private int failedCount;
         private long costTimeMs;
         private String errorMessage;
     }
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------

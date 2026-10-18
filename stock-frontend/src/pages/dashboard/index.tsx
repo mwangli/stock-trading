@@ -1,8 +1,7 @@
-// AI_GENERATE_START ---------------
+// AI_GENERATE_START ------------------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import { Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
 import request from '../../utils/request';
 import type { ApiResponse } from '../../utils/api';
 import { formatDateTime } from '../../utils/dateTime';
@@ -199,9 +198,6 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="app-page">
-      <div className="flex justify-end">
-        <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadBrokerData()}>{t('common.refresh')}</Button>
-      </div>
       <Row gutter={[16, 16]}>
         <Col xs={24} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.totalAssets')} value={account?.totalAssets} precision={2} prefix="¥" /></Card></Col>
         <Col xs={24} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.availableCash')} value={account?.availableCash} precision={2} prefix="¥" /></Card></Col>
@@ -262,4 +258,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-// AI_GENERATE_END ---------------
+// AI_GENERATE_END ------------------

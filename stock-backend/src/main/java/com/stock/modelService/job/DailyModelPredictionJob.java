@@ -1,10 +1,10 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START- --
 package com.stock.modelService.job;
 
 import com.stock.dataCollector.service.TradingCalendarService;
 import com.stock.modelService.domain.dto.ModelPredictionAnalysisDto;
 import com.stock.modelService.service.ModelPredictionAnalysisService;
-import com.stock.tradingExecutor.job.JobSkippedException;
+import com.stock.tradingExecutor.JobSkippedException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

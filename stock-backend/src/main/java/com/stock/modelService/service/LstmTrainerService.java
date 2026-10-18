@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------------
+// AI_GENERATE_START --------------------
 package com.stock.modelService.service;
 
 import ai.djl.Device;
@@ -39,6 +39,7 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -537,6 +538,19 @@ public class LstmTrainerService {
      */
     public Map<String, LstmPredictionResultDto> predictNextBatch(
             List<String> stockCodes, String modelVersionId) {
+        return predictNextBatch(stockCodes, modelVersionId, null);
+    }
+
+    /**
+     * 使用指定模型版本和历史基准日批量预测股票下一交易日结果。
+     *
+     * @param stockCodes 股票代码集合
+     * @param modelVersionId 固定使用的模型文档 ID；为空时使用当前激活版本
+     * @param baseTradeDate 历史预测基准交易日；为空时使用最新行情
+     * @return 股票代码到预测结果的映射
+     */
+    public Map<String, LstmPredictionResultDto> predictNextBatch(
+            List<String> stockCodes, String modelVersionId, LocalDate baseTradeDate) {
         List<String> codes = stockCodes == null ? List.of() : stockCodes.stream()
                 .filter(code -> code != null && !code.isBlank())
                 .map(String::trim)
@@ -549,7 +563,8 @@ public class LstmTrainerService {
         artifactService.validateMetadata(artifact.metadata());
 
         int fetchDays = Math.max(config.getSequenceLength() + 21, config.getSequenceLength() * 2);
-        Map<String, List<StockPrice>> priceSeries = trainingDataService.loadPriceSeries(codes, fetchDays);
+        Map<String, List<StockPrice>> priceSeries = trainingDataService.loadPriceSeries(
+                codes, fetchDays, baseTradeDate);
         Map<String, LstmDataPreprocessor.StockContext> contexts = trainingDataService.loadStockContexts(codes);
         List<String> validCodes = new ArrayList<>();
         List<float[][]> inputs = new ArrayList<>();
@@ -562,6 +577,11 @@ public class LstmTrainerService {
                     contexts.getOrDefault(code, LstmDataPreprocessor.StockContext.basic(code)));
             if (input == null) {
                 log.warn("跳过共享 LSTM 输入不足股票: stockCode={}", code);
+                continue;
+            }
+            if (baseTradeDate != null && !baseTradeDate.equals(input.getBaseTradeDate())) {
+                log.warn("跳过历史基准日不一致股票: stockCode={}, expectedBaseDate={}, actualBaseDate={}",
+                        code, baseTradeDate, input.getBaseTradeDate());
                 continue;
             }
             validCodes.add(code);
@@ -985,4 +1005,4 @@ public class LstmTrainerService {
         private String snapshotId;
     }
 }
-// AI_GENERATE_END -------------------
+// AI_GENERATE_END --------------------
