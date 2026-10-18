@@ -1,6 +1,6 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Badge, Button, Card, Descriptions, Input, List, Space, Tag, Typography, message } from 'antd';
+import { Button, Card, Descriptions, Input, List, Space, Tag, Typography, message } from 'antd';
 import { RobotOutlined, SendOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'react-router-dom';
 import request from '../../utils/request';
@@ -180,11 +180,8 @@ const AgentPage: React.FC = () => {
           <Descriptions.Item label="Ollama">{providerTag(runtime?.ollamaEnabled === true, runtime?.ollamaConfigured === true, runtime?.ollamaStatus)}</Descriptions.Item>
           <Descriptions.Item label="Embedding">{providerTag(runtime?.embeddingEnabled === true, runtime?.embeddingConfigured === true, runtime?.embeddingStatus)}</Descriptions.Item>
           <Descriptions.Item label={localizedText('向量维度', 'Vector Dimension')}>{runtime?.embeddingDimension || '-'}</Descriptions.Item>
-          <Descriptions.Item label={localizedText('运行任务', 'Running Tasks')}><Badge count={runtime?.runningTasks || 0} showZero /></Descriptions.Item>
+          <Descriptions.Item label={localizedText('运行任务', 'Running Tasks')}>{runtime?.runningTasks || 0}</Descriptions.Item>
         </Descriptions>
-        {runtime && !runtime.enabled && <Alert className="mt-4" type="warning" showIcon message={localizedText('Agent 总开关当前关闭', 'Agent is disabled')} />}
-        {runtime && !runtime.deepseekConfigured && !runtime.ollamaConfigured && <Alert className="mt-4" type="error" showIcon message={localizedText('没有可用的模型 Provider，请检查开关、API Key、Ollama 服务和模型名称', 'No configured model provider is available')} />}
-        {runtime?.embeddingFallback && <Alert className="mt-4" type="warning" showIcon message={localizedText('Embedding 当前使用 hash 降级，仅适合开发环境，不建议用于正式 RAG 或 Memory 检索', 'Embedding is using hash fallback and is not recommended for production retrieval')} />}
       </Card>
 
       <Card className="surface-card" title={<Space><RobotOutlined /><Title level={4} className="!mb-0">{localizedText('智能决策工作台', 'Agent Workspace')}</Title></Space>}>
@@ -220,11 +217,10 @@ const AgentPage: React.FC = () => {
           <Descriptions.Item label="executionTraceId">{tradePlan.executionTraceId || '-'}</Descriptions.Item>
           <Descriptions.Item label={localizedText('更新时间', 'Updated At')}>{tradePlan.updatedAt || '-'}</Descriptions.Item>
         </Descriptions>
-        {tradePlan.decisionMessage && <Alert className="mt-4" type={tradePlan.status === 'FAILED' || tradePlan.status === 'RISK_REJECTED' ? 'error' : 'info'} showIcon message={tradePlan.decisionMessage} />}
       </Card>}
     </div>
   );
 };
 
 export default AgentPage;
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

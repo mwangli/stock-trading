@@ -1,13 +1,13 @@
-// AI_GENERATE_START -
-package com.stock.tradingExecutor.access.service;
+// AI_GENERATE_START --
+package com.stock.tradingExecutor.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.stock.tradingExecutor.access.domain.dto.UserMenuPreferenceDto;
-import com.stock.tradingExecutor.access.domain.dto.UserMenuPreferenceRequestDto;
-import com.stock.tradingExecutor.access.domain.entity.UserPreferenceEntity;
-import com.stock.tradingExecutor.access.persistence.UserPreferenceRepository;
+import com.stock.tradingExecutor.domain.dto.UserMenuPreferenceDto;
+import com.stock.tradingExecutor.domain.dto.UserMenuPreferenceRequestDto;
+import com.stock.tradingExecutor.domain.entity.UserPreferenceEntity;
+import com.stock.tradingExecutor.persistence.UserPreferenceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -85,4 +85,4 @@ public class UserPreferenceService {
         }
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

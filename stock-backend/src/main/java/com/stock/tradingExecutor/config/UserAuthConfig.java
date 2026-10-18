@@ -1,7 +1,7 @@
-// AI_GENERATE_START --
-package com.stock.tradingExecutor.access.config;
+// AI_GENERATE_START ---
+package com.stock.tradingExecutor.config;
 
-import com.stock.tradingExecutor.access.service.UserService;
+import com.stock.tradingExecutor.service.UserService;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -41,4 +41,4 @@ public class UserAuthConfig {
         };
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

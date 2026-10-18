@@ -1,5 +1,5 @@
-// AI_GENERATE_START -
-package com.stock.tradingExecutor.access.domain.entity;
+// AI_GENERATE_START --
+package com.stock.tradingExecutor.domain.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -47,4 +47,4 @@ public class UserPreferenceEntity {
         updatedAt = LocalDateTime.now();
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

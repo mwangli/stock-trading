@@ -30,7 +30,7 @@ public class JobDiagnosticTool {
      * @param request 查询请求
      * @return 任务运行摘要
      */
-    @Tool("查询固定任务最近一次脱敏运行摘要")
+    @Tool(name = "queryJobDiagnostic", value = "查询固定任务最近一次脱敏运行摘要")
     public JobDiagnosticResult query(JobDiagnosticRequest request) {
         if (request == null || !StringUtils.hasText(request.jobName())) {
             throw new IllegalArgumentException("jobName 不能为空");

@@ -140,7 +140,9 @@ public class AgentApplicationService {
             AgentRuntimeResponse response = runtimeService.execute(runtimeRequest(
                     task, session, "RESEARCH",
                     "你是股票交易系统的研究 Agent。只能使用给定证据，不得承诺收益，不得生成可直接执行的券商订单。"
-                            + "只返回 Research JSON：{summary,status,keyFindings,evidenceRefs,uncertainty,nextActions}。",
+                            + "只返回 Research JSON：{summary,status,keyFindings,evidenceRefs,uncertainty,nextActions}。"
+                            + "status 只能是 PASS、WARN 或 UNKNOWN；evidenceRefs 只能填写本次证据编号："
+                            + String.join(",", factEvidence.getEvidenceRefs()) + "。",
                     prompt, evidenceSummary, "RESEARCH", factEvidence.getEvidenceRefs()));
             finish(task, response);
         } catch (Exception exception) {

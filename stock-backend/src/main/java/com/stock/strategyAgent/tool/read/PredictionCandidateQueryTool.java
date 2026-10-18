@@ -31,7 +31,7 @@ public class PredictionCandidateQueryTool {
      * @param request 查询请求
      * @return 候选批次摘要
      */
-    @Tool("查询指定候选批次的脱敏排名摘要")
+    @Tool(name = "queryPredictionCandidates", value = "查询指定候选批次的脱敏排名摘要")
     public PredictionCandidateResult query(PredictionCandidateRequest request) {
         if (request == null || !StringUtils.hasText(request.candidateBatchId())) {
             throw new IllegalArgumentException("candidateBatchId 不能为空");

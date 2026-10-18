@@ -1,5 +1,5 @@
-// AI_GENERATE_START -
-package com.stock.tradingExecutor.access.domain.dto;
+// AI_GENERATE_START --
+package com.stock.tradingExecutor.domain.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -23,4 +23,4 @@ public class UserMenuPreferenceDto {
     /** 左侧菜单路由顺序。 */
     private List<String> menuOrder;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

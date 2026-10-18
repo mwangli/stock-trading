@@ -115,6 +115,12 @@ public class AgentProperties {
 
         /** Ollama 模型名称。 */
         private String model = "deepseek-r1:7b";
+
+        /** 是否返回模型思考过程；本地 Agent 默认关闭以降低响应延迟。 */
+        private boolean think = false;
+
+        /** Ollama 单次最大输出 token 数。 */
+        private int maxTokens = 256;
     }
 
     /**

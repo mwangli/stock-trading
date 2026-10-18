@@ -1,5 +1,5 @@
-// AI_GENERATE_START --
-package com.stock.tradingExecutor.access.web;
+// AI_GENERATE_START ---
+package com.stock.tradingExecutor.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -48,4 +48,4 @@ public class AuthInterceptor implements HandlerInterceptor {
         return false;
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

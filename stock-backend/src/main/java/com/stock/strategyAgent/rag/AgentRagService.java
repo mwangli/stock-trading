@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START --------
 package com.stock.strategyAgent.rag;
 
 import com.stock.strategyAgent.api.RagIngestRequest;
@@ -103,7 +103,8 @@ public class AgentRagService {
         }
         criteria = criteria.and("embeddingModelVersion").is(embeddingService.modelVersion())
                 .and("embeddingProvider").is(embeddingService.provider())
-                .and("embeddingDimension").is(embeddingService.dimension());
+                .and("embeddingDimension").is(embeddingService.dimension())
+                .and("embeddingStatus").is("READY");
         Query query = Query.query(criteria);
         List<AgentRagChunkDocument> documents = mongoTemplate.find(query, AgentRagChunkDocument.class,
                 properties.getRagCollection());
@@ -182,4 +183,4 @@ public class AgentRagService {
         return StringUtils.hasText(value) ? value : fallback;
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------

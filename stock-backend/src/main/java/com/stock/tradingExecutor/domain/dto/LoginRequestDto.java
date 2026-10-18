@@ -1,5 +1,5 @@
-// AI_GENERATE_START -
-package com.stock.tradingExecutor.access.domain.dto;
+// AI_GENERATE_START --
+package com.stock.tradingExecutor.domain.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
@@ -21,4 +21,4 @@ public class LoginRequestDto {
     @NotBlank(message = "密码不能为空")
     private String password;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

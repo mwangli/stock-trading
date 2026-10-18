@@ -1,7 +1,7 @@
-// AI_GENERATE_START -
-package com.stock.tradingExecutor.access.config;
+// AI_GENERATE_START --
+package com.stock.tradingExecutor.config;
 
-import com.stock.tradingExecutor.access.web.AuthInterceptor;
+import com.stock.tradingExecutor.web.AuthInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -36,4 +36,4 @@ public class AccessWebConfig implements WebMvcConfigurer {
                         "/api/system/health");
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

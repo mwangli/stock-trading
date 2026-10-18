@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockNews;
@@ -50,6 +50,8 @@ public class SentimentAggregationService {
         double weightedScore = 0D;
         double totalWeight = 0D;
         double weightedConfidence = 0D;
+        double weightedPriority = 0D;
+        Map<String, Double> eventTypeWeights = new LinkedHashMap<>();
         boolean strongNegative = false;
         String strongNegativeTitle = null;
 
@@ -63,6 +65,8 @@ public class SentimentAggregationService {
             double weight = calculateWeight(primary, group.size(), now, modelResult.getConfidence());
             weightedScore += modelResult.getScore() * weight;
             weightedConfidence += modelResult.getConfidence() * weight;
+            weightedPriority += normalizedPriority(primary) * weight;
+            eventTypeWeights.merge(resolveEventType(primary), weight, Double::sum);
             totalWeight += weight;
 
             if (isStrongNegative(primary, modelResult)) {
@@ -76,19 +80,30 @@ public class SentimentAggregationService {
         if (totalWeight <= 0D) {
             return neutralResult();
         }
-        double coverage = Math.min(1D, eventGroups.size() / 5D);
+        double coverage = Math.min(1D, 0.5D + eventGroups.size() / 6D);
         double confidence = clamp(weightedConfidence / totalWeight * coverage, 0D, 1D);
-        double score = clamp(weightedScore / totalWeight, -1D, 1D);
+        double polarityScore = clamp(weightedScore / totalWeight, -1D, 1D);
+        double impactMagnitude = clamp(weightedPriority / totalWeight * coverage, 0D, 1D);
+        double newsImpactScore = clamp(polarityScore * impactMagnitude * confidence, -1D, 1D);
         if (strongNegative) {
-            score = Math.min(score, -0.8D);
+            newsImpactScore = Math.min(newsImpactScore, -0.8D);
         }
+        String dominantEventType = eventTypeWeights.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(null);
+        int effectiveHorizonHours = resolveEffectiveHorizonHours(dominantEventType);
         return SentimentAggregateResult.builder()
-                .score(score)
+                .newsImpactScore(newsImpactScore)
+                .impactMagnitude(impactMagnitude)
                 .confidence(confidence)
                 .newsCount(newsItems.size())
                 .uniqueEventCount(eventGroups.size())
                 .strongNegative(strongNegative)
                 .strongNegativeTitle(strongNegativeTitle)
+                .dominantEventType(dominantEventType)
+                .effectiveHorizonHours(effectiveHorizonHours)
+                .actionable(strongNegative || (Math.abs(newsImpactScore) >= 0.12D && confidence >= 0.55D))
                 .build();
     }
 
@@ -139,6 +154,26 @@ public class SentimentAggregationService {
                 * sourceWeight(news.getSource())
                 * eventTypeWeight(news)
                 * duplicatePenalty;
+    }
+
+    private double normalizedPriority(StockNews news) {
+        int priority = news.getInformationPriority() == null ? 1 : news.getInformationPriority();
+        return clamp(priority / 5D, 0D, 1D);
+    }
+
+    private String resolveEventType(StockNews news) {
+        return news.getEventType() == null || news.getEventType().isBlank()
+                ? "GENERAL_NEWS" : news.getEventType();
+    }
+
+    private int resolveEffectiveHorizonHours(String eventType) {
+        return switch (eventType) {
+            case "REGULATORY_OR_LITIGATION" -> 120;
+            case "EARNINGS" -> 72;
+            case "CAPITAL_RISK" -> 72;
+            case "SHAREHOLDER_OR_EXECUTIVE", "MATERIAL_BUSINESS" -> 48;
+            default -> 24;
+        };
     }
 
     private double sourceWeight(String source) {
@@ -205,11 +240,14 @@ public class SentimentAggregationService {
 
     private SentimentAggregateResult neutralResult() {
         return SentimentAggregateResult.builder()
-                .score(0D)
+                .newsImpactScore(0D)
+                .impactMagnitude(0D)
                 .confidence(0D)
                 .newsCount(0)
                 .uniqueEventCount(0)
                 .strongNegative(false)
+                .actionable(false)
+                .effectiveHorizonHours(0)
                 .build();
     }
 
@@ -217,4 +255,4 @@ public class SentimentAggregationService {
         return Math.max(minimum, Math.min(maximum, value));
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

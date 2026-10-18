@@ -64,6 +64,8 @@ public class StockNewsService {
     /** 批量写入阈值，与每页 50 条对齐，一次写入整页 */
     private static final int BATCH_INSERT_SIZE = 50;
 
+    private final NewsEventClassifier newsEventClassifier;
+
     /** 新闻发布时间保留天数，0 表示不按时间清理。 */
     @Value("${app.runtime.news.retention-days:365}")
     private int newsRetentionDays;
@@ -482,42 +484,13 @@ public class StockNewsService {
         news.setStockName(stockName != null && !stockName.isEmpty() ? stockName : null);
         news.setSource(source.isEmpty() ? null : source);
         news.setCategory(src.category);
-        String eventType = classifyEvent(title, content, src.category);
+        String eventType = newsEventClassifier.classify(title, content, src.category);
         news.setEventType(eventType);
-        news.setInformationPriority(eventPriority(eventType));
+        news.setInformationPriority(newsEventClassifier.priority(eventType));
         news.setContentHash(sha256(title + "\n" + content));
         news.setPublishTime(publishTime);
         news.setCreateTime(LocalDateTime.now());
         return news;
-    }
-
-    private String classifyEvent(String title, String content, String category) {
-        String text = ((title == null ? "" : title) + " " + (content == null ? "" : content)).toLowerCase();
-        if (text.matches(".*(处罚|监管|问询|警示|立案|违规|诉讼|仲裁|被执行|冻结).*")) {
-            return "REGULATORY_OR_LITIGATION";
-        }
-        if (text.matches(".*(减持|增持|股东持股|高管持股|董事|监事|董秘|辞职|任命|换届).*")) {
-            return "SHAREHOLDER_OR_EXECUTIVE";
-        }
-        if (text.matches(".*(业绩预告|业绩快报|年度报告|半年度报告|季度报告|净利润|营收).*")) {
-            return "EARNINGS";
-        }
-        if (text.matches(".*(合同|订单|中标|项目|投资|收购|并购|合作|战略协议).*")) {
-            return "MATERIAL_BUSINESS";
-        }
-        if (text.matches(".*(解禁|限售|质押|融资|融券|龙虎榜|大宗交易).*")) {
-            return "CAPITAL_RISK";
-        }
-        return "公告".equals(category) ? "GENERAL_ANNOUNCEMENT" : "GENERAL_NEWS";
-    }
-
-    private int eventPriority(String eventType) {
-        return switch (eventType) {
-            case "REGULATORY_OR_LITIGATION", "EARNINGS" -> 5;
-            case "SHAREHOLDER_OR_EXECUTIVE", "MATERIAL_BUSINESS" -> 4;
-            case "CAPITAL_RISK" -> 3;
-            default -> 1;
-        };
     }
 
     private String sha256(String value) {

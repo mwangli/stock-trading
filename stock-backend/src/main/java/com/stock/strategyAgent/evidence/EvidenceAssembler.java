@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.evidence;
 
 import com.alibaba.fastjson2.JSON;
@@ -70,10 +70,10 @@ public class EvidenceAssembler {
                     "queryPredictionCandidate",
                     () -> predictionCandidateQueryTool.query(
                             new PredictionCandidateQueryTool.PredictionCandidateRequest(candidateBatchId.trim())));
-            if (candidateData instanceof PredictionCandidateQueryTool.PredictionCandidateResult candidate) {
-                predictionBatchId = candidate.predictionBatchId();
-                strategyVersion = candidate.strategyVersion();
-                targetTradeDate = candidate.targetTradeDate();
+            if (candidateData != null) {
+                predictionBatchId = candidateData.predictionBatchId();
+                strategyVersion = candidateData.strategyVersion();
+                targetTradeDate = candidateData.targetTradeDate();
             }
         }
         if (taskType == AgentEnums.TaskType.DIAGNOSTIC && StringUtils.hasText(jobName)) {
@@ -143,4 +143,4 @@ public class EvidenceAssembler {
         return value.length() > 12000 ? value.substring(0, 12000) : value;
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

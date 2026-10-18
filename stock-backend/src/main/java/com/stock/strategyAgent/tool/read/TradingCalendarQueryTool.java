@@ -28,7 +28,7 @@ public class TradingCalendarQueryTool {
      * @param request 查询请求
      * @return 交易日状态
      */
-    @Tool("查询指定日期的已确认交易日状态")
+    @Tool(name = "queryTradingCalendar", value = "查询指定日期的已确认交易日状态")
     public TradingCalendarResult query(TradingCalendarRequest request) {
         if (request == null || request.tradeDate() == null) {
             throw new IllegalArgumentException("tradeDate 不能为空");

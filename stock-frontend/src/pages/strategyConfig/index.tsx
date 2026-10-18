@@ -1,7 +1,7 @@
-// AI_GENERATE_START ------------------
+// AI_GENERATE_START -----------------------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Badge, Button, Card, Col, Collapse, Descriptions, Form, Input, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
+import { Button, Card, Col, Collapse, Descriptions, Form, Input, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
 import { BulbOutlined, InfoCircleOutlined, ReloadOutlined, RobotOutlined, SaveOutlined, SendOutlined, SettingOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
 import { getApiErrorMessage, readApiData, type ApiResponse } from '../../utils/api';
@@ -59,7 +59,7 @@ interface Ranking {
   stockName: string;
   currentPrice?: number;
   lstmScore: number;
-  sentimentScore: number;
+  newsImpactScore: number;
   totalScore: number;
   rank: number;
   reason: string;
@@ -139,16 +139,22 @@ interface AgentTaskResponse {
 interface AgentMessage {
   role: 'user' | 'assistant';
   content: string;
+  evidenceSummary?: string;
 }
 
 interface RuntimeStatus {
-  enabled: boolean;
   provider: string;
   runningTasks: number;
   deepseekEnabled: boolean;
   deepseekConfigured: boolean;
+  deepseekStatus?: string;
   ollamaEnabled: boolean;
   ollamaConfigured: boolean;
+  ollamaStatus?: string;
+  embeddingEnabled: boolean;
+  embeddingConfigured: boolean;
+  embeddingStatus?: string;
+  embeddingDimension: number;
 }
 
 const formatDate = (value?: string) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : localizedText('未记录', 'Not recorded');
@@ -165,7 +171,7 @@ const StrategyConfig: React.FC = () => {
   const [candidateBatch, setCandidateBatch] = useState<TradingCandidateBatch | null>(null);
   const [tradingCandidates, setTradingCandidates] = useState<TradingCandidate[]>([]);
   const [tradingLoading, setTradingLoading] = useState(false);
-  const [tradingError, setTradingError] = useState<string | null>(null);
+  const [, setTradingError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
@@ -180,14 +186,13 @@ const StrategyConfig: React.FC = () => {
     setRuntimeLoading(true);
     try {
       const response = await request.get('/agent/runtime/status') as ApiResponse<RuntimeStatus>;
-      setRuntime(readApiData(response, localizedText('读取模型连接状态失败', 'Failed to load model connection status')));
+      setRuntime(readApiData(response, localizedText('读取模型连接状态失败', 'Failed to load model status')));
     } catch (cause) {
-      message.error(getApiErrorMessage(cause, localizedText('读取模型连接状态失败', 'Failed to load model connection status')));
+      message.error(getApiErrorMessage(cause, localizedText('读取模型连接状态失败', 'Failed to load model status')));
     } finally {
       setRuntimeLoading(false);
     }
   }, []);
-
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -304,10 +309,12 @@ const StrategyConfig: React.FC = () => {
         strategyVersion: candidateBatch?.strategyConfigVersion,
       }) as ApiResponse<AgentTaskResponse>;
       const task = readApiData(response, localizedText('Agent 分析失败', 'Agent analysis failed'));
-      const content = [task.resultSummary, task.evidenceSummary ? `${localizedText('证据摘要', 'Evidence')}: ${task.evidenceSummary}` : '']
-        .filter(Boolean)
-        .join('\n\n') || task.errorMessage || localizedText('Agent 未返回结果', 'Agent returned no result');
-      setAgentMessages((current) => [...current, { role: 'assistant', content }]);
+      const content = task.resultSummary || task.errorMessage || localizedText('Agent 未返回结果', 'Agent returned no result');
+      setAgentMessages((current) => [...current, {
+        role: 'assistant',
+        content,
+        evidenceSummary: task.evidenceSummary,
+      }]);
     } catch (cause) {
       setAgentMessages((current) => [...current, {
         role: 'assistant',
@@ -318,17 +325,25 @@ const StrategyConfig: React.FC = () => {
     }
   };
 
+  const providerLabel = (enabled: boolean, configured: boolean, status?: string) => {
+    if (!enabled) return localizedText('未启用', 'Disabled');
+    if (!configured) return localizedText('配置不完整', 'Incomplete');
+    return status === 'READY' ? localizedText('已就绪', 'Ready') : status || localizedText('已配置', 'Configured');
+  };
+
   usePageHeader(localizedText('智能决策', 'Intelligent Decision'));
 
   const number = (label: string, name: keyof StrategyConfigValues, min: number, max: number, step: number, extra: string) => (<Form.Item label={label} name={name} extra={extra} rules={[{ required: true, message: `${label}${localizedText('不能为空', ' is required')}` }]}><InputNumber min={min} max={max} step={step} className="!w-full" /></Form.Item>);
 
   return (<div className="app-page">
-    <Card className="surface-card model-status-card" title={localizedText('模型连接状态', 'Model Provider Status')} extra={<Button icon={<ReloadOutlined />} loading={runtimeLoading} onClick={() => void loadRuntime()}>{t('common.refresh')}</Button>}>
+    <Card className="surface-card model-status-card" title={localizedText('模型连接状态', 'Model Provider Status')} extra={<Button icon={<ReloadOutlined />} loading={runtimeLoading} onClick={() => void loadRuntime()}>{localizedText('刷新', 'Refresh')}</Button>}>
       <Descriptions column={{ xs: 1, sm: 2, lg: 4 }} size="small">
-        <Descriptions.Item label={localizedText('选择策略', 'Provider Mode')}>{runtime?.provider ?? '-'}</Descriptions.Item>
-        <Descriptions.Item label="DeepSeek"><Space><Badge status={runtime?.deepseekConfigured ? 'success' : 'default'} />{runtime?.deepseekEnabled ? (runtime.deepseekConfigured ? localizedText('已配置', 'Configured') : localizedText('配置不完整', 'Incomplete')) : localizedText('已关闭', 'Disabled')}</Space></Descriptions.Item>
-        <Descriptions.Item label="Ollama"><Space><Badge status={runtime?.ollamaConfigured ? 'success' : 'default'} />{runtime?.ollamaEnabled ? (runtime.ollamaConfigured ? localizedText('已配置', 'Configured') : localizedText('配置不完整', 'Incomplete')) : localizedText('已关闭', 'Disabled')}</Space></Descriptions.Item>
-        <Descriptions.Item label={localizedText('任务状态', 'Tasks')}>{runtime?.runningTasks ?? 0}</Descriptions.Item>
+        <Descriptions.Item label={localizedText('选择策略', 'Provider Mode')}>{runtime?.provider || '-'}</Descriptions.Item>
+        <Descriptions.Item label="DeepSeek">{providerLabel(runtime?.deepseekEnabled === true, runtime?.deepseekConfigured === true, runtime?.deepseekStatus)}</Descriptions.Item>
+        <Descriptions.Item label="Ollama">{providerLabel(runtime?.ollamaEnabled === true, runtime?.ollamaConfigured === true, runtime?.ollamaStatus)}</Descriptions.Item>
+        <Descriptions.Item label="Embedding">{providerLabel(runtime?.embeddingEnabled === true, runtime?.embeddingConfigured === true, runtime?.embeddingStatus)}</Descriptions.Item>
+        <Descriptions.Item label={localizedText('运行任务', 'Running Tasks')}>{runtime?.runningTasks || 0}</Descriptions.Item>
+        <Descriptions.Item label={localizedText('向量维度', 'Vector Dimension')}>{runtime?.embeddingDimension || '-'}</Descriptions.Item>
       </Descriptions>
     </Card>
     <section className={`agent-command-center ${agentOpen ? 'agent-command-center-active' : ''}`}>
@@ -360,6 +375,12 @@ const StrategyConfig: React.FC = () => {
               <div key={`${item.role}-${index}`} className={`agent-message agent-message-${item.role}`}>
                 <Text strong>{item.role === 'user' ? localizedText('你', 'You') : localizedText('策略 Agent', 'Strategy Agent')}</Text>
                 <div>{item.content}</div>
+                {item.evidenceSummary && (
+                  <details className="agent-evidence">
+                    <summary>{localizedText('查看证据摘要', 'View evidence summary')}</summary>
+                    <pre>{item.evidenceSummary}</pre>
+                  </details>
+                )}
               </div>
             ))}
           </div>
@@ -399,10 +420,6 @@ const StrategyConfig: React.FC = () => {
         </div>
       </div>
     </section>
-    <Row gutter={[16, 16]}>      <Col xs={24} md={6}><Card className="surface-card compact-card"><Statistic title={localizedText('当前策略模式', 'Current Strategy Mode')} value={state?.currentMode || config?.mode || 'BALANCED'} prefix={<SettingOutlined />} /><Text type="secondary">{localizedText('配置版本', 'Config Version')}：{config?.version || state?.configVersion || localizedText('未标记', 'Unmarked')}</Text></Card></Col>
-      <Col xs={24} md={8}><Card className="surface-card compact-card"><Statistic title={localizedText('策略状态', 'Strategy Status')} value={config?.enabled ? localizedText('已启用', 'Enabled') : localizedText('已停用', 'Disabled')} /><Text type="secondary">{localizedText('最近切换', 'Last Switch')}：{formatDate(state?.lastSwitchTime)}</Text></Card></Col>
-      <Col xs={24} md={6}><Card className="surface-card compact-card"><Statistic title={localizedText('当前候选', 'Current Candidates')} value={tradingCandidates.length || rankings.length} suffix={config ? `/ ${config.topN}` : ''} /><Text type="secondary">{localizedText('最近更新时间', 'Last Updated')}：{formatDate(config?.updateTime)}</Text></Card></Col>
-      <Col xs={24} md={4}><Card className="surface-card compact-card"><Text strong>{localizedText('自动切换', 'Auto Switch')}</Text><div className="mt-3"><Switch checked={state?.autoSwitchEnabled ?? false} onChange={(checked) => void toggleAutoSwitch(checked)} checkedChildren={localizedText('开', 'On')} unCheckedChildren={localizedText('关', 'Off')} /></div><Text type="secondary">{localizedText('最近', 'Last')}：{formatDate(state?.lastAutoSwitchTime)}</Text></Card></Col></Row>
     <Collapse className="strategy-secondary-collapse" ghost>
       <Collapse.Panel key="runtime" header={localizedText('运行信息与策略评估', 'Runtime and Strategy Evaluation')}>
       <Card className="surface-card" title={localizedText('真实执行状态', 'Live Execution Status')}>
@@ -411,8 +428,6 @@ const StrategyConfig: React.FC = () => {
         <Col xs={24} md={8}><Statistic title={localizedText('真实写入', 'Live Writes')} value={tradingStatus?.realWriteEnabled ? localizedText('已开启', 'Enabled') : localizedText('已关闭', 'Disabled')} /><Tag color={tradingStatus?.realWriteEnabled ? 'red' : 'blue'}>{tradingStatus?.realWriteEnabled ? localizedText('生产写入', 'Production Writes') : localizedText('只读观察', 'Read-only')}</Tag></Col>
         <Col xs={24} md={8}><Statistic title={localizedText('自动执行', 'Automatic Execution')} value={tradingStatus?.automaticExecutionEnabled ? localizedText('就绪', 'Ready') : localizedText('停止', 'Stopped')} /><Tag color={tradingStatus?.automaticExecutionEnabled ? 'green' : 'default'}>{tradingStatus?.automaticExecutionEnabled ? localizedText('允许执行', 'Execution Allowed') : localizedText('受控状态', 'Controlled')}</Tag></Col>
       </Row>
-      {tradingError && <Alert className="mt-4" type="warning" showIcon message={tradingError} />}
-      <Alert className="mt-4" type={tradingStatus?.automaticExecutionEnabled ? 'error' : 'info'} showIcon message={tradingStatus?.automaticExecutionEnabled ? localizedText('自动任务具备进入真实下单流程的基础条件，最终仍以交易日和风控校验为准', 'Automatic execution can enter the live order flow, subject to trading-day and risk checks') : localizedText('自动交易未就绪，不会提交真实委托', 'Automatic trading is not ready; no live orders will be submitted')} />
       </Card>
       <Card className="surface-card" title={localizedText('候选批次追溯', 'Candidate Batch Traceability')}>
       <Descriptions column={{ xs: 1, sm: 2, lg: 4 }} size="small">
@@ -427,7 +442,6 @@ const StrategyConfig: React.FC = () => {
       </Descriptions>
       </Card>
       <Card className="surface-card" title={localizedText('策略模式样本外评估', 'Out-of-sample Strategy Evaluation')} extra={<Text type="secondary">{formatDate(evaluation?.calculatedAt)}</Text>}>
-      <Alert className="mb-4" type={evaluation?.modes.some((item) => item.status === 'AVAILABLE') ? 'success' : 'warning'} showIcon message={evaluation?.summary || localizedText('尚未执行策略评估', 'Strategy evaluation has not run')} />
       <Table<StrategyModeEvaluation>
         rowKey="mode"
         loading={loading}
@@ -453,7 +467,6 @@ const StrategyConfig: React.FC = () => {
     </Collapse>
     <Collapse className="strategy-secondary-collapse" ghost>
       <Collapse.Panel key="config" header={localizedText('高级策略配置', 'Advanced Strategy Configuration')}>
-      <Alert className="mb-4" type="info" showIcon message={localizedText('配置边界', 'Configuration Boundary')} description={localizedText('参数表单只影响策略评分和候选生成；自动切换开关仅控制策略自动切换任务，不修改系统采集、模型训练、券商凭据或真实委托写入开关。', 'The form affects strategy scoring and candidate generation only. Auto switch controls the strategy switching job and does not change data collection, training, broker credentials or live order writes.')} />
     <div className="strategy-config-actions">
       <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => form.submit()}>{t('strategyPage.save')}</Button>
     </div>
@@ -468,7 +481,6 @@ const StrategyConfig: React.FC = () => {
         <Col xs={24} md={8}><Form.Item label={localizedText('策略总开关', 'Strategy Master Switch')} name="enabled" valuePropName="checked"><Switch checkedChildren={localizedText('开', 'On')} unCheckedChildren={localizedText('关', 'Off')} /></Form.Item></Col>
       </Row></Card>
     <Card className="surface-card" title={localizedText('技术指标参数', 'Technical Indicator Parameters')} extra={<Text type="secondary">{localizedText('权重用于计算综合卖出评分', 'Weights calculate the composite sell score')}</Text>}>
-      <Alert className="indicator-guide" type="info" showIcon message={localizedText('指标说明', 'Indicator Guide')} description={localizedText('各指标独立判断市场状态，再按权重累加为综合评分；移动止损一旦触发会直接进入卖出判断。', 'Each indicator evaluates market conditions independently and contributes by weight; a triggered trailing stop enters the sell decision directly.')} />
       <div className="indicator-grid">
         <div className="indicator-panel indicator-panel-stop">
           <div className="indicator-panel-head">
@@ -524,9 +536,15 @@ const StrategyConfig: React.FC = () => {
     </Form>
       </Collapse.Panel>
     </Collapse>
-    <Card className="surface-card" title={t('strategyPage.candidates')}><Table<Ranking> rowKey="stockCode" loading={loading || tradingLoading} dataSource={rankings} pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], showTotal: (total) => `共 ${total} 只` }} columns={[{ title: '排名', dataIndex: 'rank', width: 72 }, { title: '股票', dataIndex: 'stockName', render: (value: string, row: Ranking) => `${value} (${row.stockCode})` }, { title: '价格', dataIndex: 'currentPrice', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : `¥${value.toFixed(2)}` }, { title: 'LSTM', dataIndex: 'lstmScore', render: (value: number) => percent(value) }, { title: '情感', dataIndex: 'sentimentScore', render: (value: number) => value.toFixed(3) }, { title: '综合得分', dataIndex: 'totalScore', render: (value: number) => <Tag color={value >= 0.7 ? 'green' : value >= 0.5 ? 'blue' : 'default'}>{value.toFixed(3)}</Tag> }, { title: '持仓', dataIndex: 'held', render: (value?: boolean) => value === undefined ? <Tag>未知</Tag> : <Tag color={value ? 'blue' : 'default'}>{value ? '已持有' : '未持有'}</Tag> }, { title: '说明', dataIndex: 'reason' }]} locale={{ emptyText: '暂无交易候选' }} /></Card>
+    <Row gutter={[16, 16]}>
+      <Col xs={24} md={6}><Card className="surface-card compact-card"><Statistic title={localizedText('当前策略模式', 'Current Strategy Mode')} value={state?.currentMode || config?.mode || 'BALANCED'} prefix={<SettingOutlined />} /><Text type="secondary">{localizedText('配置版本', 'Config Version')}：{config?.version || state?.configVersion || localizedText('未标记', 'Unmarked')}</Text></Card></Col>
+      <Col xs={24} md={8}><Card className="surface-card compact-card"><Statistic title={localizedText('策略状态', 'Strategy Status')} value={config?.enabled ? localizedText('已启用', 'Enabled') : localizedText('已停用', 'Disabled')} /><Text type="secondary">{localizedText('最近切换', 'Last Switch')}：{formatDate(state?.lastSwitchTime)}</Text></Card></Col>
+      <Col xs={24} md={6}><Card className="surface-card compact-card"><Statistic title={localizedText('当前候选', 'Current Candidates')} value={tradingCandidates.length || rankings.length} suffix={config ? `/ ${config.topN}` : ''} /><Text type="secondary">{localizedText('最近更新时间', 'Last Updated')}：{formatDate(config?.updateTime)}</Text></Card></Col>
+      <Col xs={24} md={4}><Card className="surface-card compact-card"><Text strong>{localizedText('自动切换', 'Auto Switch')}</Text><div className="mt-3"><Switch checked={state?.autoSwitchEnabled ?? false} onChange={(checked) => void toggleAutoSwitch(checked)} checkedChildren={localizedText('开', 'On')} unCheckedChildren={localizedText('关', 'Off')} /></div><Text type="secondary">{localizedText('最近', 'Last')}：{formatDate(state?.lastAutoSwitchTime)}</Text></Card></Col>
+    </Row>
+    <Card className="surface-card" title={t('strategyPage.candidates')}><Table<Ranking> rowKey="stockCode" loading={loading || tradingLoading} dataSource={rankings} pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], showTotal: (total) => `共 ${total} 只` }} columns={[{ title: '排名', dataIndex: 'rank', width: 72 }, { title: '股票', dataIndex: 'stockName', render: (value: string, row: Ranking) => `${value} (${row.stockCode})` }, { title: '价格', dataIndex: 'currentPrice', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : `¥${value.toFixed(2)}` }, { title: 'LSTM', dataIndex: 'lstmScore', render: (value: number) => percent(value) }, { title: '新闻影响', dataIndex: 'newsImpactScore', render: (value: number) => value.toFixed(3) }, { title: '综合得分', dataIndex: 'totalScore', render: (value: number) => <Tag color={value >= 0.7 ? 'green' : value >= 0.5 ? 'blue' : 'default'}>{value.toFixed(3)}</Tag> }, { title: '持仓', dataIndex: 'held', render: (value?: boolean) => value === undefined ? <Tag>未知</Tag> : <Tag color={value ? 'blue' : 'default'}>{value ? '已持有' : '未持有'}</Tag> }, { title: '说明', dataIndex: 'reason' }]} locale={{ emptyText: '暂无交易候选' }} /></Card>
   </div>);
 };
 
 export default StrategyConfig;
-// AI_GENERATE_END ------------------
+// AI_GENERATE_END ----------------------

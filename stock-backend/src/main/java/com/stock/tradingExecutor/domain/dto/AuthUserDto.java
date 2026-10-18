@@ -1,5 +1,5 @@
-// AI_GENERATE_START -
-package com.stock.tradingExecutor.access.domain.dto;
+// AI_GENERATE_START --
+package com.stock.tradingExecutor.domain.dto;
 
 import lombok.Builder;
 import lombok.Value;
@@ -23,4 +23,4 @@ public class AuthUserDto {
     /** 用户显示名称。 */
     String displayName;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

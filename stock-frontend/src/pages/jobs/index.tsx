@@ -1,9 +1,8 @@
-// AI_GENERATE_START -----------------
+// AI_GENERATE_START -------------------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
 import {
-  Alert,
   Button,
   Card,
   Descriptions,
@@ -22,7 +21,6 @@ import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import {
   ClockCircleOutlined,
   ControlOutlined,
-  ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
 import request from '../../utils/request';
@@ -549,18 +547,9 @@ const JobManagement: React.FC = () => {
           <div className="metric-value jobs-summary-attention">{jobSummary.attention}</div>
         </div>
       </div>
-      {jobSummary.attention > 0 && (
-        <Alert
-          type="warning"
-          showIcon
-          message={localizedText(`${jobSummary.attention} 个任务未完成调度注册`, `${jobSummary.attention} jobs need scheduler registration`)}
-          description={localizedText('请先刷新确认调度状态；未注册任务不可触发，已暂停任务仍保留原有安全门禁。', 'Refresh to confirm scheduler state. Unregistered jobs cannot be triggered; paused jobs retain their safety gates.')}
-        />
-      )}
       <Card
         className="surface-card"
         title={<Space><ControlOutlined />{t('jobsPage.status')}</Space>}
-        extra={<Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadAll()}>{t('jobsPage.refresh')}</Button>}
       >
         <Space wrap className="job-filters">
           <Select<JobDomain>
@@ -672,4 +661,4 @@ const JobManagement: React.FC = () => {
 };
 
 export default JobManagement;
-// AI_GENERATE_END -----------------
+// AI_GENERATE_END -------------------

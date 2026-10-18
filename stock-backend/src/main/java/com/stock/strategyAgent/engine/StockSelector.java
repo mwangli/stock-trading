@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------------------
+// AI_GENERATE_START ---------------------
 package com.stock.strategyAgent.engine;
 
 import com.stock.dataCollector.domain.entity.StockNews;
@@ -105,15 +105,16 @@ public class StockSelector {
             }
 
             String sentimentModelVersion = resolveSentimentModelVersion();
-            Map<String, Double> sentimentScores = sentimentResults.entrySet().stream()
+            Map<String, Double> newsImpactScores = sentimentResults.entrySet().stream()
                     .filter(entry -> lstmScores.containsKey(entry.getKey()))
+                    .filter(entry -> entry.getValue().isActionable())
                     .collect(Collectors.toMap(
                             Map.Entry::getKey,
-                            entry -> entry.getValue().getScore(),
+                            entry -> entry.getValue().getNewsImpactScore(),
                             (left, right) -> left,
                             LinkedHashMap::new));
             Map<String, Double> totalScores = scoreCalculator.calculateTotalScores(
-                    lstmScores, sentimentScores, config);
+                    lstmScores, newsImpactScores, config);
             String candidateBatchId = UUID.randomUUID().toString();
             LocalDateTime calculatedAt = LocalDateTime.now();
             Map<String, Double> currentPrices = predictionBatch.getItems().stream()
@@ -124,7 +125,7 @@ public class StockSelector {
                             (left, right) -> left,
                             LinkedHashMap::new));
             List<StockRankingDto> rankings = rankAndSelect(
-                    totalScores, lstmScores, sentimentScores, currentPrices, stockNames, n, config,
+                    totalScores, lstmScores, newsImpactScores, currentPrices, stockNames, n, config,
                     predictionBatch, sentimentModelVersion, candidateBatchId,
                     informationCutoffAt, calculatedAt);
 
@@ -318,7 +319,7 @@ public class StockSelector {
     private List<StockRankingDto> rankAndSelect(
             Map<String, Double> totalScores,
             Map<String, Double> lstmScores,
-            Map<String, Double> sentimentScores,
+            Map<String, Double> newsImpactScores,
             Map<String, Double> currentPrices,
             Map<String, String> stockNames,
             int n,
@@ -353,7 +354,7 @@ public class StockSelector {
                     .stockName(stockNames.getOrDefault(entry.getKey(), entry.getKey()))
                     .currentPrice(currentPrices.get(entry.getKey()))
                     .lstmScore(lstmScores.get(entry.getKey()))
-                    .sentimentScore(sentimentScores.get(entry.getKey()))
+                    .newsImpactScore(newsImpactScores.getOrDefault(entry.getKey(), 0D))
                     .totalScore(entry.getValue())
                     .rank(rank)
                     .calculateTime(calculatedAt)
@@ -395,7 +396,7 @@ public class StockSelector {
                 .stockName(dto.getStockName())
                 .currentPrice(dto.getCurrentPrice())
                 .lstmScore(dto.getLstmScore())
-                .sentimentScore(dto.getSentimentScore())
+                .newsImpactScore(dto.getNewsImpactScore())
                 .totalScore(dto.getTotalScore())
                 .rank(dto.getRank())
                 .calculateTime(dto.getCalculateTime())
@@ -429,7 +430,7 @@ public class StockSelector {
                 .stockName(ranking.getStockName())
                 .currentPrice(ranking.getCurrentPrice())
                 .lstmScore(ranking.getLstmScore())
-                .sentimentScore(ranking.getSentimentScore())
+                .newsImpactScore(ranking.getNewsImpactScore())
                 .totalScore(ranking.getTotalScore())
                 .rank(ranking.getRank())
                 .calculateTime(ranking.getCalculateTime())
@@ -437,4 +438,4 @@ public class StockSelector {
                 .build();
     }
 }
-// AI_GENERATE_END ---------------------
+// AI_GENERATE_END ----------------------

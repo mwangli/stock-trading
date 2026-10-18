@@ -1,12 +1,12 @@
-// AI_GENERATE_START --
-package com.stock.tradingExecutor.access.api;
+// AI_GENERATE_START ---
+package com.stock.tradingExecutor.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
-import com.stock.tradingExecutor.access.domain.dto.AuthUserDto;
-import com.stock.tradingExecutor.access.domain.dto.LoginRequestDto;
-import com.stock.tradingExecutor.access.domain.entity.UserEntity;
-import com.stock.tradingExecutor.access.service.UserService;
-import com.stock.tradingExecutor.access.web.AuthInterceptor;
+import com.stock.tradingExecutor.domain.dto.AuthUserDto;
+import com.stock.tradingExecutor.domain.dto.LoginRequestDto;
+import com.stock.tradingExecutor.domain.entity.UserEntity;
+import com.stock.tradingExecutor.service.UserService;
+import com.stock.tradingExecutor.web.AuthInterceptor;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -83,4 +83,4 @@ public class AuthController {
         return ResponseDTO.success(null);
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---
