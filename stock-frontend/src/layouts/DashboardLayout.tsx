@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------------------------
+// AI_GENERATE_START -----------------------------
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, Badge, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
@@ -42,7 +42,7 @@ const DEFAULT_MENU_ORDER = [
   '/tradeRecords',
   '/modelOperations',
   '/sentimentModel',
-  '/agent',
+  '/strategyConfig',
   '/jobs',
   '/settings',
   '/logs',
@@ -201,7 +201,7 @@ const DashboardLayout: React.FC = () => {
     { key: '/logs', icon: <FileTextOutlined />, label: t('layout.logs') },
     { key: '/modelOperations', icon: <ExperimentOutlined />, label: t('layout.modelOperations') },
     { key: '/sentimentModel', icon: <MessageOutlined />, label: t('layout.sentimentModel') },
-    { key: '/agent', icon: <RobotOutlined />, label: t('layout.agent') },
+    { key: '/strategyConfig', icon: <RobotOutlined />, label: t('layout.agent') },
     { key: '/jobs', icon: <ScheduleOutlined />, label: t('layout.jobs') },
     { key: '/settings', icon: <SettingOutlined />, label: t('layout.settings') },
   ], [t]);
@@ -258,7 +258,7 @@ const DashboardLayout: React.FC = () => {
     '/logs': t('layout.pageTitles.logs'),
     '/modelOperations': t('layout.pageTitles.modelOperations'),
     '/sentimentModel': t('layout.pageTitles.sentimentModel'),
-    '/agent': t('layout.pageTitles.agent'),
+    '/strategyConfig': t('layout.pageTitles.agent'),
     '/jobs': t('layout.pageTitles.jobs'),
     '/settings': t('layout.pageTitles.settings'),
   };
@@ -287,7 +287,7 @@ const DashboardLayout: React.FC = () => {
           {!sidebarCollapsed && (
             <div className="app-brand-copy">
               <strong>{t('login.algoTrading')}</strong>
-              <span>AI TRADING CONSOLE</span>
+              <span>AI-AGENT SMART TRADING CONSOLE</span>
             </div>
           )}
         </div>
@@ -365,4 +365,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END ----------------------------
+// AI_GENERATE_END -----------------------------

@@ -1,14 +1,15 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.evidence;
 
 import com.alibaba.fastjson2.JSON;
 import com.stock.strategyAgent.domain.AgentEnums;
+import com.stock.strategyAgent.tool.AgentToolContextHolder;
 import com.stock.strategyAgent.tool.ToolExecutionContext;
-import com.stock.strategyAgent.tool.ToolExecutionResult;
-import com.stock.strategyAgent.tool.ToolGateway;
 import com.stock.strategyAgent.tool.read.JobDiagnosticTool;
 import com.stock.strategyAgent.tool.read.PredictionCandidateQueryTool;
 import com.stock.strategyAgent.tool.read.TradingCalendarQueryTool;
+import com.stock.strategyAgent.tool.read.BrokerFactQueryTool;
+import com.stock.strategyAgent.tool.read.StrategyStateQueryTool;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -17,6 +18,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Agent 受限证据集合组装服务。
@@ -28,7 +30,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class EvidenceAssembler {
 
-    private final ToolGateway toolGateway;
+    private final TradingCalendarQueryTool tradingCalendarQueryTool;
+    private final StrategyStateQueryTool strategyStateQueryTool;
+    private final PredictionCandidateQueryTool predictionCandidateQueryTool;
+    private final JobDiagnosticTool jobDiagnosticTool;
+    private final BrokerFactQueryTool brokerFactQueryTool;
 
     /**
      * 按任务类型组装固定只读证据。
@@ -51,14 +57,19 @@ public class EvidenceAssembler {
                 .userScope(userScope)
                 .build();
         List<EvidenceItem> items = new ArrayList<>();
-        add(items, "queryTradingCalendar", new TradingCalendarQueryTool.TradingCalendarRequest(LocalDate.now()), context);
-        add(items, "queryStrategyState", null, context);
+        AgentToolContextHolder.set(context);
+        try {
+            add(items, "queryTradingCalendar",
+                    () -> tradingCalendarQueryTool.query(new TradingCalendarQueryTool.TradingCalendarRequest(LocalDate.now())));
+            add(items, "queryStrategyState", strategyStateQueryTool::query);
         String predictionBatchId = null;
         String strategyVersion = null;
         LocalDate targetTradeDate = null;
         if (StringUtils.hasText(candidateBatchId)) {
-            Object candidateData = add(items, "queryPredictionCandidate",
-                    new PredictionCandidateQueryTool.PredictionCandidateRequest(candidateBatchId.trim()), context);
+            PredictionCandidateQueryTool.PredictionCandidateResult candidateData = add(items,
+                    "queryPredictionCandidate",
+                    () -> predictionCandidateQueryTool.query(
+                            new PredictionCandidateQueryTool.PredictionCandidateRequest(candidateBatchId.trim())));
             if (candidateData instanceof PredictionCandidateQueryTool.PredictionCandidateResult candidate) {
                 predictionBatchId = candidate.predictionBatchId();
                 strategyVersion = candidate.strategyVersion();
@@ -66,44 +77,63 @@ public class EvidenceAssembler {
             }
         }
         if (taskType == AgentEnums.TaskType.DIAGNOSTIC && StringUtils.hasText(jobName)) {
-            add(items, "queryJobExecution", new JobDiagnosticTool.JobDiagnosticRequest(jobName.trim()), context);
+            add(items, "queryJobExecution",
+                    () -> jobDiagnosticTool.query(new JobDiagnosticTool.JobDiagnosticRequest(jobName.trim())));
         }
         if (taskType == AgentEnums.TaskType.TRADE_PLAN || taskType == AgentEnums.TaskType.DIAGNOSTIC) {
-            add(items, "queryBrokerFacts", null, context);
+            add(items, "queryBrokerFacts", brokerFactQueryTool::query);
         }
-        List<String> refs = items.stream().map(EvidenceItem::getEvidenceId).toList();
+        List<String> refs = items.stream()
+                .filter(item -> "AVAILABLE".equals(item.getStatus()))
+                .map(EvidenceItem::getEvidenceId)
+                .toList();
         String summary = items.stream().map(item -> JSON.toJSONString(item)).reduce("", (left, right) -> left + right + "\n");
         return EvidenceBundle.builder().items(List.copyOf(items)).evidenceRefs(refs).summary(limit(summary))
                 .predictionBatchId(predictionBatchId)
                 .strategyVersion(strategyVersion)
                 .targetTradeDate(targetTradeDate)
                 .build();
+        } finally {
+            AgentToolContextHolder.clear();
+        }
     }
 
-    private Object add(List<EvidenceItem> items, String toolName, Object input, ToolExecutionContext context) {
-        ToolExecutionResult<Object> result = toolGateway.execute(toolName, input, context);
+    private <T> T add(List<EvidenceItem> items, String toolName, Supplier<T> action) {
         String id = "E" + String.format("%03d", items.size() + 1);
-        String status = result.isSuccess() ? "AVAILABLE" : "FAILED";
-        String summary = result.isSuccess() ? limit(String.valueOf(result.getData())) : result.getWarnings();
-        if (result.getData() instanceof TradingCalendarQueryTool.TradingCalendarResult calendar
-                && !calendar.confirmed()) {
-            status = "UNKNOWN";
+        try {
+            T data = action.get();
+            String status = "AVAILABLE";
+            if (data instanceof TradingCalendarQueryTool.TradingCalendarResult calendar
+                    && !calendar.confirmed()) {
+                status = "UNKNOWN";
+            }
+            if (data instanceof PredictionCandidateQueryTool.PredictionCandidateResult candidate
+                    && (candidate.items() == null || candidate.items().isEmpty())) {
+                status = "UNKNOWN";
+            }
+            items.add(EvidenceItem.builder()
+                    .evidenceId(id)
+                    .sourceType("TOOL")
+                    .sourceId(toolName)
+                    .sourceVersion("v1")
+                    .asOf(LocalDateTime.now())
+                    .status(status)
+                    .summary(limit(String.valueOf(data)))
+                    .build());
+            return data;
+        } catch (RuntimeException exception) {
+            items.add(EvidenceItem.builder()
+                    .evidenceId(id)
+                    .sourceType("TOOL")
+                    .sourceId(toolName)
+                    .sourceVersion("v1")
+                    .asOf(LocalDateTime.now())
+                    .status("FAILED")
+                    .summary(limit(exception.getMessage()))
+                    .errorCode("TOOL_EXECUTION_FAILED")
+                    .build());
+            return null;
         }
-        if (result.getData() instanceof PredictionCandidateQueryTool.PredictionCandidateResult candidate
-                && (candidate.items() == null || candidate.items().isEmpty())) {
-            status = "UNKNOWN";
-        }
-        items.add(EvidenceItem.builder()
-                .evidenceId(id)
-                .sourceType("TOOL")
-                .sourceId(toolName)
-                .sourceVersion("v1")
-                .asOf(result.getAsOf() == null ? LocalDateTime.now() : result.getAsOf())
-                .status(status)
-                .summary(summary)
-                .errorCode(result.getErrorCode())
-                .build());
-        return result.getData();
     }
 
     private String limit(String value) {
@@ -113,4 +143,4 @@ public class EvidenceAssembler {
         return value.length() > 12000 ? value.substring(0, 12000) : value;
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

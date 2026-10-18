@@ -1,8 +1,18 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ---------------
 package com.stock.strategyAgent.service;
 
+import com.stock.strategyAgent.api.DiagnosticRequest;
+
 import com.alibaba.fastjson2.JSON;
-import com.stock.strategyAgent.api.AgentDtos;
+import com.stock.strategyAgent.api.CreateSessionRequest;
+import com.stock.strategyAgent.api.MemoryResponse;
+import com.stock.strategyAgent.api.RagResult;
+import com.stock.strategyAgent.api.RagSearchRequest;
+import com.stock.strategyAgent.api.ReportRequest;
+import com.stock.strategyAgent.api.ResearchRequest;
+import com.stock.strategyAgent.api.RuntimeStatus;
+import com.stock.strategyAgent.api.SessionResponse;
+import com.stock.strategyAgent.api.TaskResponse;
 import com.stock.strategyAgent.config.AgentProperties;
 import com.stock.strategyAgent.domain.AgentEnums;
 import com.stock.strategyAgent.domain.entity.AgentSessionEntity;
@@ -12,14 +22,15 @@ import com.stock.strategyAgent.evidence.EvidenceBundle;
 import com.stock.strategyAgent.persistence.AgentSessionRepository;
 import com.stock.strategyAgent.persistence.AgentTaskRepository;
 import com.stock.strategyAgent.rag.AgentRagService;
+import com.stock.strategyAgent.rag.EmbeddingRuntimeStatus;
+import com.stock.strategyAgent.rag.LangChainEmbeddingService;
 import com.stock.strategyAgent.runtime.AgentRuntimeRequest;
 import com.stock.strategyAgent.runtime.AgentRuntimeResponse;
 import com.stock.strategyAgent.runtime.AgentRuntimeService;
 import com.stock.strategyAgent.runtime.AgentRuntimeStatus;
 import com.stock.strategyAgent.runtime.AgentStructuredOutput;
+import com.stock.strategyAgent.tool.AgentToolContextHolder;
 import com.stock.strategyAgent.tool.ToolExecutionContext;
-import com.stock.strategyAgent.tool.ToolExecutionResult;
-import com.stock.strategyAgent.tool.ToolGateway;
 import com.stock.strategyAgent.tool.read.JobDiagnosticTool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,8 +60,9 @@ public class AgentApplicationService {
     private final AgentRagService ragService;
     private final AgentRuntimeService runtimeService;
     private final AgentProperties properties;
-    private final ToolGateway toolGateway;
+    private final JobDiagnosticTool jobDiagnosticTool;
     private final EvidenceAssembler evidenceAssembler;
+    private final LangChainEmbeddingService embeddingService;
 
     /**
      * 创建 Agent 会话。
@@ -59,7 +71,7 @@ public class AgentApplicationService {
      * @return 会话响应
      */
     @Transactional
-    public AgentDtos.SessionResponse createSession(AgentDtos.CreateSessionRequest request) {
+    public SessionResponse createSession(CreateSessionRequest request) {
         LocalDateTime now = LocalDateTime.now();
         AgentSessionEntity entity = new AgentSessionEntity()
                 .setSessionId(UUID.randomUUID().toString())
@@ -78,7 +90,7 @@ public class AgentApplicationService {
      * @return 会话响应
      */
     @Transactional(readOnly = true)
-    public AgentDtos.SessionResponse getSession(String sessionId) {
+    public SessionResponse getSession(String sessionId) {
         return toSession(sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Agent 会话不存在: " + sessionId)));
     }
@@ -102,22 +114,29 @@ public class AgentApplicationService {
      * @return 任务响应
      */
     @Transactional
-    public AgentDtos.TaskResponse research(AgentDtos.ResearchRequest request) {
+    public TaskResponse research(ResearchRequest request) {
         requireEnabled();
         String question = requireQuestion(request == null ? null : request.getQuestion());
         AgentSessionEntity session = ensureSession(request == null ? null : request.getSessionId(),
                 request == null ? null : request.getUserScope());
         AgentTaskEntity task = createTask(session, AgentEnums.TaskType.RESEARCH, question);
         try {
-            List<AgentDtos.MemoryResponse> memories = properties.isMemoryEnabled()
+            List<MemoryResponse> memories = properties.isMemoryEnabled()
                     ? memoryService.list(session.getUserScope()) : List.of();
-            List<AgentDtos.RagResult> evidence = properties.isRagEnabled()
+            List<RagResult> evidence = properties.isRagEnabled()
                     ? ragService.search(ragRequest(question, session.getUserScope())) : List.of();
             EvidenceBundle factEvidence = evidenceAssembler.assemble(AgentEnums.TaskType.RESEARCH,
                     UUID.randomUUID().toString(), session.getSessionId(), task.getTaskId(), session.getUserScope(),
                     request == null ? null : request.getCandidateBatchId(), null);
+            validateResearchContext(request, factEvidence);
             String evidenceSummary = factEvidence.getSummary() + buildEvidenceSummary(memories, evidence);
-            String prompt = "问题：" + question + "\n结构化证据：" + evidenceSummary;
+            String prompt = "问题：" + question + "\n候选批次="
+                    + (request == null ? "" : request.getCandidateBatchId())
+                    + "\n预测批次=" + (request == null ? "" : request.getPredictionBatchId())
+                    + "\n股票代码=" + (request == null ? "" : request.getStockCode())
+                    + "\n策略版本=" + (request == null ? "" : request.getStrategyVersion())
+                    + "\n目标交易日=" + (request == null ? "" : request.getTargetTradeDate())
+                    + "\n结构化证据：" + evidenceSummary;
             AgentRuntimeResponse response = runtimeService.execute(runtimeRequest(
                     task, session, "RESEARCH",
                     "你是股票交易系统的研究 Agent。只能使用给定证据，不得承诺收益，不得生成可直接执行的券商订单。"
@@ -137,7 +156,7 @@ public class AgentApplicationService {
      * @return 任务响应
      */
     @Transactional
-    public AgentDtos.TaskResponse diagnose(AgentDtos.DiagnosticRequest request) {
+    public TaskResponse diagnose(DiagnosticRequest request) {
         requireEnabled();
         String question = StringUtils.hasText(request == null ? null : request.getQuestion())
                 ? request.getQuestion().trim() : "诊断系统运行状态";
@@ -168,7 +187,7 @@ public class AgentApplicationService {
      * @return 任务响应
      */
     @Transactional
-    public AgentDtos.TaskResponse dailyReport(AgentDtos.ReportRequest request) {
+    public TaskResponse dailyReport(ReportRequest request) {
         requireEnabled();
         if (!properties.isReportEnabled()) {
             throw new IllegalStateException("日报任务当前未启用");
@@ -205,7 +224,7 @@ public class AgentApplicationService {
      * 执行统一任务调度中心调用的日报 Job。
      */
     public void runScheduledReport() {
-        AgentDtos.ReportRequest request = new AgentDtos.ReportRequest();
+        ReportRequest request = new ReportRequest();
         request.setReportDate(LocalDate.now().toString());
         dailyReport(request);
     }
@@ -217,7 +236,7 @@ public class AgentApplicationService {
      * @return 任务响应
      */
     @Transactional(readOnly = true)
-    public AgentDtos.TaskResponse getTask(String taskId) {
+    public TaskResponse getTask(String taskId) {
         return toTask(taskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalArgumentException("Agent 任务不存在: " + taskId)));
     }
@@ -244,9 +263,10 @@ public class AgentApplicationService {
      * @return 运行状态
      */
     @Transactional(readOnly = true)
-    public AgentDtos.RuntimeStatus runtimeStatus() {
+    public RuntimeStatus runtimeStatus() {
         var providerStatus = runtimeService.providerStatus();
-        return AgentDtos.RuntimeStatus.builder()
+        EmbeddingRuntimeStatus embeddingStatus = embeddingService.status();
+        return RuntimeStatus.builder()
                 .enabled(properties.isEnabled())
                 .provider(runtimeService.providerName())
                 .ragEnabled(properties.isRagEnabled())
@@ -257,7 +277,45 @@ public class AgentApplicationService {
                 .deepseekConfigured(providerStatus.isDeepseekConfigured())
                 .ollamaEnabled(providerStatus.isOllamaEnabled())
                 .ollamaConfigured(providerStatus.isOllamaConfigured())
+                .deepseekStatus(providerStatus.getDeepseekStatus())
+                .ollamaStatus(providerStatus.getOllamaStatus())
+                .embeddingEnabled(embeddingStatus.isEnabled())
+                .embeddingProvider(embeddingStatus.getProvider())
+                .embeddingConfigured(embeddingStatus.isConfigured())
+                .embeddingReady(embeddingStatus.isReady())
+                .embeddingModel(embeddingStatus.getModel())
+                .embeddingModelVersion(embeddingStatus.getModelVersion())
+                .embeddingDimension(embeddingStatus.getDimension())
+                .embeddingStatus(embeddingStatus.getStatus())
+                .embeddingFallback(embeddingStatus.isFallback())
                 .build();
+    }
+
+    /**
+     * 判断交易计划能力是否启用，供生成入口提前阻断无效模型调用。
+     *
+     * @return 交易计划开关状态
+     */
+    public boolean isTradePlanEnabled() {
+        return properties.isTradePlanEnabled();
+    }
+
+    private void validateResearchContext(ResearchRequest request, EvidenceBundle evidence) {
+        if (request == null) {
+            return;
+        }
+        if (StringUtils.hasText(request.getPredictionBatchId())
+                && !request.getPredictionBatchId().equals(evidence.getPredictionBatchId())) {
+            throw new IllegalArgumentException("Research 预测批次与候选批次事实不一致");
+        }
+        if (StringUtils.hasText(request.getStrategyVersion())
+                && !request.getStrategyVersion().equals(evidence.getStrategyVersion())) {
+            throw new IllegalArgumentException("Research 策略版本与候选批次事实不一致");
+        }
+        if (request.getTargetTradeDate() != null
+                && !request.getTargetTradeDate().equals(evidence.getTargetTradeDate())) {
+            throw new IllegalArgumentException("Research 目标交易日与候选批次事实不一致");
+        }
     }
 
     private AgentSessionEntity ensureSession(String sessionId, String userScope) {
@@ -265,10 +323,10 @@ public class AgentApplicationService {
             return sessionRepository.findById(sessionId)
                     .orElseThrow(() -> new IllegalArgumentException("Agent 会话不存在: " + sessionId));
         }
-        AgentDtos.CreateSessionRequest request = new AgentDtos.CreateSessionRequest();
+        CreateSessionRequest request = new CreateSessionRequest();
         request.setUserScope(userScope);
         request.setTitle("Agent 自动会话");
-        AgentDtos.SessionResponse response = createSession(request);
+        SessionResponse response = createSession(request);
         return sessionRepository.findById(response.getSessionId()).orElseThrow();
     }
 
@@ -334,17 +392,18 @@ public class AgentApplicationService {
                 .taskId(task.getTaskId())
                 .userScope(session.getUserScope())
                 .build();
-        ToolExecutionResult<Object> result = toolGateway.execute("queryJobExecution",
-                new JobDiagnosticTool.JobDiagnosticRequest(jobName.trim()), context);
-        if (!result.isSuccess()) {
-            return "任务=" + jobName.trim() + "，工具状态=" + result.getStatus()
-                    + "，错误码=" + result.getErrorCode() + "，说明=" + result.getWarnings() + "\n";
+        AgentToolContextHolder.set(context);
+        try {
+            JobDiagnosticTool.JobDiagnosticResult diagnostic = jobDiagnosticTool.query(
+                    new JobDiagnosticTool.JobDiagnosticRequest(jobName.trim()));
+            return "任务=" + diagnostic.jobName() + "，最近运行=" + diagnostic.status()
+                    + "，错误摘要=" + (diagnostic.errorMessage() == null ? "无" : diagnostic.errorMessage()) + "\n";
+        } catch (RuntimeException exception) {
+            return "任务=" + jobName.trim() + "，工具状态=FAILED，错误码=TOOL_EXECUTION_FAILED，说明="
+                    + exception.getMessage() + "\n";
+        } finally {
+            AgentToolContextHolder.clear();
         }
-        if (!(result.getData() instanceof JobDiagnosticTool.JobDiagnosticResult diagnostic)) {
-            return "任务=" + jobName.trim() + "，工具返回结构无效，状态=UNKNOWN\n";
-        }
-        return "任务=" + diagnostic.jobName() + "，最近运行=" + diagnostic.status()
-                + "，错误摘要=" + (diagnostic.errorMessage() == null ? "无" : diagnostic.errorMessage()) + "\n";
     }
 
     private void fail(AgentTaskEntity task, Exception exception) {
@@ -354,15 +413,15 @@ public class AgentApplicationService {
         log.warn("[Agent] 任务执行失败: taskId={}", task.getTaskId(), exception);
     }
 
-    private AgentDtos.RagSearchRequest ragRequest(String question, String scope) {
-        AgentDtos.RagSearchRequest request = new AgentDtos.RagSearchRequest();
+    private RagSearchRequest ragRequest(String question, String scope) {
+        RagSearchRequest request = new RagSearchRequest();
         request.setQuery(question);
         request.setUserScope(scope);
         request.setLimit(5);
         return request;
     }
 
-    private String buildEvidenceSummary(List<AgentDtos.MemoryResponse> memories, List<AgentDtos.RagResult> evidence) {
+    private String buildEvidenceSummary(List<MemoryResponse> memories, List<RagResult> evidence) {
         StringBuilder result = new StringBuilder();
         result.append("Memory 数量=").append(memories.size()).append("\n");
         memories.stream().limit(5).forEach(item -> result.append("Memory[").append(item.getMemoryId()).append("] ")
@@ -372,8 +431,8 @@ public class AgentApplicationService {
         return result.toString();
     }
 
-    private AgentDtos.TaskResponse toTask(AgentTaskEntity entity) {
-        return AgentDtos.TaskResponse.builder()
+    private TaskResponse toTask(AgentTaskEntity entity) {
+        return TaskResponse.builder()
                 .taskId(entity.getTaskId())
                 .sessionId(entity.getSessionId())
                 .taskType(entity.getTaskType().name())
@@ -391,8 +450,8 @@ public class AgentApplicationService {
                 .build();
     }
 
-    private AgentDtos.SessionResponse toSession(AgentSessionEntity entity) {
-        return AgentDtos.SessionResponse.builder()
+    private SessionResponse toSession(AgentSessionEntity entity) {
+        return SessionResponse.builder()
                 .sessionId(entity.getSessionId())
                 .userScope(entity.getUserScope())
                 .title(entity.getTitle())
@@ -430,4 +489,4 @@ public class AgentApplicationService {
                 ? value.substring(0, properties.getMaxOutputChars()) : value;
     }
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END --------------

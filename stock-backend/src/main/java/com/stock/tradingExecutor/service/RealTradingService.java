@@ -1,9 +1,10 @@
-// AI_GENERATE_START ----------
+// AI_GENERATE_START -------------
 package com.stock.tradingExecutor.service;
 
 import com.stock.dataCollector.service.TradingCalendarService;
-import com.stock.strategyAgent.strategy.domain.dto.StockRankingDto;
-import com.stock.strategyAgent.strategy.engine.StockSelector;
+import com.stock.strategyAgent.domain.dto.StockRankingDto;
+import com.stock.strategyAgent.engine.StockSelector;
+import com.stock.modelService.service.PredictionCandidateQueryService;
 import com.stock.tradingExecutor.config.RiskConfig;
 import com.stock.tradingExecutor.domain.dto.RealTradingStatusDto;
 import com.stock.tradingExecutor.domain.dto.TradeExecutionBatchResponseDto;
@@ -41,6 +42,7 @@ import java.util.stream.Collectors;
 public class RealTradingService {
 
     private final StockSelector stockSelector;
+    private final PredictionCandidateQueryService predictionCandidateQueryService;
     private final BrokerAdapter brokerAdapter;
     private final TradeExecutor tradeExecutor;
     private final TradingProperties tradingProperties;
@@ -104,6 +106,7 @@ public class RealTradingService {
         LocalDate today = LocalDate.now();
         tradingCalendarService.requireTradingDay(today);
         List<StockRankingDto> rankings = loadTodayCandidates();
+        predictionCandidateQueryService.requireTradingEligible(rankings.get(0).getPredictionBatchId());
         String executionBatchId = executionBatchService
                 .begin("BUY", today, rankings.get(0).getCandidateBatchId())
                 .getBatchId();
@@ -197,16 +200,16 @@ public class RealTradingService {
     }
 
     private List<StockRankingDto> loadTodayCandidates() {
-        LocalDate today = LocalDate.now();
-        List<StockRankingDto> rankings = stockSelector.getExecutableRankings(today);
+        LocalDate targetTradeDate = stockSelector.getCurrentTargetTradeDate();
+        List<StockRankingDto> rankings = stockSelector.getExecutableRankings(targetTradeDate);
         if (rankings.isEmpty()) {
-            throw new IllegalStateException("当前交易日没有元数据完整的可执行候选: " + today);
+            throw new IllegalStateException("当前目标交易日没有元数据完整的可执行候选: " + targetTradeDate);
         }
         StockRankingDto first = rankings.get(0);
         boolean inconsistent = rankings.stream().anyMatch(item ->
                 !first.getCandidateBatchId().equals(item.getCandidateBatchId())
                         || !first.getPredictionBatchId().equals(item.getPredictionBatchId())
-                        || !today.equals(item.getTargetTradeDate()));
+                        || !targetTradeDate.equals(item.getTargetTradeDate()));
         if (inconsistent) {
             throw new IllegalStateException("候选批次元数据不一致，禁止进入真实交易");
         }
@@ -272,4 +275,4 @@ public class RealTradingService {
                 .build();
     }
 }
-// AI_GENERATE_END ----------
+// AI_GENERATE_END -------------

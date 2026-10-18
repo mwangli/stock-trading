@@ -1,4 +1,4 @@
-// AI_GENERATE_START
+// AI_GENERATE_START -
 package com.stock.tradingExecutor.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -29,8 +29,8 @@ public class SystemHealthController {
         log.info("检查后端系统健康状态");
         return ResponseDTO.success(SystemHealthDto.builder()
                 .status("UP")
-                .service("Stock Trading Backend")
+                .service("AI-AGENT智能股票自动交易系统后端")
                 .build());
     }
 }
-// AI_GENERATE_END
+// AI_GENERATE_END -

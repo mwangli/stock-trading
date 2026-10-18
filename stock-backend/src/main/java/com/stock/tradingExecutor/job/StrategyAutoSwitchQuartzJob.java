@@ -1,7 +1,7 @@
-// AI_GENERATE_START
+// AI_GENERATE_START-
 package com.stock.tradingExecutor.job;
 
-import com.stock.strategyAgent.strategy.job.StrategyAutoSwitchJob;
+import com.stock.strategyAgent.job.StrategyAutoSwitchJob;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,4 +33,4 @@ public class StrategyAutoSwitchQuartzJob extends InterruptibleQuartzJob {
                 context.getScheduledFireTime(), strategyAutoSwitchJob::runAutoSwitch);
     }
 }
-// AI_GENERATE_END
+// AI_GENERATE_END-

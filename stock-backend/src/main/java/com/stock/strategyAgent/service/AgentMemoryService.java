@@ -1,7 +1,9 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START -------
 package com.stock.strategyAgent.service;
 
-import com.stock.strategyAgent.api.AgentDtos;
+import com.stock.strategyAgent.api.CorrectMemoryRequest;
+import com.stock.strategyAgent.api.CreateMemoryRequest;
+import com.stock.strategyAgent.api.MemoryResponse;
 import com.stock.strategyAgent.config.AgentProperties;
 import com.stock.strategyAgent.domain.AgentEnums;
 import com.stock.strategyAgent.domain.entity.AgentMemoryEntity;
@@ -40,7 +42,7 @@ public class AgentMemoryService {
      * @return 记忆响应
      */
     @Transactional
-    public AgentDtos.MemoryResponse create(AgentDtos.CreateMemoryRequest request) {
+    public MemoryResponse create(CreateMemoryRequest request) {
         validate(request);
         LocalDateTime now = LocalDateTime.now();
         int ttl = Math.min(Math.max(request.getTtlDays() == null ? properties.getMemoryDefaultTtlDays() : request.getTtlDays(), 1), 3650);
@@ -64,6 +66,9 @@ public class AgentMemoryService {
         vector.setContent(saved.getContent());
         vector.setEmbedding(embeddingService.embed(saved.getContent()));
         vector.setEmbeddingModelVersion(embeddingService.modelVersion());
+        vector.setEmbeddingProvider(embeddingService.provider());
+        vector.setEmbeddingDimension(embeddingService.dimension());
+        vector.setEmbeddingStatus(embeddingService.status().getStatus());
         vector.setActive(true);
         vector.setExpiresAt(saved.getExpiresAt());
         vector.setUpdatedAt(now);
@@ -78,7 +83,7 @@ public class AgentMemoryService {
      * @return 记忆列表
      */
     @Transactional
-    public List<AgentDtos.MemoryResponse> list(String userScope) {
+    public List<MemoryResponse> list(String userScope) {
         expireOldMemories();
         return repository.findByUserScopeAndStatusOrderByUpdatedAtDesc(defaultScope(userScope), AgentEnums.MemoryStatus.ACTIVE)
                 .stream().map(this::toResponse).toList();
@@ -110,7 +115,7 @@ public class AgentMemoryService {
      * @return 修正后的记忆
      */
     @Transactional
-    public AgentDtos.MemoryResponse correct(String memoryId, AgentDtos.CorrectMemoryRequest request) {
+    public MemoryResponse correct(String memoryId, CorrectMemoryRequest request) {
         if (request == null || !StringUtils.hasText(request.getContent())) {
             throw new IllegalArgumentException("修正内容不能为空");
         }
@@ -126,6 +131,9 @@ public class AgentMemoryService {
             vector.setContent(entity.getContent());
             vector.setEmbedding(embeddingService.embed(entity.getContent()));
             vector.setEmbeddingModelVersion(embeddingService.modelVersion());
+            vector.setEmbeddingProvider(embeddingService.provider());
+            vector.setEmbeddingDimension(embeddingService.dimension());
+            vector.setEmbeddingStatus(embeddingService.status().getStatus());
             vector.setActive(true);
             vector.setUpdatedAt(entity.getUpdatedAt());
             mongoTemplate.save(vector);
@@ -137,6 +145,9 @@ public class AgentMemoryService {
             recreated.setContent(entity.getContent());
             recreated.setEmbedding(embeddingService.embed(entity.getContent()));
             recreated.setEmbeddingModelVersion(embeddingService.modelVersion());
+            recreated.setEmbeddingProvider(embeddingService.provider());
+            recreated.setEmbeddingDimension(embeddingService.dimension());
+            recreated.setEmbeddingStatus(embeddingService.status().getStatus());
             recreated.setActive(true);
             recreated.setExpiresAt(entity.getExpiresAt());
             recreated.setUpdatedAt(entity.getUpdatedAt());
@@ -157,7 +168,7 @@ public class AgentMemoryService {
                 .forEach(item -> repository.save(item.setStatus(AgentEnums.MemoryStatus.EXPIRED).setUpdatedAt(LocalDateTime.now())));
     }
 
-    private void validate(AgentDtos.CreateMemoryRequest request) {
+    private void validate(CreateMemoryRequest request) {
         if (!properties.isMemoryEnabled()) {
             throw new IllegalStateException("Memory 功能当前未启用");
         }
@@ -186,8 +197,8 @@ public class AgentMemoryService {
         return StringUtils.hasText(scope) ? scope.trim() : "default";
     }
 
-    private AgentDtos.MemoryResponse toResponse(AgentMemoryEntity entity) {
-        return AgentDtos.MemoryResponse.builder()
+    private MemoryResponse toResponse(AgentMemoryEntity entity) {
+        return MemoryResponse.builder()
                 .memoryId(entity.getMemoryId())
                 .userScope(entity.getUserScope())
                 .memoryType(entity.getMemoryType().name())
@@ -201,4 +212,4 @@ public class AgentMemoryService {
                 .build();
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------
+// AI_GENERATE_START -----------------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
@@ -190,7 +190,6 @@ const JobManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [operatingJob, setOperatingJob] = useState<string | null>(null);
   const [operatingRun, setOperatingRun] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [jobModuleInput, setJobModuleInput] = useState<JobDomain | undefined>();
   const [jobNameInput, setJobNameInput] = useState('');
   const [jobModuleFilter, setJobModuleFilter] = useState<JobDomain | undefined>();
@@ -241,14 +240,13 @@ const JobManagement: React.FC = () => {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       await loadJobs();
       if (historyOpen && historyJob) {
         await loadHistory(historyJob.jobName, historyPage);
       }
     } catch (cause) {
-      setError(getApiErrorMessage(cause, '读取任务管理数据失败'));
+      console.error('读取任务管理数据失败', getApiErrorMessage(cause, '读取任务管理数据失败'));
     } finally {
       setLoading(false);
     }
@@ -264,13 +262,18 @@ const JobManagement: React.FC = () => {
   );
 
   const hasActiveJobs = useMemo(
-    () => jobs.some((job) => job.taskStatus === 'QUEUED'
-      || job.taskStatus === 'RUNNING'
-      || job.latestRun?.status === 'QUEUED'
+    () => jobs.some((job) => job.latestRun?.status === 'QUEUED'
       || job.latestRun?.status === 'RUNNING'),
     [jobs],
   );
 
+  const jobSummary = useMemo(() => {
+    const running = jobs.filter((job) => job.latestRun?.status === 'QUEUED'
+      || job.latestRun?.status === 'RUNNING').length;
+    const attention = jobs.filter((job) => job.taskStatus === 'NOT_REGISTERED' || job.taskStatus === 'ERROR').length;
+    const enabled = jobs.filter((job) => job.taskStatus === 'ENABLED' || job.taskStatus === 'NORMAL').length;
+    return { total: jobs.length, enabled, running, attention };
+  }, [jobs]);
   const filteredJobs = useMemo(() => {
     const normalizedName = jobNameFilter.trim().toLowerCase();
     return jobs.filter((job) => {
@@ -298,7 +301,7 @@ const JobManagement: React.FC = () => {
         refreshRequests.push(loadHistory(historyJob.jobName, historyPage));
       }
       void Promise.all(refreshRequests).catch((cause: unknown) => {
-        setError(getApiErrorMessage(cause, '刷新任务执行状态失败'));
+        console.error('刷新任务执行状态失败', getApiErrorMessage(cause, '刷新任务执行状态失败'));
       });
     }, 3000);
     return () => window.clearInterval(timer);
@@ -448,7 +451,7 @@ const JobManagement: React.FC = () => {
       },
     },
     { title: 'Cron', dataIndex: 'cronExpression', key: 'cronExpression', width: 170, render: (value: string) => <Text code>{value}</Text> },
-    { title: localizedText('任务状态', 'Job Status'), dataIndex: 'taskStatus', key: 'taskStatus', width: 120, render: renderStatus },
+    { title: localizedText('调度状态', 'Scheduler Status'), dataIndex: 'taskStatus', key: 'taskStatus', width: 120, render: renderStatus },
     {
       title: localizedText('执行时间', 'Execution Time'),
       key: 'executionTime',
@@ -456,10 +459,10 @@ const JobManagement: React.FC = () => {
       render: (_, record) => <Text type="secondary">{formatDateTime(record.latestRun?.finishedTime ?? record.latestRun?.createdAt)}</Text>,
     },
     {
-      title: localizedText('执行状态', 'Execution Status'),
+      title: localizedText('最近执行', 'Latest Run'),
       key: 'executionStatus',
       width: 130,
-      render: (_, record) => renderStatus(record.latestRun?.status),
+      render: (_, record) => record.latestRun ? renderStatus(record.latestRun.status) : <Text type="secondary">{localizedText('未执行', 'Not Run')}</Text>,
     },
     {
       title: localizedText('操作', 'Actions'),
@@ -472,8 +475,10 @@ const JobManagement: React.FC = () => {
           && (record.latestRun.status === 'QUEUED' || record.latestRun.status === 'RUNNING')
           ? record.latestRun
           : undefined;
-        const canTrigger = record.enabled && !operating;
+        const needsRegistrationRepair = record.taskStatus === 'NOT_REGISTERED';
+        const canTrigger = record.enabled && !needsRegistrationRepair && record.taskStatus !== 'ERROR' && !operating;
         const canToggle = !operating;
+        const toggleAction: 'pause' | 'resume' = record.enabled && !needsRegistrationRepair ? 'pause' : 'resume';
         const canStop = Boolean(activeRun) && operatingRun !== activeRun?.runId;
         return (
           <Space size="small" className="job-actions">
@@ -487,9 +492,9 @@ const JobManagement: React.FC = () => {
             <span
               className={`job-action ${canToggle ? '' : 'job-action-disabled'}`}
               aria-disabled={!canToggle}
-              onClick={() => void operateJob(record, record.enabled ? 'pause' : 'resume')}
+              onClick={() => void operateJob(record, toggleAction)}
             >
-              {record.enabled ? localizedText('暂停', 'Pause') : localizedText('启用', 'Enable')}
+              {needsRegistrationRepair ? localizedText('修复注册', 'Repair') : record.enabled ? localizedText('暂停', 'Pause') : localizedText('启用', 'Enable')}
             </span>
             <span
               className={`job-action job-action-danger ${canStop ? '' : 'job-action-disabled'}`}
@@ -526,7 +531,32 @@ const JobManagement: React.FC = () => {
 
   return (
     <div className="app-page">
-      {error && <Alert className="mb-4" type="error" showIcon message={localizedText('任务管理数据读取失败', 'Failed to load job management data')} description={error} closable onClose={() => setError(null)} />}
+      <div className="metric-strip jobs-summary" aria-label={localizedText('任务概览', 'Job overview')}>
+        <div className="metric-strip-item">
+          <div className="metric-label">{localizedText('任务总数', 'Total Jobs')}</div>
+          <div className="metric-value">{jobSummary.total}</div>
+        </div>
+        <div className="metric-strip-item">
+          <div className="metric-label">{localizedText('可用任务', 'Available Jobs')}</div>
+          <div className="metric-value jobs-summary-success">{jobSummary.enabled}</div>
+        </div>
+        <div className="metric-strip-item">
+          <div className="metric-label">{localizedText('正在运行', 'Active Runs')}</div>
+          <div className="metric-value jobs-summary-running">{jobSummary.running}</div>
+        </div>
+        <div className="metric-strip-item">
+          <div className="metric-label">{localizedText('需关注', 'Needs Attention')}</div>
+          <div className="metric-value jobs-summary-attention">{jobSummary.attention}</div>
+        </div>
+      </div>
+      {jobSummary.attention > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          message={localizedText(`${jobSummary.attention} 个任务未完成调度注册`, `${jobSummary.attention} jobs need scheduler registration`)}
+          description={localizedText('请先刷新确认调度状态；未注册任务不可触发，已暂停任务仍保留原有安全门禁。', 'Refresh to confirm scheduler state. Unregistered jobs cannot be triggered; paused jobs retain their safety gates.')}
+        />
+      )}
       <Card
         className="surface-card"
         title={<Space><ControlOutlined />{t('jobsPage.status')}</Space>}
@@ -642,4 +672,4 @@ const JobManagement: React.FC = () => {
 };
 
 export default JobManagement;
-// AI_GENERATE_END -------------
+// AI_GENERATE_END -----------------

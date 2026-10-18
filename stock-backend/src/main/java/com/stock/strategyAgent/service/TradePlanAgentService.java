@@ -1,7 +1,7 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.service;
 
-import com.stock.strategyAgent.api.AgentDtos;
+import com.stock.strategyAgent.api.TradePlanDraftRequest;
 import com.stock.strategyAgent.api.TradePlanDto;
 import com.stock.strategyAgent.domain.AgentEnums;
 import com.stock.strategyAgent.domain.entity.AgentSessionEntity;
@@ -43,9 +43,12 @@ public class TradePlanAgentService {
      * @return 交易计划响应
      */
     @Transactional
-    public TradePlanDto.Response generate(AgentDtos.TradePlanDraftRequest request) {
+    public TradePlanDto.Response generate(TradePlanDraftRequest request) {
         if (request == null || !StringUtils.hasText(request.getCandidateBatchId())) {
             throw new IllegalArgumentException("候选批次不能为空");
+        }
+        if (!applicationService.isTradePlanEnabled()) {
+            throw new IllegalStateException("TradePlan 功能当前未启用");
         }
         AgentSessionEntity session = applicationService.ensureSessionForTradePlan(
                 request.getSessionId(), request.getUserScope());
@@ -93,7 +96,7 @@ public class TradePlanAgentService {
         return tradePlanService.create(createRequest);
     }
 
-    private void validateEvidence(EvidenceBundle evidence, AgentDtos.TradePlanDraftRequest request) {
+    private void validateEvidence(EvidenceBundle evidence, TradePlanDraftRequest request) {
         if (evidence.getItems().stream().anyMatch(item -> Set.of("UNKNOWN", "FAILED", "EXPIRED").contains(item.getStatus()))) {
             throw new IllegalStateException("交易计划所需事实证据不可用，暂不生成草案");
         }
@@ -110,7 +113,7 @@ public class TradePlanAgentService {
     }
 
     private void validateDraft(TradePlanDraft draft, EvidenceBundle evidence,
-                               AgentDtos.TradePlanDraftRequest request) {
+                               TradePlanDraftRequest request) {
         if (!request.getCandidateBatchId().trim().equals(draft.getCandidateBatchId())
                 || !evidence.getPredictionBatchId().equals(draft.getPredictionBatchId())
                 || !evidence.getStrategyVersion().equals(draft.getStrategyVersion())
@@ -123,4 +126,4 @@ public class TradePlanAgentService {
         }
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

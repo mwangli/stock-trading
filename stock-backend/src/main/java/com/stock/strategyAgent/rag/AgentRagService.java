@@ -1,7 +1,9 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START -------
 package com.stock.strategyAgent.rag;
 
-import com.stock.strategyAgent.api.AgentDtos;
+import com.stock.strategyAgent.api.RagIngestRequest;
+import com.stock.strategyAgent.api.RagResult;
+import com.stock.strategyAgent.api.RagSearchRequest;
 import com.stock.strategyAgent.config.AgentProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -36,7 +38,7 @@ public class AgentRagService {
      * @param request 文档请求
      * @return 写入的 Chunk 数量
      */
-    public int ingest(AgentDtos.RagIngestRequest request) {
+    public int ingest(RagIngestRequest request) {
         requireEnabled();
         if (request == null || !StringUtils.hasText(request.getContent())) {
             throw new IllegalArgumentException("RAG 文档内容不能为空");
@@ -58,7 +60,10 @@ public class AgentRagService {
             document.setVisibility(defaultValue(request.getVisibility(), "PRIVATE"));
             document.setContentHash(hash(content));
             document.setEmbeddingModelVersion(embeddingService.modelVersion());
+            document.setEmbeddingProvider(embeddingService.provider());
             document.setEmbedding(embeddingService.embed(content));
+            document.setEmbeddingDimension(embeddingService.dimension());
+            document.setEmbeddingStatus(embeddingService.status().getStatus());
             document.setActive(true);
             document.setAsOf(LocalDateTime.now());
             document.setCreatedAt(LocalDateTime.now());
@@ -73,7 +78,7 @@ public class AgentRagService {
      * @param request 检索请求
      * @return 按相似度降序排列的结果
      */
-    public List<AgentDtos.RagResult> search(AgentDtos.RagSearchRequest request) {
+    public List<RagResult> search(RagSearchRequest request) {
         requireEnabled();
         if (request == null || !StringUtils.hasText(request.getQuery())) {
             return List.of();
@@ -96,13 +101,16 @@ public class AgentRagService {
         if (request.getAsOfTo() != null) {
             criteria = criteria.and("asOf").lte(request.getAsOfTo());
         }
+        criteria = criteria.and("embeddingModelVersion").is(embeddingService.modelVersion())
+                .and("embeddingProvider").is(embeddingService.provider())
+                .and("embeddingDimension").is(embeddingService.dimension());
         Query query = Query.query(criteria);
         List<AgentRagChunkDocument> documents = mongoTemplate.find(query, AgentRagChunkDocument.class,
                 properties.getRagCollection());
         List<Double> queryVector = embeddingService.embed(request.getQuery());
         return documents.stream()
                 .filter(item -> visible(item, request.getUserScope()))
-                .map(item -> AgentDtos.RagResult.builder()
+                .map(item -> RagResult.builder()
                         .chunkId(item.getChunkId())
                         .sourceType(item.getSourceType())
                         .sourceId(item.getSourceId())
@@ -111,7 +119,7 @@ public class AgentRagService {
                         .score(cosine(queryVector, item.getEmbedding()))
                         .asOf(item.getAsOf())
                         .build())
-                .sorted(Comparator.comparing(AgentDtos.RagResult::getScore).reversed())
+                .sorted(Comparator.comparing(RagResult::getScore).reversed())
                 .limit(limit)
                 .toList();
     }
@@ -174,4 +182,4 @@ public class AgentRagService {
         return StringUtils.hasText(value) ? value : fallback;
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ------

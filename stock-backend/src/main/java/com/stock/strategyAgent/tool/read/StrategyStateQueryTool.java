@@ -1,13 +1,11 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ---
 package com.stock.strategyAgent.tool.read;
 
-import com.stock.strategyAgent.strategy.config.StrategyStateManager;
-import com.stock.strategyAgent.strategy.domain.dto.StrategyStateDto;
-import com.stock.strategyAgent.tool.ToolDefinition;
-import com.stock.strategyAgent.tool.ToolGateway;
-import com.stock.strategyAgent.tool.ToolPermission;
+import com.stock.strategyAgent.config.StrategyStateManager;
+import com.stock.strategyAgent.domain.dto.StrategyStateDto;
+import com.stock.strategyAgent.tool.AgentToolSupport;
+import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
 
 /**
@@ -18,32 +16,23 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @RequiredArgsConstructor
-public class StrategyStateQueryTool implements InitializingBean {
+public class StrategyStateQueryTool {
 
-    private final ToolGateway toolGateway;
     private final StrategyStateManager strategyStateManager;
+    private final AgentToolSupport toolSupport;
 
     /**
-     * 注册策略状态工具。
+     * 查询当前策略开关、模式和配置版本。
+     *
+     * @return 策略状态
      */
-    @Override
-    public void afterPropertiesSet() {
-        toolGateway.register(ToolDefinition.builder()
-                        .name("queryStrategyState")
-                        .version("v1")
-                        .description("查询当前策略开关、模式和配置版本")
-                        .requiredPermission(ToolPermission.READ_ONLY)
-                        .readOnly(true)
-                        .maxResultSize(3000)
-                        .timeoutMs(3000L)
-                        .build(),
-                (input, context) -> query());
-    }
-
-    private StrategyStateResult query() {
-        StrategyStateDto state = strategyStateManager.getCurrentState();
-        return new StrategyStateResult(state.isEnabled(), state.getCurrentMode().name(),
-                state.getConfigVersion(), state.isAutoSwitchEnabled(), state.getDisabledIndicators());
+    @Tool("查询当前策略开关、模式和配置版本")
+    public StrategyStateResult query() {
+        return toolSupport.execute("queryStrategyState", () -> {
+            StrategyStateDto state = strategyStateManager.getCurrentState();
+            return new StrategyStateResult(state.isEnabled(), state.getCurrentMode().name(),
+                    state.getConfigVersion(), state.isAutoSwitchEnabled(), state.getDisabledIndicators());
+        });
     }
 
     /** 策略状态脱敏结果。 */
@@ -51,4 +40,4 @@ public class StrategyStateQueryTool implements InitializingBean {
                                       boolean autoSwitchEnabled, java.util.List<String> disabledIndicators) {
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END ---

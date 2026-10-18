@@ -1,7 +1,7 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.tradingExecutor.job;
 
-import com.stock.strategyAgent.strategy.job.StrategyEvaluationJob;
+import com.stock.strategyAgent.job.StrategyEvaluationJob;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,4 +33,4 @@ public class StrategyEvaluationQuartzJob extends InterruptibleQuartzJob {
                 context.getScheduledFireTime(), strategyEvaluationJob::runEvaluation);
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

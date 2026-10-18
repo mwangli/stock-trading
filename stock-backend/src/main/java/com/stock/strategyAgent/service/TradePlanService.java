@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.service;
 
 import com.stock.strategyAgent.api.TradePlanDto;
@@ -32,6 +32,7 @@ public class TradePlanService {
     private final AgentTradePlanRepository repository;
     private final TradePlanValidator validator;
     private final AgentProperties agentProperties;
+    private final TradePlanStateMachine stateMachine;
 
     /**
      * 创建或幂等返回一条自动交易计划。
@@ -62,6 +63,7 @@ public class TradePlanService {
                 .setExpiresAt(request.getExpiresAt())
                 .setIdempotencyKey(request.getIdempotencyKey().trim())
                 .setStatus(AgentEnums.TradePlanStatus.PENDING_REVALIDATION)
+                .setVersion(0L)
                 .setCreatedAt(now)
                 .setUpdatedAt(now)
                 .setDecisionMessage("等待 tradingExecutor 重新读取当前事实并执行 Java 风控");
@@ -89,6 +91,7 @@ public class TradePlanService {
             return toResponse(entity);
         }
         if (entity.getExpiresAt() == null || !entity.getExpiresAt().isAfter(now)) {
+            stateMachine.requireTransition(entity.getStatus(), AgentEnums.TradePlanStatus.EXPIRED);
             entity.setStatus(AgentEnums.TradePlanStatus.EXPIRED)
                     .setDecisionMessage("交易计划已过期");
         } else {
@@ -142,7 +145,11 @@ public class TradePlanService {
                 .riskWarnings(StringUtils.hasText(entity.getRiskWarnings())
                         ? JSON.parseArray(entity.getRiskWarnings(), String.class) : List.of())
                 .uncertainty(entity.getUncertainty())
+                .executionTraceId(entity.getExecutionTraceId())
+                .riskCode(entity.getRiskCode())
+                .orderId(entity.getOrderId())
+                .executedAt(entity.getExecutedAt())
                 .build();
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

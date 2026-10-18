@@ -1,8 +1,8 @@
-// AI_GENERATE_START -----------------
+// AI_GENERATE_START ------------------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Badge, Button, Card, Col, Collapse, Descriptions, Form, Input, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
-import { BulbOutlined, InfoCircleOutlined, PlayCircleOutlined, ReloadOutlined, RobotOutlined, SaveOutlined, SendOutlined, SettingOutlined } from '@ant-design/icons';
+import { BulbOutlined, InfoCircleOutlined, ReloadOutlined, RobotOutlined, SaveOutlined, SendOutlined, SettingOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
 import { getApiErrorMessage, readApiData, type ApiResponse } from '../../utils/api';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
@@ -168,7 +168,6 @@ const StrategyConfig: React.FC = () => {
   const [tradingError, setTradingError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [running, setRunning] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
   const [agentQuestion, setAgentQuestion] = useState('');
@@ -257,22 +256,6 @@ const StrategyConfig: React.FC = () => {
     }
   };
 
-
-  const runSelection = async () => {
-    const topN = form.getFieldValue('topN') || 10;
-    setRunning(true);
-    try {
-      const response = await request.post(`/strategy/select?n=${topN}`) as ApiResponse<{ success: boolean; topN: Ranking[] }> ;
-      const result = readApiData(response, '执行选股失败');
-      message.success(`${localizedText('选股完成，生成', 'Selection completed, generated')} ${result.topN?.length || 0} ${localizedText('条候选', 'candidates')}`);
-      await Promise.all([loadData(), loadTradingData()]);
-    } catch (cause) {
-      message.error(getApiErrorMessage(cause, localizedText('执行选股失败', 'Failed to run stock selection')));
-    } finally {
-      setRunning(false);
-    }
-  };
-
   const toggleAutoSwitch = async (enabled: boolean) => {
     try {
       const response = await request.post(`/strategy/autoSwitch?enabled=${enabled}`) as ApiResponse<StrategyState>;
@@ -347,7 +330,6 @@ const StrategyConfig: React.FC = () => {
         <Descriptions.Item label="Ollama"><Space><Badge status={runtime?.ollamaConfigured ? 'success' : 'default'} />{runtime?.ollamaEnabled ? (runtime.ollamaConfigured ? localizedText('已配置', 'Configured') : localizedText('配置不完整', 'Incomplete')) : localizedText('已关闭', 'Disabled')}</Space></Descriptions.Item>
         <Descriptions.Item label={localizedText('任务状态', 'Tasks')}>{runtime?.runningTasks ?? 0}</Descriptions.Item>
       </Descriptions>
-      {runtime && !runtime.deepseekConfigured && !runtime.ollamaConfigured && <Alert className="mt-4" type="error" showIcon message={localizedText('DeepSeek 和 Ollama 均不可用', 'Neither DeepSeek nor Ollama is available')} description={localizedText('请在运行环境配置并启用至少一个 Provider；API Key 只放在后端环境变量中。', 'Enable and configure at least one Provider in the backend environment. Keep API keys in backend environment variables only.')} />}
     </Card>
     <section className={`agent-command-center ${agentOpen ? 'agent-command-center-active' : ''}`}>
       <div className="agent-command-header">
@@ -542,9 +524,9 @@ const StrategyConfig: React.FC = () => {
     </Form>
       </Collapse.Panel>
     </Collapse>
-    <Card className="surface-card" title={t('strategyPage.candidates')} extra={<Button type="primary" icon={<PlayCircleOutlined />} loading={running} onClick={() => void runSelection()}>{t('strategyPage.select')}</Button>}><Table<Ranking> rowKey="stockCode" loading={loading || tradingLoading} dataSource={rankings} pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], showTotal: (total) => `共 ${total} 只` }} columns={[{ title: '排名', dataIndex: 'rank', width: 72 }, { title: '股票', dataIndex: 'stockName', render: (value: string, row: Ranking) => `${value} (${row.stockCode})` }, { title: '价格', dataIndex: 'currentPrice', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : `¥${value.toFixed(2)}` }, { title: 'LSTM', dataIndex: 'lstmScore', render: (value: number) => percent(value) }, { title: '情感', dataIndex: 'sentimentScore', render: (value: number) => value.toFixed(3) }, { title: '综合得分', dataIndex: 'totalScore', render: (value: number) => <Tag color={value >= 0.7 ? 'green' : value >= 0.5 ? 'blue' : 'default'}>{value.toFixed(3)}</Tag> }, { title: '持仓', dataIndex: 'held', render: (value?: boolean) => value === undefined ? <Tag>未知</Tag> : <Tag color={value ? 'blue' : 'default'}>{value ? '已持有' : '未持有'}</Tag> }, { title: '说明', dataIndex: 'reason' }]} locale={{ emptyText: '暂无交易候选' }} /></Card>
+    <Card className="surface-card" title={t('strategyPage.candidates')}><Table<Ranking> rowKey="stockCode" loading={loading || tradingLoading} dataSource={rankings} pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], showTotal: (total) => `共 ${total} 只` }} columns={[{ title: '排名', dataIndex: 'rank', width: 72 }, { title: '股票', dataIndex: 'stockName', render: (value: string, row: Ranking) => `${value} (${row.stockCode})` }, { title: '价格', dataIndex: 'currentPrice', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : `¥${value.toFixed(2)}` }, { title: 'LSTM', dataIndex: 'lstmScore', render: (value: number) => percent(value) }, { title: '情感', dataIndex: 'sentimentScore', render: (value: number) => value.toFixed(3) }, { title: '综合得分', dataIndex: 'totalScore', render: (value: number) => <Tag color={value >= 0.7 ? 'green' : value >= 0.5 ? 'blue' : 'default'}>{value.toFixed(3)}</Tag> }, { title: '持仓', dataIndex: 'held', render: (value?: boolean) => value === undefined ? <Tag>未知</Tag> : <Tag color={value ? 'blue' : 'default'}>{value ? '已持有' : '未持有'}</Tag> }, { title: '说明', dataIndex: 'reason' }]} locale={{ emptyText: '暂无交易候选' }} /></Card>
   </div>);
 };
 
 export default StrategyConfig;
-// AI_GENERATE_END -----------------
+// AI_GENERATE_END ------------------

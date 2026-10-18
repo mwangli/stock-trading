@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
@@ -6,7 +6,6 @@ import com.stock.tradingExecutor.job.JobConfig;
 import com.stock.tradingExecutor.job.JobConfigRepository;
 import com.stock.tradingExecutor.job.JobExecutionRecord;
 import com.stock.tradingExecutor.job.JobExecutionService;
-import com.stock.tradingExecutor.job.JobExecutionStatus;
 import com.stock.tradingExecutor.job.JobSchedulerService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -174,25 +173,16 @@ public class JobManagementService {
                 .module(job.getModule())
                 .syncMode(job.getSyncMode())
                 .enabled(Integer.valueOf(1).equals(job.getStatus()))
-                .taskStatus(resolveTaskStatus(job, runtime, latestRun))
+                .taskStatus(resolveTaskStatus(job, runtime))
                 .latestRun(toExecutionItem(latestRun))
                 .build();
     }
 
-    private String resolveTaskStatus(JobConfig job, JobSchedulerService.QuartzRuntimeState runtime,
-                                     JobExecutionRecord latestRun) {
-        if (latestRun != null) {
-            if (latestRun.getStatus() == JobExecutionStatus.RUNNING) {
-                return "RUNNING";
-            }
-            if (latestRun.getStatus() == JobExecutionStatus.QUEUED) {
-                return "QUEUED";
-            }
-        }
+    private String resolveTaskStatus(JobConfig job, JobSchedulerService.QuartzRuntimeState runtime) {
         if (!Integer.valueOf(1).equals(job.getStatus())) {
             return "STOPPED";
         }
-        if (!runtime.registered()) {
+        if (runtime == null || !runtime.registered()) {
             return "NOT_REGISTERED";
         }
         if ("PAUSED".equals(runtime.triggerState())) {
@@ -232,4 +222,4 @@ public class JobManagementService {
                 .build();
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -------

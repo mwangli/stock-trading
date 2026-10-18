@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.config;
 
 import lombok.Data;
@@ -70,11 +70,8 @@ public class AgentProperties {
     /** 是否记录 Agent 审计摘要。 */
     private boolean auditEnabled = true;
 
-    /** Embedding 模型名称。 */
-    private String embeddingModel = "";
-
-    /** Embedding 模型版本。 */
-    private String embeddingModelVersion = "";
+    /** Embedding 独立运行配置。 */
+    private EmbeddingProperties embedding = new EmbeddingProperties();
 
     /**
      * DeepSeek API 连接配置。
@@ -119,5 +116,42 @@ public class AgentProperties {
         /** Ollama 模型名称。 */
         private String model = "deepseek-r1:7b";
     }
+
+    /**
+     * Embedding 模型连接配置，与 ChatModel Provider 完全隔离。
+     *
+     * @author mwangli
+     * @since 2026-10-18
+     */
+    @Data
+    public static class EmbeddingProperties {
+
+        /** 是否启用 Embedding。 */
+        private boolean enabled = false;
+
+        /** Embedding Provider，支持 disabled、ollama 和 openaiCompatible。 */
+        private String provider = "disabled";
+
+        /** Embedding 服务地址。 */
+        private String baseUrl = "http://localhost:11434";
+
+        /** Embedding 服务 Key。 */
+        private String apiKey = "ollama";
+
+        /** Embedding 模型名称。 */
+        private String model = "nomic-embed-text";
+
+        /** Embedding 模型版本。 */
+        private String modelVersion = "nomic-embed-text-v1";
+
+        /** 预期向量维度。 */
+        private int dimension = 768;
+
+        /** Embedding 请求超时时间，单位毫秒。 */
+        private long timeoutMs = 30000L;
+
+        /** 是否允许使用 hash 降级向量。生产环境默认关闭。 */
+        private boolean allowHashFallback = false;
+    }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

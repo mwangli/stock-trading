@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Input, message, Tooltip } from 'antd';
 import { GlobalOutlined, LockOutlined, MoonOutlined, SunOutlined, UserOutlined } from '@ant-design/icons';
@@ -216,7 +216,7 @@ const Login: React.FC = () => {
         <SystemMark size="medium" title={t('login.algoTrading')} />
         <div>
           <div className="text-lg font-bold tracking-wide text-[var(--text-primary)] sm:text-xl">{t('login.algoTrading')}</div>
-          <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)] sm:text-xs">AI Trading Console</div>
+          <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)] sm:text-xs">AI-AGENT Smart Trading Console</div>
         </div>
       </div>
       <div className="absolute right-4 top-4 z-20 flex items-center gap-2 sm:right-6 sm:top-6">
@@ -279,4 +279,4 @@ const Login: React.FC = () => {
 };
 
 export default Login;
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

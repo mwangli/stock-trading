@@ -1,8 +1,8 @@
-<!-- AI_GENERATE_START --------- -->
-# 项目文档索引
+<!-- AI_GENERATE_START ---------- -->
+# AI-AGENT智能股票自动交易系统文档索引
 
 
-`docs/` 是项目需求、设计、专题方案和验证报告的唯一文档目录；`stock-frontend/`、`stock-backend/` 与 `docs/` 平级。原 `documents/` 下的专题文档已按业务归属迁入 `docs/01-数据采集` 或 `docs/04-交易执行`，不再作为独立文档源。系统按四个递进业务模块组织需求、设计和代码，其中第 3 个模块 `strategyAgent` 合并确定性策略分析与 Agent 智能决策能力；部署、认证和运行开关仍属于横向支撑能力。
+`docs/` 是 AI-AGENT智能股票自动交易系统的需求、设计、专题方案和验证报告唯一文档目录；`stock-frontend/`、`stock-backend/` 与 `docs/` 平级。原 `documents/` 下的专题文档已按业务归属迁入 `docs/01-数据采集` 或 `docs/04-交易执行`，不再作为独立文档源。系统按四个递进业务模块组织需求、设计和代码，其中第 3 个模块 `strategyAgent` 合并确定性策略分析与 Agent 智能决策能力；部署、认证和运行开关仍属于横向支撑能力。
 
 ## 四个模块
 
@@ -80,4 +80,4 @@ dataCollector -> modelService -> strategyAgent -> tradingExecutor -> broker
 ## 验证边界
 
 本文档和模块设计属于静态架构说明。它们不能证明真实账户登录、券商委托、模型训练效果、Quartz 重启恢复或生产资源占用；这些能力仍需在目标环境单独验证。
-<!-- AI_GENERATE_END --------- -->
+<!-- AI_GENERATE_END ---------- -->

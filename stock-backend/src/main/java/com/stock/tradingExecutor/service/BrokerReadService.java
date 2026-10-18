@@ -197,21 +197,6 @@ public class BrokerReadService {
                 .build();
     }
 
-    private BrokerPositionDto toPositionDto(PositionSnapshotItemEntity position) {
-        return BrokerPositionDto.builder()
-                .stockCode(position.getStockCode())
-                .stockName(position.getStockName())
-                .totalQuantity(position.getTotalQuantity())
-                .availableQuantity(position.getAvailableQuantity())
-                .frozenQuantity(position.getFrozenQuantity())
-                .averageCost(position.getAverageCost())
-                .currentPrice(position.getCurrentPrice())
-                .marketValue(position.getMarketValue())
-                .market(position.getMarket())
-                .shareholderAccountMasked(null)
-                .build();
-    }
-
     private BrokerOrderDto toOrderDto(BrokerOrderSnapshot snapshot) {
         BigDecimal transactionAmount = calculateTransactionAmount(snapshot);
         return BrokerOrderDto.builder()
@@ -254,6 +239,21 @@ public class BrokerReadService {
                 .fillQuantity(snapshot.getFillQuantity())
                 .fillAmount(snapshot.getFillAmount())
                 .fillTime(snapshot.getFillTime())
+                .build();
+    }
+
+    private BrokerPositionDto toPositionDto(PositionSnapshotItemEntity position) {
+        return BrokerPositionDto.builder()
+                .stockCode(position.getStockCode())
+                .stockName(position.getStockName())
+                .totalQuantity(position.getTotalQuantity())
+                .availableQuantity(position.getAvailableQuantity())
+                .frozenQuantity(position.getFrozenQuantity())
+                .averageCost(position.getAverageCost())
+                .currentPrice(position.getCurrentPrice())
+                .marketValue(position.getMarketValue())
+                .market(position.getMarket())
+                .shareholderAccountMasked(null)
                 .build();
     }
 

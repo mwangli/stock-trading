@@ -15,6 +15,7 @@ const TradeRecords = lazy(() => import('./pages/tradeRecords'));
 const Logs = lazy(() => import('./pages/logs'));
 const ModelOperations = lazy(() => import('./pages/modelOperations'));
 const SentimentModel = lazy(() => import('./pages/sentimentModel'));
+const StrategyConfig = lazy(() => import('./pages/strategyConfig'));
 const AgentPage = lazy(() => import('./pages/agent'));
 const JobManagement = lazy(() => import('./pages/jobs'));
 const Login = lazy(() => import('./pages/login'));
@@ -43,9 +44,9 @@ function App() {
               <Route path="logs" element={<Logs />} />
               <Route path="modelOperations" element={<ModelOperations />} />
               <Route path="sentimentModel" element={<SentimentModel />} />
-              <Route path="strategyConfig" element={<Navigate to="/agent" replace />} />
+              <Route path="strategyConfig" element={<StrategyConfig />} />
               <Route path="agent" element={<AgentPage />} />
-              <Route path="realTrading" element={<Navigate to="/agent" replace />} />
+              <Route path="realTrading" element={<Navigate to="/strategyConfig" replace />} />
               <Route path="jobs" element={<JobManagement />} />
               <Route path="settings" element={<Settings />} />
             </Route>

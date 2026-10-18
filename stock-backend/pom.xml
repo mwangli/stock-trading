@@ -14,8 +14,8 @@
     <artifactId>stock-backend</artifactId>
     <packaging>jar</packaging>
 
-    <name>Stock Trading Backend</name>
-    <description>AI股票自动交易系统 - 后端服务</description>
+    <name>AI-AGENT智能股票自动交易系统后端</name>
+    <description>AI-AGENT智能股票自动交易系统 - 数据、模型、智能决策与交易执行服务</description>
 
     <properties>
         <hutool.version>5.8.25</hutool.version>
@@ -76,6 +76,11 @@
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-open-ai</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-ollama</artifactId>
             <version>${langchain4j.version}</version>
         </dependency>
         <!-- Database -->

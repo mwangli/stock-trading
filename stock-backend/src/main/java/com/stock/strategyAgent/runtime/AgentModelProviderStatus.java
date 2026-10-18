@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.strategyAgent.runtime;
 
 import lombok.Builder;
@@ -28,5 +28,11 @@ public class AgentModelProviderStatus {
 
     /** Ollama 是否完成必要配置。 */
     boolean ollamaConfigured;
+
+    /** DeepSeek 最近一次运行状态。 */
+    String deepseekStatus;
+
+    /** Ollama 最近一次运行状态。 */
+    String ollamaStatus;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --
