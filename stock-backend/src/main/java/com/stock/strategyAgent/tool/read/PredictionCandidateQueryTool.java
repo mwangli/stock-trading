@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.tool.read;
 
 import com.stock.strategyAgent.domain.entity.StockRanking;
@@ -52,6 +52,22 @@ public class PredictionCandidateQueryTool {
         });
     }
 
+    /**
+     * 查询指定目标交易日对应的最新候选批次。
+     *
+     * @param targetTradeDate 目标交易日
+     * @return 最新候选批次摘要；没有候选时返回空摘要
+     */
+    public PredictionCandidateResult queryLatest(LocalDate targetTradeDate) {
+        if (targetTradeDate == null) {
+            throw new IllegalArgumentException("targetTradeDate 不能为空");
+        }
+        return toolSupport.execute("queryLatestPredictionCandidate", () -> rankingRepository
+                .findFirstByTargetTradeDateOrderByCalculateTimeDesc(targetTradeDate)
+                .map(ranking -> query(new PredictionCandidateRequest(ranking.getCandidateBatchId())))
+                .orElseGet(() -> new PredictionCandidateResult(null, null, null, targetTradeDate, List.of())));
+    }
+
     /** 候选批次查询请求。 */
     public record PredictionCandidateRequest(String candidateBatchId) {
     }
@@ -67,4 +83,4 @@ public class PredictionCandidateQueryTool {
                                           double totalScore, String reason) {
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

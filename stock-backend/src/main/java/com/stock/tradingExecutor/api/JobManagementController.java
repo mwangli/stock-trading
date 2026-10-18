@@ -1,4 +1,4 @@
-// AI_GENERATE_START- -
+// AI_GENERATE_START- --
 package com.stock.tradingExecutor.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -110,7 +110,7 @@ public class JobManagementController {
     }
 
     /**
-     * 停止排队中或执行中的任务运行。
+     * 停止正在执行的任务运行。
      *
      * @param runId 运行标识
      * @param operator 操作人
@@ -150,4 +150,4 @@ public class JobManagementController {
         return ResponseDTO.success(null);
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

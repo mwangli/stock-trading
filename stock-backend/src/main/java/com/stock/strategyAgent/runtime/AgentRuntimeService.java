@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START --------
 package com.stock.strategyAgent.runtime;
 
 import com.stock.strategyAgent.config.AgentProperties;
@@ -23,6 +23,7 @@ public class AgentRuntimeService {
     private final AgentModelProvider modelProvider;
     private final AgentProperties properties;
     private final AgentStructuredOutputParser structuredOutputParser;
+    private final AgentProviderModeManager providerModeManager;
 
     /**
      * 执行一次受控模型调用，并统一处理输入、输出和降级状态。
@@ -92,16 +93,44 @@ public class AgentRuntimeService {
         return modelProvider.status();
     }
 
+    /**
+     * 执行 Provider 实际连通性检查。
+     *
+     * @return Provider 健康状态
+     */
+    public AgentProviderHealthStatus providerHealthCheck() {
+        return modelProvider.healthCheck();
+    }
+
+    /**
+     * 检查指定 Provider 的实际连通性，避免切换时重复探测其它 Provider。
+     *
+     * @param provider Provider 名称
+     * @return Provider 是否可用
+     */
+    public boolean providerHealthCheck(String provider) {
+        return modelProvider.healthCheck(provider);
+    }
+
+    /**
+     * 更新运行时 Provider 模式。
+     *
+     * @param mode Provider 模式
+     */
+    public void switchProvider(String mode) {
+        providerModeManager.switchTo(mode);
+    }
+
     private AgentRuntimeResponse degradedResearch(AgentRuntimeResponse response, String reason) {
         ResearchResult fallback = new ResearchResult();
-        fallback.setSummary(response.getContent());
+        fallback.setSummary("模型未按 Research JSON 契约返回，当前结果不可作为结构化研究结论。");
         fallback.setStatus("UNKNOWN");
-        fallback.setKeyFindings(List.of(response.getContent()));
+        fallback.setKeyFindings(List.of());
         fallback.setEvidenceRefs(List.of());
-        fallback.setUncertainty("本地 Ollama 未返回合法 Research JSON，已保留原文并降级展示：" + reason);
+        fallback.setUncertainty("本地 Ollama 未返回合法 Research JSON，已隐藏原始文本并降级展示：" + reason);
         fallback.setNextActions(List.of());
         return AgentRuntimeResponse.builder()
-                .status(AgentRuntimeStatus.COMPLETED)
+                .status(AgentRuntimeStatus.DEGRADED)
                 .provider(response.getProvider())
                 .model(response.getModel())
                 .content(response.getContent())
@@ -147,4 +176,4 @@ public class AgentRuntimeService {
                 .build();
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END --------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START -------------
 import React, { useCallback, useState } from 'react';
 import {
   Button,
@@ -75,38 +75,6 @@ interface SentimentAnalyzeResult {
   strongNegative?: boolean;
 }
 
-interface SentimentEvaluation {
-  evaluationRunId?: string;
-  modelVersion?: string;
-  datasetVersion?: string;
-  status: string;
-  sampleCount: number;
-  correctCount: number;
-  accuracy?: number;
-  macroF1?: number;
-  negativeRecall?: number;
-  positiveRecall?: number;
-  predictedNeutralRatio?: number;
-  eventTypeCoverage?: number;
-  actionableNewsRatio?: number;
-  directionAccuracy?: number;
-  impactMagnitudeMae?: number;
-  eventTypeMacroF1?: number;
-  t1ExcessReturnIc?: number | null;
-  t3ExcessReturnIc?: number | null;
-  t5ExcessReturnIc?: number | null;
-  topKNewsHitRate?: number | null;
-  topKPortfolioReturn?: number | null;
-  maxDrawdown?: number | null;
-  turnoverRate?: number | null;
-  netReturnAfterCosts?: number | null;
-  lstmIncrementalReturn?: number | null;
-  expectedCalibrationError?: number;
-  p95LatencyMs?: number;
-  conclusion: string;
-  evaluatedAt?: string;
-}
-
 interface NewsSample {
   title?: string;
   content?: string;
@@ -141,10 +109,6 @@ const formatBytes = (value?: number) => {
 const formatPercent = (value?: number | null) => value === undefined || value === null
   ? localizedText('未提供', 'Not provided')
   : `${(value * 100).toFixed(2)}%`;
-const formatMetric = (value?: number | null, digits = 4) => value === undefined || value === null
-  ? localizedText('未评估', 'Not evaluated')
-  : value.toFixed(digits);
-
 const labelMeta: Record<string, { text: string; color: string }> = {
   positive: { text: '正面', color: 'green' },
   neutral: { text: '中性', color: 'blue' },
@@ -183,7 +147,6 @@ const actionText: Record<string, { text: string; color: string }> = {
 const SentimentModel: React.FC = () => {
   const { t } = useTranslation();
   const [health, setHealth] = useState<SentimentHealth | null>(null);
-  const [evaluation, setEvaluation] = useState<SentimentEvaluation | null>(null);
   const [, setHealthError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sampleLoading, setSampleLoading] = useState(true);
@@ -198,12 +161,8 @@ const SentimentModel: React.FC = () => {
     setLoading(true);
     setHealthError(null);
     try {
-      const [healthResponse, evaluationResponse] = await Promise.all([
-        request.get('/modelSentiment/health') as Promise<ApiResponse<SentimentHealth>>,
-        request.get('/modelSentiment/evaluation/latest') as Promise<ApiResponse<SentimentEvaluation>>,
-      ]);
+      const healthResponse = await request.get('/modelSentiment/health') as ApiResponse<SentimentHealth>;
       setHealth(readApiData(healthResponse, '读取情感模型状态失败'));
-      setEvaluation(readApiData(evaluationResponse, '读取情感模型独立评估失败'));
     } catch (cause) {
       setHealthError(getApiErrorMessage(cause, '情感模型状态接口不可用'));
     } finally {
@@ -337,45 +296,6 @@ const SentimentModel: React.FC = () => {
         </Col>
       </Row>
 
-      <Card title={<Space><ExperimentOutlined />{localizedText('项目独立评估', 'Independent Project Evaluation')}</Space>} loading={loading}>
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Tag color={evaluation?.status === 'PASSED' ? 'green' : evaluation?.status === 'OBSERVE' ? 'orange' : evaluation?.status === 'REJECTED' ? 'red' : 'default'}>{evaluation?.status || 'NOT_EVALUATED'}</Tag>
-          <Text type="secondary">{localizedText('模型版本', 'Model Version')}：{evaluation?.modelVersion || localizedText('未评估', 'Not evaluated')}</Text>
-          <Text type="secondary">{localizedText('评估集', 'Evaluation Set')}：{evaluation?.datasetVersion || localizedText('未提供', 'Not provided')}</Text>
-          <Text type="secondary">{localizedText('评估时间', 'Evaluated At')}：{formatDateTime(evaluation?.evaluatedAt)}</Text>
-        </div>
-        <Row gutter={[12, 16]}>
-          <Col xs={12} md={4}><Statistic title={localizedText('样本数', 'Samples')} value={evaluation?.sampleCount ?? localizedText('未评估', 'Not evaluated')} /></Col>
-          <Col xs={12} md={4}><Statistic title={localizedText('准确率', 'Accuracy')} value={formatPercent(evaluation?.accuracy)} /></Col>
-          <Col xs={12} md={4}><Statistic title="Macro-F1" value={formatPercent(evaluation?.macroF1)} /></Col>
-          <Col xs={12} md={4}><Statistic title={localizedText('负面召回率', 'Negative Recall')} value={formatPercent(evaluation?.negativeRecall)} /></Col>
-          <Col xs={12} md={4}><Statistic title={localizedText('正面召回率', 'Positive Recall')} value={formatPercent(evaluation?.positiveRecall)} /></Col>
-          <Col xs={12} md={4}><Statistic title={localizedText('中性占比', 'Neutral Ratio')} value={formatPercent(evaluation?.predictedNeutralRatio)} /></Col>
-          <Col xs={12} md={4}><Statistic title={localizedText('事件类型覆盖率', 'Event Coverage')} value={formatPercent(evaluation?.eventTypeCoverage)} /></Col>
-          <Col xs={12} md={4}><Statistic title={localizedText('可交易新闻占比', 'Actionable News')} value={formatPercent(evaluation?.actionableNewsRatio)} /></Col>
-          <Col xs={12} md={4}><Statistic title={localizedText('方向准确率', 'Direction Accuracy')} value={formatPercent(evaluation?.directionAccuracy)} /></Col>
-          <Col xs={12} md={4}><Statistic title={localizedText('影响强度 MAE', 'Impact MAE')} value={evaluation?.impactMagnitudeMae?.toFixed(3) ?? localizedText('未提供', 'Not provided')} /></Col>
-          <Col xs={12} md={4}><Statistic title="事件类型 Macro-F1" value={formatPercent(evaluation?.eventTypeMacroF1)} /></Col>
-          <Col xs={12} md={4}><Statistic title="ECE" value={formatPercent(evaluation?.expectedCalibrationError)} /></Col>
-          <Col xs={12} md={4}><Statistic title={localizedText('P95 延迟', 'P95 Latency')} value={evaluation?.p95LatencyMs ?? localizedText('未提供', 'Not provided')} suffix={evaluation?.p95LatencyMs === undefined ? undefined : 'ms'} /></Col>
-        </Row>
-        <div className="mt-4 border-t border-[var(--border-color)] pt-4">
-          <div className="mb-3 text-sm font-medium text-[var(--text-primary)]">{localizedText('历史行情回放与策略指标', 'Historical Replay and Strategy Metrics')}</div>
-          <Row gutter={[12, 16]}>
-            <Col xs={12} md={4}><Statistic title="T+1 Excess Return IC" value={formatMetric(evaluation?.t1ExcessReturnIc)} /></Col>
-            <Col xs={12} md={4}><Statistic title="T+3 Excess Return IC" value={formatMetric(evaluation?.t3ExcessReturnIc)} /></Col>
-            <Col xs={12} md={4}><Statistic title="T+5 Excess Return IC" value={formatMetric(evaluation?.t5ExcessReturnIc)} /></Col>
-            <Col xs={12} md={4}><Statistic title={localizedText('Top-K 新闻命中率', 'Top-K News Hit Rate')} value={formatPercent(evaluation?.topKNewsHitRate)} /></Col>
-            <Col xs={12} md={4}><Statistic title={localizedText('Top-K 组合收益', 'Top-K Portfolio Return')} value={formatPercent(evaluation?.topKPortfolioReturn)} /></Col>
-            <Col xs={12} md={4}><Statistic title={localizedText('最大回撤', 'Max Drawdown')} value={formatPercent(evaluation?.maxDrawdown)} /></Col>
-            <Col xs={12} md={4}><Statistic title={localizedText('换手率', 'Turnover Rate')} value={formatPercent(evaluation?.turnoverRate)} /></Col>
-            <Col xs={12} md={4}><Statistic title={localizedText('成本后收益', 'Net Return After Costs')} value={formatPercent(evaluation?.netReturnAfterCosts)} /></Col>
-            <Col xs={12} md={4}><Statistic title={localizedText('相对 LSTM 增量收益', 'Incremental Return vs LSTM')} value={formatPercent(evaluation?.lstmIncrementalReturn)} /></Col>
-          </Row>
-        </div>
-        <Paragraph className="!mb-0 !mt-4" type="secondary">{evaluation?.conclusion || localizedText('尚未执行项目人工标注集独立评估任务。', 'No independent evaluation has been run on the project-labeled set.')}</Paragraph>
-      </Card>
-
       <section className="rounded-lg border border-[var(--border-color)] bg-[var(--surface-color)] p-4">
         <div className="mb-3">
           <div className="text-base font-semibold text-[var(--text-primary)]">{t('sentimentPage.single')}</div>
@@ -419,11 +339,11 @@ const SentimentModel: React.FC = () => {
               setSelectedCaseId(null);
             }
           }}
-          autoSize={{ minRows: 8, maxRows: 14 }}
-          maxLength={4000}
+          autoSize={{ minRows: 8 }}
+          maxLength={10000}
           showCount
           disabled={sampleLoading && !text}
-          className="!min-h-[220px]"
+          className="sentiment-textarea !min-h-[220px]"
           placeholder={localizedText('输入新闻、公告或事件描述', 'Enter a news item, announcement or event description')}
         />
         <div className="mt-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -502,4 +422,4 @@ const SentimentModel: React.FC = () => {
 };
 
 export default SentimentModel;
-// AI_GENERATE_END ------------
+// AI_GENERATE_END -------------

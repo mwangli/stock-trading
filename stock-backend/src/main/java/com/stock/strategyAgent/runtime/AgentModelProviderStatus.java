@@ -34,5 +34,11 @@ public class AgentModelProviderStatus {
 
     /** Ollama 最近一次运行状态。 */
     String ollamaStatus;
+
+    /** DeepSeek 熔断状态。 */
+    String deepseekCircuitState;
+
+    /** Ollama 熔断状态。 */
+    String ollamaCircuitState;
 }
 // AI_GENERATE_END --

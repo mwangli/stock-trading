@@ -1,4 +1,4 @@
-// AI_GENERATE_START- --
+// AI_GENERATE_START- ---
 package com.stock.tradingExecutor;
 
 import jakarta.persistence.Column;
@@ -67,7 +67,7 @@ public class JobExecutionRecord {
     @Column(name = "scheduled_time")
     private LocalDateTime scheduledTime;
 
-    /** 创建排队记录的时间。 */
+    /** 历史兼容时间字段，新执行记录与开始时间一致。 */
     @Column(name = "queued_time", nullable = false)
     private LocalDateTime queuedTime;
 
@@ -103,4 +103,4 @@ public class JobExecutionRecord {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

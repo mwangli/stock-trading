@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.rag;
 
 import com.stock.strategyAgent.config.AgentProperties;
@@ -75,7 +75,8 @@ public class LangChainEmbeddingService {
         boolean ready = false;
         if (configured) {
             try {
-                ready = embeddingModelProvider.getIfAvailable() != null;
+                EmbeddingModel model = embeddingModelProvider.getIfAvailable();
+                ready = model != null && (!(model instanceof DjlEmbeddingModel djlModel) || djlModel.isReady());
             } catch (RuntimeException exception) {
                 ready = false;
             }
@@ -148,7 +149,8 @@ public class LangChainEmbeddingService {
         if ("openaicompatible".equalsIgnoreCase(provider)) {
             return content(embedding.getApiKey());
         }
-        return "ollama".equalsIgnoreCase(provider);
+        return "ollama".equalsIgnoreCase(provider)
+                || "djl".equalsIgnoreCase(provider) && content(embedding.getModelPath());
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

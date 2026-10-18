@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START ------
 package com.stock.strategyAgent.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -159,6 +160,29 @@ public class AgentController {
     }
 
     /**
+     * 检查 Agent Provider 是否可以完成实际模型调用。
+     *
+     * @return Provider 健康状态
+     */
+    @GetMapping("/runtime/health")
+    public ResponseDTO<AgentHealthResponse> runtimeHealth() {
+        log.info("[Agent] 检查模型 Provider 健康状态");
+        return ResponseDTO.success(applicationService.healthCheck());
+    }
+
+    /**
+     * 动态切换 Agent Provider。
+     *
+     * @param request Provider 切换请求
+     * @return 当前 Provider 模式
+     */
+    @PutMapping("/runtime/provider")
+    public ResponseDTO<ProviderModeResponse> switchProvider(@RequestBody ProviderModeRequest request) {
+        log.info("[Agent] 切换模型 Provider: provider={}", request == null ? null : request.getProvider());
+        return ResponseDTO.success(applicationService.switchProvider(request));
+    }
+
+    /**
      * 创建 Memory。
      *
      * @param request 创建请求
@@ -270,4 +294,4 @@ public class AgentController {
         return ResponseDTO.success(tradePlanService.revalidate(planId));
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END -----

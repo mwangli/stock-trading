@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ------------
 package com.stock.strategyAgent.runtime;
 
 import com.stock.strategyAgent.config.AgentProperties;
@@ -10,6 +10,8 @@ import com.stock.strategyAgent.tool.read.PredictionCandidateQueryTool;
 import com.stock.strategyAgent.tool.read.StrategyStateQueryTool;
 import com.stock.strategyAgent.tool.read.TradingCalendarQueryTool;
 import dev.langchain4j.service.AiServices;
+import dev.langchain4j.service.tool.ToolArgumentsErrorHandler;
+import dev.langchain4j.service.tool.ToolExecutionErrorHandler;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
@@ -47,6 +49,8 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
     private final PredictionCandidateQueryTool predictionCandidateQueryTool;
     private final JobDiagnosticTool jobDiagnosticTool;
     private final BrokerFactQueryTool brokerFactQueryTool;
+    private final AgentCircuitBreaker circuitBreaker;
+    private final AgentProviderModeManager providerModeManager;
     private final Map<String, ChatModel> models = new ConcurrentHashMap<>();
     private final Map<String, String> providerStatuses = new ConcurrentHashMap<>();
     private final ExecutorService modelExecutor;
@@ -60,7 +64,9 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                                          StrategyStateQueryTool strategyStateQueryTool,
                                          PredictionCandidateQueryTool predictionCandidateQueryTool,
                                          JobDiagnosticTool jobDiagnosticTool,
-                                         BrokerFactQueryTool brokerFactQueryTool) {
+                                         BrokerFactQueryTool brokerFactQueryTool,
+                                         AgentCircuitBreaker circuitBreaker,
+                                         AgentProviderModeManager providerModeManager) {
         this.properties = properties;
         this.chatMemoryService = chatMemoryService;
         this.tradingCalendarQueryTool = tradingCalendarQueryTool;
@@ -68,6 +74,8 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         this.predictionCandidateQueryTool = predictionCandidateQueryTool;
         this.jobDiagnosticTool = jobDiagnosticTool;
         this.brokerFactQueryTool = brokerFactQueryTool;
+        this.circuitBreaker = circuitBreaker;
+        this.providerModeManager = providerModeManager;
         this.modelExecutor = Executors.newFixedThreadPool(Math.max(properties.getMaxConcurrency(), 1));
     }
 
@@ -96,6 +104,11 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         }
         String lastErrorCode = "MODEL_CALL_FAILED";
         for (String provider : selection.providers()) {
+            if (!circuitBreaker.allowRequest(provider)) {
+                lastErrorCode = "AGENT_CIRCUIT_OPEN";
+                providerStatuses.put(provider, lastErrorCode);
+                continue;
+            }
             try {
                 ChatModel model = models.computeIfAbsent(provider, this::createModel);
                 ChatMemory memory = chatMemoryService.get(request.getSessionId());
@@ -104,6 +117,8 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                         .chatMemory(memory)
                         .tools(tradingCalendarQueryTool, strategyStateQueryTool, predictionCandidateQueryTool,
                                 jobDiagnosticTool, brokerFactQueryTool)
+                        .toolArgumentsErrorHandler(ToolArgumentsErrorHandler.failInvocation())
+                        .toolExecutionErrorHandler(ToolExecutionErrorHandler.failInvocationUnlessVisibleToLlm())
                         .build();
                 ToolExecutionContext context = ToolExecutionContext.builder()
                         .traceId(request.getTaskId())
@@ -136,6 +151,7 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                     throw new IllegalStateException("模型未返回文本内容");
                 }
                 providerStatuses.put(provider, "READY");
+                circuitBreaker.recordSuccess(provider);
                 return AgentRuntimeResponse.builder()
                         .status(AgentRuntimeStatus.COMPLETED)
                         .provider(provider)
@@ -144,6 +160,7 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                         .evidenceSummary(request.getEvidenceSummary())
                         .build();
             } catch (RuntimeException exception) {
+                circuitBreaker.recordFailure(provider);
                 String errorCode = providerErrorCode(provider, exception);
                 lastErrorCode = errorCode;
                 providerStatuses.put(provider, errorCode);
@@ -154,10 +171,13 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         }
         String errorCode = selection.providers().size() == 1
                 ? lastErrorCode : "ALL_AGENT_PROVIDERS_UNAVAILABLE";
-        return failure(request, errorCode,
-                selection.providers().size() == 1
+        String message = "AGENT_CIRCUIT_OPEN".equals(errorCode)
+                ? "模型 Provider 处于熔断状态，请稍后刷新健康状态后重试"
+                : selection.providers().size() == 1
                         ? "模型 Provider 当前不可用，请检查地址、凭据或本地模型"
-                        : "DeepSeek 和 Ollama 均不可用，请检查 Provider 开关、地址、API Key 或本地模型");
+                        : "DeepSeek 和 Ollama 均不可用，请检查 Provider 开关、地址、API Key 或本地模型";
+        return failure(request, errorCode,
+                message);
     }
 
     /**
@@ -167,7 +187,7 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
      */
     @Override
     public String providerName() {
-        return "langchain4j-router:" + properties.getProvider();
+        return providerModeManager.currentMode();
     }
 
     /**
@@ -177,14 +197,72 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
      */
     public AgentModelProviderStatus status() {
         return AgentModelProviderStatus.builder()
-                .provider(properties.getProvider())
+                .provider(providerModeManager.currentMode())
                 .deepseekEnabled(properties.getDeepseek().isEnabled())
                 .deepseekConfigured(isDeepSeekConfigured())
                 .ollamaEnabled(properties.getOllama().isEnabled())
                 .ollamaConfigured(isOllamaConfigured())
                 .deepseekStatus(statusFor("deepseek", isDeepSeekConfigured()))
                 .ollamaStatus(statusFor("ollama", isOllamaConfigured()))
+                .deepseekCircuitState(circuitBreaker.snapshot("deepseek").getState())
+                .ollamaCircuitState(circuitBreaker.snapshot("ollama").getState())
                 .build();
+    }
+
+    /**
+     * 分别对已配置的 DeepSeek 和 Ollama 执行最小模型请求。
+     *
+     * @return 两个 Provider 的实际可用状态
+     */
+    @Override
+    public AgentProviderHealthStatus healthCheck() {
+        if (!properties.isEnabled()) {
+            providerStatuses.put("deepseek", "AGENT_DISABLED");
+            providerStatuses.put("ollama", "AGENT_DISABLED");
+            return AgentProviderHealthStatus.builder().build();
+        }
+        return AgentProviderHealthStatus.builder()
+                .deepseekAvailable(checkProvider("deepseek"))
+                .ollamaAvailable(checkProvider("ollama"))
+                .build();
+    }
+
+    /**
+     * 仅对指定 Provider 发起最小模型请求。
+     *
+     * @param provider Provider 名称
+     * @return Provider 是否可用
+     */
+    @Override
+    public boolean healthCheck(String provider) {
+        if (!"deepseek".equals(provider) && !"ollama".equals(provider)) {
+            return false;
+        }
+        return checkProvider(provider);
+    }
+
+    private boolean checkProvider(String provider) {
+        if (("deepseek".equals(provider) && !isDeepSeekConfigured())
+                || ("ollama".equals(provider) && !isOllamaConfigured())) {
+            providerStatuses.put(provider, "NOT_CONFIGURED");
+            return false;
+        }
+        if (!circuitBreaker.allowRequest(provider)) {
+            providerStatuses.put(provider, "AGENT_CIRCUIT_OPEN");
+            return false;
+        }
+        try {
+            models.computeIfAbsent(provider, this::createModel).chat("Reply with OK only.");
+            providerStatuses.put(provider, "READY");
+            circuitBreaker.recordSuccess(provider);
+            return true;
+        } catch (RuntimeException exception) {
+            circuitBreaker.recordFailure(provider);
+            providerStatuses.put(provider, providerErrorCode(provider, exception));
+            log.debug("[Agent] Provider 健康检查失败: provider={}, causeType={}",
+                    provider, exception.getClass().getSimpleName());
+            return false;
+        }
     }
 
     /**
@@ -216,7 +294,7 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
     }
 
     private ProviderSelection selectProvider() {
-        String provider = properties.getProvider() == null ? "disabled" : properties.getProvider().trim().toLowerCase();
+        String provider = providerModeManager.currentMode();
         return switch (provider) {
             case "deepseek" -> isDeepSeekConfigured()
                     ? ProviderSelection.of("deepseek")
@@ -340,4 +418,4 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         }
     }
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ------------

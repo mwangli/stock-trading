@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------------------
+// AI_GENERATE_START ----------------------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
@@ -84,7 +84,7 @@ const TradeRecords: React.FC = () => {
   const [draftFilters, setDraftFilters] = useState<TradeFilters>(defaultFilters);
   const [filters, setFilters] = useState<TradeFilters>(defaultFilters);
   const [records, setRecords] = useState<TradeRecord[]>([]);
-  const [page, setPage] = useState<PageState>({ current: 1, pageSize: 20, total: 0 });
+  const [page, setPage] = useState<PageState>({ current: 1, pageSize: 10, total: 0 });
   const [loading, setLoading] = useState(false);
   const [, setError] = useState<string | null>(null);
 
@@ -223,7 +223,7 @@ const TradeRecords: React.FC = () => {
           locale={{ emptyText: <Empty description={t('tradeRecords.empty')} /> }}
           className="trade-records-table"
           tableLayout="fixed"
-          scroll={{ x: 820, y: 'calc(100vh - 390px)' }}
+          scroll={{ x: 'max-content' }}
           expandable={{ expandedRowRender, columnWidth: 44 }}
           pagination={false}
         />
@@ -248,4 +248,4 @@ const TradeRecords: React.FC = () => {
 };
 
 export default TradeRecords;
-// AI_GENERATE_END ---------------------
+// AI_GENERATE_END ----------------------

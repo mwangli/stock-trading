@@ -1,4 +1,4 @@
-// AI_GENERATE_START- --------
+// AI_GENERATE_START- ---------
 package com.stock.tradingExecutor;
 
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
@@ -40,8 +40,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class JobExecutionService {
 
     private static final Set<JobExecutionStatus> ACTIVE_STATUSES = EnumSet.of(
-            JobExecutionStatus.QUEUED,
-            JobExecutionStatus.RUNNING);
+            JobExecutionStatus.RUNNING,
+            JobExecutionStatus.QUEUED);
 
     private final Set<String> cancellationRequests = ConcurrentHashMap.newKeySet();
 
@@ -72,16 +72,16 @@ public class JobExecutionService {
         }
 
         if (executionRecordRepository.existsByJobNameAndStatusIn(jobName, ACTIVE_STATUSES)) {
-            throw new IllegalStateException("任务已有排队或运行中的执行: " + jobName);
+            throw new IllegalStateException("任务正在运行中，不能重复触发: " + jobName);
         }
 
         String runId = UUID.randomUUID().toString();
         JobExecutionRecord record;
         try {
-            record = createQueuedRecord(jobName, JobTriggerSource.MANUAL,
+            record = createRunningRecord(jobName, JobTriggerSource.MANUAL,
                     normalizeOperator(operator), null, runId);
         } catch (DataIntegrityViolationException exception) {
-            throw new IllegalStateException("任务已有排队或运行中的执行: " + jobName, exception);
+            throw new IllegalStateException("任务正在运行中，不能重复触发: " + jobName, exception);
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
@@ -114,14 +114,14 @@ public class JobExecutionService {
         JobExecutionRecord record;
         if (runId == null || runId.isBlank()) {
             try {
-                record = createQueuedRecord(jobName, source, normalizeOperator(triggeredBy), scheduledFireTime, null);
+                record = createRunningRecord(jobName, source, normalizeOperator(triggeredBy), scheduledFireTime, null);
             } catch (DataIntegrityViolationException exception) {
                 log.info("[任务执行] 检测到已有活动执行，跳过重复定时触发: jobName={}", jobName);
                 return;
             }
         } else {
             record = executionRecordRepository.findByRunId(runId)
-                    .orElseGet(() -> createQueuedRecord(jobName, source, normalizeOperator(triggeredBy),
+                    .orElseGet(() -> createRunningRecord(jobName, source, normalizeOperator(triggeredBy),
                             scheduledFireTime, runId));
         }
         if (!runtimeConfigService.isSchedulerEnabled()) {
@@ -133,7 +133,8 @@ public class JobExecutionService {
             cancellationRequests.remove(record.getRunId());
             return;
         }
-        LocalDateTime startedAt = LocalDateTime.now();
+        LocalDateTime startedAt = record.getStartedTime() == null
+                ? LocalDateTime.now() : record.getStartedTime();
         record.setStatus(JobExecutionStatus.RUNNING).setStartedTime(startedAt);
         executionRecordRepository.save(record);
         log.info("[任务执行] 开始执行任务: jobName={}, runId={}, source={}",
@@ -160,7 +161,7 @@ public class JobExecutionService {
     }
 
     /**
-     * 停止排队中或执行中的任务运行。
+     * 停止正在执行的任务运行。
      *
      * @param runId 运行标识
      * @param operator 操作人
@@ -172,24 +173,19 @@ public class JobExecutionService {
             throw new IllegalStateException("任务运行已结束，不能重复停止: " + runId);
         }
 
-        JobExecutionStatus previousStatus = record.getStatus();
         String normalizedOperator = normalizeOperator(operator);
-        if (previousStatus == JobExecutionStatus.RUNNING) {
-            cancellationRequests.add(runId);
-        }
+        cancellationRequests.add(runId);
         markCancelled(record, "由 " + normalizedOperator + " 请求停止");
 
         boolean interrupted = false;
-        String message = "排队任务已取消";
-        if (previousStatus == JobExecutionStatus.RUNNING) {
-            try {
-                interrupted = jobSchedulerService.interruptJob(record.getJobName());
-                message = interrupted ? "已发送任务中断请求" : "任务已标记取消，但未找到可中断的执行线程";
-            } catch (RuntimeException exception) {
-                log.warn("[任务执行] 任务已标记取消，但发送中断请求失败: jobName={}, runId={}",
-                        record.getJobName(), runId, exception);
-                message = "任务已标记取消，但发送中断请求失败";
-            }
+        String message = "任务已取消";
+        try {
+            interrupted = jobSchedulerService.interruptJob(record.getJobName());
+            message = interrupted ? "已发送任务中断请求" : "任务已标记取消，但未找到可中断的执行线程";
+        } catch (RuntimeException exception) {
+            log.warn("[任务执行] 任务已标记取消，但发送中断请求失败: jobName={}, runId={}",
+                    record.getJobName(), runId, exception);
+            message = "任务已标记取消，但发送中断请求失败";
         }
         return JobManagementDto.StopResponse.builder()
                 .runId(runId)
@@ -277,7 +273,7 @@ public class JobExecutionService {
         return executionRecordRepository.findLatestByJobNames(jobNames);
     }
 
-    private JobExecutionRecord createQueuedRecord(String jobName, JobTriggerSource source,
+    private JobExecutionRecord createRunningRecord(String jobName, JobTriggerSource source,
                                                    String operator, Date scheduledFireTime,
                                                    String runId) {
         LocalDateTime now = LocalDateTime.now();
@@ -287,9 +283,10 @@ public class JobExecutionService {
                 .setTriggerSource(source)
                 .setTriggeredBy(operator)
                 .setActiveLockKey(jobName)
-                .setStatus(JobExecutionStatus.QUEUED)
+                .setStatus(JobExecutionStatus.RUNNING)
                 .setScheduledTime(toLocalDateTime(scheduledFireTime))
                 .setQueuedTime(now)
+                .setStartedTime(now)
                 .setCreatedAt(now)
                 .setHostName(resolveHostName());
         return executionRecordRepository.save(record);

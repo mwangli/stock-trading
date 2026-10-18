@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.tradingExecutor.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -69,7 +69,7 @@ public final class JobManagementDto {
         /** 是否启用。 */
         private boolean enabled;
 
-        /** 任务运行状态：ENABLED、STOPPED、QUEUED、RUNNING 或 NOT_REGISTERED。 */
+        /** 任务运行状态：ENABLED、STOPPED、RUNNING 或 NOT_REGISTERED。 */
         private String taskStatus;
 
         /** 最近一次执行记录。 */
@@ -131,7 +131,7 @@ public final class JobManagementDto {
         /** 计划触发时间。 */
         private LocalDateTime scheduledTime;
 
-        /** 排队时间。 */
+        /** 历史兼容字段，新执行记录与开始时间一致。 */
         private LocalDateTime queuedTime;
 
         /** 开始时间。 */

@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.modelService.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -8,6 +8,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -107,6 +109,24 @@ public class ModelPredictionController {
     }
 
     /**
+     * 删除无效或失败的预测批次及其关联数据。
+     *
+     * @param batchId 预测批次 ID
+     * @return 删除操作结果
+     */
+    @DeleteMapping("/batches/{batchId}")
+    public ResponseDTO<ModelPredictionAnalysisDto.OperationResponse> deleteBatch(
+            @PathVariable String batchId) {
+        log.info("[ModelPrediction] 删除无效预测批次: batchId={}", batchId);
+        try {
+            return ResponseDTO.success(predictionAnalysisService.deleteBatch(batchId));
+        } catch (RuntimeException exception) {
+            log.warn("[ModelPrediction] 删除预测批次失败: batchId={}, reason={}", batchId, exception.getMessage());
+            return ResponseDTO.error(exception.getMessage());
+        }
+    }
+
+    /**
      * 分页查询模型预测与实际结果对比。
      *
      * @param batchId 预测批次 ID；为空时使用最新批次
@@ -150,4 +170,4 @@ public class ModelPredictionController {
         }
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

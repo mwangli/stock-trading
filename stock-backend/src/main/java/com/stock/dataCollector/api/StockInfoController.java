@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.dataCollector.api;
 
 import com.stock.dataCollector.domain.vo.MarketStatsDto;
@@ -44,7 +44,7 @@ public class StockInfoController {
      * @param current 当前页码，从 1 开始
      * @param pageSize 每页数量
      * @param keywords 股票名称或代码关键字
-     * @param sortBy 排序字段，仅支持 id、price、change、volume
+     * @param sortBy 排序字段，仅支持 updateTime、price、change、volume
      * @param sortOrder 排序方向，仅支持 asc 或 desc
      * @return 股票分页结果
      */
@@ -53,7 +53,7 @@ public class StockInfoController {
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(required = false) String keywords,
-            @RequestParam(defaultValue = "id") String sortBy,
+            @RequestParam(defaultValue = "updateTime") String sortBy,
             @RequestParam(defaultValue = "desc") String sortOrder) {
         log.info("[StockInfo] 请求到达 GET /api/stockInfo/list current={} pageSize={} keywords={} sortBy={} sortOrder={}",
                 current, pageSize, keywords, sortBy, sortOrder);
@@ -140,11 +140,11 @@ public class StockInfoController {
 
     private Sort resolveSort(String sortBy, String sortOrder) {
         String property = switch (sortBy == null ? "" : sortBy.trim()) {
-            case "id" -> "id";
+            case "updateTime" -> "updateTime";
             case "price" -> "price";
             case "change" -> "changePercent";
             case "volume" -> "totalMarketValue";
-            default -> "id";
+            default -> "updateTime";
         };
         Sort.Direction direction = "asc".equalsIgnoreCase(sortOrder)
                 ? Sort.Direction.ASC
@@ -152,4 +152,4 @@ public class StockInfoController {
         return Sort.by(new Sort.Order(direction, property), new Sort.Order(Sort.Direction.DESC, "id"));
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

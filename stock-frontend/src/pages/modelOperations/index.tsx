@@ -1,12 +1,11 @@
-// AI_GENERATE_START -----------------------------------
-import React, { useCallback, useEffect, useState } from 'react';
+// AI_GENERATE_START -----------------------------------------
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
 import {
   Button,
   Card,
   Col,
   Descriptions,
-  Drawer,
   Empty,
   Form,
   Input,
@@ -38,7 +37,7 @@ import { usePageHeader } from '../../layouts/PageHeaderContext';
 import { useTranslation } from 'react-i18next';
 import { localizedText } from '../../utils/localizedText';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 
 interface ModelVersion {
   id: string;
@@ -342,6 +341,53 @@ const WideTableModal: React.FC<WideTableModalProps> = ({ title, open, onCancel, 
   </Modal>
 );
 
+interface DetailModalProps {
+  title: React.ReactNode;
+  open: boolean;
+  onCancel: () => void;
+  children: React.ReactNode;
+}
+
+const DetailModal: React.FC<DetailModalProps> = ({ title, open, onCancel, children }) => (
+  <Modal
+    className="detail-modal"
+    title={title}
+    open={open}
+    width="min(960px, calc(100vw - 32px))"
+    centered
+    footer={null}
+    destroyOnHidden
+    onCancel={onCancel}
+  >
+    <div className="detail-modal-content custom-scrollbar">{children}</div>
+  </Modal>
+);
+
+interface DetailSectionProps {
+  title: string;
+  children: React.ReactNode;
+}
+
+const DetailSection: React.FC<DetailSectionProps> = ({ title, children }) => (
+  <section className="detail-section">
+    <div className="detail-section-title">{title}</div>
+    <div className="detail-section-body">{children}</div>
+  </section>
+);
+
+interface DetailItemProps {
+  label: string;
+  children: React.ReactNode;
+  wide?: boolean;
+}
+
+const DetailItem: React.FC<DetailItemProps> = ({ label, children, wide = false }) => (
+  <div className={`detail-item${wide ? ' detail-item-wide' : ''}`}>
+    <span className="detail-item-label">{label}</span>
+    <div className="detail-item-value">{children}</div>
+  </div>
+);
+
 /**
  * 模型版本、训练和生产切换运维页面。
  */
@@ -377,6 +423,8 @@ const ModelOperations: React.FC = () => {
   const [predictionAnalysisLoading, setPredictionAnalysisLoading] = useState(false);
   const [predictionDetailsOpen, setPredictionDetailsOpen] = useState(false);
   const [modelAbility, setModelAbility] = useState<ModelAbility | null>(null);
+  const [predictionPollingPaused, setPredictionPollingPaused] = useState(false);
+  const predictionDataLoadingRef = useRef(false);
 
   const loadOverview = useCallback(async () => {
     const response = await request.get('/modelOperations/overview') as ApiResponse<Overview>;
@@ -411,6 +459,10 @@ const ModelOperations: React.FC = () => {
   }, [predictionResultPage]);
 
   const loadPredictionData = useCallback(async () => {
+    if (predictionDataLoadingRef.current) {
+      return;
+    }
+    predictionDataLoadingRef.current = true;
     setPredictionLoading(true);
     try {
       const response = await request.get('/modelPredictions/batches', {
@@ -431,9 +483,8 @@ const ModelOperations: React.FC = () => {
         setPredictionResultTotal(0);
         setModelAbility(null);
       }
-    } catch (cause) {
-      message.error(getApiErrorMessage(cause, localizedText('读取预测分析数据失败', 'Failed to load prediction analysis')));
     } finally {
+      predictionDataLoadingRef.current = false;
       setPredictionLoading(false);
     }
   }, [loadPredictionResults, selectedPredictionBatchId]);
@@ -480,14 +531,17 @@ const ModelOperations: React.FC = () => {
 
   useEffect(() => {
     const running = predictionBatches.some((item) => item.status === 'QUEUED' || item.status === 'RUNNING');
-    if (!running) {
+    if (!running || predictionPollingPaused) {
       return undefined;
     }
     const timer = window.setInterval(() => {
-      void loadPredictionData();
-    }, 3000);
+      void loadPredictionData().catch((cause) => {
+        setPredictionPollingPaused(true);
+        message.error(getApiErrorMessage(cause, localizedText('刷新预测进度失败，已暂停自动刷新', 'Failed to refresh prediction progress; automatic refresh paused')));
+      });
+    }, 5000);
     return () => window.clearInterval(timer);
-  }, [loadPredictionData, predictionBatches]);
+  }, [loadPredictionData, predictionBatches, predictionPollingPaused]);
 
   const refreshAfterOperation = async () => {
     await Promise.all([loadOverview(), loadVersions(1)]);
@@ -622,6 +676,7 @@ const ModelOperations: React.FC = () => {
 
   const rerunPrediction = async (batchId: string) => {
     setOperating(true);
+    setPredictionPollingPaused(false);
     try {
       const response = await request.post('/modelPredictions/rerun', {
         batchId,
@@ -633,6 +688,26 @@ const ModelOperations: React.FC = () => {
       await loadPredictionData();
     } catch (cause) {
       message.error(getApiErrorMessage(cause, localizedText('提交历史预测重算失败', 'Failed to submit historical prediction rerun')));
+    } finally {
+      setOperating(false);
+    }
+  };
+
+  const deletePredictionBatch = async (batchId: string) => {
+    setOperating(true);
+    try {
+      const response = await request.delete(`/modelPredictions/batches/${encodeURIComponent(batchId)}`) as ApiResponse<PredictionOperationResponse>;
+      const result = readApiData(response, localizedText('删除预测批次失败', 'Failed to delete prediction batch'));
+      message.success(result.message);
+      if (selectedPredictionBatchId === batchId) {
+        setSelectedPredictionBatchId(undefined);
+        setPredictionDetailsOpen(false);
+        setPredictionResultModalOpen(false);
+        setPredictionAnalysisModalOpen(false);
+      }
+      await loadPredictionData();
+    } catch (cause) {
+      message.error(getApiErrorMessage(cause, localizedText('删除预测批次失败', 'Failed to delete prediction batch')));
     } finally {
       setOperating(false);
     }
@@ -775,33 +850,48 @@ const ModelOperations: React.FC = () => {
     { title: localizedText('交易门禁', 'Trading Eligibility'), dataIndex: 'tradingEligibility', key: 'tradingEligibility', width: 130, render: (value?: string) => <Tag color={value === 'TRADE_ELIGIBLE' ? 'green' : value === 'DISABLED' ? 'red' : 'orange'}>{value || 'DISABLED'}</Tag> },
     {
       title: localizedText('操作', 'Actions'), key: 'actions', width: 260,
-      render: (_, record) => (
-        <Space size="small">
-
-          <Popconfirm
-            title={localizedText('重新生成该历史批次？', 'Rerun this historical batch?')}
-            description={localizedText('将使用原模型版本和基准日生成新批次，不覆盖原批次结果。', 'A new batch will use the original model version and base date without overwriting the source batch.')}
-            okText={localizedText('确认重算', 'Rerun')}
-            cancelText={localizedText('取消', 'Cancel')}
-            onConfirm={() => void rerunPrediction(record.id)}
-          >
-            <Button
-              type="link"
-              size="small"
-              className="!px-0"
-              disabled={operating || record.status === 'QUEUED' || record.status === 'RUNNING'}
+      render: (_, record) => {
+        const canDelete = record.status === 'FAILED' || record.status === 'CANCELLED'
+          || (!['QUEUED', 'RUNNING'].includes(record.status) && record.successCount <= 0);
+        return (
+          <Space size="small">
+            <Popconfirm
+              title={localizedText('重新生成该历史批次？', 'Rerun this historical batch?')}
+              description={localizedText('将使用原模型版本和基准日生成新批次，不覆盖原批次结果。', 'A new batch will use the original model version and base date without overwriting the source batch.')}
+              okText={localizedText('确认重算', 'Rerun')}
+              cancelText={localizedText('取消', 'Cancel')}
+              onConfirm={() => void rerunPrediction(record.id)}
             >
-              {localizedText('预测', 'Predict')}
+              <Button
+                type="link"
+                size="small"
+                className="!px-0"
+                disabled={operating || record.status === 'QUEUED' || record.status === 'RUNNING'}
+              >
+                {localizedText('预测', 'Predict')}
+              </Button>
+            </Popconfirm>
+            <Button type="link" size="small" className="!px-0" onClick={() => openPredictionResults(record.id)}>
+              {localizedText('结果', 'Results')}
             </Button>
-          </Popconfirm>
-          <Button type="link" size="small" className="!px-0" onClick={() => openPredictionResults(record.id)}>
-            {localizedText('结果', 'Results')}
-          </Button>
-          <Button type="link" size="small" className="!px-0" onClick={() => openPredictionAnalysis(record.id)}>
-            {localizedText('评估', 'Evaluation')}
-          </Button>
-        </Space>
-      ),
+            <Button type="link" size="small" className="!px-0" onClick={() => openPredictionAnalysis(record.id)}>
+              {localizedText('评估', 'Evaluation')}
+            </Button>
+            <Popconfirm
+              disabled={!canDelete}
+              title={localizedText('删除该预测批次及全部关联数据？', 'Delete this batch and all related data?')}
+              description={localizedText('仅用于清理失败或无效批次，删除后不可恢复。', 'Only failed or invalid batches should be removed. This cannot be undone.')}
+              okText={localizedText('确认删除', 'Delete')}
+              cancelText={localizedText('取消', 'Cancel')}
+              onConfirm={() => void deletePredictionBatch(record.id)}
+            >
+              <Button type="link" size="small" className="!px-0" disabled={operating || !canDelete}>
+                {localizedText('删除', 'Delete')}
+              </Button>
+            </Popconfirm>
+          </Space>
+        );
+      },
     },
   ];
 
@@ -1051,38 +1141,77 @@ const ModelOperations: React.FC = () => {
         />
       </Card>
 
-      <Drawer
-        title={`预测批次详情：${selectedPredictionBatch?.targetTradeDate || selectedPredictionBatch?.id || '-'}`}
+      <DetailModal
+        title={
+          <Space size="small" wrap>
+            <span>预测批次详情</span>
+            {selectedPredictionBatch && <Tag color={statusColors[selectedPredictionBatch.status] ?? 'default'}>{selectedPredictionBatch.status}</Tag>}
+          </Space>
+        }
         open={predictionDetailsOpen}
-        width={720}
-        onClose={() => setPredictionDetailsOpen(false)}
+        onCancel={() => setPredictionDetailsOpen(false)}
       >
         {selectedPredictionBatch && (
           <Space direction="vertical" size="middle" className="w-full">
-            <Descriptions className="prediction-batch-details" bordered size="small" column={{ xs: 1, sm: 2 }}>
-              <Descriptions.Item label="批次 ID" span={2}><Text className="prediction-detail-text prediction-detail-break">{selectedPredictionBatch.id}</Text></Descriptions.Item>
-              <Descriptions.Item label="模型版本"><Text className="prediction-detail-text prediction-detail-break">{selectedPredictionBatch.modelVersion || '-'}</Text></Descriptions.Item>
-              <Descriptions.Item label="状态"><Tag color={statusColors[selectedPredictionBatch.status] ?? 'default'}>{selectedPredictionBatch.status}</Tag></Descriptions.Item>
-              <Descriptions.Item label="基准日">{selectedPredictionBatch.baseTradeDate || '-'}</Descriptions.Item>
-              <Descriptions.Item label="目标日">{selectedPredictionBatch.targetTradeDate || '-'}</Descriptions.Item>
-              <Descriptions.Item label="信息截止">{formatDateTime(selectedPredictionBatch.informationCutoffAt)}</Descriptions.Item>
-              <Descriptions.Item label="日历来源"><Tag color={selectedPredictionBatch.calendarFallback ? 'warning' : 'green'}>{selectedPredictionBatch.calendarFallback ? '工作日推算' : '正式日历'}</Tag></Descriptions.Item>
-              <Descriptions.Item label="交易门禁"><Tag color={selectedPredictionBatch.tradingEligibility === 'TRADE_ELIGIBLE' ? 'green' : 'orange'}>{selectedPredictionBatch.tradingEligibility || 'DISABLED'}</Tag></Descriptions.Item>
-              <Descriptions.Item label="总股票数"><span className="prediction-detail-number">{selectedPredictionBatch.totalStocks}</span></Descriptions.Item>
-              <Descriptions.Item label="已处理"><span className="prediction-detail-number">{selectedPredictionBatch.processedStocks}</span></Descriptions.Item>
-              <Descriptions.Item label="成功 / 失败"><span className="prediction-detail-number">{selectedPredictionBatch.successCount} / {selectedPredictionBatch.failedCount}</span></Descriptions.Item>
-              <Descriptions.Item label="覆盖率"><span className="prediction-detail-number">{formatPercent(selectedPredictionBatch.coverageRate)}</span></Descriptions.Item>
-              <Descriptions.Item label="评估完成率"><span className="prediction-detail-number">{formatPercent(selectedPredictionBatch.evaluationRate)}</span></Descriptions.Item>
-              <Descriptions.Item label="触发方式">{selectedPredictionBatch.triggeredBy || '-'}</Descriptions.Item>
-              <Descriptions.Item label="开始时间">{formatDateTime(selectedPredictionBatch.startedAt)}</Descriptions.Item>
-              <Descriptions.Item label="完成时间">{formatDateTime(selectedPredictionBatch.finishedAt)}</Descriptions.Item>
-              <Descriptions.Item label="进度信息" span={2}><span className="prediction-detail-text">{selectedPredictionBatch.progressMessage || '-'}</span></Descriptions.Item>
-              <Descriptions.Item label="门禁原因" span={2}><span className="prediction-detail-text">{selectedPredictionBatch.tradingEligibilityReason || '-'}</span></Descriptions.Item>
-              <Descriptions.Item label="错误信息" span={2}><span className="prediction-detail-text">{selectedPredictionBatch.errorMessage || '-'}</span></Descriptions.Item>
-            </Descriptions>
+            <div className="prediction-detail-hero">
+              <div className="prediction-detail-hero-main">
+                <Text type="secondary">批次 ID</Text>
+                <Text copyable className="prediction-detail-id">{selectedPredictionBatch.id}</Text>
+                <Text type="secondary" className="prediction-detail-version">{selectedPredictionBatch.modelVersion || '未关联模型版本'}</Text>
+              </div>
+              <Space wrap size={[6, 6]}>
+                <Tag color={selectedPredictionBatch.tradingEligibility === 'TRADE_ELIGIBLE' ? 'green' : 'orange'}>
+                  {selectedPredictionBatch.tradingEligibility || 'DISABLED'}
+                </Tag>
+                <Tag color={selectedPredictionBatch.calendarFallback ? 'warning' : 'green'}>
+                  {selectedPredictionBatch.calendarFallback ? '工作日推算' : '正式日历'}
+                </Tag>
+              </Space>
+            </div>
+
+            <div className="prediction-detail-metrics">
+              <div><span>总股票数</span><strong>{selectedPredictionBatch.totalStocks}</strong></div>
+              <div><span>已处理</span><strong>{selectedPredictionBatch.processedStocks}</strong></div>
+              <div><span>成功 / 失败</span><strong>{selectedPredictionBatch.successCount} / {selectedPredictionBatch.failedCount}</strong></div>
+              <div><span>覆盖率</span><strong>{formatPercent(selectedPredictionBatch.coverageRate)}</strong></div>
+              <div><span>评估完成率</span><strong>{formatPercent(selectedPredictionBatch.evaluationRate)}</strong></div>
+            </div>
+
+            <DetailSection title="预测范围">
+              <DetailItem label="模型名称">{selectedPredictionBatch.modelName || '-'}</DetailItem>
+              <DetailItem label="模型 ID"><Text copyable className="detail-break">{selectedPredictionBatch.modelId || '-'}</Text></DetailItem>
+              <DetailItem label="基准日">{selectedPredictionBatch.baseTradeDate || '-'}</DetailItem>
+              <DetailItem label="目标日">{selectedPredictionBatch.targetTradeDate || '-'}</DetailItem>
+              <DetailItem label="信息截止">{formatDateTime(selectedPredictionBatch.informationCutoffAt)}</DetailItem>
+              <DetailItem label="触发方式">{selectedPredictionBatch.triggeredBy || '-'}</DetailItem>
+            </DetailSection>
+
+            <DetailSection title="执行时间">
+              <DetailItem label="创建时间">{formatDateTime(selectedPredictionBatch.createdAt)}</DetailItem>
+              <DetailItem label="开始时间">{formatDateTime(selectedPredictionBatch.startedAt)}</DetailItem>
+              <DetailItem label="完成时间">{formatDateTime(selectedPredictionBatch.finishedAt)}</DetailItem>
+              <DetailItem label="更新时间">{formatDateTime(selectedPredictionBatch.updatedAt)}</DetailItem>
+            </DetailSection>
+
+            <DetailSection title="执行状态">
+              <DetailItem label="当前状态"><Tag color={statusColors[selectedPredictionBatch.status] ?? 'default'}>{selectedPredictionBatch.status}</Tag></DetailItem>
+              <DetailItem label="交易门禁"><Tag color={selectedPredictionBatch.tradingEligibility === 'TRADE_ELIGIBLE' ? 'green' : 'orange'}>{selectedPredictionBatch.tradingEligibility || 'DISABLED'}</Tag></DetailItem>
+              <DetailItem label="评估状态">{selectedPredictionBatch.abilityLevel || '-'}</DetailItem>
+              <DetailItem label="未获取行情">{selectedPredictionBatch.noMarketDataCount}</DetailItem>
+              <DetailItem label="已评估数量">{selectedPredictionBatch.evaluatedCount}</DetailItem>
+              <DetailItem label="进度信息" wide><span className="detail-break">{selectedPredictionBatch.progressMessage || '-'}</span></DetailItem>
+            </DetailSection>
+
+            {(selectedPredictionBatch.tradingEligibilityReason || selectedPredictionBatch.errorMessage || selectedPredictionBatch.abilityMessage) && (
+              <DetailSection title="诊断信息">
+                <DetailItem label="门禁原因" wide><span className="detail-message">{selectedPredictionBatch.tradingEligibilityReason || '-'}</span></DetailItem>
+                <DetailItem label="能力说明" wide><span className="detail-message">{selectedPredictionBatch.abilityMessage || '-'}</span></DetailItem>
+                <DetailItem label="错误信息" wide><span className="detail-message detail-error">{selectedPredictionBatch.errorMessage || '-'}</span></DetailItem>
+              </DetailSection>
+            )}
           </Space>
         )}
-      </Drawer>
+      </DetailModal>
       <WideTableModal
         title={`评估：${selectedPredictionBatch?.targetTradeDate || selectedPredictionBatch?.id || '-'}`}
         open={predictionAnalysisModalOpen}
@@ -1219,49 +1348,57 @@ const ModelOperations: React.FC = () => {
         </Form>
       </Modal>
 
-      <Drawer
+      <DetailModal
         title="模型版本详情"
-        width={720}
         open={detailsOpen}
-        loading={detailsLoading}
-        onClose={() => setDetailsOpen(false)}
+        onCancel={() => setDetailsOpen(false)}
       >
         {selectedVersion && (
           <Space direction="vertical" size="large" className="w-full">
-            <Descriptions bordered column={2} size="small">
-              <Descriptions.Item label="模型名称">{selectedVersion.modelName}</Descriptions.Item>
-              <Descriptions.Item label="模型版本">{selectedVersion.modelVersion}</Descriptions.Item>
-              <Descriptions.Item label="状态"><Tag color={statusColors[selectedVersion.status]}>{selectedVersion.status}</Tag></Descriptions.Item>
-              <Descriptions.Item label="创建时间">{formatDateTime(selectedVersion.createdAt)}</Descriptions.Item>
-              <Descriptions.Item label="执行引擎">{selectedVersion.engineName || '-'}</Descriptions.Item>
-              <Descriptions.Item label="引擎版本">{selectedVersion.engineVersion || '-'}</Descriptions.Item>
-              <Descriptions.Item label="DJL 版本">{selectedVersion.djlVersion || '-'}</Descriptions.Item>
-              <Descriptions.Item label="参数大小">{formatBytes(selectedVersion.parameterSize)}</Descriptions.Item>
-              <Descriptions.Item label="训练损失">{formatLoss(selectedVersion.trainLoss)}</Descriptions.Item>
-              <Descriptions.Item label="验证损失">{formatLoss(selectedVersion.valLoss)}</Descriptions.Item>
-              <Descriptions.Item label="参数摘要" span={2}>{selectedVersion.parameterSha256 || '-'}</Descriptions.Item>
-            </Descriptions>
+            {detailsLoading && <Progress percent={50} status="active" showInfo={false} />}
+            <div className="detail-modal-hero">
+              <div>
+                <Text type="secondary">模型版本</Text>
+                <Title level={4} className="!mb-1">{selectedVersion.modelVersion}</Title>
+                <Text type="secondary">{selectedVersion.modelName}</Text>
+              </div>
+              <Tag color={statusColors[selectedVersion.status]}>{selectedVersion.status}</Tag>
+            </div>
+            <DetailSection title="版本信息">
+              <DetailItem label="模型名称">{selectedVersion.modelName}</DetailItem>
+              <DetailItem label="创建时间">{formatDateTime(selectedVersion.createdAt)}</DetailItem>
+              <DetailItem label="执行引擎">{selectedVersion.engineName || '-'}</DetailItem>
+              <DetailItem label="引擎版本">{selectedVersion.engineVersion || '-'}</DetailItem>
+              <DetailItem label="DJL 版本">{selectedVersion.djlVersion || '-'}</DetailItem>
+              <DetailItem label="参数大小">{formatBytes(selectedVersion.parameterSize)}</DetailItem>
+              <DetailItem label="训练损失">{formatLoss(selectedVersion.trainLoss)}</DetailItem>
+              <DetailItem label="验证损失">{formatLoss(selectedVersion.valLoss)}</DetailItem>
+              <DetailItem label="参数摘要" wide><Text copyable className="detail-break">{selectedVersion.parameterSha256 || '-'}</Text></DetailItem>
+            </DetailSection>
             {[
               ['训练配置快照', selectedVersion.trainingConfigJson],
               ['输入契约快照', selectedVersion.inputContractJson],
               ['模型指标快照', selectedVersion.metricsJson],
-            ].map(([label, value]) => (
-              <div key={label} className="w-full">
-                <Title level={5}>{label}</Title>
-                <Paragraph>
-                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-black/30 p-3 text-xs text-gray-300">
+            ].map((snapshot) => {
+              const label = snapshot[0] || '快照';
+              const value = snapshot[1];
+              return (
+              <DetailSection key={label} title={label}>
+                <div className="detail-json-block">
+                  <pre>
                     {value || '无'}
                   </pre>
-                </Paragraph>
-              </div>
-            ))}
+                </div>
+              </DetailSection>
+              );
+            })}
           </Space>
         )}
-      </Drawer>
+      </DetailModal>
     </div>
   );
 
 };
 
 export default ModelOperations;
-// AI_GENERATE_END -----------------------------------
+// AI_GENERATE_END -----------------------------------------

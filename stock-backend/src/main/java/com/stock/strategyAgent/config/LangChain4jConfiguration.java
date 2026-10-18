@@ -1,6 +1,7 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.config;
 
+import com.stock.strategyAgent.rag.DjlEmbeddingModel;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.model.ollama.OllamaEmbeddingModel;
@@ -20,7 +21,7 @@ import org.springframework.context.annotation.Configuration;
 public class LangChain4jConfiguration {
 
     /**
-     * 创建 OpenAI-compatible EmbeddingModel。
+     * 创建 EmbeddingModel。
      *
      * @param properties Agent 配置
      * @return LangChain4j EmbeddingModel
@@ -30,6 +31,7 @@ public class LangChain4jConfiguration {
     public EmbeddingModel agentEmbeddingModel(AgentProperties properties) {
         AgentProperties.EmbeddingProperties config = properties.getEmbedding();
         return switch (config.getProvider().trim().toLowerCase()) {
+            case "djl" -> new DjlEmbeddingModel(config);
             case "ollama" -> OllamaEmbeddingModel.builder()
                     .baseUrl(config.getBaseUrl())
                     .modelName(config.getModel())
@@ -43,4 +45,4 @@ public class LangChain4jConfiguration {
         };
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

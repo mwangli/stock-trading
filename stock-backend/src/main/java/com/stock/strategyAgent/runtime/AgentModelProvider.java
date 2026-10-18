@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.strategyAgent.runtime;
 
 /**
@@ -32,5 +32,24 @@ public interface AgentModelProvider {
     default AgentModelProviderStatus status() {
         return AgentModelProviderStatus.builder().provider(providerName()).build();
     }
+
+    /**
+     * 对已配置的模型 Provider 执行实际连通性检查。
+     *
+     * @return Provider 健康状态
+     */
+    default AgentProviderHealthStatus healthCheck() {
+        return AgentProviderHealthStatus.builder().build();
+    }
+
+    /**
+     * 仅检查指定 Provider 的实际连通性。
+     *
+     * @param provider Provider 名称
+     * @return Provider 是否可用
+     */
+    default boolean healthCheck(String provider) {
+        return false;
+    }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

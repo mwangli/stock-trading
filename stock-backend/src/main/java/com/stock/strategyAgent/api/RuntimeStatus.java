@@ -40,8 +40,16 @@ public class RuntimeStatus {
     private boolean ollamaConfigured;
     /** DeepSeek 最近一次运行状态。 */
     private String deepseekStatus;
+    /** DeepSeek 当前配置的模型标识。 */
+    private String deepseekModel;
     /** Ollama 最近一次运行状态。 */
     private String ollamaStatus;
+    /** Ollama 当前配置的模型标识。 */
+    private String ollamaModel;
+    /** DeepSeek 熔断状态。 */
+    private String deepseekCircuitState;
+    /** Ollama 熔断状态。 */
+    private String ollamaCircuitState;
     /** Embedding 是否启用。 */
     private boolean embeddingEnabled;
     /** Embedding Provider。 */
