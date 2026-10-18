@@ -1,4 +1,4 @@
-/* AI_GENERATE_START -------------- */
+/* AI_GENERATE_START ---------------- */
 @import "tailwindcss";
 
 :root,
@@ -452,6 +452,121 @@ select { letter-spacing: 0; }
   justify-content: center;
 }
 
+/* Keep standalone and table pagination aligned across all pages. */
+.ant-pagination {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 0 !important;
+  padding: 6px 12px;
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--panel-muted);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.ant-table-wrapper .ant-pagination {
+  margin: 0 !important;
+  border: 0;
+  border-top: 1px solid var(--border-color);
+  border-radius: 0;
+  background: transparent;
+}
+
+.ant-pagination-total-text {
+  flex: 1 0 auto;
+  margin-inline-end: auto !important;
+  color: var(--text-secondary) !important;
+  font-size: 12px;
+  line-height: 32px;
+}
+
+.ant-pagination-item,
+.ant-pagination-prev,
+.ant-pagination-next,
+.ant-pagination-jump-prev,
+.ant-pagination-jump-next {
+  width: 34px;
+  min-width: 34px;
+  height: 32px;
+  margin-inline-end: 0 !important;
+  border: 1px solid transparent !important;
+  border-radius: 4px !important;
+  color: var(--text-secondary) !important;
+  line-height: 30px;
+  text-align: center;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.ant-pagination-item a,
+.ant-pagination-prev button,
+.ant-pagination-next button,
+.ant-pagination-jump-prev button,
+.ant-pagination-jump-next button {
+  color: inherit !important;
+}
+
+.ant-pagination-item:hover,
+.ant-pagination-prev:hover,
+.ant-pagination-next:hover,
+.ant-pagination-jump-prev:hover,
+.ant-pagination-jump-next:hover {
+  border-color: var(--brand) !important;
+  background: var(--brand-soft) !important;
+  color: var(--brand) !important;
+}
+
+.ant-pagination-item-active {
+  border-color: var(--brand) !important;
+  background: transparent !important;
+  color: var(--brand) !important;
+  font-weight: 600;
+}
+
+.ant-pagination-item-active a { color: var(--brand) !important; }
+
+.ant-pagination-disabled,
+.ant-pagination-disabled:hover {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--text-muted) !important;
+  cursor: not-allowed;
+}
+
+.ant-pagination-jump-prev .ant-pagination-item-link-icon,
+.ant-pagination-jump-next .ant-pagination-item-link-icon,
+.ant-pagination-jump-prev .ant-pagination-item-ellipsis,
+.ant-pagination-jump-next .ant-pagination-item-ellipsis {
+  color: var(--text-muted) !important;
+}
+
+.ant-pagination-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: 4px;
+}
+
+.ant-pagination-options .ant-select-selector,
+.ant-pagination-options .ant-pagination-options-quick-jumper input {
+  border-color: var(--border-color) !important;
+  background: var(--panel-bg) !important;
+  color: var(--text-primary) !important;
+}
+
+@media (max-width: 640px) {
+  .ant-pagination {
+    justify-content: flex-start;
+    padding-inline: 8px;
+  }
+
+  .ant-pagination-total-text { margin-inline-end: 0 !important; }
+}
+
 .trade-records-table .trade-record-column-title {
   cursor: help;
 }
@@ -514,6 +629,95 @@ select { letter-spacing: 0; }
 .ant-input-affix-wrapper,
 .ant-input-number,
 .ant-select-selector { border-radius: 4px !important; }
+
+.history-date-range {
+  width: 300px;
+  min-width: 300px;
+  border-color: var(--border-color) !important;
+  background: var(--panel-bg) !important;
+}
+
+.history-date-range:hover,
+.history-date-range.ant-picker-focused {
+  border-color: var(--brand) !important;
+  box-shadow: 0 0 0 2px var(--brand-soft) !important;
+}
+
+.history-date-range .ant-picker-input > input {
+  color: var(--text-primary) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-date-range .ant-picker-input > input::placeholder {
+  color: var(--text-muted) !important;
+}
+
+.history-date-range .ant-picker-range-separator,
+.history-date-range .ant-picker-suffix,
+.history-date-range .ant-picker-clear {
+  color: var(--text-muted) !important;
+}
+
+.ant-picker-dropdown .ant-picker-panel-container {
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--panel-bg);
+  box-shadow: 0 12px 30px rgba(2, 8, 23, 0.28);
+}
+
+.ant-picker-dropdown .ant-picker-header,
+.ant-picker-dropdown .ant-picker-footer {
+  border-color: var(--border-color) !important;
+}
+
+.ant-picker-dropdown .ant-picker-header,
+.ant-picker-dropdown .ant-picker-content th,
+.ant-picker-dropdown .ant-picker-cell {
+  color: var(--text-secondary) !important;
+}
+
+.ant-picker-dropdown .ant-picker-header button,
+.ant-picker-dropdown .ant-picker-header-view {
+  color: var(--text-primary) !important;
+}
+
+.ant-picker-dropdown .ant-picker-cell-in-view .ant-picker-cell-inner {
+  color: var(--text-primary);
+}
+
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-in-range::before,
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-start::before,
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-end::before {
+  background: var(--brand-soft) !important;
+}
+
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-selected .ant-picker-cell-inner,
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-start .ant-picker-cell-inner,
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-end .ant-picker-cell-inner {
+  background: var(--brand) !important;
+  color: #fff !important;
+}
+
+.ant-picker-dropdown .ant-picker-cell:hover .ant-picker-cell-inner {
+  background: var(--brand-soft) !important;
+  color: var(--brand) !important;
+}
+
+.ant-picker-dropdown .ant-picker-presets {
+  border-inline-end-color: var(--border-color) !important;
+}
+
+.ant-picker-dropdown .ant-picker-presets li {
+  color: var(--brand) !important;
+}
+
+@media (max-width: 640px) {
+  .history-date-range {
+    width: 100%;
+    min-width: 240px;
+  }
+}
 
 .ant-statistic-title { color: var(--text-muted) !important; font-size: 12px !important; }
 .ant-statistic-content { color: var(--text-primary) !important; font-size: 22px !important; }
@@ -629,4 +833,4 @@ select { letter-spacing: 0; }
     min-width: 96px;
   }
 }
-/* AI_GENERATE_END -------------- */
+/* AI_GENERATE_END ---------------- */

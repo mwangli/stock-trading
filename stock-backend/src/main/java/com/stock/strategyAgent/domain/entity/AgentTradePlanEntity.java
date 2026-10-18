@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.domain.entity;
 
 import com.stock.strategyAgent.domain.AgentEnums;
@@ -9,6 +9,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
@@ -86,6 +87,11 @@ public class AgentTradePlanEntity {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    /** 乐观锁版本号，防止多个执行节点重复抢占同一计划。 */
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     /** 最近一次拒绝或执行摘要。 */
     @Column(name = "decision_message", columnDefinition = "TEXT")
     private String decisionMessage;
@@ -113,5 +119,21 @@ public class AgentTradePlanEntity {
     /** 不确定性说明。 */
     @Column(name = "uncertainty", columnDefinition = "TEXT")
     private String uncertainty;
+
+    /** 本次执行链路标识。 */
+    @Column(name = "execution_trace_id", length = 64)
+    private String executionTraceId;
+
+    /** 最近一次风险或执行错误码。 */
+    @Column(name = "risk_code", length = 64)
+    private String riskCode;
+
+    /** 关联券商订单号。 */
+    @Column(name = "order_id", length = 128)
+    private String orderId;
+
+    /** 执行完成时间。 */
+    @Column(name = "executed_at")
+    private LocalDateTime executedAt;
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.rag;
 
 import lombok.Data;
@@ -55,6 +55,15 @@ public class AgentRagChunkDocument {
     /** Embedding 模型版本。 */
     private String embeddingModelVersion;
 
+    /** Embedding Provider。 */
+    private String embeddingProvider;
+
+    /** Embedding 向量维度。 */
+    private Integer embeddingDimension;
+
+    /** Embedding 生成状态。 */
+    private String embeddingStatus;
+
     /** Embedding 向量。 */
     private List<Double> embedding;
 
@@ -67,4 +76,4 @@ public class AgentRagChunkDocument {
     /** 创建时间。 */
     private LocalDateTime createdAt;
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

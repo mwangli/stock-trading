@@ -141,6 +141,7 @@ const SentimentModel: React.FC = () => {
   const [analysis, setAnalysis] = useState<SentimentAnalyzeResult | null>(null);
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [sampleSource, setSampleSource] = useState<'database' | 'mock' | null>(null);
+  const [sampleError, setSampleError] = useState<string | null>(null);
 
   const loadHealth = useCallback(async () => {
     setLoading(true);
@@ -172,14 +173,16 @@ const SentimentModel: React.FC = () => {
 
   const loadRandomNewsSample = useCallback(async () => {
     setSampleLoading(true);
+    setSampleError(null);
     try {
-      const response = await request.get('/news/randomSample') as ApiResponse<NewsSample | null>;
+      const response = await request.get('/news/randomSample', { timeout: 10000 }) as ApiResponse<NewsSample | null>;
       const sample = readApiData(response, localizedText('读取信息表样本失败', 'Failed to load information-table sample'));
       const sampleText = [sample?.title, sample?.content]
         .filter((value): value is string => Boolean(value?.trim()))
         .join('\n\n')
         .trim();
       if (!sampleText) {
+        setSampleError(localizedText('数据库暂无可用新闻样本，已切换为页面 Mock 样例', 'No usable database news sample was found; switched to a page Mock sample'));
         applyMockTestCase(pickRandomTestCase());
         return;
       }
@@ -187,7 +190,8 @@ const SentimentModel: React.FC = () => {
       setAnalysis(null);
       setSelectedCaseId(null);
       setSampleSource('database');
-    } catch {
+    } catch (cause) {
+      setSampleError(getApiErrorMessage(cause, localizedText('数据库新闻信息暂时不可用，已切换为页面 Mock 样例', 'Database news is temporarily unavailable; switched to a page Mock sample')));
       applyMockTestCase(pickRandomTestCase());
     } finally {
       setSampleLoading(false);
@@ -348,6 +352,7 @@ const SentimentModel: React.FC = () => {
             <Text type="secondary" className="text-xs">{selectedCase.focus}</Text>
           )}
         </div>
+        {sampleError && <Alert className="mb-3" type="warning" showIcon message={sampleError} />}
         <TextArea
           value={text}
           onChange={(event) => {

@@ -1,12 +1,10 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.strategyAgent.tool.read;
 
 import com.stock.dataCollector.service.TradingCalendarService;
-import com.stock.strategyAgent.tool.ToolDefinition;
-import com.stock.strategyAgent.tool.ToolGateway;
-import com.stock.strategyAgent.tool.ToolPermission;
+import com.stock.strategyAgent.tool.AgentToolSupport;
+import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -19,35 +17,27 @@ import java.time.LocalDate;
  */
 @Component
 @RequiredArgsConstructor
-public class TradingCalendarQueryTool implements InitializingBean {
+public class TradingCalendarQueryTool {
 
-    private final ToolGateway toolGateway;
     private final TradingCalendarService tradingCalendarService;
+    private final AgentToolSupport toolSupport;
 
     /**
-     * 注册交易日历工具。
+     * 查询指定日期的已确认交易日状态。
+     *
+     * @param request 查询请求
+     * @return 交易日状态
      */
-    @Override
-    public void afterPropertiesSet() {
-        toolGateway.register(ToolDefinition.builder()
-                        .name("queryTradingCalendar")
-                        .version("v1")
-                        .description("查询指定日期的已确认交易日状态")
-                        .requiredPermission(ToolPermission.READ_ONLY)
-                        .readOnly(true)
-                        .maxResultSize(2000)
-                        .timeoutMs(3000L)
-                        .build(),
-                (input, context) -> query(input));
-    }
-
-    private TradingCalendarResult query(Object input) {
-        if (!(input instanceof TradingCalendarRequest request) || request.tradeDate() == null) {
+    @Tool("查询指定日期的已确认交易日状态")
+    public TradingCalendarResult query(TradingCalendarRequest request) {
+        if (request == null || request.tradeDate() == null) {
             throw new IllegalArgumentException("tradeDate 不能为空");
         }
-        LocalDate date = request.tradeDate();
-        return new TradingCalendarResult(date, tradingCalendarService.isTradingDay(date),
-                tradingCalendarService.isConfirmedDate(date));
+        return toolSupport.execute("queryTradingCalendar", () -> {
+            LocalDate date = request.tradeDate();
+            return new TradingCalendarResult(date, tradingCalendarService.isTradingDay(date),
+                    tradingCalendarService.isConfirmedDate(date));
+        });
     }
 
     /** 交易日历查询请求。 */
@@ -58,4 +48,4 @@ public class TradingCalendarQueryTool implements InitializingBean {
     public record TradingCalendarResult(LocalDate tradeDate, boolean tradingDay, boolean confirmed) {
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

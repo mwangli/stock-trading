@@ -1,8 +1,9 @@
-// AI_GENERATE_START ---------------
+// AI_GENERATE_START ----------------
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Table, Input, Select } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { TablePaginationConfig } from 'antd/es/table/interface';
 import type { EChartsOption, TooltipComponentFormatterCallbackParams } from 'echarts';
 import type { InputRef } from 'antd';
 import { SearchOutlined, ThunderboltOutlined, RiseOutlined, StarOutlined } from '@ant-design/icons';
@@ -47,9 +48,11 @@ interface WatchlistItem {
   price: number;
   change: number;
   volume: string;
-  volumeValue: number; // 用于排序的原始数值
   starred: boolean;
 }
+
+type MarketSortField = 'price' | 'change' | 'volume';
+type MarketSortOrder = 'asc' | 'desc';
 
 interface KlineData {
   dates: string[];
@@ -192,6 +195,8 @@ const Market: React.FC = () => {
     pageSize: 9,
     total: 0,
   });
+  const [sortField, setSortField] = useState<MarketSortField>('change');
+  const [sortOrder, setSortOrder] = useState<MarketSortOrder>('desc');
 
   const formatVolume = (val: number) => {
     if (!val) return '0';
@@ -201,13 +206,24 @@ const Market: React.FC = () => {
     return val.toString();
   };
 
-  const fetchStocks = async (page: number = 1, size: number = 9, keyword: string = '') => {
+  const fetchStocks = async (
+    page: number = 1,
+    size: number = 9,
+    keyword: string = '',
+    requestedSortField: MarketSortField = sortField,
+    requestedSortOrder: MarketSortOrder = sortOrder,
+  ) => {
     setLoading(true);
     try {
       console.log('[fetchStocks] page:', page, 'keyword:', keyword);
 
       // 使用 keywords 参数进行模糊搜索 (name 或 code)
-      const params: Record<string, unknown> = { current: page, pageSize: size };
+      const params: Record<string, unknown> = {
+        current: page,
+        pageSize: size,
+        sortBy: requestedSortField,
+        sortOrder: requestedSortOrder,
+      };
       if (keyword && keyword.trim()) {
         params.keywords = keyword.trim();
         console.log('[fetchStocks] search params:', params);
@@ -230,7 +246,6 @@ const Market: React.FC = () => {
           price: item.price ?? 0,
           change: item.changePercent ?? 0,
           volume: formatVolume(item.totalMarketValue),
-          volumeValue: item.totalMarketValue ?? 0,
           starred: false,
         }));
         setWatchlist(mappedData);
@@ -364,7 +379,8 @@ const Market: React.FC = () => {
       dataIndex: 'price',
       key: 'price',
       align: 'right',
-      sorter: (a: WatchlistItem, b: WatchlistItem) => a.price - b.price,
+      sorter: true,
+      sortOrder: sortField === 'price' ? (sortOrder === 'asc' ? 'ascend' : 'descend') : undefined,
       render: (price: number) => <span className="font-mono text-white text-sm">¥{price.toFixed(2)}</span>
     },
     {
@@ -372,8 +388,8 @@ const Market: React.FC = () => {
       dataIndex: 'change',
       key: 'change',
       align: 'right',
-      sorter: (a: WatchlistItem, b: WatchlistItem) => a.change - b.change,
-      defaultSortOrder: 'descend',
+      sorter: true,
+      sortOrder: sortField === 'change' ? (sortOrder === 'asc' ? 'ascend' : 'descend') : undefined,
       render: (change: number) => (
         <span className={`font-mono font-bold text-sm px-2 py-1 rounded ${change >= 0 ? 'bg-[#ef4444]/10 text-[#ef4444]' : 'bg-[#22c55e]/10 text-[#22c55e]'}`}>
           {change > 0 ? '+' : ''}{change.toFixed(2)}%
@@ -385,7 +401,8 @@ const Market: React.FC = () => {
       dataIndex: 'volume',
       key: 'volume',
       align: 'right',
-      sorter: (a: WatchlistItem, b: WatchlistItem) => a.volumeValue - b.volumeValue,
+      sorter: true,
+      sortOrder: sortField === 'volume' ? (sortOrder === 'asc' ? 'ascend' : 'descend') : undefined,
       className: 'text-gray-400 font-mono text-xs',
       render: (val: string) => <span className="text-gray-400">{val}</span>
     },
@@ -530,9 +547,29 @@ const Market: React.FC = () => {
               showSizeChanger: false,
               showQuickJumper: false,
               showTotal: (total) => total > 0 ? localizedText(`共 ${Math.ceil(total / 9)} 页`, `${Math.ceil(total / 9)} pages`) : localizedText('无数据', 'No data'),
-              onChange: (page) => {
-                fetchStocks(page, 9, searchKeyword);
+            }}
+            onChange={(
+              tablePagination: TablePaginationConfig,
+              _filters,
+              sorter,
+              extra,
+            ) => {
+              if (extra.action === 'paginate') {
+                fetchStocks(tablePagination.current ?? 1, 9, searchKeyword);
+                return;
               }
+              if (extra.action !== 'sort') {
+                return;
+              }
+              const activeSorter = Array.isArray(sorter) ? sorter[0] : sorter;
+              const nextField = activeSorter?.columnKey as MarketSortField | undefined;
+              const nextOrder: MarketSortOrder = activeSorter?.order === 'ascend' ? 'asc' : 'desc';
+              if (!nextField || !['price', 'change', 'volume'].includes(nextField)) {
+                return;
+              }
+              setSortField(nextField);
+              setSortOrder(nextOrder);
+              fetchStocks(1, 9, searchKeyword, nextField, nextOrder);
             }}
             rowClassName="hover:bg-white/5 cursor-pointer transition-colors"
             onRow={(record) => ({
@@ -585,4 +622,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END ---------------
+// AI_GENERATE_END ----------------

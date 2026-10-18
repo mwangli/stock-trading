@@ -96,35 +96,43 @@ trading:
   force-exit-time: "14:50"
 
 agent:
-  enabled: ${AGENT_ENABLED:false}
-  provider: ${AGENT_PROVIDER:auto}
+  enabled: false
+  provider: auto
   deepseek:
-    enabled: ${AGENT_DEEPSEEK_ENABLED:false}
-    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com/v1}
-    api-key: ${DEEPSEEK_API_KEY:${DS_API_KEY:}}
-    model: ${DEEPSEEK_MODEL:deepseek-chat}
+    enabled: false
+    base-url: https://api.deepseek.com/v1
+    api-key: ${DEEPSEEK_API_KEY:}
+    model: deepseek-chat
   ollama:
-    enabled: ${AGENT_OLLAMA_ENABLED:false}
-    base-url: ${OLLAMA_BASE_URL:http://localhost:11434/v1}
+    enabled: false
+    base-url: http://localhost:11434/v1
     api-key: ${OLLAMA_API_KEY:ollama}
-    model: ${OLLAMA_MODEL:deepseek-r1:7b}
-  max-steps: ${AGENT_MAX_STEPS:6}
-  max-model-rounds: ${AGENT_MAX_MODEL_ROUNDS:3}
-  timeout-ms: ${AGENT_TIMEOUT_MS:30000}
-  max-output-chars: ${AGENT_MAX_OUTPUT_CHARS:12000}
-  max-concurrency: ${AGENT_MAX_CONCURRENCY:1}
-  report-enabled: ${AGENT_REPORT_ENABLED:false}
-  trade-plan-enabled: ${AGENT_TRADE_PLAN_ENABLED:false}
-  rag-enabled: ${AGENT_RAG_ENABLED:false}
-  memory-enabled: ${AGENT_MEMORY_ENABLED:true}
-  rag-collection: ${AGENT_RAG_COLLECTION:agent_rag_chunks}
-  memory-default-ttl-days: ${AGENT_MEMORY_DEFAULT_TTL_DAYS:90}
-  chat-memory-max-messages: ${AGENT_CHAT_MEMORY_MAX_MESSAGES:20}
-  tool-timeout-ms: ${AGENT_TOOL_TIMEOUT_MS:5000}
-  audit-enabled: ${AGENT_AUDIT_ENABLED:true}
-  vector-store: ${AGENT_VECTOR_STORE:mongodb}
-  embedding-model: ${AGENT_EMBEDDING_MODEL:}
-  embedding-model-version: ${AGENT_EMBEDDING_MODEL_VERSION:}
+    model: deepseek-r1:7b
+  max-steps: 6
+  max-model-rounds: 3
+  timeout-ms: 30000
+  max-output-chars: 12000
+  max-concurrency: 1
+  report-enabled: false
+  trade-plan-enabled: false
+  rag-enabled: false
+  memory-enabled: true
+  rag-collection: agent_rag_chunks
+  memory-default-ttl-days: 90
+  chat-memory-max-messages: 20
+  tool-timeout-ms: 5000
+  audit-enabled: true
+  vector-store: mongodb
+  embedding:
+    enabled: false
+    provider: disabled
+    base-url: http://localhost:11434
+    api-key: ${AGENT_EMBEDDING_API_KEY:ollama}
+    model: nomic-embed-text
+    model-version: nomic-embed-text-v1
+    dimension: 768
+    timeout-ms: 30000
+    allow-hash-fallback: false
 
 backtest:
   universe-limit: 500

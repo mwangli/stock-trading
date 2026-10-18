@@ -10,8 +10,8 @@
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>Stock Trading Parent</name>
-    <description>AI股票自动交易系统 - 父项目</description>
+    <name>AI-AGENT智能股票自动交易系统</name>
+    <description>AI-AGENT智能股票自动交易系统 - 聚合父项目</description>
 
     <modules>
         <module>stock-backend</module>

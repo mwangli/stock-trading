@@ -44,7 +44,6 @@ import java.util.Map;
 public class PerformanceReportService {
 
     private static final int RATE_SCALE = 8;
-    private static final int RANKING_LIMIT = 10;
     private static final DateTimeFormatter DAY_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
 
@@ -149,11 +148,13 @@ public class PerformanceReportService {
     private List<PerformanceRankingItemDto> buildRanking(List<TradeRecordEntity> records) {
         return records.stream()
                 .sorted(Comparator.comparing(this::safeReturnRate).reversed())
-                .limit(RANKING_LIMIT)
                 .map(record -> PerformanceRankingItemDto.builder()
                         .stockCode(record.getStockCode())
                         .stockName(record.getStockName())
                         .transactionAmount(cost(record))
+                        .buyAmount(zero(record.getBuyAmount()))
+                        .sellAmount(zero(record.getSellAmount()))
+                        .tradeQuantity(record.getSoldQuantity())
                         .netProfit(zero(record.getNetProfit()))
                         .returnRate(zero(record.getReturnRate()))
                         .dailyReturnRate(zero(record.getDailyReturnRate()))
@@ -207,6 +208,8 @@ public class PerformanceReportService {
                         .period(record.getLastSellTime().toLocalDate().format(DAY_FORMATTER))
                         .stockCode(record.getStockCode())
                         .stockName(record.getStockName())
+                        .buyAmount(zero(record.getBuyAmount()))
+                        .sellAmount(zero(record.getSellAmount()))
                         .netProfit(zero(record.getNetProfit()))
                         .transactionAmount(cost(record))
                         .returnRate(safeReturnRate(record))

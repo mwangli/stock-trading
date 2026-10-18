@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.api;
 
 import lombok.AllArgsConstructor;
@@ -102,6 +102,14 @@ public final class TradePlanDto {
         private List<String> riskWarnings;
         /** 不确定性说明。 */
         private String uncertainty;
+        /** 执行链路标识。 */
+        private String executionTraceId;
+        /** 风险或执行错误码。 */
+        private String riskCode;
+        /** 关联券商订单号。 */
+        private String orderId;
+        /** 执行完成时间。 */
+        private LocalDateTime executedAt;
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

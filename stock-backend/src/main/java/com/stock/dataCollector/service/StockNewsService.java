@@ -14,7 +14,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
@@ -37,6 +36,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 股票新闻采集服务
@@ -101,14 +101,16 @@ public class StockNewsService {
      */
     public Optional<StockNews> findRandomNewsSample() {
         Criteria usableContent = new Criteria().orOperator(
-                Criteria.where("title").regex("\\S"),
-                Criteria.where("content").regex("\\S"));
-        Aggregation aggregation = Aggregation.newAggregation(
-                Aggregation.match(usableContent),
-                Aggregation.sample(1));
-        List<StockNews> samples = mongoTemplate.aggregate(aggregation, "stock_news", StockNews.class)
-                .getMappedResults();
-        return samples.stream().findFirst();
+                Criteria.where("title").exists(true).ne(""),
+                Criteria.where("content").exists(true).ne(""));
+        Query query = Query.query(usableContent)
+                .with(Sort.by(Sort.Direction.DESC, "publishTime"))
+                .limit(50);
+        List<StockNews> samples = mongoTemplate.find(query, StockNews.class, "stock_news");
+        if (samples.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(samples.get(ThreadLocalRandom.current().nextInt(samples.size())));
     }
 
     @PreDestroy

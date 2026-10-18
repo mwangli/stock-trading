@@ -1,8 +1,9 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.config;
 
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
+import dev.langchain4j.model.ollama.OllamaEmbeddingModel;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,16 +25,22 @@ public class LangChain4jConfiguration {
      * @param properties Agent 配置
      * @return LangChain4j EmbeddingModel
      */
-    @Bean
-    @ConditionalOnExpression("'${agent.enabled:false}' == 'true' && '${agent.embedding-model:}' != ''")
-    public EmbeddingModel langChain4jEmbeddingModel(AgentProperties properties) {
-        String baseUrl = properties.getDeepseek().getBaseUrl();
-        String apiKey = properties.getDeepseek().getApiKey();
-        return OpenAiEmbeddingModel.builder()
-                .baseUrl(baseUrl)
-                .apiKey(apiKey)
-                .modelName(properties.getEmbeddingModel())
-                .build();
+    @Bean(name = "agentEmbeddingModel")
+    @ConditionalOnExpression("'${agent.enabled:false}' == 'true' && '${agent.embedding.enabled:false}' == 'true' && '${agent.embedding.provider:disabled}' != 'disabled'")
+    public EmbeddingModel agentEmbeddingModel(AgentProperties properties) {
+        AgentProperties.EmbeddingProperties config = properties.getEmbedding();
+        return switch (config.getProvider().trim().toLowerCase()) {
+            case "ollama" -> OllamaEmbeddingModel.builder()
+                    .baseUrl(config.getBaseUrl())
+                    .modelName(config.getModel())
+                    .build();
+            case "openaicompatible" -> OpenAiEmbeddingModel.builder()
+                    .baseUrl(config.getBaseUrl())
+                    .apiKey(config.getApiKey())
+                    .modelName(config.getModel())
+                    .build();
+            default -> throw new IllegalStateException("不支持的 Embedding Provider: " + config.getProvider());
+        };
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 import React from 'react';
 
 type SystemMarkSize = 'micro' | 'small' | 'medium' | 'large';
@@ -17,7 +17,7 @@ const sizeClassMap: Record<SystemMarkSize, string> = {
 };
 
 /**
- * AI 股票交易系统品牌标识，使用历史橙色股票上涨箭头图形。
+ * AI-AGENT智能股票自动交易系统品牌标识，使用历史橙色股票上涨箭头图形。
  */
 const SystemMark: React.FC<SystemMarkProps> = ({ size = 'medium', className = '', title }) => (
   <span className={`system-mark ${sizeClassMap[size]} ${className}`.trim()} aria-label={title} role={title ? 'img' : undefined}>
@@ -28,4 +28,4 @@ const SystemMark: React.FC<SystemMarkProps> = ({ size = 'medium', className = ''
 );
 
 export default SystemMark;
-// AI_GENERATE_END -
+// AI_GENERATE_END --

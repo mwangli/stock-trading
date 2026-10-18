@@ -25,6 +25,12 @@ public class PerformanceDailyReturnItemDto {
     /** 股票名称。 */
     private String stockName;
 
+    /** 买入金额，单位为元。 */
+    private BigDecimal buyAmount;
+
+    /** 卖出金额，单位为元。 */
+    private BigDecimal sellAmount;
+
     /** 该笔交易的已实现净收益，单位为元。 */
     private BigDecimal netProfit;
 

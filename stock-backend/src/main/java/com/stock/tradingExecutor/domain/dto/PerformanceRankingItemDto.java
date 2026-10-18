@@ -26,6 +26,15 @@ public class PerformanceRankingItemDto {
     /** 交易金额，按已卖出部分对应的买入成本计算，单位为元。 */
     private BigDecimal transactionAmount;
 
+    /** 买入金额，单位为元。 */
+    private BigDecimal buyAmount;
+
+    /** 卖出金额，单位为元。 */
+    private BigDecimal sellAmount;
+
+    /** 已成交交易数量，单位为股。 */
+    private Integer tradeQuantity;
+
     /** 净收益金额，单位为元。 */
     private BigDecimal netProfit;
 

@@ -1,9 +1,7 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.audit;
 
-import com.stock.strategyAgent.tool.ToolDefinition;
 import com.stock.strategyAgent.tool.ToolExecutionContext;
-import com.stock.strategyAgent.tool.ToolExecutionResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -26,27 +24,28 @@ public class AgentToolAuditService {
     /**
      * 保存一次工具调用摘要。
      *
-     * @param definition 工具定义
+     * @param toolName 工具名称
      * @param context 调用上下文
-     * @param result 工具结果
+     * @param status 执行状态
+     * @param errorCode 错误码
      * @param startedAt 开始时间
      */
-    public void record(ToolDefinition definition, ToolExecutionContext context,
-                       ToolExecutionResult<?> result, LocalDateTime startedAt) {
-        if (definition == null || result == null) {
+    public void record(String toolName, ToolExecutionContext context, String status,
+                       String errorCode, LocalDateTime startedAt) {
+        if (!StringUtils.hasText(toolName)) {
             return;
         }
         repository.save(new AgentToolCallEntity()
                 .setTraceId(context == null ? null : context.getTraceId())
                 .setSessionId(context == null ? null : context.getSessionId())
                 .setTaskId(context == null ? null : context.getTaskId())
-                .setToolName(definition.getName())
-                .setToolVersion(definition.getVersion())
-                .setStatus(result.getStatus())
-                .setErrorCode(result.getErrorCode())
+                .setToolName(toolName)
+                .setToolVersion("v1")
+                .setStatus(status)
+                .setErrorCode(errorCode)
                 .setParameterSummary(context == null ? null : limit("scope=" + context.getUserScope()
                         + ", sessionId=" + context.getSessionId() + ", taskId=" + context.getTaskId()))
-                .setResultSummary(limit(result.getWarnings()))
+                .setResultSummary(null)
                 .setStartedAt(startedAt)
                 .setFinishedAt(LocalDateTime.now()));
     }
@@ -58,4 +57,4 @@ public class AgentToolAuditService {
         return value.length() > 2000 ? value.substring(0, 2000) : value;
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

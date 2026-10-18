@@ -1,7 +1,7 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.tradingExecutor.service;
 
-import com.stock.strategyAgent.strategy.application.StrategyJobControl;
+import com.stock.strategyAgent.application.StrategyJobControl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -38,4 +38,4 @@ public class StrategyJobControlAdapter implements StrategyJobControl {
         jobManagementService.resume(jobName);
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

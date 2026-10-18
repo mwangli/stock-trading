@@ -37,6 +37,9 @@ interface PerformanceRankingItem {
   stockCode: string;
   stockName?: string;
   transactionAmount: number;
+  buyAmount: number;
+  sellAmount: number;
+  tradeQuantity: number;
   netProfit: number;
   returnRate: number;
   dailyReturnRate: number;
@@ -59,7 +62,8 @@ interface PerformanceDailyReturnItem {
   stockCode: string;
   stockName?: string;
   netProfit: number;
-  transactionAmount: number;
+  buyAmount: number;
+  sellAmount: number;
   returnRate: number;
 }
 
@@ -133,12 +137,12 @@ const Dashboard: React.FC = () => {
       });
     }
 
-    if (positionData) {
-      setPositions(positionData.items ?? []);
-    }
-
     if (performanceData) {
       setPerformance(performanceData);
+    }
+
+    if (positionData) {
+      setPositions(positionData.items ?? []);
     }
 
     setLoading(false);
@@ -161,19 +165,20 @@ const Dashboard: React.FC = () => {
   const rankingColumns = [
     { title: t('dashboard.columns.stockCode'), dataIndex: 'stockCode', key: 'stockCode', width: 110 },
     { title: t('dashboard.columns.stockName'), dataIndex: 'stockName', key: 'stockName', ellipsis: true },
-    { title: t('dashboard.columns.transactionAmount'), dataIndex: 'transactionAmount', key: 'transactionAmount', width: 125, render: money },
+    { title: t('dashboard.columns.buyAmount'), dataIndex: 'buyAmount', key: 'buyAmount', width: 120, render: money },
+    { title: t('dashboard.columns.sellAmount'), dataIndex: 'sellAmount', key: 'sellAmount', width: 120, render: money },
+    { title: t('dashboard.columns.tradeQuantity'), dataIndex: 'tradeQuantity', key: 'tradeQuantity', width: 110 },
     { title: t('dashboard.columns.netProfit'), dataIndex: 'netProfit', key: 'netProfit', width: 120, render: (value: number) => <Text type={profitColor(value)}>{money(value)}</Text> },
     { title: t('dashboard.columns.returnRate'), dataIndex: 'returnRate', key: 'returnRate', width: 110, render: (value: number) => <Text type={profitColor(value)}>{percent(value)}</Text> },
     { title: t('dashboard.columns.dailyReturnRate'), dataIndex: 'dailyReturnRate', key: 'dailyReturnRate', width: 110, render: (value: number) => <Text type={profitColor(value)}>{percent(value)}</Text> },
     { title: t('dashboard.columns.buyTime'), dataIndex: 'buyTime', key: 'buyTime', width: 170, render: formatDateTime },
-    { title: t('dashboard.columns.holdingDays'), dataIndex: 'holdingDays', key: 'holdingDays', width: 110, render: (value?: number) => value == null ? '-' : `${Number(value).toFixed(2)} ${t('dashboard.units.days')}` },
     { title: t('dashboard.columns.sellTime'), dataIndex: 'sellTime', key: 'sellTime', width: 170, render: formatDateTime },
+    { title: t('dashboard.columns.holdingDays'), dataIndex: 'holdingDays', key: 'holdingDays', width: 110, render: (value?: number) => value == null ? '-' : `${Number(value).toFixed(2)} ${t('dashboard.units.days')}` },
   ];
 
   const periodColumns = [
     { title: t('dashboard.columns.period'), dataIndex: 'period', key: 'period' },
     { title: t('dashboard.columns.netProfit'), dataIndex: 'netProfit', key: 'netProfit', render: (value: number) => <Text type={profitColor(value)}>{money(value)}</Text> },
-    { title: t('dashboard.columns.cumulativeNetProfit'), dataIndex: 'cumulativeProfit', key: 'cumulativeProfit', render: (value: number) => <Text type={profitColor(value)}>{money(value)}</Text> },
     { title: t('dashboard.columns.returnRate'), dataIndex: 'returnRate', key: 'returnRate', render: (value: number) => <Text type={profitColor(value)}>{percent(value)}</Text> },
     { title: t('dashboard.columns.tradeCount'), dataIndex: 'tradeCount', key: 'tradeCount' },
     { title: t('dashboard.columns.winningTradeCount'), dataIndex: 'winningTradeCount', key: 'winningTradeCount' },
@@ -182,9 +187,10 @@ const Dashboard: React.FC = () => {
   const dailyReturnColumns = [
     { title: t('dashboard.columns.period'), dataIndex: 'period', key: 'period' },
     { title: t('dashboard.columns.stock'), key: 'stock', render: (_value: unknown, item: PerformanceDailyReturnItem) => `${item.stockCode} ${item.stockName ?? ''}` },
+    { title: t('dashboard.columns.buyAmount'), dataIndex: 'buyAmount', key: 'buyAmount', render: money },
+    { title: t('dashboard.columns.sellAmount'), dataIndex: 'sellAmount', key: 'sellAmount', render: money },
     { title: t('dashboard.columns.netProfit'), dataIndex: 'netProfit', key: 'netProfit', render: (value: number) => <Text type={profitColor(value)}>{money(value)}</Text> },
     { title: t('dashboard.columns.returnRate'), dataIndex: 'returnRate', key: 'returnRate', render: (value: number) => <Text type={profitColor(value)}>{percent(value)}</Text> },
-    { title: t('dashboard.columns.transactionAmount'), dataIndex: 'transactionAmount', key: 'transactionAmount', render: money },
   ];
 
   usePageHeader(
@@ -223,6 +229,23 @@ const Dashboard: React.FC = () => {
         </div>
       </Card>
 
+      <Row className="dashboard-table-row" gutter={[16, 16]}>
+        <Col className="dashboard-table-col" xs={24} xl={12}>
+          <Card className="surface-card dashboard-table-card" title={t('dashboard.sections.daily')}>
+            <Table rowKey={(item) => `${item.period}-${item.stockCode}`} columns={dailyReturnColumns} dataSource={performance?.dailyReturns ?? []} loading={loading} pagination={{ pageSize: 10 }} locale={{ emptyText: <Empty description={t('dashboard.empty.daily')} /> }} />
+          </Card>
+        </Col>
+        <Col className="dashboard-table-col" xs={24} xl={12}>
+          <Card className="surface-card dashboard-table-card" title={t('dashboard.sections.monthly')}>
+            <Table rowKey="period" columns={periodColumns} dataSource={performance?.monthlyReturns ?? []} loading={loading} pagination={{ pageSize: 10 }} locale={{ emptyText: <Empty description={t('dashboard.empty.monthly')} /> }} />
+          </Card>
+        </Col>
+      </Row>
+
+      <Card className="surface-card dashboard-table-card" title={t('dashboard.sections.ranking')}>
+        <Table rowKey={(item) => `${item.stockCode}-${item.sellTime ?? item.buyTime}`} columns={rankingColumns} dataSource={performance?.ranking ?? []} loading={loading} scroll={{ x: 1450 }} pagination={{ pageSize: 10 }} locale={{ emptyText: <Empty description={t('dashboard.empty.ranking')} /> }} />
+      </Card>
+
       <Card className="surface-card" title={t('dashboard.sections.positions')}>
         <Table
           rowKey={(record) => record.stockCode}
@@ -230,25 +253,8 @@ const Dashboard: React.FC = () => {
           dataSource={positions}
           loading={loading}
           locale={{ emptyText: <Empty description={t('dashboard.empty.positions')} /> }}
-          pagination={false}
+          pagination={{ pageSize: 10 }}
         />
-      </Card>
-
-      <Row className="dashboard-table-row" gutter={[16, 16]}>
-        <Col className="dashboard-table-col" xs={24} xl={12}>
-          <Card className="surface-card dashboard-table-card" title={t('dashboard.sections.daily')}>
-            <Table rowKey={(item) => `${item.period}-${item.stockCode}`} columns={dailyReturnColumns} dataSource={performance?.dailyReturns ?? []} loading={loading} pagination={false} locale={{ emptyText: <Empty description={t('dashboard.empty.daily')} /> }} />
-          </Card>
-        </Col>
-        <Col className="dashboard-table-col" xs={24} xl={12}>
-          <Card className="surface-card dashboard-table-card" title={t('dashboard.sections.monthly')}>
-            <Table rowKey="period" columns={periodColumns} dataSource={performance?.monthlyReturns ?? []} loading={loading} pagination={false} locale={{ emptyText: <Empty description={t('dashboard.empty.monthly')} /> }} />
-          </Card>
-        </Col>
-      </Row>
-
-      <Card className="surface-card dashboard-table-card" title={t('dashboard.sections.ranking')}>
-        <Table rowKey={(item) => `${item.stockCode}-${item.sellTime ?? item.buyTime}`} columns={rankingColumns} dataSource={performance?.ranking ?? []} loading={loading} pagination={false} locale={{ emptyText: <Empty description={t('dashboard.empty.ranking')} /> }} />
       </Card>
 
     </div>

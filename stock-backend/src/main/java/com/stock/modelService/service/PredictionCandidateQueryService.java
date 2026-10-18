@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.modelService.service;
 
 import com.stock.modelService.domain.dto.PredictionCandidateBatchDto;
@@ -44,11 +44,6 @@ public class PredictionCandidateQueryService {
         if (batch == null) {
             throw new IllegalStateException("目标交易日没有可用预测批次: " + targetTradeDate);
         }
-        if (!"TRADE_ELIGIBLE".equals(batch.getTradingEligibility())) {
-            throw new IllegalStateException("预测批次未通过交易门禁: "
-                    + (batch.getTradingEligibilityReason() == null
-                    ? batch.getTradingEligibility() : batch.getTradingEligibilityReason()));
-        }
         List<ModelPredictionDocument> predictions = predictionRepository.findByBatchId(batch.getId());
         if (predictions.isEmpty() || predictions.size() != batch.getSuccessCount()) {
             throw new IllegalStateException("预测批次明细数量与成功数量不一致: batchId=" + batch.getId());
@@ -71,6 +66,22 @@ public class PredictionCandidateQueryService {
                 .tradingEligibilityReason(batch.getTradingEligibilityReason())
                 .items(items)
                 .build();
+    }
+
+    /**
+     * 校验预测批次是否允许进入真实交易写入链路。
+     *
+     * @param predictionBatchId 预测批次标识
+     * @throws IllegalStateException 批次不存在或未通过真实交易门禁时抛出
+     */
+    public void requireTradingEligible(String predictionBatchId) {
+        ModelPredictionBatchDocument batch = batchRepository.findById(predictionBatchId)
+                .orElseThrow(() -> new IllegalStateException("预测批次不存在: " + predictionBatchId));
+        if (!"TRADE_ELIGIBLE".equals(batch.getTradingEligibility())) {
+            throw new IllegalStateException("预测批次未通过交易门禁: "
+                    + (batch.getTradingEligibilityReason() == null
+                    ? batch.getTradingEligibility() : batch.getTradingEligibilityReason()));
+        }
     }
 
     private boolean hasValidPrediction(
@@ -128,4 +139,4 @@ public class PredictionCandidateQueryService {
         return BigDecimal.valueOf(predictedReturn).subtract(roundTripVariableCost).doubleValue();
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

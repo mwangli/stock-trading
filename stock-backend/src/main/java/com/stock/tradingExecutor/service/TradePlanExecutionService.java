@@ -1,6 +1,7 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ------
 package com.stock.tradingExecutor.service;
 
+import com.stock.modelService.service.PredictionCandidateQueryService;
 import com.stock.strategyAgent.config.AgentProperties;
 import com.stock.strategyAgent.domain.AgentEnums;
 import com.stock.strategyAgent.domain.entity.AgentTradePlanEntity;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
  * TradePlan 自动执行服务。
@@ -36,6 +38,8 @@ public class TradePlanExecutionService {
     private final TradingProperties tradingProperties;
     private final TradingCalendarService tradingCalendarService;
     private final TradeExecutor tradeExecutor;
+    private final PredictionCandidateQueryService predictionCandidateQueryService;
+    private final com.stock.strategyAgent.service.TradePlanStateMachine stateMachine;
 
     /**
      * 执行当前所有待复核交易计划。
@@ -70,18 +74,32 @@ public class TradePlanExecutionService {
         }
         LocalDateTime now = LocalDateTime.now();
         if (plan.getExpiresAt() == null || !plan.getExpiresAt().isAfter(now)) {
-            return saveDecision(plan, AgentEnums.TradePlanStatus.EXPIRED, "交易计划已过期");
+            return saveDecision(plan, AgentEnums.TradePlanStatus.EXPIRED, "PLAN_EXPIRED", "交易计划已过期", null);
+        }
+        String traceId = UUID.randomUUID().toString();
+        if (repository.claimForExecution(planId, AgentEnums.TradePlanStatus.PENDING_REVALIDATION,
+                AgentEnums.TradePlanStatus.EXECUTING, now, traceId) != 1) {
+            log.info("[交易执行] 计划未抢占成功，跳过重复执行: planId={}", planId);
+            return false;
+        }
+        plan = repository.findById(planId).orElse(null);
+        if (plan == null) {
+            return false;
         }
         if (!tradingProperties.isLiveWriteAllowed()) {
-            return saveDecision(plan, AgentEnums.TradePlanStatus.RISK_REJECTED,
-                    "TRADING_REAL_WRITE_ENABLED 未开启，禁止调用券商写接口");
+            return saveDecision(plan, AgentEnums.TradePlanStatus.RISK_REJECTED, "REAL_WRITE_DISABLED",
+                    "TRADING_REAL_WRITE_ENABLED 未开启，禁止调用券商写接口", null);
         }
         try {
             tradingCalendarService.requireTradingDay(LocalDate.now());
-            plan.setStatus(AgentEnums.TradePlanStatus.EXECUTING)
-                    .setUpdatedAt(now)
-                    .setDecisionMessage("已进入 tradingExecutor 当前事实复核和执行阶段");
-            repository.save(plan);
+            if (plan.getTargetTradeDate() != null && !LocalDate.now().equals(plan.getTargetTradeDate())) {
+                return saveDecision(plan, AgentEnums.TradePlanStatus.RISK_REJECTED,
+                        "TARGET_TRADE_DATE_MISMATCH", "目标交易日与当前执行日期不一致", null);
+            }
+            validatePlanFacts(plan);
+            if ("BUY".equalsIgnoreCase(plan.getDirection())) {
+                predictionCandidateQueryService.requireTradingEligible(plan.getPredictionBatchId());
+            }
 
             OrderResult result;
             if ("BUY".equalsIgnoreCase(plan.getDirection())) {
@@ -96,17 +114,52 @@ public class TradePlanExecutionService {
             AgentEnums.TradePlanStatus status = result != null && result.isSuccess()
                     ? AgentEnums.TradePlanStatus.EXECUTED : AgentEnums.TradePlanStatus.FAILED;
             String message = result == null ? "交易执行未返回结果" : result.getMessage();
-            return saveDecision(plan, status, message == null ? "交易执行完成" : message);
+            String code = status == AgentEnums.TradePlanStatus.EXECUTED ? null : "ORDER_EXECUTION_FAILED";
+            return saveDecision(plan, status, code, message == null ? "交易执行完成" : message, result);
         } catch (RuntimeException exception) {
             log.warn("[交易执行] TradePlan 执行失败: planId={}", planId, exception);
-            return saveDecision(plan, AgentEnums.TradePlanStatus.FAILED, exception.getMessage());
+            String code = exception.getMessage() == null ? "EXECUTION_EXCEPTION" : exception.getMessage();
+            AgentEnums.TradePlanStatus status = isRiskCode(code)
+                    ? AgentEnums.TradePlanStatus.RISK_REJECTED : AgentEnums.TradePlanStatus.FAILED;
+            return saveDecision(plan, status, code, code, null);
         }
     }
 
-    private boolean saveDecision(AgentTradePlanEntity plan, AgentEnums.TradePlanStatus status, String message) {
-        plan.setStatus(status).setDecisionMessage(message).setUpdatedAt(LocalDateTime.now());
+    private void validatePlanFacts(AgentTradePlanEntity plan) {
+        if ("BUY".equalsIgnoreCase(plan.getDirection())) {
+            if (plan.getPlannedAmount() == null || plan.getPlannedAmount().signum() <= 0) {
+                throw new IllegalStateException("INVALID_BUY_AMOUNT");
+            }
+            var account = tradeExecutor.getAccountStatus();
+            if (account == null) {
+                throw new IllegalStateException("ACCOUNT_FACT_UNAVAILABLE");
+            }
+            if (account.getAvailableCash() != null
+                    && account.getAvailableCash().compareTo(plan.getPlannedAmount()) < 0) {
+                throw new IllegalStateException("INSUFFICIENT_FUNDS");
+            }
+        } else if (plan.getPlannedQuantity() == null || plan.getPlannedQuantity() <= 0
+                || plan.getPlannedQuantity() % 100 != 0) {
+            throw new IllegalStateException("INVALID_SELL_QUANTITY");
+        }
+    }
+
+    private boolean isRiskCode(String code) {
+        return code.startsWith("INVALID_") || code.endsWith("_UNAVAILABLE")
+                || "INSUFFICIENT_FUNDS".equals(code) || "ACCOUNT_FACT_UNAVAILABLE".equals(code);
+    }
+
+    private boolean saveDecision(AgentTradePlanEntity plan, AgentEnums.TradePlanStatus status,
+                                 String riskCode, String message, OrderResult result) {
+        stateMachine.requireTransition(plan.getStatus(), status);
+        plan.setStatus(status)
+                .setRiskCode(riskCode)
+                .setOrderId(result == null ? null : result.getOrderId())
+                .setExecutedAt(status == AgentEnums.TradePlanStatus.EXECUTED ? LocalDateTime.now() : null)
+                .setDecisionMessage(message)
+                .setUpdatedAt(LocalDateTime.now());
         repository.save(plan);
         return true;
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END ------

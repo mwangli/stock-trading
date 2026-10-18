@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START -------
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -357,6 +357,7 @@ public class ModelPredictionAnalysisService {
             throw new IllegalStateException("预测批次没有可评估明细");
         }
 
+        LocalDate today = LocalDate.now(MARKET_ZONE);
         LocalDate latestMarketDate = priceRepository.findTopByOrderByDateDesc()
                 .map(StockPrice::getDate)
                 .orElse(null);
@@ -365,7 +366,13 @@ public class ModelPredictionAnalysisService {
                 .collect(Collectors.groupingBy(ModelPredictionDocument::getTargetTradeDate));
         LocalDateTime evaluatedAt = LocalDateTime.now();
         List<ModelPredictionDocument> changed = new ArrayList<>();
+        int missingMarketDataCount = 0;
         for (Map.Entry<LocalDate, List<ModelPredictionDocument>> entry : byTargetDate.entrySet()) {
+            if (entry.getKey().isAfter(today)) {
+                log.info("跳过尚未到达目标交易日的预测评估: batchId={}, targetTradeDate={}, today={}",
+                        batch.getId(), entry.getKey(), today);
+                continue;
+            }
             List<String> codes = entry.getValue().stream().map(ModelPredictionDocument::getStockCode).toList();
             Map<String, StockPrice> actualPrices = priceRepository.findByCodeInAndDate(codes, entry.getKey()).stream()
                     .collect(Collectors.toMap(StockPrice::getCode, Function.identity(), (left, right) -> left));
@@ -387,10 +394,8 @@ public class ModelPredictionAnalysisService {
                     prediction.setEvaluationStatus("EVALUATED");
                     prediction.setEvaluatedAt(evaluatedAt);
                     changed.add(prediction);
-                } else if (latestMarketDate != null && !latestMarketDate.isBefore(entry.getKey())) {
-                    prediction.setEvaluationStatus("NO_MARKET_DATA");
-                    prediction.setEvaluatedAt(evaluatedAt);
-                    changed.add(prediction);
+                } else {
+                    missingMarketDataCount++;
                 }
             }
         }
@@ -399,9 +404,15 @@ public class ModelPredictionAnalysisService {
         }
         refreshAbility(batch, predictionRepository.findByBatchId(batch.getId()));
         ModelPredictionBatchDocument refreshed = batchRepository.findById(batch.getId()).orElseThrow();
-        log.info("预测实际结果刷新完成: batchId={}, evaluated={}, noMarketData={}, ability={}",
-                refreshed.getId(), refreshed.getEvaluatedCount(), refreshed.getNoMarketDataCount(),
-                refreshed.getAbilityLevel());
+        log.info("预测实际结果刷新完成: batchId={}, targetTradeDate={}, today={}, latestMarketDate={}, "
+                        + "evaluated={}, pendingMarketData={}, noMarketData={}, ability={}",
+                refreshed.getId(), batch.getTargetTradeDate(), today, latestMarketDate,
+                refreshed.getEvaluatedCount(), missingMarketDataCount,
+                refreshed.getNoMarketDataCount(), refreshed.getAbilityLevel());
+        if (missingMarketDataCount > 0) {
+            log.warn("预测批次仍有明细等待目标日行情: batchId={}, missingMarketData={}, latestMarketDate={}",
+                    refreshed.getId(), missingMarketDataCount, latestMarketDate);
+        }
         return refreshed;
     }
 
@@ -587,7 +598,7 @@ public class ModelPredictionAnalysisService {
             batch.setCalibrationSampleCount(0);
             batch.setAbilityLevel("INSUFFICIENT_DATA");
             batch.setIterationRecommended(false);
-            batch.setAbilityMessage("目标交易日行情尚未形成，需继续等待实际结果");
+            batch.setAbilityMessage("目标交易日行情尚未完整形成，需继续等待实际结果");
             batch.setTradingEligibility("DISABLED");
             batch.setTradingEligibilityReason("尚无可评估的样本，禁止进入买入流程");
             batch.setUpdatedAt(LocalDateTime.now());
@@ -1034,4 +1045,4 @@ public class ModelPredictionAnalysisService {
     private record TradeDateResolution(LocalDate tradeDate, boolean calendarFallback) {
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -44,7 +44,7 @@ public class AgentController {
      * @return 会话响应
      */
     @PostMapping("/sessions")
-    public ResponseDTO<AgentDtos.SessionResponse> createSession(@RequestBody AgentDtos.CreateSessionRequest request) {
+    public ResponseDTO<SessionResponse> createSession(@RequestBody CreateSessionRequest request) {
         log.info("[Agent] 创建会话: userScope={}", request == null ? null : request.getUserScope());
         return ResponseDTO.success(applicationService.createSession(request));
     }
@@ -56,7 +56,7 @@ public class AgentController {
      * @return 会话响应
      */
     @GetMapping("/sessions/{sessionId}")
-    public ResponseDTO<AgentDtos.SessionResponse> getSession(@PathVariable String sessionId) {
+    public ResponseDTO<SessionResponse> getSession(@PathVariable String sessionId) {
         log.info("[Agent] 查询会话: sessionId={}", sessionId);
         return ResponseDTO.success(applicationService.getSession(sessionId));
     }
@@ -68,7 +68,7 @@ public class AgentController {
      * @return 任务响应
      */
     @PostMapping("/tasks/research")
-    public ResponseDTO<AgentDtos.TaskResponse> research(@RequestBody AgentDtos.ResearchRequest request) {
+    public ResponseDTO<TaskResponse> research(@RequestBody ResearchRequest request) {
         log.info("[Agent] 执行 Research 任务");
         return ResponseDTO.success(applicationService.research(request));
     }
@@ -80,7 +80,7 @@ public class AgentController {
      * @return 任务响应
      */
     @PostMapping("/tasks/diagnose")
-    public ResponseDTO<AgentDtos.TaskResponse> diagnose(@RequestBody AgentDtos.DiagnosticRequest request) {
+    public ResponseDTO<TaskResponse> diagnose(@RequestBody DiagnosticRequest request) {
         log.info("[Agent] 执行运行诊断: jobName={}", request == null ? null : request.getJobName());
         return ResponseDTO.success(applicationService.diagnose(request));
     }
@@ -92,7 +92,7 @@ public class AgentController {
      * @return 待重新复核的交易计划
      */
     @PostMapping("/tasks/tradePlan")
-    public ResponseDTO<TradePlanDto.Response> tradePlan(@RequestBody AgentDtos.TradePlanDraftRequest request) {
+    public ResponseDTO<TradePlanDto.Response> tradePlan(@RequestBody TradePlanDraftRequest request) {
         log.info("[Agent] 生成交易计划草案: candidateBatchId={}",
                 request == null ? null : request.getCandidateBatchId());
         return ResponseDTO.success(tradePlanAgentService.generate(request));
@@ -105,7 +105,7 @@ public class AgentController {
      * @return 任务响应
      */
     @PostMapping("/reports/daily")
-    public ResponseDTO<AgentDtos.TaskResponse> dailyReport(@RequestBody AgentDtos.ReportRequest request) {
+    public ResponseDTO<TaskResponse> dailyReport(@RequestBody ReportRequest request) {
         log.info("[Agent] 生成每日投研报告");
         return ResponseDTO.success(applicationService.dailyReport(request));
     }
@@ -117,7 +117,7 @@ public class AgentController {
      * @return 任务响应
      */
     @GetMapping("/tasks/{taskId}")
-    public ResponseDTO<AgentDtos.TaskResponse> getTask(@PathVariable String taskId) {
+    public ResponseDTO<TaskResponse> getTask(@PathVariable String taskId) {
         log.info("[Agent] 查询任务: taskId={}", taskId);
         return ResponseDTO.success(applicationService.getTask(taskId));
     }
@@ -129,7 +129,7 @@ public class AgentController {
      * @return 任务响应
      */
     @GetMapping("/tasks/{taskId}/evidence")
-    public ResponseDTO<AgentDtos.TaskResponse> getEvidence(@PathVariable String taskId) {
+    public ResponseDTO<TaskResponse> getEvidence(@PathVariable String taskId) {
         log.info("[Agent] 查询任务证据: taskId={}", taskId);
         return ResponseDTO.success(applicationService.getTask(taskId));
     }
@@ -153,7 +153,7 @@ public class AgentController {
      * @return 运行状态
      */
     @GetMapping("/runtime/status")
-    public ResponseDTO<AgentDtos.RuntimeStatus> runtimeStatus() {
+    public ResponseDTO<RuntimeStatus> runtimeStatus() {
         log.info("[Agent] 查询运行状态");
         return ResponseDTO.success(applicationService.runtimeStatus());
     }
@@ -165,7 +165,7 @@ public class AgentController {
      * @return Memory 响应
      */
     @PostMapping("/memories")
-    public ResponseDTO<AgentDtos.MemoryResponse> createMemory(@RequestBody AgentDtos.CreateMemoryRequest request) {
+    public ResponseDTO<MemoryResponse> createMemory(@RequestBody CreateMemoryRequest request) {
         log.info("[Agent] 创建 Memory: userScope={}", request == null ? null : request.getUserScope());
         return ResponseDTO.success(memoryService.create(request));
     }
@@ -177,7 +177,7 @@ public class AgentController {
      * @return Memory 列表
      */
     @GetMapping("/memories")
-    public ResponseDTO<List<AgentDtos.MemoryResponse>> listMemories(String userScope) {
+    public ResponseDTO<List<MemoryResponse>> listMemories(String userScope) {
         log.info("[Agent] 查询 Memory: userScope={}", userScope);
         return ResponseDTO.success(memoryService.list(userScope));
     }
@@ -203,8 +203,8 @@ public class AgentController {
      * @return 修正结果
      */
     @PostMapping("/memories/{memoryId}/correct")
-    public ResponseDTO<AgentDtos.MemoryResponse> correctMemory(@PathVariable String memoryId,
-                                                                @RequestBody AgentDtos.CorrectMemoryRequest request) {
+    public ResponseDTO<MemoryResponse> correctMemory(@PathVariable String memoryId,
+                                                                @RequestBody CorrectMemoryRequest request) {
         log.info("[Agent] 修正 Memory: memoryId={}", memoryId);
         return ResponseDTO.success(memoryService.correct(memoryId, request));
     }
@@ -216,7 +216,7 @@ public class AgentController {
      * @return 写入 Chunk 数量
      */
     @PostMapping("/rag/documents")
-    public ResponseDTO<Integer> ingestRag(@RequestBody AgentDtos.RagIngestRequest request) {
+    public ResponseDTO<Integer> ingestRag(@RequestBody RagIngestRequest request) {
         log.info("[Agent] 写入 RAG 文档: sourceId={}", request == null ? null : request.getSourceId());
         return ResponseDTO.success(ragService.ingest(request));
     }
@@ -228,7 +228,7 @@ public class AgentController {
      * @return RAG 结果
      */
     @PostMapping("/rag/search")
-    public ResponseDTO<List<AgentDtos.RagResult>> searchRag(@RequestBody AgentDtos.RagSearchRequest request) {
+    public ResponseDTO<List<RagResult>> searchRag(@RequestBody RagSearchRequest request) {
         log.info("[Agent] 检索 RAG 文档");
         return ResponseDTO.success(ragService.search(request));
     }

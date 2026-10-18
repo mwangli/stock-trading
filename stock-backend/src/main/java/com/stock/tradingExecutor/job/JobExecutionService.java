@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START --------
 package com.stock.tradingExecutor.job;
 
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
@@ -67,6 +67,10 @@ public class JobExecutionService {
         if (!Integer.valueOf(1).equals(jobConfig.getStatus())) {
             throw new IllegalStateException("任务当前未启用: " + jobName);
         }
+        if (!jobSchedulerService.getRuntimeState(jobName).registered()) {
+            throw new IllegalStateException("任务尚未注册到 Quartz: " + jobName);
+        }
+
         if (executionRecordRepository.existsByJobNameAndStatusIn(jobName, ACTIVE_STATUSES)) {
             throw new IllegalStateException("任务已有排队或运行中的执行: " + jobName);
         }
@@ -397,4 +401,4 @@ public class JobExecutionService {
     }
 
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END --------

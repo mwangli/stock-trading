@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START -- -->
+<!-- AI_GENERATE_START --- -->
 # AGENT 二期 LangChain4j 设计
 
 ## 1. 设计原则
@@ -381,8 +381,15 @@ agent:
   memory-enabled: ${AGENT_MEMORY_ENABLED:true}
   trade-plan-enabled: ${AGENT_TRADE_PLAN_ENABLED:false}
   vector-store: ${AGENT_VECTOR_STORE:mongodb}
-  embedding-model: ${AGENT_EMBEDDING_MODEL:}
-  embedding-model-version: ${AGENT_EMBEDDING_MODEL_VERSION:}
+  embedding:
+    enabled: ${AGENT_EMBEDDING_ENABLED:false}
+    provider: ${AGENT_EMBEDDING_PROVIDER:disabled}
+    base-url: ${AGENT_EMBEDDING_BASE_URL:http://localhost:11434}
+    api-key: ${AGENT_EMBEDDING_API_KEY:ollama}
+    model: ${AGENT_EMBEDDING_MODEL:nomic-embed-text}
+    model-version: ${AGENT_EMBEDDING_MODEL_VERSION:nomic-embed-text-v1}
+    dimension: ${AGENT_EMBEDDING_DIMENSION:768}
+    allow-hash-fallback: ${AGENT_EMBEDDING_ALLOW_HASH_FALLBACK:false}
 ```
 
 配置变更必须继续通过现有运行配置管理和日志审计机制完成，不由模型修改。
@@ -471,4 +478,4 @@ CREATED -> RUNNING -> COMPLETED
 - 交易计划继续只允许生成 `TradePlanDraft`，实际交易由 `tradingExecutor` 重新取数并执行风险门禁。
 
 本阶段完成后，删除旧的直接自由文本编排路径，避免同一任务存在两套结果入口。
-<!-- AI_GENERATE_END -- -->
+<!-- AI_GENERATE_END --- -->

@@ -116,7 +116,7 @@
     "systemOnline": "系统在线",
     "systemOffline": "系统离线",
     "systemChecking": "检测中",
-    "algoTrading": "AI股票交易系统",
+    "algoTrading": "AI-AGENT智能股票自动交易系统",
     "subtitle": "下一代金融建模与自动执行策略。由 LSTM 神经网络与实时情感分析驱动。",
     "stats": {
       "uptime": "运行时间",
@@ -132,17 +132,19 @@
       "forgotPassword": "忘记密码？",
       "systemStatus": "系统状态: 正常"
     },
-    "footer": "AI 股票交易系统 ©2024"
+    "footer": "AI-AGENT智能股票自动交易系统 ©2024"
   },
   "dashboard": {
     "subtitle": "账户资产、已实现收益和交易统计报表",
     "lastSync": "最近同步",
     "cards": { "totalAssets": "总资产", "availableCash": "可用资金", "positionValue": "持仓市值", "frozenCash": "冻结资金", "realizedTotal": "累计已实现收益", "realizedToday": "今日已实现收益", "realizedMonth": "本月已实现收益", "realizedRate": "累计收益率", "dailyRate": "日收益率", "monthlyRate": "月收益率" },
-    "sections": { "returnStats": "收益率统计", "completedTrades": "已完成交易", "winRate": "胜率", "averageReturn": "平均收益率", "profitLoss": "盈利 / 亏损", "ranking": "收益率排行", "daily": "日收益率", "monthly": "月收益率", "positions": "当前持仓", "best": "最高收益率", "worst": "最低收益率", "basis": "收益指标基于已实现 FIFO 交易记录计算" },
-    "columns": { "stockCode": "股票代码", "stockName": "股票名称", "totalQuantity": "持仓数量", "availableQuantity": "可卖数量", "averageCost": "成本价", "currentPrice": "现价", "marketValue": "市值", "stock": "股票", "netProfit": "净收益", "cumulativeNetProfit": "累计净收益", "returnRate": "收益率", "dailyReturnRate": "日收益率", "buyTime": "买入时间", "holdingDays": "持仓天数", "sellTime": "卖出时间", "period": "周期", "transactionAmount": "交易金额", "tradeCount": "交易笔数", "winningTradeCount": "盈利笔数" },
+    "sections": { "returnStats": "收益率统计", "returnDetails": "收益明细", "completedTrades": "已完成交易", "winRate": "胜率", "averageReturn": "平均收益率", "profitLoss": "盈利 / 亏损", "ranking": "收益率排行", "daily": "日收益率", "monthly": "月收益率", "positions": "当前持仓", "best": "最高收益率", "worst": "最低收益率", "basis": "收益指标基于已实现 FIFO 交易记录计算" },
+    "returnTypes": { "daily": "日收益", "monthly": "月收益", "ranking": "收益排行" },
+    "columns": { "type": "类型", "stockCode": "股票代码", "stockName": "股票名称", "totalQuantity": "持仓数量", "availableQuantity": "可卖数量", "averageCost": "成本价", "currentPrice": "现价", "marketValue": "市值", "stock": "股票", "netProfit": "净收益", "cumulativeNetProfit": "累计净收益", "returnRate": "收益率", "dailyReturnRate": "日收益率", "buyTime": "买入时间", "holdingDays": "持仓天数", "sellTime": "卖出时间", "period": "周期", "transactionAmount": "交易金额", "buyAmount": "买入金额", "sellAmount": "卖出金额", "tradeQuantity": "交易数量", "tradeCount": "交易笔数", "winningTradeCount": "盈利笔数" },
     "units": { "days": "天" },
     "status": { "completed": "已完成", "partial": "部分卖出" },
-    "empty": { "ranking": "暂无已实现交易收益排行", "daily": "暂无日收益数据", "monthly": "暂无月收益数据", "positions": "暂无真实持仓数据" },
+    "empty": { "ranking": "暂无已实现交易收益排行", "daily": "暂无日收益数据", "monthly": "暂无月收益数据", "positions": "暂无真实持仓数据", "returns": "暂无收益明细" },
+    "pagination": { "total": "共" },
     "stats": {
       "totalBalance": "总资产",
       "activePositions": "当前持仓",

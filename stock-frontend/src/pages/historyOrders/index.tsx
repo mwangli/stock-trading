@@ -1,10 +1,12 @@
-// AI_GENERATE_START ---------------
+// AI_GENERATE_START ----------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Card, Empty, Input, Pagination, Select, Space, Table, Tag } from 'antd';
+import dayjs from 'dayjs';
+import { Button, Card, DatePicker, Empty, Input, Pagination, Select, Space, Table, Tag } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
 import type { ApiResponse } from '../../utils/api';
 import { formatDateTime } from '../../utils/dateTime';
+import { localizedText } from '../../utils/localizedText';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
 import { useTranslation } from 'react-i18next';
 
@@ -47,6 +49,8 @@ const formatLocalDate = (date: Date) => {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+
+const DATE_FORMAT = 'YYYY-MM-DD';
 
 const buildDefaultFilters = (): OrderFilters => {
   const endDate = new Date();
@@ -162,8 +166,27 @@ const HistoryOrders: React.FC = () => {
               { value: 'SELL', label: t('historyOrders.sell') },
             ]}
           />
-          <Input type="date" value={draftFilters.startDate} onChange={(event) => setDraftFilters((current) => ({ ...current, startDate: event.target.value }))} />
-          <Input type="date" value={draftFilters.endDate} onChange={(event) => setDraftFilters((current) => ({ ...current, endDate: event.target.value }))} />
+          <DatePicker.RangePicker
+            className="history-date-range"
+            value={[
+              draftFilters.startDate ? dayjs(draftFilters.startDate) : null,
+              draftFilters.endDate ? dayjs(draftFilters.endDate) : null,
+            ]}
+            format={DATE_FORMAT}
+            allowClear
+            allowEmpty={[true, true]}
+            placeholder={[localizedText('开始日期', 'Start date'), localizedText('结束日期', 'End date')]}
+            presets={[
+              { label: localizedText('最近 7 天', 'Last 7 days'), value: [dayjs().subtract(6, 'day'), dayjs()] },
+              { label: localizedText('最近 30 天', 'Last 30 days'), value: [dayjs().subtract(29, 'day'), dayjs()] },
+              { label: localizedText('今年以来', 'Year to date'), value: [dayjs().startOf('year'), dayjs()] },
+            ]}
+            onChange={(dates) => setDraftFilters((current) => ({
+              ...current,
+              startDate: dates?.[0]?.format(DATE_FORMAT) ?? '',
+              endDate: dates?.[1]?.format(DATE_FORMAT) ?? '',
+            }))}
+          />
           <Button icon={<SearchOutlined />} onClick={applyFilters}>{t('common.search')}</Button>
         </Space>
         <Table
@@ -196,4 +219,4 @@ const HistoryOrders: React.FC = () => {
 };
 
 export default HistoryOrders;
-// AI_GENERATE_END ---------------
+// AI_GENERATE_END ----------------

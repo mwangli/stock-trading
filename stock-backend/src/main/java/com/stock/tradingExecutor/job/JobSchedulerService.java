@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START -------------
 package com.stock.tradingExecutor.job;
 
 import lombok.RequiredArgsConstructor;
@@ -309,7 +309,7 @@ public class JobSchedulerService {
         try {
             JobKey jobKey = jobKey(jobName);
             TriggerKey triggerKey = triggerKey(jobName);
-            if (!quartzScheduler.checkExists(jobKey)) {
+            if (!quartzScheduler.checkExists(jobKey) || !quartzScheduler.checkExists(triggerKey)) {
                 return new QuartzRuntimeState("NOT_REGISTERED", null, false);
             }
             Trigger.TriggerState state = quartzScheduler.getTriggerState(triggerKey);
@@ -341,11 +341,15 @@ public class JobSchedulerService {
                     .collect(Collectors.toSet());
             Map<String, QuartzRuntimeState> states = new HashMap<>();
             for (String jobName : jobNames) {
-                if (!registeredJobs.contains(jobName)) {
+                JobKey jobKey = jobKey(jobName);
+                TriggerKey triggerKey = triggerKey(jobName);
+                if (!registeredJobs.contains(jobName)
+                        || !quartzScheduler.checkExists(triggerKey)
+                        || !quartzScheduler.checkExists(jobKey)) {
                     states.put(jobName, new QuartzRuntimeState("NOT_REGISTERED", null, false));
                     continue;
                 }
-                Trigger.TriggerState state = quartzScheduler.getTriggerState(triggerKey(jobName));
+                Trigger.TriggerState state = quartzScheduler.getTriggerState(triggerKey);
                 states.put(jobName, new QuartzRuntimeState(state.name(), null, true));
             }
             return states;
@@ -372,4 +376,4 @@ public class JobSchedulerService {
     public record QuartzRuntimeState(String triggerState, LocalDateTime nextFireTime, boolean registered) {
     }
 }
-// AI_GENERATE_END ------------
+// AI_GENERATE_END -------------
