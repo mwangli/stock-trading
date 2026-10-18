@@ -1,5 +1,5 @@
-// AI_GENERATE_START -
-package com.stock.tradingExecutor.job;
+// AI_GENERATE_START- -
+package com.stock.tradingExecutor;
 
 import com.stock.tradingExecutor.service.PerformanceReportService;
 import lombok.RequiredArgsConstructor;
@@ -27,4 +27,4 @@ public class PerformanceReportJob {
         log.info("[PerformanceReportJob] 每日收益统计快照刷新完成");
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END- -

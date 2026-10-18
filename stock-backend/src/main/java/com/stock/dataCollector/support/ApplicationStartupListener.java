@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START- ---
 package com.stock.dataCollector.support;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -6,7 +6,7 @@ import com.stock.dataCollector.domain.entity.StockPrice;
 import com.stock.dataCollector.persistence.PriceRepository;
 import com.stock.dataCollector.persistence.StockInfoRepository;
 import com.stock.dataCollector.service.StockDataService;
-import com.stock.tradingExecutor.runtime.service.SystemRuntimeConfigService;
+import com.stock.tradingExecutor.service.SystemRuntimeConfigService;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

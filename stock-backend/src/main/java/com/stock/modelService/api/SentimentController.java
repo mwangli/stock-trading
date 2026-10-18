@@ -8,8 +8,11 @@ import com.stock.modelService.domain.dto.SentimentHealthDto;
 import com.stock.modelService.domain.dto.SentimentEvaluationDto;
 import com.stock.modelService.domain.vo.SentimentArtifactInspection;
 import com.stock.modelService.domain.vo.SentimentArtifactManifest;
+import com.stock.modelService.domain.vo.SentimentAnalysisResult;
 import com.stock.modelService.service.SentimentInferenceService;
 import com.stock.modelService.service.SentimentEvaluationService;
+import com.stock.modelService.service.SentimentAggregationService;
+import com.stock.modelService.domain.vo.SentimentAggregateResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,8 +21,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * 情感模型推理接口。
@@ -36,6 +37,7 @@ public class SentimentController {
 
     private final SentimentInferenceService inferenceService;
     private final SentimentEvaluationService evaluationService;
+    private final SentimentAggregationService aggregationService;
 
     /**
      * 分析单条新闻或公告文本。
@@ -51,7 +53,10 @@ public class SentimentController {
             return ResponseDTO.error("文本不能为空");
         }
         try {
-            return ResponseDTO.success(toDto(inferenceService.analyzeSentimentRequiredWithDetails(text)));
+            SentimentAnalysisResult modelResult = inferenceService.analyzeSentimentRequired(text);
+            SentimentAnalyzeResultDto result = toDto(modelResult);
+            SentimentAggregateResult businessAssessment = aggregationService.assessText(text, "新闻", modelResult);
+            return ResponseDTO.success(enrichBusinessAssessment(result, businessAssessment));
         } catch (RuntimeException exception) {
             log.error("情感模型推理失败", exception);
             return ResponseDTO.error("情感模型推理失败：" + exception.getMessage());
@@ -106,33 +111,29 @@ public class SentimentController {
         return ResponseDTO.success(evaluationService.getLatest());
     }
 
-    private SentimentAnalyzeResultDto toDto(Map<String, Object> result) {
+    private SentimentAnalyzeResultDto toDto(SentimentAnalysisResult result) {
         return SentimentAnalyzeResultDto.builder()
                 .success(true)
-                .label((String) result.get("label"))
-                .score(toDouble(result.get("score")))
-                .normalizedScore(toDouble(result.get("normalizedScore")))
-                .confidence(toDouble(result.get("confidence")))
-                .probabilities(toProbabilities(result.get("probabilities")))
-                .text((String) result.getOrDefault("text", ""))
-                .modelLoaded((Boolean) result.getOrDefault("modelLoaded", Boolean.FALSE))
+                .label(result.getLabel())
+                .score(result.getScore())
+                .normalizedScore(result.getNormalizedScore())
+                .confidence(result.getConfidence())
+                .probabilities(result.getProbabilities() == null ? java.util.Map.of() : result.getProbabilities())
+                .text(result.getText() == null ? "" : result.getText())
+                .modelLoaded(true)
                 .build();
     }
 
-    private Double toDouble(Object value) {
-        return value instanceof Number number ? number.doubleValue() : null;
-    }
-
-    private Map<String, Double> toProbabilities(Object value) {
-        if (!(value instanceof Map<?, ?> source)) {
-            return Map.of();
-        }
-        Map<String, Double> result = new HashMap<>();
-        source.forEach((key, probability) -> {
-            if (key != null && probability instanceof Number number) {
-                result.put(key.toString(), number.doubleValue());
-            }
-        });
+    private SentimentAnalyzeResultDto enrichBusinessAssessment(SentimentAnalyzeResultDto result,
+                                                               SentimentAggregateResult assessment) {
+        result.setEventType(assessment.getDominantEventType());
+        result.setImpactDirection(assessment.getImpactDirection());
+        result.setImpactMagnitude(assessment.getImpactMagnitude());
+        result.setNewsImpactScore(assessment.getNewsImpactScore());
+        result.setEffectiveHorizonHours(assessment.getEffectiveHorizonHours());
+        result.setActionable(assessment.isActionable());
+        result.setStrategyAction(assessment.getStrategyAction());
+        result.setStrongNegative(assessment.isStrongNegative());
         return result;
     }
 }

@@ -59,6 +59,14 @@ public interface ModelPredictionBatchRepository extends MongoRepository<ModelPre
     ModelPredictionBatchDocument findTopByOrderByCreatedAtDesc();
 
     /**
+     * 查询指定来源批次最近生成的历史重算批次。
+     *
+     * @param rerunSourceBatchId 原始预测批次 ID
+     * @return 历史重算批次，不存在时返回 null
+     */
+    ModelPredictionBatchDocument findFirstByRerunSourceBatchIdOrderByCreatedAtDesc(String rerunSourceBatchId);
+
+    /**
      * 查询同一模型和基准交易日最近批次，用于幂等控制。
      *
      * @param modelId 模型文档 ID

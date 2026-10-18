@@ -1,5 +1,5 @@
-// AI_GENERATE_START -
-package com.stock.tradingExecutor.job;
+// AI_GENERATE_START- -
+package com.stock.tradingExecutor;
 
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

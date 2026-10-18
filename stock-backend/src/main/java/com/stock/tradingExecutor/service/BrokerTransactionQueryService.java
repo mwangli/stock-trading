@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START -------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.BrokerOrderDto;
@@ -65,7 +65,7 @@ public class BrokerTransactionQueryService {
     }
 
     /**
-     * 分页查询当前账户由历史订单汇总得到的交易记录。
+     * 分页查询当前账户由历史订单汇总得到的交易记录，仅支持按股票代码或名称筛选。
      *
      * @param request 查询条件
      * @return 交易记录分页结果
@@ -120,9 +120,7 @@ public class BrokerTransactionQueryService {
                 String pattern = likePattern(request.getKeyword());
                 predicates.add(criteriaBuilder.or(
                         criteriaBuilder.like(criteriaBuilder.lower(root.get("stockCode")), pattern),
-                        criteriaBuilder.like(criteriaBuilder.lower(root.get("stockName")), pattern),
-                        criteriaBuilder.like(criteriaBuilder.lower(root.get("buyOrderNo")), pattern),
-                        criteriaBuilder.like(criteriaBuilder.lower(root.get("sellOrderNos")), pattern)));
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("stockName")), pattern)));
             }
             if (request.getStartDate() != null) {
                 LocalDateTime startTime = request.getStartDate().atStartOfDay();
@@ -232,4 +230,4 @@ public class BrokerTransactionQueryService {
     private record QueryContext(int current, int pageSize) {
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------

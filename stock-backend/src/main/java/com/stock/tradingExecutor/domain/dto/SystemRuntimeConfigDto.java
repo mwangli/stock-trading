@@ -1,5 +1,5 @@
-// AI_GENERATE_START ---
-package com.stock.tradingExecutor.runtime.domain.dto;
+// AI_GENERATE_START- ---
+package com.stock.tradingExecutor.domain.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

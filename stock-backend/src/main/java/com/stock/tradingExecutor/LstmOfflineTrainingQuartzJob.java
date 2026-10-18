@@ -1,5 +1,5 @@
-// AI_GENERATE_START --
-package com.stock.tradingExecutor.job;
+// AI_GENERATE_START- --
+package com.stock.tradingExecutor;
 
 import com.stock.modelService.job.OfflineLstmTrainingJob;
 import org.quartz.DisallowConcurrentExecution;

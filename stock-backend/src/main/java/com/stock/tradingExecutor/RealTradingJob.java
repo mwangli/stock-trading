@@ -1,5 +1,5 @@
-// AI_GENERATE_START --
-package com.stock.tradingExecutor.job;
+// AI_GENERATE_START- --
+package com.stock.tradingExecutor;
 
 import com.stock.tradingExecutor.domain.dto.TradeExecutionBatchResponseDto;
 import com.stock.tradingExecutor.service.RealTradingService;

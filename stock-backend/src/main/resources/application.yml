@@ -101,7 +101,7 @@ agent:
     enabled: ${OLLAMA_ENABLED:false}
     base-url: http://localhost:11434
     api-key: ${OLLAMA_API_KEY:ollama}
-    model: deepseek-r1:7b
+    model: qwen2.5:0.5b
     think: ${OLLAMA_THINK:false}
     max-tokens: ${OLLAMA_MAX_TOKENS:256}
   max-steps: 6

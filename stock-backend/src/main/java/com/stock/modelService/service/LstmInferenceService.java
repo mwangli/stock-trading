@@ -1,10 +1,11 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.modelService.service;
 
 import com.stock.modelService.domain.dto.LstmPredictionResultDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -54,6 +55,19 @@ public class LstmInferenceService {
     }
 
     /**
+     * 使用指定历史基准日和模型版本批量预测股票下一交易日结果。
+     *
+     * @param stockCodes 股票代码集合
+     * @param modelVersionId 固定使用的模型文档 ID
+     * @param baseTradeDate 历史预测基准交易日
+     * @return 股票代码到预测结果的映射
+     */
+    public Map<String, LstmPredictionResultDto> predictNextBatch(
+            List<String> stockCodes, String modelVersionId, LocalDate baseTradeDate) {
+        return lstmTrainerService.predictNextBatch(stockCodes, modelVersionId, baseTradeDate);
+    }
+
+    /**
      * 判断是否存在可校验、可加载的激活模型。
      *
      * @return true 表示模型可用于推理
@@ -62,4 +76,4 @@ public class LstmInferenceService {
         return lstmTrainerService.hasSharedModel();
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

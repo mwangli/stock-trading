@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------------
+// AI_GENERATE_START --------------------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
@@ -529,27 +529,17 @@ const JobManagement: React.FC = () => {
 
   return (
     <div className="app-page">
-      <div className="metric-strip jobs-summary" aria-label={localizedText('任务概览', 'Job overview')}>
-        <div className="metric-strip-item">
-          <div className="metric-label">{localizedText('任务总数', 'Total Jobs')}</div>
-          <div className="metric-value">{jobSummary.total}</div>
-        </div>
-        <div className="metric-strip-item">
-          <div className="metric-label">{localizedText('可用任务', 'Available Jobs')}</div>
-          <div className="metric-value jobs-summary-success">{jobSummary.enabled}</div>
-        </div>
-        <div className="metric-strip-item">
-          <div className="metric-label">{localizedText('正在运行', 'Active Runs')}</div>
-          <div className="metric-value jobs-summary-running">{jobSummary.running}</div>
-        </div>
-        <div className="metric-strip-item">
-          <div className="metric-label">{localizedText('需关注', 'Needs Attention')}</div>
-          <div className="metric-value jobs-summary-attention">{jobSummary.attention}</div>
-        </div>
-      </div>
       <Card
         className="surface-card"
         title={<Space><ControlOutlined />{t('jobsPage.status')}</Space>}
+        extra={(
+          <div className="jobs-summary-inline" aria-label={localizedText('任务概览', 'Job overview')}>
+            <span><small>{localizedText('任务总数', 'Total')}</small><strong>{jobSummary.total}</strong></span>
+            <span className="jobs-summary-success"><small>{localizedText('可用任务', 'Available')}</small><strong>{jobSummary.enabled}</strong></span>
+            <span className="jobs-summary-running"><small>{localizedText('正在运行', 'Running')}</small><strong>{jobSummary.running}</strong></span>
+            <span className="jobs-summary-attention"><small>{localizedText('需关注', 'Attention')}</small><strong>{jobSummary.attention}</strong></span>
+          </div>
+        )}
       >
         <Space wrap className="job-filters">
           <Select<JobDomain>
@@ -661,4 +651,4 @@ const JobManagement: React.FC = () => {
 };
 
 export default JobManagement;
-// AI_GENERATE_END -------------------
+// AI_GENERATE_END --------------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.tradingExecutor.domain.dto;
 
 import lombok.Data;
@@ -14,7 +14,7 @@ import java.time.LocalDate;
 @Data
 public class BrokerTransactionQueryRequest {
 
-    /** 股票代码、股票名称、买入委托编号或卖出委托编号关键字。 */
+    /** 股票代码或股票名称关键字；历史订单查询还可匹配委托编号。 */
     private String keyword;
 
     /** 历史订单买卖方向，支持 BUY、SELL 或空值；交易记录查询忽略该字段。 */
@@ -32,4 +32,4 @@ public class BrokerTransactionQueryRequest {
     /** 每页记录数，范围 1 至 100。 */
     private Integer pageSize = 20;
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

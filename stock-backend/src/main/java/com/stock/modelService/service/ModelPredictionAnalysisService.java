@@ -25,6 +25,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.index.Index;
 import org.springframework.data.mongodb.core.index.IndexOperations;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -186,6 +187,80 @@ public class ModelPredictionAnalysisService {
         return submitPrediction(request, false);
     }
 
+    /**
+     * 使用原批次绑定的模型版本和历史基准日重新生成预测。
+     * 原批次及其评估结果保持不变，重算结果会落入新的预测批次。
+     *
+     * @param request 历史预测重算请求
+     * @return 新建或复用的历史预测批次信息
+     */
+    public ModelPredictionAnalysisDto.OperationResponse rerunPrediction(
+            ModelPredictionAnalysisDto.RerunPredictionRequest request) {
+        String sourceBatchId = request == null ? null : request.getBatchId();
+        ModelPredictionBatchDocument source = resolveBatch(sourceBatchId);
+        ModelPredictionBatchDocument existingRerun = batchRepository
+                .findFirstByRerunSourceBatchIdOrderByCreatedAtDesc(source.getId());
+        if (existingRerun != null) {
+            return ModelPredictionAnalysisDto.OperationResponse.builder()
+                    .batchId(existingRerun.getId()).status(existingRerun.getStatus())
+                    .message("该历史批次已存在重算结果，已返回原重算批次").build();
+        }
+        if (!predictionRunning.compareAndSet(false, true)) {
+            throw new IllegalStateException("当前已有模型预测批次正在运行");
+        }
+        boolean executionStarted = false;
+        try {
+            if (batchRepository.existsByStatusIn(RUNNING_STATUSES)) {
+                throw new IllegalStateException("当前已有模型预测批次正在运行");
+            }
+            if (source.getBaseTradeDate() == null || source.getModelId() == null) {
+                throw new IllegalStateException("原预测批次缺少模型版本或基准交易日，无法重算");
+            }
+            LstmModelDocument model = modelRepository.findById(source.getModelId())
+                    .orElseThrow(() -> new IllegalStateException("原预测批次绑定的模型版本不存在"));
+            trainerService.validateModelVersion(model.getId());
+            List<String> stockCodes = predictionRepository.findByBatchId(source.getId()).stream()
+                    .map(ModelPredictionDocument::getStockCode).filter(code -> code != null && !code.isBlank())
+                    .distinct().sorted().toList();
+            if (stockCodes.isEmpty()) {
+                throw new IllegalStateException("原预测批次没有可重算的股票明细");
+            }
+            LocalDateTime now = LocalDateTime.now();
+            ModelPredictionBatchDocument rerun = new ModelPredictionBatchDocument();
+            rerun.setModelName(source.getModelName());
+            rerun.setModelId(model.getId());
+            rerun.setRerunSourceBatchId(source.getId());
+            rerun.setModelVersion(model.getModelVersion());
+            rerun.setBaseTradeDate(source.getBaseTradeDate());
+            rerun.setTargetTradeDate(source.getTargetTradeDate());
+            rerun.setInformationCutoffAt(source.getInformationCutoffAt());
+            rerun.setCalendarFallback(source.getCalendarFallback());
+            rerun.setStatus("QUEUED");
+            rerun.setTotalStocks(stockCodes.size());
+            rerun.setAbilityLevel("INSUFFICIENT_DATA");
+            rerun.setAbilityMessage("历史预测重算尚未完成");
+            rerun.setProgressMessage("历史预测重算任务已排队");
+            rerun.setTriggeredBy(normalizeOperator(request == null ? null : request.getOperatorName()));
+            rerun.setCreatedAt(now); rerun.setUpdatedAt(now);
+            ModelPredictionBatchDocument saved;
+            try {
+                saved = batchRepository.save(rerun);
+            } catch (DuplicateKeyException duplicateKeyException) {
+                ModelPredictionBatchDocument concurrent = batchRepository
+                        .findFirstByRerunSourceBatchIdOrderByCreatedAtDesc(source.getId());
+                if (concurrent == null) throw duplicateKeyException;
+                return ModelPredictionAnalysisDto.OperationResponse.builder()
+                        .batchId(concurrent.getId()).status(concurrent.getStatus())
+                        .message("该历史批次已存在重算结果，已返回原重算批次").build();
+            }
+            applicationTaskExecutor.execute(() -> executePrediction(saved.getId(), stockCodes));
+            executionStarted = true;
+            return ModelPredictionAnalysisDto.OperationResponse.builder()
+                    .batchId(saved.getId()).status(saved.getStatus()).message("历史预测重算任务已提交").build();
+        } finally {
+            if (!executionStarted) predictionRunning.set(false);
+        }
+    }
     /**
      * 使用当前激活模型同步执行每日全市场预测。
      *
@@ -502,7 +577,7 @@ public class ModelPredictionAnalysisService {
                 Map<String, StockInfo> stockInfoMap = stockInfoRepository.findByCodeIn(currentCodes).stream()
                         .collect(Collectors.toMap(StockInfo::getCode, Function.identity(), (left, right) -> left));
                 Map<String, LstmPredictionResultDto> results = inferenceService
-                        .predictNextBatch(currentCodes, batch.getModelId());
+                        .predictNextBatch(currentCodes, batch.getModelId(), batch.getBaseTradeDate());
                 List<ModelPredictionDocument> documents = new ArrayList<>(results.size());
                 LocalDateTime predictedAt = LocalDateTime.now();
                 for (LstmPredictionResultDto result : results.values()) {
@@ -563,6 +638,9 @@ public class ModelPredictionAnalysisService {
             batch.setUpdatedAt(LocalDateTime.now());
             batchRepository.save(batch);
             refreshAbility(batch, predictionRepository.findByBatchId(batch.getId()));
+            if (batch.getTargetTradeDate() != null && !batch.getTargetTradeDate().isAfter(LocalDate.now(MARKET_ZONE))) {
+                evaluateBatch(batch);
+            }
             log.info("全市场模型预测完成: batchId={}, modelId={}, success={}, failed={}, elapsedSeconds={}",
                     batch.getId(), batch.getModelId(), successCount, failedCount, elapsedSeconds(startedNanos));
         } catch (Exception exception) {

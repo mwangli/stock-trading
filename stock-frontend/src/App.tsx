@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------------
+// AI_GENERATE_START ------------------
 import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { Spin } from 'antd';
@@ -12,6 +12,7 @@ const StockInformation = lazy(() => import('./pages/stockInformation'));
 const Settings = lazy(() => import('./pages/settings'));
 const HistoryOrders = lazy(() => import('./pages/historyOrders'));
 const TradeRecords = lazy(() => import('./pages/tradeRecords'));
+const TradeRecordDemos = lazy(() => import('./pages/tradeRecordDemos'));
 const Logs = lazy(() => import('./pages/logs'));
 const ModelOperations = lazy(() => import('./pages/modelOperations'));
 const SentimentModel = lazy(() => import('./pages/sentimentModel'));
@@ -41,6 +42,7 @@ function App() {
               <Route path="transactions" element={<Navigate to="/historyOrders" replace />} />
               <Route path="historyOrders" element={<HistoryOrders />} />
               <Route path="tradeRecords" element={<TradeRecords />} />
+              <Route path="tradeRecordDemos" element={<TradeRecordDemos />} />
               <Route path="logs" element={<Logs />} />
               <Route path="modelOperations" element={<ModelOperations />} />
               <Route path="sentimentModel" element={<SentimentModel />} />
@@ -74,4 +76,4 @@ function PublicOnlyRoute() {
 }
 
 export default App;
-// AI_GENERATE_END -----------------
+// AI_GENERATE_END ------------------

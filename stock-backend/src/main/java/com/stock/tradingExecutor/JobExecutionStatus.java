@@ -1,5 +1,5 @@
-// AI_GENERATE_START -
-package com.stock.tradingExecutor.job;
+// AI_GENERATE_START- -
+package com.stock.tradingExecutor;
 
 /**
  * 任务运行状态。

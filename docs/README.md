@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START ----------- -->
+<!-- AI_GENERATE_START-- ----------- -->
 # AI-AGENT智能股票自动交易系统文档索引
 
 
@@ -26,9 +26,9 @@
 
 | 现有代码包 | 目标归属 | 归档理由 | 迁移方式 |
 |---|---|---|---|
-| 原 `com.stock.systemConfig` | `04-交易执行` 的运行控制子域 | 配置直接控制 Quartz、采集开关、新闻开关和模型训练开关 | 已迁移为 `com.stock.tradingExecutor.runtime` |
-| 原 `com.stock.user` | `04-交易执行` 的访问控制子域 | 登录会话和 `AuthInterceptor` 保护运维、交易和模型操作入口 | 已迁移为 `com.stock.tradingExecutor.access`，认证接口路径保持不变 |
-| `tradingExecutor.job` | `04-交易执行` 的调度子域 | 调度生命周期、手动触发、停止和执行记录必须与真实交易门禁统一 | 不拆出独立调度模块 |
+| 原 `com.stock.systemConfig` | `04-交易执行` 的运行控制能力 | 配置直接控制 Quartz、采集开关、新闻开关和模型训练开关 | 已合并到 `com.stock.tradingExecutor` 的 `domain`、`persistence`、`service` 和 `api` 目录 |
+| 原 `com.stock.user` | `04-交易执行` 的访问控制能力 | 登录会话和 `AuthInterceptor` 保护运维、交易和模型操作入口 | 已合并到 `com.stock.tradingExecutor` 的 `api`、`config`、`domain`、`persistence`、`service` 和 `web` 目录，认证接口路径保持不变 |
+| 原调度子域 | `04-交易执行` 的调度能力 | 调度生命周期、手动触发、停止和执行记录必须与真实交易门禁统一 | 已提升到 `com.stock.tradingExecutor` 根包，不再保留独立 `job` 子包 |
 
 目标代码结构：
 
@@ -75,11 +75,11 @@ dataCollector -> modelService -> strategyAgent -> tradingExecutor -> broker
 
 - 不建设通用任务编排平台：固定任务由代码白名单和 Quartz 管理，页面只提供查询、触发、暂停、恢复和停止。
 - 不建设独立用户中心：当前为个人系统，只保留单用户登录、会话和最小权限模型；后续有多用户需求再扩展角色权限。
-- 不把运行开关散落在每个业务模块：统一由 `tradingExecutor.runtime` 提供门禁服务，业务模块只依赖明确的判断接口。
+- 不把运行开关散落在每个业务模块：统一由 `tradingExecutor.service.SystemRuntimeConfigService` 提供门禁服务，业务模块只依赖明确的判断接口。
 - 不在模块之间共享 Entity：跨模块只传 DTO、不可变快照或明确的领域结果，减少持久化模型耦合。
 - 不把训练、预测、智能决策和交易执行合并成一个服务：`strategyAgent` 可以形成交易计划，但必须由 `tradingExecutor` 重新取数、执行风控和调用券商。
 
 ## 验证边界
 
 本文档和模块设计属于静态架构说明。它们不能证明真实账户登录、券商委托、模型训练效果、Quartz 重启恢复或生产资源占用；这些能力仍需在目标环境单独验证。
-<!-- AI_GENERATE_END ----------- -->
+<!-- AI_GENERATE_END- ----------- -->

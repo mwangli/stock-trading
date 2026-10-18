@@ -1,9 +1,9 @@
-// AI_GENERATE_START -------
-package com.stock.tradingExecutor.runtime.service;
+// AI_GENERATE_START- -------
+package com.stock.tradingExecutor.service;
 
-import com.stock.tradingExecutor.runtime.domain.dto.SystemRuntimeConfigDto;
-import com.stock.tradingExecutor.runtime.domain.entity.SystemRuntimeConfig;
-import com.stock.tradingExecutor.runtime.persistence.SystemRuntimeConfigRepository;
+import com.stock.tradingExecutor.domain.dto.SystemRuntimeConfigDto;
+import com.stock.tradingExecutor.domain.entity.SystemRuntimeConfig;
+import com.stock.tradingExecutor.persistence.SystemRuntimeConfigRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.Scheduler;
 import org.quartz.SchedulerException;

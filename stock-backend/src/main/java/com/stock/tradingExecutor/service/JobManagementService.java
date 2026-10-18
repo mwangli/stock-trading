@@ -1,12 +1,12 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START- -------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
-import com.stock.tradingExecutor.job.JobConfig;
-import com.stock.tradingExecutor.job.JobConfigRepository;
-import com.stock.tradingExecutor.job.JobExecutionRecord;
-import com.stock.tradingExecutor.job.JobExecutionService;
-import com.stock.tradingExecutor.job.JobSchedulerService;
+import com.stock.tradingExecutor.JobConfig;
+import com.stock.tradingExecutor.JobConfigRepository;
+import com.stock.tradingExecutor.JobExecutionRecord;
+import com.stock.tradingExecutor.JobExecutionService;
+import com.stock.tradingExecutor.JobSchedulerService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -79,8 +79,8 @@ public class JobManagementService {
      */
     @Transactional(readOnly = true)
     public JobManagementDto.ExecutionPageResponse listRuns(String jobName,
-                                                            com.stock.tradingExecutor.job.JobExecutionStatus status,
-                                                            com.stock.tradingExecutor.job.JobTriggerSource source,
+                                                            com.stock.tradingExecutor.JobExecutionStatus status,
+                                                            com.stock.tradingExecutor.JobTriggerSource source,
                                                             LocalDateTime from, LocalDateTime to,
                                                             int current, int pageSize) {
         Page<JobExecutionRecord> page = jobExecutionService.queryRuns(

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------------------------
+// AI_GENERATE_START -----------------------------------
 import React, { useCallback, useEffect, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
 import {
@@ -127,6 +127,12 @@ interface StartTrainingRequest {
 interface OperationResponse {
   operationType: string;
   operationId: string;
+  message: string;
+}
+
+interface PredictionOperationResponse {
+  batchId: string;
+  status: string;
   message: string;
 }
 
@@ -613,6 +619,24 @@ const ModelOperations: React.FC = () => {
       })
       .finally(() => setPredictionAnalysisLoading(false));
   };
+
+  const rerunPrediction = async (batchId: string) => {
+    setOperating(true);
+    try {
+      const response = await request.post('/modelPredictions/rerun', {
+        batchId,
+        operatorName: operatorName.trim() || 'web-console',
+      }) as ApiResponse<PredictionOperationResponse>;
+      const result = readApiData(response, localizedText('提交历史预测重算失败', 'Failed to submit historical prediction rerun'));
+      message.success(result.message);
+      setSelectedPredictionBatchId(result.batchId);
+      await loadPredictionData();
+    } catch (cause) {
+      message.error(getApiErrorMessage(cause, localizedText('提交历史预测重算失败', 'Failed to submit historical prediction rerun')));
+    } finally {
+      setOperating(false);
+    }
+  };
   const versionColumns: ColumnsType<ModelVersion> = [
     {
       title: localizedText('版本', 'Version'),
@@ -750,14 +774,31 @@ const ModelOperations: React.FC = () => {
     },
     { title: localizedText('交易门禁', 'Trading Eligibility'), dataIndex: 'tradingEligibility', key: 'tradingEligibility', width: 130, render: (value?: string) => <Tag color={value === 'TRADE_ELIGIBLE' ? 'green' : value === 'DISABLED' ? 'red' : 'orange'}>{value || 'DISABLED'}</Tag> },
     {
-      title: localizedText('操作', 'Actions'), key: 'actions', width: 190,
+      title: localizedText('操作', 'Actions'), key: 'actions', width: 260,
       render: (_, record) => (
         <Space size="small">
-          <Button type="link" size="small" className="!px-0" onClick={() => openPredictionAnalysis(record.id)}>
-            {localizedText('预测分析', 'Analysis')}
-          </Button>
+
+          <Popconfirm
+            title={localizedText('重新生成该历史批次？', 'Rerun this historical batch?')}
+            description={localizedText('将使用原模型版本和基准日生成新批次，不覆盖原批次结果。', 'A new batch will use the original model version and base date without overwriting the source batch.')}
+            okText={localizedText('确认重算', 'Rerun')}
+            cancelText={localizedText('取消', 'Cancel')}
+            onConfirm={() => void rerunPrediction(record.id)}
+          >
+            <Button
+              type="link"
+              size="small"
+              className="!px-0"
+              disabled={operating || record.status === 'QUEUED' || record.status === 'RUNNING'}
+            >
+              {localizedText('预测', 'Predict')}
+            </Button>
+          </Popconfirm>
           <Button type="link" size="small" className="!px-0" onClick={() => openPredictionResults(record.id)}>
-            {localizedText('预测结果', 'Results')}
+            {localizedText('结果', 'Results')}
+          </Button>
+          <Button type="link" size="small" className="!px-0" onClick={() => openPredictionAnalysis(record.id)}>
+            {localizedText('评估', 'Evaluation')}
           </Button>
         </Space>
       ),
@@ -1043,7 +1084,7 @@ const ModelOperations: React.FC = () => {
         )}
       </Drawer>
       <WideTableModal
-        title={`预测分析：${selectedPredictionBatch?.targetTradeDate || selectedPredictionBatch?.id || '-'}`}
+        title={`评估：${selectedPredictionBatch?.targetTradeDate || selectedPredictionBatch?.id || '-'}`}
         open={predictionAnalysisModalOpen}
         onCancel={() => setPredictionAnalysisModalOpen(false)}
       >
@@ -1223,4 +1264,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END -------------------------------
+// AI_GENERATE_END -----------------------------------

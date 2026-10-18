@@ -1,8 +1,8 @@
-// AI_GENERATE_START --------
-package com.stock.tradingExecutor.job;
+// AI_GENERATE_START- --------
+package com.stock.tradingExecutor;
 
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
-import com.stock.tradingExecutor.runtime.service.SystemRuntimeConfigService;
+import com.stock.tradingExecutor.service.SystemRuntimeConfigService;
 import jakarta.transaction.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START -----
 package com.stock.dataCollector.persistence;
 
 import com.stock.dataCollector.domain.entity.StockPrice;
@@ -36,6 +36,17 @@ public interface PriceRepository extends MongoRepository<StockPrice, String> {
      * @return 最近日线列表，日期倒序
      */
     List<StockPrice> findByCodeOrderByDateDesc(String code, Pageable pageable);
+
+    /**
+     * 按历史截止日期倒序查询股票日线，用于复现历史预测时点的输入窗口。
+     *
+     * @param code 股票代码
+     * @param endDate 行情截止日期，包含当天
+     * @param pageable 分页参数，用于限制返回条数
+     * @return 截止指定日期的日线列表，日期倒序
+     */
+    List<StockPrice> findByCodeAndDateLessThanEqualOrderByDateDesc(
+            String code, LocalDate endDate, Pageable pageable);
 
     /**
      * 查询股票最新一条日线。
@@ -105,4 +116,4 @@ public interface PriceRepository extends MongoRepository<StockPrice, String> {
      */
     boolean existsByCode(String code);
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END -----

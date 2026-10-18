@@ -1,7 +1,8 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.dataCollector.support;
 
 import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
@@ -92,7 +93,6 @@ public class SecuritiesClient {
         return params;
     }
 
-    @SuppressWarnings("unchecked")
     private JSONArray requestDataList(Map<String, Object> paramMap) {
         try {
             String url = API_BASE_URL + "?action=1230";
@@ -100,37 +100,35 @@ public class SecuritiesClient {
             MultiValueMap<String, String> params = buildParams(paramMap);
             HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(params, headers);
             log.debug("请求URL: {}", url);
-            Map<String, Object> response = restTemplate.postForObject(url, requestEntity, Map.class);
-            if (response == null) {
+            String responseText = restTemplate.postForObject(url, requestEntity, String.class);
+            if (responseText == null || responseText.isBlank()) {
                 log.warn("证券平台返回为空");
                 return new JSONArray();
             }
+            JSONObject response = JSON.parseObject(responseText);
             Object bindataObj = response.get("BINDATA");
             JSONObject bindataJson = null;
             if (bindataObj instanceof String bindataStr) {
                 try {
-                    bindataJson = JSONObject.parseObject(bindataStr);
+                    bindataJson = JSON.parseObject(bindataStr);
                 } catch (Exception e) {
-                    log.warn("解析证券平台 BINDATA 字符串失败: {}", bindataStr, e);
+                    log.warn("解析证券平台 BINDATA 字符串失败", e);
                 }
             } else if (bindataObj instanceof Map) {
                 try {
-                    bindataJson = new JSONObject((Map<String, Object>) bindataObj);
+                    bindataJson = JSON.parseObject(JSON.toJSONString(bindataObj));
                 } catch (Exception e) {
                     log.warn("解析证券平台 BINDATA Map 失败", e);
                 }
             }
             if (bindataJson != null) {
-                Object results = bindataJson.get("results");
-                if (results instanceof JSONArray resultsArray) {
-                    return resultsArray;
-                }
-                if (results instanceof List) {
-                    JSONArray resultsArray = new JSONArray();
-                    resultsArray.addAll((List<?>) results);
+                JSONArray resultsArray = bindataJson.getJSONArray("results");
+                if (resultsArray != null) {
+                    log.debug("证券平台返回股票数据: {} 条", resultsArray.size());
                     return resultsArray;
                 }
             }
+            log.warn("证券平台响应未包含可解析的 results: keys={}", response.keySet());
             return new JSONArray();
         } catch (Exception e) {
             log.error("请求证券平台数据列表失败", e);
@@ -353,4 +351,4 @@ public class SecuritiesClient {
     }
 
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

@@ -1,5 +1,5 @@
-// AI_GENERATE_START -
-package com.stock.tradingExecutor.job;
+// AI_GENERATE_START- -
+package com.stock.tradingExecutor;
 
 import org.quartz.JobDataMap;
 import org.quartz.JobExecutionContext;

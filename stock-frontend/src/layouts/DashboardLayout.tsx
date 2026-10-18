@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------------------------
+// AI_GENERATE_START --------------------------------
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, Badge, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
@@ -287,7 +287,6 @@ const DashboardLayout: React.FC = () => {
           {!sidebarCollapsed && (
             <div className="app-brand-copy">
               <strong>{t('login.algoTrading')}</strong>
-              <span>AI-AGENT SMART TRADING CONSOLE</span>
             </div>
           )}
         </div>
@@ -365,4 +364,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END -----------------------------
+// AI_GENERATE_END --------------------------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------
+// AI_GENERATE_START-- -------------
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -17,7 +17,7 @@ import com.stock.modelService.persistence.ModelActivationRepository;
 import com.stock.modelService.persistence.ModelOperationAuditRepository;
 import com.stock.modelService.persistence.ModelTrainingRunRepository;
 import com.stock.tradingExecutor.execution.TradingTimeChecker;
-import com.stock.tradingExecutor.runtime.service.SystemRuntimeConfigService;
+import com.stock.tradingExecutor.service.SystemRuntimeConfigService;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -649,7 +649,7 @@ public class ModelOperationsService {
                 return new GateResult(false, "工作日仅允许在 18:30 至 23:30 提交训练");
             }
         }
-        if (stockInfoRepository.countBy() <= 0) {
+        if (stockInfoRepository.countTradable() <= 0) {
             return new GateResult(false, "股票基础数据为空，无法训练");
         }
         long minimumMemoryBytes = Math.max(1L, dataQualityConfig.getMinimumAvailableMemoryMb())
@@ -984,4 +984,4 @@ public class ModelOperationsService {
     }
 
     }
-// AI_GENERATE_END -------------
+// AI_GENERATE_END --------------

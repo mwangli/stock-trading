@@ -1,5 +1,5 @@
-// AI_GENERATE_START ---
-package com.stock.tradingExecutor.job;
+// AI_GENERATE_START- ---
+package com.stock.tradingExecutor;
 
 import com.stock.strategyAgent.job.StrategyEvaluationJob;
 import org.quartz.DisallowConcurrentExecution;
