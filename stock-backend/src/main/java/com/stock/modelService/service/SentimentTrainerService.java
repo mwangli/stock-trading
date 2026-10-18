@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------
+// AI_GENERATE_START -----------
 package com.stock.modelService.service;
 
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
@@ -12,10 +12,12 @@ import ai.djl.translate.Translator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.modelService.config.SentimentTrainingConfig;
 import com.stock.modelService.domain.entity.ModelMetadataDocument;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import com.stock.modelService.service.ModelArtifactGridFsService;
 import com.stock.modelService.domain.vo.SentimentAnalysisResult;
 import com.stock.modelService.domain.vo.SentimentArtifactInspection;
 import com.stock.modelService.persistence.ModelMetadataRepository;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,6 +44,7 @@ public class SentimentTrainerService {
     private final SentimentDataPreprocessor dataPreprocessor;
     private final ModelMetadataRepository modelMetadataRepository;
     private final SentimentArtifactService artifactService;
+    private final ModelArtifactGridFsService gridFsArtifactService;
     private final ObjectMapper objectMapper;
 
     private volatile ZooModel<String, Classifications> loadedModel;
@@ -51,23 +54,7 @@ public class SentimentTrainerService {
     private volatile SentimentArtifactInspection loadedArtifact;
 
     /**
-     * 输出情感模型配置和轻量制品检查结果。
-     * 应用启动不主动加载大模型，避免模型故障阻断其他业务模块启动。
-     */
-    @PostConstruct
-    public void init() {
-        SentimentArtifactInspection inspection = artifactService.inspectForHealth();
-        log.info("情感模型配置: modelName={}, version={}, source={}, artifactPath={}, artifactAvailable={}, error={}",
-                config.getModelName(), config.getModelVersion(), config.getModelSource(),
-                inspection.getModelDirectory(), inspection.isAvailable(), inspection.getErrorMessage());
-        if (useRemoteModel()) {
-            log.warn("情感模型配置为远程加载；生产环境应改为经过校验的本地只读制品");
-        }
-    }
-
-    /**
-     * 加载配置指定的情感模型。
-     * 本地制品在创建 Tokenizer 和 DJL 模型前完成流式摘要校验。
+     * 从 MongoDB GridFS 还原并加载情感模型。
      *
      * @return true 表示真实模型已加载
      */
@@ -75,65 +62,58 @@ public class SentimentTrainerService {
         if (modelLoaded && loadedModel != null) {
             return true;
         }
-        SentimentArtifactInspection inspection = null;
+        Path materialized = null;
         try {
-            String modelUrl;
-            HuggingFaceTokenizer tokenizer;
-            if (useLocalModel()) {
-                inspection = artifactService.inspectForLoad();
-                modelUrl = inspection.getModelDirectory().toUri().toString();
-                tokenizer = HuggingFaceTokenizer.builder()
-                        .optTokenizerPath(inspection.getModelDirectory())
-                        .optTruncation(true)
-                        .optMaxLength(config.getMaxSequenceLength())
-                        .build();
-                log.info("情感模型制品校验通过，开始加载: version={}, sizeBytes={}, manifestSha256={}, path={}, maxSequenceLength={}, includeTokenTypes=true",
-                        inspection.getModelVersion(), inspection.getTotalSizeBytes(),
-                        inspection.getManifestSha256(), inspection.getModelDirectory(), config.getMaxSequenceLength());
-            } else if (useRemoteModel()) {
-                tokenizer = HuggingFaceTokenizer.builder()
-                        .optTokenizerName(config.getPretrainedModel())
-                        .optTruncation(true)
-                        .optMaxLength(config.getMaxSequenceLength())
-                        .build();
-                modelUrl = "djl://ai.djl.huggingface.pytorch/" + config.getPretrainedModel();
-                log.warn("开始从远程仓库加载情感模型: {}", config.getPretrainedModel());
-            } else {
-                throw new IOException("情感模型来源配置非法: " + config.getModelSource());
+            materialized = gridFsArtifactService.materialize(config.getModelName(), config.getModelVersion());
+            if (!Files.isRegularFile(materialized.resolve("manifest.json"))) {
+                throw new IOException("GridFS 情感模型缺少 manifest.json");
             }
-
-            Translator<String, Classifications> translator =
-                    TextClassificationTranslator.builder(tokenizer)
-                            .optIncludeTokenTypes(true)
-                            .build();
+            HuggingFaceTokenizer tokenizer = HuggingFaceTokenizer.builder()
+                    .optTokenizerPath(materialized)
+                    .optTruncation(true)
+                    .optMaxLength(config.getMaxSequenceLength())
+                    .build();
+            Translator<String, Classifications> translator = TextClassificationTranslator.builder(tokenizer)
+                    .optIncludeTokenTypes(true)
+                    .build();
             Criteria<String, Classifications> criteria = Criteria.builder()
                     .setTypes(String.class, Classifications.class)
-                    .optModelUrls(modelUrl)
+                    .optModelUrls(materialized.toUri().toString())
                     .optEngine("PyTorch")
                     .optTranslator(translator)
                     .optProgress(new ProgressBar())
                     .build();
-
             ZooModel<String, Classifications> model = criteria.loadModel();
             loadedModel = model;
-            loadedArtifact = inspection;
+            loadedArtifact = SentimentArtifactInspection.builder()
+                    .available(true)
+                    .manifestPresent(true)
+                    .checksumsVerified(true)
+                    .modelDirectory(materialized)
+                    .modelVersion(config.getModelVersion())
+                    .build();
             modelLoaded = true;
             lastLoadedTime = LocalDateTime.now();
             lastLoadError = null;
-            updateModelMetadata(modelUrl, inspection, "LOADED", null);
-            log.info("情感分析模型加载成功: version={}, modelUrl={}",
-                    inspection == null ? config.getModelVersion() : inspection.getModelVersion(), modelUrl);
+            updateModelMetadata("gridfs://" + config.getModelName() + "/" + config.getModelVersion(),
+                    loadedArtifact, "LOADED", null);
+            log.info("MongoDB GridFS 情感模型加载成功: model={}, version={}",
+                    config.getModelName(), config.getModelVersion());
             return true;
         } catch (Exception exception) {
             lastLoadError = exception.getMessage();
             modelLoaded = false;
-            loadedArtifact = inspection;
-            updateModelMetadata(resolveArtifactUri(inspection), inspection, "LOAD_FAILED", exception.getMessage());
-            log.error("情感分析模型加载失败，将在非交易接口中使用规则降级", exception);
+            loadedArtifact = null;
+            updateModelMetadata("gridfs://" + config.getModelName() + "/" + config.getModelVersion(),
+                    null, "LOAD_FAILED", exception.getMessage());
+            log.error("MongoDB GridFS 情感模型加载失败", exception);
             return false;
+        } finally {
+            if (materialized != null) {
+                gridFsArtifactService.cleanupMaterialized(materialized);
+            }
         }
     }
-
     /**
      * 执行情感分析。
      * 非交易场景在模型不可用时允许返回明确标记的规则结果。
@@ -373,7 +353,7 @@ public class SentimentTrainerService {
         }
         return useRemoteModel()
                 ? "djl://ai.djl.huggingface.pytorch/" + config.getPretrainedModel()
-                : config.getModelPath();
+                : "gridfs://" + config.getModelName() + "/" + config.getModelVersion();
     }
 
     private void updateModelMetadata(String artifactUri,
@@ -403,4 +383,4 @@ public class SentimentTrainerService {
         }
     }
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ----------

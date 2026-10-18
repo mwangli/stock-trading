@@ -150,7 +150,7 @@ stock-trading4/
 ├── stock-frontend/                 # React + Vite 前端
 ├── stock-backend/                  # Spring Boot、模型、策略和交易执行
 │   └── data/                       # 本地模型制品和训练产物（默认不纳入 Git）
-│       ├── lstm-artifacts/         # LSTM 训练快照与参数制品
+│       ├── models/                 # 仅保留历史迁移源，运行时模型来自 MongoDB GridFS
 │       └── models/sentiment/       # 版本化情感模型制品
 ├── docs/                           # 需求、设计、部署和专题文档
 ├── docker-compose.yml              # 本地和部署编排
@@ -205,7 +205,7 @@ docker compose --env-file .env logs -f stock-backend
 
 完整部署前请配置数据库、模型制品、新闻数据源和券商相关环境变量。不要把 `.env`、密码、Token、私钥或模型密钥提交到 Git 仓库。
 
-模型目录约定：LSTM 训练产物位于 `stock-backend/data/lstm-artifacts`，情感模型版本位于 `stock-backend/data/models/sentiment/<version>`。Docker Compose 默认将情感模型目录只读挂载到容器内的 `/models/sentiment`。
+模型制品统一保存于 MongoDB GridFS。应用就绪后异步初始化缺失的 Hugging Face 制品，并将三类模型加载到内存；Docker 不再挂载本地模型目录。
 
 ## 访问与接口
 
@@ -285,7 +285,9 @@ npm run build
 
 - 生产部署使用 Docker Compose 和不可变镜像标签。
 - 数据库、模型制品和日志目录应使用持久化卷。
-- 大体积情感模型制品保存在文件存储或模型制品仓库，不写入 MongoDB 文档。
+- 大体积模型制品不写入 MongoDB 普通 BSON 文档，而是统一写入 MongoDB GridFS；`model_metadata` 等集合只保存版本、文件 ID、摘要、状态和激活关系。
+- LSTM、Embedding 和 Sentiment 模型在应用启动后异步从 GridFS 预热。LSTM 参数可直接读入内存，多文件模型仅在 DJL 加载期间还原到系统临时目录，加载完成后自动清理。
+- Docker 不挂载本地模型目录；首次缺少 Embedding 或 Sentiment 制品时，后台初始化流程从锁定版本的模型托管平台下载、规范化并上传 GridFS，不阻塞应用端口启动。
 - 真实交易写入、券商凭据和 OCR 密钥必须通过受控环境变量注入。
 - 公开演示账号只能用于测试，部署到个人或生产环境后应立即修改默认密码或关闭默认账号。
 - 生产环境的真实账户登录、委托、订单回查和模型效果必须单独完成验证，不能仅凭 README 或构建结果确认。
