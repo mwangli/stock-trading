@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------------
+// AI_GENERATE_START -----------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { Button, Card, DatePicker, Empty, Input, Pagination, Select, Space, Table, Tag } from 'antd';
@@ -72,7 +72,7 @@ const HistoryOrders: React.FC = () => {
   const [draftFilters, setDraftFilters] = useState<OrderFilters>(defaultFilters);
   const [filters, setFilters] = useState<OrderFilters>(defaultFilters);
   const [orders, setOrders] = useState<BrokerOrder[]>([]);
-  const [page, setPage] = useState<PageState>({ current: 1, pageSize: 20, total: 0 });
+  const [page, setPage] = useState<PageState>({ current: 1, pageSize: 10, total: 0 });
   const [loading, setLoading] = useState(false);
   const [, setError] = useState<string | null>(null);
 
@@ -195,7 +195,7 @@ const HistoryOrders: React.FC = () => {
           dataSource={orders}
           loading={loading}
           locale={{ emptyText: <Empty description={t('historyOrders.empty')} /> }}
-          scroll={{ x: 1200, y: 'calc(100vh - 390px)' }}
+          scroll={{ x: 'max-content' }}
           pagination={false}
         />
         <div className="mt-4 overflow-x-auto pb-1">
@@ -219,4 +219,4 @@ const HistoryOrders: React.FC = () => {
 };
 
 export default HistoryOrders;
-// AI_GENERATE_END ----------------
+// AI_GENERATE_END -----------------

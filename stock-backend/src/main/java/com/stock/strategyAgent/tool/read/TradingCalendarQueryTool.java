@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.strategyAgent.tool.read;
 
 import com.stock.dataCollector.service.TradingCalendarService;
@@ -40,6 +40,22 @@ public class TradingCalendarQueryTool {
         });
     }
 
+    /**
+     * 解析指定日期之后的首个确认交易日，避免周末直接作为预测目标日。
+     *
+     * @param date 基准日期
+     * @return 首个确认交易日
+     */
+    public LocalDate nextConfirmedTradingDay(LocalDate date) {
+        if (date == null) {
+            throw new IllegalArgumentException("date 不能为空");
+        }
+        if (tradingCalendarService.isTradingDay(date)) {
+            return date;
+        }
+        return tradingCalendarService.nextTradingDay(date);
+    }
+
     /** 交易日历查询请求。 */
     public record TradingCalendarRequest(LocalDate tradeDate) {
     }
@@ -48,4 +64,4 @@ public class TradingCalendarQueryTool {
     public record TradingCalendarResult(LocalDate tradeDate, boolean tradingDay, boolean confirmed) {
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

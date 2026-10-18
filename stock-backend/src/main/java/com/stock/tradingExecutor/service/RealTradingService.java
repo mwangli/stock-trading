@@ -102,6 +102,7 @@ public class RealTradingService {
      * @return 本批次真实委托结果
      */
     public TradeExecutionBatchResponseDto executeAutomaticBuys() {
+        log.info("[真实交易] Agent 为可选增强能力；自动买入仅依赖候选、Java 风控和券商事实");
         requireAutomaticExecution();
         LocalDate today = LocalDate.now();
         tradingCalendarService.requireTradingDay(today);

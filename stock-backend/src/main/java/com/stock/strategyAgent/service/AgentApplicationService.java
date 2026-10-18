@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------------
+// AI_GENERATE_START ------------------
 package com.stock.strategyAgent.service;
 
 import com.stock.strategyAgent.api.DiagnosticRequest;
@@ -11,6 +11,9 @@ import com.stock.strategyAgent.api.RagSearchRequest;
 import com.stock.strategyAgent.api.ReportRequest;
 import com.stock.strategyAgent.api.ResearchRequest;
 import com.stock.strategyAgent.api.RuntimeStatus;
+import com.stock.strategyAgent.api.AgentHealthResponse;
+import com.stock.strategyAgent.api.ProviderModeRequest;
+import com.stock.strategyAgent.api.ProviderModeResponse;
 import com.stock.strategyAgent.api.SessionResponse;
 import com.stock.strategyAgent.api.TaskResponse;
 import com.stock.strategyAgent.config.AgentProperties;
@@ -127,7 +130,8 @@ public class AgentApplicationService {
                     ? ragService.search(ragRequest(question, session.getUserScope())) : List.of();
             EvidenceBundle factEvidence = evidenceAssembler.assemble(AgentEnums.TaskType.RESEARCH,
                     UUID.randomUUID().toString(), session.getSessionId(), task.getTaskId(), session.getUserScope(),
-                    request == null ? null : request.getCandidateBatchId(), null);
+                    request == null ? null : request.getCandidateBatchId(), null,
+                    request == null ? null : request.getTargetTradeDate());
             validateResearchContext(request, factEvidence);
             String evidenceSummary = factEvidence.getSummary() + buildEvidenceSummary(memories, evidence);
             String prompt = "问题：" + question + "\n候选批次="
@@ -140,7 +144,10 @@ public class AgentApplicationService {
             AgentRuntimeResponse response = runtimeService.execute(runtimeRequest(
                     task, session, "RESEARCH",
                     "你是股票交易系统的研究 Agent。只能使用给定证据，不得承诺收益，不得生成可直接执行的券商订单。"
-                            + "只返回 Research JSON：{summary,status,keyFindings,evidenceRefs,uncertainty,nextActions}。"
+                            + "只返回合法的 Research JSON，不要输出 Markdown、标题或解释文字，字段为："
+                            + "{summary,status,keyFindings,evidenceRefs,uncertainty,nextActions}。"
+                            + "所有自然语言字段使用中文；confirmed 只表示交易日历数据已确认，绝不表示交易已确认或已执行；"
+                            + "tradingDay 才表示当天是否为交易日。"
                             + "status 只能是 PASS、WARN 或 UNKNOWN；evidenceRefs 只能填写本次证据编号："
                             + String.join(",", factEvidence.getEvidenceRefs()) + "。",
                     prompt, evidenceSummary, "RESEARCH", factEvidence.getEvidenceRefs()));
@@ -280,7 +287,11 @@ public class AgentApplicationService {
                 .ollamaEnabled(providerStatus.isOllamaEnabled())
                 .ollamaConfigured(providerStatus.isOllamaConfigured())
                 .deepseekStatus(providerStatus.getDeepseekStatus())
+                .deepseekModel(properties.getDeepseek().getModel())
                 .ollamaStatus(providerStatus.getOllamaStatus())
+                .ollamaModel(properties.getOllama().getModel())
+                .deepseekCircuitState(providerStatus.getDeepseekCircuitState())
+                .ollamaCircuitState(providerStatus.getOllamaCircuitState())
                 .embeddingEnabled(embeddingStatus.isEnabled())
                 .embeddingProvider(embeddingStatus.getProvider())
                 .embeddingConfigured(embeddingStatus.isConfigured())
@@ -291,6 +302,38 @@ public class AgentApplicationService {
                 .embeddingStatus(embeddingStatus.getStatus())
                 .embeddingFallback(embeddingStatus.isFallback())
                 .build();
+    }
+
+    /**
+     * 执行 Agent Provider 健康检查。
+     *
+     * @return DeepSeek 和 Ollama 的实际可用状态
+     */
+    @Transactional(readOnly = true)
+    public AgentHealthResponse healthCheck() {
+        var health = runtimeService.providerHealthCheck();
+        return AgentHealthResponse.builder()
+                .deepseekAvailable(health.isDeepseekAvailable())
+                .ollamaAvailable(health.isOllamaAvailable())
+                .build();
+    }
+
+    /**
+     * 切换 Agent 运行时 Provider；指定 Provider 必须先通过健康检查。
+     *
+     * @param request Provider 切换请求
+     * @return 当前 Provider 模式
+     */
+    public ProviderModeResponse switchProvider(ProviderModeRequest request) {
+        String provider = request == null ? null : request.getProvider();
+        if ("deepseek".equalsIgnoreCase(provider) || "ollama".equalsIgnoreCase(provider)) {
+            boolean available = runtimeService.providerHealthCheck(provider.toLowerCase());
+            if (!available) {
+                throw new IllegalStateException("目标 Provider 当前不可用: " + provider);
+            }
+        }
+        runtimeService.switchProvider(provider);
+        return ProviderModeResponse.builder().provider(runtimeService.providerName()).build();
     }
 
     /**
@@ -491,4 +534,4 @@ public class AgentApplicationService {
                 ? value.substring(0, properties.getMaxOutputChars()) : value;
     }
 }
-// AI_GENERATE_END --------------
+// AI_GENERATE_END -----------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.domain.entity;
 
 import jakarta.persistence.Column;
@@ -44,6 +44,18 @@ public class StrategyEvaluationEntity {
     /** 被评估的策略模式。 */
     @Column(name = "strategy_mode", nullable = false, length = 32)
     private String strategyMode;
+
+    /** 本次模式评估涉及的策略配置版本；跨版本时使用逗号分隔保存。 */
+    @Column(name = "strategy_config_version", length = 1000)
+    private String strategyConfigVersion;
+
+    /** 本次模式评估涉及的涨跌模型版本；跨版本时使用逗号分隔保存。 */
+    @Column(name = "model_version", length = 1000)
+    private String modelVersion;
+
+    /** 本次模式评估涉及的情感模型版本；跨版本时使用逗号分隔保存。 */
+    @Column(name = "sentiment_model_version", length = 1000)
+    private String sentimentModelVersion;
 
     /** 评估状态：AVAILABLE、INSUFFICIENT_DATA 或 NOT_EVALUATED。 */
     @Column(nullable = false, length = 32)
@@ -117,4 +129,4 @@ public class StrategyEvaluationEntity {
     @Column(name = "calculated_at", nullable = false)
     private LocalDateTime calculatedAt;
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

@@ -109,6 +109,9 @@ agent:
   timeout-ms: ${AGENT_TIMEOUT_MS:30000}
   max-output-chars: 12000
   max-concurrency: 1
+  circuit-breaker-enabled: ${AGENT_CIRCUIT_BREAKER_ENABLED:true}
+  circuit-breaker-failure-threshold: ${AGENT_CIRCUIT_BREAKER_FAILURE_THRESHOLD:3}
+  circuit-breaker-open-duration-ms: ${AGENT_CIRCUIT_BREAKER_OPEN_DURATION_MS:60000}
   report-enabled: false
   trade-plan-enabled: false
   rag-enabled: false
@@ -120,14 +123,18 @@ agent:
   audit-enabled: true
   vector-store: mongodb
   embedding:
-    enabled: false
-    provider: disabled
+    enabled: ${AGENT_EMBEDDING_ENABLED:false}
+    provider: ${AGENT_EMBEDDING_PROVIDER:disabled}
     base-url: http://localhost:11434
     api-key: ${AGENT_EMBEDDING_API_KEY:ollama}
-    model: nomic-embed-text
-    model-version: nomic-embed-text-v1
+    model: ${AGENT_EMBEDDING_MODEL:bge-base-zh-v1.5}
+    model-path: ${EMBEDDING_MODEL_PATH:./data/models/embedding/bge-base-zh-v1.5}
+    model-version: ${AGENT_EMBEDDING_MODEL_VERSION:bge-base-zh-v1.5}
     dimension: 768
     timeout-ms: 30000
+    max-sequence-length: 512
+    pooling-mode: cls
+    normalize: true
     allow-hash-fallback: false
 
 backtest:

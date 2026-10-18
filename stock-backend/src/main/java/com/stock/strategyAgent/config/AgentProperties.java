@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.config;
 
 import lombok.Data;
@@ -42,6 +42,15 @@ public class AgentProperties {
 
     /** Agent 最大并发数。 */
     private int maxConcurrency = 1;
+
+    /** 是否启用 Provider 熔断。 */
+    private boolean circuitBreakerEnabled = true;
+
+    /** 连续失败多少次后打开 Provider 熔断。 */
+    private int circuitBreakerFailureThreshold = 3;
+
+    /** Provider 熔断打开持续时间，单位毫秒。 */
+    private long circuitBreakerOpenDurationMs = 60000L;
 
     /** 报告任务开关。 */
     private boolean reportEnabled = false;
@@ -135,7 +144,7 @@ public class AgentProperties {
         /** 是否启用 Embedding。 */
         private boolean enabled = false;
 
-        /** Embedding Provider，支持 disabled、ollama 和 openaiCompatible。 */
+        /** Embedding Provider，支持 disabled、ollama、openaiCompatible 和 djl。 */
         private String provider = "disabled";
 
         /** Embedding 服务地址。 */
@@ -147,6 +156,9 @@ public class AgentProperties {
         /** Embedding 模型名称。 */
         private String model = "nomic-embed-text";
 
+        /** DJL 本地模型目录，目录内应包含 config.json、tokenizer.json 和 PyTorch 权重。 */
+        private String modelPath = "./data/models/embedding/bge-base-zh-v1.5";
+
         /** Embedding 模型版本。 */
         private String modelVersion = "nomic-embed-text-v1";
 
@@ -156,8 +168,17 @@ public class AgentProperties {
         /** Embedding 请求超时时间，单位毫秒。 */
         private long timeoutMs = 30000L;
 
+        /** 本地 tokenizer 最大序列长度。 */
+        private int maxSequenceLength = 512;
+
+        /** 本地 Transformer pooling 方式，BGE 默认使用 CLS 向量。 */
+        private String poolingMode = "cls";
+
+        /** 是否对本地模型输出执行 L2 归一化。 */
+        private boolean normalize = true;
+
         /** 是否允许使用 hash 降级向量。生产环境默认关闭。 */
         private boolean allowHashFallback = false;
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

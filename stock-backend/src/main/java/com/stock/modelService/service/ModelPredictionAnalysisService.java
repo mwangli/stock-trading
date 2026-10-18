@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START --------
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -16,6 +16,10 @@ import com.stock.modelService.persistence.LstmModelRepository;
 import com.stock.modelService.persistence.ModelActivationRepository;
 import com.stock.modelService.persistence.ModelPredictionBatchRepository;
 import com.stock.modelService.persistence.ModelPredictionRepository;
+import com.stock.strategyAgent.domain.AgentEnums;
+import com.stock.strategyAgent.domain.entity.AgentTradePlanEntity;
+import com.stock.strategyAgent.persistence.AgentTradePlanRepository;
+import com.stock.strategyAgent.persistence.RankingRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -27,6 +31,7 @@ import org.springframework.data.mongodb.core.index.Index;
 import org.springframework.data.mongodb.core.index.IndexOperations;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -79,6 +84,8 @@ public class ModelPredictionAnalysisService {
     private final LstmModelRepository modelRepository;
     private final ModelPredictionBatchRepository batchRepository;
     private final ModelPredictionRepository predictionRepository;
+    private final RankingRepository rankingRepository;
+    private final AgentTradePlanRepository agentTradePlanRepository;
     private final MongoTemplate mongoTemplate;
     private final Executor applicationTaskExecutor;
     private final AtomicBoolean predictionRunning = new AtomicBoolean(false);
@@ -108,6 +115,8 @@ public class ModelPredictionAnalysisService {
             LstmModelRepository modelRepository,
             ModelPredictionBatchRepository batchRepository,
             ModelPredictionRepository predictionRepository,
+            RankingRepository rankingRepository,
+            AgentTradePlanRepository agentTradePlanRepository,
             MongoTemplate mongoTemplate,
             @Qualifier("applicationTaskExecutor") Executor applicationTaskExecutor) {
         this.inferenceService = inferenceService;
@@ -119,6 +128,8 @@ public class ModelPredictionAnalysisService {
         this.modelRepository = modelRepository;
         this.batchRepository = batchRepository;
         this.predictionRepository = predictionRepository;
+        this.rankingRepository = rankingRepository;
+        this.agentTradePlanRepository = agentTradePlanRepository;
         this.mongoTemplate = mongoTemplate;
         this.applicationTaskExecutor = applicationTaskExecutor;
     }
@@ -509,6 +520,50 @@ public class ModelPredictionAnalysisService {
                 .current(safeCurrent)
                 .pageSize(safePageSize)
                 .build();
+    }
+
+    /**
+     * 删除失败或无效预测批次，并清理所有可安全删除的关联数据。
+     * 已执行或正在执行的交易计划属于交易审计链，存在时拒绝删除，避免破坏历史事实。
+     *
+     * @param batchId 预测批次 ID
+     * @return 删除操作结果
+     */
+    @Transactional
+    public ModelPredictionAnalysisDto.OperationResponse deleteBatch(String batchId) {
+        ModelPredictionBatchDocument batch = resolveBatch(batchId);
+        if (RUNNING_STATUSES.contains(batch.getStatus())) {
+            throw new IllegalStateException("运行中的预测批次不能删除");
+        }
+        if (!isInvalidOrFailed(batch)) {
+            throw new IllegalStateException("仅允许删除失败、取消或无有效预测结果的批次");
+        }
+
+        List<AgentTradePlanEntity> tradePlans = agentTradePlanRepository
+                .findByPredictionBatchId(batch.getId());
+        boolean hasExecutedPlan = tradePlans.stream()
+                .anyMatch(plan -> plan.getStatus() == AgentEnums.TradePlanStatus.EXECUTED
+                        || plan.getStatus() == AgentEnums.TradePlanStatus.EXECUTING);
+        if (hasExecutedPlan) {
+            throw new IllegalStateException("预测批次已关联执行中的交易计划，不能删除");
+        }
+
+        long deletedPlans = agentTradePlanRepository.deleteByPredictionBatchId(batch.getId());
+        long deletedRankings = rankingRepository.deleteByPredictionBatchId(batch.getId());
+        predictionRepository.deleteByBatchId(batch.getId());
+        batchRepository.delete(batch);
+        log.info("预测批次及关联数据已删除: batchId={}, tradePlans={}, rankings={}",
+                batch.getId(), deletedPlans, deletedRankings);
+        return ModelPredictionAnalysisDto.OperationResponse.builder()
+                .batchId(batch.getId())
+                .status("DELETED")
+                .message("预测批次及关联数据已全部清理")
+                .build();
+    }
+
+    private boolean isInvalidOrFailed(ModelPredictionBatchDocument batch) {
+        return List.of("FAILED", "CANCELLED").contains(batch.getStatus())
+                || batch.getSuccessCount() <= 0;
     }
 
     /**
@@ -1123,4 +1178,4 @@ public class ModelPredictionAnalysisService {
     private record TradeDateResolution(LocalDate tradeDate, boolean calendarFallback) {
     }
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END --------

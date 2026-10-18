@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.strategyAgent.service;
 
 import com.stock.modelService.domain.entity.ModelPredictionDocument;
@@ -23,8 +23,10 @@ import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -67,9 +69,12 @@ public class StrategyEvaluationService {
                 .filter(config -> config.getVersion() != null && config.getMode() != null)
                 .collect(Collectors.toMap(StrategyConfig::getVersion, StrategyConfig::getMode,
                         (left, right) -> left, LinkedHashMap::new));
+        String currentConfigVersion = configRepository.findFirstByEnabledTrueOrderByUpdateTimeDesc()
+                .map(StrategyConfig::getVersion).orElse(null);
         Map<PredictionKey, ModelPredictionDocument> predictionByKey = loadPredictions(rankings);
         Map<StrategyMode, List<CandidateOutcome>> outcomesByMode = new EnumMap<>(StrategyMode.class);
         Map<StrategyMode, Integer> expectedByMode = new EnumMap<>(StrategyMode.class);
+        Map<StrategyMode, VersionMetadata> metadataByMode = new EnumMap<>(StrategyMode.class);
         for (StockRanking ranking : rankings) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new IllegalStateException("策略评估已收到停止请求");
@@ -78,6 +83,7 @@ public class StrategyEvaluationService {
             if (mode == null) {
                 continue;
             }
+            metadataByMode.computeIfAbsent(mode, ignored -> new VersionMetadata()).add(ranking);
             expectedByMode.merge(mode, 1, Integer::sum);
             ModelPredictionDocument prediction = predictionByKey.get(
                     new PredictionKey(ranking.getPredictionBatchId(), ranking.getStockCode()));
@@ -98,10 +104,11 @@ public class StrategyEvaluationService {
         List<StrategyEvaluationEntity> entities = new ArrayList<>();
         for (StrategyMode mode : StrategyMode.values()) {
             entities.add(evaluateMode(runId, calculatedAt, mode,
-                    outcomesByMode.getOrDefault(mode, List.of()), expectedByMode.getOrDefault(mode, 0)));
+                    outcomesByMode.getOrDefault(mode, List.of()), expectedByMode.getOrDefault(mode, 0),
+                    metadataByMode.getOrDefault(mode, new VersionMetadata())));
         }
         evaluationRepository.saveAll(entities);
-        StrategyEvaluationDto result = toDto(entities);
+        StrategyEvaluationDto result = toDto(entities, currentConfigVersion);
         log.info("策略模式评估完成: runId={}, rankings={}, matchedPredictions={}, summary={}",
                 runId, rankings.size(), outcomesByMode.values().stream().mapToInt(List::size).sum(), result.getSummary());
         return result;
@@ -113,10 +120,12 @@ public class StrategyEvaluationService {
      * @return 最近评估结果
      */
     public StrategyEvaluationDto getLatest() {
+        String currentConfigVersion = configRepository.findFirstByEnabledTrueOrderByUpdateTimeDesc()
+                .map(StrategyConfig::getVersion).orElse(null);
         return evaluationRepository.findTopByOrderByCalculatedAtDesc()
                 .map(latest -> toDto(evaluationRepository
-                        .findByEvaluationRunIdOrderByStrategyModeAsc(latest.getEvaluationRunId())))
-                .orElseGet(this::notEvaluatedResult);
+                        .findByEvaluationRunIdOrderByStrategyModeAsc(latest.getEvaluationRunId()), currentConfigVersion))
+                .orElseGet(() -> notEvaluatedResult(currentConfigVersion));
     }
 
     private Map<PredictionKey, ModelPredictionDocument> loadPredictions(List<StockRanking> rankings) {
@@ -134,7 +143,7 @@ public class StrategyEvaluationService {
 
     private StrategyEvaluationEntity evaluateMode(String runId, LocalDateTime calculatedAt,
                                                     StrategyMode mode, List<CandidateOutcome> outcomes,
-                                                    int expectedSamples) {
+                                                    int expectedSamples, VersionMetadata metadata) {
         List<DailyOutcome> dailyOutcomes = outcomes.stream()
                 .collect(Collectors.groupingBy(CandidateOutcome::candidateBatchId, LinkedHashMap::new,
                         Collectors.collectingAndThen(Collectors.toList(), this::toDailyOutcome)))
@@ -155,6 +164,9 @@ public class StrategyEvaluationService {
         return StrategyEvaluationEntity.builder()
                 .evaluationRunId(runId)
                 .strategyMode(mode.name())
+                .strategyConfigVersion(metadata.join(metadata.strategyConfigVersions))
+                .modelVersion(metadata.join(metadata.modelVersions))
+                .sentimentModelVersion(metadata.join(metadata.sentimentModelVersions))
                 .status(available ? "AVAILABLE" : "INSUFFICIENT_DATA")
                 .sourceType("CANDIDATE")
                 .windowStart(dailyOutcomes.isEmpty() ? null : dailyOutcomes.get(0).targetTradeDate())
@@ -230,15 +242,16 @@ public class StrategyEvaluationService {
                 metrics.maxDrawdown() * 100D, metrics.winRate() * 100D);
     }
 
-    private StrategyEvaluationDto toDto(List<StrategyEvaluationEntity> entities) {
+    private StrategyEvaluationDto toDto(List<StrategyEvaluationEntity> entities, String currentConfigVersion) {
         List<StrategyEvaluationDto.ModeEvaluationDto> modes = entities.stream()
                 .sorted(Comparator.comparing(StrategyEvaluationEntity::getStrategyMode))
-                .map(this::toModeDto).toList();
+                .map(entity -> toModeDto(entity, currentConfigVersion)).toList();
         long availableCount = modes.stream().filter(item -> "AVAILABLE".equals(item.getStatus())).count();
         StrategyEvaluationEntity first = entities.isEmpty() ? null : entities.get(0);
         return StrategyEvaluationDto.builder()
                 .evaluationRunId(first == null ? null : first.getEvaluationRunId())
                 .calculatedAt(first == null ? null : first.getCalculatedAt())
+                .currentConfigVersion(currentConfigVersion)
                 .modes(modes)
                 .summary(availableCount == 0
                         ? "当前没有达到门槛的策略模式，自动切换只能继续使用市场规则"
@@ -246,10 +259,18 @@ public class StrategyEvaluationService {
                 .build();
     }
 
-    private StrategyEvaluationDto.ModeEvaluationDto toModeDto(StrategyEvaluationEntity entity) {
+    private StrategyEvaluationDto.ModeEvaluationDto toModeDto(StrategyEvaluationEntity entity,
+                                                              String currentConfigVersion) {
         StrategyMode mode = StrategyMode.valueOf(entity.getStrategyMode());
         return StrategyEvaluationDto.ModeEvaluationDto.builder()
                 .mode(entity.getStrategyMode()).modeName(mode.getName()).status(entity.getStatus())
+                .strategyConfigVersion(entity.getStrategyConfigVersion())
+                .modelVersion(entity.getModelVersion())
+                .sentimentModelVersion(entity.getSentimentModelVersion())
+                .currentConfigVersionMatched(entity.getStrategyConfigVersion() != null
+                        && currentConfigVersion != null
+                        && !entity.getStrategyConfigVersion().contains(",")
+                        && currentConfigVersion.equals(entity.getStrategyConfigVersion()))
                 .sourceType(entity.getSourceType()).windowStart(entity.getWindowStart()).windowEnd(entity.getWindowEnd())
                 .validationStart(entity.getValidationStart()).validationEnd(entity.getValidationEnd())
                 .sampleCount(entity.getSampleCount()).batchCount(entity.getBatchCount())
@@ -260,15 +281,38 @@ public class StrategyEvaluationService {
                 .conclusion(entity.getConclusion()).build();
     }
 
-    private StrategyEvaluationDto notEvaluatedResult() {
+    private StrategyEvaluationDto notEvaluatedResult(String currentConfigVersion) {
         List<StrategyEvaluationDto.ModeEvaluationDto> modes = java.util.Arrays.stream(StrategyMode.values())
                 .map(mode -> StrategyEvaluationDto.ModeEvaluationDto.builder()
                         .mode(mode.name()).modeName(mode.getName()).status("NOT_EVALUATED")
                         .sourceType("CANDIDATE").conclusion("尚未执行策略评估任务")
                         .dataComplete(false).sampleSufficient(false).outOfSample(false).build())
                 .toList();
-        return StrategyEvaluationDto.builder().modes(modes)
+        return StrategyEvaluationDto.builder().currentConfigVersion(currentConfigVersion).modes(modes)
                 .summary("尚未执行策略评估任务，可在任务管理页面手动触发").build();
+    }
+
+    private static final class VersionMetadata {
+
+        private final Set<String> strategyConfigVersions = new LinkedHashSet<>();
+        private final Set<String> modelVersions = new LinkedHashSet<>();
+        private final Set<String> sentimentModelVersions = new LinkedHashSet<>();
+
+        private void add(StockRanking ranking) {
+            addIfPresent(strategyConfigVersions, ranking.getStrategyConfigVersion());
+            addIfPresent(modelVersions, ranking.getModelVersion());
+            addIfPresent(sentimentModelVersions, ranking.getSentimentModelVersion());
+        }
+
+        private String join(Set<String> versions) {
+            return versions.isEmpty() ? null : String.join(", ", versions);
+        }
+
+        private static void addIfPresent(Set<String> versions, String version) {
+            if (version != null && !version.isBlank()) {
+                versions.add(version);
+            }
+        }
     }
 
     private record PredictionKey(String batchId, String stockCode) { }
@@ -280,4 +324,4 @@ public class StrategyEvaluationService {
     private record Metrics(double grossReturn, double maxDrawdown, double winRate,
                            Double profitLossRatio, double stabilityScore) { }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

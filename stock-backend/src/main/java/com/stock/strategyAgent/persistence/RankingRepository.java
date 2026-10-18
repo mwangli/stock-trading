@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ---------
 package com.stock.strategyAgent.persistence;
 
 import com.stock.strategyAgent.domain.entity.StockRanking;
@@ -86,6 +86,14 @@ public interface RankingRepository extends MongoRepository<StockRanking, String>
     List<StockRanking> findByCandidateBatchIdOrderByRankAsc(String candidateBatchId);
 
     /**
+     * 删除指定预测批次产生的候选排名。
+     *
+     * @param predictionBatchId 预测批次 ID
+     * @return 删除的排名数量
+     */
+    long deleteByPredictionBatchId(String predictionBatchId);
+
+    /**
      * 查询评估窗口内的历史候选，按目标交易日和排名排序。
      *
      * @param startDate 评估窗口起始日
@@ -104,4 +112,4 @@ public interface RankingRepository extends MongoRepository<StockRanking, String>
      */
     List<StockRanking> findByStockCodeAndCalculateTime(String stockCode, LocalDate calculateTime);
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------

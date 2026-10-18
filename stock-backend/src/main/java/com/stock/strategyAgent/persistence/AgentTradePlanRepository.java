@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.persistence;
 
 import com.stock.strategyAgent.domain.entity.AgentTradePlanEntity;
@@ -38,6 +38,22 @@ public interface AgentTradePlanRepository extends JpaRepository<AgentTradePlanEn
     List<AgentTradePlanEntity> findByStatusOrderByCreatedAtAsc(AgentEnums.TradePlanStatus status);
 
     /**
+     * 查询引用指定预测批次的交易计划。
+     *
+     * @param predictionBatchId 预测批次 ID
+     * @return 关联交易计划
+     */
+    List<AgentTradePlanEntity> findByPredictionBatchId(String predictionBatchId);
+
+    /**
+     * 删除引用指定预测批次的交易计划。
+     *
+     * @param predictionBatchId 预测批次 ID
+     * @return 删除的交易计划数量
+     */
+    long deleteByPredictionBatchId(String predictionBatchId);
+
+    /**
      * 原子抢占一个尚未复核且未过期的交易计划。
      *
      * @param planId 计划标识
@@ -58,4 +74,4 @@ public interface AgentTradePlanRepository extends JpaRepository<AgentTradePlanEn
                           @Param("now") java.time.LocalDateTime now,
                           @Param("traceId") String traceId);
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

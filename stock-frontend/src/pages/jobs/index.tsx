@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------------------
+// AI_GENERATE_START ----------------------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
@@ -38,7 +38,6 @@ interface ExecutionItem {
   triggeredBy?: string;
   status: string;
   scheduledTime?: string;
-  queuedTime?: string;
   startedTime?: string;
   finishedTime?: string;
   durationMs?: number;
@@ -87,7 +86,6 @@ interface StopResponse {
 }
 
 const statusColors: Record<string, string> = {
-  QUEUED: 'blue',
   RUNNING: 'processing',
   SUCCESS: 'green',
   REJECTED: 'orange',
@@ -104,7 +102,6 @@ const statusColors: Record<string, string> = {
 };
 
 const statusLabels: Record<string, string> = {
-  QUEUED: '排队中',
   RUNNING: '执行中',
   SUCCESS: '成功',
   FAILED: '失败',
@@ -133,7 +130,7 @@ const sourceLabelsEn: Record<string, string> = {
 };
 
 const statusLabelsEn: Record<string, string> = {
-  QUEUED: 'Queued', RUNNING: 'Running', SUCCESS: 'Success', FAILED: 'Failed', SKIPPED: 'Skipped',
+  RUNNING: 'Running', SUCCESS: 'Success', FAILED: 'Failed', SKIPPED: 'Skipped',
   REJECTED: 'Rejected', CANCELLED: 'Cancelled', PAUSED: 'Paused', NORMAL: 'Normal', BLOCKED: 'Blocked',
   ERROR: 'Error', ENABLED: 'Enabled', STOPPED: 'Stopped', NOT_REGISTERED: 'Not Registered',
 };
@@ -255,19 +252,17 @@ const JobManagement: React.FC = () => {
   }, [loadAll]);
 
   const hasActiveHistoryRuns = useMemo(
-    () => historyRuns.some((run) => run.status === 'QUEUED' || run.status === 'RUNNING'),
+    () => historyRuns.some((run) => run.status === 'RUNNING'),
     [historyRuns],
   );
 
   const hasActiveJobs = useMemo(
-    () => jobs.some((job) => job.latestRun?.status === 'QUEUED'
-      || job.latestRun?.status === 'RUNNING'),
+    () => jobs.some((job) => job.latestRun?.status === 'RUNNING'),
     [jobs],
   );
 
   const jobSummary = useMemo(() => {
-    const running = jobs.filter((job) => job.latestRun?.status === 'QUEUED'
-      || job.latestRun?.status === 'RUNNING').length;
+    const running = jobs.filter((job) => job.latestRun?.status === 'RUNNING').length;
     const attention = jobs.filter((job) => job.taskStatus === 'NOT_REGISTERED' || job.taskStatus === 'ERROR').length;
     const enabled = jobs.filter((job) => job.taskStatus === 'ENABLED' || job.taskStatus === 'NORMAL').length;
     return { total: jobs.length, enabled, running, attention };
@@ -338,9 +333,7 @@ const JobManagement: React.FC = () => {
   const confirmStopRun = (run: ExecutionItem) => {
     Modal.confirm({
       title: localizedText('停止任务执行', 'Stop Job Run'),
-      content: run.status === 'QUEUED'
-        ? localizedText('该任务仍在排队，停止后将取消本次执行。', 'The job is queued and this run will be cancelled.')
-        : localizedText('系统将发送线程中断请求。任务只能在业务代码响应中断后真正停止。', 'The system will request a thread interrupt; the job stops only after business code responds.'),
+      content: localizedText('系统将发送线程中断请求。任务只能在业务代码响应中断后真正停止。', 'The system will request a thread interrupt; the job stops only after business code responds.'),
       okText: localizedText('停止任务', 'Stop Run'),
       cancelText: localizedText('取消', 'Cancel'),
       okButtonProps: { danger: true },
@@ -410,7 +403,7 @@ const JobManagement: React.FC = () => {
       fixed: 'right',
       width: 90,
       render: (_, record) => {
-        const canStop = (record.status === 'QUEUED' || record.status === 'RUNNING') && operatingRun !== record.runId;
+        const canStop = record.status === 'RUNNING' && operatingRun !== record.runId;
         return (
           <span
             className={`job-action ${canStop ? 'job-action-danger' : 'job-action-disabled'}`}
@@ -469,10 +462,7 @@ const JobManagement: React.FC = () => {
       width: 390,
       render: (_, record) => {
         const operating = operatingJob === record.jobName;
-        const activeRun = record.latestRun
-          && (record.latestRun.status === 'QUEUED' || record.latestRun.status === 'RUNNING')
-          ? record.latestRun
-          : undefined;
+        const activeRun = record.latestRun?.status === 'RUNNING' ? record.latestRun : undefined;
         const needsRegistrationRepair = record.taskStatus === 'NOT_REGISTERED';
         const canTrigger = record.enabled && !needsRegistrationRepair && record.taskStatus !== 'ERROR' && !operating;
         const canToggle = !operating;
@@ -497,7 +487,7 @@ const JobManagement: React.FC = () => {
             <span
               className={`job-action job-action-danger ${canStop ? '' : 'job-action-disabled'}`}
               aria-disabled={!canStop}
-              onClick={canStop ? () => confirmStopRun(activeRun) : undefined}
+              onClick={canStop && activeRun ? () => confirmStopRun(activeRun) : undefined}
             >
               {localizedText('停止', 'Stop')}
             </span>
@@ -634,7 +624,6 @@ const JobManagement: React.FC = () => {
             <Descriptions.Item label={localizedText('触发来源', 'Trigger Source')}>{localizedText(sourceLabels[selectedRun.triggerSource] ?? selectedRun.triggerSource, sourceLabelsEn[selectedRun.triggerSource] ?? selectedRun.triggerSource)}</Descriptions.Item>
             <Descriptions.Item label={localizedText('操作人', 'Operator')}>{selectedRun.triggeredBy || '-'}</Descriptions.Item>
             <Descriptions.Item label={localizedText('计划时间', 'Scheduled At')}>{formatDateTime(selectedRun.scheduledTime)}</Descriptions.Item>
-            <Descriptions.Item label={localizedText('排队时间', 'Queued At')}>{formatDateTime(selectedRun.queuedTime)}</Descriptions.Item>
             <Descriptions.Item label={localizedText('开始时间', 'Started At')}>{formatDateTime(selectedRun.startedTime)}</Descriptions.Item>
             <Descriptions.Item label={localizedText('结束时间', 'Finished At')}>{formatDateTime(selectedRun.finishedTime)}</Descriptions.Item>
             <Descriptions.Item label={localizedText('执行耗时', 'Duration')}>{formatDuration(selectedRun.durationMs)}</Descriptions.Item>
@@ -651,4 +640,4 @@ const JobManagement: React.FC = () => {
 };
 
 export default JobManagement;
-// AI_GENERATE_END --------------------
+// AI_GENERATE_END ----------------------

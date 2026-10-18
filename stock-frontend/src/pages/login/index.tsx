@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Input, message, Tooltip } from 'antd';
 import { GlobalOutlined, LockOutlined, MoonOutlined, SunOutlined, UserOutlined } from '@ant-design/icons';
@@ -11,7 +11,7 @@ import { checkBackendHealth, isBackendUnavailable } from '../../utils/backendHea
 
 const AnimatedMarketBackground: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { mode, toggleMode } = useAppTheme();
+  const { mode } = useAppTheme();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -279,4 +279,4 @@ const Login: React.FC = () => {
 };
 
 export default Login;
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

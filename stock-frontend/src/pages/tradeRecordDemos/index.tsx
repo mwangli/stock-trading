@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 import './styles.css';
 import React, { useMemo, useState } from 'react';
 import {
@@ -7,7 +7,6 @@ import {
   Empty,
   Input,
   Segmented,
-  Space,
   Table,
   Tag,
   Typography,
@@ -222,4 +221,4 @@ const TradeRecordDemos: React.FC = () => {
 };
 
 export default TradeRecordDemos;
-// AI_GENERATE_END -
+// AI_GENERATE_END --

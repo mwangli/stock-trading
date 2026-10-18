@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -28,6 +28,9 @@ public class StrategyEvaluationDto {
     /** 最近一次评估完成时间。 */
     private LocalDateTime calculatedAt;
 
+    /** 当前生效的策略配置版本，用于和评估版本进行比对。 */
+    private String currentConfigVersion;
+
     /** 三种策略模式的评估结果。 */
     private List<ModeEvaluationDto> modes;
 
@@ -51,6 +54,18 @@ public class StrategyEvaluationDto {
 
         /** 策略模式中文名称。 */
         private String modeName;
+
+        /** 本次模式评估涉及的策略配置版本，跨版本时使用逗号分隔展示。 */
+        private String strategyConfigVersion;
+
+        /** 本次模式评估涉及的涨跌模型版本，跨版本时使用逗号分隔展示。 */
+        private String modelVersion;
+
+        /** 本次模式评估涉及的情感模型版本，跨版本时使用逗号分隔展示。 */
+        private String sentimentModelVersion;
+
+        /** 当前生效版本是否与本次模式评估的单一策略版本一致。 */
+        private boolean currentConfigVersionMatched;
 
         /** 评估状态。 */
         private String status;
@@ -104,4 +119,4 @@ public class StrategyEvaluationDto {
         private String conclusion;
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

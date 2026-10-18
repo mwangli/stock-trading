@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------
+// AI_GENERATE_START ------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, Empty, Input, Pagination, Space, Table, Tooltip, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
@@ -164,7 +164,7 @@ const StockInformation: React.FC = () => {
           dataSource={stocks}
           loading={loading}
           locale={{ emptyText: <Empty description={t('stockInformation.empty')} /> }}
-          scroll={{ x: 1370, y: 'calc(100vh - 330px)' }}
+          scroll={{ x: 'max-content' }}
           pagination={false}
         />
         <div className="mt-4 overflow-x-auto pb-1">
@@ -191,4 +191,4 @@ const StockInformation: React.FC = () => {
 };
 
 export default StockInformation;
-// AI_GENERATE_END -----------
+// AI_GENERATE_END ------------

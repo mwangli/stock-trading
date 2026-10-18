@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------------
+// AI_GENERATE_START -------------------
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Table, Input, Select } from 'antd';
@@ -51,13 +51,20 @@ interface WatchlistItem {
   starred: boolean;
 }
 
-type MarketSortField = 'price' | 'change' | 'volume';
+type MarketSortField = 'updateTime' | 'price' | 'change' | 'volume';
 type MarketSortOrder = 'asc' | 'desc';
+
+const DEFAULT_SORT_FIELD: MarketSortField = 'updateTime';
+const DEFAULT_SORT_ORDER: MarketSortOrder = 'desc';
 
 interface KlineData {
   dates: string[];
   kline: number[][];
   volumes: number[];
+}
+
+interface KlinePoint {
+  value: [number, number, number, number];
 }
 
 interface MarketStatCard {
@@ -138,8 +145,11 @@ const Market: React.FC = () => {
       formatter: (params: TooltipComponentFormatterCallbackParams) => {
         const entries = Array.isArray(params) ? params : [params];
         const data = entries[0];
-        const values = Array.isArray(data?.data) ? data.data : [];
-        const [open, close, lowest, highest] = values.map((value) => typeof value === 'number' ? value : undefined);
+        const values = Array.isArray(data?.value) ? data.value : [];
+        const [open, close, lowest, highest] = values.map((value) => {
+          const numericValue = typeof value === 'number' ? value : Number(value);
+          return Number.isFinite(numericValue) ? numericValue : undefined;
+        });
         const formatPrice = (value: number | undefined) => value?.toFixed(2) ?? '--';
         const labelColor = isDark ? '#8a96a8' : '#526078';
         const valueColor = isDark ? '#eef4ff' : '#172033';
@@ -181,7 +191,9 @@ const Market: React.FC = () => {
     series: [
       {
         type: 'candlestick',
-        data: klineData.kline,
+        data: klineData.kline.map((values): KlinePoint => ({
+          value: [values[0], values[1], values[2], values[3]],
+        })),
         itemStyle: {
           color: STOCK_UP_COLOR,
           color0: STOCK_DOWN_COLOR,
@@ -200,8 +212,8 @@ const Market: React.FC = () => {
     pageSize: 9,
     total: 0,
   });
-  const [sortField, setSortField] = useState<MarketSortField>('change');
-  const [sortOrder, setSortOrder] = useState<MarketSortOrder>('desc');
+  const [sortField, setSortField] = useState<MarketSortField>(DEFAULT_SORT_FIELD);
+  const [sortOrder, setSortOrder] = useState<MarketSortOrder>(DEFAULT_SORT_ORDER);
 
   const formatVolume = (val: number) => {
     if (!val) return '0';
@@ -568,7 +580,13 @@ const Market: React.FC = () => {
               }
               const activeSorter = Array.isArray(sorter) ? sorter[0] : sorter;
               const nextField = activeSorter?.columnKey as MarketSortField | undefined;
-              const nextOrder: MarketSortOrder = activeSorter?.order === 'ascend' ? 'asc' : 'desc';
+              if (!activeSorter?.order) {
+                setSortField(DEFAULT_SORT_FIELD);
+                setSortOrder(DEFAULT_SORT_ORDER);
+                fetchStocks(1, 9, searchKeyword, DEFAULT_SORT_FIELD, DEFAULT_SORT_ORDER);
+                return;
+              }
+              const nextOrder: MarketSortOrder = activeSorter.order === 'ascend' ? 'asc' : 'desc';
               if (!nextField || !['price', 'change', 'volume'].includes(nextField)) {
                 return;
               }
@@ -627,4 +645,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END -----------------
+// AI_GENERATE_END -------------------
