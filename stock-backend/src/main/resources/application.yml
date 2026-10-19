@@ -130,7 +130,7 @@ agent:
     model: bge-base-zh-v1.5
     pretrained-model: BAAI/bge-base-zh-v1.5
     model-path: ${EMBEDDING_MODEL_PATH:data/models/embedding}
-    pretrained-revision: ${EMBEDDING_PRETRAINED_REVISION:main}
+    pretrained-revision: ${EMBEDDING_PRETRAINED_REVISION:}
     download-pretrained: true
     model-version: bge-base-zh-v1.5
     dimension: 768
@@ -198,7 +198,7 @@ models:
     model-version: finbert-tone-chinese-e91b1a3a
     pretrained-model: yiyanghkust/finbert-tone-chinese
     model-path: ${SENTIMENT_MODEL_PATH:data/models/sentiment}
-    pretrained-revision: ${SENTIMENT_PRETRAINED_REVISION:main}
+    pretrained-revision: ${SENTIMENT_PRETRAINED_REVISION:}
     download-pretrained: true
     converter-enabled: ${SENTIMENT_CONVERTER_ENABLED:true}
     converter-command: ${SENTIMENT_CONVERTER_COMMAND:djl-convert}
