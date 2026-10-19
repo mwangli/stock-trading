@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START ------
 package com.stock.strategyAgent.rag;
 
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
@@ -132,8 +132,18 @@ public class DjlEmbeddingModel implements EmbeddingModel {
             if (model != null) {
                 return model;
             }
+            Path modelDirectory = null;
             try {
-                Path modelDirectory = artifactService.ensureEmbeddingReady(properties);
+                modelDirectory = artifactService.ensureEmbeddingReady(properties);
+                String modelFile = properties.getModel() + ".pt";
+                log.info("Embedding 模型加载诊断: directory={}, config={}, tokenizer={}, pytorchModel={}, modelFile={}, modelFilePresent={}",
+                        modelDirectory,
+                        Files.isRegularFile(modelDirectory.resolve("config.json")),
+                        Files.isRegularFile(modelDirectory.resolve("tokenizer.json")),
+                        Files.isRegularFile(modelDirectory.resolve("pytorch_model.bin")),
+                        modelFile,
+                        Files.isRegularFile(modelDirectory.resolve(modelFile)));
+                requireModelFile(modelDirectory, modelFile);
                 requireModelFile(modelDirectory, "config.json");
                 HuggingFaceTokenizer tokenizer = HuggingFaceTokenizer.builder()
                         .optTokenizerPath(modelDirectory)
@@ -157,11 +167,24 @@ public class DjlEmbeddingModel implements EmbeddingModel {
                         properties.getModel(), properties.getModelVersion(), properties.getDimension(), modelDirectory);
                 return model;
             } catch (Exception exception) {
-                lastLoadError = exception.getMessage();
+                lastLoadError = exception.getClass().getSimpleName() + ": " + exception.getMessage();
+                log.error("本地 Embedding 模型加载底层异常: model={}, version={}, directory={}, errorType={}, cause={}",
+                        properties.getModel(), properties.getModelVersion(), modelDirectory,
+                        exception.getClass().getName(), describeCauseChain(exception), exception);
                 throw new IllegalStateException("本地 Embedding 模型加载失败: "
                         + properties.getModel() + "/" + properties.getModelVersion(), exception);
             }
         }
+    }
+
+    private String describeCauseChain(Throwable exception) {
+        List<String> causes = new ArrayList<>();
+        Throwable current = exception;
+        while (current != null && causes.size() < 12) {
+            causes.add(current.getClass().getName() + ": " + current.getMessage());
+            current = current.getCause();
+        }
+        return String.join(" <- ", causes);
     }
 
     private void requireModelFile(Path modelPath, String fileName) {
@@ -182,4 +205,4 @@ public class DjlEmbeddingModel implements EmbeddingModel {
         }
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END ------

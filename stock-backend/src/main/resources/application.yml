@@ -91,7 +91,7 @@ trading:
 
 agent:
   enabled: true
-  provider: ollama
+  provider: ${AGENT_PROVIDER:deepseek}
   deepseek:
     enabled: true
     base-url: https://api.deepseek.com/v1
@@ -129,10 +129,10 @@ agent:
     api-key: ollama
     model: bge-base-zh-v1.5
     pretrained-model: BAAI/bge-base-zh-v1.5
-    model-path: ${EMBEDDING_MODEL_PATH:/data/models/embedding}
+    model-path: ${EMBEDDING_MODEL_PATH:./.tmp/model-runtime/embedding}
     artifact-source-path: ${EMBEDDING_ARTIFACT_SOURCE_PATH:./model-artifacts/embedding/bge-base-zh-v1.5}
     pretrained-revision: ${EMBEDDING_PRETRAINED_REVISION:f03589ceff5aac7111bd60cfc7d497ca17ecac65}
-    download-pretrained: ${EMBEDDING_DOWNLOAD_PRETRAINED:false}
+    download-pretrained: ${EMBEDDING_DOWNLOAD_PRETRAINED:true}
     model-version: bge-base-zh-v1.5
     dimension: 768
     timeout-ms: 30000
