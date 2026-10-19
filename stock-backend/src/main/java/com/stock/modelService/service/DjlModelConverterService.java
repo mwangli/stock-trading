@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ------
 package com.stock.modelService.service;
 
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
@@ -14,11 +14,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.HexFormat;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -32,6 +35,8 @@ import java.util.stream.Stream;
 @Service
 public class DjlModelConverterService {
 
+    private static final Pattern SHA256_PATTERN = Pattern.compile("[a-fA-F0-9]{64}");
+
     /**
      * 在暂存目录中执行情感模型转换，并将生成的 TorchScript 权重归一化为 model.pt。
      *
@@ -42,6 +47,28 @@ public class DjlModelConverterService {
      */
     public void convertSentiment(Path sourceDirectory, SentimentTrainingConfig config)
             throws IOException, InterruptedException {
+        Path preconvertedWeight;
+        try (Stream<Path> paths = Files.walk(sourceDirectory)) {
+            preconvertedWeight = paths.filter(Files::isRegularFile)
+                    .filter(path -> isPreconvertedWeight(path.getFileName().toString()))
+                    .findFirst().orElse(null);
+        }
+        if (preconvertedWeight != null) {
+            Path weight = preconvertedWeight;
+            String expectedSha256 = config.getPretrainedModelSha256();
+            if (expectedSha256 != null && !expectedSha256.isBlank()) {
+                if (!SHA256_PATTERN.matcher(expectedSha256).matches()
+                        || !expectedSha256.equalsIgnoreCase(sha256(weight))) {
+                    throw new IOException("预转换 model.pt SHA-256 校验失败: " + weight);
+                }
+                log.info("[模型初始化][来源校验] model.pt SHA-256 校验通过: {}", weight);
+            } else {
+                log.warn("[模型初始化][来源校验] 未配置预转换 model.pt SHA-256，仅依赖固定 revision 和 DJL 加载校验: {}",
+                        weight);
+            }
+            log.info("[模型初始化][转换跳过] 已发现预转换 TorchScript 权重: directory={}", sourceDirectory);
+            return;
+        }
         Path outputDirectory = sourceDirectory.resolve(".djl-converted").normalize();
         Files.createDirectories(outputDirectory);
         List<String> command = new ArrayList<>();
@@ -69,13 +96,15 @@ public class DjlModelConverterService {
                 ? Files.readString(logFile, java.nio.charset.StandardCharsets.UTF_8) : "";
         if (!completed) {
             process.destroyForcibly();
-            throw new IOException("DJL Converter 执行超时: "
+            throw new IOException("DJL Converter 执行超时，elapsedSeconds="
                     + Duration.ofSeconds(config.getConverterTimeoutSeconds()));
         }
         if (process.exitValue() != 0) {
             throw new IOException("DJL Converter 执行失败，exitCode=" + process.exitValue()
                     + ", output=" + truncate(output));
         }
+        log.info("[模型初始化][转换完成] directory={}, output={}",
+                sourceDirectory, outputDirectory);
 
         Path convertedWeight;
         try (Stream<Path> paths = Files.walk(outputDirectory)) {
@@ -127,12 +156,35 @@ public class DjlModelConverterService {
                 .optTranslator(translator)
                 .build();
         try (ZooModel<String, Classifications> ignored = criteria.loadModel()) {
-            log.info("DJL Converter 产物实际加载校验成功: directory={}", modelDirectory);
+            log.info("[模型初始化][加载校验完成] directory={}", modelDirectory);
         }
     }
 
     private String truncate(String output) {
         return output == null ? "" : output.length() <= 2000 ? output : output.substring(output.length() - 2000);
+    }
+
+    private String sha256(Path file) throws IOException {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try (var input = Files.newInputStream(file)) {
+                byte[] buffer = new byte[1024 * 1024];
+                int length;
+                while ((length = input.read(buffer)) >= 0) {
+                    if (length > 0) {
+                        digest.update(buffer, 0, length);
+                    }
+                }
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (java.security.NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("当前 JDK 不支持 SHA-256", exception);
+        }
+    }
+
+    private boolean isPreconvertedWeight(String fileName) {
+        return "model.pt".equalsIgnoreCase(fileName)
+                || "sentiment-finbert.pt".equalsIgnoreCase(fileName);
     }
 
     private void deleteDirectory(Path directory) throws IOException {
@@ -143,4 +195,4 @@ public class DjlModelConverterService {
         }
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ------

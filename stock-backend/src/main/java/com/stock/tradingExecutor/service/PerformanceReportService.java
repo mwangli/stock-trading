@@ -7,16 +7,11 @@ import com.stock.tradingExecutor.domain.dto.PerformancePeriodItemDto;
 import com.stock.tradingExecutor.domain.dto.PerformanceRankingItemDto;
 import com.stock.tradingExecutor.domain.entity.AccountSnapshotEntity;
 import com.stock.tradingExecutor.domain.entity.TradeRecordEntity;
-import com.stock.tradingExecutor.domain.entity.TradePerformanceSnapshotEntity;
 import com.stock.tradingExecutor.persistence.AccountSnapshotRepository;
 import com.stock.tradingExecutor.persistence.TradeRecordRepository;
-import com.stock.tradingExecutor.persistence.TradePerformanceSnapshotRepository;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -49,9 +44,7 @@ public class PerformanceReportService {
 
     private final AccountSnapshotRepository accountSnapshotRepository;
     private final TradeRecordRepository tradeRecordRepository;
-    private final TradePerformanceSnapshotRepository tradePerformanceSnapshotRepository;
     private final BrokerIdentityService brokerIdentityService;
-    private final ObjectMapper objectMapper;
 
     /**
      * 查询当前账户的收益报表总览。
@@ -105,44 +98,6 @@ public class PerformanceReportService {
                 .dailyReturns(buildDailyItems(realizedRecords))
                 .monthlyReturns(buildPeriodItems(realizedRecords, false))
                 .build();
-    }
-
-    /**
-     * 按当前交易记录生成并保存当日收益统计快照。
-     * 同一天重复执行会覆盖同一账户同一日期的快照，不产生重复数据。
-     */
-    @Transactional
-    public void refreshDailySnapshot() {
-        String brokerCode = brokerIdentityService.getBrokerCode();
-        String accountId = brokerIdentityService.getAccountId();
-        PerformanceOverviewDto overview = getOverview();
-        LocalDate today = LocalDate.now();
-        TradePerformanceSnapshotEntity snapshot = tradePerformanceSnapshotRepository
-                .findByBrokerCodeAndAccountIdAndAsOfDate(brokerCode, accountId, today)
-                .orElseGet(() -> new TradePerformanceSnapshotEntity()
-                        .setBrokerCode(brokerCode)
-                        .setAccountId(accountId)
-                        .setAsOfDate(today));
-        snapshot.setCumulativeProfit(zero(overview.getCumulativeProfit()))
-                .setCumulativeReturnRate(zero(overview.getCumulativeReturnRate()))
-                .setDailyProfit(zero(overview.getDailyProfit()))
-                .setDailyReturnRate(zero(overview.getDailyReturnRate()))
-                .setMonthlyProfit(zero(overview.getMonthlyProfit()))
-                .setMonthlyReturnRate(zero(overview.getMonthlyReturnRate()))
-                .setTotalTradeCount(overview.getTotalTradeCount())
-                .setClosedTradeCount(overview.getClosedTradeCount())
-                .setWinningTradeCount(overview.getWinningTradeCount())
-                .setLosingTradeCount(overview.getLosingTradeCount())
-                .setWinRate(zero(overview.getWinRate()))
-                .setAverageReturnRate(zero(overview.getAverageReturnRate()))
-                .setBestReturnRate(zero(overview.getBestReturnRate()))
-                .setWorstReturnRate(zero(overview.getWorstReturnRate()))
-                .setRankingJson(toJson(overview.getRanking()))
-                .setDailyReturnsJson(toJson(overview.getDailyReturns()))
-                .setMonthlyReturnsJson(toJson(overview.getMonthlyReturns()));
-        tradePerformanceSnapshotRepository.save(snapshot);
-        log.info("[Performance] 已保存每日收益统计快照: date={}, cumulativeProfit={}, tradeCount={}",
-                today, snapshot.getCumulativeProfit(), snapshot.getTotalTradeCount());
     }
 
     private List<PerformanceRankingItemDto> buildRanking(List<TradeRecordEntity> records) {
@@ -288,14 +243,6 @@ public class PerformanceReportService {
             return BigDecimal.ZERO.setScale(RATE_SCALE);
         }
         return BigDecimal.valueOf(numerator).divide(BigDecimal.valueOf(denominator), RATE_SCALE, RoundingMode.HALF_UP);
-    }
-
-    private String toJson(Object value) {
-        try {
-            return objectMapper.writeValueAsString(value);
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("收益统计明细序列化失败", exception);
-        }
     }
 
     private BigDecimal zero(BigDecimal value) {

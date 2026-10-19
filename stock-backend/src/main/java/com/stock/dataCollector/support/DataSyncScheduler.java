@@ -1,4 +1,4 @@
-// AI_GENERATE_START-- -------
+// AI_GENERATE_START-- --------
 package com.stock.dataCollector.support;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -173,7 +173,7 @@ public class DataSyncScheduler {
     /**
      * 补全历史新闻缺失的事件类型和信息优先级。
      * <p>
-     * 对应任务: newsMetadataBackfill。任务可重复执行，已完整的新闻不会被修改。
+     * 可由维护接口手动触发。方法可重复执行，已完整的新闻不会被修改。
      * </p>
      */
     public void backfillNewsMetadata() {
@@ -183,28 +183,6 @@ public class DataSyncScheduler {
         log.info("[数据同步任务] 历史新闻元数据补全完成: 扫描 {} 条，更新 {} 条",
                 result.scannedCount(), result.updatedCount());
         log.info("========== [数据同步任务] 历史新闻元数据补全结束 ==========");
-    }
-
-    /**
-     * 全量新闻采集
-     * <p>
-     * 对应任务: newsFullSync
-     * Cron: 0 0 6 * * SUN（每周日 6:00）
-     * 每只股票每来源（新闻/公告）采集最新 100 条，用于冷启动或周维护
-     * </p>
-     */
-    public void collectNewsFullSync() {
-        runtimeConfigService.requireNewsCollectionEnabled();
-        log.info("========== [数据同步任务] 开始执行全量新闻采集 ==========");
-        try {
-            StockNewsService.CollectResult result = stockNewsService.collectAllStockNews(0);
-            log.info("[数据同步任务] 全量新闻采集完成: 处理 {} 只股票，新增 {} 条，失败 {} 只",
-                    result.processedCount(), result.savedCount(), result.failedCount());
-        } catch (Exception e) {
-            log.error("[数据同步任务] 全量新闻采集失败", e);
-            throw new RuntimeException("全量新闻采集失败: " + e.getMessage(), e);
-        }
-        log.info("========== [数据同步任务] 全量新闻采集结束 ==========");
     }
 
     /**
@@ -233,4 +211,4 @@ public class DataSyncScheduler {
         log.info("========== [数据同步任务] 每日增量新闻采集结束 ==========");
     }
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------

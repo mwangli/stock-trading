@@ -5,12 +5,10 @@ import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.modelService.domain.dto.SentimentAnalyzeRequestDto;
 import com.stock.modelService.domain.dto.SentimentAnalyzeResultDto;
 import com.stock.modelService.domain.dto.SentimentHealthDto;
-import com.stock.modelService.domain.dto.SentimentEvaluationDto;
 import com.stock.modelService.domain.vo.SentimentArtifactInspection;
 import com.stock.modelService.domain.vo.SentimentArtifactManifest;
 import com.stock.modelService.domain.vo.SentimentAnalysisResult;
 import com.stock.modelService.service.SentimentInferenceService;
-import com.stock.modelService.service.SentimentEvaluationService;
 import com.stock.modelService.service.SentimentAggregationService;
 import com.stock.modelService.domain.vo.SentimentAggregateResult;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +34,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class SentimentController {
 
     private final SentimentInferenceService inferenceService;
-    private final SentimentEvaluationService evaluationService;
     private final SentimentAggregationService aggregationService;
 
     /**
@@ -98,17 +95,6 @@ public class SentimentController {
                 .evaluationConclusion(metrics == null ? null : metrics.getConclusion())
                 .lastError(error)
                 .build());
-    }
-
-    /**
-     * 查询最近一次人工标注集独立评估结果。
-     *
-     * @return 独立评估指标
-     */
-    @GetMapping("/evaluation/latest")
-    public ResponseDTO<SentimentEvaluationDto> latestEvaluation() {
-        log.info("查询情感模型最近独立评估结果");
-        return ResponseDTO.success(evaluationService.getLatest());
     }
 
     private SentimentAnalyzeResultDto toDto(SentimentAnalysisResult result) {

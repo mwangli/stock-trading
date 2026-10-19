@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.domain.entity;
 
 import lombok.Data;
@@ -29,6 +29,12 @@ public class ModelMetadataDocument {
 
     private String artifactUri;
 
+    /** 模型制品存储方式，例如 MONGO_GRIDFS。 */
+    private String artifactStorage;
+
+    /** GridFS 文件 ID 列表 JSON。 */
+    private String artifactFileIdsJson;
+
     private String configJson;
 
     private String metricsJson;
@@ -41,4 +47,4 @@ public class ModelMetadataDocument {
 
     private LocalDateTime updatedAt;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

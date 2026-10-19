@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START ---------
 package com.stock.modelService.config;
 
 import lombok.Data;
@@ -27,10 +27,16 @@ public class SentimentTrainingConfig {
     private String pretrainedModel = "yiyanghkust/finbert-tone-chinese";
 
     /** 固定的本地模型根目录，目录由初始化流程维护。 */
-    private String modelPath = "data/models/sentiment";
+    private String modelPath = "/data/models/sentiment";
+
+    /** Git LFS 管理的模型制品版本目录，供初始化流程复制到运行时目录。 */
+    private String artifactSourcePath = "./model-artifacts/sentiment/finbert-tone-chinese-e91b1a3a";
 
     /** 模型托管平台固定 revision。 */
     private String pretrainedRevision = "";
+
+    /** 预转换 TorchScript 权重的 SHA-256；生产环境建议配置，留空表示仅依赖 revision 和 DJL 加载校验。 */
+    private String pretrainedModelSha256 = "";
 
     /** 最大输入序列长度。 */
     private int maxSequenceLength = 128;
@@ -51,7 +57,7 @@ public class SentimentTrainingConfig {
     private int numLabels = 3;
 
     /** 是否允许首次启动从模型托管平台下载并初始化本地目录。 */
-    private boolean downloadPretrained = true;
+    private boolean downloadPretrained = false;
 
     /** 是否在初始化阶段调用 DJL Converter 生成 TorchScript 权重。 */
     private boolean converterEnabled = true;
@@ -74,4 +80,4 @@ public class SentimentTrainingConfig {
     /** 情感标签顺序，必须与 manifest 和模型输出一致。 */
     private String[] labels = {"neutral", "positive", "negative"};
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END ---------

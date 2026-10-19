@@ -60,7 +60,7 @@ const StockInformation: React.FC = () => {
   const [appliedKeyword, setAppliedKeyword] = useState('');
   const [stocks, setStocks] = useState<StockInfo[]>([]);
   const [current, setCurrent] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [searchToken, setSearchToken] = useState(0);
   const [loading, setLoading] = useState(false);

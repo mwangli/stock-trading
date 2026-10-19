@@ -1,4 +1,4 @@
-// AI_GENERATE_START- ---------
+// AI_GENERATE_START- -----------
 package com.stock.tradingExecutor;
 
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
@@ -285,7 +285,6 @@ public class JobExecutionService {
                 .setActiveLockKey(jobName)
                 .setStatus(JobExecutionStatus.RUNNING)
                 .setScheduledTime(toLocalDateTime(scheduledFireTime))
-                .setQueuedTime(now)
                 .setStartedTime(now)
                 .setCreatedAt(now)
                 .setHostName(resolveHostName());
@@ -301,7 +300,6 @@ public class JobExecutionService {
                 .setDurationMs(duration)
                 .setResultSummary("任务执行完成");
         executionRecordRepository.save(record);
-        updateLatestJobStatus(record, 1, null, duration);
         log.info("[任务执行] 任务执行成功: jobName={}, runId={}, durationMs={}",
                 record.getJobName(), record.getRunId(), duration);
     }
@@ -316,7 +314,6 @@ public class JobExecutionService {
                 .setErrorType(throwable.getClass().getName())
                 .setErrorMessage(safeMessage(throwable));
         executionRecordRepository.save(record);
-        updateLatestJobStatus(record, 0, safeMessage(throwable), duration);
         log.error("[任务执行] 任务执行失败: jobName={}, runId={}",
                 record.getJobName(), record.getRunId(), throwable);
     }
@@ -330,7 +327,6 @@ public class JobExecutionService {
                 .setDurationMs(duration)
                 .setResultSummary(summary);
         executionRecordRepository.save(record);
-        updateLatestJobStatus(record, 1, null, duration);
         log.info("[任务执行] 任务按业务条件跳过: jobName={}, runId={}, summary={}",
                 record.getJobName(), record.getRunId(), summary);
     }
@@ -342,7 +338,7 @@ public class JobExecutionService {
                 : LocalDateTime.now();
         LocalDateTime durationStart = current.getStartedTime() != null
                 ? current.getStartedTime()
-                : current.getQueuedTime();
+                : current.getCreatedAt();
         long duration = durationStart == null
                 ? 0L
                 : Math.max(0L, java.time.Duration.between(durationStart, finishedAt).toMillis());
@@ -363,17 +359,6 @@ public class JobExecutionService {
         return executionRecordRepository.findByRunId(record.getRunId())
                 .map(item -> item.getStatus() == JobExecutionStatus.CANCELLED)
                 .orElse(false);
-    }
-
-    private void updateLatestJobStatus(JobExecutionRecord record, int status,
-                                       String errorMessage, long duration) {
-        jobConfigRepository.findByJobName(record.getJobName()).ifPresent(job -> {
-            job.setLastRunTime(record.getFinishedTime())
-                    .setLastStatus(status)
-                    .setLastCostTime(duration)
-                    .setErrorMessage(errorMessage);
-            jobConfigRepository.save(job);
-        });
     }
 
     private String safeMessage(Throwable throwable) {
@@ -398,4 +383,4 @@ public class JobExecutionService {
     }
 
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ----------

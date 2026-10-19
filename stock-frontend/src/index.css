@@ -808,6 +808,10 @@ select { letter-spacing: 0; }
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.detail-section-body-full {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .detail-item {
   display: grid;
   min-width: 0;

@@ -1,4 +1,4 @@
-// AI_GENERATE_START- --------
+// AI_GENERATE_START- ----------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
@@ -167,7 +167,6 @@ public class JobManagementService {
                                                JobExecutionRecord latestRun) {
         return JobManagementDto.JobItem.builder()
                 .jobName(job.getJobName())
-                .methodName(job.getMethodName())
                 .description(job.getDescription())
                 .cronExpression(job.getCronExpression())
                 .module(job.getModule())
@@ -212,7 +211,6 @@ public class JobManagementService {
                         ? com.stock.tradingExecutor.JobExecutionStatus.RUNNING.name()
                         : record.getStatus().name())
                 .scheduledTime(record.getScheduledTime())
-                .queuedTime(record.getQueuedTime())
                 .startedTime(record.getStartedTime())
                 .finishedTime(record.getFinishedTime())
                 .durationMs(record.getDurationMs())
@@ -224,4 +222,4 @@ public class JobManagementService {
                 .build();
     }
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END ---------

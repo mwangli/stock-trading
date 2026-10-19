@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------------------------------------
+// AI_GENERATE_START ------------------------------------------
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
 import {
@@ -76,7 +76,6 @@ interface TrainingRun {
   finishedAt?: string;
   candidateModelVersionId?: string;
   datasetSnapshotId?: string;
-  resumedFromRunId?: string;
   errorMessage?: string;
   trainedStocks?: number;
   progressStage?: string;
@@ -120,7 +119,6 @@ interface StartTrainingRequest {
   batchSize?: number;
   learningRate?: number;
   operatorName?: string;
-  resumeFromRunId?: string;
 }
 
 interface OperationResponse {
@@ -366,12 +364,13 @@ const DetailModal: React.FC<DetailModalProps> = ({ title, open, onCancel, childr
 interface DetailSectionProps {
   title: string;
   children: React.ReactNode;
+  bodyClassName?: string;
 }
 
-const DetailSection: React.FC<DetailSectionProps> = ({ title, children }) => (
+const DetailSection: React.FC<DetailSectionProps> = ({ title, children, bodyClassName }) => (
   <section className="detail-section">
     <div className="detail-section-title">{title}</div>
-    <div className="detail-section-body">{children}</div>
+    <div className={`detail-section-body${bodyClassName ? ` ${bodyClassName}` : ''}`}>{children}</div>
   </section>
 );
 
@@ -715,15 +714,24 @@ const ModelOperations: React.FC = () => {
   const versionColumns: ColumnsType<ModelVersion> = [
     {
       title: localizedText('版本', 'Version'),
-      key: 'version',
+      dataIndex: 'modelVersion',
+      key: 'modelVersion',
       width: 220,
-      render: (_, record) => (
-        <Space direction="vertical" size={0}>
+      ellipsis: true,
+      render: (value?: string) => value || '-',
+    },
+    {
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 190,
+      ellipsis: true,
+      render: (value: string, record) => (
+        <Tooltip title={value}>
           <Button type="link" className="!px-0" onClick={() => void showVersionDetails(record.id)}>
-            {record.modelVersion || record.id}
+            <span className="max-w-40 truncate align-middle">{value}</span>
           </Button>
-          <Text type="secondary" className="text-xs">{record.id}</Text>
-        </Space>
+        </Tooltip>
       ),
     },
     {
@@ -1279,7 +1287,7 @@ const ModelOperations: React.FC = () => {
           dataSource={versions}
           loading={loading}
           locale={{ emptyText: <Empty description={t('modelOperations.versionsEmpty')} /> }}
-          scroll={{ x: 1380 }}
+          scroll={{ x: 1480 }}
           pagination={{
             current: versionPage,
             pageSize,
@@ -1383,7 +1391,7 @@ const ModelOperations: React.FC = () => {
               const label = snapshot[0] || '快照';
               const value = snapshot[1];
               return (
-              <DetailSection key={label} title={label}>
+              <DetailSection key={label} title={label} bodyClassName="detail-section-body-full">
                 <div className="detail-json-block">
                   <pre>
                     {value || '无'}
@@ -1401,4 +1409,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END -----------------------------------------
+// AI_GENERATE_END ------------------------------------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ---------
 package com.stock.strategyAgent.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -10,10 +10,7 @@ import com.stock.strategyAgent.domain.dto.StrategyConfigDto;
 import com.stock.strategyAgent.domain.entity.StrategyMode;
 import com.stock.strategyAgent.domain.dto.StrategyStateDto;
 import com.stock.strategyAgent.domain.dto.StockRankingDto;
-import com.stock.strategyAgent.domain.dto.StrategyEvaluationDto;
 import com.stock.strategyAgent.engine.StockSelector;
-import com.stock.strategyAgent.service.StrategyEvaluationService;
-import com.stock.strategyAgent.application.StrategyJobControl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -40,8 +37,6 @@ public class StrategyController {
     private final StrategyConfigService configService;
     private final StrategyModeManager modeManager;
     private final StrategyStateManager stateManager;
-    private final StrategyJobControl strategyJobControl;
-    private final StrategyEvaluationService evaluationService;
 
     /**
      * 执行选股
@@ -65,17 +60,6 @@ public class StrategyController {
     }
 
     /**
-     * 获取最近一次三模式策略评估。
-     *
-     * @return 样本量、数据完整性和样本外指标
-     */
-    @GetMapping("/evaluation/latest")
-    public ResponseDTO<StrategyEvaluationDto> getLatestEvaluation() {
-        log.info("[Strategy] 获取最近策略模式评估");
-        return ResponseDTO.success(evaluationService.getLatest());
-    }
-
-    /**
      * 获取策略状态
      */
     @GetMapping("/state")
@@ -93,11 +77,6 @@ public class StrategyController {
     @PostMapping("/autoSwitch")
     public ResponseDTO<StrategyStateDto> setAutoSwitch(@RequestParam boolean enabled) {
         log.info("[Strategy] 设置规则自动切换 | enabled={}", enabled);
-        if (enabled) {
-            strategyJobControl.resume("strategy-auto-switch");
-        } else {
-            strategyJobControl.pause("strategy-auto-switch");
-        }
         stateManager.setAutoSwitchEnabled(enabled);
         return ResponseDTO.success(stateManager.getCurrentState());
     }
@@ -144,4 +123,4 @@ public class StrategyController {
     }
 
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------

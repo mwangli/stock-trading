@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ------------
 package com.stock.strategyAgent.config;
 
 import lombok.Data;
@@ -160,13 +160,16 @@ public class AgentProperties {
         private String pretrainedModel = "BAAI/bge-base-zh-v1.5";
 
         /** 固定的本地模型根目录，目录由初始化流程维护。 */
-        private String modelPath = "data/models/embedding";
+        private String modelPath = "/data/models/embedding";
+
+        /** Git LFS 管理的模型制品版本目录，供初始化流程复制到运行时目录。 */
+        private String artifactSourcePath = "./model-artifacts/embedding/bge-base-zh-v1.5";
 
         /** 模型托管平台固定 revision。 */
         private String pretrainedRevision = "";
 
         /** 是否允许首次启动从模型托管平台下载并初始化本地目录。 */
-        private boolean downloadPretrained = true;
+        private boolean downloadPretrained = false;
 
         /** Embedding 模型版本。 */
         private String modelVersion = "bge-base-zh-v1.5";
@@ -190,4 +193,4 @@ public class AgentProperties {
         private boolean allowHashFallback = false;
     }
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END -----------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ----------
 package com.stock.modelService.service;
 
 import com.mongodb.client.gridfs.model.GridFSFile;
@@ -794,7 +794,8 @@ public class TrainingDatasetSnapshotService {
     }
 
     private Path artifactRoot() {
-        return Path.of(config.getArtifactDirectory()).toAbsolutePath().normalize();
+        return Path.of(System.getProperty("java.io.tmpdir"), "stock-trading-lstm-snapshots")
+                .toAbsolutePath().normalize();
     }
 
     private Path snapshotDirectory(Path artifactRoot, String snapshotId) {
@@ -1028,4 +1029,4 @@ public class TrainingDatasetSnapshotService {
         private Map<String, Integer> sampleCounts;
     }
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ----------

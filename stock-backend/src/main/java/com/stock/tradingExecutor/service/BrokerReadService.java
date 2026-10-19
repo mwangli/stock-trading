@@ -13,14 +13,12 @@ import com.stock.tradingExecutor.domain.dto.BrokerReadStatusDto;
 import com.stock.tradingExecutor.domain.entity.AccountSnapshotEntity;
 import com.stock.tradingExecutor.domain.entity.OrderStatus;
 import com.stock.tradingExecutor.domain.entity.PositionSnapshotEntity;
-import com.stock.tradingExecutor.domain.entity.PositionSnapshotItemEntity;
 import com.stock.tradingExecutor.domain.vo.BrokerFillSnapshot;
 import com.stock.tradingExecutor.domain.vo.BrokerOrderSnapshot;
 import com.stock.tradingExecutor.execution.BrokerAdapter;
 import com.stock.tradingExecutor.execution.FeeCalculator;
 import com.stock.tradingExecutor.execution.TradingProperties;
 import com.stock.tradingExecutor.persistence.AccountSnapshotRepository;
-import com.stock.tradingExecutor.persistence.PositionSnapshotItemRepository;
 import com.stock.tradingExecutor.persistence.PositionSnapshotRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -49,7 +47,6 @@ public class BrokerReadService {
     private final BrokerIdentityService brokerIdentityService;
     private final AccountSnapshotRepository accountSnapshotRepository;
     private final PositionSnapshotRepository positionSnapshotRepository;
-    private final PositionSnapshotItemRepository positionSnapshotItemRepository;
 
     /**
      * 获取券商只读网关状态。
@@ -95,8 +92,8 @@ public class BrokerReadService {
                 .findFirstByBrokerCodeAndAccountIdOrderByCapturedAtDesc(
                         brokerIdentityService.getBrokerCode(), brokerIdentityService.getAccountId())
                 .orElseThrow(() -> new IllegalStateException("暂无持仓快照，请等待券商定时同步任务执行"));
-        List<BrokerPositionDto> items = positionSnapshotItemRepository
-                .findBySnapshotIdOrderByStockCodeAsc(snapshot.getSnapshotId()).stream()
+        List<BrokerPositionDto> items = positionSnapshotRepository
+                .findBySnapshotIdAndStockCodeIsNotNullOrderByStockCodeAsc(snapshot.getSnapshotId()).stream()
                 .map(this::toPositionDto)
                 .toList();
         return BrokerPositionListResponseDto.builder()
@@ -242,7 +239,7 @@ public class BrokerReadService {
                 .build();
     }
 
-    private BrokerPositionDto toPositionDto(PositionSnapshotItemEntity position) {
+    private BrokerPositionDto toPositionDto(PositionSnapshotEntity position) {
         return BrokerPositionDto.builder()
                 .stockCode(position.getStockCode())
                 .stockName(position.getStockName())

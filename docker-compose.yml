@@ -69,7 +69,8 @@ services:
       JAVA_TOOL_OPTIONS: -Xms256m -Xmx720m -XX:MaxDirectMemorySize=192m -Duser.timezone=Asia/Shanghai
     volumes:
       - runtime-tmp:/app/.tmp
-      - model-runtime:/app/data/models
+      - model-runtime:/data/models
+      - ./model-artifacts:/app/model-artifacts:ro
     depends_on:
       stock-mysql:
         condition: service_healthy

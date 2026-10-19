@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ----------
 package com.stock.dataCollector.service;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -375,25 +375,6 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
 
 
     /**
-     * 同步单只股票的历史数据到MongoDB
-     */
-    public int syncHistoricalData(String stockCode, LocalDate startDate, LocalDate endDate) {
-        log.info("开始同步股票 {} 从 {} 到 {} 的历史数据", stockCode, startDate, endDate);
-
-        // 调用新的 Client 方法，仅拉取指定区间
-        JSONArray results = securitiesClient.getHistoryPrices(stockCode, startDate, endDate);
-        List<StockPrice> prices = StockDataParser.parsePriceList(results, stockCode);
-
-        // 保存数据
-        if (!prices.isEmpty()) {
-            saveStockPrices(prices);
-            log.info("股票 {} 历史数据同步完成，共 {} 条", stockCode, prices.size());
-            return prices.size();
-        }
-        
-        return 0;
-    }
-    /**
      * 同步当前交易日并回补最近三年的缺失交易日。
      *
      * @param stockCode 股票代码
@@ -433,52 +414,6 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
                 .toList();
         return new PriceSyncResult(todaySaved, toSave.size() - todaySaved, unresolvedDates);
     }
-    /**
-     * 智能增量同步单只股票数据
-     * 逻辑：
-     * 1. 获取接口返回的默认历史数据（通常为最近500条）
-     * 2. 查询数据库中该股票的最新日期
-     * 3. 过滤出大于数据库最新日期的数据进行保存
-     */
-    public int syncLatestPriceData(String stockCode) {
-        try {
-            // 1. 获取默认历史数据
-            List<StockPrice> fetchedPrices = getHistoryPrices(stockCode);
-            if (fetchedPrices.isEmpty()) {
-                return 0;
-            }
-
-            // 2. 查询数据库最新记录
-            Optional<StockPrice> lastPriceOpt = priceRepository.findTopByCodeOrderByDateDesc(stockCode);
-
-            List<StockPrice> toSave;
-            if (lastPriceOpt.isPresent()) {
-                LocalDate lastDate = lastPriceOpt.get().getDate();
-                // 3. 过滤出新数据
-                toSave = fetchedPrices.stream()
-                    .filter(p -> p.getDate().isAfter(lastDate))
-                    .toList();
-                
-                if (toSave.isEmpty()) {
-                    log.debug("股票 {} 数据已是最新，无需更新", stockCode);
-                    return 0;
-                }
-            } else {
-                // 如果数据库无记录，保存所有获取到的数据
-                toSave = fetchedPrices;
-            }
-
-            // 4. 保存
-            saveStockPrices(toSave);
-            log.info("股票 {} 增量同步完成，新增 {} 条记录", stockCode, toSave.size());
-            return toSave.size();
-
-        } catch (Exception e) {
-            log.error("增量同步股票 {} 失败: {}", stockCode, e.getMessage());
-            return 0;
-        }
-    }
-
     /**
      * 清理单只股票的全部历史行情数据
      * <p>
@@ -736,4 +671,4 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
         private String errorMessage;
     }
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ----------

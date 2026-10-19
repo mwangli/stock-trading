@@ -17,6 +17,7 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.annotation.PostConstruct;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -77,6 +78,36 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         this.circuitBreaker = circuitBreaker;
         this.providerModeManager = providerModeManager;
         this.modelExecutor = Executors.newFixedThreadPool(Math.max(properties.getMaxConcurrency(), 1));
+    }
+
+    /**
+     * 应用启动时预创建已配置的远程模型客户端。
+     *
+     * 客户端创建只校验本地配置，不在启动阶段发起网络请求；真实服务可用性由健康检查主动确认。
+     */
+    @PostConstruct
+    public void preloadConfiguredModels() {
+        if (!properties.isEnabled()) {
+            return;
+        }
+        preloadProvider("deepseek", isDeepSeekConfigured());
+        preloadProvider("ollama", isOllamaConfigured());
+    }
+
+    private void preloadProvider(String provider, boolean configured) {
+        if (!configured) {
+            providerStatuses.put(provider, "NOT_CONFIGURED");
+            return;
+        }
+        try {
+            models.put(provider, createModel(provider));
+            providerStatuses.put(provider, "PRELOADED");
+            log.info("Agent Provider 客户端预加载完成: provider={}, model={}", provider, modelName(provider));
+        } catch (RuntimeException exception) {
+            providerStatuses.put(provider, providerErrorCode(provider, exception));
+            log.warn("Agent Provider 客户端预加载失败: provider={}, causeType={}",
+                    provider, exception.getClass().getSimpleName());
+        }
     }
 
     /**

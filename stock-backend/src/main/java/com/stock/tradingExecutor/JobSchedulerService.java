@@ -1,4 +1,4 @@
-// AI_GENERATE_START-- -------------
+// AI_GENERATE_START-- --------------
 package com.stock.tradingExecutor;
 
 import lombok.RequiredArgsConstructor;
@@ -9,7 +9,6 @@ import org.quartz.JobBuilder;
 import org.quartz.JobDataMap;
 import org.quartz.JobDetail;
 import org.quartz.JobKey;
-import org.quartz.ObjectAlreadyExistsException;
 import org.quartz.Scheduler;
 import org.quartz.SchedulerException;
 import org.quartz.Trigger;
@@ -23,7 +22,6 @@ import java.time.ZoneId;
 import java.util.Date;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,9 +43,7 @@ public class JobSchedulerService {
     private static final Map<String, Class<? extends Job>> JOB_CLASSES = Map.ofEntries(
             Map.entry("stockListSync", StockListSyncQuartzJob.class),
             Map.entry("dailyStockDataSync", DailyStockDataSyncQuartzJob.class),
-            Map.entry("newsFullSync", NewsFullSyncQuartzJob.class),
             Map.entry("newsDailySync", NewsDailySyncQuartzJob.class),
-            Map.entry("newsMetadataBackfill", NewsMetadataBackfillQuartzJob.class),
             Map.entry("tradeCalendarMonthlySync", TradeCalendarMonthlySyncQuartzJob.class),
             Map.entry("lstmOfflineTraining", LstmOfflineTrainingQuartzJob.class),
             Map.entry("dailyModelPrediction", DailyModelPredictionQuartzJob.class),
@@ -55,15 +51,7 @@ public class JobSchedulerService {
             Map.entry("stockSelection", StockSelectionQuartzJob.class),
             Map.entry("realTradingAutoBuy", RealTradingAutoBuyQuartzJob.class),
             Map.entry("realTradingT1Exit", RealTradingT1ExitQuartzJob.class),
-            Map.entry("broker-current-facts-sync", BrokerCurrentFactsSyncQuartzJob.class),
-            Map.entry("broker-history-backfill", BrokerHistoryBackfillQuartzJob.class),
-            Map.entry("daily-five-year-baseline-backtest", DailyBaselineBacktestQuartzJob.class),
-            Map.entry("strategy-auto-switch", StrategyAutoSwitchQuartzJob.class),
-            Map.entry("strategy-evaluation", StrategyEvaluationQuartzJob.class),
-            Map.entry("sentiment-model-evaluation", SentimentEvaluationQuartzJob.class),
-            Map.entry("agent-daily-research-report", AgentDailyReportQuartzJob.class),
-            Map.entry("agent-trade-plan-execution", TradePlanExecutionQuartzJob.class),
-            Map.entry("daily-trade-performance-snapshot", PerformanceReportQuartzJob.class));
+            Map.entry("broker-current-facts-sync", BrokerCurrentFactsSyncQuartzJob.class));
 
     private final JobConfigRepository jobConfigRepository;
     private final Scheduler quartzScheduler;
@@ -73,48 +61,59 @@ public class JobSchedulerService {
      */
     public void reconcileAllJobs() {
         log.info("========== [任务调度] 开始协调 Quartz 持久化任务 ==========");
+        removeOrphanedJobs();
         List<JobConfig> jobs = jobConfigRepository.findAll();
-        Set<String> configuredJobNames = jobs.stream()
-                .map(JobConfig::getJobName)
-                .filter(JOB_CLASSES::containsKey)
-                .collect(Collectors.toCollection(HashSet::new));
         for (JobConfig job : jobs) {
-            if (!JOB_CLASSES.containsKey(job.getJobName())) {
-                log.warn("[任务调度] 忽略未登记的任务: {}", job.getJobName());
-                continue;
-            }
-            try {
-                registerJob(job);
-            } catch (RuntimeException exception) {
-                log.error("[任务调度] 固定任务注册失败，继续处理其他任务: jobName={}",
-                        job.getJobName(), exception);
-            }
+            registerJob(job);
         }
-        removeOrphanedJobs(configuredJobNames);
         log.info("========== [任务调度] Quartz 持久化任务协调完成，共检查 {} 个任务 ==========", jobs.size());
     }
-
     /**
-     * 删除数据库已不存在、但仍残留在本系统 Quartz group 中的任务。
+     * 删除数据库和 Quartz 中不再属于当前固定任务目录的历史任务。
      *
-     * @param configuredJobNames 当前数据库中有效且已登记的任务名称
+     * 任务目录由 {@link #JOB_CLASSES} 唯一维护，旧任务不能继续出现在任务管理页面，
+     * 也不能在应用启动时阻塞剩余固定任务的注册。
      */
-    private void removeOrphanedJobs(Set<String> configuredJobNames) {
+    private void removeOrphanedJobs() {
+        List<JobConfig> configuredJobs = jobConfigRepository.findAll();
+        List<JobConfig> orphanedJobs = configuredJobs.stream()
+                .filter(job -> !JOB_CLASSES.containsKey(job.getJobName()))
+                .toList();
+        for (JobConfig job : orphanedJobs) {
+            jobConfigRepository.deleteByJobName(job.getJobName());
+            deleteQuartzJobIfExists(job.getJobName());
+            log.info("[任务调度] 已删除历史任务: jobName={}", job.getJobName());
+        }
+        // 执行记录属于排查审计数据，任务从调度目录移除后仍然保留。
+        removeOrphanedQuartzJobs();
+    }
+
+    private void deleteQuartzJobIfExists(String jobName) {
         try {
-            Set<JobKey> persistedKeys = quartzScheduler
-                    .getJobKeys(GroupMatcher.jobGroupEquals(QUARTZ_GROUP));
-            for (JobKey persistedKey : persistedKeys) {
-                if (configuredJobNames.contains(persistedKey.getName())) {
-                    continue;
-                }
-                boolean deleted = quartzScheduler.deleteJob(persistedKey);
-                log.info("[任务调度] 清理 Quartz 孤儿任务: jobName={}, deleted={}",
-                        persistedKey.getName(), deleted);
+            JobKey key = jobKey(jobName);
+            if (quartzScheduler.checkExists(key)) {
+                quartzScheduler.deleteJob(key);
             }
         } catch (SchedulerException exception) {
-            throw new IllegalStateException("清理 Quartz 孤儿任务失败", exception);
+            throw new IllegalStateException("删除历史 Quartz 任务失败: " + jobName, exception);
         }
     }
+
+    private void removeOrphanedQuartzJobs() {
+        try {
+            Set<JobKey> quartzJobs = quartzScheduler
+                    .getJobKeys(GroupMatcher.jobGroupEquals(QUARTZ_GROUP));
+            for (JobKey key : quartzJobs) {
+                if (!JOB_CLASSES.containsKey(key.getName())) {
+                    quartzScheduler.deleteJob(key);
+                    log.info("[任务调度] 已删除历史 Quartz 任务: jobName={}", key.getName());
+                }
+            }
+        } catch (SchedulerException exception) {
+            throw new IllegalStateException("清理历史 Quartz 任务失败", exception);
+        }
+    }
+
     /**
      * 幂等注册固定任务，并根据配置同步启用或暂停状态。
      *
@@ -136,7 +135,7 @@ public class JobSchedulerService {
      *
      * @param jobConfig 固定任务配置
      */
-    public void startJob(JobConfig jobConfig) {
+    private void startJob(JobConfig jobConfig) {
         Class<? extends Job> jobClass = JOB_CLASSES.get(jobConfig.getJobName());
         if (jobClass == null) {
             throw new IllegalArgumentException("未登记 Quartz Job 类: " + jobConfig.getJobName());
@@ -145,7 +144,6 @@ public class JobSchedulerService {
             JobKey jobKey = jobKey(jobConfig.getJobName());
             JobDetail jobDetail = JobBuilder.newJob(jobClass)
                     .withIdentity(jobKey)
-                    .usingJobData("jobName", jobConfig.getJobName())
                     .storeDurably()
                     .build();
             quartzScheduler.addJob(jobDetail, true);
@@ -154,17 +152,13 @@ public class JobSchedulerService {
             Trigger trigger = TriggerBuilder.newTrigger()
                     .withIdentity(triggerKey)
                     .forJob(jobKey)
-                    .withSchedule(CronScheduleBuilder.cronSchedule(normalizeLegacyCronExpression(jobConfig))
+                    .withSchedule(CronScheduleBuilder.cronSchedule(jobConfig.getCronExpression())
                             .withMisfireHandlingInstructionDoNothing())
                     .build();
             if (quartzScheduler.checkExists(triggerKey)) {
                 quartzScheduler.rescheduleJob(triggerKey, trigger);
             } else {
-                try {
-                    quartzScheduler.scheduleJob(trigger);
-                } catch (ObjectAlreadyExistsException exception) {
-                    quartzScheduler.rescheduleJob(triggerKey, trigger);
-                }
+                quartzScheduler.scheduleJob(trigger);
             }
             quartzScheduler.resumeJob(jobKey);
             log.info("[任务调度] Quartz 启动任务成功: jobName={}, cron={}",
@@ -175,40 +169,6 @@ public class JobSchedulerService {
         }
     }
 
-    /**
-     * 将旧版同时填写日期和星期的 Cron 表达式转换为 Quartz 兼容格式。
-     *
-     * @param jobConfig 任务配置
-     * @return Quartz 兼容的 Cron 表达式
-     */
-    private String normalizeLegacyCronExpression(JobConfig jobConfig) {
-        String expression = jobConfig.getCronExpression();
-        if (expression == null || expression.isBlank()) {
-            throw new IllegalArgumentException("任务 Cron 表达式不能为空: " + jobConfig.getJobName());
-        }
-        String[] fields = expression.trim().split("\\s+");
-        if (fields.length < 6) {
-            return expression;
-        }
-        String dayOfMonth = fields[3];
-        String dayOfWeek = fields[5];
-        if ("?".equals(dayOfMonth) || "?".equals(dayOfWeek)) {
-            return expression;
-        }
-        if ("*".equals(dayOfMonth)) {
-            fields[3] = "?";
-        } else if ("*".equals(dayOfWeek)) {
-            fields[5] = "?";
-        } else {
-            throw new IllegalArgumentException("Quartz Cron 不能同时指定日期和星期: " + expression);
-        }
-        String normalized = String.join(" ", fields);
-        jobConfig.setCronExpression(normalized);
-        jobConfigRepository.save(jobConfig);
-        log.warn("[任务调度] 已自动修复旧版 Cron 表达式: jobName={}, oldCron={}, newCron={}",
-                jobConfig.getJobName(), expression, normalized);
-        return normalized;
-    }
     /**
      * 暂停指定任务。
      *
@@ -238,9 +198,7 @@ public class JobSchedulerService {
         try {
             JobKey key = jobKey(jobName);
             if (!quartzScheduler.checkExists(key)) {
-                JobConfig config = jobConfigRepository.findByJobName(jobName)
-                        .orElseThrow(() -> new IllegalArgumentException("任务不存在: " + jobName));
-                startJob(config);
+                throw new IllegalStateException("任务尚未注册到 Quartz: " + jobName);
             }
             quartzScheduler.resumeJob(key);
             log.info("[任务调度] Quartz 恢复任务成功: {}", jobName);
@@ -263,11 +221,6 @@ public class JobSchedulerService {
         }
         try {
             JobKey key = jobKey(jobName);
-            if (!quartzScheduler.checkExists(key)) {
-                JobConfig config = jobConfigRepository.findByJobName(jobName)
-                        .orElseThrow(() -> new IllegalArgumentException("任务不存在: " + jobName));
-                startJob(config);
-            }
             if (!quartzScheduler.checkExists(key)) {
                 throw new IllegalStateException("任务尚未注册到 Quartz: " + jobName);
             }
@@ -377,4 +330,4 @@ public class JobSchedulerService {
     public record QuartzRuntimeState(String triggerState, LocalDateTime nextFireTime, boolean registered) {
     }
 }
-// AI_GENERATE_END --------------
+// AI_GENERATE_END ---------------

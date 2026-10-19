@@ -1,8 +1,8 @@
 // AI_GENERATE_START --------------------------------------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Badge, Button, Card, Col, Descriptions, Form, Input, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
-import { BulbOutlined, DatabaseOutlined, FileSearchOutlined, InfoCircleOutlined, ReloadOutlined, RobotOutlined, SendOutlined, SettingOutlined } from '@ant-design/icons';
+import { Button, Card, Col, Descriptions, Form, Input, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
+import { BulbOutlined, InfoCircleOutlined, RobotOutlined, SendOutlined, SettingOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
 import { getApiErrorMessage, readApiData, type ApiResponse } from '../../utils/api';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
@@ -97,40 +97,6 @@ const defaultValues: StrategyConfigValues = {
   trailingStopEnabled: true, rsiEnabled: true, volumeEnabled: true, bollingerEnabled: true, enabled: true,
 };
 
-interface StrategyModeEvaluation {
-  mode: StrategyMode;
-  modeName: string;
-  strategyConfigVersion?: string;
-  modelVersion?: string;
-  sentimentModelVersion?: string;
-  currentConfigVersionMatched: boolean;
-  status: string;
-  sourceType: string;
-  windowStart?: string;
-  windowEnd?: string;
-  validationStart?: string;
-  validationEnd?: string;
-  sampleCount: number;
-  batchCount: number;
-  grossReturn?: number;
-  maxDrawdown?: number;
-  winRate?: number;
-  profitLossRatio?: number;
-  stabilityScore?: number;
-  outOfSample: boolean;
-  dataComplete: boolean;
-  sampleSufficient: boolean;
-  conclusion: string;
-}
-
-interface StrategyEvaluation {
-  evaluationRunId?: string;
-  calculatedAt?: string;
-  currentConfigVersion?: string;
-  modes: StrategyModeEvaluation[];
-  summary: string;
-}
-
 interface AgentSessionResponse {
   sessionId: string;
 }
@@ -187,7 +153,6 @@ const StrategyConfig: React.FC = () => {
   const [config, setConfig] = useState<StrategyConfigValues | null>(null);
   const [state, setState] = useState<StrategyState | null>(null);
   const [rankings, setRankings] = useState<Ranking[]>([]);
-  const [evaluation, setEvaluation] = useState<StrategyEvaluation | null>(null);
   const [tradingStatus, setTradingStatus] = useState<TradingStatus | null>(null);
   const [candidateBatch, setCandidateBatch] = useState<TradingCandidateBatch | null>(null);
   const [tradingCandidates, setTradingCandidates] = useState<TradingCandidate[]>([]);
@@ -200,7 +165,7 @@ const StrategyConfig: React.FC = () => {
   const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
-  const [runtimeLoading, setRuntimeLoading] = useState(false);
+  const [, setRuntimeLoading] = useState(false);
   const [providerSwitching, setProviderSwitching] = useState(false);
   const [workspaceTab, setWorkspaceTab] = useState<'chat' | 'runtime' | 'config' | 'candidates'>('chat');
 
@@ -223,18 +188,16 @@ const StrategyConfig: React.FC = () => {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [configResponse, stateResponse, rankingsResponse, evaluationResponse] = await Promise.all([
+      const [configResponse, stateResponse, rankingsResponse] = await Promise.all([
         request.get('/strategy/config') as Promise<ApiResponse<StrategyConfigValues>>,
         request.get('/strategy/state') as Promise<ApiResponse<StrategyState>>,
         request.get('/strategy/rankings') as Promise<ApiResponse<Ranking[]>>,
-        request.get('/strategy/evaluation/latest') as Promise<ApiResponse<StrategyEvaluation>>,
       ]);
       const nextConfig = readApiData(configResponse, localizedText('读取策略配置失败', 'Failed to load strategy configuration')) || defaultValues;
       form.setFieldsValue(nextConfig);
       setConfig(nextConfig);
       setState(readApiData(stateResponse, localizedText('读取策略状态失败', 'Failed to load strategy state')));
       setRankings(readApiData(rankingsResponse, localizedText('读取选股排名失败', 'Failed to load stock rankings')) || []);
-      setEvaluation(readApiData(evaluationResponse, localizedText('读取策略评估失败', 'Failed to load strategy evaluation')));
     } catch (cause) {
       message.error(getApiErrorMessage(cause, localizedText('读取策略配置失败', 'Failed to load strategy configuration')));
       form.setFieldsValue(defaultValues);
@@ -279,6 +242,20 @@ const StrategyConfig: React.FC = () => {
       message.success(enabled ? localizedText('规则自动切换已开启', 'Rule-based auto switch enabled') : localizedText('规则自动切换已关闭', 'Rule-based auto switch disabled'));
     } catch (cause) {
       message.error(getApiErrorMessage(cause, localizedText('更新自动切换开关失败', 'Failed to update auto-switch setting')));
+    }
+  };
+
+  const switchProvider = async (provider: 'deepseek' | 'ollama') => {
+    setProviderSwitching(true);
+    try {
+      const response = await request.put('/agent/runtime/provider', { provider }) as ApiResponse<{ provider: string }>;
+      const result = readApiData(response, localizedText('\u5207\u6362\u6a21\u578b\u5931\u8d25', 'Failed to switch provider'));
+      setRuntime((current) => current ? { ...current, provider: result.provider } : current);
+      message.success(localizedText(`\u5df2\u5207\u6362\u5230 ${result.provider.toUpperCase()}`, `Switched to ${result.provider.toUpperCase()}`));
+    } catch (cause) {
+      message.error(getApiErrorMessage(cause, localizedText('\u76ee\u6807\u6a21\u578b\u4e0d\u53ef\u7528\uff0c\u5207\u6362\u5931\u8d25', 'Target provider is unavailable')));
+    } finally {
+      setProviderSwitching(false);
     }
   };
 
@@ -336,30 +313,15 @@ const StrategyConfig: React.FC = () => {
     }
   };
 
-  const switchProvider = async (provider: string) => {
-    setProviderSwitching(true);
-    try {
-      const response = await request.put('/agent/runtime/provider', { provider }) as ApiResponse<{ provider: string }>;
-      const result = readApiData(response, localizedText('切换模型失败', 'Failed to switch provider'));
-      setRuntime((current) => current ? { ...current, provider: result.provider } : current);
-      message.success(localizedText(`已切换到 ${result.provider.toUpperCase()}`, `Switched to ${result.provider.toUpperCase()}`));
-    } catch (cause) {
-      message.error(getApiErrorMessage(cause, localizedText('目标模型不可用，切换失败', 'Target provider is unavailable')));
-    } finally {
-      setProviderSwitching(false);
-    }
-  };
-  const providerStatus = (available: boolean) => {
-    return <Badge status={available ? 'success' : 'error'} text={available ? localizedText('可用', 'Available') : localizedText('不可用', 'Unavailable')} />;
-  };
-  const capabilityTag = (status: 'available' | 'disabled' | 'pending' | 'unavailable') => {
-    const config = {
-      available: { color: 'success', text: localizedText('可用', 'Available') },
-      disabled: { color: 'default', text: localizedText('未启用', 'Disabled') },
-      pending: { color: 'warning', text: localizedText('待 Embedding', 'Waiting for Embedding') },
-      unavailable: { color: 'error', text: localizedText('不可用', 'Unavailable') },
-    }[status];
-    return <Tag color={config.color}>{config.text}</Tag>;
+  const capabilityHealth = (status: 'available' | 'disabled' | 'pending' | 'unavailable') => {
+    const text = status === 'available'
+      ? localizedText('\u53ef\u7528', 'Available')
+      : status === 'pending'
+        ? localizedText('\u7b49\u5f85\u4f9d\u8d56', 'Pending')
+        : status === 'disabled'
+          ? localizedText('\u672a\u542f\u7528', 'Disabled')
+          : localizedText('\u4e0d\u53ef\u7528', 'Unavailable');
+    return <span className={`capability-health capability-health-${status}`}><span className="capability-health-dot" aria-hidden="true" />{text}</span>;
   };
   const activeProviderAvailable = runtime?.provider === 'deepseek'
     ? runtime.deepseekAvailable
@@ -379,17 +341,6 @@ const StrategyConfig: React.FC = () => {
     ? 'disabled'
     : runtime.embeddingReady ? 'available' : 'pending';
   const activeModel = runtime?.provider === 'deepseek' ? runtime.deepseekModel : runtime?.ollamaModel;
-  const providerSwitch = (provider: 'deepseek' | 'ollama', available: boolean) => (
-    <Switch
-      size="small"
-      checked={runtime?.provider === provider}
-      disabled={!available || runtimeLoading || providerSwitching}
-      loading={providerSwitching && runtime?.provider !== provider}
-      onChange={(checked) => void switchProvider(checked ? provider : 'auto')}
-      aria-label={provider === 'deepseek' ? '切换到 DeepSeek' : '切换到 Ollama'}
-    />
-  );
-
   usePageHeader(localizedText('智能决策', 'Intelligent Decision'));
 
   const number = (label: string, name: keyof StrategyConfigValues, min: number, max: number, step: number, extra: string) => (<Form.Item label={label} name={name} extra={extra} rules={[{ required: true, message: `${label}${localizedText('不能为空', ' is required')}` }]}><InputNumber min={min} max={max} step={step} className="!w-full" /></Form.Item>);
@@ -417,47 +368,26 @@ const StrategyConfig: React.FC = () => {
     <div className="strategy-chat-workspace">
     <div className="agent-capability-grid">
       <article className="agent-capability-card agent-capability-agent">
-        <div className="agent-capability-head"><span><RobotOutlined />{localizedText('Agent 模型', 'Agent Model')}</span><Button type="text" size="small" icon={<ReloadOutlined />} loading={runtimeLoading} onClick={() => void loadRuntime()} aria-label={localizedText('刷新 Agent 状态', 'Refresh Agent status')} /></div>
-        <div className="agent-capability-status">{capabilityTag(agentCapabilityStatus)}</div>
-        <div className="agent-capability-fields">
-          <div><span>{localizedText('当前 Provider', 'Provider')}</span><strong>{runtime?.provider || '-'}</strong></div>
-          <div><span>{localizedText('当前模型', 'Model')}</span><strong>{activeModel || DEFAULT_PROVIDER_MODELS.ollama}</strong></div>
-          <div><span>DeepSeek</span><strong>{providerStatus(runtime?.deepseekAvailable === true)}{providerSwitch('deepseek', runtime?.deepseekAvailable === true)}</strong></div>
-          <div><span>Ollama</span><strong>{providerStatus(runtime?.ollamaAvailable === true)}{providerSwitch('ollama', runtime?.ollamaAvailable === true)}</strong></div>
-          <div><span>{localizedText('熔断状态', 'Circuit')}</span><strong>{runtime?.provider === 'deepseek' ? runtime.deepseekCircuitState || '-' : runtime?.ollamaCircuitState || '-'}</strong></div>
-        </div>
+        <div className="agent-capability-head"><span><RobotOutlined />Agent</span><Switch size="small" checked={runtime?.provider === 'deepseek'} checkedChildren="DeepSeek" unCheckedChildren="Ollama" disabled={providerSwitching || (!runtime?.deepseekAvailable && !runtime?.ollamaAvailable)} loading={providerSwitching} onChange={(checked) => void switchProvider(checked ? 'deepseek' : 'ollama')} aria-label={localizedText('\u5207\u6362 Agent \u6a21\u578b', 'Switch Agent model')} /></div>
+        <div className="agent-capability-status agent-capability-status-inline">{capabilityHealth(agentCapabilityStatus)}<span className="agent-capability-primary-value">{activeModel || DEFAULT_PROVIDER_MODELS.ollama}</span></div>
+        <div className="agent-capability-fields"><div><span>Provider</span><strong>{runtime?.provider || '-'}</strong></div><div><span>{localizedText('\u7194\u65ad', 'Circuit')}</span><strong>{runtime?.provider === 'deepseek' ? runtime?.deepseekCircuitState || '-' : runtime?.ollamaCircuitState || '-'}</strong></div></div>
       </article>
       <article className="agent-capability-card agent-capability-embedding">
         <div className="agent-capability-head"><span><SettingOutlined />Embedding</span></div>
-        <div className="agent-capability-status">{capabilityTag(embeddingCapabilityStatus)}</div>
-        <div className="agent-capability-fields">
-          <div><span>{localizedText('Provider', 'Provider')}</span><strong>{runtime?.embeddingProvider || '-'}</strong></div>
-          <div><span>{localizedText('模型', 'Model')}</span><strong>{runtime?.embeddingModel || '-'}</strong></div>
-          <div><span>{localizedText('版本', 'Version')}</span><strong>{runtime?.embeddingModelVersion || '-'}</strong></div>
-          <div><span>{localizedText('向量维度', 'Dimension')}</span><strong>{runtime?.embeddingDimension || '-'}</strong></div>
-          <div><span>{localizedText('状态', 'Status')}</span><strong>{runtime?.embeddingStatus || '-'}</strong></div>
-        </div>
+        <div className="agent-capability-status agent-capability-status-inline">{capabilityHealth(embeddingCapabilityStatus)}<span className="agent-capability-primary-value">{runtime?.embeddingStatus || '-'}</span></div>
+        <div className="agent-capability-fields"><div><span>{localizedText('\u6a21\u578b', 'Model')}</span><strong>{runtime?.embeddingModel || '-'}</strong></div><div><span>{localizedText('\u7ef4\u5ea6', 'Dimension')}</span><strong>{runtime?.embeddingDimension || '-'}d</strong></div></div>
       </article>
       <article className="agent-capability-card agent-capability-rag">
-        <div className="agent-capability-head"><span><FileSearchOutlined />RAG</span></div>
-        <div className="agent-capability-status">{capabilityTag(ragCapabilityStatus)}</div>
-        <div className="agent-capability-fields">
-          <div><span>{localizedText('功能开关', 'Feature')}</span><strong>{runtime?.ragEnabled ? localizedText('已启用', 'Enabled') : localizedText('未启用', 'Disabled')}</strong></div>
-          <div><span>{localizedText('向量模型', 'Embedding')}</span><strong>{runtime?.embeddingModel || '-'}</strong></div>
-          <div className="agent-capability-wide"><span>{localizedText('当前能力', 'Capability')}</span><strong>{runtime?.ragEnabled ? localizedText('文档切分、向量化、相似度检索', 'Chunking, embedding and retrieval') : '-'}</strong></div>
-        </div>
+        <div className="agent-capability-head"><span><BulbOutlined />RAG</span></div>
+        <div className="agent-capability-status agent-capability-status-inline">{capabilityHealth(ragCapabilityStatus)}<span className="agent-capability-primary-value">{runtime?.ragEnabled ? (ragCapabilityStatus === 'available' ? localizedText('\u68c0\u7d22\u94fe\u8def\u6b63\u5e38', 'Retrieval ready') : localizedText('\u7b49\u5f85 Embedding', 'Waiting for Embedding')) : localizedText('\u672a\u542f\u7528', 'Disabled')}</span></div>
+        <div className="agent-capability-fields"><div><span>{localizedText('\u4f9d\u8d56', 'Dependency')}</span><strong>Embedding</strong></div></div>
       </article>
       <article className="agent-capability-card agent-capability-memory">
-        <div className="agent-capability-head"><span><DatabaseOutlined />Memory</span></div>
-        <div className="agent-capability-status">{capabilityTag(memoryCapabilityStatus)}</div>
-        <div className="agent-capability-fields">
-          <div><span>{localizedText('长期 Memory', 'Long-term Memory')}</span><strong>{runtime?.memoryEnabled ? localizedText('已启用', 'Enabled') : localizedText('未启用', 'Disabled')}</strong></div>
-          <div><span>{localizedText('短期会话', 'Short-term Chat')}</span><strong>{runtime?.enabled ? localizedText('按 Session 隔离', 'Session isolated') : '-'}</strong></div>
-          <div className="agent-capability-wide"><span>{localizedText('依赖状态', 'Dependency')}</span><strong>{runtime?.memoryEnabled ? (runtime.embeddingReady ? localizedText('Embedding 已就绪', 'Embedding ready') : localizedText('等待 Embedding', 'Waiting for Embedding')) : '-'}</strong></div>
-        </div>
+        <div className="agent-capability-head"><span><InfoCircleOutlined />Memory</span></div>
+        <div className="agent-capability-status agent-capability-status-inline">{capabilityHealth(memoryCapabilityStatus)}<span className="agent-capability-primary-value">{runtime?.memoryEnabled ? (memoryCapabilityStatus === 'available' ? localizedText('\u8bb0\u5fc6\u94fe\u8def\u6b63\u5e38', 'Memory ready') : localizedText('\u7b49\u5f85 Embedding', 'Waiting for Embedding')) : localizedText('\u672a\u542f\u7528', 'Disabled')}</span></div>
+        <div className="agent-capability-fields"><div><span>{localizedText('\u4f9d\u8d56', 'Dependency')}</span><strong>Embedding</strong></div></div>
       </article>
-    </div>
-    <section className={`agent-command-center ${agentOpen ? 'agent-command-center-active' : ''}`}>
+    </div>    <section className={`agent-command-center ${agentOpen ? 'agent-command-center-active' : ''}`}>
       <div className="agent-command-header">
         <div className="agent-command-title-wrap">
           <div className="agent-command-icon"><RobotOutlined /></div>
@@ -467,9 +397,11 @@ const StrategyConfig: React.FC = () => {
             <p>{localizedText('直接询问候选原因、模型信号与风险因素，让 Agent 帮你读懂当前策略。', 'Ask about candidates, model signals and risks to understand the current strategy faster.')}</p>
           </div>
         </div>
-        <div className="agent-command-status">
-          <span className={`agent-status-dot ${agentOpen ? 'is-active' : ''}`} />
-          {agentOpen ? localizedText('会话已就绪', 'Session ready') : localizedText('等待提问', 'Ready for a question')}
+        <div className="agent-command-header-actions">
+          <div className="agent-command-status">
+            <span className={`agent-status-dot ${agentOpen ? 'is-active' : ''}`} />
+            {agentOpen ? localizedText('会话已就绪', 'Session ready') : localizedText('等待提问', 'Ready for a question')}
+          </div>
         </div>
       </div>
       <div className="agent-command-body">
@@ -557,33 +489,6 @@ const StrategyConfig: React.FC = () => {
         <Descriptions.Item label="目标交易日">{candidateBatch?.targetTradeDate ?? '-'}</Descriptions.Item>
         <Descriptions.Item label="信息截止时间">{candidateBatch?.informationCutoffAt ?? '-'}</Descriptions.Item>
       </Descriptions>
-      </Card>
-      <Card className="surface-card" title={localizedText('策略模式样本外评估', 'Out-of-sample Strategy Evaluation')} extra={<Space size={12}><Text type="secondary">{localizedText('当前生效版本', 'Active version')}：{evaluation?.currentConfigVersion ?? '-'}</Text><Text type="secondary">{formatDate(evaluation?.calculatedAt)}</Text></Space>}>
-      <Table<StrategyModeEvaluation>
-        rowKey="mode"
-        loading={loading}
-        dataSource={evaluation?.modes || []}
-        pagination={false}
-        scroll={{ x: 1680 }}
-        columns={[
-          { title: localizedText('模式', 'Mode'), dataIndex: 'modeName', width: 110 },
-          { title: localizedText('策略版本', 'Strategy Version'), dataIndex: 'strategyConfigVersion', width: 170, render: (value?: string) => value || '-' },
-          { title: localizedText('涨跌模型', 'Direction Model'), dataIndex: 'modelVersion', width: 150, render: (value?: string) => value || '-' },
-          { title: localizedText('情感模型', 'Sentiment Model'), dataIndex: 'sentimentModelVersion', width: 150, render: (value?: string) => value || '-' },
-          { title: localizedText('评估窗口', 'Evaluation Window'), width: 190, render: (_, row) => `${row.windowStart ?? '-'} ~ ${row.windowEnd ?? '-'}` },
-          { title: localizedText('当前版本', 'Active Version'), width: 120, render: (_, row) => row.strategyConfigVersion ? <Tag color={row.currentConfigVersionMatched ? 'green' : 'orange'}>{row.currentConfigVersionMatched ? localizedText('一致', 'Matched') : localizedText('不一致', 'Different')}</Tag> : '-' },
-          { title: localizedText('结论状态', 'Conclusion Status'), dataIndex: 'status', width: 130, render: (value: string) => <Tag color={value === 'AVAILABLE' ? 'green' : value === 'NOT_EVALUATED' ? 'default' : 'orange'}>{value === 'AVAILABLE' ? localizedText('可评估', 'Available') : value === 'NOT_EVALUATED' ? localizedText('未评估', 'Not Evaluated') : localizedText('样本不足', 'Insufficient Data')}</Tag> },
-          { title: localizedText('批次/候选', 'Batches / Candidates'), width: 120, render: (_, row) => row.batchCount + '/' + row.sampleCount },
-          { title: localizedText('毛收益率', 'Gross Return'), dataIndex: 'grossReturn', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : percent(value) },
-          { title: localizedText('最大回撤', 'Max Drawdown'), dataIndex: 'maxDrawdown', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : percent(value) },
-          { title: localizedText('胜率', 'Win Rate'), dataIndex: 'winRate', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : percent(value) },
-          { title: localizedText('盈亏比', 'Profit / Loss Ratio'), dataIndex: 'profitLossRatio', width: 90, render: (value?: number) => value === undefined || value === null ? '-' : value.toFixed(2) },
-          { title: localizedText('稳定性', 'Stability'), dataIndex: 'stabilityScore', width: 100, render: (value?: number) => value === undefined || value === null ? '-' : percent(value) },
-          { title: localizedText('数据门禁', 'Data Gate'), width: 150, render: (_, row) => <Space size={4}><Tag color={row.dataComplete ? 'green' : 'orange'}>{row.dataComplete ? localizedText('数据完整', 'Complete') : localizedText('数据不完整', 'Incomplete')}</Tag><Tag color={row.sampleSufficient ? 'green' : 'orange'}>{row.sampleSufficient ? localizedText('样本充分', 'Sufficient') : localizedText('样本不足', 'Insufficient')}</Tag></Space> },
-          { title: localizedText('结论', 'Conclusion'), dataIndex: 'conclusion', width: 360 },
-        ]}
-        locale={{ emptyText: localizedText('暂无策略评估结果', 'No strategy evaluation results') }}
-      />
       </Card>
     </section>
     </div>

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ---
 package com.stock.modelService.domain.entity;
 
 import lombok.Data;
@@ -41,9 +41,13 @@ public class LstmModelDocument {
     private int epoch;
     @Indexed(name = "idx_createdAt", useGeneratedName = false)
     private LocalDateTime createdAt;
+    /** 兼容历史版本的内嵌参数，新增版本使用 GridFS。 */
     private byte[] params;
+
+    /** GridFS 中的模型参数文件 ID。 */
+    private String parameterFileId;
     private String normalizationParams;
     private Double trainLoss;
     private Double valLoss;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END ---

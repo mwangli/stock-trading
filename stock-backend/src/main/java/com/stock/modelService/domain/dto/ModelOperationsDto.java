@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.modelService.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -214,7 +214,6 @@ public final class ModelOperationsDto {
         private String datasetSnapshotId;
 
         /** 恢复训练所依据的历史运行 ID。 */
-        private String resumedFromRunId;
 
         /** 失败原因。 */
         private String errorMessage;
@@ -313,8 +312,6 @@ public final class ModelOperationsDto {
         /** 操作人名称。 */
         private String operatorName;
 
-        /** 要恢复的历史训练运行 ID；为空表示从头训练。 */
-        private String resumeFromRunId;
     }
 
     /**
@@ -339,4 +336,4 @@ public final class ModelOperationsDto {
         private String message;
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

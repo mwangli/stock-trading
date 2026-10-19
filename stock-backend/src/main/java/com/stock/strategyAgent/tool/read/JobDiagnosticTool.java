@@ -1,15 +1,14 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.tool.read;
 
-import com.stock.strategyAgent.application.JobExecutionQuery;
-import com.stock.strategyAgent.application.JobExecutionSummary;
 import com.stock.strategyAgent.tool.AgentToolSupport;
+import com.stock.tradingExecutor.JobExecutionRecord;
+import com.stock.tradingExecutor.JobExecutionService;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.util.Optional;
 
 /**
  * 固定任务诊断只读工具。
@@ -21,7 +20,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class JobDiagnosticTool {
 
-    private final JobExecutionQuery jobExecutionQuery;
+    private final JobExecutionService jobExecutionService;
     private final AgentToolSupport toolSupport;
 
     /**
@@ -36,10 +35,12 @@ public class JobDiagnosticTool {
             throw new IllegalArgumentException("jobName 不能为空");
         }
         return toolSupport.execute("queryJobExecution", () -> {
-            Optional<JobExecutionSummary> latest = jobExecutionQuery.getLatestRun(request.jobName().trim());
-            return latest.map(item -> new JobDiagnosticResult(request.jobName().trim(), item.getStatus(),
-                            item.getErrorMessage()))
-                    .orElseGet(() -> new JobDiagnosticResult(request.jobName().trim(), "UNKNOWN", "没有运行记录"));
+            JobExecutionRecord record = jobExecutionService.getLatestRun(request.jobName().trim());
+            if (record == null) {
+                return new JobDiagnosticResult(request.jobName().trim(), "UNKNOWN", "没有运行记录");
+            }
+            return new JobDiagnosticResult(request.jobName().trim(),
+                    record.getStatus() == null ? null : record.getStatus().name(), record.getErrorMessage());
         });
     }
 
@@ -51,4 +52,4 @@ public class JobDiagnosticTool {
     public record JobDiagnosticResult(String jobName, String status, String errorMessage) {
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

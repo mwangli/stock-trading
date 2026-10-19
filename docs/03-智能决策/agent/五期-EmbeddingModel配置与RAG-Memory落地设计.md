@@ -3,9 +3,9 @@
 
 ## 1. 设计结论
 
-ChatModel 与 EmbeddingModel 必须独立配置、独立健康检查、独立版本管理。EmbeddingModel 不复用 DeepSeek Chat 的地址、API Key 或模型名称。
+ChatModel 与 EmbeddingModel 必须独立配置、独立健康检查、独立版本管理。EmbeddingModel 不复用 DeepSeek Chat 的地址、API Key 或模型名称。当前默认 BGE Embedding 模型制品统一存储在 MongoDB GridFS，模型对象在应用内存中常驻。
 
-第五阶段只完成 EmbeddingModel 配置解耦、Provider 状态和向量元数据；RAG 与长期 Memory 的正式能力归入第六阶段。
+第五阶段只完成 EmbeddingModel 配置解耦、制品版本与 GridFS 存储、异步预热、Provider 状态和向量元数据；RAG 与长期 Memory 的正式能力归入第六阶段。
 
 ## 2. Provider 配置
 
@@ -28,6 +28,12 @@ agent:
 - `disabled`：不创建 EmbeddingModel；RAG/Memory 语义检索不可用；
 - `ollama`：使用本地 Ollama EmbeddingModel；
 - `openaiCompatible`：使用独立的 OpenAI-compatible Embedding 服务。
+
+### 2.1 本地模型制品初始化
+
+当 `model_metadata` 中不存在指定 BGE 版本时，异步初始化流程从锁定 revision 的模型托管平台下载多文件制品到系统临时目录，完成 manifest、文件大小和 SHA-256 校验后上传 MongoDB GridFS。上传成功后删除下载目录。应用启动不等待该过程完成；模型加载完成前，RAG/Memory 语义检索保持未就绪状态，不用 hash 或随机向量伪造可用状态。
+
+Embedding 的 DJL 加载器需要 `config`、Tokenizer 和权重等目录结构，因此加载阶段需要短暂临时目录，但不需要 Docker 持久化挂载，也不需要把整个模型写入普通 MongoDB 文档。向量数据中的 `embeddingModelVersion` 必须与当前可用模型一致，换版后重建向量。
 
 禁止直接把 DeepSeek Chat 配置当作 Embedding 配置。远程 Embedding 服务必须使用独立的 URL、Key、模型和版本。
 
@@ -59,6 +65,8 @@ RAG Chunk 和 Memory Vector 必须保存：
 - 完成 RAG 文档版本、权限、过期和可见性治理；
 - 完成长期 Memory 的确认、纠错、遗忘和审计；
 - 将 RAG/Memory 结果转换为 `EvidenceItem`，经过状态和权限校验后才允许进入 Agent 上下文。
+
+模型制品发布与向量数据重建分开管理：上传新版本不会自动混用旧向量；只有新版本完成加载和批量重建后，才允许切换默认 Embedding 版本。
 
 ## 5. 安全约束
 

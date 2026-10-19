@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "embedding-artifact-v1",
+  "modelName": "bge-base-zh-v1.5",
+  "modelVersion": "bge-base-zh-v1.5",
+  "sourceRepository": "BAAI/bge-base-zh-v1.5",
+  "sourceRevision": "f03589ceff5aac7111bd60cfc7d497ca17ecac65",
+  "engineName": "PyTorch",
+  "maxSequenceLength": 512,
+  "files": [
+    {
+      "path": ".gitattributes",
+      "size": 1554,
+      "sha256": "88023d0a029a0c409b30c03b689c68605b559f5cefe06376e4a26b38ed795269"
+    },
+    {
+      "path": "1_Pooling/config.json",
+      "size": 196,
+      "sha256": "46d793d08aa060e0a6c82def8ed9fbd6fb392dc05e9471df21d1545725efc04c"
+    },
+    {
+      "path": "config_sentence_transformers.json",
+      "size": 130,
+      "sha256": "95c99da340dd269a334c4345a947b04a994d5f62dcc26b85f8bdec0edc2212c8"
+    },
+    {
+      "path": "config.json",
+      "size": 1038,
+      "sha256": "35f402ecd38881d0ed6c59b4249782c12f4aae68e838e51000a6f1aa1f2fdf97"
+    },
+    {
+      "path": "modules.json",
+      "size": 368,
+      "sha256": "e7989e94b5b809d895a9521b708312c1ccd333e183effebaf3838908da2acd53"
+    },
+    {
+      "path": "pytorch_model.bin",
+      "size": 409138989,
+      "sha256": "731cf5d88ed555a21ff2f2d9fa4db43b10489173ddd9178db3eecfd7a2bae044"
+    },
+    {
+      "path": "README.md",
+      "size": 28174,
+      "sha256": "f41b2870f37f7ae024a580bf4a90628a6543d4c2201ef4cbc6f5eeb5ed48b5b7"
+    },
+    {
+      "path": "sentence_bert_config.json",
+      "size": 55,
+      "sha256": "98d7e2cd3c1622e5d59a094cb12259f051fbe93ddb61f28a71e59bf3274ce038"
+    },
+    {
+      "path": "special_tokens_map.json",
+      "size": 132,
+      "sha256": "3c3507f36dff57bce437223db3b3081d1e2b52ec3e56ee55438193ecb2c94dd6"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "size": 381,
+      "sha256": "ac4db152b467998d8ded6c68803f885b964945df9dda3d58fea1f5d4cb55b882"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 460401,
+      "sha256": "5701d9b85246124eb4ba7316f081005092d65b54f88fcf1cea4d6e548d32d329"
+    },
+    {
+      "path": "vocab.txt",
+      "size": 130668,
+      "sha256": "f7863b040bae29ac474065729355252248c92d41141c1e09fbf21dd3e593a238"
+    }
+  ]
+}
