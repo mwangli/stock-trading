@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------------
+// AI_GENERATE_START ----------------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.BrokerHistoryQueryRequest;
@@ -48,7 +48,6 @@ public class BrokerDataSyncService {
     private final BrokerAdapter brokerAdapter;
     private final BrokerFactPersistenceService persistenceService;
     private final TradeRecordAggregationService tradeRecordAggregationService;
-    private final PerformanceReportService performanceReportService;
     private final TradingProperties tradingProperties;
     private final SyncWindowExecutor syncWindowExecutor;
     private volatile String activeOperation;
@@ -196,7 +195,6 @@ public class BrokerDataSyncService {
                 tradeRecordAggregationService.rebuildCurrentAccountTradeRecords();
         log.info("[BrokerSync] 交易记录组装完成: records={}, skippedOrders={}, unmatchedSellQuantity={}",
                 result.recordCount(), result.skippedOrderCount(), result.unmatchedSellQuantity());
-        performanceReportService.refreshDailySnapshot();
         return result;
     }
 
@@ -301,4 +299,4 @@ public class BrokerDataSyncService {
         }
     }
 }
-// AI_GENERATE_END ---------------
+// AI_GENERATE_END ----------------
