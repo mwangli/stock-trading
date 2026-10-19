@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START ---------
 package com.stock.strategyAgent.config;
 
 import lombok.Data;
@@ -163,7 +163,7 @@ public class AgentProperties {
         private String modelPath = "data/models/embedding";
 
         /** 模型托管平台固定 revision。 */
-        private String pretrainedRevision = "main";
+        private String pretrainedRevision = "";
 
         /** 是否允许首次启动从模型托管平台下载并初始化本地目录。 */
         private boolean downloadPretrained = true;
@@ -190,4 +190,4 @@ public class AgentProperties {
         private boolean allowHashFallback = false;
     }
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END --------

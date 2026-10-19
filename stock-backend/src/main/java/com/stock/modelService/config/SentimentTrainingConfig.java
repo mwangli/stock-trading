@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.modelService.config;
 
 import lombok.Data;
@@ -30,7 +30,7 @@ public class SentimentTrainingConfig {
     private String modelPath = "data/models/sentiment";
 
     /** 模型托管平台固定 revision。 */
-    private String pretrainedRevision = "main";
+    private String pretrainedRevision = "";
 
     /** 最大输入序列长度。 */
     private int maxSequenceLength = 128;
@@ -74,4 +74,4 @@ public class SentimentTrainingConfig {
     /** 情感标签顺序，必须与 manifest 和模型输出一致。 */
     private String[] labels = {"neutral", "positive", "negative"};
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------
