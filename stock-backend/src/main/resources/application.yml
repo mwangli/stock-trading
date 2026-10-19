@@ -56,8 +56,8 @@ spring:
       org.quartz.jobStore.misfireThreshold: 60000
   flyway:
     enabled: true
-    baseline-on-migrate: true
-    baseline-version: 0
+    baseline-on-migrate: false
+    baseline-version: 1
     locations: classpath:db/migration
 
 # ZX证券协议参数。默认关闭，真实值必须由运行环境注入。
@@ -90,31 +90,31 @@ trading:
   force-exit-time: "14:50"
 
 agent:
-  enabled: ${AGENT_ENABLED:${DEEPSEEK_API_ENABLE:false}}
-  provider: ${AGENT_PROVIDER:auto}
+  enabled: true
+  provider: ollama
   deepseek:
-    enabled: ${DEEPSEEK_API_ENABLE:false}
+    enabled: true
     base-url: https://api.deepseek.com/v1
     api-key: ${DEEPSEEK_API_KEY:}
     model: deepseek-chat
   ollama:
-    enabled: ${OLLAMA_ENABLED:false}
+    enabled: true
     base-url: http://localhost:11434
-    api-key: ${OLLAMA_API_KEY:ollama}
-    model: qwen2.5:0.5b
-    think: ${OLLAMA_THINK:false}
-    max-tokens: ${OLLAMA_MAX_TOKENS:256}
+    api-key: ollama
+    model: deepseek-r1:7b
+    think: false
+    max-tokens: 256
   max-steps: 6
   max-model-rounds: 3
-  timeout-ms: ${AGENT_TIMEOUT_MS:30000}
+  timeout-ms: 120000
   max-output-chars: 12000
   max-concurrency: 1
-  circuit-breaker-enabled: ${AGENT_CIRCUIT_BREAKER_ENABLED:true}
-  circuit-breaker-failure-threshold: ${AGENT_CIRCUIT_BREAKER_FAILURE_THRESHOLD:3}
-  circuit-breaker-open-duration-ms: ${AGENT_CIRCUIT_BREAKER_OPEN_DURATION_MS:60000}
+  circuit-breaker-enabled: true
+  circuit-breaker-failure-threshold: 3
+  circuit-breaker-open-duration-ms: 60000
   report-enabled: false
   trade-plan-enabled: false
-  rag-enabled: false
+  rag-enabled: true
   memory-enabled: true
   rag-collection: agent_rag_chunks
   memory-default-ttl-days: 90
@@ -123,13 +123,16 @@ agent:
   audit-enabled: true
   vector-store: mongodb
   embedding:
-    enabled: ${AGENT_EMBEDDING_ENABLED:false}
-    provider: ${AGENT_EMBEDDING_PROVIDER:disabled}
+    enabled: true
+    provider: djl
     base-url: http://localhost:11434
-    api-key: ${AGENT_EMBEDDING_API_KEY:ollama}
-    model: ${AGENT_EMBEDDING_MODEL:bge-base-zh-v1.5}
-    model-path: ${EMBEDDING_MODEL_PATH:./data/models/embedding/bge-base-zh-v1.5}
-    model-version: ${AGENT_EMBEDDING_MODEL_VERSION:bge-base-zh-v1.5}
+    api-key: ollama
+    model: bge-base-zh-v1.5
+    pretrained-model: BAAI/bge-base-zh-v1.5
+    model-path: ${EMBEDDING_MODEL_PATH:data/models/embedding}
+    pretrained-revision: ${EMBEDDING_PRETRAINED_REVISION:main}
+    download-pretrained: true
+    model-version: bge-base-zh-v1.5
     dimension: 768
     timeout-ms: 30000
     max-sequence-length: 512
@@ -187,18 +190,20 @@ models:
     early-stopping: true
     patience: 10
     min-delta: 0.0001
-    artifact-directory: ${LSTM_ARTIFACT_DIRECTORY:data/lstm-artifacts}
   sentiment:
     train-ratio: 0.8
     max-sequence-length: 128
     labels: [neutral, positive, negative]
     model-name: sentiment-finbert
-    model-version: ${SENTIMENT_MODEL_VERSION:finbert-tone-chinese-e91b1a3a}
-    model-source: local
-    model-path: ${SENTIMENT_MODEL_PATH:./data/models/sentiment}
+    model-version: finbert-tone-chinese-e91b1a3a
     pretrained-model: yiyanghkust/finbert-tone-chinese
-    download-pretrained: false
-    allow-legacy-layout: ${SENTIMENT_ALLOW_LEGACY_LAYOUT:false}
+    model-path: ${SENTIMENT_MODEL_PATH:data/models/sentiment}
+    pretrained-revision: ${SENTIMENT_PRETRAINED_REVISION:main}
+    download-pretrained: true
+    converter-enabled: ${SENTIMENT_CONVERTER_ENABLED:true}
+    converter-command: ${SENTIMENT_CONVERTER_COMMAND:djl-convert}
+    converter-output-format: TorchScript
+    converter-timeout-seconds: 1800
     max-single-file-bytes: ${SENTIMENT_MAX_SINGLE_FILE_BYTES:2147483648}
     max-total-artifact-bytes: ${SENTIMENT_MAX_TOTAL_ARTIFACT_BYTES:4294967296}
 

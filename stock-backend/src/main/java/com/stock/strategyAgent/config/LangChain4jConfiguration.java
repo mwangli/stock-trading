@@ -1,7 +1,8 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START -------
 package com.stock.strategyAgent.config;
 
 import com.stock.strategyAgent.rag.DjlEmbeddingModel;
+import com.stock.modelService.service.LocalModelArtifactService;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.model.ollama.OllamaEmbeddingModel;
@@ -12,7 +13,7 @@ import org.springframework.context.annotation.Configuration;
 /**
  * LangChain4j 模型配置。
  * 仅在 Agent 显式启用且配置了 Embedding 模型时创建 Embedding Bean。
- * ChatModel 由运行时 Provider Router 按 DeepSeek/Ollama 配置懒加载，避免两个模型 Bean 产生歧义。
+ * ChatModel 由运行时 Provider Router 按 DeepSeek/Ollama 配置预创建客户端，避免两个模型 Bean 产生歧义。
  *
  * @author mwangli
  * @since 2026-10-17
@@ -28,10 +29,10 @@ public class LangChain4jConfiguration {
      */
     @Bean(name = "agentEmbeddingModel")
     @ConditionalOnExpression("'${agent.enabled:false}' == 'true' && '${agent.embedding.enabled:false}' == 'true' && '${agent.embedding.provider:disabled}' != 'disabled'")
-    public EmbeddingModel agentEmbeddingModel(AgentProperties properties) {
+    public EmbeddingModel agentEmbeddingModel(AgentProperties properties, LocalModelArtifactService artifactService) {
         AgentProperties.EmbeddingProperties config = properties.getEmbedding();
         return switch (config.getProvider().trim().toLowerCase()) {
-            case "djl" -> new DjlEmbeddingModel(config);
+            case "djl" -> new DjlEmbeddingModel(config, artifactService);
             case "ollama" -> OllamaEmbeddingModel.builder()
                     .baseUrl(config.getBaseUrl())
                     .modelName(config.getModel())
@@ -45,4 +46,4 @@ public class LangChain4jConfiguration {
         };
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END -------

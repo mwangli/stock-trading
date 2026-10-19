@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START -----
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -79,9 +79,6 @@ public class SentimentArtifactService {
         Path modelDirectory = resolveVersionDirectory();
         Path manifestPath = modelDirectory.resolve(MANIFEST_FILE);
         if (!Files.isRegularFile(manifestPath)) {
-            if (config.isAllowLegacyLayout()) {
-                return inspectLegacyDirectory(modelDirectory);
-            }
             throw new IOException("情感模型缺少 manifest.json: " + manifestPath);
         }
 
@@ -116,9 +113,6 @@ public class SentimentArtifactService {
         if (Files.isDirectory(versionDirectory)) {
             return versionDirectory;
         }
-        if (config.isAllowLegacyLayout() && Files.isDirectory(root)) {
-            return root;
-        }
         throw new IOException("情感模型版本目录不存在: " + versionDirectory);
     }
 
@@ -130,17 +124,7 @@ public class SentimentArtifactService {
             return configured.normalize();
         }
         Path workingDirectory = Paths.get("").toAbsolutePath().normalize();
-        Path resolved = workingDirectory.resolve(configured).normalize();
-        if (Files.isDirectory(resolved) || !isDefaultRelativeModelPath(configured)) {
-            return resolved;
-        }
-
-        Path repositoryLayout = workingDirectory.resolve("stock-backend").resolve(configured).normalize();
-        return Files.isDirectory(repositoryLayout) ? repositoryLayout : resolved;
-    }
-
-    private boolean isDefaultRelativeModelPath(Path configured) {
-        return configured.normalize().equals(Paths.get("data", "models", "sentiment"));
+        return workingDirectory.resolve(configured).normalize();
     }
 
     private void validateManifestContract(SentimentArtifactManifest manifest) throws IOException {
@@ -222,45 +206,6 @@ public class SentimentArtifactService {
         }
     }
 
-    private SentimentArtifactInspection inspectLegacyDirectory(Path modelDirectory) throws IOException {
-        for (String requiredFile : REQUIRED_FILES) {
-            if (!Files.isRegularFile(modelDirectory.resolve(requiredFile))) {
-                throw new IOException("旧版情感模型目录缺少必需文件: " + requiredFile);
-            }
-        }
-        try (var stream = Files.list(modelDirectory)) {
-            if (stream.noneMatch(path -> Files.isRegularFile(path)
-                    && isModelWeight(path.getFileName().toString()))) {
-                throw new IOException("旧版情感模型目录缺少模型权重文件");
-            }
-        }
-        long totalSize;
-        try (var stream = Files.walk(modelDirectory)) {
-            totalSize = stream.filter(Files::isRegularFile)
-                    .mapToLong(path -> {
-                        try {
-                            return Files.size(path);
-                        } catch (IOException exception) {
-                            throw new IllegalStateException(exception);
-                        }
-                    })
-                    .sum();
-        } catch (IllegalStateException exception) {
-            throw new IOException("读取旧版情感模型文件大小失败", exception.getCause());
-        }
-        if (totalSize > config.getMaxTotalArtifactBytes()) {
-            throw new IOException("旧版情感模型制品总体积超过限制");
-        }
-        return SentimentArtifactInspection.builder()
-                .available(true)
-                .manifestPresent(false)
-                .checksumsVerified(false)
-                .modelDirectory(modelDirectory)
-                .modelVersion(config.getModelVersion())
-                .totalSizeBytes(totalSize)
-                .build();
-    }
-
     private void requireEquals(String field, String expected, String actual) throws IOException {
         if (expected == null ? actual != null : !expected.equals(actual)) {
             throw new IOException("情感模型 " + field + " 不匹配，期望=" + expected + "，实际=" + actual);
@@ -292,4 +237,4 @@ public class SentimentArtifactService {
         }
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END -----

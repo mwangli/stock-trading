@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------
+// AI_GENERATE_START ------------
 package com.stock.modelService.service;
 
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
@@ -12,9 +12,7 @@ import ai.djl.translate.Translator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.modelService.config.SentimentTrainingConfig;
 import com.stock.modelService.domain.entity.ModelMetadataDocument;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import com.stock.modelService.service.ModelArtifactGridFsService;
 import com.stock.modelService.domain.vo.SentimentAnalysisResult;
 import com.stock.modelService.domain.vo.SentimentArtifactInspection;
 import com.stock.modelService.persistence.ModelMetadataRepository;
@@ -22,7 +20,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -44,7 +41,7 @@ public class SentimentTrainerService {
     private final SentimentDataPreprocessor dataPreprocessor;
     private final ModelMetadataRepository modelMetadataRepository;
     private final SentimentArtifactService artifactService;
-    private final ModelArtifactGridFsService gridFsArtifactService;
+    private final LocalModelArtifactService localArtifactService;
     private final ObjectMapper objectMapper;
 
     private volatile ZooModel<String, Classifications> loadedModel;
@@ -54,7 +51,7 @@ public class SentimentTrainerService {
     private volatile SentimentArtifactInspection loadedArtifact;
 
     /**
-     * 从 MongoDB GridFS 还原并加载情感模型。
+     * 从固定本地版本目录加载情感模型；目录缺失或损坏时先执行受控初始化。
      *
      * @return true 表示真实模型已加载
      */
@@ -62,14 +59,12 @@ public class SentimentTrainerService {
         if (modelLoaded && loadedModel != null) {
             return true;
         }
-        Path materialized = null;
         try {
-            materialized = gridFsArtifactService.materialize(config.getModelName(), config.getModelVersion());
-            if (!Files.isRegularFile(materialized.resolve("manifest.json"))) {
-                throw new IOException("GridFS 情感模型缺少 manifest.json");
-            }
+            localArtifactService.ensureSentimentReady(config);
+            SentimentArtifactInspection inspection = artifactService.inspectForLoad();
+            Path modelDirectory = inspection.getModelDirectory();
             HuggingFaceTokenizer tokenizer = HuggingFaceTokenizer.builder()
-                    .optTokenizerPath(materialized)
+                    .optTokenizerPath(modelDirectory)
                     .optTruncation(true)
                     .optMaxLength(config.getMaxSequenceLength())
                     .build();
@@ -78,40 +73,30 @@ public class SentimentTrainerService {
                     .build();
             Criteria<String, Classifications> criteria = Criteria.builder()
                     .setTypes(String.class, Classifications.class)
-                    .optModelUrls(materialized.toUri().toString())
+                    .optModelUrls(modelDirectory.toUri().toString())
                     .optEngine("PyTorch")
                     .optTranslator(translator)
                     .optProgress(new ProgressBar())
                     .build();
             ZooModel<String, Classifications> model = criteria.loadModel();
             loadedModel = model;
-            loadedArtifact = SentimentArtifactInspection.builder()
-                    .available(true)
-                    .manifestPresent(true)
-                    .checksumsVerified(true)
-                    .modelDirectory(materialized)
-                    .modelVersion(config.getModelVersion())
-                    .build();
+            loadedArtifact = inspection;
             modelLoaded = true;
             lastLoadedTime = LocalDateTime.now();
             lastLoadError = null;
-            updateModelMetadata("gridfs://" + config.getModelName() + "/" + config.getModelVersion(),
+            updateModelMetadata(modelDirectory.toUri().toString(),
                     loadedArtifact, "LOADED", null);
-            log.info("MongoDB GridFS 情感模型加载成功: model={}, version={}",
-                    config.getModelName(), config.getModelVersion());
+            log.info("本地情感模型加载成功: model={}, version={}, directory={}",
+                    config.getModelName(), config.getModelVersion(), modelDirectory);
             return true;
         } catch (Exception exception) {
             lastLoadError = exception.getMessage();
             modelLoaded = false;
             loadedArtifact = null;
-            updateModelMetadata("gridfs://" + config.getModelName() + "/" + config.getModelVersion(),
+            updateModelMetadata(resolveArtifactUri(null),
                     null, "LOAD_FAILED", exception.getMessage());
-            log.error("MongoDB GridFS 情感模型加载失败", exception);
+            log.error("本地情感模型加载失败", exception);
             return false;
-        } finally {
-            if (materialized != null) {
-                gridFsArtifactService.cleanupMaterialized(materialized);
-            }
         }
     }
     /**
@@ -339,21 +324,11 @@ public class SentimentTrainerService {
         return Math.max(-1D, Math.min(1D, positive - negative));
     }
 
-    private boolean useLocalModel() {
-        return "local".equalsIgnoreCase(config.getModelSource());
-    }
-
-    private boolean useRemoteModel() {
-        return "huggingface".equalsIgnoreCase(config.getModelSource()) && config.isDownloadPretrained();
-    }
-
     private String resolveArtifactUri(SentimentArtifactInspection inspection) {
         if (inspection != null && inspection.getModelDirectory() != null) {
             return inspection.getModelDirectory().toUri().toString();
         }
-        return useRemoteModel()
-                ? "djl://ai.djl.huggingface.pytorch/" + config.getPretrainedModel()
-                : "gridfs://" + config.getModelName() + "/" + config.getModelVersion();
+        return Path.of(config.getModelPath(), config.getModelVersion()).toUri().toString();
     }
 
     private void updateModelMetadata(String artifactUri,
@@ -367,8 +342,9 @@ public class SentimentTrainerService {
             metadata.setModelVersion(inspection == null ? config.getModelVersion() : inspection.getModelVersion());
             metadata.setArtifactUri(artifactUri);
             metadata.setConfigJson(objectMapper.writeValueAsString(Map.of(
-                    "modelSource", config.getModelSource(),
                     "pretrainedModel", config.getPretrainedModel(),
+                    "pretrainedRevision", config.getPretrainedRevision(),
+                    "modelPath", config.getModelPath(),
                     "maxSequenceLength", config.getMaxSequenceLength(),
                     "labels", config.getLabels())));
             metadata.setMetricsJson(inspection == null || inspection.getMetrics() == null
@@ -383,4 +359,4 @@ public class SentimentTrainerService {
         }
     }
 }
-// AI_GENERATE_END ----------
+// AI_GENERATE_END -----------
