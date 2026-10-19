@@ -101,8 +101,9 @@ public class LocalModelArtifactService {
                     modelName, modelVersion, versionDirectory);
             return versionDirectory;
         }
-        if (!allowDownload) {
-            throw new IOException("固定本地模型目录不可用且未允许自动初始化: " + versionDirectory);
+        Path localSource = resolveLocalSource(artifactSourcePath);
+        if (localSource == null && !allowDownload) {
+            throw new IOException("固定本地模型目录不可用，且未配置本地制品或开启远程初始化: " + versionDirectory);
         }
 
         deleteDirectory(versionDirectory);
@@ -114,7 +115,6 @@ public class LocalModelArtifactService {
                     modelName, modelVersion, stagingDirectory);
             log.info("[模型初始化][下载] model={}, repository={}, revision={}",
                     modelName, repository, revision);
-            Path localSource = resolveLocalSource(artifactSourcePath);
             if (localSource != null) {
                 log.info("[模型初始化][本地制品] model={}, source={}", modelName, localSource);
                 copyArtifact(localSource, stagingDirectory);

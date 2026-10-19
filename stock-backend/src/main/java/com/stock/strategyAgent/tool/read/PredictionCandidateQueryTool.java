@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START ------
 package com.stock.strategyAgent.tool.read;
 
 import com.stock.strategyAgent.domain.entity.StockRanking;
@@ -40,7 +40,8 @@ public class PredictionCandidateQueryTool {
             List<StockRanking> rankings = rankingRepository.findByCandidateBatchIdOrderByRankAsc(
                     request.candidateBatchId().trim());
             if (rankings.isEmpty()) {
-                return new PredictionCandidateResult(request.candidateBatchId().trim(), null, null, null, List.of());
+                return new PredictionCandidateResult(request.candidateBatchId().trim(), null, null, null, List.of(),
+                        "指定候选批次没有排名记录，无法确认候选排序；请检查候选生成任务、目标交易日和批次是否已过期");
             }
             StockRanking first = rankings.get(0);
             List<PredictionCandidateItem> items = rankings.stream().limit(20)
@@ -48,7 +49,8 @@ public class PredictionCandidateQueryTool {
                             item.getTotalScore(), item.getReason()))
                     .toList();
             return new PredictionCandidateResult(first.getCandidateBatchId(), first.getPredictionBatchId(),
-                    first.getStrategyConfigVersion(), first.getTargetTradeDate(), items);
+                    first.getStrategyConfigVersion(), first.getTargetTradeDate(), items,
+                    "已读取候选排名，共 " + rankings.size() + " 条，展示前 " + items.size() + " 条");
         });
     }
 
@@ -65,7 +67,8 @@ public class PredictionCandidateQueryTool {
         return toolSupport.execute("queryLatestPredictionCandidate", () -> rankingRepository
                 .findFirstByTargetTradeDateOrderByCalculateTimeDesc(targetTradeDate)
                 .map(ranking -> query(new PredictionCandidateRequest(ranking.getCandidateBatchId())))
-                .orElseGet(() -> new PredictionCandidateResult(null, null, null, targetTradeDate, List.of())));
+                .orElseGet(() -> new PredictionCandidateResult(null, null, null, targetTradeDate, List.of(),
+                        "目标交易日没有候选排名快照，不能判断候选排序或生成买入计划")));
     }
 
     /** 候选批次查询请求。 */
@@ -75,7 +78,7 @@ public class PredictionCandidateQueryTool {
     /** 候选批次脱敏结果。 */
     public record PredictionCandidateResult(String candidateBatchId, String predictionBatchId,
                                             String strategyVersion, LocalDate targetTradeDate,
-                                            List<PredictionCandidateItem> items) {
+                                            List<PredictionCandidateItem> items, String availabilityReason) {
     }
 
     /** 候选股票摘要。 */
@@ -83,4 +86,4 @@ public class PredictionCandidateQueryTool {
                                           double totalScore, String reason) {
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

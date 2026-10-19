@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START ---------
 package com.stock.strategyAgent.evidence;
 
 import com.alibaba.fastjson2.JSON;
@@ -7,9 +7,11 @@ import com.stock.strategyAgent.tool.AgentToolContextHolder;
 import com.stock.strategyAgent.tool.ToolExecutionContext;
 import com.stock.strategyAgent.tool.read.JobDiagnosticTool;
 import com.stock.strategyAgent.tool.read.PredictionCandidateQueryTool;
+import com.stock.strategyAgent.tool.read.ProviderRuntimeQueryTool;
 import com.stock.strategyAgent.tool.read.TradingCalendarQueryTool;
 import com.stock.strategyAgent.tool.read.BrokerFactQueryTool;
 import com.stock.strategyAgent.tool.read.StrategyStateQueryTool;
+import com.stock.strategyAgent.tool.read.TradeExecutionGateQueryTool;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -33,8 +35,10 @@ public class EvidenceAssembler {
     private final TradingCalendarQueryTool tradingCalendarQueryTool;
     private final StrategyStateQueryTool strategyStateQueryTool;
     private final PredictionCandidateQueryTool predictionCandidateQueryTool;
+    private final ProviderRuntimeQueryTool providerRuntimeQueryTool;
     private final JobDiagnosticTool jobDiagnosticTool;
     private final BrokerFactQueryTool brokerFactQueryTool;
+    private final TradeExecutionGateQueryTool tradeExecutionGateQueryTool;
 
     /**
      * 按任务类型组装固定只读证据。
@@ -112,9 +116,14 @@ public class EvidenceAssembler {
                 add(items, "queryJobExecution",
                         () -> jobDiagnosticTool.query(new JobDiagnosticTool.JobDiagnosticRequest(jobName.trim())));
             }
+            if (taskType == AgentEnums.TaskType.TRADE_PLAN || taskType == AgentEnums.TaskType.DIAGNOSTIC
+                    || taskType == AgentEnums.TaskType.RESEARCH) {
+                add(items, "queryTradeExecutionGate", tradeExecutionGateQueryTool::query);
+            }
             if (taskType == AgentEnums.TaskType.TRADE_PLAN || taskType == AgentEnums.TaskType.DIAGNOSTIC) {
                 add(items, "queryBrokerFacts", brokerFactQueryTool::query);
             }
+            add(items, "queryProviderRuntime", providerRuntimeQueryTool::query);
             List<String> refs = items.stream()
                     .filter(item -> "AVAILABLE".equals(item.getStatus()))
                     .map(EvidenceItem::getEvidenceId)
@@ -142,10 +151,6 @@ public class EvidenceAssembler {
             String status = "AVAILABLE";
             if (data instanceof TradingCalendarQueryTool.TradingCalendarResult calendar
                     && !calendar.confirmed()) {
-                status = "UNKNOWN";
-            }
-            if (data instanceof PredictionCandidateQueryTool.PredictionCandidateResult candidate
-                    && (candidate.items() == null || candidate.items().isEmpty())) {
                 status = "UNKNOWN";
             }
             items.add(EvidenceItem.builder()
@@ -180,4 +185,4 @@ public class EvidenceAssembler {
         return value.length() > 12000 ? value.substring(0, 12000) : value;
     }
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END ---------

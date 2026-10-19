@@ -198,7 +198,7 @@ models:
     model-name: sentiment-finbert
     model-version: finbert-tone-chinese-e91b1a3a
     pretrained-model: yiyanghkust/finbert-tone-chinese
-    model-path: ${SENTIMENT_MODEL_PATH:/data/models/sentiment}
+    model-path: ${SENTIMENT_MODEL_PATH:./.tmp/model-runtime/sentiment}
     artifact-source-path: ${SENTIMENT_ARTIFACT_SOURCE_PATH:./model-artifacts/sentiment/finbert-tone-chinese-e91b1a3a}
     pretrained-revision: ${SENTIMENT_PRETRAINED_REVISION:e91b1a3af10e1e8c9c03429d3cd7d5e9a1c8000d}
     pretrained-model-sha256: ${SENTIMENT_PRETRAINED_MODEL_SHA256:a0d40048e07025d541470aee282141050ef608e59c755522f7f12e5f160a4f12}

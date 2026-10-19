@@ -1,7 +1,7 @@
-// AI_GENERATE_START ------------------------------------------
+// AI_GENERATE_START --------------------------------------------------------
 import './styles.css';
-import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Col, Descriptions, Form, Input, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Button, Card, Col, Descriptions, Form, Input, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message, type InputRef } from 'antd';
 import { BulbOutlined, InfoCircleOutlined, RobotOutlined, SendOutlined, SettingOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
 import { getApiErrorMessage, readApiData, type ApiResponse } from '../../utils/api';
@@ -134,8 +134,6 @@ interface RuntimeStatus {
   embeddingModelVersion?: string;
   embeddingDimension: number;
   embeddingStatus?: string;
-  deepseekCircuitState?: string;
-  ollamaCircuitState?: string;
   deepseekAvailable: boolean;
   ollamaAvailable: boolean;
 }
@@ -164,6 +162,7 @@ const StrategyConfig: React.FC = () => {
   const [agentQuestion, setAgentQuestion] = useState('');
   const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
+  const agentInputRef = useRef<InputRef>(null);
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const [, setRuntimeLoading] = useState(false);
   const [workspaceTab, setWorkspaceTab] = useState<'chat' | 'runtime' | 'config' | 'candidates'>('chat');
@@ -262,6 +261,13 @@ const StrategyConfig: React.FC = () => {
     }
   };
 
+  const enterAgentConversation = async () => {
+    const sessionId = await openAgent();
+    if (sessionId) {
+      agentInputRef.current?.focus();
+    }
+  };
+
   const askAgent = async () => {
     const question = agentQuestion.trim();
     if (!question || agentLoading) {
@@ -275,12 +281,18 @@ const StrategyConfig: React.FC = () => {
     setAgentQuestion('');
     setAgentLoading(true);
     try {
-      const response = await request.post('/agent/tasks/research', {
-        sessionId,
-        question,
-        candidateBatchId: candidateBatch?.candidateBatchId,
-        strategyVersion: candidateBatch?.strategyConfigVersion,
-      }) as ApiResponse<AgentTaskResponse>;
+      const diagnosticQuestion = /买入计划|执行门禁|为什么没有生成|为什么没有买入|交易执行|下单/.test(question);
+      const requestBody = diagnosticQuestion
+        ? { sessionId, question, jobName: 'realTradingAutoBuy' }
+        : {
+            sessionId,
+            question,
+            candidateBatchId: candidateBatch?.candidateBatchId,
+            predictionBatchId: candidateBatch?.predictionBatchId,
+            strategyVersion: candidateBatch?.strategyConfigVersion,
+            targetTradeDate: candidateBatch?.targetTradeDate,
+          };
+      const response = await request.post(diagnosticQuestion ? '/agent/tasks/diagnose' : '/agent/tasks/research', requestBody) as ApiResponse<AgentTaskResponse>;
       const task = readApiData(response, localizedText('Agent 分析失败', 'Agent analysis failed'));
       const content = task.resultSummary || task.errorMessage || localizedText('Agent 未返回结果', 'Agent returned no result');
       setAgentMessages((current) => [...current, {
@@ -316,20 +328,26 @@ const StrategyConfig: React.FC = () => {
   const agentCapabilityStatus: 'available' | 'disabled' | 'unavailable' = !runtime?.enabled
     ? 'disabled'
     : activeProviderAvailable ? 'available' : 'unavailable';
-  const embeddingCapabilityStatus: 'available' | 'disabled' | 'unavailable' = !runtime?.embeddingEnabled
+  const embeddingCapabilityStatus: 'available' | 'disabled' | 'loading' | 'unavailable' = !runtime
+    ? 'loading'
+    : !runtime.embeddingEnabled
     ? 'disabled'
     : runtime.embeddingReady ? 'available' : 'unavailable';
-  const ragCapabilityStatus: 'available' | 'disabled' | 'pending' = !runtime?.ragEnabled
+  const ragCapabilityStatus: 'available' | 'disabled' | 'loading' | 'pending' = !runtime
+    ? 'loading'
+    : !runtime.ragEnabled
     ? 'disabled'
     : runtime.embeddingReady ? 'available' : 'pending';
-  const memoryCapabilityStatus: 'available' | 'disabled' | 'pending' = !runtime?.memoryEnabled
+  const memoryCapabilityStatus: 'available' | 'disabled' | 'loading' | 'pending' = !runtime
+    ? 'loading'
+    : !runtime.memoryEnabled
     ? 'disabled'
     : runtime.embeddingReady ? 'available' : 'pending';
   const activeModel = runtime?.provider === 'deepseek' ? runtime.deepseekModel : runtime?.ollamaModel;
   usePageHeader(localizedText('智能决策', 'Intelligent Decision'));
 
-  const capabilityLight = (label: string, status: 'available' | 'disabled' | 'pending' | 'unavailable') => (
-    <span className={`agent-capability-light ${status === 'available' ? 'is-ready' : ''}`}>
+  const capabilityLight = (label: string, status: 'available' | 'disabled' | 'loading' | 'pending' | 'unavailable') => (
+    <span className={`agent-capability-light ${status === 'available' ? 'is-ready' : ''} ${status === 'loading' ? 'is-loading' : ''}`}>
       <span className="agent-capability-light-dot" aria-hidden="true" />
       {label}
     </span>
@@ -359,7 +377,39 @@ const StrategyConfig: React.FC = () => {
     {workspaceTab === 'chat' && (
     <div className="strategy-chat-workspace">
     <div className="agent-dialog-status-preview">
-      <div className="agent-dialog-status-main"><div className="agent-dialog-status-icon"><RobotOutlined /></div><div><span>Agent 模型</span><strong>{activeModel || DEFAULT_PROVIDER_MODELS.ollama}</strong><small>{capabilityHealth(agentCapabilityStatus)} · {runtime?.provider || '-'}</small></div></div>
+      <div className="agent-status-block agent-status-model">
+        <div className="agent-dialog-status-main">
+          <div className="agent-dialog-status-icon"><RobotOutlined /></div>
+          <div>
+            <span>{localizedText('当前 Agent 模型', 'Active Agent model')}</span>
+            <strong>{activeModel || DEFAULT_PROVIDER_MODELS.ollama}</strong>
+            <small>{capabilityHealth(agentCapabilityStatus)} · {runtime?.provider || localizedText('未配置', 'Not configured')}</small>
+          </div>
+        </div>
+        <div className="agent-status-block-title"><SettingOutlined />{localizedText('模型与连接', 'Model and connection')}</div>
+        <div className="agent-status-detail-grid">
+          <div><span>{localizedText('当前连接', 'Connection')}</span><strong>{activeProviderAvailable ? localizedText('可用', 'Available') : localizedText('不可用', 'Unavailable')}</strong></div>
+          <div><span>{localizedText('运行状态', 'Runtime')}</span><strong>{runtime?.enabled ? localizedText('已启用', 'Enabled') : localizedText('未启用', 'Disabled')}</strong></div>
+          <div><span>{localizedText('DeepSeek', 'DeepSeek')}</span><strong>{runtime?.deepseekStatus || '-'}</strong></div>
+          <div><span>{localizedText('Ollama', 'Ollama')}</span><strong>{runtime?.ollamaStatus || '-'}</strong></div>
+        </div>
+      </div>
+      <div className="agent-status-block">
+        <div className="agent-status-block-title"><BulbOutlined />{localizedText('智能能力状态', 'AI capabilities')}</div>
+        <div className="agent-status-capabilities">
+          {capabilityLight('RAG', ragCapabilityStatus)}
+          {capabilityLight('Memory', memoryCapabilityStatus)}
+          {capabilityLight('Embedding', embeddingCapabilityStatus)}
+        </div>
+        <div className="agent-status-meta agent-status-meta-wide">
+          <span>{localizedText('向量模型', 'Embedding model')}</span>
+          <strong title={runtime?.embeddingModel || '-'}>{runtime?.embeddingModel || '-'}</strong>
+        </div>
+        <div className="agent-status-meta agent-status-meta-wide">
+          <span>{localizedText('向量维度', 'Dimension')}</span>
+          <strong>{runtime?.embeddingDimension || '-'}</strong>
+        </div>
+      </div>
     </div>
     <section className={`agent-command-center ${agentOpen ? 'agent-command-center-active' : ''}`}>
       <div className="agent-command-header">
@@ -371,16 +421,9 @@ const StrategyConfig: React.FC = () => {
             <p>{localizedText('直接询问候选原因、模型信号与风险因素，让 Agent 帮你读懂当前策略。', 'Ask about candidates, model signals and risks to understand the current strategy faster.')}</p>
           </div>
         </div>
-        <div className="agent-command-header-actions">
-          <div className="agent-capability-lights" aria-label={localizedText('RAG 和 Memory 可用状态', 'RAG and Memory availability')}>
-            {capabilityLight('RAG', ragCapabilityStatus)}
-            {capabilityLight('Memory', memoryCapabilityStatus)}
-            {capabilityLight('Embedding', embeddingCapabilityStatus)}
-          </div>
-          <div className="agent-command-status">
-            <span className={`agent-status-dot ${agentOpen ? 'is-active' : ''}`} />
-            {agentOpen ? localizedText('会话已就绪', 'Session ready') : localizedText('等待提问', 'Ready for a question')}
-          </div>
+        <div className="agent-command-session-status" aria-live="polite">
+          <span className={`agent-session-status-dot ${agentOpen ? 'is-active' : ''}`} aria-hidden="true" />
+          <span>{agentOpen ? localizedText('会话已就绪', 'Session ready') : localizedText('等待开始', 'Waiting to start')}</span>
         </div>
       </div>
       <div className="agent-command-body">
@@ -408,6 +451,7 @@ const StrategyConfig: React.FC = () => {
           </div>
           <div className="agent-input-row">
             <Input.TextArea
+              ref={agentInputRef}
               value={agentQuestion}
               onChange={(event) => setAgentQuestion(event.target.value)}
               placeholder={localizedText('例如：为什么当前候选批次没有生成买入计划？', 'For example: why did the current candidate batch not produce a buy plan?')}
@@ -438,8 +482,13 @@ const StrategyConfig: React.FC = () => {
               <span aria-hidden="true">→</span>
             </button>
           ))}
-          <Button className="agent-start-button" icon={<RobotOutlined />} onClick={() => void openAgent()}>
-            {agentOpen ? localizedText('继续对话', 'Continue conversation') : localizedText('开始 Agent 对话', 'Start Agent chat')}
+          <Button
+            className="agent-start-button"
+            icon={<RobotOutlined />}
+            onClick={() => void enterAgentConversation()}
+            aria-label={agentOpen ? localizedText('继续当前 Agent 会话', 'Continue current Agent session') : localizedText('建立 Agent 会话', 'Create Agent session')}
+          >
+            {agentOpen ? localizedText('继续输入', 'Continue typing') : localizedText('建立 Agent 会话', 'Create Agent session')}
           </Button>
         </div>
       </div>
@@ -577,4 +626,4 @@ const StrategyConfig: React.FC = () => {
 };
 
 export default StrategyConfig;
-// AI_GENERATE_END -----------------------------------------
+// AI_GENERATE_END ------------------------------------------------------

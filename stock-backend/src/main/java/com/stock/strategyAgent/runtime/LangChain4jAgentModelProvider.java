@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START ---------------
 package com.stock.strategyAgent.runtime;
 
 import com.stock.strategyAgent.config.AgentProperties;
@@ -7,8 +7,10 @@ import com.stock.strategyAgent.tool.ToolExecutionContext;
 import com.stock.strategyAgent.tool.read.BrokerFactQueryTool;
 import com.stock.strategyAgent.tool.read.JobDiagnosticTool;
 import com.stock.strategyAgent.tool.read.PredictionCandidateQueryTool;
+import com.stock.strategyAgent.tool.read.ProviderRuntimeQueryTool;
 import com.stock.strategyAgent.tool.read.StrategyStateQueryTool;
 import com.stock.strategyAgent.tool.read.TradingCalendarQueryTool;
+import com.stock.strategyAgent.tool.read.TradeExecutionGateQueryTool;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.service.tool.ToolArgumentsErrorHandler;
 import dev.langchain4j.service.tool.ToolExecutionErrorHandler;
@@ -48,8 +50,10 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
     private final TradingCalendarQueryTool tradingCalendarQueryTool;
     private final StrategyStateQueryTool strategyStateQueryTool;
     private final PredictionCandidateQueryTool predictionCandidateQueryTool;
+    private final ProviderRuntimeQueryTool providerRuntimeQueryTool;
     private final JobDiagnosticTool jobDiagnosticTool;
     private final BrokerFactQueryTool brokerFactQueryTool;
+    private final TradeExecutionGateQueryTool tradeExecutionGateQueryTool;
     private final AgentCircuitBreaker circuitBreaker;
     private final AgentProviderModeManager providerModeManager;
     private final Map<String, ChatModel> models = new ConcurrentHashMap<>();
@@ -64,8 +68,10 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                                          TradingCalendarQueryTool tradingCalendarQueryTool,
                                          StrategyStateQueryTool strategyStateQueryTool,
                                          PredictionCandidateQueryTool predictionCandidateQueryTool,
+                                         ProviderRuntimeQueryTool providerRuntimeQueryTool,
                                          JobDiagnosticTool jobDiagnosticTool,
                                          BrokerFactQueryTool brokerFactQueryTool,
+                                         TradeExecutionGateQueryTool tradeExecutionGateQueryTool,
                                          AgentCircuitBreaker circuitBreaker,
                                          AgentProviderModeManager providerModeManager) {
         this.properties = properties;
@@ -73,8 +79,10 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         this.tradingCalendarQueryTool = tradingCalendarQueryTool;
         this.strategyStateQueryTool = strategyStateQueryTool;
         this.predictionCandidateQueryTool = predictionCandidateQueryTool;
+        this.providerRuntimeQueryTool = providerRuntimeQueryTool;
         this.jobDiagnosticTool = jobDiagnosticTool;
         this.brokerFactQueryTool = brokerFactQueryTool;
+        this.tradeExecutionGateQueryTool = tradeExecutionGateQueryTool;
         this.circuitBreaker = circuitBreaker;
         this.providerModeManager = providerModeManager;
         this.modelExecutor = Executors.newFixedThreadPool(Math.max(properties.getMaxConcurrency(), 1));
@@ -147,7 +155,7 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                         .chatModel(model)
                         .chatMemory(memory)
                         .tools(tradingCalendarQueryTool, strategyStateQueryTool, predictionCandidateQueryTool,
-                                jobDiagnosticTool, brokerFactQueryTool)
+                                jobDiagnosticTool, brokerFactQueryTool, tradeExecutionGateQueryTool, providerRuntimeQueryTool)
                         .toolArgumentsErrorHandler(ToolArgumentsErrorHandler.failInvocation())
                         .toolExecutionErrorHandler(ToolExecutionErrorHandler.failInvocationUnlessVisibleToLlm())
                         .build();
@@ -449,4 +457,4 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         }
     }
 }
-// AI_GENERATE_END ------------
+// AI_GENERATE_END --------------

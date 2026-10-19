@@ -27,7 +27,7 @@ public class SentimentTrainingConfig {
     private String pretrainedModel = "yiyanghkust/finbert-tone-chinese";
 
     /** 固定的本地模型根目录，目录由初始化流程维护。 */
-    private String modelPath = "/data/models/sentiment";
+    private String modelPath = "./.tmp/model-runtime/sentiment";
 
     /** Git LFS 管理的模型制品版本目录，供初始化流程复制到运行时目录。 */
     private String artifactSourcePath = "./model-artifacts/sentiment/finbert-tone-chinese-e91b1a3a";
