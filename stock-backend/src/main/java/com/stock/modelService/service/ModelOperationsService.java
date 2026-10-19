@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---- -------------
+// AI_GENERATE_START ----- -------------
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -547,9 +547,6 @@ public class ModelOperationsService {
         if (progress.getSnapshotId() != null && !progress.getSnapshotId().isBlank()) {
             run.setDatasetSnapshotId(progress.getSnapshotId());
         }
-        if ("TRAINING".equals(progress.getStage())) {
-            run.setCheckpointEpoch(progress.getCurrentEpoch());
-        }
         trainingRunRepository.save(run);
     }
 
@@ -862,4 +859,4 @@ public class ModelOperationsService {
     }
 
     }
-// AI_GENERATE_END ----------------
+// AI_GENERATE_END -----------------

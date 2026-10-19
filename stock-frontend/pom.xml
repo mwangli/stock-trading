@@ -13,7 +13,7 @@
     <artifactId>stock-frontend</artifactId>
     <packaging>jar</packaging>
 
-    <name>AI-AGENT智能股票自动交易系统前端</name>
+    <name>stock-frontend</name>
     <description>AI-AGENT智能股票自动交易系统 - 管理与决策前端</description>
 
     <build>

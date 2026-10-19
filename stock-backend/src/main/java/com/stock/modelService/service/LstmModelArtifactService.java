@@ -1,8 +1,9 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.modelService.service;
 
 import ai.djl.Model;
 import ai.djl.engine.Engine;
+import com.mongodb.client.gridfs.model.GridFSFile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.modelService.config.LstmTrainingConfig;
 import com.stock.modelService.domain.entity.LstmModelDocument;
@@ -14,7 +15,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.gridfs.GridFSFile;
 import org.springframework.data.mongodb.gridfs.GridFsResource;
 import org.springframework.data.mongodb.gridfs.GridFsTemplate;
 import org.springframework.stereotype.Service;
@@ -336,4 +336,4 @@ public class LstmModelArtifactService {
      */
     public record ModelArtifact(byte[] params, String metadata, String modelId) { }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

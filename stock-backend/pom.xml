@@ -14,7 +14,7 @@
     <artifactId>stock-backend</artifactId>
     <packaging>jar</packaging>
 
-    <name>AI-AGENT智能股票自动交易系统后端</name>
+    <name>stock-backend</name>
     <description>AI-AGENT智能股票自动交易系统 - 数据、模型、智能决策与交易执行服务</description>
 
     <properties>

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -132,7 +132,14 @@ public class LocalModelArtifactService {
                     schema, sentimentModel);
             if (sentimentModel && sentimentConfig != null) {
                 log.info("[模型初始化][加载校验] model={}, version={}", modelName, modelVersion);
-                converterService.validateSentimentLoad(stagingDirectory, sentimentConfig);
+                try {
+                    converterService.validateSentimentLoad(stagingDirectory, sentimentConfig);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw exception;
+                } catch (Exception exception) {
+                    throw new IOException("情感模型加载校验失败: " + stagingDirectory, exception);
+                }
             }
             log.info("[模型初始化][完整性校验] model={}, version={}", modelName, modelVersion);
             if (!isValid(stagingDirectory, modelName, modelVersion, schema, sentimentModel)) {
@@ -356,4 +363,4 @@ public class LocalModelArtifactService {
         }
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

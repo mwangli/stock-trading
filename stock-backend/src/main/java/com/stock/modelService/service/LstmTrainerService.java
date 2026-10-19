@@ -1,8 +1,9 @@
-// AI_GENERATE_START -----------------------
+// AI_GENERATE_START -------------------------
 package com.stock.modelService.service;
 
 import ai.djl.Device;
 import ai.djl.Model;
+import ai.djl.MalformedModelException;
 import ai.djl.engine.Engine;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDList;
@@ -95,7 +96,7 @@ public class LstmTrainerService {
                 }
             }
             log.info("当前激活共享 LSTM 模型预加载校验成功: modelId={}", artifact.modelId());
-        } catch (RuntimeException | IOException exception) {
+        } catch (RuntimeException | IOException | MalformedModelException exception) {
             log.warn("当前激活共享 LSTM 模型预加载失败，后续状态检查将显示不可用: {}", exception.getMessage());
         }
     }
@@ -165,7 +166,7 @@ public class LstmTrainerService {
                                            Integer batchSize, Double learningRate,
                                            TrainingProgressListener progressListener) {
         return trainSharedModel(stockCodes, days, epochs, batchSize, learningRate,
-                progressListener, null, null, 0, null);
+                progressListener, null);
     }
 
     /**
@@ -1012,4 +1013,4 @@ public class LstmTrainerService {
         private String snapshotId;
     }
 }
-// AI_GENERATE_END -----------------------
+// AI_GENERATE_END -------------------------

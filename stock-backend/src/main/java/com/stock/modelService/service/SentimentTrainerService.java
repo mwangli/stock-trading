@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START -------------
 package com.stock.modelService.service;
 
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -359,4 +360,4 @@ public class SentimentTrainerService {
         }
     }
 }
-// AI_GENERATE_END -----------
+// AI_GENERATE_END ------------
