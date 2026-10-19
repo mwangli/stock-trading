@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START -------
 package com.stock.strategyAgent.config;
 
 import lombok.Data;
@@ -154,13 +154,22 @@ public class AgentProperties {
         private String apiKey = "ollama";
 
         /** Embedding 模型名称。 */
-        private String model = "nomic-embed-text";
+        private String model = "bge-base-zh-v1.5";
 
-        /** DJL 本地模型目录，目录内应包含 config.json、tokenizer.json 和 PyTorch 权重。 */
-        private String modelPath = "./data/models/embedding/bge-base-zh-v1.5";
+        /** 模型托管平台仓库名称。 */
+        private String pretrainedModel = "BAAI/bge-base-zh-v1.5";
+
+        /** 固定的本地模型根目录，目录由初始化流程维护。 */
+        private String modelPath = "data/models/embedding";
+
+        /** 模型托管平台固定 revision。 */
+        private String pretrainedRevision = "main";
+
+        /** 是否允许首次启动从模型托管平台下载并初始化本地目录。 */
+        private boolean downloadPretrained = true;
 
         /** Embedding 模型版本。 */
-        private String modelVersion = "nomic-embed-text-v1";
+        private String modelVersion = "bge-base-zh-v1.5";
 
         /** 预期向量维度。 */
         private int dimension = 768;
@@ -181,4 +190,4 @@ public class AgentProperties {
         private boolean allowHashFallback = false;
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END -------

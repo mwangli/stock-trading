@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START -----
 package com.stock.modelService.config;
 
 import lombok.Data;
@@ -23,14 +23,14 @@ public class SentimentTrainingConfig {
     /** 不可变制品版本。 */
     private String modelVersion = "unconfigured";
 
-    /** 情感模型版本根目录。 */
-    private String modelPath = "data/models/sentiment";
-
-    /** 模型加载来源：local 或 huggingface。 */
-    private String modelSource = "local";
-
     /** 远程或制品清单标识的基础模型。 */
     private String pretrainedModel = "yiyanghkust/finbert-tone-chinese";
+
+    /** 固定的本地模型根目录，目录由初始化流程维护。 */
+    private String modelPath = "data/models/sentiment";
+
+    /** 模型托管平台固定 revision。 */
+    private String pretrainedRevision = "main";
 
     /** 最大输入序列长度。 */
     private int maxSequenceLength = 128;
@@ -50,14 +50,20 @@ public class SentimentTrainingConfig {
     /** 情感分类标签数量。 */
     private int numLabels = 3;
 
-    /** 是否允许 DJL 在线下载预训练模型。生产环境必须关闭。 */
-    private boolean downloadPretrained = false;
+    /** 是否允许首次启动从模型托管平台下载并初始化本地目录。 */
+    private boolean downloadPretrained = true;
 
-    /** DJL 模型缓存目录。 */
-    private String cacheDir = "data/models/cache";
+    /** 是否在初始化阶段调用 DJL Converter 生成 TorchScript 权重。 */
+    private boolean converterEnabled = true;
 
-    /** 是否允许没有 manifest 的历史平铺目录。 */
-    private boolean allowLegacyLayout = false;
+    /** DJL Converter 可执行命令。 */
+    private String converterCommand = "djl-convert";
+
+    /** DJL Converter 输出格式。 */
+    private String converterOutputFormat = "TorchScript";
+
+    /** DJL Converter 单次执行超时时间，单位秒。 */
+    private long converterTimeoutSeconds = 1800L;
 
     /** 单个模型文件最大字节数。 */
     private long maxSingleFileBytes = 2L * 1024 * 1024 * 1024;
@@ -68,4 +74,4 @@ public class SentimentTrainingConfig {
     /** 情感标签顺序，必须与 manifest 和模型输出一致。 */
     private String[] labels = {"neutral", "positive", "negative"};
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END -----

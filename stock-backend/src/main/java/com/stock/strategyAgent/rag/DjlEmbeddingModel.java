@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.rag;
 
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
@@ -6,6 +6,7 @@ import ai.djl.huggingface.translator.TextEmbeddingTranslator;
 import ai.djl.inference.Predictor;
 import ai.djl.repository.zoo.Criteria;
 import ai.djl.repository.zoo.ZooModel;
+import com.stock.modelService.service.LocalModelArtifactService;
 import com.stock.strategyAgent.config.AgentProperties;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
@@ -16,14 +17,12 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 基于 DJL PyTorch 的本地文本 Embedding 模型适配器。
- * 适配 sentence-transformers 格式的 BGE 模型，并向 LangChain4j 暴露类型化 EmbeddingModel。
- * 模型采用惰性加载，首次真正执行 RAG 或 Memory 向量化时才占用模型内存。
+ * 基于 DJL PyTorch 的固定本地目录 Embedding 模型适配器。
+ * 模型目录由初始化服务维护，加载完成后由 DJL 常驻内存。
  *
  * @author mwangli
  * @since 2026-10-18
@@ -32,18 +31,22 @@ import java.util.List;
 public class DjlEmbeddingModel implements EmbeddingModel {
 
     private final AgentProperties.EmbeddingProperties properties;
+    private final LocalModelArtifactService artifactService;
     private final Object loadMonitor = new Object();
 
     private volatile ZooModel<String, float[]> model;
     private volatile String lastLoadError;
 
     /**
-     * 创建本地 DJL Embedding 适配器。
+     * 创建 Embedding 适配器。
      *
      * @param properties Embedding 配置
+     * @param artifactService 本地模型制品服务
      */
-    public DjlEmbeddingModel(AgentProperties.EmbeddingProperties properties) {
+    public DjlEmbeddingModel(AgentProperties.EmbeddingProperties properties,
+                             LocalModelArtifactService artifactService) {
         this.properties = properties;
+        this.artifactService = artifactService;
     }
 
     /**
@@ -61,13 +64,12 @@ public class DjlEmbeddingModel implements EmbeddingModel {
             return Response.from(Embedding.from(predictor.predict(text)));
         } catch (Exception exception) {
             lastLoadError = exception.getMessage();
-            throw new IllegalStateException("本地 DJL Embedding 推理失败", exception);
+            throw new IllegalStateException("Embedding 推理失败", exception);
         }
     }
 
     /**
      * 批量生成文本向量。
-     * 当前 RAG 和 Memory 使用单条调用，批量接口保留 LangChain4j 契约并逐条复用同一模型。
      *
      * @param textSegments 文本片段
      * @return Embedding 列表响应
@@ -95,12 +97,21 @@ public class DjlEmbeddingModel implements EmbeddingModel {
     }
 
     /**
-     * 返回本地模型是否已经完成加载。
+     * 返回模型是否已经加载。
      *
      * @return true 表示模型可执行推理
      */
     public boolean isReady() {
         return model != null;
+    }
+
+    /**
+     * 初始化并从固定本地目录加载模型。
+     *
+     * @throws IllegalStateException 模型制品缺失或加载失败
+     */
+    public void ensureReady() {
+        getOrLoadModel();
     }
 
     /**
@@ -122,11 +133,10 @@ public class DjlEmbeddingModel implements EmbeddingModel {
                 return model;
             }
             try {
-                Path modelPath = Paths.get(properties.getModelPath()).toAbsolutePath().normalize();
-                requireModelFile(modelPath, "config.json");
-                requireModelFile(modelPath, "pytorch_model.bin");
+                Path modelDirectory = artifactService.ensureEmbeddingReady(properties);
+                requireModelFile(modelDirectory, "config.json");
                 HuggingFaceTokenizer tokenizer = HuggingFaceTokenizer.builder()
-                        .optTokenizerPath(modelPath)
+                        .optTokenizerPath(modelDirectory)
                         .optTruncation(true)
                         .optMaxLength(properties.getMaxSequenceLength())
                         .build();
@@ -137,31 +147,31 @@ public class DjlEmbeddingModel implements EmbeddingModel {
                         .build();
                 model = Criteria.<String, float[]>builder()
                         .setTypes(String.class, float[].class)
-                        .optModelUrls(modelPath.toUri().toString())
+                        .optModelUrls(modelDirectory.toUri().toString())
                         .optEngine("PyTorch")
                         .optTranslator(translator)
                         .build()
                         .loadModel();
                 lastLoadError = null;
-                log.info("本地 DJL Embedding 模型加载成功: model={}, path={}, dimension={}, pooling={}, normalize={}",
-                        properties.getModel(), modelPath, properties.getDimension(),
-                        properties.getPoolingMode(), properties.isNormalize());
+                log.info("本地 Embedding 模型加载成功: model={}, version={}, dimension={}, directory={}",
+                        properties.getModel(), properties.getModelVersion(), properties.getDimension(), modelDirectory);
                 return model;
             } catch (Exception exception) {
                 lastLoadError = exception.getMessage();
-                throw new IllegalStateException("本地 DJL Embedding 模型加载失败: " + properties.getModelPath(), exception);
+                throw new IllegalStateException("本地 Embedding 模型加载失败: "
+                        + properties.getModel() + "/" + properties.getModelVersion(), exception);
             }
         }
     }
 
     private void requireModelFile(Path modelPath, String fileName) {
         if (!Files.isRegularFile(modelPath.resolve(fileName))) {
-            throw new IllegalStateException("本地 Embedding 模型缺少文件: " + modelPath.resolve(fileName));
+            throw new IllegalStateException("Embedding 模型缺少文件: " + fileName);
         }
     }
 
     /**
-     * 关闭本地模型并释放 PyTorch 原生资源。
+     * 关闭模型并释放 PyTorch 原生资源。
      */
     @PreDestroy
     public void close() {
@@ -172,4 +182,4 @@ public class DjlEmbeddingModel implements EmbeddingModel {
         }
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END ----
