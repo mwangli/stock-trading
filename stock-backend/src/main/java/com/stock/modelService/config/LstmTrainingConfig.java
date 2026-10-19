@@ -167,6 +167,5 @@ public class LstmTrainingConfig {
     private double minDelta = 0.0001;
 
     /** 训练数据快照和训练检查点的持久化目录。 */
-    private String artifactDirectory = "data/lstm-artifacts";
 }
 // AI_GENERATE_END ------

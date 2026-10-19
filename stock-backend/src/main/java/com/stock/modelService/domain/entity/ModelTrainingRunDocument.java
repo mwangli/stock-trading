@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.modelService.domain.entity;
 
 import lombok.Data;
@@ -46,15 +46,6 @@ public class ModelTrainingRunDocument {
     /** 本次训练使用的训练数据快照 ID。 */
     private String datasetSnapshotId;
 
-    /** 检查点文件路径。 */
-    private String checkpointPath;
-
-    /** 已保存检查点对应的训练轮次。 */
-    private Integer checkpointEpoch;
-
-    /** 恢复训练所依据的历史运行 ID。 */
-    private String resumedFromRunId;
-
     private String errorMessage;
 
     /** 实际参与训练并产生有效样本的股票数量。 */
@@ -94,4 +85,4 @@ public class ModelTrainingRunDocument {
 
     private LocalDateTime createdAt;
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

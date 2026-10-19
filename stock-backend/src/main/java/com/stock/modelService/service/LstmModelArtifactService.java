@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START -----
 package com.stock.modelService.service;
 
 import ai.djl.Model;
@@ -12,8 +12,14 @@ import com.stock.modelService.persistence.LstmModelRepository;
 import com.stock.modelService.persistence.ModelActivationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.gridfs.GridFSFile;
+import org.springframework.data.mongodb.gridfs.GridFsResource;
+import org.springframework.data.mongodb.gridfs.GridFsTemplate;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.StringReader;
@@ -47,6 +53,7 @@ public class LstmModelArtifactService {
     private final LstmModelRepository lstmModelRepository;
     private final ModelActivationRepository modelActivationRepository;
     private final ObjectMapper objectMapper;
+    private final GridFsTemplate gridFsTemplate;
 
     /**
      * 保存不可变候选模型版本。
@@ -76,7 +83,14 @@ public class LstmModelArtifactService {
             document.setParentModelVersionId(activation == null ? null : activation.getActiveModelVersionId());
             document.setEpoch(epoch);
             document.setCreatedAt(LocalDateTime.now());
-            document.setParams(paramsBytes);
+            document.setParameterFileId(gridFsTemplate.store(
+                    new ByteArrayInputStream(paramsBytes),
+                    getModelName() + "-" + document.getModelVersion() + ".params",
+                    "application/octet-stream",
+                    new org.bson.Document("modelName", getModelName())
+                            .append("modelVersion", document.getModelVersion())
+                            .append("artifactType", "LSTM_MODEL_PARAMETERS"))
+                    .toHexString());
             document.setNormalizationParams(metadata);
             document.setTrainingConfigJson(buildTrainingConfigJson());
             document.setInputContractJson(objectMapper.writeValueAsString(Map.of(
@@ -128,7 +142,7 @@ public class LstmModelArtifactService {
                 : lstmModelRepository.findById(modelVersionId)
                 .orElseThrow(() -> new IllegalStateException("指定 LSTM 模型版本不存在"));
         validateParameterIntegrity(document);
-        return new ModelArtifact(document.getParams(), document.getNormalizationParams(), document.getId());
+        return new ModelArtifact(loadParameterBytes(document), document.getNormalizationParams(), document.getId());
     }
 
     /**
@@ -246,11 +260,44 @@ public class LstmModelArtifactService {
     }
 
     private void validateParameterIntegrity(LstmModelDocument document) {
-        if (document.getParams() == null || document.getParams().length == 0) {
+        byte[] params = loadParameterBytes(document);
+        if (params.length == 0) {
             throw new IllegalStateException("共享 LSTM 模型参数为空");
         }
-        if (!sha256(document.getParams()).equalsIgnoreCase(document.getParameterSha256())) {
+        if (!sha256(params).equalsIgnoreCase(document.getParameterSha256())) {
             throw new IllegalStateException("共享 LSTM 模型参数摘要不匹配");
+        }
+    }
+
+    private byte[] loadParameterBytes(LstmModelDocument document) {
+        if (document.getParameterFileId() == null || document.getParameterFileId().isBlank()) {
+            byte[] legacyParams = document.getParams() == null ? new byte[0] : document.getParams();
+            if (legacyParams.length > 0) {
+                document.setParameterFileId(gridFsTemplate.store(
+                        new ByteArrayInputStream(legacyParams),
+                        getModelName() + "-" + document.getModelVersion() + ".params",
+                        "application/octet-stream",
+                        new org.bson.Document("modelName", document.getModelName())
+                                .append("modelVersion", document.getModelVersion())
+                                .append("artifactType", "LSTM_MODEL_PARAMETERS"))
+                        .toHexString());
+                document.setParams(null);
+                lstmModelRepository.save(document);
+            }
+            return legacyParams;
+        }
+        try {
+            GridFSFile file = gridFsTemplate.findOne(Query.query(Criteria.where("_id")
+                    .is(new org.bson.types.ObjectId(document.getParameterFileId()))));
+            if (file == null) {
+                throw new IllegalStateException("共享 LSTM GridFS 参数文件不存在: " + document.getParameterFileId());
+            }
+            GridFsResource resource = gridFsTemplate.getResource(file);
+            try (var input = resource.getInputStream()) {
+                return input.readAllBytes();
+            }
+        } catch (Exception exception) {
+            throw new IllegalStateException("读取共享 LSTM GridFS 参数失败", exception);
         }
     }
 
@@ -261,7 +308,6 @@ public class LstmModelArtifactService {
             throw new IllegalStateException("当前 JVM 不支持 SHA-256", exception);
         }
     }
-
     private void requireMetadata(Properties properties, String key, String expected) {
         String actual = properties.getProperty(key);
         if (!expected.equals(actual)) {
@@ -290,4 +336,4 @@ public class LstmModelArtifactService {
      */
     public record ModelArtifact(byte[] params, String metadata, String modelId) { }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END -----

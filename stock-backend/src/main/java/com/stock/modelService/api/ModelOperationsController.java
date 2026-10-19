@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.modelService.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -173,28 +173,6 @@ public class ModelOperationsController {
         }
     }
 
-    /**
-     * 从已中断或失败任务的最近检查点恢复训练。
-     *
-     * @param runId 原训练运行 ID
-     * @param operatorName 操作人名称
-     * @return 新恢复任务的提交结果
-     */
-    @PostMapping("/modelTrainingRuns/resume/{runId}")
-    public ResponseDTO<ModelOperationsDto.OperationResponse> resumeTraining(
-            @PathVariable String runId, @RequestParam(required = false) String operatorName) {
-        log.info("[ModelOperations] 恢复模型训练: runId={}, operator={}", runId, operatorName);
-        try {
-            ModelOperationsDto.StartTrainingRequest request = new ModelOperationsDto.StartTrainingRequest();
-            request.setOperatorName(operatorName);
-            request.setResumeFromRunId(runId);
-            return ResponseDTO.success(modelOperationsService.startTraining(request));
-        } catch (RuntimeException exception) {
-            log.warn("[ModelOperations] 恢复模型训练失败: runId={}, reason={}", runId, exception.getMessage());
-            return ResponseDTO.error(exception.getMessage());
-        }
-    }
-
     @PostMapping("/modelVersions/activate/{versionId}")
     public ResponseDTO<ModelOperationsDto.OperationResponse> activateVersion(
             @PathVariable String versionId,
@@ -230,4 +208,4 @@ public class ModelOperationsController {
         }
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

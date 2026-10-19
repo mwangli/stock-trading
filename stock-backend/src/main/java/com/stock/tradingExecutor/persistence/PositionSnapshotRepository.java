@@ -5,10 +5,11 @@ import com.stock.tradingExecutor.domain.entity.PositionSnapshotEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
- * 持仓快照头仓库。
+ * 持仓快照仓库。
  *
  * @author mwangli
  * @since 2026-09-25
@@ -25,5 +26,14 @@ public interface PositionSnapshotRepository extends JpaRepository<PositionSnapsh
      */
     Optional<PositionSnapshotEntity> findFirstByBrokerCodeAndAccountIdOrderByCapturedAtDesc(
             String brokerCode, String accountId);
+
+    /**
+     * 查询指定快照中的实际持仓明细。
+     *
+     * @param snapshotId 快照编号
+     * @return 按股票代码排序的持仓明细
+     */
+    List<PositionSnapshotEntity> findBySnapshotIdAndStockCodeIsNotNullOrderByStockCodeAsc(
+            String snapshotId);
 }
 // AI_GENERATE_END ---

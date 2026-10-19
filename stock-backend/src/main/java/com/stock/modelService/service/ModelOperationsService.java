@@ -1,4 +1,4 @@
-// AI_GENERATE_START-- -------------
+// AI_GENERATE_START ---- -------------
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -18,7 +18,6 @@ import com.stock.modelService.persistence.ModelOperationAuditRepository;
 import com.stock.modelService.persistence.ModelTrainingRunRepository;
 import com.stock.tradingExecutor.execution.TradingTimeChecker;
 import com.stock.tradingExecutor.service.SystemRuntimeConfigService;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
@@ -28,8 +27,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -109,34 +106,6 @@ public class ModelOperationsService {
         this.runtimeConfigService = runtimeConfigService;
         this.objectMapper = objectMapper;
         this.applicationTaskExecutor = applicationTaskExecutor;
-    }
-
-    /**
-     * 应用重启后恢复未完成的异步训练记录。
-     *
-     * 异步训练线程不会跨进程存活，应用重启后 QUEUED、RUNNING、STOPPING
-     * 状态只能表示上一次进程遗留的记录，不能继续作为并发门禁。
-     */
-    @PostConstruct
-    public void recoverInterruptedTrainingRuns() {
-        String modelName = lstmTrainerService.getModelName();
-        List<ModelTrainingRunDocument> interruptedRuns = trainingRunRepository
-                .findByModelNameAndStatusIn(modelName, RUNNING_STATUSES);
-        for (ModelTrainingRunDocument run : interruptedRuns) {
-            String previousStatus = run.getStatus();
-            run.setStatus("CANCELLED");
-            run.setProgressStage("CANCELLED");
-            run.setProgressMessage("应用重启，原训练任务已中断");
-            run.setEstimatedRemainingSeconds(0L);
-            run.setFinishedAt(LocalDateTime.now());
-            run.setLastProgressAt(LocalDateTime.now());
-            clearMissingCheckpointReference(run);
-            trainingRunRepository.save(run);
-            saveAudit(modelName, "TRAIN_CANCELLED", run.getTriggeredBy(),
-                    null, null, true, "应用重启，原训练任务已中断");
-            log.warn("应用重启恢复遗留训练任务: runId={}, previousStatus={}",
-                    run.getId(), previousStatus);
-        }
     }
 
     /**
@@ -295,7 +264,6 @@ public class ModelOperationsService {
         }
         String operator = normalizeOperator(operatorName);
         if ("QUEUED".equals(run.getStatus())) {
-            cleanupCheckpoint(run);
             markTrainingCancelled(run, "训练任务在排队阶段被停止");
         } else {
             run.setStatus("STOPPING");
@@ -340,13 +308,6 @@ public class ModelOperationsService {
                 ? trainingConfig.getBatchSize() : safeRequest.getBatchSize();
         double learningRate = safeRequest.getLearningRate() == null
                 ? trainingConfig.getLearningRate() : safeRequest.getLearningRate();
-        ModelTrainingRunDocument resumeRun = resolveResumeRun(safeRequest.getResumeFromRunId());
-        if (resumeRun != null) {
-            days = configInt(resumeRun, "days", days);
-            epochs = configInt(resumeRun, "epochs", epochs);
-            batchSize = configInt(resumeRun, "batchSize", batchSize);
-            learningRate = configDouble(resumeRun, "learningRate", learningRate);
-        }
         validateEffectiveTrainingParameters(days, epochs, batchSize, learningRate);
 
         ModelTrainingRunDocument run = new ModelTrainingRunDocument();
@@ -365,26 +326,16 @@ public class ModelOperationsService {
         run.setElapsedSeconds(0L);
         run.setLastProgressAt(LocalDateTime.now());
         run.setCreatedAt(LocalDateTime.now());
-        run.setResumedFromRunId(resumeRun == null ? null : resumeRun.getId());
-        run.setDatasetSnapshotId(resumeRun == null ? null : resumeRun.getDatasetSnapshotId());
+        run.setDatasetSnapshotId(null);
         ModelTrainingRunDocument saved = trainingRunRepository.save(run);
-        String checkpointPath = Path.of(trainingConfig.getArtifactDirectory(),
-                "checkpoint-" + saved.getId() + ".bin").toAbsolutePath().normalize().toString();
-        saved.setCheckpointPath(checkpointPath);
-        saved.setCheckpointEpoch(resumeRun == null ? 0 : Math.max(0, resumeRun.getCheckpointEpoch() == null
-                ? 0 : resumeRun.getCheckpointEpoch()));
-        trainingRunRepository.save(saved);
         saveAudit(modelName, "TRAIN_SUBMITTED", operatorName, null, null, true, "训练任务已进入队列");
 
-        byte[] checkpointParams = readCheckpoint(resumeRun);
-        int resumeEpoch = saved.getCheckpointEpoch();
         final int effectiveDays = days;
         final int effectiveEpochs = epochs;
         final int effectiveBatchSize = batchSize;
         final double effectiveLearningRate = learningRate;
         applicationTaskExecutor.execute(() -> executeTraining(
-                saved.getId(), effectiveDays, effectiveEpochs, effectiveBatchSize, effectiveLearningRate,
-                checkpointPath, resumeEpoch, checkpointParams));
+                saved.getId(), effectiveDays, effectiveEpochs, effectiveBatchSize, effectiveLearningRate));
         return ModelOperationsDto.OperationResponse.builder()
                 .operationType("TRAIN")
                 .operationId(saved.getId())
@@ -420,6 +371,7 @@ public class ModelOperationsService {
         markVersionStatus(currentVersionId, "ARCHIVED");
         target.setStatus("ACTIVE");
         lstmModelRepository.save(target);
+        applicationTaskExecutor.execute(lstmTrainerService::preloadActiveModel);
         String operator = normalizeOperator(operatorName);
         saveAudit(target.getModelName(), "ACTIVATE", operator, currentVersionId,
                 target.getId(), true, "候选版本已激活");
@@ -455,6 +407,7 @@ public class ModelOperationsService {
 
         markVersionStatus(currentVersionId, "ARCHIVED");
         markVersionStatus(targetVersionId, "ACTIVE");
+        applicationTaskExecutor.execute(lstmTrainerService::preloadActiveModel);
         String operator = normalizeOperator(operatorName);
         saveAudit(modelName, "ROLLBACK", operator, currentVersionId,
                 targetVersionId, true, "模型已回滚到上一版本");
@@ -465,8 +418,7 @@ public class ModelOperationsService {
                 .build();
     }
 
-    private void executeTraining(String runId, int days, int epochs, int batchSize, double learningRate,
-                                 String checkpointPath, int resumeEpoch, byte[] checkpointParams) {
+    private void executeTraining(String runId, int days, int epochs, int batchSize, double learningRate) {
         ModelTrainingRunDocument run = trainingRunRepository.findById(runId).orElse(null);
         if (run == null) {
             log.warn("模型训练运行记录不存在: runId={}", runId);
@@ -479,8 +431,6 @@ public class ModelOperationsService {
         run.setProgressPercent(1);
         run.setCurrentEpoch(0);
         run.setTotalEpochs(epochs);
-        run.setCheckpointPath(checkpointPath);
-        run.setCheckpointEpoch(resumeEpoch);
         run.setElapsedSeconds(0L);
         run.setLastProgressAt(LocalDateTime.now());
         trainingRunRepository.save(run);
@@ -501,8 +451,7 @@ public class ModelOperationsService {
             LstmTrainerService.TrainingResult result = lstmTrainerService.trainSharedModel(
                     stockCodes, days, epochs, batchSize, learningRate,
                     progress -> updateTrainingProgress(run, progress),
-                    run.getDatasetSnapshotId(),
-                    checkpointPath, resumeEpoch, checkpointParams);
+                    run.getDatasetSnapshotId());
             if (result != null) {
                 run.setTrainedStocks(result.getTrainedStocks());
                 run.setTrainSamples(result.getTrainSamples());
@@ -564,10 +513,6 @@ public class ModelOperationsService {
         } finally {
             run.setFinishedAt(LocalDateTime.now());
             if ("SUCCEEDED".equals(run.getStatus())) {
-                cleanupCheckpoint(run);
-                cleanupResumedCheckpoint(run.getResumedFromRunId());
-            } else {
-                clearMissingCheckpointReference(run);
             }
             trainingRunRepository.save(run);
         }
@@ -781,7 +726,6 @@ public class ModelOperationsService {
                 .finishedAt(run.getFinishedAt())
                 .candidateModelVersionId(run.getCandidateModelVersionId())
                 .datasetSnapshotId(run.getDatasetSnapshotId())
-                .resumedFromRunId(run.getResumedFromRunId())
                 .errorMessage(run.getErrorMessage())
                 .trainedStocks(run.getTrainedStocks())
                 .progressStage(run.getProgressStage())
@@ -840,71 +784,6 @@ public class ModelOperationsService {
         auditRepository.save(audit);
     }
 
-    private ModelTrainingRunDocument resolveResumeRun(String runId) {
-        if (runId == null || runId.isBlank()) {
-            return null;
-        }
-        ModelTrainingRunDocument run = trainingRunRepository.findById(runId)
-                .orElseThrow(() -> new IllegalArgumentException("待恢复的训练任务不存在"));
-        if (!"CANCELLED".equals(run.getStatus()) && !"FAILED".equals(run.getStatus())) {
-            throw new IllegalStateException("只有已中断或失败的训练任务允许恢复");
-        }
-        if (run.getCheckpointPath() == null || !Files.isRegularFile(Path.of(run.getCheckpointPath()))) {
-            throw new IllegalStateException("历史训练任务没有可用的模型检查点");
-        }
-        return run;
-    }
-
-    private byte[] readCheckpoint(ModelTrainingRunDocument run) {
-        if (run == null) {
-            return null;
-        }
-        try {
-            return Files.readAllBytes(Path.of(run.getCheckpointPath()));
-        } catch (Exception exception) {
-            throw new IllegalStateException("读取历史训练检查点失败", exception);
-        }
-    }
-
-    private void cleanupCheckpoint(ModelTrainingRunDocument run) {
-        if (run == null || run.getCheckpointPath() == null || run.getCheckpointPath().isBlank()) {
-            return;
-        }
-        Path checkpoint = Path.of(run.getCheckpointPath()).toAbsolutePath().normalize();
-        Path artifactRoot = Path.of(trainingConfig.getArtifactDirectory()).toAbsolutePath().normalize();
-        if (!checkpoint.startsWith(artifactRoot) || checkpoint.equals(artifactRoot)) {
-            log.warn("拒绝清理训练工件目录之外的检查点: runId={}, path={}", run.getId(), checkpoint);
-            return;
-        }
-        try {
-            Files.deleteIfExists(checkpoint);
-            run.setCheckpointPath(null);
-            log.info("训练检查点已清理: runId={}, path={}", run.getId(), checkpoint);
-        } catch (Exception exception) {
-            log.warn("训练检查点清理失败: runId={}, path={}, reason={}",
-                    run.getId(), checkpoint, exception.getMessage());
-        }
-    }
-
-    private void cleanupResumedCheckpoint(String resumedFromRunId) {
-        if (resumedFromRunId == null || resumedFromRunId.isBlank()) {
-            return;
-        }
-        trainingRunRepository.findById(resumedFromRunId).ifPresent(sourceRun -> {
-            cleanupCheckpoint(sourceRun);
-            trainingRunRepository.save(sourceRun);
-        });
-    }
-
-    private void clearMissingCheckpointReference(ModelTrainingRunDocument run) {
-        if (run.getCheckpointPath() == null || run.getCheckpointPath().isBlank()) {
-            return;
-        }
-        if (!Files.isRegularFile(Path.of(run.getCheckpointPath()))) {
-            run.setCheckpointPath(null);
-        }
-    }
-
     private int configInt(ModelTrainingRunDocument run, String key, int fallback) {
         try {
             return objectMapper.readTree(run.getEffectiveConfigJson()).path(key).asInt(fallback);
@@ -928,7 +807,6 @@ public class ModelOperationsService {
         values.put("batchSize", request.getBatchSize());
         values.put("learningRate", request.getLearningRate());
         values.put("operatorName", normalizeOperator(request.getOperatorName()));
-        values.put("resumeFromRunId", request.getResumeFromRunId());
         return values;
     }
 
@@ -984,4 +862,4 @@ public class ModelOperationsService {
     }
 
     }
-// AI_GENERATE_END --------------
+// AI_GENERATE_END ----------------

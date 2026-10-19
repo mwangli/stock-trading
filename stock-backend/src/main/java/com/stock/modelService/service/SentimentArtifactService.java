@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START --------
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -119,7 +119,7 @@ public class SentimentArtifactService {
     private Path resolveConfiguredRoot() {
         String configuredPath = config.getModelPath();
         Path configured = Paths.get(configuredPath == null || configuredPath.isBlank()
-                ? "data/models/sentiment" : configuredPath.trim());
+                ? "/data/models/sentiment" : configuredPath.trim());
         if (configured.isAbsolute()) {
             return configured.normalize();
         }
@@ -237,4 +237,4 @@ public class SentimentArtifactService {
         }
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END --------

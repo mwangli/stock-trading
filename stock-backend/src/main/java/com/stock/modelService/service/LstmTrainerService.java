@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------------------
+// AI_GENERATE_START -----------------------
 package com.stock.modelService.service;
 
 import ai.djl.Device;
@@ -37,8 +37,6 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -76,6 +74,31 @@ public class LstmTrainerService {
     private final TrainingDatasetSnapshotService snapshotService;
     private final ModelBinaryCodec modelBinaryCodec;
     private String currentModelPath;
+    private volatile LstmModelArtifactService.ModelArtifact activeArtifact;
+
+    /**
+     * 应用启动时主动加载当前激活的 LSTM 参数，提前发现 DJL 引擎、参数摘要或模型契约问题。
+     * 训练中的候选模型仍按训练任务创建和释放，不参与启动预加载。
+     */
+    public void preloadActiveModel() {
+        activeArtifact = null;
+        try {
+            LstmModelArtifactService.ModelArtifact artifact = artifactService.loadArtifact(null);
+            artifactService.validateMetadata(artifact.metadata());
+            try (ai.djl.ndarray.NDManager manager = ai.djl.ndarray.NDManager.newBaseManager("PyTorch");
+                 Model model = Model.newInstance("lstm-global-preload", "PyTorch")) {
+                StockLSTMModel block = createModelBlock();
+                model.setBlock(block);
+                try (ByteArrayInputStream input = new ByteArrayInputStream(artifact.params());
+                     DataInputStream dataInput = new DataInputStream(input)) {
+                    block.loadParameters(manager, dataInput);
+                }
+            }
+            log.info("当前激活共享 LSTM 模型预加载校验成功: modelId={}", artifact.modelId());
+        } catch (RuntimeException | IOException exception) {
+            log.warn("当前激活共享 LSTM 模型预加载失败，后续状态检查将显示不可用: {}", exception.getMessage());
+        }
+    }
 
     /**
      * 兼容原有训练调用，将传入股票统一训练为共享基础模型。
@@ -155,17 +178,12 @@ public class LstmTrainerService {
      * @param learningRate 学习率，可为空
      * @param progressListener 训练进度监听器
      * @param snapshotId 指定训练数据快照 ID，可为空
-     * @param checkpointPath 检查点文件路径，可为空
-     * @param resumeEpoch 已完成轮次
-     * @param checkpointParams 检查点模型参数，可为空
      * @return 训练结果
      */
     public TrainingResult trainSharedModel(List<String> stockCodes, int days, Integer epochs,
                                            Integer batchSize, Double learningRate,
                                            TrainingProgressListener progressListener,
-                                           String snapshotId,
-                                           String checkpointPath, int resumeEpoch,
-                                           byte[] checkpointParams) {
+                                           String snapshotId) {
         String trainingId = "shared_training_" + System.currentTimeMillis();
         long trainingStartedNanos = System.nanoTime();
         TrainingProgressListener listener = progressListener == null
@@ -310,10 +328,6 @@ public class LstmTrainerService {
                     int initBatchSize = Math.min(trainBatchSize, Math.max(1, trainSize));
                     trainer.initialize(new Shape(initBatchSize,
                             config.getSequenceLength() * config.getInputSize()));
-                    if (checkpointParams != null && checkpointParams.length > 0) {
-                        modelBinaryCodec.deserialize(checkpointParams, model);
-                        log.info("共享 LSTM 从检查点恢复参数: epoch={}, path={}", resumeEpoch, checkpointPath);
-                    }
                     ArrayDataset trainDataset = createDataset(
                             trainer.getManager(),
                             flattenInputs(processedData.getTrainInputs()),
@@ -337,7 +351,7 @@ public class LstmTrainerService {
                             .valSamples(valSize)
                             .build());
 
-                    for (int epoch = Math.max(0, resumeEpoch); epoch < trainEpochs; epoch++) {
+                    for (int epoch = 0; epoch < trainEpochs; epoch++) {
                         float trainLoss = trainEpoch(trainer, trainDataset);
                         float valLoss = valDataset == null ? trainLoss : evaluateModel(trainer, valDataset);
                         Map<String, Object> entry = new LinkedHashMap<>();
@@ -370,7 +384,6 @@ public class LstmTrainerService {
                                 completedEpochs, trainEpochs, progressPercent, trainLoss, valLoss,
                                 bestValLoss, improved, patienceCounter, config.getPatience(),
                                 elapsedSeconds, estimatedRemainingSeconds);
-                        saveCheckpoint(checkpointPath, model, completedEpochs);
                         reportProgress(listener, TrainingProgress.builder()
                                 .stage("TRAINING")
                                 .message(improved ? "验证损失改善" : "验证损失未改善")
@@ -462,20 +475,6 @@ public class LstmTrainerService {
         }
     }
 
-    private void saveCheckpoint(String checkpointPath, Model model, int completedEpochs) {
-        if (checkpointPath == null || checkpointPath.isBlank()) {
-            return;
-        }
-        try {
-            Path path = Path.of(checkpointPath).toAbsolutePath().normalize();
-            Files.createDirectories(path.getParent());
-            Files.write(path, modelBinaryCodec.serialize(model));
-            log.info("共享 LSTM 检查点已保存: epoch={}, path={}", completedEpochs, path);
-        } catch (IOException exception) {
-            throw new IllegalStateException("保存 LSTM 训练检查点失败", exception);
-        }
-    }
-
     /**
      * 训练任务取消信号，允许停止请求穿透进度回调和训练服务异常兜底。
      */
@@ -559,7 +558,11 @@ public class LstmTrainerService {
         if (codes.isEmpty()) {
             return Map.of();
         }
-        LstmModelArtifactService.ModelArtifact artifact = artifactService.loadArtifact(modelVersionId);
+        LstmModelArtifactService.ModelArtifact artifact = modelVersionId == null
+                ? activeArtifact : null;
+        if (artifact == null) {
+            artifact = artifactService.loadArtifact(modelVersionId);
+        }
         artifactService.validateMetadata(artifact.metadata());
 
         int fetchDays = Math.max(config.getSequenceLength() + 21, config.getSequenceLength() * 2);
@@ -657,8 +660,12 @@ public class LstmTrainerService {
      */
     public boolean hasSharedModel() {
         try {
-            LstmModelArtifactService.ModelArtifact artifact = artifactService.loadArtifact(null);
-            artifactService.validateMetadata(artifact.metadata());
+            LstmModelArtifactService.ModelArtifact artifact = activeArtifact;
+            if (artifact == null) {
+                artifact = artifactService.loadArtifact(null);
+                artifactService.validateMetadata(artifact.metadata());
+                activeArtifact = artifact;
+            }
             return true;
         } catch (RuntimeException exception) {
             log.warn("共享 LSTM 模型存在但版本契约无效: {}", exception.getMessage());
@@ -1005,4 +1012,4 @@ public class LstmTrainerService {
         private String snapshotId;
     }
 }
-// AI_GENERATE_END --------------------
+// AI_GENERATE_END -----------------------

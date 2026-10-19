@@ -32,7 +32,7 @@ public class BrokerDataSyncJob {
     }
 
     /**
-     * 按月同步最近三年历史委托和成交。
+     * 按月同步最近三年历史委托和成交，供手动维护流程调用。
      */
     public void syncHistoryBackfill() {
         BrokerSyncResultDto result = brokerDataSyncService.syncHistoryBackfill();

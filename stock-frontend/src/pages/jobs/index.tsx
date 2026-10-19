@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------------------
+// AI_GENERATE_START -----------------------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
@@ -50,9 +50,6 @@ interface ExecutionItem {
 
 interface JobItem {
   jobName: string;
-  methodName?: string;
-  method?: string;
-  method_name?: string;
   description?: string;
   cronExpression: string;
   module?: JobDomain;
@@ -426,13 +423,6 @@ const JobManagement: React.FC = () => {
       render: (value: string, record) => <Text strong>{record.description || value}</Text>,
     },
     {
-      title: localizedText('方法名称', 'Method Name'),
-      dataIndex: 'methodName',
-      key: 'methodName',
-      width: 190,
-      render: (_, record) => <Text code>{record.methodName || record.method || record.method_name || '-'}</Text>,
-    },
-    {
       title: localizedText('所属模块', 'Module'),
       key: 'module',
       width: 140,
@@ -640,4 +630,4 @@ const JobManagement: React.FC = () => {
 };
 
 export default JobManagement;
-// AI_GENERATE_END ----------------------
+// AI_GENERATE_END -----------------------

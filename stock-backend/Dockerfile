@@ -7,8 +7,8 @@ WORKDIR /app
 
 RUN groupadd --system stock \
     && useradd --system --gid stock --home-dir /app stock \
-    && mkdir -p /app/.tmp /app/data/models /models \
-    && chown -R stock:stock /app /models
+    && mkdir -p /app/.tmp /data/models /models \
+    && chown -R stock:stock /app /data /models
 
 COPY --chown=stock:stock app.jar /app/app.jar
 

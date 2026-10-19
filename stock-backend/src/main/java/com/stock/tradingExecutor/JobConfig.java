@@ -1,4 +1,4 @@
-// AI_GENERATE_START- -
+// AI_GENERATE_START- --
 package com.stock.tradingExecutor;
 
 import jakarta.persistence.*;
@@ -32,12 +32,6 @@ public class JobConfig {
 
     private String description;
 
-    @Column(nullable = false)
-    private String beanName;
-
-    @Column(nullable = false)
-    private String methodName;
-
     /** 任务所属业务模块。 */
     @Column(length = 32)
     private String module;
@@ -46,15 +40,6 @@ public class JobConfig {
     @Column(name = "sync_mode", length = 32)
     private String syncMode;
 
-    private String params;
-
-    private LocalDateTime lastRunTime;
-    private Long lastCostTime;
-    private Integer lastStatus;
-
-    @Column(columnDefinition = "TEXT")
-    private String errorMessage;
-
     @CreatedDate
     @Column(updatable = false)
     private LocalDateTime createTime;
@@ -62,4 +47,4 @@ public class JobConfig {
     @LastModifiedDate
     private LocalDateTime updateTime;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

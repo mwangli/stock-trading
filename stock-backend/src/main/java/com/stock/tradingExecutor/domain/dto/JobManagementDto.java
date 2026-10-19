@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START ------
 package com.stock.tradingExecutor.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -50,9 +50,6 @@ public final class JobManagementDto {
 
         /** 任务名称。 */
         private String jobName;
-
-        /** 任务执行方法名称。 */
-        private String methodName;
 
         /** 任务描述。 */
         private String description;
@@ -131,9 +128,6 @@ public final class JobManagementDto {
         /** 计划触发时间。 */
         private LocalDateTime scheduledTime;
 
-        /** 历史兼容字段，新执行记录与开始时间一致。 */
-        private LocalDateTime queuedTime;
-
         /** 开始时间。 */
         private LocalDateTime startedTime;
 
@@ -203,4 +197,4 @@ public final class JobManagementDto {
         private String message;
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END -----

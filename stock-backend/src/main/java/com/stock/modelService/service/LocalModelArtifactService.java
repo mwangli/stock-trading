@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START -----
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -62,6 +62,7 @@ public class LocalModelArtifactService {
     public synchronized Path ensureEmbeddingReady(AgentProperties.EmbeddingProperties properties)
             throws IOException, InterruptedException {
         return ensureReady(properties.getModel(), properties.getModelVersion(), properties.getModelPath(),
+                properties.getArtifactSourcePath(),
                 properties.getPretrainedModel(), properties.getPretrainedRevision(), EMBEDDING_SCHEMA, false,
                 properties.isDownloadPretrained(), null);
     }
@@ -77,11 +78,13 @@ public class LocalModelArtifactService {
     public synchronized Path ensureSentimentReady(SentimentTrainingConfig config)
             throws IOException, InterruptedException {
         return ensureReady(config.getModelName(), config.getModelVersion(), config.getModelPath(),
+                config.getArtifactSourcePath(),
                 config.getPretrainedModel(), config.getPretrainedRevision(), SENTIMENT_SCHEMA, true,
                 config.isDownloadPretrained(), config);
     }
 
     private Path ensureReady(String modelName, String modelVersion, String configuredRoot,
+                             String artifactSourcePath,
                              String repository, String revision, String schema,
                              boolean sentimentModel, boolean allowDownload,
                              SentimentTrainingConfig sentimentConfig)
@@ -91,7 +94,11 @@ public class LocalModelArtifactService {
         if (!versionDirectory.startsWith(root)) {
             throw new IOException("模型版本目录越界: " + modelVersion);
         }
+        log.info("[模型初始化][检查] model={}, version={}, directory={}",
+                modelName, modelVersion, versionDirectory);
         if (isValid(versionDirectory, modelName, modelVersion, schema, sentimentModel)) {
+            log.info("[模型初始化][复用] model={}, version={}, directory={}",
+                    modelName, modelVersion, versionDirectory);
             return versionDirectory;
         }
         if (!allowDownload) {
@@ -103,18 +110,36 @@ public class LocalModelArtifactService {
         Path stagingDirectory = root.resolve(modelVersion + ".initializing-" + UUID.randomUUID()).normalize();
         try {
             Files.createDirectories(stagingDirectory);
-            downloadRepository(repository, revision, stagingDirectory);
+            log.info("[模型初始化][开始] model={}, version={}, staging={}",
+                    modelName, modelVersion, stagingDirectory);
+            log.info("[模型初始化][下载] model={}, repository={}, revision={}",
+                    modelName, repository, revision);
+            Path localSource = resolveLocalSource(artifactSourcePath);
+            if (localSource != null) {
+                log.info("[模型初始化][本地制品] model={}, source={}", modelName, localSource);
+                copyArtifact(localSource, stagingDirectory);
+            } else {
+                downloadRepository(repository, revision, stagingDirectory);
+            }
             if (sentimentModel && sentimentConfig != null && sentimentConfig.isConverterEnabled()) {
+                log.info("[模型初始化][转换] model={}, command={}, format={}",
+                        modelName, sentimentConfig.getConverterCommand(),
+                        sentimentConfig.getConverterOutputFormat());
                 converterService.convertSentiment(stagingDirectory, sentimentConfig);
             }
+            log.info("[模型初始化][清单] model={}, version={}", modelName, modelVersion);
             normalizeArtifact(stagingDirectory, modelName, modelVersion, repository, revision,
                     schema, sentimentModel);
             if (sentimentModel && sentimentConfig != null) {
+                log.info("[模型初始化][加载校验] model={}, version={}", modelName, modelVersion);
                 converterService.validateSentimentLoad(stagingDirectory, sentimentConfig);
             }
+            log.info("[模型初始化][完整性校验] model={}, version={}", modelName, modelVersion);
             if (!isValid(stagingDirectory, modelName, modelVersion, schema, sentimentModel)) {
                 throw new IOException("模型初始化后的 manifest 或文件校验失败: " + stagingDirectory);
             }
+            log.info("[模型初始化][切换] model={}, version={}, target={}",
+                    modelName, modelVersion, versionDirectory);
             Files.move(stagingDirectory, versionDirectory, StandardCopyOption.ATOMIC_MOVE);
             log.info("本地模型制品初始化完成: model={}, version={}, directory={}",
                     modelName, modelVersion, versionDirectory);
@@ -215,11 +240,20 @@ public class LocalModelArtifactService {
         if (response.statusCode() / 100 != 2) {
             throw new IOException("模型托管平台清单请求失败: status=" + response.statusCode());
         }
+        java.util.List<JsonNode> siblings = new java.util.ArrayList<>();
         for (JsonNode sibling : objectMapper.readTree(response.body()).path("siblings")) {
             String relative = sibling.path("rfilename").asText("");
             if (relative.isBlank() || relative.contains("..")) {
                 continue;
             }
+            siblings.add(sibling);
+        }
+        log.info("[模型初始化][下载清单] repository={}, revision={}, files={}",
+                repository, revision, siblings.size());
+        int fileIndex = 0;
+        for (JsonNode sibling : siblings) {
+            fileIndex++;
+            String relative = sibling.path("rfilename").asText("");
             Path target = directory.resolve(relative).normalize();
             if (!target.startsWith(directory)) {
                 throw new IOException("远程模型文件路径越界: " + relative);
@@ -229,20 +263,56 @@ public class LocalModelArtifactService {
                     + "/resolve/" + revision + "/" + relative);
             HttpRequest fileRequest = HttpRequest.newBuilder(fileUri)
                     .timeout(Duration.ofMinutes(15)).GET().build();
+            log.info("[模型初始化][下载文件] repository={}, progress={}/{}, file={}",
+                    repository, fileIndex, siblings.size(), relative);
             HttpResponse<Path> fileResponse = HTTP_CLIENT.send(fileRequest,
                     HttpResponse.BodyHandlers.ofFile(target));
             if (fileResponse.statusCode() / 100 != 2) {
                 throw new IOException("模型文件下载失败: " + relative + ", status=" + fileResponse.statusCode());
             }
+            log.info("[模型初始化][下载完成] repository={}, progress={}/{}, file={}, bytes={}",
+                    repository, fileIndex, siblings.size(), relative, Files.size(target));
         }
     }
 
     private Path resolveRoot(String configuredRoot) {
         Path configured = Path.of(configuredRoot == null || configuredRoot.isBlank()
-                ? "data/models" : configuredRoot.trim());
+                ? "/data/models" : configuredRoot.trim());
         return configured.isAbsolute()
                 ? configured.normalize()
                 : Path.of("").toAbsolutePath().normalize().resolve(configured).normalize();
+    }
+
+    private Path resolveLocalSource(String configuredPath) throws IOException {
+        if (configuredPath == null || configuredPath.isBlank()) {
+            return null;
+        }
+        Path source = Path.of(configuredPath.trim());
+        Path resolved = source.isAbsolute()
+                ? source.normalize()
+                : Path.of("").toAbsolutePath().normalize().resolve(source).normalize();
+        if (!Files.isDirectory(resolved)) {
+            throw new IOException("Git LFS 模型制品目录不存在或不是目录: " + resolved);
+        }
+        return resolved;
+    }
+
+    private void copyArtifact(Path source, Path target) throws IOException {
+        try (Stream<Path> paths = Files.walk(source)) {
+            for (Path path : paths.filter(Files::isRegularFile).toList()) {
+                if (path.toString().contains(java.io.File.separator + ".git" + java.io.File.separator)
+                        || path.getFileName().toString().equalsIgnoreCase("manifest.json")) {
+                    continue;
+                }
+                Path relative = source.relativize(path);
+                Path destination = target.resolve(relative).normalize();
+                if (!destination.startsWith(target)) {
+                    throw new IOException("本地模型制品路径越界: " + relative);
+                }
+                Files.createDirectories(destination.getParent());
+                Files.copy(path, destination, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
     }
 
     private boolean isWeightFile(String path) {
@@ -286,4 +356,4 @@ public class LocalModelArtifactService {
         }
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END -----

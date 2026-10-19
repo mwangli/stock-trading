@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "sentiment-artifact-v1",
+  "modelName": "sentiment-finbert",
+  "modelVersion": "finbert-tone-chinese-e91b1a3a",
+  "baseModel": "yiyanghkust/finbert-tone-chinese@e91b1a3af10e1e8c9c03429d3cd7d5e9a1c8000d",
+  "engineName": "PyTorch",
+  "maxSequenceLength": 128,
+  "labels": [
+    "neutral",
+    "positive",
+    "negative"
+  ],
+  "files": [
+    {
+      "path": "config.json",
+      "size": 1081,
+      "sha256": "93273dc602938756bbf968dba668403f7e555b3da33f99958c9ef98ee8941b06"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 439125,
+      "sha256": "48cea5d44424912a6fd1ea647bf4fe50b55ab8b1e5879c3275f80e339e8fae26"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "size": 1331,
+      "sha256": "cbe004ed102fc7d706925907e6772aeca04fbe3d90d56a95a09ed75b3f30e7e9"
+    },
+    {
+      "path": "vocab.txt",
+      "size": 109540,
+      "sha256": "45bbac6b341c319adc98a532532882e91a9cefc0329aa57bac9ae761c27b291c"
+    },
+    {
+      "path": "MODEL_CARD.md",
+      "size": 1333,
+      "sha256": "24acec05c89a61bd1afa360d9913b0b043be61e5602c24eff832d14fd96d5ea6"
+    },
+    {
+      "path": "serving.properties",
+      "size": 181,
+      "sha256": "5dac37f148d69b313d41d58e3258877d7cd0804698296b97ab7b47f6c6d654f3"
+    },
+    {
+      "path": "sentiment-finbert.pt",
+      "size": 409497147,
+      "sha256": "a0d40048e07025d541470aee282141050ef608e59c755522f7f12e5f160a4f12"
+    }
+  ],
+  "metrics": {
+    "datasetVersion": "upstream-private-analyst-reports",
+    "sampleCount": null,
+    "macroF1": 0.87,
+    "negativeRecall": null,
+    "expectedCalibrationError": null,
+    "p95LatencyMs": 34.41,
+    "conclusion": "OBSERVE_UPSTREAM_ONLY"
+  }
+}

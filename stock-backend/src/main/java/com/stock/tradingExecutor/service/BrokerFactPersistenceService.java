@@ -2,29 +2,22 @@
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.entity.AccountSnapshotEntity;
-import com.stock.tradingExecutor.domain.entity.BrokerFillEntity;
 import com.stock.tradingExecutor.domain.entity.BrokerOrderEntity;
 import com.stock.tradingExecutor.domain.entity.BrokerSyncBatchEntity;
 import com.stock.tradingExecutor.domain.entity.Position;
 import com.stock.tradingExecutor.domain.entity.PositionSnapshotEntity;
-import com.stock.tradingExecutor.domain.entity.PositionSnapshotItemEntity;
 import com.stock.tradingExecutor.domain.vo.AccountStatus;
-import com.stock.tradingExecutor.domain.vo.BrokerFillSnapshot;
 import com.stock.tradingExecutor.domain.vo.BrokerOrderSnapshot;
 import com.stock.tradingExecutor.persistence.AccountSnapshotRepository;
-import com.stock.tradingExecutor.persistence.BrokerFillRepository;
 import com.stock.tradingExecutor.persistence.BrokerOrderRepository;
 import com.stock.tradingExecutor.persistence.BrokerSyncBatchRepository;
-import com.stock.tradingExecutor.persistence.PositionSnapshotItemRepository;
 import com.stock.tradingExecutor.persistence.PositionSnapshotRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -41,9 +34,7 @@ public class BrokerFactPersistenceService {
 
     private final AccountSnapshotRepository accountSnapshotRepository;
     private final PositionSnapshotRepository positionSnapshotRepository;
-    private final PositionSnapshotItemRepository positionSnapshotItemRepository;
     private final BrokerOrderRepository brokerOrderRepository;
-    private final BrokerFillRepository brokerFillRepository;
     private final BrokerSyncBatchRepository brokerSyncBatchRepository;
     private final BrokerIdentityService brokerIdentityService;
 
@@ -84,21 +75,16 @@ public class BrokerFactPersistenceService {
     public int savePositionSnapshot(List<Position> positions, String source) {
         LocalDateTime capturedAt = LocalDateTime.now();
         String snapshotId = UUID.randomUUID().toString();
-        PositionSnapshotEntity snapshot = new PositionSnapshotEntity()
-                .setSnapshotId(snapshotId)
-                .setBrokerCode(brokerIdentityService.getBrokerCode())
-                .setAccountId(brokerIdentityService.getAccountId())
-                .setCapturedAt(capturedAt)
-                .setSource(source);
-        positionSnapshotRepository.save(snapshot);
-
-        List<PositionSnapshotItemEntity> items = new ArrayList<>();
+        List<PositionSnapshotEntity> items = new java.util.ArrayList<>();
+        int detailCount = 0;
         for (Position position : positions) {
             if (position.getStockCode() == null || position.getStockCode().isBlank()) {
                 continue;
             }
-            items.add(new PositionSnapshotItemEntity()
+            items.add(new PositionSnapshotEntity()
                     .setSnapshotId(snapshotId)
+                    .setBrokerCode(brokerIdentityService.getBrokerCode())
+                    .setAccountId(brokerIdentityService.getAccountId())
                     .setStockCode(position.getStockCode())
                     .setStockName(position.getStockName())
                     .setMarket(position.getMarket())
@@ -111,10 +97,20 @@ public class BrokerFactPersistenceService {
                     .setMarketValue(position.getMarketValue())
                     .setFirstBuyDate(position.getBuyDate())
                     .setLastBuyDate(position.getBuyDate())
-                    .setCapturedAt(capturedAt));
+                    .setCapturedAt(capturedAt)
+                    .setSource(source));
+            detailCount++;
         }
-        positionSnapshotItemRepository.saveAll(items);
-        return items.size();
+        if (items.isEmpty()) {
+            items.add(new PositionSnapshotEntity()
+                    .setSnapshotId(snapshotId)
+                    .setBrokerCode(brokerIdentityService.getBrokerCode())
+                    .setAccountId(brokerIdentityService.getAccountId())
+                    .setCapturedAt(capturedAt)
+                    .setSource(source));
+        }
+        positionSnapshotRepository.saveAll(items);
+        return detailCount;
     }
 
     /**
@@ -190,63 +186,6 @@ public class BrokerFactPersistenceService {
     public int removeInvalidFilledOrders() {
         return brokerOrderRepository.deleteInvalidFilledOrders(
                 brokerIdentityService.getBrokerCode(), brokerIdentityService.getAccountId());
-    }
-
-    /**
-     * 幂等保存券商成交。
-     * 无成交编号时使用稳定哈希作为合成键。
-     *
-     * @param fills 标准化成交快照
-     * @return 持久化统计
-     */
-    @Transactional
-    public PersistenceResult upsertFills(List<BrokerFillSnapshot> fills) {
-        int inserted = 0;
-        int updated = 0;
-        int skipped = 0;
-        String brokerCode = brokerIdentityService.getBrokerCode();
-        String accountId = brokerIdentityService.getAccountId();
-
-        for (BrokerFillSnapshot fill : fills) {
-            if (!isValidFill(fill)) {
-                skipped++;
-                continue;
-            }
-            boolean synthetic = fill.getFillId() == null || fill.getFillId().isBlank();
-            String fillNo = synthetic ? buildSyntheticFillKey(brokerCode, accountId, fill) : fill.getFillId();
-            BrokerFillEntity entity = brokerFillRepository
-                    .findByBrokerCodeAndAccountIdAndBrokerFillNo(brokerCode, accountId, fillNo)
-                    .orElse(null);
-            boolean isNew = entity == null;
-            if (isNew) {
-                entity = new BrokerFillEntity()
-                        .setBrokerCode(brokerCode)
-                        .setAccountId(accountId)
-                        .setBrokerFillNo(fillNo);
-            }
-
-            LocalDate tradeDate = fill.getFillTime().toLocalDate();
-            Long brokerOrderId = findBrokerOrderId(
-                    brokerCode, accountId, tradeDate, fill.getOrderId());
-            entity.setBrokerOrderId(brokerOrderId)
-                    .setBrokerOrderNo(fill.getOrderId())
-                    .setSyntheticKey(synthetic)
-                    .setStockCode(fill.getStockCode())
-                    .setStockName(fill.getStockName())
-                    .setSide(fill.getDirection())
-                    .setFillPrice(fill.getFillPrice())
-                    .setFillQuantity(fill.getFillQuantity())
-                    .setFillAmount(defaultAmount(fill))
-                    .setTradeDate(tradeDate)
-                    .setFilledAt(fill.getFillTime());
-            brokerFillRepository.save(entity);
-            if (isNew) {
-                inserted++;
-            } else {
-                updated++;
-            }
-        }
-        return new PersistenceResult(fills.size(), inserted, updated, skipped);
     }
 
     /**
@@ -342,51 +281,12 @@ public class BrokerFactPersistenceService {
                 .orElseThrow(() -> new IllegalStateException("同步批次不存在: " + batchId));
     }
 
-    private Long findBrokerOrderId(String brokerCode, String accountId, LocalDate tradeDate, String orderId) {
-        if (orderId == null || orderId.isBlank()) {
-            return null;
-        }
-        return brokerOrderRepository
-                .findByBrokerCodeAndAccountIdAndTradeDateAndBrokerOrderNo(
-                        brokerCode, accountId, tradeDate, orderId)
-                .map(BrokerOrderEntity::getId)
-                .orElse(null);
-    }
-
-    private String buildSyntheticFillKey(String brokerCode, String accountId, BrokerFillSnapshot fill) {
-        String material = String.join("|",
-                brokerCode,
-                accountId,
-                defaultString(fill.getOrderId()),
-                defaultString(fill.getStockCode()),
-                defaultString(fill.getDirection()),
-                fill.getFillPrice().toPlainString(),
-                String.valueOf(fill.getFillQuantity()),
-                fill.getFillTime().toString());
-        return brokerIdentityService.stableKey(material);
-    }
-
     private boolean isValidOrder(BrokerOrderSnapshot order) {
         return order != null
                 && order.getOrderId() != null && !order.getOrderId().isBlank()
                 && order.getOrderTime() != null
                 && order.getOrderPrice() != null
                 && order.getOrderQuantity() != null && order.getOrderQuantity() > 0;
-    }
-
-    private boolean isValidFill(BrokerFillSnapshot fill) {
-        return fill != null
-                && fill.getStockCode() != null && !fill.getStockCode().isBlank()
-                && fill.getDirection() != null && !"UNKNOWN".equals(fill.getDirection())
-                && fill.getFillPrice() != null
-                && fill.getFillQuantity() != null && fill.getFillQuantity() > 0
-                && fill.getFillTime() != null;
-    }
-
-    private BigDecimal defaultAmount(BrokerFillSnapshot fill) {
-        return fill.getFillAmount() != null
-                ? fill.getFillAmount()
-                : fill.getFillPrice().multiply(BigDecimal.valueOf(fill.getFillQuantity()));
     }
 
     private Integer defaultInteger(Integer value) {
@@ -405,10 +305,6 @@ public class BrokerFactPersistenceService {
 
     private boolean isFinalStatus(String status) {
         return "FILLED".equals(status) || "CANCELLED".equals(status) || "REJECTED".equals(status);
-    }
-
-    private String defaultString(String value) {
-        return value != null ? value : "";
     }
 
     private String sanitizeError(RuntimeException exception) {
