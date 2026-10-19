@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START --------
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -177,6 +177,8 @@ public class LocalModelArtifactService {
             }
             Set<String> listed = new HashSet<>();
             boolean hasWeights = false;
+            boolean hasExpectedModel = false;
+            String expectedModelFile = modelName + ".pt";
             for (JsonNode file : manifest.path("files")) {
                 String relative = file.path("path").asText("").replace('\\', '/');
                 Path target = directory.resolve(relative).normalize();
@@ -187,9 +189,11 @@ public class LocalModelArtifactService {
                     return false;
                 }
                 hasWeights = hasWeights || isWeightFile(relative);
+                hasExpectedModel = hasExpectedModel || expectedModelFile.equals(relative);
             }
             return listed.contains("config.json") && listed.contains("tokenizer.json")
-                    && (!sentimentModel || listed.contains("serving.properties")) && hasWeights;
+                    && (!sentimentModel || listed.contains("serving.properties"))
+                    && hasWeights && hasExpectedModel;
         } catch (Exception exception) {
             log.info("本地模型制品校验失败，将执行初始化: directory={}, reason={}", directory,
                     exception.getMessage());
@@ -295,13 +299,25 @@ public class LocalModelArtifactService {
             return null;
         }
         Path source = Path.of(configuredPath.trim());
-        Path resolved = source.isAbsolute()
-                ? source.normalize()
-                : Path.of("").toAbsolutePath().normalize().resolve(source).normalize();
-        if (!Files.isDirectory(resolved)) {
-            throw new IOException("Git LFS 模型制品目录不存在或不是目录: " + resolved);
+        if (source.isAbsolute()) {
+            Path resolved = source.normalize();
+            if (!Files.isDirectory(resolved)) {
+                throw new IOException("Git LFS 模型制品目录不存在或不是目录: " + resolved);
+            }
+            return resolved;
         }
-        return resolved;
+        Path workingDirectory = Path.of("").toAbsolutePath().normalize();
+        Path candidate = workingDirectory;
+        for (int depth = 0; candidate != null && depth < 4; depth++, candidate = candidate.getParent()) {
+            Path resolved = candidate.resolve(source).normalize();
+            if (Files.isDirectory(resolved)) {
+                log.info("本地模型制品源路径已解析: configured={}, workingDirectory={}, resolved={}",
+                        configuredPath, workingDirectory, resolved);
+                return resolved;
+            }
+        }
+        throw new IOException("Git LFS 模型制品目录不存在或不是目录: configured="
+                + configuredPath + ", workingDirectory=" + workingDirectory);
     }
 
     private void copyArtifact(Path source, Path target) throws IOException {
@@ -363,4 +379,4 @@ public class LocalModelArtifactService {
         }
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END --------

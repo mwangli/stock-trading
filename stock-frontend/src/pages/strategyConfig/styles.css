@@ -1,4 +1,4 @@
-/* AI_GENERATE_START --------------- */
+/* AI_GENERATE_START ------------------ */
 .agent-capability-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .agent-capability-card { min-width: 0; padding: 12px 14px; border: 1px solid var(--border-color); border-top: 3px solid var(--brand); border-radius: 6px; background: color-mix(in srgb, var(--panel-bg) 82%, var(--app-bg)); }
 .agent-capability-agent { border-top-color: #3b82f6; }
@@ -28,6 +28,15 @@
 .agent-capability-fields strong .ant-badge { overflow: hidden; text-overflow: ellipsis; }
 .agent-capability-wide { align-items: flex-start !important; }
 .agent-capability-wide strong { white-space: normal; }
+
+.agent-dialog-status-preview { display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; border: 1px solid color-mix(in srgb, var(--brand) 42%, var(--border-color)); border-radius: 6px; background: color-mix(in srgb, var(--brand) 7%, var(--panel-bg)); }
+.agent-dialog-status-main { display: flex; min-width: 0; align-items: center; gap: 10px; }
+.agent-dialog-status-icon { display: inline-flex; width: 34px; height: 34px; flex: 0 0 34px; align-items: center; justify-content: center; border-radius: 6px; background: var(--brand); color: #fff; }
+.agent-dialog-status-main > div:nth-child(2) { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.agent-dialog-status-main span { color: var(--text-secondary); font-size: 11px; }
+.agent-dialog-status-main strong { overflow: hidden; color: var(--text-primary); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.agent-dialog-status-main small { color: var(--text-muted); font-size: 11px; }
+.agent-command-header-actions { align-items: flex-start; }
 .strategy-workbench-page { min-height: 100%; gap: 12px; overflow: visible; }
 .strategy-chat-workspace { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; flex-direction: column; gap: 12px; }
 .strategy-workspace-tabs { display: flex; flex: 0 0 auto; gap: 4px; padding: 4px; border: 1px solid var(--border-color); border-radius: 5px; background: var(--panel-muted); }
@@ -122,6 +131,7 @@
 @media (max-width: 767px) {
   .model-provider-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .agent-capability-grid { grid-template-columns: minmax(0, 1fr); }
+  .agent-dialog-status-preview { align-items: flex-start; flex-direction: column; }
   .strategy-workspace-tabs { overflow-x: auto; }
   .strategy-workspace-tabs button { min-width: 104px; flex: 0 0 auto; }
   .agent-command-header { padding: 20px; }
@@ -135,4 +145,4 @@
   .strategy-auto-tuning-note .ant-tag { margin-left: 0; }
   .indicator-fields { grid-template-columns: minmax(0, 1fr); }
 }
-/* AI_GENERATE_END --------------- */
+/* AI_GENERATE_END ------------------ */

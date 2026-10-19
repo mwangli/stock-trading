@@ -36,6 +36,9 @@ services:
     container_name: stock-backend
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      EMBEDDING_MODEL_PATH: /data/models/embedding
+      EMBEDDING_ARTIFACT_SOURCE_PATH: /app/model-artifacts/embedding/bge-base-zh-v1.5
+      EMBEDDING_DOWNLOAD_PRETRAINED: ${EMBEDDING_DOWNLOAD_PRETRAINED:-true}
       SPRING_DATASOURCE_URL: jdbc:mysql://stock-mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}

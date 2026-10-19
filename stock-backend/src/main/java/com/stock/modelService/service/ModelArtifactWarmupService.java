@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.modelService.service;
 
 import com.stock.modelService.config.SentimentTrainingConfig;
@@ -62,6 +62,7 @@ public class ModelArtifactWarmupService {
         } catch (Exception exception) {
             log.warn("Embedding 模型异步预热失败: model={}, version={}, reason={}",
                     embedding.getModel(), embedding.getModelVersion(), exception.getMessage());
+            log.warn("Embedding 模型异步预热完整异常链", exception);
         }
     }
 
@@ -79,4 +80,4 @@ public class ModelArtifactWarmupService {
         }
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

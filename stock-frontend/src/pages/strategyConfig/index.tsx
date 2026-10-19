@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------------------------------------
+// AI_GENERATE_START ------------------------------------------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Col, Descriptions, Form, Input, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
@@ -166,7 +166,6 @@ const StrategyConfig: React.FC = () => {
   const [agentLoading, setAgentLoading] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const [, setRuntimeLoading] = useState(false);
-  const [providerSwitching, setProviderSwitching] = useState(false);
   const [workspaceTab, setWorkspaceTab] = useState<'chat' | 'runtime' | 'config' | 'candidates'>('chat');
 
   const loadRuntime = useCallback(async () => {
@@ -242,20 +241,6 @@ const StrategyConfig: React.FC = () => {
       message.success(enabled ? localizedText('规则自动切换已开启', 'Rule-based auto switch enabled') : localizedText('规则自动切换已关闭', 'Rule-based auto switch disabled'));
     } catch (cause) {
       message.error(getApiErrorMessage(cause, localizedText('更新自动切换开关失败', 'Failed to update auto-switch setting')));
-    }
-  };
-
-  const switchProvider = async (provider: 'deepseek' | 'ollama') => {
-    setProviderSwitching(true);
-    try {
-      const response = await request.put('/agent/runtime/provider', { provider }) as ApiResponse<{ provider: string }>;
-      const result = readApiData(response, localizedText('\u5207\u6362\u6a21\u578b\u5931\u8d25', 'Failed to switch provider'));
-      setRuntime((current) => current ? { ...current, provider: result.provider } : current);
-      message.success(localizedText(`\u5df2\u5207\u6362\u5230 ${result.provider.toUpperCase()}`, `Switched to ${result.provider.toUpperCase()}`));
-    } catch (cause) {
-      message.error(getApiErrorMessage(cause, localizedText('\u76ee\u6807\u6a21\u578b\u4e0d\u53ef\u7528\uff0c\u5207\u6362\u5931\u8d25', 'Target provider is unavailable')));
-    } finally {
-      setProviderSwitching(false);
     }
   };
 
@@ -343,6 +328,13 @@ const StrategyConfig: React.FC = () => {
   const activeModel = runtime?.provider === 'deepseek' ? runtime.deepseekModel : runtime?.ollamaModel;
   usePageHeader(localizedText('智能决策', 'Intelligent Decision'));
 
+  const capabilityLight = (label: string, status: 'available' | 'disabled' | 'pending' | 'unavailable') => (
+    <span className={`agent-capability-light ${status === 'available' ? 'is-ready' : ''}`}>
+      <span className="agent-capability-light-dot" aria-hidden="true" />
+      {label}
+    </span>
+  );
+
   const number = (label: string, name: keyof StrategyConfigValues, min: number, max: number, step: number, extra: string) => (<Form.Item label={label} name={name} extra={extra} rules={[{ required: true, message: `${label}${localizedText('不能为空', ' is required')}` }]}><InputNumber min={min} max={max} step={step} className="!w-full" /></Form.Item>);
 
   return (<div className="app-page strategy-workbench-page">
@@ -366,28 +358,10 @@ const StrategyConfig: React.FC = () => {
     </nav>
     {workspaceTab === 'chat' && (
     <div className="strategy-chat-workspace">
-    <div className="agent-capability-grid">
-      <article className="agent-capability-card agent-capability-agent">
-        <div className="agent-capability-head"><span><RobotOutlined />Agent</span><Switch size="small" checked={runtime?.provider === 'deepseek'} checkedChildren="DeepSeek" unCheckedChildren="Ollama" disabled={providerSwitching || (!runtime?.deepseekAvailable && !runtime?.ollamaAvailable)} loading={providerSwitching} onChange={(checked) => void switchProvider(checked ? 'deepseek' : 'ollama')} aria-label={localizedText('\u5207\u6362 Agent \u6a21\u578b', 'Switch Agent model')} /></div>
-        <div className="agent-capability-status agent-capability-status-inline">{capabilityHealth(agentCapabilityStatus)}<span className="agent-capability-primary-value">{activeModel || DEFAULT_PROVIDER_MODELS.ollama}</span></div>
-        <div className="agent-capability-fields"><div><span>Provider</span><strong>{runtime?.provider || '-'}</strong></div><div><span>{localizedText('\u7194\u65ad', 'Circuit')}</span><strong>{runtime?.provider === 'deepseek' ? runtime?.deepseekCircuitState || '-' : runtime?.ollamaCircuitState || '-'}</strong></div></div>
-      </article>
-      <article className="agent-capability-card agent-capability-embedding">
-        <div className="agent-capability-head"><span><SettingOutlined />Embedding</span></div>
-        <div className="agent-capability-status agent-capability-status-inline">{capabilityHealth(embeddingCapabilityStatus)}<span className="agent-capability-primary-value">{runtime?.embeddingStatus || '-'}</span></div>
-        <div className="agent-capability-fields"><div><span>{localizedText('\u6a21\u578b', 'Model')}</span><strong>{runtime?.embeddingModel || '-'}</strong></div><div><span>{localizedText('\u7ef4\u5ea6', 'Dimension')}</span><strong>{runtime?.embeddingDimension || '-'}d</strong></div></div>
-      </article>
-      <article className="agent-capability-card agent-capability-rag">
-        <div className="agent-capability-head"><span><BulbOutlined />RAG</span></div>
-        <div className="agent-capability-status agent-capability-status-inline">{capabilityHealth(ragCapabilityStatus)}<span className="agent-capability-primary-value">{runtime?.ragEnabled ? (ragCapabilityStatus === 'available' ? localizedText('\u68c0\u7d22\u94fe\u8def\u6b63\u5e38', 'Retrieval ready') : localizedText('\u7b49\u5f85 Embedding', 'Waiting for Embedding')) : localizedText('\u672a\u542f\u7528', 'Disabled')}</span></div>
-        <div className="agent-capability-fields"><div><span>{localizedText('\u4f9d\u8d56', 'Dependency')}</span><strong>Embedding</strong></div></div>
-      </article>
-      <article className="agent-capability-card agent-capability-memory">
-        <div className="agent-capability-head"><span><InfoCircleOutlined />Memory</span></div>
-        <div className="agent-capability-status agent-capability-status-inline">{capabilityHealth(memoryCapabilityStatus)}<span className="agent-capability-primary-value">{runtime?.memoryEnabled ? (memoryCapabilityStatus === 'available' ? localizedText('\u8bb0\u5fc6\u94fe\u8def\u6b63\u5e38', 'Memory ready') : localizedText('\u7b49\u5f85 Embedding', 'Waiting for Embedding')) : localizedText('\u672a\u542f\u7528', 'Disabled')}</span></div>
-        <div className="agent-capability-fields"><div><span>{localizedText('\u4f9d\u8d56', 'Dependency')}</span><strong>Embedding</strong></div></div>
-      </article>
-    </div>    <section className={`agent-command-center ${agentOpen ? 'agent-command-center-active' : ''}`}>
+    <div className="agent-dialog-status-preview">
+      <div className="agent-dialog-status-main"><div className="agent-dialog-status-icon"><RobotOutlined /></div><div><span>Agent 模型</span><strong>{activeModel || DEFAULT_PROVIDER_MODELS.ollama}</strong><small>{capabilityHealth(agentCapabilityStatus)} · {runtime?.provider || '-'}</small></div></div>
+    </div>
+    <section className={`agent-command-center ${agentOpen ? 'agent-command-center-active' : ''}`}>
       <div className="agent-command-header">
         <div className="agent-command-title-wrap">
           <div className="agent-command-icon"><RobotOutlined /></div>
@@ -398,6 +372,11 @@ const StrategyConfig: React.FC = () => {
           </div>
         </div>
         <div className="agent-command-header-actions">
+          <div className="agent-capability-lights" aria-label={localizedText('RAG 和 Memory 可用状态', 'RAG and Memory availability')}>
+            {capabilityLight('RAG', ragCapabilityStatus)}
+            {capabilityLight('Memory', memoryCapabilityStatus)}
+            {capabilityLight('Embedding', embeddingCapabilityStatus)}
+          </div>
           <div className="agent-command-status">
             <span className={`agent-status-dot ${agentOpen ? 'is-active' : ''}`} />
             {agentOpen ? localizedText('会话已就绪', 'Session ready') : localizedText('等待提问', 'Ready for a question')}
@@ -598,4 +577,4 @@ const StrategyConfig: React.FC = () => {
 };
 
 export default StrategyConfig;
-// AI_GENERATE_END -------------------------------------
+// AI_GENERATE_END -----------------------------------------
