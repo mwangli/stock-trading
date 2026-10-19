@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------------
+// AI_GENERATE_START --------------------
 package com.stock.strategyAgent.service;
 
 import com.stock.strategyAgent.api.DiagnosticRequest;
@@ -181,7 +181,8 @@ public class AgentApplicationService {
                     task, session, "DIAGNOSTIC",
                     "你是运行诊断 Agent。只根据结构化检查结果输出 PASS、WARN、BLOCKED 或 UNKNOWN，不要猜测。"
                             + "只返回 Diagnostic JSON：{summary,status,checks,blockedReasons,evidenceRefs,uncertainty}。",
-                    evidence, evidence, "DIAGNOSTIC", factEvidence.getEvidenceRefs()));
+                    "问题：" + question + "\n结构化检查结果：\n" + evidence,
+                    evidence, "DIAGNOSTIC", factEvidence.getEvidenceRefs()));
             finish(task, response);
         } catch (Exception exception) {
             fail(task, exception);
@@ -398,8 +399,7 @@ public class AgentApplicationService {
         }
         AgentStructuredOutput structured = response.getStructuredOutput();
         String resultSummary = structured == null ? response.getContent() : structured.getSummary();
-        String evidenceSummary = structured == null || structured.getEvidenceRefs() == null
-                ? response.getEvidenceSummary() : String.join(",", structured.getEvidenceRefs());
+        String evidenceSummary = response.getEvidenceSummary();
         String evidenceRefs = structured == null || structured.getEvidenceRefs() == null
                 ? null : JSON.toJSONString(structured.getEvidenceRefs());
         task.setStatus(status)
@@ -534,4 +534,4 @@ public class AgentApplicationService {
                 ? value.substring(0, properties.getMaxOutputChars()) : value;
     }
 }
-// AI_GENERATE_END -----------------
+// AI_GENERATE_END ------------------
