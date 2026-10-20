@@ -26,14 +26,9 @@ public class SentimentTrainingConfig {
     /** 远程或制品清单标识的基础模型。 */
     private String pretrainedModel = "yiyanghkust/finbert-tone-chinese";
 
-    /** 固定的本地模型根目录，目录由初始化流程维护。 */
-    private String modelPath = "./.tmp/model-runtime/sentiment";
+    /** 固定的本地模型根目录，直接指向已发布的模型制品目录。 */
+    private String modelPath = "./model-artifacts/sentiment";
 
-    /** Git LFS 管理的模型制品版本目录，供初始化流程复制到运行时目录。 */
-    private String artifactSourcePath = "./model-artifacts/sentiment/finbert-tone-chinese-e91b1a3a";
-
-    /** 模型托管平台固定 revision。 */
-    private String pretrainedRevision = "";
     /** 最大输入序列长度。 */
     private int maxSequenceLength = 128;
 
@@ -52,8 +47,6 @@ public class SentimentTrainingConfig {
     /** 情感分类标签数量。 */
     private int numLabels = 3;
 
-    /** 是否允许首次启动从模型托管平台下载并初始化本地目录。 */
-    private boolean downloadPretrained = false;
     /** 单个模型文件最大字节数。 */
     private long maxSingleFileBytes = 2L * 1024 * 1024 * 1024;
 

@@ -3,8 +3,6 @@ package com.stock.modelService.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.stock.modelService.config.SentimentTrainingConfig;
 import com.stock.strategyAgent.config.AgentProperties;
 import lombok.RequiredArgsConstructor;
@@ -13,27 +11,18 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
-import java.time.Duration;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Stream;
 
 /**
- * 管理 Embedding 和 Sentiment 的固定本地模型制品目录。
- * 模型目录只能由初始化流程创建或替换，正式目录通过 manifest、文件大小、摘要和原子移动保证完整性。
+ * 校验 Embedding 和 Sentiment 的固定本地模型制品目录。
+ * 模型制品由发布流程预先准备完成，运行时只解析、校验和返回只读目录。
  *
  * @author mwangli
- * @since 2026-10-19
+ * @since 2026-10-20
  */
 @Slf4j
 @Service
@@ -43,111 +32,53 @@ public class LocalModelArtifactService {
     private static final String EMBEDDING_SCHEMA = "embedding-artifact-v1";
     private static final String SENTIMENT_SCHEMA = "sentiment-artifact-v1";
     private static final String MANIFEST_FILE = "manifest.json";
-    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(30))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
 
     private final ObjectMapper objectMapper;
-    private final DjlModelLoadValidationService modelLoadValidationService;
 
     /**
-     * 确保 Embedding 固定版本目录存在且可被加载。
+     * 校验并返回固定 Embedding 制品目录。
      *
      * @param properties Embedding 配置
-     * @return 已通过完整性校验的版本目录
-     * @throws IOException 目录校验、下载或写入失败
-     * @throws InterruptedException 远程下载被中断
+     * @return 已通过 manifest、文件大小和 SHA-256 校验的版本目录
+     * @throws IOException 固定制品目录不存在或校验失败
      */
-    public synchronized Path ensureEmbeddingReady(AgentProperties.EmbeddingProperties properties)
-            throws IOException, InterruptedException {
-        return ensureReady(properties.getModel(), properties.getModelVersion(), properties.getModelPath(),
-                properties.getArtifactSourcePath(),
-                properties.getPretrainedModel(), properties.getPretrainedRevision(), EMBEDDING_SCHEMA, false,
-                properties.isDownloadPretrained(), null);
+    public synchronized Path resolveEmbeddingArtifact(AgentProperties.EmbeddingProperties properties)
+            throws IOException {
+        return resolveReady(properties.getModel(), properties.getModelVersion(), properties.getModelPath(),
+                EMBEDDING_SCHEMA, false);
     }
 
     /**
-     * 确保 Sentiment 固定版本目录存在且可被加载。
+     * 校验并返回固定 Sentiment 制品目录。
      *
      * @param config Sentiment 配置
-     * @return 已通过完整性校验的版本目录
-     * @throws IOException 目录校验、下载或写入失败
-     * @throws InterruptedException 远程下载被中断
+     * @return 已通过 manifest、文件大小和 SHA-256 校验的版本目录
+     * @throws IOException 固定制品目录不存在或校验失败
      */
-    public synchronized Path ensureSentimentReady(SentimentTrainingConfig config)
-            throws IOException, InterruptedException {
-        return ensureReady(config.getModelName(), config.getModelVersion(), config.getModelPath(),
-                config.getArtifactSourcePath(),
-                config.getPretrainedModel(), config.getPretrainedRevision(), SENTIMENT_SCHEMA, true,
-                config.isDownloadPretrained(), config);
+    public synchronized Path resolveSentimentArtifact(SentimentTrainingConfig config)
+            throws IOException {
+        return resolveReady(config.getModelName(), config.getModelVersion(), config.getModelPath(),
+                SENTIMENT_SCHEMA, true);
     }
 
-    private Path ensureReady(String modelName, String modelVersion, String configuredRoot,
-                             String artifactSourcePath,
-                             String repository, String revision, String schema,
-                             boolean sentimentModel, boolean allowDownload,
-                             SentimentTrainingConfig sentimentConfig)
-            throws IOException, InterruptedException {
+    private Path resolveReady(String modelName, String modelVersion, String configuredRoot,
+                              String schema, boolean sentimentModel) throws IOException {
+        if (modelVersion == null || modelVersion.isBlank()) {
+            throw new IOException("模型版本未配置: " + modelName);
+        }
         Path root = resolveRoot(configuredRoot);
-        Path versionDirectory = root.resolve(modelVersion).normalize();
+        Path versionDirectory = root.resolve(modelVersion.trim()).normalize();
         if (!versionDirectory.startsWith(root)) {
             throw new IOException("模型版本目录越界: " + modelVersion);
         }
-        log.info("[模型初始化][检查] model={}, version={}, directory={}",
+        log.info("[固定制品][检查] model={}, version={}, directory={}",
                 modelName, modelVersion, versionDirectory);
-        if (isValid(versionDirectory, modelName, modelVersion, schema, sentimentModel)) {
-            log.info("[模型初始化][复用] model={}, version={}, directory={}",
-                    modelName, modelVersion, versionDirectory);
-            return versionDirectory;
+        if (!isValid(versionDirectory, modelName, modelVersion.trim(), schema, sentimentModel)) {
+            throw new IOException("固定模型制品不存在或完整性校验失败: " + versionDirectory);
         }
-        Path localSource = resolveLocalSource(artifactSourcePath);
-        if (localSource == null && !allowDownload) {
-            throw new IOException("固定本地模型目录不可用，且未配置本地制品或开启远程初始化: " + versionDirectory);
-        }
-
-        deleteDirectory(versionDirectory);
-        Files.createDirectories(root);
-        Path stagingDirectory = root.resolve(modelVersion + ".initializing-" + UUID.randomUUID()).normalize();
-        try {
-            Files.createDirectories(stagingDirectory);
-            log.info("[模型初始化][开始] model={}, version={}, staging={}",
-                    modelName, modelVersion, stagingDirectory);
-            log.info("[模型初始化][下载] model={}, repository={}, revision={}",
-                    modelName, repository, revision);
-            if (localSource != null) {
-                log.info("[模型初始化][本地制品] model={}, source={}", modelName, localSource);
-                copyArtifact(localSource, stagingDirectory);
-            } else {
-                downloadRepository(repository, revision, stagingDirectory);
-            }
-            log.info("[模型初始化][清单] model={}, version={}", modelName, modelVersion);
-            normalizeArtifact(stagingDirectory, modelName, modelVersion, repository, revision,
-                    schema, sentimentModel);
-            if (sentimentModel && sentimentConfig != null) {
-                log.info("[模型初始化][加载校验] model={}, version={}", modelName, modelVersion);
-                try {
-                    modelLoadValidationService.validateSentimentLoad(stagingDirectory, sentimentConfig);
-                } catch (InterruptedException exception) {
-                    Thread.currentThread().interrupt();
-                    throw exception;
-                } catch (Exception exception) {
-                    throw new IOException("情感模型加载校验失败: " + stagingDirectory, exception);
-                }
-            }
-            log.info("[模型初始化][完整性校验] model={}, version={}", modelName, modelVersion);
-            if (!isValid(stagingDirectory, modelName, modelVersion, schema, sentimentModel)) {
-                throw new IOException("模型初始化后的 manifest 或文件校验失败: " + stagingDirectory);
-            }
-            log.info("[模型初始化][切换] model={}, version={}, target={}",
-                    modelName, modelVersion, versionDirectory);
-            Files.move(stagingDirectory, versionDirectory, StandardCopyOption.ATOMIC_MOVE);
-            log.info("本地模型制品初始化完成: model={}, version={}, directory={}",
-                    modelName, modelVersion, versionDirectory);
-            return versionDirectory;
-        } finally {
-            deleteDirectory(stagingDirectory);
-        }
+        log.info("[固定制品][校验通过] model={}, version={}, directory={}",
+                modelName, modelVersion, versionDirectory);
+        return versionDirectory;
     }
 
     private boolean isValid(Path directory, String modelName, String modelVersion,
@@ -189,147 +120,18 @@ public class LocalModelArtifactService {
                     && (!sentimentModel || listed.contains("serving.properties"))
                     && hasWeights && hasExpectedModel;
         } catch (Exception exception) {
-            log.info("本地模型制品校验失败，将执行初始化: directory={}, reason={}", directory,
+            log.warn("固定模型制品校验失败: directory={}, reason={}", directory,
                     exception.getMessage());
             return false;
         }
     }
 
-    private void normalizeArtifact(Path directory, String modelName, String modelVersion,
-                                   String repository, String revision, String schema,
-                                   boolean sentimentModel) throws IOException {
-        if (sentimentModel && !Files.isRegularFile(directory.resolve("serving.properties"))) {
-            Files.writeString(directory.resolve("serving.properties"),
-                    "engine=PyTorch\noption.tensor_parallel_degree=1\n");
-        }
-        ArrayNode files = objectMapper.createArrayNode();
-        try (Stream<Path> paths = Files.walk(directory)) {
-            for (Path file : paths.filter(Files::isRegularFile).sorted().toList()) {
-                if (MANIFEST_FILE.equals(file.getFileName().toString())) {
-                    continue;
-                }
-                ObjectNode entry = objectMapper.createObjectNode();
-                entry.put("path", directory.relativize(file).toString().replace('\\', '/'));
-                entry.put("size", Files.size(file));
-                entry.put("sha256", sha256(file));
-                files.add(entry);
-            }
-        }
-        ObjectNode manifest = objectMapper.createObjectNode();
-        manifest.put("schemaVersion", schema);
-        manifest.put("modelName", modelName);
-        manifest.put("modelVersion", modelVersion);
-        manifest.put("sourceRepository", repository);
-        manifest.put("sourceRevision", revision);
-        manifest.put("engineName", "PyTorch");
-        manifest.put("maxSequenceLength", sentimentModel ? 128 : 512);
-        if (sentimentModel) {
-            manifest.set("labels", objectMapper.valueToTree(
-                    java.util.List.of("neutral", "positive", "negative")));
-        }
-        manifest.set("files", files);
-        Files.writeString(directory.resolve(MANIFEST_FILE),
-                objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(manifest));
-    }
-
-    private void downloadRepository(String repository, String revision, Path directory)
-            throws IOException, InterruptedException {
-        if (repository == null || repository.isBlank() || revision == null || revision.isBlank()) {
-            throw new IOException("模型仓库或固定 revision 未配置");
-        }
-        URI api = URI.create("https://huggingface.co/api/models/" + repository
-                + "?revision=" + revision);
-        HttpRequest request = HttpRequest.newBuilder(api).timeout(Duration.ofMinutes(2))
-                .header("Accept", "application/json").GET().build();
-        HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() / 100 != 2) {
-            throw new IOException("模型托管平台清单请求失败: status=" + response.statusCode());
-        }
-        java.util.List<JsonNode> siblings = new java.util.ArrayList<>();
-        for (JsonNode sibling : objectMapper.readTree(response.body()).path("siblings")) {
-            String relative = sibling.path("rfilename").asText("");
-            if (relative.isBlank() || relative.contains("..")) {
-                continue;
-            }
-            siblings.add(sibling);
-        }
-        log.info("[模型初始化][下载清单] repository={}, revision={}, files={}",
-                repository, revision, siblings.size());
-        int fileIndex = 0;
-        for (JsonNode sibling : siblings) {
-            fileIndex++;
-            String relative = sibling.path("rfilename").asText("");
-            Path target = directory.resolve(relative).normalize();
-            if (!target.startsWith(directory)) {
-                throw new IOException("远程模型文件路径越界: " + relative);
-            }
-            Files.createDirectories(target.getParent());
-            URI fileUri = URI.create("https://huggingface.co/" + repository
-                    + "/resolve/" + revision + "/" + relative);
-            HttpRequest fileRequest = HttpRequest.newBuilder(fileUri)
-                    .timeout(Duration.ofMinutes(15)).GET().build();
-            log.info("[模型初始化][下载文件] repository={}, progress={}/{}, file={}",
-                    repository, fileIndex, siblings.size(), relative);
-            HttpResponse<Path> fileResponse = HTTP_CLIENT.send(fileRequest,
-                    HttpResponse.BodyHandlers.ofFile(target));
-            if (fileResponse.statusCode() / 100 != 2) {
-                throw new IOException("模型文件下载失败: " + relative + ", status=" + fileResponse.statusCode());
-            }
-            log.info("[模型初始化][下载完成] repository={}, progress={}/{}, file={}, bytes={}",
-                    repository, fileIndex, siblings.size(), relative, Files.size(target));
-        }
-    }
-
     private Path resolveRoot(String configuredRoot) {
         Path configured = Path.of(configuredRoot == null || configuredRoot.isBlank()
-                ? "/data/models" : configuredRoot.trim());
+                ? "./model-artifacts" : configuredRoot.trim());
         return configured.isAbsolute()
                 ? configured.normalize()
                 : Path.of("").toAbsolutePath().normalize().resolve(configured).normalize();
-    }
-
-    private Path resolveLocalSource(String configuredPath) throws IOException {
-        if (configuredPath == null || configuredPath.isBlank()) {
-            return null;
-        }
-        Path source = Path.of(configuredPath.trim());
-        if (source.isAbsolute()) {
-            Path resolved = source.normalize();
-            if (!Files.isDirectory(resolved)) {
-                throw new IOException("Git LFS 模型制品目录不存在或不是目录: " + resolved);
-            }
-            return resolved;
-        }
-        Path workingDirectory = Path.of("").toAbsolutePath().normalize();
-        Path candidate = workingDirectory;
-        for (int depth = 0; candidate != null && depth < 4; depth++, candidate = candidate.getParent()) {
-            Path resolved = candidate.resolve(source).normalize();
-            if (Files.isDirectory(resolved)) {
-                log.info("本地模型制品源路径已解析: configured={}, workingDirectory={}, resolved={}",
-                        configuredPath, workingDirectory, resolved);
-                return resolved;
-            }
-        }
-        throw new IOException("Git LFS 模型制品目录不存在或不是目录: configured="
-                + configuredPath + ", workingDirectory=" + workingDirectory);
-    }
-
-    private void copyArtifact(Path source, Path target) throws IOException {
-        try (Stream<Path> paths = Files.walk(source)) {
-            for (Path path : paths.filter(Files::isRegularFile).toList()) {
-                if (path.toString().contains(java.io.File.separator + ".git" + java.io.File.separator)
-                        || path.getFileName().toString().equalsIgnoreCase("manifest.json")) {
-                    continue;
-                }
-                Path relative = source.relativize(path);
-                Path destination = target.resolve(relative).normalize();
-                if (!destination.startsWith(target)) {
-                    throw new IOException("本地模型制品路径越界: " + relative);
-                }
-                Files.createDirectories(destination.getParent());
-                Files.copy(path, destination, StandardCopyOption.REPLACE_EXISTING);
-            }
-        }
     }
 
     private boolean isWeightFile(String path) {
@@ -353,23 +155,6 @@ public class LocalModelArtifactService {
             return java.util.HexFormat.of().formatHex(digest.digest());
         } catch (java.security.NoSuchAlgorithmException exception) {
             throw new IllegalStateException("当前 JDK 不支持 SHA-256", exception);
-        }
-    }
-
-    private void deleteDirectory(Path directory) {
-        if (directory == null || !Files.exists(directory)) {
-            return;
-        }
-        try (Stream<Path> paths = Files.walk(directory)) {
-            paths.sorted(Comparator.reverseOrder()).forEach(path -> {
-                try {
-                    Files.deleteIfExists(path);
-                } catch (IOException exception) {
-                    log.warn("本地模型制品目录清理失败: path={}, reason={}", path, exception.getMessage());
-                }
-            });
-        } catch (IOException exception) {
-            log.warn("本地模型制品目录遍历失败: path={}, reason={}", directory, exception.getMessage());
         }
     }
 }

@@ -22,7 +22,7 @@ import java.util.List;
 
 /**
  * 基于 DJL PyTorch 的固定本地目录 Embedding 模型适配器。
- * 模型目录由初始化服务维护，加载完成后由 DJL 常驻内存。
+ * 模型目录由发布流程固定，加载完成后由 DJL 常驻内存。
  *
  * @author mwangli
  * @since 2026-10-18
@@ -134,7 +134,7 @@ public class DjlEmbeddingModel implements EmbeddingModel {
             }
             Path modelDirectory = null;
             try {
-                modelDirectory = artifactService.ensureEmbeddingReady(properties);
+                modelDirectory = artifactService.resolveEmbeddingArtifact(properties);
                 String modelFile = properties.getModel() + ".pt";
                 log.info("Embedding 模型加载诊断: directory={}, config={}, tokenizer={}, pytorchModel={}, modelFile={}, modelFilePresent={}",
                         modelDirectory,

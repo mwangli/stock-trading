@@ -14,8 +14,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 /**
- * 应用就绪后的模型制品初始化和异步预热服务。
- * 应用先完成 HTTP 启动，再初始化固定本地制品目录，最后加载模型到内存。
+ * 应用就绪后的固定模型制品校验和异步预热服务。
+ * 应用先完成 HTTP 启动，再校验固定本地制品目录并加载模型到内存。
  *
  * @author mwangli
  * @since 2026-10-18
@@ -25,7 +25,6 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class ModelArtifactWarmupService {
 
-    private final LocalModelArtifactService artifactService;
     private final AgentProperties agentProperties;
     private final SentimentTrainingConfig sentimentConfig;
     private final ObjectProvider<EmbeddingModel> embeddingModelProvider;
@@ -33,7 +32,7 @@ public class ModelArtifactWarmupService {
     private final LstmTrainerService lstmTrainerService;
 
     /**
-     * 应用就绪后异步初始化和加载模型，避免大模型阻塞应用启动。
+     * 应用就绪后异步校验和加载模型，避免大模型阻塞应用启动。
      */
     @Async("applicationTaskExecutor")
     @EventListener(ApplicationReadyEvent.class)
@@ -55,7 +54,6 @@ public class ModelArtifactWarmupService {
             return;
         }
         try {
-            artifactService.ensureEmbeddingReady(embedding);
             model.ensureReady();
             log.info("Embedding 模型异步预热完成: model={}, version={}",
                     embedding.getModel(), embedding.getModelVersion());
@@ -68,7 +66,6 @@ public class ModelArtifactWarmupService {
 
     private void warmupSentiment() {
         try {
-            artifactService.ensureSentimentReady(sentimentConfig);
             if (!sentimentTrainerService.loadModel()) {
                 throw new IllegalStateException(sentimentTrainerService.getLastLoadError());
             }
