@@ -156,20 +156,8 @@ public class AgentProperties {
         /** Embedding 模型名称。 */
         private String model = "bge-base-zh-v1.5";
 
-        /** 模型托管平台仓库名称。 */
-        private String pretrainedModel = "BAAI/bge-base-zh-v1.5";
-
-        /** 固定的本地模型根目录，目录由初始化流程维护。 */
-        private String modelPath = "/data/models/embedding";
-
-        /** Git LFS 管理的模型制品版本目录，供初始化流程复制到运行时目录。 */
-        private String artifactSourcePath = "./model-artifacts/embedding/bge-base-zh-v1.5";
-
-        /** 模型托管平台固定 revision。 */
-        private String pretrainedRevision = "";
-
-        /** 是否允许首次启动从模型托管平台下载并初始化本地目录。 */
-        private boolean downloadPretrained = false;
+        /** 已发布 Embedding 模型制品的本地根目录。 */
+        private String modelPath = "./model-artifacts/embedding";
 
         /** Embedding 模型版本。 */
         private String modelVersion = "bge-base-zh-v1.5";

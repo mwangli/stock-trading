@@ -52,7 +52,7 @@ public class SentimentTrainerService {
     private volatile SentimentArtifactInspection loadedArtifact;
 
     /**
-     * 从固定本地版本目录加载情感模型；目录缺失或损坏时先执行受控初始化。
+     * 从固定本地版本目录校验并加载情感模型；目录缺失或损坏时直接失败。
      *
      * @return true 表示真实模型已加载
      */
@@ -61,7 +61,7 @@ public class SentimentTrainerService {
             return true;
         }
         try {
-            localArtifactService.ensureSentimentReady(config);
+            localArtifactService.resolveSentimentArtifact(config);
             SentimentArtifactInspection inspection = artifactService.inspectForLoad();
             Path modelDirectory = inspection.getModelDirectory();
             HuggingFaceTokenizer tokenizer = HuggingFaceTokenizer.builder()
@@ -344,7 +344,6 @@ public class SentimentTrainerService {
             metadata.setArtifactUri(artifactUri);
             metadata.setConfigJson(objectMapper.writeValueAsString(Map.of(
                     "pretrainedModel", config.getPretrainedModel(),
-                    "pretrainedRevision", config.getPretrainedRevision(),
                     "modelPath", config.getModelPath(),
                     "maxSequenceLength", config.getMaxSequenceLength(),
                     "labels", config.getLabels())));

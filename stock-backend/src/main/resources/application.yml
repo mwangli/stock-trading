@@ -91,7 +91,7 @@ trading:
 
 agent:
   enabled: true
-  provider: ${AGENT_PROVIDER:deepseek}
+  provider: ${AGENT_PROVIDER:ollama}
   deepseek:
     enabled: true
     base-url: https://api.deepseek.com/v1
@@ -128,11 +128,7 @@ agent:
     base-url: http://localhost:11434
     api-key: ollama
     model: bge-base-zh-v1.5
-    pretrained-model: BAAI/bge-base-zh-v1.5
-    model-path: ${EMBEDDING_MODEL_PATH:./.tmp/model-runtime/embedding}
-    artifact-source-path: ${EMBEDDING_ARTIFACT_SOURCE_PATH:./model-artifacts/embedding/bge-base-zh-v1.5}
-    pretrained-revision: ${EMBEDDING_PRETRAINED_REVISION:f03589ceff5aac7111bd60cfc7d497ca17ecac65}
-    download-pretrained: ${EMBEDDING_DOWNLOAD_PRETRAINED:true}
+    model-path: ${EMBEDDING_MODEL_PATH:./model-artifacts/embedding}
     model-version: bge-base-zh-v1.5
     dimension: 768
     timeout-ms: 30000
@@ -198,15 +194,7 @@ models:
     model-name: sentiment-finbert
     model-version: finbert-tone-chinese-e91b1a3a
     pretrained-model: yiyanghkust/finbert-tone-chinese
-    model-path: ${SENTIMENT_MODEL_PATH:./.tmp/model-runtime/sentiment}
-    artifact-source-path: ${SENTIMENT_ARTIFACT_SOURCE_PATH:./model-artifacts/sentiment/finbert-tone-chinese-e91b1a3a}
-    pretrained-revision: ${SENTIMENT_PRETRAINED_REVISION:e91b1a3af10e1e8c9c03429d3cd7d5e9a1c8000d}
-    pretrained-model-sha256: ${SENTIMENT_PRETRAINED_MODEL_SHA256:a0d40048e07025d541470aee282141050ef608e59c755522f7f12e5f160a4f12}
-    download-pretrained: ${SENTIMENT_DOWNLOAD_PRETRAINED:false}
-    converter-enabled: ${SENTIMENT_CONVERTER_ENABLED:true}
-    converter-command: ${SENTIMENT_CONVERTER_COMMAND:djl-convert}
-    converter-output-format: TorchScript
-    converter-timeout-seconds: 1800
+    model-path: ${SENTIMENT_MODEL_PATH:./model-artifacts/sentiment}
     max-single-file-bytes: ${SENTIMENT_MAX_SINGLE_FILE_BYTES:2147483648}
     max-total-artifact-bytes: ${SENTIMENT_MAX_TOTAL_ARTIFACT_BYTES:4294967296}
 
