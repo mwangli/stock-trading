@@ -49,7 +49,7 @@ public class LocalModelArtifactService {
             .build();
 
     private final ObjectMapper objectMapper;
-    private final DjlModelConverterService converterService;
+    private final DjlModelLoadValidationService modelLoadValidationService;
 
     /**
      * 确保 Embedding 固定版本目录存在且可被加载。
@@ -121,19 +121,13 @@ public class LocalModelArtifactService {
             } else {
                 downloadRepository(repository, revision, stagingDirectory);
             }
-            if (sentimentModel && sentimentConfig != null && sentimentConfig.isConverterEnabled()) {
-                log.info("[模型初始化][转换] model={}, command={}, format={}",
-                        modelName, sentimentConfig.getConverterCommand(),
-                        sentimentConfig.getConverterOutputFormat());
-                converterService.convertSentiment(stagingDirectory, sentimentConfig);
-            }
             log.info("[模型初始化][清单] model={}, version={}", modelName, modelVersion);
             normalizeArtifact(stagingDirectory, modelName, modelVersion, repository, revision,
                     schema, sentimentModel);
             if (sentimentModel && sentimentConfig != null) {
                 log.info("[模型初始化][加载校验] model={}, version={}", modelName, modelVersion);
                 try {
-                    converterService.validateSentimentLoad(stagingDirectory, sentimentConfig);
+                    modelLoadValidationService.validateSentimentLoad(stagingDirectory, sentimentConfig);
                 } catch (InterruptedException exception) {
                     Thread.currentThread().interrupt();
                     throw exception;
