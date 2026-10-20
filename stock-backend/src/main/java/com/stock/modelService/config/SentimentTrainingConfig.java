@@ -34,10 +34,6 @@ public class SentimentTrainingConfig {
 
     /** 模型托管平台固定 revision。 */
     private String pretrainedRevision = "";
-
-    /** 预转换 TorchScript 权重的 SHA-256；生产环境建议配置，留空表示仅依赖 revision 和 DJL 加载校验。 */
-    private String pretrainedModelSha256 = "";
-
     /** 最大输入序列长度。 */
     private int maxSequenceLength = 128;
 
@@ -58,19 +54,6 @@ public class SentimentTrainingConfig {
 
     /** 是否允许首次启动从模型托管平台下载并初始化本地目录。 */
     private boolean downloadPretrained = false;
-
-    /** 是否在初始化阶段调用 DJL Converter 生成 TorchScript 权重。 */
-    private boolean converterEnabled = true;
-
-    /** DJL Converter 可执行命令。 */
-    private String converterCommand = "djl-convert";
-
-    /** DJL Converter 输出格式。 */
-    private String converterOutputFormat = "TorchScript";
-
-    /** DJL Converter 单次执行超时时间，单位秒。 */
-    private long converterTimeoutSeconds = 1800L;
-
     /** 单个模型文件最大字节数。 */
     private long maxSingleFileBytes = 2L * 1024 * 1024 * 1024;
 
