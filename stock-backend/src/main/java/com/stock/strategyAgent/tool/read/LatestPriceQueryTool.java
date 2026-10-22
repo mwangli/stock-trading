@@ -1,0 +1,63 @@
+// AI_GENERATE_START -
+package com.stock.strategyAgent.tool.read;
+
+import com.stock.dataCollector.domain.entity.StockPrice;
+import com.stock.dataCollector.service.StockDataService;
+import com.stock.strategyAgent.tool.AgentToolSupport;
+import dev.langchain4j.agent.tool.Tool;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+/**
+ * 股票最新日线价格只读工具。
+ *
+ * @author mwangli
+ * @since 2026-10-22
+ */
+@Component
+@RequiredArgsConstructor
+public class LatestPriceQueryTool {
+
+    private final StockDataService stockDataService;
+    private final AgentToolSupport toolSupport;
+
+    /**
+     * 查询指定股票在本地行情库中的最新日线价格。
+     *
+     * @param request 股票代码请求
+     * @return 最新价格及数据日期
+     */
+    @Tool(name = "queryLatestPrice", value = "查询指定股票在本地行情库中的最新日线价格和数据日期")
+    public LatestPriceResult query(LatestPriceRequest request) {
+        if (request == null || !StringUtils.hasText(request.stockCode())) {
+            throw new IllegalArgumentException("股票代码不能为空");
+        }
+        String stockCode = request.stockCode().trim();
+        return toolSupport.execute("queryLatestPrice", () -> {
+            StockPrice price = stockDataService.getLatestPrice(stockCode);
+            if (price == null) {
+                throw new IllegalStateException("未查询到股票最新价格: " + stockCode);
+            }
+            return new LatestPriceResult(price.getCode(), price.getStockName(), price.getDate(),
+                    price.getOpenPrice(), price.getHighPrice(), price.getLowPrice(), price.getClosePrice(),
+                    price.getVolume(), price.getAmount(), price.getUpdateTime());
+        });
+    }
+
+    /** 股票最新价格查询请求。 */
+    public record LatestPriceRequest(String stockCode) {
+    }
+
+    /** 股票最新价格查询结果。 */
+    public record LatestPriceResult(String stockCode, String stockName, LocalDate tradeDate,
+                                    BigDecimal openPrice, BigDecimal highPrice, BigDecimal lowPrice,
+                                    BigDecimal closePrice, BigDecimal volume, BigDecimal amount,
+                                    LocalDateTime updatedAt) {
+    }
+}
+// AI_GENERATE_END -

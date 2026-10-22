@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.api;
 
 import java.time.LocalDateTime;
@@ -20,8 +20,6 @@ import lombok.NoArgsConstructor;
 public class MemoryResponse {
     /** 记忆标识。 */
     private String memoryId;
-    /** 用户范围。 */
-    private String userScope;
     /** 记忆类型。 */
     private String memoryType;
     /** 来源类型。 */
@@ -39,4 +37,4 @@ public class MemoryResponse {
     /** 更新时间。 */
     private LocalDateTime updatedAt;
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

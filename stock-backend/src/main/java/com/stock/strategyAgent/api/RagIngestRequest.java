@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.api;
 
 import java.util.List;
@@ -14,8 +14,6 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 public class RagIngestRequest {
-    /** 文档所属用户范围，PRIVATE 文档只允许同范围检索。 */
-    private String userScope;
     /** 来源类型。 */
     private String sourceType;
     /** 来源标识。 */
@@ -31,4 +29,4 @@ public class RagIngestRequest {
     /** 可见范围。 */
     private String visibility;
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

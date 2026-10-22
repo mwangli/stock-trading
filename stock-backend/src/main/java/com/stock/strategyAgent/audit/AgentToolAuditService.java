@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.audit;
 
 import com.stock.strategyAgent.tool.ToolExecutionContext;
@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Agent 工具调用审计服务。
@@ -50,6 +51,31 @@ public class AgentToolAuditService {
                 .setFinishedAt(LocalDateTime.now()));
     }
 
+    /**
+     * 查询任务实际成功调用的工具名称。
+     *
+     * @param taskId 任务标识
+     * @return 去重后的工具名称
+     */
+    public List<String> successfulToolNames(String taskId) {
+        return repository.findByTaskIdAndStatusOrderByStartedAtAsc(taskId, "SUCCESS").stream()
+                .map(AgentToolCallEntity::getToolName)
+                .distinct()
+                .toList();
+    }
+
+    /**
+     * 将成功工具调用转换为可追踪的审计证据编号。
+     *
+     * @param taskId 任务标识
+     * @return 工具审计证据编号
+     */
+    public List<String> successfulEvidenceRefs(String taskId) {
+        return repository.findByTaskIdAndStatusOrderByStartedAtAsc(taskId, "SUCCESS").stream()
+                .map(item -> "toolCall:" + item.getId())
+                .toList();
+    }
+
     private String limit(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -57,4 +83,4 @@ public class AgentToolAuditService {
         return value.length() > 2000 ? value.substring(0, 2000) : value;
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

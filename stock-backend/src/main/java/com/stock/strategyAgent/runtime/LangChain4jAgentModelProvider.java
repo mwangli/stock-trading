@@ -1,10 +1,14 @@
-// AI_GENERATE_START -----------------------
+// AI_GENERATE_START -----------------------------
 package com.stock.strategyAgent.runtime;
 
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
+import com.stock.strategyAgent.capability.AgentToolCatalog;
 import com.stock.strategyAgent.config.AgentProperties;
+import com.stock.strategyAgent.service.AgentConversationLockService;
+import com.stock.strategyAgent.tool.AgentToolContextHolder;
+import com.stock.strategyAgent.tool.ToolExecutionContext;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
@@ -23,7 +27,9 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -51,6 +57,8 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
     private final AgentCircuitBreaker circuitBreaker;
     private final AgentProviderModeManager providerModeManager;
     private final AgentApiBudgetService apiBudgetService;
+    private final AgentToolCatalog toolCatalog;
+    private final AgentConversationLockService conversationLockService;
     private final Map<String, ChatModel> models = new ConcurrentHashMap<>();
     private final Map<String, String> providerStatuses = new ConcurrentHashMap<>();
     private final ExecutorService modelExecutor;
@@ -63,12 +71,16 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                                          AgentChatMemoryService chatMemoryService,
                                          AgentCircuitBreaker circuitBreaker,
                                          AgentProviderModeManager providerModeManager,
-                                         AgentApiBudgetService apiBudgetService) {
+                                         AgentApiBudgetService apiBudgetService,
+                                         AgentToolCatalog toolCatalog,
+                                         AgentConversationLockService conversationLockService) {
         this.properties = properties;
         this.chatMemoryService = chatMemoryService;
         this.circuitBreaker = circuitBreaker;
         this.providerModeManager = providerModeManager;
         this.apiBudgetService = apiBudgetService;
+        this.toolCatalog = toolCatalog;
+        this.conversationLockService = conversationLockService;
         this.modelExecutor = Executors.newFixedThreadPool(Math.max(properties.getMaxConcurrency(), 1));
         this.healthHttpClient = HttpClient.newBuilder()
                 .connectTimeout(DEEPSEEK_HEALTH_TIMEOUT)
@@ -121,6 +133,16 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                     .content("Runtime 请求不能为空")
                     .build();
         }
+        if (!StringUtils.hasText(request.getSessionId())) {
+            return failure(request, "SESSION_REQUIRED", "Runtime 会话标识不能为空");
+        }
+        if (!StringUtils.hasText(request.getTaskId())) {
+            return failure(request, "TASK_REQUIRED", "Runtime 任务标识不能为空");
+        }
+        return conversationLockService.execute(request.getSessionId(), () -> generateLocked(request));
+    }
+
+    private AgentRuntimeResponse generateLocked(AgentRuntimeRequest request) {
         if (!properties.isEnabled()) {
             return degraded(request, "AGENT_DISABLED", "Agent 未启用");
         }
@@ -145,26 +167,45 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
             }
             try {
                 ChatModel model = models.computeIfAbsent(provider, this::createModel);
-                ChatMemory memory = chatMemoryService.get(request.getSessionId());
+                ChatMemory memory = chatMemoryService.snapshot(request.getSessionId());
                 if ("deepseek".equals(provider)) {
                     long estimatedInputTokens = apiBudgetService.estimateInputTokens(
                             request.getSystemPrompt(), request.getUserPrompt(), memory.messages());
                     budgetReservation = apiBudgetService.reserveDeepSeek(
                             estimatedInputTokens, properties.getDeepseek().getMaxTokens());
                 }
-                StrategyAgent assistant = AiServices.builder(StrategyAgent.class)
+                AiServices<StrategyAgent> assistantBuilder = AiServices.builder(StrategyAgent.class)
                         .chatModel(model)
-                        .chatMemory(memory)
-                        .build();
+                        .chatMemory(memory);
+                List<Object> selectedTools = toolCatalog.resolve(request.getAllowedTools());
+                if (!selectedTools.isEmpty()) {
+                    assistantBuilder.tools(selectedTools);
+                }
+                StrategyAgent assistant = assistantBuilder.build();
                 int chatMemoryMessages = memory.messages().size();
                 log.info("[Agent][Model] taskId={} sessionId={} provider={} model={} status=QUEUED promptChars={} evidenceRefCount={} chatMemoryMessages={}",
                         request.getTaskId(), request.getSessionId(), provider, modelName(provider),
                         request.getUserPrompt().length(), request.getEvidenceRefs() == null ? 0 : request.getEvidenceRefs().size(),
                         chatMemoryMessages);
                 Future<Result<String>> call = modelExecutor.submit(() -> {
-                    log.info("[Agent][Model] taskId={} sessionId={} provider={} model={} status=RUNNING",
-                            request.getTaskId(), request.getSessionId(), provider, modelName(provider));
-                    return assistant.chat(request.getUserPrompt(), request.getSystemPrompt());
+                    ToolExecutionContext context = ToolExecutionContext.builder()
+                            .traceId(request.getTaskId() + ":" + provider)
+                            .sessionId(request.getSessionId())
+                            .taskId(request.getTaskId())
+                            .userScope(request.getUserScope())
+                            .allowedToolNames(request.getAllowedTools() == null ? Set.of()
+                                    : request.getAllowedTools().stream().map(tool -> tool.toolName()).collect(
+                                            java.util.stream.Collectors.toUnmodifiableSet()))
+                            .build();
+                    AgentToolContextHolder.set(context);
+                    try {
+                        log.info("[Agent][Model] taskId={} sessionId={} provider={} model={} status=RUNNING allowedToolCount={}",
+                                request.getTaskId(), request.getSessionId(), provider, modelName(provider),
+                                selectedTools.size());
+                        return assistant.chat(request.getUserPrompt(), request.getSystemPrompt());
+                    } finally {
+                        AgentToolContextHolder.clear();
+                    }
                 });
                 Result<String> modelResult;
                 try {
@@ -189,6 +230,7 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                 }
                 providerStatuses.put(provider, "READY");
                 circuitBreaker.recordSuccess(provider);
+                chatMemoryService.stage(request.getTaskId(), request.getSessionId(), memory);
                 log.info("[Agent][Model] taskId={} sessionId={} provider={} model={} status=COMPLETED contentChars={} elapsedMs={}",
                         request.getTaskId(), request.getSessionId(), provider, modelName(provider), content.length(),
                         elapsedMillis(providerStartedAt));
@@ -580,4 +622,4 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         }
     }
 }
-// AI_GENERATE_END ----------------------
+// AI_GENERATE_END -----------------------------

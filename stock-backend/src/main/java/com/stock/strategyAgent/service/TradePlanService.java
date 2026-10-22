@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.service;
 
 import com.stock.strategyAgent.api.TradePlanDto;
@@ -38,21 +38,25 @@ public class TradePlanService {
      * 创建或幂等返回一条自动交易计划。
      *
      * @param request 创建请求
+     * @param userScope 服务端认证用户范围
      * @return 交易计划响应
      */
     @Transactional
-    public TradePlanDto.Response create(TradePlanDto.CreateRequest request) {
+    public TradePlanDto.Response create(TradePlanDto.CreateRequest request, String userScope) {
         if (!agentProperties.isTradePlanEnabled()) {
             throw new IllegalStateException("TradePlan 功能当前未启用");
         }
         validator.validate(request);
-        AgentTradePlanEntity existing = repository.findByIdempotencyKey(request.getIdempotencyKey()).orElse(null);
+        String ownedScope = requireUserScope(userScope);
+        AgentTradePlanEntity existing = repository
+                .findByIdempotencyKeyAndUserScope(request.getIdempotencyKey(), ownedScope).orElse(null);
         if (existing != null) {
             return toResponse(existing);
         }
         LocalDateTime now = LocalDateTime.now();
         AgentTradePlanEntity entity = new AgentTradePlanEntity()
                 .setPlanId(UUID.randomUUID().toString())
+                .setUserScope(ownedScope)
                 .setCandidateBatchId(request.getCandidateBatchId().trim())
                 .setPredictionBatchId(request.getPredictionBatchId())
                 .setStockCode(request.getStockCode().trim())
@@ -81,11 +85,12 @@ public class TradePlanService {
      * 实时行情、账户、持仓、交易日历、重复委托和 RiskController 校验由后续 tradingExecutor 执行阶段负责。
      *
      * @param planId 计划标识
+     * @param userScope 服务端认证用户范围
      * @return 最新计划响应
      */
     @Transactional
-    public TradePlanDto.Response revalidate(String planId) {
-        AgentTradePlanEntity entity = find(planId);
+    public TradePlanDto.Response revalidate(String planId, String userScope) {
+        AgentTradePlanEntity entity = find(planId, userScope);
         LocalDateTime now = LocalDateTime.now();
         if (entity.getStatus() != AgentEnums.TradePlanStatus.PENDING_REVALIDATION) {
             return toResponse(entity);
@@ -106,19 +111,27 @@ public class TradePlanService {
      * 查询交易计划。
      *
      * @param planId 计划标识
+     * @param userScope 服务端认证用户范围
      * @return 交易计划响应
      */
     @Transactional(readOnly = true)
-    public TradePlanDto.Response get(String planId) {
-        return toResponse(find(planId));
+    public TradePlanDto.Response get(String planId, String userScope) {
+        return toResponse(find(planId, userScope));
     }
 
-    private AgentTradePlanEntity find(String planId) {
+    private AgentTradePlanEntity find(String planId, String userScope) {
         if (!StringUtils.hasText(planId)) {
             throw new IllegalArgumentException("交易计划标识不能为空");
         }
-        return repository.findById(planId)
-                .orElseThrow(() -> new IllegalArgumentException("交易计划不存在: " + planId));
+        return repository.findByPlanIdAndUserScope(planId.trim(), requireUserScope(userScope))
+                .orElseThrow(() -> new IllegalArgumentException("交易计划不存在"));
+    }
+
+    private String requireUserScope(String userScope) {
+        if (!StringUtils.hasText(userScope)) {
+            throw new IllegalArgumentException("交易计划用户范围不能为空");
+        }
+        return userScope.trim();
     }
 
     private TradePlanDto.Response toResponse(AgentTradePlanEntity entity) {
@@ -152,4 +165,4 @@ public class TradePlanService {
                 .build();
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

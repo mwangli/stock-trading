@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------
+// AI_GENERATE_START -----------------
 package com.stock.strategyAgent.evidence;
 
 import com.alibaba.fastjson2.JSON;
@@ -21,6 +21,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -102,6 +103,9 @@ public class EvidenceAssembler {
                 .sessionId(sessionId)
                 .taskId(taskId)
                 .userScope(userScope)
+                .allowedToolNames(Set.of("queryProviderRuntime", "queryTradingCalendar",
+                        "queryStrategyState", "queryPredictionCandidates", "queryLatestPredictionCandidate",
+                        "queryJobDiagnostic", "queryTradeExecutionGate", "queryBrokerFacts"))
                 .build();
         List<EvidenceItem> items = new ArrayList<>();
         boolean runtimeOnly = isRuntimeDiagnostic(taskType, diagnosticQuestion);
@@ -129,7 +133,7 @@ public class EvidenceAssembler {
             String strategyVersion = null;
             if (StringUtils.hasText(candidateBatchId)) {
                 PredictionCandidateQueryTool.PredictionCandidateResult candidateData = add(items,
-                        "queryPredictionCandidate",
+                        "queryPredictionCandidates",
                         () -> predictionCandidateQueryTool.query(
                                 new PredictionCandidateQueryTool.PredictionCandidateRequest(candidateBatchId.trim())));
                 if (candidateData != null) {
@@ -151,11 +155,11 @@ public class EvidenceAssembler {
                 }
             }
             if (taskType == AgentEnums.TaskType.DIAGNOSTIC && StringUtils.hasText(jobName)) {
-                add(items, "queryJobExecution",
+                add(items, "queryJobDiagnostic",
                         () -> jobDiagnosticTool.query(new JobDiagnosticTool.JobDiagnosticRequest(jobName.trim())));
             }
-            if (taskType == AgentEnums.TaskType.TRADE_PLAN || taskType == AgentEnums.TaskType.DIAGNOSTIC
-                    || taskType == AgentEnums.TaskType.RESEARCH) {
+            if (taskType == AgentEnums.TaskType.TRADE_PLAN
+                    || requiresTradeGate(taskType, diagnosticQuestion)) {
                 add(items, "queryTradeExecutionGate", tradeExecutionGateQueryTool::query);
             }
             if (brokerFactsRequired) {
@@ -234,6 +238,21 @@ public class EvidenceAssembler {
                 || normalized.contains("fill");
     }
 
+    private boolean requiresTradeGate(AgentEnums.TaskType taskType, String diagnosticQuestion) {
+        if (taskType != AgentEnums.TaskType.DIAGNOSTIC || !StringUtils.hasText(diagnosticQuestion)) {
+            return false;
+        }
+        String normalized = diagnosticQuestion.toLowerCase();
+        return normalized.contains("买入")
+                || normalized.contains("卖出")
+                || normalized.contains("下单")
+                || normalized.contains("交易执行")
+                || normalized.contains("执行门禁")
+                || normalized.contains("未成交")
+                || normalized.contains("order")
+                || normalized.contains("trade gate");
+    }
+
     private LocalDate resolveTargetTradeDate(LocalDate requestedTradeDate) {
         LocalDate baseDate = requestedTradeDate == null ? LocalDate.now() : requestedTradeDate;
         return tradingCalendarQueryTool.nextConfirmedTradingDay(baseDate);
@@ -305,4 +324,4 @@ public class EvidenceAssembler {
         return value.length() > 12000 ? value.substring(0, 12000) : value;
     }
 }
-// AI_GENERATE_END -------------
+// AI_GENERATE_END -----------------

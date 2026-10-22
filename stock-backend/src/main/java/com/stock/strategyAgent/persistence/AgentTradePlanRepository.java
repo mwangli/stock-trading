@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START -------
 package com.stock.strategyAgent.persistence;
 
 import com.stock.strategyAgent.domain.entity.AgentTradePlanEntity;
@@ -25,9 +25,19 @@ public interface AgentTradePlanRepository extends JpaRepository<AgentTradePlanEn
      * 按幂等键查询交易计划。
      *
      * @param idempotencyKey 幂等键
+     * @param userScope 服务端认证用户范围
      * @return 交易计划
      */
-    Optional<AgentTradePlanEntity> findByIdempotencyKey(String idempotencyKey);
+    Optional<AgentTradePlanEntity> findByIdempotencyKeyAndUserScope(String idempotencyKey, String userScope);
+
+    /**
+     * 按计划标识和认证用户范围查询交易计划。
+     *
+     * @param planId 计划标识
+     * @param userScope 服务端认证用户范围
+     * @return 用户本人交易计划
+     */
+    Optional<AgentTradePlanEntity> findByPlanIdAndUserScope(String planId, String userScope);
 
     /**
      * 查询待重新校验的交易计划。
@@ -74,4 +84,4 @@ public interface AgentTradePlanRepository extends JpaRepository<AgentTradePlanEn
                           @Param("now") java.time.LocalDateTime now,
                           @Param("traceId") String traceId);
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END -------

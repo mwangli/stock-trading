@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------
+// AI_GENERATE_START -----------
 package com.stock.strategyAgent.runtime;
 
 import com.stock.strategyAgent.config.AgentProperties;
@@ -26,6 +26,7 @@ public class AgentRuntimeService {
     private final AgentProperties properties;
     private final AgentStructuredOutputParser structuredOutputParser;
     private final AgentProviderModeManager providerModeManager;
+    private final AgentChatMemoryService chatMemoryService;
 
     /**
      * 执行一次受控模型调用，并统一处理输入、输出和降级状态。
@@ -53,6 +54,7 @@ public class AgentRuntimeService {
                 request.getUserPrompt().length(), request.getEvidenceRefs() == null ? 0 : request.getEvidenceRefs().size());
         AgentRuntimeResponse response = modelProvider.generate(request);
         if (response == null || response.getStatus() == null) {
+            chatMemoryService.discard(request.getTaskId());
             return failure(request, "RUNTIME_EMPTY_RESPONSE", "Runtime 未返回有效状态");
         }
         log.info("[Agent][Runtime] taskId={} sessionId={} outputType={} stage=MODEL_RESPONSE status={} provider={} model={} contentChars={} errorCode={} elapsedMs={}",
@@ -74,9 +76,11 @@ public class AgentRuntimeService {
                         .errorCode(response.getErrorCode())
                         .structuredOutput(structuredOutput)
                         .build();
+                chatMemoryService.commit(request.getTaskId());
                 log.info("[Agent][Runtime] taskId={} sessionId={} outputType={} stage=STRUCTURED_PARSE status=COMPLETED elapsedMs={}",
                         request.getTaskId(), request.getSessionId(), request.getOutputType(), elapsedMillis(startedAt));
             } catch (IllegalArgumentException exception) {
+                chatMemoryService.discard(request.getTaskId());
                 log.warn("[Agent][Runtime] taskId={} sessionId={} outputType={} stage=STRUCTURED_PARSE status=FAILED causeType={} causeMessage={} elapsedMs={}",
                         request.getTaskId(), request.getSessionId(), request.getOutputType(),
                         exception.getClass().getSimpleName(), safeErrorMessage(exception.getMessage()), elapsedMillis(startedAt));
@@ -88,6 +92,8 @@ public class AgentRuntimeService {
                 }
                 return failure(request, "STRUCTURED_OUTPUT_INVALID", exception.getMessage());
             }
+        } else {
+            chatMemoryService.discard(request.getTaskId());
         }
         AgentRuntimeResponse limited = limit(response);
         log.info("[Agent][Runtime] taskId={} sessionId={} outputType={} status=FINISHED runtimeStatus={} elapsedMs={}",
@@ -211,4 +217,4 @@ public class AgentRuntimeService {
                 .build();
     }
 }
-// AI_GENERATE_END ----------
+// AI_GENERATE_END -----------

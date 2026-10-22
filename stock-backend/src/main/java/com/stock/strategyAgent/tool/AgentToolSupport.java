@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.tool;
 
 import com.stock.strategyAgent.audit.AgentToolAuditService;
@@ -46,6 +46,10 @@ public class AgentToolSupport {
             auditService.record(toolName, context, "FAILED", "SCOPE_REQUIRED", startedAt);
             throw new IllegalArgumentException("工具调用缺少用户范围: " + toolName);
         }
+        if (context.getAllowedToolNames() == null || !context.getAllowedToolNames().contains(toolName)) {
+            auditService.record(toolName, context, "FAILED", "TOOL_NOT_ALLOWED", startedAt);
+            throw new IllegalArgumentException("工具不在本轮允许范围: " + toolName);
+        }
         Future<T> future = executor.submit(action::get);
         try {
             T result = future.get(
@@ -76,4 +80,4 @@ public class AgentToolSupport {
         executor.shutdownNow();
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

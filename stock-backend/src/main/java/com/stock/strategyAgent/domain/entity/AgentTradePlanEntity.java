@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.domain.entity;
 
 import com.stock.strategyAgent.domain.AgentEnums;
@@ -9,6 +9,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -29,14 +30,20 @@ import java.time.LocalDate;
 @Entity
 @Table(name = "agent_trade_plan", indexes = {
         @Index(name = "idx_agent_trade_plan_status_expire", columnList = "status,expires_at"),
-        @Index(name = "idx_agent_trade_plan_candidate", columnList = "candidate_batch_id")
-})
+        @Index(name = "idx_agent_trade_plan_candidate", columnList = "candidate_batch_id"),
+        @Index(name = "idx_agent_trade_plan_user", columnList = "user_scope")
+}, uniqueConstraints = @UniqueConstraint(name = "uk_agent_trade_plan_user_idempotency",
+        columnNames = {"user_scope", "idempotency_key"}))
 public class AgentTradePlanEntity {
 
     /** 交易计划唯一标识。 */
     @Id
     @Column(name = "plan_id", length = 64)
     private String planId;
+
+    /** 计划所属认证用户范围。 */
+    @Column(name = "user_scope", nullable = false, length = 128)
+    private String userScope;
 
     /** 候选批次标识。 */
     @Column(name = "candidate_batch_id", nullable = false, length = 128)
@@ -71,7 +78,7 @@ public class AgentTradePlanEntity {
     private LocalDateTime expiresAt;
 
     /** 防重复执行幂等键。 */
-    @Column(name = "idempotency_key", nullable = false, unique = true, length = 128)
+    @Column(name = "idempotency_key", nullable = false, length = 128)
     private String idempotencyKey;
 
     /** 自动交易计划状态。 */
@@ -136,4 +143,4 @@ public class AgentTradePlanEntity {
     @Column(name = "executed_at")
     private LocalDateTime executedAt;
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

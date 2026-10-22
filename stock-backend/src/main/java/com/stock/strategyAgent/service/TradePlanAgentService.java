@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START --------
 package com.stock.strategyAgent.service;
 
 import com.stock.strategyAgent.api.TradePlanDraftRequest;
@@ -14,7 +14,6 @@ import com.stock.strategyAgent.runtime.TradePlanDraft;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
@@ -42,10 +41,10 @@ public class TradePlanAgentService {
      * 生成并保存待重新复核的交易计划草案。
      *
      * @param request 生成请求
+     * @param userScope 服务端认证用户范围
      * @return 交易计划响应
      */
-    @Transactional
-    public TradePlanDto.Response generate(TradePlanDraftRequest request) {
+    public TradePlanDto.Response generate(TradePlanDraftRequest request, String userScope) {
         if (request == null || !StringUtils.hasText(request.getCandidateBatchId())) {
             throw new IllegalArgumentException("候选批次不能为空");
         }
@@ -53,7 +52,7 @@ public class TradePlanAgentService {
             throw new IllegalStateException("TradePlan 功能当前未启用");
         }
         AgentSessionEntity session = applicationService.ensureSessionForTradePlan(
-                request.getSessionId(), request.getUserScope());
+                request.getSessionId(), userScope);
         String question = StringUtils.hasText(request.getQuestion())
                 ? request.getQuestion().trim() : "基于当前候选批次生成交易计划草案";
         String taskId = UUID.randomUUID().toString();
@@ -77,6 +76,7 @@ public class TradePlanAgentService {
                         + "\n证据：" + evidence.getSummary())
                 .evidenceSummary(evidence.getSummary())
                 .evidenceRefs(evidence.getEvidenceRefs())
+                .allowedTools(Set.of())
                 .outputType("TRADE_PLAN")
                 .build();
         log.info("[Agent][Progress] taskId={} sessionId={} type=TRADE_PLAN progress=3/4 stage=MODEL_CALL message=开始调用模型",
@@ -103,7 +103,7 @@ public class TradePlanAgentService {
         createRequest.setReason(draft.getReason());
         createRequest.setRiskWarnings(draft.getRiskWarnings());
         createRequest.setUncertainty(draft.getUncertainty());
-        TradePlanDto.Response result = tradePlanService.create(createRequest);
+        TradePlanDto.Response result = tradePlanService.create(createRequest, session.getUserScope());
         log.info("[Agent][Progress] taskId={} sessionId={} type=TRADE_PLAN progress=4/4 stage=TASK_FINISHED status=COMPLETED elapsedMs={}",
                 taskId, session.getSessionId(), elapsedMillis(startedAt));
         return result;
@@ -143,4 +143,4 @@ public class TradePlanAgentService {
         }
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END --------

@@ -1,15 +1,13 @@
-// AI_GENERATE_START --------------------------
+// AI_GENERATE_START ---------------------------------
 package com.stock.strategyAgent.service;
 
 import com.stock.strategyAgent.api.DiagnosticRequest;
 
 import com.alibaba.fastjson2.JSON;
 import com.stock.strategyAgent.api.CreateSessionRequest;
-import com.stock.strategyAgent.api.MemoryResponse;
-import com.stock.strategyAgent.api.RagResult;
-import com.stock.strategyAgent.api.RagSearchRequest;
 import com.stock.strategyAgent.api.ReportRequest;
 import com.stock.strategyAgent.api.ResearchRequest;
+import com.stock.strategyAgent.capability.AgentToolName;
 import com.stock.strategyAgent.api.RuntimeStatus;
 import com.stock.strategyAgent.api.AgentHealthResponse;
 import com.stock.strategyAgent.api.ProviderModeRequest;
@@ -24,7 +22,6 @@ import com.stock.strategyAgent.evidence.EvidenceAssembler;
 import com.stock.strategyAgent.evidence.EvidenceBundle;
 import com.stock.strategyAgent.persistence.AgentSessionRepository;
 import com.stock.strategyAgent.persistence.AgentTaskRepository;
-import com.stock.strategyAgent.rag.AgentRagService;
 import com.stock.strategyAgent.rag.EmbeddingRuntimeStatus;
 import com.stock.strategyAgent.rag.LangChainEmbeddingService;
 import com.stock.strategyAgent.runtime.AgentRuntimeRequest;
@@ -46,6 +43,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -61,8 +59,6 @@ public class AgentApplicationService {
 
     private final AgentSessionRepository sessionRepository;
     private final AgentTaskRepository taskRepository;
-    private final AgentMemoryService memoryService;
-    private final AgentRagService ragService;
     private final AgentRuntimeService runtimeService;
     private final AgentProperties properties;
     private final JobDiagnosticTool jobDiagnosticTool;
@@ -73,14 +69,15 @@ public class AgentApplicationService {
      * 创建 Agent 会话。
      *
      * @param request 创建请求
+     * @param userScope 服务端认证用户范围
      * @return 会话响应
      */
     @Transactional
-    public SessionResponse createSession(CreateSessionRequest request) {
+    public SessionResponse createSession(CreateSessionRequest request, String userScope) {
         LocalDateTime now = LocalDateTime.now();
         AgentSessionEntity entity = new AgentSessionEntity()
                 .setSessionId(UUID.randomUUID().toString())
-                .setUserScope(defaultScope(request == null ? null : request.getUserScope()))
+                .setUserScope(requireUserScope(userScope))
                 .setTitle(request == null || !StringUtils.hasText(request.getTitle()) ? "Agent 会话" : request.getTitle().trim())
                 .setStatus(AgentEnums.SessionStatus.ACTIVE)
                 .setCreatedAt(now)
@@ -92,12 +89,12 @@ public class AgentApplicationService {
      * 查询 Agent 会话。
      *
      * @param sessionId 会话标识
+     * @param userScope 服务端认证用户范围
      * @return 会话响应
      */
     @Transactional(readOnly = true)
-    public SessionResponse getSession(String sessionId) {
-        return toSession(sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Agent 会话不存在: " + sessionId)));
+    public SessionResponse getSession(String sessionId, String userScope) {
+        return toSession(requireOwnedSession(sessionId, userScope));
     }
 
     /**
@@ -116,38 +113,22 @@ public class AgentApplicationService {
      * 执行 Research 任务。
      *
      * @param request Research 请求
+     * @param userScope 服务端认证用户范围
+     * @param allowedTools 本轮允许模型调用的工具名称
      * @return 任务响应
      */
-    @Transactional
-    public TaskResponse research(ResearchRequest request) {
+    public TaskResponse research(ResearchRequest request, String userScope, Set<AgentToolName> allowedTools) {
         requireEnabled();
         String question = requireQuestion(request == null ? null : request.getQuestion());
-        AgentSessionEntity session = ensureSession(request == null ? null : request.getSessionId(),
-                request == null ? null : request.getUserScope());
+        AgentSessionEntity session = ensureSession(request == null ? null : request.getSessionId(), userScope);
         AgentTaskEntity task = createTask(session, AgentEnums.TaskType.RESEARCH, question);
         try {
-            log.info("[Agent][Progress] taskId={} sessionId={} type={} progress=2/5 stage=CONTEXT_LOADING message=开始读取 Memory 与 RAG",
-                    task.getTaskId(), task.getSessionId(), task.getTaskType());
-            long memoryStartedAt = System.nanoTime();
-            List<MemoryResponse> memories = properties.isMemoryEnabled()
-                    ? memoryService.list(session.getUserScope()) : List.of();
-            log.info("[Agent][Context] taskId={} sessionId={} source=MEMORY enabled={} resultCount={} elapsedMs={}",
-                    task.getTaskId(), task.getSessionId(), properties.isMemoryEnabled(), memories.size(),
-                    elapsedMillis(memoryStartedAt));
-            long ragStartedAt = System.nanoTime();
-            List<RagResult> evidence = properties.isRagEnabled()
-                    ? ragService.search(ragRequest(question, session.getUserScope())) : List.of();
-            log.info("[Agent][Context] taskId={} sessionId={} source=RAG enabled={} resultCount={} elapsedMs={}",
-                    task.getTaskId(), task.getSessionId(), properties.isRagEnabled(), evidence.size(),
-                    elapsedMillis(ragStartedAt));
-            log.info("[Agent][Progress] taskId={} sessionId={} type={} progress=2/5 stage=CONTEXT_READY memoryCount={} ragCount={}",
-                    task.getTaskId(), task.getSessionId(), task.getTaskType(), memories.size(), evidence.size());
-            EvidenceBundle factEvidence = evidenceAssembler.assemble(AgentEnums.TaskType.RESEARCH,
-                    UUID.randomUUID().toString(), session.getSessionId(), task.getTaskId(), session.getUserScope(),
-                    request == null ? null : request.getCandidateBatchId(), null,
-                    request == null ? null : request.getTargetTradeDate());
-            validateResearchContext(request, factEvidence);
-            String evidenceSummary = factEvidence.getSummary() + buildEvidenceSummary(memories, evidence);
+            log.info("[Agent][Progress] taskId={} sessionId={} type={} progress=2/5 stage=CAPABILITY_READY allowedToolCount={}",
+                    task.getTaskId(), task.getSessionId(), task.getTaskType(),
+                    allowedTools == null ? 0 : allowedTools.size());
+            EvidenceBundle factEvidence = EvidenceBundle.builder()
+                    .summary("").items(List.of()).evidenceRefs(List.of()).build();
+            String evidenceSummary = "";
             log.info("[Agent][Progress] taskId={} sessionId={} type={} progress=3/5 stage=EVIDENCE_READY evidenceCount={} evidenceRefCount={} summaryChars={}",
                     task.getTaskId(), task.getSessionId(), task.getTaskType(), factEvidence.getItems().size(),
                     factEvidence.getEvidenceRefs().size(), evidenceSummary.length());
@@ -162,7 +143,8 @@ public class AgentApplicationService {
                     task.getTaskId(), task.getSessionId(), task.getTaskType());
             AgentRuntimeResponse response = runtimeService.execute(runtimeRequest(
                     task, session, "RESEARCH",
-                    "你是股票交易系统的研究 Agent。只能使用给定证据，不得承诺收益，不得生成可直接执行的券商订单。"
+                    "你是股票交易系统的受限金融 Agent。可以在服务端授权的只读工具集合内按需查询；"
+                            + "没有授权工具时按普通对话回答。不得承诺收益，不得生成可直接执行的券商订单。"
                             + "只返回合法的 Research JSON，不要输出 Markdown、标题或解释文字，字段为："
                             + "{summary,status,keyFindings,evidenceRefs,uncertainty,nextActions}。"
                             + "summary 和 uncertainty 各不超过 80 个汉字；keyFindings 最多 5 项，nextActions 最多 3 项，每项不超过 50 个汉字。"
@@ -170,7 +152,7 @@ public class AgentApplicationService {
                             + "tradingDay 才表示当天是否为交易日。"
                             + "status 只能是 PASS、WARN 或 UNKNOWN；evidenceRefs 只能填写本次证据编号："
                             + String.join(",", factEvidence.getEvidenceRefs()) + "。",
-                    prompt, evidenceSummary, "RESEARCH", factEvidence.getEvidenceRefs()));
+                    prompt, evidenceSummary, "RESEARCH", factEvidence.getEvidenceRefs(), allowedTools));
             finish(task, response);
         } catch (Exception exception) {
             fail(task, exception);
@@ -182,15 +164,15 @@ public class AgentApplicationService {
      * 执行固定规则诊断任务。
      *
      * @param request 诊断请求
+     * @param userScope 服务端认证用户范围
+     * @param allowedTools 本轮允许模型调用的工具名称
      * @return 任务响应
      */
-    @Transactional
-    public TaskResponse diagnose(DiagnosticRequest request) {
+    public TaskResponse diagnose(DiagnosticRequest request, String userScope, Set<AgentToolName> allowedTools) {
         requireEnabled();
         String question = StringUtils.hasText(request == null ? null : request.getQuestion())
                 ? request.getQuestion().trim() : "诊断系统运行状态";
-        AgentSessionEntity session = ensureSession(request == null ? null : request.getSessionId(),
-                request == null ? null : request.getUserScope());
+        AgentSessionEntity session = ensureSession(request == null ? null : request.getSessionId(), userScope);
         AgentTaskEntity task = createTask(session, AgentEnums.TaskType.DIAGNOSTIC, question);
         String jobName = request == null ? null : request.getJobName();
         log.info("[Agent][Progress] taskId={} sessionId={} type={} progress=2/5 stage=EVIDENCE_LOADING jobName={}",
@@ -217,7 +199,7 @@ public class AgentApplicationService {
                     "你是运行诊断 Agent。只根据结构化检查结果输出 PASS、WARN、BLOCKED 或 UNKNOWN，不要猜测。"
                             + "只返回 Diagnostic JSON：{summary,status,checks,blockedReasons,evidenceRefs,uncertainty}。",
                     "问题：" + question + "\n结构化检查结果：\n" + evidence,
-                    evidence, "DIAGNOSTIC", factEvidence.getEvidenceRefs()));
+                    evidence, "DIAGNOSTIC", factEvidence.getEvidenceRefs(), allowedTools));
             finish(task, response);
         } catch (Exception exception) {
             fail(task, exception);
@@ -292,18 +274,17 @@ public class AgentApplicationService {
      * 生成固定模板每日投研报告。
      *
      * @param request 报告请求
+     * @param userScope 服务端认证用户范围
      * @return 任务响应
      */
-    @Transactional
-    public TaskResponse dailyReport(ReportRequest request) {
+    public TaskResponse dailyReport(ReportRequest request, String userScope) {
         requireEnabled();
         if (!properties.isReportEnabled()) {
             throw new IllegalStateException("日报任务当前未启用");
         }
         String reportDate = StringUtils.hasText(request == null ? null : request.getReportDate())
                 ? request.getReportDate() : LocalDate.now().toString();
-        AgentSessionEntity session = ensureSession(request == null ? null : request.getSessionId(),
-                request == null ? null : request.getUserScope());
+        AgentSessionEntity session = ensureSession(request == null ? null : request.getSessionId(), userScope);
         AgentTaskEntity task = createTask(session, AgentEnums.TaskType.REPORT, "生成每日投研报告: " + reportDate);
         try {
             log.info("[Agent][Progress] taskId={} sessionId={} type={} progress=2/5 stage=EVIDENCE_LOADING reportDate={}",
@@ -327,7 +308,7 @@ public class AgentApplicationService {
                     task, session, "REPORT",
                     "你是投研报告 Agent。严格按照固定章节输出，不得补造行情、收益或交易结论。"
                             + "只返回 Report JSON：{reportDate,summary,status,sections,dataQuality,evidenceRefs,uncertainty}。sections 必须包含 marketOverview、candidateSummary、modelSignals、sentimentSignals、strategyStatus、riskWarnings、dataQuality、abnormalJobs。",
-                    template, template, "REPORT", factEvidence.getEvidenceRefs()));
+                    template, template, "REPORT", factEvidence.getEvidenceRefs(), Set.of()));
             finish(task, response);
         } catch (Exception exception) {
             fail(task, exception);
@@ -341,30 +322,35 @@ public class AgentApplicationService {
     public void runScheduledReport() {
         ReportRequest request = new ReportRequest();
         request.setReportDate(LocalDate.now().toString());
-        dailyReport(request);
+        dailyReport(request, "system");
     }
 
     /**
      * 查询任务详情。
      *
      * @param taskId 任务标识
+     * @param userScope 服务端认证用户范围
      * @return 任务响应
      */
     @Transactional(readOnly = true)
-    public TaskResponse getTask(String taskId) {
-        return toTask(taskRepository.findById(taskId)
-                .orElseThrow(() -> new IllegalArgumentException("Agent 任务不存在: " + taskId)));
+    public TaskResponse getTask(String taskId, String userScope) {
+        AgentTaskEntity task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent 任务不存在"));
+        requireOwnedSession(task.getSessionId(), userScope);
+        return toTask(task);
     }
 
     /**
      * 取消尚未完成的任务。
      *
      * @param taskId 任务标识
+     * @param userScope 服务端认证用户范围
      */
     @Transactional
-    public void cancel(String taskId) {
+    public void cancel(String taskId, String userScope) {
         AgentTaskEntity task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new IllegalArgumentException("Agent 任务不存在: " + taskId));
+                .orElseThrow(() -> new IllegalArgumentException("Agent 任务不存在"));
+        requireOwnedSession(task.getSessionId(), userScope);
         if (task.getStatus() == AgentEnums.TaskStatus.COMPLETED || task.getStatus() == AgentEnums.TaskStatus.FAILED) {
             throw new IllegalStateException("任务已结束，不能取消: " + taskId);
         }
@@ -451,34 +437,14 @@ public class AgentApplicationService {
         return properties.isTradePlanEnabled();
     }
 
-    private void validateResearchContext(ResearchRequest request, EvidenceBundle evidence) {
-        if (request == null) {
-            return;
-        }
-        if (StringUtils.hasText(request.getPredictionBatchId())
-                && !request.getPredictionBatchId().equals(evidence.getPredictionBatchId())) {
-            throw new IllegalArgumentException("Research 预测批次与候选批次事实不一致");
-        }
-        if (StringUtils.hasText(request.getStrategyVersion())
-                && !request.getStrategyVersion().equals(evidence.getStrategyVersion())) {
-            throw new IllegalArgumentException("Research 策略版本与候选批次事实不一致");
-        }
-        if (request.getTargetTradeDate() != null
-                && !request.getTargetTradeDate().equals(evidence.getTargetTradeDate())) {
-            throw new IllegalArgumentException("Research 目标交易日与候选批次事实不一致");
-        }
-    }
-
     private AgentSessionEntity ensureSession(String sessionId, String userScope) {
         if (StringUtils.hasText(sessionId)) {
-            return sessionRepository.findById(sessionId)
-                    .orElseThrow(() -> new IllegalArgumentException("Agent 会话不存在: " + sessionId));
+            return requireOwnedSession(sessionId, userScope);
         }
         CreateSessionRequest request = new CreateSessionRequest();
-        request.setUserScope(userScope);
         request.setTitle("Agent 自动会话");
-        SessionResponse response = createSession(request);
-        return sessionRepository.findById(response.getSessionId()).orElseThrow();
+        SessionResponse response = createSession(request, userScope);
+        return requireOwnedSession(response.getSessionId(), userScope);
     }
 
     private AgentTaskEntity createTask(AgentSessionEntity session, AgentEnums.TaskType type, String question) {
@@ -527,7 +493,7 @@ public class AgentApplicationService {
     private AgentRuntimeRequest runtimeRequest(AgentTaskEntity task, AgentSessionEntity session,
                                                String taskType, String systemPrompt, String userPrompt,
                                                String evidenceSummary, String outputType,
-                                               List<String> evidenceRefs) {
+                                               List<String> evidenceRefs, Set<AgentToolName> allowedTools) {
         return AgentRuntimeRequest.builder()
                 .taskType(taskType)
                 .sessionId(session.getSessionId())
@@ -537,8 +503,24 @@ public class AgentApplicationService {
                 .userPrompt(userPrompt)
                 .evidenceSummary(evidenceSummary)
                 .evidenceRefs(evidenceRefs)
+                .allowedTools(allowedTools == null ? Set.of() : Set.copyOf(allowedTools))
                 .outputType(outputType)
                 .build();
+    }
+
+    private AgentSessionEntity requireOwnedSession(String sessionId, String userScope) {
+        if (!StringUtils.hasText(sessionId)) {
+            throw new IllegalArgumentException("Agent 会话不存在");
+        }
+        return sessionRepository.findBySessionIdAndUserScope(sessionId.trim(), requireUserScope(userScope))
+                .orElseThrow(() -> new IllegalArgumentException("Agent 会话不存在"));
+    }
+
+    private String requireUserScope(String userScope) {
+        if (!StringUtils.hasText(userScope)) {
+            throw new IllegalArgumentException("Agent 用户范围不能为空");
+        }
+        return userScope.trim();
     }
 
     private String queryJobEvidence(AgentTaskEntity task, AgentSessionEntity session, String jobName) {
@@ -547,6 +529,7 @@ public class AgentApplicationService {
                 .sessionId(session.getSessionId())
                 .taskId(task.getTaskId())
                 .userScope(session.getUserScope())
+                .allowedToolNames(Set.of("queryJobDiagnostic"))
                 .build();
         AgentToolContextHolder.set(context);
         try {
@@ -592,24 +575,6 @@ public class AgentApplicationService {
         return sanitized.substring(0, Math.min(sanitized.length(), 300));
     }
 
-    private RagSearchRequest ragRequest(String question, String scope) {
-        RagSearchRequest request = new RagSearchRequest();
-        request.setQuery(question);
-        request.setUserScope(scope);
-        request.setLimit(5);
-        return request;
-    }
-
-    private String buildEvidenceSummary(List<MemoryResponse> memories, List<RagResult> evidence) {
-        StringBuilder result = new StringBuilder();
-        result.append("Memory 数量=").append(memories.size()).append("\n");
-        memories.stream().limit(5).forEach(item -> result.append("Memory[").append(item.getMemoryId()).append("] ")
-                .append(item.getContent()).append("\n"));
-        evidence.stream().limit(5).forEach(item -> result.append("RAG[").append(item.getChunkId()).append("] ")
-                .append(item.getContent()).append("\n"));
-        return result.toString();
-    }
-
     private TaskResponse toTask(AgentTaskEntity entity) {
         return TaskResponse.builder()
                 .taskId(entity.getTaskId())
@@ -632,7 +597,6 @@ public class AgentApplicationService {
     private SessionResponse toSession(AgentSessionEntity entity) {
         return SessionResponse.builder()
                 .sessionId(entity.getSessionId())
-                .userScope(entity.getUserScope())
                 .title(entity.getTitle())
                 .status(entity.getStatus().name())
                 .createdAt(entity.getCreatedAt())
@@ -656,10 +620,6 @@ public class AgentApplicationService {
         }
     }
 
-    private String defaultScope(String scope) {
-        return StringUtils.hasText(scope) ? scope.trim() : "default";
-    }
-
     private String limit(String value) {
         if (value == null) {
             return null;
@@ -668,4 +628,4 @@ public class AgentApplicationService {
                 ? value.substring(0, properties.getMaxOutputChars()) : value;
     }
 }
-// AI_GENERATE_END ------------------------
+// AI_GENERATE_END ---------------------------------

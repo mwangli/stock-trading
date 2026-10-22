@@ -1,15 +1,17 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START ----------
 package com.stock.strategyAgent.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.strategyAgent.rag.AgentRagService;
 import com.stock.strategyAgent.runtime.AgentApiBudgetService;
 import com.stock.strategyAgent.service.AgentApplicationService;
+import com.stock.strategyAgent.service.AgentConversationService;
 import com.stock.strategyAgent.service.AgentMemoryService;
 import com.stock.strategyAgent.service.TradePlanService;
 import com.stock.strategyAgent.service.TradePlanAgentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,6 +36,8 @@ import java.util.List;
 public class AgentController {
 
     private final AgentApplicationService applicationService;
+    private final AgentConversationService conversationService;
+    private final AgentRequestUserResolver requestUserResolver;
     private final AgentMemoryService memoryService;
     private final AgentRagService ragService;
     private final TradePlanService tradePlanService;
@@ -44,73 +48,78 @@ public class AgentController {
      * 创建 Agent 会话。
      *
      * @param request 创建请求
+     * @param httpRequest HTTP 请求
      * @return 会话响应
      */
     @PostMapping("/sessions")
-    public ResponseDTO<SessionResponse> createSession(@RequestBody CreateSessionRequest request) {
-        log.info("[Agent] 创建会话: userScope={}", request == null ? null : request.getUserScope());
-        return ResponseDTO.success(applicationService.createSession(request));
+    public ResponseDTO<SessionResponse> createSession(@RequestBody CreateSessionRequest request,
+                                                       HttpServletRequest httpRequest) {
+        String userScope = requestUserResolver.requireUserScope(httpRequest);
+        log.info("[Agent] 创建当前用户会话");
+        return ResponseDTO.success(applicationService.createSession(request, userScope));
     }
 
     /**
      * 查询 Agent 会话。
      *
      * @param sessionId 会话标识
+     * @param httpRequest HTTP 请求
      * @return 会话响应
      */
     @GetMapping("/sessions/{sessionId}")
-    public ResponseDTO<SessionResponse> getSession(@PathVariable String sessionId) {
+    public ResponseDTO<SessionResponse> getSession(@PathVariable String sessionId,
+                                                   HttpServletRequest httpRequest) {
         log.info("[Agent] 查询会话: sessionId={}", sessionId);
-        return ResponseDTO.success(applicationService.getSession(sessionId));
+        return ResponseDTO.success(applicationService.getSession(
+                sessionId, requestUserResolver.requireUserScope(httpRequest)));
     }
 
     /**
-     * 提交 Research 任务。
+     * 执行统一 Agent 聊天。
      *
-     * @param request Research 请求
-     * @return 任务响应
+     * @param request 聊天请求
+     * @param httpRequest HTTP 请求
+     * @return 统一聊天响应
      */
-    @PostMapping("/tasks/research")
-    public ResponseDTO<TaskResponse> research(@RequestBody ResearchRequest request) {
-        log.info("[Agent] 执行 Research 任务");
-        return ResponseDTO.success(applicationService.research(request));
-    }
-
-    /**
-     * 提交 Diagnostic 任务。
-     *
-     * @param request 诊断请求
-     * @return 任务响应
-     */
-    @PostMapping("/tasks/diagnose")
-    public ResponseDTO<TaskResponse> diagnose(@RequestBody DiagnosticRequest request) {
-        log.info("[Agent] 执行运行诊断: jobName={}", request == null ? null : request.getJobName());
-        return ResponseDTO.success(applicationService.diagnose(request));
+    @PostMapping("/chat")
+    public ResponseDTO<AgentChatResponse> chat(@RequestBody AgentChatRequest request,
+                                               HttpServletRequest httpRequest) {
+        log.info("[Agent] 执行统一聊天: sessionId={}, questionLength={}",
+                request == null ? null : request.getSessionId(),
+                request == null || request.getQuestion() == null ? 0 : request.getQuestion().length());
+        return ResponseDTO.success(conversationService.chat(
+                request, requestUserResolver.requireUserScope(httpRequest)));
     }
 
     /**
      * 生成结构化交易计划草案。
      *
      * @param request 生成请求
+     * @param httpRequest HTTP 请求
      * @return 待重新复核的交易计划
      */
     @PostMapping("/tasks/tradePlan")
-    public ResponseDTO<TradePlanDto.Response> tradePlan(@RequestBody TradePlanDraftRequest request) {
+    public ResponseDTO<TradePlanDto.Response> tradePlan(@RequestBody TradePlanDraftRequest request,
+                                                        HttpServletRequest httpRequest) {
         log.info("[Agent] 生成交易计划草案: candidateBatchId={}",
                 request == null ? null : request.getCandidateBatchId());
-        return ResponseDTO.success(tradePlanAgentService.generate(request));
+        return ResponseDTO.success(tradePlanAgentService.generate(
+                request, requestUserResolver.requireUserScope(httpRequest)));
     }
 
     /**
      * 生成每日投研报告。
      *
      * @param request 报告请求
+     * @param httpRequest HTTP 请求
      * @return 任务响应
      */
     @PostMapping("/reports/daily")
-    public ResponseDTO<TaskResponse> dailyReport(@RequestBody ReportRequest request) {
+    public ResponseDTO<TaskResponse> dailyReport(@RequestBody ReportRequest request,
+                                                  HttpServletRequest httpRequest) {
         log.info("[Agent] 生成每日投研报告");
-        return ResponseDTO.success(applicationService.dailyReport(request));
+        return ResponseDTO.success(applicationService.dailyReport(
+                request, requestUserResolver.requireUserScope(httpRequest)));
     }
 
     /**
@@ -128,36 +137,44 @@ public class AgentController {
      * 查询 Agent 任务。
      *
      * @param taskId 任务标识
+     * @param httpRequest HTTP 请求
      * @return 任务响应
      */
-    @GetMapping("/tasks/{taskId}")
-    public ResponseDTO<TaskResponse> getTask(@PathVariable String taskId) {
+    @GetMapping({"/tasks/details/{taskId}", "/tasks/{taskId}"})
+    public ResponseDTO<TaskResponse> getTask(@PathVariable String taskId,
+                                             HttpServletRequest httpRequest) {
         log.info("[Agent] 查询任务: taskId={}", taskId);
-        return ResponseDTO.success(applicationService.getTask(taskId));
+        return ResponseDTO.success(applicationService.getTask(
+                taskId, requestUserResolver.requireUserScope(httpRequest)));
     }
 
     /**
      * 查询任务证据摘要。
      *
      * @param taskId 任务标识
+     * @param httpRequest HTTP 请求
      * @return 任务响应
      */
-    @GetMapping("/tasks/{taskId}/evidence")
-    public ResponseDTO<TaskResponse> getEvidence(@PathVariable String taskId) {
+    @GetMapping({"/tasks/evidence/{taskId}", "/tasks/{taskId}/evidence"})
+    public ResponseDTO<TaskResponse> getEvidence(@PathVariable String taskId,
+                                                 HttpServletRequest httpRequest) {
         log.info("[Agent] 查询任务证据: taskId={}", taskId);
-        return ResponseDTO.success(applicationService.getTask(taskId));
+        return ResponseDTO.success(applicationService.getTask(
+                taskId, requestUserResolver.requireUserScope(httpRequest)));
     }
 
     /**
      * 取消 Agent 任务。
      *
      * @param taskId 任务标识
+     * @param httpRequest HTTP 请求
      * @return 空响应
      */
-    @PostMapping("/tasks/{taskId}/cancel")
-    public ResponseDTO<Void> cancel(@PathVariable String taskId) {
+    @PostMapping({"/tasks/cancel/{taskId}", "/tasks/{taskId}/cancel"})
+    public ResponseDTO<Void> cancel(@PathVariable String taskId,
+                                    HttpServletRequest httpRequest) {
         log.info("[Agent] 取消任务: taskId={}", taskId);
-        applicationService.cancel(taskId);
+        applicationService.cancel(taskId, requestUserResolver.requireUserScope(httpRequest));
         return ResponseDTO.success(null);
     }
 
@@ -199,36 +216,41 @@ public class AgentController {
      * 创建 Memory。
      *
      * @param request 创建请求
+     * @param httpRequest HTTP 请求
      * @return Memory 响应
      */
     @PostMapping("/memories")
-    public ResponseDTO<MemoryResponse> createMemory(@RequestBody CreateMemoryRequest request) {
-        log.info("[Agent] 创建 Memory: userScope={}", request == null ? null : request.getUserScope());
-        return ResponseDTO.success(memoryService.create(request));
+    public ResponseDTO<MemoryResponse> createMemory(@RequestBody CreateMemoryRequest request,
+                                                     HttpServletRequest httpRequest) {
+        log.info("[Agent] 创建当前用户 Memory");
+        return ResponseDTO.success(memoryService.create(
+                request, requestUserResolver.requireUserScope(httpRequest)));
     }
 
     /**
      * 查询 Memory。
      *
-     * @param userScope 用户范围
+     * @param httpRequest HTTP 请求
      * @return Memory 列表
      */
     @GetMapping("/memories")
-    public ResponseDTO<List<MemoryResponse>> listMemories(String userScope) {
-        log.info("[Agent] 查询 Memory: userScope={}", userScope);
-        return ResponseDTO.success(memoryService.list(userScope));
+    public ResponseDTO<List<MemoryResponse>> listMemories(HttpServletRequest httpRequest) {
+        log.info("[Agent] 查询当前用户 Memory");
+        return ResponseDTO.success(memoryService.list(requestUserResolver.requireUserScope(httpRequest)));
     }
 
     /**
      * 删除 Memory。
      *
      * @param memoryId Memory 标识
+     * @param httpRequest HTTP 请求
      * @return 空响应
      */
     @DeleteMapping("/memories/{memoryId}")
-    public ResponseDTO<Void> forgetMemory(@PathVariable String memoryId) {
+    public ResponseDTO<Void> forgetMemory(@PathVariable String memoryId,
+                                          HttpServletRequest httpRequest) {
         log.info("[Agent] 删除 Memory: memoryId={}", memoryId);
-        memoryService.forget(memoryId);
+        memoryService.forget(memoryId, requestUserResolver.requireUserScope(httpRequest));
         return ResponseDTO.success(null);
     }
 
@@ -237,74 +259,92 @@ public class AgentController {
      *
      * @param memoryId Memory 标识
      * @param request 修正请求
+     * @param httpRequest HTTP 请求
      * @return 修正结果
      */
-    @PostMapping("/memories/{memoryId}/correct")
+    @PostMapping({"/memories/correct/{memoryId}", "/memories/{memoryId}/correct"})
     public ResponseDTO<MemoryResponse> correctMemory(@PathVariable String memoryId,
-                                                                @RequestBody CorrectMemoryRequest request) {
+                                                      @RequestBody CorrectMemoryRequest request,
+                                                      HttpServletRequest httpRequest) {
         log.info("[Agent] 修正 Memory: memoryId={}", memoryId);
-        return ResponseDTO.success(memoryService.correct(memoryId, request));
+        return ResponseDTO.success(memoryService.correct(
+                memoryId, request, requestUserResolver.requireUserScope(httpRequest)));
     }
 
     /**
      * 写入 RAG 文档。
      *
      * @param request 文档请求
+     * @param httpRequest HTTP 请求
      * @return 写入 Chunk 数量
      */
     @PostMapping("/rag/documents")
-    public ResponseDTO<Integer> ingestRag(@RequestBody RagIngestRequest request) {
+    public ResponseDTO<Integer> ingestRag(@RequestBody RagIngestRequest request,
+                                          HttpServletRequest httpRequest) {
         log.info("[Agent] 写入 RAG 文档: sourceId={}", request == null ? null : request.getSourceId());
-        return ResponseDTO.success(ragService.ingest(request));
+        return ResponseDTO.success(ragService.ingest(
+                request, requestUserResolver.requireUserScope(httpRequest)));
     }
 
     /**
      * 检索 RAG 文档。
      *
      * @param request 检索请求
+     * @param httpRequest HTTP 请求
      * @return RAG 结果
      */
     @PostMapping("/rag/search")
-    public ResponseDTO<List<RagResult>> searchRag(@RequestBody RagSearchRequest request) {
+    public ResponseDTO<List<RagResult>> searchRag(@RequestBody RagSearchRequest request,
+                                                  HttpServletRequest httpRequest) {
         log.info("[Agent] 检索 RAG 文档");
-        return ResponseDTO.success(ragService.search(request));
+        return ResponseDTO.success(ragService.search(
+                request, requestUserResolver.requireUserScope(httpRequest)));
     }
 
     /**
      * 创建自动交易计划，不包含人工审批步骤。
      *
      * @param request 创建请求
+     * @param httpRequest HTTP 请求
      * @return 交易计划
      */
     @PostMapping("/tradePlans")
-    public ResponseDTO<TradePlanDto.Response> createTradePlan(@RequestBody TradePlanDto.CreateRequest request) {
+    public ResponseDTO<TradePlanDto.Response> createTradePlan(@RequestBody TradePlanDto.CreateRequest request,
+                                                              HttpServletRequest httpRequest) {
         log.info("[Agent] 创建自动交易计划: candidateBatchId={}",
                 request == null ? null : request.getCandidateBatchId());
-        return ResponseDTO.success(tradePlanService.create(request));
+        return ResponseDTO.success(tradePlanService.create(
+                request, requestUserResolver.requireUserScope(httpRequest)));
     }
 
     /**
      * 查询自动交易计划。
      *
      * @param planId 计划标识
+     * @param httpRequest HTTP 请求
      * @return 交易计划
      */
-    @GetMapping("/tradePlans/{planId}")
-    public ResponseDTO<TradePlanDto.Response> getTradePlan(@PathVariable String planId) {
+    @GetMapping({"/tradePlans/details/{planId}", "/tradePlans/{planId}"})
+    public ResponseDTO<TradePlanDto.Response> getTradePlan(@PathVariable String planId,
+                                                           HttpServletRequest httpRequest) {
         log.info("[Agent] 查询自动交易计划: planId={}", planId);
-        return ResponseDTO.success(tradePlanService.get(planId));
+        return ResponseDTO.success(tradePlanService.get(
+                planId, requestUserResolver.requireUserScope(httpRequest)));
     }
 
     /**
      * 触发计划级自动复核，不代表人工审批。
      *
      * @param planId 计划标识
+     * @param httpRequest HTTP 请求
      * @return 复核后的计划
      */
-    @PostMapping("/tradePlans/{planId}/revalidate")
-    public ResponseDTO<TradePlanDto.Response> revalidateTradePlan(@PathVariable String planId) {
+    @PostMapping({"/tradePlans/revalidate/{planId}", "/tradePlans/{planId}/revalidate"})
+    public ResponseDTO<TradePlanDto.Response> revalidateTradePlan(@PathVariable String planId,
+                                                                  HttpServletRequest httpRequest) {
         log.info("[Agent] 自动复核交易计划: planId={}", planId);
-        return ResponseDTO.success(tradePlanService.revalidate(planId));
+        return ResponseDTO.success(tradePlanService.revalidate(
+                planId, requestUserResolver.requireUserScope(httpRequest)));
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END ----------
