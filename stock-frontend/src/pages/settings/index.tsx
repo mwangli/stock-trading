@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------------
+// AI_GENERATE_START--- ------------------
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Button,
@@ -39,12 +39,7 @@ interface SettingsFormValues {
   notifications: boolean;
   refreshRate: number;
   schedulerEnabled: boolean;
-  dataCollectionEnabled: boolean;
-  newsCollectionEnabled: boolean;
   startupDataSyncEnabled: boolean;
-  startupHistorySyncEnabled: boolean;
-  startupNewsSyncEnabled: boolean;
-  modelTrainingEnabled: boolean;
 }
 
 interface BrokerReadStatus {
@@ -86,12 +81,7 @@ interface SentimentHealth {
 interface RuntimeSettings {
   nodeId?: string;
   schedulerEnabled: boolean;
-  dataCollectionEnabled: boolean;
-  newsCollectionEnabled: boolean;
   startupDataSyncEnabled: boolean;
-  startupHistorySyncEnabled: boolean;
-  startupNewsSyncEnabled: boolean;
-  modelTrainingEnabled: boolean;
   updatedAt?: string;
 }
 
@@ -173,9 +163,6 @@ const Settings: React.FC = () => {
   const [brokerHealth, setBrokerHealth] = useState<ServiceHealth<BrokerReadStatus>>({ state: 'unknown' });
   const [tradingHealth, setTradingHealth] = useState<ServiceHealth<RealTradingStatus>>({ state: 'unknown' });
   const [sentimentHealth, setSentimentHealth] = useState<ServiceHealth<SentimentHealth>>({ state: 'unknown' });
-  const dataCollectionEnabled = Form.useWatch('dataCollectionEnabled', form);
-  const newsCollectionEnabled = Form.useWatch('newsCollectionEnabled', form);
-
   const loadRuntimeSettings = useCallback(async () => {
     setRuntimeLoading(true);
     try {
@@ -253,12 +240,7 @@ const Settings: React.FC = () => {
     try {
       const runtimeRequest: RuntimeSettings = {
         schedulerEnabled: values.schedulerEnabled,
-        dataCollectionEnabled: values.dataCollectionEnabled,
-        newsCollectionEnabled: values.newsCollectionEnabled,
         startupDataSyncEnabled: values.startupDataSyncEnabled,
-        startupHistorySyncEnabled: values.startupHistorySyncEnabled,
-        startupNewsSyncEnabled: values.startupNewsSyncEnabled,
-        modelTrainingEnabled: values.modelTrainingEnabled,
       };
       const response = await request.put('/systemSettings/runtime', runtimeRequest) as ApiResponse<RuntimeSettings>;
       setRuntimeSettings(readApiData(response, '保存运行控制配置失败'));
@@ -298,12 +280,7 @@ const Settings: React.FC = () => {
     notifications: readBoolean(STORAGE_KEYS.notifications, true),
     refreshRate: readNumber(STORAGE_KEYS.refreshRate, 30000),
     schedulerEnabled: false,
-    dataCollectionEnabled: false,
-    newsCollectionEnabled: false,
     startupDataSyncEnabled: false,
-    startupHistorySyncEnabled: false,
-    startupNewsSyncEnabled: false,
-    modelTrainingEnabled: false,
   };
 
   usePageHeader(t('settings.title'));
@@ -400,54 +377,7 @@ const Settings: React.FC = () => {
               </Form.Item>
             </Col>
             <Col xs={24} md={12} xl={8}>
-              <Form.Item label={t('settings.fieldsRuntime.dataCollection')} name="dataCollectionEnabled" valuePropName="checked" extra="控制股票列表、行情、历史数据和新闻采集">
-                <Switch
-                  checkedChildren={t('settings.switchOn')}
-                  unCheckedChildren={t('settings.switchOff')}
-                  onChange={(checked) => {
-                    if (!checked) {
-                      form.setFieldsValue({
-                        newsCollectionEnabled: false,
-                        startupDataSyncEnabled: false,
-                        startupHistorySyncEnabled: false,
-                        startupNewsSyncEnabled: false,
-                      });
-                    }
-                  }}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12} xl={8}>
-              <Form.Item label={t('settings.fieldsRuntime.newsCollection')} name="newsCollectionEnabled" valuePropName="checked" extra="控制新闻和公告的定时及手动采集">
-                <Switch
-                  checkedChildren={t('settings.switchOn')}
-                  unCheckedChildren={t('settings.switchOff')}
-                  disabled={!dataCollectionEnabled}
-                  onChange={(checked) => {
-                    if (!checked) {
-                      form.setFieldValue('startupNewsSyncEnabled', false);
-                    }
-                  }}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12} xl={8}>
               <Form.Item label={t('settings.fieldsRuntime.startupData')} name="startupDataSyncEnabled" valuePropName="checked" extra="下次应用启动时检查并补充股票基础数据">
-                <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} disabled={!dataCollectionEnabled} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12} xl={8}>
-              <Form.Item label={t('settings.fieldsRuntime.startupHistory')} name="startupHistorySyncEnabled" valuePropName="checked" extra="下次应用启动时执行全量历史行情同步">
-                <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} disabled={!dataCollectionEnabled} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12} xl={8}>
-              <Form.Item label={t('settings.fieldsRuntime.startupNews')} name="startupNewsSyncEnabled" valuePropName="checked" extra="下次应用启动时执行全量新闻采集">
-                <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} disabled={!dataCollectionEnabled || !newsCollectionEnabled} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12} xl={8}>
-              <Form.Item label={t('settings.fieldsRuntime.training')} name="modelTrainingEnabled" valuePropName="checked" extra="只开放训练资格，交易时段、资源和数据质量门禁仍会继续生效">
                 <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} />
               </Form.Item>
             </Col>
@@ -467,4 +397,4 @@ const Settings: React.FC = () => {
 };
 
 export default Settings;
-// AI_GENERATE_END ------------------
+// AI_GENERATE_END--- ------------------

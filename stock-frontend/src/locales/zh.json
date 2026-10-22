@@ -92,9 +92,7 @@
     "dateError": "开始日期不能晚于结束日期"
   },
   "modelOperations": {
-    "subtitle": "模型版本、训练门禁、候选激活与生产回滚",
-    "trainingGatePassed": "训练门禁已通过",
-    "trainingGateBlocked": "训练门禁当前不通过",
+    "subtitle": "模型版本、训练运行、候选激活与生产回滚",
     "productionVersion": "生产版本",
     "previousVersion": "上一版本",
     "trainingCapability": "节点训练能力",
@@ -450,7 +448,7 @@
     "refreshHint": "仅影响本页面状态检查，不会改变 Quartz 后端任务调度频率",
     "switchOn": "开",
     "switchOff": "关",
-    "fieldsRuntime": { "scheduler": "统一任务调度", "dataCollection": "数据采集总开关", "newsCollection": "新闻采集", "startupData": "启动数据初始化", "startupHistory": "启动历史行情同步", "startupNews": "启动新闻同步", "training": "LSTM 模型训练" }
+    "fieldsRuntime": { "scheduler": "统一任务调度", "dataCollection": "数据采集总开关", "newsCollection": "新闻采集", "startupData": "启动数据初始化", "training": "LSTM 模型训练" }
     ,"status": { "normal": "正常", "error": "异常", "unchecked": "未检查", "notConfigured": "未配置", "sessionValid": "会话有效", "sessionMissing": "会话未建立", "autoReady": "自动执行就绪", "controlledStop": "受控停止", "realWriteOn": "真实写入开启", "readOnly": "只读观察", "loaded": "已加载", "notLoaded": "未加载", "artifactAvailable": "制品可用", "artifactMissing": "制品不可用", "verified": "摘要已校验", "unverified": "摘要未校验" }
   },
   "transactions": {

@@ -1,8 +1,9 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ----------
 package com.stock.strategyAgent.runtime;
 
 import com.stock.strategyAgent.config.AgentProperties;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import java.util.List;
@@ -16,6 +17,7 @@ import java.util.Set;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AgentRuntimeService {
 
     private static final Set<String> SUPPORTED_OUTPUT_TYPES = Set.of("RESEARCH", "DIAGNOSTIC", "REPORT", "TRADE_PLAN");
@@ -32,6 +34,7 @@ public class AgentRuntimeService {
      * @return Runtime 响应
      */
     public AgentRuntimeResponse execute(AgentRuntimeRequest request) {
+        long startedAt = System.nanoTime();
         if (request == null || !SUPPORTED_OUTPUT_TYPES.contains(request.getOutputType())) {
             return failure(request, "INVALID_OUTPUT_TYPE", "Runtime 输出类型不受支持");
         }
@@ -45,12 +48,21 @@ public class AgentRuntimeService {
         if (!properties.isEnabled()) {
             return degraded(request, "AGENT_DISABLED", "Agent 未启用，返回结构化事实摘要");
         }
+        log.info("[Agent][Runtime] taskId={} sessionId={} outputType={} status=STARTED systemPromptChars={} userPromptChars={} evidenceRefCount={}",
+                request.getTaskId(), request.getSessionId(), request.getOutputType(), request.getSystemPrompt().length(),
+                request.getUserPrompt().length(), request.getEvidenceRefs() == null ? 0 : request.getEvidenceRefs().size());
         AgentRuntimeResponse response = modelProvider.generate(request);
         if (response == null || response.getStatus() == null) {
             return failure(request, "RUNTIME_EMPTY_RESPONSE", "Runtime 未返回有效状态");
         }
+        log.info("[Agent][Runtime] taskId={} sessionId={} outputType={} stage=MODEL_RESPONSE status={} provider={} model={} contentChars={} errorCode={} elapsedMs={}",
+                request.getTaskId(), request.getSessionId(), request.getOutputType(), response.getStatus(),
+                response.getProvider(), response.getModel(), response.getContent() == null ? 0 : response.getContent().length(),
+                response.getErrorCode(), elapsedMillis(startedAt));
         if (response.getStatus() == AgentRuntimeStatus.COMPLETED) {
             try {
+                log.info("[Agent][Runtime] taskId={} sessionId={} outputType={} stage=STRUCTURED_PARSE status=STARTED",
+                        request.getTaskId(), request.getSessionId(), request.getOutputType());
                 AgentStructuredOutput structuredOutput = structuredOutputParser.parse(
                         request.getOutputType(), response.getContent(), request.getEvidenceRefs());
                 response = AgentRuntimeResponse.builder()
@@ -62,7 +74,12 @@ public class AgentRuntimeService {
                         .errorCode(response.getErrorCode())
                         .structuredOutput(structuredOutput)
                         .build();
+                log.info("[Agent][Runtime] taskId={} sessionId={} outputType={} stage=STRUCTURED_PARSE status=COMPLETED elapsedMs={}",
+                        request.getTaskId(), request.getSessionId(), request.getOutputType(), elapsedMillis(startedAt));
             } catch (IllegalArgumentException exception) {
+                log.warn("[Agent][Runtime] taskId={} sessionId={} outputType={} stage=STRUCTURED_PARSE status=FAILED causeType={} causeMessage={} elapsedMs={}",
+                        request.getTaskId(), request.getSessionId(), request.getOutputType(),
+                        exception.getClass().getSimpleName(), safeErrorMessage(exception.getMessage()), elapsedMillis(startedAt));
                 if ("RESEARCH".equals(request.getOutputType())
                         && response.getProvider() != null
                         && ("ollama".equalsIgnoreCase(response.getProvider()) || response.getProvider().endsWith(":ollama"))
@@ -72,7 +89,25 @@ public class AgentRuntimeService {
                 return failure(request, "STRUCTURED_OUTPUT_INVALID", exception.getMessage());
             }
         }
-        return limit(response);
+        AgentRuntimeResponse limited = limit(response);
+        log.info("[Agent][Runtime] taskId={} sessionId={} outputType={} status=FINISHED runtimeStatus={} elapsedMs={}",
+                request.getTaskId(), request.getSessionId(), request.getOutputType(), limited.getStatus(),
+                elapsedMillis(startedAt));
+        return limited;
+    }
+
+    private long elapsedMillis(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000L;
+    }
+
+    private String safeErrorMessage(String message) {
+        if (!StringUtils.hasText(message)) {
+            return "";
+        }
+        String sanitized = message
+                .replaceAll("(?i)(authorization\\s*:\\s*bearer\\s+|api[-_ ]?key\\s*[=:]\\s*)[^\\s,;]+", "$1***")
+                .replaceAll("(?i)sk-[a-z0-9_-]+", "sk-***");
+        return sanitized.substring(0, Math.min(sanitized.length(), 300));
     }
 
     /**
@@ -176,4 +211,4 @@ public class AgentRuntimeService {
                 .build();
     }
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ----------

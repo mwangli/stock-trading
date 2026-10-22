@@ -1,4 +1,4 @@
-// AI_GENERATE_START-- --------
+// AI_GENERATE_START--- --------
 package com.stock.dataCollector.service;
 
 import com.mongodb.bulk.BulkWriteResult;
@@ -9,7 +9,6 @@ import com.stock.dataCollector.persistence.NewsRepository;
 import com.stock.dataCollector.persistence.StockInfoRepository;
 import com.stock.dataCollector.support.SecuritiesClient;
 import com.stock.dataCollector.support.DelistedStockDetector;
-import com.stock.tradingExecutor.service.SystemRuntimeConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -87,7 +86,6 @@ public class StockNewsService {
     private final NewsRepository newsRepository;
     private final StockInfoRepository stockInfoRepository;
     private final MongoTemplate mongoTemplate;
-    private final SystemRuntimeConfigService runtimeConfigService;
 
     private final ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_THREADS,
             r -> {
@@ -139,7 +137,6 @@ public class StockNewsService {
      * @throws IllegalStateException 新闻或公告来源未全部同步成功时抛出
      */
     public int collectStockNewsByCode(String stockCode) {
-        runtimeConfigService.requireNewsCollectionEnabled();
         StockInfo stockInfo = stockInfoRepository.findByCode(stockCode)
                 .orElseThrow(() -> new IllegalArgumentException("股票代码不存在: " + stockCode));
         if (DelistedStockDetector.isDelisted(stockInfo)) {
@@ -393,7 +390,6 @@ public class StockNewsService {
      * @return 采集结果统计
      */
     public CollectResult collectAllStockNews(int maxStocks) {
-        runtimeConfigService.requireNewsCollectionEnabled();
         String batchId = UUID.randomUUID().toString();
         log.info("开始批量采集股票新闻（{} 线程并行），最多 {} 只股票，batchId={}",
                 PARALLEL_THREADS, maxStocks <= 0 ? "全部" : maxStocks, batchId);
@@ -746,4 +742,4 @@ public class StockNewsService {
     /** 采集来源（新闻/公告）。 */
     private record NewsSource(String menuId, String category) {}
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END- ---------

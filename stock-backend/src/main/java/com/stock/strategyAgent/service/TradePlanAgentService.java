@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.strategyAgent.service;
 
 import com.stock.strategyAgent.api.TradePlanDraftRequest;
@@ -12,6 +12,7 @@ import com.stock.strategyAgent.runtime.AgentRuntimeResponse;
 import com.stock.strategyAgent.runtime.AgentRuntimeService;
 import com.stock.strategyAgent.runtime.TradePlanDraft;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -29,6 +30,7 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TradePlanAgentService {
 
     private final AgentApplicationService applicationService;
@@ -54,14 +56,20 @@ public class TradePlanAgentService {
                 request.getSessionId(), request.getUserScope());
         String question = StringUtils.hasText(request.getQuestion())
                 ? request.getQuestion().trim() : "基于当前候选批次生成交易计划草案";
+        String taskId = UUID.randomUUID().toString();
+        long startedAt = System.nanoTime();
+        log.info("[Agent][Progress] taskId={} sessionId={} type=TRADE_PLAN progress=1/4 stage=TASK_STARTED candidateBatchId={} questionLength={}",
+                taskId, session.getSessionId(), request.getCandidateBatchId(), question.length());
         EvidenceBundle evidence = evidenceAssembler.assemble(AgentEnums.TaskType.TRADE_PLAN,
-                UUID.randomUUID().toString(), session.getSessionId(), UUID.randomUUID().toString(),
+                UUID.randomUUID().toString(), session.getSessionId(), taskId,
                 session.getUserScope(), request.getCandidateBatchId(), null);
         validateEvidence(evidence, request);
+        log.info("[Agent][Progress] taskId={} sessionId={} type=TRADE_PLAN progress=2/4 stage=EVIDENCE_READY evidenceCount={} evidenceRefCount={}",
+                taskId, session.getSessionId(), evidence.getItems().size(), evidence.getEvidenceRefs().size());
         AgentRuntimeRequest runtimeRequest = AgentRuntimeRequest.builder()
                 .taskType("TRADE_PLAN")
                 .sessionId(session.getSessionId())
-                .taskId(UUID.randomUUID().toString())
+                .taskId(taskId)
                 .userScope(session.getUserScope())
                 .systemPrompt("你是交易计划草案 Agent。只能根据证据生成 PENDING_REVALIDATION 草案，不得生成券商订单号、凭据或直接执行指令。只返回 TradePlanDraft JSON。")
                 .userPrompt(question + "\n候选批次=" + request.getCandidateBatchId()
@@ -71,6 +79,8 @@ public class TradePlanAgentService {
                 .evidenceRefs(evidence.getEvidenceRefs())
                 .outputType("TRADE_PLAN")
                 .build();
+        log.info("[Agent][Progress] taskId={} sessionId={} type=TRADE_PLAN progress=3/4 stage=MODEL_CALL message=开始调用模型",
+                taskId, session.getSessionId());
         AgentRuntimeResponse response = runtimeService.execute(runtimeRequest);
         if (response.getStructuredOutput() == null || !(response.getStructuredOutput() instanceof TradePlanDraft draft)) {
             throw new IllegalStateException(response.getErrorCode() == null
@@ -93,7 +103,14 @@ public class TradePlanAgentService {
         createRequest.setReason(draft.getReason());
         createRequest.setRiskWarnings(draft.getRiskWarnings());
         createRequest.setUncertainty(draft.getUncertainty());
-        return tradePlanService.create(createRequest);
+        TradePlanDto.Response result = tradePlanService.create(createRequest);
+        log.info("[Agent][Progress] taskId={} sessionId={} type=TRADE_PLAN progress=4/4 stage=TASK_FINISHED status=COMPLETED elapsedMs={}",
+                taskId, session.getSessionId(), elapsedMillis(startedAt));
+        return result;
+    }
+
+    private long elapsedMillis(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000L;
     }
 
     private void validateEvidence(EvidenceBundle evidence, TradePlanDraftRequest request) {
@@ -126,4 +143,4 @@ public class TradePlanAgentService {
         }
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

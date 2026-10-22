@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.dataCollector.persistence;
 
 import com.stock.dataCollector.domain.entity.StockPrice;
@@ -86,6 +86,15 @@ public interface PriceRepository extends MongoRepository<StockPrice, String> {
     List<StockPrice> findByCodeInAndDate(List<String> codes, LocalDate date);
 
     /**
+     * 统计指定股票集合在目标交易日的行情数量，用于预测和评估入队前的覆盖率门禁。
+     *
+     * @param codes 股票代码集合
+     * @param date 交易日
+     * @return 匹配的行情数量
+     */
+    long countByCodeInAndDate(List<String> codes, LocalDate date);
+
+    /**
      * 查询全市场最新一条日线，用于确定预测批次基准日期。
      *
      * @return 全市场最新日线
@@ -116,4 +125,4 @@ public interface PriceRepository extends MongoRepository<StockPrice, String> {
      */
     boolean existsByCode(String code);
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

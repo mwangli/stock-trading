@@ -1,4 +1,4 @@
-// AI_GENERATE_START---- --------
+// AI_GENERATE_START------ --------
 package com.stock.dataCollector.support;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -9,7 +9,6 @@ import com.stock.dataCollector.service.TradingCalendarMaintenanceService.Calenda
 import com.stock.dataCollector.service.TradingCalendarService;
 import com.stock.tradingExecutor.JobSkippedException;
 import com.stock.tradingExecutor.sync.SyncStateService;
-import com.stock.tradingExecutor.service.SystemRuntimeConfigService;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,10 +41,11 @@ public class DataSyncScheduler {
     private static final int NEWS_DAILY_MAX_STOCKS = 0;
     /** 每日日K同步并行线程数 */
     private static final int PRICE_SYNC_THREADS = 8;
+    /** 行情供应商历史回补窗口年数 */
+    private static final int PRICE_BACKFILL_YEARS = 3;
 
     private final StockDataService stockDataService;
     private final StockNewsService stockNewsService;
-    private final SystemRuntimeConfigService runtimeConfigService;
     private final TradingCalendarService tradingCalendarService;
     private final TradingCalendarMaintenanceService tradingCalendarMaintenanceService;
     private final SyncStateService syncStateService;
@@ -77,7 +77,6 @@ public class DataSyncScheduler {
      * Cron: 0 0 1 * * SUN
      */
     public void syncStockListDaily() {
-        runtimeConfigService.requireDataCollectionEnabled();
         log.info("========== [数据同步任务] 开始执行股票列表同步 ==========");
         try {
             StockDataService.SyncResult result = stockDataService.syncStockList();
@@ -99,18 +98,19 @@ public class DataSyncScheduler {
     }
 
     /**
-     * 同步当前交易日，并回补最近三年的缺失交易日。
+     * 同步当前交易日，并回补最近三年的缺失行情。
      *
-     * 日历区间存在缺口时先调用滚动维护服务修复一次，再使用已确认交易日执行行情同步。
+     * 当前年度使用已确认交易日历检查数据缺口；更早历史记录直接依据供应商实际返回结果回补，
+     * 避免公开休市日历不提供历史年份时阻断当日行情同步。
      *
      * @throws JobSkippedException 当前日期尚未确认或不是交易日时抛出
      * @throws IllegalStateException 日历修复失败、行情同步失败或历史缺口仍未补齐时抛出
      */
     public void syncDailyStockData() {
-        runtimeConfigService.requireDataCollectionEnabled();
         LocalDate today = LocalDate.now();
-        LocalDate earliestDate = today.minusYears(3);
-        List<LocalDate> tradingDays = loadTradingDaysWithCalendarRepair(earliestDate, today);
+        LocalDate earliestDate = today.minusYears(PRICE_BACKFILL_YEARS);
+        LocalDate calendarStartDate = today.withDayOfYear(1);
+        List<LocalDate> tradingDays = loadTradingDaysWithCalendarRepair(calendarStartDate, today);
         if (!tradingCalendarService.isConfirmedDate(today)) {
             throw new JobSkippedException("交易日历尚未确认: " + today);
         }
@@ -191,7 +191,6 @@ public class DataSyncScheduler {
      * </p>
      */
     public void backfillNewsMetadata() {
-        runtimeConfigService.requireNewsCollectionEnabled();
         log.info("========== [数据同步任务] 开始补全历史新闻元数据 ==========");
         StockNewsService.NewsMetadataBackfillResult result = stockNewsService.backfillMissingMetadata();
         log.info("[数据同步任务] 历史新闻元数据补全完成: 扫描 {} 条，更新 {} 条",
@@ -208,7 +207,6 @@ public class DataSyncScheduler {
      * </p>
      */
     public void collectNewsDailySync() {
-        runtimeConfigService.requireNewsCollectionEnabled();
         log.info("========== [数据同步任务] 开始执行每日增量新闻采集 ==========");
         try {
             StockNewsService.CollectResult result = stockNewsService.collectAllStockNews(NEWS_DAILY_MAX_STOCKS);
@@ -225,4 +223,4 @@ public class DataSyncScheduler {
         log.info("========== [数据同步任务] 每日增量新闻采集结束 ==========");
     }
 }
-// AI_GENERATE_END -----------
+// AI_GENERATE_END-- -----------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.modelService.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -132,6 +132,21 @@ public final class ModelPredictionAnalysisDto {
 
         /** 缺少目标日行情数量。 */
         private int noMarketDataCount;
+
+        /** 评估队列状态。 */
+        private String evaluationQueueStatus;
+
+        /** 评估任务进入队列的时间。 */
+        private LocalDateTime evaluationQueuedAt;
+
+        /** 评估任务开始执行的时间。 */
+        private LocalDateTime evaluationStartedAt;
+
+        /** 评估任务完成的时间。 */
+        private LocalDateTime evaluationFinishedAt;
+
+        /** 最近一次评估队列执行失败原因。 */
+        private String evaluationErrorMessage;
 
         /** 预测覆盖率。 */
         private Double coverageRate;
@@ -435,4 +450,4 @@ public final class ModelPredictionAnalysisDto {
         private String tradingEligibilityReason;
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.dataCollector.service;
 
 import org.springframework.stereotype.Component;
@@ -22,7 +22,19 @@ public class NewsEventClassifier {
      * @return 事件类型
      */
     public String classify(String title, String content, String category) {
-        String text = ((title == null ? "" : title) + " " + (content == null ? "" : content)).toLowerCase();
+        String titleEventType = classifyText(title);
+        if (titleEventType != null) {
+            return titleEventType;
+        }
+        String contentEventType = classifyText(content);
+        if (contentEventType != null) {
+            return contentEventType;
+        }
+        return "公告".equals(category) ? "GENERAL_ANNOUNCEMENT" : "GENERAL_NEWS";
+    }
+
+    private String classifyText(String value) {
+        String text = value == null ? "" : value.toLowerCase();
         if (text.matches(".*(解禁|限售|质押|融资|融券|龙虎榜|大宗交易|股东.*冻结|股份.*冻结).*")) {
             return "CAPITAL_RISK";
         }
@@ -38,7 +50,7 @@ public class NewsEventClassifier {
         if (text.matches(".*(合同|订单|中标|项目|投资|收购|并购|合作|战略协议).*")) {
             return "MATERIAL_BUSINESS";
         }
-        return "公告".equals(category) ? "GENERAL_ANNOUNCEMENT" : "GENERAL_NEWS";
+        return null;
     }
 
     /**
@@ -56,4 +68,4 @@ public class NewsEventClassifier {
         };
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

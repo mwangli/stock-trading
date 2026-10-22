@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START- ---
 package com.stock.modelService.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 模型运维管理接口。
- * 提供模型版本、训练记录、受控训练、激活和回滚能力。
+ * 提供模型版本、训练记录、模型训练、激活和回滚能力。
  *
  * @author mwangli
  * @since 2026-10-10
@@ -30,7 +30,7 @@ public class ModelOperationsController {
     private final ModelOperationsService modelOperationsService;
 
     /**
-     * 查询模型运维概览和当前门禁状态。
+     * 查询模型运维概览和当前运行状态。
      *
      * @return 模型运维概览
      */
@@ -105,7 +105,7 @@ public class ModelOperationsController {
     }
 
     /**
-     * 提交受门禁控制的模型训练任务。
+     * 提交模型训练任务。
      *
      * @param request 训练参数和操作人
      * @return 训练任务提交结果
@@ -208,4 +208,4 @@ public class ModelOperationsController {
         }
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END- ---

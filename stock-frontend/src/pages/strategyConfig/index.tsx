@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------------------------------------------------------
+// AI_GENERATE_START ---------------------------------------------------------
 import './styles.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Card, Col, Descriptions, Form, Input, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message, type InputRef } from 'antd';
@@ -281,9 +281,15 @@ const StrategyConfig: React.FC = () => {
     setAgentQuestion('');
     setAgentLoading(true);
     try {
-      const diagnosticQuestion = /买入计划|执行门禁|为什么没有生成|为什么没有买入|交易执行|下单/.test(question);
+      const tradeExecutionDiagnostic = /买入计划|执行门禁|为什么没有生成|为什么没有买入|交易执行|下单/.test(question);
+      const runtimeDiagnostic = /模型连接|模型状态|Provider|Ollama|DeepSeek|Agent.*(?:状态|健康)|响应超时|对话超时|model connection|provider health|timeout/i.test(question);
+      const diagnosticQuestion = tradeExecutionDiagnostic || runtimeDiagnostic;
       const requestBody = diagnosticQuestion
-        ? { sessionId, question, jobName: 'realTradingAutoBuy' }
+        ? {
+            sessionId,
+            question,
+            ...(tradeExecutionDiagnostic ? { jobName: 'realTradingAutoBuy' } : {}),
+          }
         : {
             sessionId,
             question,
@@ -626,4 +632,4 @@ const StrategyConfig: React.FC = () => {
 };
 
 export default StrategyConfig;
-// AI_GENERATE_END ------------------------------------------------------
+// AI_GENERATE_END -------------------------------------------------------

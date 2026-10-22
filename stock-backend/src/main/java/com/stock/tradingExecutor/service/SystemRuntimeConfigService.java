@@ -1,4 +1,4 @@
-// AI_GENERATE_START- -------
+// AI_GENERATE_START---- -------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.SystemRuntimeConfigDto;
@@ -32,12 +32,7 @@ public class SystemRuntimeConfigService {
     private final TransactionTemplate defaultInitializationTransaction;
     private final String nodeId;
     private final boolean defaultSchedulerEnabled;
-    private final boolean defaultDataCollectionEnabled;
-    private final boolean defaultNewsCollectionEnabled;
     private final boolean defaultStartupDataSyncEnabled;
-    private final boolean defaultStartupHistorySyncEnabled;
-    private final boolean defaultStartupNewsSyncEnabled;
-    private final boolean defaultModelTrainingEnabled;
 
     /**
      * 创建系统运行控制配置服务。
@@ -47,12 +42,7 @@ public class SystemRuntimeConfigService {
      * @param transactionManager 事务管理器
      * @param configuredNodeId 配置的节点标识
      * @param defaultSchedulerEnabled 默认调度开关
-     * @param defaultDataCollectionEnabled 默认数据采集开关
-     * @param defaultNewsCollectionEnabled 默认新闻采集开关
      * @param defaultStartupDataSyncEnabled 默认启动数据同步开关
-     * @param defaultStartupHistorySyncEnabled 默认启动历史同步开关
-     * @param defaultStartupNewsSyncEnabled 默认启动新闻同步开关
-     * @param defaultModelTrainingEnabled 默认模型训练开关
      */
     public SystemRuntimeConfigService(
             SystemRuntimeConfigRepository repository,
@@ -60,12 +50,7 @@ public class SystemRuntimeConfigService {
             PlatformTransactionManager transactionManager,
             @Value("${app.runtime.node-id:}") String configuredNodeId,
             @Value("${spring.quartz.auto-startup:true}") boolean defaultSchedulerEnabled,
-            @Value("${app.runtime.data-collection-enabled:true}") boolean defaultDataCollectionEnabled,
-            @Value("${app.runtime.news-collection-enabled:true}") boolean defaultNewsCollectionEnabled,
-            @Value("${app.startup.listener.enabled:true}") boolean defaultStartupDataSyncEnabled,
-            @Value("${app.startup.history-sync.enabled:false}") boolean defaultStartupHistorySyncEnabled,
-            @Value("${app.startup.news-sync.enabled:false}") boolean defaultStartupNewsSyncEnabled,
-            @Value("${models.lstm.training-enabled:false}") boolean defaultModelTrainingEnabled) {
+            @Value("${app.startup.listener.enabled:true}") boolean defaultStartupDataSyncEnabled) {
         this.repository = repository;
         this.scheduler = scheduler;
         this.defaultInitializationTransaction = new TransactionTemplate(transactionManager);
@@ -73,12 +58,7 @@ public class SystemRuntimeConfigService {
                 TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.nodeId = resolveNodeId(configuredNodeId);
         this.defaultSchedulerEnabled = defaultSchedulerEnabled;
-        this.defaultDataCollectionEnabled = defaultDataCollectionEnabled;
-        this.defaultNewsCollectionEnabled = defaultNewsCollectionEnabled;
         this.defaultStartupDataSyncEnabled = defaultStartupDataSyncEnabled;
-        this.defaultStartupHistorySyncEnabled = defaultStartupHistorySyncEnabled;
-        this.defaultStartupNewsSyncEnabled = defaultStartupNewsSyncEnabled;
-        this.defaultModelTrainingEnabled = defaultModelTrainingEnabled;
     }
 
     /**
@@ -102,12 +82,10 @@ public class SystemRuntimeConfigService {
         SystemRuntimeConfig config = getOrCreate();
         boolean previousSchedulerEnabled = config.isSchedulerEnabled();
         config.setSchedulerEnabled(request.getSchedulerEnabled());
-        config.setDataCollectionEnabled(request.getDataCollectionEnabled());
-        config.setNewsCollectionEnabled(request.getNewsCollectionEnabled());
+        config.setDataCollectionEnabled(true);
+        config.setNewsCollectionEnabled(true);
         config.setStartupDataSyncEnabled(request.getStartupDataSyncEnabled());
-        config.setStartupHistorySyncEnabled(request.getStartupHistorySyncEnabled());
-        config.setStartupNewsSyncEnabled(request.getStartupNewsSyncEnabled());
-        config.setModelTrainingEnabled(request.getModelTrainingEnabled());
+        config.setModelTrainingEnabled(true);
         applySchedulerState(config.isSchedulerEnabled());
         SystemRuntimeConfig saved;
         try {
@@ -116,9 +94,8 @@ public class SystemRuntimeConfigService {
             applySchedulerState(previousSchedulerEnabled);
             throw exception;
         }
-        log.info("[系统配置] 运行开关已更新: scheduler={}, dataCollection={}, newsCollection={}, training={}",
-                saved.isSchedulerEnabled(), saved.isDataCollectionEnabled(),
-                saved.isNewsCollectionEnabled(), saved.isModelTrainingEnabled());
+        log.info("[系统配置] 运行设置已更新: scheduler={}, startupData={}",
+                saved.isSchedulerEnabled(), saved.isStartupDataSyncEnabled());
         return toResponse(saved);
     }
 
@@ -139,63 +116,12 @@ public class SystemRuntimeConfigService {
     }
 
     /**
-     * 校验股票和行情数据采集是否开启。
-     */
-    public void requireDataCollectionEnabled() {
-        if (!getOrCreate().isDataCollectionEnabled()) {
-            throw new IllegalStateException("系统配置已关闭数据采集");
-        }
-    }
-
-    /**
-     * 校验新闻和公告采集是否开启。
-     */
-    public void requireNewsCollectionEnabled() {
-        SystemRuntimeConfig config = getOrCreate();
-        if (!config.isDataCollectionEnabled() || !config.isNewsCollectionEnabled()) {
-            throw new IllegalStateException("系统配置已关闭新闻采集");
-        }
-    }
-
-    /**
      * 判断启动数据同步是否开启。
      *
      * @return true 表示允许启动同步
      */
     public boolean isStartupDataSyncEnabled() {
-        SystemRuntimeConfig config = getOrCreate();
-        return config.isDataCollectionEnabled() && config.isStartupDataSyncEnabled();
-    }
-
-    /**
-     * 判断启动历史行情同步是否开启。
-     *
-     * @return true 表示允许启动同步
-     */
-    public boolean isStartupHistorySyncEnabled() {
-        SystemRuntimeConfig config = getOrCreate();
-        return config.isDataCollectionEnabled() && config.isStartupHistorySyncEnabled();
-    }
-
-    /**
-     * 判断启动新闻同步是否开启。
-     *
-     * @return true 表示允许启动同步
-     */
-    public boolean isStartupNewsSyncEnabled() {
-        SystemRuntimeConfig config = getOrCreate();
-        return config.isDataCollectionEnabled()
-                && config.isNewsCollectionEnabled()
-                && config.isStartupNewsSyncEnabled();
-    }
-
-    /**
-     * 判断模型训练是否开启。
-     *
-     * @return true 表示允许训练
-     */
-    public boolean isModelTrainingEnabled() {
-        return getOrCreate().isModelTrainingEnabled();
+        return getOrCreate().isStartupDataSyncEnabled();
     }
 
     private SystemRuntimeConfig getOrCreate() {
@@ -206,12 +132,10 @@ public class SystemRuntimeConfigService {
         SystemRuntimeConfig config = new SystemRuntimeConfig();
         config.setNodeId(nodeId);
         config.setSchedulerEnabled(defaultSchedulerEnabled);
-        config.setDataCollectionEnabled(defaultDataCollectionEnabled);
-        config.setNewsCollectionEnabled(defaultNewsCollectionEnabled);
+        config.setDataCollectionEnabled(true);
+        config.setNewsCollectionEnabled(true);
         config.setStartupDataSyncEnabled(defaultStartupDataSyncEnabled);
-        config.setStartupHistorySyncEnabled(defaultStartupHistorySyncEnabled);
-        config.setStartupNewsSyncEnabled(defaultStartupNewsSyncEnabled);
-        config.setModelTrainingEnabled(defaultModelTrainingEnabled);
+        config.setModelTrainingEnabled(true);
         config.setUpdatedAt(java.time.LocalDateTime.now());
         log.info("[系统配置] 节点 {} 尚无数据库配置，使用环境默认值初始化运行开关", nodeId);
         SystemRuntimeConfig initialized = defaultInitializationTransaction.execute(status -> {
@@ -242,23 +166,8 @@ public class SystemRuntimeConfigService {
     private void validateRequest(SystemRuntimeConfigDto.UpdateRequest request) {
         if (request == null
                 || request.getSchedulerEnabled() == null
-                || request.getDataCollectionEnabled() == null
-                || request.getNewsCollectionEnabled() == null
-                || request.getStartupDataSyncEnabled() == null
-                || request.getStartupHistorySyncEnabled() == null
-                || request.getStartupNewsSyncEnabled() == null
-                || request.getModelTrainingEnabled() == null) {
+                || request.getStartupDataSyncEnabled() == null) {
             throw new IllegalArgumentException("运行控制配置字段不能为空");
-        }
-        if (!request.getDataCollectionEnabled()
-                && (request.getNewsCollectionEnabled()
-                || request.getStartupDataSyncEnabled()
-                || request.getStartupHistorySyncEnabled()
-                || request.getStartupNewsSyncEnabled())) {
-            throw new IllegalArgumentException("关闭数据采集前，请先关闭其下属采集开关");
-        }
-        if (!request.getNewsCollectionEnabled() && request.getStartupNewsSyncEnabled()) {
-            throw new IllegalArgumentException("关闭新闻采集前，请先关闭启动新闻同步");
         }
     }
 
@@ -266,12 +175,7 @@ public class SystemRuntimeConfigService {
         return SystemRuntimeConfigDto.SettingsResponse.builder()
                 .nodeId(config.getNodeId())
                 .schedulerEnabled(config.isSchedulerEnabled())
-                .dataCollectionEnabled(config.isDataCollectionEnabled())
-                .newsCollectionEnabled(config.isNewsCollectionEnabled())
                 .startupDataSyncEnabled(config.isStartupDataSyncEnabled())
-                .startupHistorySyncEnabled(config.isStartupHistorySyncEnabled())
-                .startupNewsSyncEnabled(config.isStartupNewsSyncEnabled())
-                .modelTrainingEnabled(config.isModelTrainingEnabled())
                 .updatedAt(config.getUpdatedAt())
                 .build();
     }
@@ -291,4 +195,4 @@ public class SystemRuntimeConfigService {
         return candidate;
     }
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END---- --------

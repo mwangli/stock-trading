@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------
+// AI_GENERATE_START ---------------
 import React, { useCallback, useState } from 'react';
 import {
   Button,
@@ -109,6 +109,27 @@ const formatBytes = (value?: number) => {
 const formatPercent = (value?: number | null) => value === undefined || value === null
   ? localizedText('未提供', 'Not provided')
   : `${(value * 100).toFixed(2)}%`;
+
+interface CompactInfoItemProps {
+  label: React.ReactNode;
+  value: React.ReactNode;
+  copyableText?: string;
+  className?: string;
+}
+
+const CompactInfoItem: React.FC<CompactInfoItemProps> = ({ label, value, copyableText, className = '' }) => (
+  <div className={`min-w-0 ${className}`}>
+    <div className="mb-1 text-xs leading-4 text-[var(--text-muted)]">{label}</div>
+    <Text
+      className="!block !max-w-full text-sm leading-5"
+      copyable={copyableText ? { text: copyableText } : false}
+      ellipsis={{ tooltip: value }}
+    >
+      {value}
+    </Text>
+  </div>
+);
+
 const labelMeta: Record<string, { text: string; color: string }> = {
   positive: { text: '正面', color: 'green' },
   neutral: { text: '中性', color: 'blue' },
@@ -263,34 +284,54 @@ const SentimentModel: React.FC = () => {
         </div>
       </section>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} xl={14}>
-          <Card title={<Space><SafetyCertificateOutlined />{t('sentimentPage.artifact')}</Space>} loading={loading} className="h-full">
-            <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-              <Descriptions.Item label={localizedText('服务状态', 'Service Status')}>{health?.status ?? localizedText('未知', 'Unknown')}</Descriptions.Item>
-              <Descriptions.Item label={localizedText('模型版本', 'Model Version')}>{health?.modelVersion ?? localizedText('未配置', 'Not configured')}</Descriptions.Item>
-              <Descriptions.Item label={localizedText('制品大小', 'Artifact Size')}>{formatBytes(health?.totalSizeBytes)}</Descriptions.Item>
-              <Descriptions.Item label={localizedText('最近加载', 'Last Loaded')}>{formatDateTime(health?.lastLoadedTime)}</Descriptions.Item>
-              <Descriptions.Item label="Manifest">{health?.manifestPresent ? localizedText('存在且可解析', 'Present and readable') : localizedText('缺失或无效', 'Missing or invalid')}</Descriptions.Item>
-              <Descriptions.Item label="Manifest SHA">{health?.manifestSha256 ?? localizedText('未提供', 'Not provided')}</Descriptions.Item>
-              <Descriptions.Item label={localizedText('制品目录', 'Artifact Directory')} span={2}>
-                <Text copyable={Boolean(health?.artifactPath)} className="break-all">{health?.artifactPath ?? localizedText('未配置', 'Not configured')}</Text>
-              </Descriptions.Item>
-            </Descriptions>
+      <Row gutter={[12, 12]}>
+        <Col xs={24} xl={15}>
+          <Card
+            size="small"
+            title={<Space size={8}><SafetyCertificateOutlined />{t('sentimentPage.artifact')}</Space>}
+            loading={loading}
+            className="h-full [&_.ant-card-body]:!p-4"
+          >
+            <div className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
+              <CompactInfoItem label={localizedText('服务状态', 'Service Status')} value={health?.status ?? localizedText('未知', 'Unknown')} />
+              <CompactInfoItem label={localizedText('模型版本', 'Model Version')} value={health?.modelVersion ?? localizedText('未配置', 'Not configured')} />
+              <CompactInfoItem label={localizedText('制品大小', 'Artifact Size')} value={formatBytes(health?.totalSizeBytes)} />
+              <CompactInfoItem label={localizedText('最近加载', 'Last Loaded')} value={formatDateTime(health?.lastLoadedTime)} />
+              <CompactInfoItem label="Manifest" value={health?.manifestPresent ? localizedText('存在且可解析', 'Present and readable') : localizedText('缺失或无效', 'Missing or invalid')} />
+              <CompactInfoItem
+                className="sm:col-span-1 xl:col-span-3"
+                label="Manifest SHA"
+                value={health?.manifestSha256 ?? localizedText('未提供', 'Not provided')}
+                copyableText={health?.manifestSha256}
+              />
+              <CompactInfoItem
+                className="sm:col-span-2 xl:col-span-4"
+                label={localizedText('制品目录', 'Artifact Directory')}
+                value={health?.artifactPath ?? localizedText('未配置', 'Not configured')}
+                copyableText={health?.artifactPath}
+              />
+            </div>
           </Card>
         </Col>
-        <Col xs={24} xl={10}>
-          <Card title={<Space><ExperimentOutlined />{t('sentimentPage.offline')}</Space>} loading={loading} className="h-full">
-            <Row gutter={[12, 16]}>
-              <Col span={12}><Statistic title="Macro-F1" value={formatPercent(health?.macroF1)} /></Col>
-              <Col span={12}><Statistic title={localizedText('负面召回率', 'Negative Recall')} value={formatPercent(health?.negativeRecall)} /></Col>
-              <Col span={12}><Statistic title="ECE" value={formatPercent(health?.expectedCalibrationError)} /></Col>
-              <Col span={12}><Statistic title={localizedText('P95 延迟', 'P95 Latency')} value={health?.p95LatencyMs ?? localizedText('未提供', 'Not provided')} suffix={health?.p95LatencyMs === undefined ? undefined : 'ms'} /></Col>
+        <Col xs={24} xl={9}>
+          <Card
+            size="small"
+            title={<Space size={8}><ExperimentOutlined />{t('sentimentPage.offline')}</Space>}
+            loading={loading}
+            className="h-full [&_.ant-card-body]:!p-4 [&_.ant-statistic-content]:!text-xl [&_.ant-statistic-content]:!leading-7"
+          >
+            <Row gutter={[12, 8]}>
+              <Col xs={12} sm={6} xl={12} xxl={6}><Statistic title="Macro-F1" value={formatPercent(health?.macroF1)} /></Col>
+              <Col xs={12} sm={6} xl={12} xxl={6}><Statistic title={localizedText('负面召回率', 'Negative Recall')} value={formatPercent(health?.negativeRecall)} /></Col>
+              <Col xs={12} sm={6} xl={12} xxl={6}><Statistic title="ECE" value={formatPercent(health?.expectedCalibrationError)} /></Col>
+              <Col xs={12} sm={6} xl={12} xxl={6}><Statistic title={localizedText('P95 延迟', 'P95 Latency')} value={health?.p95LatencyMs ?? localizedText('未提供', 'Not provided')} suffix={health?.p95LatencyMs === undefined ? undefined : 'ms'} /></Col>
             </Row>
-            <div className="mt-4 border-t border-[var(--border-color)] pt-3 text-sm">
-              <div className="flex justify-between gap-3"><Text type="secondary">{localizedText('评估集', 'Evaluation Set')}</Text><Text>{health?.evaluationDatasetVersion ?? localizedText('未提供', 'Not provided')}</Text></div>
-              <div className="mt-2 flex justify-between gap-3"><Text type="secondary">{localizedText('样本数', 'Samples')}</Text><Text>{health?.evaluationSampleCount ?? localizedText('未提供', 'Not provided')}</Text></div>
-              <Paragraph className="!mb-0 !mt-3" type="secondary">{health?.evaluationConclusion ?? localizedText('当前制品没有提供离线评估结论。', 'The current artifact has no offline evaluation conclusion.')}</Paragraph>
+            <div className="mt-3 border-t border-[var(--border-color)] pt-3 text-sm">
+              <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2 xl:grid-cols-1 xxl:grid-cols-2">
+                <div className="flex min-w-0 justify-between gap-3"><Text type="secondary">{localizedText('评估集', 'Evaluation Set')}</Text><Text ellipsis={{ tooltip: health?.evaluationDatasetVersion }} className="!max-w-[70%]">{health?.evaluationDatasetVersion ?? localizedText('未提供', 'Not provided')}</Text></div>
+                <div className="flex justify-between gap-3"><Text type="secondary">{localizedText('样本数', 'Samples')}</Text><Text>{health?.evaluationSampleCount ?? localizedText('未提供', 'Not provided')}</Text></div>
+              </div>
+              <Paragraph ellipsis={{ rows: 2, tooltip: true }} className="!mb-0 !mt-2 text-xs leading-5" type="secondary">{health?.evaluationConclusion ?? localizedText('当前制品没有提供离线评估结论。', 'The current artifact has no offline evaluation conclusion.')}</Paragraph>
             </div>
           </Card>
         </Col>
@@ -392,7 +433,7 @@ const SentimentModel: React.FC = () => {
                   ? <Tag color={actionText[analysis.strategyAction].color}>{actionText[analysis.strategyAction].text}</Tag>
                   : localizedText('未评估', 'Not evaluated')}
               </Descriptions.Item>
-              <Descriptions.Item label={localizedText('可交易', 'Actionable')}>
+              <Descriptions.Item label={localizedText('参与决策', 'Decision Relevant')}>
                 {analysis.actionable === undefined
                   ? localizedText('未评估', 'Not evaluated')
                   : analysis.actionable ? localizedText('是', 'Yes') : localizedText('否', 'No')}
@@ -422,4 +463,4 @@ const SentimentModel: React.FC = () => {
 };
 
 export default SentimentModel;
-// AI_GENERATE_END -------------
+// AI_GENERATE_END ---------------

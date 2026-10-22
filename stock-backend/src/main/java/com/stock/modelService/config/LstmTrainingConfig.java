@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START- ------
 package com.stock.modelService.config;
 
 import lombok.Data;
@@ -19,17 +19,6 @@ public class LstmTrainingConfig {
 
     /** 模型逻辑名称。 */
     private String modelName = "global-shared-lstm";
-
-    /**
-     * 是否允许当前节点执行模型训练，在线推理节点应保持关闭。
-     */
-    private boolean trainingEnabled = false;
-
-    /**
-     * 是否启用交易时段和工作日维护窗口保护。
-     * 仅允许隔离的本地训练节点显式关闭，生产节点必须保持开启。
-     */
-    private boolean trainingTimeGuardEnabled = true;
 
     /**
      * 输入序列长度（时间步）
@@ -168,4 +157,4 @@ public class LstmTrainingConfig {
 
     /** 训练数据快照和训练检查点的持久化目录。 */
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END- ------

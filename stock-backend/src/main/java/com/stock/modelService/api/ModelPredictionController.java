@@ -1,9 +1,8 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START- ------
 package com.stock.modelService.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.modelService.domain.dto.ModelPredictionAnalysisDto;
-import com.stock.modelService.domain.dto.ModelPredictionRunRequest;
 import com.stock.modelService.service.ModelPredictionAnalysisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,26 +29,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class ModelPredictionController {
 
     private final ModelPredictionAnalysisService predictionAnalysisService;
-
-    /**
-     * 使用当前激活模型发起一轮全市场预测。
-     *
-     * @param request 预测操作参数
-     * @return 异步预测批次信息
-     */
-    @PostMapping("/run")
-    public ResponseDTO<ModelPredictionAnalysisDto.OperationResponse> runPrediction(
-            @RequestBody(required = false) ModelPredictionRunRequest request) {
-        log.info("[ModelPrediction] 发起全市场预测: operator={}, targetTradeDate={}",
-                request == null ? null : request.getOperatorName(),
-                request == null ? null : request.getTargetTradeDate());
-        try {
-            return ResponseDTO.success(predictionAnalysisService.startPrediction(request));
-        } catch (RuntimeException exception) {
-            log.warn("[ModelPrediction] 发起全市场预测失败: {}", exception.getMessage());
-            return ResponseDTO.error(exception.getMessage());
-        }
-    }
 
     /**
      * 使用原模型版本和历史基准日重新生成指定预测批次。
@@ -172,4 +151,4 @@ public class ModelPredictionController {
         }
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END- ------

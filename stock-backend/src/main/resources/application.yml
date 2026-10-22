@@ -91,7 +91,7 @@ trading:
 
 agent:
   enabled: true
-  provider: ${AGENT_PROVIDER:deepseek}
+  provider: ${AGENT_PROVIDER:ollama}
   deepseek:
     enabled: true
     base-url: https://api.deepseek.com/v1
@@ -159,8 +159,10 @@ models:
   lstm:
     model-name: global-shared-lstm
     prediction:
-      # 当天预测完成后，向历史回溯补充缺失预测批次；0 表示关闭，最大值为 30。
+      # 从当前日期开始向历史扫描缺失预测批次；0 表示关闭，最大值为 30。
       history-backfill-trading-days: ${LSTM_PREDICTION_HISTORY_BACKFILL_TRADING_DAYS:30}
+      # 预测基准日或评估目标日行情覆盖率达到该阈值后才允许入队。
+      min-price-coverage-rate: ${LSTM_PREDICTION_MIN_PRICE_COVERAGE_RATE:0.95}
     sequence-length: 60
     input-size: 16
     train-ratio: 0.8
@@ -176,8 +178,6 @@ models:
     residual-head-enabled: true
     group-head-scale: 0.1
     residual-head-scale: 0.1
-    training-enabled: ${LSTM_TRAINING_ENABLED:false}
-    training-time-guard-enabled: ${LSTM_TRAINING_TIME_GUARD_ENABLED:true}
     hidden-size: 50
     num-layers: 2
     dropout: 0.2
@@ -222,8 +222,6 @@ app:
     # 节点标识必须在共享数据库的不同运行节点之间保持唯一；未配置时使用主机名。
     node-id: ${APP_NODE_ID:}
     # 当前节点尚未生成运行配置时使用以下环境默认值；页面保存后以数据库值为准。
-    data-collection-enabled: ${DATA_COLLECTION_ENABLED:true}
-    news-collection-enabled: ${NEWS_COLLECTION_ENABLED:true}
     news:
       # 新闻按发布时间保留的天数，0 表示不启用时间清理。
       retention-days: ${NEWS_RETENTION_DAYS:365}
@@ -240,11 +238,6 @@ app:
   startup:
     listener:
       enabled: ${APP_STARTUP_LISTENER_ENABLED:true}
-    history-sync:
-      enabled: ${APP_STARTUP_HISTORY_SYNC_ENABLED:false}  # 重任务由统一调度中心按需执行
-    # 新闻采集开关：启动时遍历所有股票，先采集标题再获取详情写入数据库
-    news-sync:
-      enabled: ${APP_STARTUP_NEWS_SYNC_ENABLED:false}
   # 证券平台 HTTP 代理（用于解决云服务器 IP 被 weixin.citicsinfo.com 拦截 403 的问题）
   # 当远程部署返回 403 而本地可访问时，在本地/可访问机器搭建代理，远程通过此配置转发请求
   securities:

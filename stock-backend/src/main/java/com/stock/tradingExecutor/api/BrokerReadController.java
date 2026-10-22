@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.tradingExecutor.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -6,7 +6,6 @@ import com.stock.tradingExecutor.domain.dto.BrokerAccountDto;
 import com.stock.tradingExecutor.domain.dto.BrokerFillListResponseDto;
 import com.stock.tradingExecutor.domain.dto.BrokerHistoryQueryRequest;
 import com.stock.tradingExecutor.domain.dto.BrokerOrderListResponseDto;
-import com.stock.tradingExecutor.domain.dto.BrokerPositionListResponseDto;
 import com.stock.tradingExecutor.domain.dto.BrokerReadStatusDto;
 import com.stock.tradingExecutor.service.BrokerReadService;
 import lombok.RequiredArgsConstructor;
@@ -54,17 +53,6 @@ public class BrokerReadController {
     public ResponseDTO<BrokerAccountDto> getAccount() {
         log.info("查询数据库中的最新券商账户资金快照");
         return executeQuery(brokerReadService::getAccount);
-    }
-
-    /**
-     * 查询当前持仓。
-     *
-     * @return 持仓列表
-     */
-    @GetMapping("/positions")
-    public ResponseDTO<BrokerPositionListResponseDto> getPositions() {
-        log.info("查询数据库中的最新券商持仓快照");
-        return executeQuery(brokerReadService::getPositions);
     }
 
     /**
@@ -131,4 +119,4 @@ public class BrokerReadController {
         }
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

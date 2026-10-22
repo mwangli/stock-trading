@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------------------
+// AI_GENERATE_START ------------------------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
@@ -560,13 +560,16 @@ const JobManagement: React.FC = () => {
       </Card>
 
       <Modal
+        className="job-history-modal"
         title={historyJob ? `${t('jobsPage.history')}: ${historyJob.description || historyJob.jobName}` : t('jobsPage.history')}
-        width="80vw"
+        width="min(1600px, calc(100vw - 32px))"
         centered
         open={historyOpen}
+        footer={null}
+        destroyOnHidden
         onCancel={() => setHistoryOpen(false)}
       >
-        <div className="max-h-[calc(80vh-150px)] overflow-y-auto">
+        <div className="job-history-content">
           <Space wrap className="mb-4">
             <Select
               allowClear
@@ -591,8 +594,8 @@ const JobManagement: React.FC = () => {
             columns={historyColumns}
             dataSource={historyRuns}
             loading={historyLoading}
-          locale={{ emptyText: <Empty description={t('jobsPage.emptyRuns')} /> }}
-            scroll={{ x: 1360, y: 'calc(80vh - 270px)' }}
+            locale={{ emptyText: <Empty description={t('jobsPage.emptyRuns')} /> }}
+            scroll={{ x: 'max-content' }}
             pagination={{
               current: historyPage,
               pageSize: historyPageSize,
@@ -630,4 +633,4 @@ const JobManagement: React.FC = () => {
 };
 
 export default JobManagement;
-// AI_GENERATE_END -----------------------
+// AI_GENERATE_END ------------------------

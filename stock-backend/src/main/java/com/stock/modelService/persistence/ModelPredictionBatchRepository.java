@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.modelService.persistence;
 
 import com.stock.modelService.domain.entity.ModelPredictionBatchDocument;
@@ -28,20 +28,21 @@ public interface ModelPredictionBatchRepository extends MongoRepository<ModelPre
     List<ModelPredictionBatchDocument> findByCalendarFallbackIsNull();
 
     /**
-     * 判断是否存在未结束预测批次。
-     *
-     * @param statuses 未结束状态集合
-     * @return 是否存在未结束批次
-     */
-    boolean existsByStatusIn(Collection<String> statuses);
-
-    /**
      * 查询未结束预测批次。
      *
      * @param statuses 未结束状态集合
      * @return 未结束批次列表
      */
     List<ModelPredictionBatchDocument> findByStatusIn(Collection<String> statuses);
+
+    /**
+     * 按目标交易日从旧到新查询指定评估队列状态的批次。
+     *
+     * @param evaluationQueueStatus 评估队列状态
+     * @return 按目标交易日和创建时间升序排列的批次
+     */
+    List<ModelPredictionBatchDocument> findByEvaluationQueueStatusOrderByTargetTradeDateAscCreatedAtAsc(
+            String evaluationQueueStatus);
 
     /**
      * 分页查询全部预测批次。
@@ -96,4 +97,4 @@ public interface ModelPredictionBatchRepository extends MongoRepository<ModelPre
     List<ModelPredictionBatchDocument> findByModelIdAndStatusInOrderByTargetTradeDateDesc(
             String modelId, Collection<String> statuses);
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----
