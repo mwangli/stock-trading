@@ -446,6 +446,11 @@
     "refreshHint": "Only affects status checks on this page; Quartz scheduling is unchanged",
     "switchOn": "On",
     "switchOff": "Off",
+    "summary": { "title": "Runtime Summary", "brokerSessionValid": "Broker session valid", "brokerSessionInvalid": "Broker session invalid", "realWriteOff": "Real writes disabled", "autoExecutionStopped": "Automatic execution stopped", "refreshStatus": "Refresh Status" },
+    "runtime": { "justUpdated": "Runtime configuration", "schedulerHint": "Controls Quartz fixed jobs and manual triggers", "startupDataHint": "Checks and completes stock reference data on the next startup" },
+    "safety": { "realWrite": "Real Writes", "unattended": "Unattended", "brokerSession": "Broker Session", "notReady": "Not Ready" },
+    "info": { "title": "Runtime and Configuration", "checkedAt": "Status checked: {{time}}", "nodeId": "Runtime Node", "updatedAt": "Configuration Updated", "refreshCycle": "Page Refresh Cycle", "seconds": "{{seconds}} seconds", "schedulerMode": "Scheduling Mode", "unifiedScheduler": "Unified Scheduler", "schedulerDisabled": "Scheduler Disabled", "preferenceStorage": "Preference Storage", "currentBrowser": "Current Browser", "runtimeStorage": "Runtime Configuration", "serverPersisted": "Server Persisted" },
+    "health": { "gateway": "Broker Query Gateway", "brokerSession": "Broker Session", "tradingGate": "Live Trading Gate" },
     "fieldsRuntime": { "scheduler": "Unified Scheduler", "dataCollection": "Data Collection", "newsCollection": "News Collection", "startupData": "Startup Data Initialization", "training": "LSTM Model Training" }
     ,"status": { "normal": "Healthy", "error": "Error", "unchecked": "Unchecked", "notConfigured": "Not configured", "sessionValid": "Session valid", "sessionMissing": "Session not established", "autoReady": "Automatic execution ready", "controlledStop": "Controlled stop", "realWriteOn": "Real writes enabled", "readOnly": "Read-only observation", "loaded": "Loaded", "notLoaded": "Not loaded", "artifactAvailable": "Artifact available", "artifactMissing": "Artifact unavailable", "verified": "Digest verified", "unverified": "Digest not verified" }
   },

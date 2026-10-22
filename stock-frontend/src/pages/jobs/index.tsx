@@ -1,6 +1,6 @@
-// AI_GENERATE_START ------------------------
+// AI_GENERATE_START---- -----------------------------
 import './styles.css';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
 import {
   Button,
@@ -72,6 +72,8 @@ interface ExecutionPageResponse {
 
 interface TriggerResponse {
   runId: string;
+  accepted: boolean;
+  status: string;
   message: string;
 }
 
@@ -180,6 +182,7 @@ const JobManagement: React.FC = () => {
   const { t } = useTranslation();
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const jobsRequestRef = useRef<Promise<void> | null>(null);
   const [operatingJob, setOperatingJob] = useState<string | null>(null);
   const [operatingRun, setOperatingRun] = useState<string | null>(null);
   const [jobModuleInput, setJobModuleInput] = useState<JobDomain | undefined>();
@@ -201,10 +204,21 @@ const JobManagement: React.FC = () => {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
-  const loadJobs = useCallback(async () => {
-    const response = await request.get('/jobs') as ApiResponse<JobListResponse>;
-    const data = readApiData(response, '读取任务状态失败');
-    setJobs(data.items ?? []);
+  const loadJobs = useCallback(() => {
+    if (jobsRequestRef.current) {
+      return jobsRequestRef.current;
+    }
+    const requestPromise = (async () => {
+      const response = await request.get('/jobs', { timeout: 10000 }) as ApiResponse<JobListResponse>;
+      const data = readApiData(response, '读取任务状态失败');
+      setJobs(data.items ?? []);
+    })();
+    jobsRequestRef.current = requestPromise;
+    return requestPromise.finally(() => {
+      if (jobsRequestRef.current === requestPromise) {
+        jobsRequestRef.current = null;
+      }
+    });
   }, []);
 
   const loadHistory = useCallback(async (jobName: string, current: number) => {
@@ -230,36 +244,35 @@ const JobManagement: React.FC = () => {
     }
   }, [historyPageSize, historySource, historyStatus]);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    try {
-      await loadJobs();
-      if (historyOpen && historyJob) {
-        await loadHistory(historyJob.jobName, historyPage);
-      }
-    } catch (cause) {
-      console.error('读取任务管理数据失败', getApiErrorMessage(cause, '读取任务管理数据失败'));
-    } finally {
-      setLoading(false);
-    }
-  }, [historyJob, historyOpen, historyPage, loadHistory, loadJobs]);
-
   useEffect(() => {
-    void loadAll();
-  }, [loadAll]);
+    let mounted = true;
+    setLoading(true);
+    void loadJobs()
+      .catch((cause: unknown) => {
+        message.error(getApiErrorMessage(cause, '读取任务管理数据失败'));
+      })
+      .finally(() => {
+        if (mounted) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [loadJobs]);
 
   const hasActiveHistoryRuns = useMemo(
-    () => historyRuns.some((run) => run.status === 'RUNNING'),
+    () => historyRuns.some((run) => run.status === 'QUEUED' || run.status === 'RUNNING'),
     [historyRuns],
   );
 
   const hasActiveJobs = useMemo(
-    () => jobs.some((job) => job.latestRun?.status === 'RUNNING'),
+    () => jobs.some((job) => job.latestRun?.status === 'QUEUED' || job.latestRun?.status === 'RUNNING'),
     [jobs],
   );
 
   const jobSummary = useMemo(() => {
-    const running = jobs.filter((job) => job.latestRun?.status === 'RUNNING').length;
+    const running = jobs.filter((job) => job.latestRun?.status === 'QUEUED' || job.latestRun?.status === 'RUNNING').length;
     const attention = jobs.filter((job) => job.taskStatus === 'NOT_REGISTERED' || job.taskStatus === 'ERROR').length;
     const enabled = jobs.filter((job) => job.taskStatus === 'ENABLED' || job.taskStatus === 'NORMAL').length;
     return { total: jobs.length, enabled, running, attention };
@@ -304,6 +317,12 @@ const JobManagement: React.FC = () => {
     }
   };
 
+  const refreshAfterOperationSilently = () => {
+    void refreshAfterOperation().catch((cause: unknown) => {
+      console.error('刷新任务操作结果失败', getApiErrorMessage(cause, '刷新任务操作结果失败'));
+    });
+  };
+
   const operateJob = async (job: JobItem, action: 'trigger' | 'pause' | 'resume') => {
     setOperatingJob(job.jobName);
     try {
@@ -312,14 +331,31 @@ const JobManagement: React.FC = () => {
           params: { operator: 'web-console' },
         }) as ApiResponse<TriggerResponse>;
         const result = readApiData(response, '提交手动任务失败');
-        message.success(`${result.message}, ${localizedText('运行 ID', 'Run ID')}: ${result.runId}`);
+        if (result.accepted) {
+          setJobs((currentJobs) => currentJobs.map((currentJob) => currentJob.jobName === job.jobName
+            ? {
+                ...currentJob,
+                latestRun: {
+                  runId: result.runId,
+                  jobName: job.jobName,
+                  triggerSource: 'MANUAL',
+                  triggeredBy: 'web-console',
+                  status: result.status,
+                  createdAt: new Date().toISOString(),
+                },
+              }
+            : currentJob));
+          message.success(`${result.message}, ${localizedText('运行 ID', 'Run ID')}: ${result.runId}`);
+        } else {
+          message.warning(`${result.message}, ${localizedText('运行 ID', 'Run ID')}: ${result.runId}`);
+        }
       } else {
         const endpoint = action === 'pause' ? 'pause' : 'resume';
         const response = await request.post(`/jobs/${endpoint}/${encodeURIComponent(job.jobName)}`) as ApiResponse<null>;
         readApiData(response, action === 'pause' ? '暂停任务失败' : '恢复任务失败');
         message.success(action === 'pause' ? localizedText('任务已暂停', 'Job paused') : localizedText('任务已启用', 'Job enabled'));
       }
-      await refreshAfterOperation();
+      refreshAfterOperationSilently();
     } catch (cause) {
       message.error(getApiErrorMessage(cause, '任务操作失败'));
     } finally {
@@ -341,8 +377,12 @@ const JobManagement: React.FC = () => {
             params: { operator: 'web-console' },
           }) as ApiResponse<StopResponse>;
           const result = readApiData(response, '停止任务失败');
-          message.success(result.message);
-          await refreshAfterOperation();
+          if (result.status === 'CANCELLED') {
+            message.success(result.message);
+          } else {
+            message.warning(result.message);
+          }
+          refreshAfterOperationSilently();
         } catch (cause) {
           message.error(getApiErrorMessage(cause, '停止任务失败'));
         } finally {
@@ -400,14 +440,17 @@ const JobManagement: React.FC = () => {
       fixed: 'right',
       width: 90,
       render: (_, record) => {
-        const canStop = record.status === 'RUNNING' && operatingRun !== record.runId;
+        const canStop = (record.status === 'QUEUED' || record.status === 'RUNNING')
+          && operatingRun !== record.runId;
         return (
           <span
             className={`job-action ${canStop ? 'job-action-danger' : 'job-action-disabled'}`}
             aria-disabled={!canStop}
             onClick={canStop ? () => confirmStopRun(record) : undefined}
           >
-            {localizedText('停止', 'Stop')}
+            {record.status === 'QUEUED'
+              ? localizedText('取消', 'Cancel')
+              : localizedText('停止', 'Stop')}
           </span>
         );
       },
@@ -454,7 +497,8 @@ const JobManagement: React.FC = () => {
         const operating = operatingJob === record.jobName;
         const activeRun = record.latestRun?.status === 'RUNNING' ? record.latestRun : undefined;
         const needsRegistrationRepair = record.taskStatus === 'NOT_REGISTERED';
-        const canTrigger = record.enabled && !needsRegistrationRepair && record.taskStatus !== 'ERROR' && !operating;
+        const canTrigger = record.enabled
+          && !needsRegistrationRepair && record.taskStatus !== 'ERROR' && !operating;
         const canToggle = !operating;
         const toggleAction: 'pause' | 'resume' = record.enabled && !needsRegistrationRepair ? 'pause' : 'resume';
         const canStop = Boolean(activeRun) && operatingRun !== activeRun?.runId;
@@ -472,7 +516,7 @@ const JobManagement: React.FC = () => {
               aria-disabled={!canToggle}
               onClick={() => void operateJob(record, toggleAction)}
             >
-              {needsRegistrationRepair ? localizedText('修复注册', 'Repair') : record.enabled ? localizedText('暂停', 'Pause') : localizedText('启用', 'Enable')}
+              {needsRegistrationRepair ? localizedText('修复注册', 'Repair') : record.enabled ? localizedText('关闭', 'Disable') : localizedText('启用', 'Enable')}
             </span>
             <span
               className={`job-action job-action-danger ${canStop ? '' : 'job-action-disabled'}`}
@@ -516,7 +560,7 @@ const JobManagement: React.FC = () => {
           <div className="jobs-summary-inline" aria-label={localizedText('任务概览', 'Job overview')}>
             <span><small>{localizedText('任务总数', 'Total')}</small><strong>{jobSummary.total}</strong></span>
             <span className="jobs-summary-success"><small>{localizedText('可用任务', 'Available')}</small><strong>{jobSummary.enabled}</strong></span>
-            <span className="jobs-summary-running"><small>{localizedText('正在运行', 'Running')}</small><strong>{jobSummary.running}</strong></span>
+            <span className="jobs-summary-running"><small>{localizedText('排队/运行', 'Queued / Running')}</small><strong>{jobSummary.running}</strong></span>
             <span className="jobs-summary-attention"><small>{localizedText('需关注', 'Attention')}</small><strong>{jobSummary.attention}</strong></span>
           </div>
         )}
@@ -548,7 +592,7 @@ const JobManagement: React.FC = () => {
           rowKey="jobName"
           columns={jobColumns}
           dataSource={filteredJobs}
-          loading={loading}
+          loading={loading && jobs.length === 0}
           locale={{ emptyText: <Empty description={localizedText('暂无任务配置', 'No job configuration')} /> }}
           scroll={{ x: 1500 }}
           pagination={{
@@ -633,4 +677,4 @@ const JobManagement: React.FC = () => {
 };
 
 export default JobManagement;
-// AI_GENERATE_END ------------------------
+// AI_GENERATE_END---- -----------------------------

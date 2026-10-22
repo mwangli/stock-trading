@@ -1,4 +1,4 @@
-// AI_GENERATE_START- -
+// AI_GENERATE_START----- -
 package com.stock.tradingExecutor;
 
 import org.springframework.data.jpa.repository.Query;
@@ -30,15 +30,6 @@ public interface JobExecutionRecordRepository
     Optional<JobExecutionRecord> findByRunId(String runId);
 
     /**
-     * 判断任务是否存在未结束执行。
-     *
-     * @param jobName 任务名称
-     * @param statuses 未结束状态
-     * @return true 表示存在未结束执行
-     */
-    boolean existsByJobNameAndStatusIn(String jobName, Collection<JobExecutionStatus> statuses);
-
-    /**
      * 查询指定任务最近一次执行记录。
      *
      * @param jobName 任务名称
@@ -60,4 +51,4 @@ public interface JobExecutionRecordRepository
             + "or (newer.createdAt = item.createdAt and newer.id > item.id)))")
     List<JobExecutionRecord> findLatestByJobNames(@Param("jobNames") Collection<String> jobNames);
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END---- --

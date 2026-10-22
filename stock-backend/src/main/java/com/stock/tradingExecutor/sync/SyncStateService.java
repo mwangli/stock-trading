@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ---
 package com.stock.tradingExecutor.sync;
 
 import lombok.RequiredArgsConstructor;
@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.Optional;
 
 /**
  * 保存同步水位和缺口，供不同数据集共用。
@@ -21,6 +22,24 @@ public class SyncStateService {
     private static final String RESOLVED = "RESOLVED";
 
     private final SyncStateRepository stateRepository;
+
+    /**
+     * 查询指定数据集范围的同步状态快照。
+     *
+     * 调度任务使用不可变快照规划缺口请求，避免把 JPA 实体暴露到并发业务线程。
+     *
+     * @param dataset 数据集名称
+     * @param scopeKey 业务范围，例如股票代码
+     * @return 同步状态快照，不存在时返回空
+     */
+    @Transactional(readOnly = true)
+    public Optional<SyncStateSnapshot> findState(String dataset, String scopeKey) {
+        return stateRepository.findByDatasetAndScopeKey(dataset, scopeKey)
+                .map(state -> new SyncStateSnapshot(
+                        state.getGapStartDate(),
+                        state.getGapEndDate(),
+                        OPEN.equals(state.getGapStatus())));
+    }
 
     /** 推进数据集成功水位。 */
     @Transactional
@@ -61,18 +80,16 @@ public class SyncStateService {
         stateRepository.save(state);
     }
 
-    /** 关闭指定数据集范围的未解决缺口。 */
-    @Transactional
-    public void resolveGaps(String dataset, String scopeKey) {
-        stateRepository.findByDatasetAndScopeKey(dataset, scopeKey).ifPresent(state -> {
-            if (OPEN.equals(state.getGapStatus())) {
-                state.setGapStatus(RESOLVED)
-                        .setGapStartDate(null)
-                        .setGapEndDate(null)
-                        .setLastError(null);
-                stateRepository.save(state);
-            }
-        });
+    /**
+     * 同步状态只读快照。
+     *
+     * @param gapStartDate 待回补缺口开始日期
+     * @param gapEndDate 待回补缺口结束日期
+     * @param openGap 是否存在待回补缺口
+     */
+    public record SyncStateSnapshot(LocalDate gapStartDate,
+                                    LocalDate gapEndDate,
+                                    boolean openGap) {
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END ---

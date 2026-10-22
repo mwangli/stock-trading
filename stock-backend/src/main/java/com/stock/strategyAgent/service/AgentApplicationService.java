@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------------------
+// AI_GENERATE_START --------------------------
 package com.stock.strategyAgent.service;
 
 import com.stock.strategyAgent.api.DiagnosticRequest;
@@ -32,6 +32,7 @@ import com.stock.strategyAgent.runtime.AgentRuntimeResponse;
 import com.stock.strategyAgent.runtime.AgentRuntimeService;
 import com.stock.strategyAgent.runtime.AgentRuntimeStatus;
 import com.stock.strategyAgent.runtime.AgentStructuredOutput;
+import com.stock.strategyAgent.runtime.DiagnosticResult;
 import com.stock.strategyAgent.tool.AgentToolContextHolder;
 import com.stock.strategyAgent.tool.ToolExecutionContext;
 import com.stock.strategyAgent.tool.read.JobDiagnosticTool;
@@ -164,6 +165,7 @@ public class AgentApplicationService {
                     "你是股票交易系统的研究 Agent。只能使用给定证据，不得承诺收益，不得生成可直接执行的券商订单。"
                             + "只返回合法的 Research JSON，不要输出 Markdown、标题或解释文字，字段为："
                             + "{summary,status,keyFindings,evidenceRefs,uncertainty,nextActions}。"
+                            + "summary 和 uncertainty 各不超过 80 个汉字；keyFindings 最多 5 项，nextActions 最多 3 项，每项不超过 50 个汉字。"
                             + "所有自然语言字段使用中文；confirmed 只表示交易日历数据已确认，绝不表示交易已确认或已执行；"
                             + "tradingDay 才表示当天是否为交易日。"
                             + "status 只能是 PASS、WARN 或 UNKNOWN；evidenceRefs 只能填写本次证据编号："
@@ -201,6 +203,13 @@ public class AgentApplicationService {
             log.info("[Agent][Progress] taskId={} sessionId={} type={} progress=3/5 stage=EVIDENCE_READY evidenceCount={} evidenceRefCount={} summaryChars={}",
                     task.getTaskId(), task.getSessionId(), task.getTaskType(), factEvidence.getItems().size(),
                     factEvidence.getEvidenceRefs().size(), evidence.length());
+            if (isRuntimeDiagnostic(question)) {
+                log.info("[Agent][Progress] taskId={} sessionId={} type={} progress=4/5 stage=DETERMINISTIC_RUNTIME_DIAGNOSTIC message=使用轻量 Provider 实测结果",
+                        task.getTaskId(), task.getSessionId(), task.getTaskType());
+                AgentRuntimeResponse response = runtimeDiagnosticResponse(factEvidence);
+                finish(task, response);
+                return toTask(taskRepository.save(task));
+            }
             log.info("[Agent][Progress] taskId={} sessionId={} type={} progress=4/5 stage=MODEL_CALL message=开始调用模型",
                     task.getTaskId(), task.getSessionId(), task.getTaskType());
             AgentRuntimeResponse response = runtimeService.execute(runtimeRequest(
@@ -214,6 +223,69 @@ public class AgentApplicationService {
             fail(task, exception);
         }
         return toTask(taskRepository.save(task));
+    }
+
+    private AgentRuntimeResponse runtimeDiagnosticResponse(EvidenceBundle evidence) {
+        String provider = runtimeService.providerName();
+        boolean available = switch (provider) {
+            case "ollama", "deepseek" -> runtimeService.providerHealthCheck(provider);
+            case "auto" -> {
+                var health = runtimeService.providerHealthCheck();
+                yield health.isDeepseekAvailable() || health.isOllamaAvailable();
+            }
+            default -> false;
+        };
+        var providerStatus = runtimeService.providerStatus();
+        String model = "deepseek".equals(provider)
+                ? properties.getDeepseek().getModel() : properties.getOllama().getModel();
+        String currentStatus = "deepseek".equals(provider)
+                ? providerStatus.getDeepseekStatus() : providerStatus.getOllamaStatus();
+        String summary = available
+                ? "当前 " + provider + " 模型连接正常，模型 " + model + " 已可用"
+                : "当前 " + provider + " 模型连接不可用，请检查服务地址、模型是否存在及熔断状态";
+
+        DiagnosticResult.DiagnosticCheck check = new DiagnosticResult.DiagnosticCheck();
+        check.setName("Provider 连接与模型存在性");
+        check.setStatus(available ? "PASS" : "BLOCKED");
+        check.setDetail("provider=" + provider + "，model=" + model + "，runtimeStatus=" + currentStatus);
+        check.setEvidenceRefs(evidence.getEvidenceRefs());
+
+        DiagnosticResult result = new DiagnosticResult();
+        result.setSummary(summary);
+        result.setStatus(available ? "PASS" : "BLOCKED");
+        result.setChecks(List.of(check));
+        result.setBlockedReasons(available ? List.of() : List.of("Provider 健康检查未通过"));
+        result.setEvidenceRefs(evidence.getEvidenceRefs());
+        result.setUncertainty(available
+                ? "连接检查不代表复杂问题的生成速度；本地 7B 模型速度仍受 CPU/GPU 资源影响"
+                : "当前只确认 Provider 健康检查失败，具体底层原因需结合 Ollama 服务日志判断");
+        return AgentRuntimeResponse.builder()
+                .status(AgentRuntimeStatus.COMPLETED)
+                .provider(provider)
+                .model(model)
+                .content(JSON.toJSONString(result))
+                .evidenceSummary(evidence.getSummary())
+                .structuredOutput(result)
+                .build();
+    }
+
+    private boolean isRuntimeDiagnostic(String question) {
+        if (!StringUtils.hasText(question)) {
+            return false;
+        }
+        String normalized = question.toLowerCase();
+        return normalized.contains("模型连接")
+                || normalized.contains("模型状态")
+                || normalized.contains("provider")
+                || normalized.contains("ollama")
+                || normalized.contains("deepseek")
+                || normalized.contains("agent状态")
+                || normalized.contains("agent 状态")
+                || normalized.contains("响应超时")
+                || normalized.contains("对话超时")
+                || normalized.contains("model connection")
+                || normalized.contains("provider health")
+                || normalized.contains("timeout");
     }
 
     /**
@@ -596,4 +668,4 @@ public class AgentApplicationService {
                 ? value.substring(0, properties.getMaxOutputChars()) : value;
     }
 }
-// AI_GENERATE_END ----------------------
+// AI_GENERATE_END ------------------------

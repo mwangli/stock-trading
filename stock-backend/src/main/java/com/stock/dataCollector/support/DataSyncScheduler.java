@@ -1,4 +1,4 @@
-// AI_GENERATE_START------ --------
+// AI_GENERATE_START--------- --------
 package com.stock.dataCollector.support;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -7,8 +7,10 @@ import com.stock.dataCollector.service.StockNewsService;
 import com.stock.dataCollector.service.TradingCalendarMaintenanceService;
 import com.stock.dataCollector.service.TradingCalendarMaintenanceService.CalendarMaintenanceResult;
 import com.stock.dataCollector.service.TradingCalendarService;
+import com.stock.modelService.service.ModelPredictionAnalysisService;
 import com.stock.tradingExecutor.JobSkippedException;
 import com.stock.tradingExecutor.sync.SyncStateService;
+import com.stock.tradingExecutor.sync.SyncStateService.SyncStateSnapshot;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +51,7 @@ public class DataSyncScheduler {
     private final TradingCalendarService tradingCalendarService;
     private final TradingCalendarMaintenanceService tradingCalendarMaintenanceService;
     private final SyncStateService syncStateService;
+    private final ModelPredictionAnalysisService modelPredictionAnalysisService;
 
     private final ExecutorService priceSyncExecutor = Executors.newFixedThreadPool(PRICE_SYNC_THREADS,
             r -> {
@@ -100,8 +103,8 @@ public class DataSyncScheduler {
     /**
      * 同步当前交易日，并回补最近三年的缺失行情。
      *
-     * 当前年度使用已确认交易日历检查数据缺口；更早历史记录直接依据供应商实际返回结果回补，
-     * 避免公开休市日历不提供历史年份时阻断当日行情同步。
+     * 当前年度使用已确认交易日历，历史区间使用 MongoDB 全市场实际行情日期作为预期日期集合。
+     * 每只股票先计算已有日期与预期日期的差集，再按单日或连续缺口窗口请求供应商。
      *
      * @throws JobSkippedException 当前日期尚未确认或不是交易日时抛出
      * @throws IllegalStateException 日历修复失败、行情同步失败或历史缺口仍未补齐时抛出
@@ -110,7 +113,7 @@ public class DataSyncScheduler {
         LocalDate today = LocalDate.now();
         LocalDate earliestDate = today.minusYears(PRICE_BACKFILL_YEARS);
         LocalDate calendarStartDate = today.withDayOfYear(1);
-        List<LocalDate> tradingDays = loadTradingDaysWithCalendarRepair(calendarStartDate, today);
+        List<LocalDate> confirmedTradingDays = loadTradingDaysWithCalendarRepair(calendarStartDate, today);
         if (!tradingCalendarService.isConfirmedDate(today)) {
             throw new JobSkippedException("交易日历尚未确认: " + today);
         }
@@ -122,28 +125,45 @@ public class DataSyncScheduler {
         if (codes == null || codes.isEmpty()) {
             throw new IllegalStateException("未找到任何股票代码，无法执行日线同步");
         }
+        List<LocalDate> expectedTradingDays = stockDataService.findExpectedTradingDays(
+                earliestDate, today, confirmedTradingDays);
 
-        AtomicInteger todaySaved = new AtomicInteger();
+        AtomicInteger incrementalSaved = new AtomicInteger();
         AtomicInteger backfillSaved = new AtomicInteger();
+        AtomicInteger skipped = new AtomicInteger();
+        AtomicInteger apiRequests = new AtomicInteger();
         AtomicInteger unresolved = new AtomicInteger();
         AtomicInteger failed = new AtomicInteger();
         CountDownLatch latch = new CountDownLatch(codes.size());
         for (String code : codes) {
             priceSyncExecutor.submit(() -> {
                 try {
+                    SyncStateSnapshot syncState = syncStateService.findState("stock-price", code)
+                            .orElse(null);
                     StockDataService.PriceSyncResult result = stockDataService
-                            .syncTodayAndBackfill(code, today, earliestDate, tradingDays);
-                    todaySaved.addAndGet(result.todaySaved());
+                            .syncTodayAndBackfill(
+                                    code,
+                                    today,
+                                    earliestDate,
+                                    expectedTradingDays,
+                                    syncState != null && syncState.openGap()
+                                            ? syncState.gapStartDate() : null,
+                                    syncState != null && syncState.openGap()
+                                            ? syncState.gapEndDate() : null);
+                    incrementalSaved.addAndGet(result.incrementalSaved());
                     backfillSaved.addAndGet(result.backfillSaved());
+                    apiRequests.addAndGet(result.apiRequestCount());
+                    if (result.skipped()) {
+                        skipped.incrementAndGet();
+                    }
                     unresolved.addAndGet(result.unresolvedDates().size());
                     if (result.unresolvedDates().isEmpty()) {
                         syncStateService.markSuccess("stock-price", code, today);
-                        syncStateService.resolveGaps("stock-price", code);
                     } else {
                         syncStateService.recordGap("stock-price", code,
                                 result.unresolvedDates().get(0),
                                 result.unresolvedDates().get(result.unresolvedDates().size() - 1),
-                                "供应商三年窗口未覆盖全部缺失交易日");
+                                "缺口同步后仍存在未解决交易日");
                     }
                 } catch (Exception exception) {
                     failed.incrementAndGet();
@@ -163,11 +183,15 @@ public class DataSyncScheduler {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("日线同步被中断", exception);
         }
-        log.info("[数据同步任务] 日线同步完成: todaySaved={}, backfillSaved={}, unresolved={}, failed={}",
-                todaySaved.get(), backfillSaved.get(), unresolved.get(), failed.get());
+        log.info("[数据同步任务] 日线同步完成: incrementalSaved={}, backfillSaved={}, skipped={}, "
+                        + "apiRequests={}, unresolved={}, failed={}",
+                incrementalSaved.get(), backfillSaved.get(), skipped.get(), apiRequests.get(),
+                unresolved.get(), failed.get());
         if (failed.get() > 0 || unresolved.get() > 0) {
             throw new IllegalStateException("日线同步存在失败或三年窗口内未回补数据");
         }
+        int evaluationQueuedCount = modelPredictionAnalysisService.resumeAvailableEvaluations();
+        log.info("[数据同步任务] 已唤醒模型评估队列: evaluationQueued={}", evaluationQueuedCount);
     }
 
     private List<LocalDate> loadTradingDaysWithCalendarRepair(LocalDate startDate, LocalDate endDate) {
@@ -223,4 +247,4 @@ public class DataSyncScheduler {
         log.info("========== [数据同步任务] 每日增量新闻采集结束 ==========");
     }
 }
-// AI_GENERATE_END-- -----------
+// AI_GENERATE_END----- -----------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START------ -------------------------------------------
+// AI_GENERATE_START-------------- -------------------------------------------
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
 import {
@@ -15,6 +15,7 @@ import {
   Progress,
   Row,
   Space,
+  Spin,
   Statistic,
   Table,
   Tag,
@@ -22,7 +23,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import {
   CloudServerOutlined,
   EyeOutlined,
@@ -99,6 +100,27 @@ interface Overview {
   latestTrainingRun?: TrainingRun;
   trainingRunning: boolean;
   activeModelHealthy: boolean;
+  activeVersionScore?: ModelScoreSummary;
+}
+
+interface ModelScoreSummary {
+  batchId: string;
+  modelId: string;
+  modelVersion: string;
+  targetTradeDate?: string;
+  evaluatedCount: number;
+  coverageRate?: number;
+  directionAccuracy?: number;
+  topDecileDirectionAccuracy?: number;
+  highConfidenceAccuracy?: number;
+  spearmanRankIc?: number;
+  abilityLevel?: string;
+}
+
+interface ModelScoreItem {
+  label: string;
+  value: string;
+  hint: string;
 }
 
 interface PageResponse<T> {
@@ -145,6 +167,7 @@ interface PredictionBatch {
   evaluatedCount: number;
   noMarketDataCount: number;
   evaluationQueueStatus?: string;
+  evaluationWaitReason?: string;
   evaluationQueuedAt?: string;
   evaluationStartedAt?: string;
   evaluationFinishedAt?: string;
@@ -260,6 +283,21 @@ const evaluationStatusColors: Record<string, string> = {
   PENDING: 'blue',
   EVALUATED: 'green',
   NO_MARKET_DATA: 'orange',
+};
+
+const evaluationWaitReasonLabels: Record<string, [string, string]> = {
+  PREDICTION_NOT_COMPLETED: ['预测尚未完成', 'Prediction has not completed'],
+  TARGET_DATE_NOT_REACHED: ['目标交易日尚未到达', 'Target trading date has not arrived'],
+  MARKET_DATA_COVERAGE_LOW: ['目标交易日行情覆盖率不足', 'Target-date market data coverage is insufficient'],
+  PENDING_MARKET_DATA: ['仍有预测明细等待目标日行情', 'Some prediction details are still waiting for market data'],
+};
+
+const formatEvaluationWaitReason = (reason?: string) => {
+  if (!reason) {
+    return undefined;
+  }
+  const labels = evaluationWaitReasonLabels[reason];
+  return labels ? localizedText(labels[0], labels[1]) : reason;
 };
 
 const formatLoss = (value?: number) => value === undefined || value === null
@@ -416,17 +454,18 @@ const ModelOperations: React.FC = () => {
   const [predictionLoading, setPredictionLoading] = useState(false);
   const [predictionBatches, setPredictionBatches] = useState<PredictionBatch[]>([]);
   const [predictionBatchTotal, setPredictionBatchTotal] = useState(0);
+  const [predictionBatchPage, setPredictionBatchPage] = useState(1);
+  const [predictionBatchPageSize, setPredictionBatchPageSize] = useState(10);
   const [selectedPredictionBatchId, setSelectedPredictionBatchId] = useState<string>();
   const [predictionResults, setPredictionResults] = useState<PredictionResult[]>([]);
   const [predictionResultTotal, setPredictionResultTotal] = useState(0);
   const [predictionResultPage, setPredictionResultPage] = useState(1);
   const [predictionResultModalOpen, setPredictionResultModalOpen] = useState(false);
-  const [predictionAnalysisModalOpen, setPredictionAnalysisModalOpen] = useState(false);
-  const [predictionAnalysisLoading, setPredictionAnalysisLoading] = useState(false);
   const [predictionDetailsOpen, setPredictionDetailsOpen] = useState(false);
+  const [predictionDetailsLoading, setPredictionDetailsLoading] = useState(false);
   const [modelAbility, setModelAbility] = useState<ModelAbility | null>(null);
   const [predictionPollingPaused, setPredictionPollingPaused] = useState(false);
-  const predictionDataLoadingRef = useRef(false);
+  const predictionDataRequestIdRef = useRef(0);
   const selectedPredictionBatchIdRef = useRef<string | undefined>(undefined);
 
   const updateSelectedPredictionBatchId = useCallback((batchId?: string) => {
@@ -467,33 +506,39 @@ const ModelOperations: React.FC = () => {
     batchId: string,
     current = 1,
   ) => {
-    const [resultResponse, abilityResponse] = await Promise.all([
-      request.get('/modelPredictions/results', {
-        params: { batchId, current, pageSize: 20 },
-      }) as Promise<ApiResponse<PageResponse<PredictionResult>>>,
-      request.get('/modelPredictions/ability', { params: { batchId } }) as Promise<ApiResponse<ModelAbility>>,
-    ]);
-      const resultPage = readApiData(await resultResponse, localizedText('读取预测结果失败', 'Failed to load prediction results'));
+    const response = await request.get('/modelPredictions/results', {
+      params: { batchId, current, pageSize: 20 },
+    }) as ApiResponse<PageResponse<PredictionResult>>;
+    const resultPage = readApiData(response, localizedText('读取预测结果失败', 'Failed to load prediction results'));
     setPredictionResults(resultPage.items ?? []);
     setPredictionResultTotal(resultPage.total);
     setPredictionResultPage(resultPage.current);
-      setModelAbility(readApiData(await abilityResponse, localizedText('读取模型能力失败', 'Failed to load model capability')));
   }, []);
 
-  const loadPredictionData = useCallback(async () => {
-    if (predictionDataLoadingRef.current) {
-      return;
-    }
-    predictionDataLoadingRef.current = true;
+  const loadPredictionAbility = useCallback(async (batchId: string) => {
+    const response = await request.get('/modelPredictions/ability', {
+      params: { batchId },
+    }) as ApiResponse<ModelAbility>;
+    setModelAbility(readApiData(response, localizedText('读取批次评估信息失败', 'Failed to load batch evaluation')));
+  }, []);
+
+  const loadPredictionData = useCallback(async (current = 1, currentPageSize = 10) => {
+    const requestId = predictionDataRequestIdRef.current + 1;
+    predictionDataRequestIdRef.current = requestId;
     setPredictionLoading(true);
     try {
       const response = await request.get('/modelPredictions/batches', {
-        params: { current: 1, pageSize: 100 },
+        params: { current, pageSize: currentPageSize },
       }) as ApiResponse<PageResponse<PredictionBatch>>;
       const page = readApiData(response, localizedText('读取预测批次失败', 'Failed to load prediction batches'));
+      if (requestId !== predictionDataRequestIdRef.current) {
+        return;
+      }
       const batches = page.items ?? [];
       setPredictionBatches(batches);
       setPredictionBatchTotal(page.total);
+      setPredictionBatchPage(page.current);
+      setPredictionBatchPageSize(page.pageSize);
       const currentBatchId = selectedPredictionBatchIdRef.current;
       const batchId = currentBatchId && batches.some((item) => item.id === currentBatchId)
         ? currentBatchId
@@ -505,13 +550,14 @@ const ModelOperations: React.FC = () => {
         setModelAbility(null);
       }
     } finally {
-      predictionDataLoadingRef.current = false;
-      setPredictionLoading(false);
+      if (requestId === predictionDataRequestIdRef.current) {
+        setPredictionLoading(false);
+      }
     }
   }, [updateSelectedPredictionBatchId]);
 
   useEffect(() => {
-    void Promise.all([loadOverview(true), loadPredictionData()]).catch((cause) => {
+    void Promise.all([loadOverview(true), loadPredictionData(1, 10)]).catch((cause) => {
       message.error(getApiErrorMessage(cause, localizedText('读取模型运维数据失败', 'Failed to load model operations data')));
     });
   }, [loadOverview, loadPredictionData]);
@@ -544,18 +590,21 @@ const ModelOperations: React.FC = () => {
 
 
   useEffect(() => {
-    const running = predictionBatches.some((item) => item.status === 'QUEUED' || item.status === 'RUNNING');
+    const running = predictionBatches.some((item) => item.status === 'QUEUED'
+      || item.status === 'RUNNING'
+      || item.evaluationQueueStatus === 'QUEUED'
+      || item.evaluationQueueStatus === 'RUNNING');
     if (!running || predictionPollingPaused) {
       return undefined;
     }
     const timer = window.setInterval(() => {
-      void loadPredictionData().catch((cause) => {
+      void loadPredictionData(predictionBatchPage, predictionBatchPageSize).catch((cause) => {
         setPredictionPollingPaused(true);
         message.error(getApiErrorMessage(cause, localizedText('刷新预测进度失败，已暂停自动刷新', 'Failed to refresh prediction progress; automatic refresh paused')));
       });
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [loadPredictionData, predictionBatches, predictionPollingPaused]);
+  }, [loadPredictionData, predictionBatchPage, predictionBatchPageSize, predictionBatches, predictionPollingPaused]);
 
   const refreshAfterOperation = async () => {
     await Promise.all([loadOverview(), loadVersions(1)]);
@@ -676,52 +725,47 @@ const ModelOperations: React.FC = () => {
     void loadPredictionResults(batchId, 1);
   };
 
-  const openPredictionAnalysis = (batchId: string) => {
+  const openPredictionDetails = (batchId: string) => {
     updateSelectedPredictionBatchId(batchId);
     setModelAbility(null);
-    setPredictionAnalysisLoading(true);
-    setPredictionAnalysisModalOpen(true);
-    void loadPredictionResults(batchId, 1)
+    setPredictionDetailsLoading(true);
+    setPredictionDetailsOpen(true);
+    void loadPredictionAbility(batchId)
       .catch((cause) => {
-        message.error(getApiErrorMessage(cause, localizedText('读取预测分析失败', 'Failed to load prediction analysis')));
+        message.error(getApiErrorMessage(cause, localizedText('读取批次评估信息失败', 'Failed to load batch evaluation')));
       })
-      .finally(() => setPredictionAnalysisLoading(false));
+      .finally(() => setPredictionDetailsLoading(false));
   };
 
-  const rerunPrediction = async (batchId: string) => {
+  const retryPredictionBatch = async (batchId: string) => {
     setOperating(true);
-    setPredictionPollingPaused(false);
     try {
-      const response = await request.post('/modelPredictions/rerun', {
-        batchId,
-        operatorName: operatorName.trim() || 'web-console',
-      }) as ApiResponse<PredictionOperationResponse>;
-      const result = readApiData(response, localizedText('提交历史预测重算失败', 'Failed to submit historical prediction rerun'));
+      const response = await request.post(
+        `/modelPredictions/retryPrediction/${encodeURIComponent(batchId)}`,
+      ) as ApiResponse<PredictionOperationResponse>;
+      const result = readApiData(response, localizedText('重新提交预测失败', 'Failed to retry prediction'));
       message.success(result.message);
-      updateSelectedPredictionBatchId(result.batchId);
-      await loadPredictionData();
+      setPredictionPollingPaused(false);
+      await loadPredictionData(predictionBatchPage, predictionBatchPageSize);
     } catch (cause) {
-      message.error(getApiErrorMessage(cause, localizedText('提交历史预测重算失败', 'Failed to submit historical prediction rerun')));
+      message.error(getApiErrorMessage(cause, localizedText('重新提交预测失败', 'Failed to retry prediction')));
     } finally {
       setOperating(false);
     }
   };
 
-  const deletePredictionBatch = async (batchId: string) => {
+  const retryEvaluationBatch = async (batchId: string) => {
     setOperating(true);
     try {
-      const response = await request.delete(`/modelPredictions/batches/${encodeURIComponent(batchId)}`) as ApiResponse<PredictionOperationResponse>;
-      const result = readApiData(response, localizedText('删除预测批次失败', 'Failed to delete prediction batch'));
+      const response = await request.post(
+        `/modelPredictions/retryEvaluation/${encodeURIComponent(batchId)}`,
+      ) as ApiResponse<PredictionOperationResponse>;
+      const result = readApiData(response, localizedText('重新提交评估失败', 'Failed to retry evaluation'));
       message.success(result.message);
-      if (selectedPredictionBatchId === batchId) {
-        updateSelectedPredictionBatchId(undefined);
-        setPredictionDetailsOpen(false);
-        setPredictionResultModalOpen(false);
-        setPredictionAnalysisModalOpen(false);
-      }
-      await loadPredictionData();
+      setPredictionPollingPaused(false);
+      await loadPredictionData(predictionBatchPage, predictionBatchPageSize);
     } catch (cause) {
-      message.error(getApiErrorMessage(cause, localizedText('删除预测批次失败', 'Failed to delete prediction batch')));
+      message.error(getApiErrorMessage(cause, localizedText('重新提交评估失败', 'Failed to retry evaluation')));
     } finally {
       setOperating(false);
     }
@@ -837,10 +881,7 @@ const ModelOperations: React.FC = () => {
       title: localizedText('批次', 'Batch'), dataIndex: 'id', key: 'id', width: 150,
       render: (value: string, record) => (
         <Tooltip title={value}>
-          <Button type="link" className="!px-0" onClick={() => {
-            updateSelectedPredictionBatchId(record.id);
-            setPredictionDetailsOpen(true);
-          }}>
+          <Button type="link" className="!px-0" onClick={() => openPredictionDetails(record.id)}>
             <span className="max-w-32 truncate align-middle">{value}</span>
           </Button>
         </Tooltip>
@@ -860,7 +901,11 @@ const ModelOperations: React.FC = () => {
     { title: localizedText('状态', 'Status'), dataIndex: 'status', key: 'status', width: 110, render: (value: string) => <Tag color={statusColors[value] ?? 'default'}>{value}</Tag> },
     {
       title: localizedText('评估队列', 'Evaluation Queue'), dataIndex: 'evaluationQueueStatus', key: 'evaluationQueueStatus', width: 120,
-      render: (value?: string) => <Tag color={statusColors[value ?? ''] ?? 'default'}>{value || 'WAITING'}</Tag>,
+      render: (value: string | undefined, record) => (
+        <Tooltip title={formatEvaluationWaitReason(record.evaluationWaitReason)}>
+          <Tag color={statusColors[value ?? ''] ?? 'default'}>{value || 'WAITING'}</Tag>
+        </Tooltip>
+      ),
     },
     {
       title: localizedText('执行情况', 'Execution'), key: 'execution', width: 260,
@@ -876,51 +921,60 @@ const ModelOperations: React.FC = () => {
     },
     { title: localizedText('交易门禁', 'Trading Eligibility'), dataIndex: 'tradingEligibility', key: 'tradingEligibility', width: 130, render: (value?: string) => <Tag color={value === 'TRADE_ELIGIBLE' ? 'green' : value === 'DISABLED' ? 'red' : 'orange'}>{value || 'DISABLED'}</Tag> },
     {
-      title: localizedText('操作', 'Actions'), key: 'actions', width: 260,
+      title: localizedText('操作', 'Actions'), key: 'actions', width: 300,
       render: (_, record) => {
-        const canDelete = record.status === 'FAILED' || record.status === 'CANCELLED'
-          || (!['QUEUED', 'RUNNING'].includes(record.status) && record.successCount <= 0);
+        const predictionRetryEnabled = record.status === 'FAILED';
+        const evaluationRetryEnabled = ['COMPLETED', 'PARTIAL', 'EVALUATED'].includes(record.status)
+          && record.evaluationQueueStatus === 'FAILED';
         return (
           <Space size="small">
-            <Popconfirm
-              title={localizedText('重新生成该历史批次？', 'Rerun this historical batch?')}
-              description={localizedText('将使用原模型版本和基准日生成新批次，不覆盖原批次结果。', 'A new batch will use the original model version and base date without overwriting the source batch.')}
-              okText={localizedText('确认重算', 'Rerun')}
-              cancelText={localizedText('取消', 'Cancel')}
-              onConfirm={() => void rerunPrediction(record.id)}
-            >
-              <Button
-                type="link"
-                size="small"
-                className="!px-0"
-                disabled={operating || record.status === 'QUEUED' || record.status === 'RUNNING'}
-              >
-                {localizedText('预测', 'Predict')}
-              </Button>
-            </Popconfirm>
+            <Button type="link" size="small" className="!px-0" onClick={() => openPredictionDetails(record.id)}>
+              {localizedText('详情', 'Details')}
+            </Button>
             <Button type="link" size="small" className="!px-0" onClick={() => openPredictionResults(record.id)}>
               {localizedText('结果', 'Results')}
             </Button>
-            <Button type="link" size="small" className="!px-0" onClick={() => openPredictionAnalysis(record.id)}>
-              {localizedText('评估', 'Evaluation')}
-            </Button>
-            <Popconfirm
-              disabled={!canDelete}
-              title={localizedText('删除该预测批次及全部关联数据？', 'Delete this batch and all related data?')}
-              description={localizedText('仅用于清理失败或无效批次，删除后不可恢复。', 'Only failed or invalid batches should be removed. This cannot be undone.')}
-              okText={localizedText('确认删除', 'Delete')}
-              cancelText={localizedText('取消', 'Cancel')}
-              onConfirm={() => void deletePredictionBatch(record.id)}
-            >
-              <Button type="link" size="small" className="!px-0" disabled={operating || !canDelete}>
-                {localizedText('删除', 'Delete')}
-              </Button>
-            </Popconfirm>
+            <Tooltip title={predictionRetryEnabled ? undefined : localizedText('仅预测失败的批次可重新预测', 'Only failed predictions can be retried')}>
+              <span>
+                <Button
+                  type="link"
+                  size="small"
+                  className="!px-0"
+                  disabled={operating || !predictionRetryEnabled}
+                  onClick={() => void retryPredictionBatch(record.id)}
+                >
+                  {localizedText('重新预测', 'Retry Prediction')}
+                </Button>
+              </span>
+            </Tooltip>
+            <Tooltip title={evaluationRetryEnabled ? undefined : localizedText('仅评估失败且预测已完成的批次可重新评估', 'Only failed evaluations with completed predictions can be retried')}>
+              <span>
+                <Button
+                  type="link"
+                  size="small"
+                  className="!px-0"
+                  disabled={operating || !evaluationRetryEnabled}
+                  onClick={() => void retryEvaluationBatch(record.id)}
+                >
+                  {localizedText('重新评估', 'Retry Evaluation')}
+                </Button>
+              </span>
+            </Tooltip>
           </Space>
         );
       },
     },
   ];
+
+  const handlePredictionBatchTableChange = (pagination: TablePaginationConfig) => {
+    const nextPageSize = pagination.pageSize ?? 10;
+    const nextPage = nextPageSize === predictionBatchPageSize ? pagination.current ?? 1 : 1;
+    setPredictionBatchPage(nextPage);
+    setPredictionBatchPageSize(nextPageSize);
+    void loadPredictionData(nextPage, nextPageSize).catch((cause) => {
+      message.error(getApiErrorMessage(cause, localizedText('读取预测批次失败', 'Failed to load prediction batches')));
+    });
+  };
 
   const predictionResultColumns: ColumnsType<PredictionResult> = [
     {
@@ -976,6 +1030,28 @@ const ModelOperations: React.FC = () => {
         Math.floor((progressClock - new Date(latestTraining.startedAt).getTime()) / 1000),
       )
     : latestTraining?.elapsedSeconds;
+  const activeModelScores: ModelScoreItem[] = [
+    {
+      label: localizedText('方向准确率', 'Direction Accuracy'),
+      value: formatPercent(overview?.activeVersionScore?.directionAccuracy),
+      hint: localizedText('全部已评估样本的涨跌方向判断准确率', 'Direction accuracy across all evaluated samples'),
+    },
+    {
+      label: localizedText('Top 10% 命中率', 'Top 10% Hit Rate'),
+      value: formatPercent(overview?.activeVersionScore?.topDecileDirectionAccuracy),
+      hint: localizedText('预测收益排名前 10% 股票的上涨命中率', 'Upside hit rate among the top 10% predicted returns'),
+    },
+    {
+      label: localizedText('高置信命中率', 'High-confidence Hit Rate'),
+      value: formatPercent(overview?.activeVersionScore?.highConfidenceAccuracy),
+      hint: localizedText('高置信度方向预测的实际命中率', 'Actual hit rate for high-confidence direction predictions'),
+    },
+    {
+      label: localizedText('排序 IC', 'Rank IC'),
+      value: formatNumber(overview?.activeVersionScore?.spearmanRankIc, 3),
+      hint: localizedText('预测收益排序与实际收益排序的 Spearman 相关系数', 'Spearman correlation between predicted and actual return rankings'),
+    },
+  ];
 
   return (
     <div className="app-page">
@@ -1015,21 +1091,51 @@ const ModelOperations: React.FC = () => {
       </div>
 
       <Row className="model-overview-cards" gutter={[16, 16]} align="stretch">
-        <Col className="model-overview-col" xs={24} md={12}>
+        <Col className="model-overview-col" xs={24} lg={16}>
           <Card className="surface-card compact-card model-overview-card" loading={overviewLoading}>
-            <Statistic
-              title={t('modelOperations.productionVersion')}
-              value={overview?.activeVersion?.modelVersion || localizedText('未激活', 'Not Active')}
-              prefix={<CloudServerOutlined />}
-            />
-            <div className="model-overview-card-footer">
-              <Tag color={overview?.activeModelHealthy ? 'green' : 'red'}>
-                {overview?.activeModelHealthy ? localizedText('校验正常', 'Healthy') : localizedText('未通过校验', 'Validation Failed')}
-              </Tag>
+            <div className="model-version-heading">
+              <div className="model-version-identity">
+                <span className="model-version-label">{t('modelOperations.productionVersion')}</span>
+                <div className="model-version-name">
+                  <CloudServerOutlined />
+                  <Text ellipsis={{ tooltip: overview?.activeVersion?.modelVersion }}>
+                    {overview?.activeVersion?.modelVersion || localizedText('未激活', 'Not Active')}
+                  </Text>
+                </div>
+              </div>
+              <Space wrap size={[6, 6]}>
+                <Tag color={overview?.activeModelHealthy ? 'green' : 'red'}>
+                  {overview?.activeModelHealthy ? localizedText('校验正常', 'Healthy') : localizedText('未通过校验', 'Validation Failed')}
+                </Tag>
+                {overview?.activeVersionScore?.abilityLevel && <Tag color="blue">{overview.activeVersionScore.abilityLevel}</Tag>}
+              </Space>
+            </div>
+            <div className="model-score-grid">
+              {activeModelScores.map((score) => (
+                <Tooltip key={score.label} title={score.hint}>
+                  <div className="model-score-item">
+                    <span>{score.label}</span>
+                    <strong>{score.value}</strong>
+                  </div>
+                </Tooltip>
+              ))}
+            </div>
+            <div className="model-score-context">
+              {overview?.activeVersionScore ? (
+                <>
+                  <span>{localizedText('评估样本', 'Evaluated Samples')} <strong>{overview.activeVersionScore.evaluatedCount}</strong></span>
+                  <span>{localizedText('目标交易日', 'Target Date')} <strong>{overview.activeVersionScore.targetTradeDate || '-'}</strong></span>
+                  <span>{localizedText('预测覆盖率', 'Coverage')} <strong>{formatPercent(overview.activeVersionScore.coverageRate)}</strong></span>
+                </>
+              ) : (
+                <span className="model-score-empty">
+                  {localizedText('当前生产版本暂无已完成的评分数据', 'No completed score data for the production version')}
+                </span>
+              )}
             </div>
           </Card>
         </Col>
-        <Col className="model-overview-col" xs={24} md={12}>
+        <Col className="model-overview-col" xs={24} lg={8}>
           <Card className="surface-card compact-card model-overview-card" loading={overviewLoading}>
             <Statistic
               title={localizedText('上一版本', 'Previous Version')}
@@ -1155,7 +1261,15 @@ const ModelOperations: React.FC = () => {
           columns={predictionBatchColumns}
           dataSource={predictionBatches}
           loading={predictionLoading}
-          pagination={false}
+          pagination={{
+            current: predictionBatchPage,
+            pageSize: predictionBatchPageSize,
+            total: predictionBatchTotal,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            showTotal: (total) => localizedText(`共 ${total} 个批次`, `${total} batches`),
+          }}
+          onChange={handlePredictionBatchTableChange}
           scroll={{ x: 1520 }}
           rowClassName={(record) => record.id === selectedPredictionBatchId ? 'bg-blue-500/5' : ''}
         />
@@ -1197,76 +1311,60 @@ const ModelOperations: React.FC = () => {
               <div><span>评估完成率</span><strong>{formatPercent(selectedPredictionBatch.evaluationRate)}</strong></div>
             </div>
 
-            <DetailSection title="预测范围">
+            <DetailSection title="批次信息">
               <DetailItem label="模型名称">{selectedPredictionBatch.modelName || '-'}</DetailItem>
-              <DetailItem label="模型 ID"><Text copyable className="detail-break">{selectedPredictionBatch.modelId || '-'}</Text></DetailItem>
-              <DetailItem label="基准日">{selectedPredictionBatch.baseTradeDate || '-'}</DetailItem>
-              <DetailItem label="目标日">{selectedPredictionBatch.targetTradeDate || '-'}</DetailItem>
-              <DetailItem label="信息截止">{formatDateTime(selectedPredictionBatch.informationCutoffAt)}</DetailItem>
+              <DetailItem label="预测区间">{selectedPredictionBatch.baseTradeDate || '-'} 至 {selectedPredictionBatch.targetTradeDate || '-'}</DetailItem>
               <DetailItem label="触发方式">{selectedPredictionBatch.triggeredBy || '-'}</DetailItem>
-            </DetailSection>
-
-            <DetailSection title="执行时间">
               <DetailItem label="创建时间">{formatDateTime(selectedPredictionBatch.createdAt)}</DetailItem>
-              <DetailItem label="开始时间">{formatDateTime(selectedPredictionBatch.startedAt)}</DetailItem>
               <DetailItem label="完成时间">{formatDateTime(selectedPredictionBatch.finishedAt)}</DetailItem>
-              <DetailItem label="更新时间">{formatDateTime(selectedPredictionBatch.updatedAt)}</DetailItem>
             </DetailSection>
 
-            <DetailSection title="执行状态">
+            <DetailSection title="状态与评估">
               <DetailItem label="当前状态"><Tag color={statusColors[selectedPredictionBatch.status] ?? 'default'}>{selectedPredictionBatch.status}</Tag></DetailItem>
               <DetailItem label="评估队列"><Tag color={statusColors[selectedPredictionBatch.evaluationQueueStatus ?? ''] ?? 'default'}>{selectedPredictionBatch.evaluationQueueStatus || 'WAITING'}</Tag></DetailItem>
-              <DetailItem label="交易门禁"><Tag color={selectedPredictionBatch.tradingEligibility === 'TRADE_ELIGIBLE' ? 'green' : 'orange'}>{selectedPredictionBatch.tradingEligibility || 'DISABLED'}</Tag></DetailItem>
-              <DetailItem label="评估状态">{selectedPredictionBatch.abilityLevel || '-'}</DetailItem>
-              <DetailItem label="未获取行情">{selectedPredictionBatch.noMarketDataCount}</DetailItem>
               <DetailItem label="已评估数量">{selectedPredictionBatch.evaluatedCount}</DetailItem>
+              <DetailItem label="能力等级">{selectedPredictionBatch.abilityLevel || '-'}</DetailItem>
+              {selectedPredictionBatch.evaluationWaitReason && (
+                <DetailItem label="等待原因" wide><span className="detail-break">{formatEvaluationWaitReason(selectedPredictionBatch.evaluationWaitReason)}</span></DetailItem>
+              )}
               <DetailItem label="进度信息" wide><span className="detail-break">{selectedPredictionBatch.progressMessage || '-'}</span></DetailItem>
             </DetailSection>
+
+            {predictionDetailsLoading ? (
+              <div className="flex justify-center py-6"><Spin /></div>
+            ) : modelAbility && modelAbility.evaluatedCount > 0 ? (
+              <DetailSection title="核心评估">
+                <DetailItem label="方向准确率">{formatPercent(modelAbility.directionAccuracy)}</DetailItem>
+                <DetailItem label="方向 AUC">{formatNumber(modelAbility.directionAuc)}</DetailItem>
+                <DetailItem label="Brier Score">{formatNumber(modelAbility.brierScore)}</DetailItem>
+                <DetailItem label="ECE">{formatPercent(modelAbility.expectedCalibrationError)}</DetailItem>
+                <DetailItem label="收益 MAE">{formatPercent(modelAbility.returnMae)}</DetailItem>
+                <DetailItem label="Spearman IC">{formatNumber(modelAbility.spearmanRankIc)}</DetailItem>
+                <DetailItem label="Top 10% 实际收益">{formatPercent(modelAbility.topDecileAverageReturn)}</DetailItem>
+                <DetailItem label="Top 10% 命中率">{formatPercent(modelAbility.topDecileDirectionAccuracy)}</DetailItem>
+              </DetailSection>
+            ) : null}
 
             {(selectedPredictionBatch.tradingEligibilityReason || selectedPredictionBatch.errorMessage
               || selectedPredictionBatch.evaluationErrorMessage || selectedPredictionBatch.abilityMessage) && (
               <DetailSection title="诊断信息">
-                <DetailItem label="门禁原因" wide><span className="detail-message">{selectedPredictionBatch.tradingEligibilityReason || '-'}</span></DetailItem>
-                <DetailItem label="能力说明" wide><span className="detail-message">{selectedPredictionBatch.abilityMessage || '-'}</span></DetailItem>
-                <DetailItem label="错误信息" wide><span className="detail-message detail-error">{selectedPredictionBatch.errorMessage || '-'}</span></DetailItem>
-                <DetailItem label="评估错误" wide><span className="detail-message detail-error">{selectedPredictionBatch.evaluationErrorMessage || '-'}</span></DetailItem>
+                {selectedPredictionBatch.tradingEligibilityReason && (
+                  <DetailItem label="门禁原因" wide><span className="detail-message">{selectedPredictionBatch.tradingEligibilityReason}</span></DetailItem>
+                )}
+                {selectedPredictionBatch.abilityMessage && (
+                  <DetailItem label="能力说明" wide><span className="detail-message">{selectedPredictionBatch.abilityMessage}</span></DetailItem>
+                )}
+                {selectedPredictionBatch.errorMessage && (
+                  <DetailItem label="错误信息" wide><span className="detail-message detail-error">{selectedPredictionBatch.errorMessage}</span></DetailItem>
+                )}
+                {selectedPredictionBatch.evaluationErrorMessage && (
+                  <DetailItem label="评估错误" wide><span className="detail-message detail-error">{selectedPredictionBatch.evaluationErrorMessage}</span></DetailItem>
+                )}
               </DetailSection>
             )}
           </Space>
         )}
       </DetailModal>
-      <WideTableModal
-        title={`评估：${selectedPredictionBatch?.targetTradeDate || selectedPredictionBatch?.id || '-'}`}
-        open={predictionAnalysisModalOpen}
-        onCancel={() => setPredictionAnalysisModalOpen(false)}
-      >
-        {modelAbility ? (
-          <Space direction="vertical" size="large" className="w-full">
-            <Row gutter={[16, 16]}>
-              <Col xs={12} md={6} xl={3}><Statistic title={localizedText('预测覆盖率', 'Prediction Coverage')} value={formatPercent(modelAbility.coverageRate)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title={localizedText('评估完成率', 'Evaluation Completion')} value={formatPercent(modelAbility.evaluationRate)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title={localizedText('方向准确率', 'Direction Accuracy')} value={formatPercent(modelAbility.directionAccuracy)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="常数基线准确率" value={formatPercent(modelAbility.constantBaselineAccuracy)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="方向 AUC" value={formatNumber(modelAbility.directionAuc)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="Brier Score" value={formatNumber(modelAbility.brierScore)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="Brier 基线" value={formatNumber(modelAbility.brierBaseline)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="ECE" value={formatPercent(modelAbility.expectedCalibrationError)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="校准样本" value={modelAbility.calibrationSampleCount ?? 0} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="上涨概率标准差" value={formatPercent(modelAbility.directionProbabilityStd)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="预测收益标准差" value={formatPercent(modelAbility.predictedReturnStd)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="滚动评估批次" value={modelAbility.rollingWindowBatchCount ?? 0} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="滚动有效样本" value={modelAbility.rollingWindowSampleCount ?? 0} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="滚动 Spearman IC" value={formatNumber(modelAbility.rollingAverageSpearmanRankIc)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="滚动 Top 10% 收益" value={formatPercent(modelAbility.rollingAverageTopDecileReturn)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="收益 MAE" value={formatPercent(modelAbility.returnMae)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="收益 RMSE" value={formatPercent(modelAbility.returnRmse)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="Pearson IC" value={formatNumber(modelAbility.pearsonIc)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="Spearman IC" value={formatNumber(modelAbility.spearmanRankIc)} /></Col>
-              <Col xs={12} md={6} xl={3}><Statistic title="Top 10% 实际收益" value={formatPercent(modelAbility.topDecileAverageReturn)} /></Col>
-            </Row>
-          </Space>
-        ) : <Empty description={predictionAnalysisLoading ? localizedText('正在加载预测分析', 'Loading prediction analysis') : localizedText('暂无预测分析', 'No prediction analysis')} />}
-      </WideTableModal>
       <WideTableModal
         title={`预测效果：${selectedPredictionBatch?.targetTradeDate || selectedPredictionBatch?.id || '-'}`}
         open={predictionResultModalOpen}
@@ -1424,4 +1522,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END------ -------------------------------------------
+// AI_GENERATE_END-------------- -------------------------------------------

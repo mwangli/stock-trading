@@ -1,9 +1,11 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START ---------------
 package com.stock.strategyAgent.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+
+import java.math.BigDecimal;
 
 /**
  * Agent 模块运行配置。
@@ -101,7 +103,44 @@ public class AgentProperties {
         private String apiKey = "";
 
         /** DeepSeek 模型名称。 */
-        private String model = "deepseek-chat";
+        private String model = "deepseek-flash";
+
+        /** DeepSeek 单次最大输出 token 数。 */
+        private int maxTokens = 1024;
+
+        /** 是否启用DeepSeek思考模式；短输出场景默认关闭，避免推理Token挤占最终答案。 */
+        private boolean thinkingEnabled = false;
+
+        /** DeepSeek 每日费用预算配置。 */
+        private DailyBudgetProperties dailyBudget = new DailyBudgetProperties();
+    }
+
+    /**
+     * DeepSeek 每日费用预算配置。
+     *
+     * @author mwangli
+     * @since 2026-10-22
+     */
+    @Data
+    public static class DailyBudgetProperties {
+
+        /** 是否启用每日费用预算门禁。 */
+        private boolean enabled = true;
+
+        /** 每日费用上限，单位人民币元。 */
+        private BigDecimal dailyLimitCny = new BigDecimal("1.00");
+
+        /** 输入 token 峰值单价，单位人民币元/百万 token。 */
+        private BigDecimal inputPriceCnyPerMillion = new BigDecimal("2.10");
+
+        /** 输出 token 峰值单价，单位人民币元/百万 token。 */
+        private BigDecimal outputPriceCnyPerMillion = new BigDecimal("8.40");
+
+        /** 费用估算安全系数，用于覆盖汇率和计费口径误差。 */
+        private BigDecimal safetyFactor = new BigDecimal("1.10");
+
+        /** 每次请求额外预留的协议 token 数。 */
+        private int reservationOverheadTokens = 1024;
     }
 
     /**
@@ -181,4 +220,4 @@ public class AgentProperties {
         private boolean allowHashFallback = false;
     }
 }
-// AI_GENERATE_END -----------
+// AI_GENERATE_END --------------

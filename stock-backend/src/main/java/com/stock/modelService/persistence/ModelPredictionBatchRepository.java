@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START ------
 package com.stock.modelService.persistence;
 
 import com.stock.modelService.domain.entity.ModelPredictionBatchDocument;
@@ -36,6 +36,14 @@ public interface ModelPredictionBatchRepository extends MongoRepository<ModelPre
     List<ModelPredictionBatchDocument> findByStatusIn(Collection<String> statuses);
 
     /**
+     * 判断是否仍有指定状态的预测批次。
+     *
+     * @param status 预测批次状态
+     * @return 是否存在匹配批次
+     */
+    boolean existsByStatus(String status);
+
+    /**
      * 按目标交易日从旧到新查询指定评估队列状态的批次。
      *
      * @param evaluationQueueStatus 评估队列状态
@@ -43,6 +51,14 @@ public interface ModelPredictionBatchRepository extends MongoRepository<ModelPre
      */
     List<ModelPredictionBatchDocument> findByEvaluationQueueStatusOrderByTargetTradeDateAscCreatedAtAsc(
             String evaluationQueueStatus);
+
+    /**
+     * 判断是否仍有指定状态的评估队列批次。
+     *
+     * @param evaluationQueueStatus 评估队列状态
+     * @return 是否存在匹配批次
+     */
+    boolean existsByEvaluationQueueStatus(String evaluationQueueStatus);
 
     /**
      * 分页查询全部预测批次。
@@ -96,5 +112,15 @@ public interface ModelPredictionBatchRepository extends MongoRepository<ModelPre
      */
     List<ModelPredictionBatchDocument> findByModelIdAndStatusInOrderByTargetTradeDateDesc(
             String modelId, Collection<String> statuses);
+
+    /**
+     * 查询指定模型版本最近一次包含有效样本的评估批次。
+     *
+     * @param modelId 模型文档 ID
+     * @param evaluatedCount 已评估样本数下限
+     * @return 最近一次有效评估批次，不存在时返回 null
+     */
+    ModelPredictionBatchDocument findFirstByModelIdAndEvaluatedCountGreaterThanOrderByEvaluationFinishedAtDescCreatedAtDesc(
+            String modelId, int evaluatedCount);
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END ------

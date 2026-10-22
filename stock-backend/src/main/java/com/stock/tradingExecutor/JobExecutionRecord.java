@@ -1,4 +1,4 @@
-// AI_GENERATE_START- ----
+// AI_GENERATE_START-- ----
 package com.stock.tradingExecutor;
 
 import jakarta.persistence.Column;
@@ -44,10 +44,6 @@ public class JobExecutionRecord {
     /** 固定任务名称。 */
     @Column(name = "job_name", nullable = false, length = 128)
     private String jobName;
-
-    /** 当前任务的数据库级运行占用键，运行结束后清空。 */
-    @Column(name = "active_lock_key", unique = true, length = 128)
-    private String activeLockKey;
 
     /** 任务触发来源。 */
     @Enumerated(EnumType.STRING)
@@ -99,4 +95,4 @@ public class JobExecutionRecord {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END- ----

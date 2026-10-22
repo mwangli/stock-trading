@@ -1,8 +1,9 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START -------
 package com.stock.strategyAgent.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.strategyAgent.rag.AgentRagService;
+import com.stock.strategyAgent.runtime.AgentApiBudgetService;
 import com.stock.strategyAgent.service.AgentApplicationService;
 import com.stock.strategyAgent.service.AgentMemoryService;
 import com.stock.strategyAgent.service.TradePlanService;
@@ -37,6 +38,7 @@ public class AgentController {
     private final AgentRagService ragService;
     private final TradePlanService tradePlanService;
     private final TradePlanAgentService tradePlanAgentService;
+    private final AgentApiBudgetService apiBudgetService;
 
     /**
      * 创建 Agent 会话。
@@ -109,6 +111,17 @@ public class AgentController {
     public ResponseDTO<TaskResponse> dailyReport(@RequestBody ReportRequest request) {
         log.info("[Agent] 生成每日投研报告");
         return ResponseDTO.success(applicationService.dailyReport(request));
+    }
+
+    /**
+     * 查询北京时间当天的Agent API费用预算。
+     *
+     * @return 当日API费用预算状态
+     */
+    @GetMapping("/runtime/apiBudget")
+    public ResponseDTO<AgentApiBudgetResponse> apiBudget() {
+        log.info("[Agent] 查询当日API费用预算");
+        return ResponseDTO.success(AgentApiBudgetResponse.from(apiBudgetService.currentSnapshot()));
     }
 
     /**
@@ -294,4 +307,4 @@ public class AgentController {
         return ResponseDTO.success(tradePlanService.revalidate(planId));
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

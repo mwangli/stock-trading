@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------------
+// AI_GENERATE_START -----------------------
 package com.stock.strategyAgent.runtime;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -11,6 +11,7 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ResponseFormat;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
+import dev.langchain4j.service.Result;
 import lombok.extern.slf4j.Slf4j;
 import jakarta.annotation.PostConstruct;
 import org.springframework.context.annotation.Primary;
@@ -43,11 +44,13 @@ import java.util.concurrent.TimeoutException;
 public class LangChain4jAgentModelProvider implements AgentModelProvider {
 
     private static final Duration OLLAMA_HEALTH_TIMEOUT = Duration.ofSeconds(2);
+    private static final Duration DEEPSEEK_HEALTH_TIMEOUT = Duration.ofSeconds(5);
 
     private final AgentProperties properties;
     private final AgentChatMemoryService chatMemoryService;
     private final AgentCircuitBreaker circuitBreaker;
     private final AgentProviderModeManager providerModeManager;
+    private final AgentApiBudgetService apiBudgetService;
     private final Map<String, ChatModel> models = new ConcurrentHashMap<>();
     private final Map<String, String> providerStatuses = new ConcurrentHashMap<>();
     private final ExecutorService modelExecutor;
@@ -59,14 +62,16 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
     public LangChain4jAgentModelProvider(AgentProperties properties,
                                          AgentChatMemoryService chatMemoryService,
                                          AgentCircuitBreaker circuitBreaker,
-                                         AgentProviderModeManager providerModeManager) {
+                                         AgentProviderModeManager providerModeManager,
+                                         AgentApiBudgetService apiBudgetService) {
         this.properties = properties;
         this.chatMemoryService = chatMemoryService;
         this.circuitBreaker = circuitBreaker;
         this.providerModeManager = providerModeManager;
+        this.apiBudgetService = apiBudgetService;
         this.modelExecutor = Executors.newFixedThreadPool(Math.max(properties.getMaxConcurrency(), 1));
         this.healthHttpClient = HttpClient.newBuilder()
-                .connectTimeout(OLLAMA_HEALTH_TIMEOUT)
+                .connectTimeout(DEEPSEEK_HEALTH_TIMEOUT)
                 .build();
     }
 
@@ -129,6 +134,8 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         String lastErrorCode = "MODEL_CALL_FAILED";
         for (String provider : selection.providers()) {
             long providerStartedAt = System.nanoTime();
+            AgentApiBudgetService.BudgetReservation budgetReservation = null;
+            boolean budgetSettled = false;
             if (!circuitBreaker.allowRequest(provider)) {
                 lastErrorCode = "AGENT_CIRCUIT_OPEN";
                 providerStatuses.put(provider, lastErrorCode);
@@ -139,6 +146,12 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
             try {
                 ChatModel model = models.computeIfAbsent(provider, this::createModel);
                 ChatMemory memory = chatMemoryService.get(request.getSessionId());
+                if ("deepseek".equals(provider)) {
+                    long estimatedInputTokens = apiBudgetService.estimateInputTokens(
+                            request.getSystemPrompt(), request.getUserPrompt(), memory.messages());
+                    budgetReservation = apiBudgetService.reserveDeepSeek(
+                            estimatedInputTokens, properties.getDeepseek().getMaxTokens());
+                }
                 StrategyAgent assistant = AiServices.builder(StrategyAgent.class)
                         .chatModel(model)
                         .chatMemory(memory)
@@ -148,14 +161,14 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                         request.getTaskId(), request.getSessionId(), provider, modelName(provider),
                         request.getUserPrompt().length(), request.getEvidenceRefs() == null ? 0 : request.getEvidenceRefs().size(),
                         chatMemoryMessages);
-                Future<String> call = modelExecutor.submit(() -> {
+                Future<Result<String>> call = modelExecutor.submit(() -> {
                     log.info("[Agent][Model] taskId={} sessionId={} provider={} model={} status=RUNNING",
                             request.getTaskId(), request.getSessionId(), provider, modelName(provider));
                     return assistant.chat(request.getUserPrompt(), request.getSystemPrompt());
                 });
-                String content;
+                Result<String> modelResult;
                 try {
-                    content = call.get(Math.max(properties.getTimeoutMs(), 1L), TimeUnit.MILLISECONDS);
+                    modelResult = call.get(Math.max(properties.getTimeoutMs(), 1L), TimeUnit.MILLISECONDS);
                 } catch (TimeoutException exception) {
                     call.cancel(true);
                     providerStatuses.put(provider, "TIMEOUT");
@@ -166,8 +179,13 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                 } catch (java.util.concurrent.ExecutionException exception) {
                     throw new IllegalStateException(provider + " 模型调用失败", exception.getCause());
                 }
+                String content = modelResult == null ? null : modelResult.content();
                 if (!StringUtils.hasText(content)) {
                     throw new IllegalStateException("模型未返回文本内容");
+                }
+                if (budgetReservation != null) {
+                    apiBudgetService.settleSuccess(budgetReservation, modelResult.tokenUsage());
+                    budgetSettled = true;
                 }
                 providerStatuses.put(provider, "READY");
                 circuitBreaker.recordSuccess(provider);
@@ -181,7 +199,18 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                         .content(limit(content))
                         .evidenceSummary(request.getEvidenceSummary())
                         .build();
+            } catch (AgentApiBudgetService.BudgetControlException exception) {
+                String errorCode = exception.getErrorCode();
+                providerStatuses.put(provider, errorCode);
+                log.warn("[Agent][Budget] taskId={} sessionId={} provider={} model={} status=REJECTED errorCode={} message={}",
+                        request.getTaskId(), request.getSessionId(), provider, modelName(provider), errorCode,
+                        safeErrorMessage(exception.getMessage()));
+                return failure(request, errorCode, exception.getMessage());
             } catch (RuntimeException exception) {
+                if (budgetReservation != null && !budgetSettled) {
+                    apiBudgetService.settleConservatively(budgetReservation,
+                            rootCause(exception).getClass().getSimpleName());
+                }
                 circuitBreaker.recordFailure(provider);
                 String errorCode = providerErrorCode(provider, exception);
                 lastErrorCode = errorCode;
@@ -233,7 +262,7 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
     }
 
     /**
-     * 分别对已配置的 DeepSeek 和 Ollama 执行最小模型请求。
+     * 分别对已配置的 DeepSeek 和 Ollama 执行不消耗Token的模型列表检查。
      *
      * @return 两个 Provider 的实际可用状态
      */
@@ -251,7 +280,7 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
     }
 
     /**
-     * 仅对指定 Provider 发起最小模型请求。
+     * 仅对指定 Provider 发起不消耗Token的模型列表检查。
      *
      * @param provider Provider 名称
      * @return Provider 是否可用
@@ -277,18 +306,57 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         if ("ollama".equals(provider)) {
             return checkOllamaProvider();
         }
+        return checkDeepSeekProvider();
+    }
+
+    private boolean checkDeepSeekProvider() {
+        long startedAt = System.nanoTime();
+        AgentProperties.DeepSeekProperties config = properties.getDeepseek();
         try {
-            models.computeIfAbsent(provider, this::createModel).chat("Reply with OK only.");
-            providerStatuses.put(provider, "READY");
-            circuitBreaker.recordSuccess(provider);
+            HttpRequest request = HttpRequest.newBuilder(deepSeekModelsUri())
+                    .timeout(DEEPSEEK_HEALTH_TIMEOUT)
+                    .header("Authorization", "Bearer " + config.getApiKey())
+                    .GET()
+                    .build();
+            HttpResponse<String> response = healthHttpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new IllegalStateException("DeepSeek 模型列表接口返回 HTTP " + response.statusCode());
+            }
+            JSONObject payload = JSON.parseObject(response.body());
+            JSONArray modelsPayload = payload == null ? null : payload.getJSONArray("data");
+            boolean modelAvailable = modelsPayload != null && modelsPayload.stream()
+                    .filter(JSONObject.class::isInstance)
+                    .map(JSONObject.class::cast)
+                    .anyMatch(item -> config.getModel().equals(item.getString("id")));
+            if (!modelAvailable) {
+                providerStatuses.put("deepseek", "MODEL_NOT_FOUND");
+                circuitBreaker.recordFailure("deepseek");
+                log.warn("[Agent][Health] provider=deepseek model={} status=MODEL_NOT_FOUND elapsedMs={}",
+                        config.getModel(), elapsedMillis(startedAt));
+                return false;
+            }
+            providerStatuses.put("deepseek", "READY");
+            circuitBreaker.recordSuccess("deepseek");
+            log.info("[Agent][Health] provider=deepseek model={} status=READY check=MODEL_LIST elapsedMs={}",
+                    config.getModel(), elapsedMillis(startedAt));
             return true;
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return recordDeepSeekHealthFailure(exception, startedAt);
         } catch (RuntimeException exception) {
-            circuitBreaker.recordFailure(provider);
-            providerStatuses.put(provider, providerErrorCode(provider, exception));
-            log.debug("[Agent] Provider 健康检查失败: provider={}, causeType={}",
-                    provider, exception.getClass().getSimpleName());
-            return false;
+            return recordDeepSeekHealthFailure(exception, startedAt);
+        } catch (Exception exception) {
+            return recordDeepSeekHealthFailure(exception, startedAt);
         }
+    }
+
+    private boolean recordDeepSeekHealthFailure(Exception exception, long startedAt) {
+        circuitBreaker.recordFailure("deepseek");
+        providerStatuses.put("deepseek", "DEEPSEEK_UNAVAILABLE");
+        log.warn("[Agent][Health] provider=deepseek model={} status=DEEPSEEK_UNAVAILABLE causeType={} causeMessage={} elapsedMs={}",
+                properties.getDeepseek().getModel(), exception.getClass().getSimpleName(),
+                safeErrorMessage(exception.getMessage()), elapsedMillis(startedAt));
+        return false;
     }
 
     private boolean checkOllamaProvider() {
@@ -344,6 +412,11 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 3);
         }
         return URI.create(baseUrl + "/api/tags");
+    }
+
+    private URI deepSeekModelsUri() {
+        String baseUrl = properties.getDeepseek().getBaseUrl().trim().replaceAll("/+$", "");
+        return URI.create(baseUrl + "/models");
     }
 
     /**
@@ -404,6 +477,9 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                     .baseUrl(config.getBaseUrl())
                     .apiKey(config.getApiKey())
                     .modelName(config.getModel())
+                    .maxTokens(Math.max(config.getMaxTokens(), 1))
+                    .customParameters(Map.of("thinking", Map.of(
+                            "type", config.isThinkingEnabled() ? "enabled" : "disabled")))
                     .timeout(Duration.ofMillis(Math.max(properties.getTimeoutMs(), 1L)))
                     .maxRetries(0)
                     .build();
@@ -504,4 +580,4 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         }
     }
 }
-// AI_GENERATE_END ------------------
+// AI_GENERATE_END ----------------------

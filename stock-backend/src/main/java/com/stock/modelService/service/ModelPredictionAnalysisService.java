@@ -1,4 +1,4 @@
-// AI_GENERATE_START-- -------------
+// AI_GENERATE_START------------ -------------
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -18,10 +18,6 @@ import com.stock.modelService.persistence.LstmModelRepository;
 import com.stock.modelService.persistence.ModelActivationRepository;
 import com.stock.modelService.persistence.ModelPredictionBatchRepository;
 import com.stock.modelService.persistence.ModelPredictionRepository;
-import com.stock.strategyAgent.domain.AgentEnums;
-import com.stock.strategyAgent.domain.entity.AgentTradePlanEntity;
-import com.stock.strategyAgent.persistence.AgentTradePlanRepository;
-import com.stock.strategyAgent.persistence.RankingRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -37,7 +33,6 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -51,6 +46,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -83,6 +81,10 @@ public class ModelPredictionAnalysisService {
     private static final String BATCH_STOCK_UNIQUE_INDEX = "uk_prediction_batch_stock";
     private static final String HISTORICAL_BACKFILL_TRIGGER = "scheduler-backfill";
     private static final String MANUAL_BACKFILL_TRIGGER_PREFIX = "manual-backfill:";
+    private static final String EVALUATION_WAIT_PREDICTION = "PREDICTION_NOT_COMPLETED";
+    private static final String EVALUATION_WAIT_TARGET_DATE = "TARGET_DATE_NOT_REACHED";
+    private static final String EVALUATION_WAIT_MARKET_DATA = "MARKET_DATA_COVERAGE_LOW";
+    private static final String EVALUATION_WAIT_PENDING_DETAILS = "PENDING_MARKET_DATA";
     private static final ZoneId MARKET_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final LstmInferenceService inferenceService;
@@ -95,10 +97,9 @@ public class ModelPredictionAnalysisService {
     private final LstmModelRepository modelRepository;
     private final ModelPredictionBatchRepository batchRepository;
     private final ModelPredictionRepository predictionRepository;
-    private final RankingRepository rankingRepository;
-    private final AgentTradePlanRepository agentTradePlanRepository;
     private final MongoTemplate mongoTemplate;
-    private final Executor applicationTaskExecutor;
+    private final Executor predictionQueueExecutor;
+    private final Executor evaluationQueueExecutor;
     private final AtomicBoolean backfillScanRunning = new AtomicBoolean(false);
     private final AtomicBoolean predictionRunning = new AtomicBoolean(false);
     private final AtomicBoolean evaluationRunning = new AtomicBoolean(false);
@@ -117,7 +118,8 @@ public class ModelPredictionAnalysisService {
      * @param batchRepository 预测批次仓库
      * @param predictionRepository 预测明细仓库
      * @param mongoTemplate MongoDB 操作模板
-     * @param applicationTaskExecutor 应用异步执行器
+     * @param predictionQueueExecutor 模型预测队列执行器
+     * @param evaluationQueueExecutor 模型评估队列执行器
      */
     public ModelPredictionAnalysisService(
             LstmInferenceService inferenceService,
@@ -130,10 +132,9 @@ public class ModelPredictionAnalysisService {
             LstmModelRepository modelRepository,
             ModelPredictionBatchRepository batchRepository,
             ModelPredictionRepository predictionRepository,
-            RankingRepository rankingRepository,
-            AgentTradePlanRepository agentTradePlanRepository,
             MongoTemplate mongoTemplate,
-            @Qualifier("applicationTaskExecutor") Executor applicationTaskExecutor) {
+            @Qualifier("modelPredictionQueueExecutor") Executor predictionQueueExecutor,
+            @Qualifier("modelEvaluationQueueExecutor") Executor evaluationQueueExecutor) {
         this.inferenceService = inferenceService;
         this.trainerService = trainerService;
         this.predictionBackfillProperties = predictionBackfillProperties;
@@ -144,10 +145,9 @@ public class ModelPredictionAnalysisService {
         this.modelRepository = modelRepository;
         this.batchRepository = batchRepository;
         this.predictionRepository = predictionRepository;
-        this.rankingRepository = rankingRepository;
-        this.agentTradePlanRepository = agentTradePlanRepository;
         this.mongoTemplate = mongoTemplate;
-        this.applicationTaskExecutor = applicationTaskExecutor;
+        this.predictionQueueExecutor = predictionQueueExecutor;
+        this.evaluationQueueExecutor = evaluationQueueExecutor;
     }
 
     /**
@@ -171,6 +171,7 @@ public class ModelPredictionAnalysisService {
         for (ModelPredictionBatchDocument batch
                 : batchRepository.findByEvaluationQueueStatusOrderByTargetTradeDateAscCreatedAtAsc("RUNNING")) {
             batch.setEvaluationQueueStatus("QUEUED");
+            batch.setEvaluationWaitReason(null);
             batch.setEvaluationStartedAt(null);
             batch.setEvaluationFinishedAt(null);
             batch.setEvaluationErrorMessage(null);
@@ -260,6 +261,7 @@ public class ModelPredictionAnalysisService {
         rerun.setAbilityMessage("历史预测重算尚未完成");
         rerun.setProgressMessage("历史预测重算任务已排队");
         rerun.setEvaluationQueueStatus("WAITING");
+        rerun.setEvaluationWaitReason(EVALUATION_WAIT_PREDICTION);
         rerun.setTriggeredBy(normalizeOperator(request == null ? null : request.getOperatorName()));
         rerun.setCreatedAt(now);
         rerun.setUpdatedAt(now);
@@ -281,10 +283,10 @@ public class ModelPredictionAnalysisService {
                 .batchId(saved.getId()).status(saved.getStatus()).message("历史预测重算任务已提交").build();
     }
     /**
-     * 扫描并同步消费每日预测和评估队列。
+     * 扫描并流水线消费每日预测和评估队列。
      *
-     * 统一任务先补齐预测队列并完成预测，再基于最新预测结果扫描和消费评估队列，
-     * 避免页面入口与多个定时任务重复触发同一批数据。
+     * 统一任务补齐两个持久化队列后，允许历史评估与后续预测跨批次并行执行；
+     * 同一批次仍由状态门禁保证预测完成后才能进入评估。
      *
      * @return 扫描、预测入队和评估入队汇总结果
      * @throws IllegalStateException 模型、行情或交易日历不满足执行条件时抛出
@@ -292,19 +294,21 @@ public class ModelPredictionAnalysisService {
     public PredictionBackfillResponse startScheduledPrediction() {
         PredictionBackfillResponse response;
         RuntimeException predictionFailure = null;
+        int evaluationQueuedCount = 0;
         try {
             response = scanAndQueuePredictionBackfill("scheduler");
-            consumePredictionQueue();
+            evaluationQueuedCount += enqueuePendingEvaluations();
+            submitEvaluationQueueWorker();
+            awaitQueueWorker(submitPredictionQueueWorker());
         } catch (RuntimeException exception) {
             predictionFailure = exception;
             response = buildBackfillResponse(0, 0, 0, 0, 0, null);
             log.error("统一任务预测阶段失败，继续执行历史评估阶段: reason={}", exception.getMessage(), exception);
         }
 
-        int evaluationQueuedCount;
         try {
-            evaluationQueuedCount = enqueuePendingEvaluations();
-            consumeEvaluationQueue();
+            evaluationQueuedCount += enqueuePendingEvaluations();
+            awaitQueueWorker(submitEvaluationQueueWorker());
         } catch (RuntimeException evaluationFailure) {
             if (predictionFailure != null) {
                 evaluationFailure.addSuppressed(predictionFailure);
@@ -347,7 +351,7 @@ public class ModelPredictionAnalysisService {
             ModelPredictionBatchDocument existing = batchRepository
                     .findFirstByTargetTradeDateAndStatusInOrderByCreatedAtDesc(
                             targetTradeDate, PRESENT_PREDICTION_STATUSES);
-            if (RUNNING_STATUSES.contains(existing == null ? null : existing.getStatus())
+            if (hasStatus(existing, RUNNING_STATUSES)
                     || isReusablePredictionBatch(existing)) {
                 existingPredictionCount++;
             } else {
@@ -438,8 +442,23 @@ public class ModelPredictionAnalysisService {
                 .build();
     }
 
+    /**
+     * 在行情同步完成后扫描并唤醒已满足条件的评估批次。
+     *
+     * @return 本次新进入评估队列的批次数量
+     */
+    public int resumeAvailableEvaluations() {
+        int queuedCount = enqueuePendingEvaluations();
+        submitEvaluationQueueWorker();
+        return queuedCount;
+    }
+
     private int enqueuePendingEvaluations() {
-        List<ModelPredictionBatchDocument> batches = batchRepository.findByStatusIn(EVALUATABLE_STATUSES);
+        Query candidateQuery = Query.query(Criteria.where("status").in(EVALUATABLE_STATUSES)
+                        .and("evaluationQueueStatus").nin("QUEUED", "RUNNING", "COMPLETED"))
+                .with(Sort.by(Sort.Order.asc("targetTradeDate"), Sort.Order.asc("createdAt")));
+        List<ModelPredictionBatchDocument> batches = mongoTemplate.find(
+                candidateQuery, ModelPredictionBatchDocument.class);
         int queuedCount = 0;
         for (ModelPredictionBatchDocument batch : batches) {
             if (enqueueEvaluationBatch(batch)) {
@@ -450,9 +469,14 @@ public class ModelPredictionAnalysisService {
     }
 
     private boolean enqueueEvaluationBatch(ModelPredictionBatchDocument batch) {
+        if ("QUEUED".equals(batch.getEvaluationQueueStatus())
+                || "RUNNING".equals(batch.getEvaluationQueueStatus())) {
+            return false;
+        }
         if (!predictionRepository.existsByBatchIdAndEvaluationStatus(batch.getId(), "PENDING")) {
             if (!"COMPLETED".equals(batch.getEvaluationQueueStatus())) {
                 batch.setEvaluationQueueStatus("COMPLETED");
+                batch.setEvaluationWaitReason(null);
                 batch.setEvaluationFinishedAt(LocalDateTime.now());
                 batch.setEvaluationErrorMessage(null);
                 batch.setUpdatedAt(LocalDateTime.now());
@@ -460,13 +484,9 @@ public class ModelPredictionAnalysisService {
             }
             return false;
         }
-        if ("QUEUED".equals(batch.getEvaluationQueueStatus())
-                || "RUNNING".equals(batch.getEvaluationQueueStatus())) {
-            return false;
-        }
         LocalDate targetTradeDate = batch.getTargetTradeDate();
         if (targetTradeDate == null || targetTradeDate.isAfter(LocalDate.now(MARKET_ZONE))) {
-            markEvaluationWaiting(batch);
+            markEvaluationWaiting(batch, EVALUATION_WAIT_TARGET_DATE);
             return false;
         }
         List<String> stockCodes = predictionRepository.findByBatchId(batch.getId()).stream()
@@ -475,23 +495,29 @@ public class ModelPredictionAnalysisService {
                 .distinct()
                 .toList();
         if (stockCodes.isEmpty() || !hasRequiredPriceCoverage(stockCodes, targetTradeDate)) {
-            markEvaluationWaiting(batch);
+            markEvaluationWaiting(batch, EVALUATION_WAIT_MARKET_DATA);
             return false;
         }
         LocalDateTime now = LocalDateTime.now();
-        batch.setEvaluationQueueStatus("QUEUED");
-        batch.setEvaluationQueuedAt(now);
-        batch.setEvaluationStartedAt(null);
-        batch.setEvaluationFinishedAt(null);
-        batch.setEvaluationErrorMessage(null);
-        batch.setUpdatedAt(now);
-        batchRepository.save(batch);
-        return true;
+        Query query = Query.query(Criteria.where("_id").is(batch.getId())
+                .and("evaluationQueueStatus").nin("QUEUED", "RUNNING"));
+        Update update = new Update()
+                .set("evaluationQueueStatus", "QUEUED")
+                .unset("evaluationWaitReason")
+                .set("evaluationQueuedAt", now)
+                .set("evaluationStartedAt", null)
+                .set("evaluationFinishedAt", null)
+                .set("evaluationErrorMessage", null)
+                .set("updatedAt", now);
+        return mongoTemplate.findAndModify(query, update,
+                FindAndModifyOptions.options().returnNew(true), ModelPredictionBatchDocument.class) != null;
     }
 
-    private void markEvaluationWaiting(ModelPredictionBatchDocument batch) {
-        if (!"WAITING".equals(batch.getEvaluationQueueStatus())) {
+    private void markEvaluationWaiting(ModelPredictionBatchDocument batch, String waitReason) {
+        if (!"WAITING".equals(batch.getEvaluationQueueStatus())
+                || !Objects.equals(waitReason, batch.getEvaluationWaitReason())) {
             batch.setEvaluationQueueStatus("WAITING");
+            batch.setEvaluationWaitReason(waitReason);
             batch.setEvaluationErrorMessage(null);
             batch.setUpdatedAt(LocalDateTime.now());
             batchRepository.save(batch);
@@ -499,7 +525,7 @@ public class ModelPredictionAnalysisService {
     }
 
     private ModelPredictionBatchDocument evaluateBatch(ModelPredictionBatchDocument batch) {
-        if (RUNNING_STATUSES.contains(batch.getStatus())) {
+        if (hasStatus(batch, RUNNING_STATUSES)) {
             throw new IllegalStateException("预测批次尚未完成，暂不能评估");
         }
         List<ModelPredictionDocument> predictions = predictionRepository.findByBatchId(batch.getId());
@@ -576,8 +602,11 @@ public class ModelPredictionAnalysisService {
     public ModelPredictionAnalysisDto.BatchPageResponse listBatches(int current, int pageSize) {
         int safeCurrent = Math.max(1, current);
         int safePageSize = Math.max(1, Math.min(100, pageSize));
+        Sort predictionWindowSort = Sort.by(
+                Sort.Order.desc("targetTradeDate"),
+                Sort.Order.desc("baseTradeDate"));
         Page<ModelPredictionBatchDocument> page = batchRepository.findAll(PageRequest.of(
-                safeCurrent - 1, safePageSize, Sort.by(Sort.Direction.DESC, "createdAt")));
+                safeCurrent - 1, safePageSize, predictionWindowSort));
         return ModelPredictionAnalysisDto.BatchPageResponse.builder()
                 .items(page.getContent().stream().map(this::toBatchItem).toList())
                 .total(page.getTotalElements())
@@ -587,47 +616,88 @@ public class ModelPredictionAnalysisService {
     }
 
     /**
-     * 删除失败或无效预测批次，并清理所有可安全删除的关联数据。
-     * 已执行或正在执行的交易计划属于交易审计链，存在时拒绝删除，避免破坏历史事实。
+     * 清理预测失败批次的残留结果，并将原批次重新加入预测队列。
      *
-     * @param batchId 预测批次 ID
-     * @return 删除操作结果
+     * @param batchId 预测失败的批次 ID
+     * @return 重新入队后的批次状态
+     * @throws IllegalStateException 批次不是预测失败状态时抛出
      */
-    @Transactional
-    public ModelPredictionAnalysisDto.OperationResponse deleteBatch(String batchId) {
+    public synchronized ModelPredictionAnalysisDto.OperationResponse retryPrediction(String batchId) {
         ModelPredictionBatchDocument batch = resolveBatch(batchId);
-        if (RUNNING_STATUSES.contains(batch.getStatus())) {
-            throw new IllegalStateException("运行中的预测批次不能删除");
-        }
-        if (!isInvalidOrFailed(batch)) {
-            throw new IllegalStateException("仅允许删除失败、取消或无有效预测结果的批次");
+        if (!"FAILED".equals(batch.getStatus())) {
+            throw new IllegalStateException("仅预测失败的批次可以重新预测");
         }
 
-        List<AgentTradePlanEntity> tradePlans = agentTradePlanRepository
-                .findByPredictionBatchId(batch.getId());
-        boolean hasExecutedPlan = tradePlans.stream()
-                .anyMatch(plan -> plan.getStatus() == AgentEnums.TradePlanStatus.EXECUTED
-                        || plan.getStatus() == AgentEnums.TradePlanStatus.EXECUTING);
-        if (hasExecutedPlan) {
-            throw new IllegalStateException("预测批次已关联执行中的交易计划，不能删除");
-        }
-
-        long deletedPlans = agentTradePlanRepository.deleteByPredictionBatchId(batch.getId());
-        long deletedRankings = rankingRepository.deleteByPredictionBatchId(batch.getId());
         predictionRepository.deleteByBatchId(batch.getId());
-        batchRepository.delete(batch);
-        log.info("预测批次及关联数据已删除: batchId={}, tradePlans={}, rankings={}",
-                batch.getId(), deletedPlans, deletedRankings);
+        batch.setStatus("QUEUED");
+        batch.setProcessedStocks(0);
+        batch.setSuccessCount(0);
+        batch.setFailedCount(0);
+        batch.setCoverageRate(null);
+        batch.setStartedAt(null);
+        batch.setFinishedAt(null);
+        batch.setErrorMessage(null);
+        batch.setProgressMessage("预测失败批次已重新排队");
+        batch.setEvaluationQueueStatus("WAITING");
+        batch.setEvaluationWaitReason(EVALUATION_WAIT_PREDICTION);
+        batch.setEvaluationQueuedAt(null);
+        batch.setEvaluationStartedAt(null);
+        batch.setEvaluationFinishedAt(null);
+        batch.setEvaluationErrorMessage(null);
+        resetEvaluationSummary(batch, "预测重试尚未完成");
+        batch.setUpdatedAt(LocalDateTime.now());
+        batchRepository.save(batch);
+        submitPredictionQueueWorker();
+        log.info("预测失败批次已重新入队: batchId={}", batch.getId());
         return ModelPredictionAnalysisDto.OperationResponse.builder()
                 .batchId(batch.getId())
-                .status("DELETED")
-                .message("预测批次及关联数据已全部清理")
+                .status("QUEUED")
+                .message("预测失败批次已重新进入队列")
                 .build();
     }
 
-    private boolean isInvalidOrFailed(ModelPredictionBatchDocument batch) {
-        return List.of("FAILED", "CANCELLED").contains(batch.getStatus())
-                || batch.getSuccessCount() <= 0;
+    /**
+     * 清理评估失败批次的半成品评估结果，并将原批次重新加入评估队列。
+     *
+     * @param batchId 评估失败的批次 ID
+     * @return 重新入队后的评估状态
+     * @throws IllegalStateException 批次不是可重试的评估失败状态时抛出
+     */
+    public synchronized ModelPredictionAnalysisDto.OperationResponse retryEvaluation(String batchId) {
+        ModelPredictionBatchDocument batch = resolveBatch(batchId);
+        if ("FAILED".equals(batch.getStatus())) {
+            throw new IllegalStateException("预测任务失败，请先重新预测");
+        }
+        if (!hasStatus(batch, EVALUATABLE_STATUSES)) {
+            throw new IllegalStateException("预测尚未完成，不能重新评估");
+        }
+        if (!"FAILED".equals(batch.getEvaluationQueueStatus())) {
+            throw new IllegalStateException("仅评估失败的批次可以重新评估");
+        }
+        if (predictionRepository.countByBatchId(batch.getId()) <= 0) {
+            throw new IllegalStateException("预测批次没有可重新评估的明细");
+        }
+
+        resetPredictionEvaluationDetails(batch.getId());
+        if ("EVALUATED".equals(batch.getStatus())) {
+            batch.setStatus(batch.getFailedCount() > 0 ? "PARTIAL" : "COMPLETED");
+        }
+        resetEvaluationSummary(batch, "评估失败批次已重新排队");
+        batch.setEvaluationQueueStatus("QUEUED");
+        batch.setEvaluationWaitReason(null);
+        batch.setEvaluationQueuedAt(LocalDateTime.now());
+        batch.setEvaluationStartedAt(null);
+        batch.setEvaluationFinishedAt(null);
+        batch.setEvaluationErrorMessage(null);
+        batch.setUpdatedAt(LocalDateTime.now());
+        batchRepository.save(batch);
+        submitEvaluationQueueWorker();
+        log.info("评估失败批次已重新入队: batchId={}", batch.getId());
+        return ModelPredictionAnalysisDto.OperationResponse.builder()
+                .batchId(batch.getId())
+                .status("QUEUED")
+                .message("评估失败批次已重新进入队列")
+                .build();
     }
 
     /**
@@ -668,12 +738,23 @@ public class ModelPredictionAnalysisService {
         return toAbility(resolveBatch(batchId));
     }
 
-    private void submitPredictionQueueWorker() {
-        applicationTaskExecutor.execute(this::consumePredictionQueue);
+    private CompletableFuture<Void> submitPredictionQueueWorker() {
+        return CompletableFuture.runAsync(this::consumePredictionQueue, predictionQueueExecutor);
     }
 
-    private void submitEvaluationQueueWorker() {
-        applicationTaskExecutor.execute(this::consumeEvaluationQueue);
+    private CompletableFuture<Void> submitEvaluationQueueWorker() {
+        return CompletableFuture.runAsync(this::consumeEvaluationQueue, evaluationQueueExecutor);
+    }
+
+    private void awaitQueueWorker(CompletableFuture<Void> worker) {
+        try {
+            worker.join();
+        } catch (CompletionException exception) {
+            if (exception.getCause() instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw exception;
+        }
     }
 
     private void consumePredictionQueue() {
@@ -711,6 +792,7 @@ public class ModelPredictionAnalysisService {
                     failed.setErrorMessage(exception.getMessage());
                     failed.setProgressMessage("预测队列任务执行失败");
                     failed.setEvaluationQueueStatus("FAILED");
+                    failed.setEvaluationWaitReason(null);
                     failed.setEvaluationErrorMessage("预测任务失败，无法进入评估队列");
                     failed.setFinishedAt(LocalDateTime.now());
                     failed.setUpdatedAt(LocalDateTime.now());
@@ -720,6 +802,9 @@ public class ModelPredictionAnalysisService {
             }
         } finally {
             predictionRunning.set(false);
+            if (batchRepository.existsByStatus("QUEUED")) {
+                submitPredictionQueueWorker();
+            }
         }
     }
 
@@ -761,6 +846,7 @@ public class ModelPredictionAnalysisService {
             while ((batch = claimNextEvaluationBatch()) != null) {
                 if (Thread.currentThread().isInterrupted()) {
                     batch.setEvaluationQueueStatus("QUEUED");
+                    batch.setEvaluationWaitReason(null);
                     batch.setEvaluationErrorMessage(null);
                     batch.setUpdatedAt(LocalDateTime.now());
                     batchRepository.save(batch);
@@ -770,6 +856,9 @@ public class ModelPredictionAnalysisService {
             }
         } finally {
             evaluationRunning.set(false);
+            if (batchRepository.existsByEvaluationQueueStatus("QUEUED")) {
+                submitEvaluationQueueWorker();
+            }
         }
     }
 
@@ -778,6 +867,7 @@ public class ModelPredictionAnalysisService {
                 .with(Sort.by(Sort.Order.asc("targetTradeDate"), Sort.Order.asc("createdAt")));
         Update update = new Update()
                 .set("evaluationQueueStatus", "RUNNING")
+                .unset("evaluationWaitReason")
                 .set("evaluationStartedAt", LocalDateTime.now())
                 .set("evaluationErrorMessage", null)
                 .set("updatedAt", LocalDateTime.now());
@@ -788,6 +878,7 @@ public class ModelPredictionAnalysisService {
     private void executeEvaluationQueueBatch(ModelPredictionBatchDocument batch) {
         try {
             batch.setEvaluationQueueStatus("RUNNING");
+            batch.setEvaluationWaitReason(null);
             batch.setEvaluationStartedAt(LocalDateTime.now());
             batch.setEvaluationErrorMessage(null);
             batch.setUpdatedAt(LocalDateTime.now());
@@ -796,6 +887,7 @@ public class ModelPredictionAnalysisService {
             ModelPredictionBatchDocument refreshed = batchRepository.findById(batch.getId()).orElseThrow();
             boolean pending = predictionRepository.existsByBatchIdAndEvaluationStatus(batch.getId(), "PENDING");
             refreshed.setEvaluationQueueStatus(pending ? "WAITING" : "COMPLETED");
+            refreshed.setEvaluationWaitReason(pending ? EVALUATION_WAIT_PENDING_DETAILS : null);
             refreshed.setEvaluationFinishedAt(LocalDateTime.now());
             refreshed.setEvaluationErrorMessage(null);
             refreshed.setUpdatedAt(LocalDateTime.now());
@@ -803,6 +895,7 @@ public class ModelPredictionAnalysisService {
         } catch (RuntimeException exception) {
             ModelPredictionBatchDocument failed = batchRepository.findById(batch.getId()).orElse(batch);
             failed.setEvaluationQueueStatus("FAILED");
+            failed.setEvaluationWaitReason(null);
             failed.setEvaluationFinishedAt(LocalDateTime.now());
             failed.setEvaluationErrorMessage(exception.getMessage());
             failed.setUpdatedAt(LocalDateTime.now());
@@ -821,26 +914,18 @@ public class ModelPredictionAnalysisService {
             batch.setProgressMessage("正在执行全市场预测");
             batch.setUpdatedAt(LocalDateTime.now());
             batchRepository.save(batch);
-            int successCount = 0;
-            int failedCount = 0;
+            int[] successCount = {0};
+            int[] failedCount = {0};
+            int[] processedCount = {0};
             Map<LocalDate, TradeDateResolution> targetDateCache = new HashMap<>();
-            for (int start = 0; start < stockCodes.size(); start += PREDICTION_BATCH_SIZE) {
+            inferenceService.predictNextBatchChunks(
+                    stockCodes, batch.getModelId(), batch.getBaseTradeDate(), PREDICTION_BATCH_SIZE,
+                    (currentCodes, results) -> {
                 if (Thread.currentThread().isInterrupted()) {
-                    batch.setStatus("CANCELLED");
-                    batch.setProgressMessage("预测任务已停止");
-                    batch.setFinishedAt(LocalDateTime.now());
-                    batch.setUpdatedAt(LocalDateTime.now());
-                    batchRepository.save(batch);
-                    log.warn("全市场模型预测已停止: batchId={}, processed={}/{}",
-                            batch.getId(), batch.getProcessedStocks(), stockCodes.size());
-                    return;
+                    throw new CancellationException("预测队列消费已被中断");
                 }
-                int end = Math.min(stockCodes.size(), start + PREDICTION_BATCH_SIZE);
-                List<String> currentCodes = stockCodes.subList(start, end);
                 Map<String, StockInfo> stockInfoMap = stockInfoRepository.findByCodeIn(currentCodes).stream()
                         .collect(Collectors.toMap(StockInfo::getCode, Function.identity(), (left, right) -> left));
-                Map<String, LstmPredictionResultDto> results = inferenceService
-                        .predictNextBatch(currentCodes, batch.getModelId(), batch.getBaseTradeDate());
                 List<ModelPredictionDocument> documents = new ArrayList<>(results.size());
                 LocalDateTime predictedAt = LocalDateTime.now();
                 for (LstmPredictionResultDto result : results.values()) {
@@ -882,46 +967,65 @@ public class ModelPredictionAnalysisService {
                 if (!documents.isEmpty()) {
                     predictionRepository.saveAll(documents);
                 }
-                successCount += documents.size();
-                failedCount += currentCodes.size() - documents.size();
-                batch.setProcessedStocks(end);
-                batch.setSuccessCount(successCount);
-                batch.setFailedCount(failedCount);
-                batch.setCoverageRate(rate(successCount, stockCodes.size()));
-                batch.setProgressMessage("已完成 " + end + "/" + stockCodes.size() + " 支股票预测");
+                processedCount[0] += currentCodes.size();
+                successCount[0] += documents.size();
+                failedCount[0] += currentCodes.size() - documents.size();
+                batch.setProcessedStocks(processedCount[0]);
+                batch.setSuccessCount(successCount[0]);
+                batch.setFailedCount(failedCount[0]);
+                batch.setCoverageRate(rate(successCount[0], stockCodes.size()));
+                batch.setProgressMessage("已完成 " + processedCount[0] + "/" + stockCodes.size() + " 支股票预测");
                 batch.setUpdatedAt(LocalDateTime.now());
                 batchRepository.save(batch);
                 log.info("全市场模型预测进度: batchId={}, processed={}/{}, success={}, failed={}, elapsedSeconds={}",
-                        batch.getId(), end, stockCodes.size(), successCount, failedCount,
+                        batch.getId(), processedCount[0], stockCodes.size(), successCount[0], failedCount[0],
                         elapsedSeconds(startedNanos));
-            }
-            if (successCount <= 0) {
+                    });
+            if (successCount[0] <= 0) {
                 batch.setStatus("FAILED");
                 batch.setErrorMessage("全市场预测未生成任何有效结果");
                 batch.setProgressMessage("全市场预测失败：未生成有效结果");
                 batch.setEvaluationQueueStatus("FAILED");
+                batch.setEvaluationWaitReason(null);
                 batch.setEvaluationErrorMessage("预测任务未生成有效结果，无法进入评估队列");
                 batch.setFinishedAt(LocalDateTime.now());
                 batch.setUpdatedAt(LocalDateTime.now());
                 batchRepository.save(batch);
                 log.error("全市场模型预测无有效结果: batchId={}, modelId={}, failed={}",
-                        batch.getId(), batch.getModelId(), failedCount);
+                        batch.getId(), batch.getModelId(), failedCount[0]);
                 return;
             }
-            batch.setStatus(failedCount == 0 ? "COMPLETED" : "PARTIAL");
+            batch.setStatus(failedCount[0] == 0 ? "COMPLETED" : "PARTIAL");
             batch.setFinishedAt(LocalDateTime.now());
             batch.setProgressMessage("全市场预测完成");
             batch.setEvaluationQueueStatus("WAITING");
+            batch.setEvaluationWaitReason(EVALUATION_WAIT_MARKET_DATA);
             batch.setUpdatedAt(LocalDateTime.now());
             batchRepository.save(batch);
             refreshAbility(batch, predictionRepository.findByBatchId(batch.getId()));
+            ModelPredictionBatchDocument completed = batchRepository.findById(batch.getId()).orElse(batch);
+            if (enqueueEvaluationBatch(completed)) {
+                submitEvaluationQueueWorker();
+            }
             log.info("全市场模型预测完成: batchId={}, modelId={}, success={}, failed={}, elapsedSeconds={}",
-                    batch.getId(), batch.getModelId(), successCount, failedCount, elapsedSeconds(startedNanos));
+                    batch.getId(), batch.getModelId(), successCount[0], failedCount[0], elapsedSeconds(startedNanos));
+        } catch (CancellationException exception) {
+            batch.setStatus("CANCELLED");
+            batch.setProgressMessage("预测任务已停止");
+            batch.setEvaluationQueueStatus("FAILED");
+            batch.setEvaluationWaitReason(null);
+            batch.setEvaluationErrorMessage("预测任务已停止，无法进入评估队列");
+            batch.setFinishedAt(LocalDateTime.now());
+            batch.setUpdatedAt(LocalDateTime.now());
+            batchRepository.save(batch);
+            log.warn("全市场模型预测已停止: batchId={}, processed={}/{}",
+                    batch.getId(), batch.getProcessedStocks(), stockCodes.size());
         } catch (Exception exception) {
             batch.setStatus("FAILED");
             batch.setErrorMessage(exception.getMessage());
             batch.setProgressMessage("全市场预测失败");
             batch.setEvaluationQueueStatus("FAILED");
+            batch.setEvaluationWaitReason(null);
             batch.setEvaluationErrorMessage("预测任务失败，无法进入评估队列");
             batch.setFinishedAt(LocalDateTime.now());
             batch.setUpdatedAt(LocalDateTime.now());
@@ -959,7 +1063,7 @@ public class ModelPredictionAnalysisService {
         ModelPredictionBatchDocument existing = batchRepository
                 .findFirstByModelIdAndBaseTradeDateOrderByCreatedAtDesc(
                         context.model().getId(), baseTradeDate);
-        if (RUNNING_STATUSES.contains(existing == null ? null : existing.getStatus())
+        if (hasStatus(existing, RUNNING_STATUSES)
                 || isReusablePredictionBatch(existing)) {
             return new PredictionBatchPreparation(existing, false);
         }
@@ -989,6 +1093,7 @@ public class ModelPredictionAnalysisService {
         batch.setAbilityMessage("预测尚未完成");
         batch.setProgressMessage("预测任务已排队");
         batch.setEvaluationQueueStatus("WAITING");
+        batch.setEvaluationWaitReason(EVALUATION_WAIT_PREDICTION);
         batch.setTriggeredBy(triggeredBy);
         batch.setCreatedAt(now);
         batch.setUpdatedAt(now);
@@ -997,7 +1102,7 @@ public class ModelPredictionAnalysisService {
 
     private boolean isReusablePredictionBatch(ModelPredictionBatchDocument batch) {
         if (batch == null || batch.getId() == null
-                || !EVALUATABLE_STATUSES.contains(batch.getStatus())
+                || !hasStatus(batch, EVALUATABLE_STATUSES)
                 || batch.getSuccessCount() <= 0) {
             return false;
         }
@@ -1154,11 +1259,61 @@ public class ModelPredictionAnalysisService {
         refreshRollingAssessment(batch);
         long pendingCount = allPredictions.stream()
                 .filter(item -> "PENDING".equals(item.getEvaluationStatus())).count();
-        if (pendingCount == 0 && !RUNNING_STATUSES.contains(batch.getStatus())) {
+        if (pendingCount == 0 && !hasStatus(batch, RUNNING_STATUSES)) {
             batch.setStatus("EVALUATED");
         }
         batch.setUpdatedAt(LocalDateTime.now());
         batchRepository.save(batch);
+    }
+
+    private void resetPredictionEvaluationDetails(String batchId) {
+        Query query = Query.query(Criteria.where("batchId").is(batchId));
+        Update update = new Update()
+                .set("evaluationStatus", "PENDING")
+                .unset("actualClosePrice")
+                .unset("actualReturn")
+                .unset("returnError")
+                .unset("absoluteError")
+                .unset("squaredError")
+                .unset("directionCorrect")
+                .unset("evaluatedAt");
+        mongoTemplate.updateMulti(query, update, ModelPredictionDocument.class);
+    }
+
+    private void resetEvaluationSummary(ModelPredictionBatchDocument batch, String abilityMessage) {
+        batch.setEvaluatedCount(0);
+        batch.setNoMarketDataCount(0);
+        batch.setEvaluationRate(null);
+        batch.setDirectionAccuracy(null);
+        batch.setActualUpRate(null);
+        batch.setConstantBaselineAccuracy(null);
+        batch.setDirectionAuc(null);
+        batch.setBrierScore(null);
+        batch.setBrierBaseline(null);
+        batch.setExpectedCalibrationError(null);
+        batch.setCalibrationSampleCount(0);
+        batch.setDirectionProbabilityMean(null);
+        batch.setDirectionProbabilityStd(null);
+        batch.setDirectionProbabilityMin(null);
+        batch.setDirectionProbabilityMax(null);
+        batch.setPredictedReturnStd(null);
+        batch.setRollingWindowBatchCount(null);
+        batch.setRollingWindowSampleCount(null);
+        batch.setRollingAverageSpearmanRankIc(null);
+        batch.setRollingAverageTopDecileReturn(null);
+        batch.setReturnMae(null);
+        batch.setReturnRmse(null);
+        batch.setPearsonIc(null);
+        batch.setSpearmanRankIc(null);
+        batch.setTopDecileAverageReturn(null);
+        batch.setTopDecileDirectionAccuracy(null);
+        batch.setHighConfidenceAccuracy(null);
+        batch.setDownsideRiskHitRate(null);
+        batch.setAbilityLevel("INSUFFICIENT_DATA");
+        batch.setIterationRecommended(false);
+        batch.setAbilityMessage(abilityMessage);
+        batch.setTradingEligibility("DISABLED");
+        batch.setTradingEligibilityReason("评估尚未完成，禁止进入买入流程");
     }
 
     private ModelPredictionBatchDocument resolveBatch(String batchId) {
@@ -1187,6 +1342,7 @@ public class ModelPredictionAnalysisService {
                 .successCount(item.getSuccessCount()).failedCount(item.getFailedCount())
                 .evaluatedCount(item.getEvaluatedCount()).noMarketDataCount(item.getNoMarketDataCount())
                 .evaluationQueueStatus(item.getEvaluationQueueStatus())
+                .evaluationWaitReason(item.getEvaluationWaitReason())
                 .evaluationQueuedAt(item.getEvaluationQueuedAt())
                 .evaluationStartedAt(item.getEvaluationStartedAt())
                 .evaluationFinishedAt(item.getEvaluationFinishedAt())
@@ -1316,6 +1472,10 @@ public class ModelPredictionAnalysisService {
         }
         return HISTORICAL_BACKFILL_TRIGGER.equals(batch.getTriggeredBy())
                 || batch.getTriggeredBy().startsWith(MANUAL_BACKFILL_TRIGGER_PREFIX);
+    }
+
+    private boolean hasStatus(ModelPredictionBatchDocument batch, List<String> statuses) {
+        return batch != null && batch.getStatus() != null && statuses.contains(batch.getStatus());
     }
 
     private void assignPercentiles(List<ModelPredictionDocument> items, boolean returnMetric) {
@@ -1512,4 +1672,4 @@ public class ModelPredictionAnalysisService {
     private record PredictionBatchPreparation(ModelPredictionBatchDocument batch, boolean created) {
     }
 }
-// AI_GENERATE_END-- -------------
+// AI_GENERATE_END------------ -------------
