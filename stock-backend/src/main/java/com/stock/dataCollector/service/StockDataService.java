@@ -1,4 +1,4 @@
-// AI_GENERATE_START-- -----------
+// AI_GENERATE_START------ -----------
 package com.stock.dataCollector.service;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -24,6 +24,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.DayOfWeek;
+import java.time.temporal.ChronoUnit;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -31,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import com.stock.dataCollector.domain.vo.MarketStatsDto;
@@ -46,6 +48,11 @@ import com.stock.dataCollector.domain.vo.MarketStatsDto;
 @Service
 @RequiredArgsConstructor
 public class StockDataService {
+
+    /** 供应商单次历史行情疑似最大返回条数。 */
+    private static final int SUPPLIER_HISTORY_RESULT_LIMIT = 500;
+    /** 历史行情基础切片月数，确保正常请求窗口远低于供应商单次上限。 */
+    private static final int HISTORY_WINDOW_MONTHS = 3;
 
     private final PriceRepository priceRepository;
     private final StockInfoRepository stockInfoRepository;
@@ -400,46 +407,316 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
 
 
     /**
-     * 同步当前交易日并回补最近三年的缺失交易日。
+     * 生成可用于检查单只股票缺口的预期交易日期集合。
+     *
+     * 历史部分使用 MongoDB 全市场已出现的实际行情日期，当前年度补充已确认交易日历，
+     * 既能识别单只股票中间断档，也避免把周末或未确认节假日误判为缺失行情。
+     *
+     * @param earliestDate 最早检查日期
+     * @param today 当前交易日
+     * @param confirmedTradingDays 当前已确认交易日历中的交易日期
+     * @return 去重并按日期升序排列的预期交易日期
+     */
+    public List<LocalDate> findExpectedTradingDays(LocalDate earliestDate,
+                                                   LocalDate today,
+                                                   List<LocalDate> confirmedTradingDays) {
+        Query query = new Query(Criteria.where("date").gte(earliestDate).lte(today));
+        List<LocalDate> marketDates = mongoTemplate.findDistinct(
+                query, "date", StockPrice.class, LocalDate.class);
+        TreeSet<LocalDate> expectedDates = new TreeSet<>();
+        marketDates.stream()
+                .filter(date -> date != null && !date.isBefore(earliestDate) && !date.isAfter(today))
+                .forEach(expectedDates::add);
+        confirmedTradingDays.stream()
+                .filter(date -> date != null && !date.isBefore(earliestDate) && !date.isAfter(today))
+                .forEach(expectedDates::add);
+        return List.copyOf(expectedDates);
+    }
+
+    /**
+     * 检查本地日线完整性并按缺口执行增量同步。
+     *
+     * 方法先计算预期交易日期与 MongoDB 已有日期的差集。单日缺口只请求当天，连续缺口请求对应区间；
+     * 最新日期之后的缺口计入每日增量，最新日期之前的缺口计入历史回补。本地完全无数据时，
+     * 才按季度初始化最近三年数据。供应商返回达到 500 条时继续二分请求，避免截断结果被误判为完整。
      *
      * @param stockCode 股票代码
      * @param today 当前交易日
      * @param earliestDate 最早允许回补日期
-     * @param tradingDays 当前已确认日历覆盖范围内的交易日
-     * @return 当前日、回补和未能从供应商窗口获取的数据统计
+     * @param expectedTradingDays 预期应存在行情的交易日期
+     * @param openGapStart OPEN 缺口开始日期，可为空
+     * @param openGapEnd OPEN 缺口结束日期，可为空
+     * @return 增量、回补、请求次数和未解决日期统计
+     * @throws IllegalStateException 供应商未返回当日行情或单日结果仍达到供应商上限时抛出
      */
-    public PriceSyncResult syncTodayAndBackfill(String stockCode, LocalDate today,
-                                                 LocalDate earliestDate,
-                                                 List<LocalDate> tradingDays) {
-        List<StockPrice> fetchedPrices = getHistoryPrices(stockCode, earliestDate, today);
-        if (fetchedPrices.stream().noneMatch(price -> today.equals(price.getDate()))) {
+    public PriceSyncResult syncTodayAndBackfill(String stockCode,
+                                                LocalDate today,
+                                                LocalDate earliestDate,
+                                                List<LocalDate> expectedTradingDays,
+                                                LocalDate openGapStart,
+                                                LocalDate openGapEnd) {
+        LocalDate expectedStartDate = resolveExpectedStartDate(stockCode, earliestDate);
+        List<StockPrice> existingPrices = priceRepository
+                .findByCodeAndDateBetweenOrderByDateAsc(stockCode, expectedStartDate, today);
+        Set<LocalDate> existingDates = existingPrices.stream()
+                .map(StockPrice::getDate)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        LocalDate latestDate = existingDates.stream().max(LocalDate::compareTo).orElse(null);
+
+        List<PriceRequestWindow> requestWindows;
+        if (existingDates.isEmpty()) {
+            requestWindows = List.of(new PriceRequestWindow(
+                    expectedStartDate, today, PriceWindowType.BACKFILL));
+        } else {
+            requestWindows = buildMissingRequestWindows(
+                    expectedTradingDays, existingDates, latestDate, expectedStartDate, today);
+            addOpenGapWindow(
+                    requestWindows, expectedStartDate, today, latestDate, openGapStart, openGapEnd);
+            requestWindows = mergeRequestWindows(requestWindows);
+        }
+        log.debug("股票 {} 日线完整性检查完成: expectedDates={}, existingDates={}, latestDate={}, requestWindows={}",
+                stockCode, expectedTradingDays.size(), existingDates.size(), latestDate, requestWindows.size());
+
+        int incrementalSaved = 0;
+        int backfillSaved = 0;
+        int apiRequestCount = 0;
+        for (PriceRequestWindow requestWindow : requestWindows) {
+            WindowSyncResult windowResult = syncPriceWindow(stockCode, requestWindow);
+            apiRequestCount += windowResult.apiRequestCount();
+            if (requestWindow.type() == PriceWindowType.INCREMENTAL) {
+                incrementalSaved += windowResult.savedCount();
+            } else {
+                backfillSaved += windowResult.savedCount();
+            }
+        }
+
+        if (!priceRepository.existsByCodeAndDate(stockCode, today)) {
             throw new IllegalStateException("供应商未返回当前交易日数据: " + stockCode + ", " + today);
         }
 
-        Map<LocalDate, StockPrice> fetchedByDate = fetchedPrices.stream()
-                .filter(price -> price.getDate() != null)
-                .collect(Collectors.toMap(StockPrice::getDate, price -> price, (left, right) -> left));
+        List<LocalDate> unresolvedDates = findUnresolvedTradingDays(
+                stockCode,
+                expectedStartDate,
+                today,
+                expectedTradingDays,
+                openGapStart,
+                openGapEnd);
+        boolean skipped = requestWindows.isEmpty();
+        if (skipped) {
+            log.debug("股票 {} 本地日线完整且已包含 {}，跳过供应商请求", stockCode, today);
+        } else {
+            log.info("股票 {} 日线同步完成，增量新增 {} 条，历史回补 {} 条，请求 {} 次",
+                    stockCode, incrementalSaved, backfillSaved, apiRequestCount);
+        }
+        return new PriceSyncResult(
+                incrementalSaved,
+                backfillSaved,
+                apiRequestCount,
+                skipped,
+                unresolvedDates);
+    }
+
+    private LocalDate resolveExpectedStartDate(String stockCode, LocalDate earliestDate) {
+        return stockInfoRepository.findByCode(stockCode)
+                .map(StockInfo::getListedDate)
+                .filter(listedDate -> listedDate.isAfter(earliestDate))
+                .orElse(earliestDate);
+    }
+
+    private List<PriceRequestWindow> buildMissingRequestWindows(List<LocalDate> expectedTradingDays,
+                                                                 Set<LocalDate> existingDates,
+                                                                 LocalDate latestDate,
+                                                                 LocalDate expectedStartDate,
+                                                                 LocalDate today) {
+        List<PriceRequestWindow> requestWindows = new ArrayList<>();
+        LocalDate windowStart = null;
+        LocalDate windowEnd = null;
+        PriceWindowType windowType = null;
+        for (LocalDate tradingDay : expectedTradingDays) {
+            if (tradingDay.isBefore(expectedStartDate) || tradingDay.isAfter(today)) {
+                continue;
+            }
+            if (existingDates.contains(tradingDay)) {
+                if (windowStart != null) {
+                    requestWindows.add(new PriceRequestWindow(windowStart, windowEnd, windowType));
+                    windowStart = null;
+                    windowEnd = null;
+                    windowType = null;
+                }
+                continue;
+            }
+            PriceWindowType currentType = tradingDay.isAfter(latestDate)
+                    ? PriceWindowType.INCREMENTAL : PriceWindowType.BACKFILL;
+            if (windowStart == null || currentType != windowType) {
+                if (windowStart != null) {
+                    requestWindows.add(new PriceRequestWindow(windowStart, windowEnd, windowType));
+                }
+                windowStart = tradingDay;
+                windowType = currentType;
+            }
+            windowEnd = tradingDay;
+        }
+        if (windowStart != null) {
+            requestWindows.add(new PriceRequestWindow(windowStart, windowEnd, windowType));
+        }
+        return requestWindows;
+    }
+
+    private void addOpenGapWindow(List<PriceRequestWindow> requestWindows,
+                                  LocalDate expectedStartDate,
+                                  LocalDate today,
+                                  LocalDate latestDate,
+                                  LocalDate openGapStart,
+                                  LocalDate openGapEnd) {
+        if (openGapStart == null || openGapEnd == null) {
+            return;
+        }
+        LocalDate startDate = openGapStart.isBefore(expectedStartDate)
+                ? expectedStartDate : openGapStart;
+        LocalDate endDate = openGapEnd.isAfter(today) ? today : openGapEnd;
+        if (startDate.isAfter(endDate)) {
+            return;
+        }
+        if (latestDate == null || !endDate.isAfter(latestDate)) {
+            requestWindows.add(new PriceRequestWindow(startDate, endDate, PriceWindowType.BACKFILL));
+            return;
+        }
+        if (startDate.isAfter(latestDate)) {
+            requestWindows.add(new PriceRequestWindow(startDate, endDate, PriceWindowType.INCREMENTAL));
+            return;
+        }
+        requestWindows.add(new PriceRequestWindow(startDate, latestDate, PriceWindowType.BACKFILL));
+        requestWindows.add(new PriceRequestWindow(
+                latestDate.plusDays(1), endDate, PriceWindowType.INCREMENTAL));
+    }
+
+    private List<PriceRequestWindow> mergeRequestWindows(List<PriceRequestWindow> requestWindows) {
+        if (requestWindows.size() < 2) {
+            return requestWindows;
+        }
+        List<PriceRequestWindow> sortedWindows = requestWindows.stream()
+                .sorted(Comparator.comparing(PriceRequestWindow::type)
+                        .thenComparing(PriceRequestWindow::startDate))
+                .toList();
+        List<PriceRequestWindow> mergedWindows = new ArrayList<>();
+        for (PriceRequestWindow currentWindow : sortedWindows) {
+            if (mergedWindows.isEmpty()) {
+                mergedWindows.add(currentWindow);
+                continue;
+            }
+            PriceRequestWindow previousWindow = mergedWindows.get(mergedWindows.size() - 1);
+            boolean sameType = previousWindow.type() == currentWindow.type();
+            boolean connected = !currentWindow.startDate().isAfter(previousWindow.endDate().plusDays(1));
+            if (sameType && connected) {
+                LocalDate mergedEndDate = currentWindow.endDate().isAfter(previousWindow.endDate())
+                        ? currentWindow.endDate() : previousWindow.endDate();
+                mergedWindows.set(mergedWindows.size() - 1,
+                        new PriceRequestWindow(previousWindow.startDate(), mergedEndDate, previousWindow.type()));
+            } else {
+                mergedWindows.add(currentWindow);
+            }
+        }
+        return mergedWindows;
+    }
+
+    private WindowSyncResult syncPriceWindow(String stockCode, PriceRequestWindow requestWindow) {
+        int savedCount = 0;
+        int apiRequestCount = 0;
+        LocalDate cursor = requestWindow.startDate();
+        while (!cursor.isAfter(requestWindow.endDate())) {
+            LocalDate chunkEnd = cursor.plusMonths(HISTORY_WINDOW_MONTHS).minusDays(1);
+            if (chunkEnd.isAfter(requestWindow.endDate())) {
+                chunkEnd = requestWindow.endDate();
+            }
+            WindowSyncResult chunkResult = syncPriceChunk(
+                    stockCode, cursor, chunkEnd);
+            savedCount += chunkResult.savedCount();
+            apiRequestCount += chunkResult.apiRequestCount();
+            cursor = chunkEnd.plusDays(1);
+        }
+        return new WindowSyncResult(savedCount, apiRequestCount);
+    }
+
+    private WindowSyncResult syncPriceChunk(String stockCode,
+                                            LocalDate startDate,
+                                            LocalDate endDate) {
+        List<StockPrice> fetchedPrices = getHistoryPrices(stockCode, startDate, endDate);
+        if (fetchedPrices.size() >= SUPPLIER_HISTORY_RESULT_LIMIT) {
+            if (!startDate.isBefore(endDate)) {
+                throw new IllegalStateException("供应商单日历史行情达到返回上限: "
+                        + stockCode + ", " + startDate);
+            }
+            long totalDays = ChronoUnit.DAYS.between(startDate, endDate);
+            LocalDate leftEndDate = startDate.plusDays(totalDays / 2);
+            LocalDate rightStartDate = leftEndDate.plusDays(1);
+            log.warn("股票 {} 区间 {} ~ {} 返回 {} 条，达到供应商上限，拆分后继续请求",
+                    stockCode, startDate, endDate, fetchedPrices.size());
+            WindowSyncResult leftResult = syncPriceChunk(
+                    stockCode, startDate, leftEndDate);
+            WindowSyncResult rightResult = syncPriceChunk(
+                    stockCode, rightStartDate, endDate);
+            return new WindowSyncResult(
+                    leftResult.savedCount() + rightResult.savedCount(),
+                    1 + leftResult.apiRequestCount() + rightResult.apiRequestCount());
+        }
+        if (fetchedPrices.isEmpty()) {
+            log.warn("股票 {} 区间 {} ~ {} 未返回行情，保留为未解决缺口",
+                    stockCode, startDate, endDate);
+            return new WindowSyncResult(0, 1);
+        }
+
         Set<LocalDate> existingDates = priceRepository
-                .findByCodeAndDateBetweenOrderByDateAsc(stockCode, earliestDate, today).stream()
+                .findByCodeAndDateBetweenOrderByDateAsc(stockCode, startDate, endDate)
+                .stream()
                 .map(StockPrice::getDate)
                 .collect(Collectors.toSet());
-        List<StockPrice> toSave = fetchedByDate.entrySet().stream()
-                .filter(entry -> !entry.getKey().isBefore(earliestDate))
-                .filter(entry -> !entry.getKey().isAfter(today))
-                .filter(entry -> !existingDates.contains(entry.getKey()))
-                .map(Map.Entry::getValue)
-                .toList();
-        List<LocalDate> missingDates = tradingDays.stream()
-                .filter(date -> !date.isAfter(today) && !existingDates.contains(date))
+        List<StockPrice> toSave = fetchedPrices.stream()
+                .filter(price -> price.getDate() != null)
+                .filter(price -> !price.getDate().isBefore(startDate))
+                .filter(price -> !price.getDate().isAfter(endDate))
+                .filter(price -> !existingDates.contains(price.getDate()))
                 .toList();
         if (!toSave.isEmpty()) {
             saveStockPrices(toSave);
         }
-        int todaySaved = toSave.stream().anyMatch(price -> today.equals(price.getDate())) ? 1 : 0;
-        List<LocalDate> unresolvedDates = missingDates.stream()
-                .filter(date -> !fetchedByDate.containsKey(date))
-                .toList();
-        return new PriceSyncResult(todaySaved, toSave.size() - todaySaved, unresolvedDates);
+        return new WindowSyncResult(toSave.size(), 1);
+    }
+
+    private List<LocalDate> findUnresolvedTradingDays(String stockCode,
+                                                       LocalDate expectedStartDate,
+                                                       LocalDate today,
+                                                       List<LocalDate> expectedTradingDays,
+                                                       LocalDate openGapStart,
+                                                       LocalDate openGapEnd) {
+        Set<LocalDate> existingDates = priceRepository
+                .findByCodeAndDateBetweenOrderByDateAsc(stockCode, expectedStartDate, today)
+                .stream()
+                .map(StockPrice::getDate)
+                .collect(Collectors.toSet());
+        TreeSet<LocalDate> unresolvedDates = expectedTradingDays.stream()
+                .filter(date -> !date.isBefore(expectedStartDate))
+                .filter(date -> !date.isAfter(today))
+                .filter(date -> !existingDates.contains(date))
+                .collect(Collectors.toCollection(TreeSet::new));
+        addUnresolvedGapBoundary(
+                unresolvedDates, existingDates, expectedStartDate, today, openGapStart);
+        addUnresolvedGapBoundary(
+                unresolvedDates, existingDates, expectedStartDate, today, openGapEnd);
+        return List.copyOf(unresolvedDates);
+    }
+
+    private void addUnresolvedGapBoundary(Set<LocalDate> unresolvedDates,
+                                          Set<LocalDate> existingDates,
+                                          LocalDate expectedStartDate,
+                                          LocalDate today,
+                                          LocalDate gapDate) {
+        if (gapDate != null
+                && !gapDate.isBefore(expectedStartDate)
+                && !gapDate.isAfter(today)
+                && !existingDates.contains(gapDate)) {
+            unresolvedDates.add(gapDate);
+        }
     }
     /**
      * 清理单只股票的全部历史行情数据
@@ -683,7 +960,33 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
 
     // ==================== 同步结果 ====================
 
-    public record PriceSyncResult(int todaySaved, int backfillSaved, List<LocalDate> unresolvedDates) {
+    /**
+     * 单只股票日线同步结果。
+     *
+     * @param incrementalSaved 每日增量新增条数
+     * @param backfillSaved 历史回补新增条数
+     * @param apiRequestCount 供应商接口请求次数
+     * @param skipped 是否因本地数据完整而跳过供应商请求
+     * @param unresolvedDates 仍未解决的预期交易日期
+     */
+    public record PriceSyncResult(int incrementalSaved,
+                                  int backfillSaved,
+                                  int apiRequestCount,
+                                  boolean skipped,
+                                  List<LocalDate> unresolvedDates) {
+    }
+
+    private record PriceRequestWindow(LocalDate startDate,
+                                      LocalDate endDate,
+                                      PriceWindowType type) {
+    }
+
+    private record WindowSyncResult(int savedCount, int apiRequestCount) {
+    }
+
+    private enum PriceWindowType {
+        INCREMENTAL,
+        BACKFILL
     }
 
     @lombok.Data
@@ -698,4 +1001,4 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
         private String errorMessage;
     }
 }
-// AI_GENERATE_END-- -----------
+// AI_GENERATE_END------ -----------

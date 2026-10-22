@@ -1,4 +1,4 @@
-// AI_GENERATE_START- ----- -------------
+// AI_GENERATE_START-- ----- -------------
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -7,14 +7,17 @@ import com.stock.dataCollector.persistence.StockInfoRepository;
 import com.stock.modelService.config.LstmDataQualityConfig;
 import com.stock.modelService.config.LstmTrainingConfig;
 import com.stock.modelService.domain.dto.ModelOperationsDto;
+import com.stock.modelService.domain.dto.ModelScoreSummaryResponse;
 import com.stock.modelService.domain.entity.LstmModelDocument;
 import com.stock.modelService.domain.entity.ModelActivationDocument;
 import com.stock.modelService.domain.entity.ModelOperationAuditDocument;
+import com.stock.modelService.domain.entity.ModelPredictionBatchDocument;
 import com.stock.modelService.domain.entity.ModelTrainingRunDocument;
 import com.stock.modelService.domain.entity.TrainingDatasetSnapshotDocument;
 import com.stock.modelService.persistence.LstmModelRepository;
 import com.stock.modelService.persistence.ModelActivationRepository;
 import com.stock.modelService.persistence.ModelOperationAuditRepository;
+import com.stock.modelService.persistence.ModelPredictionBatchRepository;
 import com.stock.modelService.persistence.ModelTrainingRunRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -52,6 +55,7 @@ public class ModelOperationsService {
     private final ModelActivationRepository modelActivationRepository;
     private final ModelTrainingRunRepository trainingRunRepository;
     private final ModelOperationAuditRepository auditRepository;
+    private final ModelPredictionBatchRepository predictionBatchRepository;
     private final ObjectMapper objectMapper;
     private final Executor applicationTaskExecutor;
 
@@ -67,6 +71,7 @@ public class ModelOperationsService {
      * @param modelActivationRepository 模型激活指针仓库
      * @param trainingRunRepository 训练运行仓库
      * @param auditRepository 模型操作审计仓库
+     * @param predictionBatchRepository 模型预测批次仓库
      * @param objectMapper JSON 序列化器
      * @param applicationTaskExecutor 应用异步执行器
      */
@@ -79,6 +84,7 @@ public class ModelOperationsService {
                                   ModelActivationRepository modelActivationRepository,
                                   ModelTrainingRunRepository trainingRunRepository,
                                   ModelOperationAuditRepository auditRepository,
+                                  ModelPredictionBatchRepository predictionBatchRepository,
                                   ObjectMapper objectMapper,
                                   @Qualifier("applicationTaskExecutor") Executor applicationTaskExecutor) {
         this.trainingConfig = trainingConfig;
@@ -90,6 +96,7 @@ public class ModelOperationsService {
         this.modelActivationRepository = modelActivationRepository;
         this.trainingRunRepository = trainingRunRepository;
         this.auditRepository = auditRepository;
+        this.predictionBatchRepository = predictionBatchRepository;
         this.objectMapper = objectMapper;
         this.applicationTaskExecutor = applicationTaskExecutor;
     }
@@ -116,6 +123,7 @@ public class ModelOperationsService {
                         trainingRunRepository.findTopByModelNameOrderByCreatedAtDesc(modelName)))
                 .trainingRunning(trainingRunning)
                 .activeModelHealthy(activeHealthy)
+                .activeVersionScore(loadActiveVersionScore(activeVersion))
                 .build();
     }
 
@@ -624,6 +632,31 @@ public class ModelOperationsService {
                 .orElse(null);
     }
 
+    private ModelScoreSummaryResponse loadActiveVersionScore(ModelOperationsDto.ModelVersionItem activeVersion) {
+        if (activeVersion == null || activeVersion.getId() == null || activeVersion.getId().isBlank()) {
+            return null;
+        }
+        ModelPredictionBatchDocument batch = predictionBatchRepository
+                .findFirstByModelIdAndEvaluatedCountGreaterThanOrderByEvaluationFinishedAtDescCreatedAtDesc(
+                        activeVersion.getId(), 0);
+        if (batch == null) {
+            return null;
+        }
+        return ModelScoreSummaryResponse.builder()
+                .batchId(batch.getId())
+                .modelId(batch.getModelId())
+                .modelVersion(batch.getModelVersion())
+                .targetTradeDate(batch.getTargetTradeDate())
+                .evaluatedCount(batch.getEvaluatedCount())
+                .coverageRate(batch.getCoverageRate())
+                .directionAccuracy(batch.getDirectionAccuracy())
+                .topDecileDirectionAccuracy(batch.getTopDecileDirectionAccuracy())
+                .highConfidenceAccuracy(batch.getHighConfidenceAccuracy())
+                .spearmanRankIc(batch.getSpearmanRankIc())
+                .abilityLevel(batch.getAbilityLevel())
+                .build();
+    }
+
     private ModelOperationsDto.ModelVersionItem toVersionItem(
             LstmModelDocument document, ModelActivationDocument activation) {
         String activeId = activation == null ? null : activation.getActiveModelVersionId();
@@ -806,4 +839,4 @@ public class ModelOperationsService {
     }
 
     }
-// AI_GENERATE_END- -----------------
+// AI_GENERATE_END-- -----------------

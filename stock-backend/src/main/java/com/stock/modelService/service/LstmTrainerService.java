@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------------------
+// AI_GENERATE_START -----------------------------
 package com.stock.modelService.service;
 
 import ai.djl.Device;
@@ -44,6 +44,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
+import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 
 /**
@@ -551,13 +553,43 @@ public class LstmTrainerService {
      */
     public Map<String, LstmPredictionResultDto> predictNextBatch(
             List<String> stockCodes, String modelVersionId, LocalDate baseTradeDate) {
+        Map<String, LstmPredictionResultDto> results = new LinkedHashMap<>();
+        int requestedSize = stockCodes == null ? 0 : stockCodes.size();
+        predictNextBatchChunks(stockCodes, modelVersionId, baseTradeDate,
+                Math.max(1, requestedSize), (ignoredCodes, chunkResults) -> results.putAll(chunkResults));
+        return results;
+    }
+
+    /**
+     * 使用同一个已加载模型分块执行批量预测。
+     *
+     * 模型参数在整个调用周期内只加载一次，每个分块完成后立即交给调用方持久化，
+     * 避免全市场预测重复创建 DJL 模型，同时保留分块进度和受控内存占用。
+     *
+     * @param stockCodes 股票代码集合
+     * @param modelVersionId 固定使用的模型文档 ID；为空时使用当前激活版本
+     * @param baseTradeDate 历史预测基准交易日；为空时使用最新行情
+     * @param batchSize 单次前向传播最大股票数量
+     * @param batchConsumer 分块股票及对应预测结果消费者
+     * @throws IllegalArgumentException 分块大小无效或消费者为空时抛出
+     * @throws IllegalStateException 模型加载、输入准备或前向传播失败时抛出
+     */
+    public void predictNextBatchChunks(
+            List<String> stockCodes, String modelVersionId, LocalDate baseTradeDate, int batchSize,
+            BiConsumer<List<String>, Map<String, LstmPredictionResultDto>> batchConsumer) {
+        if (batchSize <= 0) {
+            throw new IllegalArgumentException("预测分块大小必须大于 0");
+        }
+        if (batchConsumer == null) {
+            throw new IllegalArgumentException("预测分块结果消费者不能为空");
+        }
         List<String> codes = stockCodes == null ? List.of() : stockCodes.stream()
                 .filter(code -> code != null && !code.isBlank())
                 .map(String::trim)
                 .distinct()
                 .toList();
         if (codes.isEmpty()) {
-            return Map.of();
+            return;
         }
         LstmModelArtifactService.ModelArtifact artifact = modelVersionId == null
                 ? activeArtifact : null;
@@ -566,6 +598,36 @@ public class LstmTrainerService {
         }
         artifactService.validateMetadata(artifact.metadata());
 
+        try (NDManager manager = NDManager.newBaseManager("PyTorch");
+             Model model = Model.newInstance("lstm-global-predict", "PyTorch")) {
+            Block block = createModelBlock();
+            model.setBlock(block);
+            try (ByteArrayInputStream input = new ByteArrayInputStream(artifact.params());
+                 DataInputStream dataInput = new DataInputStream(input)) {
+                block.loadParameters(manager, dataInput);
+            }
+
+            int succeeded = 0;
+            for (int start = 0; start < codes.size(); start += batchSize) {
+                int end = Math.min(codes.size(), start + batchSize);
+                List<String> currentCodes = List.copyOf(codes.subList(start, end));
+                Map<String, LstmPredictionResultDto> chunkResults = predictLoadedModelBatch(
+                        currentCodes, baseTradeDate, artifact.modelId(), manager, model);
+                succeeded += chunkResults.size();
+                batchConsumer.accept(currentCodes, chunkResults);
+            }
+            log.info("共享 LSTM 分块预测完成: requested={}, succeeded={}, batchSize={}, modelVersion={}",
+                    codes.size(), succeeded, batchSize, MODEL_VERSION);
+        } catch (CancellationException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            log.error("共享 LSTM 批量预测失败", exception);
+            throw new IllegalStateException("共享 LSTM 批量预测失败：" + exception.getMessage(), exception);
+        }
+    }
+
+    private Map<String, LstmPredictionResultDto> predictLoadedModelBatch(
+            List<String> codes, LocalDate baseTradeDate, String modelId, NDManager manager, Model model) {
         int fetchDays = Math.max(config.getSequenceLength() + 21, config.getSequenceLength() * 2);
         Map<String, List<StockPrice>> priceSeries = trainingDataService.loadPriceSeries(
                 codes, fetchDays, baseTradeDate);
@@ -573,12 +635,11 @@ public class LstmTrainerService {
         List<String> validCodes = new ArrayList<>();
         List<float[][]> inputs = new ArrayList<>();
         List<Double> lastClosePrices = new ArrayList<>();
-        List<java.time.LocalDate> baseTradeDates = new ArrayList<>();
+        List<LocalDate> baseTradeDates = new ArrayList<>();
         for (String code : codes) {
             List<StockPrice> prices = priceSeries.getOrDefault(code, List.of());
             LstmDataPreprocessor.PredictionInput input = dataPreprocessor.buildPredictionInput(
-                    prices,
-                    contexts.getOrDefault(code, LstmDataPreprocessor.StockContext.basic(code)));
+                    prices, contexts.getOrDefault(code, LstmDataPreprocessor.StockContext.basic(code)));
             if (input == null) {
                 log.warn("跳过共享 LSTM 输入不足股票: stockCode={}", code);
                 continue;
@@ -597,21 +658,11 @@ public class LstmTrainerService {
             return Map.of();
         }
 
-        try (NDManager manager = NDManager.newBaseManager("PyTorch");
-             Model model = Model.newInstance("lstm-global-predict", "PyTorch")) {
-            Block block = createModelBlock();
-            model.setBlock(block);
-            try (ByteArrayInputStream input = new ByteArrayInputStream(artifact.params());
-                 DataInputStream dataInput = new DataInputStream(input)) {
-                block.loadParameters(manager, dataInput);
-            }
-
-            float[][][] batchInputs = inputs.toArray(float[][][]::new);
-            float[][] flattened = flattenInputs(batchInputs);
-            NDArray inputArray = manager.create(flattened);
+        float[][] flattened = flattenInputs(inputs.toArray(float[][][]::new));
+        try (NDManager batchManager = manager.newSubManager()) {
+            NDArray inputArray = batchManager.create(flattened);
             ParameterStore parameterStore = new ParameterStore(manager, false);
-            try (NDList output = model.getBlock().forward(
-                    parameterStore, new NDList(inputArray), false)) {
+            try (NDList output = model.getBlock().forward(parameterStore, new NDList(inputArray), false)) {
                 float[] values = output.singletonOrThrow().toFloatArray();
                 int expectedOutputCount = validCodes.size() * StockLSTMModel.OUTPUT_SIZE;
                 if (values.length != expectedOutputCount) {
@@ -630,27 +681,19 @@ public class LstmTrainerService {
                     }
                     double predictedReturn = scaledReturn * config.getTargetReturnScale();
                     double lastClose = lastClosePrices.get(index);
-                    double predictedPrice = lastClose > 0D
-                            ? lastClose * (1D + predictedReturn)
-                            : 0D;
                     results.put(validCodes.get(index), LstmPredictionResultDto.builder()
                             .stockCode(validCodes.get(index))
                             .baseTradeDate(baseTradeDates.get(index))
-                            .predictedClosePrice(predictedPrice)
+                            .predictedClosePrice(lastClose > 0D ? lastClose * (1D + predictedReturn) : 0D)
                             .lastClosePrice(lastClose > 0D ? lastClose : null)
                             .predictedChangeRatio(predictedReturn)
                             .directionProbability((double) directionProbability)
                             .downsideRisk((double) downsideRisk)
-                            .modelId(artifact.modelId())
+                            .modelId(modelId)
                             .build());
                 }
-                log.info("共享 LSTM 批量预测完成: requested={}, succeeded={}, modelVersion={}",
-                        codes.size(), results.size(), MODEL_VERSION);
                 return results;
             }
-        } catch (Exception exception) {
-            log.error("共享 LSTM 批量预测失败", exception);
-            throw new IllegalStateException("共享 LSTM 批量预测失败：" + exception.getMessage(), exception);
         }
     }
 
@@ -1013,4 +1056,4 @@ public class LstmTrainerService {
         private String snapshotId;
     }
 }
-// AI_GENERATE_END -------------------------
+// AI_GENERATE_END -----------------------------

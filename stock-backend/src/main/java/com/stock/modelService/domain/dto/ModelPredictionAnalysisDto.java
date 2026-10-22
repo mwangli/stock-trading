@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START -------
 package com.stock.modelService.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -135,6 +135,9 @@ public final class ModelPredictionAnalysisDto {
 
         /** 评估队列状态。 */
         private String evaluationQueueStatus;
+
+        /** 评估等待原因。 */
+        private String evaluationWaitReason;
 
         /** 评估任务进入队列的时间。 */
         private LocalDateTime evaluationQueuedAt;
@@ -450,4 +453,4 @@ public final class ModelPredictionAnalysisDto {
         private String tradingEligibilityReason;
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------

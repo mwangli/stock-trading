@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START- ------
 package com.stock.tradingExecutor.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -165,8 +165,14 @@ public final class JobManagementDto {
     @AllArgsConstructor
     public static class TriggerResponse {
 
-        /** 新建的运行标识。 */
+        /** 本次新建或已存在的运行标识。 */
         private String runId;
+
+        /** 是否接受并创建了新的任务运行。 */
+        private boolean accepted;
+
+        /** 当前任务运行状态。 */
+        private String status;
 
         /** 提示消息。 */
         private String message;
@@ -197,4 +203,4 @@ public final class JobManagementDto {
         private String message;
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END- -----

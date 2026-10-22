@@ -1,4 +1,4 @@
-// AI_GENERATE_START- ------
+// AI_GENERATE_START--- ------
 package com.stock.modelService.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -8,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -90,19 +89,39 @@ public class ModelPredictionController {
     }
 
     /**
-     * 删除无效或失败的预测批次及其关联数据。
+     * 将预测失败的批次重新加入预测队列。
      *
      * @param batchId 预测批次 ID
-     * @return 删除操作结果
+     * @return 重新入队操作结果
      */
-    @DeleteMapping("/batches/{batchId}")
-    public ResponseDTO<ModelPredictionAnalysisDto.OperationResponse> deleteBatch(
+    @PostMapping("/retryPrediction/{batchId}")
+    public ResponseDTO<ModelPredictionAnalysisDto.OperationResponse> retryPrediction(
             @PathVariable String batchId) {
-        log.info("[ModelPrediction] 删除无效预测批次: batchId={}", batchId);
+        log.info("[ModelPrediction] 重新提交失败预测批次: batchId={}", batchId);
         try {
-            return ResponseDTO.success(predictionAnalysisService.deleteBatch(batchId));
+            return ResponseDTO.success(predictionAnalysisService.retryPrediction(batchId));
         } catch (RuntimeException exception) {
-            log.warn("[ModelPrediction] 删除预测批次失败: batchId={}, reason={}", batchId, exception.getMessage());
+            log.warn("[ModelPrediction] 重新提交失败预测批次失败: batchId={}, reason={}",
+                    batchId, exception.getMessage());
+            return ResponseDTO.error(exception.getMessage());
+        }
+    }
+
+    /**
+     * 将评估失败的批次重新加入评估队列。
+     *
+     * @param batchId 预测批次 ID
+     * @return 重新入队操作结果
+     */
+    @PostMapping("/retryEvaluation/{batchId}")
+    public ResponseDTO<ModelPredictionAnalysisDto.OperationResponse> retryEvaluation(
+            @PathVariable String batchId) {
+        log.info("[ModelPrediction] 重新提交失败评估批次: batchId={}", batchId);
+        try {
+            return ResponseDTO.success(predictionAnalysisService.retryEvaluation(batchId));
+        } catch (RuntimeException exception) {
+            log.warn("[ModelPrediction] 重新提交失败评估批次失败: batchId={}, reason={}",
+                    batchId, exception.getMessage());
             return ResponseDTO.error(exception.getMessage());
         }
     }
@@ -151,4 +170,4 @@ public class ModelPredictionController {
         }
     }
 }
-// AI_GENERATE_END- ------
+// AI_GENERATE_END--- ------

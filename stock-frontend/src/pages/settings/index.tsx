@@ -1,4 +1,4 @@
-// AI_GENERATE_START--- ------------------
+// AI_GENERATE_START---- ------------------
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Button,
@@ -8,21 +8,12 @@ import {
   InputNumber,
   Row,
   Select,
-  Space,
-  Statistic,
   Switch,
   Tag,
   Typography,
   message,
 } from 'antd';
-import {
-  CheckCircleOutlined,
-  CloudServerOutlined,
-  LockOutlined,
-  ReloadOutlined,
-  SaveOutlined,
-  WarningOutlined,
-} from '@ant-design/icons';
+import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAppTheme, type ThemeMode } from '../../theme/AppThemeProvider';
 import request from '../../utils/request';
@@ -56,28 +47,6 @@ interface RealTradingStatus {
   automaticExecutionEnabled: boolean;
 }
 
-interface SentimentHealth {
-  status: string;
-  service: string;
-  modelLoaded: boolean;
-  lastLoadedTime?: string;
-  artifactAvailable: boolean;
-  manifestPresent: boolean;
-  checksumsVerified: boolean;
-  modelVersion?: string;
-  artifactPath?: string;
-  totalSizeBytes?: number;
-  manifestSha256?: string;
-  evaluationDatasetVersion?: string;
-  evaluationSampleCount?: number;
-  macroF1?: number;
-  negativeRecall?: number;
-  expectedCalibrationError?: number;
-  p95LatencyMs?: number;
-  evaluationConclusion?: string;
-  lastError?: string;
-}
-
 interface RuntimeSettings {
   nodeId?: string;
   schedulerEnabled: boolean;
@@ -108,13 +77,13 @@ const readNumber = (key: string, fallback: number) => {
 
 const formatDateTime = (value?: string) => {
   if (!value) {
-    return '未加载';
+    return i18n.t('settings.status.notLoaded');
   }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return '时间未知';
+    return i18n.t('settings.status.notConfigured');
   }
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat(i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -125,20 +94,6 @@ const formatDateTime = (value?: string) => {
   }).format(date);
 };
 
-const formatBytes = (value?: number) => {
-  if (value === undefined || value < 0) {
-    return '未知';
-  }
-  if (value < 1024 * 1024) {
-    return `${(value / 1024).toFixed(1)} KB`;
-  }
-  if (value < 1024 * 1024 * 1024) {
-    return `${(value / 1024 / 1024).toFixed(1)} MB`;
-  }
-  return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
-};
-
-const formatRatio = (value?: number) => value === undefined ? '未提供' : `${(value * 100).toFixed(2)}%`;
 const healthTag = (state: ServiceHealth<unknown>['state']) => {
   if (state === 'up') {
     return <Tag color="green">{i18n.t('settings.status.normal')}</Tag>;
@@ -159,10 +114,9 @@ const Settings: React.FC = () => {
   const [checking, setChecking] = useState(false);
   const [runtimeLoading, setRuntimeLoading] = useState(true);
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings | null>(null);
-  const [, setStatusError] = useState<string | null>(null);
+  const [lastStatusCheckedAt, setLastStatusCheckedAt] = useState<string>();
   const [brokerHealth, setBrokerHealth] = useState<ServiceHealth<BrokerReadStatus>>({ state: 'unknown' });
   const [tradingHealth, setTradingHealth] = useState<ServiceHealth<RealTradingStatus>>({ state: 'unknown' });
-  const [sentimentHealth, setSentimentHealth] = useState<ServiceHealth<SentimentHealth>>({ state: 'unknown' });
   const loadRuntimeSettings = useCallback(async () => {
     setRuntimeLoading(true);
     try {
@@ -179,11 +133,9 @@ const Settings: React.FC = () => {
 
   const checkSystemStatus = useCallback(async () => {
     setChecking(true);
-    setStatusError(null);
-    const [brokerResult, tradingResult, sentimentResult] = await Promise.allSettled([
+    const [brokerResult, tradingResult] = await Promise.allSettled([
       request.get('/brokerQuery/status') as Promise<ApiResponse<BrokerReadStatus>>,
       request.get('/realTrading/status') as Promise<ApiResponse<RealTradingStatus>>,
-      request.get('/modelSentiment/health') as Promise<ApiResponse<SentimentHealth>>,
     ]);
 
     if (brokerResult.status === 'fulfilled') {
@@ -206,19 +158,7 @@ const Settings: React.FC = () => {
       setTradingHealth({ state: 'down', error: getApiErrorMessage(tradingResult.reason, '真实交易状态接口不可用') });
     }
 
-    if (sentimentResult.status === 'fulfilled') {
-      try {
-        setSentimentHealth({ state: 'up', data: readApiData(sentimentResult.value, '读取情感模型状态失败') });
-      } catch (cause) {
-        setSentimentHealth({ state: 'down', error: getApiErrorMessage(cause, '读取情感模型状态失败') });
-      }
-    } else {
-      setSentimentHealth({ state: 'down', error: getApiErrorMessage(sentimentResult.reason, '情感模型状态接口不可用') });
-    }
-
-    if ([brokerResult, tradingResult, sentimentResult].every((result) => result.status === 'rejected')) {
-      setStatusError('后端服务未响应，请确认后端已启动。');
-    }
+    setLastStatusCheckedAt(new Date().toISOString());
     setChecking(false);
   }, []);
 
@@ -287,114 +227,103 @@ const Settings: React.FC = () => {
 
   return (
     <div className="app-page">
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button icon={<ReloadOutlined />} loading={checking} onClick={() => void checkSystemStatus()}>{t('settings.checkStatus')}</Button>
-        <Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={!runtimeSettings} onClick={() => form.submit()}>{t('settings.save')}</Button>
-      </div>
-      <div className="settings-status-cards">
-        <div className="settings-status-col">
-          <Card className="surface-card compact-card settings-status-card" loading={checking}>
-            <Statistic title="券商只读网关" value={brokerHealth.data?.brokerName || t('settings.status.notConfigured')} prefix={<CloudServerOutlined />} />
-            <div className="mt-3">{healthTag(brokerHealth.state)} <Text type="secondary" className="ml-2">{brokerHealth.data?.authenticated ? t('settings.status.sessionValid') : t('settings.status.sessionMissing')}</Text></div>
-          </Card>
+      <div className="settings-summary-strip">
+        <div className="settings-summary-content">
+          <Text type="secondary">{t('settings.summary.title')}</Text>
+          {healthTag(brokerHealth.state)}
+          <Tag color={brokerHealth.data?.authenticated ? 'green' : 'red'}>
+            {brokerHealth.data?.authenticated ? t('settings.summary.brokerSessionValid') : t('settings.summary.brokerSessionInvalid')}
+          </Tag>
+          <Tag color={tradingHealth.data?.realWriteEnabled ? 'red' : 'blue'}>
+            {tradingHealth.data?.realWriteEnabled ? t('settings.status.realWriteOn') : t('settings.summary.realWriteOff')}
+          </Tag>
+          <Tag color={tradingHealth.data?.automaticExecutionEnabled ? 'green' : 'gold'}>
+            {tradingHealth.data?.automaticExecutionEnabled ? t('settings.status.autoReady') : t('settings.summary.autoExecutionStopped')}
+          </Tag>
         </div>
-        <div className="settings-status-col">
-          <Card className="surface-card compact-card settings-status-card" loading={checking}>
-            <Statistic title="真实交易门禁" value={tradingHealth.data?.automaticExecutionEnabled ? t('settings.status.autoReady') : t('settings.status.controlledStop')} prefix={<LockOutlined />} />
-            <div className="mt-3">
-              <Tag color={tradingHealth.data?.realWriteEnabled ? 'red' : 'blue'}>{tradingHealth.data?.realWriteEnabled ? t('settings.status.realWriteOn') : t('settings.status.readOnly')}</Tag>
-              {healthTag(tradingHealth.state)}
-            </div>
-          </Card>
-        </div>
-        <div className="settings-status-col">
-          <Card className="surface-card compact-card settings-status-card" loading={checking}>
-            <Statistic title={t('layout.sentimentModel')} value={sentimentHealth.data?.modelLoaded ? t('settings.status.loaded') : t('settings.status.notLoaded')} prefix={<CheckCircleOutlined />} />
-            <div className="mt-3 flex flex-wrap gap-2">
-              {healthTag(sentimentHealth.state)}
-              <Tag color={sentimentHealth.data?.artifactAvailable ? 'green' : 'red'}>{sentimentHealth.data?.artifactAvailable ? t('settings.status.artifactAvailable') : t('settings.status.artifactMissing')}</Tag>
-              <Tag color={sentimentHealth.data?.checksumsVerified ? 'green' : 'gold'}>{sentimentHealth.data?.checksumsVerified ? t('settings.status.verified') : t('settings.status.unverified')}</Tag>
-            </div>
-            <div className="settings-status-details mt-3 grid gap-x-4 gap-y-1 text-sm">
-              <Text>版本：{sentimentHealth.data?.modelVersion || '未配置'}</Text>
-              <Text>制品大小：{formatBytes(sentimentHealth.data?.totalSizeBytes)}</Text>
-              <Text>Macro-F1：{formatRatio(sentimentHealth.data?.macroF1)}</Text>
-              <Text>负面召回率：{formatRatio(sentimentHealth.data?.negativeRecall)}</Text>
-              <Text type="secondary">最近加载：{formatDateTime(sentimentHealth.data?.lastLoadedTime)}</Text>
-              {sentimentHealth.data?.lastError && <Text type="danger">{sentimentHealth.data.lastError}</Text>}
-            </div>
-          </Card>
-        </div>
+        <Button icon={<ReloadOutlined />} loading={checking} onClick={() => void checkSystemStatus()}>{t('settings.summary.refreshStatus')}</Button>
       </div>
 
       <Form<SettingsFormValues>
+        className="settings-form"
         form={form}
         layout="vertical"
         initialValues={formInitialValues}
         onFinish={onFinish}
       >
-        <Card className="surface-card" title={t('settings.generalTitle')}>
-          <Row gutter={[24, 8]}>
-            <Col xs={24} md={12}>
-              <Form.Item label={t('settings.fields.autoTheme')} name="autoThemeEnabled" valuePropName="checked" extra={t('settings.themeAutoHint')}>
-                <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label={t('settings.fields.theme')} name="theme">
-                <Select disabled={formAutoThemeEnabled ?? autoThemeEnabled} options={[{ value: 'light', label: t('settings.options.theme.light') }, { value: 'dark', label: t('settings.options.theme.dark') }]} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label={t('settings.fields.language')} name="language">
-                <Select options={[{ value: 'zh', label: t('settings.options.language.zh') }, { value: 'en', label: t('settings.options.language.en') }]} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label={t('settings.fields.notifications')} name="notifications" valuePropName="checked">
-                <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label={t('settings.fields.refreshRate')} name="refreshRate" extra={t('settings.refreshHint')}>
-                <InputNumber min={5000} max={60000} step={5000} addonAfter="ms" className="!w-full" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Button onClick={resetPreferences}>{t('settings.resetPreferences')}</Button>
-        </Card>
+        <div className="settings-main-grid">
+          <Card className="surface-card" title={t('settings.generalTitle')} extra={<Button onClick={resetPreferences}>{t('settings.resetPreferences')}</Button>}>
+            <Row gutter={[24, 8]}>
+              <Col xs={24} md={12}>
+                <Form.Item label={t('settings.fields.autoTheme')} name="autoThemeEnabled" valuePropName="checked" extra={t('settings.themeAutoHint')}>
+                  <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label={t('settings.fields.theme')} name="theme">
+                  <Select disabled={formAutoThemeEnabled ?? autoThemeEnabled} options={[{ value: 'light', label: t('settings.options.theme.light') }, { value: 'dark', label: t('settings.options.theme.dark') }]} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label={t('settings.fields.language')} name="language">
+                  <Select options={[{ value: 'zh', label: t('settings.options.language.zh') }, { value: 'en', label: t('settings.options.language.en') }]} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label={t('settings.fields.notifications')} name="notifications" valuePropName="checked">
+                  <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label={t('settings.fields.refreshRate')} name="refreshRate" extra={t('settings.refreshHint')}>
+                  <InputNumber min={5000} max={60000} step={5000} addonAfter="ms" className="!w-full" />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
 
-        <Card
-          className="surface-card"
-          title={t('settings.runtimeTitle')}
-          loading={runtimeLoading}
-          extra={<Text type="secondary">最后更新：{formatDateTime(runtimeSettings?.updatedAt)}</Text>}
-        >
-          <Row gutter={[24, 8]}>
-            <Col xs={24} md={12} xl={8}>
-              <Form.Item label={t('settings.fieldsRuntime.scheduler')} name="schedulerEnabled" valuePropName="checked" extra="关闭后禁止定时和手动触发 Quartz 固定任务">
+          <Card className="surface-card settings-runtime-card" title={t('settings.runtimeTitle')} loading={runtimeLoading} extra={<Text type="secondary">{t('settings.runtime.justUpdated')}</Text>}>
+            <div className="settings-runtime-list">
+              <Form.Item label={t('settings.fieldsRuntime.scheduler')} name="schedulerEnabled" valuePropName="checked" extra={t('settings.runtime.schedulerHint')}>
                 <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} />
               </Form.Item>
-            </Col>
-            <Col xs={24} md={12} xl={8}>
-              <Form.Item label={t('settings.fieldsRuntime.startupData')} name="startupDataSyncEnabled" valuePropName="checked" extra="下次应用启动时检查并补充股票基础数据">
+              <Form.Item label={t('settings.fieldsRuntime.startupData')} name="startupDataSyncEnabled" valuePropName="checked" extra={t('settings.runtime.startupDataHint')}>
                 <Switch checkedChildren={t('settings.switchOn')} unCheckedChildren={t('settings.switchOff')} />
               </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-      </Form>
-
-      <Card className="surface-card" title={<Space><WarningOutlined />生产安全边界</Space>}>
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div><Text type="secondary">真实写入</Text><div className="mt-1">{tradingHealth.data?.realWriteEnabled ? <Tag color="red">已开启</Tag> : <Tag color="blue">已关闭</Tag>}</div></div>
-          <div><Text type="secondary">无人值守执行</Text><div className="mt-1">{tradingHealth.data?.automaticExecutionEnabled ? <Tag color="orange">已具备条件</Tag> : <Tag>未就绪</Tag>}</div></div>
-          <div><Text type="secondary">券商会话</Text><div className="mt-1">{brokerHealth.data?.authenticated ? <Tag color="green">有效</Tag> : <Tag color="red">无效</Tag>}</div></div>
+            </div>
+            <div className="settings-safety-grid">
+              <div><Text type="secondary">{t('settings.safety.realWrite')}</Text><div><Tag color={tradingHealth.data?.realWriteEnabled ? 'red' : 'blue'}>{tradingHealth.data?.realWriteEnabled ? t('settings.switchOn') : t('settings.switchOff')}</Tag></div></div>
+              <div><Text type="secondary">{t('settings.safety.unattended')}</Text><div><Tag color={tradingHealth.data?.automaticExecutionEnabled ? 'green' : 'gold'}>{tradingHealth.data?.automaticExecutionEnabled ? t('settings.status.autoReady') : t('settings.safety.notReady')}</Tag></div></div>
+              <div><Text type="secondary">{t('settings.safety.brokerSession')}</Text><div><Tag color={brokerHealth.data?.authenticated ? 'green' : 'red'}>{brokerHealth.data?.authenticated ? t('settings.status.sessionValid') : t('settings.status.sessionMissing')}</Tag></div></div>
+            </div>
+          </Card>
         </div>
-      </Card>
+
+        <Card className="surface-card settings-info-card" title={t('settings.info.title')} extra={<Text type="secondary">{t('settings.info.checkedAt', { time: formatDateTime(lastStatusCheckedAt) })}</Text>}>
+          <div className="settings-info-layout">
+            <div className="settings-info-grid">
+              <div className="settings-info-item"><Text type="secondary">{t('settings.info.nodeId')}</Text><strong>{runtimeSettings?.nodeId || t('settings.status.notConfigured')}</strong></div>
+              <div className="settings-info-item"><Text type="secondary">{t('settings.info.updatedAt')}</Text><strong>{formatDateTime(runtimeSettings?.updatedAt)}</strong></div>
+              <div className="settings-info-item"><Text type="secondary">{t('settings.info.refreshCycle')}</Text><strong>{t('settings.info.seconds', { seconds: Math.round((configuredRefreshRate ?? readNumber(STORAGE_KEYS.refreshRate, 30000)) / 1000) })}</strong></div>
+              <div className="settings-info-item"><Text type="secondary">{t('settings.info.schedulerMode')}</Text><strong>{runtimeSettings?.schedulerEnabled ? t('settings.info.unifiedScheduler') : t('settings.info.schedulerDisabled')}</strong></div>
+              <div className="settings-info-item"><Text type="secondary">{t('settings.info.preferenceStorage')}</Text><strong>{t('settings.info.currentBrowser')}</strong></div>
+              <div className="settings-info-item"><Text type="secondary">{t('settings.info.runtimeStorage')}</Text><strong>{t('settings.info.serverPersisted')}</strong></div>
+            </div>
+            <div className="settings-health-list">
+              <div className="settings-health-row"><Text type="secondary">{t('settings.health.gateway')}</Text><span>{brokerHealth.data?.brokerName || t('settings.status.notConfigured')}</span>{healthTag(brokerHealth.state)}</div>
+              <div className="settings-health-row"><Text type="secondary">{t('settings.health.brokerSession')}</Text><span>{brokerHealth.error || brokerHealth.data?.tradingMode || t('settings.status.readOnly')}</span><Tag color={brokerHealth.data?.authenticated ? 'green' : 'red'}>{brokerHealth.data?.authenticated ? t('settings.status.sessionValid') : t('settings.status.sessionMissing')}</Tag></div>
+              <div className="settings-health-row"><Text type="secondary">{t('settings.health.tradingGate')}</Text><span>{tradingHealth.error || (tradingHealth.data?.automaticExecutionEnabled ? t('settings.status.autoReady') : t('settings.status.controlledStop'))}</span><Tag color={tradingHealth.data?.realWriteEnabled ? 'red' : 'blue'}>{tradingHealth.data?.realWriteEnabled ? t('settings.status.realWriteOn') : t('settings.status.readOnly')}</Tag></div>
+            </div>
+          </div>
+        </Card>
+
+        <div className="settings-save-row">
+          <Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={!runtimeSettings} onClick={() => form.submit()}>{t('settings.save')}</Button>
+        </div>
+      </Form>
     </div>
   );
 };
 
 export default Settings;
-// AI_GENERATE_END--- ------------------
+// AI_GENERATE_END---- ------------------

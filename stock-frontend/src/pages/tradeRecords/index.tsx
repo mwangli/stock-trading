@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------------------
+// AI_GENERATE_START -----------------------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
@@ -156,8 +156,6 @@ const TradeRecords: React.FC = () => {
       <div className="trade-record-detail-grid">
         {detailValue('买入数量', item.buyQuantity, 'trade-record-number')}
         {detailValue('卖出数量', item.soldQuantity || '-', 'trade-record-number')}
-        {detailValue('买入均价', money(item.buyPrice), 'trade-record-number')}
-        {detailValue('卖出均价', money(item.averageSellPrice), 'trade-record-number')}
         {detailValue('买入金额', money(item.buyAmount), 'trade-record-number')}
         {detailValue('卖出金额', money(item.sellAmount), 'trade-record-number')}
         {detailValue('手续费', money(item.totalFee), 'trade-record-number')}
@@ -173,6 +171,8 @@ const TradeRecords: React.FC = () => {
     { title: '股票', key: 'stock', fixed: 'left', width: 190, render: (_: unknown, item) => <div className="trade-record-stock"><strong>{item.stockCode}</strong><span>{item.stockName ?? '-'}</span></div> },
     { title: '买入时间', dataIndex: 'buyTime', key: 'buyTime', width: 180, render: formatDateTime },
     { title: '卖出时间', dataIndex: 'lastSellTime', key: 'lastSellTime', width: 180, render: (value?: string) => value ? formatDateTime(value) : <Typography.Text type="secondary">待卖出</Typography.Text> },
+    { title: '买入价格', dataIndex: 'buyPrice', key: 'buyPrice', width: 120, className: 'trade-record-number', render: money },
+    { title: '卖出价格', dataIndex: 'averageSellPrice', key: 'averageSellPrice', width: 120, className: 'trade-record-number', render: money },
     { title: '净收益', dataIndex: 'netProfit', key: 'netProfit', width: 125, className: 'trade-record-number', render: (value: number, item) => item.soldQuantity > 0 ? <strong className="trade-record-result">{profit(value)}</strong> : '-' },
     { title: '收益率', dataIndex: 'returnRate', key: 'returnRate', width: 120, className: 'trade-record-number', render: (value: number, item) => item.soldQuantity > 0 ? <strong className="trade-record-result">{rate(value)}</strong> : '-' },
     { title: '持仓时间', dataIndex: 'holdingDays', key: 'holdingDays', width: 110, className: 'trade-record-number', render: days },
@@ -248,4 +248,4 @@ const TradeRecords: React.FC = () => {
 };
 
 export default TradeRecords;
-// AI_GENERATE_END ----------------------
+// AI_GENERATE_END -----------------------

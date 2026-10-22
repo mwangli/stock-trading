@@ -1,4 +1,4 @@
-// AI_GENERATE_START- ----------
+// AI_GENERATE_START----- ----------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.JobManagementDto;
@@ -112,11 +112,7 @@ public class JobManagementService {
      * @return 触发结果
      */
     public JobManagementDto.TriggerResponse trigger(String jobName, String operator) {
-        String runId = jobExecutionService.triggerManually(jobName, operator);
-        return JobManagementDto.TriggerResponse.builder()
-                .runId(runId)
-                .message("任务已开始执行")
-                .build();
+        return jobExecutionService.triggerManually(jobName, operator);
     }
 
     /**
@@ -207,9 +203,7 @@ public class JobManagementService {
                 .jobName(record.getJobName())
                 .triggerSource(record.getTriggerSource().name())
                 .triggeredBy(record.getTriggeredBy())
-                .status(record.getStatus() == com.stock.tradingExecutor.JobExecutionStatus.QUEUED
-                        ? com.stock.tradingExecutor.JobExecutionStatus.RUNNING.name()
-                        : record.getStatus().name())
+                .status(record.getStatus().name())
                 .scheduledTime(record.getScheduledTime())
                 .startedTime(record.getStartedTime())
                 .finishedTime(record.getFinishedTime())
@@ -222,4 +216,4 @@ public class JobManagementService {
                 .build();
     }
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END---- ---------

@@ -1,6 +1,6 @@
-// AI_GENERATE_START ---------------------------------------------------------
+// AI_GENERATE_START ------------------------------------------------------------
 import './styles.css';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button, Card, Col, Descriptions, Form, Input, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message, type InputRef } from 'antd';
 import { BulbOutlined, InfoCircleOutlined, RobotOutlined, SendOutlined, SettingOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
@@ -8,6 +8,8 @@ import { getApiErrorMessage, readApiData, type ApiResponse } from '../../utils/a
 import { usePageHeader } from '../../layouts/PageHeaderContext';
 import { useTranslation } from 'react-i18next';
 import { localizedText } from '../../utils/localizedText';
+import { useAuth } from '../../auth/AuthContext';
+import { useAgentConversationStore } from '../../store/agentConversationStore';
 
 const { Text } = Typography;
 
@@ -107,12 +109,6 @@ interface AgentTaskResponse {
   errorMessage?: string;
 }
 
-interface AgentMessage {
-  role: 'user' | 'assistant';
-  content: string;
-  evidenceSummary?: string;
-}
-
 interface RuntimeStatus {
   enabled: boolean;
   provider: string;
@@ -147,6 +143,8 @@ const DEFAULT_PROVIDER_MODELS: Record<'deepseek' | 'ollama', string> = {
 
 const StrategyConfig: React.FC = () => {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const conversationOwnerId = String(user?.id ?? 'anonymous');
   const [form] = Form.useForm<StrategyConfigValues>();
   const [config, setConfig] = useState<StrategyConfigValues | null>(null);
   const [state, setState] = useState<StrategyState | null>(null);
@@ -157,15 +155,25 @@ const StrategyConfig: React.FC = () => {
   const [tradingLoading, setTradingLoading] = useState(false);
   const [, setTradingError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [agentOpen, setAgentOpen] = useState(false);
-  const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
-  const [agentQuestion, setAgentQuestion] = useState('');
-  const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([]);
-  const [agentLoading, setAgentLoading] = useState(false);
+  const agentOpen = useAgentConversationStore((conversation) => conversation.agentOpen);
+  const agentSessionId = useAgentConversationStore((conversation) => conversation.sessionId);
+  const agentQuestion = useAgentConversationStore((conversation) => conversation.question);
+  const agentMessages = useAgentConversationStore((conversation) => conversation.messages);
+  const agentLoading = useAgentConversationStore((conversation) => conversation.loading);
+  const activateConversationOwner = useAgentConversationStore((conversation) => conversation.activateOwner);
+  const updateAgentOpen = useAgentConversationStore((conversation) => conversation.setAgentOpen);
+  const updateAgentSessionId = useAgentConversationStore((conversation) => conversation.setSessionId);
+  const updateAgentQuestion = useAgentConversationStore((conversation) => conversation.setQuestion);
+  const appendAgentMessage = useAgentConversationStore((conversation) => conversation.appendMessage);
+  const updateAgentLoading = useAgentConversationStore((conversation) => conversation.setLoading);
   const agentInputRef = useRef<InputRef>(null);
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
-  const [, setRuntimeLoading] = useState(false);
+  const [runtimeLoading, setRuntimeLoading] = useState(true);
   const [workspaceTab, setWorkspaceTab] = useState<'chat' | 'runtime' | 'config' | 'candidates'>('chat');
+
+  useLayoutEffect(() => {
+    activateConversationOwner(conversationOwnerId);
+  }, [activateConversationOwner, conversationOwnerId]);
 
   const loadRuntime = useCallback(async () => {
     setRuntimeLoading(true);
@@ -244,7 +252,7 @@ const StrategyConfig: React.FC = () => {
   };
 
   const openAgent = async (): Promise<string | null> => {
-    setAgentOpen(true);
+    updateAgentOpen(conversationOwnerId, true);
     if (agentSessionId) {
       return agentSessionId;
     }
@@ -253,7 +261,7 @@ const StrategyConfig: React.FC = () => {
         title: localizedText('策略智能决策会话', 'Strategy Decision Session'),
       }) as ApiResponse<AgentSessionResponse>;
       const session = readApiData(response, localizedText('创建 Agent 会话失败', 'Failed to create Agent session'));
-      setAgentSessionId(session.sessionId);
+      updateAgentSessionId(conversationOwnerId, session.sessionId);
       return session.sessionId;
     } catch (cause) {
       message.error(getApiErrorMessage(cause, localizedText('创建 Agent 会话失败', 'Failed to create Agent session')));
@@ -277,9 +285,9 @@ const StrategyConfig: React.FC = () => {
     if (!sessionId) {
       return;
     }
-    setAgentMessages((current) => [...current, { role: 'user', content: question }]);
-    setAgentQuestion('');
-    setAgentLoading(true);
+    appendAgentMessage(conversationOwnerId, { role: 'user', content: question });
+    updateAgentQuestion(conversationOwnerId, '');
+    updateAgentLoading(conversationOwnerId, true);
     try {
       const tradeExecutionDiagnostic = /买入计划|执行门禁|为什么没有生成|为什么没有买入|交易执行|下单/.test(question);
       const runtimeDiagnostic = /模型连接|模型状态|Provider|Ollama|DeepSeek|Agent.*(?:状态|健康)|响应超时|对话超时|model connection|provider health|timeout/i.test(question);
@@ -301,23 +309,25 @@ const StrategyConfig: React.FC = () => {
       const response = await request.post(diagnosticQuestion ? '/agent/tasks/diagnose' : '/agent/tasks/research', requestBody) as ApiResponse<AgentTaskResponse>;
       const task = readApiData(response, localizedText('Agent 分析失败', 'Agent analysis failed'));
       const content = task.resultSummary || task.errorMessage || localizedText('Agent 未返回结果', 'Agent returned no result');
-      setAgentMessages((current) => [...current, {
+      appendAgentMessage(conversationOwnerId, {
         role: 'assistant',
         content,
         evidenceSummary: task.evidenceSummary,
-      }]);
+      });
     } catch (cause) {
-      setAgentMessages((current) => [...current, {
+      appendAgentMessage(conversationOwnerId, {
         role: 'assistant',
         content: getApiErrorMessage(cause, localizedText('Agent 分析失败', 'Agent analysis failed')),
-      }]);
+      });
     } finally {
-      setAgentLoading(false);
+      updateAgentLoading(conversationOwnerId, false);
     }
   };
 
-  const capabilityHealth = (status: 'available' | 'disabled' | 'pending' | 'unavailable') => {
-    const text = status === 'available'
+  const capabilityHealth = (status: 'available' | 'disabled' | 'loading' | 'pending' | 'unavailable') => {
+    const text = status === 'loading'
+      ? localizedText('读取中', 'Loading')
+      : status === 'available'
       ? localizedText('\u53ef\u7528', 'Available')
       : status === 'pending'
         ? localizedText('\u7b49\u5f85\u4f9d\u8d56', 'Pending')
@@ -326,30 +336,44 @@ const StrategyConfig: React.FC = () => {
           : localizedText('\u4e0d\u53ef\u7528', 'Unavailable');
     return <span className={`capability-health capability-health-${status}`}><span className="capability-health-dot" aria-hidden="true" />{text}</span>;
   };
+  const runtimePending = runtimeLoading && runtime === null;
+  const runtimeFallbackText = runtimePending
+    ? localizedText('读取中', 'Loading')
+    : runtime
+      ? localizedText('未配置', 'Not configured')
+      : localizedText('获取失败', 'Unavailable');
   const activeProviderAvailable = runtime?.provider === 'deepseek'
     ? runtime.deepseekAvailable
     : runtime?.provider === 'ollama'
       ? runtime.ollamaAvailable
       : runtime?.deepseekAvailable === true || runtime?.ollamaAvailable === true;
-  const agentCapabilityStatus: 'available' | 'disabled' | 'unavailable' = !runtime?.enabled
+  const agentCapabilityStatus: 'available' | 'disabled' | 'loading' | 'unavailable' = runtimePending
+    ? 'loading'
+    : !runtime
+    ? 'unavailable'
+    : !runtime.enabled
     ? 'disabled'
     : activeProviderAvailable ? 'available' : 'unavailable';
   const embeddingCapabilityStatus: 'available' | 'disabled' | 'loading' | 'unavailable' = !runtime
-    ? 'loading'
+    ? runtimePending ? 'loading' : 'unavailable'
     : !runtime.embeddingEnabled
     ? 'disabled'
     : runtime.embeddingReady ? 'available' : 'unavailable';
-  const ragCapabilityStatus: 'available' | 'disabled' | 'loading' | 'pending' = !runtime
-    ? 'loading'
+  const ragCapabilityStatus: 'available' | 'disabled' | 'loading' | 'pending' | 'unavailable' = !runtime
+    ? runtimePending ? 'loading' : 'unavailable'
     : !runtime.ragEnabled
     ? 'disabled'
     : runtime.embeddingReady ? 'available' : 'pending';
-  const memoryCapabilityStatus: 'available' | 'disabled' | 'loading' | 'pending' = !runtime
-    ? 'loading'
+  const memoryCapabilityStatus: 'available' | 'disabled' | 'loading' | 'pending' | 'unavailable' = !runtime
+    ? runtimePending ? 'loading' : 'unavailable'
     : !runtime.memoryEnabled
     ? 'disabled'
     : runtime.embeddingReady ? 'available' : 'pending';
-  const activeModel = runtime?.provider === 'deepseek' ? runtime.deepseekModel : runtime?.ollamaModel;
+  const activeModel = runtime?.provider === 'deepseek'
+    ? runtime.deepseekModel || DEFAULT_PROVIDER_MODELS.deepseek
+    : runtime?.provider === 'ollama'
+      ? runtime.ollamaModel || DEFAULT_PROVIDER_MODELS.ollama
+      : undefined;
   usePageHeader(localizedText('智能决策', 'Intelligent Decision'));
 
   const capabilityLight = (label: string, status: 'available' | 'disabled' | 'loading' | 'pending' | 'unavailable') => (
@@ -388,16 +412,16 @@ const StrategyConfig: React.FC = () => {
           <div className="agent-dialog-status-icon"><RobotOutlined /></div>
           <div>
             <span>{localizedText('当前 Agent 模型', 'Active Agent model')}</span>
-            <strong>{activeModel || DEFAULT_PROVIDER_MODELS.ollama}</strong>
-            <small>{capabilityHealth(agentCapabilityStatus)} · {runtime?.provider || localizedText('未配置', 'Not configured')}</small>
+            <strong>{activeModel || runtimeFallbackText}</strong>
+            <small>{capabilityHealth(agentCapabilityStatus)} · {runtime?.provider || runtimeFallbackText}</small>
           </div>
         </div>
         <div className="agent-status-block-title"><SettingOutlined />{localizedText('模型与连接', 'Model and connection')}</div>
         <div className="agent-status-detail-grid">
-          <div><span>{localizedText('当前连接', 'Connection')}</span><strong>{activeProviderAvailable ? localizedText('可用', 'Available') : localizedText('不可用', 'Unavailable')}</strong></div>
-          <div><span>{localizedText('运行状态', 'Runtime')}</span><strong>{runtime?.enabled ? localizedText('已启用', 'Enabled') : localizedText('未启用', 'Disabled')}</strong></div>
-          <div><span>{localizedText('DeepSeek', 'DeepSeek')}</span><strong>{runtime?.deepseekStatus || '-'}</strong></div>
-          <div><span>{localizedText('Ollama', 'Ollama')}</span><strong>{runtime?.ollamaStatus || '-'}</strong></div>
+          <div><span>{localizedText('当前连接', 'Connection')}</span><strong>{runtime ? activeProviderAvailable ? localizedText('可用', 'Available') : localizedText('不可用', 'Unavailable') : runtimeFallbackText}</strong></div>
+          <div><span>{localizedText('运行状态', 'Runtime')}</span><strong>{runtime ? runtime.enabled ? localizedText('已启用', 'Enabled') : localizedText('未启用', 'Disabled') : runtimeFallbackText}</strong></div>
+          <div><span>{localizedText('DeepSeek', 'DeepSeek')}</span><strong>{runtime?.deepseekStatus || (runtimePending ? runtimeFallbackText : '-')}</strong></div>
+          <div><span>{localizedText('Ollama', 'Ollama')}</span><strong>{runtime?.ollamaStatus || (runtimePending ? runtimeFallbackText : '-')}</strong></div>
         </div>
       </div>
       <div className="agent-status-block">
@@ -459,7 +483,7 @@ const StrategyConfig: React.FC = () => {
             <Input.TextArea
               ref={agentInputRef}
               value={agentQuestion}
-              onChange={(event) => setAgentQuestion(event.target.value)}
+              onChange={(event) => updateAgentQuestion(conversationOwnerId, event.target.value)}
               placeholder={localizedText('例如：为什么当前候选批次没有生成买入计划？', 'For example: why did the current candidate batch not produce a buy plan?')}
               autoSize={{ minRows: 2, maxRows: 5 }}
               onPressEnter={(event) => {
@@ -483,7 +507,7 @@ const StrategyConfig: React.FC = () => {
             localizedText('当前模型连接是否正常？', 'Are the current model connections healthy?'),
             localizedText('哪些风险因素需要优先关注？', 'Which risk factors need attention first?'),
           ].map((prompt) => (
-            <button key={prompt} type="button" className="agent-prompt" onClick={() => { setAgentQuestion(prompt); void openAgent(); }}>
+            <button key={prompt} type="button" className="agent-prompt" onClick={() => { updateAgentQuestion(conversationOwnerId, prompt); void openAgent(); }}>
               <span>{prompt}</span>
               <span aria-hidden="true">→</span>
             </button>
@@ -632,4 +656,4 @@ const StrategyConfig: React.FC = () => {
 };
 
 export default StrategyConfig;
-// AI_GENERATE_END -------------------------------------------------------
+// AI_GENERATE_END ----------------------------------------------------------

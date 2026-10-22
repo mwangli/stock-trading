@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START -------
 package com.stock.modelService.service;
 
 import com.stock.modelService.domain.dto.LstmPredictionResultDto;
@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
  * LSTM 在线推理门面。
@@ -68,6 +69,24 @@ public class LstmInferenceService {
     }
 
     /**
+     * 使用单次模型加载按固定大小分块执行预测。
+     *
+     * @param stockCodes 股票代码集合
+     * @param modelVersionId 固定使用的模型文档 ID
+     * @param baseTradeDate 历史预测基准交易日
+     * @param batchSize 单次前向传播最大股票数量
+     * @param batchConsumer 分块股票及对应预测结果消费者
+     * @throws IllegalArgumentException 分块大小无效或消费者为空时抛出
+     * @throws IllegalStateException 模型加载、输入准备或前向传播失败时抛出
+     */
+    public void predictNextBatchChunks(
+            List<String> stockCodes, String modelVersionId, LocalDate baseTradeDate, int batchSize,
+            BiConsumer<List<String>, Map<String, LstmPredictionResultDto>> batchConsumer) {
+        lstmTrainerService.predictNextBatchChunks(
+                stockCodes, modelVersionId, baseTradeDate, batchSize, batchConsumer);
+    }
+
+    /**
      * 判断是否存在可校验、可加载的激活模型。
      *
      * @return true 表示模型可用于推理
@@ -76,4 +95,4 @@ public class LstmInferenceService {
         return lstmTrainerService.hasSharedModel();
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END -------

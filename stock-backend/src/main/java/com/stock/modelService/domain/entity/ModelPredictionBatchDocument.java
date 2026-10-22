@@ -1,9 +1,10 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -------
 package com.stock.modelService.domain.entity;
 
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -19,7 +20,13 @@ import java.time.LocalDateTime;
  */
 @Data
 @Document(collection = "model_prediction_batches")
-@CompoundIndex(name = "idx_prediction_batch_model_date", def = "{'modelId': 1, 'baseTradeDate': -1}")
+@CompoundIndexes({
+        @CompoundIndex(name = "idx_prediction_batch_model_date", def = "{'modelId': 1, 'baseTradeDate': -1}"),
+        @CompoundIndex(name = "idx_prediction_queue_order",
+                def = "{'status': 1, 'targetTradeDate': 1, 'createdAt': 1}"),
+        @CompoundIndex(name = "idx_evaluation_queue_order",
+                def = "{'evaluationQueueStatus': 1, 'targetTradeDate': 1, 'createdAt': 1}")
+})
 public class ModelPredictionBatchDocument {
 
     /** MongoDB 文档 ID。 */
@@ -76,6 +83,9 @@ public class ModelPredictionBatchDocument {
     /** 评估队列状态：WAITING、QUEUED、RUNNING、COMPLETED 或 FAILED。 */
     @Indexed
     private String evaluationQueueStatus;
+
+    /** 评估等待原因代码：预测执行中、目标日未到达或目标日行情覆盖不足。 */
+    private String evaluationWaitReason;
 
     /** 评估任务进入队列的时间。 */
     private LocalDateTime evaluationQueuedAt;
@@ -207,4 +217,4 @@ public class ModelPredictionBatchDocument {
     /** 最近更新时间。 */
     private LocalDateTime updatedAt;
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -------

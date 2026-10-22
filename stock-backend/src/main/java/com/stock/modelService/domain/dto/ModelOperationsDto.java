@@ -1,4 +1,4 @@
-// AI_GENERATE_START- -----
+// AI_GENERATE_START-- -----
 package com.stock.modelService.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -50,6 +50,9 @@ public final class ModelOperationsDto {
 
         /** 当前激活模型是否通过完整性和兼容性校验。 */
         private boolean activeModelHealthy;
+
+        /** 当前激活版本最近一次有效评估的评分摘要。 */
+        private ModelScoreSummaryResponse activeVersionScore;
     }
 
     /**
@@ -324,4 +327,4 @@ public final class ModelOperationsDto {
         private String message;
     }
 }
-// AI_GENERATE_END- -----
+// AI_GENERATE_END-- -----

@@ -448,6 +448,11 @@
     "refreshHint": "仅影响本页面状态检查，不会改变 Quartz 后端任务调度频率",
     "switchOn": "开",
     "switchOff": "关",
+    "summary": { "title": "运行摘要", "brokerSessionValid": "券商会话有效", "brokerSessionInvalid": "券商会话无效", "realWriteOff": "真实写入关闭", "autoExecutionStopped": "自动执行停止", "refreshStatus": "刷新状态" },
+    "runtime": { "justUpdated": "运行配置", "schedulerHint": "控制 Quartz 固定任务和手动触发入口", "startupDataHint": "下次应用启动时检查并补充股票基础数据" },
+    "safety": { "realWrite": "真实写入", "unattended": "无人值守", "brokerSession": "券商会话", "notReady": "未就绪" },
+    "info": { "title": "运行与配置信息", "checkedAt": "状态检查：{{time}}", "nodeId": "运行节点", "updatedAt": "配置更新时间", "refreshCycle": "页面刷新周期", "seconds": "{{seconds}} 秒", "schedulerMode": "调度方式", "unifiedScheduler": "统一任务调度", "schedulerDisabled": "调度已停用", "preferenceStorage": "偏好存储", "currentBrowser": "当前浏览器", "runtimeStorage": "运行配置", "serverPersisted": "服务端持久化" },
+    "health": { "gateway": "券商查询网关", "brokerSession": "券商会话", "tradingGate": "真实交易门禁" },
     "fieldsRuntime": { "scheduler": "统一任务调度", "dataCollection": "数据采集总开关", "newsCollection": "新闻采集", "startupData": "启动数据初始化", "training": "LSTM 模型训练" }
     ,"status": { "normal": "正常", "error": "异常", "unchecked": "未检查", "notConfigured": "未配置", "sessionValid": "会话有效", "sessionMissing": "会话未建立", "autoReady": "自动执行就绪", "controlledStop": "受控停止", "realWriteOn": "真实写入开启", "readOnly": "只读观察", "loaded": "已加载", "notLoaded": "未加载", "artifactAvailable": "制品可用", "artifactMissing": "制品不可用", "verified": "摘要已校验", "unverified": "摘要未校验" }
   },
