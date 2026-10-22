@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------
+// AI_GENERATE_START-- -----------
 package com.stock.dataCollector.service;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -307,6 +307,31 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
         }
     }
 
+    /**
+     * 获取指定日期区间的股票历史价格数据。
+     *
+     * 增量同步使用明确的起止日期请求供应商，使任务除同步最新交易日外，
+     * 还能向历史方向补齐允许窗口内尚未入库的交易日。
+     *
+     * @param stockCode 股票代码
+     * @param startDate 开始日期，包含当天
+     * @param endDate 结束日期，包含当天
+     * @return 指定区间内的历史价格数据，请求失败时返回空列表
+     */
+    public List<StockPrice> getHistoryPrices(String stockCode, LocalDate startDate, LocalDate endDate) {
+        try {
+            JSONArray results = securitiesClient.getHistoryPrices(stockCode, startDate, endDate);
+            List<StockPrice> prices = StockDataParser.parsePriceList(results, stockCode);
+            log.info("股票 {} 区间历史价格解析完成，共 {} 条，时间跨度: {} ~ {}",
+                    stockCode, prices.size(), startDate, endDate);
+            return prices;
+        } catch (Exception exception) {
+            log.error("获取股票 {} 区间历史价格数据失败，时间跨度: {} ~ {}",
+                    stockCode, startDate, endDate, exception);
+            return List.of();
+        }
+    }
+
 
     /**
      * 保存股票价格数据到MongoDB - 终极性能优化版本
@@ -380,13 +405,13 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
      * @param stockCode 股票代码
      * @param today 当前交易日
      * @param earliestDate 最早允许回补日期
-     * @param tradingDays 已确认交易日
+     * @param tradingDays 当前已确认日历覆盖范围内的交易日
      * @return 当前日、回补和未能从供应商窗口获取的数据统计
      */
     public PriceSyncResult syncTodayAndBackfill(String stockCode, LocalDate today,
                                                  LocalDate earliestDate,
                                                  List<LocalDate> tradingDays) {
-        List<StockPrice> fetchedPrices = getHistoryPrices(stockCode);
+        List<StockPrice> fetchedPrices = getHistoryPrices(stockCode, earliestDate, today);
         if (fetchedPrices.stream().noneMatch(price -> today.equals(price.getDate()))) {
             throw new IllegalStateException("供应商未返回当前交易日数据: " + stockCode + ", " + today);
         }
@@ -398,12 +423,14 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
                 .findByCodeAndDateBetweenOrderByDateAsc(stockCode, earliestDate, today).stream()
                 .map(StockPrice::getDate)
                 .collect(Collectors.toSet());
+        List<StockPrice> toSave = fetchedByDate.entrySet().stream()
+                .filter(entry -> !entry.getKey().isBefore(earliestDate))
+                .filter(entry -> !entry.getKey().isAfter(today))
+                .filter(entry -> !existingDates.contains(entry.getKey()))
+                .map(Map.Entry::getValue)
+                .toList();
         List<LocalDate> missingDates = tradingDays.stream()
                 .filter(date -> !date.isAfter(today) && !existingDates.contains(date))
-                .toList();
-        List<StockPrice> toSave = missingDates.stream()
-                .map(fetchedByDate::get)
-                .filter(java.util.Objects::nonNull)
                 .toList();
         if (!toSave.isEmpty()) {
             saveStockPrices(toSave);
@@ -671,4 +698,4 @@ if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getT
         private String errorMessage;
     }
 }
-// AI_GENERATE_END ----------
+// AI_GENERATE_END-- -----------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START- ---
+// AI_GENERATE_START---- ---
 package com.stock.tradingExecutor.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -32,23 +32,9 @@ public final class SystemRuntimeConfigDto {
         /** 是否允许 Quartz 固定任务执行。 */
         private Boolean schedulerEnabled;
 
-        /** 是否允许股票列表、行情和历史数据采集。 */
-        private Boolean dataCollectionEnabled;
-
-        /** 是否允许新闻和公告采集。 */
-        private Boolean newsCollectionEnabled;
-
         /** 是否在应用启动后执行股票基础数据初始化。 */
         private Boolean startupDataSyncEnabled;
 
-        /** 是否在应用启动后执行历史行情同步。 */
-        private Boolean startupHistorySyncEnabled;
-
-        /** 是否在应用启动后执行新闻采集。 */
-        private Boolean startupNewsSyncEnabled;
-
-        /** 是否允许提交 LSTM 模型训练任务。 */
-        private Boolean modelTrainingEnabled;
     }
 
     /**
@@ -69,26 +55,11 @@ public final class SystemRuntimeConfigDto {
         /** 是否允许 Quartz 固定任务执行。 */
         private boolean schedulerEnabled;
 
-        /** 是否允许股票列表、行情和历史数据采集。 */
-        private boolean dataCollectionEnabled;
-
-        /** 是否允许新闻和公告采集。 */
-        private boolean newsCollectionEnabled;
-
         /** 是否在应用启动后执行股票基础数据初始化。 */
         private boolean startupDataSyncEnabled;
-
-        /** 是否在应用启动后执行历史行情同步。 */
-        private boolean startupHistorySyncEnabled;
-
-        /** 是否在应用启动后执行新闻采集。 */
-        private boolean startupNewsSyncEnabled;
-
-        /** 是否允许提交 LSTM 模型训练任务。 */
-        private boolean modelTrainingEnabled;
 
         /** 配置最后更新时间。 */
         private LocalDateTime updatedAt;
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END---- ----

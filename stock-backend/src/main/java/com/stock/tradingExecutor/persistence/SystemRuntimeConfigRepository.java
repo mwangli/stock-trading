@@ -1,4 +1,4 @@
-// AI_GENERATE_START- ----
+// AI_GENERATE_START---- ----
 package com.stock.tradingExecutor.persistence;
 
 import com.stock.tradingExecutor.domain.entity.SystemRuntimeConfig;
@@ -43,8 +43,8 @@ public interface SystemRuntimeConfigRepository extends JpaRepository<SystemRunti
                 :#{#config.dataCollectionEnabled},
                 :#{#config.newsCollectionEnabled},
                 :#{#config.startupDataSyncEnabled},
-                :#{#config.startupHistorySyncEnabled},
-                :#{#config.startupNewsSyncEnabled},
+                FALSE,
+                FALSE,
                 :#{#config.modelTrainingEnabled},
                 :#{#config.updatedAt}
             )
@@ -52,4 +52,4 @@ public interface SystemRuntimeConfigRepository extends JpaRepository<SystemRunti
             """, nativeQuery = true)
     int insertIfAbsent(SystemRuntimeConfig config);
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END---- -----

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.modelService.config;
 
 import lombok.Data;
@@ -25,6 +25,11 @@ public class PredictionBackfillProperties {
     private int historyBackfillTradingDays = MAX_HISTORY_BACKFILL_TRADING_DAYS;
 
     /**
+     * 预测基准日和评估目标日的最低行情覆盖率，取值范围为 0 至 1。
+     */
+    private double minPriceCoverageRate = 0.95D;
+
+    /**
      * 获取经过边界约束的历史补缺交易日数量。
      *
      * @return 0 至 30 之间的历史回溯交易日数量
@@ -32,5 +37,14 @@ public class PredictionBackfillProperties {
     public int resolveHistoryBackfillTradingDays() {
         return Math.max(0, Math.min(historyBackfillTradingDays, MAX_HISTORY_BACKFILL_TRADING_DAYS));
     }
+
+    /**
+     * 获取经过边界约束的最低行情覆盖率。
+     *
+     * @return 0 至 1 之间的最低行情覆盖率
+     */
+    public double resolveMinPriceCoverageRate() {
+        return Math.max(0D, Math.min(minPriceCoverageRate, 1D));
+    }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

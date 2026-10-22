@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ----------
 package com.stock.tradingExecutor.service;
 
 import com.stock.tradingExecutor.domain.dto.BrokerAccountDto;
@@ -7,19 +7,15 @@ import com.stock.tradingExecutor.domain.dto.BrokerFillListResponseDto;
 import com.stock.tradingExecutor.domain.dto.BrokerHistoryQueryRequest;
 import com.stock.tradingExecutor.domain.dto.BrokerOrderDto;
 import com.stock.tradingExecutor.domain.dto.BrokerOrderListResponseDto;
-import com.stock.tradingExecutor.domain.dto.BrokerPositionDto;
-import com.stock.tradingExecutor.domain.dto.BrokerPositionListResponseDto;
 import com.stock.tradingExecutor.domain.dto.BrokerReadStatusDto;
 import com.stock.tradingExecutor.domain.entity.AccountSnapshotEntity;
 import com.stock.tradingExecutor.domain.entity.OrderStatus;
-import com.stock.tradingExecutor.domain.entity.PositionSnapshotEntity;
 import com.stock.tradingExecutor.domain.vo.BrokerFillSnapshot;
 import com.stock.tradingExecutor.domain.vo.BrokerOrderSnapshot;
 import com.stock.tradingExecutor.execution.BrokerAdapter;
 import com.stock.tradingExecutor.execution.FeeCalculator;
 import com.stock.tradingExecutor.execution.TradingProperties;
 import com.stock.tradingExecutor.persistence.AccountSnapshotRepository;
-import com.stock.tradingExecutor.persistence.PositionSnapshotRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -46,7 +42,6 @@ public class BrokerReadService {
     private final TradingProperties tradingProperties;
     private final BrokerIdentityService brokerIdentityService;
     private final AccountSnapshotRepository accountSnapshotRepository;
-    private final PositionSnapshotRepository positionSnapshotRepository;
 
     /**
      * 获取券商只读网关状态。
@@ -79,27 +74,6 @@ public class BrokerReadService {
                 .frozenAmount(account.getFrozenCash())
                 .totalPosition(account.getMarketValue())
                 .capturedAt(account.getCapturedAt())
-                .build();
-    }
-
-    /**
-     * 从数据库查询定时同步得到的最新持仓快照。
-     *
-     * @return 持仓列表
-     */
-    public BrokerPositionListResponseDto getPositions() {
-        PositionSnapshotEntity snapshot = positionSnapshotRepository
-                .findFirstByBrokerCodeAndAccountIdOrderByCapturedAtDesc(
-                        brokerIdentityService.getBrokerCode(), brokerIdentityService.getAccountId())
-                .orElseThrow(() -> new IllegalStateException("暂无持仓快照，请等待券商定时同步任务执行"));
-        List<BrokerPositionDto> items = positionSnapshotRepository
-                .findBySnapshotIdAndStockCodeIsNotNullOrderByStockCodeAsc(snapshot.getSnapshotId()).stream()
-                .map(this::toPositionDto)
-                .toList();
-        return BrokerPositionListResponseDto.builder()
-                .items(items)
-                .total(items.size())
-                .capturedAt(snapshot.getCapturedAt())
                 .build();
     }
 
@@ -239,21 +213,6 @@ public class BrokerReadService {
                 .build();
     }
 
-    private BrokerPositionDto toPositionDto(PositionSnapshotEntity position) {
-        return BrokerPositionDto.builder()
-                .stockCode(position.getStockCode())
-                .stockName(position.getStockName())
-                .totalQuantity(position.getTotalQuantity())
-                .availableQuantity(position.getAvailableQuantity())
-                .frozenQuantity(position.getFrozenQuantity())
-                .averageCost(position.getAverageCost())
-                .currentPrice(position.getCurrentPrice())
-                .marketValue(position.getMarketValue())
-                .market(position.getMarket())
-                .shareholderAccountMasked(null)
-                .build();
-    }
-
     private String maskAccount(String account) {
         if (account == null || account.isBlank()) {
             return null;
@@ -265,4 +224,4 @@ public class BrokerReadService {
         return "****" + trimmed.substring(trimmed.length() - 4);
     }
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ----------

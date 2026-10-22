@@ -1,4 +1,4 @@
-// AI_GENERATE_START- ---
+// AI_GENERATE_START---- ---
 package com.stock.tradingExecutor.domain.entity;
 
 import jakarta.persistence.Column;
@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 
 /**
  * 系统运行控制配置。
- * 保存调度、数据采集和模型训练等可动态调整的非敏感开关。
+ * 保存调度和应用启动任务等可动态调整的非敏感开关。
  *
  * @author mwangli
  * @since 2026-10-12
@@ -32,11 +32,11 @@ public class SystemRuntimeConfig {
     @Column(name = "scheduler_enabled", nullable = false)
     private boolean schedulerEnabled;
 
-    /** 是否允许股票列表、行情和历史数据采集。 */
+    /** 兼容旧表结构的历史字段，非交易任务不再读取该值。 */
     @Column(name = "data_collection_enabled", nullable = false)
     private boolean dataCollectionEnabled;
 
-    /** 是否允许新闻和公告采集。 */
+    /** 兼容旧表结构的历史字段，非交易任务不再读取该值。 */
     @Column(name = "news_collection_enabled", nullable = false)
     private boolean newsCollectionEnabled;
 
@@ -44,15 +44,7 @@ public class SystemRuntimeConfig {
     @Column(name = "startup_data_sync_enabled", nullable = false)
     private boolean startupDataSyncEnabled;
 
-    /** 是否在应用启动后执行历史行情同步。 */
-    @Column(name = "startup_history_sync_enabled", nullable = false)
-    private boolean startupHistorySyncEnabled;
-
-    /** 是否在应用启动后执行新闻采集。 */
-    @Column(name = "startup_news_sync_enabled", nullable = false)
-    private boolean startupNewsSyncEnabled;
-
-    /** 是否允许提交 LSTM 模型训练任务。 */
+    /** 兼容旧表结构的历史字段，模型训练不再读取该值。 */
     @Column(name = "model_training_enabled", nullable = false)
     private boolean modelTrainingEnabled;
 
@@ -72,4 +64,4 @@ public class SystemRuntimeConfig {
         updatedAt = LocalDateTime.now();
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END---- ----

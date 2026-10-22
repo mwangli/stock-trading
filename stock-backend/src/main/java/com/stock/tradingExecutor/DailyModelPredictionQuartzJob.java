@@ -1,4 +1,4 @@
-// AI_GENERATE_START- -
+// AI_GENERATE_START-- -
 package com.stock.tradingExecutor;
 
 import com.stock.modelService.job.DailyModelPredictionJob;
@@ -7,7 +7,7 @@ import org.quartz.JobExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
- * 每日全市场模型预测 Quartz 任务。
+ * 每日模型预测与评估补缺 Quartz 任务。
  *
  * @author mwangli
  * @since 2026-10-12
@@ -22,7 +22,7 @@ public class DailyModelPredictionQuartzJob extends InterruptibleQuartzJob {
     private DailyModelPredictionJob dailyModelPredictionJob;
 
     /**
-     * 执行每日全市场模型预测。
+     * 执行每日预测补缺、预测队列消费和评估回填。
      *
      * @param context Quartz 执行上下文
      */
@@ -33,4 +33,4 @@ public class DailyModelPredictionQuartzJob extends InterruptibleQuartzJob {
                 context.getScheduledFireTime(), dailyModelPredictionJob::runDailyPrediction);
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END- -

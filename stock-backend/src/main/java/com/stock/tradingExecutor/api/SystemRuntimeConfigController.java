@@ -1,4 +1,4 @@
-// AI_GENERATE_START- ---
+// AI_GENERATE_START-- ---
 package com.stock.tradingExecutor.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 系统运行控制配置接口。
- * 提供非敏感运行开关的查询和保存能力。
+ * 提供调度器和应用启动任务设置的查询与保存能力。
  *
  * @author mwangli
  * @since 2026-10-12
@@ -61,4 +61,4 @@ public class SystemRuntimeConfigController {
         }
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END- ---

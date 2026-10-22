@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START -------
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockNews;
@@ -29,9 +29,17 @@ public class SentimentAggregationService {
 
     private static final int MAX_TEXT_LENGTH = 2000;
     private static final double LOG_TWO = Math.log(2D);
+    private static final double STRONG_NEGATIVE_SCORE_THRESHOLD = -0.3D;
+    private static final int NEGATION_SCOPE_LENGTH = 320;
     private static final List<String> STRONG_NEGATIVE_KEYWORDS = List.of(
             "退市", "财务造假", "立案调查", "重大违法", "暂停上市", "终止上市",
             "债务违约", "破产重整", "实控人被捕", "资金占用", "审计无法表示意见");
+    private static final List<String> DIRECT_NEGATION_MARKERS = List.of(
+            "不存在", "不涉及", "未发生", "未出现", "未受到", "未被", "没有", "不属于", "不构成");
+    private static final List<String> LIST_NEGATION_MARKERS = List.of(
+            "无下列", "无以下", "不存在下列", "不存在以下", "没有下列", "没有以下", "不具有下列");
+    private static final List<String> NEGATION_REVERSAL_MARKERS = List.of(
+            "但是", "但其", "然而", "本次", "近日收到", "现收到", "实际发生");
 
     private final SentimentInferenceService sentimentInferenceService;
     private final NewsEventClassifier newsEventClassifier;
@@ -47,6 +55,7 @@ public class SentimentAggregationService {
     public SentimentAggregateResult assessText(String text, String category,
                                                SentimentAnalysisResult modelResult) {
         StockNews news = new StockNews();
+        news.setTitle(extractTitle(text));
         news.setContent(text);
         news.setCategory(category);
         news.setPublishTime(LocalDateTime.now());
@@ -248,9 +257,62 @@ public class SentimentAggregationService {
     }
 
     private boolean isStrongNegative(StockNews news, SentimentAnalysisResult result) {
+        if (result == null || result.getScore() > STRONG_NEGATIVE_SCORE_THRESHOLD) {
+            return false;
+        }
         String text = (news.getTitle() == null ? "" : news.getTitle())
                 + (news.getContent() == null ? "" : news.getContent());
-        return result.getScore() < 0.3D && STRONG_NEGATIVE_KEYWORDS.stream().anyMatch(text::contains);
+        return STRONG_NEGATIVE_KEYWORDS.stream().anyMatch(keyword -> containsAffirmedRisk(text, keyword));
+    }
+
+    private boolean containsAffirmedRisk(String text, String keyword) {
+        int searchFrom = 0;
+        while (searchFrom < text.length()) {
+            int keywordIndex = text.indexOf(keyword, searchFrom);
+            if (keywordIndex < 0) {
+                return false;
+            }
+            if (!isNegatedRiskContext(text, keywordIndex)) {
+                return true;
+            }
+            searchFrom = keywordIndex + keyword.length();
+        }
+        return false;
+    }
+
+    private boolean isNegatedRiskContext(String text, int keywordIndex) {
+        String directContext = text.substring(Math.max(0, keywordIndex - 40), keywordIndex);
+        boolean directlyNegated = DIRECT_NEGATION_MARKERS.stream().anyMatch(directContext::contains);
+        boolean directReversal = NEGATION_REVERSAL_MARKERS.stream().anyMatch(directContext::contains);
+        if (directlyNegated && !directReversal) {
+            return true;
+        }
+
+        String scopeContext = text.substring(Math.max(0, keywordIndex - NEGATION_SCOPE_LENGTH), keywordIndex);
+        int markerIndex = LIST_NEGATION_MARKERS.stream()
+                .mapToInt(scopeContext::lastIndexOf)
+                .max()
+                .orElse(-1);
+        if (markerIndex < 0) {
+            return false;
+        }
+        String scopedText = scopeContext.substring(markerIndex);
+        return NEGATION_REVERSAL_MARKERS.stream().noneMatch(scopedText::contains);
+    }
+
+    private String extractTitle(String text) {
+        if (text == null) {
+            return null;
+        }
+        int lineBreakIndex = text.indexOf('\n');
+        if (lineBreakIndex <= 0) {
+            return null;
+        }
+        String firstLine = text.substring(0, lineBreakIndex).trim();
+        if (firstLine.isEmpty()) {
+            return null;
+        }
+        return firstLine.length() <= 200 ? firstLine : firstLine.substring(0, 200);
     }
 
     private boolean isAnnouncement(StockNews news) {
@@ -313,4 +375,4 @@ public class SentimentAggregationService {
         return Math.max(minimum, Math.min(maximum, value));
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END -------

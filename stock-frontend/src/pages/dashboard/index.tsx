@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------------
+// AI_GENERATE_START -------------------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
@@ -16,20 +16,6 @@ interface BrokerAccount {
   frozenAmount: number;
   totalPosition: number;
   capturedAt: string;
-}
-
-interface BrokerPosition {
-  stockCode: string;
-  stockName: string;
-  totalQuantity: number;
-  availableQuantity: number;
-  averageCost: number;
-  currentPrice: number;
-  marketValue: number;
-}
-
-interface BrokerPositionList {
-  items: BrokerPosition[];
 }
 
 interface PerformanceRankingItem {
@@ -108,20 +94,17 @@ const profitColor = (value?: number): 'success' | 'danger' => value != null && v
 const Dashboard: React.FC = () => {
   const { t } = useTranslation();
   const [account, setAccount] = useState<BrokerAccount | null>(null);
-  const [positions, setPositions] = useState<BrokerPosition[]>([]);
   const [performance, setPerformance] = useState<PerformanceOverview | null>(null);
   const [loading, setLoading] = useState(false);
 
   const loadBrokerData = useCallback(async () => {
     setLoading(true);
-    const [accountResult, positionResult, performanceResult] = await Promise.allSettled([
+    const [accountResult, performanceResult] = await Promise.allSettled([
       request.get('/brokerQuery/account') as Promise<ApiResult<BrokerAccount>>,
-      request.get('/brokerQuery/positions') as Promise<ApiResult<BrokerPositionList>>,
       request.get('/performance/overview') as Promise<ApiResult<PerformanceOverview>>,
     ]);
 
     const accountData = accountResult.status === 'fulfilled' ? readApiData(accountResult.value) : null;
-    const positionData = positionResult.status === 'fulfilled' ? readApiData(positionResult.value) : null;
     const performanceData = performanceResult.status === 'fulfilled' ? readApiData(performanceResult.value) : null;
 
     if (accountData) {
@@ -140,26 +123,12 @@ const Dashboard: React.FC = () => {
       setPerformance(performanceData);
     }
 
-    if (positionData) {
-      setPositions(positionData.items ?? []);
-    }
-
     setLoading(false);
   }, []);
 
   useEffect(() => {
     void loadBrokerData();
   }, [loadBrokerData]);
-
-  const positionColumns = [
-    { title: t('dashboard.columns.stockCode'), dataIndex: 'stockCode', key: 'stockCode' },
-    { title: t('dashboard.columns.stockName'), dataIndex: 'stockName', key: 'stockName' },
-    { title: t('dashboard.columns.totalQuantity'), dataIndex: 'totalQuantity', key: 'totalQuantity' },
-    { title: t('dashboard.columns.availableQuantity'), dataIndex: 'availableQuantity', key: 'availableQuantity' },
-    { title: t('dashboard.columns.averageCost'), dataIndex: 'averageCost', key: 'averageCost', render: (value: number) => money(value) },
-    { title: t('dashboard.columns.currentPrice'), dataIndex: 'currentPrice', key: 'currentPrice', render: (value: number) => money(value) },
-    { title: t('dashboard.columns.marketValue'), dataIndex: 'marketValue', key: 'marketValue', render: (value: number) => money(value) },
-  ];
 
   const rankingColumns = [
     { title: t('dashboard.columns.stockCode'), dataIndex: 'stockCode', key: 'stockCode', width: 110 },
@@ -242,20 +211,9 @@ const Dashboard: React.FC = () => {
         <Table rowKey={(item) => `${item.stockCode}-${item.sellTime ?? item.buyTime}`} columns={rankingColumns} dataSource={performance?.ranking ?? []} loading={loading} scroll={{ x: 1450 }} pagination={{ pageSize: 10 }} locale={{ emptyText: <Empty description={t('dashboard.empty.ranking')} /> }} />
       </Card>
 
-      <Card className="surface-card" title={t('dashboard.sections.positions')}>
-        <Table
-          rowKey={(record) => record.stockCode}
-          columns={positionColumns}
-          dataSource={positions}
-          loading={loading}
-          locale={{ emptyText: <Empty description={t('dashboard.empty.positions')} /> }}
-          pagination={{ pageSize: 10 }}
-        />
-      </Card>
-
     </div>
   );
 };
 
 export default Dashboard;
-// AI_GENERATE_END ------------------
+// AI_GENERATE_END -------------------

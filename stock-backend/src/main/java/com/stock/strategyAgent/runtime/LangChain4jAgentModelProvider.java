@@ -1,21 +1,14 @@
-// AI_GENERATE_START ---------------
+// AI_GENERATE_START -------------------
 package com.stock.strategyAgent.runtime;
 
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
 import com.stock.strategyAgent.config.AgentProperties;
-import com.stock.strategyAgent.tool.AgentToolContextHolder;
-import com.stock.strategyAgent.tool.ToolExecutionContext;
-import com.stock.strategyAgent.tool.read.BrokerFactQueryTool;
-import com.stock.strategyAgent.tool.read.JobDiagnosticTool;
-import com.stock.strategyAgent.tool.read.PredictionCandidateQueryTool;
-import com.stock.strategyAgent.tool.read.ProviderRuntimeQueryTool;
-import com.stock.strategyAgent.tool.read.StrategyStateQueryTool;
-import com.stock.strategyAgent.tool.read.TradingCalendarQueryTool;
-import com.stock.strategyAgent.tool.read.TradeExecutionGateQueryTool;
 import dev.langchain4j.service.AiServices;
-import dev.langchain4j.service.tool.ToolArgumentsErrorHandler;
-import dev.langchain4j.service.tool.ToolExecutionErrorHandler;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.request.ResponseFormat;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +18,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import jakarta.annotation.PreDestroy;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.Map;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
@@ -45,47 +42,32 @@ import java.util.concurrent.TimeoutException;
 @Service
 public class LangChain4jAgentModelProvider implements AgentModelProvider {
 
+    private static final Duration OLLAMA_HEALTH_TIMEOUT = Duration.ofSeconds(2);
+
     private final AgentProperties properties;
     private final AgentChatMemoryService chatMemoryService;
-    private final TradingCalendarQueryTool tradingCalendarQueryTool;
-    private final StrategyStateQueryTool strategyStateQueryTool;
-    private final PredictionCandidateQueryTool predictionCandidateQueryTool;
-    private final ProviderRuntimeQueryTool providerRuntimeQueryTool;
-    private final JobDiagnosticTool jobDiagnosticTool;
-    private final BrokerFactQueryTool brokerFactQueryTool;
-    private final TradeExecutionGateQueryTool tradeExecutionGateQueryTool;
     private final AgentCircuitBreaker circuitBreaker;
     private final AgentProviderModeManager providerModeManager;
     private final Map<String, ChatModel> models = new ConcurrentHashMap<>();
     private final Map<String, String> providerStatuses = new ConcurrentHashMap<>();
     private final ExecutorService modelExecutor;
+    private final HttpClient healthHttpClient;
 
     /**
      * 创建模型调用线程池，使用配置限制并发，避免模型请求无限扩张。
      */
     public LangChain4jAgentModelProvider(AgentProperties properties,
                                          AgentChatMemoryService chatMemoryService,
-                                         TradingCalendarQueryTool tradingCalendarQueryTool,
-                                         StrategyStateQueryTool strategyStateQueryTool,
-                                         PredictionCandidateQueryTool predictionCandidateQueryTool,
-                                         ProviderRuntimeQueryTool providerRuntimeQueryTool,
-                                         JobDiagnosticTool jobDiagnosticTool,
-                                         BrokerFactQueryTool brokerFactQueryTool,
-                                         TradeExecutionGateQueryTool tradeExecutionGateQueryTool,
                                          AgentCircuitBreaker circuitBreaker,
                                          AgentProviderModeManager providerModeManager) {
         this.properties = properties;
         this.chatMemoryService = chatMemoryService;
-        this.tradingCalendarQueryTool = tradingCalendarQueryTool;
-        this.strategyStateQueryTool = strategyStateQueryTool;
-        this.predictionCandidateQueryTool = predictionCandidateQueryTool;
-        this.providerRuntimeQueryTool = providerRuntimeQueryTool;
-        this.jobDiagnosticTool = jobDiagnosticTool;
-        this.brokerFactQueryTool = brokerFactQueryTool;
-        this.tradeExecutionGateQueryTool = tradeExecutionGateQueryTool;
         this.circuitBreaker = circuitBreaker;
         this.providerModeManager = providerModeManager;
         this.modelExecutor = Executors.newFixedThreadPool(Math.max(properties.getMaxConcurrency(), 1));
+        this.healthHttpClient = HttpClient.newBuilder()
+                .connectTimeout(OLLAMA_HEALTH_TIMEOUT)
+                .build();
     }
 
     /**
@@ -141,11 +123,17 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         if (!selection.available()) {
             return failure(request, selection.errorCode(), selection.message());
         }
+        log.info("[Agent][Provider] taskId={} sessionId={} outputType={} status=SELECTED providers={} timeoutMs={} maxConcurrency={}",
+                request.getTaskId(), request.getSessionId(), request.getOutputType(), selection.providers(),
+                properties.getTimeoutMs(), properties.getMaxConcurrency());
         String lastErrorCode = "MODEL_CALL_FAILED";
         for (String provider : selection.providers()) {
+            long providerStartedAt = System.nanoTime();
             if (!circuitBreaker.allowRequest(provider)) {
                 lastErrorCode = "AGENT_CIRCUIT_OPEN";
                 providerStatuses.put(provider, lastErrorCode);
+                log.warn("[Agent][Provider] taskId={} sessionId={} provider={} model={} status=SKIPPED reason=AGENT_CIRCUIT_OPEN",
+                        request.getTaskId(), request.getSessionId(), provider, modelName(provider));
                 continue;
             }
             try {
@@ -154,24 +142,16 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                 StrategyAgent assistant = AiServices.builder(StrategyAgent.class)
                         .chatModel(model)
                         .chatMemory(memory)
-                        .tools(tradingCalendarQueryTool, strategyStateQueryTool, predictionCandidateQueryTool,
-                                jobDiagnosticTool, brokerFactQueryTool, tradeExecutionGateQueryTool, providerRuntimeQueryTool)
-                        .toolArgumentsErrorHandler(ToolArgumentsErrorHandler.failInvocation())
-                        .toolExecutionErrorHandler(ToolExecutionErrorHandler.failInvocationUnlessVisibleToLlm())
                         .build();
-                ToolExecutionContext context = ToolExecutionContext.builder()
-                        .traceId(request.getTaskId())
-                        .sessionId(request.getSessionId())
-                        .taskId(request.getTaskId())
-                        .userScope(request.getUserScope())
-                        .build();
+                int chatMemoryMessages = memory.messages().size();
+                log.info("[Agent][Model] taskId={} sessionId={} provider={} model={} status=QUEUED promptChars={} evidenceRefCount={} chatMemoryMessages={}",
+                        request.getTaskId(), request.getSessionId(), provider, modelName(provider),
+                        request.getUserPrompt().length(), request.getEvidenceRefs() == null ? 0 : request.getEvidenceRefs().size(),
+                        chatMemoryMessages);
                 Future<String> call = modelExecutor.submit(() -> {
-                    AgentToolContextHolder.set(context);
-                    try {
-                        return assistant.chat(request.getUserPrompt(), request.getSystemPrompt());
-                    } finally {
-                        AgentToolContextHolder.clear();
-                    }
+                    log.info("[Agent][Model] taskId={} sessionId={} provider={} model={} status=RUNNING",
+                            request.getTaskId(), request.getSessionId(), provider, modelName(provider));
+                    return assistant.chat(request.getUserPrompt(), request.getSystemPrompt());
                 });
                 String content;
                 try {
@@ -191,6 +171,9 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                 }
                 providerStatuses.put(provider, "READY");
                 circuitBreaker.recordSuccess(provider);
+                log.info("[Agent][Model] taskId={} sessionId={} provider={} model={} status=COMPLETED contentChars={} elapsedMs={}",
+                        request.getTaskId(), request.getSessionId(), provider, modelName(provider), content.length(),
+                        elapsedMillis(providerStartedAt));
                 return AgentRuntimeResponse.builder()
                         .status(AgentRuntimeStatus.COMPLETED)
                         .provider(provider)
@@ -203,9 +186,10 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                 String errorCode = providerErrorCode(provider, exception);
                 lastErrorCode = errorCode;
                 providerStatuses.put(provider, errorCode);
-                log.warn("[Agent] Provider 调用失败: provider={}, errorCode={}, causeType={}, causeMessage={}",
-                        provider, errorCode, rootCause(exception).getClass().getSimpleName(),
-                        safeErrorMessage(rootCause(exception).getMessage()));
+                log.warn("[Agent][Model] taskId={} sessionId={} provider={} model={} status=FAILED errorCode={} causeType={} causeMessage={} elapsedMs={}",
+                        request.getTaskId(), request.getSessionId(), provider, modelName(provider), errorCode,
+                        rootCause(exception).getClass().getSimpleName(), safeErrorMessage(rootCause(exception).getMessage()),
+                        elapsedMillis(providerStartedAt));
             }
         }
         String errorCode = selection.providers().size() == 1
@@ -290,6 +274,9 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
             providerStatuses.put(provider, "AGENT_CIRCUIT_OPEN");
             return false;
         }
+        if ("ollama".equals(provider)) {
+            return checkOllamaProvider();
+        }
         try {
             models.computeIfAbsent(provider, this::createModel).chat("Reply with OK only.");
             providerStatuses.put(provider, "READY");
@@ -302,6 +289,61 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                     provider, exception.getClass().getSimpleName());
             return false;
         }
+    }
+
+    private boolean checkOllamaProvider() {
+        long startedAt = System.nanoTime();
+        String model = properties.getOllama().getModel();
+        try {
+            HttpRequest request = HttpRequest.newBuilder(ollamaTagsUri())
+                    .timeout(OLLAMA_HEALTH_TIMEOUT)
+                    .GET()
+                    .build();
+            HttpResponse<String> response = healthHttpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new IllegalStateException("Ollama 模型列表接口返回 HTTP " + response.statusCode());
+            }
+            JSONObject payload = JSON.parseObject(response.body());
+            JSONArray modelsPayload = payload == null ? null : payload.getJSONArray("models");
+            boolean modelAvailable = modelsPayload != null && modelsPayload.stream()
+                    .filter(JSONObject.class::isInstance)
+                    .map(JSONObject.class::cast)
+                    .anyMatch(item -> model.equals(item.getString("name")) || model.equals(item.getString("model")));
+            if (!modelAvailable) {
+                providerStatuses.put("ollama", "MODEL_NOT_FOUND");
+                circuitBreaker.recordFailure("ollama");
+                log.warn("[Agent][Health] provider=ollama model={} status=MODEL_NOT_FOUND elapsedMs={}",
+                        model, elapsedMillis(startedAt));
+                return false;
+            }
+            providerStatuses.put("ollama", "READY");
+            circuitBreaker.recordSuccess("ollama");
+            log.info("[Agent][Health] provider=ollama model={} status=READY check=MODEL_LIST elapsedMs={}",
+                    model, elapsedMillis(startedAt));
+            return true;
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return recordOllamaHealthFailure(exception, startedAt);
+        } catch (Exception exception) {
+            return recordOllamaHealthFailure(exception, startedAt);
+        }
+    }
+
+    private boolean recordOllamaHealthFailure(Exception exception, long startedAt) {
+        circuitBreaker.recordFailure("ollama");
+        providerStatuses.put("ollama", "OLLAMA_UNAVAILABLE");
+        log.warn("[Agent][Health] provider=ollama model={} status=OLLAMA_UNAVAILABLE causeType={} causeMessage={} elapsedMs={}",
+                properties.getOllama().getModel(), exception.getClass().getSimpleName(),
+                safeErrorMessage(exception.getMessage()), elapsedMillis(startedAt));
+        return false;
+    }
+
+    private URI ollamaTagsUri() {
+        String baseUrl = properties.getOllama().getBaseUrl().trim().replaceAll("/+$", "");
+        if (baseUrl.endsWith("/v1")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 3);
+        }
+        return URI.create(baseUrl + "/api/tags");
     }
 
     /**
@@ -372,8 +414,9 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                 .modelName(config.getModel())
                 .timeout(Duration.ofMillis(Math.max(properties.getTimeoutMs(), 1L)))
                 .maxRetries(0)
+                .responseFormat(ResponseFormat.JSON)
                 .think(config.isThink())
-                .returnThinking(true)
+                .returnThinking(false)
                 .numPredict(Math.max(config.getMaxTokens(), 1))
                 .build();
     }
@@ -429,6 +472,10 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         return sanitized.substring(0, Math.min(sanitized.length(), 500));
     }
 
+    private long elapsedMillis(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000L;
+    }
+
     private String limit(String value) {
         if (value == null) {
             return "";
@@ -457,4 +504,4 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         }
     }
 }
-// AI_GENERATE_END --------------
+// AI_GENERATE_END ------------------

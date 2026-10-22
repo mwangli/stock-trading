@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----- -------------
+// AI_GENERATE_START- ----- -------------
 package com.stock.modelService.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -16,8 +16,6 @@ import com.stock.modelService.persistence.LstmModelRepository;
 import com.stock.modelService.persistence.ModelActivationRepository;
 import com.stock.modelService.persistence.ModelOperationAuditRepository;
 import com.stock.modelService.persistence.ModelTrainingRunRepository;
-import com.stock.tradingExecutor.execution.TradingTimeChecker;
-import com.stock.tradingExecutor.service.SystemRuntimeConfigService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
@@ -26,7 +24,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +32,7 @@ import java.util.concurrent.Executor;
 
 /**
  * 模型运维服务。
- * 负责模型版本查询、训练门禁、异步训练、候选激活、回滚和操作审计。
+ * 负责模型版本查询、异步训练、候选激活、回滚和操作审计。
  *
  * @author mwangli
  * @since 2026-10-10
@@ -46,9 +43,6 @@ public class ModelOperationsService {
 
     private static final List<String> RUNNING_STATUSES = List.of("QUEUED", "RUNNING", "STOPPING");
     private static final int DEFAULT_TRAIN_DAYS = 1000;
-    private static final LocalTime WEEKDAY_TRAINING_START = LocalTime.of(18, 30);
-    private static final LocalTime WEEKDAY_TRAINING_END = LocalTime.of(23, 30);
-
     private final LstmTrainingConfig trainingConfig;
     private final LstmDataQualityConfig dataQualityConfig;
     private final StockInfoRepository stockInfoRepository;
@@ -58,8 +52,6 @@ public class ModelOperationsService {
     private final ModelActivationRepository modelActivationRepository;
     private final ModelTrainingRunRepository trainingRunRepository;
     private final ModelOperationAuditRepository auditRepository;
-    private final TradingTimeChecker tradingTimeChecker;
-    private final SystemRuntimeConfigService runtimeConfigService;
     private final ObjectMapper objectMapper;
     private final Executor applicationTaskExecutor;
 
@@ -75,8 +67,6 @@ public class ModelOperationsService {
      * @param modelActivationRepository 模型激活指针仓库
      * @param trainingRunRepository 训练运行仓库
      * @param auditRepository 模型操作审计仓库
-     * @param tradingTimeChecker 交易时间检查器
-     * @param runtimeConfigService 系统运行控制配置服务
      * @param objectMapper JSON 序列化器
      * @param applicationTaskExecutor 应用异步执行器
      */
@@ -89,8 +79,6 @@ public class ModelOperationsService {
                                   ModelActivationRepository modelActivationRepository,
                                   ModelTrainingRunRepository trainingRunRepository,
                                   ModelOperationAuditRepository auditRepository,
-                                  TradingTimeChecker tradingTimeChecker,
-                                   SystemRuntimeConfigService runtimeConfigService,
                                   ObjectMapper objectMapper,
                                   @Qualifier("applicationTaskExecutor") Executor applicationTaskExecutor) {
         this.trainingConfig = trainingConfig;
@@ -102,8 +90,6 @@ public class ModelOperationsService {
         this.modelActivationRepository = modelActivationRepository;
         this.trainingRunRepository = trainingRunRepository;
         this.auditRepository = auditRepository;
-        this.tradingTimeChecker = tradingTimeChecker;
-        this.runtimeConfigService = runtimeConfigService;
         this.objectMapper = objectMapper;
         this.applicationTaskExecutor = applicationTaskExecutor;
     }
@@ -117,7 +103,6 @@ public class ModelOperationsService {
         String modelName = lstmTrainerService.getModelName();
         ModelActivationDocument activation = modelActivationRepository.findByModelName(modelName).orElse(null);
         boolean trainingRunning = hasRunningTraining(modelName);
-        GateResult gateResult = evaluateTrainingGate(modelName, trainingRunning);
         ModelOperationsDto.ModelVersionItem activeVersion = versionById(
                 activation == null ? null : activation.getActiveModelVersionId(), activation);
         ModelOperationsDto.ModelVersionItem previousVersion = versionById(
@@ -129,12 +114,8 @@ public class ModelOperationsService {
                 .previousVersion(previousVersion)
                 .latestTrainingRun(toTrainingRunItem(
                         trainingRunRepository.findTopByModelNameOrderByCreatedAtDesc(modelName)))
-                .trainingEnabled(runtimeConfigService.isModelTrainingEnabled())
-                .trainingAllowed(gateResult.allowed())
                 .trainingRunning(trainingRunning)
-                .tradingTime(tradingTimeChecker.isTradingTime())
                 .activeModelHealthy(activeHealthy)
-                .gateMessage(gateResult.message())
                 .build();
     }
 
@@ -244,8 +225,8 @@ public class ModelOperationsService {
     /**
      * 由统一调度中心提交共享 LSTM 训练任务。
      *
-     * 定时任务与运维页面复用同一套门禁、运行记录和审计链路；
-     * 门禁不通过时记录原因并返回跳过结果，不向调度线程抛出业务异常。
+     * 定时任务与运维页面复用同一套参数、数据、资源和并发校验；
+     * 校验不通过时记录原因并返回跳过结果，不向调度线程抛出业务异常。
      *
      * @return 定时训练提交或跳过结果
      */
@@ -289,16 +270,16 @@ public class ModelOperationsService {
             boolean throwWhenRejected) {
         validateTrainingParameters(safeRequest);
         String modelName = lstmTrainerService.getModelName();
-        GateResult gateResult = evaluateTrainingGate(modelName, hasRunningTraining(modelName));
-        if (!gateResult.allowed()) {
-            saveAudit(modelName, "TRAIN_REJECTED", operatorName, null, null, false, gateResult.message());
+        TrainingCheckResult checkResult = evaluateTrainingSubmission(hasRunningTraining(modelName));
+        if (!checkResult.allowed()) {
+            saveAudit(modelName, "TRAIN_REJECTED", operatorName, null, null, false, checkResult.message());
             if (throwWhenRejected) {
-                throw new IllegalStateException(gateResult.message());
+                throw new IllegalStateException(checkResult.message());
             }
-            log.info("定时 LSTM 训练未通过门禁: reason={}", gateResult.message());
+            log.info("定时 LSTM 训练提交条件不满足: reason={}", checkResult.message());
             return ModelOperationsDto.OperationResponse.builder()
                     .operationType("TRAIN_SKIPPED")
-                    .message(gateResult.message())
+                    .message(checkResult.message())
                     .build();
         }
 
@@ -317,7 +298,7 @@ public class ModelOperationsService {
         run.setTriggeredBy(operatorName);
         run.setRequestedConfigJson(writeJson(trainingRequestMap(safeRequest)));
         run.setEffectiveConfigJson(writeJson(effectiveConfigMap(days, epochs, batchSize, learningRate)));
-        run.setGateResultJson(writeJson(Map.of("allowed", true, "message", gateResult.message())));
+        run.setGateResultJson(writeJson(Map.of("allowed", true, "message", checkResult.message())));
         run.setProgressStage("QUEUED");
         run.setProgressMessage("训练任务已进入队列");
         run.setProgressPercent(0);
@@ -344,7 +325,7 @@ public class ModelOperationsService {
     }
 
     /**
-     * 激活已通过门禁的候选模型版本。
+     * 激活已通过完整性校验的候选模型版本。
      *
      * @param versionId 候选模型版本 ID
      * @param operatorName 操作人名称
@@ -352,7 +333,6 @@ public class ModelOperationsService {
      */
     public synchronized ModelOperationsDto.OperationResponse activateVersion(
             String versionId, String operatorName) {
-        ensureModelSwitchAllowed();
         LstmModelDocument target = lstmModelRepository.findById(versionId)
                 .orElseThrow(() -> new IllegalArgumentException("模型版本不存在"));
         if (!"READY".equals(target.getStatus())) {
@@ -391,7 +371,6 @@ public class ModelOperationsService {
      */
     public synchronized ModelOperationsDto.OperationResponse rollback(
             String modelName, String operatorName) {
-        ensureModelSwitchAllowed();
         ModelActivationDocument activation = modelActivationRepository.findByModelName(modelName)
                 .orElseThrow(() -> new IllegalStateException("模型尚未建立激活指针"));
         String targetVersionId = activation.getPreviousModelVersionId();
@@ -427,7 +406,7 @@ public class ModelOperationsService {
         run.setStatus("RUNNING");
         run.setStartedAt(LocalDateTime.now());
         run.setProgressStage("PREPARING_DATA");
-        run.setProgressMessage("正在执行训练环境检查");
+        run.setProgressMessage("正在复核训练数据与资源");
         run.setProgressPercent(1);
         run.setCurrentEpoch(0);
         run.setTotalEpochs(epochs);
@@ -435,13 +414,13 @@ public class ModelOperationsService {
         run.setLastProgressAt(LocalDateTime.now());
         trainingRunRepository.save(run);
         try {
-            GateResult executionGate = evaluateEnvironmentGate();
-            if (!executionGate.allowed()) {
+            TrainingCheckResult executionCheck = evaluateTrainingEnvironment();
+            if (!executionCheck.allowed()) {
                 run.setGateResultJson(writeJson(Map.of(
                         "allowed", false,
                         "phase", "EXECUTION",
-                        "message", executionGate.message())));
-                throw new IllegalStateException(executionGate.message());
+                        "message", executionCheck.message())));
+                throw new IllegalStateException(executionCheck.message());
             }
             List<String> stockCodes = stockInfoRepository.findAllCodes().stream()
                     .filter(code -> dataQualityConfig.getSkipTrainingCodes() == null
@@ -568,60 +547,28 @@ public class ModelOperationsService {
         trainingRunRepository.save(run);
     }
 
-    private GateResult evaluateTrainingGate(String modelName, boolean trainingRunning) {
-        GateResult environmentGate = evaluateEnvironmentGate();
-        if (!environmentGate.allowed()) {
-            return environmentGate;
-        }
+    private TrainingCheckResult evaluateTrainingSubmission(boolean trainingRunning) {
         if (trainingRunning) {
-            return new GateResult(false, "当前模型已有排队或运行中的训练任务");
+            return new TrainingCheckResult(false, "当前模型已有排队或运行中的训练任务");
         }
-        return new GateResult(true, "训练门禁已通过");
+        return evaluateTrainingEnvironment();
     }
 
-    private GateResult evaluateEnvironmentGate() {
-        if (!runtimeConfigService.isModelTrainingEnabled()) {
-            return new GateResult(false, "当前节点未开启 LSTM 训练能力");
-        }
-        if (trainingConfig.isTrainingTimeGuardEnabled()) {
-            if (tradingTimeChecker.isTradingTime()) {
-                return new GateResult(false, "交易时段禁止执行模型训练");
-            }
-            if (!isTrainingWindowOpen(LocalDateTime.now())) {
-                return new GateResult(false, "工作日仅允许在 18:30 至 23:30 提交训练");
-            }
-        }
+    private TrainingCheckResult evaluateTrainingEnvironment() {
         if (stockInfoRepository.countTradable() <= 0) {
-            return new GateResult(false, "股票基础数据为空，无法训练");
+            return new TrainingCheckResult(false, "股票基础数据为空，无法训练");
         }
         long minimumMemoryBytes = Math.max(1L, dataQualityConfig.getMinimumAvailableMemoryMb())
                 * 1024L * 1024L;
         if (availableJvmMemory() < minimumMemoryBytes) {
-            return new GateResult(false, "JVM 可用内存低于 "
+            return new TrainingCheckResult(false, "JVM 可用内存低于 "
                     + dataQualityConfig.getMinimumAvailableMemoryMb() + "MB，拒绝启动训练");
         }
-        return new GateResult(true, "训练门禁已通过");
-    }
-
-    private boolean isTrainingWindowOpen(LocalDateTime now) {
-        if (!tradingTimeChecker.isTradingDay(now.toLocalDate())) {
-            return true;
-        }
-        LocalTime time = now.toLocalTime();
-        return !time.isBefore(WEEKDAY_TRAINING_START) && !time.isAfter(WEEKDAY_TRAINING_END);
+        return new TrainingCheckResult(true, "训练提交条件校验通过");
     }
 
     private boolean hasRunningTraining(String modelName) {
         return trainingRunRepository.existsByModelNameAndStatusIn(modelName, RUNNING_STATUSES);
-    }
-
-    private void ensureModelSwitchAllowed() {
-        if (tradingTimeChecker.isTradingTime()) {
-            throw new IllegalStateException("交易时段禁止切换模型版本");
-        }
-        if (hasRunningTraining(lstmTrainerService.getModelName())) {
-            throw new IllegalStateException("训练任务运行期间禁止切换模型版本");
-        }
     }
 
     private void validateTrainingParameters(ModelOperationsDto.StartTrainingRequest request) {
@@ -855,8 +802,8 @@ public class ModelOperationsService {
         return message.substring(0, Math.min(1000, message.length()));
     }
 
-    private record GateResult(boolean allowed, String message) {
+    private record TrainingCheckResult(boolean allowed, String message) {
     }
 
     }
-// AI_GENERATE_END -----------------
+// AI_GENERATE_END- -----------------

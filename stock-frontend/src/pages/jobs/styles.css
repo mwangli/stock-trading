@@ -1,4 +1,4 @@
-/* AI_GENERATE_START ----- */
+/* AI_GENERATE_START ------ */
 .job-filters { width: 100%; margin-bottom: 16px; }
 .jobs-summary-inline { display: flex; align-items: center; gap: 18px; }
 .jobs-summary-inline > span { display: inline-flex; min-width: 52px; flex-direction: column; gap: 1px; color: var(--text-primary); line-height: 1.15; }
@@ -15,9 +15,13 @@
 .job-action:not(.job-action-disabled):hover { text-decoration: underline; }
 .job-action-danger:not(.job-action-disabled) { color: #ef4444; }
 .job-action-disabled { color: var(--text-muted); cursor: not-allowed; }
+.job-history-modal .ant-modal-content { display: flex; max-height: calc(100vh - 32px); flex-direction: column; overflow: hidden; }
+.job-history-modal .ant-modal-header { flex: 0 0 auto; }
+.job-history-modal .ant-modal-body { min-height: 0; overflow-y: auto; }
+.job-history-content { min-width: 0; }
 @media (max-width: 640px) {
   .jobs-summary-inline { width: 100%; justify-content: space-between; gap: 10px; padding-top: 8px; }
   .job-module-filter,
   .job-name-filter { width: 100%; }
 }
-/* AI_GENERATE_END ----- */
+/* AI_GENERATE_END ------ */

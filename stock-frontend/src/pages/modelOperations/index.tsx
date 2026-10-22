@@ -1,12 +1,10 @@
-// AI_GENERATE_START -------------------------------------------
+// AI_GENERATE_START------ -------------------------------------------
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import dayjs from 'dayjs';
 import { formatDateTime } from '../../utils/dateTime';
 import {
   Button,
   Card,
   Col,
-  DatePicker,
   Descriptions,
   Empty,
   Form,
@@ -26,12 +24,10 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
-  CheckCircleOutlined,
   CloudServerOutlined,
+  EyeOutlined,
   ExperimentOutlined,
-  LineChartOutlined,
   RollbackOutlined,
-  SafetyCertificateOutlined,
   StopOutlined,
 } from '@ant-design/icons';
 import request from '../../utils/request';
@@ -101,12 +97,8 @@ interface Overview {
   activeVersion?: ModelVersion;
   previousVersion?: ModelVersion;
   latestTrainingRun?: TrainingRun;
-  trainingEnabled: boolean;
-  trainingAllowed: boolean;
   trainingRunning: boolean;
-  tradingTime: boolean;
   activeModelHealthy: boolean;
-  gateMessage: string;
 }
 
 interface PageResponse<T> {
@@ -152,6 +144,11 @@ interface PredictionBatch {
   failedCount: number;
   evaluatedCount: number;
   noMarketDataCount: number;
+  evaluationQueueStatus?: string;
+  evaluationQueuedAt?: string;
+  evaluationStartedAt?: string;
+  evaluationFinishedAt?: string;
+  evaluationErrorMessage?: string;
   coverageRate?: number;
   evaluationRate?: number;
   abilityLevel?: string;
@@ -256,6 +253,7 @@ const statusColors: Record<string, string> = {
   COMPLETED: 'green',
   PARTIAL: 'orange',
   EVALUATED: 'cyan',
+  WAITING: 'gold',
 };
 
 const evaluationStatusColors: Record<string, string> = {
@@ -402,10 +400,11 @@ const ModelOperations: React.FC = () => {
   const [versionPage, setVersionPage] = useState(1);
   const [pageSize] = useState(10);
   const [operatorName, setOperatorName] = useState('web-console');
-  const [predictionTargetDate, setPredictionTargetDate] = useState(() => dayjs().format('YYYY-MM-DD'));
-  const [loading, setLoading] = useState(false);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [versionsLoading, setVersionsLoading] = useState(true);
   const [operating, setOperating] = useState(false);
   const [trainingModalOpen, setTrainingModalOpen] = useState(false);
+  const [trainingProgressOpen, setTrainingProgressOpen] = useState(false);
   const [trainingRecordsOpen, setTrainingRecordsOpen] = useState(false);
   const [trainingRecordsLoading, setTrainingRecordsLoading] = useState(false);
   const [selectedTrainingVersion, setSelectedTrainingVersion] = useState<ModelVersion | null>(null);
@@ -428,25 +427,45 @@ const ModelOperations: React.FC = () => {
   const [modelAbility, setModelAbility] = useState<ModelAbility | null>(null);
   const [predictionPollingPaused, setPredictionPollingPaused] = useState(false);
   const predictionDataLoadingRef = useRef(false);
+  const selectedPredictionBatchIdRef = useRef<string | undefined>(undefined);
 
-  const loadOverview = useCallback(async () => {
-    const response = await request.get('/modelOperations/overview') as ApiResponse<Overview>;
-    setOverview(readApiData(response, localizedText('读取模型运维概览失败', 'Failed to load model operations overview')));
+  const updateSelectedPredictionBatchId = useCallback((batchId?: string) => {
+    selectedPredictionBatchIdRef.current = batchId;
+    setSelectedPredictionBatchId(batchId);
+  }, []);
+
+  const loadOverview = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setOverviewLoading(true);
+    }
+    try {
+      const response = await request.get('/modelOperations/overview') as ApiResponse<Overview>;
+      setOverview(readApiData(response, localizedText('读取模型运维概览失败', 'Failed to load model operations overview')));
+    } finally {
+      if (showLoading) {
+        setOverviewLoading(false);
+      }
+    }
   }, []);
 
   const loadVersions = useCallback(async (current: number) => {
-    const response = await request.get('/modelVersions', {
-      params: { current, pageSize },
-    }) as ApiResponse<PageResponse<ModelVersion>>;
-    const page = readApiData(response, localizedText('读取模型版本失败', 'Failed to load model versions'));
-    setVersions(page.items ?? []);
-    setVersionTotal(page.total);
-    setVersionPage(page.current);
+    setVersionsLoading(true);
+    try {
+      const response = await request.get('/modelVersions', {
+        params: { current, pageSize },
+      }) as ApiResponse<PageResponse<ModelVersion>>;
+      const page = readApiData(response, localizedText('读取模型版本失败', 'Failed to load model versions'));
+      setVersions(page.items ?? []);
+      setVersionTotal(page.total);
+      setVersionPage(page.current);
+    } finally {
+      setVersionsLoading(false);
+    }
   }, [pageSize]);
 
   const loadPredictionResults = useCallback(async (
     batchId: string,
-    current = predictionResultPage,
+    current = 1,
   ) => {
     const [resultResponse, abilityResponse] = await Promise.all([
       request.get('/modelPredictions/results', {
@@ -459,7 +478,7 @@ const ModelOperations: React.FC = () => {
     setPredictionResultTotal(resultPage.total);
     setPredictionResultPage(resultPage.current);
       setModelAbility(readApiData(await abilityResponse, localizedText('读取模型能力失败', 'Failed to load model capability')));
-  }, [predictionResultPage]);
+  }, []);
 
   const loadPredictionData = useCallback(async () => {
     if (predictionDataLoadingRef.current) {
@@ -475,13 +494,12 @@ const ModelOperations: React.FC = () => {
       const batches = page.items ?? [];
       setPredictionBatches(batches);
       setPredictionBatchTotal(page.total);
-      const batchId = selectedPredictionBatchId && batches.some((item) => item.id === selectedPredictionBatchId)
-        ? selectedPredictionBatchId
+      const currentBatchId = selectedPredictionBatchIdRef.current;
+      const batchId = currentBatchId && batches.some((item) => item.id === currentBatchId)
+        ? currentBatchId
         : batches[0]?.id;
-      setSelectedPredictionBatchId(batchId);
-      if (batchId) {
-        await loadPredictionResults(batchId);
-      } else {
+      updateSelectedPredictionBatchId(batchId);
+      if (!batchId) {
         setPredictionResults([]);
         setPredictionResultTotal(0);
         setModelAbility(null);
@@ -490,26 +508,19 @@ const ModelOperations: React.FC = () => {
       predictionDataLoadingRef.current = false;
       setPredictionLoading(false);
     }
-  }, [loadPredictionResults, selectedPredictionBatchId]);
-
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    try {
-      await Promise.all([
-        loadOverview(),
-        loadVersions(versionPage),
-        loadPredictionData(),
-      ]);
-    } catch (cause) {
-      message.error(getApiErrorMessage(cause, localizedText('读取模型运维数据失败', 'Failed to load model operations data')));
-    } finally {
-      setLoading(false);
-    }
-  }, [loadOverview, loadPredictionData, loadVersions, versionPage]);
+  }, [updateSelectedPredictionBatchId]);
 
   useEffect(() => {
-    void loadAll();
-  }, [loadAll]);
+    void Promise.all([loadOverview(true), loadPredictionData()]).catch((cause) => {
+      message.error(getApiErrorMessage(cause, localizedText('读取模型运维数据失败', 'Failed to load model operations data')));
+    });
+  }, [loadOverview, loadPredictionData]);
+
+  useEffect(() => {
+    void loadVersions(versionPage).catch((cause) => {
+      message.error(getApiErrorMessage(cause, localizedText('读取模型版本失败', 'Failed to load model versions')));
+    });
+  }, [loadVersions, versionPage]);
 
   useEffect(() => {
     if (!overview?.trainingRunning) {
@@ -657,7 +668,7 @@ const ModelOperations: React.FC = () => {
   };
 
   const openPredictionResults = (batchId: string) => {
-    setSelectedPredictionBatchId(batchId);
+    updateSelectedPredictionBatchId(batchId);
     setPredictionResultPage(1);
     setPredictionResults([]);
     setPredictionResultTotal(0);
@@ -666,7 +677,7 @@ const ModelOperations: React.FC = () => {
   };
 
   const openPredictionAnalysis = (batchId: string) => {
-    setSelectedPredictionBatchId(batchId);
+    updateSelectedPredictionBatchId(batchId);
     setModelAbility(null);
     setPredictionAnalysisLoading(true);
     setPredictionAnalysisModalOpen(true);
@@ -687,29 +698,10 @@ const ModelOperations: React.FC = () => {
       }) as ApiResponse<PredictionOperationResponse>;
       const result = readApiData(response, localizedText('提交历史预测重算失败', 'Failed to submit historical prediction rerun'));
       message.success(result.message);
-      setSelectedPredictionBatchId(result.batchId);
+      updateSelectedPredictionBatchId(result.batchId);
       await loadPredictionData();
     } catch (cause) {
       message.error(getApiErrorMessage(cause, localizedText('提交历史预测重算失败', 'Failed to submit historical prediction rerun')));
-    } finally {
-      setOperating(false);
-    }
-  };
-
-  const runPrediction = async () => {
-    setOperating(true);
-    setPredictionPollingPaused(false);
-    try {
-      const response = await request.post('/modelPredictions/run', {
-        operatorName: operatorName.trim() || 'web-console',
-        targetTradeDate: predictionTargetDate || undefined,
-      }) as ApiResponse<PredictionOperationResponse>;
-      const result = readApiData(response, localizedText('提交指定日期预测失败', 'Failed to submit prediction for the selected date'));
-      message.success(result.message);
-      setSelectedPredictionBatchId(result.batchId);
-      await loadPredictionData();
-    } catch (cause) {
-      message.error(getApiErrorMessage(cause, localizedText('提交指定日期预测失败', 'Failed to submit prediction for the selected date')));
     } finally {
       setOperating(false);
     }
@@ -722,7 +714,7 @@ const ModelOperations: React.FC = () => {
       const result = readApiData(response, localizedText('删除预测批次失败', 'Failed to delete prediction batch'));
       message.success(result.message);
       if (selectedPredictionBatchId === batchId) {
-        setSelectedPredictionBatchId(undefined);
+        updateSelectedPredictionBatchId(undefined);
         setPredictionDetailsOpen(false);
         setPredictionResultModalOpen(false);
         setPredictionAnalysisModalOpen(false);
@@ -846,7 +838,7 @@ const ModelOperations: React.FC = () => {
       render: (value: string, record) => (
         <Tooltip title={value}>
           <Button type="link" className="!px-0" onClick={() => {
-            setSelectedPredictionBatchId(record.id);
+            updateSelectedPredictionBatchId(record.id);
             setPredictionDetailsOpen(true);
           }}>
             <span className="max-w-32 truncate align-middle">{value}</span>
@@ -866,6 +858,10 @@ const ModelOperations: React.FC = () => {
         : <Tag color={value ? 'warning' : 'green'}>{value ? localizedText('工作日推算', 'Weekday Estimate') : localizedText('正式日历', 'Official Calendar')}</Tag>,
     },
     { title: localizedText('状态', 'Status'), dataIndex: 'status', key: 'status', width: 110, render: (value: string) => <Tag color={statusColors[value] ?? 'default'}>{value}</Tag> },
+    {
+      title: localizedText('评估队列', 'Evaluation Queue'), dataIndex: 'evaluationQueueStatus', key: 'evaluationQueueStatus', width: 120,
+      render: (value?: string) => <Tag color={statusColors[value ?? ''] ?? 'default'}>{value || 'WAITING'}</Tag>,
+    },
     {
       title: localizedText('执行情况', 'Execution'), key: 'execution', width: 260,
       render: (_, record) => (
@@ -964,6 +960,11 @@ const ModelOperations: React.FC = () => {
   usePageHeader(t('modelOperations.subtitle'));
 
   const latestTraining = overview?.latestTrainingRun;
+  const trainingInProgress = Boolean(
+    overview?.trainingRunning
+      && latestTraining
+      && ['QUEUED', 'RUNNING', 'STOPPING'].includes(latestTraining.status),
+  );
   const selectedPredictionBatch = predictionBatches.find((item) => item.id === selectedPredictionBatchId);
   const legacyProgress = latestTraining?.status === 'RUNNING'
     && latestTraining.progressStage == null
@@ -979,39 +980,7 @@ const ModelOperations: React.FC = () => {
   return (
     <div className="app-page">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {overview && (
-          <Tag color={overview.trainingAllowed ? 'green' : 'orange'}>
-            {overview.trainingAllowed ? t('modelOperations.trainingGatePassed') : t('modelOperations.trainingGateBlocked')}
-          </Tag>
-        )}
         <Space wrap className="ml-auto">
-          <DatePicker
-            className="w-40 min-w-40"
-            value={predictionTargetDate ? dayjs(predictionTargetDate) : null}
-            format="YYYY-MM-DD"
-            allowClear
-            disabledDate={(date) => date.isAfter(dayjs(), 'day')}
-            placeholder={localizedText('预测目标日期', 'Prediction Date')}
-            aria-label={localizedText('预测目标交易日', 'Prediction target trading date')}
-            onChange={(date) => setPredictionTargetDate(date ? date.format('YYYY-MM-DD') : '')}
-          />
-          <Popconfirm
-            title={localizedText('执行指定日期全市场预测？', 'Run full-market prediction for the selected date?')}
-            description={predictionTargetDate
-              ? `${localizedText('预测目标交易日', 'Target trading date')}: ${predictionTargetDate}`
-              : localizedText('未选择日期，将使用最新完整日线推导目标交易日。', 'No date selected; the target date will be derived from the latest complete daily data.')}
-            okText={localizedText('执行预测', 'Run Prediction')}
-            cancelText={localizedText('取消', 'Cancel')}
-            onConfirm={() => void runPrediction()}
-          >
-            <Button
-              icon={<LineChartOutlined />}
-              loading={operating}
-              disabled={operating}
-            >
-              {localizedText('执行预测', 'Run Prediction')}
-            </Button>
-          </Popconfirm>
           <Input
             className="w-44"
             value={operatorName}
@@ -1019,9 +988,19 @@ const ModelOperations: React.FC = () => {
             placeholder={localizedText('操作人', 'Operator')}
             onChange={(event) => setOperatorName(event.target.value)}
           />
+          {trainingInProgress && (
+            <Button
+              icon={<EyeOutlined />}
+              onClick={() => setTrainingProgressOpen(true)}
+            >
+              {localizedText('查看进度', 'View Progress')}
+            </Button>
+          )}
           <Button
             type="primary"
             icon={<ExperimentOutlined />}
+            loading={operating}
+            disabled={operating || trainingInProgress}
             onClick={() => {
               form.setFieldsValue({
                 ...defaultTrainingValues,
@@ -1036,8 +1015,8 @@ const ModelOperations: React.FC = () => {
       </div>
 
       <Row className="model-overview-cards" gutter={[16, 16]} align="stretch">
-        <Col className="model-overview-col" xs={24} md={12} xl={6}>
-          <Card className="surface-card compact-card model-overview-card" loading={loading}>
+        <Col className="model-overview-col" xs={24} md={12}>
+          <Card className="surface-card compact-card model-overview-card" loading={overviewLoading}>
             <Statistic
               title={t('modelOperations.productionVersion')}
               value={overview?.activeVersion?.modelVersion || localizedText('未激活', 'Not Active')}
@@ -1050,8 +1029,8 @@ const ModelOperations: React.FC = () => {
             </div>
           </Card>
         </Col>
-        <Col className="model-overview-col" xs={24} md={12} xl={6}>
-          <Card className="surface-card compact-card model-overview-card" loading={loading}>
+        <Col className="model-overview-col" xs={24} md={12}>
+          <Card className="surface-card compact-card model-overview-card" loading={overviewLoading}>
             <Statistic
               title={localizedText('上一版本', 'Previous Version')}
               value={overview?.previousVersion?.modelVersion || localizedText('无', 'None')}
@@ -1076,36 +1055,19 @@ const ModelOperations: React.FC = () => {
             </div>
           </Card>
         </Col>
-        <Col className="model-overview-col" xs={24} md={12} xl={6}>
-          <Card className="surface-card compact-card model-overview-card" loading={loading}>
-            <Statistic
-              title={t('modelOperations.trainingCapability')}
-              value={overview?.trainingEnabled ? localizedText('已开启', 'Enabled') : localizedText('已关闭', 'Disabled')}
-              prefix={<SafetyCertificateOutlined />}
-            />
-            <div className="model-overview-card-footer">
-              <Tag color={overview?.tradingTime ? 'red' : 'green'}>
-                {overview?.tradingTime ? localizedText('交易时段', 'Trading Hours') : localizedText('非交易时段', 'Outside Trading Hours')}
-              </Tag>
-            </div>
-          </Card>
-        </Col>
-        <Col className="model-overview-col" xs={24} md={12} xl={6}>
-          <Card className="surface-card compact-card model-overview-card" loading={loading}>
-            <Statistic
-              title={t('modelOperations.latestTraining')}
-              value={overview?.latestTrainingRun?.status || localizedText('无记录', 'No Record')}
-              prefix={<CheckCircleOutlined />}
-            />
-            <div className="model-overview-card-footer text-xs text-gray-400">
-              {formatDateTime(overview?.latestTrainingRun?.createdAt)}
-            </div>
-          </Card>
-        </Col>
       </Row>
 
-      {latestTraining && (
-      <Card className="surface-card" title={t('modelOperations.trainingProgress')}>
+      <DetailModal
+        title={
+          <Space size="small" wrap>
+            <span>{t('modelOperations.trainingProgress')}</span>
+            {latestTraining && <Tag color={statusColors[latestTraining.status] ?? 'default'}>{latestTraining.status}</Tag>}
+          </Space>
+        }
+        open={trainingProgressOpen}
+        onCancel={() => setTrainingProgressOpen(false)}
+      >
+        {latestTraining && (
           <Space direction="vertical" size="large" className="w-full">
             <div className="flex flex-wrap items-center gap-2">
               <Tag color={statusColors[latestTraining.status] ?? 'default'}>
@@ -1180,8 +1142,8 @@ const ModelOperations: React.FC = () => {
               </Descriptions.Item>
             </Descriptions>
           </Space>
-        </Card>
-      )}
+        )}
+      </DetailModal>
 
 
       <Card
@@ -1194,7 +1156,7 @@ const ModelOperations: React.FC = () => {
           dataSource={predictionBatches}
           loading={predictionLoading}
           pagination={false}
-          scroll={{ x: 1400 }}
+          scroll={{ x: 1520 }}
           rowClassName={(record) => record.id === selectedPredictionBatchId ? 'bg-blue-500/5' : ''}
         />
       </Card>
@@ -1253,6 +1215,7 @@ const ModelOperations: React.FC = () => {
 
             <DetailSection title="执行状态">
               <DetailItem label="当前状态"><Tag color={statusColors[selectedPredictionBatch.status] ?? 'default'}>{selectedPredictionBatch.status}</Tag></DetailItem>
+              <DetailItem label="评估队列"><Tag color={statusColors[selectedPredictionBatch.evaluationQueueStatus ?? ''] ?? 'default'}>{selectedPredictionBatch.evaluationQueueStatus || 'WAITING'}</Tag></DetailItem>
               <DetailItem label="交易门禁"><Tag color={selectedPredictionBatch.tradingEligibility === 'TRADE_ELIGIBLE' ? 'green' : 'orange'}>{selectedPredictionBatch.tradingEligibility || 'DISABLED'}</Tag></DetailItem>
               <DetailItem label="评估状态">{selectedPredictionBatch.abilityLevel || '-'}</DetailItem>
               <DetailItem label="未获取行情">{selectedPredictionBatch.noMarketDataCount}</DetailItem>
@@ -1260,11 +1223,13 @@ const ModelOperations: React.FC = () => {
               <DetailItem label="进度信息" wide><span className="detail-break">{selectedPredictionBatch.progressMessage || '-'}</span></DetailItem>
             </DetailSection>
 
-            {(selectedPredictionBatch.tradingEligibilityReason || selectedPredictionBatch.errorMessage || selectedPredictionBatch.abilityMessage) && (
+            {(selectedPredictionBatch.tradingEligibilityReason || selectedPredictionBatch.errorMessage
+              || selectedPredictionBatch.evaluationErrorMessage || selectedPredictionBatch.abilityMessage) && (
               <DetailSection title="诊断信息">
                 <DetailItem label="门禁原因" wide><span className="detail-message">{selectedPredictionBatch.tradingEligibilityReason || '-'}</span></DetailItem>
                 <DetailItem label="能力说明" wide><span className="detail-message">{selectedPredictionBatch.abilityMessage || '-'}</span></DetailItem>
                 <DetailItem label="错误信息" wide><span className="detail-message detail-error">{selectedPredictionBatch.errorMessage || '-'}</span></DetailItem>
+                <DetailItem label="评估错误" wide><span className="detail-message detail-error">{selectedPredictionBatch.evaluationErrorMessage || '-'}</span></DetailItem>
               </DetailSection>
             )}
           </Space>
@@ -1335,7 +1300,7 @@ const ModelOperations: React.FC = () => {
           rowKey="id"
           columns={versionColumns}
           dataSource={versions}
-          loading={loading}
+          loading={versionsLoading}
           locale={{ emptyText: <Empty description={t('modelOperations.versionsEmpty')} /> }}
           scroll={{ x: 1480 }}
           pagination={{
@@ -1459,4 +1424,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END -------------------------------------------
+// AI_GENERATE_END------ -------------------------------------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START- -----
 package com.stock.modelService.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -45,23 +45,11 @@ public final class ModelOperationsDto {
         /** 最近一次训练运行。 */
         private TrainingRunItem latestTrainingRun;
 
-        /** 当前节点是否开启训练总开关。 */
-        private boolean trainingEnabled;
-
-        /** 当前时刻是否允许提交训练。 */
-        private boolean trainingAllowed;
-
         /** 是否存在运行中或排队中的训练。 */
         private boolean trainingRunning;
 
-        /** 当前是否处于交易时段。 */
-        private boolean tradingTime;
-
         /** 当前激活模型是否通过完整性和兼容性校验。 */
         private boolean activeModelHealthy;
-
-        /** 当前训练门禁说明。 */
-        private String gateMessage;
     }
 
     /**
@@ -336,4 +324,4 @@ public final class ModelOperationsDto {
         private String message;
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END- -----

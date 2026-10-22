@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.modelService.domain.entity;
 
 import lombok.Data;
@@ -72,6 +72,22 @@ public class ModelPredictionBatchDocument {
 
     /** 缺少目标日行情数量。 */
     private int noMarketDataCount;
+
+    /** 评估队列状态：WAITING、QUEUED、RUNNING、COMPLETED 或 FAILED。 */
+    @Indexed
+    private String evaluationQueueStatus;
+
+    /** 评估任务进入队列的时间。 */
+    private LocalDateTime evaluationQueuedAt;
+
+    /** 评估任务开始执行的时间。 */
+    private LocalDateTime evaluationStartedAt;
+
+    /** 评估任务完成的时间。 */
+    private LocalDateTime evaluationFinishedAt;
+
+    /** 最近一次评估队列执行失败原因。 */
+    private String evaluationErrorMessage;
 
     /** 预测覆盖率。 */
     private Double coverageRate;
@@ -191,4 +207,4 @@ public class ModelPredictionBatchDocument {
     /** 最近更新时间。 */
     private LocalDateTime updatedAt;
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----
