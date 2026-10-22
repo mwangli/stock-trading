@@ -2,14 +2,11 @@ name: Backend CI/CD
 
 on:
   push:
-    branches:
-      - master
-    paths:
-      - stock-backend/**
-      - pom.xml
-      - docker-compose.yml
-      - .github/workflows/backend-ci-cd.yml
-  workflow_dispatch:
+    tags:
+      - 'v[0-9]+.[0-9]+'
+      - 'V[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'V[0-9]+.[0-9]+.[0-9]+'
 
 permissions:
   contents: read
