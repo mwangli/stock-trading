@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.api;
 
 import lombok.Data;
@@ -17,11 +17,9 @@ public class TradePlanDraftRequest {
     private String sessionId;
     /** 用户问题。 */
     private String question;
-    /** 用户范围。 */
-    private String userScope;
     /** 候选批次标识。 */
     private String candidateBatchId;
     /** 股票代码，可为空。 */
     private String stockCode;
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

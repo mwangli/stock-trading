@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.persistence;
 
 import com.stock.strategyAgent.domain.AgentEnums;
@@ -6,7 +6,6 @@ import com.stock.strategyAgent.domain.entity.AgentMemoryEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Agent Memory 元数据数据访问接口。
@@ -17,12 +16,13 @@ import java.util.Optional;
 public interface AgentMemoryRepository extends JpaRepository<AgentMemoryEntity, Long> {
 
     /**
-     * 按业务标识读取记忆。
+     * 按记忆标识和认证用户范围读取记忆。
      *
      * @param memoryId 记忆标识
-     * @return 记忆实体
+     * @param userScope 服务端认证用户范围
+     * @return 用户本人记忆
      */
-    Optional<AgentMemoryEntity> findByMemoryId(String memoryId);
+    java.util.Optional<AgentMemoryEntity> findByMemoryIdAndUserScope(String memoryId, String userScope);
 
     /**
      * 查询用户范围内的有效记忆。
@@ -34,4 +34,4 @@ public interface AgentMemoryRepository extends JpaRepository<AgentMemoryEntity, 
     List<AgentMemoryEntity> findByUserScopeAndStatusOrderByUpdatedAtDesc(String userScope,
                                                                            AgentEnums.MemoryStatus status);
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

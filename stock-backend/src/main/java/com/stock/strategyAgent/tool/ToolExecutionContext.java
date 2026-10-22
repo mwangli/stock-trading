@@ -1,8 +1,10 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.strategyAgent.tool;
 
 import lombok.Builder;
 import lombok.Value;
+
+import java.util.Set;
 
 /**
  * 工具调用上下文。
@@ -25,5 +27,8 @@ public class ToolExecutionContext {
 
     /** 用户范围。 */
     String userScope;
+
+    /** 本轮服务端允许执行的工具名称。 */
+    Set<String> allowedToolNames;
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

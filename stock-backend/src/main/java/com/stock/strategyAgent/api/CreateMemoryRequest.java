@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.api;
 
 import com.stock.strategyAgent.domain.AgentEnums;
@@ -14,8 +14,6 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 public class CreateMemoryRequest {
-    /** 用户范围。 */
-    private String userScope;
     /** 记忆类型。 */
     private AgentEnums.MemoryType memoryType;
     /** 来源类型。 */
@@ -29,4 +27,4 @@ public class CreateMemoryRequest {
     /** 有效天数。 */
     private Integer ttlDays;
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

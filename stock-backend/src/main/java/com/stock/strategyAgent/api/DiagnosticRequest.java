@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.api;
 
 import lombok.Data;
@@ -19,7 +19,5 @@ public class DiagnosticRequest {
     private String jobName;
     /** 诊断说明。 */
     private String question;
-    /** 用户范围。 */
-    private String userScope;
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

@@ -1,10 +1,13 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ---
 import { create } from 'zustand';
 
 export interface AgentConversationMessage {
   role: 'user' | 'assistant';
   content: string;
-  evidenceSummary?: string;
+  status?: 'COMPLETED' | 'ACCEPTED' | 'DEGRADED' | 'NEEDS_CONFIRMATION' | 'FAILED';
+  evidenceRefs?: string[];
+  capabilities?: string[];
+  uncertainty?: string;
 }
 
 interface AgentConversationState {
@@ -52,4 +55,4 @@ export const useAgentConversationStore = create<AgentConversationState>((set) =>
     ? { loading }
     : state),
 }));
-// AI_GENERATE_END -
+// AI_GENERATE_END ---

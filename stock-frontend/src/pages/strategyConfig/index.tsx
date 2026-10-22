@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------------------------------------------------------
+// AI_GENERATE_START --------------------------------------------------------------
 import './styles.css';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button, Card, Col, Descriptions, Form, Input, InputNumber, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, message, type InputRef } from 'antd';
@@ -103,10 +103,16 @@ interface AgentSessionResponse {
   sessionId: string;
 }
 
-interface AgentTaskResponse {
-  resultSummary?: string;
-  evidenceSummary?: string;
-  errorMessage?: string;
+interface AgentChatResponse {
+  sessionId: string;
+  taskId: string;
+  answer: string;
+  strategy: 'CONVERSATION' | 'FACT_QUERY' | 'ANALYSIS' | 'RESEARCH' | 'DIAGNOSTIC';
+  status: 'COMPLETED' | 'ACCEPTED' | 'DEGRADED' | 'NEEDS_CONFIRMATION' | 'FAILED';
+  evidenceRefs: string[];
+  capabilities: string[];
+  uncertainty?: string;
+  createdAt: string;
 }
 
 interface RuntimeStatus {
@@ -289,30 +295,23 @@ const StrategyConfig: React.FC = () => {
     updateAgentQuestion(conversationOwnerId, '');
     updateAgentLoading(conversationOwnerId, true);
     try {
-      const tradeExecutionDiagnostic = /买入计划|执行门禁|为什么没有生成|为什么没有买入|交易执行|下单/.test(question);
-      const runtimeDiagnostic = /模型连接|模型状态|Provider|Ollama|DeepSeek|Agent.*(?:状态|健康)|响应超时|对话超时|model connection|provider health|timeout/i.test(question);
-      const diagnosticQuestion = tradeExecutionDiagnostic || runtimeDiagnostic;
-      const requestBody = diagnosticQuestion
-        ? {
-            sessionId,
-            question,
-            ...(tradeExecutionDiagnostic ? { jobName: 'realTradingAutoBuy' } : {}),
-          }
-        : {
-            sessionId,
-            question,
-            candidateBatchId: candidateBatch?.candidateBatchId,
-            predictionBatchId: candidateBatch?.predictionBatchId,
-            strategyVersion: candidateBatch?.strategyConfigVersion,
-            targetTradeDate: candidateBatch?.targetTradeDate,
-          };
-      const response = await request.post(diagnosticQuestion ? '/agent/tasks/diagnose' : '/agent/tasks/research', requestBody) as ApiResponse<AgentTaskResponse>;
-      const task = readApiData(response, localizedText('Agent 分析失败', 'Agent analysis failed'));
-      const content = task.resultSummary || task.errorMessage || localizedText('Agent 未返回结果', 'Agent returned no result');
+      const response = await request.post('/agent/chat', {
+        sessionId,
+        question,
+        candidateBatchId: candidateBatch?.candidateBatchId,
+        predictionBatchId: candidateBatch?.predictionBatchId,
+        strategyVersion: candidateBatch?.strategyConfigVersion,
+        targetTradeDate: candidateBatch?.targetTradeDate,
+        pageContext: 'strategyConfig',
+      }) as ApiResponse<AgentChatResponse>;
+      const chat = readApiData(response, localizedText('Agent 分析失败', 'Agent analysis failed'));
       appendAgentMessage(conversationOwnerId, {
         role: 'assistant',
-        content,
-        evidenceSummary: task.evidenceSummary,
+        content: chat.answer || localizedText('Agent 未返回结果', 'Agent returned no result'),
+        status: chat.status,
+        evidenceRefs: chat.evidenceRefs,
+        capabilities: chat.capabilities,
+        uncertainty: chat.uncertainty,
       });
     } catch (cause) {
       appendAgentMessage(conversationOwnerId, {
@@ -469,11 +468,22 @@ const StrategyConfig: React.FC = () => {
             {agentMessages.map((item, index) => (
               <div key={`${item.role}-${index}`} className={`agent-message agent-message-${item.role}`}>
                 <Text strong>{item.role === 'user' ? localizedText('你', 'You') : localizedText('策略 Agent', 'Strategy Agent')}</Text>
+                {item.role === 'assistant' && item.status && (
+                  <Tag color={item.status === 'COMPLETED' ? 'success' : item.status === 'FAILED' ? 'error' : 'warning'}>
+                    {item.status}
+                  </Tag>
+                )}
                 <div>{item.content}</div>
-                {item.evidenceSummary && (
+                {item.uncertainty && <div>{localizedText('不确定性', 'Uncertainty')}: {item.uncertainty}</div>}
+                {item.role === 'assistant' && ((item.evidenceRefs?.length ?? 0) > 0 || (item.capabilities?.length ?? 0) > 0) && (
                   <details className="agent-evidence">
                     <summary>{localizedText('查看证据摘要', 'View evidence summary')}</summary>
-                    <pre>{item.evidenceSummary}</pre>
+                    {(item.capabilities?.length ?? 0) > 0 && (
+                      <div>{localizedText('使用能力', 'Capabilities')}: {item.capabilities?.join(', ')}</div>
+                    )}
+                    {(item.evidenceRefs?.length ?? 0) > 0 && (
+                      <div>{localizedText('证据编号', 'Evidence refs')}: {item.evidenceRefs?.join(', ')}</div>
+                    )}
                   </details>
                 )}
               </div>
@@ -656,4 +666,4 @@ const StrategyConfig: React.FC = () => {
 };
 
 export default StrategyConfig;
-// AI_GENERATE_END ----------------------------------------------------------
+// AI_GENERATE_END --------------------------------------------------------------

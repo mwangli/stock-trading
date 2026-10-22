@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.api;
 
 import java.time.LocalDate;
@@ -18,8 +18,6 @@ public class ResearchRequest {
     private String sessionId;
     /** 用户问题。 */
     private String question;
-    /** 用户范围。 */
-    private String userScope;
     /** 当前候选批次上下文，可为空。 */
     private String candidateBatchId;
     /** 当前股票上下文，可为空。 */
@@ -31,4 +29,4 @@ public class ResearchRequest {
     /** 当前目标交易日上下文，可为空。 */
     private LocalDate targetTradeDate;
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

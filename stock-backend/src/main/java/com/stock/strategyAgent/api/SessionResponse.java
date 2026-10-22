@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.api;
 
 import java.time.LocalDateTime;
@@ -20,8 +20,6 @@ import lombok.NoArgsConstructor;
 public class SessionResponse {
     /** 会话标识。 */
     private String sessionId;
-    /** 用户范围。 */
-    private String userScope;
     /** 会话标题。 */
     private String title;
     /** 会话状态。 */
@@ -31,4 +29,4 @@ public class SessionResponse {
     /** 更新时间。 */
     private LocalDateTime updatedAt;
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

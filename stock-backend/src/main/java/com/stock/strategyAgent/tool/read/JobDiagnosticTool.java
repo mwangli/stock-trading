@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.strategyAgent.tool.read;
 
 import com.stock.strategyAgent.tool.AgentToolSupport;
@@ -34,7 +34,7 @@ public class JobDiagnosticTool {
         if (request == null || !StringUtils.hasText(request.jobName())) {
             throw new IllegalArgumentException("jobName 不能为空");
         }
-        return toolSupport.execute("queryJobExecution", () -> {
+        return toolSupport.execute("queryJobDiagnostic", () -> {
             JobExecutionRecord record = jobExecutionService.getLatestRun(request.jobName().trim());
             if (record == null) {
                 return new JobDiagnosticResult(request.jobName().trim(), "UNKNOWN", "没有运行记录");
@@ -52,4 +52,4 @@ public class JobDiagnosticTool {
     public record JobDiagnosticResult(String jobName, String status, String errorMessage) {
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

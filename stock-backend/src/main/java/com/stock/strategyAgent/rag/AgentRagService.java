@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ---------
 package com.stock.strategyAgent.rag;
 
 import com.stock.strategyAgent.api.RagIngestRequest;
@@ -36,9 +36,10 @@ public class AgentRagService {
      * 将文档切分为有限长度 Chunk 并写入 MongoDB。
      *
      * @param request 文档请求
+     * @param userScope 服务端认证用户范围
      * @return 写入的 Chunk 数量
      */
-    public int ingest(RagIngestRequest request) {
+    public int ingest(RagIngestRequest request, String userScope) {
         requireEnabled();
         if (request == null || !StringUtils.hasText(request.getContent())) {
             throw new IllegalArgumentException("RAG 文档内容不能为空");
@@ -51,7 +52,7 @@ public class AgentRagService {
             AgentRagChunkDocument document = new AgentRagChunkDocument();
             document.setChunkId(sourceId + "-" + version + "-" + index);
             document.setSourceType(defaultValue(request.getSourceType(), "DOCUMENT"));
-            document.setUserScope(defaultValue(request.getUserScope(), "default"));
+            document.setUserScope(requireUserScope(userScope));
             document.setSourceId(sourceId);
             document.setVersion(version);
             document.setContent(content);
@@ -76,9 +77,10 @@ public class AgentRagService {
      * 从 MongoDB 检索候选 Chunk，并在应用层计算轻量向量相似度。
      *
      * @param request 检索请求
+     * @param userScope 服务端认证用户范围
      * @return 按相似度降序排列的结果
      */
-    public List<RagResult> search(RagSearchRequest request) {
+    public List<RagResult> search(RagSearchRequest request, String userScope) {
         requireEnabled();
         if (request == null || !StringUtils.hasText(request.getQuery())) {
             return List.of();
@@ -110,7 +112,7 @@ public class AgentRagService {
                 properties.getRagCollection());
         List<Double> queryVector = embeddingService.embed(request.getQuery());
         return documents.stream()
-                .filter(item -> visible(item, request.getUserScope()))
+                .filter(item -> visible(item, requireUserScope(userScope)))
                 .map(item -> RagResult.builder()
                         .chunkId(item.getChunkId())
                         .sourceType(item.getSourceType())
@@ -182,5 +184,12 @@ public class AgentRagService {
     private String defaultValue(String value, String fallback) {
         return StringUtils.hasText(value) ? value : fallback;
     }
+
+    private String requireUserScope(String userScope) {
+        if (!StringUtils.hasText(userScope)) {
+            throw new IllegalArgumentException("RAG 用户范围不能为空");
+        }
+        return userScope.trim();
+    }
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END ---------

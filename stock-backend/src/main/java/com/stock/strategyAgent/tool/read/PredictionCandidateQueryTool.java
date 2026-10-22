@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START -------
 package com.stock.strategyAgent.tool.read;
 
 import com.stock.strategyAgent.domain.entity.StockRanking;
@@ -36,7 +36,7 @@ public class PredictionCandidateQueryTool {
         if (request == null || !StringUtils.hasText(request.candidateBatchId())) {
             throw new IllegalArgumentException("candidateBatchId 不能为空");
         }
-        return toolSupport.execute("queryPredictionCandidate", () -> {
+        return toolSupport.execute("queryPredictionCandidates", () -> {
             List<StockRanking> rankings = rankingRepository.findByCandidateBatchIdOrderByRankAsc(
                     request.candidateBatchId().trim());
             if (rankings.isEmpty()) {
@@ -86,4 +86,4 @@ public class PredictionCandidateQueryTool {
                                           double totalScore, String reason) {
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END -------

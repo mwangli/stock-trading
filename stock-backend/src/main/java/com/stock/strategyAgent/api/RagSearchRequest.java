@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.api;
 
 import java.time.LocalDateTime;
@@ -16,8 +16,6 @@ import lombok.NoArgsConstructor;
 public class RagSearchRequest {
     /** 检索问题。 */
     private String query;
-    /** 用户范围。 */
-    private String userScope;
     /** 最大结果数。 */
     private Integer limit;
     /** 来源类型，可选。 */
@@ -29,4 +27,4 @@ public class RagSearchRequest {
     /** 文档最晚时间，可选。 */
     private LocalDateTime asOfTo;
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

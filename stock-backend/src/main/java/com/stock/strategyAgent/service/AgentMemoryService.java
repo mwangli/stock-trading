@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START ---------
 package com.stock.strategyAgent.service;
 
 import com.stock.strategyAgent.api.CorrectMemoryRequest;
@@ -39,16 +39,17 @@ public class AgentMemoryService {
      * 创建一条经过字段和敏感信息校验的记忆。
      *
      * @param request 创建请求
+     * @param userScope 服务端认证用户范围
      * @return 记忆响应
      */
     @Transactional
-    public MemoryResponse create(CreateMemoryRequest request) {
+    public MemoryResponse create(CreateMemoryRequest request, String userScope) {
         validate(request);
         LocalDateTime now = LocalDateTime.now();
         int ttl = Math.min(Math.max(request.getTtlDays() == null ? properties.getMemoryDefaultTtlDays() : request.getTtlDays(), 1), 3650);
         AgentMemoryEntity entity = new AgentMemoryEntity()
                 .setMemoryId(UUID.randomUUID().toString())
-                .setUserScope(defaultScope(request.getUserScope()))
+                .setUserScope(requireUserScope(userScope))
                 .setMemoryType(request.getMemoryType())
                 .setSourceType(request.getSourceType())
                 .setContent(redact(request.getContent()))
@@ -85,7 +86,7 @@ public class AgentMemoryService {
     @Transactional
     public List<MemoryResponse> list(String userScope) {
         expireOldMemories();
-        return repository.findByUserScopeAndStatusOrderByUpdatedAtDesc(defaultScope(userScope), AgentEnums.MemoryStatus.ACTIVE)
+        return repository.findByUserScopeAndStatusOrderByUpdatedAtDesc(requireUserScope(userScope), AgentEnums.MemoryStatus.ACTIVE)
                 .stream().map(this::toResponse).toList();
     }
 
@@ -93,10 +94,11 @@ public class AgentMemoryService {
      * 删除一条记忆并同步禁用 MongoDB 语义索引。
      *
      * @param memoryId 记忆标识
+     * @param userScope 服务端认证用户范围
      */
     @Transactional
-    public void forget(String memoryId) {
-        AgentMemoryEntity entity = find(memoryId);
+    public void forget(String memoryId, String userScope) {
+        AgentMemoryEntity entity = find(memoryId, userScope);
         entity.setStatus(AgentEnums.MemoryStatus.FORGOTTEN).setUpdatedAt(LocalDateTime.now());
         repository.save(entity);
         AgentMemoryVectorDocument vector = mongoTemplate.findById(memoryId, AgentMemoryVectorDocument.class);
@@ -112,14 +114,15 @@ public class AgentMemoryService {
      *
      * @param memoryId 记忆标识
      * @param request 修正请求
+     * @param userScope 服务端认证用户范围
      * @return 修正后的记忆
      */
     @Transactional
-    public MemoryResponse correct(String memoryId, CorrectMemoryRequest request) {
+    public MemoryResponse correct(String memoryId, CorrectMemoryRequest request, String userScope) {
         if (request == null || !StringUtils.hasText(request.getContent())) {
             throw new IllegalArgumentException("修正内容不能为空");
         }
-        AgentMemoryEntity entity = find(memoryId);
+        AgentMemoryEntity entity = find(memoryId, userScope);
         entity.setContent(redact(request.getContent()))
                 .setSourceRef(redact(request.getSourceRef()))
                 .setSourceType(AgentEnums.MemorySourceType.USER_CONFIRMED)
@@ -156,9 +159,9 @@ public class AgentMemoryService {
         return toResponse(entity);
     }
 
-    private AgentMemoryEntity find(String memoryId) {
-        return repository.findByMemoryId(memoryId)
-                .orElseThrow(() -> new IllegalArgumentException("Memory 不存在: " + memoryId));
+    private AgentMemoryEntity find(String memoryId, String userScope) {
+        return repository.findByMemoryIdAndUserScope(memoryId, requireUserScope(userScope))
+                .orElseThrow(() -> new IllegalArgumentException("Memory 不存在"));
     }
 
     private void expireOldMemories() {
@@ -193,14 +196,16 @@ public class AgentMemoryService {
         return value.replaceAll("(?i)(password|token|cookie|secret)\\s*[=:：]\\s*[^,;\\s]+", "$1=[REDACTED_SECRET]");
     }
 
-    private String defaultScope(String scope) {
-        return StringUtils.hasText(scope) ? scope.trim() : "default";
+    private String requireUserScope(String userScope) {
+        if (!StringUtils.hasText(userScope)) {
+            throw new IllegalArgumentException("Memory 用户范围不能为空");
+        }
+        return userScope.trim();
     }
 
     private MemoryResponse toResponse(AgentMemoryEntity entity) {
         return MemoryResponse.builder()
                 .memoryId(entity.getMemoryId())
-                .userScope(entity.getUserScope())
                 .memoryType(entity.getMemoryType().name())
                 .sourceType(entity.getSourceType().name())
                 .content(entity.getContent())
@@ -212,4 +217,4 @@ public class AgentMemoryService {
                 .build();
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END ---------

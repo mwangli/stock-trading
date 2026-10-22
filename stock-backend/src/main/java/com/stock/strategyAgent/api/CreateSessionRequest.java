@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.api;
 
 import lombok.Data;
@@ -13,9 +13,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 public class CreateSessionRequest {
-    /** 用户范围标识。 */
-    private String userScope;
     /** 会话标题。 */
     private String title;
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

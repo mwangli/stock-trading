@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.api;
 
 import lombok.Data;
@@ -17,7 +17,5 @@ public class ReportRequest {
     private String sessionId;
     /** 报告日期，格式为 yyyy-MM-dd。 */
     private String reportDate;
-    /** 用户范围。 */
-    private String userScope;
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----
