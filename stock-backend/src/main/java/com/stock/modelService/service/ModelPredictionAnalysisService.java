@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------
+// AI_GENERATE_START ------------
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -38,6 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -77,6 +78,7 @@ public class ModelPredictionAnalysisService {
     private static final String BATCH_STOCK_UNIQUE_INDEX = "uk_prediction_batch_stock";
     private static final String HISTORICAL_BACKFILL_TRIGGER = "scheduler-backfill";
     private static final String MANUAL_BACKFILL_TRIGGER_PREFIX = "manual-backfill:";
+    private static final LocalTime MARKET_CLOSE_TIME = LocalTime.of(15, 0);
     private static final ZoneId MARKET_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final LstmInferenceService inferenceService;
@@ -283,9 +285,11 @@ public class ModelPredictionAnalysisService {
     /**
      * 使用当前激活模型同步执行每日全市场预测。
      *
-     * 调度任务先完成当日预测，再按配置回溯补充历史缺失批次，整个过程保持同一并发锁。
+     * 调度任务使用最新完整日线预测下一交易日，再按配置回溯补充历史缺失批次。
+     * 开盘前通常生成当日预测，收盘后手动触发时允许生成下一交易日预测。
      *
      * @return 已完成或复用的预测批次
+     * @throws IllegalStateException 模型、行情、交易日历或预测批次状态不满足执行条件时抛出
      */
     public ModelPredictionAnalysisDto.OperationResponse startScheduledPrediction() {
         if (!predictionRunning.compareAndSet(false, true)) {
@@ -296,14 +300,24 @@ public class ModelPredictionAnalysisService {
                 throw new IllegalStateException("当前已有模型预测批次正在运行");
             }
             PredictionContext context = resolvePredictionContext();
-            LocalDate today = LocalDate.now(MARKET_ZONE);
+            LocalDateTime marketNow = LocalDateTime.now(MARKET_ZONE);
+            LocalDate today = marketNow.toLocalDate();
             tradingCalendarService.requireTradingDay(today);
             LocalDate latestBaseTradeDate = priceRepository.findTopByOrderByDateDesc()
                     .map(StockPrice::getDate)
                     .orElseThrow(() -> new IllegalStateException("没有可用于预测的日线行情"));
+            if (latestBaseTradeDate.isAfter(today)) {
+                throw new IllegalStateException("最新日线日期晚于当前市场日期: baseTradeDate="
+                        + latestBaseTradeDate + ", today=" + today);
+            }
+            if (latestBaseTradeDate.equals(today)
+                    && marketNow.toLocalTime().isBefore(MARKET_CLOSE_TIME)) {
+                throw new IllegalStateException("当日日线尚未收盘，不能用于下一交易日预测: baseTradeDate="
+                        + latestBaseTradeDate + ", marketTime=" + marketNow.toLocalTime());
+            }
             LocalDate latestTargetTradeDate = resolveNextTradeDate(latestBaseTradeDate).tradeDate();
-            if (!latestTargetTradeDate.equals(today)) {
-                throw new IllegalStateException("最新完整日线未对齐当日 T+1 预测: baseTradeDate="
+            if (latestTargetTradeDate.isBefore(today)) {
+                throw new IllegalStateException("最新完整日线落后于当前预测窗口: baseTradeDate="
                         + latestBaseTradeDate + ", targetTradeDate=" + latestTargetTradeDate
                         + ", today=" + today);
             }
@@ -316,7 +330,8 @@ public class ModelPredictionAnalysisService {
                 requirePredictionCompleted(current.batch().getId(), latestTargetTradeDate);
             }
 
-            int backfilledCount = backfillMissingHistoricalPredictions(context, stockCodes, today);
+            int backfilledCount = backfillMissingHistoricalPredictions(
+                    context, stockCodes, latestTargetTradeDate);
             ModelPredictionBatchDocument completed = batchRepository.findById(current.batch().getId()).orElseThrow();
             return ModelPredictionAnalysisDto.OperationResponse.builder()
                     .batchId(completed.getId())
@@ -1328,4 +1343,4 @@ public class ModelPredictionAnalysisService {
     private record PredictionBatchPreparation(ModelPredictionBatchDocument batch, boolean created) {
     }
 }
-// AI_GENERATE_END ----------
+// AI_GENERATE_END ------------
