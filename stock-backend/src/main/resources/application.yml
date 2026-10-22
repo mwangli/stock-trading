@@ -91,7 +91,7 @@ trading:
 
 agent:
   enabled: true
-  provider: ${AGENT_PROVIDER:ollama}
+  provider: ${AGENT_PROVIDER:deepseek}
   deepseek:
     enabled: true
     base-url: https://api.deepseek.com/v1
