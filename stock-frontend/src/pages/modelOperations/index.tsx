@@ -1,10 +1,12 @@
-// AI_GENERATE_START ------------------------------------------
+// AI_GENERATE_START -------------------------------------------
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import dayjs from 'dayjs';
 import { formatDateTime } from '../../utils/dateTime';
 import {
   Button,
   Card,
   Col,
+  DatePicker,
   Descriptions,
   Empty,
   Form,
@@ -27,6 +29,7 @@ import {
   CheckCircleOutlined,
   CloudServerOutlined,
   ExperimentOutlined,
+  LineChartOutlined,
   RollbackOutlined,
   SafetyCertificateOutlined,
   StopOutlined,
@@ -399,6 +402,7 @@ const ModelOperations: React.FC = () => {
   const [versionPage, setVersionPage] = useState(1);
   const [pageSize] = useState(10);
   const [operatorName, setOperatorName] = useState('web-console');
+  const [predictionTargetDate, setPredictionTargetDate] = useState(() => dayjs().format('YYYY-MM-DD'));
   const [loading, setLoading] = useState(false);
   const [operating, setOperating] = useState(false);
   const [trainingModalOpen, setTrainingModalOpen] = useState(false);
@@ -692,6 +696,25 @@ const ModelOperations: React.FC = () => {
     }
   };
 
+  const runPrediction = async () => {
+    setOperating(true);
+    setPredictionPollingPaused(false);
+    try {
+      const response = await request.post('/modelPredictions/run', {
+        operatorName: operatorName.trim() || 'web-console',
+        targetTradeDate: predictionTargetDate || undefined,
+      }) as ApiResponse<PredictionOperationResponse>;
+      const result = readApiData(response, localizedText('提交指定日期预测失败', 'Failed to submit prediction for the selected date'));
+      message.success(result.message);
+      setSelectedPredictionBatchId(result.batchId);
+      await loadPredictionData();
+    } catch (cause) {
+      message.error(getApiErrorMessage(cause, localizedText('提交指定日期预测失败', 'Failed to submit prediction for the selected date')));
+    } finally {
+      setOperating(false);
+    }
+  };
+
   const deletePredictionBatch = async (batchId: string) => {
     setOperating(true);
     try {
@@ -962,6 +985,33 @@ const ModelOperations: React.FC = () => {
           </Tag>
         )}
         <Space wrap className="ml-auto">
+          <DatePicker
+            className="w-40 min-w-40"
+            value={predictionTargetDate ? dayjs(predictionTargetDate) : null}
+            format="YYYY-MM-DD"
+            allowClear
+            disabledDate={(date) => date.isAfter(dayjs(), 'day')}
+            placeholder={localizedText('预测目标日期', 'Prediction Date')}
+            aria-label={localizedText('预测目标交易日', 'Prediction target trading date')}
+            onChange={(date) => setPredictionTargetDate(date ? date.format('YYYY-MM-DD') : '')}
+          />
+          <Popconfirm
+            title={localizedText('执行指定日期全市场预测？', 'Run full-market prediction for the selected date?')}
+            description={predictionTargetDate
+              ? `${localizedText('预测目标交易日', 'Target trading date')}: ${predictionTargetDate}`
+              : localizedText('未选择日期，将使用最新完整日线推导目标交易日。', 'No date selected; the target date will be derived from the latest complete daily data.')}
+            okText={localizedText('执行预测', 'Run Prediction')}
+            cancelText={localizedText('取消', 'Cancel')}
+            onConfirm={() => void runPrediction()}
+          >
+            <Button
+              icon={<LineChartOutlined />}
+              loading={operating}
+              disabled={operating}
+            >
+              {localizedText('执行预测', 'Run Prediction')}
+            </Button>
+          </Popconfirm>
           <Input
             className="w-44"
             value={operatorName}
@@ -1409,4 +1459,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END ------------------------------------------
+// AI_GENERATE_END -------------------------------------------

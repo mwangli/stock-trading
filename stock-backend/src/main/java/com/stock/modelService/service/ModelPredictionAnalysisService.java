@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ----------
 package com.stock.modelService.service;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -6,8 +6,10 @@ import com.stock.dataCollector.domain.entity.StockPrice;
 import com.stock.dataCollector.persistence.PriceRepository;
 import com.stock.dataCollector.persistence.StockInfoRepository;
 import com.stock.dataCollector.service.TradingCalendarService;
+import com.stock.modelService.config.PredictionBackfillProperties;
 import com.stock.modelService.domain.dto.LstmPredictionResultDto;
 import com.stock.modelService.domain.dto.ModelPredictionAnalysisDto;
+import com.stock.modelService.domain.dto.ModelPredictionRunRequest;
 import com.stock.modelService.domain.entity.LstmModelDocument;
 import com.stock.modelService.domain.entity.ModelActivationDocument;
 import com.stock.modelService.domain.entity.ModelPredictionBatchDocument;
@@ -73,10 +75,13 @@ public class ModelPredictionAnalysisService {
     private static final List<String> EVALUATABLE_STATUSES = List.of("COMPLETED", "PARTIAL", "EVALUATED");
     private static final String LEGACY_PREDICTION_IDENTITY_INDEX = "uk_prediction_identity";
     private static final String BATCH_STOCK_UNIQUE_INDEX = "uk_prediction_batch_stock";
+    private static final String HISTORICAL_BACKFILL_TRIGGER = "scheduler-backfill";
+    private static final String MANUAL_BACKFILL_TRIGGER_PREFIX = "manual-backfill:";
     private static final ZoneId MARKET_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final LstmInferenceService inferenceService;
     private final LstmTrainerService trainerService;
+    private final PredictionBackfillProperties predictionBackfillProperties;
     private final StockInfoRepository stockInfoRepository;
     private final PriceRepository priceRepository;
     private final TradingCalendarService tradingCalendarService;
@@ -95,6 +100,7 @@ public class ModelPredictionAnalysisService {
      *
      * @param inferenceService LSTM 推理服务
      * @param trainerService LSTM 训练与模型元数据服务
+     * @param predictionBackfillProperties 历史预测补缺配置
      * @param stockInfoRepository 股票基础信息仓库
      * @param priceRepository 股票日线仓库
      * @param tradingCalendarService 可靠交易日解析服务
@@ -108,6 +114,7 @@ public class ModelPredictionAnalysisService {
     public ModelPredictionAnalysisService(
             LstmInferenceService inferenceService,
             LstmTrainerService trainerService,
+            PredictionBackfillProperties predictionBackfillProperties,
             StockInfoRepository stockInfoRepository,
             PriceRepository priceRepository,
             TradingCalendarService tradingCalendarService,
@@ -121,6 +128,7 @@ public class ModelPredictionAnalysisService {
             @Qualifier("applicationTaskExecutor") Executor applicationTaskExecutor) {
         this.inferenceService = inferenceService;
         this.trainerService = trainerService;
+        this.predictionBackfillProperties = predictionBackfillProperties;
         this.stockInfoRepository = stockInfoRepository;
         this.priceRepository = priceRepository;
         this.tradingCalendarService = tradingCalendarService;
@@ -194,8 +202,8 @@ public class ModelPredictionAnalysisService {
      * @return 已创建或复用的预测批次
      */
     public ModelPredictionAnalysisDto.OperationResponse startPrediction(
-            ModelPredictionAnalysisDto.RunPredictionRequest request) {
-        return submitPrediction(request, false);
+            ModelPredictionRunRequest request) {
+        return submitPrediction(request);
     }
 
     /**
@@ -264,7 +272,7 @@ public class ModelPredictionAnalysisService {
                         .batchId(concurrent.getId()).status(concurrent.getStatus())
                         .message("该历史批次已存在重算结果，已返回原重算批次").build();
             }
-            applicationTaskExecutor.execute(() -> executePrediction(saved.getId(), stockCodes));
+            applicationTaskExecutor.execute(() -> executePrediction(saved.getId(), stockCodes, true));
             executionStarted = true;
             return ModelPredictionAnalysisDto.OperationResponse.builder()
                     .batchId(saved.getId()).status(saved.getStatus()).message("历史预测重算任务已提交").build();
@@ -275,16 +283,53 @@ public class ModelPredictionAnalysisService {
     /**
      * 使用当前激活模型同步执行每日全市场预测。
      *
-     * 调度任务在当前 Quartz 线程内完成预测，使任务运行记录与批次最终状态保持一致。
+     * 调度任务先完成当日预测，再按配置回溯补充历史缺失批次，整个过程保持同一并发锁。
      *
      * @return 已完成或复用的预测批次
      */
     public ModelPredictionAnalysisDto.OperationResponse startScheduledPrediction() {
-        return submitPrediction(new ModelPredictionAnalysisDto.RunPredictionRequest("scheduler"), true);
+        if (!predictionRunning.compareAndSet(false, true)) {
+            throw new IllegalStateException("当前已有模型预测批次正在运行");
+        }
+        try {
+            if (batchRepository.existsByStatusIn(RUNNING_STATUSES)) {
+                throw new IllegalStateException("当前已有模型预测批次正在运行");
+            }
+            PredictionContext context = resolvePredictionContext();
+            LocalDate today = LocalDate.now(MARKET_ZONE);
+            tradingCalendarService.requireTradingDay(today);
+            LocalDate latestBaseTradeDate = priceRepository.findTopByOrderByDateDesc()
+                    .map(StockPrice::getDate)
+                    .orElseThrow(() -> new IllegalStateException("没有可用于预测的日线行情"));
+            LocalDate latestTargetTradeDate = resolveNextTradeDate(latestBaseTradeDate).tradeDate();
+            if (!latestTargetTradeDate.equals(today)) {
+                throw new IllegalStateException("最新完整日线未对齐当日 T+1 预测: baseTradeDate="
+                        + latestBaseTradeDate + ", targetTradeDate=" + latestTargetTradeDate
+                        + ", today=" + today);
+            }
+
+            List<String> stockCodes = loadPredictionStockCodes();
+            PredictionBatchPreparation current = preparePredictionBatch(
+                    context, latestBaseTradeDate, latestTargetTradeDate, stockCodes, "scheduler");
+            if (current.created()) {
+                executePrediction(current.batch().getId(), stockCodes, false);
+                requirePredictionCompleted(current.batch().getId(), latestTargetTradeDate);
+            }
+
+            int backfilledCount = backfillMissingHistoricalPredictions(context, stockCodes, today);
+            ModelPredictionBatchDocument completed = batchRepository.findById(current.batch().getId()).orElseThrow();
+            return ModelPredictionAnalysisDto.OperationResponse.builder()
+                    .batchId(completed.getId())
+                    .status(completed.getStatus())
+                    .message("每日全市场预测检查完成，历史缺失批次补充 " + backfilledCount + " 个")
+                    .build();
+        } finally {
+            predictionRunning.set(false);
+        }
     }
 
     private ModelPredictionAnalysisDto.OperationResponse submitPrediction(
-            ModelPredictionAnalysisDto.RunPredictionRequest request, boolean scheduled) {
+            ModelPredictionRunRequest request) {
         if (!predictionRunning.compareAndSet(false, true)) {
             throw new IllegalStateException("当前已有模型预测批次正在运行");
         }
@@ -293,88 +338,45 @@ public class ModelPredictionAnalysisService {
             if (batchRepository.existsByStatusIn(RUNNING_STATUSES)) {
                 throw new IllegalStateException("当前已有模型预测批次正在运行");
             }
-            String modelName = trainerService.getModelName();
-            ModelActivationDocument activation = activationRepository.findByModelName(modelName)
-                    .orElseThrow(() -> new IllegalStateException("当前没有已激活模型"));
-            LstmModelDocument model = modelRepository.findById(activation.getActiveModelVersionId())
-                    .orElseThrow(() -> new IllegalStateException("当前激活模型版本不存在"));
-            trainerService.validateModelVersion(model.getId());
-            LocalDate baseTradeDate = priceRepository.findTopByOrderByDateDesc()
-                    .map(StockPrice::getDate)
-                    .orElseThrow(() -> new IllegalStateException("没有可用于预测的日线行情"));
-            ModelPredictionBatchDocument existing = batchRepository
-                    .findFirstByModelIdAndBaseTradeDateOrderByCreatedAtDesc(model.getId(), baseTradeDate);
-            if (existing != null) {
-                if (!List.of("FAILED", "CANCELLED").contains(existing.getStatus())) {
-                    return ModelPredictionAnalysisDto.OperationResponse.builder()
-                            .batchId(existing.getId())
-                            .status(existing.getStatus())
-                            .message("当前模型和交易日已存在预测批次，已返回原批次")
-                            .build();
+            PredictionContext context = resolvePredictionContext();
+            LocalDate today = LocalDate.now(MARKET_ZONE);
+            LocalDate requestedTargetTradeDate = request == null ? null : request.getTargetTradeDate();
+            LocalDate baseTradeDate;
+            LocalDate targetTradeDate;
+            if (requestedTargetTradeDate == null) {
+                baseTradeDate = priceRepository.findTopByOrderByDateDesc()
+                        .map(StockPrice::getDate)
+                        .orElseThrow(() -> new IllegalStateException("没有可用于预测的日线行情"));
+                targetTradeDate = resolveNextTradeDate(baseTradeDate).tradeDate();
+            } else {
+                if (requestedTargetTradeDate.isAfter(today)) {
+                    throw new IllegalArgumentException("预测目标交易日不能晚于当前日期: " + requestedTargetTradeDate);
                 }
-                predictionRepository.deleteByBatchId(existing.getId());
-                log.info("已清理失败或取消批次的不完整预测明细: batchId={}, status={}",
-                        existing.getId(), existing.getStatus());
+                tradingCalendarService.requireTradingDay(requestedTargetTradeDate);
+                targetTradeDate = requestedTargetTradeDate;
+                baseTradeDate = tradingCalendarService.previousTradingDay(targetTradeDate);
             }
-
-            List<String> stockCodes = stockInfoRepository.findAllCodes().stream()
-                    .filter(code -> code != null && !code.isBlank())
-                    .map(String::trim)
-                    .distinct()
-                    .sorted()
-                    .toList();
-            if (stockCodes.isEmpty()) {
-                throw new IllegalStateException("股票基础信息为空，无法执行全市场预测");
-            }
-
-            LocalDateTime now = LocalDateTime.now();
-            TradeDateResolution tradeDateResolution = resolveNextTradeDate(baseTradeDate);
-            if (scheduled) {
-                LocalDate today = LocalDate.now(MARKET_ZONE);
-                tradingCalendarService.requireTradingDay(today);
-                if (!tradeDateResolution.tradeDate().equals(today)) {
-                    throw new IllegalStateException("最新完整日线未对齐当日 T+1 预测: baseTradeDate="
-                            + baseTradeDate + ", targetTradeDate=" + tradeDateResolution.tradeDate()
-                            + ", today=" + today);
-                }
-            }
-            ModelPredictionBatchDocument batch = new ModelPredictionBatchDocument();
-            batch.setModelName(modelName);
-            batch.setModelId(model.getId());
-            batch.setModelVersion(model.getModelVersion());
-            batch.setBaseTradeDate(baseTradeDate);
-            batch.setTargetTradeDate(tradeDateResolution.tradeDate());
-            batch.setInformationCutoffAt(now);
-            batch.setCalendarFallback(tradeDateResolution.calendarFallback());
-            batch.setStatus("QUEUED");
-            batch.setTotalStocks(stockCodes.size());
-            batch.setAbilityLevel("INSUFFICIENT_DATA");
-            batch.setAbilityMessage("预测尚未完成");
-            batch.setProgressMessage("预测任务已排队");
-            batch.setTriggeredBy(normalizeOperator(request == null ? null : request.getOperatorName()));
-            batch.setCreatedAt(now);
-            batch.setUpdatedAt(now);
-            ModelPredictionBatchDocument saved = batchRepository.save(batch);
-            if (!scheduled) {
-                applicationTaskExecutor.execute(() -> executePrediction(saved.getId(), stockCodes));
-                executionStarted = true;
+            List<String> stockCodes = loadPredictionStockCodes();
+            String operator = normalizeOperator(request == null ? null : request.getOperatorName());
+            String triggeredBy = targetTradeDate.isBefore(today)
+                    ? MANUAL_BACKFILL_TRIGGER_PREFIX + operator
+                    : operator;
+            PredictionBatchPreparation preparation = preparePredictionBatch(
+                    context, baseTradeDate, targetTradeDate, stockCodes, triggeredBy);
+            if (!preparation.created()) {
                 return ModelPredictionAnalysisDto.OperationResponse.builder()
-                        .batchId(saved.getId())
-                        .status(saved.getStatus())
-                        .message("全市场预测任务已提交")
+                        .batchId(preparation.batch().getId())
+                        .status(preparation.batch().getStatus())
+                        .message("当前模型和交易日已存在预测批次，已返回原批次")
                         .build();
             }
-
+            ModelPredictionBatchDocument saved = preparation.batch();
+            applicationTaskExecutor.execute(() -> executePrediction(saved.getId(), stockCodes, true));
             executionStarted = true;
-            executePrediction(saved.getId(), stockCodes);
-            ModelPredictionBatchDocument completed = batchRepository.findById(saved.getId()).orElseThrow();
-            if ("FAILED".equals(completed.getStatus())) {
-                throw new IllegalStateException(completed.getErrorMessage());
-            }
             return ModelPredictionAnalysisDto.OperationResponse.builder()
-                    .batchId(completed.getId())
-                    .status(completed.getStatus())
-                    .message("每日全市场预测执行完成")
+                    .batchId(saved.getId())
+                    .status(saved.getStatus())
+                    .message("全市场预测任务已提交")
                     .build();
         } finally {
             if (!executionStarted) {
@@ -604,7 +606,7 @@ public class ModelPredictionAnalysisService {
         return toAbility(resolveBatch(batchId));
     }
 
-    private void executePrediction(String batchId, List<String> stockCodes) {
+    private void executePrediction(String batchId, List<String> stockCodes, boolean releaseRunningFlag) {
         long startedNanos = System.nanoTime();
         ModelPredictionBatchDocument batch = batchRepository.findById(batchId).orElseThrow();
         try {
@@ -707,8 +709,132 @@ public class ModelPredictionAnalysisService {
             batchRepository.save(batch);
             log.error("全市场模型预测失败: batchId={}", batchId, exception);
         } finally {
-            predictionRunning.set(false);
+            if (releaseRunningFlag) {
+                predictionRunning.set(false);
+            }
         }
+    }
+
+    private PredictionContext resolvePredictionContext() {
+        String modelName = trainerService.getModelName();
+        ModelActivationDocument activation = activationRepository.findByModelName(modelName)
+                .orElseThrow(() -> new IllegalStateException("当前没有已激活模型"));
+        LstmModelDocument model = modelRepository.findById(activation.getActiveModelVersionId())
+                .orElseThrow(() -> new IllegalStateException("当前激活模型版本不存在"));
+        trainerService.validateModelVersion(model.getId());
+        return new PredictionContext(modelName, model);
+    }
+
+    private List<String> loadPredictionStockCodes() {
+        List<String> stockCodes = stockInfoRepository.findAllCodes().stream()
+                .filter(code -> code != null && !code.isBlank())
+                .map(String::trim)
+                .distinct()
+                .sorted()
+                .toList();
+        if (stockCodes.isEmpty()) {
+            throw new IllegalStateException("股票基础信息为空，无法执行全市场预测");
+        }
+        return stockCodes;
+    }
+
+    private int backfillMissingHistoricalPredictions(
+            PredictionContext context, List<String> stockCodes, LocalDate currentTargetTradeDate) {
+        int lookbackTradingDays = predictionBackfillProperties.resolveHistoryBackfillTradingDays();
+        int backfilledCount = 0;
+        LocalDate targetTradeDate = currentTargetTradeDate;
+        for (int index = 0; index < lookbackTradingDays; index++) {
+            targetTradeDate = tradingCalendarService.previousTradingDay(targetTradeDate);
+            ModelPredictionBatchDocument existing = batchRepository
+                    .findFirstByTargetTradeDateAndStatusInOrderByCreatedAtDesc(
+                            targetTradeDate, EVALUATABLE_STATUSES);
+            if (isReusablePredictionBatch(existing)) {
+                continue;
+            }
+            LocalDate baseTradeDate = tradingCalendarService.previousTradingDay(targetTradeDate);
+            PredictionBatchPreparation preparation = preparePredictionBatch(
+                    context, baseTradeDate, targetTradeDate, stockCodes, HISTORICAL_BACKFILL_TRIGGER);
+            if (!preparation.created()) {
+                continue;
+            }
+            executePrediction(preparation.batch().getId(), stockCodes, false);
+            requirePredictionCompleted(preparation.batch().getId(), targetTradeDate);
+            backfilledCount++;
+            log.info("历史预测缺失批次补充完成: batchId={}, baseTradeDate={}, targetTradeDate={}, progress={}/{}",
+                    preparation.batch().getId(), baseTradeDate, targetTradeDate,
+                    index + 1, lookbackTradingDays);
+        }
+        return backfilledCount;
+    }
+
+    private PredictionBatchPreparation preparePredictionBatch(
+            PredictionContext context, LocalDate baseTradeDate, LocalDate targetTradeDate,
+            List<String> stockCodes, String triggeredBy) {
+        ModelPredictionBatchDocument existing = batchRepository
+                .findFirstByModelIdAndBaseTradeDateOrderByCreatedAtDesc(
+                        context.model().getId(), baseTradeDate);
+        if (isReusablePredictionBatch(existing)) {
+            return new PredictionBatchPreparation(existing, false);
+        }
+        if (existing != null) {
+            predictionRepository.deleteByBatchId(existing.getId());
+            log.info("准备补充预测时清理不可复用批次明细: batchId={}, status={}, successCount={}",
+                    existing.getId(), existing.getStatus(), existing.getSuccessCount());
+        }
+        LocalDate resolvedTargetTradeDate = resolveNextTradeDate(baseTradeDate).tradeDate();
+        if (!resolvedTargetTradeDate.equals(targetTradeDate)) {
+            throw new IllegalStateException("预测基准日与目标交易日不连续: baseTradeDate=" + baseTradeDate
+                    + ", expectedTargetTradeDate=" + targetTradeDate
+                    + ", actualTargetTradeDate=" + resolvedTargetTradeDate);
+        }
+        LocalDateTime now = LocalDateTime.now();
+        ModelPredictionBatchDocument batch = new ModelPredictionBatchDocument();
+        batch.setModelName(context.modelName());
+        batch.setModelId(context.model().getId());
+        batch.setModelVersion(context.model().getModelVersion());
+        batch.setBaseTradeDate(baseTradeDate);
+        batch.setTargetTradeDate(targetTradeDate);
+        batch.setInformationCutoffAt(now);
+        batch.setCalendarFallback(false);
+        batch.setStatus("QUEUED");
+        batch.setTotalStocks(stockCodes.size());
+        batch.setAbilityLevel("INSUFFICIENT_DATA");
+        batch.setAbilityMessage("预测尚未完成");
+        batch.setProgressMessage("预测任务已排队");
+        batch.setTriggeredBy(triggeredBy);
+        batch.setCreatedAt(now);
+        batch.setUpdatedAt(now);
+        return new PredictionBatchPreparation(batchRepository.save(batch), true);
+    }
+
+    private void requirePredictionCompleted(String batchId, LocalDate targetTradeDate) {
+        ModelPredictionBatchDocument completed = batchRepository.findById(batchId)
+                .orElseThrow(() -> new IllegalStateException("预测批次执行后不存在: " + batchId));
+        long detailCount = predictionRepository.countByBatchId(batchId);
+        if ("FAILED".equals(completed.getStatus()) || completed.getSuccessCount() <= 0
+                || detailCount != completed.getSuccessCount()) {
+            throw new IllegalStateException("预测批次未生成有效预测数据: batchId=" + batchId
+                    + ", targetTradeDate=" + targetTradeDate
+                    + ", status=" + completed.getStatus()
+                    + ", successCount=" + completed.getSuccessCount()
+                    + ", detailCount=" + detailCount
+                    + ", reason=" + completed.getErrorMessage());
+        }
+    }
+
+    private boolean isReusablePredictionBatch(ModelPredictionBatchDocument batch) {
+        if (batch == null || batch.getId() == null
+                || !EVALUATABLE_STATUSES.contains(batch.getStatus())
+                || batch.getSuccessCount() <= 0) {
+            return false;
+        }
+        long detailCount = predictionRepository.countByBatchId(batch.getId());
+        if (detailCount != batch.getSuccessCount()) {
+            log.warn("预测批次统计与明细数量不一致，按缺失数据处理: batchId={}, successCount={}, detailCount={}",
+                    batch.getId(), batch.getSuccessCount(), detailCount);
+            return false;
+        }
+        return true;
     }
 
     private void refreshAbility(ModelPredictionBatchDocument batch, List<ModelPredictionDocument> allPredictions) {
@@ -947,10 +1073,20 @@ public class ModelPredictionAnalysisService {
     }
 
     private void refreshRollingAssessment(ModelPredictionBatchDocument batch) {
+        if (isHistoricalReconstructionBatch(batch)) {
+            batch.setRollingWindowBatchCount(0);
+            batch.setRollingWindowSampleCount(0);
+            batch.setRollingAverageSpearmanRankIc(null);
+            batch.setRollingAverageTopDecileReturn(null);
+            batch.setTradingEligibility("DISABLED");
+            batch.setTradingEligibilityReason("历史补缺批次使用当前模型重建，仅用于数据分析，不参与真实交易门禁");
+            return;
+        }
         List<ModelPredictionBatchDocument> history = batchRepository
                 .findByModelIdAndStatusInOrderByTargetTradeDateDesc(
                         batch.getModelId(), List.of("COMPLETED", "PARTIAL", "EVALUATED"))
                 .stream()
+                .filter(item -> !isHistoricalReconstructionBatch(item))
                 .filter(item -> item.getEvaluatedCount() >= MINIMUM_ABILITY_SAMPLE_COUNT)
                 .limit(ROLLING_WINDOW_BATCHES)
                 .collect(Collectors.toCollection(ArrayList::new));
@@ -988,6 +1124,14 @@ public class ModelPredictionAnalysisService {
         if (!returnRankable.isEmpty() || !probabilityRankable.isEmpty()) {
             predictionRepository.saveAll(predictions);
         }
+    }
+
+    private boolean isHistoricalReconstructionBatch(ModelPredictionBatchDocument batch) {
+        if (batch == null || batch.getTriggeredBy() == null) {
+            return false;
+        }
+        return HISTORICAL_BACKFILL_TRIGGER.equals(batch.getTriggeredBy())
+                || batch.getTriggeredBy().startsWith(MANUAL_BACKFILL_TRIGGER_PREFIX);
     }
 
     private void assignPercentiles(List<ModelPredictionDocument> items, boolean returnMetric) {
@@ -1177,5 +1321,11 @@ public class ModelPredictionAnalysisService {
 
     private record TradeDateResolution(LocalDate tradeDate, boolean calendarFallback) {
     }
+
+    private record PredictionContext(String modelName, LstmModelDocument model) {
+    }
+
+    private record PredictionBatchPreparation(ModelPredictionBatchDocument batch, boolean created) {
+    }
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ----------

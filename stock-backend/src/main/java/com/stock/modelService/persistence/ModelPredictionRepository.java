@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.modelService.persistence;
 
 import com.stock.modelService.domain.entity.ModelPredictionDocument;
@@ -26,6 +26,14 @@ public interface ModelPredictionRepository extends MongoRepository<ModelPredicti
      * @return 是否存在匹配明细
      */
     boolean existsByBatchIdAndEvaluationStatus(String batchId, String evaluationStatus);
+
+    /**
+     * 统计指定批次实际保存的预测明细数量。
+     *
+     * @param batchId 预测批次 ID
+     * @return 预测明细数量
+     */
+    long countByBatchId(String batchId);
 
     /**
      * 删除失败或取消批次留下的不完整预测明细。
@@ -70,4 +78,4 @@ public interface ModelPredictionRepository extends MongoRepository<ModelPredicti
      */
     List<ModelPredictionDocument> findByBatchIdIn(List<String> batchIds);
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----
