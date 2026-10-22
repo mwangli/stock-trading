@@ -2,13 +2,11 @@ name: Frontend CI/CD
 
 on:
   push:
-    branches:
-      - master
-    paths:
-      - stock-frontend/**
-      - docker-compose.yml
-      - .github/workflows/frontend-ci-cd.yml
-  workflow_dispatch:
+    tags:
+      - 'v[0-9]+.[0-9]+'
+      - 'V[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'V[0-9]+.[0-9]+.[0-9]+'
 
 permissions:
   contents: read
