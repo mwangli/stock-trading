@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.modelService.domain.dto;
 
 import lombok.AllArgsConstructor;
@@ -19,21 +19,6 @@ import java.util.List;
 public final class ModelPredictionAnalysisDto {
 
     private ModelPredictionAnalysisDto() {
-    }
-
-    /**
-     * 发起全市场预测请求。
-     *
-     * @author mwangli
-     * @since 2026-10-12
-     */
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class RunPredictionRequest {
-
-        /** 操作人名称。 */
-        private String operatorName;
     }
 
     /**
@@ -450,4 +435,4 @@ public final class ModelPredictionAnalysisDto {
         private String tradingEligibilityReason;
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

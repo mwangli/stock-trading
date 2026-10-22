@@ -1,8 +1,9 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.modelService.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.modelService.domain.dto.ModelPredictionAnalysisDto;
+import com.stock.modelService.domain.dto.ModelPredictionRunRequest;
 import com.stock.modelService.service.ModelPredictionAnalysisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,9 +39,10 @@ public class ModelPredictionController {
      */
     @PostMapping("/run")
     public ResponseDTO<ModelPredictionAnalysisDto.OperationResponse> runPrediction(
-            @RequestBody(required = false) ModelPredictionAnalysisDto.RunPredictionRequest request) {
-        log.info("[ModelPrediction] 发起全市场预测: operator={}",
-                request == null ? null : request.getOperatorName());
+            @RequestBody(required = false) ModelPredictionRunRequest request) {
+        log.info("[ModelPrediction] 发起全市场预测: operator={}, targetTradeDate={}",
+                request == null ? null : request.getOperatorName(),
+                request == null ? null : request.getTargetTradeDate());
         try {
             return ResponseDTO.success(predictionAnalysisService.startPrediction(request));
         } catch (RuntimeException exception) {
@@ -170,4 +172,4 @@ public class ModelPredictionController {
         }
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

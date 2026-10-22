@@ -158,6 +158,9 @@ models:
   # Java 使用 DJL + PyTorch Engine 完成 LSTM 训练、模型结构重建和在线推理。
   lstm:
     model-name: global-shared-lstm
+    prediction:
+      # 当天预测完成后，向历史回溯补充缺失预测批次；0 表示关闭，最大值为 30。
+      history-backfill-trading-days: ${LSTM_PREDICTION_HISTORY_BACKFILL_TRADING_DAYS:30}
     sequence-length: 60
     input-size: 16
     train-ratio: 0.8

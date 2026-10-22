@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.dataCollector.service;
 
 import com.stock.dataCollector.domain.entity.TradeCalendarEntity;
@@ -24,7 +24,7 @@ import java.util.TreeSet;
 
 /**
  * 交易日历滚动维护服务。
- * 首次执行回补项目基准日期至未来一年，后续每月刷新来源并自动补齐新增月份和中断缺口。
+ * 首次执行回补最近三年至未来一年，后续每月刷新来源并自动补齐新增月份和中断缺口。
  *
  * @author mwangli
  * @since 2026-10-13
@@ -36,7 +36,7 @@ public class TradingCalendarMaintenanceService {
 
     private static final String MARKET = "CN";
     private static final String SOURCE = "EASTMONEY_CLOSURE_CALENDAR";
-    private static final LocalDate BACKFILL_START_DATE = LocalDate.of(2026, 1, 1);
+    private static final int HISTORY_BACKFILL_YEARS = 3;
     private static final ZoneId MARKET_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final TradeCalendarRepository tradeCalendarRepository;
@@ -46,20 +46,22 @@ public class TradingCalendarMaintenanceService {
      * 回补历史缺口、确认已发布年份，并将滚动日历维持到未来一年月末。
      *
      * @return 本次同步统计
+     * @throws IllegalStateException 公开日历来源为空、格式无效或持久化失败时抛出
      */
     public CalendarMaintenanceResult maintainRollingCalendar() {
         CalendarSourceSnapshot snapshot = sourceClient.fetchAStockClosures();
         LocalDate today = LocalDate.now(MARKET_ZONE);
+        LocalDate startDate = today.minusYears(HISTORY_BACKFILL_YEARS);
         LocalDate endDate = YearMonth.from(today).plusMonths(12).atEndOfMonth();
         List<TradeCalendarEntity> existingRecords = tradeCalendarRepository
-                .findByMarketAndTradeDateBetweenOrderByTradeDateAsc(MARKET, BACKFILL_START_DATE, endDate);
+                .findByMarketAndTradeDateBetweenOrderByTradeDateAsc(MARKET, startDate, endDate);
         Map<LocalDate, TradeCalendarEntity> recordsByDate = new HashMap<>();
         existingRecords.forEach(item -> recordsByDate.put(item.getTradeDate(), item));
 
         int insertedCount = 0;
         int confirmedCount = 0;
         int unverifiedCount = 0;
-        for (LocalDate date = BACKFILL_START_DATE; !date.isAfter(endDate); date = date.plusDays(1)) {
+        for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
             TradeCalendarEntity entity = recordsByDate.get(date);
             if (entity == null) {
                 entity = TradeCalendarEntity.builder()
@@ -90,9 +92,9 @@ public class TradingCalendarMaintenanceService {
         rebuildTradingDayLinks(records);
         tradeCalendarRepository.saveAll(records);
         log.info("交易日历滚动维护完成: range={}~{}, inserted={}, confirmed={}, unverified={}, sourceVersion={}",
-                BACKFILL_START_DATE, endDate, insertedCount, confirmedCount, unverifiedCount,
+                startDate, endDate, insertedCount, confirmedCount, unverifiedCount,
                 snapshot.sourceVersion());
-        return new CalendarMaintenanceResult(BACKFILL_START_DATE, endDate, insertedCount,
+        return new CalendarMaintenanceResult(startDate, endDate, insertedCount,
                 confirmedCount, unverifiedCount, snapshot.sourceVersion());
     }
 
@@ -157,4 +159,4 @@ public class TradingCalendarMaintenanceService {
                                             int unverifiedCount, String sourceVersion) {
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----
