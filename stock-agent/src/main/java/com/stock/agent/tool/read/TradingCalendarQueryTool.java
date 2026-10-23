@@ -1,7 +1,8 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.agent.tool.read;
 
-import com.stock.data.service.TradingCalendarService;
+import com.stock.agent.client.BackendFactsClient;
+import com.stock.agent.client.dto.TradingCalendarFact;
 import com.stock.agent.tool.AgentToolSupport;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +20,7 @@ import java.time.LocalDate;
 @RequiredArgsConstructor
 public class TradingCalendarQueryTool {
 
-    private final TradingCalendarService tradingCalendarService;
+    private final BackendFactsClient backendFactsClient;
     private final AgentToolSupport toolSupport;
 
     /**
@@ -34,9 +35,8 @@ public class TradingCalendarQueryTool {
             throw new IllegalArgumentException("tradeDate 不能为空");
         }
         return toolSupport.execute("queryTradingCalendar", () -> {
-            LocalDate date = request.tradeDate();
-            return new TradingCalendarResult(date, tradingCalendarService.isTradingDay(date),
-                    tradingCalendarService.isConfirmedDate(date));
+            TradingCalendarFact fact = backendFactsClient.tradingCalendar(request.tradeDate());
+            return new TradingCalendarResult(fact.tradeDate(), fact.tradingDay(), fact.confirmed());
         });
     }
 
@@ -50,10 +50,7 @@ public class TradingCalendarQueryTool {
         if (date == null) {
             throw new IllegalArgumentException("date 不能为空");
         }
-        if (tradingCalendarService.isTradingDay(date)) {
-            return date;
-        }
-        return tradingCalendarService.nextTradingDay(date);
+        return backendFactsClient.tradingCalendar(date).nextConfirmedTradingDay();
     }
 
     /** 交易日历查询请求。 */
@@ -64,4 +61,4 @@ public class TradingCalendarQueryTool {
     public record TradingCalendarResult(LocalDate tradeDate, boolean tradingDay, boolean confirmed) {
     }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

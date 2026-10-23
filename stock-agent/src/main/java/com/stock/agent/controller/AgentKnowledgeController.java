@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.agent.controller;
 
 import com.stock.agent.dto.CorrectMemoryRequest;
@@ -9,7 +9,7 @@ import com.stock.agent.dto.RagResult;
 import com.stock.agent.dto.RagSearchRequest;
 import com.stock.agent.rag.service.AgentRagService;
 import com.stock.agent.service.AgentMemoryService;
-import com.stock.base.api.ResponseDTO;
+import com.stock.agent.api.ResponseDTO;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -128,4 +128,4 @@ public class AgentKnowledgeController {
                 request, requestUserResolver.requireUserScope(httpRequest)));
     }
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

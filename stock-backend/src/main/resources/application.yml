@@ -114,63 +114,16 @@ trading:
   take-profit-percent: 3
   force-exit-time: "14:50"
 
+internal:
+  api:
+    token: ${INTERNAL_API_TOKEN:}
+
 agent:
-  enabled: true
-  provider: ${AGENT_PROVIDER:deepseek}
-  deepseek:
-    enabled: true
-    base-url: https://api.deepseek.com/v1
-    api-key: ${DEEPSEEK_API_KEY:}
-    model: deepseek-flash
-    max-tokens: 1024
-    thinking-enabled: false
-    daily-budget:
-      enabled: true
-      daily-limit-cny: 1.00
-      # 按高峰缓存未命中价格估算，并增加10%安全系数；价格变化时需同步调整。
-      input-price-cny-per-million: 2.10
-      output-price-cny-per-million: 8.40
-      safety-factor: 1.10
-      reservation-overhead-tokens: 1024
-  ollama:
-    enabled: false
-    base-url: http://localhost:11434
-    api-key: ollama
-    model: deepseek-r1:7b
-    think: false
-    max-tokens: 256
-  max-steps: 6
-  max-model-rounds: 3
-  timeout-ms: 120000
-  max-output-chars: 12000
-  max-concurrency: 1
-  circuit-breaker-enabled: true
-  circuit-breaker-failure-threshold: 1
-  circuit-breaker-open-duration-ms: 60000
-  report-enabled: false
-  trade-plan-enabled: false
-  rag-enabled: true
-  memory-enabled: true
-  rag-collection: agent_rag_chunks
-  memory-default-ttl-days: 90
-  chat-memory-max-messages: 20
-  tool-timeout-ms: 5000
-  audit-enabled: true
-  vector-store: mongodb
-  embedding:
-    enabled: true
-    provider: djl
-    base-url: http://localhost:11434
-    api-key: ollama
-    model: bge-base-zh-v1.5
-    model-path: ${EMBEDDING_MODEL_PATH:./model-artifacts/embedding}
-    model-version: bge-base-zh-v1.5
-    dimension: 768
-    timeout-ms: 30000
-    max-sequence-length: 512
-    pooling-mode: cls
-    normalize: true
-    allow-hash-fallback: false
+  service:
+    enabled: ${AGENT_SERVICE_ENABLED:true}
+    base-url: ${AGENT_SERVICE_BASE_URL:http://localhost:8081}
+    connect-timeout-ms: ${AGENT_SERVICE_CONNECT_TIMEOUT_MS:2000}
+    read-timeout-ms: ${AGENT_SERVICE_READ_TIMEOUT_MS:5000}
 
 backtest:
   universe-limit: 500

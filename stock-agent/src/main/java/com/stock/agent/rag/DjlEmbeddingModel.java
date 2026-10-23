@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START-----------
 package com.stock.agent.rag;
 
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
@@ -6,7 +6,6 @@ import ai.djl.huggingface.translator.TextEmbeddingTranslator;
 import ai.djl.inference.Predictor;
 import ai.djl.repository.zoo.Criteria;
 import ai.djl.repository.zoo.ZooModel;
-import com.stock.model.service.LocalModelArtifactService;
 import com.stock.agent.config.AgentProperties;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
@@ -31,7 +30,7 @@ import java.util.List;
 public class DjlEmbeddingModel implements EmbeddingModel {
 
     private final AgentProperties.EmbeddingProperties properties;
-    private final LocalModelArtifactService artifactService;
+    private final EmbeddingArtifactService artifactService;
     private final Object loadMonitor = new Object();
 
     private volatile ZooModel<String, float[]> model;
@@ -44,7 +43,7 @@ public class DjlEmbeddingModel implements EmbeddingModel {
      * @param artifactService 本地模型制品服务
      */
     public DjlEmbeddingModel(AgentProperties.EmbeddingProperties properties,
-                             LocalModelArtifactService artifactService) {
+                             EmbeddingArtifactService artifactService) {
         this.properties = properties;
         this.artifactService = artifactService;
     }
@@ -134,7 +133,7 @@ public class DjlEmbeddingModel implements EmbeddingModel {
             }
             Path modelDirectory = null;
             try {
-                modelDirectory = artifactService.resolveEmbeddingArtifact(
+                modelDirectory = artifactService.resolve(
                         properties.getModel(), properties.getModelVersion(), properties.getModelPath());
                 String modelFile = properties.getModel() + ".pt";
                 log.info("Embedding 模型加载诊断: directory={}, config={}, tokenizer={}, pytorchModel={}, modelFile={}, modelFilePresent={}",
@@ -206,4 +205,4 @@ public class DjlEmbeddingModel implements EmbeddingModel {
         }
     }
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END-----------

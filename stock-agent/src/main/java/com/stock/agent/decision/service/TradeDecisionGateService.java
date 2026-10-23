@@ -1,8 +1,5 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.agent.decision.service;
-
-import com.stock.base.trading.TradeDecisionGatePort;
-import com.stock.base.trading.TradeDecisionGateResult;
 
 import com.stock.agent.decision.entity.AgentTradeDecisionEntity;
 import com.stock.agent.decision.repository.AgentTradeDecisionRepository;
@@ -25,33 +22,11 @@ import java.time.LocalDateTime;
  */
 @Service
 @RequiredArgsConstructor
-public class TradeDecisionGateService implements TradeDecisionGatePort {
+public class TradeDecisionGateService {
 
     private final TradeDecisionModeService modeService;
     private final AgentTradeDecisionRepository decisionRepository;
     private final TradeDecisionFusionService fusionService;
-
-    /**
-     * 评估一个 Java 基线候选是否允许继续进入自动买入复核链。
-     *
-     * @param candidateBatchId 候选批次标识
-     * @param stockCode 股票代码
-     * @param strategyVersion 策略配置版本
-     * @param baselineEligible Java 基线是否允许该候选
-     * @param evaluatedAt 当前复核时间
-     * @return 门禁结果
-     */
-    @Override
-    public TradeDecisionGateResult evaluate(String candidateBatchId,
-                                            String stockCode,
-                                            String strategyVersion,
-                                            boolean baselineEligible,
-                                            LocalDateTime evaluatedAt) {
-        TradeDecisionFusionResult fusion = evaluateAutomaticBuy(
-                candidateBatchId, stockCode, strategyVersion, baselineEligible, evaluatedAt);
-        return new TradeDecisionGateResult(
-                fusion.isAutomaticBuyAllowed(), fusion.getOutcome().name(), fusion.getReason());
-    }
 
     /**
      * 计算 Agent 与 Java 基线的融合结果。
@@ -89,4 +64,4 @@ public class TradeDecisionGateService implements TradeDecisionGatePort {
                 TradeDecisionMode.GATED, resolution.getFallbackPolicy(), now);
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

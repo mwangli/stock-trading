@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.agent.controller;
 
 import com.stock.agent.decision.service.AgentTradeDecisionService;
@@ -12,7 +12,7 @@ import com.stock.agent.dto.TradeDecisionModeConfigResponse;
 import com.stock.agent.dto.TradeDecisionModeFallbackRequest;
 import com.stock.agent.dto.TradeDecisionModeUpdateRequest;
 import com.stock.agent.dto.TradeDecisionProviderStatisticsResponse;
-import com.stock.base.api.ResponseDTO;
+import com.stock.agent.api.ResponseDTO;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -187,4 +187,4 @@ public class AgentTradeDecisionController {
         return ResponseDTO.success(tradeDecisionEvaluationService.providerStatistics(from, to));
     }
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

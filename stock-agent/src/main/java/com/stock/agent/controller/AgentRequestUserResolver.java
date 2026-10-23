@@ -1,7 +1,7 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.agent.controller;
 
-import com.stock.trading.web.AuthInterceptor;
+import com.stock.agent.web.AgentSessionAttributes;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Component;
 
@@ -43,7 +43,7 @@ public class AgentRequestUserResolver {
 
     private Long requireUserId(HttpServletRequest request) {
         Object userId = request.getSession(false) == null
-                ? null : request.getSession(false).getAttribute(AuthInterceptor.AUTH_USER_ID_SESSION_KEY);
+                ? null : request.getSession(false).getAttribute(AgentSessionAttributes.AUTH_USER_ID);
         if (userId instanceof Long value) {
             return value;
         }
@@ -52,11 +52,11 @@ public class AgentRequestUserResolver {
 
     private String requireUsername(HttpServletRequest request) {
         Object username = request.getSession(false) == null
-                ? null : request.getSession(false).getAttribute(AuthInterceptor.AUTH_USERNAME_SESSION_KEY);
+                ? null : request.getSession(false).getAttribute(AgentSessionAttributes.AUTH_USERNAME);
         if (username instanceof String value && !value.isBlank()) {
             return value;
         }
         throw new IllegalStateException("当前登录用户不存在");
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

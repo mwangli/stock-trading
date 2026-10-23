@@ -1,8 +1,8 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.agent.tool.read;
 
-import com.stock.data.entity.StockPrice;
-import com.stock.data.service.StockPriceService;
+import com.stock.agent.client.BackendFactsClient;
+import com.stock.agent.client.dto.LatestPriceFact;
 import com.stock.agent.tool.AgentToolSupport;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +23,7 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class LatestPriceQueryTool {
 
-    private final StockPriceService stockPriceService;
+    private final BackendFactsClient backendFactsClient;
     private final AgentToolSupport toolSupport;
 
     /**
@@ -39,13 +39,10 @@ public class LatestPriceQueryTool {
         }
         String stockCode = request.stockCode().trim();
         return toolSupport.execute("queryLatestPrice", () -> {
-            StockPrice price = stockPriceService.getLatestPrice(stockCode);
-            if (price == null) {
-                throw new IllegalStateException("未查询到股票最新价格: " + stockCode);
-            }
-            return new LatestPriceResult(price.getCode(), price.getStockName(), price.getDate(),
-                    price.getOpenPrice(), price.getHighPrice(), price.getLowPrice(), price.getClosePrice(),
-                    price.getVolume(), price.getAmount(), price.getUpdateTime());
+            LatestPriceFact price = backendFactsClient.latestPrice(stockCode);
+            return new LatestPriceResult(price.stockCode(), price.stockName(), price.tradeDate(),
+                    price.openPrice(), price.highPrice(), price.lowPrice(), price.closePrice(),
+                    price.volume(), price.amount(), price.updatedAt());
         });
     }
 
@@ -60,4 +57,4 @@ public class LatestPriceQueryTool {
                                     LocalDateTime updatedAt) {
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

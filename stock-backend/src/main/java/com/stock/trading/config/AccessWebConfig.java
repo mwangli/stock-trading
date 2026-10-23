@@ -1,7 +1,8 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.trading.config;
 
 import com.stock.trading.web.AuthInterceptor;
+import com.stock.base.web.InternalTokenInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -19,6 +20,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class AccessWebConfig implements WebMvcConfigurer {
 
     private final AuthInterceptor authInterceptor;
+    private final InternalTokenInterceptor internalTokenInterceptor;
 
     /**
      * 注册业务接口登录态拦截规则。
@@ -27,13 +29,15 @@ public class AccessWebConfig implements WebMvcConfigurer {
      */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(internalTokenInterceptor).addPathPatterns("/api/internal/**");
         registry.addInterceptor(authInterceptor)
                 .addPathPatterns("/api/**")
                 .excludePathPatterns(
                         "/api/auth/login",
                         "/api/auth/me",
                         "/api/auth/logout",
-                        "/api/system/health");
+                        "/api/system/health",
+                        "/api/internal/**");
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

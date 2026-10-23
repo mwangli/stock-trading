@@ -1,8 +1,8 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START-----------
 package com.stock.agent.tool.read;
 
-import com.stock.strategy.entity.StockRanking;
-import com.stock.strategy.repository.RankingRepository;
+import com.stock.agent.client.BackendFactsClient;
+import com.stock.agent.client.dto.PredictionCandidateFact;
 import com.stock.agent.tool.AgentToolSupport;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +22,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PredictionCandidateQueryTool {
 
-    private final RankingRepository rankingRepository;
+    private final BackendFactsClient backendFactsClient;
     private final AgentToolSupport toolSupport;
 
     /**
@@ -37,20 +37,9 @@ public class PredictionCandidateQueryTool {
             throw new IllegalArgumentException("candidateBatchId 不能为空");
         }
         return toolSupport.execute("queryPredictionCandidates", () -> {
-            List<StockRanking> rankings = rankingRepository.findByCandidateBatchIdOrderByRankAsc(
-                    request.candidateBatchId().trim());
-            if (rankings.isEmpty()) {
-                return new PredictionCandidateResult(request.candidateBatchId().trim(), null, null, null, List.of(),
-                        "指定候选批次没有排名记录，无法确认候选排序；请检查候选生成任务、目标交易日和批次是否已过期");
-            }
-            StockRanking first = rankings.get(0);
-            List<PredictionCandidateItem> items = rankings.stream().limit(20)
-                    .map(item -> new PredictionCandidateItem(item.getStockCode(), item.getStockName(), item.getRank(),
-                            item.getTotalScore(), item.getReason()))
-                    .toList();
-            return new PredictionCandidateResult(first.getCandidateBatchId(), first.getPredictionBatchId(),
-                    first.getStrategyConfigVersion(), first.getTargetTradeDate(), items,
-                    "已读取候选排名，共 " + rankings.size() + " 条，展示前 " + items.size() + " 条");
+            PredictionCandidateFact fact = backendFactsClient
+                    .predictionCandidates(request.candidateBatchId().trim());
+            return toResult(fact);
         });
     }
 
@@ -64,11 +53,17 @@ public class PredictionCandidateQueryTool {
         if (targetTradeDate == null) {
             throw new IllegalArgumentException("targetTradeDate 不能为空");
         }
-        return toolSupport.execute("queryLatestPredictionCandidate", () -> rankingRepository
-                .findFirstByTargetTradeDateOrderByCalculateTimeDesc(targetTradeDate)
-                .map(ranking -> query(new PredictionCandidateRequest(ranking.getCandidateBatchId())))
-                .orElseGet(() -> new PredictionCandidateResult(null, null, null, targetTradeDate, List.of(),
-                        "目标交易日没有候选排名快照，不能判断候选排序或生成买入计划")));
+        return toolSupport.execute("queryLatestPredictionCandidate",
+                () -> toResult(backendFactsClient.latestPredictionCandidates(targetTradeDate)));
+    }
+
+    private PredictionCandidateResult toResult(PredictionCandidateFact fact) {
+        List<PredictionCandidateItem> items = fact.items().stream()
+                .map(item -> new PredictionCandidateItem(item.stockCode(), item.stockName(), item.rank(),
+                        item.totalScore(), item.reason()))
+                .toList();
+        return new PredictionCandidateResult(fact.candidateBatchId(), fact.predictionBatchId(),
+                fact.strategyVersion(), fact.targetTradeDate(), items, fact.availabilityReason());
     }
 
     /** 候选批次查询请求。 */
@@ -86,4 +81,4 @@ public class PredictionCandidateQueryTool {
                                           double totalScore, String reason) {
     }
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END-----------

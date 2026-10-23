@@ -1,9 +1,11 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START---------
 package com.stock.agent.decision.service;
 
 import com.alibaba.fastjson2.JSON;
-import com.stock.data.entity.StockPrice;
-import com.stock.data.repository.PriceRepository;
+import com.stock.agent.client.BackendFactsClient;
+import com.stock.agent.client.dto.TradeDecisionEvaluationFact;
+import com.stock.agent.client.dto.TradeDecisionEvaluationFactRequest;
+import com.stock.agent.client.dto.TradeDecisionEvaluationFacts;
 import com.stock.agent.dto.TradeDecisionEvaluationBatchResponse;
 import com.stock.agent.dto.TradeDecisionEvaluationResponse;
 import com.stock.agent.dto.TradeDecisionEvaluationSummaryResponse;
@@ -17,8 +19,6 @@ import com.stock.agent.decision.repository.TradeDecisionContextRepository;
 import com.stock.agent.decision.repository.TradeDecisionEvaluationRepository;
 import com.stock.agent.decision.vo.TradeDecisionRecommendation;
 import com.stock.agent.decision.vo.TradeDecisionStatus;
-import com.stock.trading.entity.AutomaticTradeExecutionBatch;
-import com.stock.trading.repository.AutomaticTradeExecutionBatchRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -52,8 +52,7 @@ public class TradeDecisionEvaluationService {
     private final AgentTradeDecisionRepository decisionRepository;
     private final TradeDecisionContextRepository contextRepository;
     private final TradeDecisionEvaluationRepository evaluationRepository;
-    private final PriceRepository priceRepository;
-    private final AutomaticTradeExecutionBatchRepository executionBatchRepository;
+    private final BackendFactsClient backendFactsClient;
 
     /**
      * 评估行情已经到达的影子交易判断。
@@ -68,13 +67,6 @@ public class TradeDecisionEvaluationService {
         if (maxItems < 1 || maxItems > MAX_EVALUATION_BATCH_SIZE) {
             throw new IllegalArgumentException("单次评估数量必须在 1 至 500 之间");
         }
-        LocalDate latestMarketDate = priceRepository.findTopByOrderByDateDesc()
-                .map(StockPrice::getDate)
-                .orElse(null);
-        if (latestMarketDate == null) {
-            return 0;
-        }
-
         Map<String, AgentTradeDecisionEntity> candidates = new LinkedHashMap<>();
         evaluationRepository.findTop100ByMarketDataStatusOrderByEvaluatedAtAsc(MARKET_DATA_WAITING)
                 .stream()
@@ -87,18 +79,38 @@ public class TradeDecisionEvaluationService {
                 .limit(maxItems)
                 .forEach(decision -> candidates.putIfAbsent(decision.getDecisionId(), decision));
 
+        Map<String, TradeDecisionContextEntity> contexts = new LinkedHashMap<>();
+        candidates.values().forEach(decision -> contexts.put(decision.getDecisionId(),
+                contextRepository.findById(decision.getContextId()).orElse(null)));
+        List<TradeDecisionEvaluationFactRequest> requests = candidates.values().stream()
+                .map(decision -> contexts.get(decision.getDecisionId()))
+                .filter(java.util.Objects::nonNull)
+                .filter(context -> context.getTargetTradeDate() != null)
+                .map(context -> new TradeDecisionEvaluationFactRequest(
+                        context.getCandidateBatchId(), context.getStockCode(), context.getTargetTradeDate()))
+                .toList();
+        TradeDecisionEvaluationFacts backendFacts = backendFactsClient.tradeDecisionEvaluationFacts(requests);
+        LocalDate latestMarketDate = backendFacts.latestMarketDate();
+        if (latestMarketDate == null) {
+            return 0;
+        }
+        Map<String, TradeDecisionEvaluationFact> factsByKey = new LinkedHashMap<>();
+        backendFacts.items().forEach(fact -> factsByKey.put(factKey(
+                fact.candidateBatchId(), fact.stockCode(), fact.targetTradeDate()), fact));
+
         int evaluated = 0;
         for (AgentTradeDecisionEntity decision : candidates.values()) {
             if (evaluated >= maxItems) {
                 break;
             }
-            TradeDecisionContextEntity context = contextRepository.findById(decision.getContextId())
-                    .orElse(null);
+            TradeDecisionContextEntity context = contexts.get(decision.getDecisionId());
             if (context != null && context.getTargetTradeDate() != null
                     && context.getTargetTradeDate().isAfter(latestMarketDate)) {
                 continue;
             }
-            evaluateOne(decision, context);
+            TradeDecisionEvaluationFact fact = context == null ? null : factsByKey.get(factKey(
+                    context.getCandidateBatchId(), context.getStockCode(), context.getTargetTradeDate()));
+            evaluateOne(decision, context, fact);
             evaluated++;
         }
         return evaluated;
@@ -165,7 +177,8 @@ public class TradeDecisionEvaluationService {
                 .build();
     }
 
-    private void evaluateOne(AgentTradeDecisionEntity decision, TradeDecisionContextEntity context) {
+    private void evaluateOne(AgentTradeDecisionEntity decision, TradeDecisionContextEntity context,
+                             TradeDecisionEvaluationFact fact) {
         TradeDecisionEvaluationEntity evaluation = evaluationRepository.findByDecisionId(decision.getDecisionId())
                 .orElseGet(() -> new TradeDecisionEvaluationEntity()
                         .setEvaluationId(UUID.randomUUID().toString())
@@ -176,7 +189,7 @@ public class TradeDecisionEvaluationService {
         evaluation.setAgentRecommendation(decision.getRecommendation())
                 .setStockExecutionKnown(false)
                 .setEvaluatedAt(LocalDateTime.now());
-        attachExecutionBatch(evaluation);
+        attachExecutionBatch(evaluation, fact);
 
         if (!hasEvaluationContext(context)) {
             evaluation.setMarketDataStatus(MARKET_DATA_CONTEXT_UNAVAILABLE)
@@ -189,9 +202,7 @@ public class TradeDecisionEvaluationService {
                 .setTargetTradeDate(context.getTargetTradeDate())
                 .setBaselineEligible(context.getBaselineEligible())
                 .setBaselineClosePrice(context.getBaselineClosePrice());
-        StockPrice targetPrice = priceRepository.findByCodeAndDate(
-                decision.getStockCode(), context.getTargetTradeDate()).orElse(null);
-        if (targetPrice == null) {
+        if (fact == null || fact.targetClosePrice() == null) {
             evaluation.setMarketDataStatus(MARKET_DATA_WAITING)
                     .setCounterfactualOutcome(resolveCounterfactual(
                             context.getBaselineEligible(), decision.getRecommendation()));
@@ -199,16 +210,16 @@ public class TradeDecisionEvaluationService {
             return;
         }
 
-        BigDecimal closeReturn = rate(targetPrice.getClosePrice(), context.getBaselineClosePrice());
-        BigDecimal favorable = rate(targetPrice.getHighPrice(), context.getBaselineClosePrice());
-        BigDecimal adverse = rate(targetPrice.getLowPrice(), context.getBaselineClosePrice());
+        BigDecimal closeReturn = rate(fact.targetClosePrice(), context.getBaselineClosePrice());
+        BigDecimal favorable = rate(fact.targetHighPrice(), context.getBaselineClosePrice());
+        BigDecimal adverse = rate(fact.targetLowPrice(), context.getBaselineClosePrice());
         boolean agentWouldAvoid = Boolean.TRUE.equals(context.getBaselineEligible())
                 && (TradeDecisionRecommendation.SKIP.name().equals(decision.getRecommendation())
                 || TradeDecisionRecommendation.HOLD.name().equals(decision.getRecommendation()));
-        evaluation.setTargetOpenPrice(targetPrice.getOpenPrice())
-                .setTargetHighPrice(targetPrice.getHighPrice())
-                .setTargetLowPrice(targetPrice.getLowPrice())
-                .setTargetClosePrice(targetPrice.getClosePrice())
+        evaluation.setTargetOpenPrice(fact.targetOpenPrice())
+                .setTargetHighPrice(fact.targetHighPrice())
+                .setTargetLowPrice(fact.targetLowPrice())
+                .setTargetClosePrice(fact.targetClosePrice())
                 .setCloseReturnRate(closeReturn)
                 .setMaxFavorableRate(favorable)
                 .setMaxAdverseRate(adverse)
@@ -220,14 +231,16 @@ public class TradeDecisionEvaluationService {
         evaluationRepository.save(evaluation);
     }
 
-    private void attachExecutionBatch(TradeDecisionEvaluationEntity evaluation) {
-        AutomaticTradeExecutionBatch batch = executionBatchRepository
-                .findFirstByCandidateBatchIdOrderByStartedAtDesc(evaluation.getCandidateBatchId())
-                .orElse(null);
-        evaluation.setExecutionBatchId(batch == null ? null : batch.getBatchId())
-                .setExecutionBatchStatus(batch == null ? null : batch.getStatus())
-                .setExecutionProcessedCount(batch == null ? null : batch.getProcessedCount())
-                .setExecutionSuccessCount(batch == null ? null : batch.getSuccessCount());
+    private void attachExecutionBatch(TradeDecisionEvaluationEntity evaluation,
+                                      TradeDecisionEvaluationFact fact) {
+        evaluation.setExecutionBatchId(fact == null ? null : fact.executionBatchId())
+                .setExecutionBatchStatus(fact == null ? null : fact.executionBatchStatus())
+                .setExecutionProcessedCount(fact == null ? null : fact.executionProcessedCount())
+                .setExecutionSuccessCount(fact == null ? null : fact.executionSuccessCount());
+    }
+
+    private String factKey(String candidateBatchId, String stockCode, LocalDate targetTradeDate) {
+        return candidateBatchId + "\u0000" + stockCode + "\u0000" + targetTradeDate;
     }
 
     private boolean hasEvaluationContext(TradeDecisionContextEntity context) {
@@ -439,4 +452,4 @@ public class TradeDecisionEvaluationService {
         }
     }
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END---------

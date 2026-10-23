@@ -1,8 +1,8 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.agent.tool.read;
 
-import com.stock.base.job.JobExecutionQueryPort;
-import com.stock.base.job.JobExecutionSnapshot;
+import com.stock.agent.client.BackendFactsClient;
+import com.stock.agent.client.dto.JobDiagnosticFact;
 import com.stock.agent.tool.AgentToolSupport;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +20,7 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class JobDiagnosticTool {
 
-    private final JobExecutionQueryPort jobExecutionQueryPort;
+    private final BackendFactsClient backendFactsClient;
     private final AgentToolSupport toolSupport;
 
     /**
@@ -35,12 +35,8 @@ public class JobDiagnosticTool {
             throw new IllegalArgumentException("jobName 不能为空");
         }
         return toolSupport.execute("queryJobDiagnostic", () -> {
-            JobExecutionSnapshot snapshot = jobExecutionQueryPort.findLatest(request.jobName().trim());
-            if (snapshot == null) {
-                return new JobDiagnosticResult(request.jobName().trim(), "UNKNOWN", "没有运行记录");
-            }
-            return new JobDiagnosticResult(request.jobName().trim(),
-                    snapshot.status(), snapshot.errorMessage());
+            JobDiagnosticFact fact = backendFactsClient.jobDiagnostic(request.jobName().trim());
+            return new JobDiagnosticResult(fact.jobName(), fact.status(), fact.errorMessage());
         });
     }
 
@@ -52,4 +48,4 @@ public class JobDiagnosticTool {
     public record JobDiagnosticResult(String jobName, String status, String errorMessage) {
     }
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------
