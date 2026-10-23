@@ -1,18 +1,71 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-
     <groupId>com.stock</groupId>
-    <artifactId>stock-trading4</artifactId>
+    <artifactId>stock-trading4-parent</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
-
-    <name>stock-trading4</name>
-    <description>Stock trading repository aggregator</description>
-
+    <name>stock-trading4-parent</name>
+    <description>Stock trading backend, agent and frontend aggregator</description>
     <modules>
-        <module>stock-application</module>
+        <module>stock-backend</module>
+        <module>stock-agent</module>
+        <module>stock-frontend</module>
     </modules>
+    <properties>
+        <java.version>17</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+        <spring-boot.version>3.2.10</spring-boot.version>
+        <node.version>v20.19.0</node.version>
+        <npm.version>9.8.1</npm.version>
+        <langchain4j.version>1.22.0</langchain4j.version>
+        <hutool.version>5.8.25</hutool.version>
+        <fastjson2.version>2.0.53</fastjson2.version>
+        <easyexcel.version>3.3.4</easyexcel.version>
+        <djl.version>0.31.1</djl.version>
+        <pytorch.version>2.5.1</pytorch.version>
+        <lombok.version>1.18.30</lombok.version>
+        <ta4j.version>0.15</ta4j.version>
+        <javax.annotation.version>1.3.2</javax.annotation.version>
+        <flapdoodle.version>4.11.0</flapdoodle.version>
+    </properties>
+    <dependencyManagement>
+        <dependencies>
+            <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-dependencies</artifactId><version>${spring-boot.version}</version><type>pom</type><scope>import</scope></dependency>
+            <dependency><groupId>cn.hutool</groupId><artifactId>hutool-all</artifactId><version>${hutool.version}</version></dependency>
+            <dependency><groupId>com.alibaba.fastjson2</groupId><artifactId>fastjson2</artifactId><version>${fastjson2.version}</version></dependency>
+            <dependency><groupId>com.alibaba</groupId><artifactId>easyexcel</artifactId><version>${easyexcel.version}</version></dependency>
+            <dependency><groupId>ai.djl</groupId><artifactId>api</artifactId><version>${djl.version}</version></dependency>
+            <dependency><groupId>ai.djl.pytorch</groupId><artifactId>pytorch-engine</artifactId><version>${djl.version}</version></dependency>
+            <dependency><groupId>ai.djl.pytorch</groupId><artifactId>pytorch-model-zoo</artifactId><version>${djl.version}</version></dependency>
+            <dependency><groupId>ai.djl</groupId><artifactId>model-zoo</artifactId><version>${djl.version}</version></dependency>
+            <dependency><groupId>ai.djl.huggingface</groupId><artifactId>tokenizers</artifactId><version>${djl.version}</version></dependency>
+            <dependency><groupId>dev.langchain4j</groupId><artifactId>langchain4j</artifactId><version>${langchain4j.version}</version></dependency>
+            <dependency><groupId>dev.langchain4j</groupId><artifactId>langchain4j-open-ai</artifactId><version>${langchain4j.version}</version></dependency>
+            <dependency><groupId>dev.langchain4j</groupId><artifactId>langchain4j-ollama</artifactId><version>${langchain4j.version}</version></dependency>
+            <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><version>${lombok.version}</version></dependency>
+            <dependency><groupId>javax.annotation</groupId><artifactId>javax.annotation-api</artifactId><version>${javax.annotation.version}</version></dependency>
+            <dependency><groupId>org.ta4j</groupId><artifactId>ta4j-core</artifactId><version>${ta4j.version}</version></dependency>
+            <dependency><groupId>de.flapdoodle.embed</groupId><artifactId>de.flapdoodle.embed.mongo</artifactId><version>${flapdoodle.version}</version></dependency>
+        </dependencies>
+    </dependencyManagement>
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.11.0</version>
+                    <configuration>
+                        <source>${java.version}</source><target>${java.version}</target><encoding>UTF-8</encoding><parameters>true</parameters>
+                        <compilerArgs><arg>-parameters</arg></compilerArgs>
+                        <annotationProcessorPaths><path><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><version>${lombok.version}</version></path></annotationProcessorPaths>
+                    </configuration>
+                </plugin>
+                <plugin><groupId>com.github.eirslett</groupId><artifactId>frontend-maven-plugin</artifactId><version>1.15.0</version></plugin>
+                <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId><version>${spring-boot.version}</version></plugin>
+                <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.2.3</version><configuration><excludedGroups>e2e</excludedGroups></configuration></plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
 </project>
