@@ -118,13 +118,6 @@ internal:
   api:
     token: ${INTERNAL_API_TOKEN:}
 
-agent:
-  service:
-    enabled: ${AGENT_SERVICE_ENABLED:true}
-    base-url: ${AGENT_SERVICE_BASE_URL:http://localhost:8081}
-    connect-timeout-ms: ${AGENT_SERVICE_CONNECT_TIMEOUT_MS:2000}
-    read-timeout-ms: ${AGENT_SERVICE_READ_TIMEOUT_MS:5000}
-
 backtest:
   universe-limit: 500
   lookback-days: 5

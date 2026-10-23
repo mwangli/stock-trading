@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.agent.decision.entity;
 
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -14,7 +14,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Agent 影子交易判断的市场路径与反事实评估结果。
+ * Agent 交易建议的市场路径与反事实评估结果。
  * 只记录基线和 Agent 判断的比较，不修改真实交易状态。
  *
  * @author mwangli
@@ -108,4 +108,4 @@ public class TradeDecisionEvaluationEntity {
     /** 最近评估时间。 */
     private LocalDateTime evaluatedAt;
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

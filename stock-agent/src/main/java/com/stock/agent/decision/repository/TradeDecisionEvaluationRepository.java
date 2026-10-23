@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.agent.decision.repository;
 
 import com.stock.agent.decision.entity.TradeDecisionEvaluationEntity;
@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Agent 影子交易判断评估仓储。
+ * Agent 交易建议反事实评估仓储。
  *
  * @author mwangli
  * @since 2026-10-23
@@ -46,4 +46,4 @@ public interface TradeDecisionEvaluationRepository
     List<TradeDecisionEvaluationEntity> findTop100ByMarketDataStatusOrderByEvaluatedAtAsc(
             String marketDataStatus);
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

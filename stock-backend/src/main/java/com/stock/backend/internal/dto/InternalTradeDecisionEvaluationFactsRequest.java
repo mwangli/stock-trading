@@ -1,10 +1,10 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.backend.internal.dto;
 
 import java.util.List;
 
 /**
- * 影子决策批量评估事实请求。
+ * 交易建议批量评估事实请求。
  *
  * @param items 待查询项目，最多 500 条
  * @author mwangli
@@ -13,4 +13,4 @@ import java.util.List;
 public record InternalTradeDecisionEvaluationFactsRequest(
         List<InternalTradeDecisionEvaluationFactRequest> items) {
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

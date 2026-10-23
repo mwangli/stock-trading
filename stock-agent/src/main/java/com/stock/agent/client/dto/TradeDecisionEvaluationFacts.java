@@ -1,11 +1,11 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.agent.client.dto;
 
 import java.time.LocalDate;
 import java.util.List;
 
 /**
- * Backend 返回的影子决策批量评估事实。
+ * Backend 返回的交易建议批量评估事实。
  *
  * @param latestMarketDate 本地最新行情日期
  * @param items 逐候选评估事实
@@ -15,4 +15,4 @@ import java.util.List;
 public record TradeDecisionEvaluationFacts(
         LocalDate latestMarketDate, List<TradeDecisionEvaluationFact> items) {
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

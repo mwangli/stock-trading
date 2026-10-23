@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.agent.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -179,7 +179,7 @@ public class BackendFactsClient {
     }
 
     /**
-     * 批量查询影子决策评估所需权威事实。
+     * 批量查询交易建议反事实评估所需权威事实。
      *
      * @param items 待查询项目
      * @return 最新行情日期和逐候选事实
@@ -213,4 +213,4 @@ public class BackendFactsClient {
         }
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

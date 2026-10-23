@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.agent.dto;
 
 import lombok.Builder;
@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Agent 影子判断 Provider 稳定性统计响应。
+ * Agent 交易建议 Provider 稳定性统计响应。
  *
  * @author mwangli
  * @since 2026-10-23
@@ -23,10 +23,10 @@ public class TradeDecisionProviderStatisticsResponse {
     /** 统计窗口结束时间，包含。 */
     LocalDateTime to;
 
-    /** 统计窗口内影子判断总数。 */
+    /** 统计窗口内交易建议总数。 */
     long totalCount;
 
     /** 按 Provider 和模型分组的稳定性指标。 */
     List<TradeDecisionProviderMetricResponse> providers;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

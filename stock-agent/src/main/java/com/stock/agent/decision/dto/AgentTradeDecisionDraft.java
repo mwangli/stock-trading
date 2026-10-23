@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.agent.decision.dto;
 
 import com.stock.agent.runtime.AgentStructuredOutput;
@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * Agent 针对单个不可变上下文生成的结构化交易判断。
- * 该对象只承载影子判断，不包含真实委托参数和执行权限。
+ * 该对象只承载交易建议，不包含真实委托参数和执行权限。
  *
  * @author mwangli
  * @since 2026-10-23
@@ -77,4 +77,4 @@ public class AgentTradeDecisionDraft implements AgentStructuredOutput {
     /** 不确定性和证据缺口说明。 */
     private String uncertainty;
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

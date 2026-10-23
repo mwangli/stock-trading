@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START--------------------------------- -->
+<!-- AI_GENERATE_START---------------------------------- -->
 # AI-AGENT 智能股票交易系统
 
 面向 A 股市场的数据采集、模型预测、策略分析、Agent 决策增强、风险控制和自动交易平台。
@@ -34,7 +34,6 @@ stock-trading4/
 ```text
 stock-frontend → HTTP API → stock-backend
 stock-frontend → HTTP API → stock-agent
-stock-backend  → 内部交易门禁 API → stock-agent
 stock-agent    → 内部事实 API → stock-backend
 ```
 
@@ -55,7 +54,7 @@ stock-agent    → 内部事实 API → stock-backend
 - 不在应用侧预占资金或阻止不同委托并发提交；资金不足、可卖数量不足等冲突由券商最终裁决。
 - `TRADING_REAL_WRITE_ENABLED` 默认关闭。
 - Agent 不持有券商凭据，不直接调用券商接口。
-- Agent 的 `GATED` 模式只能减少或延迟 Java 基线允许的买入候选。
+- Agent 交易建议不进入自动交易执行链，也不控制、暂停或放行真实订单。
 - Agent、模型或外部 Provider 不可用时，不得扩大交易权限。
 
 ## 模型制品
@@ -89,4 +88,4 @@ stock-agent    → 内部事实 API → stock-backend
 ## 免责声明
 
 本项目用于研究、工程实践和个人交易辅助。模型预测、回测结果、策略评分和 Agent 输出均不构成投资建议，也不能保证真实收益。真实交易必须在充分理解风险、完成独立验证并显式开启写入能力后使用。
-<!-- AI_GENERATE_END--------------------------------- -->
+<!-- AI_GENERATE_END---------------------------------- -->

@@ -1,11 +1,9 @@
-// AI_GENERATE_START------------------
+// AI_GENERATE_START-------------------
 package com.stock.trading.service;
 
 import com.stock.data.service.TradingCalendarService;
 import com.stock.strategy.dto.StockRankingDto;
 import com.stock.strategy.engine.StockSelector;
-import com.stock.base.trading.TradeDecisionGatePort;
-import com.stock.base.trading.TradeDecisionGateResult;
 import com.stock.model.service.PredictionCandidateQueryService;
 import com.stock.trading.config.RiskConfig;
 import com.stock.trading.dto.RealTradingStatusDto;
@@ -20,13 +18,11 @@ import com.stock.trading.execution.TradeExecutor;
 import com.stock.trading.execution.TradingProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -52,7 +48,6 @@ public class RealTradingService {
     private final RiskConfig riskConfig;
     private final TradingCalendarService tradingCalendarService;
     private final AutomaticTradeExecutionBatchService executionBatchService;
-    private final ObjectProvider<TradeDecisionGatePort> tradeDecisionGateProvider;
 
     /**
      * 查询真实交易运行状态。
@@ -106,7 +101,7 @@ public class RealTradingService {
      * @return 本批次真实委托结果
      */
     public TradeExecutionBatchResponseDto executeAutomaticBuys() {
-        log.info("[真实交易] 自动买入读取已持久化 Agent 门禁结果，模型不进入下单线程");
+        log.info("[真实交易] 执行无人值守自动买入检查");
         requireAutomaticExecution();
         LocalDate today = LocalDate.now();
         tradingCalendarService.requireTradingDay(today);
@@ -119,20 +114,11 @@ public class RealTradingService {
             List<Position> positions = brokerAdapter.getPositions();
             Set<String> heldCodes = positions.stream().map(Position::getStockCode).collect(Collectors.toSet());
             List<TradeExecutionResponseDto> results = new ArrayList<>();
-            int gatedSkipped = 0;
-
             for (StockRankingDto candidate : rankings) {
                 if (results.size() >= tradingProperties.getAutoCandidateLimit()) {
                     break;
                 }
                 if (heldCodes.contains(candidate.getStockCode())) {
-                    continue;
-                }
-                TradeDecisionGateResult gate = evaluateDecisionGate(candidate);
-                if (!gate.allowed()) {
-                    gatedSkipped++;
-                    log.warn("[真实交易] Agent 单向门禁跳过自动买入: stockCode={}, outcome={}, reason={}",
-                            candidate.getStockCode(), gate.outcome(), gate.reason());
                     continue;
                 }
                 OrderResult result = tradeExecutor.executeBuy(
@@ -143,8 +129,7 @@ public class RealTradingService {
                 }
             }
             TradeExecutionBatchResponseDto response = buildBatch(
-                    executionBatchId, results,
-                    "无人值守买入检查完成，Agent 门禁跳过 " + gatedSkipped + " 个候选");
+                    executionBatchId, results, "无人值守买入检查完成");
             executionBatchService.complete(executionBatchId, results.size(),
                     response.getSuccessCount(), response.getMessage());
             return response;
@@ -196,14 +181,6 @@ public class RealTradingService {
         }
     }
 
-    private TradeDecisionGateResult evaluateDecisionGate(StockRankingDto candidate) {
-        TradeDecisionGatePort gate = tradeDecisionGateProvider.getIfAvailable();
-        if (gate == null) {
-            return TradeDecisionGateResult.baselineAllowed();
-        }
-        return gate.evaluate(candidate.getCandidateBatchId(), candidate.getStockCode(),
-                candidate.getStrategyConfigVersion(), true, LocalDateTime.now());
-    }
     private void requireBrokerSession() {
         brokerAdapter.ensureAuthenticated();
     }
@@ -284,4 +261,4 @@ public class RealTradingService {
                 .build();
     }
 }
-// AI_GENERATE_END------------------
+// AI_GENERATE_END-------------------

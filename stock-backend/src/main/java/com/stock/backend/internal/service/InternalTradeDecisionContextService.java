@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.backend.internal.service;
 
 import com.alibaba.fastjson2.JSON;
@@ -70,7 +70,7 @@ public class InternalTradeDecisionContextService {
             throw new IllegalArgumentException("候选批次标识不能为空");
         }
         if (maxCandidates < 1 || maxCandidates > MAX_CANDIDATES) {
-            throw new IllegalArgumentException("单次影子决策候选数量必须在 1 至 20 之间");
+            throw new IllegalArgumentException("单次交易建议候选数量必须在 1 至 20 之间");
         }
         List<StockRanking> rankings = rankingRepository
                 .findByCandidateBatchIdOrderByRankAsc(candidateBatchId.trim());
@@ -282,4 +282,4 @@ public class InternalTradeDecisionContextService {
         return value == null ? "" : String.valueOf(value);
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

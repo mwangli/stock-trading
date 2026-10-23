@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.agent.dto;
 
 import lombok.Builder;
@@ -9,7 +9,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * 单个 Agent 影子判断的市场路径与反事实评估响应。
+ * 单个 Agent 交易建议的市场路径与反事实评估响应。
  *
  * @author mwangli
  * @since 2026-10-23
@@ -96,4 +96,4 @@ public class TradeDecisionEvaluationResponse {
     /** 最近评估时间。 */
     LocalDateTime evaluatedAt;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----
