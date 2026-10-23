@@ -94,7 +94,7 @@ jobs:
     name: Deploy backend to production
     needs: build-and-push
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     environment: production
     steps:
       - name: Checkout deployment files
@@ -105,7 +105,7 @@ jobs:
           sparse-checkout: |
             docker-compose.yml
             .gitattributes
-            model-artifacts/sentiment
+            model-artifacts
           sparse-checkout-cone-mode: false
 
       - name: Verify model artifacts
@@ -118,6 +118,7 @@ jobs:
 
           artifact_root = Path("model-artifacts")
           expected_manifests = (
+              artifact_root / "embedding" / "bge-base-zh-v1.5" / "manifest.json",
               artifact_root / "sentiment" / "finbert-tone-chinese-e91b1a3a" / "manifest.json",
           )
           checksum_lines = []
@@ -166,10 +167,10 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ env.SERVER_PORT }}
           fingerprint: ${{ env.SERVER_FINGERPRINT }}
-          source: docker-compose.yml,model-artifacts/sentiment,deployment-model-artifacts.sha256
+          source: docker-compose.yml,model-artifacts,deployment-model-artifacts.sha256
           target: ${{ env.SERVER_DEPLOY_DIR }}
           overwrite: true
-          command_timeout: 20m
+          command_timeout: 30m
 
       - name: Pull image and restart backend
         uses: appleboy/ssh-action@v1.2.5
