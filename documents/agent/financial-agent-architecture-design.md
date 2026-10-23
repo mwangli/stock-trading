@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START ----- -->
+<!-- AI_GENERATE_START ------ -->
 # stock-trading4 金融决策 Agent 总体设计方案
 
 ## 1. 文档信息
@@ -1007,7 +1007,7 @@ AgentChatRequest 字段：
 
 验收：普通聊天不调用业务工具；累计收益、模型状态、任务失败和策略状态可以用真实数据回答。
 
-当前源码实施边界：Phase 1 已完成统一聊天入口、服务端用户归属、最小工具路由、工具白名单、Provider 尝试隔离、会话串行和前端统一响应展示的源码改造。该结论仅代表源码与差异检查；尚未执行编译、测试、模型调用、数据库迁移、浏览器或部署验证。Phase 2 的 `TradeDecisionContext`、`AgentTradeDecision`、`TradeDecisionFusionService` 和 SHADOW 决策链仍是后续交付，不得将当前聊天 TradePlan 视为已参与自动交易决策。
+当前源码实施边界：Phase 1 已完成统一聊天入口、服务端用户归属、最小工具路由、工具白名单、Provider 尝试隔离、会话串行和前端统一响应展示。Phase 2 已完成不可变 `TradeDecisionContext`、独立 `AgentTradeDecision` 契约、上下文一致性校验、`OFF/SHADOW` 确定性融合、显式 `ABSTAINED` 回退、持久化表和认证后的影子生成/查询接口。当前实现没有修改 `RealTradingService`、`DecisionEngine`、`DecisionAggregator` 或券商适配器，Agent 判断不会改变真实交易基线。以上结论仅代表源码与差异检查；尚未执行编译、测试、模型调用、数据库迁移、浏览器或部署验证。Phase 3 的任务调度、影子结果回写、反事实评估和 Provider 稳定性统计仍未实现，不得将当前聊天 TradePlan 或影子判断视为已参与自动交易决策。
 
 ### Phase 2：交易决策基础能力
 
@@ -1020,6 +1020,14 @@ AgentChatRequest 字段：
 | 拆分 TradePlan 与自动决策 | 人工计划审批状态和自动批次决策边界 | 2～4 人日 |
 
 验收：同一候选批次可以生成可复现的决策上下文和结构化 Agent 判断；所有结果只记录，不影响真实交易。
+
+Phase 2 当前源码交付说明：
+
+1. `TradeDecisionContextService` 按候选批次校验追溯元数据，并使用 `informationCutoffAt` 与 `baseTradeDate` 约束可见日线，避免读取未来行情。
+2. `AgentTradeDecisionService` 仅将固定上下文交给 Runtime，工具集合为空；Provider、解析或校验失败时保存 `ABSTAINED/ABSTAIN`，不伪造有效判断。
+3. `TradeDecisionFusionService` 仅接受 `OFF/SHADOW`，融合结果始终保持确定性基线且 `impacted=false`。
+4. `/api/agent/tradeDecisions/shadow` 和 `/api/agent/tradeDecisions/batches/{candidateBatchId}` 要求服务端认证，只负责影子生成和审计查询。
+5. `V6__add_agent_trade_decision_shadow_tables.sql` 提供上下文和判断持久化结构；数据库迁移执行仍由部署流程负责。
 
 ### Phase 3：SHADOW 影子决策与评估
 
@@ -1243,4 +1251,4 @@ SHADOW 升级到 ADVISORY、GATED 或 WEIGHTED 必须形成独立准入报告，
 12. 真实交易写入永久不注册为 Agent 工具，BrokerAdapter 凭据和调用权继续只存在于 tradingExecutor。
 
 按该方案实施后，Agent 将真正成为交易决策中的“受控分析与质疑节点”：它可以影响是否选择候选、候选优先级和建议仓位，但每一项影响都可回放、可量化、可降级，并始终受 Java 硬规则约束。
-<!-- AI_GENERATE_END ----- -->
+<!-- AI_GENERATE_END ------ -->
