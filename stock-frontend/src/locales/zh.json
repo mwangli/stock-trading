@@ -418,7 +418,7 @@
       "language": "语言",
       "notifications": "启用系统通知",
       "apiKey": "数据提供商 API 密钥",
-      "refreshRate": "刷新率 (ms)",
+      "refreshRate": "状态刷新间隔 (ms)",
       "riskLevel": "全局风险概况",
       "maxDrawdown": "最大单日回撤 (%)"
     },
@@ -445,7 +445,7 @@
     "generalTitle": "界面偏好",
     "runtimeTitle": "运行控制",
     "securityTitle": "生产安全边界",
-    "refreshHint": "仅影响本页面状态检查，不会改变 Quartz 后端任务调度频率",
+    "refreshHint": "前端状态轮询统一固定为 10 秒，不会改变 Quartz 后端任务调度频率",
     "switchOn": "开",
     "switchOff": "关",
     "summary": { "title": "运行摘要", "brokerSessionValid": "券商会话有效", "brokerSessionInvalid": "券商会话无效", "realWriteOff": "真实写入关闭", "autoExecutionStopped": "自动执行停止", "refreshStatus": "刷新状态" },

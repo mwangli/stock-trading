@@ -94,17 +94,71 @@ jobs:
     name: Deploy backend to production
     needs: build-and-push
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     environment: production
     steps:
       - name: Checkout deployment files
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-          sparse-checkout: docker-compose.yml
+          lfs: true
+          sparse-checkout: |
+            docker-compose.yml
+            .gitattributes
+            model-artifacts/sentiment
           sparse-checkout-cone-mode: false
 
-      - name: Upload Docker Compose configuration
+      - name: Verify model artifacts
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          artifact_root = Path("model-artifacts")
+          expected_manifests = (
+              artifact_root / "sentiment" / "finbert-tone-chinese-e91b1a3a" / "manifest.json",
+          )
+          checksum_lines = []
+
+          def sha256_file(path):
+              digest = hashlib.sha256()
+              with path.open("rb") as artifact:
+                  for chunk in iter(lambda: artifact.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          for manifest_path in expected_manifests:
+              if not manifest_path.is_file():
+                  raise SystemExit(f"Missing model manifest: {manifest_path}")
+              manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+              version_directory = manifest_path.parent
+              for entry in manifest.get("files", []):
+                  relative_path = entry.get("path")
+                  artifact_path = version_directory / relative_path
+                  if not artifact_path.is_file():
+                      raise SystemExit(f"Missing model artifact: {artifact_path}")
+                  actual_size = artifact_path.stat().st_size
+                  if actual_size != entry.get("size"):
+                      raise SystemExit(
+                          f"Model artifact size mismatch: {artifact_path}, "
+                          f"expected={entry.get('size')}, actual={actual_size}"
+                      )
+                  digest = sha256_file(artifact_path)
+                  if digest.lower() != str(entry.get("sha256", "")).lower():
+                      raise SystemExit(f"Model artifact SHA-256 mismatch: {artifact_path}")
+                  checksum_lines.append(f"{digest}  {artifact_path.as_posix()}")
+
+              manifest_digest = sha256_file(manifest_path)
+              checksum_lines.append(f"{manifest_digest}  {manifest_path.as_posix()}")
+
+          Path("deployment-model-artifacts.sha256").write_text(
+              "\n".join(checksum_lines) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Upload Docker Compose configuration and model artifacts
         uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ env.SERVER_HOST }}
@@ -112,9 +166,10 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ env.SERVER_PORT }}
           fingerprint: ${{ env.SERVER_FINGERPRINT }}
-          source: docker-compose.yml
+          source: docker-compose.yml,model-artifacts/sentiment,deployment-model-artifacts.sha256
           target: ${{ env.SERVER_DEPLOY_DIR }}
           overwrite: true
+          command_timeout: 20m
 
       - name: Pull image and restart backend
         uses: appleboy/ssh-action@v1.2.5
@@ -139,6 +194,8 @@ jobs:
             cd "$DEPLOY_DIR"
             test -f .env
             test -f docker-compose.yml
+            test -f deployment-model-artifacts.sha256
+            sha256sum --check deployment-model-artifacts.sha256
 
             docker_config="$(mktemp -d)"
             export DOCKER_CONFIG="$docker_config"

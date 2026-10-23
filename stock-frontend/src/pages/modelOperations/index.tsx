@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------- -------------------------------------------
+// AI_GENERATE_START---------------- -------------------------------------------
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
 import {
@@ -38,6 +38,8 @@ import { useTranslation } from 'react-i18next';
 import { localizedText } from '../../utils/localizedText';
 
 const { Title, Text } = Typography;
+
+const AUTO_REFRESH_INTERVAL_MS = 10_000;
 
 interface ModelVersion {
   id: string;
@@ -522,10 +524,16 @@ const ModelOperations: React.FC = () => {
     setModelAbility(readApiData(response, localizedText('读取批次评估信息失败', 'Failed to load batch evaluation')));
   }, []);
 
-  const loadPredictionData = useCallback(async (current = 1, currentPageSize = 10) => {
+  const loadPredictionData = useCallback(async (
+    current = 1,
+    currentPageSize = 10,
+    showLoading = true,
+  ) => {
     const requestId = predictionDataRequestIdRef.current + 1;
     predictionDataRequestIdRef.current = requestId;
-    setPredictionLoading(true);
+    if (showLoading) {
+      setPredictionLoading(true);
+    }
     try {
       const response = await request.get('/modelPredictions/batches', {
         params: { current, pageSize: currentPageSize },
@@ -550,7 +558,7 @@ const ModelOperations: React.FC = () => {
         setModelAbility(null);
       }
     } finally {
-      if (requestId === predictionDataRequestIdRef.current) {
+      if (showLoading) {
         setPredictionLoading(false);
       }
     }
@@ -576,7 +584,7 @@ const ModelOperations: React.FC = () => {
       void loadOverview().catch((cause) => {
         message.error(getApiErrorMessage(cause, localizedText('刷新训练进度失败', 'Failed to refresh training progress')));
       });
-    }, 3000);
+    }, AUTO_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [loadOverview, overview?.trainingRunning]);
 
@@ -598,11 +606,11 @@ const ModelOperations: React.FC = () => {
       return undefined;
     }
     const timer = window.setInterval(() => {
-      void loadPredictionData(predictionBatchPage, predictionBatchPageSize).catch((cause) => {
+      void loadPredictionData(predictionBatchPage, predictionBatchPageSize, false).catch((cause) => {
         setPredictionPollingPaused(true);
         message.error(getApiErrorMessage(cause, localizedText('刷新预测进度失败，已暂停自动刷新', 'Failed to refresh prediction progress; automatic refresh paused')));
       });
-    }, 5000);
+    }, AUTO_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [loadPredictionData, predictionBatchPage, predictionBatchPageSize, predictionBatches, predictionPollingPaused]);
 
@@ -1522,4 +1530,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END-------------- -------------------------------------------
+// AI_GENERATE_END---------------- -------------------------------------------

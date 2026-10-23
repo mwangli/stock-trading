@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------- --------
+// AI_GENERATE_START------------ --------
 package com.stock.dataCollector.support;
 
 import com.stock.dataCollector.domain.entity.StockInfo;
@@ -41,8 +41,18 @@ public class DataSyncScheduler {
 
     /** 增量新闻采集每次最多处理的股票数，0 表示不限制 */
     private static final int NEWS_DAILY_MAX_STOCKS = 0;
-    /** 每日日K同步并行线程数 */
-    private static final int PRICE_SYNC_THREADS = 8;
+    /** 每日日K同步最小并行线程数，保留 I/O 等待期间的并发能力。 */
+    private static final int MIN_PRICE_SYNC_THREADS = 2;
+    /** 每日日K同步最大并行线程数，避免对行情供应商和 MongoDB 造成突发压力。 */
+    private static final int MAX_PRICE_SYNC_THREADS = 16;
+    /** JVM 可使用的处理器数量，Java 17 会感知容器 CPU 限额。 */
+    private static final int AVAILABLE_PROCESSORS = Runtime.getRuntime().availableProcessors();
+    /** 每日日K同步并行线程数，HTTP 和 MongoDB I/O 场景按 CPU 核数的两倍配置。 */
+    private static final int PRICE_SYNC_THREADS = Math.max(
+            MIN_PRICE_SYNC_THREADS,
+            Math.min(MAX_PRICE_SYNC_THREADS, AVAILABLE_PROCESSORS * 2));
+    /** 行情同步线程编号。 */
+    private static final AtomicInteger PRICE_SYNC_THREAD_SEQUENCE = new AtomicInteger(1);
     /** 行情供应商历史回补窗口年数 */
     private static final int PRICE_BACKFILL_YEARS = 3;
 
@@ -55,7 +65,7 @@ public class DataSyncScheduler {
 
     private final ExecutorService priceSyncExecutor = Executors.newFixedThreadPool(PRICE_SYNC_THREADS,
             r -> {
-                Thread t = new Thread(r, "price-sync-" + r.hashCode() % 100);
+                Thread t = new Thread(r, "price-sync-" + PRICE_SYNC_THREAD_SEQUENCE.getAndIncrement());
                 t.setDaemon(false);
                 return t;
             });
@@ -101,19 +111,16 @@ public class DataSyncScheduler {
     }
 
     /**
-     * 同步当前交易日，并回补最近三年的缺失行情。
+     * 同步当前已确认交易日的全市场日线增量。
      *
-     * 当前年度使用已确认交易日历，历史区间使用 MongoDB 全市场实际行情日期作为预期日期集合。
-     * 每只股票先计算已有日期与预期日期的差集，再按单日或连续缺口窗口请求供应商。
+     * 每日任务只请求当天数据，不扫描或回补历史缺口。停牌、新股和供应商当日缺失仅记录为
+     * 待回补状态，不阻断其他股票；基础设施异常仍在全部股票处理完成后报告任务失败。
      *
      * @throws JobSkippedException 当前日期尚未确认或不是交易日时抛出
-     * @throws IllegalStateException 日历修复失败、行情同步失败或历史缺口仍未补齐时抛出
+     * @throws IllegalStateException 任务超时、中断或出现基础设施异常时抛出
      */
     public void syncDailyStockData() {
         LocalDate today = LocalDate.now();
-        LocalDate earliestDate = today.minusYears(PRICE_BACKFILL_YEARS);
-        LocalDate calendarStartDate = today.withDayOfYear(1);
-        List<LocalDate> confirmedTradingDays = loadTradingDaysWithCalendarRepair(calendarStartDate, today);
         if (!tradingCalendarService.isConfirmedDate(today)) {
             throw new JobSkippedException("交易日历尚未确认: " + today);
         }
@@ -125,45 +132,39 @@ public class DataSyncScheduler {
         if (codes == null || codes.isEmpty()) {
             throw new IllegalStateException("未找到任何股票代码，无法执行日线同步");
         }
-        List<LocalDate> expectedTradingDays = stockDataService.findExpectedTradingDays(
-                earliestDate, today, confirmedTradingDays);
+        log.info("[数据同步任务] 日线同步开始: availableProcessors={}, threads={}, stockCount={}",
+                AVAILABLE_PROCESSORS, PRICE_SYNC_THREADS, codes.size());
 
-        AtomicInteger incrementalSaved = new AtomicInteger();
-        AtomicInteger backfillSaved = new AtomicInteger();
+        AtomicInteger saved = new AtomicInteger();
         AtomicInteger skipped = new AtomicInteger();
         AtomicInteger apiRequests = new AtomicInteger();
-        AtomicInteger unresolved = new AtomicInteger();
+        AtomicInteger unavailable = new AtomicInteger();
         AtomicInteger failed = new AtomicInteger();
         CountDownLatch latch = new CountDownLatch(codes.size());
         for (String code : codes) {
             priceSyncExecutor.submit(() -> {
                 try {
-                    SyncStateSnapshot syncState = syncStateService.findState("stock-price", code)
-                            .orElse(null);
-                    StockDataService.PriceSyncResult result = stockDataService
-                            .syncTodayAndBackfill(
-                                    code,
-                                    today,
-                                    earliestDate,
-                                    expectedTradingDays,
-                                    syncState != null && syncState.openGap()
-                                            ? syncState.gapStartDate() : null,
-                                    syncState != null && syncState.openGap()
-                                            ? syncState.gapEndDate() : null);
-                    incrementalSaved.addAndGet(result.incrementalSaved());
-                    backfillSaved.addAndGet(result.backfillSaved());
+                    StockDataService.DailyPriceSyncResult result = stockDataService
+                            .syncDailyPrice(code, today);
+                    saved.addAndGet(result.savedCount());
                     apiRequests.addAndGet(result.apiRequestCount());
-                    if (result.skipped()) {
-                        skipped.incrementAndGet();
-                    }
-                    unresolved.addAndGet(result.unresolvedDates().size());
-                    if (result.unresolvedDates().isEmpty()) {
-                        syncStateService.markSuccess("stock-price", code, today);
-                    } else {
-                        syncStateService.recordGap("stock-price", code,
-                                result.unresolvedDates().get(0),
-                                result.unresolvedDates().get(result.unresolvedDates().size() - 1),
-                                "缺口同步后仍存在未解决交易日");
+                    switch (result.status()) {
+                        case SAVED -> syncStateService.markSuccess("stock-price-daily", code, today);
+                        case ALREADY_PRESENT -> {
+                            skipped.incrementAndGet();
+                            syncStateService.markSuccess("stock-price-daily", code, today);
+                        }
+                        case NOT_LISTED -> {
+                            skipped.incrementAndGet();
+                            log.info("[数据同步任务] 股票 {} 在 {} 尚未上市，跳过当日日线同步", code, today);
+                        }
+                        case NO_DATA -> {
+                            unavailable.incrementAndGet();
+                            syncStateService.recordGap(
+                                    "stock-price", code, today, today, "SUPPLIER_NO_DATA");
+                            log.warn("[数据同步任务] 股票 {} 在 {} 无可用日线，已登记历史回补",
+                                    code, today);
+                        }
                     }
                 } catch (Exception exception) {
                     failed.incrementAndGet();
@@ -175,23 +176,104 @@ public class DataSyncScheduler {
             });
         }
 
-        try {
-            if (!latch.await(4, TimeUnit.HOURS)) {
-                throw new IllegalStateException("日线同步超过四小时仍未完成");
-            }
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("日线同步被中断", exception);
-        }
-        log.info("[数据同步任务] 日线同步完成: incrementalSaved={}, backfillSaved={}, skipped={}, "
-                        + "apiRequests={}, unresolved={}, failed={}",
-                incrementalSaved.get(), backfillSaved.get(), skipped.get(), apiRequests.get(),
-                unresolved.get(), failed.get());
-        if (failed.get() > 0 || unresolved.get() > 0) {
-            throw new IllegalStateException("日线同步存在失败或三年窗口内未回补数据");
+        awaitPriceSync(latch, "每日日线增量同步");
+        log.info("[数据同步任务] 每日日线增量同步完成: saved={}, skipped={}, apiRequests={}, "
+                        + "unavailable={}, failed={}",
+                saved.get(), skipped.get(), apiRequests.get(), unavailable.get(), failed.get());
+        if (failed.get() > 0) {
+            throw new IllegalStateException("每日日线增量同步存在基础设施异常，失败股票数: " + failed.get());
         }
         int evaluationQueuedCount = modelPredictionAnalysisService.resumeAvailableEvaluations();
         log.info("[数据同步任务] 已唤醒模型评估队列: evaluationQueued={}", evaluationQueuedCount);
+    }
+
+    /**
+     * 回补最近三年已确认交易日的历史日线缺口。
+     *
+     * 该任务与每日增量完全分离，按低频计划执行。单只股票的停牌、历史缺失或供应商无数据
+     * 只保留为 OPEN 缺口，不导致全市场回补失败。
+     *
+     * @throws IllegalStateException 交易日历不可用、任务超时、中断或出现基础设施异常时抛出
+     */
+    public void backfillHistoricalStockData() {
+        LocalDate endDate = LocalDate.now().minusDays(1);
+        LocalDate earliestDate = endDate.minusYears(PRICE_BACKFILL_YEARS);
+        List<LocalDate> confirmedTradingDays = loadTradingDaysWithCalendarRepair(earliestDate, endDate);
+        List<String> codes = stockDataService.findAllCodes();
+        if (codes == null || codes.isEmpty()) {
+            throw new IllegalStateException("未找到任何股票代码，无法执行历史日线回补");
+        }
+        log.info("[数据同步任务] 历史日线回补开始: range={}~{}, confirmedTradingDays={}, "
+                        + "availableProcessors={}, threads={}, stockCount={}",
+                earliestDate, endDate, confirmedTradingDays.size(),
+                AVAILABLE_PROCESSORS, PRICE_SYNC_THREADS, codes.size());
+
+        AtomicInteger saved = new AtomicInteger();
+        AtomicInteger skipped = new AtomicInteger();
+        AtomicInteger apiRequests = new AtomicInteger();
+        AtomicInteger unresolved = new AtomicInteger();
+        AtomicInteger failed = new AtomicInteger();
+        CountDownLatch latch = new CountDownLatch(codes.size());
+        for (String code : codes) {
+            priceSyncExecutor.submit(() -> {
+                try {
+                    SyncStateSnapshot syncState = syncStateService.findState("stock-price", code)
+                            .orElse(null);
+                    StockDataService.HistoricalPriceSyncResult result = stockDataService
+                            .backfillHistoricalPrices(
+                                    code,
+                                    earliestDate,
+                                    endDate,
+                                    confirmedTradingDays,
+                                    syncState != null && syncState.openGap()
+                                            ? syncState.gapStartDate() : null,
+                                    syncState != null && syncState.openGap()
+                                            ? syncState.gapEndDate() : null);
+                    saved.addAndGet(result.savedCount());
+                    apiRequests.addAndGet(result.apiRequestCount());
+                    if (result.skipped()) {
+                        skipped.incrementAndGet();
+                    }
+                    unresolved.addAndGet(result.unresolvedDates().size());
+                    if (result.unresolvedDates().isEmpty()) {
+                        syncStateService.markSuccess("stock-price", code, endDate);
+                    } else {
+                        syncStateService.recordGap(
+                                "stock-price", code,
+                                result.unresolvedDates().get(0),
+                                result.unresolvedDates().get(result.unresolvedDates().size() - 1),
+                                "历史回补后仍存在未解决的已确认交易日");
+                    }
+                } catch (Exception exception) {
+                    failed.incrementAndGet();
+                    syncStateService.recordGap(
+                            "stock-price", code, earliestDate, endDate, exception.getMessage());
+                    log.error("[数据同步任务] 股票 {} 历史日线回补异常: {}",
+                            code, exception.getMessage(), exception);
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+
+        awaitPriceSync(latch, "历史日线回补");
+        log.info("[数据同步任务] 历史日线回补完成: saved={}, skipped={}, apiRequests={}, "
+                        + "unresolved={}, failed={}",
+                saved.get(), skipped.get(), apiRequests.get(), unresolved.get(), failed.get());
+        if (failed.get() > 0) {
+            throw new IllegalStateException("历史日线回补存在基础设施异常，失败股票数: " + failed.get());
+        }
+    }
+
+    private void awaitPriceSync(CountDownLatch latch, String taskName) {
+        try {
+            if (!latch.await(4, TimeUnit.HOURS)) {
+                throw new IllegalStateException(taskName + "超过四小时仍未完成");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(taskName + "被中断", exception);
+        }
     }
 
     private List<LocalDate> loadTradingDaysWithCalendarRepair(LocalDate startDate, LocalDate endDate) {
@@ -247,4 +329,4 @@ public class DataSyncScheduler {
         log.info("========== [数据同步任务] 每日增量新闻采集结束 ==========");
     }
 }
-// AI_GENERATE_END----- -----------
+// AI_GENERATE_END------------ -----------

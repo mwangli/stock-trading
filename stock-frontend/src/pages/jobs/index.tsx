@@ -1,4 +1,4 @@
-// AI_GENERATE_START---- -----------------------------
+// AI_GENERATE_START----- -----------------------------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
@@ -30,6 +30,8 @@ import { useTranslation } from 'react-i18next';
 import { localizedText } from '../../utils/localizedText';
 
 const { Text } = Typography;
+
+const AUTO_REFRESH_INTERVAL_MS = 10_000;
 
 interface ExecutionItem {
   runId: string;
@@ -221,10 +223,12 @@ const JobManagement: React.FC = () => {
     });
   }, []);
 
-  const loadHistory = useCallback(async (jobName: string, current: number) => {
-    setHistoryLoading(true);
+  const loadHistory = useCallback(async (jobName: string, current: number, showLoading = true) => {
+    if (showLoading) {
+      setHistoryLoading(true);
+    }
     try {
-    const response = await request.get('/jobRuns', {
+      const response = await request.get('/jobRuns', {
         params: {
           jobName,
           status: historyStatus,
@@ -240,7 +244,9 @@ const JobManagement: React.FC = () => {
     } catch (cause) {
       message.error(getApiErrorMessage(cause, '读取任务执行历史失败'));
     } finally {
-      setHistoryLoading(false);
+      if (showLoading) {
+        setHistoryLoading(false);
+      }
     }
   }, [historyPageSize, historySource, historyStatus]);
 
@@ -301,12 +307,12 @@ const JobManagement: React.FC = () => {
     const timer = window.setInterval(() => {
       const refreshRequests: Promise<void>[] = [loadJobs()];
       if (historyOpen && historyJob) {
-        refreshRequests.push(loadHistory(historyJob.jobName, historyPage));
+        refreshRequests.push(loadHistory(historyJob.jobName, historyPage, false));
       }
       void Promise.all(refreshRequests).catch((cause: unknown) => {
         console.error('刷新任务执行状态失败', getApiErrorMessage(cause, '刷新任务执行状态失败'));
       });
-    }, 3000);
+    }, AUTO_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [hasActiveHistoryRuns, hasActiveJobs, historyJob, historyOpen, historyPage, loadHistory, loadJobs]);
 
@@ -677,4 +683,4 @@ const JobManagement: React.FC = () => {
 };
 
 export default JobManagement;
-// AI_GENERATE_END---- -----------------------------
+// AI_GENERATE_END----- -----------------------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------------------------------
+// AI_GENERATE_START- --------------------------------
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, Badge, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
@@ -179,7 +179,7 @@ const DashboardLayout: React.FC = () => {
       }
     };
     void checkBackendStatus();
-    const timer = window.setInterval(() => void checkBackendStatus(), 30000);
+    const timer = window.setInterval(() => void checkBackendStatus(), 10_000);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -364,4 +364,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END --------------------------------
+// AI_GENERATE_END- --------------------------------
