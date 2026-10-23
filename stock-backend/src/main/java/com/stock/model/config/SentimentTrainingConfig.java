@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.model.config;
 
 import lombok.Data;
@@ -27,7 +27,7 @@ public class SentimentTrainingConfig {
     private String pretrainedModel = "yiyanghkust/finbert-tone-chinese";
 
     /** 固定的本地模型根目录，直接指向已发布的模型制品目录。 */
-    private String modelPath = "./model-artifacts/sentiment";
+    private String modelPath = "./model-files/sentiment";
 
     /** 最大输入序列长度。 */
     private int maxSequenceLength = 128;
@@ -56,4 +56,4 @@ public class SentimentTrainingConfig {
     /** 情感标签顺序，必须与 manifest 和模型输出一致。 */
     private String[] labels = {"neutral", "positive", "negative"};
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END------------

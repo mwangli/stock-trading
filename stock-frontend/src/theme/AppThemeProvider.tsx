@@ -1,86 +1,200 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START----------
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { App as AntdApp, ConfigProvider, theme } from 'antd';
 
 export type ThemeMode = 'light' | 'dark';
+export type ThemePreset = 'cloudBlue' | 'mintTeal' | 'orangeBlue' | 'glacierBlue' | 'dark';
+
+export interface ThemePresetOption {
+  id: ThemePreset;
+  color: string;
+  softColor: string;
+}
+
+interface ThemePalette {
+  mode: ThemeMode;
+  appBg: string;
+  panelBg: string;
+  panelMuted: string;
+  border: string;
+  textPrimary: string;
+  brand: string;
+  brandSoft: string;
+  rowHover: string;
+}
 
 interface AppThemeContextValue {
   mode: ThemeMode;
+  themePreset: ThemePreset;
   autoThemeEnabled: boolean;
   setMode: (mode: ThemeMode) => void;
+  setThemePreset: (preset: ThemePreset) => void;
   setAutoThemeEnabled: (enabled: boolean) => void;
   toggleMode: () => void;
   resetToAutomatic: () => ThemeMode;
 }
 
+export const THEME_PRESET_OPTIONS: readonly ThemePresetOption[] = [
+  { id: 'cloudBlue', color: '#2563eb', softColor: '#e8f1ff' },
+  { id: 'mintTeal', color: '#0f766e', softColor: '#ddf3ee' },
+  { id: 'orangeBlue', color: '#c2410c', softColor: '#fff0e6' },
+  { id: 'glacierBlue', color: '#087ea4', softColor: '#ddf2f8' },
+  { id: 'dark', color: '#3b82f6', softColor: '#111c2e' },
+];
+
+const THEME_PALETTES: Record<ThemePreset, ThemePalette> = {
+  cloudBlue: {
+    mode: 'light',
+    appBg: '#f3f6fa',
+    panelBg: '#ffffff',
+    panelMuted: '#edf3fa',
+    border: '#d9e2ee',
+    textPrimary: '#172033',
+    brand: '#2563eb',
+    brandSoft: '#e8f1ff',
+    rowHover: '#f0f6ff',
+  },
+  mintTeal: {
+    mode: 'light',
+    appBg: '#f2f8f7',
+    panelBg: '#ffffff',
+    panelMuted: '#e8f3f1',
+    border: '#d2e4e0',
+    textPrimary: '#18312c',
+    brand: '#0f766e',
+    brandSoft: '#ddf3ee',
+    rowHover: '#edf8f5',
+  },
+  orangeBlue: {
+    mode: 'light',
+    appBg: '#f7f8fa',
+    panelBg: '#ffffff',
+    panelMuted: '#f0f3f7',
+    border: '#dde2ea',
+    textPrimary: '#202735',
+    brand: '#c2410c',
+    brandSoft: '#fff0e6',
+    rowHover: '#fff7f0',
+  },
+  glacierBlue: {
+    mode: 'light',
+    appBg: '#f2f7fa',
+    panelBg: '#ffffff',
+    panelMuted: '#e7f1f6',
+    border: '#d1e1e8',
+    textPrimary: '#16303c',
+    brand: '#087ea4',
+    brandSoft: '#ddf2f8',
+    rowHover: '#edf8fb',
+  },
+  dark: {
+    mode: 'dark',
+    appBg: '#090f1b',
+    panelBg: '#0d1524',
+    panelMuted: '#111c2e',
+    border: '#253047',
+    textPrimary: '#eef4ff',
+    brand: '#3b82f6',
+    brandSoft: 'rgba(59, 130, 246, 0.14)',
+    rowHover: '#111c2e',
+  },
+};
+
 const AppThemeContext = createContext<AppThemeContextValue | null>(null);
 const AUTO_THEME_STORAGE_KEY = 'stock-theme-auto';
+const THEME_MODE_STORAGE_KEY = 'stock-theme';
+const THEME_PRESET_STORAGE_KEY = 'stock-theme-preset';
+const LAST_LIGHT_THEME_STORAGE_KEY = 'stock-theme-last-light';
+
+const isThemePreset = (value: string | null): value is ThemePreset => (
+  THEME_PRESET_OPTIONS.some((option) => option.id === value)
+);
 
 const readAutoThemeEnabled = (): boolean => {
   const storedValue = window.localStorage.getItem(AUTO_THEME_STORAGE_KEY);
   return storedValue === null ? true : storedValue === 'true';
 };
 
-const readStoredMode = (): ThemeMode | null => {
-  const storedMode = window.localStorage.getItem('stock-theme');
-  if (storedMode === 'light' || storedMode === 'dark') {
-    return storedMode;
+const readStoredThemePreset = (): ThemePreset | null => {
+  const storedPreset = window.localStorage.getItem(THEME_PRESET_STORAGE_KEY);
+  if (isThemePreset(storedPreset)) {
+    return storedPreset;
   }
-  return null;
+  return window.localStorage.getItem(THEME_MODE_STORAGE_KEY) === 'dark' ? 'dark' : null;
+};
+
+const readStoredLightTheme = (): Exclude<ThemePreset, 'dark'> => {
+  const storedPreset = window.localStorage.getItem(LAST_LIGHT_THEME_STORAGE_KEY);
+  return isThemePreset(storedPreset) && storedPreset !== 'dark' ? storedPreset : 'cloudBlue';
 };
 
 /**
- * 根据北京时间判断当前是否处于白天时段。
- * 06:00-18:00 使用浅色模式，其余时间使用深色模式。
+ * 根据北京时间判断当前应使用的自动主题。
+ * 06:00-18:00 使用清透云蓝，其余时间使用深色主题。
  */
-const resolveBeijingMode = (): ThemeMode => {
+const resolveBeijingThemePreset = (): ThemePreset => {
   const parts = new Intl.DateTimeFormat('zh-CN', {
     timeZone: 'Asia/Shanghai',
     hour: '2-digit',
     hourCycle: 'h23',
   }).formatToParts(new Date());
   const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 0);
-  return hour >= 6 && hour < 18 ? 'light' : 'dark';
+  return hour >= 6 && hour < 18 ? 'cloudBlue' : 'dark';
 };
 
-const resolveInitialMode = (): ThemeMode => readAutoThemeEnabled() ? resolveBeijingMode() : (readStoredMode() ?? resolveBeijingMode());
+const resolveInitialThemePreset = (): ThemePreset => (
+  readAutoThemeEnabled() ? resolveBeijingThemePreset() : (readStoredThemePreset() ?? resolveBeijingThemePreset())
+);
 
 /**
  * 全局应用主题提供器。
- * 同步管理 Ant Design 主题、页面 data-theme 属性和本地持久化偏好。
+ * 同步管理主题方案、Ant Design Token、页面属性和本地持久化偏好。
  */
 export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [autoThemeEnabled, setAutoThemeEnabledState] = useState<boolean>(readAutoThemeEnabled);
-  const [mode, setMode] = useState<ThemeMode>(resolveInitialMode);
+  const [themePreset, setThemePresetState] = useState<ThemePreset>(resolveInitialThemePreset);
+  const palette = THEME_PALETTES[themePreset];
+  const mode = palette.mode;
 
-  const applyManualMode = useCallback((nextMode: ThemeMode) => {
+  const applyManualThemePreset = useCallback((nextPreset: ThemePreset) => {
     setAutoThemeEnabledState(false);
     window.localStorage.setItem(AUTO_THEME_STORAGE_KEY, 'false');
-    window.localStorage.setItem('stock-theme', nextMode);
-    setMode(nextMode);
+    window.localStorage.setItem(THEME_PRESET_STORAGE_KEY, nextPreset);
+    window.localStorage.setItem(THEME_MODE_STORAGE_KEY, THEME_PALETTES[nextPreset].mode);
+    if (nextPreset !== 'dark') {
+      window.localStorage.setItem(LAST_LIGHT_THEME_STORAGE_KEY, nextPreset);
+    }
+    setThemePresetState(nextPreset);
   }, []);
+
+  const applyManualMode = useCallback((nextMode: ThemeMode) => {
+    applyManualThemePreset(nextMode === 'dark' ? 'dark' : readStoredLightTheme());
+  }, [applyManualThemePreset]);
 
   const setAutoThemeEnabled = useCallback((enabled: boolean) => {
     setAutoThemeEnabledState(enabled);
     window.localStorage.setItem(AUTO_THEME_STORAGE_KEY, String(enabled));
     if (enabled) {
-      window.localStorage.removeItem('stock-theme');
-      setMode(resolveBeijingMode());
+      window.localStorage.removeItem(THEME_MODE_STORAGE_KEY);
+      window.localStorage.removeItem(THEME_PRESET_STORAGE_KEY);
+      setThemePresetState(resolveBeijingThemePreset());
     }
   }, []);
 
   const resetToAutomatic = useCallback(() => {
     setAutoThemeEnabledState(true);
     window.localStorage.setItem(AUTO_THEME_STORAGE_KEY, 'true');
-    window.localStorage.removeItem('stock-theme');
-    const automaticMode = resolveBeijingMode();
-    setMode(automaticMode);
-    return automaticMode;
+    window.localStorage.removeItem(THEME_MODE_STORAGE_KEY);
+    window.localStorage.removeItem(THEME_PRESET_STORAGE_KEY);
+    const automaticPreset = resolveBeijingThemePreset();
+    setThemePresetState(automaticPreset);
+    return THEME_PALETTES[automaticPreset].mode;
   }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = mode;
-  }, [mode]);
+    document.documentElement.dataset.themePreset = themePreset;
+  }, [mode, themePreset]);
 
   useEffect(() => {
     if (!autoThemeEnabled) {
@@ -88,7 +202,7 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
     }
 
     const syncWithBeijingTime = () => {
-      setMode(resolveBeijingMode());
+      setThemePresetState(resolveBeijingThemePreset());
     };
 
     syncWithBeijingTime();
@@ -98,12 +212,14 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
 
   const contextValue = useMemo<AppThemeContextValue>(() => ({
     mode,
+    themePreset,
     autoThemeEnabled,
     setMode: applyManualMode,
+    setThemePreset: applyManualThemePreset,
     setAutoThemeEnabled,
     toggleMode: () => applyManualMode(mode === 'light' ? 'dark' : 'light'),
     resetToAutomatic,
-  }), [applyManualMode, autoThemeEnabled, mode, resetToAutomatic, setAutoThemeEnabled]);
+  }), [applyManualMode, applyManualThemePreset, autoThemeEnabled, mode, resetToAutomatic, setAutoThemeEnabled, themePreset]);
 
   return (
     <AppThemeContext.Provider value={contextValue}>
@@ -111,12 +227,15 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
         theme={{
           algorithm: mode === 'dark' ? theme.darkAlgorithm : theme.defaultAlgorithm,
           token: {
-            colorPrimary: '#2563eb',
-            colorInfo: '#2563eb',
-            colorBgBase: mode === 'dark' ? '#090f1b' : '#ffffff',
-            colorBgLayout: mode === 'dark' ? '#090f1b' : '#f5f7fa',
-            colorBgContainer: mode === 'dark' ? '#0d1524' : '#ffffff',
-            colorBorder: mode === 'dark' ? '#253047' : '#dce3ed',
+            colorPrimary: palette.brand,
+            colorInfo: palette.brand,
+            colorBgBase: palette.panelBg,
+            colorBgLayout: palette.appBg,
+            colorBgContainer: palette.panelBg,
+            colorBgElevated: palette.panelBg,
+            colorBorder: palette.border,
+            colorSplit: palette.border,
+            colorTextBase: palette.textPrimary,
             borderRadius: 4,
             controlHeight: 34,
             fontSize: 14,
@@ -124,14 +243,14 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
           components: {
             Card: { headerHeight: 48 },
             Table: {
-              headerBg: mode === 'dark' ? '#111c2e' : '#f7f9fc',
-              rowHoverBg: mode === 'dark' ? '#111c2e' : '#f0f6ff',
+              headerBg: palette.panelMuted,
+              rowHoverBg: palette.rowHover,
             },
             Menu: {
-              darkItemBg: '#0d1524',
-              darkItemSelectedBg: '#2563eb',
-              itemSelectedBg: '#eaf2ff',
-              itemSelectedColor: '#1d4ed8',
+              darkItemBg: THEME_PALETTES.dark.panelBg,
+              darkItemSelectedBg: THEME_PALETTES.dark.brandSoft,
+              itemSelectedBg: palette.brandSoft,
+              itemSelectedColor: palette.brand,
             },
           },
         }}
@@ -145,7 +264,7 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
 /**
  * 获取当前全局主题状态。
  *
- * @return 主题模式和切换方法
+ * @return 主题模式、主题方案和切换方法
  */
 export const useAppTheme = (): AppThemeContextValue => {
   const context = useContext(AppThemeContext);
@@ -154,4 +273,4 @@ export const useAppTheme = (): AppThemeContextValue => {
   }
   return context;
 };
-// AI_GENERATE_END--------
+// AI_GENERATE_END----------

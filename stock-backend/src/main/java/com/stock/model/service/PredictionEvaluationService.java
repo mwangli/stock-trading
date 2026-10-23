@@ -374,9 +374,13 @@ class PredictionEvaluationService {
                 .filter(item -> item.getDirectionProbability() != null
                         && Double.isFinite(item.getDirectionProbability()))
                 .toList();
+        List<ModelPredictionDocument> scoreRankable = predictions.stream()
+                .filter(item -> item.getRankScore() != null && Double.isFinite(item.getRankScore()))
+                .toList();
         assignPercentiles(returnRankable, true);
         assignPercentiles(probabilityRankable, false);
-        if (!returnRankable.isEmpty() || !probabilityRankable.isEmpty()) {
+        assignRankScorePercentiles(scoreRankable);
+        if (!returnRankable.isEmpty() || !probabilityRankable.isEmpty() || !scoreRankable.isEmpty()) {
             predictionRepository.saveAll(predictions);
         }
     }
@@ -411,6 +415,19 @@ class PredictionEvaluationService {
             } else {
                 sorted.get(index).setDirectionProbabilityPercentile(percentile);
             }
+        }
+    }
+
+    private void assignRankScorePercentiles(List<ModelPredictionDocument> items) {
+        if (items.isEmpty()) {
+            return;
+        }
+        List<ModelPredictionDocument> sorted = items.stream()
+                .sorted(Comparator.comparingDouble(ModelPredictionDocument::getRankScore))
+                .toList();
+        int denominator = Math.max(1, sorted.size() - 1);
+        for (int index = 0; index < sorted.size(); index++) {
+            sorted.get(index).setCrossSectionPercentile(index / (double) denominator);
         }
     }
 

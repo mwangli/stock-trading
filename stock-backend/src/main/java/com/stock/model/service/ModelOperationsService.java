@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START-----------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -13,6 +13,7 @@ import com.stock.model.entity.ModelTrainingRunDocument;
 import com.stock.model.entity.TrainingDatasetSnapshotDocument;
 import com.stock.model.repository.LstmModelRepository;
 import com.stock.model.repository.ModelTrainingRunRepository;
+import com.stock.model.model.LstmArchitectureType;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -35,7 +36,7 @@ import java.util.concurrent.Executor;
 public class ModelOperationsService {
 
     private static final List<String> RUNNING_STATUSES = List.of("QUEUED", "RUNNING", "STOPPING");
-    private static final int DEFAULT_TRAIN_DAYS = 1000;
+    private static final int DEFAULT_TRAIN_DAYS = 2000;
     private final LstmTrainingConfig trainingConfig;
     private final LstmDataQualityConfig dataQualityConfig;
     private final StockInfoRepository stockInfoRepository;
@@ -193,6 +194,7 @@ public class ModelOperationsService {
                 ? trainingConfig.getBatchSize() : safeRequest.getBatchSize();
         double learningRate = safeRequest.getLearningRate() == null
                 ? trainingConfig.getLearningRate() : safeRequest.getLearningRate();
+        LstmArchitectureType architectureType = resolveArchitectureType(safeRequest.getArchitectureType());
         validateEffectiveTrainingParameters(days, epochs, batchSize, learningRate);
 
         ModelTrainingRunDocument run = new ModelTrainingRunDocument();
@@ -201,7 +203,8 @@ public class ModelOperationsService {
         run.setTriggerSource(triggerSource);
         run.setTriggeredBy(operatorName);
         run.setRequestedConfigJson(writeJson(trainingRequestMap(safeRequest)));
-        run.setEffectiveConfigJson(writeJson(effectiveConfigMap(days, epochs, batchSize, learningRate)));
+        run.setEffectiveConfigJson(writeJson(
+                effectiveConfigMap(days, epochs, batchSize, learningRate, architectureType)));
         run.setGateResultJson(writeJson(Map.of("allowed", true, "message", checkResult.message())));
         run.setProgressStage("QUEUED");
         run.setProgressMessage("训练任务已进入队列");
@@ -219,8 +222,10 @@ public class ModelOperationsService {
         final int effectiveEpochs = epochs;
         final int effectiveBatchSize = batchSize;
         final double effectiveLearningRate = learningRate;
+        final LstmArchitectureType effectiveArchitectureType = architectureType;
         applicationTaskExecutor.execute(() -> executeTraining(
-                saved.getId(), effectiveDays, effectiveEpochs, effectiveBatchSize, effectiveLearningRate));
+                saved.getId(), effectiveDays, effectiveEpochs, effectiveBatchSize,
+                effectiveLearningRate, effectiveArchitectureType));
         return ModelOperationResponse.builder()
                 .operationType("TRAIN")
                 .operationId(saved.getId())
@@ -228,7 +233,9 @@ public class ModelOperationsService {
                 .build();
     }
 
-    private void executeTraining(String runId, int days, int epochs, int batchSize, double learningRate) {
+    private void executeTraining(
+            String runId, int days, int epochs, int batchSize, double learningRate,
+            LstmArchitectureType architectureType) {
         ModelTrainingRunDocument run = trainingRunRepository.findById(runId).orElse(null);
         if (run == null) {
             log.warn("模型训练运行记录不存在: runId={}", runId);
@@ -261,7 +268,7 @@ public class ModelOperationsService {
             LstmTrainerService.TrainingResult result = lstmTrainerService.trainSharedModel(
                     stockCodes, days, epochs, batchSize, learningRate,
                     progress -> updateTrainingProgress(run, progress),
-                    run.getDatasetSnapshotId());
+                    run.getDatasetSnapshotId(), architectureType);
             if (result != null) {
                 run.setTrainedStocks(result.getTrainedStocks());
                 run.setTrainSamples(result.getTrainSamples());
@@ -435,6 +442,51 @@ public class ModelOperationsService {
             throw new IllegalStateException("候选模型验证损失超过阈值: "
                     + result.getValLoss() + " > " + dataQualityConfig.getMaximumValidationLoss());
         }
+        if (result.isOutputCollapsed()) {
+            throw new IllegalStateException("候选模型输出发生塌缩");
+        }
+        if (result.getTestRankIc() == null
+                || result.getTestRankIc() < dataQualityConfig.getMinimumTestRankIc()) {
+            throw new IllegalStateException("候选模型独立测试 Rank IC 未达到阈值: "
+                    + result.getTestRankIc() + " < " + dataQualityConfig.getMinimumTestRankIc());
+        }
+        if (result.getTestTopDecileNetReturn() == null
+                || result.getTestTopDecileNetReturn() <= dataQualityConfig.getMinimumTopDecileNetReturn()) {
+            throw new IllegalStateException("候选模型 Top 10% 成本后收益未达到阈值: "
+                    + result.getTestTopDecileNetReturn());
+        }
+        if (result.getWalkForwardFoldCount() < dataQualityConfig.getMinimumWalkForwardFoldCount()) {
+            throw new IllegalStateException("候选模型 Walk-Forward 测试窗口不足: "
+                    + result.getWalkForwardFoldCount() + " < "
+                    + dataQualityConfig.getMinimumWalkForwardFoldCount());
+        }
+        if (result.getWalkForwardMeanRankIc() == null
+                || result.getWalkForwardMeanRankIc() <= dataQualityConfig.getMinimumWalkForwardMeanRankIc()) {
+            throw new IllegalStateException("候选模型 Walk-Forward 平均 Rank IC 未达到阈值: "
+                    + result.getWalkForwardMeanRankIc());
+        }
+        if (result.getWalkForwardRankIcIr() == null
+                || result.getWalkForwardRankIcIr() <= dataQualityConfig.getMinimumWalkForwardRankIcIr()) {
+            throw new IllegalStateException("候选模型 Walk-Forward Rank ICIR 未达到阈值: "
+                    + result.getWalkForwardRankIcIr());
+        }
+        if (result.getPositiveRankIcWindowRatio() == null
+                || result.getPositiveRankIcWindowRatio()
+                < dataQualityConfig.getMinimumPositiveRankIcWindowRatio()) {
+            throw new IllegalStateException("候选模型正 Rank IC 窗口占比未达到阈值: "
+                    + result.getPositiveRankIcWindowRatio());
+        }
+        if (result.getWalkForwardTopDecileNetReturn() == null
+                || result.getWalkForwardTopDecileNetReturn()
+                <= dataQualityConfig.getMinimumTopDecileNetReturn()) {
+            throw new IllegalStateException("候选模型 Walk-Forward Top 10% 成本后收益未达到阈值: "
+                    + result.getWalkForwardTopDecileNetReturn());
+        }
+        if (result.getBrierScore() == null || result.getBrierBaseline() == null
+                || result.getBrierScore() > result.getBrierBaseline()) {
+            throw new IllegalStateException("候选模型 Brier Score 劣于实际上涨比例基线: score="
+                    + result.getBrierScore() + ", baseline=" + result.getBrierBaseline());
+        }
     }
 
     private void validateRange(String name, Integer value, int min, int max) {
@@ -465,21 +517,40 @@ public class ModelOperationsService {
         values.put("epochs", request.getEpochs());
         values.put("batchSize", request.getBatchSize());
         values.put("learningRate", request.getLearningRate());
+        values.put("architectureType", request.getArchitectureType());
         values.put("operatorName", normalizeOperator(request.getOperatorName()));
         return values;
     }
 
     private Map<String, Object> effectiveConfigMap(
-            int days, int epochs, int batchSize, double learningRate) {
+            int days, int epochs, int batchSize, double learningRate,
+            LstmArchitectureType architectureType) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("days", days);
         values.put("epochs", epochs);
         values.put("batchSize", batchSize);
         values.put("learningRate", learningRate);
+        values.put("architectureType", architectureType.name());
         values.put("sequenceLength", trainingConfig.getSequenceLength());
         values.put("inputSize", trainingConfig.getInputSize());
-        values.put("featureVersion", LstmDataPreprocessor.FEATURE_VERSION);
+        values.put("featureVersion", RankingLstmDataPreprocessor.FEATURE_VERSION);
         return values;
+    }
+
+    private LstmArchitectureType resolveArchitectureType(String requested) {
+        if (requested == null || requested.isBlank()) {
+            return trainingConfig.getArchitectureType();
+        }
+        try {
+            LstmArchitectureType type = LstmArchitectureType.valueOf(requested.trim().toUpperCase());
+            if (type == LstmArchitectureType.LEGACY_MULTITASK_LSTM) {
+                throw new IllegalArgumentException("不允许通过新训练任务生成 Legacy LSTM");
+            }
+            return type;
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("architectureType 仅支持 RANKING_LSTM 或 "
+                    + "DUAL_ATTENTION_RANKING_LSTM", exception);
+        }
     }
 
     private String writeJson(Object value) {
@@ -521,4 +592,4 @@ public class ModelOperationsService {
     }
 
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END-----------

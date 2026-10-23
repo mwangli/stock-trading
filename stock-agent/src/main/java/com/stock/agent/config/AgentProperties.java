@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------------
+// AI_GENERATE_START------------------
 package com.stock.agent.config;
 
 import lombok.Data;
@@ -196,7 +196,7 @@ public class AgentProperties {
         private String model = "bge-base-zh-v1.5";
 
         /** 已发布 Embedding 模型制品的本地根目录。 */
-        private String modelPath = "./model-artifacts/embedding";
+        private String modelPath = "./model-files/embedding";
 
         /** Embedding 模型版本。 */
         private String modelVersion = "bge-base-zh-v1.5";
@@ -220,4 +220,4 @@ public class AgentProperties {
         private boolean allowHashFallback = false;
     }
 }
-// AI_GENERATE_END-----------------
+// AI_GENERATE_END------------------

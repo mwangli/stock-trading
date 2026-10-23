@@ -96,7 +96,7 @@ agent:
     base-url: http://localhost:11434
     api-key: ollama
     model: bge-base-zh-v1.5
-    model-path: ${EMBEDDING_MODEL_PATH:./model-artifacts/embedding}
+    model-path: ${EMBEDDING_MODEL_PATH:./model-files/embedding}
     model-version: bge-base-zh-v1.5
     dimension: 768
     timeout-ms: 30000

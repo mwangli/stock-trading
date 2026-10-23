@@ -1,6 +1,8 @@
-// AI_GENERATE_START--
+// AI_GENERATE_START---
 package com.stock.model.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.model.dto.ModelOverviewResponse;
 import com.stock.model.dto.ModelScoreSummaryResponse;
 import com.stock.model.dto.ModelTrainingRunPageResponse;
@@ -44,6 +46,7 @@ public class ModelOperationsQueryService {
     private final ModelActivationRepository activationRepository;
     private final ModelTrainingRunRepository trainingRunRepository;
     private final ModelPredictionBatchRepository predictionBatchRepository;
+    private final ObjectMapper objectMapper;
 
     /**
      * 查询模型运维概览。
@@ -163,6 +166,8 @@ public class ModelOperationsQueryService {
     private ModelVersionResponse toVersionItem(LstmModelDocument document, ModelActivationDocument activation) {
         String activeId = activation == null ? null : activation.getActiveModelVersionId();
         String previousId = activation == null ? null : activation.getPreviousModelVersionId();
+        JsonNode inputContract = readJson(document.getInputContractJson());
+        JsonNode metrics = readJson(document.getMetricsJson());
         return ModelVersionResponse.builder()
                 .id(document.getId())
                 .modelName(document.getModelName())
@@ -182,10 +187,45 @@ public class ModelOperationsQueryService {
                 .trainingConfigJson(document.getTrainingConfigJson())
                 .inputContractJson(document.getInputContractJson())
                 .metricsJson(document.getMetricsJson())
+                .architectureType(textValue(inputContract, "architectureType"))
+                .outputSchemaVersion(textValue(inputContract, "outputSchemaVersion"))
+                .walkForwardMeanRankIc(doubleValue(metrics, "walkForwardMeanRankIc"))
+                .walkForwardRankIcIr(doubleValue(metrics, "walkForwardRankIcIr"))
+                .positiveRankIcWindowRatio(doubleValue(metrics, "positiveRankIcWindowRatio"))
+                .walkForwardTopDecileNetReturn(doubleValue(metrics, "walkForwardTopDecileNetReturn"))
+                .brierScore(doubleValue(metrics, "walkForwardBrierScore"))
+                .brierBaseline(doubleValue(metrics, "walkForwardBrierBaseline"))
+                .outputCollapsed(booleanValue(metrics, "outputCollapsed"))
                 .createdAt(document.getCreatedAt())
                 .active(document.getId() != null && document.getId().equals(activeId))
                 .previous(document.getId() != null && document.getId().equals(previousId))
                 .build();
+    }
+
+    private JsonNode readJson(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(value);
+        } catch (Exception exception) {
+            log.warn("模型版本 JSON 元数据解析失败: {}", exception.getMessage());
+            return null;
+        }
+    }
+
+    private String textValue(JsonNode node, String field) {
+        return node == null || !node.hasNonNull(field) ? null : node.path(field).asText();
+    }
+
+    private Double doubleValue(JsonNode node, String field) {
+        return node == null || !node.hasNonNull(field) || !node.path(field).isNumber()
+                ? null : node.path(field).asDouble();
+    }
+
+    private Boolean booleanValue(JsonNode node, String field) {
+        return node == null || !node.hasNonNull(field) || !node.path(field).isBoolean()
+                ? null : node.path(field).asBoolean();
     }
 
     private ModelTrainingRunResponse toTrainingRunItem(ModelTrainingRunDocument run) {
@@ -236,4 +276,4 @@ public class ModelOperationsQueryService {
         }
     }
 }
-// AI_GENERATE_END--
+// AI_GENERATE_END---

@@ -1,6 +1,7 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START------------
 package com.stock.model.config;
 
+import com.stock.model.model.LstmArchitectureType;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -83,7 +84,28 @@ public class LstmTrainingConfig {
     /**
      * 每个时间步的总特征维度。
      */
-    private int inputSize = 16;
+    private int inputSize = 31;
+
+    /** `v5` 候选模型架构。 */
+    private LstmArchitectureType architectureType = LstmArchitectureType.RANKING_LSTM;
+
+    /** 两个候选架构共用的 DJL 随机种子。 */
+    private int randomSeed = 20261023;
+
+    /** 模型专用行情和关联事实的数据来源。 */
+    private String dataSource = "MODEL_FOUNDATION";
+
+    /** 模型专用行情和关联事实的数据版本。 */
+    private String dataSourceVersion = "CURRENT";
+
+    /** 市场基准参考序列代码。 */
+    private String benchmarkSeriesCode = "CSI300";
+
+    /** 市场类别 Embedding 最大字典容量，索引 0 保留给未知市场。 */
+    private int marketEmbeddingBuckets = 16;
+
+    /** 市场类别 Embedding 维度。 */
+    private int marketEmbeddingSize = 4;
 
     /**
      * 股票 Embedding 哈希桶数量，索引 0 保留给未知股票。
@@ -113,7 +135,7 @@ public class LstmTrainingConfig {
     /**
      * 是否启用个股 Residual Head。
      */
-    private boolean residualHeadEnabled = true;
+    private boolean residualHeadEnabled = false;
 
     /**
      * 分组 Head 对共享输出的校正缩放系数。
@@ -140,6 +162,48 @@ public class LstmTrainingConfig {
      */
     private double downsideLossWeight = 0.2D;
 
+    /** 横截面排序损失权重。 */
+    private double rankingLossWeight = 0.45D;
+
+    /** 超额收益回归损失权重。 */
+    private double excessReturnLossWeight = 0.25D;
+
+    /** 成本感知方向损失权重。 */
+    private double costAwareDirectionLossWeight = 0.15D;
+
+    /** 下行分位损失权重。 */
+    private double downsideQuantileLossWeight = 0.10D;
+
+    /** 收益和方向输出一致性损失权重。 */
+    private double consistencyLossWeight = 0.05D;
+
+    /** 双边交易成本和滑点阈值，0.002 表示 0.2%。 */
+    private double costThreshold = 0.002D;
+
+    /** 中性方向样本参与方向损失的权重。 */
+    private double neutralDirectionWeight = 0.25D;
+
+    /** Walk-Forward 训练窗口年数。 */
+    private int trainingWindowYears = 3;
+
+    /** Walk-Forward 验证窗口月数。 */
+    private int validationWindowMonths = 6;
+
+    /** Walk-Forward 独立测试窗口月数。 */
+    private int testWindowMonths = 3;
+
+    /** Walk-Forward 滚动步长月数。 */
+    private int walkForwardStepMonths = 3;
+
+    /** 标签边界清除交易日数。 */
+    private int purgeTradingDays = 2;
+
+    /** 验证和测试边界隔离交易日数。 */
+    private int embargoTradingDays = 20;
+
+    /** 严格窗口重叠敏感性检查隔离交易日数。 */
+    private int strictIsolationTradingDays = 60;
+
     /**
      * 是否启用早停
      */
@@ -156,4 +220,4 @@ public class LstmTrainingConfig {
     private double minDelta = 0.0001;
 
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END------------

@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START---------------------------------- -->
+<!-- AI_GENERATE_START ------------------------------------ -->
 # AI-AGENT 智能股票交易系统
 
 面向 A 股市场的数据采集、模型预测、策略分析、Agent 决策增强、风险控制和自动交易平台。
@@ -22,7 +22,7 @@ stock-trading4/
 ├── stock-backend/           # Spring Boot 后端，内部按业务包组织
 ├── stock-agent/             # Agent、RAG、Memory 和决策增强
 ├── stock-frontend/          # React + Vite 独立前端
-├── model-artifacts/         # 固定模型制品
+├── model-files/         # 固定模型制品
 ├── documents/               # 长期架构和模块文档
 ├── docker-compose.yml
 ├── pom.xml                  # 三模块聚合与统一版本管理
@@ -59,7 +59,7 @@ stock-agent    → 内部事实 API → stock-backend
 
 ## 模型制品
 
-- Embedding 和 Sentiment 固定模型位于 `model-artifacts/`，通过 Git LFS 管理并只读加载。
+- Embedding 和 Sentiment 固定模型位于 `model-files/`，通过 Git LFS 管理并只读加载。
 - LSTM 模型由 MongoDB GridFS 和模型激活记录管理，保留候选、激活和回滚语义。
 - 模型训练成功只生成候选版本，不自动替换生产激活模型。
 
@@ -78,14 +78,14 @@ stock-agent    → 内部事实 API → stock-backend
 ## 文档
 
 - [文档索引](documents/README.md)
-- [系统概览](documents/00-系统架构/系统概览.md)
-- [模块依赖与边界](documents/00-系统架构/模块依赖与边界.md)
-- [核心业务链路](documents/00-系统架构/核心业务链路.md)
-- [部署与运行](documents/00-系统架构/部署与运行.md)
+- [系统架构](documents/architecture/系统架构.md)
+- [Backend 领域](documents/backend/后端基础与持久化.md)
+- [核心业务链路](documents/architecture/核心业务链路.md)
+- [部署运行](documents/architecture/部署运行.md)
 
-模块的业务用途、实现方式、输入输出、依赖关系和降级边界统一维护在 `documents/<module>/` 下。
+模块的业务用途、实现方式、输入输出、依赖关系和降级边界统一维护在 `documents/architecture`、`backend`、`agent`、`frontend` 和 `proposals` 下。
 
 ## 免责声明
 
 本项目用于研究、工程实践和个人交易辅助。模型预测、回测结果、策略评分和 Agent 输出均不构成投资建议，也不能保证真实收益。真实交易必须在充分理解风险、完成独立验证并显式开启写入能力后使用。
-<!-- AI_GENERATE_END---------------------------------- -->
+<!-- AI_GENERATE_END ------------------------------------ -->

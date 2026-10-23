@@ -102,13 +102,13 @@ jobs:
             docker-compose.yml
             .gitattributes
             .github/scripts
-            model-artifacts/embedding
+            model-files/embedding
           sparse-checkout-cone-mode: false
 
       - name: Verify embedding artifacts
         run: |
           python3 .github/scripts/verify-model-artifact.py \
-            model-artifacts/embedding/bge-base-zh-v1.5/manifest.json \
+            model-files/embedding/bge-base-zh-v1.5/manifest.json \
             deployment-agent-artifacts.sha256
 
       - name: Upload deployment files
@@ -119,7 +119,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ env.SERVER_PORT }}
           fingerprint: ${{ env.SERVER_FINGERPRINT }}
-          source: docker-compose.yml,.github/scripts/deploy-service.sh,model-artifacts/embedding,deployment-agent-artifacts.sha256
+          source: docker-compose.yml,.github/scripts/deploy-service.sh,model-files/embedding,deployment-agent-artifacts.sha256
           target: ${{ env.SERVER_DEPLOY_DIR }}
           overwrite: true
           command_timeout: 30m

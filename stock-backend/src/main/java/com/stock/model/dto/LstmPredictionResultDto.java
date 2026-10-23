@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -57,9 +57,27 @@ public class LstmPredictionResultDto {
      */
     private Double downsideRisk;
 
+    /** `v5` 横截面排序原始分数。 */
+    private Double rankScore;
+
+    /** 预测市场和行业中性后的超额收益率。 */
+    private Double expectedExcessReturn;
+
+    /** 经模型制品参数校准后的上涨概率。 */
+    private Double calibratedUpProbability;
+
+    /** 预测下行风险分位值，范围为 0 到 1。 */
+    private Double downsideQuantile;
+
+    /** 模型架构类型。 */
+    private String architectureType;
+
+    /** 推理使用的特征契约版本。 */
+    private String featureSchemaVersion;
+
     /**
      * 使用的模型文档 ID 或本地模型路径。
      */
     private String modelId;
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

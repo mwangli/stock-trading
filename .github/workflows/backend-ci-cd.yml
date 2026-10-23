@@ -102,13 +102,13 @@ jobs:
             docker-compose.yml
             .gitattributes
             .github/scripts
-            model-artifacts/sentiment
+            model-files/sentiment
           sparse-checkout-cone-mode: false
 
       - name: Verify sentiment artifacts
         run: |
           python3 .github/scripts/verify-model-artifact.py \
-            model-artifacts/sentiment/finbert-tone-chinese-e91b1a3a/manifest.json \
+            model-files/sentiment/finbert-tone-chinese-e91b1a3a/manifest.json \
             deployment-backend-artifacts.sha256
 
       - name: Upload deployment files
@@ -119,7 +119,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ env.SERVER_PORT }}
           fingerprint: ${{ env.SERVER_FINGERPRINT }}
-          source: docker-compose.yml,.github/scripts/deploy-service.sh,model-artifacts/sentiment,deployment-backend-artifacts.sha256
+          source: docker-compose.yml,.github/scripts/deploy-service.sh,model-files/sentiment,deployment-backend-artifacts.sha256
           target: ${{ env.SERVER_DEPLOY_DIR }}
           overwrite: true
           command_timeout: 30m

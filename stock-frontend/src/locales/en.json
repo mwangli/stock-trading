@@ -70,7 +70,15 @@
     "offline": "System offline",
     "checking": "Checking",
     "lightMode": "Switch to light mode",
-    "darkMode": "Switch to dark mode"
+    "darkMode": "Switch to dark mode",
+    "themePicker": "Switch global theme",
+    "themes": {
+      "cloudBlue": "Clear Cloud Blue",
+      "mintTeal": "Mint Teal",
+      "orangeBlue": "Bright Orange Blue",
+      "glacierBlue": "Glacier Blue",
+      "dark": "Dark Mode"
+    }
   },
   "stockInformation": {
     "subtitle": "Browse maintained stock reference information",
@@ -422,8 +430,11 @@
     },
     "options": {
       "theme": {
-        "dark": "Dark Mode",
-        "light": "Light Mode"
+        "cloudBlue": "Clear Cloud Blue",
+        "mintTeal": "Mint Teal",
+        "orangeBlue": "Bright Orange Blue",
+        "glacierBlue": "Glacier Blue",
+        "dark": "Dark Mode"
       },
       "language": {
         "en": "English",
@@ -438,7 +449,7 @@
     "testConnection": "Test Connection",
     "successMsg": "Settings Saved Successfully",
     "checkStatus": "Check Service Status",
-    "themeAutoHint": "Uses light mode from 06:00 to 18:00 Beijing time and dark mode otherwise",
+    "themeAutoHint": "Uses Clear Cloud Blue from 06:00 to 18:00 Beijing time and Dark Mode otherwise",
     "resetPreferences": "Restore Default Preferences",
     "generalTitle": "Interface Preferences",
     "runtimeTitle": "Runtime Controls",
