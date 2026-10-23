@@ -3,16 +3,14 @@ name: Backend CI/CD
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+'
-      - 'V[0-9]+.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-      - 'V[0-9]+.[0-9]+.[0-9]+'
+      - 'backend-v[0-9]+.[0-9]+'
+      - 'backend-v[0-9]+.[0-9]+.[0-9]+'
 
 permissions:
   contents: read
 
 concurrency:
-  group: backend-production
+  group: stock-production
   cancel-in-progress: false
 
 env:
@@ -46,22 +44,20 @@ jobs:
           java-version: '17'
           cache: maven
           cache-dependency-path: |
-            stock-application/pom.xml
-            stock-application/*/pom.xml
+            pom.xml
+            stock-backend/pom.xml
           verify-signature: true
 
       - name: Package backend
         run: |
           set -Eeuo pipefail
           mvn --batch-mode --no-transfer-progress \
-            --file stock-application/pom.xml \
+            --file pom.xml --projects stock-backend --also-make \
             clean package -DskipTests
-
-          jar_path="$(find stock-application/stock-starter/target -maxdepth 1 -type f \
-            -name 'stock-starter-*.jar' \
-            ! -name '*.original' -print -quit)"
+          jar_path="$(find stock-backend/target -maxdepth 1 -type f \
+            -name 'stock-backend-*.jar' ! -name '*.original' -print -quit)"
           test -n "$jar_path"
-          install -m 0644 "$jar_path" stock-application/app.jar
+          install -m 0644 "$jar_path" stock-backend/app.jar
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -80,14 +76,14 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v7
         with:
-          context: stock-application
-          file: stock-application/Dockerfile
+          context: stock-backend
+          file: stock-backend/Dockerfile
           push: true
           tags: |
             ${{ steps.image.outputs.value }}
             ${{ env.IMAGE_REPOSITORY }}:latest
-          cache-from: type=gha,scope=stock-application
-          cache-to: type=gha,mode=max,scope=stock-application
+          cache-from: type=gha,scope=stock-backend
+          cache-to: type=gha,mode=max,scope=stock-backend
           provenance: false
 
   deploy:
@@ -105,61 +101,17 @@ jobs:
           sparse-checkout: |
             docker-compose.yml
             .gitattributes
-            model-artifacts
+            .github/scripts
+            model-artifacts/sentiment
           sparse-checkout-cone-mode: false
 
-      - name: Verify model artifacts
+      - name: Verify sentiment artifacts
         run: |
-          set -Eeuo pipefail
-          python3 - <<'PY'
-          import hashlib
-          import json
-          from pathlib import Path
+          python3 .github/scripts/verify-model-artifact.py \
+            model-artifacts/sentiment/finbert-tone-chinese-e91b1a3a/manifest.json \
+            deployment-backend-artifacts.sha256
 
-          artifact_root = Path("model-artifacts")
-          expected_manifests = (
-              artifact_root / "embedding" / "bge-base-zh-v1.5" / "manifest.json",
-              artifact_root / "sentiment" / "finbert-tone-chinese-e91b1a3a" / "manifest.json",
-          )
-          checksum_lines = []
-
-          def sha256_file(path):
-              digest = hashlib.sha256()
-              with path.open("rb") as artifact:
-                  for chunk in iter(lambda: artifact.read(1024 * 1024), b""):
-                      digest.update(chunk)
-              return digest.hexdigest()
-
-          for manifest_path in expected_manifests:
-              if not manifest_path.is_file():
-                  raise SystemExit(f"Missing model manifest: {manifest_path}")
-              manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-              version_directory = manifest_path.parent
-              for entry in manifest.get("files", []):
-                  relative_path = entry.get("path")
-                  artifact_path = version_directory / relative_path
-                  if not artifact_path.is_file():
-                      raise SystemExit(f"Missing model artifact: {artifact_path}")
-                  actual_size = artifact_path.stat().st_size
-                  if actual_size != entry.get("size"):
-                      raise SystemExit(
-                          f"Model artifact size mismatch: {artifact_path}, "
-                          f"expected={entry.get('size')}, actual={actual_size}"
-                      )
-                  digest = sha256_file(artifact_path)
-                  if digest.lower() != str(entry.get("sha256", "")).lower():
-                      raise SystemExit(f"Model artifact SHA-256 mismatch: {artifact_path}")
-                  checksum_lines.append(f"{digest}  {artifact_path.as_posix()}")
-
-              manifest_digest = sha256_file(manifest_path)
-              checksum_lines.append(f"{manifest_digest}  {manifest_path.as_posix()}")
-
-          Path("deployment-model-artifacts.sha256").write_text(
-              "\n".join(checksum_lines) + "\n", encoding="utf-8"
-          )
-          PY
-
-      - name: Upload Docker Compose configuration and model artifacts
+      - name: Upload deployment files
         uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ env.SERVER_HOST }}
@@ -167,12 +119,12 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ env.SERVER_PORT }}
           fingerprint: ${{ env.SERVER_FINGERPRINT }}
-          source: docker-compose.yml,model-artifacts,deployment-model-artifacts.sha256
+          source: docker-compose.yml,.github/scripts/deploy-service.sh,model-artifacts/sentiment,deployment-backend-artifacts.sha256
           target: ${{ env.SERVER_DEPLOY_DIR }}
           overwrite: true
           command_timeout: 30m
 
-      - name: Pull image and restart backend
+      - name: Restart backend
         uses: appleboy/ssh-action@v1.2.5
         env:
           DEPLOY_IMAGE: ${{ needs.build-and-push.outputs.image }}
@@ -188,67 +140,4 @@ jobs:
           fingerprint: ${{ env.SERVER_FINGERPRINT }}
           envs: DEPLOY_IMAGE,DEPLOY_DIR,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
           command_timeout: 12m
-          script: |
-            bash -se <<'DEPLOY_SCRIPT'
-            set -Eeuo pipefail
-
-            cd "$DEPLOY_DIR"
-            test -f .env
-            test -f docker-compose.yml
-            test -f deployment-model-artifacts.sha256
-            sha256sum --check deployment-model-artifacts.sha256
-
-            docker_config="$(mktemp -d)"
-            export DOCKER_CONFIG="$docker_config"
-            cleanup_registry() {
-              docker logout "$ACR_REGISTRY" >/dev/null 2>&1 || true
-              rm -rf "$docker_config"
-            }
-            trap cleanup_registry EXIT
-
-            previous_image="$(docker inspect --format '{{.Config.Image}}' stock-application 2>/dev/null || true)"
-
-            rollback() {
-              exit_code=$?
-              trap - ERR
-              echo "Backend deployment failed; collecting logs."
-              docker compose --env-file .env logs --tail=150 stock-application || true
-              if [ -n "$previous_image" ]; then
-                echo "Rolling back to the previous backend image."
-                STOCK_APPLICATION_IMAGE="$previous_image" \
-                  docker compose --env-file .env up -d --no-deps --force-recreate stock-application || true
-              fi
-              exit "$exit_code"
-            }
-            trap rollback INT TERM HUP ERR
-
-            printf '%s' "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" \
-              --username "$ACR_USERNAME" --password-stdin
-            docker pull "$DEPLOY_IMAGE"
-
-            STOCK_APPLICATION_IMAGE="$DEPLOY_IMAGE" docker compose --env-file .env config --quiet
-            STOCK_APPLICATION_IMAGE="$DEPLOY_IMAGE" \
-              docker compose --env-file .env up -d --no-deps --force-recreate --remove-orphans stock-application
-
-            container_id="$(docker compose --env-file .env ps -q stock-application)"
-            test -n "$container_id"
-
-            healthy=0
-            attempt=1
-            while [ "$attempt" -le 36 ]; do
-              status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")"
-              if [ "$status" = healthy ] || [ "$status" = running ]; then
-                healthy=1
-                break
-              fi
-              if [ "$status" = unhealthy ] || [ "$status" = exited ] || [ "$status" = dead ]; then
-                break
-              fi
-              sleep 5
-              attempt=$((attempt + 1))
-            done
-
-            test "$healthy" -eq 1
-            trap - INT TERM HUP ERR
-            docker compose --env-file .env ps stock-application
-            DEPLOY_SCRIPT
+          script: bash "$DEPLOY_DIR/.github/scripts/deploy-service.sh" stock-backend stock-backend STOCK_BACKEND_IMAGE deployment-backend-artifacts.sha256

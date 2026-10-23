@@ -1,4 +1,4 @@
-# AI_GENERATE_START
+# AI_GENERATE_START-
 name: stock-trading
 
 x-default-logging: &default-logging
@@ -8,6 +8,34 @@ x-default-logging: &default-logging
     max-file: "5"
 
 services:
+  stock-frontend:
+    image: ${STOCK_FRONTEND_IMAGE:-stock-trading-frontend:local}
+    build:
+      context: ./stock-frontend
+      dockerfile: Dockerfile
+    container_name: stock-frontend
+    depends_on:
+      stock-backend:
+        condition: service_healthy
+      stock-agent:
+        condition: service_healthy
+    ports:
+      - "0.0.0.0:80:80"
+    networks:
+      - stock-public
+    restart: unless-stopped
+    mem_limit: 96m
+    cpus: 0.15
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+    logging: *default-logging
+
   stock-backend:
     image: ${STOCK_BACKEND_IMAGE:-stock-trading-backend:local}
     build:
@@ -16,20 +44,20 @@ services:
     container_name: stock-backend
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      EMBEDDING_MODEL_PATH: /app/model-artifacts/embedding
-      EMBEDDING_DOWNLOAD_PRETRAINED: ${EMBEDDING_DOWNLOAD_PRETRAINED:-true}
       SPRING_DATASOURCE_URL: jdbc:mysql://stock-mysql:3306/${MYSQL_DATABASE:-stock_trading}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-stock}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
-      SPRING_DATA_MONGODB_URI: mongodb://admin:${MONGO_ROOT_PASSWORD}@stock-mongo:27017/stock_trading?authSource=admin
+      SPRING_DATA_MONGODB_URI: mongodb://admin:${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD is required}@stock-mongo:27017/stock_trading?authSource=admin
       SPRING_DATA_REDIS_HOST: stock-redis
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
+      AGENT_SERVICE_ENABLED: ${AGENT_SERVICE_ENABLED:-true}
+      AGENT_SERVICE_BASE_URL: http://stock-agent:8081
       TRADING_REAL_WRITE_ENABLED: ${TRADING_REAL_WRITE_ENABLED:-false}
       APP_NODE_ID: ${APP_NODE_ID:-stock-backend}
       SPRING_QUARTZ_AUTO_STARTUP: ${SPRING_QUARTZ_AUTO_STARTUP:-true}
       APP_STARTUP_DATA_SYNC_ENABLED: ${APP_STARTUP_DATA_SYNC_ENABLED:-true}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DJL_DEFAULT_ENGINE: PyTorch
       ZXBROKER_ENABLED: ${ZXBROKER_ENABLED:-false}
       ZXBROKER_MOBILE_CODE: ${ZXBROKER_MOBILE_CODE:-}
@@ -40,9 +68,9 @@ services:
       BAIDU_OCR_SECRET_KEY: ${BAIDU_OCR_SECRET_KEY:-}
       ZXBROKER_SIGN_KEY: ${ZXBROKER_SIGN_KEY:-}
       ZXBROKER_INTACT_TO_SERVER: ${ZXBROKER_INTACT_TO_SERVER:-}
-      JAVA_TOOL_OPTIONS: -Xms256m -Xmx720m -XX:MaxDirectMemorySize=192m -Duser.timezone=Asia/Shanghai
+      JAVA_TOOL_OPTIONS: -Xms256m -Xmx768m -XX:MaxDirectMemorySize=192m -Duser.timezone=Asia/Shanghai
     volumes:
-      - runtime-tmp:/app/.tmp
+      - backend-runtime-tmp:/app/.tmp
       - ./model-artifacts:/app/model-artifacts:ro
     depends_on:
       stock-mysql:
@@ -52,17 +80,64 @@ services:
       stock-redis:
         condition: service_healthy
     ports:
-      - "0.0.0.0:8080:8080"
+      - "127.0.0.1:8080:8080"
     networks:
       - stock-public
       - stock-internal
     restart: unless-stopped
-    mem_limit: 1500m
-    cpus: 1.25
+    mem_limit: 1280m
+    cpus: 1.0
     security_opt:
       - no-new-privileges:true
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8080'"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 5
+    logging: *default-logging
+
+  stock-agent:
+    image: ${STOCK_AGENT_IMAGE:-stock-trading-agent:local}
+    build:
+      context: ./stock-agent
+      dockerfile: Dockerfile
+    container_name: stock-agent
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATA_MONGODB_URI: mongodb://admin:${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD is required}@stock-mongo:27017/stock_trading?authSource=admin
+      SPRING_DATA_REDIS_HOST: stock-redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
+      BACKEND_SERVICE_BASE_URL: http://stock-backend:8080
+      AGENT_PROVIDER: ${AGENT_PROVIDER:-deepseek}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      EMBEDDING_MODEL_PATH: /app/model-artifacts/embedding
+      DJL_DEFAULT_ENGINE: PyTorch
+      JAVA_TOOL_OPTIONS: -Xms192m -Xmx768m -XX:MaxDirectMemorySize=128m -Duser.timezone=Asia/Shanghai
+    volumes:
+      - agent-runtime-tmp:/app/.tmp
+      - ./model-artifacts:/app/model-artifacts:ro
+    depends_on:
+      stock-mongo:
+        condition: service_healthy
+      stock-redis:
+        condition: service_healthy
+      stock-backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8081:8081"
+    networks:
+      - stock-public
+      - stock-internal
+    restart: unless-stopped
+    mem_limit: 1024m
+    cpus: 0.65
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8081'"]
       interval: 30s
       timeout: 5s
       start_period: 90s
@@ -88,8 +163,8 @@ services:
       - stock-internal
       - stock-db-access
     restart: unless-stopped
-    mem_limit: 640m
-    cpus: 0.50
+    mem_limit: 512m
+    cpus: 0.35
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 15s
@@ -103,7 +178,7 @@ services:
     container_name: stock-mongo
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD is required}
       MONGO_INITDB_DATABASE: stock_trading
     volumes:
       - type: bind
@@ -115,8 +190,8 @@ services:
       - stock-internal
       - stock-db-access
     restart: unless-stopped
-    mem_limit: 640m
-    cpus: 0.50
+    mem_limit: 512m
+    cpus: 0.35
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet --username $$MONGO_INITDB_ROOT_USERNAME --password $$MONGO_INITDB_ROOT_PASSWORD --authenticationDatabase admin --eval 'quit(db.adminCommand({ping:1}).ok ? 0 : 2)'"]
       interval: 15s
@@ -145,7 +220,7 @@ services:
       - stock-db-access
     restart: unless-stopped
     mem_limit: 128m
-    cpus: 0.25
+    cpus: 0.15
     healthcheck:
       test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
       interval: 15s
@@ -164,5 +239,6 @@ networks:
     driver: bridge
 
 volumes:
-  runtime-tmp:
-# AI_GENERATE_END
+  backend-runtime-tmp:
+  agent-runtime-tmp:
+# AI_GENERATE_END-

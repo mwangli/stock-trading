@@ -1,0 +1,111 @@
+name: Frontend CI/CD
+
+on:
+  push:
+    tags:
+      - 'frontend-v[0-9]+.[0-9]+'
+      - 'frontend-v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-production
+  cancel-in-progress: false
+
+env:
+  ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
+  ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+  ACR_USERNAME: ${{ vars.ACR_USERNAME }}
+  SERVER_HOST: ${{ vars.SERVER_HOST }}
+  SERVER_PORT: ${{ vars.SERVER_PORT }}
+  SERVER_USER: ${{ vars.SERVER_USER }}
+  SERVER_DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
+  SERVER_FINGERPRINT: ${{ vars.SERVER_FINGERPRINT }}
+  IMAGE_REPOSITORY: ${{ format('{0}/{1}/{2}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.FRONTEND_IMAGE_NAME) }}
+
+jobs:
+  build-and-push:
+    name: Build and push frontend image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      image: ${{ steps.image.outputs.value }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to ACR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Resolve immutable image tag
+        id: image
+        run: echo "value=${IMAGE_REPOSITORY}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: stock-frontend
+          file: stock-frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.value }}
+            ${{ env.IMAGE_REPOSITORY }}:latest
+          cache-from: type=gha,scope=stock-frontend
+          cache-to: type=gha,mode=max,scope=stock-frontend
+          provenance: false
+
+  deploy:
+    name: Deploy frontend to production
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - name: Checkout deployment files
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            docker-compose.yml
+            .github/scripts/deploy-service.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Upload deployment files
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ env.SERVER_PORT }}
+          fingerprint: ${{ env.SERVER_FINGERPRINT }}
+          source: docker-compose.yml,.github/scripts/deploy-service.sh
+          target: ${{ env.SERVER_DEPLOY_DIR }}
+          overwrite: true
+
+      - name: Restart frontend
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          DEPLOY_IMAGE: ${{ needs.build-and-push.outputs.image }}
+          DEPLOY_DIR: ${{ env.SERVER_DEPLOY_DIR }}
+          ACR_REGISTRY: ${{ env.ACR_REGISTRY }}
+          ACR_USERNAME: ${{ env.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ env.SERVER_PORT }}
+          fingerprint: ${{ env.SERVER_FINGERPRINT }}
+          envs: DEPLOY_IMAGE,DEPLOY_DIR,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
+          command_timeout: 8m
+          script: bash "$DEPLOY_DIR/.github/scripts/deploy-service.sh" stock-frontend stock-frontend STOCK_FRONTEND_IMAGE
