@@ -1,9 +1,12 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.strategy.entity;
 
-import org.springframework.data.mongodb.core.mapping.Document;
-
-import org.springframework.data.annotation.Id;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -23,7 +26,8 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "strategy_runtime_state")
+@Entity
+@Table(name = "strategy_runtime_state")
 public class StrategyRuntimeState {
 
     /** 单例状态键。 */
@@ -37,6 +41,7 @@ public class StrategyRuntimeState {
     private String currentMode;
 
     /** 被禁用指标列表的 JSON。 */
+    @Lob
     private String disabledIndicatorsJson;
 
     /** 最近一次切换时间。 */
@@ -56,5 +61,17 @@ public class StrategyRuntimeState {
 
     /** 最近更新时间。 */
     private LocalDateTime updatedAt;
+
+    /** 初始化策略运行状态更新时间。 */
+    @PrePersist
+    protected void onCreate() {
+        updatedAt = updatedAt == null ? LocalDateTime.now() : updatedAt;
+    }
+
+    /** 刷新策略运行状态更新时间。 */
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

@@ -1,10 +1,19 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.strategy.entity;
 
-import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-
-import org.springframework.data.annotation.Id;
+import com.stock.strategy.persistence.BooleanMapJsonConverter;
+import jakarta.persistence.Convert;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,7 +26,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 策略配置实体（MongoDB 持久化）。
+ * 策略配置实体（MySQL 持久化）。
  * 保存选股、指标权重和收益阈值等运行参数。
  *
  * @author mwangli
@@ -27,19 +36,23 @@ import java.util.Map;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "strategy_config")
-@CompoundIndex(name = "uk_strategy_config_version", def = "{'configId': 1, 'version': 1}", unique = true)
+@Entity
+@Table(name = "strategy_config", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_strategy_config_version", columnNames = {"config_id", "version"})
+})
 public class StrategyConfig implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     private String configId;
 
     private String version;
 
+    @Enumerated(EnumType.STRING)
     private StrategyMode mode;
 
     private double lstmWeight;
@@ -79,6 +92,8 @@ public class StrategyConfig implements Serializable {
 
     private int lossReturnThreshold;
 
+    @Lob
+    @Convert(converter = BooleanMapJsonConverter.class)
     private Map<String, Boolean> indicatorEnabled;
 
     private boolean enabled;
@@ -86,6 +101,20 @@ public class StrategyConfig implements Serializable {
     private LocalDateTime updateTime;
 
     private LocalDateTime createTime;
+
+    /** 初始化策略配置时间。 */
+    @PrePersist
+    protected void onCreate() {
+        LocalDateTime now = LocalDateTime.now();
+        createTime = createTime == null ? now : createTime;
+        updateTime = now;
+    }
+
+    /** 刷新策略配置更新时间。 */
+    @PreUpdate
+    protected void onUpdate() {
+        updateTime = LocalDateTime.now();
+    }
 
     /**
      * 创建默认策略配置。
@@ -126,4 +155,4 @@ public class StrategyConfig implements Serializable {
                 .build();
     }
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------

@@ -1,10 +1,15 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.trading.entity;
 
-import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.index.Indexed;
-
-import org.springframework.data.annotation.Id;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,19 +30,22 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "automatic_trade_execution_batch")
+@Entity
+@Table(name = "automatic_trade_execution_batch", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_auto_trade_batch_id", columnNames = "batch_id"),
+        @UniqueConstraint(name = "uk_auto_trade_idempotency", columnNames = "idempotency_key")
+})
 public class AutomaticTradeExecutionBatch {
 
     /** 数据库主键。 */
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     /** 执行批次业务 ID。 */
-    @Indexed(unique = true, name = "uk_auto_trade_batch_id")
     private String batchId;
 
     /** 交易日和执行类型组成的幂等键。 */
-    @Indexed(unique = true, name = "uk_auto_trade_idempotency")
     private String idempotencyKey;
 
     /** 执行类型：BUY 或 EXIT。 */
@@ -59,6 +67,7 @@ public class AutomaticTradeExecutionBatch {
     private int successCount;
 
     /** 执行结果或失败摘要。 */
+    @Lob
     private String message;
 
     /** 执行开始时间。 */
@@ -69,5 +78,17 @@ public class AutomaticTradeExecutionBatch {
 
     /** 最近更新时间。 */
     private LocalDateTime updatedAt;
+
+    /** 初始化执行批次更新时间。 */
+    @PrePersist
+    protected void onCreate() {
+        updatedAt = updatedAt == null ? LocalDateTime.now() : updatedAt;
+    }
+
+    /** 刷新执行批次更新时间。 */
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

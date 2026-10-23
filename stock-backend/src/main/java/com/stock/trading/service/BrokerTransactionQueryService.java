@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.trading.service;
 
 import com.stock.trading.dto.BrokerOrderDto;
@@ -8,18 +8,17 @@ import com.stock.trading.dto.TradeRecordDto;
 import com.stock.trading.dto.TradeRecordPageResponseDto;
 import com.stock.trading.entity.BrokerOrderEntity;
 import com.stock.trading.entity.TradeRecordEntity;
+import com.stock.trading.repository.BrokerOrderRepository;
+import com.stock.trading.repository.TradeRecordRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.List;
 import java.util.Locale;
-import java.util.regex.Pattern;
 
 /**
  * 已入库历史订单和 FIFO 汇总交易记录查询服务。
@@ -35,7 +34,8 @@ public class BrokerTransactionQueryService {
     private static final int RATE_SCALE = 8;
 
     private final BrokerIdentityService brokerIdentityService;
-    private final MongoTemplate mongoTemplate;
+    private final BrokerOrderRepository brokerOrderRepository;
+    private final TradeRecordRepository tradeRecordRepository;
 
     /**
      * 分页查询当前账户已入库的已成交历史订单。
@@ -45,14 +45,13 @@ public class BrokerTransactionQueryService {
      */
     public BrokerOrderPageResponseDto queryOrders(BrokerTransactionQueryRequest request) {
         QueryContext context = validate(request);
-        Criteria criteria = buildOrderCriteria(request);
-        long total = mongoTemplate.count(Query.query(criteria), BrokerOrderEntity.class);
-        Query query = Query.query(criteria).with(PageRequest.of(context.current() - 1, context.pageSize(),
-                Sort.by(Sort.Order.desc("submittedAt"), Sort.Order.desc("id"))));
-        List<BrokerOrderEntity> items = mongoTemplate.find(query, BrokerOrderEntity.class);
+        Page<BrokerOrderEntity> page = brokerOrderRepository.findAll(
+                buildOrderSpecification(request),
+                PageRequest.of(context.current() - 1, context.pageSize(),
+                        Sort.by(Sort.Order.desc("submittedAt"), Sort.Order.desc("id"))));
         return BrokerOrderPageResponseDto.builder()
-                .items(items.stream().map(this::toOrderDto).toList())
-                .total(total)
+                .items(page.getContent().stream().map(this::toOrderDto).toList())
+                .total(page.getTotalElements())
                 .current(context.current())
                 .pageSize(context.pageSize())
                 .build();
@@ -66,60 +65,69 @@ public class BrokerTransactionQueryService {
      */
     public TradeRecordPageResponseDto queryTrades(BrokerTransactionQueryRequest request) {
         QueryContext context = validate(request);
-        Criteria criteria = buildTradeCriteria(request);
-        long total = mongoTemplate.count(Query.query(criteria), TradeRecordEntity.class);
-        Query query = Query.query(criteria).with(PageRequest.of(context.current() - 1, context.pageSize(),
-                Sort.by(Sort.Direction.DESC, "buyTime")));
-        List<TradeRecordEntity> items = mongoTemplate.find(query, TradeRecordEntity.class);
+        Page<TradeRecordEntity> page = tradeRecordRepository.findAll(
+                buildTradeSpecification(request),
+                PageRequest.of(context.current() - 1, context.pageSize(),
+                        Sort.by(Sort.Direction.DESC, "buyTime")));
         return TradeRecordPageResponseDto.builder()
-                .items(items.stream().map(this::toTradeRecordDto).toList())
-                .total(total)
+                .items(page.getContent().stream().map(this::toTradeRecordDto).toList())
+                .total(page.getTotalElements())
                 .current(context.current())
                 .pageSize(context.pageSize())
                 .build();
     }
 
-    private Criteria buildOrderCriteria(BrokerTransactionQueryRequest request) {
-        Criteria criteria = Criteria.where("brokerCode").is(brokerIdentityService.getBrokerCode())
-                .and("accountId").is(brokerIdentityService.getAccountId())
-                .and("status").is("FILLED")
-                .and("filledQuantity").gt(0)
-                .and("averageFillPrice").gt(BigDecimal.ZERO);
+    private Specification<BrokerOrderEntity> buildOrderSpecification(BrokerTransactionQueryRequest request) {
+        Specification<BrokerOrderEntity> specification = (root, query, builder) -> builder.and(
+                builder.equal(root.get("brokerCode"), brokerIdentityService.getBrokerCode()),
+                builder.equal(root.get("accountId"), brokerIdentityService.getAccountId()),
+                builder.equal(root.get("status"), "FILLED"),
+                builder.greaterThan(root.<Integer>get("filledQuantity"), 0),
+                builder.greaterThan(root.<BigDecimal>get("averageFillPrice"), BigDecimal.ZERO));
         if (hasText(request.getDirection())) {
-            criteria.and("side").is(request.getDirection().trim().toUpperCase(Locale.ROOT));
+            String direction = request.getDirection().trim().toUpperCase(Locale.ROOT);
+            specification = specification.and((root, query, builder) ->
+                    builder.equal(root.get("side"), direction));
         }
         if (hasText(request.getKeyword())) {
-            Pattern pattern = containsPattern(request.getKeyword());
-            criteria.andOperator(new Criteria().orOperator(
-                    Criteria.where("stockCode").regex(pattern),
-                    Criteria.where("stockName").regex(pattern),
-                    Criteria.where("brokerOrderNo").regex(pattern)));
+            String pattern = containsLikePattern(request.getKeyword());
+            specification = specification.and((root, query, builder) -> builder.or(
+                    builder.like(builder.lower(root.<String>get("stockCode")), pattern, '\\'),
+                    builder.like(builder.lower(root.<String>get("stockName")), pattern, '\\'),
+                    builder.like(builder.lower(root.<String>get("brokerOrderNo")), pattern, '\\')));
         }
         if (request.getStartDate() != null) {
-            criteria.and("tradeDate").gte(request.getStartDate());
+            specification = specification.and((root, query, builder) ->
+                    builder.greaterThanOrEqualTo(root.<java.time.LocalDate>get("tradeDate"), request.getStartDate()));
         }
         if (request.getEndDate() != null) {
-            criteria.and("tradeDate").lte(request.getEndDate());
+            specification = specification.and((root, query, builder) ->
+                    builder.lessThanOrEqualTo(root.<java.time.LocalDate>get("tradeDate"), request.getEndDate()));
         }
-        return criteria;
+        return specification;
     }
 
-    private Criteria buildTradeCriteria(BrokerTransactionQueryRequest request) {
-        Criteria criteria = Criteria.where("brokerCode").is(brokerIdentityService.getBrokerCode())
-                .and("accountId").is(brokerIdentityService.getAccountId());
+    private Specification<TradeRecordEntity> buildTradeSpecification(BrokerTransactionQueryRequest request) {
+        Specification<TradeRecordEntity> specification = (root, query, builder) -> builder.and(
+                builder.equal(root.get("brokerCode"), brokerIdentityService.getBrokerCode()),
+                builder.equal(root.get("accountId"), brokerIdentityService.getAccountId()));
         if (hasText(request.getKeyword())) {
-            Pattern pattern = containsPattern(request.getKeyword());
-            criteria.andOperator(new Criteria().orOperator(
-                    Criteria.where("stockCode").regex(pattern),
-                    Criteria.where("stockName").regex(pattern)));
+            String pattern = containsLikePattern(request.getKeyword());
+            specification = specification.and((root, query, builder) -> builder.or(
+                    builder.like(builder.lower(root.<String>get("stockCode")), pattern, '\\'),
+                    builder.like(builder.lower(root.<String>get("stockName")), pattern, '\\')));
         }
         if (request.getStartDate() != null) {
-            criteria.and("buyTime").gte(request.getStartDate().atStartOfDay());
+            specification = specification.and((root, query, builder) ->
+                    builder.greaterThanOrEqualTo(root.<java.time.LocalDateTime>get("buyTime"),
+                            request.getStartDate().atStartOfDay()));
         }
         if (request.getEndDate() != null) {
-            criteria.and("buyTime").lt(request.getEndDate().plusDays(1).atStartOfDay());
+            specification = specification.and((root, query, builder) ->
+                    builder.lessThan(root.<java.time.LocalDateTime>get("buyTime"),
+                            request.getEndDate().plusDays(1).atStartOfDay()));
         }
-        return criteria;
+        return specification;
     }
 
     private QueryContext validate(BrokerTransactionQueryRequest request) {
@@ -203,11 +211,15 @@ public class BrokerTransactionQueryService {
         return value != null && !value.isBlank();
     }
 
-    private Pattern containsPattern(String value) {
-        return Pattern.compile(Pattern.quote(value.trim()), Pattern.CASE_INSENSITIVE);
+    private String containsLikePattern(String value) {
+        String normalized = value.trim().toLowerCase(Locale.ROOT)
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
+        return "%" + normalized + "%";
     }
 
     private record QueryContext(int current, int pageSize) {
     }
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END------------

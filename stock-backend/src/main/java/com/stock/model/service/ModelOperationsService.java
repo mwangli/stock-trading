@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -491,10 +491,10 @@ public class ModelOperationsService {
     }
 
     private String parseModelVersionId(String modelPath) {
-        if (modelPath == null || !modelPath.startsWith("mongo:") || modelPath.length() <= 6) {
+        if (modelPath == null || modelPath.isBlank()) {
             throw new IllegalStateException("训练结果缺少候选模型版本 ID");
         }
-        return modelPath.substring(6);
+        return modelPath;
     }
 
     private long availableJvmMemory() {
@@ -521,4 +521,4 @@ public class ModelOperationsService {
     }
 
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------

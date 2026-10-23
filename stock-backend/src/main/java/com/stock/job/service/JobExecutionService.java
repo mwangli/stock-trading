@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------
+// AI_GENERATE_START--------------------------
 package com.stock.job.service;
 
 import com.stock.base.job.JobSkippedException;
@@ -20,9 +20,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 import java.net.InetAddress;
@@ -59,7 +57,6 @@ public class JobExecutionService implements JobExecutionQueryPort {
     private final JobExecutionRecordRepository executionRecordRepository;
     private final JobSchedulerService jobSchedulerService;
     private final SystemRuntimeConfigService runtimeConfigService;
-    private final MongoTemplate mongoTemplate;
 
     /**
      * 手动触发已注册且启用的固定任务。
@@ -234,30 +231,30 @@ public class JobExecutionService implements JobExecutionQueryPort {
                                               LocalDateTime to, int current, int pageSize) {
         int safeCurrent = Math.max(current, 1);
         int safePageSize = Math.min(Math.max(pageSize, 1), 100);
-        List<Criteria> filters = new java.util.ArrayList<>();
+        Specification<JobExecutionRecord> specification = (root, query, builder) -> builder.conjunction();
         if (jobName != null && !jobName.isBlank()) {
-            filters.add(Criteria.where("jobName").is(jobName));
+            specification = specification.and((root, query, builder) ->
+                    builder.equal(root.get("jobName"), jobName));
         }
         if (status != null) {
-            filters.add(Criteria.where("status").is(status));
+            specification = specification.and((root, query, builder) ->
+                    builder.equal(root.get("status"), status));
         }
         if (source != null) {
-            filters.add(Criteria.where("triggerSource").is(source));
+            specification = specification.and((root, query, builder) ->
+                    builder.equal(root.get("triggerSource"), source));
         }
         if (from != null) {
-            filters.add(Criteria.where("createdAt").gte(from));
+            specification = specification.and((root, query, builder) ->
+                    builder.greaterThanOrEqualTo(root.<LocalDateTime>get("createdAt"), from));
         }
         if (to != null) {
-            filters.add(Criteria.where("createdAt").lte(to));
+            specification = specification.and((root, query, builder) ->
+                    builder.lessThanOrEqualTo(root.<LocalDateTime>get("createdAt"), to));
         }
         Pageable pageable = PageRequest.of(safeCurrent - 1, safePageSize,
                 Sort.by(Sort.Direction.DESC, "createdAt"));
-        Query query = filters.isEmpty()
-                ? new Query()
-                : Query.query(new Criteria().andOperator(filters.toArray(Criteria[]::new)));
-        long total = mongoTemplate.count(query, JobExecutionRecord.class);
-        List<JobExecutionRecord> content = mongoTemplate.find(query.with(pageable), JobExecutionRecord.class);
-        return new org.springframework.data.domain.PageImpl<>(content, pageable, total);
+        return executionRecordRepository.findAll(specification, pageable);
     }
 
     /**
@@ -419,4 +416,4 @@ public class JobExecutionService implements JobExecutionQueryPort {
     }
 
 }
-// AI_GENERATE_END-------------------------
+// AI_GENERATE_END--------------------------

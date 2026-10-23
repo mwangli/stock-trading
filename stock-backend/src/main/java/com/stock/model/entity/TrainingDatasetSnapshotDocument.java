@@ -1,10 +1,14 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.model.entity;
 
 import lombok.Data;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.mapping.Document;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Lob;
+import jakarta.persistence.Table;
+import org.hibernate.annotations.UuidGenerator;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -17,12 +21,16 @@ import java.time.LocalDateTime;
  * @since 2026-10-11
  */
 @Data
-@Document(collection = "training_dataset_snapshots")
-@CompoundIndex(name = "idx_snapshot_model_created", def = "{'modelName': 1, 'createdAt': -1}")
+@Entity
+@Table(name = "training_dataset_snapshot", indexes = {
+        @Index(name = "idx_snapshot_model_created", columnList = "model_name, created_at")
+})
 public class TrainingDatasetSnapshotDocument {
 
     /** 快照 ID。 */
     @Id
+    @GeneratedValue
+    @UuidGenerator
     private String id;
 
     /** 模型逻辑名称。 */
@@ -80,6 +88,7 @@ public class TrainingDatasetSnapshotDocument {
     private LocalDateTime finishedAt;
 
     /** 失败原因。 */
+    @Lob
     private String errorMessage;
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

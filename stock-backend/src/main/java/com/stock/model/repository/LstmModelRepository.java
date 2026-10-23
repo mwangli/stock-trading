@@ -1,20 +1,20 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.model.repository;
 
 import com.stock.model.entity.LstmModelDocument;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 /**
- * LSTM 模型在 MongoDB 中的存储仓库
+ * LSTM 模型元数据 MySQL 仓库
  *
  * @author mwangli
  * @since 2026-10-08
  */
 @Repository
-public interface LstmModelRepository extends MongoRepository<LstmModelDocument, String> {
+public interface LstmModelRepository extends JpaRepository<LstmModelDocument, String> {
 
     /**
      * 获取最新保存的模型（全局）
@@ -38,4 +38,4 @@ public interface LstmModelRepository extends MongoRepository<LstmModelDocument, 
     Page<LstmModelDocument> findByModelName(String modelName, Pageable pageable);
 
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

@@ -1,10 +1,10 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.model.repository;
 
 import com.stock.model.entity.ModelTrainingRunDocument;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -17,7 +17,7 @@ import java.util.List;
  * @since 2026-10-10
  */
 @Repository
-public interface ModelTrainingRunRepository extends MongoRepository<ModelTrainingRunDocument, String> {
+public interface ModelTrainingRunRepository extends JpaRepository<ModelTrainingRunDocument, String> {
 
     /**
      * 判断指定模型是否存在运行中或排队中的训练任务。
@@ -54,4 +54,4 @@ public interface ModelTrainingRunRepository extends MongoRepository<ModelTrainin
      */
     ModelTrainingRunDocument findTopByModelNameOrderByCreatedAtDesc(String modelName);
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

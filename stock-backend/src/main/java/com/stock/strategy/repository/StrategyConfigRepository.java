@@ -1,21 +1,21 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.strategy.repository;
 
 import com.stock.strategy.entity.StrategyConfig;
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
 
 /**
- * 策略配置 MongoDB 仓储。
+ * 策略配置 MySQL 仓储。
  *
  * @author mwangli
  * @since 2026-10-23
  */
 @Repository
-public interface StrategyConfigRepository extends MongoRepository<StrategyConfig, Long> {
+public interface StrategyConfigRepository extends JpaRepository<StrategyConfig, Long> {
 
     /**
      * 查询当前启用的最新一条配置。
@@ -47,4 +47,4 @@ public interface StrategyConfigRepository extends MongoRepository<StrategyConfig
      */
     Optional<StrategyConfig> findByConfigId(String configId);
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

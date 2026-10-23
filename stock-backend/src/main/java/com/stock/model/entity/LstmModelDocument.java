@@ -1,34 +1,47 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.model.entity;
 
 import lombok.Data;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.index.Indexed;
-import org.springframework.data.mongodb.core.mapping.Document;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Lob;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.UuidGenerator;
 
 import java.time.LocalDateTime;
 
 /**
- * LSTM 不可变模型版本文档。
- * MongoDB 保存小型模型参数、训练配置、输入契约、指标和可审计状态。
+ * LSTM 不可变模型版本实体。
+ * MySQL 保存模型元数据、训练配置、输入契约、指标和可审计状态。
  * 当前激活指针由独立的 {@link ModelActivationDocument} 维护。
  *
  * @author mwangli
  * @since 2026-10-10
  */
 @Data
-@Document(collection = "lstm_models")
-@CompoundIndex(name = "idx_model_created", def = "{'modelName': 1, 'createdAt': -1}")
+@Entity
+@Table(name = "lstm_model", indexes = {
+        @Index(name = "idx_model_created", columnList = "model_name, created_at")
+}, uniqueConstraints = {
+        @UniqueConstraint(name = "uk_lstm_model_version", columnNames = {"model_name", "model_version"})
+})
 public class LstmModelDocument {
 
     @Id
+    @GeneratedValue
+    @UuidGenerator
     private String id;
     private String modelName;
     private String modelVersion;
     private String parentModelVersionId;
+    @Lob
     private String trainingConfigJson;
+    @Lob
     private String inputContractJson;
+    @Lob
     private String metricsJson;
     private String featureVersion;
     private String labelVersion;
@@ -39,12 +52,12 @@ public class LstmModelDocument {
     private long parameterSize;
     private String status;
     private int epoch;
-    @Indexed(name = "idx_createdAt", useGeneratedName = false)
     private LocalDateTime createdAt;
     /** GridFS 中的模型参数文件 ID。 */
     private String parameterFileId;
+    @Lob
     private String normalizationParams;
     private Double trainLoss;
     private Double valLoss;
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

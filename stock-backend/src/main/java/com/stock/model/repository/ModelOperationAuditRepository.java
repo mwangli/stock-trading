@@ -1,8 +1,8 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.model.repository;
 
 import com.stock.model.entity.ModelOperationAuditDocument;
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -12,6 +12,6 @@ import org.springframework.stereotype.Repository;
  * @since 2026-10-10
  */
 @Repository
-public interface ModelOperationAuditRepository extends MongoRepository<ModelOperationAuditDocument, String> {
+public interface ModelOperationAuditRepository extends JpaRepository<ModelOperationAuditDocument, String> {
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

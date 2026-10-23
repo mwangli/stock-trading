@@ -1,9 +1,10 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.job.repository;
 
 import com.stock.job.entity.JobExecutionRecord;
 
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -16,7 +17,7 @@ import java.util.Optional;
  */
 @Repository
 public interface JobExecutionRecordRepository
-        extends MongoRepository<JobExecutionRecord, Long> {
+        extends JpaRepository<JobExecutionRecord, Long>, JpaSpecificationExecutor<JobExecutionRecord> {
 
     /**
      * 查询运行标识对应的执行记录。
@@ -35,4 +36,4 @@ public interface JobExecutionRecordRepository
     Optional<JobExecutionRecord> findTopByJobNameOrderByCreatedAtDesc(String jobName);
 
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------

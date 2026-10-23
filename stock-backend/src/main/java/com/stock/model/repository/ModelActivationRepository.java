@@ -1,8 +1,8 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.model.repository;
 
 import com.stock.model.entity.ModelActivationDocument;
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -14,7 +14,7 @@ import java.util.Optional;
  * @since 2026-10-10
  */
 @Repository
-public interface ModelActivationRepository extends MongoRepository<ModelActivationDocument, String> {
+public interface ModelActivationRepository extends JpaRepository<ModelActivationDocument, String> {
 
     /**
      * 按模型名称查询当前激活指针。
@@ -24,4 +24,4 @@ public interface ModelActivationRepository extends MongoRepository<ModelActivati
      */
     Optional<ModelActivationDocument> findByModelName(String modelName);
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------
+// AI_GENERATE_START---------------
 package com.stock.strategy.config;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -20,7 +20,7 @@ import java.util.List;
 
 /**
  * 策略状态管理器。
- * 使用 MongoDB 保存策略开关、模式和指标状态，支持单实例重启恢复。
+ * 使用 MySQL 保存策略开关、模式和指标状态，支持多实例共享与重启恢复。
  *
  * @author mwangli
  * @since 2026-09-25
@@ -245,4 +245,4 @@ public class StrategyStateManager {
         switchLogRepository.save(switchLog);
     }
 }
-// AI_GENERATE_END--------------
+// AI_GENERATE_END---------------

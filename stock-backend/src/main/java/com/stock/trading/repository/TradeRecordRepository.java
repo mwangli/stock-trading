@@ -1,8 +1,9 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.trading.repository;
 
 import com.stock.trading.entity.TradeRecordEntity;
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -14,7 +15,8 @@ import java.util.List;
  * @since 2026-10-11
  */
 @Repository
-public interface TradeRecordRepository extends MongoRepository<TradeRecordEntity, Long> {
+public interface TradeRecordRepository
+        extends JpaRepository<TradeRecordEntity, Long>, JpaSpecificationExecutor<TradeRecordEntity> {
 
     /**
      * 查询指定券商账户的全部交易记录，按买入时间倒序返回。
@@ -35,4 +37,4 @@ public interface TradeRecordRepository extends MongoRepository<TradeRecordEntity
      */
     long deleteByBrokerCodeAndAccountId(String brokerCode, String accountId);
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

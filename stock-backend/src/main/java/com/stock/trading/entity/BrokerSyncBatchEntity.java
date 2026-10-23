@@ -1,11 +1,15 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.trading.entity;
 
-import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.index.Indexed;
-
-import org.springframework.data.annotation.Id;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -20,18 +24,21 @@ import java.time.LocalDateTime;
  * @since 2026-09-25
  */
 @Data
-@Document(collection = "broker_sync_batch")
-@CompoundIndex(name = "uk_broker_sync_window",
-        def = "{'brokerCode': 1, 'accountId': 1, 'syncType': 1, 'windowStart': 1, 'windowEnd': 1}", unique = true)
+@Entity
+@Table(name = "broker_sync_batch", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_broker_sync_window",
+                columnNames = {"broker_code", "account_id", "sync_type", "window_start", "window_end"}),
+        @UniqueConstraint(name = "uk_broker_sync_batch_id", columnNames = "batch_id")
+})
 @Accessors(chain = true)
 public class BrokerSyncBatchEntity {
 
     /** 数据库主键。 */
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     /** 全局同步批次编号。 */
-    @Indexed(unique = true, name = "uk_broker_sync_batch_id")
     private String batchId;
 
     /** 券商编码。 */
@@ -71,6 +78,7 @@ public class BrokerSyncBatchEntity {
     private Integer skippedCount;
 
     /** 脱敏后的最近错误摘要。 */
+    @Lob
     private String lastError;
 
     /** 同步开始时间。 */
@@ -88,6 +96,7 @@ public class BrokerSyncBatchEntity {
     /**
      * 初始化计数和时间字段。
      */
+    @PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now();
         requestCount = requestCount != null ? requestCount : 0;
@@ -102,8 +111,9 @@ public class BrokerSyncBatchEntity {
     /**
      * 刷新记录更新时间。
      */
+    @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

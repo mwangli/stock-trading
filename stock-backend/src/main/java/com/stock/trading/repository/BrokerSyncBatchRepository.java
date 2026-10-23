@@ -1,8 +1,8 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.trading.repository;
 
 import com.stock.trading.entity.BrokerSyncBatchEntity;
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -15,7 +15,7 @@ import java.util.Optional;
  * @since 2026-09-25
  */
 @Repository
-public interface BrokerSyncBatchRepository extends MongoRepository<BrokerSyncBatchEntity, Long> {
+public interface BrokerSyncBatchRepository extends JpaRepository<BrokerSyncBatchEntity, Long> {
 
     /**
      * 查询唯一同步窗口批次。
@@ -30,4 +30,4 @@ public interface BrokerSyncBatchRepository extends MongoRepository<BrokerSyncBat
     Optional<BrokerSyncBatchEntity> findByBrokerCodeAndAccountIdAndSyncTypeAndWindowStartAndWindowEnd(
             String brokerCode, String accountId, String syncType, LocalDate windowStart, LocalDate windowEnd);
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

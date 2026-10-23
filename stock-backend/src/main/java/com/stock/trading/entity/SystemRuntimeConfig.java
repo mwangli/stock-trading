@@ -1,9 +1,11 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START-------------
 package com.stock.trading.entity;
 
-import org.springframework.data.mongodb.core.mapping.Document;
-
-import org.springframework.data.annotation.Id;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
 
 import lombok.Data;
 
@@ -17,7 +19,8 @@ import java.time.LocalDateTime;
  * @since 2026-10-12
  */
 @Data
-@Document(collection = "system_runtime_config")
+@Entity
+@Table(name = "system_runtime_config")
 public class SystemRuntimeConfig {
 
     /** 节点标识，同一数据库中的每个运行节点必须保持唯一。 */
@@ -36,13 +39,15 @@ public class SystemRuntimeConfig {
     private LocalDateTime updatedAt;
 
     /** 初始化配置更新时间。 */
+    @PrePersist
     protected void onCreate() {
         updatedAt = LocalDateTime.now();
     }
 
     /** 刷新配置更新时间。 */
+    @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END-------------

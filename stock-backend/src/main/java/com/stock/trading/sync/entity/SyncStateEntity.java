@@ -1,10 +1,15 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.trading.sync.entity;
 
-import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-
-import org.springframework.data.annotation.Id;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -20,13 +25,16 @@ import java.time.LocalDateTime;
  * @since 2026-10-19
  */
 @Data
-@Document(collection = "sync_state")
-@CompoundIndex(name = "uk_sync_state_scope", def = "{'dataset': 1, 'scopeKey': 1}", unique = true)
+@Entity
+@Table(name = "sync_state", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_sync_state_scope", columnNames = {"dataset", "scope_key"})
+})
 @Accessors(chain = true)
 public class SyncStateEntity {
 
     /** 数据库主键。 */
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     /** 数据集名称。 */
@@ -54,6 +62,7 @@ public class SyncStateEntity {
     private Integer retryCount = 0;
 
     /** 最近一次失败摘要。 */
+    @Lob
     private String lastError;
 
     /** 创建时间。 */
@@ -62,6 +71,7 @@ public class SyncStateEntity {
     /** 更新时间。 */
     private LocalDateTime updatedAt;
     /** 初始化同步状态的创建与更新时间。 */
+    @PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now();
         createdAt = createdAt == null ? now : createdAt;
@@ -70,8 +80,9 @@ public class SyncStateEntity {
         gapStatus = gapStatus == null ? "RESOLVED" : gapStatus;
     }
     /** 刷新同步状态的更新时间。 */
+    @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

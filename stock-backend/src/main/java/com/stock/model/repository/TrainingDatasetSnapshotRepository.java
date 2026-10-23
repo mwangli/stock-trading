@@ -1,8 +1,8 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.model.repository;
 
 import com.stock.model.entity.TrainingDatasetSnapshotDocument;
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -16,7 +16,7 @@ import java.util.Optional;
  */
 @Repository
 public interface TrainingDatasetSnapshotRepository
-        extends MongoRepository<TrainingDatasetSnapshotDocument, String> {
+        extends JpaRepository<TrainingDatasetSnapshotDocument, String> {
 
     /**
      * 查询指定契约下最新的可复用快照。
@@ -46,4 +46,4 @@ public interface TrainingDatasetSnapshotRepository
      */
     List<TrainingDatasetSnapshotDocument> findByStatus(String status);
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

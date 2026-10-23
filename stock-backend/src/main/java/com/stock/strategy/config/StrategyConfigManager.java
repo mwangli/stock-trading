@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------
+// AI_GENERATE_START-----------------
 package com.stock.strategy.config;
 
 import com.stock.strategy.entity.StrategyConfig;
@@ -14,7 +14,7 @@ import java.util.UUID;
 
 /**
  * 策略配置服务。
- * 直接使用 MongoDB 保存和读取单用户策略配置，不引入额外缓存组件。
+ * 直接使用 MySQL 保存和读取单用户策略配置，不引入额外缓存组件。
  *
  * @author mwangli
  * @since 2026-09-25
@@ -309,4 +309,4 @@ public class StrategyConfigManager {
         return target;
     }
 }
-// AI_GENERATE_END----------------
+// AI_GENERATE_END-----------------

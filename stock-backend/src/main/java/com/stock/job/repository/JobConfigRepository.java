@@ -1,21 +1,21 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.job.repository;
 
 import com.stock.job.entity.JobConfig;
 
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
 /**
- * 固定任务配置 MongoDB 仓储。
+ * 固定任务配置 MySQL 仓储。
  *
  * @author mwangli
  * @since 2026-10-23
  */
 @Repository
-public interface JobConfigRepository extends MongoRepository<JobConfig, Long> {
+public interface JobConfigRepository extends JpaRepository<JobConfig, Long> {
 
     /**
      * 按固定任务名称查询配置。
@@ -32,4 +32,4 @@ public interface JobConfigRepository extends MongoRepository<JobConfig, Long> {
      */
     void deleteByJobName(String jobName);
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

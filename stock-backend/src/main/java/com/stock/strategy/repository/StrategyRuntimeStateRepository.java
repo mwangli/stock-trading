@@ -1,8 +1,8 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.strategy.repository;
 
 import com.stock.strategy.entity.StrategyRuntimeState;
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -14,8 +14,8 @@ import java.util.Optional;
  * @since 2026-10-14
  */
 @Repository
-public interface StrategyRuntimeStateRepository extends MongoRepository<StrategyRuntimeState, String> {
+public interface StrategyRuntimeStateRepository extends JpaRepository<StrategyRuntimeState, String> {
 
     Optional<StrategyRuntimeState> findByStateKey(String stateKey);
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START-----------
 package com.stock.model.service;
 
 import ai.djl.Model;
@@ -66,7 +66,7 @@ public class LstmModelArtifactService {
      * @param trainLabelStats 训练集方向标签统计
      * @param validationLabelStats 验证集方向标签统计
      * @param directionClassWeights 方向任务类别权重
-     * @return MongoDB 模型标识
+     * @return 模型版本标识
      * @throws IOException 制品序列化或保存失败
      */
     public String saveModel(byte[] paramsBytes, LstmDataPreprocessor.ProcessedData processedData,
@@ -124,7 +124,7 @@ public class LstmModelArtifactService {
             LstmModelDocument saved = lstmModelRepository.save(document);
             log.info("共享 LSTM 候选模型保存完成: id={}, version={}, parent={}",
                     saved.getId(), saved.getModelVersion(), saved.getParentModelVersionId());
-            return "mongo:" + saved.getId();
+            return saved.getId();
         } catch (Exception exception) {
             throw new IOException("保存共享 LSTM 模型失败", exception);
         }
@@ -323,4 +323,4 @@ public class LstmModelArtifactService {
      */
     public record ModelArtifact(byte[] params, String metadata, String modelId) { }
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END-----------

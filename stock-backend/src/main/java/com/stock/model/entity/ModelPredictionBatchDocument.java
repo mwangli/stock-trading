@@ -1,36 +1,43 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.model.entity;
 
 import lombok.Data;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.index.CompoundIndexes;
-import org.springframework.data.mongodb.core.index.Indexed;
-import org.springframework.data.mongodb.core.mapping.Document;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Lob;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
+import org.hibernate.annotations.UuidGenerator;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * 全市场模型预测批次文档。
+ * 全市场模型预测批次实体。
  * 记录批次绑定的模型版本、交易日、执行进度和能力评估汇总。
  *
  * @author mwangli
  * @since 2026-10-12
  */
 @Data
-@Document(collection = "model_prediction_batches")
-@CompoundIndexes({
-        @CompoundIndex(name = "idx_prediction_batch_model_date", def = "{'modelId': 1, 'baseTradeDate': -1}"),
-        @CompoundIndex(name = "idx_prediction_queue_order",
-                def = "{'status': 1, 'targetTradeDate': 1, 'createdAt': 1}"),
-        @CompoundIndex(name = "idx_evaluation_queue_order",
-                def = "{'evaluationQueueStatus': 1, 'targetTradeDate': 1, 'createdAt': 1}")
+@Entity
+@Table(name = "model_prediction_batch", indexes = {
+        @Index(name = "idx_prediction_batch_model_date", columnList = "model_id, base_trade_date"),
+        @Index(name = "idx_prediction_queue_order", columnList = "status, target_trade_date, created_at"),
+        @Index(name = "idx_evaluation_queue_order",
+                columnList = "evaluation_queue_status, target_trade_date, created_at")
+}, uniqueConstraints = {
+        @UniqueConstraint(name = "uk_prediction_batch_rerun_source", columnNames = "rerun_source_batch_id")
 })
 public class ModelPredictionBatchDocument {
 
-    /** MongoDB 文档 ID。 */
+    /** 数据库主键。 */
     @Id
+    @GeneratedValue
+    @UuidGenerator
     private String id;
 
     /** 模型逻辑名称。 */
@@ -40,7 +47,6 @@ public class ModelPredictionBatchDocument {
     private String modelId;
 
     /** 历史重算来源批次 ID；普通预测批次为空。 */
-    @Indexed(unique = true, sparse = true, name = "uk_prediction_batch_rerun_source")
     private String rerunSourceBatchId;
 
     /** 模型业务版本号。 */
@@ -59,7 +65,6 @@ public class ModelPredictionBatchDocument {
     private Boolean calendarFallback;
 
     /** 批次状态。 */
-    @Indexed
     private String status;
 
     /** 股票池总数。 */
@@ -81,7 +86,6 @@ public class ModelPredictionBatchDocument {
     private int noMarketDataCount;
 
     /** 评估队列状态：WAITING、QUEUED、RUNNING、COMPLETED 或 FAILED。 */
-    @Indexed
     private String evaluationQueueStatus;
 
     /** 评估等待原因代码：预测执行中、目标日未到达或目标日行情覆盖不足。 */
@@ -97,6 +101,7 @@ public class ModelPredictionBatchDocument {
     private LocalDateTime evaluationFinishedAt;
 
     /** 最近一次评估队列执行失败原因。 */
+    @Lob
     private String evaluationErrorMessage;
 
     /** 预测覆盖率。 */
@@ -187,15 +192,18 @@ public class ModelPredictionBatchDocument {
     private boolean iterationRecommended;
 
     /** 能力结论说明。 */
+    @Lob
     private String abilityMessage;
 
     /** 交易门禁状态：DISABLED、OBSERVE_ONLY 或 TRADE_ELIGIBLE。 */
     private String tradingEligibility;
 
     /** 交易门禁原因，禁止仅以能力等级代替交易准入结论。 */
+    @Lob
     private String tradingEligibilityReason;
 
     /** 批次进度说明。 */
+    @Lob
     private String progressMessage;
 
     /** 操作人。 */
@@ -208,13 +216,17 @@ public class ModelPredictionBatchDocument {
     private LocalDateTime finishedAt;
 
     /** 失败原因。 */
+    @Lob
     private String errorMessage;
 
-    /** 文档创建时间。 */
-    @Indexed(name = "idx_prediction_batch_created")
+    /** 记录创建时间。 */
     private LocalDateTime createdAt;
 
     /** 最近更新时间。 */
     private LocalDateTime updatedAt;
+
+    /** 乐观锁版本。 */
+    @Version
+    private Long version;
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------
