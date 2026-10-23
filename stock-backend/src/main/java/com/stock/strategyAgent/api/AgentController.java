@@ -1,8 +1,9 @@
-// AI_GENERATE_START ----------
+// AI_GENERATE_START ------------
 package com.stock.strategyAgent.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.strategyAgent.rag.AgentRagService;
+import com.stock.strategyAgent.decision.AgentTradeDecisionService;
 import com.stock.strategyAgent.runtime.AgentApiBudgetService;
 import com.stock.strategyAgent.service.AgentApplicationService;
 import com.stock.strategyAgent.service.AgentConversationService;
@@ -43,6 +44,7 @@ public class AgentController {
     private final TradePlanService tradePlanService;
     private final TradePlanAgentService tradePlanAgentService;
     private final AgentApiBudgetService apiBudgetService;
+    private final AgentTradeDecisionService tradeDecisionService;
 
     /**
      * 创建 Agent 会话。
@@ -105,6 +107,42 @@ public class AgentController {
                 request == null ? null : request.getCandidateBatchId());
         return ResponseDTO.success(tradePlanAgentService.generate(
                 request, requestUserResolver.requireUserScope(httpRequest)));
+    }
+
+    /**
+     * 为候选批次生成不影响真实交易的 SHADOW 判断。
+     *
+     * @param request 影子判断生成请求
+     * @param httpRequest HTTP 请求
+     * @return 候选批次影子判断
+     */
+    @PostMapping("/tradeDecisions/shadow")
+    public ResponseDTO<TradeDecisionBatchResponse> generateShadowTradeDecisions(
+            @RequestBody ShadowTradeDecisionRequest request,
+            HttpServletRequest httpRequest) {
+        int maxCandidates = request == null || request.getMaxCandidates() == null
+                ? 5 : request.getMaxCandidates();
+        log.info("[Agent] 生成影子交易判断: candidateBatchId={}, maxCandidates={}",
+                request == null ? null : request.getCandidateBatchId(), maxCandidates);
+        requestUserResolver.requireUserScope(httpRequest);
+        return ResponseDTO.success(tradeDecisionService.generateShadow(
+                request == null ? null : request.getCandidateBatchId(), maxCandidates));
+    }
+
+    /**
+     * 查询候选批次已保存的影子交易判断。
+     *
+     * @param candidateBatchId 候选批次标识
+     * @param httpRequest HTTP 请求
+     * @return 候选批次影子判断
+     */
+    @GetMapping("/tradeDecisions/batches/{candidateBatchId}")
+    public ResponseDTO<TradeDecisionBatchResponse> listTradeDecisions(
+            @PathVariable String candidateBatchId,
+            HttpServletRequest httpRequest) {
+        log.info("[Agent] 查询候选批次影子交易判断: candidateBatchId={}", candidateBatchId);
+        requestUserResolver.requireUserScope(httpRequest);
+        return ResponseDTO.success(tradeDecisionService.listBatch(candidateBatchId));
     }
 
     /**
@@ -347,4 +385,4 @@ public class AgentController {
                 planId, requestUserResolver.requireUserScope(httpRequest)));
     }
 }
-// AI_GENERATE_END ----------
+// AI_GENERATE_END ------------

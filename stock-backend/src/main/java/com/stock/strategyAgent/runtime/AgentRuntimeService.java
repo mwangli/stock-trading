@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------
+// AI_GENERATE_START ------------
 package com.stock.strategyAgent.runtime;
 
 import com.stock.strategyAgent.config.AgentProperties;
@@ -20,7 +20,8 @@ import java.util.Set;
 @Slf4j
 public class AgentRuntimeService {
 
-    private static final Set<String> SUPPORTED_OUTPUT_TYPES = Set.of("RESEARCH", "DIAGNOSTIC", "REPORT", "TRADE_PLAN");
+    private static final Set<String> SUPPORTED_OUTPUT_TYPES = Set.of(
+            "RESEARCH", "DIAGNOSTIC", "REPORT", "TRADE_PLAN", "TRADE_DECISION");
 
     private final AgentModelProvider modelProvider;
     private final AgentProperties properties;
@@ -217,4 +218,4 @@ public class AgentRuntimeService {
                 .build();
     }
 }
-// AI_GENERATE_END -----------
+// AI_GENERATE_END ------------

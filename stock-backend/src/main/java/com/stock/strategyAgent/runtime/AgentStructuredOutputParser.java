@@ -1,7 +1,8 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.runtime;
 
 import com.alibaba.fastjson2.JSON;
+import com.stock.strategyAgent.decision.AgentTradeDecisionDraft;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -21,6 +22,7 @@ public class AgentStructuredOutputParser {
     private static final Set<String> DIAGNOSTIC_STATUS = Set.of("PASS", "WARN", "BLOCKED", "UNKNOWN");
     private static final Set<String> REPORT_STATUS = Set.of("PASS", "WARN", "UNKNOWN");
     private static final Set<String> TRADE_PLAN_STATUS = Set.of("PENDING_REVALIDATION");
+    private static final Set<String> TRADE_DECISION_STATUS = Set.of("VALID", "ABSTAINED");
     private static final Set<String> REPORT_SECTIONS = Set.of(
             "marketOverview", "candidateSummary", "modelSignals", "sentimentSignals",
             "strategyStatus", "riskWarnings", "dataQuality", "abnormalJobs");
@@ -44,6 +46,7 @@ public class AgentStructuredOutputParser {
                 case "DIAGNOSTIC" -> JSON.parseObject(content, DiagnosticResult.class);
                 case "REPORT" -> JSON.parseObject(content, ReportResult.class);
                 case "TRADE_PLAN" -> JSON.parseObject(content, TradePlanDraft.class);
+                case "TRADE_DECISION" -> JSON.parseObject(content, AgentTradeDecisionDraft.class);
                 default -> throw new IllegalArgumentException("不支持的结构化输出类型: " + outputType);
             };
             validate(outputType, output);
@@ -101,6 +104,7 @@ public class AgentStructuredOutputParser {
             case "DIAGNOSTIC" -> DIAGNOSTIC_STATUS;
             case "REPORT" -> REPORT_STATUS;
             case "TRADE_PLAN" -> TRADE_PLAN_STATUS;
+            case "TRADE_DECISION" -> TRADE_DECISION_STATUS;
             default -> Set.of();
         };
         if (!allowed.contains(output.getStatus())) {
@@ -114,6 +118,9 @@ public class AgentStructuredOutputParser {
         }
         if (output instanceof TradePlanDraft draft) {
             validateTradePlan(draft);
+        }
+        if (output instanceof AgentTradeDecisionDraft draft) {
+            validateTradeDecision(draft);
         }
     }
 
@@ -173,5 +180,22 @@ public class AgentStructuredOutputParser {
             throw new IllegalArgumentException("卖出交易计划必须包含有效数量");
         }
     }
+
+    private void validateTradeDecision(AgentTradeDecisionDraft draft) {
+        if (!StringUtils.hasText(draft.getContextId())
+                || !StringUtils.hasText(draft.getContextHash())
+                || !StringUtils.hasText(draft.getCandidateBatchId())
+                || !StringUtils.hasText(draft.getStockCode())
+                || !StringUtils.hasText(draft.getRecommendation())
+                || !StringUtils.hasText(draft.getConfidenceBand())
+                || draft.getReasonCodes() == null
+                || draft.getSupportingEvidenceRefs() == null
+                || draft.getContraryEvidenceRefs() == null
+                || draft.getRiskFlags() == null
+                || draft.getInvalidationConditions() == null
+                || draft.getValidUntil() == null) {
+            throw new IllegalArgumentException("交易决策结构化输出缺少必要字段");
+        }
+    }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----
