@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START-----------
 package com.stock.agent.decision.service;
 
 import com.alibaba.fastjson2.JSON;
@@ -34,7 +34,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Agent 影子交易判断评估与 Provider 稳定性统计服务。
+ * Agent 交易建议反事实评估与 Provider 稳定性统计服务。
  * 使用固化上下文和目标交易日日线计算反事实指标，不修改真实交易记录。
  *
  * @author mwangli
@@ -55,7 +55,7 @@ public class TradeDecisionEvaluationService {
     private final BackendFactsClient backendFactsClient;
 
     /**
-     * 评估行情已经到达的影子交易判断。
+     * 评估行情已经到达的交易建议。
      *
      * 等待行情的历史记录会优先重试，新判断按创建时间顺序补齐。
      *
@@ -117,7 +117,7 @@ public class TradeDecisionEvaluationService {
     }
 
     /**
-     * 查询候选批次的影子决策评估结果。
+     * 查询候选批次的交易建议评估结果。
      *
      * @param candidateBatchId 候选批次标识
      * @return 候选批次评估明细
@@ -398,7 +398,6 @@ public class TradeDecisionEvaluationService {
         private long invalidOutputCount;
         private long unavailableCount;
         private long evidenceGapCount;
-        private long baselineFallbackCount;
 
         private ProviderAccumulator(String provider, String model) {
             this.provider = provider;
@@ -412,7 +411,6 @@ public class TradeDecisionEvaluationService {
                 validCount++;
             } else {
                 abstainedCount++;
-                baselineFallbackCount++;
             }
             if (reasonCodes.contains("AGENT_PROVIDER_TIMEOUT")) {
                 timeoutCount++;
@@ -440,10 +438,8 @@ public class TradeDecisionEvaluationService {
                     .invalidOutputCount(invalidOutputCount)
                     .unavailableCount(unavailableCount)
                     .evidenceGapCount(evidenceGapCount)
-                    .baselineFallbackCount(baselineFallbackCount)
                     .structuredValidRate(rate(validCount, totalCount))
                     .abstainRate(rate(abstainedCount, totalCount))
-                    .baselineFallbackRate(rate(baselineFallbackCount, totalCount))
                     .build();
         }
 
@@ -452,4 +448,4 @@ public class TradeDecisionEvaluationService {
         }
     }
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END-----------

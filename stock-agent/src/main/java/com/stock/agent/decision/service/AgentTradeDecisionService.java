@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START----------
 package com.stock.agent.decision.service;
 
 import com.alibaba.fastjson2.JSON;
@@ -10,10 +10,6 @@ import com.stock.agent.decision.repository.AgentTradeDecisionRepository;
 import com.stock.agent.decision.validator.AgentTradeDecisionValidator;
 import com.stock.agent.decision.vo.TradeDecisionConfidenceBand;
 import com.stock.agent.decision.vo.TradeDecisionContext;
-import com.stock.agent.decision.vo.TradeDecisionFallbackPolicy;
-import com.stock.agent.decision.vo.TradeDecisionFusionResult;
-import com.stock.agent.decision.vo.TradeDecisionMode;
-import com.stock.agent.decision.vo.TradeDecisionModeResolution;
 import com.stock.agent.decision.vo.TradeDecisionRecommendation;
 import com.stock.agent.decision.vo.TradeDecisionStatus;
 import com.stock.agent.runtime.AgentRuntimeRequest;
@@ -31,8 +27,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Agent 单候选影子交易判断生成服务。
- * 只消费 Java 固化上下文并保存结构化判断，不接入真实交易执行链。
+ * Agent 单候选交易建议生成服务。
+ * 只消费 Java 固化上下文并保存结构化建议，不接入真实交易执行链。
  *
  * @author mwangli
  * @since 2026-10-23
@@ -45,7 +41,7 @@ public class AgentTradeDecisionService {
     private static final String PROMPT_VERSION = "trade-decision-v1";
     private static final String SYSTEM_USER_SCOPE = "system:trade-decision";
     private static final String SYSTEM_PROMPT = """
-            你是候选股票影子交易判断 Agent。只能使用用户消息中的不可变 TradeDecisionContext JSON，禁止调用工具、补充外部事实、修改基线门禁或生成真实委托参数。
+            你是候选股票交易建议 Agent。只能使用用户消息中的不可变 TradeDecisionContext JSON，禁止调用工具、补充外部事实、修改 Backend 候选或生成真实委托参数。
             只返回一个 JSON 对象。recommendation 仅允许 BUY、HOLD、SKIP、ABSTAIN；status 仅允许 VALID、ABSTAINED；confidenceBand 仅允许 LOW、MEDIUM、HIGH。
             ABSTAIN 必须对应 ABSTAINED，其他建议必须对应 VALID。suggestedPriority 范围 0-100，allocationMin/allocationMax 满足 0<=min<=max<=1。
             contextId、contextHash、candidateBatchId、stockCode 必须原样返回。所有证据引用必须来自 context.evidenceRefs，evidenceRefs 必须覆盖 supportingEvidenceRefs 和 contraryEvidenceRefs。
@@ -56,72 +52,34 @@ public class AgentTradeDecisionService {
     private final TradeDecisionContextService contextService;
     private final AgentRuntimeCoordinator runtimeService;
     private final AgentTradeDecisionValidator validator;
-    private final TradeDecisionFusionService fusionService;
-    private final TradeDecisionModeService modeService;
     private final AgentTradeDecisionRepository decisionRepository;
     private final AgentConversationLockService conversationLockService;
 
     /**
-     * 为候选批次生成 SHADOW 模式判断并持久化。
+     * 为候选批次生成不影响真实交易的 Agent 建议并持久化。
      *
      * @param candidateBatchId 候选批次标识
      * @param maxCandidates 最大候选数量
-     * @return 候选批次影子判断
+     * @return 候选批次 Agent 建议
      */
-    public TradeDecisionBatchResponse generateShadow(String candidateBatchId, int maxCandidates) {
+    public TradeDecisionBatchResponse generate(String candidateBatchId, int maxCandidates) {
         if (!StringUtils.hasText(candidateBatchId)) {
             throw new IllegalArgumentException("候选批次标识不能为空");
         }
         String normalizedBatchId = candidateBatchId.trim();
         return conversationLockService.execute("trade-decision-batch:" + normalizedBatchId,
-                () -> generateLocked(normalizedBatchId, maxCandidates,
-                        TradeDecisionMode.SHADOW, TradeDecisionFallbackPolicy.BASELINE_FALLBACK));
+                () -> generateLocked(normalizedBatchId, maxCandidates));
     }
 
-    /**
-     * 按当前治理配置为候选批次生成判断。
-     *
-     * @param candidateBatchId 候选批次标识
-     * @param maxCandidates 最大候选数量
-     * @return 当前有效模式下生成的候选判断
-     */
-    public TradeDecisionBatchResponse generateConfigured(String candidateBatchId, int maxCandidates) {
-        if (!StringUtils.hasText(candidateBatchId)) {
-            throw new IllegalArgumentException("候选批次标识不能为空");
-        }
-        String normalizedBatchId = candidateBatchId.trim();
-        return conversationLockService.execute("trade-decision-batch:" + normalizedBatchId,
-                () -> generateConfiguredLocked(normalizedBatchId, maxCandidates));
-    }
-
-    private TradeDecisionBatchResponse generateConfiguredLocked(String candidateBatchId, int maxCandidates) {
-        List<TradeDecisionContext> contexts = contextService.buildBatch(candidateBatchId, maxCandidates);
-        TradeDecisionModeResolution resolution = modeService.resolve(
-                candidateBatchId, contexts.get(0).getStrategyVersion());
-        if (resolution.getEffectiveMode() == TradeDecisionMode.OFF) {
-            return TradeDecisionBatchResponse.builder()
-                    .candidateBatchId(candidateBatchId)
-                    .total(0)
-                    .items(List.of())
-                    .build();
-        }
-        return generateFromContexts(candidateBatchId, contexts, resolution.getEffectiveMode(),
-                resolution.getFallbackPolicy());
-    }
-
-    private TradeDecisionBatchResponse generateLocked(String candidateBatchId, int maxCandidates,
-                                                       TradeDecisionMode mode,
-                                                       TradeDecisionFallbackPolicy fallbackPolicy) {
+    private TradeDecisionBatchResponse generateLocked(String candidateBatchId, int maxCandidates) {
         return generateFromContexts(candidateBatchId,
-                contextService.buildBatch(candidateBatchId, maxCandidates), mode, fallbackPolicy);
+                contextService.buildBatch(candidateBatchId, maxCandidates));
     }
 
     private TradeDecisionBatchResponse generateFromContexts(String candidateBatchId,
-                                                             List<TradeDecisionContext> contexts,
-                                                             TradeDecisionMode mode,
-                                                             TradeDecisionFallbackPolicy fallbackPolicy) {
+                                                             List<TradeDecisionContext> contexts) {
         List<TradeDecisionResponse> items = contexts.stream()
-                .map(context -> generateOne(context, mode, fallbackPolicy))
+                .map(this::generateOne)
                 .toList();
         return TradeDecisionBatchResponse.builder()
                 .candidateBatchId(candidateBatchId.trim())
@@ -131,7 +89,7 @@ public class AgentTradeDecisionService {
     }
 
     /**
-     * 查询候选批次已保存的影子判断。
+     * 查询候选批次已保存的交易建议。
      *
      * @param candidateBatchId 候选批次标识
      * @return 已保存的候选批次判断
@@ -151,16 +109,14 @@ public class AgentTradeDecisionService {
                 .build();
     }
 
-    private TradeDecisionResponse generateOne(TradeDecisionContext context, TradeDecisionMode mode,
-                                              TradeDecisionFallbackPolicy fallbackPolicy) {
-        return decisionRepository.findByContextHashAndPromptVersionAndDecisionMode(
-                        context.getContextHash(), PROMPT_VERSION, mode.name())
+    private TradeDecisionResponse generateOne(TradeDecisionContext context) {
+        return decisionRepository.findByContextHashAndPromptVersion(
+                        context.getContextHash(), PROMPT_VERSION)
                 .map(this::toResponse)
-                .orElseGet(() -> executeAndSave(context, mode, fallbackPolicy));
+                .orElseGet(() -> executeAndSave(context));
     }
 
-    private TradeDecisionResponse executeAndSave(TradeDecisionContext context, TradeDecisionMode mode,
-                                                 TradeDecisionFallbackPolicy fallbackPolicy) {
+    private TradeDecisionResponse executeAndSave(TradeDecisionContext context) {
         AgentRuntimeResponse runtimeResponse = null;
         AgentTradeDecisionDraft draft;
         try {
@@ -171,7 +127,7 @@ public class AgentTradeDecisionService {
                     .taskId(taskId)
                     .userScope(SYSTEM_USER_SCOPE)
                     .systemPrompt(SYSTEM_PROMPT)
-                    .userPrompt("请对以下不可变上下文生成影子交易判断，只返回约定 JSON：\n"
+                    .userPrompt("请对以下不可变上下文生成交易建议，只返回约定 JSON：\n"
                             + JSON.toJSONString(context))
                     .evidenceSummary(JSON.toJSONString(context))
                     .evidenceRefs(context.getEvidenceRefs())
@@ -188,7 +144,7 @@ public class AgentTradeDecisionService {
                 draft = decisionDraft;
             }
         } catch (RuntimeException exception) {
-            log.warn("生成影子交易判断失败并回退为 ABSTAIN: contextId={}, causeType={}",
+            log.warn("生成交易建议失败并记为 ABSTAIN: contextId={}, causeType={}",
                     context.getContextId(), exception.getClass().getSimpleName());
             String reasonCode = resolveFailureReasonCode(exception);
             draft = fallback(context, reasonCode, "模型调用、解析或上下文校验失败");
@@ -196,10 +152,6 @@ public class AgentTradeDecisionService {
 
         TradeDecisionRecommendation recommendation = TradeDecisionRecommendation.valueOf(draft.getRecommendation());
         LocalDateTime createdAt = LocalDateTime.now();
-        TradeDecisionFusionResult fusion = fusionService.fuse(
-                context.isBaselineEligible(), recommendation,
-                TradeDecisionStatus.valueOf(draft.getStatus()), draft.getValidUntil(),
-                mode, fallbackPolicy, createdAt);
         AgentTradeDecisionEntity entity = new AgentTradeDecisionEntity()
                 .setDecisionId(UUID.randomUUID().toString())
                 .setContextId(context.getContextId())
@@ -220,11 +172,7 @@ public class AgentTradeDecisionService {
                 .setAllocationMin(draft.getAllocationMin())
                 .setAllocationMax(draft.getAllocationMax())
                 .setConfidenceBand(draft.getConfidenceBand())
-                .setDecisionMode(mode.name())
                 .setStatus(draft.getStatus())
-                .setFusionOutcome(fusion.getOutcome().name())
-                .setImpacted(fusion.isImpacted())
-                .setFusionReason(limit(fusion.getReason(), 500))
                 .setProvider(runtimeResponse == null ? null : runtimeResponse.getProvider())
                 .setModel(runtimeResponse == null ? null : runtimeResponse.getModel())
                 .setPromptVersion(PROMPT_VERSION)
@@ -232,9 +180,9 @@ public class AgentTradeDecisionService {
                 .setValidUntil(draft.getValidUntil())
                 .setCreatedAt(createdAt);
         decisionRepository.save(entity);
-        log.info("Agent 交易判断已保存: decisionId={}, contextId={}, stockCode={}, mode={}, recommendation={}, status={}, impacted={}",
+        log.info("Agent 交易建议已保存: decisionId={}, contextId={}, stockCode={}, recommendation={}, status={}",
                 entity.getDecisionId(), context.getContextId(), context.getStockCode(),
-                entity.getDecisionMode(), entity.getRecommendation(), entity.getStatus(), entity.isImpacted());
+                entity.getRecommendation(), entity.getStatus());
         return toResponse(entity);
     }
 
@@ -248,7 +196,7 @@ public class AgentTradeDecisionService {
         draft.setStockCode(context.getStockCode());
         draft.setRecommendation(TradeDecisionRecommendation.ABSTAIN.name());
         draft.setReasonCodes(List.of(reasonCode));
-        draft.setThesis("Agent 未形成有效判断，Java 融合继续保持确定性基线。");
+        draft.setThesis("Agent 未形成有效判断，本次建议记为弃权。");
         draft.setSupportingEvidenceRefs(List.of());
         draft.setContraryEvidenceRefs(List.of());
         draft.setRiskFlags(List.of("AGENT_UNAVAILABLE"));
@@ -283,10 +231,6 @@ public class AgentTradeDecisionService {
                 .allocationMin(entity.getAllocationMin())
                 .allocationMax(entity.getAllocationMax())
                 .confidenceBand(entity.getConfidenceBand())
-                .decisionMode(entity.getDecisionMode())
-                .fusionOutcome(entity.getFusionOutcome())
-                .impacted(entity.isImpacted())
-                .fusionReason(entity.getFusionReason())
                 .provider(entity.getProvider())
                 .model(entity.getModel())
                 .promptVersion(entity.getPromptVersion())
@@ -317,4 +261,4 @@ public class AgentTradeDecisionService {
                 ? "AGENT_PROVIDER_TIMEOUT" : "AGENT_DECISION_INVALID";
     }
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END----------

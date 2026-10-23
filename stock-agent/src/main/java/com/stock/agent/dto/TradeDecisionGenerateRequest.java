@@ -1,10 +1,10 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.agent.dto;
 
 import lombok.Data;
 
 /**
- * 按当前治理配置生成候选批次 Agent 判断的请求。
+ * 生成候选批次 Agent 交易建议的请求。
  *
  * @author mwangli
  * @since 2026-10-23
@@ -18,4 +18,4 @@ public class TradeDecisionGenerateRequest {
     /** 最大候选数量，范围 1 至 20；为空时默认 5。 */
     private Integer maxCandidates;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

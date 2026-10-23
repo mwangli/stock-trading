@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.backend.internal.controller;
 
 import com.stock.backend.internal.dto.InternalBrokerFactsResponse;
@@ -191,7 +191,7 @@ public class InternalAgentFactsController {
     }
 
     /**
-     * 批量查询影子决策评估所需权威事实。
+     * 批量查询交易建议评估所需权威事实。
      *
      * @param request 待查询项目
      * @return 最新行情日期和逐候选事实
@@ -204,4 +204,4 @@ public class InternalAgentFactsController {
         return ResponseDTO.success(evaluationFactsService.query(request.items()));
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

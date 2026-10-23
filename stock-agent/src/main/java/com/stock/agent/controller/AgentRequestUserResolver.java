@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START--------
 package com.stock.agent.controller;
 
 import com.stock.agent.web.AgentSessionAttributes;
@@ -26,21 +26,6 @@ public class AgentRequestUserResolver {
         return "user:" + requireUserId(request);
     }
 
-    /**
-     * 校验当前用户是否为系统管理员，并返回稳定操作人名称。
-     *
-     * @param request HTTP 请求
-     * @return 管理员用户名
-     * @throws IllegalStateException 当前用户未登录或不是管理员时抛出
-     */
-    public String requireAdminOperator(HttpServletRequest request) {
-        String username = requireUsername(request);
-        if (!"admin".equalsIgnoreCase(username)) {
-            throw new IllegalStateException("当前用户无权修改 Agent 交易决策治理配置");
-        }
-        return username;
-    }
-
     private Long requireUserId(HttpServletRequest request) {
         Object userId = request.getSession(false) == null
                 ? null : request.getSession(false).getAttribute(AgentSessionAttributes.AUTH_USER_ID);
@@ -49,14 +34,5 @@ public class AgentRequestUserResolver {
         }
         throw new IllegalStateException("当前登录用户不存在");
     }
-
-    private String requireUsername(HttpServletRequest request) {
-        Object username = request.getSession(false) == null
-                ? null : request.getSession(false).getAttribute(AgentSessionAttributes.AUTH_USERNAME);
-        if (username instanceof String value && !value.isBlank()) {
-            return value;
-        }
-        throw new IllegalStateException("当前登录用户不存在");
-    }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END--------

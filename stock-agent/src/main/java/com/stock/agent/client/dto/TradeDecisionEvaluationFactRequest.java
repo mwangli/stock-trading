@@ -1,10 +1,10 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.agent.client.dto;
 
 import java.time.LocalDate;
 
 /**
- * 请求 Backend 查询单个影子决策评估事实。
+ * 请求 Backend 查询单个交易建议评估事实。
  *
  * @param candidateBatchId 候选批次标识
  * @param stockCode 股票代码
@@ -15,4 +15,4 @@ import java.time.LocalDate;
 public record TradeDecisionEvaluationFactRequest(
         String candidateBatchId, String stockCode, LocalDate targetTradeDate) {
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

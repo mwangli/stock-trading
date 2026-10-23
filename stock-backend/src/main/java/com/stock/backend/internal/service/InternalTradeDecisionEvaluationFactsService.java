@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.backend.internal.service;
 
 import com.stock.backend.internal.dto.InternalTradeDecisionEvaluationFactRequest;
@@ -18,7 +18,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 批量提供 Agent 影子决策评估所需的行情和执行批次事实。
+ * 批量提供 Agent 交易建议评估所需的行情和执行批次事实。
  *
  * @author mwangli
  * @since 2026-10-23
@@ -33,7 +33,7 @@ public class InternalTradeDecisionEvaluationFactsService {
     private final AutomaticTradeExecutionBatchRepository executionBatchRepository;
 
     /**
-     * 批量查询影子决策评估事实。
+     * 批量查询交易建议评估事实。
      *
      * @param requests 待查询项目
      * @return 最新行情日期和逐候选事实
@@ -73,4 +73,4 @@ public class InternalTradeDecisionEvaluationFactsService {
                 batch == null ? null : batch.getSuccessCount());
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

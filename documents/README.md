@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START-------------- -->
+<!-- AI_GENERATE_START--------------- -->
 # 项目文档
 
 本目录维护 `stock-trading4` 当前有效的架构、领域和运维说明。项目只有 `stock-backend`、`stock-agent`、`stock-frontend` 三个 Maven 模块；Backend 内部领域文档按业务名称分目录，不代表独立 Maven 模块。
@@ -17,7 +17,7 @@
 | Maven 模块 | 业务定位 | 文档 |
 |---|---|---|
 | `stock-backend` | 核心业务、数据、模型、策略、交易和 Quartz | [模块说明](stock-backend/启动配置与持久化.md) |
-| `stock-agent` | 研究、诊断、RAG、Memory 和受控决策增强 | [模块说明](stock-agent/模块说明.md)、[运行机制与工具](stock-agent/运行机制与工具.md)、[RAG 与 Memory](stock-agent/RAG与Memory.md)、[交易决策参与边界](stock-agent/交易决策参与边界.md) |
+| `stock-agent` | 研究、诊断、RAG、Memory 和独立交易建议 | [模块说明](stock-agent/模块说明.md)、[运行机制与工具](stock-agent/运行机制与工具.md)、[RAG 与 Memory](stock-agent/RAG与Memory.md)、[交易建议边界](stock-agent/交易建议边界.md) |
 | `stock-frontend` | React 管理与交易操作界面 | [前端功能与交互](stock-frontend/前端功能与交互.md) |
 
 ## Backend 领域文档
@@ -38,4 +38,4 @@
 3. 模块职责、数据所有权或 API 边界变化时，同步修改架构和对应领域文档。
 4. 文档不得记录真实密码、Token、账户、生产数据或临时排查输出。
 5. 源码静态检查、编译、测试、运行和生产验证是不同证据层级，不得混淆。
-<!-- AI_GENERATE_END-------------- -->
+<!-- AI_GENERATE_END--------------- -->

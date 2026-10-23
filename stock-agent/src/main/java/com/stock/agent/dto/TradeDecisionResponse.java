@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.agent.dto;
 
 import lombok.Builder;
@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 单个候选的 Agent 影子交易判断响应。
+ * 单个候选的 Agent 交易建议响应。
  *
  * @author mwangli
  * @since 2026-10-23
@@ -71,18 +71,6 @@ public class TradeDecisionResponse {
     /** 模型自评置信区间。 */
     String confidenceBand;
 
-    /** 决策参与模式。 */
-    String decisionMode;
-
-    /** Java 确定性融合结果。 */
-    String fusionOutcome;
-
-    /** Agent 是否实际影响最终结果。 */
-    boolean impacted;
-
-    /** 融合说明。 */
-    String fusionReason;
-
     /** 模型 Provider。 */
     String provider;
 
@@ -101,4 +89,4 @@ public class TradeDecisionResponse {
     /** 判断创建时间。 */
     LocalDateTime createdAt;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

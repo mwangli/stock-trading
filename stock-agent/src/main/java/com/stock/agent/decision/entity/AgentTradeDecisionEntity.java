@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START------
 package com.stock.agent.decision.entity;
 
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -12,16 +12,16 @@ import lombok.experimental.Accessors;
 import java.time.LocalDateTime;
 
 /**
- * Agent 单候选结构化交易判断及 SHADOW 融合结果。
+ * Agent 单候选结构化交易建议。
  *
  * @author mwangli
  * @since 2026-10-23
  */
 @Data
 @Accessors(chain = true)
-@Document(collection = "agent_trade_decision")
-@CompoundIndex(name = "uk_agent_trade_decision_context_prompt_mode",
-        def = "{'contextHash': 1, 'promptVersion': 1, 'decisionMode': 1}", unique = true)
+@Document(collection = "agent_trade_suggestion")
+@CompoundIndex(name = "uk_agent_trade_suggestion_context_prompt",
+        def = "{'contextHash': 1, 'promptVersion': 1}", unique = true)
 public class AgentTradeDecisionEntity {
 
     /** 决策唯一标识。 */
@@ -82,20 +82,8 @@ public class AgentTradeDecisionEntity {
     /** 模型自评置信区间。 */
     private String confidenceBand;
 
-    /** 决策参与模式。 */
-    private String decisionMode;
-
     /** 决策状态。 */
     private String status;
-
-    /** Java 融合结果。 */
-    private String fusionOutcome;
-
-    /** Agent 是否实际影响最终结果。 */
-    private boolean impacted;
-
-    /** 融合说明。 */
-    private String fusionReason;
 
     /** Provider 名称。 */
     private String provider;
@@ -115,4 +103,4 @@ public class AgentTradeDecisionEntity {
     /** 决策创建时间。 */
     private LocalDateTime createdAt;
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END------

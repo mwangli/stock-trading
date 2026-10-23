@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.agent.dto;
 
 import lombok.Builder;
@@ -7,7 +7,7 @@ import lombok.Value;
 import java.util.List;
 
 /**
- * 候选批次的 Agent 影子判断评估响应。
+ * 候选批次的 Agent 交易建议评估响应。
  *
  * @author mwangli
  * @since 2026-10-23
@@ -28,4 +28,4 @@ public class TradeDecisionEvaluationBatchResponse {
     /** 候选批次评估明细。 */
     List<TradeDecisionEvaluationResponse> items;
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

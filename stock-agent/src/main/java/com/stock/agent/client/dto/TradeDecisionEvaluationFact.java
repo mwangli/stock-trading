@@ -1,11 +1,11 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.agent.client.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * Backend 返回的单个影子决策评估事实。
+ * Backend 返回的单个交易建议评估事实。
  *
  * @param candidateBatchId 候选批次标识
  * @param stockCode 股票代码
@@ -28,4 +28,4 @@ public record TradeDecisionEvaluationFact(
         String executionBatchId, String executionBatchStatus,
         Integer executionProcessedCount, Integer executionSuccessCount) {
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

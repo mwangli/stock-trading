@@ -1,11 +1,11 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START-----
 package com.stock.agent.dto;
 
 import lombok.Builder;
 import lombok.Value;
 
 /**
- * 单个 Provider 与模型组合的影子决策稳定性指标。
+ * 单个 Provider 与模型组合的交易建议稳定性指标。
  *
  * @author mwangli
  * @since 2026-10-23
@@ -20,7 +20,7 @@ public class TradeDecisionProviderMetricResponse {
     /** 模型名称，无法识别时为 UNKNOWN。 */
     String model;
 
-    /** 影子判断总数。 */
+    /** 交易建议总数。 */
     long totalCount;
 
     /** 结构化有效判断数量。 */
@@ -41,16 +41,11 @@ public class TradeDecisionProviderMetricResponse {
     /** 支持证据为空的判断数量。 */
     long evidenceGapCount;
 
-    /** Java 保持基线的回退数量。 */
-    long baselineFallbackCount;
-
     /** 结构化有效率，范围 0 至 1。 */
     double structuredValidRate;
 
     /** 显式弃权率，范围 0 至 1。 */
     double abstainRate;
 
-    /** 基线回退率，范围 0 至 1。 */
-    double baselineFallbackRate;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END-----
