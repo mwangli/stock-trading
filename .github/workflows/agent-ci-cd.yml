@@ -1,0 +1,143 @@
+name: Agent CI/CD
+
+on:
+  push:
+    tags:
+      - 'agent-v[0-9]+.[0-9]+'
+      - 'agent-v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-production
+  cancel-in-progress: false
+
+env:
+  ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
+  ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+  ACR_USERNAME: ${{ vars.ACR_USERNAME }}
+  SERVER_HOST: ${{ vars.SERVER_HOST }}
+  SERVER_PORT: ${{ vars.SERVER_PORT }}
+  SERVER_USER: ${{ vars.SERVER_USER }}
+  SERVER_DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
+  SERVER_FINGERPRINT: ${{ vars.SERVER_FINGERPRINT }}
+  IMAGE_REPOSITORY: ${{ format('{0}/{1}/{2}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.AGENT_IMAGE_NAME) }}
+
+jobs:
+  build-and-push:
+    name: Build and push agent image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      image: ${{ steps.image.outputs.value }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: |
+            pom.xml
+            stock-agent/pom.xml
+          verify-signature: true
+
+      - name: Package agent
+        run: |
+          set -Eeuo pipefail
+          mvn --batch-mode --no-transfer-progress \
+            --file pom.xml --projects stock-agent --also-make \
+            clean package -DskipTests
+          jar_path="$(find stock-agent/target -maxdepth 1 -type f \
+            -name 'stock-agent-*.jar' ! -name '*.original' -print -quit)"
+          test -n "$jar_path"
+          install -m 0644 "$jar_path" stock-agent/app.jar
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to ACR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Resolve immutable image tag
+        id: image
+        run: echo "value=${IMAGE_REPOSITORY}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: stock-agent
+          file: stock-agent/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.value }}
+            ${{ env.IMAGE_REPOSITORY }}:latest
+          cache-from: type=gha,scope=stock-agent
+          cache-to: type=gha,mode=max,scope=stock-agent
+          provenance: false
+
+  deploy:
+    name: Deploy agent to production
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    steps:
+      - name: Checkout deployment files
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          lfs: true
+          sparse-checkout: |
+            docker-compose.yml
+            .gitattributes
+            .github/scripts
+            model-artifacts/embedding
+          sparse-checkout-cone-mode: false
+
+      - name: Verify embedding artifacts
+        run: |
+          python3 .github/scripts/verify-model-artifact.py \
+            model-artifacts/embedding/bge-base-zh-v1.5/manifest.json \
+            deployment-agent-artifacts.sha256
+
+      - name: Upload deployment files
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ env.SERVER_PORT }}
+          fingerprint: ${{ env.SERVER_FINGERPRINT }}
+          source: docker-compose.yml,.github/scripts/deploy-service.sh,model-artifacts/embedding,deployment-agent-artifacts.sha256
+          target: ${{ env.SERVER_DEPLOY_DIR }}
+          overwrite: true
+          command_timeout: 30m
+
+      - name: Restart agent
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          DEPLOY_IMAGE: ${{ needs.build-and-push.outputs.image }}
+          DEPLOY_DIR: ${{ env.SERVER_DEPLOY_DIR }}
+          ACR_REGISTRY: ${{ env.ACR_REGISTRY }}
+          ACR_USERNAME: ${{ env.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ env.SERVER_PORT }}
+          fingerprint: ${{ env.SERVER_FINGERPRINT }}
+          envs: DEPLOY_IMAGE,DEPLOY_DIR,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
+          command_timeout: 12m
+          script: bash "$DEPLOY_DIR/.github/scripts/deploy-service.sh" stock-agent stock-agent STOCK_AGENT_IMAGE deployment-agent-artifacts.sha256

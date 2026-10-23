@@ -1,4 +1,4 @@
-// AI_GENERATE_START--
+// AI_GENERATE_START---
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -20,6 +20,20 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/api/agent': {
+        target: 'http://localhost:8081',
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('error', (err, _req, res) => {
+            console.warn('[Vite proxy] Agent 服务不可达，请确认 stock-agent 已启动:', err.message);
+            const resHttp = res as { headersSent?: boolean; writeHead?: (code: number, h: object) => void; end?: (s: string) => void } | null;
+            if (resHttp && typeof resHttp.writeHead === 'function' && !resHttp.headersSent) {
+              resHttp.writeHead(502, { 'Content-Type': 'application/json' });
+              resHttp.end?.(JSON.stringify({ success: false, message: 'Agent 服务未响应，请确认已启动' }));
+            }
+          });
+        },
+      },
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
@@ -42,4 +56,4 @@ export default defineConfig({
     }
   }
 })
-// AI_GENERATE_END--
+// AI_GENERATE_END---
