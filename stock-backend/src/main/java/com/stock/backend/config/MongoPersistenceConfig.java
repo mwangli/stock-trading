@@ -1,8 +1,12 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START--------
 package com.stock.backend.config;
 
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.data.mongodb.config.EnableMongoAuditing;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
 
 /**
@@ -13,7 +17,14 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
  */
 @Configuration
 @EnableMongoAuditing
-@EnableMongoRepositories(basePackages = "com.stock")
+@EnableMongoRepositories(
+        basePackages = "com.stock",
+        includeFilters = @ComponentScan.Filter(
+                type = FilterType.ASSIGNABLE_TYPE,
+                classes = MongoRepository.class),
+        excludeFilters = @ComponentScan.Filter(
+                type = FilterType.ASSIGNABLE_TYPE,
+                classes = JpaRepository.class))
 public class MongoPersistenceConfig {
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END--------

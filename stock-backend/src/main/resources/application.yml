@@ -12,13 +12,47 @@ spring:
       - optional:file:.env[.properties]
       - optional:file:../.env[.properties]
   application:
-    name: stock-trading
+    name: stock-backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/stock_trading?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${SPRING_DATASOURCE_USERNAME:stock}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: ${MYSQL_MAX_POOL_SIZE:10}
+      minimum-idle: ${MYSQL_MIN_IDLE:2}
+      connection-timeout: 30000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: Asia/Shanghai
+        format_sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    validate-on-migrate: true
   main:
     allow-bean-definition-overriding: true
   data:
     mongodb:
       auto-index-creation: true
       uri: ${SPRING_DATA_MONGODB_URI:mongodb://admin:${MONGO_ROOT_PASSWORD:}@${DATABASE_HOST:localhost}:27017/stock_trading?authSource=admin}
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      timeout: 3s
+      connect-timeout: 3s
+  cache:
+    type: redis
+    redis:
+      time-to-live: 10m
+      cache-null-values: false
 
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss

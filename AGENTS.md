@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START-------------------------------------- -->
+<!-- AI_GENERATE_START--------------------------------------- -->
 # 交互语言要求
 
 1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
@@ -497,8 +497,10 @@ public [返回值类型] [methodName]([参数列表]) {
 - **生产访问入口**：`http://117.72.216.67`
 - **服务器部署目录**：`/srv/stock-trading`
 - **核心 Docker 容器**：
-  - `stock-application`：Spring Boot、React 静态页面和全部业务模块
-  - `stock-mongo`：MongoDB 业务数据、任务配置、行情、模型和预测数据
+  - `stock-backend`：Spring Boot 后端、模型、策略、风控、交易与统一任务调度
+  - `stock-mysql`：权威业务数据、状态和事务记录
+  - `stock-mongo`：增量、时序、大文档、向量和 GridFS 数据
+  - `stock-redis`：可丢失缓存与共享 Session
 - 线上登录密码、数据库密码、Cookie、Token、私钥等敏感信息只能通过当前安全环境或用户临时授权获取，**禁止写入 AGENTS.md、源码、文档、日志、提交记录或其他受版本控制文件**。
 
 ### 2. 线上环境是运行问题和数据问题的事实基准
@@ -523,11 +525,11 @@ cd /srv/stock-trading
 
 # 2. 核对实际运行镜像、容器状态和启动信息
 docker compose --env-file .env ps
-docker inspect --format '{{.Config.Image}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}} {{.State.StartedAt}} {{.RestartCount}}' stock-application
+docker inspect --format '{{.Config.Image}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}} {{.State.StartedAt}} {{.RestartCount}}' stock-backend
 
 # 3. 按明确时间窗口或业务标识查询日志
-docker compose --env-file .env logs --since '<开始时间>' --until '<结束时间>' stock-application
-docker logs --since '<开始时间>' stock-application 2>&1 | grep '<批次ID/任务名/异常关键字>'
+docker compose --env-file .env logs --since '<开始时间>' --until '<结束时间>' stock-backend
+docker logs --since '<开始时间>' stock-backend 2>&1 | grep '<批次ID/任务名/异常关键字>'
 
 # 4. 使用容器内环境变量只读查询 MongoDB，禁止在命令中明文写密码
 docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin stock_trading --eval '\''<只读查询>'\'''
@@ -550,7 +552,7 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 5. **等待线上部署**：用户明确授权创建并推送版本标签后，必须持续等待对应 CI/CD 流水线完成，不得在镜像仍构建或容器仍启动时提前验证。
 6. **部署一致性确认**：通过 GitHub Actions 和线上 `docker inspect` 双重确认：
    - 流水线 `headSha` 与目标提交一致；
-   - `stock-application` 实际镜像标签包含目标完整 SHA；
+   - `stock-backend` 实际镜像标签包含目标完整 SHA；
    - 容器为 `running/healthy`；
    - 重启次数和启动日志无异常。
 7. **重新触发业务接口**：容器健康后，使用真实线上 API 重新触发原失败流程。需要登录时通过 `/api/auth/login` 建立临时会话，Cookie 只保存在项目 `.tmp/`，验证结束后删除。
@@ -613,4 +615,4 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 **Agent 特别指令**:
 - 本项目无自动化测试，不要生成或要求补充测试用例；质量依赖代码审查与手工验证。
 - 项目只允许 `stock-backend`、`stock-agent`、`stock-frontend` 三个 Maven 业务模块；后端领域使用包和子目录组织，禁止恢复旧的内部 Maven 模块。
-<!-- AI_GENERATE_END-------------------------------------- -->
+<!-- AI_GENERATE_END--------------------------------------- -->
