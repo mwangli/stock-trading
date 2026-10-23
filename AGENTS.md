@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START------------------------------------ -->
+<!-- AI_GENERATE_START-------------------------------------- -->
 # 交互语言要求
 
 1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
@@ -24,25 +24,17 @@
 
 ## 项目结构
 
-本项目采用单体部署、多 Maven 模块架构。模型训练与推理统一由 Java 后端承担，前端构建产物由 Spring Boot JAR 托管：
+本项目只保留三个 Maven 业务模块。后端内部领域使用 Java 包和子目录隔离，Agent 与前端保持独立模块边界：
 
 ```text
 stock-trading4/
-├── stock-application/              # Maven 顶层父项目与业务聚合模块
-│   ├── stock-base/                 # 跨模块契约、基础 DTO、Port 和公共异常
-│   ├── stock-data/                 # 行情、新闻、股票和交易日历数据
-│   ├── stock-model/                # DJL 训练、推理和模型版本管理
-│   ├── stock-strategy/             # 确定性策略、选股和回测
-│   ├── stock-trading/              # 风控、券商适配和交易执行
-│   ├── stock-agent/                # Agent、RAG、Memory 和受控决策增强
-│   ├── stock-job/                  # Quartz 任务配置、执行记录和统一编排
-│   ├── stock-web/                  # React + Vite，构建为 classpath 静态资源 JAR
-│   ├── stock-starter/              # 唯一 Spring Boot 启动模块
-│   ├── Dockerfile
-│   └── pom.xml
+├── stock-backend/                  # Spring Boot 后端；内部按 base/data/model/strategy/trading/job/backend 分包
+├── stock-agent/                    # Agent、RAG、Memory 和受控决策增强
+├── stock-frontend/                 # React + Vite 独立前端
 ├── documents/                      # 与应用平级的需求、设计和运维文档
 ├── model-artifacts/                # 固定模型制品，运行时只读挂载
 ├── .tmp/                           # 临时文件（不提交）
+├── pom.xml                         # 三模块聚合与统一版本管理
 └── docker-compose.yml
 ```
 
@@ -55,19 +47,19 @@ stock-trading4/
 工作目录: 项目根目录
 
 ```bash
-# 构建全部模块并生成唯一启动 JAR（跳过测试）
-mvn -f stock-application/pom.xml clean package -DskipTests
+# 构建后端及其 Maven 依赖（跳过测试）
+mvn -pl stock-backend -am clean package -DskipTests
 
-# 仅编译启动模块及其依赖
-mvn -f stock-application/pom.xml -pl stock-starter -am compile
+# 仅编译后端及其 Maven 依赖
+mvn -pl stock-backend -am compile
 
 # 打包后启动
-java -jar stock-application/stock-starter/target/stock-starter-1.0.0-SNAPSHOT.jar
+java -jar stock-backend/target/stock-backend-1.0.0-SNAPSHOT.jar
 ```
 
 ### Frontend (React/Vite)
 
-工作目录: `stock-application/stock-web/`
+工作目录: `stock-frontend/`
 
 ```bash
 # 安装依赖
@@ -85,7 +77,7 @@ npm run lint
 
 ### Java Model Training
 
-模型训练代码位于 `stock-application/stock-model/src/main/java/com/stock/model/`，统一使用 DJL API + PyTorch Engine。训练任务必须通过 `stock-job` 中的 `JobConfig + JobSchedulerService` 调度，不引入 Python、ONNX 或独立模型服务。
+模型训练代码位于 `stock-backend/src/main/java/com/stock/model/`，统一使用 DJL API + PyTorch Engine。训练任务必须通过 `stock-backend` 内 `com.stock.job` 的 `JobConfig + JobSchedulerService` 调度，不引入 Python、ONNX 或独立模型服务。
 
 线上节点允许通过 `LSTM_TRAINING_ENABLED=true` 开启训练能力，但训练触发必须经过业务门禁：禁止交易时段执行、禁止并发训练、校验数据完整性和资源余量、限制参数范围，并将训练版本与生产激活分离。训练成功只生成候选版本，不得直接视为生产上线成功。
 
@@ -102,12 +94,12 @@ Java 后端当前不维护标准自动化测试；涉及后端行为重构前必
   - 类名 `PascalCase`, 方法/变量 `camelCase`, 常量 `UPPER_SNAKE_CASE`
   - 使用 Lombok (`@Data`, `@Slf4j`, `@RequiredArgsConstructor`) 简化代码
   - Controller 返回统一泛型对象 `ResponseDTO<T>`
-- **分包策略**: 一级包与 Maven 模块一致，固定使用 `com.stock.base`、`com.stock.data`、`com.stock.model`、`com.stock.strategy`、`com.stock.trading`、`com.stock.agent`、`com.stock.job`、`com.stock.starter`；模块内部再按职责分包，禁止使用旧包名或把不同职责的类平铺在同一个包中。
+- **分包策略**: `stock-backend` 内固定使用 `com.stock.base`、`com.stock.data`、`com.stock.model`、`com.stock.strategy`、`com.stock.trading`、`com.stock.job`、`com.stock.backend` 作为领域边界；`stock-agent` 使用 `com.stock.agent`。领域内部再按职责分包，禁止恢复内部 Maven 子模块或把不同职责的类平铺在同一个包中。
 - **错误处理**: 使用全局异常处理 (`@ControllerAdvice`)，禁止吞掉异常。
 
 #### 后端代码目录与包结构规范（强制）
 
-0. **先确定 Maven 模块再确定 package**：公共契约放入 `stock-base`，数据采集放入 `stock-data`，模型能力放入 `stock-model`，确定性策略放入 `stock-strategy`，交易和券商能力放入 `stock-trading`，Agent 能力放入 `stock-agent`，Quartz 编排放入 `stock-job`，启动装配和运行配置放入 `stock-starter`。禁止把 Service、Entity、Repository 或业务实现放回聚合目录或启动模块。
+0. **先确定三模块边界再确定 package**：后端公共契约、数据、模型、策略、交易、Quartz 和启动装配统一放入 `stock-backend`，分别归属 `com.stock.base`、`com.stock.data`、`com.stock.model`、`com.stock.strategy`、`com.stock.trading`、`com.stock.job`、`com.stock.backend`；Agent 能力只放入 `stock-agent` 的 `com.stock.agent`。前后端与 Agent 不通过复制类或新增兼容模块共享实现。
 1. **业务领域优先、职责子包必建**：后端 Java 代码以 `com.stock.<业务领域>` 为一级边界；在业务领域或其子业务模块内部，只要存在对应职责的类，就必须建立 `controller`、`service`、`repository`、`entity`、`dto`、`vo`、`job`/`scheduler`、`config`、`validator` 等职责子包，不得将这些类平铺在业务包根目录。
 2. **类与目录必须匹配**：`*Service` 放入 `service`，`*Repository` 放入 `repository`，持久化 `*Entity` 放入 `entity`，请求/响应对象分别放入 `dto`/`vo`，定时任务入口放入 `job` 或 `scheduler`；Java `package` 声明必须与物理目录完全一致。
 3. **子业务模块同样适用**：当业务领域下继续按能力拆分子模块时，应先确定子业务边界，再在该边界内按职责分包。例如交易决策代码应采用以下结构，而不是把 Service、Entity、Repository 混放在 `decision` 包中：
@@ -138,7 +130,7 @@ Java 后端当前不维护标准自动化测试；涉及后端行为重构前必
 
 #### LangChain4j Agent 与工具设计规范（强制）
 
-1. **版本基线与当前实现**：项目在 `stock-application/pom.xml` 固定 `langchain4j.version=1.22.0`。`LangChain4jAgentModelProvider` 通过 `AiServices` 创建类型化 Agent，业务工具使用 `@Tool` 声明并由能力目录按任务绑定；Provider 客户端注册、健康检查、运行状态和模型调用保持职责分离。升级版本前必须重新核对官方发布页、API 和迁移说明。
+1. **版本基线与当前实现**：项目在根 `pom.xml` 固定 `langchain4j.version=1.22.0`。`LangChain4jAgentModelProvider` 通过 `AiServices` 创建类型化 Agent，业务工具使用 `@Tool` 声明并由能力目录按任务绑定；Provider 客户端注册、健康检查、运行状态和模型调用保持职责分离。升级版本前必须重新核对官方发布页、API 和迁移说明。
 2. **默认采用高层 API**：新建或重构 Agent 能力时，优先使用 LangChain4j 高层 `AiServices` 创建类型化 Agent 接口，并使用 `@Tool` 暴露业务工具；工具参数和返回值使用明确的请求/结果类型，避免在 Agent 边界使用 `Object`、原始 `Map` 或自由格式 JSON。
 3. **`@Tool` 的适用边界**：`@Tool` 只负责声明工具名称、描述和参数契约，不替代权限校验、用户范围校验、审计、超时、幂等、风控和交易写入隔离。工具实现必须调用已有领域 Service，不得直接操作 Controller、Repository、SQL、Mongo 查询或券商适配器。
 4. **最简高层结构**：一个 Agent 接口、一个职责清晰的工具类、一个领域 Service 即可完成单一 Agent 用例。不要同时保留 `@Tool` 自动发现、手工工具注册表和另一套反射分发链；迁移到 `AiServices + @Tool` 后，应删除无调用方的自定义 `ToolDefinition`、`ToolExecutor`、重复工具注册和兼容适配层。
@@ -152,7 +144,7 @@ Java 后端当前不维护标准自动化测试；涉及后端行为重构前必
 
 #### 定时任务规范（强制）
 
-1. **统一任务调度中心**：所有定时任务必须通过 `stock-job` 模块的 `com.stock.job` 调度体系完成，禁止在业务类中直接使用 `@Scheduled` 注解。
+1. **统一任务调度中心**：所有后端定时任务必须通过 `stock-backend` 内的 `com.stock.job` 调度体系完成，禁止在业务类中直接使用 `@Scheduled` 注解。
 2. **任务注册方式**：
    - 在 `job_config` 表中配置任务的 `jobName` / `beanName` / `methodName` / `cronExpression`；
    - 或在 `JobBootstrap` 中添加默认任务配置，由 `JobSchedulerService` 统一加载。
@@ -166,7 +158,7 @@ Java 后端当前不维护标准自动化测试；涉及后端行为重构前必
 #### 接口日志规范（强制）
 
 1. **全局入口日志**：所有 `@RestController` 接口方法必须在入口打印一行访问日志，用于排查“接口未返回/超时/参数异常”等问题。  
-   - 已通过全局 AOP 切面 `com.stock.starter.logging.ApiLoggingAspect` 统一实现，记录控制器类名、方法名和关键参数。
+   - 已通过全局 AOP 切面 `com.stock.backend.logging.ApiLoggingAspect` 统一实现，记录控制器类名、方法名和关键参数。
 2. **控制器级业务日志**：对于关键接口（如分页查询、大批量操作、模型训练/同步等），在 Controller 方法内 **显式增加入口业务日志**，说明：
    - 调用的业务含义（例如“分页查询模型训练记录”）
    - 关键请求参数（如 `keyword`、`current`、`pageSize` 等）
@@ -427,7 +419,7 @@ public [返回值类型] [methodName]([参数列表]) {
 
 ### 前端 UI 一致性规范（强制）
 
-1. **统一设计语言**：所有页面必须复用项目现有的颜色变量、间距、边框、圆角、表格、卡片和按钮样式，禁止在单个页面随意引入另一套视觉风格。新增页面先检查 `stock-application/stock-web/src/index.css` 和现有页面组件，再决定是否需要新增共享样式。
+1. **统一设计语言**：所有页面必须复用项目现有的颜色变量、间距、边框、圆角、表格、卡片和按钮样式，禁止在单个页面随意引入另一套视觉风格。新增页面先检查 `stock-frontend/src/index.css` 和现有页面组件，再决定是否需要新增共享样式。
 2. **按钮样式统一**：普通操作按钮默认使用透明背景、清晰边框和语义化文字/图标；主操作、危险操作只通过品牌色或危险色区分，不使用无依据的实心色块。禁止为同类操作在不同页面使用不同尺寸、圆角、间距或颜色。
 3. **操作列保持稳定**：表格操作列必须固定列宽和操作位。某项操作当前不可用时，保留对应文字或控件并置灰、禁用且不绑定点击事件，不得通过条件渲染直接隐藏，避免每行操作数量和布局跳变。
 4. **密集表格优先文字操作**：任务、记录、历史等密集型表格的操作列优先使用文字链接或轻量文字操作，不使用带背景的按钮堆叠；需要强调危险操作时使用危险色文字，并保持与其他操作的对齐方式一致。
@@ -452,7 +444,7 @@ public [返回值类型] [methodName]([参数列表]) {
 
 #### 分页组件统一规范（强制）
 
-1. **统一视觉入口**：所有独立 `Pagination` 和 `Table` 内置分页必须复用 `stock-application/stock-web/src/index.css` 的全局分页样式，不得在页面或业务组件中重新定义一套分页颜色、尺寸、边框或圆角。
+1. **统一视觉入口**：所有独立 `Pagination` 和 `Table` 内置分页必须复用 `stock-frontend/src/index.css` 的全局分页样式，不得在页面或业务组件中重新定义一套分页颜色、尺寸、边框或圆角。
 2. **固定布局结构**：分页总数信息放在左侧，页码、上一页、下一页和可选控制项放在右侧；分页容器应保持稳定高度和边框，不能因页码数量、加载状态或文案变化造成布局跳动。
 3. **状态表达一致**：当前页使用品牌色描边高亮，普通页码使用次级文字色，悬停使用品牌浅色背景，禁用的上一页/下一页保留控件并置灰；超长页码使用省略号，不直接铺开全部页码。
 4. **交互能力保持**：分页优化默认只调整展示层，不得改变 `current`、`pageSize`、`total`、`onChange` 等数据契约；已有的页码大小选择、快速跳转和服务端分页行为不得因样式调整被静默删除。
@@ -462,7 +454,7 @@ public [返回值类型] [methodName]([参数列表]) {
 
 ### 前端页面目录规范（强制）
 
-1. `stock-application/stock-web/src/pages/<route>/` 对应一个路由菜单；目录名必须与菜单和路由保持一致，统一使用 lowerCamelCase，例如 `strategyConfig`。
+1. `stock-frontend/src/pages/<route>/` 对应一个路由菜单；目录名必须与菜单和路由保持一致，统一使用 lowerCamelCase，例如 `strategyConfig`。
 2. `index.tsx` 直接作为该路由的页面组件；禁止额外保留只有转发作用的 `Page.tsx` 或重复入口文件。页面中的类型、常量、请求逻辑和可复用交互应继续按职责拆分，避免大量业务逻辑全部堆在单个文件中。
 3. 页面中的类型、常量、测试数据、请求逻辑和可复用交互应按职责拆到 `types.ts`、`constants.ts`、`mock/`、`hooks/`、`services/` 或 `components/`；测试数据不得硬编码在大型页面组件中。
 4. 页面专属样式放在同目录 `styles.css` 或对应组件样式文件；跨页面的基础变量和通用组件样式才放入 `src/index.css`，避免全局样式不断堆积页面特例。
@@ -620,5 +612,5 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 5. **报告边界**：明确区分“源码检查通过”和“编译/运行验证通过”；未执行的验证必须如实说明，不得用静态检查替代运行证据。
 **Agent 特别指令**:
 - 本项目无自动化测试，不要生成或要求补充测试用例；质量依赖代码审查与手工验证。
-- 后端是单体部署、多 Maven 模块结构；默认从 `stock-application/pom.xml` 使用 Reactor 构建，禁止绕过依赖关系单独拼装子模块 JAR。
-<!-- AI_GENERATE_END------------------------------------ -->
+- 项目只允许 `stock-backend`、`stock-agent`、`stock-frontend` 三个 Maven 业务模块；后端领域使用包和子目录组织，禁止恢复旧的内部 Maven 模块。
+<!-- AI_GENERATE_END-------------------------------------- -->

@@ -1,9 +1,9 @@
-<!-- AI_GENERATE_START------------------------------- -->
+<!-- AI_GENERATE_START-------------------------------- -->
 # AI-AGENT 智能股票交易系统
 
 面向 A 股市场的数据采集、模型预测、策略分析、Agent 决策增强、风险控制和自动交易平台。
 
-系统采用 **模块化单体** 架构：代码按 Maven 模块隔离，运行时由一个 Spring Boot 应用统一部署。Agent 是可降级增强能力，Java 始终保留事实校验、硬风险和券商执行权。
+系统采用 **三模块架构**：`stock-backend` 承载核心业务与交易安全边界，`stock-agent` 承载独立 Agent 能力，`stock-frontend` 承载独立 Web 应用。Java 后端始终保留事实校验、硬风险和券商执行权。
 
 ## 核心能力
 
@@ -13,46 +13,31 @@
 - Agent 研究、诊断、RAG、Memory、交易计划和受控候选判断。
 - 账户、持仓、订单、成交、T+1、风险门禁和券商委托。
 - Quartz 统一任务管理、执行记录和跨模块业务编排。
-- React 管理界面与 Spring Boot 同源部署。
+- React 管理界面独立构建，通过反向代理访问 Backend 与 Agent。
 
 ## 项目结构
 
 ```text
 stock-trading4/
-├── stock-application/
-│   ├── stock-base/          # 跨模块稳定契约
-│   ├── stock-data/          # 市场数据和交易日历
-│   ├── stock-model/         # 模型训练、推理和版本管理
-│   ├── stock-strategy/      # 选股、信号、策略和回测
-│   ├── stock-trading/       # 风控、账户、订单和券商执行
-│   ├── stock-agent/         # Agent、RAG、Memory 和决策增强
-│   ├── stock-job/           # Quartz 任务统一编排
-│   ├── stock-web/           # React + Vite 前端资源
-│   ├── stock-starter/       # 唯一 Spring Boot 启动模块
-│   ├── Dockerfile
-│   └── pom.xml
+├── stock-backend/           # Spring Boot 后端，内部按业务包组织
+├── stock-agent/             # Agent、RAG、Memory 和决策增强
+├── stock-frontend/          # React + Vite 独立前端
 ├── model-artifacts/         # 固定模型制品
 ├── documents/               # 长期架构和模块文档
 ├── docker-compose.yml
+├── pom.xml                  # 三模块聚合与统一版本管理
 └── AGENTS.md
 ```
 
 ## 模块关系
 
 ```text
-stock-base
-  → stock-data
-  → stock-model
-  → stock-strategy
-  → stock-trading
-  → stock-agent
-  → stock-job
-  → stock-starter
-
-stock-web → stock-starter
+stock-frontend → HTTP API → stock-backend
+stock-frontend → HTTP API → stock-agent
+stock-backend  → 内部 HTTP API → stock-agent
 ```
 
-根 `pom.xml` 只负责将 `stock-application` 注册为仓库级 Maven 模块；`stock-application/pom.xml` 负责版本管理和九个业务模块聚合。`stock-starter` 生成唯一可执行 Spring Boot JAR，`stock-web` 的构建结果作为静态资源进入该 JAR。
+根 `pom.xml` 只聚合 `stock-backend`、`stock-agent`、`stock-frontend` 并管理统一依赖版本。Backend 内部的 `base`、`data`、`model`、`strategy`、`trading`、`job` 和启动装配只使用包与子目录表达边界，不再拆分 Maven 模块。Agent 与 Backend 的 Java 依赖将在服务拆分阶段收敛为内部 HTTP 契约，Frontend 不再进入后端 JAR。
 
 ## 交易安全边界
 
@@ -75,7 +60,9 @@ stock-web → stock-starter
 - Java 17
 - Maven 3.8+
 - Node.js 20.19+ 或兼容版本
+- MySQL 8
 - MongoDB 8
+- Redis 7
 - Docker 与 Docker Compose
 
 敏感配置通过 `.env` 或运行环境注入，禁止提交真实数据库密码、Agent API Key、券商账户、密码或签名密钥。
@@ -93,4 +80,4 @@ stock-web → stock-starter
 ## 免责声明
 
 本项目用于研究、工程实践和个人交易辅助。模型预测、回测结果、策略评分和 Agent 输出均不构成投资建议，也不能保证真实收益。真实交易必须在充分理解风险、完成独立验证并显式开启写入能力后使用。
-<!-- AI_GENERATE_END------------------------------- -->
+<!-- AI_GENERATE_END-------------------------------- -->
