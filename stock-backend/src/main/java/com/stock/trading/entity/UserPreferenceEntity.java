@@ -1,9 +1,12 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.trading.entity;
 
-import org.springframework.data.mongodb.core.mapping.Document;
-
-import org.springframework.data.annotation.Id;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
 
 import lombok.Data;
 
@@ -16,7 +19,8 @@ import java.time.LocalDateTime;
  * @since 2026-10-17
  */
 @Data
-@Document(collection = "sys_user_preference")
+@Entity
+@Table(name = "sys_user_preference")
 public class UserPreferenceEntity {
 
     /** 关联的系统用户主键。 */
@@ -24,19 +28,22 @@ public class UserPreferenceEntity {
     private Long userId;
 
     /** 左侧菜单顺序，使用 JSON 数组文本保存。 */
+    @Lob
     private String menuOrder;
 
     /** 偏好最后更新时间。 */
     private LocalDateTime updatedAt;
 
     /** 初始化偏好创建时间。 */
+    @PrePersist
     protected void onCreate() {
         updatedAt = LocalDateTime.now();
     }
 
     /** 刷新偏好更新时间。 */
+    @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

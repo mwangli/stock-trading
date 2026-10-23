@@ -1,4 +1,4 @@
-// AI_GENERATE_START--
+// AI_GENERATE_START---
 package com.stock.model.service;
 
 import com.stock.data.entity.StockInfo;
@@ -12,12 +12,6 @@ import com.stock.model.repository.ModelPredictionBatchRepository;
 import com.stock.model.repository.ModelPredictionRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.FindAndModifyOptions;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -58,7 +52,7 @@ public class PredictionExecutionQueueService {
     private final ModelPredictionQueryService queryService;
     private final PredictionEvaluationService evaluationService;
     private final PredictionEvaluationQueueService evaluationQueueService;
-    private final MongoTemplate mongoTemplate;
+    private final PredictionBatchClaimService claimService;
     private final Executor queueExecutor;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
@@ -73,7 +67,7 @@ public class PredictionExecutionQueueService {
      * @param queryService 预测查询服务
      * @param evaluationService 预测评估服务
      * @param evaluationQueueService 预测评估队列服务
-     * @param mongoTemplate MongoDB 操作模板
+     * @param claimService 预测批次事务认领服务
      * @param queueExecutor 预测队列执行器
      */
     public PredictionExecutionQueueService(
@@ -85,7 +79,7 @@ public class PredictionExecutionQueueService {
             ModelPredictionQueryService queryService,
             PredictionEvaluationService evaluationService,
             PredictionEvaluationQueueService evaluationQueueService,
-            MongoTemplate mongoTemplate,
+            PredictionBatchClaimService claimService,
             @Qualifier("modelPredictionQueueExecutor") Executor queueExecutor) {
         this.inferenceService = inferenceService;
         this.stockInfoRepository = stockInfoRepository;
@@ -95,7 +89,7 @@ public class PredictionExecutionQueueService {
         this.queryService = queryService;
         this.evaluationService = evaluationService;
         this.evaluationQueueService = evaluationQueueService;
-        this.mongoTemplate = mongoTemplate;
+        this.claimService = claimService;
         this.queueExecutor = queueExecutor;
     }
 
@@ -228,15 +222,7 @@ public class PredictionExecutionQueueService {
     }
 
     private ModelPredictionBatchDocument claimNext() {
-        Query query = Query.query(Criteria.where("status").is("QUEUED"))
-                .with(Sort.by(Sort.Order.asc("targetTradeDate"), Sort.Order.asc("createdAt")));
-        Update update = new Update()
-                .set("status", "RUNNING")
-                .set("startedAt", LocalDateTime.now())
-                .set("progressMessage", "正在执行全市场预测")
-                .set("updatedAt", LocalDateTime.now());
-        return mongoTemplate.findAndModify(query, update,
-                FindAndModifyOptions.options().returnNew(true), ModelPredictionBatchDocument.class);
+        return claimService.claimNextPrediction();
     }
 
     private List<String> resolveQueuedBatchStockCodes(ModelPredictionBatchDocument batch) {
@@ -412,4 +398,4 @@ public class PredictionExecutionQueueService {
     private record TradeDateResolution(LocalDate tradeDate, boolean calendarFallback) {
     }
 }
-// AI_GENERATE_END--
+// AI_GENERATE_END---

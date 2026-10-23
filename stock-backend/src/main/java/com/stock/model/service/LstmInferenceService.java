@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.model.service;
 
 import com.stock.model.dto.LstmPredictionResultDto;
@@ -12,7 +12,7 @@ import java.util.function.BiConsumer;
 
 /**
  * LSTM 在线推理门面。
- * 实际推理由 DJL + PyTorch Engine 执行，并从 MongoDB 激活版本读取 StockLSTMModel 参数。
+ * 实际推理由 DJL + PyTorch Engine 执行，并从 MySQL 激活元数据与 MongoDB GridFS 参数文件重建 StockLSTMModel。
  *
  * @author mwangli
  * @since 2026-10-10
@@ -95,4 +95,4 @@ public class LstmInferenceService {
         return modelRuntimeService.hasSharedModel();
     }
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END------------

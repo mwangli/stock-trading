@@ -1,8 +1,8 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.trading.repository;
 
 import com.stock.trading.entity.AutomaticTradeExecutionBatch;
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -15,7 +15,7 @@ import java.util.Optional;
  */
 @Repository
 public interface AutomaticTradeExecutionBatchRepository
-        extends MongoRepository<AutomaticTradeExecutionBatch, Long> {
+        extends JpaRepository<AutomaticTradeExecutionBatch, Long> {
 
     /**
      * 按幂等键查询执行批次。
@@ -42,4 +42,4 @@ public interface AutomaticTradeExecutionBatchRepository
     Optional<AutomaticTradeExecutionBatch> findFirstByCandidateBatchIdOrderByStartedAtDesc(
             String candidateBatchId);
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

@@ -1,12 +1,17 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.trading.entity;
 
-import org.springframework.data.annotation.Version;
-
-import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-
-import org.springframework.data.annotation.Id;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -23,14 +28,17 @@ import java.time.LocalDateTime;
  * @since 2026-09-25
  */
 @Data
-@Document(collection = "broker_order")
-@CompoundIndex(name = "uk_broker_order_fact",
-        def = "{'brokerCode': 1, 'accountId': 1, 'tradeDate': 1, 'brokerOrderNo': 1}", unique = true)
+@Entity
+@Table(name = "broker_order", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_broker_order_fact",
+                columnNames = {"broker_code", "account_id", "trade_date", "broker_order_no"})
+})
 @Accessors(chain = true)
 public class BrokerOrderEntity {
 
     /** 数据库主键。 */
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     /** 本地交易指令编号；纯券商同步记录允许为空。 */
@@ -73,6 +81,7 @@ public class BrokerOrderEntity {
     private String rawStatus;
 
     /** 委托价格，单位为元。 */
+    @Column(precision = 38, scale = 12)
     private BigDecimal orderPrice;
 
     /** 委托数量。 */
@@ -82,6 +91,7 @@ public class BrokerOrderEntity {
     private Integer filledQuantity;
 
     /** 成交均价，单位为元。 */
+    @Column(precision = 38, scale = 12)
     private BigDecimal averageFillPrice;
 
     /** 委托提交时间。 */
@@ -97,6 +107,7 @@ public class BrokerOrderEntity {
     private String errorCode;
 
     /** 脱敏错误摘要。 */
+    @Lob
     private String errorMessage;
 
     /** 乐观锁版本。 */
@@ -112,11 +123,11 @@ public class BrokerOrderEntity {
     /**
      * 初始化默认值和创建时间。
      */
+    @PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now();
         attemptNo = attemptNo != null ? attemptNo : 1;
         filledQuantity = filledQuantity != null ? filledQuantity : 0;
-        version = version != null ? version : 0L;
         createdAt = createdAt != null ? createdAt : now;
         updatedAt = now;
     }
@@ -124,8 +135,9 @@ public class BrokerOrderEntity {
     /**
      * 刷新记录更新时间。
      */
+    @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

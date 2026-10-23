@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.job.service;
 
 import com.stock.job.entity.JobConfig;
@@ -72,7 +72,7 @@ public class JobSchedulerService {
     private final Scheduler quartzScheduler;
 
     /**
-     * 将 MongoDB 中的固定任务配置幂等重建到 Quartz RAMJobStore。
+     * 将 MySQL 中的固定任务配置幂等重建到 Quartz RAMJobStore。
      */
     public void reconcileAllJobs() {
         log.info("========== [任务调度] 开始重建 Quartz 内存任务 ==========");
@@ -345,4 +345,4 @@ public class JobSchedulerService {
     public record QuartzRuntimeState(String triggerState, LocalDateTime nextFireTime, boolean registered) {
     }
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------

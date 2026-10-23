@@ -1,4 +1,4 @@
-// AI_GENERATE_START--
+// AI_GENERATE_START---
 package com.stock.model.service;
 
 import com.stock.data.repository.PriceRepository;
@@ -11,12 +11,6 @@ import com.stock.model.repository.ModelPredictionBatchRepository;
 import com.stock.model.repository.ModelPredictionRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.FindAndModifyOptions;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -53,7 +47,7 @@ public class PredictionEvaluationQueueService {
     private final ModelPredictionRepository predictionRepository;
     private final ModelPredictionQueryService queryService;
     private final PredictionEvaluationService evaluationService;
-    private final MongoTemplate mongoTemplate;
+    private final PredictionBatchClaimService claimService;
     private final Executor queueExecutor;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
@@ -66,7 +60,7 @@ public class PredictionEvaluationQueueService {
      * @param predictionRepository 预测明细仓库
      * @param queryService 预测查询服务
      * @param evaluationService 预测评估服务
-     * @param mongoTemplate MongoDB 操作模板
+     * @param claimService 预测批次事务认领服务
      * @param queueExecutor 评估队列执行器
      */
     public PredictionEvaluationQueueService(
@@ -76,7 +70,7 @@ public class PredictionEvaluationQueueService {
             ModelPredictionRepository predictionRepository,
             ModelPredictionQueryService queryService,
             PredictionEvaluationService evaluationService,
-            MongoTemplate mongoTemplate,
+            PredictionBatchClaimService claimService,
             @Qualifier("modelEvaluationQueueExecutor") Executor queueExecutor) {
         this.backfillProperties = backfillProperties;
         this.priceRepository = priceRepository;
@@ -84,7 +78,7 @@ public class PredictionEvaluationQueueService {
         this.predictionRepository = predictionRepository;
         this.queryService = queryService;
         this.evaluationService = evaluationService;
-        this.mongoTemplate = mongoTemplate;
+        this.claimService = claimService;
         this.queueExecutor = queueExecutor;
     }
 
@@ -139,11 +133,9 @@ public class PredictionEvaluationQueueService {
      * @return 新入队批次数量
      */
     public int enqueuePending() {
-        Query candidateQuery = Query.query(Criteria.where("status").in(EVALUATABLE_STATUSES)
-                        .and("evaluationQueueStatus").nin("QUEUED", "RUNNING", "COMPLETED"))
-                .with(Sort.by(Sort.Order.asc("targetTradeDate"), Sort.Order.asc("createdAt")));
-        List<ModelPredictionBatchDocument> batches = mongoTemplate.find(
-                candidateQuery, ModelPredictionBatchDocument.class);
+        List<ModelPredictionBatchDocument> batches = batchRepository
+                .findEvaluationCandidates(
+                        EVALUATABLE_STATUSES, List.of("QUEUED", "RUNNING", "COMPLETED"));
         int queuedCount = 0;
         for (ModelPredictionBatchDocument batch : batches) {
             if (enqueue(batch)) {
@@ -189,19 +181,7 @@ public class PredictionEvaluationQueueService {
             markWaiting(batch, WAIT_MARKET_DATA);
             return false;
         }
-        LocalDateTime now = LocalDateTime.now();
-        Query query = Query.query(Criteria.where("_id").is(batch.getId())
-                .and("evaluationQueueStatus").nin("QUEUED", "RUNNING"));
-        Update update = new Update()
-                .set("evaluationQueueStatus", "QUEUED")
-                .unset("evaluationWaitReason")
-                .set("evaluationQueuedAt", now)
-                .set("evaluationStartedAt", null)
-                .set("evaluationFinishedAt", null)
-                .set("evaluationErrorMessage", null)
-                .set("updatedAt", now);
-        return mongoTemplate.findAndModify(query, update,
-                FindAndModifyOptions.options().returnNew(true), ModelPredictionBatchDocument.class) != null;
+        return claimService.enqueueEvaluation(batch.getId());
     }
 
     /**
@@ -306,16 +286,7 @@ public class PredictionEvaluationQueueService {
     }
 
     private ModelPredictionBatchDocument claimNext() {
-        Query query = Query.query(Criteria.where("evaluationQueueStatus").is("QUEUED"))
-                .with(Sort.by(Sort.Order.asc("targetTradeDate"), Sort.Order.asc("createdAt")));
-        Update update = new Update()
-                .set("evaluationQueueStatus", "RUNNING")
-                .unset("evaluationWaitReason")
-                .set("evaluationStartedAt", LocalDateTime.now())
-                .set("evaluationErrorMessage", null)
-                .set("updatedAt", LocalDateTime.now());
-        return mongoTemplate.findAndModify(query, update,
-                FindAndModifyOptions.options().returnNew(true), ModelPredictionBatchDocument.class);
+        return claimService.claimNextEvaluation();
     }
 
     private void executeBatch(ModelPredictionBatchDocument batch) {
@@ -358,4 +329,4 @@ public class PredictionEvaluationQueueService {
         return batch != null && batch.getStatus() != null && statuses.contains(batch.getStatus());
     }
 }
-// AI_GENERATE_END--
+// AI_GENERATE_END---

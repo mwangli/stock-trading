@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------
+// AI_GENERATE_START--------------------
 package com.stock.job.bootstrap;
 
 import com.stock.data.dto.StockListSyncResult;
@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.concurrent.Executor;
 
 /**
- * 应用启动时补齐 MongoDB 固定任务配置，并据此重建 Quartz 内存调度状态。
+ * 应用启动时补齐 MySQL 固定任务配置，并据此重建 Quartz 内存调度状态。
  * 已存在任务保留用户维护的 Cron 和启停状态，仅为全新数据库写入默认值。
  *
  * @author mwangli
@@ -53,7 +53,7 @@ public class JobBootstrap implements ApplicationRunner {
      * 创建默认任务引导器。
      *
      * @param jobSchedulerService 统一任务调度服务
-     * @param jobConfigRepository MongoDB 任务配置仓储
+     * @param jobConfigRepository MySQL 任务配置仓储
      * @param applicationTaskExecutor 应用异步线程池
      * @param runtimeConfigService 系统运行控制配置服务
      * @param stockQueryService 股票基础信息查询服务
@@ -86,7 +86,7 @@ public class JobBootstrap implements ApplicationRunner {
 
     private void reconcileJobs() {
         try {
-            log.info("========== [任务协调] 开始补齐 MongoDB 配置并重建 Quartz 内存任务 ==========");
+            log.info("========== [任务协调] 开始补齐 MySQL 配置并重建 Quartz 内存任务 ==========");
             initializeDefaultJobs();
             jobSchedulerService.reconcileAllJobs();
             runtimeConfigService.synchronizeSchedulerState();
@@ -106,7 +106,7 @@ public class JobBootstrap implements ApplicationRunner {
             jobConfigRepository.save(defaultJob);
             created++;
         }
-        log.info("[任务协调] MongoDB 固定任务配置补齐完成: created={}, total={}", created, DEFAULT_JOBS.size());
+        log.info("[任务协调] MySQL 固定任务配置补齐完成: created={}, total={}", created, DEFAULT_JOBS.size());
     }
 
     private void initializeStockDataIfNeeded() {
@@ -137,4 +137,4 @@ public class JobBootstrap implements ApplicationRunner {
                 .setSyncMode(syncMode);
     }
 }
-// AI_GENERATE_END-------------------
+// AI_GENERATE_END--------------------

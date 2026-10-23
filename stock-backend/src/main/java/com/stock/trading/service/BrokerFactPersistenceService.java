@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START-----------
 package com.stock.trading.service;
 
 import com.stock.trading.entity.AccountSnapshotEntity;
@@ -13,9 +13,6 @@ import com.stock.trading.repository.BrokerOrderRepository;
 import com.stock.trading.repository.BrokerSyncBatchRepository;
 import com.stock.trading.repository.PositionSnapshotRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -38,7 +35,6 @@ public class BrokerFactPersistenceService {
     private final BrokerOrderRepository brokerOrderRepository;
     private final BrokerSyncBatchRepository brokerSyncBatchRepository;
     private final BrokerIdentityService brokerIdentityService;
-    private final MongoTemplate mongoTemplate;
 
     /**
      * 保存账户资金快照。
@@ -186,16 +182,8 @@ public class BrokerFactPersistenceService {
      * @return 清理的无效订单数量
      */
     public int removeInvalidFilledOrders() {
-        Criteria invalidFill = new Criteria().orOperator(
-                Criteria.where("filledQuantity").is(null),
-                Criteria.where("filledQuantity").lte(0),
-                Criteria.where("averageFillPrice").is(null),
-                Criteria.where("averageFillPrice").lte(0));
-        Query query = Query.query(Criteria.where("brokerCode").is(brokerIdentityService.getBrokerCode())
-                .and("accountId").is(brokerIdentityService.getAccountId())
-                .and("status").is("FILLED")
-                .andOperator(invalidFill));
-        return Math.toIntExact(mongoTemplate.remove(query, BrokerOrderEntity.class).getDeletedCount());
+        return brokerOrderRepository.deleteInvalidFilledOrders(
+                brokerIdentityService.getBrokerCode(), brokerIdentityService.getAccountId());
     }
 
     /**
@@ -331,4 +319,4 @@ public class BrokerFactPersistenceService {
     public record PersistenceResult(int received, int inserted, int updated, int skipped) {
     }
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END-----------

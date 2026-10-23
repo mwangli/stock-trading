@@ -1,9 +1,9 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.trading.sync.repository;
 
 import com.stock.trading.sync.entity.SyncStateEntity;
 
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -15,7 +15,7 @@ import java.util.Optional;
  * @since 2026-10-19
  */
 @Repository
-public interface SyncStateRepository extends MongoRepository<SyncStateEntity, Long> {
+public interface SyncStateRepository extends JpaRepository<SyncStateEntity, Long> {
 
     /**
      * 查询数据集和范围的同步状态。
@@ -26,4 +26,4 @@ public interface SyncStateRepository extends MongoRepository<SyncStateEntity, Lo
      */
     Optional<SyncStateEntity> findByDatasetAndScopeKey(String dataset, String scopeKey);
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

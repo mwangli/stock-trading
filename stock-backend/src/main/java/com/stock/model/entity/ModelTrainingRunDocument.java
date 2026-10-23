@@ -1,10 +1,14 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.model.entity;
 
 import lombok.Data;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.mapping.Document;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Lob;
+import jakarta.persistence.Table;
+import org.hibernate.annotations.UuidGenerator;
 
 import java.time.LocalDateTime;
 
@@ -16,11 +20,15 @@ import java.time.LocalDateTime;
  * @since 2026-10-10
  */
 @Data
-@Document(collection = "model_training_runs")
-@CompoundIndex(name = "idx_training_model_created", def = "{'modelName': 1, 'createdAt': -1}")
+@Entity
+@Table(name = "model_training_run", indexes = {
+        @Index(name = "idx_training_model_created", columnList = "model_name, created_at")
+})
 public class ModelTrainingRunDocument {
 
     @Id
+    @GeneratedValue
+    @UuidGenerator
     private String id;
 
     private String modelName;
@@ -31,10 +39,13 @@ public class ModelTrainingRunDocument {
 
     private String triggeredBy;
 
+    @Lob
     private String requestedConfigJson;
 
+    @Lob
     private String effectiveConfigJson;
 
+    @Lob
     private String gateResultJson;
 
     private LocalDateTime startedAt;
@@ -46,6 +57,7 @@ public class ModelTrainingRunDocument {
     /** 本次训练使用的训练数据快照 ID。 */
     private String datasetSnapshotId;
 
+    @Lob
     private String errorMessage;
 
     /** 实际参与训练并产生有效样本的股票数量。 */
@@ -55,6 +67,7 @@ public class ModelTrainingRunDocument {
     private String progressStage;
 
     /** 当前训练阶段说明。 */
+    @Lob
     private String progressMessage;
 
     /** 当前完成比例，范围 0-100。 */
@@ -85,4 +98,4 @@ public class ModelTrainingRunDocument {
 
     private LocalDateTime createdAt;
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

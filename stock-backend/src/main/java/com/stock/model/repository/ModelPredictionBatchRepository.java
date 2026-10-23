@@ -1,15 +1,20 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.model.repository;
 
 import com.stock.model.entity.ModelPredictionBatchDocument;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.mongodb.repository.MongoRepository;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 模型预测批次仓库。
@@ -18,7 +23,7 @@ import java.util.List;
  * @since 2026-10-12
  */
 @Repository
-public interface ModelPredictionBatchRepository extends MongoRepository<ModelPredictionBatchDocument, String> {
+public interface ModelPredictionBatchRepository extends JpaRepository<ModelPredictionBatchDocument, String> {
 
     /**
      * 查询尚未记录交易日历来源的历史批次。
@@ -59,6 +64,52 @@ public interface ModelPredictionBatchRepository extends MongoRepository<ModelPre
      * @return 是否存在匹配批次
      */
     boolean existsByEvaluationQueueStatus(String evaluationQueueStatus);
+
+    /**
+     * 按预测队列顺序锁定下一条待执行批次。
+     *
+     * @param status 预测队列状态
+     * @return 已锁定批次
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<ModelPredictionBatchDocument> findFirstByStatusOrderByTargetTradeDateAscCreatedAtAsc(String status);
+
+    /**
+     * 按评估队列顺序锁定下一条待执行批次。
+     *
+     * @param evaluationQueueStatus 评估队列状态
+     * @return 已锁定批次
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<ModelPredictionBatchDocument>
+            findFirstByEvaluationQueueStatusOrderByTargetTradeDateAscCreatedAtAsc(String evaluationQueueStatus);
+
+    /**
+     * 按主键锁定预测批次。
+     *
+     * @param id 批次主键
+     * @return 已锁定批次
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select item from ModelPredictionBatchDocument item where item.id = :id")
+    Optional<ModelPredictionBatchDocument> findByIdForUpdate(@Param("id") String id);
+
+    /**
+     * 查询可评估但尚未进入终态队列的预测批次。
+     *
+     * @param statuses 可评估预测状态
+     * @param queueStatuses 需排除的评估队列状态
+     * @return 候选批次
+     */
+    @Query("""
+            select item from ModelPredictionBatchDocument item
+            where item.status in :statuses
+              and (item.evaluationQueueStatus is null or item.evaluationQueueStatus not in :queueStatuses)
+            order by item.targetTradeDate asc, item.createdAt asc
+            """)
+    List<ModelPredictionBatchDocument> findEvaluationCandidates(
+            @Param("statuses") Collection<String> statuses,
+            @Param("queueStatuses") Collection<String> queueStatuses);
 
     /**
      * 分页查询全部预测批次。
@@ -123,4 +174,4 @@ public interface ModelPredictionBatchRepository extends MongoRepository<ModelPre
     ModelPredictionBatchDocument findFirstByModelIdAndEvaluatedCountGreaterThanOrderByEvaluationFinishedAtDescCreatedAtDesc(
             String modelId, int evaluatedCount);
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------

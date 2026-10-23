@@ -1,10 +1,14 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.trading.entity;
 
-import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.index.Indexed;
-
-import org.springframework.data.annotation.Id;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import lombok.Data;
 
@@ -17,15 +21,18 @@ import java.time.LocalDateTime;
  * @since 2026-10-11
  */
 @Data
-@Document(collection = "sys_user")
+@Entity
+@Table(name = "sys_user", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_system_user_name", columnNames = "username")
+})
 public class UserEntity {
 
     /** 数据库主键。 */
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     /** 登录用户名。 */
-    @Indexed(unique = true, name = "uk_system_user_name")
     private String username;
 
     /** BCrypt 密码摘要。 */
@@ -44,6 +51,7 @@ public class UserEntity {
     private LocalDateTime updatedAt;
 
     /** 初始化创建时间。 */
+    @PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now();
         createdAt = createdAt == null ? now : createdAt;
@@ -51,8 +59,9 @@ public class UserEntity {
     }
 
     /** 刷新更新时间。 */
+    @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

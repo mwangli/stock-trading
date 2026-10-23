@@ -1,10 +1,14 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.model.entity;
 
 import lombok.Data;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.mapping.Document;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Lob;
+import jakarta.persistence.Table;
+import org.hibernate.annotations.UuidGenerator;
 
 import java.time.LocalDateTime;
 
@@ -16,11 +20,15 @@ import java.time.LocalDateTime;
  * @since 2026-10-10
  */
 @Data
-@Document(collection = "model_operation_audits")
-@CompoundIndex(name = "idx_audit_model_created", def = "{'modelName': 1, 'createdAt': -1}")
+@Entity
+@Table(name = "model_operation_audit", indexes = {
+        @Index(name = "idx_audit_model_created", columnList = "model_name, created_at")
+})
 public class ModelOperationAuditDocument {
 
     @Id
+    @GeneratedValue
+    @UuidGenerator
     private String id;
 
     private String modelName;
@@ -35,8 +43,9 @@ public class ModelOperationAuditDocument {
 
     private boolean success;
 
+    @Lob
     private String reason;
 
     private LocalDateTime createdAt;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

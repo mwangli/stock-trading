@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------------
+// AI_GENERATE_START-----------------------
 package com.stock.model.service;
 
 import com.stock.data.repository.PriceRepository;
@@ -18,7 +18,7 @@ import com.stock.model.repository.ModelPredictionBatchRepository;
 import com.stock.model.repository.ModelPredictionRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.index.Index;
@@ -193,11 +193,11 @@ public class ModelPredictionAnalysisService {
         ModelPredictionBatchDocument saved;
         try {
             saved = batchRepository.save(rerun);
-        } catch (DuplicateKeyException duplicateKeyException) {
+        } catch (DataIntegrityViolationException dataIntegrityViolationException) {
             ModelPredictionBatchDocument concurrent = batchRepository
                     .findFirstByRerunSourceBatchIdOrderByCreatedAtDesc(source.getId());
             if (concurrent == null) {
-                throw duplicateKeyException;
+                throw dataIntegrityViolationException;
             }
             return PredictionOperationResponse.builder()
                     .batchId(concurrent.getId()).status(concurrent.getStatus())
@@ -449,4 +449,4 @@ public class ModelPredictionAnalysisService {
     private record PredictionBatchPreparation(ModelPredictionBatchDocument batch, boolean created) {
     }
 }
-// AI_GENERATE_END----------------------
+// AI_GENERATE_END-----------------------
