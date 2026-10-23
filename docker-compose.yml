@@ -8,49 +8,21 @@ x-default-logging: &default-logging
     max-file: "5"
 
 services:
-  stock-web:
-    image: ${STOCK_WEB_IMAGE:-stock-front:local}
+  stock-application:
+    image: ${STOCK_APPLICATION_IMAGE:-stock-trading-application:local}
     build:
-      context: ./stock-frontend
+      context: ./stock-application
       dockerfile: Dockerfile
-    container_name: stock-web
-    depends_on:
-      stock-backend:
-        condition: service_healthy
-    ports:
-      - "0.0.0.0:80:80"
-    networks:
-      - stock-frontend
-    restart: unless-stopped
-    mem_limit: 96m
-    cpus: 0.25
-    security_opt:
-      - no-new-privileges:true
-    logging: *default-logging
-
-  stock-backend:
-    image: ${STOCK_BACKEND_IMAGE:-stock-trading-backend:local}
-    build:
-      context: ./stock-backend
-      dockerfile: Dockerfile
-    container_name: stock-backend
+    container_name: stock-application
     environment:
       SPRING_PROFILES_ACTIVE: docker
       EMBEDDING_MODEL_PATH: /app/model-artifacts/embedding
       EMBEDDING_DOWNLOAD_PRETRAINED: ${EMBEDDING_DOWNLOAD_PRETRAINED:-true}
-      SPRING_DATASOURCE_URL: jdbc:mysql://stock-mysql:3306/stock_trading?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      SPRING_DATA_MONGODB_HOST: stock-mongo
-      SPRING_DATA_MONGODB_PORT: 27017
-      SPRING_DATA_MONGODB_DATABASE: stock_trading
-      SPRING_DATA_MONGODB_AUTHENTICATION_DATABASE: admin
-      SPRING_DATA_MONGODB_USERNAME: admin
-      SPRING_DATA_MONGODB_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      SPRING_DATA_MONGODB_URI: mongodb://admin:${MONGO_ROOT_PASSWORD}@stock-mongo:27017/stock_trading?authSource=admin
       TRADING_REAL_WRITE_ENABLED: ${TRADING_REAL_WRITE_ENABLED:-false}
-      APP_NODE_ID: ${APP_NODE_ID:-stock-backend}
+      APP_NODE_ID: ${APP_NODE_ID:-stock-application}
       SPRING_QUARTZ_AUTO_STARTUP: ${SPRING_QUARTZ_AUTO_STARTUP:-true}
-      APP_STARTUP_LISTENER_ENABLED: ${APP_STARTUP_LISTENER_ENABLED:-true}
+      APP_STARTUP_DATA_SYNC_ENABLED: ${APP_STARTUP_DATA_SYNC_ENABLED:-true}
       # DeepSeek Key 是唯一需要从运行环境注入的 Agent 密钥。
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DJL_DEFAULT_ENGINE: PyTorch
@@ -68,15 +40,14 @@ services:
       - runtime-tmp:/app/.tmp
       - ./model-artifacts:/app/model-artifacts:ro
     depends_on:
-      stock-mysql:
-        condition: service_healthy
       stock-mongo:
         condition: service_healthy
     ports:
+      - "0.0.0.0:80:8080"
       - "0.0.0.0:8080:8080"
     networks:
-      - stock-frontend
-      - stock-backend
+      - stock-application
+      - stock-internal
     restart: unless-stopped
     mem_limit: 1500m
     cpus: 1.25
@@ -88,38 +59,6 @@ services:
       timeout: 5s
       start_period: 90s
       retries: 5
-    logging: *default-logging
-
-  stock-mysql:
-    image: public.ecr.aws/docker/library/mysql:8.0.43
-    container_name: stock-mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: stock_trading
-    command:
-      - --lower-case-table-names=${MYSQL_LOWER_CASE_TABLE_NAMES:-1}
-      - --mysqlx=0
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --bind-address=0.0.0.0
-    volumes:
-      - type: bind
-        source: ${MYSQL_DATA_DIR:-./data/mysql}
-        target: /var/lib/mysql
-    ports:
-      - "127.0.0.1:6033:3306"
-    networks:
-      - stock-backend
-      - stock-db-access
-    restart: unless-stopped
-    mem_limit: 512m
-    cpus: 0.50
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
-      interval: 15s
-      timeout: 5s
-      start_period: 45s
-      retries: 10
     logging: *default-logging
 
   stock-mongo:
@@ -136,7 +75,7 @@ services:
     ports:
       - "127.0.0.1:27017:27017"
     networks:
-      - stock-backend
+      - stock-internal
       - stock-db-access
     restart: unless-stopped
     mem_limit: 640m
@@ -150,9 +89,9 @@ services:
     logging: *default-logging
 
 networks:
-  stock-frontend:
+  stock-application:
     driver: bridge
-  stock-backend:
+  stock-internal:
     driver: bridge
     internal: true
   stock-db-access:
