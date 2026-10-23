@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START-------------------------------- -->
+<!-- AI_GENERATE_START--------------------------------- -->
 # AI-AGENT 智能股票交易系统
 
 面向 A 股市场的数据采集、模型预测、策略分析、Agent 决策增强、风险控制和自动交易平台。
@@ -34,10 +34,19 @@ stock-trading4/
 ```text
 stock-frontend → HTTP API → stock-backend
 stock-frontend → HTTP API → stock-agent
-stock-backend  → 内部 HTTP API → stock-agent
+stock-backend  → 内部交易门禁 API → stock-agent
+stock-agent    → 内部事实 API → stock-backend
 ```
 
-根 `pom.xml` 只聚合 `stock-backend`、`stock-agent`、`stock-frontend` 并管理统一依赖版本。Backend 内部的 `base`、`data`、`model`、`strategy`、`trading`、`job` 和启动装配只使用包与子目录表达边界，不再拆分 Maven 模块。Agent 与 Backend 的 Java 依赖将在服务拆分阶段收敛为内部 HTTP 契约，Frontend 不再进入后端 JAR。
+根 `pom.xml` 只聚合 `stock-backend`、`stock-agent`、`stock-frontend` 并管理统一依赖版本。Backend 内部的 `base`、`data`、`model`、`strategy`、`trading`、`job` 和启动装配只使用包与子目录表达边界，不再拆分 Maven 模块。Agent 与 Backend 不共享 Java 实现，通过受 `X-Internal-Token` 保护的内部 HTTP 契约协作；Frontend 独立构建并由 Nginx 分流请求。
+
+## 数据存储
+
+| 存储 | 权威职责 |
+|---|---|
+| MySQL | 用户、配置、任务、模型元数据、交易状态和需要事务约束的常规业务数据 |
+| MongoDB | 行情、新闻、预测明细、回测、Agent 会话/RAG 等增量、时序和大文档数据；GridFS 保存模型二进制 |
+| Redis | 可重建查询缓存与 Backend/Agent 共享 Session，不作为业务事实源 |
 
 ## 交易安全边界
 
@@ -80,4 +89,4 @@ stock-backend  → 内部 HTTP API → stock-agent
 ## 免责声明
 
 本项目用于研究、工程实践和个人交易辅助。模型预测、回测结果、策略评分和 Agent 输出均不构成投资建议，也不能保证真实收益。真实交易必须在充分理解风险、完成独立验证并显式开启写入能力后使用。
-<!-- AI_GENERATE_END-------------------------------- -->
+<!-- AI_GENERATE_END--------------------------------- -->

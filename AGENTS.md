@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START--------------------------------------- -->
+<!-- AI_GENERATE_START---------------------------------------- -->
 # 交互语言要求
 
 1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
@@ -73,6 +73,21 @@ npm run build
 
 # 代码检查 (Lint)
 npm run lint
+```
+
+### Agent (Java/Maven)
+
+工作目录: 项目根目录
+
+```bash
+# 构建独立 Agent 服务（跳过测试）
+mvn -pl stock-agent -am clean package -DskipTests
+
+# 仅编译 Agent
+mvn -pl stock-agent -am compile
+
+# 打包后启动，默认端口 8081
+java -jar stock-agent/target/stock-agent-1.0.0-SNAPSHOT.jar
 ```
 
 ### Java Model Training
@@ -497,7 +512,9 @@ public [返回值类型] [methodName]([参数列表]) {
 - **生产访问入口**：`http://117.72.216.67`
 - **服务器部署目录**：`/srv/stock-trading`
 - **核心 Docker 容器**：
+  - `stock-frontend`：Nginx 静态站点与 Backend/Agent API 分流入口
   - `stock-backend`：Spring Boot 后端、模型、策略、风控、交易与统一任务调度
+  - `stock-agent`：独立 Agent、RAG、Memory 与受控交易判断服务
   - `stock-mysql`：权威业务数据、状态和事务记录
   - `stock-mongo`：增量、时序、大文档、向量和 GridFS 数据
   - `stock-redis`：可丢失缓存与共享 Session
@@ -547,13 +564,13 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 
 1. **线上取证**：先确认失败对象、发生时间、完整异常、关联数据和当前镜像 SHA，未定位根因前不得猜测式修改。
 2. **本地最小修复**：只修改根因相关文件，保留工作区其他差异；数据库结构或索引变更必须考虑已有生产数据和应用启动顺序。
-3. **本地检查**：按项目规则执行 Java 17 编译或前端构建。编译成功只代表代码可构建，不代表线上功能已恢复。
+3. **本地检查**：默认执行源码、差异和配置静态检查；只有用户在当前请求中明确授权时才执行 Java 17 编译、前端构建或测试。即使编译成功，也只代表代码可构建，不代表线上功能已恢复。
 4. **提交与推送**：按 Git 工作流创建原子提交并推送当前分支；普通分支推送不触发生产 CI/CD，禁止为触发部署而擅自创建版本标签。
 5. **等待线上部署**：用户明确授权创建并推送版本标签后，必须持续等待对应 CI/CD 流水线完成，不得在镜像仍构建或容器仍启动时提前验证。
 6. **部署一致性确认**：通过 GitHub Actions 和线上 `docker inspect` 双重确认：
    - 流水线 `headSha` 与目标提交一致；
-   - `stock-backend` 实际镜像标签包含目标完整 SHA；
-   - 容器为 `running/healthy`；
+   - 本次发布模块对应容器的实际镜像标签包含目标完整 SHA；
+   - 目标容器为 `running/healthy`；
    - 重启次数和启动日志无异常。
 7. **重新触发业务接口**：容器健康后，使用真实线上 API 重新触发原失败流程。需要登录时通过 `/api/auth/login` 建立临时会话，Cookie 只保存在项目 `.tmp/`，验证结束后删除。
 8. **等待业务终态**：轮询批次或任务接口，记录总数、已处理数、成功数、失败数、进度信息和错误信息，直到进入最终状态。
@@ -597,11 +614,11 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 
 ### CI/CD 版本标签规则（项目级强制）
 
-1. 统一应用 GitHub Actions 仅在推送版本标签时触发构建与部署，普通分支提交和推送不得触发生产构建。
-2. 版本标签仅允许使用 `v<主版本>.<次版本>`、`V<主版本>.<次版本>` 或带补丁号的 `v/V<主版本>.<次版本>.<补丁版本>` 格式，例如 `v4.2`、`V5.1`、`v4.2.1`。
+1. Backend、Agent、Frontend 三条 GitHub Actions 仅在推送各自版本标签时触发构建与部署，普通分支提交和推送不得触发生产构建。
+2. 版本标签分别使用 `backend-v<版本>`、`agent-v<版本>`、`frontend-v<版本>`，版本允许两段或三段数字，例如 `backend-v4.2`、`agent-v4.2.1`、`frontend-v4.2`。
 3. 完成功能提交和分支推送不等于发布。只有用户在当前请求中明确授权发布版本时，Agent 才能创建并推送版本标签；禁止自动递增版本号、自动打标签或通过删除后重建标签重复触发流水线。
 4. 创建标签前必须确认目标提交、版本号、变更范围和远程是否已存在同名标签；标签应指向已推送且通过规定静态检查的提交。
-5. 推送版本标签后，应核对前后端 GitHub Actions 均由该标签触发，并以目标提交 SHA、镜像标签和部署结果作为发布追踪依据。
+5. 推送版本标签后，只核对该模块对应的 GitHub Actions，并以目标提交 SHA、模块镜像标签和部署结果作为发布追踪依据。
 
 ## 思考与行动指南 (For Agents)
 
@@ -615,4 +632,4 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 **Agent 特别指令**:
 - 本项目无自动化测试，不要生成或要求补充测试用例；质量依赖代码审查与手工验证。
 - 项目只允许 `stock-backend`、`stock-agent`、`stock-frontend` 三个 Maven 业务模块；后端领域使用包和子目录组织，禁止恢复旧的内部 Maven 模块。
-<!-- AI_GENERATE_END--------------------------------------- -->
+<!-- AI_GENERATE_END---------------------------------------- -->
