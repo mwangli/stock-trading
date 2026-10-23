@@ -5,9 +5,7 @@ HELP.md
 
 # Maven
 target/
-stock-frontend/target/
-stock-backend/cp.txt
-stock-backend/app.jar
+stock-application/app.jar
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
@@ -32,7 +30,7 @@ documents/plans/
 # 临时文件与中间脚本
 .tmp/
 /graft/
-stock-backend/data/
+stock-application/data/
 
 # NetBeans
 /nbproject/private/
@@ -46,6 +44,7 @@ build/
 
 # Node.js / Frontend
 node_modules/
+.vite/
 dist/
 build/
 .umi/

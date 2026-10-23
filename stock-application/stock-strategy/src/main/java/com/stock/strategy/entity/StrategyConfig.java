@@ -1,0 +1,129 @@
+// AI_GENERATE_START---------
+package com.stock.strategy.entity;
+
+import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
+
+import org.springframework.data.annotation.Id;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.io.Serializable;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * 策略配置实体（MongoDB 持久化）。
+ * 保存选股、指标权重和收益阈值等运行参数。
+ *
+ * @author mwangli
+ * @since 2026-09-25
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Document(collection = "strategy_config")
+@CompoundIndex(name = "uk_strategy_config_version", def = "{'configId': 1, 'version': 1}", unique = true)
+public class StrategyConfig implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    @Id
+    private Long id;
+
+    private String configId;
+
+    private String version;
+
+    private StrategyMode mode;
+
+    private double lstmWeight;
+
+    private double sentimentWeight;
+
+    private int topN;
+
+    private double minScore;
+
+    /**
+     * 候选股票允许参与选股的最小上市年限，单位为年；0 表示不启用该门槛。
+     */
+    private double minimumListingYears;
+
+    private double trailingStopWeight;
+
+    private double trailingStopTolerance;
+
+    private double rsiWeight;
+
+    private double rsiOverboughtThreshold;
+
+    private double volumeWeight;
+
+    private double volumeShrinkThreshold;
+
+    private double bollingerWeight;
+
+    private double bollingerBreakoutThreshold;
+
+    private int highReturnThreshold;
+
+    private int normalReturnThreshold;
+
+    private int lowReturnThreshold;
+
+    private int lossReturnThreshold;
+
+    private Map<String, Boolean> indicatorEnabled;
+
+    private boolean enabled;
+
+    private LocalDateTime updateTime;
+
+    private LocalDateTime createTime;
+
+    /**
+     * 创建默认策略配置。
+     *
+     * @return 默认策略配置
+     */
+    public static StrategyConfig defaultConfig() {
+        Map<String, Boolean> indicatorEnabled = new HashMap<>();
+        indicatorEnabled.put("trailingStop", true);
+        indicatorEnabled.put("rsi", true);
+        indicatorEnabled.put("volume", true);
+        indicatorEnabled.put("bollinger", true);
+        return StrategyConfig.builder()
+                .configId("default")
+                .version("1")
+                .mode(StrategyMode.BALANCED)
+                .lstmWeight(0.5)
+                .sentimentWeight(0.5)
+                .topN(10)
+                .minScore(0.5)
+                .minimumListingYears(0.5)
+                .trailingStopWeight(0.25)
+                .trailingStopTolerance(0.02)
+                .rsiWeight(0.25)
+                .rsiOverboughtThreshold(70.0)
+                .volumeWeight(0.25)
+                .volumeShrinkThreshold(0.5)
+                .bollingerWeight(0.25)
+                .bollingerBreakoutThreshold(1.0)
+                .highReturnThreshold(3)
+                .normalReturnThreshold(2)
+                .lowReturnThreshold(1)
+                .lossReturnThreshold(0)
+                .indicatorEnabled(indicatorEnabled)
+                .enabled(true)
+                .updateTime(LocalDateTime.now())
+                .createTime(LocalDateTime.now())
+                .build();
+    }
+}
+// AI_GENERATE_END---------
