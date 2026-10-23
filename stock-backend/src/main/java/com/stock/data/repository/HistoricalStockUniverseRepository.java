@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START-----------
 package com.stock.data.repository;
 
 import com.stock.data.entity.HistoricalStockUniverseEntity;
@@ -16,7 +16,7 @@ import java.util.Optional;
  */
 @Repository
 public interface HistoricalStockUniverseRepository
-        extends MongoRepository<HistoricalStockUniverseEntity, Long> {
+        extends MongoRepository<HistoricalStockUniverseEntity, String> {
 
     /**
      * 查询同一来源和来源版本下指定生效日的股票版本。
@@ -38,4 +38,4 @@ public interface HistoricalStockUniverseRepository
     Optional<HistoricalStockUniverseEntity> findFirstByOrderByEffectiveFromAsc();
 
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END-----------

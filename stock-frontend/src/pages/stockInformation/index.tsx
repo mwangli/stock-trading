@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------
+// AI_GENERATE_START---------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, Empty, Input, Pagination, Space, Table, Tooltip, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
@@ -9,7 +9,7 @@ import { usePageHeader } from '../../layouts/PageHeaderContext';
 import { useTranslation } from 'react-i18next';
 
 interface StockInfo {
-  id: number;
+  id: string;
   code: string;
   name: string;
   market?: string;
@@ -190,4 +190,4 @@ const StockInformation: React.FC = () => {
 };
 
 export default StockInformation;
-// AI_GENERATE_END--------------
+// AI_GENERATE_END---------------

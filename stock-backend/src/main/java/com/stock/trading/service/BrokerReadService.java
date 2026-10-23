@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------------
+// AI_GENERATE_START----------------
 package com.stock.trading.service;
 
 import com.stock.trading.dto.BrokerAccountDto;
@@ -66,7 +66,7 @@ public class BrokerReadService {
      */
     public BrokerAccountDto getAccount() {
         AccountSnapshotEntity account = accountSnapshotRepository
-                .findByBrokerCodeAndAccountId(
+                .findFirstByBrokerCodeAndAccountIdOrderByCapturedAtDesc(
                         brokerIdentityService.getBrokerCode(), brokerIdentityService.getAccountId())
                 .orElseThrow(() -> new IllegalStateException("暂无账户资金快照，请等待券商定时同步任务执行"));
         return toAccountDto(account);
@@ -74,7 +74,7 @@ public class BrokerReadService {
 
     /**
      * 查询指定信息截止时间可使用的当前账户资金快照。
-     * 系统只保留最新快照；当最新快照晚于截止时间时，不使用未来账户事实。
+     * 查询不晚于截止时点的最近历史快照，避免使用未来账户事实。
      *
      * @param informationCutoffAt 信息截止时间，包含该时点
      * @return 截止时点可使用的当前账户资金快照
@@ -86,10 +86,9 @@ public class BrokerReadService {
             throw new IllegalArgumentException("账户快照截止时间不能为空");
         }
         AccountSnapshotEntity account = accountSnapshotRepository
-                .findByBrokerCodeAndAccountId(
-                        brokerIdentityService.getBrokerCode(), brokerIdentityService.getAccountId())
-                .filter(snapshot -> snapshot.getCapturedAt() != null
-                        && !snapshot.getCapturedAt().isAfter(informationCutoffAt))
+                .findFirstByBrokerCodeAndAccountIdAndCapturedAtLessThanEqualOrderByCapturedAtDesc(
+                        brokerIdentityService.getBrokerCode(), brokerIdentityService.getAccountId(),
+                        informationCutoffAt)
                 .orElseThrow(() -> new IllegalStateException("信息截止时间前无可用账户资金快照"));
         return toAccountDto(account);
     }
@@ -251,4 +250,4 @@ public class BrokerReadService {
         return "****" + trimmed.substring(trimmed.length() - 4);
     }
 }
-// AI_GENERATE_END---------------
+// AI_GENERATE_END----------------

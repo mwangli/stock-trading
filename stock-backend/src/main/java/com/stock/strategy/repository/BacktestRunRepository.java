@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START---------
 package com.stock.strategy.repository;
 
 import com.stock.strategy.entity.BacktestRunEntity;
@@ -14,7 +14,7 @@ import java.util.Optional;
  * @since 2026-09-25
  */
 @Repository
-public interface BacktestRunRepository extends MongoRepository<BacktestRunEntity, Long> {
+public interface BacktestRunRepository extends MongoRepository<BacktestRunEntity, String> {
 
     /**
      * 按结果标识查询回测运行。
@@ -24,4 +24,4 @@ public interface BacktestRunRepository extends MongoRepository<BacktestRunEntity
      */
     Optional<BacktestRunEntity> findByResultId(String resultId);
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END---------

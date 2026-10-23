@@ -1,7 +1,9 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.trading.entity;
 
+import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import org.springframework.data.annotation.Id;
@@ -20,13 +22,17 @@ import java.time.LocalDateTime;
  */
 @Data
 @Document(collection = "account_snapshot")
-@CompoundIndex(name = "uk_account_snapshot_account", def = "{'brokerCode': 1, 'accountId': 1}", unique = true)
+@CompoundIndexes({
+        @CompoundIndex(name = "uk_account_snapshot_id", def = "{'snapshotId': 1}", unique = true),
+        @CompoundIndex(name = "idx_account_snapshot_account_captured",
+                def = "{'brokerCode': 1, 'accountId': 1, 'capturedAt': -1}")
+})
 @Accessors(chain = true)
 public class AccountSnapshotEntity {
 
     /** 数据库主键。 */
     @Id
-    private Long id;
+    private String id;
 
     /** 全局快照编号。 */
     private String snapshotId;
@@ -62,15 +68,7 @@ public class AccountSnapshotEntity {
     private String rawEventId;
 
     /** 记录创建时间。 */
+    @CreatedDate
     private LocalDateTime createdAt;
-
-    /**
-     * 初始化创建时间。
-     */
-    protected void onCreate() {
-        if (createdAt == null) {
-            createdAt = LocalDateTime.now();
-        }
-    }
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

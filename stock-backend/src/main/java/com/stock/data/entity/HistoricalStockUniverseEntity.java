@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.data.entity;
 
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -32,7 +32,7 @@ public class HistoricalStockUniverseEntity {
 
     /** 数据库主键。 */
     @Id
-    private Long id;
+    private String id;
 
     /** 股票代码。 */
     private String stockCode;
@@ -79,4 +79,4 @@ public class HistoricalStockUniverseEntity {
     /** 数据库更新时间。 */
     private LocalDateTime updatedAt;
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

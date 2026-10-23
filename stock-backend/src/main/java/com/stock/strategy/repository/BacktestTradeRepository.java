@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START---------
 package com.stock.strategy.repository;
 
 import com.stock.strategy.entity.BacktestTradeEntity;
@@ -14,7 +14,7 @@ import java.util.List;
  * @since 2026-09-25
  */
 @Repository
-public interface BacktestTradeRepository extends MongoRepository<BacktestTradeEntity, Long> {
+public interface BacktestTradeRepository extends MongoRepository<BacktestTradeEntity, String> {
 
     /**
      * 按回测结果标识查询逐笔交易。
@@ -24,4 +24,4 @@ public interface BacktestTradeRepository extends MongoRepository<BacktestTradeEn
      */
     List<BacktestTradeEntity> findByResultIdOrderBySequenceNoAsc(String resultId);
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END---------

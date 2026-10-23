@@ -1,6 +1,9 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.trading.entity;
 
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import org.springframework.data.annotation.Id;
@@ -21,12 +24,18 @@ import java.time.LocalDateTime;
  */
 @Data
 @Document(collection = "position_snapshot")
+@CompoundIndexes({
+        @CompoundIndex(name = "uk_position_snapshot_stock",
+                def = "{'snapshotId': 1, 'stockCode': 1}", unique = true),
+        @CompoundIndex(name = "idx_position_snapshot_account_captured",
+                def = "{'brokerCode': 1, 'accountId': 1, 'capturedAt': -1}")
+})
 @Accessors(chain = true)
 public class PositionSnapshotEntity {
 
     /** 数据库主键。 */
     @Id
-    private Long id;
+    private String id;
 
     /** 全局快照编号。 */
     private String snapshotId;
@@ -83,19 +92,7 @@ public class PositionSnapshotEntity {
     private String rawEventId;
 
     /** 记录创建时间。 */
+    @CreatedDate
     private LocalDateTime createdAt;
-
-    /**
-     * 初始化创建时间。
-     */
-    protected void onCreate() {
-        if (createdAt == null) {
-            createdAt = LocalDateTime.now();
-        }
-        totalQuantity = totalQuantity != null ? totalQuantity : 0;
-        availableQuantity = availableQuantity != null ? availableQuantity : 0;
-        frozenQuantity = frozenQuantity != null ? frozenQuantity : 0;
-        shareholderAccount = shareholderAccount != null ? shareholderAccount : "";
-    }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

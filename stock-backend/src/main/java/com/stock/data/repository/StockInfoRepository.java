@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.data.repository;
 
 import com.stock.data.entity.StockInfo;
@@ -17,7 +17,7 @@ import java.util.Optional;
  * @since 2026-10-23
  */
 @Repository
-public interface StockInfoRepository extends MongoRepository<StockInfo, Long> {
+public interface StockInfoRepository extends MongoRepository<StockInfo, String> {
 
     Optional<StockInfo> findByCode(String code);
 
@@ -70,4 +70,4 @@ public interface StockInfoRepository extends MongoRepository<StockInfo, Long> {
                 && !normalized.contains("TERMINATED");
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------
