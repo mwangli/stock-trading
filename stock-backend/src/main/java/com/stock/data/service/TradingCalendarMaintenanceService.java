@@ -1,6 +1,7 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.data.service;
 
+import com.stock.backend.config.CacheNames;
 import com.stock.data.entity.TradeCalendarEntity;
 import com.stock.data.enums.CalendarClosureType;
 import com.stock.data.enums.CalendarDayStatus;
@@ -10,6 +11,7 @@ import com.stock.data.support.TradingCalendarSourceClient;
 import com.stock.data.support.TradingCalendarSourceClient.CalendarSourceSnapshot;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 
 import java.time.DayOfWeek;
@@ -48,6 +50,7 @@ public class TradingCalendarMaintenanceService {
      * @return 本次同步统计
      * @throws IllegalStateException 公开日历来源为空、格式无效或持久化失败时抛出
      */
+    @CacheEvict(cacheNames = CacheNames.TRADING_CALENDAR, allEntries = true)
     public CalendarMaintenanceResult maintainRollingCalendar() {
         CalendarSourceSnapshot snapshot = sourceClient.fetchAStockClosures();
         LocalDate today = LocalDate.now(MARKET_ZONE);
@@ -159,4 +162,4 @@ public class TradingCalendarMaintenanceService {
                                             int unverifiedCount, String sourceVersion) {
     }
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

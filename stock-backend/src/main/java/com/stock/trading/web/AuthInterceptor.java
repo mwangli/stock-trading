@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.trading.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,8 +21,14 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class AuthInterceptor implements HandlerInterceptor {
 
-    /** 服务端会话中的当前用户属性名。 */
-    public static final String AUTH_USER_SESSION_KEY = "AUTH_USER";
+    /** 服务端会话中的当前用户主键属性名。 */
+    public static final String AUTH_USER_ID_SESSION_KEY = "AUTH_USER_ID";
+
+    /** 服务端会话中的当前用户名属性名。 */
+    public static final String AUTH_USERNAME_SESSION_KEY = "AUTH_USERNAME";
+
+    /** 服务端会话中的当前用户显示名称属性名。 */
+    public static final String AUTH_DISPLAY_NAME_SESSION_KEY = "AUTH_DISPLAY_NAME";
 
     private final ObjectMapper objectMapper;
 
@@ -39,7 +45,8 @@ public class AuthInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws IOException {
         if (request.getSession(false) != null
-                && request.getSession(false).getAttribute(AUTH_USER_SESSION_KEY) != null) {
+                && request.getSession(false).getAttribute(AUTH_USER_ID_SESSION_KEY) instanceof Long
+                && request.getSession(false).getAttribute(AUTH_USERNAME_SESSION_KEY) instanceof String) {
             return true;
         }
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -48,4 +55,4 @@ public class AuthInterceptor implements HandlerInterceptor {
         return false;
     }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

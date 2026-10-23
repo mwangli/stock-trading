@@ -1,11 +1,13 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.data.service;
 
+import com.stock.backend.config.CacheNames;
 import com.stock.data.entity.TradeCalendarEntity;
 import com.stock.data.enums.CalendarDayStatus;
 import com.stock.data.enums.CalendarVerificationStatus;
 import com.stock.data.repository.TradeCalendarRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -32,6 +34,7 @@ public class TradingCalendarService {
      * @param date 自然日期
      * @return 仅在已确认开市时返回 true
      */
+    @Cacheable(cacheNames = CacheNames.TRADING_CALENDAR, key = "'isTradingDay:' + #date")
     public boolean isTradingDay(LocalDate date) {
         return tradeCalendarRepository.findByMarketAndTradeDate(MARKET, date)
                 .filter(this::isConfirmed)
@@ -45,6 +48,7 @@ public class TradingCalendarService {
      * @param date 自然日期
      * @return 开市或休市已确认时返回 true
      */
+    @Cacheable(cacheNames = CacheNames.TRADING_CALENDAR, key = "'isConfirmedDate:' + #date")
     public boolean isConfirmedDate(LocalDate date) {
         return tradeCalendarRepository.findByMarketAndTradeDate(MARKET, date)
                 .map(this::isConfirmed)
@@ -58,6 +62,8 @@ public class TradingCalendarService {
      * @param endDate 结束日期
      * @return 按日期升序排列的交易日
      */
+    @Cacheable(cacheNames = CacheNames.TRADING_CALENDAR,
+            key = "'tradingDaysBetween:' + #startDate + ':' + #endDate")
     public List<LocalDate> tradingDaysBetween(LocalDate startDate, LocalDate endDate) {
         if (startDate == null || endDate == null || startDate.isAfter(endDate)) {
             throw new IllegalArgumentException("交易日历范围无效");
@@ -93,6 +99,7 @@ public class TradingCalendarService {
      * @param date 基准日期
      * @return 下一交易日
      */
+    @Cacheable(cacheNames = CacheNames.TRADING_CALENDAR, key = "'nextTradingDay:' + #date")
     public LocalDate nextTradingDay(LocalDate date) {
         requireConfirmedDate(date);
         TradeCalendarEntity candidate = tradeCalendarRepository
@@ -109,6 +116,7 @@ public class TradingCalendarService {
      * @param date 基准日期
      * @return 前一交易日
      */
+    @Cacheable(cacheNames = CacheNames.TRADING_CALENDAR, key = "'previousTradingDay:' + #date")
     public LocalDate previousTradingDay(LocalDate date) {
         requireConfirmedDate(date);
         TradeCalendarEntity candidate = tradeCalendarRepository
@@ -142,4 +150,4 @@ public class TradingCalendarService {
         }
     }
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

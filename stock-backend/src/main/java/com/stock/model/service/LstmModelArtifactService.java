@@ -1,8 +1,9 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.model.service;
 
 import ai.djl.Model;
 import ai.djl.engine.Engine;
+import com.stock.backend.config.CacheNames;
 import com.mongodb.client.gridfs.model.GridFSFile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.model.config.LstmTrainingConfig;
@@ -13,6 +14,7 @@ import com.stock.model.repository.LstmModelRepository;
 import com.stock.model.repository.ModelActivationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.gridfs.GridFsResource;
@@ -150,6 +152,8 @@ public class LstmModelArtifactService {
      *
      * @return 激活模型文档
      */
+    @Cacheable(cacheNames = CacheNames.ACTIVE_MODEL, key = "#root.target.getModelName()",
+            unless = "#result == null")
     public LstmModelDocument loadActiveDocument() {
         ModelActivationDocument activation = modelActivationRepository.findByModelName(getModelName())
                 .orElseThrow(() -> new IllegalStateException("共享 LSTM 尚未激活模型版本"));
@@ -323,4 +327,4 @@ public class LstmModelArtifactService {
      */
     public record ModelArtifact(byte[] params, String metadata, String modelId) { }
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END------------

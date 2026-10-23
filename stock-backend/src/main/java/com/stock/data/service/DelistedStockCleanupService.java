@@ -1,12 +1,14 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.data.service;
 
+import com.stock.backend.config.CacheNames;
 import com.stock.data.repository.StockInfoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import java.util.List;
 
@@ -42,6 +44,7 @@ public class DelistedStockCleanupService {
      * @param stockCode 股票代码
      * @return 各 MongoDB 集合删除数量之和
      */
+    @CacheEvict(cacheNames = CacheNames.STOCK_INFO, key = "#stockCode")
     public long cleanup(String stockCode) {
         if (stockCode == null || stockCode.isBlank()) {
             return 0;
@@ -59,4 +62,4 @@ public class DelistedStockCleanupService {
         return deletedMongo;
     }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

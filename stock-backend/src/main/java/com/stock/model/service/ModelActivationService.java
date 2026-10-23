@@ -1,12 +1,14 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.model.service;
 
+import com.stock.backend.config.CacheNames;
 import com.stock.model.dto.ModelOperationResponse;
 import com.stock.model.entity.LstmModelDocument;
 import com.stock.model.entity.ModelActivationDocument;
 import com.stock.model.repository.LstmModelRepository;
 import com.stock.model.repository.ModelActivationRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -62,6 +64,7 @@ public class ModelActivationService {
      * @param operatorName 操作人名称
      * @return 激活结果
      */
+    @CacheEvict(cacheNames = CacheNames.ACTIVE_MODEL, allEntries = true)
     public synchronized ModelOperationResponse activateVersion(String versionId, String operatorName) {
         LstmModelDocument target = modelRepository.findById(versionId)
                 .orElseThrow(() -> new IllegalArgumentException("模型版本不存在"));
@@ -98,6 +101,7 @@ public class ModelActivationService {
      * @param operatorName 操作人名称
      * @return 回滚结果
      */
+    @CacheEvict(cacheNames = CacheNames.ACTIVE_MODEL, allEntries = true)
     public synchronized ModelOperationResponse rollback(String modelName, String operatorName) {
         ModelActivationDocument activation = activationRepository.findByModelName(modelName)
                 .orElseThrow(() -> new IllegalStateException("模型尚未建立激活指针"));
@@ -136,4 +140,4 @@ public class ModelActivationService {
         }
     }
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

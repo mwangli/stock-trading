@@ -1,8 +1,7 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.trading.controller;
 
 import com.stock.base.api.ResponseDTO;
-import com.stock.trading.dto.AuthUserDto;
 import com.stock.trading.dto.UserMenuPreferenceDto;
 import com.stock.trading.dto.UserMenuPreferenceRequestDto;
 import com.stock.trading.service.UserPreferenceService;
@@ -39,9 +38,9 @@ public class UserPreferenceController {
      */
     @GetMapping("/menuOrder")
     public ResponseDTO<UserMenuPreferenceDto> getMenuOrder(HttpServletRequest request) {
-        AuthUserDto user = currentUser(request);
-        log.info("查询用户菜单顺序，userId={}", user.getId());
-        return ResponseDTO.success(userPreferenceService.getMenuPreference(user.getId()));
+        Long userId = currentUserId(request);
+        log.info("查询用户菜单顺序，userId={}", userId);
+        return ResponseDTO.success(userPreferenceService.getMenuPreference(userId));
     }
 
     /**
@@ -55,17 +54,18 @@ public class UserPreferenceController {
     public ResponseDTO<UserMenuPreferenceDto> saveMenuOrder(
             HttpServletRequest request,
             @Valid @RequestBody UserMenuPreferenceRequestDto preference) {
-        AuthUserDto user = currentUser(request);
-        log.info("保存用户菜单顺序，userId={}, menuCount={}", user.getId(), preference.getMenuOrder().size());
-        return ResponseDTO.success(userPreferenceService.saveMenuPreference(user.getId(), preference));
+        Long userId = currentUserId(request);
+        log.info("保存用户菜单顺序，userId={}, menuCount={}", userId, preference.getMenuOrder().size());
+        return ResponseDTO.success(userPreferenceService.saveMenuPreference(userId, preference));
     }
 
-    private AuthUserDto currentUser(HttpServletRequest request) {
-        Object user = request.getSession(false).getAttribute(AuthInterceptor.AUTH_USER_SESSION_KEY);
-        if (user instanceof AuthUserDto authUser) {
-            return authUser;
+    private Long currentUserId(HttpServletRequest request) {
+        Object userId = request.getSession(false)
+                .getAttribute(AuthInterceptor.AUTH_USER_ID_SESSION_KEY);
+        if (userId instanceof Long value) {
+            return value;
         }
         throw new IllegalStateException("当前登录用户不存在");
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------
