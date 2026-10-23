@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.tradingExecutor.persistence;
 
 import com.stock.tradingExecutor.domain.entity.AutomaticTradeExecutionBatch;
@@ -66,5 +66,14 @@ public interface AutomaticTradeExecutionBatchRepository
      * @return 执行批次
      */
     Optional<AutomaticTradeExecutionBatch> findByBatchId(String batchId);
+
+    /**
+     * 查询候选批次最近一次真实自动交易执行摘要。
+     *
+     * @param candidateBatchId 候选批次 ID
+     * @return 最近执行批次
+     */
+    Optional<AutomaticTradeExecutionBatch> findFirstByCandidateBatchIdOrderByStartedAtDesc(
+            String candidateBatchId);
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.modelService.persistence;
 
 import com.stock.modelService.domain.entity.ModelPredictionDocument;
@@ -8,6 +8,7 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 单股模型预测结果仓库。
@@ -17,6 +18,15 @@ import java.util.List;
  */
 @Repository
 public interface ModelPredictionRepository extends MongoRepository<ModelPredictionDocument, String> {
+
+    /**
+     * 查询指定预测批次和股票的不可变预测明细。
+     *
+     * @param batchId 预测批次 ID
+     * @param stockCode 股票代码
+     * @return 匹配的预测明细
+     */
+    Optional<ModelPredictionDocument> findByBatchIdAndStockCode(String batchId, String stockCode);
 
     /**
      * 判断指定批次是否仍存在某评估状态的预测明细。
@@ -78,4 +88,4 @@ public interface ModelPredictionRepository extends MongoRepository<ModelPredicti
      */
     List<ModelPredictionDocument> findByBatchIdIn(List<String> batchIds);
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

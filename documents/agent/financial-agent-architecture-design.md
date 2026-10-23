@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START ------ -->
+<!-- AI_GENERATE_START -------- -->
 # stock-trading4 金融决策 Agent 总体设计方案
 
 ## 1. 文档信息
@@ -1007,7 +1007,7 @@ AgentChatRequest 字段：
 
 验收：普通聊天不调用业务工具；累计收益、模型状态、任务失败和策略状态可以用真实数据回答。
 
-当前源码实施边界：Phase 1 已完成统一聊天入口、服务端用户归属、最小工具路由、工具白名单、Provider 尝试隔离、会话串行和前端统一响应展示。Phase 2 已完成不可变 `TradeDecisionContext`、独立 `AgentTradeDecision` 契约、上下文一致性校验、`OFF/SHADOW` 确定性融合、显式 `ABSTAINED` 回退、持久化表和认证后的影子生成/查询接口。当前实现没有修改 `RealTradingService`、`DecisionEngine`、`DecisionAggregator` 或券商适配器，Agent 判断不会改变真实交易基线。以上结论仅代表源码与差异检查；尚未执行编译、测试、模型调用、数据库迁移、浏览器或部署验证。Phase 3 的任务调度、影子结果回写、反事实评估和 Provider 稳定性统计仍未实现，不得将当前聊天 TradePlan 或影子判断视为已参与自动交易决策。
+当前源码实施边界：Phase 1 已完成统一聊天入口、服务端用户归属、最小工具路由、工具白名单、Provider 尝试隔离、会话串行和前端统一响应展示。Phase 2 已完成不可变 `TradeDecisionContext`、独立 `AgentTradeDecision` 契约、上下文一致性校验、`OFF/SHADOW` 确定性融合、显式 `ABSTAINED` 回退、持久化表和认证后的影子生成/查询接口。Phase 3 已完成真实候选批次的 SHADOW 定时判断、同批次预测指标与截止时点前有限新闻快照、目标日行情路径回写、反事实机会成本与风险规避收益、候选批次级真实执行摘要关联以及 Provider 稳定性统计。当前实现仍未修改 `RealTradingService`、`DecisionEngine`、`DecisionAggregator` 或券商适配器，Agent 判断不会改变真实交易基线；由于 `TradeRecordEntity` 尚无候选批次和决策追踪字段，Phase 3 只关联自动交易批次摘要，逐股票是否实际成交固定标记为未知。以上结论仅代表源码与差异检查；尚未执行编译、测试、模型调用、数据库迁移、浏览器或部署验证，不得将当前聊天 TradePlan 或 SHADOW 判断视为已参与自动交易决策。
 
 ### Phase 2：交易决策基础能力
 
@@ -1040,6 +1040,14 @@ Phase 2 当前源码交付说明：
 | 建立 Provider 稳定性统计 | 超时、无效输出、弃权、证据缺口和基线回退指标 | 2～3 人日 |
 
 验收：Agent 对真实候选持续生成影子判断，真实委托仍完全按基线执行；每个判断都能追踪到上下文、证据和后续市场结果。
+
+Phase 3 当前源码交付说明：
+
+1. `agentTradeDecisionShadow` 在工作日 06:40 读取当前目标交易日最新候选批次，生成最多 10 个 SHADOW 判断；没有候选时按业务条件记录为 `SKIPPED`。
+2. 决策上下文由 Java 在模型调用前固化同批次预测收益、上涨概率、下行风险以及信息截止时间前 72 小时内最多 5 条新闻元数据，模型工具集合继续保持为空，避免运行中查询破坏可复现性。
+3. `agentTradeDecisionEvaluation` 在工作日 20:10、日线增量同步之后回写目标日 OHLC、收盘收益、最大有利/不利变动、SKIP 机会成本和风险规避收益；缺少目标日行情时保留等待状态并在后续任务中重试。批次查询同时返回基线动作数、Agent 假设动作数、动作减少率、平均收益贡献和最差收益贡献，其中动作数量只是候选级换手代理，不代表真实成交金额或真实换手率。
+4. 评估只关联 `AutomaticTradeExecutionBatch` 的批次状态、处理数量和成功委托数量，不推断单只股票成交；`stockExecutionKnown` 在 Phase 3 固定为 `false`。
+5. `/api/agent/tradeDecisions/evaluations` 提供候选批次评估查询，`/api/agent/tradeDecisions/providerStatistics` 提供有效率、弃权、超时、无效输出、证据缺口和基线回退统计。
 
 ### Phase 4：ADVISORY 与 GATED 负向参与
 
@@ -1251,4 +1259,4 @@ SHADOW 升级到 ADVISORY、GATED 或 WEIGHTED 必须形成独立准入报告，
 12. 真实交易写入永久不注册为 Agent 工具，BrokerAdapter 凭据和调用权继续只存在于 tradingExecutor。
 
 按该方案实施后，Agent 将真正成为交易决策中的“受控分析与质疑节点”：它可以影响是否选择候选、候选优先级和建议仓位，但每一项影响都可回放、可量化、可降级，并始终受 Java 硬规则约束。
-<!-- AI_GENERATE_END ------ -->
+<!-- AI_GENERATE_END -------- -->

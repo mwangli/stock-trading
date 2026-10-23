@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.strategyAgent.decision;
 
 import jakarta.persistence.Column;
@@ -10,6 +10,8 @@ import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -44,6 +46,22 @@ public class TradeDecisionContextEntity {
     @Column(name = "stock_code", nullable = false, length = 32)
     private String stockCode;
 
+    /** 模型输入基准交易日。 */
+    @Column(name = "base_trade_date")
+    private LocalDate baseTradeDate;
+
+    /** 候选目标交易日。 */
+    @Column(name = "target_trade_date")
+    private LocalDate targetTradeDate;
+
+    /** 候选是否通过确定性基线。 */
+    @Column(name = "baseline_eligible")
+    private Boolean baselineEligible;
+
+    /** 决策基准收盘价，单位为元。 */
+    @Column(name = "baseline_close_price", precision = 20, scale = 6)
+    private BigDecimal baselineClosePrice;
+
     /** 完整上下文 JSON 快照。 */
     @Lob
     @Column(name = "context_json", nullable = false, columnDefinition = "LONGTEXT")
@@ -61,4 +79,4 @@ public class TradeDecisionContextEntity {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

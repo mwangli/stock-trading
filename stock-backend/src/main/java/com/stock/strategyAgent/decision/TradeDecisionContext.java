@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.strategyAgent.decision;
 
 import lombok.Builder;
@@ -65,6 +65,15 @@ public class TradeDecisionContext {
     /** LSTM 候选分数，范围 0 至 1。 */
     double lstmScore;
 
+    /** 模型预测目标日收益率，小数形式，可为空。 */
+    Double predictedReturn;
+
+    /** 模型预测上涨概率，范围 0 至 1，可为空。 */
+    Double directionProbability;
+
+    /** 模型预测下行风险，范围由模型定义，可为空。 */
+    Double downsideRisk;
+
     /** 新闻情感影响分数，范围由候选生成服务定义。 */
     double newsImpactScore;
 
@@ -107,6 +116,9 @@ public class TradeDecisionContext {
     /** 数据源状态和降级原因。 */
     List<String> dataQualityFlags;
 
+    /** 信息截止时间前最近的有限新闻快照。 */
+    List<TradeDecisionNewsSnapshot> recentNews;
+
     /** 模型允许引用的上下文证据编号。 */
     List<String> evidenceRefs;
 
@@ -116,4 +128,4 @@ public class TradeDecisionContext {
     /** 上下文失效时间。 */
     LocalDateTime expiresAt;
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---
