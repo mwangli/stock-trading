@@ -1,8 +1,8 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.agent.tool.read;
 
-import com.stock.strategy.config.StrategyStateManager;
-import com.stock.strategy.dto.StrategyStateDto;
+import com.stock.agent.client.BackendFactsClient;
+import com.stock.agent.client.dto.StrategyStateFact;
 import com.stock.agent.tool.AgentToolSupport;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class StrategyStateQueryTool {
 
-    private final StrategyStateManager strategyStateManager;
+    private final BackendFactsClient backendFactsClient;
     private final AgentToolSupport toolSupport;
 
     /**
@@ -29,9 +29,9 @@ public class StrategyStateQueryTool {
     @Tool(name = "queryStrategyState", value = "查询当前策略开关、模式和配置版本")
     public StrategyStateResult query() {
         return toolSupport.execute("queryStrategyState", () -> {
-            StrategyStateDto state = strategyStateManager.getCurrentState();
-            return new StrategyStateResult(state.isEnabled(), state.getCurrentMode().name(),
-                    state.getConfigVersion(), state.isAutoSwitchEnabled(), state.getDisabledIndicators());
+            StrategyStateFact state = backendFactsClient.strategyState();
+            return new StrategyStateResult(state.enabled(), state.currentMode(),
+                    state.configVersion(), state.autoSwitchEnabled(), state.disabledIndicators());
         });
     }
 
@@ -40,4 +40,4 @@ public class StrategyStateQueryTool {
                                       boolean autoSwitchEnabled, java.util.List<String> disabledIndicators) {
     }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

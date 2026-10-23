@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.agent.controller;
 
 import com.stock.agent.dto.AgentChatRequest;
@@ -11,7 +11,7 @@ import com.stock.agent.service.AgentApplicationService;
 import com.stock.agent.service.AgentConversationService;
 import com.stock.agent.service.AgentSessionService;
 import com.stock.agent.service.AgentTaskService;
-import com.stock.base.api.ResponseDTO;
+import com.stock.agent.api.ResponseDTO;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -147,4 +147,4 @@ public class AgentConversationController {
         return ResponseDTO.success(null);
     }
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

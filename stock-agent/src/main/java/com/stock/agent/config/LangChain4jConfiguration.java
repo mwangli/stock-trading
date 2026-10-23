@@ -1,8 +1,8 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START-----------
 package com.stock.agent.config;
 
 import com.stock.agent.rag.DjlEmbeddingModel;
-import com.stock.model.service.LocalModelArtifactService;
+import com.stock.agent.rag.EmbeddingArtifactService;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.model.ollama.OllamaEmbeddingModel;
@@ -29,7 +29,7 @@ public class LangChain4jConfiguration {
      */
     @Bean(name = "agentEmbeddingModel")
     @ConditionalOnExpression("'${agent.enabled:false}' == 'true' && '${agent.embedding.enabled:false}' == 'true' && '${agent.embedding.provider:disabled}' != 'disabled'")
-    public EmbeddingModel agentEmbeddingModel(AgentProperties properties, LocalModelArtifactService artifactService) {
+    public EmbeddingModel agentEmbeddingModel(AgentProperties properties, EmbeddingArtifactService artifactService) {
         AgentProperties.EmbeddingProperties config = properties.getEmbedding();
         return switch (config.getProvider().trim().toLowerCase()) {
             case "djl" -> new DjlEmbeddingModel(config, artifactService);
@@ -46,4 +46,4 @@ public class LangChain4jConfiguration {
         };
     }
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END-----------

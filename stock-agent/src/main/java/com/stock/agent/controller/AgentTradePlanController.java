@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.agent.controller;
 
 import com.stock.agent.dto.TradePlanCreateRequest;
@@ -7,7 +7,7 @@ import com.stock.agent.dto.TradePlanResponse;
 import com.stock.agent.dto.TradePlanReviewRequest;
 import com.stock.agent.service.TradePlanAgentService;
 import com.stock.agent.service.TradePlanService;
-import com.stock.base.api.ResponseDTO;
+import com.stock.agent.api.ResponseDTO;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -122,4 +122,4 @@ public class AgentTradePlanController {
     }
 
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

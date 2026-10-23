@@ -1,9 +1,9 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.agent.tool.read;
 
 import com.stock.agent.tool.AgentToolSupport;
-import com.stock.trading.dto.PerformanceOverviewDto;
-import com.stock.trading.service.PerformanceReportService;
+import com.stock.agent.client.BackendFactsClient;
+import com.stock.agent.client.dto.PerformanceOverviewFact;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -22,7 +22,7 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class PerformanceOverviewQueryTool {
 
-    private final PerformanceReportService performanceReportService;
+    private final BackendFactsClient backendFactsClient;
     private final AgentToolSupport toolSupport;
 
     /**
@@ -33,12 +33,12 @@ public class PerformanceOverviewQueryTool {
     @Tool(name = "queryPerformanceOverview", value = "查询累计、当日、当月已实现收益和胜率，不含浮动盈亏")
     public PerformanceOverviewResult query() {
         return toolSupport.execute("queryPerformanceOverview", () -> {
-            PerformanceOverviewDto overview = performanceReportService.getOverview();
-            return new PerformanceOverviewResult(overview.getCapturedAt(), overview.getTotalAssets(),
-                    overview.getAvailableCash(), overview.getMarketValue(), overview.getCumulativeProfit(),
-                    overview.getCumulativeReturnRate(), overview.getDailyProfit(), overview.getDailyReturnRate(),
-                    overview.getMonthlyProfit(), overview.getMonthlyReturnRate(), overview.getClosedTradeCount(),
-                    overview.getWinRate(), LocalDateTime.now());
+            PerformanceOverviewFact overview = backendFactsClient.performanceOverview();
+            return new PerformanceOverviewResult(overview.capturedAt(), overview.totalAssets(),
+                    overview.availableCash(), overview.marketValue(), overview.cumulativeProfit(),
+                    overview.cumulativeReturnRate(), overview.dailyProfit(), overview.dailyReturnRate(),
+                    overview.monthlyProfit(), overview.monthlyReturnRate(), overview.closedTradeCount(),
+                    overview.winRate(), overview.asOf());
         });
     }
 
@@ -51,4 +51,4 @@ public class PerformanceOverviewQueryTool {
                                             long closedTradeCount, BigDecimal winRate, LocalDateTime asOf) {
     }
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

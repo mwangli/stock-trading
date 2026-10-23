@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.agent.controller;
 
 import com.stock.agent.dto.AgentApiBudgetResponse;
@@ -8,7 +8,7 @@ import com.stock.agent.dto.ProviderModeResponse;
 import com.stock.agent.dto.RuntimeStatus;
 import com.stock.agent.runtime.AgentApiBudgetManager;
 import com.stock.agent.service.AgentRuntimeManagementService;
-import com.stock.base.api.ResponseDTO;
+import com.stock.agent.api.ResponseDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -77,4 +77,4 @@ public class AgentRuntimeController {
         return ResponseDTO.success(AgentApiBudgetResponse.from(apiBudgetService.currentSnapshot()));
     }
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----
