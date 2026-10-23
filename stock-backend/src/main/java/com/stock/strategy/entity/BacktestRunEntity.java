@@ -1,6 +1,7 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.strategy.entity;
 
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import org.springframework.data.annotation.Id;
@@ -30,9 +31,10 @@ public class BacktestRunEntity {
 
     /** 数据库主键。 */
     @Id
-    private Long id;
+    private String id;
 
     /** 回测结果唯一标识。 */
+    @Indexed(name = "uk_backtest_run_result", unique = true)
     private String resultId;
 
     /** 候选选择基准类型。 */
@@ -119,4 +121,4 @@ public class BacktestRunEntity {
     /** 数据库创建时间。 */
     private LocalDateTime createdAt;
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

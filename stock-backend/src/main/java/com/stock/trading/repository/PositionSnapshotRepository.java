@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.trading.repository;
 
 import com.stock.trading.entity.PositionSnapshotEntity;
@@ -15,7 +15,7 @@ import java.util.Optional;
  * @since 2026-09-25
  */
 @Repository
-public interface PositionSnapshotRepository extends MongoRepository<PositionSnapshotEntity, Long> {
+public interface PositionSnapshotRepository extends MongoRepository<PositionSnapshotEntity, String> {
 
     /**
      * 查询指定券商账户最新的持仓快照头。
@@ -36,4 +36,4 @@ public interface PositionSnapshotRepository extends MongoRepository<PositionSnap
     List<PositionSnapshotEntity> findBySnapshotIdAndStockCodeIsNotNullOrderByStockCodeAsc(
             String snapshotId);
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

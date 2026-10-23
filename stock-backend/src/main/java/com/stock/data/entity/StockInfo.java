@@ -1,10 +1,12 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.data.entity;
 
+import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.index.Indexed;
 
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.LastModifiedDate;
 
 import com.stock.data.enums.NewsSyncStatus;
 import lombok.Data;
@@ -24,7 +26,7 @@ import java.time.LocalDateTime;
 public class StockInfo {
 
     @Id
-    private Long id;
+    private String id;
 
     @Indexed(unique = true, name = "uk_stock_info_code")
     private String code;
@@ -85,8 +87,10 @@ public class StockInfo {
      */
     private LocalDate listedDate;
 
+    @CreatedDate
     private LocalDateTime createTime;
 
+    @LastModifiedDate
     private LocalDateTime updateTime;
 
     /**
@@ -128,14 +132,5 @@ public class StockInfo {
      * 下次允许执行增量同步的时间，当前阶段仅记录，不用于跳过交易日全量检查。
      */
     private LocalDateTime newsNextSyncAt;
-    /** 初始化股票资料的创建与更新时间。 */
-    protected void onCreate() {
-        createTime = LocalDateTime.now();
-        updateTime = LocalDateTime.now();
-    }
-    /** 刷新股票资料的更新时间。 */
-    protected void onUpdate() {
-        updateTime = LocalDateTime.now();
-    }
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------

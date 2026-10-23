@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START-------------
 package com.stock.data.repository;
 
 import com.stock.data.enums.CalendarDayStatus;
@@ -18,7 +18,7 @@ import java.util.Optional;
  * @since 2026-09-25
  */
 @Repository
-public interface TradeCalendarRepository extends MongoRepository<TradeCalendarEntity, Long> {
+public interface TradeCalendarRepository extends MongoRepository<TradeCalendarEntity, String> {
 
     /**
      * 查询指定市场和自然日期的唯一日历记录。
@@ -119,4 +119,4 @@ public interface TradeCalendarRepository extends MongoRepository<TradeCalendarEn
     Optional<TradeCalendarEntity> findFirstByOrderByTradeDateDesc();
 
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END-------------

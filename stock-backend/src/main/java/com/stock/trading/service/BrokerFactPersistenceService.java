@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.trading.service;
 
 import com.stock.trading.entity.AccountSnapshotEntity;
@@ -48,12 +48,10 @@ public class BrokerFactPersistenceService {
         String snapshotId = UUID.randomUUID().toString();
         String brokerCode = brokerIdentityService.getBrokerCode();
         String accountId = brokerIdentityService.getAccountId();
-        AccountSnapshotEntity entity = accountSnapshotRepository
-                .findByBrokerCodeAndAccountId(brokerCode, accountId)
-                .orElseGet(() -> new AccountSnapshotEntity()
-                        .setBrokerCode(brokerCode)
-                        .setAccountId(accountId));
-        entity.setSnapshotId(snapshotId)
+        AccountSnapshotEntity entity = new AccountSnapshotEntity()
+                .setSnapshotId(snapshotId)
+                .setBrokerCode(brokerCode)
+                .setAccountId(accountId)
                 .setTotalAssets(account.getTotalAssets())
                 .setAvailableCash(account.getAvailableCash())
                 .setFrozenCash(account.getFrozenAmount())
@@ -319,4 +317,4 @@ public class BrokerFactPersistenceService {
     public record PersistenceResult(int received, int inserted, int updated, int skipped) {
     }
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END------------

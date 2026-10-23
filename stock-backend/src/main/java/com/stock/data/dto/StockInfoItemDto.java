@@ -1,4 +1,4 @@
-// AI_GENERATE_START--
+// AI_GENERATE_START---
 package com.stock.data.dto;
 
 import lombok.AllArgsConstructor;
@@ -23,7 +23,7 @@ import java.time.LocalDateTime;
 public class StockInfoItemDto {
 
     /** 股票记录标识，可为空。 */
-    private Long id;
+    private String id;
 
     /** 股票代码。 */
     private String code;
@@ -64,4 +64,4 @@ public class StockInfoItemDto {
     /** 数据更新时间。 */
     private LocalDateTime updateTime;
 }
-// AI_GENERATE_END--
+// AI_GENERATE_END---

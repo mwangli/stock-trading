@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------
+// AI_GENERATE_START--------------
 package com.stock.trading.service;
 
 import com.stock.trading.dto.PerformanceOverviewDto;
@@ -55,7 +55,7 @@ public class PerformanceReportService {
         String brokerCode = brokerIdentityService.getBrokerCode();
         String accountId = brokerIdentityService.getAccountId();
         AccountSnapshotEntity account = accountSnapshotRepository
-                .findByBrokerCodeAndAccountId(brokerCode, accountId)
+                .findFirstByBrokerCodeAndAccountIdOrderByCapturedAtDesc(brokerCode, accountId)
                 .orElse(null);
         List<TradeRecordEntity> records = tradeRecordRepository
                 .findByBrokerCodeAndAccountIdOrderByBuyTimeDesc(brokerCode, accountId);
@@ -256,4 +256,4 @@ public class PerformanceReportService {
         private long winningCount;
     }
 }
-// AI_GENERATE_END-------------
+// AI_GENERATE_END--------------

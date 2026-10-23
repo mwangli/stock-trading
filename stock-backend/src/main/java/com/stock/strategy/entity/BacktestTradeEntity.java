@@ -1,6 +1,7 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START---------
 package com.stock.strategy.entity;
 
+import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import org.springframework.data.annotation.Id;
@@ -25,11 +26,13 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Document(collection = "backtest_trade")
+@CompoundIndex(name = "uk_backtest_trade_result_sequence",
+        def = "{'resultId': 1, 'sequenceNo': 1}", unique = true)
 public class BacktestTradeEntity {
 
     /** 数据库主键。 */
     @Id
-    private Long id;
+    private String id;
 
     /** 所属回测结果标识。 */
     private String resultId;
@@ -97,4 +100,4 @@ public class BacktestTradeEntity {
     /** 数据库创建时间。 */
     private LocalDateTime createdAt;
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END---------
