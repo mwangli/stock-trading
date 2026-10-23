@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START- ------
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Input, message, Tooltip } from 'antd';
 import { GlobalOutlined, LockOutlined, MoonOutlined, SunOutlined, UserOutlined } from '@ant-design/icons';
@@ -177,7 +177,7 @@ const Login: React.FC = () => {
       }
     };
     void checkStatus();
-    const timer = window.setInterval(() => void checkStatus(), 30000);
+    const timer = window.setInterval(() => void checkStatus(), 10_000);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -279,4 +279,4 @@ const Login: React.FC = () => {
 };
 
 export default Login;
-// AI_GENERATE_END ------
+// AI_GENERATE_END- ------

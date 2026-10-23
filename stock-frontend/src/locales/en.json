@@ -416,7 +416,7 @@
       "language": "Language",
       "notifications": "Enable System Notifications",
       "apiKey": "Data Provider API Key",
-      "refreshRate": "Refresh Rate (ms)",
+      "refreshRate": "Status Refresh Interval (ms)",
       "riskLevel": "Global Risk Profile",
       "maxDrawdown": "Max Daily Drawdown (%)"
     },
@@ -443,7 +443,7 @@
     "generalTitle": "Interface Preferences",
     "runtimeTitle": "Runtime Controls",
     "securityTitle": "Production Safety Boundary",
-    "refreshHint": "Only affects status checks on this page; Quartz scheduling is unchanged",
+    "refreshHint": "Frontend status polling is fixed at 10 seconds; Quartz scheduling is unchanged",
     "switchOn": "On",
     "switchOff": "Off",
     "summary": { "title": "Runtime Summary", "brokerSessionValid": "Broker session valid", "brokerSessionInvalid": "Broker session invalid", "realWriteOff": "Real writes disabled", "autoExecutionStopped": "Automatic execution stopped", "refreshStatus": "Refresh Status" },

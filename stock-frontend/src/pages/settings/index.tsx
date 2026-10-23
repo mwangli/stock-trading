@@ -1,4 +1,4 @@
-// AI_GENERATE_START---- ------------------
+// AI_GENERATE_START------ ------------------
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Button,
@@ -22,6 +22,8 @@ import { usePageHeader } from '../../layouts/PageHeaderContext';
 import i18n from '../../i18n';
 
 const { Text } = Typography;
+
+const AUTO_REFRESH_INTERVAL_MS = 10_000;
 
 interface SettingsFormValues {
   theme: ThemeMode;
@@ -62,17 +64,11 @@ interface ServiceHealth<T> {
 
 const STORAGE_KEYS = {
   notifications: 'stock-settings-notifications',
-  refreshRate: 'stock-settings-refresh-rate',
 };
 
 const readBoolean = (key: string, fallback: boolean) => {
   const value = window.localStorage.getItem(key);
   return value === null ? fallback : value === 'true';
-};
-
-const readNumber = (key: string, fallback: number) => {
-  const value = Number(window.localStorage.getItem(key));
-  return Number.isFinite(value) && value >= 5000 && value <= 60000 ? value : fallback;
 };
 
 const formatDateTime = (value?: string) => {
@@ -106,7 +102,6 @@ const healthTag = (state: ServiceHealth<unknown>['state']) => {
 
 const Settings: React.FC = () => {
   const [form] = Form.useForm<SettingsFormValues>();
-  const configuredRefreshRate = Form.useWatch('refreshRate', form);
   const { t, i18n } = useTranslation();
   const { mode, autoThemeEnabled, setMode, setAutoThemeEnabled, resetToAutomatic } = useAppTheme();
   const formAutoThemeEnabled = Form.useWatch('autoThemeEnabled', form);
@@ -131,8 +126,10 @@ const Settings: React.FC = () => {
     }
   }, [form]);
 
-  const checkSystemStatus = useCallback(async () => {
-    setChecking(true);
+  const checkSystemStatus = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setChecking(true);
+    }
     const [brokerResult, tradingResult] = await Promise.allSettled([
       request.get('/brokerQuery/status') as Promise<ApiResponse<BrokerReadStatus>>,
       request.get('/realTrading/status') as Promise<ApiResponse<RealTradingStatus>>,
@@ -159,7 +156,9 @@ const Settings: React.FC = () => {
     }
 
     setLastStatusCheckedAt(new Date().toISOString());
-    setChecking(false);
+    if (showLoading) {
+      setChecking(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -168,12 +167,11 @@ const Settings: React.FC = () => {
   }, [checkSystemStatus, loadRuntimeSettings]);
 
   useEffect(() => {
-    const refreshRate = configuredRefreshRate ?? readNumber(STORAGE_KEYS.refreshRate, 30000);
     const timer = window.setInterval(() => {
-      void checkSystemStatus();
-    }, refreshRate);
+      void checkSystemStatus(false);
+    }, AUTO_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [checkSystemStatus, configuredRefreshRate]);
+  }, [checkSystemStatus]);
 
   const onFinish = async (values: SettingsFormValues) => {
     setSaving(true);
@@ -185,7 +183,6 @@ const Settings: React.FC = () => {
       const response = await request.put('/systemSettings/runtime', runtimeRequest) as ApiResponse<RuntimeSettings>;
       setRuntimeSettings(readApiData(response, '保存运行控制配置失败'));
       window.localStorage.setItem(STORAGE_KEYS.notifications, String(values.notifications));
-      window.localStorage.setItem(STORAGE_KEYS.refreshRate, String(values.refreshRate));
       setAutoThemeEnabled(values.autoThemeEnabled);
       if (!values.autoThemeEnabled) {
         setMode(values.theme);
@@ -201,14 +198,13 @@ const Settings: React.FC = () => {
 
   const resetPreferences = () => {
     window.localStorage.removeItem(STORAGE_KEYS.notifications);
-    window.localStorage.removeItem(STORAGE_KEYS.refreshRate);
     const automaticMode = resetToAutomatic();
     form.setFieldsValue({
       theme: automaticMode,
       autoThemeEnabled: true,
       language: i18n.language.startsWith('zh') ? 'zh' : 'en',
       notifications: true,
-      refreshRate: 30000,
+      refreshRate: AUTO_REFRESH_INTERVAL_MS,
     });
     message.success('界面偏好已恢复默认值');
   };
@@ -218,7 +214,7 @@ const Settings: React.FC = () => {
     autoThemeEnabled,
     language: i18n.language.startsWith('zh') ? 'zh' : 'en',
     notifications: readBoolean(STORAGE_KEYS.notifications, true),
-    refreshRate: readNumber(STORAGE_KEYS.refreshRate, 30000),
+    refreshRate: AUTO_REFRESH_INTERVAL_MS,
     schedulerEnabled: false,
     startupDataSyncEnabled: false,
   };
@@ -276,7 +272,7 @@ const Settings: React.FC = () => {
               </Col>
               <Col xs={24} md={12}>
                 <Form.Item label={t('settings.fields.refreshRate')} name="refreshRate" extra={t('settings.refreshHint')}>
-                  <InputNumber min={5000} max={60000} step={5000} addonAfter="ms" className="!w-full" />
+                  <InputNumber disabled addonAfter="ms" className="!w-full" />
                 </Form.Item>
               </Col>
             </Row>
@@ -304,7 +300,7 @@ const Settings: React.FC = () => {
             <div className="settings-info-grid">
               <div className="settings-info-item"><Text type="secondary">{t('settings.info.nodeId')}</Text><strong>{runtimeSettings?.nodeId || t('settings.status.notConfigured')}</strong></div>
               <div className="settings-info-item"><Text type="secondary">{t('settings.info.updatedAt')}</Text><strong>{formatDateTime(runtimeSettings?.updatedAt)}</strong></div>
-              <div className="settings-info-item"><Text type="secondary">{t('settings.info.refreshCycle')}</Text><strong>{t('settings.info.seconds', { seconds: Math.round((configuredRefreshRate ?? readNumber(STORAGE_KEYS.refreshRate, 30000)) / 1000) })}</strong></div>
+              <div className="settings-info-item"><Text type="secondary">{t('settings.info.refreshCycle')}</Text><strong>{t('settings.info.seconds', { seconds: AUTO_REFRESH_INTERVAL_MS / 1000 })}</strong></div>
               <div className="settings-info-item"><Text type="secondary">{t('settings.info.schedulerMode')}</Text><strong>{runtimeSettings?.schedulerEnabled ? t('settings.info.unifiedScheduler') : t('settings.info.schedulerDisabled')}</strong></div>
               <div className="settings-info-item"><Text type="secondary">{t('settings.info.preferenceStorage')}</Text><strong>{t('settings.info.currentBrowser')}</strong></div>
               <div className="settings-info-item"><Text type="secondary">{t('settings.info.runtimeStorage')}</Text><strong>{t('settings.info.serverPersisted')}</strong></div>
@@ -326,4 +322,4 @@ const Settings: React.FC = () => {
 };
 
 export default Settings;
-// AI_GENERATE_END---- ------------------
+// AI_GENERATE_END------ ------------------
