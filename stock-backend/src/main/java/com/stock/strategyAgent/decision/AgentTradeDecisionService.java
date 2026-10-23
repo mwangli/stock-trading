@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.decision;
 
 import com.alibaba.fastjson2.JSON;
@@ -133,7 +133,8 @@ public class AgentTradeDecisionService {
         } catch (RuntimeException exception) {
             log.warn("生成影子交易判断失败并回退为 ABSTAIN: contextId={}, causeType={}",
                     context.getContextId(), exception.getClass().getSimpleName());
-            draft = fallback(context, "AGENT_DECISION_INVALID", "模型调用、解析或上下文校验失败");
+            String reasonCode = resolveFailureReasonCode(exception);
+            draft = fallback(context, reasonCode, "模型调用、解析或上下文校验失败");
         }
 
         TradeDecisionRecommendation recommendation = TradeDecisionRecommendation.valueOf(draft.getRecommendation());
@@ -247,5 +248,12 @@ public class AgentTradeDecisionService {
         }
         return value.length() <= maxLength ? value : value.substring(0, maxLength);
     }
+
+    private String resolveFailureReasonCode(RuntimeException exception) {
+        String type = exception.getClass().getSimpleName().toLowerCase();
+        String message = exception.getMessage() == null ? "" : exception.getMessage().toLowerCase();
+        return type.contains("timeout") || message.contains("timeout") || message.contains("超时")
+                ? "AGENT_PROVIDER_TIMEOUT" : "AGENT_DECISION_INVALID";
+    }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

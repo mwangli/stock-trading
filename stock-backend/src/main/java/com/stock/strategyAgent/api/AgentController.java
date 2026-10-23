@@ -1,9 +1,10 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START --------------
 package com.stock.strategyAgent.api;
 
 import com.stock.dataCollector.domain.dto.ResponseDTO;
 import com.stock.strategyAgent.rag.AgentRagService;
 import com.stock.strategyAgent.decision.AgentTradeDecisionService;
+import com.stock.strategyAgent.decision.TradeDecisionEvaluationService;
 import com.stock.strategyAgent.runtime.AgentApiBudgetService;
 import com.stock.strategyAgent.service.AgentApplicationService;
 import com.stock.strategyAgent.service.AgentConversationService;
@@ -20,8 +21,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.format.annotation.DateTimeFormat;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -45,6 +49,7 @@ public class AgentController {
     private final TradePlanAgentService tradePlanAgentService;
     private final AgentApiBudgetService apiBudgetService;
     private final AgentTradeDecisionService tradeDecisionService;
+    private final TradeDecisionEvaluationService tradeDecisionEvaluationService;
 
     /**
      * 创建 Agent 会话。
@@ -143,6 +148,42 @@ public class AgentController {
         log.info("[Agent] 查询候选批次影子交易判断: candidateBatchId={}", candidateBatchId);
         requestUserResolver.requireUserScope(httpRequest);
         return ResponseDTO.success(tradeDecisionService.listBatch(candidateBatchId));
+    }
+
+    /**
+     * 查询候选批次的 SHADOW 判断市场结果与反事实评估。
+     *
+     * @param candidateBatchId 候选批次标识
+     * @param httpRequest HTTP 请求
+     * @return 候选批次评估结果
+     */
+    @GetMapping("/tradeDecisions/evaluations")
+    public ResponseDTO<TradeDecisionEvaluationBatchResponse> listTradeDecisionEvaluations(
+            @RequestParam String candidateBatchId,
+            HttpServletRequest httpRequest) {
+        log.info("[Agent] 查询影子交易判断评估: candidateBatchId={}", candidateBatchId);
+        requestUserResolver.requireUserScope(httpRequest);
+        return ResponseDTO.success(tradeDecisionEvaluationService.listBatch(candidateBatchId));
+    }
+
+    /**
+     * 查询影子交易判断 Provider 稳定性指标。
+     *
+     * @param from 统计起始时间，可为空，默认最近三十天
+     * @param to 统计结束时间，可为空，默认当前时间
+     * @param httpRequest HTTP 请求
+     * @return Provider 与模型分组统计
+     */
+    @GetMapping("/tradeDecisions/providerStatistics")
+    public ResponseDTO<TradeDecisionProviderStatisticsResponse> tradeDecisionProviderStatistics(
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+            HttpServletRequest httpRequest) {
+        log.info("[Agent] 查询影子交易判断 Provider 统计: from={}, to={}", from, to);
+        requestUserResolver.requireUserScope(httpRequest);
+        return ResponseDTO.success(tradeDecisionEvaluationService.providerStatistics(from, to));
     }
 
     /**
@@ -385,4 +426,4 @@ public class AgentController {
                 planId, requestUserResolver.requireUserScope(httpRequest)));
     }
 }
-// AI_GENERATE_END ------------
+// AI_GENERATE_END --------------

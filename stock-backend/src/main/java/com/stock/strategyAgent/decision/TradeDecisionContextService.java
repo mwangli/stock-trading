@@ -1,9 +1,13 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.strategyAgent.decision;
 
 import com.alibaba.fastjson2.JSON;
+import com.stock.dataCollector.domain.entity.StockNews;
 import com.stock.dataCollector.domain.entity.StockPrice;
+import com.stock.dataCollector.persistence.NewsRepository;
 import com.stock.dataCollector.persistence.PriceRepository;
+import com.stock.modelService.domain.entity.ModelPredictionDocument;
+import com.stock.modelService.persistence.ModelPredictionRepository;
 import com.stock.strategyAgent.config.StrategyConfigService;
 import com.stock.strategyAgent.domain.entity.StockRanking;
 import com.stock.strategyAgent.domain.entity.StrategyConfig;
@@ -44,9 +48,12 @@ public class TradeDecisionContextService {
     private static final String CANDIDATE_STATUS_ELIGIBLE = "ELIGIBLE";
     private static final int MAX_CANDIDATES = 20;
     private static final int CONTEXT_VALID_MINUTES = 30;
+    private static final int NEWS_LOOKBACK_HOURS = 72;
 
     private final RankingRepository rankingRepository;
     private final PriceRepository priceRepository;
+    private final ModelPredictionRepository predictionRepository;
+    private final NewsRepository newsRepository;
     private final StrategyConfigService strategyConfigService;
     private final BrokerReadService brokerReadService;
     private final TradeDecisionContextRepository contextRepository;
@@ -154,11 +161,13 @@ public class TradeDecisionContextService {
                                                 LocalDateTime expiresAt) {
         List<String> qualityFlags = new ArrayList<>(sharedQualityFlags);
         StockPrice price = loadCutoffPrice(ranking, qualityFlags);
+        ModelPredictionDocument prediction = loadPrediction(ranking, qualityFlags);
+        List<TradeDecisionNewsSnapshot> recentNews = loadRecentNews(ranking, qualityFlags);
         BrokerAccountDto cutoffAccount = accountAtOrBeforeCutoff(ranking, account, qualityFlags);
         List<String> evidenceRefs = buildEvidenceRefs(
-                ranking, price, strategyConfig, brokerStatus, cutoffAccount);
-        String contextHash = hashCanonical(ranking, price, strategyConfig, brokerStatus, cutoffAccount,
-                qualityFlags, evidenceRefs, asOf, expiresAt);
+                ranking, price, prediction, recentNews, strategyConfig, brokerStatus, cutoffAccount);
+        String contextHash = hashCanonical(ranking, price, prediction, recentNews,
+                strategyConfig, brokerStatus, cutoffAccount, qualityFlags, evidenceRefs, asOf, expiresAt);
         String contextId = contextRepository.findByContextHash(contextHash)
                 .map(TradeDecisionContextEntity::getContextId)
                 .orElseGet(() -> UUID.randomUUID().toString());
@@ -178,6 +187,9 @@ public class TradeDecisionContextService {
                 .baselineRank(ranking.getRank())
                 .baselineScore(ranking.getTotalScore())
                 .lstmScore(ranking.getLstmScore())
+                .predictedReturn(prediction == null ? null : prediction.getPredictedReturn())
+                .directionProbability(prediction == null ? null : prediction.getDirectionProbability())
+                .downsideRisk(prediction == null ? null : prediction.getDownsideRisk())
                 .newsImpactScore(ranking.getNewsImpactScore())
                 .candidateReason(ranking.getReason())
                 .baselineEligible(CANDIDATE_STATUS_ELIGIBLE.equals(ranking.getStatus()))
@@ -192,6 +204,7 @@ public class TradeDecisionContextService {
                 .availableCash(cutoffAccount == null ? null : cutoffAccount.getAvailableCash())
                 .accountCapturedAt(cutoffAccount == null ? null : cutoffAccount.getCapturedAt())
                 .dataQualityFlags(List.copyOf(qualityFlags))
+                .recentNews(List.copyOf(recentNews))
                 .evidenceRefs(List.copyOf(evidenceRefs))
                 .asOf(asOf)
                 .expiresAt(expiresAt)
@@ -214,6 +227,49 @@ public class TradeDecisionContextService {
         return prices.get(0);
     }
 
+    private ModelPredictionDocument loadPrediction(StockRanking ranking, List<String> qualityFlags) {
+        try {
+            return predictionRepository.findByBatchIdAndStockCode(
+                            ranking.getPredictionBatchId(), ranking.getStockCode())
+                    .filter(prediction -> Objects.equals(
+                            prediction.getBaseTradeDate(), ranking.getBaseTradeDate()))
+                    .filter(prediction -> Objects.equals(
+                            prediction.getTargetTradeDate(), ranking.getTargetTradeDate()))
+                    .orElseGet(() -> {
+                        qualityFlags.add("PREDICTION_DETAIL_UNAVAILABLE");
+                        return null;
+                    });
+        } catch (RuntimeException exception) {
+            qualityFlags.add("PREDICTION_DETAIL_UNAVAILABLE");
+            log.warn("构建交易决策上下文时预测明细不可用: stockCode={}, causeType={}",
+                    ranking.getStockCode(), exception.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    private List<TradeDecisionNewsSnapshot> loadRecentNews(
+            StockRanking ranking, List<String> qualityFlags) {
+        LocalDateTime cutoff = ranking.getInformationCutoffAt();
+        try {
+            return newsRepository.findTop5ByStockCodeAndPublishTimeBetweenOrderByPublishTimeDesc(
+                            ranking.getStockCode(), cutoff.minusHours(NEWS_LOOKBACK_HOURS), cutoff).stream()
+                    .map(news -> TradeDecisionNewsSnapshot.builder()
+                            .evidenceRef(newsEvidenceRef(ranking.getStockCode(), news))
+                            .title(limit(news.getTitle(), 200))
+                            .source(limit(news.getSource(), 100))
+                            .category(limit(news.getCategory(), 32))
+                            .eventType(limit(news.getEventType(), 64))
+                            .publishTime(news.getPublishTime())
+                            .build())
+                    .toList();
+        } catch (RuntimeException exception) {
+            qualityFlags.add("RECENT_NEWS_UNAVAILABLE");
+            log.warn("构建交易决策上下文时近期新闻不可用: stockCode={}, causeType={}",
+                    ranking.getStockCode(), exception.getClass().getSimpleName());
+            return List.of();
+        }
+    }
+
     private BrokerAccountDto accountAtOrBeforeCutoff(StockRanking ranking, BrokerAccountDto account,
                                                       List<String> qualityFlags) {
         if (account == null) {
@@ -228,6 +284,8 @@ public class TradeDecisionContextService {
     }
 
     private List<String> buildEvidenceRefs(StockRanking ranking, StockPrice price,
+                                            ModelPredictionDocument prediction,
+                                            List<TradeDecisionNewsSnapshot> recentNews,
                                             StrategyConfig strategyConfig,
                                             BrokerReadStatusDto brokerStatus,
                                             BrokerAccountDto account) {
@@ -236,6 +294,10 @@ public class TradeDecisionContextService {
         if (price != null) {
             refs.add("price:" + ranking.getStockCode() + ":" + price.getDate());
         }
+        if (prediction != null) {
+            refs.add("prediction:" + prediction.getBatchId() + ":" + prediction.getStockCode());
+        }
+        refs.addAll(recentNews.stream().map(TradeDecisionNewsSnapshot::getEvidenceRef).toList());
         refs.add("strategy:" + strategyConfig.getVersion());
         if (brokerStatus != null) {
             refs.add("broker:status");
@@ -247,6 +309,8 @@ public class TradeDecisionContextService {
     }
 
     private String hashCanonical(StockRanking ranking, StockPrice price,
+                                 ModelPredictionDocument prediction,
+                                 List<TradeDecisionNewsSnapshot> recentNews,
                                  StrategyConfig strategyConfig, BrokerReadStatusDto brokerStatus,
                                  BrokerAccountDto account, List<String> qualityFlags,
                                  List<String> evidenceRefs, LocalDateTime asOf,
@@ -261,6 +325,10 @@ public class TradeDecisionContextService {
                 value(ranking.getNewsImpactScore()), value(ranking.getStatus()),
                 value(price == null ? null : price.getDate()),
                 value(price == null ? null : price.getClosePrice()),
+                value(prediction == null ? null : prediction.getPredictedReturn()),
+                value(prediction == null ? null : prediction.getDirectionProbability()),
+                value(prediction == null ? null : prediction.getDownsideRisk()),
+                JSON.toJSONString(recentNews),
                 value(strategyConfig.getVersion()), value(strategyConfig.getMinScore()),
                 value(brokerStatus == null ? null : brokerStatus.isAuthenticated()),
                 value(brokerStatus == null ? null : brokerStatus.isRealWriteEnabled()),
@@ -292,10 +360,27 @@ public class TradeDecisionContextService {
                 .setContextHash(context.getContextHash())
                 .setCandidateBatchId(context.getCandidateBatchId())
                 .setStockCode(context.getStockCode())
+                .setBaseTradeDate(context.getBaseTradeDate())
+                .setTargetTradeDate(context.getTargetTradeDate())
+                .setBaselineEligible(context.isBaselineEligible())
+                .setBaselineClosePrice(context.getClosePrice())
                 .setContextJson(JSON.toJSONString(context))
                 .setInformationCutoffAt(context.getInformationCutoffAt())
                 .setExpiresAt(context.getExpiresAt())
                 .setCreatedAt(context.getAsOf()));
     }
+
+    private String newsEvidenceRef(String stockCode, StockNews news) {
+        String identity = StringUtils.hasText(news.getContentHash()) ? news.getContentHash()
+                : StringUtils.hasText(news.getExternalId()) ? news.getExternalId() : news.getId();
+        return "news:" + stockCode + ":" + value(identity);
+    }
+
+    private String limit(String value, int maxLength) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
+    }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----
