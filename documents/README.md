@@ -1,41 +1,39 @@
-<!-- AI_GENERATE_START--------------- -->
+<!-- AI_GENERATE_START ---------------- -->
 # 项目文档
 
-本目录维护 `stock-trading4` 当前有效的架构、领域和运维说明。项目只有 `stock-backend`、`stock-agent`、`stock-frontend` 三个 Maven 模块；Backend 内部领域文档按业务名称分目录，不代表独立 Maven 模块。
+本目录维护 `stock-trading4` 当前有效的架构、领域和运行说明。主文档只描述当前源码与配置能够确认的事实；尚未完成或尚未运行验证的方案统一放入 `proposals/`。
 
-## 阅读入口
+## 快速入口
 
-| 目标 | 文档 |
+| 阅读目标 | 文档 |
 |---|---|
-| 了解系统与存储边界 | [系统概览](00-系统架构/系统概览.md) |
-| 了解三模块和内部 API | [模块依赖与边界](00-系统架构/模块依赖与边界.md) |
-| 了解数据到交易的完整过程 | [核心业务链路](00-系统架构/核心业务链路.md) |
-| 了解六服务部署与发布 | [部署与运行](00-系统架构/部署与运行.md) |
+| 了解三模块、数据所有权和安全边界 | [系统架构](architecture/系统架构.md) |
+| 了解数据到交易的完整链路 | [核心业务链路](architecture/核心业务链路.md) |
+| 了解部署、配置和发布边界 | [部署运行](architecture/部署运行.md) |
+| 了解 Backend 公共基础与持久化 | [后端基础与持久化](backend/后端基础与持久化.md) |
+| 了解事实数据采集与质量 | [数据领域](backend/数据领域.md) |
+| 了解训练、推理和模型生命周期 | [模型领域](backend/模型领域.md) |
+| 了解选股、信号和回测 | [策略领域](backend/策略领域.md) |
+| 了解风控、券商和真实交易 | [交易领域](backend/交易领域.md) |
+| 了解 Quartz 任务编排 | [任务调度](backend/任务调度.md) |
+| 了解 Agent 运行与安全边界 | [Agent 架构](agent/Agent架构.md) |
+| 了解知识检索和长期记忆 | [RAG 与 Memory](agent/RAG与Memory.md) |
+| 了解页面、路由和接口分流 | [前端架构](frontend/前端架构.md) |
+| 查看尚未完整验证的设计 | [Proposals](proposals/README.md) |
 
-## Maven 模块文档
+## 文档分层
 
-| Maven 模块 | 业务定位 | 文档 |
-|---|---|---|
-| `stock-backend` | 核心业务、数据、模型、策略、交易和 Quartz | [模块说明](stock-backend/启动配置与持久化.md) |
-| `stock-agent` | 研究、诊断、RAG、Memory 和独立交易建议 | [模块说明](stock-agent/模块说明.md)、[运行机制与工具](stock-agent/运行机制与工具.md)、[RAG 与 Memory](stock-agent/RAG与Memory.md)、[交易建议边界](stock-agent/交易建议边界.md) |
-| `stock-frontend` | React 管理与交易操作界面 | [前端功能与交互](stock-frontend/前端功能与交互.md) |
+- `architecture/`：跨模块架构、业务链路和部署边界。
+- `backend/`：`stock-backend` 内部各领域的当前职责与实现边界。
+- `agent/`：`stock-agent` 的运行机制、工具、RAG 和 Memory。
+- `frontend/`：`stock-frontend` 的页面、契约和部署方式。
+- `proposals/`：尚未完成全部验证的专项设计，不作为生产能力证明。
 
-## Backend 领域文档
+## 维护原则
 
-| Backend 领域 | 文档 |
-|---|---|
-| 公共契约 | [说明](stock-base/模块说明.md) |
-| 数据采集与质量 | [领域说明](stock-data/模块说明.md)、[数据采集与质量](stock-data/数据采集与质量.md) |
-| 模型 | [领域说明](stock-model/模块说明.md)、[训练推理与模型生命周期](stock-model/训练推理与模型生命周期.md)、[模型制品](stock-model/模型制品.md) |
-| 策略 | [领域说明](stock-strategy/模块说明.md)、[选股信号与回测](stock-strategy/选股信号与回测.md) |
-| 交易 | [领域说明](stock-trading/模块说明.md)、[风控与交易执行](stock-trading/风控与交易执行.md)、[券商接入与账户同步](stock-trading/券商接入与账户同步.md) |
-| 任务编排 | [任务调度与业务编排](stock-job/任务调度与业务编排.md) |
-
-## 文档维护原则
-
-1. 文档只描述当前实现，不保留已经删除的目录、模块、接口或兼容方案。
-2. Backend 领域名称可以沿用 `stock-data`、`stock-model` 等业务称呼，但必须明确其不是 Maven 模块。
-3. 模块职责、数据所有权或 API 边界变化时，同步修改架构和对应领域文档。
-4. 文档不得记录真实密码、Token、账户、生产数据或临时排查输出。
-5. 源码静态检查、编译、测试、运行和生产验证是不同证据层级，不得混淆。
-<!-- AI_GENERATE_END--------------- -->
+1. 相同事实只在一份文档中完整定义，其他文档通过链接引用。
+2. 文档不得把源码存在、编译成功、运行成功和生产验证混为同一证据层级。
+3. 模块职责、数据所有权、接口分流或交易边界变化时，同步更新对应权威文档。
+4. 已被替代的目录、URL、兼容路径和历史设计不保留在当前文档中。
+5. 文档不得记录真实密码、Token、账户、生产数据或临时排查输出。
+<!-- AI_GENERATE_END ---------------- -->

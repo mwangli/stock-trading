@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------
+// AI_GENERATE_START----------------
 package com.stock.model.service;
 
 import com.stock.data.entity.StockPrice;
@@ -240,6 +240,7 @@ public class LstmDataPreprocessor {
             float downsideTarget = (float) clamp(-nextReturn / config.getTargetReturnScale(), 0D, 1D);
             samples.add(TrainingSample.builder()
                     .input(input)
+                    .rankingTarget((float) scaledTarget)
                     .returnTarget((float) scaledTarget)
                     .directionTarget(directionTarget)
                     .downsideTarget(downsideTarget)
@@ -405,6 +406,9 @@ public class LstmDataPreprocessor {
         /** 输入序列，形状为 sequenceLength x featureCount。 */
         private float[][] input;
 
+        /** 未经任务 Head 转换的横截面排序目标。 */
+        private float rankingTarget;
+
         /** 缩放后的下一交易日收益率。 */
         private float returnTarget;
 
@@ -419,6 +423,9 @@ public class LstmDataPreprocessor {
 
         /** 标签对应的目标交易日，用于时间切分和防止未来数据泄漏。 */
         private LocalDate targetDate;
+
+        /** 样本目标日对应的行业代码。 */
+        private String industryCode;
     }
 
     /**
@@ -469,6 +476,9 @@ public class LstmDataPreprocessor {
         /** 验证样本。 */
         private List<TrainingSample> valSamples;
 
+        /** 独立测试样本。 */
+        private List<TrainingSample> testSamples;
+
         /** 各股票样本数量。 */
         private Map<String, Integer> sampleCounts;
 
@@ -484,13 +494,52 @@ public class LstmDataPreprocessor {
         /** 特征定义版本。 */
         private String featureVersion;
 
+        /** 股票稳定类别字典。 */
+        private Map<String, Integer> stockDictionary;
+
+        /** 行业稳定类别字典。 */
+        private Map<String, Integer> industryDictionary;
+
+        /** 市场稳定类别字典。 */
+        private Map<String, Integer> marketDictionary;
+
+        /** 仅由训练窗口拟合的连续特征均值。 */
+        private double[] featureMeans;
+
+        /** 仅由训练窗口拟合的连续特征标准差。 */
+        private double[] featureStdDeviations;
+
+        /** 训练集开始日期。 */
+        private LocalDate trainStartDate;
+
+        /** 训练集结束日期。 */
+        private LocalDate trainEndDate;
+
+        /** 验证集开始日期。 */
+        private LocalDate validationStartDate;
+
+        /** 验证集结束日期。 */
+        private LocalDate validationEndDate;
+
+        /** 独立测试集开始日期。 */
+        private LocalDate testStartDate;
+
+        /** 独立测试集结束日期。 */
+        private LocalDate testEndDate;
+
+        /** 主策略 Walk-Forward 折叠列表，按测试窗口时间升序排列。 */
+        private List<WalkForwardFold> walkForwardFolds;
+
+        /** 60 个交易日严格隔离敏感性折叠列表。 */
+        private List<WalkForwardFold> strictIsolationFolds;
+
         /**
          * 获取训练输入。
          *
          * @return 三维训练输入
          */
         public float[][][] getTrainInputs() {
-            return trainSamples.stream().map(TrainingSample::getInput).toArray(float[][][]::new);
+            return safeSamples(trainSamples).stream().map(TrainingSample::getInput).toArray(float[][][]::new);
         }
 
         /**
@@ -499,7 +548,7 @@ public class LstmDataPreprocessor {
          * @return 每条样本包含收益率、方向概率和下行风险三个标签
          */
         public float[][] getTrainTargets() {
-            return trainSamples.stream()
+            return safeSamples(trainSamples).stream()
                     .map(this::toTargetVector)
                     .toArray(float[][]::new);
         }
@@ -510,7 +559,7 @@ public class LstmDataPreprocessor {
          * @return 三维验证输入
          */
         public float[][][] getValInputs() {
-            return valSamples.stream().map(TrainingSample::getInput).toArray(float[][][]::new);
+            return safeSamples(valSamples).stream().map(TrainingSample::getInput).toArray(float[][][]::new);
         }
 
         /**
@@ -519,18 +568,94 @@ public class LstmDataPreprocessor {
          * @return 每条样本包含收益率、方向概率和下行风险三个标签
          */
         public float[][] getValTargets() {
-            return valSamples.stream()
+            return safeSamples(valSamples).stream()
+                    .map(this::toTargetVector)
+                    .toArray(float[][]::new);
+        }
+
+        /**
+         * 获取独立测试输入。
+         *
+         * @return 三维测试输入
+         */
+        public float[][][] getTestInputs() {
+            return safeSamples(testSamples).stream().map(TrainingSample::getInput).toArray(float[][][]::new);
+        }
+
+        /**
+         * 获取独立测试标签。
+         *
+         * @return 四任务测试标签
+         */
+        public float[][] getTestTargets() {
+            return safeSamples(testSamples).stream()
                     .map(this::toTargetVector)
                     .toArray(float[][]::new);
         }
 
         private float[] toTargetVector(TrainingSample sample) {
             return new float[]{
+                    sample.getRankingTarget(),
                     sample.getReturnTarget(),
                     sample.getDirectionTarget(),
                     sample.getDownsideTarget()
             };
         }
+
+        private List<TrainingSample> safeSamples(List<TrainingSample> samples) {
+            return samples == null ? List.of() : samples;
+        }
+    }
+
+    /**
+     * 单个全市场 Walk-Forward 折叠。
+     *
+     * @author mwangli
+     * @since 2026-10-23
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class WalkForwardFold {
+        /** 折叠序号，按测试窗口时间升序从 1 开始。 */
+        private int foldNumber;
+
+        /** 是否使用 60 个交易日严格隔离。 */
+        private boolean strictIsolation;
+
+        /** 仅使用本折叠训练区间统计量完成标准化的训练样本。 */
+        private List<TrainingSample> trainSamples;
+
+        /** 仅使用本折叠训练区间统计量完成标准化的验证样本。 */
+        private List<TrainingSample> valSamples;
+
+        /** 仅使用本折叠训练区间统计量完成标准化的测试样本。 */
+        private List<TrainingSample> testSamples;
+
+        /** 本折叠连续特征均值。 */
+        private double[] featureMeans;
+
+        /** 本折叠连续特征标准差。 */
+        private double[] featureStdDeviations;
+
+        /** 训练集开始日期。 */
+        private LocalDate trainStartDate;
+
+        /** 训练集结束日期。 */
+        private LocalDate trainEndDate;
+
+        /** 验证集开始日期。 */
+        private LocalDate validationStartDate;
+
+        /** 验证集结束日期。 */
+        private LocalDate validationEndDate;
+
+        /** 测试集开始日期。 */
+        private LocalDate testStartDate;
+
+        /** 测试集结束日期。 */
+        private LocalDate testEndDate;
     }
 
     /**
@@ -582,4 +707,4 @@ public class LstmDataPreprocessor {
         private String featureVersion;
     }
 }
-// AI_GENERATE_END--------------
+// AI_GENERATE_END----------------

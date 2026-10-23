@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START-------------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -126,7 +126,7 @@ public class LocalModelArtifactService {
 
     private Path resolveRoot(String configuredRoot) {
         Path configured = Path.of(configuredRoot == null || configuredRoot.isBlank()
-                ? "./model-artifacts" : configuredRoot.trim());
+                ? "./model-files" : configuredRoot.trim());
         return configured.isAbsolute()
                 ? configured.normalize()
                 : Path.of("").toAbsolutePath().normalize().resolve(configured).normalize();
@@ -156,4 +156,4 @@ public class LocalModelArtifactService {
         }
     }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END-------------

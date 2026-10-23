@@ -69,7 +69,7 @@ services:
       JAVA_TOOL_OPTIONS: -Xms256m -Xmx768m -XX:MaxDirectMemorySize=192m -Duser.timezone=Asia/Shanghai
     volumes:
       - backend-runtime-tmp:/app/.tmp
-      - ./model-artifacts:/app/model-artifacts:ro
+      - ./model-files:/app/model-files:ro
     depends_on:
       stock-mysql:
         condition: service_healthy
@@ -111,12 +111,12 @@ services:
       BACKEND_SERVICE_BASE_URL: http://stock-backend:8080
       AGENT_PROVIDER: ${AGENT_PROVIDER:-deepseek}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      EMBEDDING_MODEL_PATH: /app/model-artifacts/embedding
+      EMBEDDING_MODEL_PATH: /app/model-files/embedding
       DJL_DEFAULT_ENGINE: PyTorch
       JAVA_TOOL_OPTIONS: -Xms192m -Xmx768m -XX:MaxDirectMemorySize=128m -Duser.timezone=Asia/Shanghai
     volumes:
       - agent-runtime-tmp:/app/.tmp
-      - ./model-artifacts:/app/model-artifacts:ro
+      - ./model-files:/app/model-files:ro
     depends_on:
       stock-mongo:
         condition: service_healthy

@@ -70,7 +70,15 @@
     "offline": "系统离线",
     "checking": "检测中",
     "lightMode": "切换浅色模式",
-    "darkMode": "切换深色模式"
+    "darkMode": "切换深色模式",
+    "themePicker": "切换全局主题",
+    "themes": {
+      "cloudBlue": "清透云蓝",
+      "mintTeal": "薄荷青蓝",
+      "orangeBlue": "明亮橙蓝",
+      "glacierBlue": "冰川青蓝",
+      "dark": "深色模式"
+    }
   },
   "stockInformation": {
     "subtitle": "展示系统已维护的股票基础信息",
@@ -424,8 +432,11 @@
     },
     "options": {
       "theme": {
-        "dark": "深色模式",
-        "light": "浅色模式"
+        "cloudBlue": "清透云蓝",
+        "mintTeal": "薄荷青蓝",
+        "orangeBlue": "明亮橙蓝",
+        "glacierBlue": "冰川青蓝",
+        "dark": "深色模式"
       },
       "language": {
         "en": "English",
@@ -440,7 +451,7 @@
     "testConnection": "测试连接",
     "successMsg": "设置保存成功",
     "checkStatus": "检查服务状态",
-    "themeAutoHint": "开启后按北京时间 06:00-18:00 使用浅色模式，其余时间使用深色模式",
+    "themeAutoHint": "开启后按北京时间 06:00-18:00 使用清透云蓝，其余时间使用深色模式",
     "resetPreferences": "恢复默认偏好",
     "generalTitle": "界面偏好",
     "runtimeTitle": "运行控制",

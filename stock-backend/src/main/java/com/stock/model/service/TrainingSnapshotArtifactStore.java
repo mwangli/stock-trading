@@ -1,4 +1,4 @@
-// AI_GENERATE_START--
+// AI_GENERATE_START----
 package com.stock.model.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,7 +48,7 @@ import java.util.zip.GZIPOutputStream;
 @RequiredArgsConstructor
 class TrainingSnapshotArtifactStore {
 
-    static final String FORMAT = "CHUNKED_JSON_GZIP_V1";
+    static final String FORMAT = "CHUNKED_JSON_GZIP_V2";
     static final String STORAGE_GRIDFS = "MONGO_GRIDFS";
     static final String STORAGE_TEMPORARY = "LOCAL_TEMPORARY";
 
@@ -66,9 +66,10 @@ class TrainingSnapshotArtifactStore {
     ChunkDescriptor writeChunk(Path snapshotDirectory, int chunkNumber, ChunkPayload chunk) throws IOException {
         String fileName = "chunk-" + String.format("%05d", chunkNumber) + ".json.gz";
         WrittenFile file = writeGzipJson(resolveChunkPath(snapshotDirectory, fileName), chunk);
-        log.info("LSTM 训练数据快照分片写入完成: chunk={}, stocks={}, trainSamples={}, valSamples={}, bytes={}",
+        log.info("LSTM 训练数据快照分片写入完成: chunk={}, stocks={}, trainSamples={}, valSamples={}, "
+                        + "testSamples={}, bytes={}",
                 fileName, chunk.getSampleCounts().size(), chunk.getTrainSamples().size(),
-                chunk.getValSamples().size(), file.size());
+                chunk.getValSamples().size(), chunk.getTestSamples().size(), file.size());
         return ChunkDescriptor.builder()
                 .fileName(fileName)
                 .sha256(file.sha256())
@@ -76,6 +77,7 @@ class TrainingSnapshotArtifactStore {
                 .stockCount(chunk.getSampleCounts().size())
                 .trainSamples(chunk.getTrainSamples().size())
                 .valSamples(chunk.getValSamples().size())
+                .testSamples(chunk.getTestSamples().size())
                 .build();
     }
 
@@ -91,7 +93,19 @@ class TrainingSnapshotArtifactStore {
                 .trainedStocks(metadata.trainedStocks())
                 .trainSamples(metadata.trainSamples())
                 .valSamples(metadata.valSamples())
+                .testSamples(metadata.testSamples())
                 .datasetEndDate(metadata.datasetEndDate())
+                .stockDictionary(metadata.stockDictionary())
+                .industryDictionary(metadata.industryDictionary())
+                .marketDictionary(metadata.marketDictionary())
+                .featureMeans(metadata.featureMeans())
+                .featureStdDeviations(metadata.featureStdDeviations())
+                .trainStartDate(metadata.trainStartDate())
+                .trainEndDate(metadata.trainEndDate())
+                .validationStartDate(metadata.validationStartDate())
+                .validationEndDate(metadata.validationEndDate())
+                .testStartDate(metadata.testStartDate())
+                .testEndDate(metadata.testEndDate())
                 .chunks(chunks)
                 .build();
         Path manifestPath = snapshotDirectory.resolve("manifest.json");
@@ -178,7 +192,10 @@ class TrainingSnapshotArtifactStore {
         }
         List<LstmDataPreprocessor.TrainingSample> trainSamples = new ArrayList<>(manifest.getTrainSamples());
         List<LstmDataPreprocessor.TrainingSample> valSamples = new ArrayList<>(manifest.getValSamples());
+        List<LstmDataPreprocessor.TrainingSample> testSamples = new ArrayList<>(manifest.getTestSamples());
         Map<String, Integer> sampleCounts = new LinkedHashMap<>();
+        List<LstmDataPreprocessor.WalkForwardFold> walkForwardFolds = new ArrayList<>();
+        List<LstmDataPreprocessor.WalkForwardFold> strictIsolationFolds = new ArrayList<>();
         for (ChunkDescriptor descriptor : manifest.getChunks()) {
             GridFSFile chunkFile = findGridFsSnapshotFile(snapshotId, descriptor.getFileName());
             if (chunkFile == null || chunkFile.getLength() != descriptor.getSize()) {
@@ -194,24 +211,46 @@ class TrainingSnapshotArtifactStore {
                  InputStream gzip = new GZIPInputStream(source)) {
                 chunk = objectMapper.readValue(gzip, ChunkPayload.class);
             }
-            trainSamples.addAll(chunk.getTrainSamples());
-            valSamples.addAll(chunk.getValSamples());
-            sampleCounts.putAll(chunk.getSampleCounts());
+            trainSamples.addAll(safeList(chunk.getTrainSamples()));
+            valSamples.addAll(safeList(chunk.getValSamples()));
+            testSamples.addAll(safeList(chunk.getTestSamples()));
+            sampleCounts.putAll(chunk.getSampleCounts() == null ? Map.of() : chunk.getSampleCounts());
+            walkForwardFolds.addAll(safeList(chunk.getWalkForwardFolds()));
+            strictIsolationFolds.addAll(safeList(chunk.getStrictIsolationFolds()));
         }
         if (trainSamples.size() != manifest.getTrainSamples()
                 || valSamples.size() != manifest.getValSamples()
+                || testSamples.size() != manifest.getTestSamples()
                 || sampleCounts.size() != manifest.getTrainedStocks()) {
             throw new IllegalStateException("训练数据快照 GridFS 分片汇总数量不一致");
         }
         return LstmDataPreprocessor.ProcessedData.builder()
                 .trainSamples(trainSamples)
                 .valSamples(valSamples)
+                .testSamples(testSamples)
                 .sampleCounts(sampleCounts)
                 .featureCount(manifest.getFeatureCount())
                 .sequenceLength(manifest.getSequenceLength())
                 .targetReturnScale(manifest.getTargetReturnScale())
                 .featureVersion(manifest.getFeatureVersion())
+                .stockDictionary(manifest.getStockDictionary())
+                .industryDictionary(manifest.getIndustryDictionary())
+                .marketDictionary(manifest.getMarketDictionary())
+                .featureMeans(manifest.getFeatureMeans())
+                .featureStdDeviations(manifest.getFeatureStdDeviations())
+                .trainStartDate(manifest.getTrainStartDate())
+                .trainEndDate(manifest.getTrainEndDate())
+                .validationStartDate(manifest.getValidationStartDate())
+                .validationEndDate(manifest.getValidationEndDate())
+                .testStartDate(manifest.getTestStartDate())
+                .testEndDate(manifest.getTestEndDate())
+                .walkForwardFolds(walkForwardFolds)
+                .strictIsolationFolds(strictIsolationFolds)
                 .build();
+    }
+
+    private <T> List<T> safeList(List<T> values) {
+        return values == null ? List.of() : values;
     }
 
     private ObjectId storeGridFsFile(String snapshotId, String fileName, String contentType, Path path)
@@ -312,9 +351,28 @@ class TrainingSnapshotArtifactStore {
         return java.util.HexFormat.of().formatHex(digest.digest());
     }
 
-    record ManifestMetadata(int featureCount, int sequenceLength, double targetReturnScale,
-                            String featureVersion, int sampleLimitPerStock, int trainedStocks,
-                            int trainSamples, int valSamples, LocalDate datasetEndDate) {
+    record ManifestMetadata(
+            int featureCount,
+            int sequenceLength,
+            double targetReturnScale,
+            String featureVersion,
+            int sampleLimitPerStock,
+            int trainedStocks,
+            int trainSamples,
+            int valSamples,
+            int testSamples,
+            LocalDate datasetEndDate,
+            Map<String, Integer> stockDictionary,
+            Map<String, Integer> industryDictionary,
+            Map<String, Integer> marketDictionary,
+            double[] featureMeans,
+            double[] featureStdDeviations,
+            LocalDate trainStartDate,
+            LocalDate trainEndDate,
+            LocalDate validationStartDate,
+            LocalDate validationEndDate,
+            LocalDate testStartDate,
+            LocalDate testEndDate) {
     }
 
     record StoredArtifact(String manifestFileId, String manifestSha256, long artifactSize) {
@@ -332,8 +390,14 @@ class TrainingSnapshotArtifactStore {
         private List<LstmDataPreprocessor.TrainingSample> trainSamples;
         /** 验证样本。 */
         private List<LstmDataPreprocessor.TrainingSample> valSamples;
+        /** 独立测试样本。 */
+        private List<LstmDataPreprocessor.TrainingSample> testSamples;
         /** 各股票样本数量。 */
         private Map<String, Integer> sampleCounts;
+        /** 主策略 Walk-Forward 折叠。 */
+        private List<LstmDataPreprocessor.WalkForwardFold> walkForwardFolds;
+        /** 60 日严格隔离敏感性折叠。 */
+        private List<LstmDataPreprocessor.WalkForwardFold> strictIsolationFolds;
     }
 
     @Data
@@ -353,6 +417,8 @@ class TrainingSnapshotArtifactStore {
         private int trainSamples;
         /** 分片验证样本数量。 */
         private int valSamples;
+        /** 分片独立测试样本数量。 */
+        private int testSamples;
     }
 
     @Data
@@ -378,10 +444,34 @@ class TrainingSnapshotArtifactStore {
         private int trainSamples;
         /** 验证样本数量。 */
         private int valSamples;
+        /** 独立测试样本数量。 */
+        private int testSamples;
         /** 数据截止日期。 */
         private LocalDate datasetEndDate;
+        /** 股票稳定类别字典。 */
+        private Map<String, Integer> stockDictionary;
+        /** 行业稳定类别字典。 */
+        private Map<String, Integer> industryDictionary;
+        /** 市场稳定类别字典。 */
+        private Map<String, Integer> marketDictionary;
+        /** 训练窗口连续特征均值。 */
+        private double[] featureMeans;
+        /** 训练窗口连续特征标准差。 */
+        private double[] featureStdDeviations;
+        /** 训练集开始日期。 */
+        private LocalDate trainStartDate;
+        /** 训练集结束日期。 */
+        private LocalDate trainEndDate;
+        /** 验证集开始日期。 */
+        private LocalDate validationStartDate;
+        /** 验证集结束日期。 */
+        private LocalDate validationEndDate;
+        /** 独立测试集开始日期。 */
+        private LocalDate testStartDate;
+        /** 独立测试集结束日期。 */
+        private LocalDate testEndDate;
         /** 分片描述列表。 */
         private List<ChunkDescriptor> chunks;
     }
 }
-// AI_GENERATE_END--
+// AI_GENERATE_END----

@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START----------------
 package com.stock.model.service;
 
 import ai.djl.Model;
@@ -10,6 +10,8 @@ import com.stock.model.config.LstmTrainingConfig;
 import com.stock.model.entity.LstmModelDocument;
 import com.stock.model.entity.ModelActivationDocument;
 import com.stock.model.model.StockLSTMModel;
+import com.stock.model.model.RankingLSTMModel;
+import com.stock.model.model.LstmArchitectureType;
 import com.stock.model.repository.LstmModelRepository;
 import com.stock.model.repository.ModelActivationRepository;
 import lombok.RequiredArgsConstructor;
@@ -46,10 +48,13 @@ public class LstmModelArtifactService {
     /** 当前共享模型固定名称。 */
     public static final String DEFAULT_SHARED_MODEL_NAME = "global-shared-lstm";
     /** 当前网络结构与标签口径版本。 */
-    public static final String MODEL_VERSION = "v4-balanced-direction";
+    public static final String MODEL_VERSION = "v5-cross-sectional-ranking";
+    private static final String V4_MODEL_VERSION = "v4-balanced-direction";
     private static final String LEGACY_MODEL_VERSION = "v3-embedding-multitask";
     private static final String LEGACY_LOSS_VERSION = "huber-bce-huber-v1";
     private static final String LOSS_VERSION = "huber-weighted-bce-huber-v2";
+    private static final String RANKING_LOSS_VERSION = "pairwise-ranking-multitask-v1";
+    private static final String OUTPUT_SCHEMA_VERSION = "ranking-return-probability-downside-v1";
 
     private final LstmTrainingConfig config;
     private final LstmModelRepository lstmModelRepository;
@@ -68,6 +73,12 @@ public class LstmModelArtifactService {
      * @param trainLabelStats 训练集方向标签统计
      * @param validationLabelStats 验证集方向标签统计
      * @param directionClassWeights 方向任务类别权重
+     * @param validationMetrics 验证集横截面指标
+     * @param testMetrics 独立测试集横截面指标
+     * @param walkForwardMetrics Walk-Forward 聚合指标
+     * @param strictIsolationMetrics 60 日严格隔离敏感性指标
+     * @param probabilityTemperature 概率温度校准参数
+     * @param architectureType 本次候选模型架构
      * @return 模型版本标识
      * @throws IOException 制品序列化或保存失败
      */
@@ -75,13 +86,21 @@ public class LstmModelArtifactService {
                             int epoch, double trainLoss, double valLoss,
                             LstmTrainerService.DirectionLabelStats trainLabelStats,
                             LstmTrainerService.DirectionLabelStats validationLabelStats,
-                            LstmTrainerService.DirectionClassWeights directionClassWeights) throws IOException {
-        String metadata = buildMetadata(processedData, epoch);
+                            LstmTrainerService.DirectionClassWeights directionClassWeights,
+                            RankingValidationMetricsCalculator.RankingValidationMetrics validationMetrics,
+                            RankingValidationMetricsCalculator.RankingValidationMetrics testMetrics,
+                            RankingValidationMetricsCalculator.WalkForwardMetrics walkForwardMetrics,
+                            RankingValidationMetricsCalculator.WalkForwardMetrics strictIsolationMetrics,
+                            double probabilityTemperature,
+                            LstmArchitectureType architectureType) throws IOException {
+        String metadata = buildMetadata(processedData, epoch, probabilityTemperature, architectureType);
         try {
             ModelActivationDocument activation = modelActivationRepository.findByModelName(getModelName()).orElse(null);
             LstmModelDocument document = new LstmModelDocument();
             document.setModelName(getModelName());
-            document.setModelVersion(MODEL_VERSION + "-" + System.currentTimeMillis());
+            document.setModelVersion(MODEL_VERSION + "-"
+                    + architectureType.name().toLowerCase(java.util.Locale.ROOT) + "-"
+                    + System.currentTimeMillis());
             document.setParentModelVersionId(activation == null ? null : activation.getActiveModelVersionId());
             document.setEpoch(epoch);
             document.setCreatedAt(LocalDateTime.now());
@@ -94,11 +113,13 @@ public class LstmModelArtifactService {
                             .append("artifactType", "LSTM_MODEL_PARAMETERS"))
                     .toHexString());
             document.setNormalizationParams(metadata);
-            document.setTrainingConfigJson(buildTrainingConfigJson());
+            document.setTrainingConfigJson(buildTrainingConfigJson(architectureType));
             document.setInputContractJson(objectMapper.writeValueAsString(Map.of(
                     "sequenceLength", processedData.getSequenceLength(), "inputSize", processedData.getFeatureCount(),
-                    "outputSize", StockLSTMModel.OUTPUT_SIZE, "featureVersion", processedData.getFeatureVersion(),
-                    "labelVersion", "return-direction-downside-v3")));
+                    "outputSize", RankingLSTMModel.OUTPUT_SIZE, "featureVersion", processedData.getFeatureVersion(),
+                    "labelVersion", RankingLstmDataPreprocessor.LABEL_VERSION,
+                    "outputSchemaVersion", OUTPUT_SCHEMA_VERSION,
+                    "architectureType", architectureType.name())));
             Map<String, Object> metrics = new LinkedHashMap<>();
             metrics.put("trainLoss", trainLoss);
             metrics.put("valLoss", valLoss);
@@ -112,9 +133,37 @@ public class LstmModelArtifactService {
             metrics.put("valDownSamples", validationLabelStats.negativeCount());
             metrics.put("directionPositiveWeight", directionClassWeights.positiveWeight());
             metrics.put("directionNegativeWeight", directionClassWeights.negativeWeight());
+            metrics.put("validationRankIc", validationMetrics.rankIc());
+            metrics.put("validationTopDecileNetReturn", validationMetrics.topDecileNetReturn());
+            metrics.put("validationSelectionScore", validationMetrics.selectionScore());
+            metrics.put("testRankIc", testMetrics.rankIc());
+            metrics.put("testTopDecileNetReturn", testMetrics.topDecileNetReturn());
+            metrics.put("testSelectionScore", testMetrics.selectionScore());
+            metrics.put("outputCollapsed", testMetrics.collapsed());
+            metrics.put("probabilityTemperature", probabilityTemperature);
+            metrics.put("validationBrierScore", validationMetrics.brierScore());
+            metrics.put("validationBrierBaseline", validationMetrics.brierBaseline());
+            metrics.put("testBrierScore", testMetrics.brierScore());
+            metrics.put("testBrierBaseline", testMetrics.brierBaseline());
+            metrics.put("walkForwardFoldCount", walkForwardMetrics.foldCount());
+            metrics.put("walkForwardMeanRankIc", walkForwardMetrics.meanRankIc());
+            metrics.put("walkForwardRankIcIr", walkForwardMetrics.rankIcIr());
+            metrics.put("positiveRankIcWindowRatio", walkForwardMetrics.positiveRankIcRatio());
+            metrics.put("walkForwardTopDecileNetReturn", walkForwardMetrics.averageTopDecileNetReturn());
+            metrics.put("walkForwardBrierScore", walkForwardMetrics.brierScore());
+            metrics.put("walkForwardBrierBaseline", walkForwardMetrics.brierBaseline());
+            metrics.put("walkForwardMaximumDrawdown", walkForwardMetrics.maximumDrawdown());
+            metrics.put("strictIsolationFoldCount", strictIsolationMetrics.foldCount());
+            metrics.put("strictIsolationMeanRankIc", strictIsolationMetrics.meanRankIc());
+            metrics.put("trainStartDate", processedData.getTrainStartDate());
+            metrics.put("trainEndDate", processedData.getTrainEndDate());
+            metrics.put("validationStartDate", processedData.getValidationStartDate());
+            metrics.put("validationEndDate", processedData.getValidationEndDate());
+            metrics.put("testStartDate", processedData.getTestStartDate());
+            metrics.put("testEndDate", processedData.getTestEndDate());
             document.setMetricsJson(objectMapper.writeValueAsString(metrics));
             document.setFeatureVersion(processedData.getFeatureVersion());
-            document.setLabelVersion("return-direction-downside-v3");
+            document.setLabelVersion(RankingLstmDataPreprocessor.LABEL_VERSION);
             document.setEngineName("PyTorch");
             document.setEngineVersion(Engine.getInstance().getVersion());
             document.setDjlVersion(Model.class.getPackage().getImplementationVersion());
@@ -188,22 +237,43 @@ public class LstmModelArtifactService {
         } catch (IOException exception) {
             throw new IllegalStateException("共享 LSTM 元数据无法解析", exception);
         }
-        requireOneOfMetadata(properties, "modelVersion", MODEL_VERSION, LEGACY_MODEL_VERSION);
-        requireMetadata(properties, "featureVersion", LstmDataPreprocessor.FEATURE_VERSION);
+        String modelVersion = properties.getProperty("modelVersion");
+        if (MODEL_VERSION.equals(modelVersion)) {
+            validateRankingMetadata(properties);
+            return;
+        }
+        if (V4_MODEL_VERSION.equals(modelVersion) || LEGACY_MODEL_VERSION.equals(modelVersion)) {
+            validateLegacyMetadata(properties);
+            return;
+        }
+        throw new IllegalStateException("共享 LSTM 元数据不兼容: modelVersion=" + modelVersion);
+    }
+
+    private void validateRankingMetadata(Properties properties) {
+        requireMetadata(properties, "featureVersion", RankingLstmDataPreprocessor.FEATURE_VERSION);
+        requireMetadata(properties, "labelVersion", RankingLstmDataPreprocessor.LABEL_VERSION);
+        requireMetadata(properties, "splitPolicyVersion", RankingLstmDataPreprocessor.SPLIT_POLICY_VERSION);
+        requireMetadata(properties, "costModelVersion", RankingLstmDataPreprocessor.COST_MODEL_VERSION);
+        requireMetadata(properties, "outputSchemaVersion", OUTPUT_SCHEMA_VERSION);
         requireMetadata(properties, "sequenceLength", String.valueOf(config.getSequenceLength()));
-        requireMetadata(properties, "inputSize", String.valueOf(config.getInputSize()));
+        requireMetadata(properties, "inputSize", String.valueOf(RankingLstmDataPreprocessor.FEATURE_COUNT));
+        requireMetadata(properties, "outputSize", String.valueOf(RankingLSTMModel.OUTPUT_SIZE));
+        requireOneOfMetadata(properties, "architectureType",
+                LstmArchitectureType.RANKING_LSTM.name(),
+                LstmArchitectureType.DUAL_ATTENTION_RANKING_LSTM.name());
+        requireMetadata(properties, "lossVersion", RANKING_LOSS_VERSION);
+        requireMetadata(properties, "targetReturnScale", String.valueOf(config.getTargetReturnScale()));
+        requirePositiveDoubleMetadata(properties, "probabilityTemperature");
+        requirePositiveIntegerMetadata(properties, "walkForwardFoldCount");
+    }
+
+    private void validateLegacyMetadata(Properties properties) {
+        requireMetadata(properties, "featureVersion", LstmDataPreprocessor.FEATURE_VERSION);
+        requireMetadata(properties, "sequenceLength", String.valueOf(60));
+        requireMetadata(properties, "inputSize", String.valueOf(LstmDataPreprocessor.FEATURE_COUNT));
         requireMetadata(properties, "outputSize", String.valueOf(StockLSTMModel.OUTPUT_SIZE));
-        requireMetadata(properties, "stockEmbeddingBuckets", String.valueOf(config.getStockEmbeddingBuckets()));
-        requireMetadata(properties, "stockEmbeddingSize", String.valueOf(config.getStockEmbeddingSize()));
-        requireMetadata(properties, "industryEmbeddingBuckets", String.valueOf(config.getIndustryEmbeddingBuckets()));
-        requireMetadata(properties, "industryEmbeddingSize", String.valueOf(config.getIndustryEmbeddingSize()));
-        requireMetadata(properties, "groupHeadCount", String.valueOf(config.getGroupHeadCount()));
-        requireMetadata(properties, "residualHeadEnabled", String.valueOf(config.isResidualHeadEnabled()));
-        requireMetadata(properties, "groupHeadScale", String.valueOf(config.getGroupHeadScale()));
-        requireMetadata(properties, "residualHeadScale", String.valueOf(config.getResidualHeadScale()));
         requireMetadata(properties, "hashAlgorithm", "java-string-hashcode-floor-mod-v1");
         requireOneOfMetadata(properties, "lossVersion", LOSS_VERSION, LEGACY_LOSS_VERSION);
-        requireMetadata(properties, "targetReturnScale", String.valueOf(config.getTargetReturnScale()));
     }
 
     /**
@@ -216,27 +286,51 @@ public class LstmModelArtifactService {
                 ? DEFAULT_SHARED_MODEL_NAME : config.getModelName().trim();
     }
 
-    private String buildMetadata(LstmDataPreprocessor.ProcessedData data, int epoch) throws IOException {
+    private String buildMetadata(
+            LstmDataPreprocessor.ProcessedData data,
+            int epoch,
+            double probabilityTemperature,
+            LstmArchitectureType architectureType) throws IOException {
         Properties properties = new Properties();
         properties.setProperty("modelVersion", MODEL_VERSION);
         properties.setProperty("featureVersion", data.getFeatureVersion());
-        properties.setProperty("labelVersion", "return-direction-downside-v3");
+        properties.setProperty("labelVersion", RankingLstmDataPreprocessor.LABEL_VERSION);
+        properties.setProperty("splitPolicyVersion", RankingLstmDataPreprocessor.SPLIT_POLICY_VERSION);
+        properties.setProperty("costModelVersion", RankingLstmDataPreprocessor.COST_MODEL_VERSION);
+        properties.setProperty("outputSchemaVersion", OUTPUT_SCHEMA_VERSION);
+        properties.setProperty("architectureType", architectureType.name());
+        properties.setProperty("randomSeed", String.valueOf(config.getRandomSeed()));
         properties.setProperty("sequenceLength", String.valueOf(data.getSequenceLength()));
         properties.setProperty("inputSize", String.valueOf(data.getFeatureCount()));
-        properties.setProperty("outputSize", String.valueOf(StockLSTMModel.OUTPUT_SIZE));
-        properties.setProperty("stockEmbeddingBuckets", String.valueOf(config.getStockEmbeddingBuckets()));
+        properties.setProperty("outputSize", String.valueOf(RankingLSTMModel.OUTPUT_SIZE));
+        properties.setProperty("stockDictionarySize", String.valueOf(data.getStockDictionary().size()));
         properties.setProperty("stockEmbeddingSize", String.valueOf(config.getStockEmbeddingSize()));
-        properties.setProperty("industryEmbeddingBuckets", String.valueOf(config.getIndustryEmbeddingBuckets()));
+        properties.setProperty("industryDictionarySize", String.valueOf(data.getIndustryDictionary().size()));
         properties.setProperty("industryEmbeddingSize", String.valueOf(config.getIndustryEmbeddingSize()));
-        properties.setProperty("groupHeadCount", String.valueOf(config.getGroupHeadCount()));
-        properties.setProperty("residualHeadEnabled", String.valueOf(config.isResidualHeadEnabled()));
-        properties.setProperty("groupHeadScale", String.valueOf(config.getGroupHeadScale()));
-        properties.setProperty("residualHeadScale", String.valueOf(config.getResidualHeadScale()));
-        properties.setProperty("hashAlgorithm", "java-string-hashcode-floor-mod-v1");
-        properties.setProperty("lossVersion", LOSS_VERSION);
+        properties.setProperty("marketDictionarySize", String.valueOf(data.getMarketDictionary().size()));
+        properties.setProperty("marketEmbeddingSize", String.valueOf(config.getMarketEmbeddingSize()));
+        properties.setProperty("stockDictionaryJson", objectMapper.writeValueAsString(data.getStockDictionary()));
+        properties.setProperty("industryDictionaryJson", objectMapper.writeValueAsString(data.getIndustryDictionary()));
+        properties.setProperty("marketDictionaryJson", objectMapper.writeValueAsString(data.getMarketDictionary()));
+        properties.setProperty("featureMeansJson", objectMapper.writeValueAsString(data.getFeatureMeans()));
+        properties.setProperty("featureStdDeviationsJson",
+                objectMapper.writeValueAsString(data.getFeatureStdDeviations()));
+        properties.setProperty("lossVersion", RANKING_LOSS_VERSION);
         properties.setProperty("hiddenSize", String.valueOf(config.getHiddenSize()));
         properties.setProperty("numLayers", String.valueOf(config.getNumLayers()));
         properties.setProperty("targetReturnScale", String.valueOf(data.getTargetReturnScale()));
+        properties.setProperty("costThreshold", String.valueOf(config.getCostThreshold()));
+        properties.setProperty("probabilityTemperature", String.valueOf(probabilityTemperature));
+        properties.setProperty("walkForwardFoldCount", String.valueOf(
+                data.getWalkForwardFolds() == null ? 0 : data.getWalkForwardFolds().size()));
+        properties.setProperty("strictIsolationFoldCount", String.valueOf(
+                data.getStrictIsolationFolds() == null ? 0 : data.getStrictIsolationFolds().size()));
+        properties.setProperty("trainStartDate", String.valueOf(data.getTrainStartDate()));
+        properties.setProperty("trainEndDate", String.valueOf(data.getTrainEndDate()));
+        properties.setProperty("validationStartDate", String.valueOf(data.getValidationStartDate()));
+        properties.setProperty("validationEndDate", String.valueOf(data.getValidationEndDate()));
+        properties.setProperty("testStartDate", String.valueOf(data.getTestStartDate()));
+        properties.setProperty("testEndDate", String.valueOf(data.getTestEndDate()));
         properties.setProperty("epoch", String.valueOf(epoch));
         properties.setProperty("createdAt", LocalDateTime.now().toString());
         properties.setProperty("modelName", getModelName());
@@ -246,19 +340,19 @@ public class LstmModelArtifactService {
         }
     }
 
-    private String buildTrainingConfigJson() throws IOException {
+    private String buildTrainingConfigJson(LstmArchitectureType architectureType) throws IOException {
         return objectMapper.writeValueAsString(Map.ofEntries(
+                Map.entry("architectureType", architectureType.name()),
+                Map.entry("randomSeed", config.getRandomSeed()),
                 Map.entry("inputSize", config.getInputSize()), Map.entry("hiddenSize", config.getHiddenSize()),
                 Map.entry("numLayers", config.getNumLayers()), Map.entry("dropout", config.getDropout()),
                 Map.entry("sequenceLength", config.getSequenceLength()),
-                Map.entry("stockEmbeddingBuckets", config.getStockEmbeddingBuckets()),
                 Map.entry("stockEmbeddingSize", config.getStockEmbeddingSize()),
-                Map.entry("industryEmbeddingBuckets", config.getIndustryEmbeddingBuckets()),
                 Map.entry("industryEmbeddingSize", config.getIndustryEmbeddingSize()),
-                Map.entry("groupHeadCount", config.getGroupHeadCount()),
-                Map.entry("residualHeadEnabled", config.isResidualHeadEnabled()),
-                Map.entry("groupHeadScale", config.getGroupHeadScale()),
-                Map.entry("residualHeadScale", config.getResidualHeadScale()),
+                Map.entry("marketEmbeddingSize", config.getMarketEmbeddingSize()),
+                Map.entry("costThreshold", config.getCostThreshold()),
+                Map.entry("purgeTradingDays", config.getPurgeTradingDays()),
+                Map.entry("embargoTradingDays", config.getEmbargoTradingDays()),
                 Map.entry("learningRate", config.getLearningRate()), Map.entry("batchSize", config.getBatchSize()),
                 Map.entry("epochs", config.getEpochs())));
     }
@@ -318,6 +412,26 @@ public class LstmModelArtifactService {
                 + ", expectedOneOf=" + String.join(",", expectedValues) + ", actual=" + actual);
     }
 
+    private void requirePositiveDoubleMetadata(Properties properties, String key) {
+        try {
+            if (Double.parseDouble(properties.getProperty(key)) <= 0D) {
+                throw new NumberFormatException("value must be positive");
+            }
+        } catch (RuntimeException exception) {
+            throw new IllegalStateException("共享 LSTM 元数据无效: " + key, exception);
+        }
+    }
+
+    private void requirePositiveIntegerMetadata(Properties properties, String key) {
+        try {
+            if (Integer.parseInt(properties.getProperty(key)) <= 0) {
+                throw new NumberFormatException("value must be positive");
+            }
+        } catch (RuntimeException exception) {
+            throw new IllegalStateException("共享 LSTM 元数据无效: " + key, exception);
+        }
+    }
+
     /**
      * 已完成摘要校验的模型制品。
      *
@@ -327,4 +441,4 @@ public class LstmModelArtifactService {
      */
     public record ModelArtifact(byte[] params, String metadata, String modelId) { }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END----------------

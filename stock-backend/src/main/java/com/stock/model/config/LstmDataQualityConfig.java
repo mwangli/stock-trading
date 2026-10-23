@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START------
 package com.stock.model.config;
 
 import lombok.Data;
@@ -47,14 +47,35 @@ public class LstmDataQualityConfig {
      */
     private int minimumValidationSamples = 200;
 
+    /** 单次训练要求的最小独立测试样本数量。 */
+    private int minimumTestSamples = 200;
+
     /**
      * 候选模型允许的最大验证损失。
      */
     private double maximumValidationLoss = 1.0D;
+
+    /** 候选模型独立测试集最低 Rank IC。 */
+    private double minimumTestRankIc = 0.02D;
+
+    /** 候选模型独立测试集最低 Top 10% 成本后收益。 */
+    private double minimumTopDecileNetReturn = 0D;
+
+    /** 候选模型至少需要的 Walk-Forward 测试窗口数量。 */
+    private int minimumWalkForwardFoldCount = 3;
+
+    /** 候选模型 Walk-Forward 平均 Rank IC 下限。 */
+    private double minimumWalkForwardMeanRankIc = 0.02D;
+
+    /** 候选模型 Walk-Forward Rank ICIR 下限。 */
+    private double minimumWalkForwardRankIcIr = 0.30D;
+
+    /** Rank IC 为正的测试窗口最低占比。 */
+    private double minimumPositiveRankIcWindowRatio = 0.60D;
 
     /**
      * 启动训练要求的最小 JVM 可用内存，单位 MB。
      */
     private long minimumAvailableMemoryMb = 256L;
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END------

@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START---------------------------------------- -->
+<!-- AI_GENERATE_START----------------------------------------- -->
 # 交互语言要求
 
 1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
@@ -32,7 +32,7 @@ stock-trading4/
 ├── stock-agent/                    # Agent、RAG、Memory 和受控决策增强
 ├── stock-frontend/                 # React + Vite 独立前端
 ├── documents/                      # 与应用平级的需求、设计和运维文档
-├── model-artifacts/                # 固定模型制品，运行时只读挂载
+├── model-files/                # 固定模型制品，运行时只读挂载
 ├── .tmp/                           # 临时文件（不提交）
 ├── pom.xml                         # 三模块聚合与统一版本管理
 └── docker-compose.yml
@@ -632,4 +632,4 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 **Agent 特别指令**:
 - 本项目无自动化测试，不要生成或要求补充测试用例；质量依赖代码审查与手工验证。
 - 项目只允许 `stock-backend`、`stock-agent`、`stock-frontend` 三个 Maven 业务模块；后端领域使用包和子目录组织，禁止恢复旧的内部 Maven 模块。
-<!-- AI_GENERATE_END---------------------------------------- -->
+<!-- AI_GENERATE_END----------------------------------------- -->

@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.model.service;
 
 import ai.djl.Model;
@@ -13,6 +13,10 @@ import com.stock.model.config.LstmTrainingConfig;
 import com.stock.model.dto.LstmPredictionResultDto;
 import com.stock.model.entity.LstmModelDocument;
 import com.stock.model.model.StockLSTMModel;
+import com.stock.model.model.RankingLSTMModel;
+import com.stock.model.model.LstmArchitectureType;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,12 +24,14 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
+import java.io.StringReader;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.CancellationException;
 import java.util.function.BiConsumer;
 
@@ -48,6 +54,9 @@ public class LstmModelRuntimeService {
     private final LstmDataPreprocessor dataPreprocessor;
     private final LstmTrainingDataService trainingDataService;
     private final LstmModelArtifactService artifactService;
+    private final RankingLstmTrainingDataService rankingTrainingDataService;
+    private final RankingLstmDataPreprocessor rankingDataPreprocessor;
+    private final ObjectMapper objectMapper;
     private volatile LstmModelArtifactService.ModelArtifact activeArtifact;
 
     /**
@@ -60,7 +69,7 @@ public class LstmModelRuntimeService {
             artifactService.validateMetadata(artifact.metadata());
             try (ai.djl.ndarray.NDManager manager = ai.djl.ndarray.NDManager.newBaseManager("PyTorch");
                  Model model = Model.newInstance("lstm-global-preload", "PyTorch")) {
-                StockLSTMModel block = createModelBlock();
+                Block block = createModelBlock(artifact.metadata());
                 model.setBlock(block);
                 try (ByteArrayInputStream input = new ByteArrayInputStream(artifact.params());
                      DataInputStream dataInput = new DataInputStream(input)) {
@@ -165,7 +174,7 @@ public class LstmModelRuntimeService {
 
         try (NDManager manager = NDManager.newBaseManager("PyTorch");
              Model model = Model.newInstance("lstm-global-predict", "PyTorch")) {
-            Block block = createModelBlock();
+            Block block = createModelBlock(artifact.metadata());
             model.setBlock(block);
             try (ByteArrayInputStream input = new ByteArrayInputStream(artifact.params());
                  DataInputStream dataInput = new DataInputStream(input)) {
@@ -177,7 +186,7 @@ public class LstmModelRuntimeService {
                 int end = Math.min(codes.size(), start + batchSize);
                 List<String> currentCodes = List.copyOf(codes.subList(start, end));
                 Map<String, LstmPredictionResultDto> chunkResults = predictLoadedModelBatch(
-                        currentCodes, baseTradeDate, artifact.modelId(), manager, model);
+                        currentCodes, baseTradeDate, artifact, manager, model);
                 succeeded += chunkResults.size();
                 batchConsumer.accept(currentCodes, chunkResults);
             }
@@ -192,8 +201,49 @@ public class LstmModelRuntimeService {
     }
 
     private Map<String, LstmPredictionResultDto> predictLoadedModelBatch(
-            List<String> codes, LocalDate baseTradeDate, String modelId, NDManager manager, Model model) {
-        int fetchDays = Math.max(config.getSequenceLength() + 21, config.getSequenceLength() * 2);
+            List<String> codes,
+            LocalDate baseTradeDate,
+            LstmModelArtifactService.ModelArtifact artifact,
+            NDManager manager,
+            Model model) {
+        Properties metadata = loadMetadata(artifact.metadata());
+        boolean rankingModel = LstmModelArtifactService.MODEL_VERSION.equals(
+                metadata.getProperty("modelVersion"));
+        int sequenceLength = intMetadata(metadata, "sequenceLength", config.getSequenceLength());
+        int fetchDays = Math.max(sequenceLength + 21, sequenceLength * 2);
+        PredictionBatchInput batchInput = rankingModel
+                ? buildRankingBatchInput(codes, fetchDays, baseTradeDate, metadata)
+                : buildLegacyBatchInput(codes, fetchDays, baseTradeDate);
+        List<String> validCodes = batchInput.validCodes();
+        List<float[][]> inputs = batchInput.inputs();
+        List<Double> lastClosePrices = batchInput.lastClosePrices();
+        List<LocalDate> baseTradeDates = batchInput.baseTradeDates();
+        if (validCodes.isEmpty()) {
+            return Map.of();
+        }
+
+        float[][] flattened = flattenInputs(inputs.toArray(float[][][]::new));
+        try (NDManager batchManager = manager.newSubManager()) {
+            NDArray inputArray = batchManager.create(flattened);
+            ParameterStore parameterStore = new ParameterStore(manager, false);
+            try (NDList output = model.getBlock().forward(parameterStore, new NDList(inputArray), false)) {
+                float[] values = output.singletonOrThrow().toFloatArray();
+                int outputSize = rankingModel ? RankingLSTMModel.OUTPUT_SIZE : StockLSTMModel.OUTPUT_SIZE;
+                int expectedOutputCount = validCodes.size() * outputSize;
+                if (values.length != expectedOutputCount) {
+                    throw new IllegalStateException("共享 LSTM 多任务批量输出数量不匹配");
+                }
+                return rankingModel
+                        ? mapRankingResults(validCodes, lastClosePrices, baseTradeDates,
+                                artifact.modelId(), metadata, values)
+                        : mapLegacyResults(validCodes, lastClosePrices, baseTradeDates,
+                                artifact.modelId(), values);
+            }
+        }
+    }
+
+    private PredictionBatchInput buildLegacyBatchInput(
+            List<String> codes, int fetchDays, LocalDate baseTradeDate) {
         Map<String, List<StockPrice>> priceSeries = trainingDataService.loadPriceSeries(
                 codes, fetchDays, baseTradeDate);
         Map<String, LstmDataPreprocessor.StockContext> contexts = trainingDataService.loadStockContexts(codes);
@@ -219,47 +269,127 @@ public class LstmModelRuntimeService {
             lastClosePrices.add(input.getLastClosePrice());
             baseTradeDates.add(input.getBaseTradeDate());
         }
-        if (validCodes.isEmpty()) {
-            return Map.of();
-        }
+        return new PredictionBatchInput(validCodes, inputs, lastClosePrices, baseTradeDates);
+    }
 
-        float[][] flattened = flattenInputs(inputs.toArray(float[][][]::new));
-        try (NDManager batchManager = manager.newSubManager()) {
-            NDArray inputArray = batchManager.create(flattened);
-            ParameterStore parameterStore = new ParameterStore(manager, false);
-            try (NDList output = model.getBlock().forward(parameterStore, new NDList(inputArray), false)) {
-                float[] values = output.singletonOrThrow().toFloatArray();
-                int expectedOutputCount = validCodes.size() * StockLSTMModel.OUTPUT_SIZE;
-                if (values.length != expectedOutputCount) {
-                    throw new IllegalStateException("共享 LSTM 多任务批量输出数量不匹配");
-                }
-                Map<String, LstmPredictionResultDto> results = new LinkedHashMap<>();
-                for (int index = 0; index < validCodes.size(); index++) {
-                    int outputOffset = index * StockLSTMModel.OUTPUT_SIZE;
-                    float scaledReturn = values[outputOffset];
-                    float directionProbability = values[outputOffset + 1];
-                    float downsideRisk = values[outputOffset + 2];
-                    if (!Float.isFinite(scaledReturn) || !Float.isFinite(directionProbability)
-                            || !Float.isFinite(downsideRisk)) {
-                        log.warn("跳过共享 LSTM 多任务输出无效股票: stockCode={}", validCodes.get(index));
-                        continue;
-                    }
-                    double predictedReturn = scaledReturn * config.getTargetReturnScale();
-                    double lastClose = lastClosePrices.get(index);
-                    results.put(validCodes.get(index), LstmPredictionResultDto.builder()
-                            .stockCode(validCodes.get(index))
-                            .baseTradeDate(baseTradeDates.get(index))
-                            .predictedClosePrice(lastClose > 0D ? lastClose * (1D + predictedReturn) : 0D)
-                            .lastClosePrice(lastClose > 0D ? lastClose : null)
-                            .predictedChangeRatio(predictedReturn)
-                            .directionProbability((double) directionProbability)
-                            .downsideRisk((double) downsideRisk)
-                            .modelId(modelId)
-                            .build());
-                }
-                return results;
+    private PredictionBatchInput buildRankingBatchInput(
+            List<String> codes, int fetchDays, LocalDate baseTradeDate, Properties metadata) {
+        RankingLstmTrainingDataService.RankingTrainingDataBundle bundle =
+                rankingTrainingDataService.loadPredictionData(codes, fetchDays, baseTradeDate);
+        Map<String, Integer> stockDictionary = jsonMapMetadata(metadata, "stockDictionaryJson");
+        Map<String, Integer> industryDictionary = jsonMapMetadata(metadata, "industryDictionaryJson");
+        Map<String, Integer> marketDictionary = jsonMapMetadata(metadata, "marketDictionaryJson");
+        double[] means = jsonArrayMetadata(metadata, "featureMeansJson");
+        double[] deviations = jsonArrayMetadata(metadata, "featureStdDeviationsJson");
+        Map<String, LstmDataPreprocessor.PredictionInput> predictionInputs =
+                rankingDataPreprocessor.buildPredictionInputs(bundle, stockDictionary,
+                        industryDictionary, marketDictionary, means, deviations);
+        List<String> validCodes = new ArrayList<>();
+        List<float[][]> inputs = new ArrayList<>();
+        List<Double> lastClosePrices = new ArrayList<>();
+        List<LocalDate> baseTradeDates = new ArrayList<>();
+        for (String code : codes) {
+            LstmDataPreprocessor.PredictionInput input = predictionInputs.get(code);
+            if (input == null) {
+                log.warn("跳过 v5 LSTM 输入不足股票: stockCode={}", code);
+                continue;
             }
+            if (baseTradeDate != null && !baseTradeDate.equals(input.getBaseTradeDate())) {
+                log.warn("跳过 v5 历史基准日不一致股票: stockCode={}, expectedBaseDate={}, actualBaseDate={}",
+                        code, baseTradeDate, input.getBaseTradeDate());
+                continue;
+            }
+            validCodes.add(code);
+            inputs.add(input.getInput());
+            lastClosePrices.add(input.getLastClosePrice());
+            baseTradeDates.add(input.getBaseTradeDate());
         }
+        return new PredictionBatchInput(validCodes, inputs, lastClosePrices, baseTradeDates);
+    }
+
+    private Map<String, LstmPredictionResultDto> mapRankingResults(
+            List<String> codes,
+            List<Double> lastClosePrices,
+            List<LocalDate> baseTradeDates,
+            String modelId,
+            Properties metadata,
+            float[] values) {
+        Map<String, LstmPredictionResultDto> results = new LinkedHashMap<>();
+        double returnScale = doubleMetadata(metadata, "targetReturnScale", config.getTargetReturnScale());
+        double temperature = doubleMetadata(metadata, "probabilityTemperature", 1D);
+        for (int index = 0; index < codes.size(); index++) {
+            int offset = index * RankingLSTMModel.OUTPUT_SIZE;
+            float rankScore = values[offset];
+            float scaledReturn = values[offset + 1];
+            float rawProbability = values[offset + 2];
+            float downsideQuantile = values[offset + 3];
+            if (!Float.isFinite(rankScore) || !Float.isFinite(scaledReturn)
+                    || !Float.isFinite(rawProbability) || !Float.isFinite(downsideQuantile)) {
+                log.warn("跳过 v5 LSTM 输出无效股票: stockCode={}", codes.get(index));
+                continue;
+            }
+            double expectedExcessReturn = scaledReturn * returnScale;
+            double calibratedProbability = calibrateProbability(rawProbability, temperature);
+            double lastClose = lastClosePrices.get(index);
+            results.put(codes.get(index), LstmPredictionResultDto.builder()
+                    .stockCode(codes.get(index))
+                    .baseTradeDate(baseTradeDates.get(index))
+                    .predictedClosePrice(lastClose > 0D ? lastClose * (1D + expectedExcessReturn) : 0D)
+                    .lastClosePrice(lastClose > 0D ? lastClose : null)
+                    .predictedChangeRatio(expectedExcessReturn)
+                    .directionProbability(calibratedProbability)
+                    .downsideRisk((double) downsideQuantile)
+                    .rankScore((double) rankScore)
+                    .expectedExcessReturn(expectedExcessReturn)
+                    .calibratedUpProbability(calibratedProbability)
+                    .downsideQuantile((double) downsideQuantile)
+                    .architectureType(metadata.getProperty("architectureType"))
+                    .featureSchemaVersion(metadata.getProperty("featureVersion"))
+                    .modelId(modelId)
+                    .build());
+        }
+        return results;
+    }
+
+    private Map<String, LstmPredictionResultDto> mapLegacyResults(
+            List<String> codes,
+            List<Double> lastClosePrices,
+            List<LocalDate> baseTradeDates,
+            String modelId,
+            float[] values) {
+        Map<String, LstmPredictionResultDto> results = new LinkedHashMap<>();
+        for (int index = 0; index < codes.size(); index++) {
+            int offset = index * StockLSTMModel.OUTPUT_SIZE;
+            float scaledReturn = values[offset];
+            float probability = values[offset + 1];
+            float downsideRisk = values[offset + 2];
+            if (!Float.isFinite(scaledReturn) || !Float.isFinite(probability) || !Float.isFinite(downsideRisk)) {
+                log.warn("跳过历史 LSTM 输出无效股票: stockCode={}", codes.get(index));
+                continue;
+            }
+            double predictedReturn = scaledReturn * config.getTargetReturnScale();
+            double lastClose = lastClosePrices.get(index);
+            results.put(codes.get(index), LstmPredictionResultDto.builder()
+                    .stockCode(codes.get(index))
+                    .baseTradeDate(baseTradeDates.get(index))
+                    .predictedClosePrice(lastClose > 0D ? lastClose * (1D + predictedReturn) : 0D)
+                    .lastClosePrice(lastClose > 0D ? lastClose : null)
+                    .predictedChangeRatio(predictedReturn)
+                    .directionProbability((double) probability)
+                    .downsideRisk((double) downsideRisk)
+                    .architectureType(LstmArchitectureType.LEGACY_MULTITASK_LSTM.name())
+                    .featureSchemaVersion(LstmDataPreprocessor.FEATURE_VERSION)
+                    .modelId(modelId)
+                    .build());
+        }
+        return results;
+    }
+
+    private double calibrateProbability(double probability, double temperature) {
+        double safeProbability = Math.max(1.0E-7D, Math.min(1D - 1.0E-7D, probability));
+        double safeTemperature = !Double.isFinite(temperature) || temperature <= 0D ? 1D : temperature;
+        double logit = Math.log(safeProbability / (1D - safeProbability));
+        return 1D / (1D + Math.exp(-logit / safeTemperature));
     }
 
     /**
@@ -304,21 +434,87 @@ public class LstmModelRuntimeService {
         }
     }
 
-    private StockLSTMModel createModelBlock() {
+    private Block createModelBlock(String metadataText) {
+        Properties metadata = loadMetadata(metadataText);
+        if (LstmModelArtifactService.MODEL_VERSION.equals(metadata.getProperty("modelVersion"))) {
+            return new RankingLSTMModel(
+                    LstmArchitectureType.valueOf(metadata.getProperty("architectureType")),
+                    intMetadata(metadata, "inputSize", RankingLstmDataPreprocessor.FEATURE_COUNT),
+                    intMetadata(metadata, "hiddenSize", config.getHiddenSize()),
+                    intMetadata(metadata, "numLayers", config.getNumLayers()),
+                    (float) config.getDropout(),
+                    intMetadata(metadata, "sequenceLength", config.getSequenceLength()),
+                    intMetadata(metadata, "stockDictionarySize", 2),
+                    intMetadata(metadata, "stockEmbeddingSize", config.getStockEmbeddingSize()),
+                    intMetadata(metadata, "industryDictionarySize", 2),
+                    intMetadata(metadata, "industryEmbeddingSize", config.getIndustryEmbeddingSize()),
+                    intMetadata(metadata, "marketDictionarySize", 2),
+                    intMetadata(metadata, "marketEmbeddingSize", config.getMarketEmbeddingSize()));
+        }
         return new StockLSTMModel(
-                config.getInputSize(),
-                config.getHiddenSize(),
-                config.getNumLayers(),
+                intMetadata(metadata, "inputSize", LstmDataPreprocessor.FEATURE_COUNT),
+                intMetadata(metadata, "hiddenSize", 50),
+                intMetadata(metadata, "numLayers", 2),
                 (float) config.getDropout(),
-                config.getSequenceLength(),
-                config.getStockEmbeddingBuckets(),
-                config.getStockEmbeddingSize(),
-                config.getIndustryEmbeddingBuckets(),
-                config.getIndustryEmbeddingSize(),
-                config.getGroupHeadCount(),
-                config.isResidualHeadEnabled(),
-                (float) config.getGroupHeadScale(),
-                (float) config.getResidualHeadScale());
+                intMetadata(metadata, "sequenceLength", 60),
+                intMetadata(metadata, "stockEmbeddingBuckets", 8192),
+                intMetadata(metadata, "stockEmbeddingSize", 16),
+                intMetadata(metadata, "industryEmbeddingBuckets", 512),
+                intMetadata(metadata, "industryEmbeddingSize", 8),
+                intMetadata(metadata, "groupHeadCount", 8),
+                Boolean.parseBoolean(metadata.getProperty("residualHeadEnabled", "true")),
+                floatMetadata(metadata, "groupHeadScale", 0.1F),
+                floatMetadata(metadata, "residualHeadScale", 0.1F));
+    }
+
+    private Properties loadMetadata(String metadataText) {
+        Properties properties = new Properties();
+        try {
+            properties.load(new StringReader(metadataText));
+            return properties;
+        } catch (IOException exception) {
+            throw new IllegalStateException("共享 LSTM 元数据无法解析", exception);
+        }
+    }
+
+    private Map<String, Integer> jsonMapMetadata(Properties metadata, String key) {
+        try {
+            return objectMapper.readValue(metadata.getProperty(key), new TypeReference<>() { });
+        } catch (Exception exception) {
+            throw new IllegalStateException("共享 LSTM 字典元数据无法解析: " + key, exception);
+        }
+    }
+
+    private double[] jsonArrayMetadata(Properties metadata, String key) {
+        try {
+            return objectMapper.readValue(metadata.getProperty(key), double[].class);
+        } catch (Exception exception) {
+            throw new IllegalStateException("共享 LSTM 标准化元数据无法解析: " + key, exception);
+        }
+    }
+
+    private int intMetadata(Properties metadata, String key, int fallback) {
+        try {
+            return Integer.parseInt(metadata.getProperty(key, String.valueOf(fallback)));
+        } catch (NumberFormatException exception) {
+            return fallback;
+        }
+    }
+
+    private float floatMetadata(Properties metadata, String key, float fallback) {
+        try {
+            return Float.parseFloat(metadata.getProperty(key, String.valueOf(fallback)));
+        } catch (NumberFormatException exception) {
+            return fallback;
+        }
+    }
+
+    private double doubleMetadata(Properties metadata, String key, double fallback) {
+        try {
+            return Double.parseDouble(metadata.getProperty(key, String.valueOf(fallback)));
+        } catch (NumberFormatException exception) {
+            return fallback;
+        }
     }
 
     private float[][] flattenInputs(float[][][] inputs) {
@@ -336,5 +532,12 @@ public class LstmModelRuntimeService {
         }
         return flattened;
     }
+
+    private record PredictionBatchInput(
+            List<String> validCodes,
+            List<float[][]> inputs,
+            List<Double> lastClosePrices,
+            List<LocalDate> baseTradeDates) {
+    }
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -71,6 +71,27 @@ public class PredictionResultResponse {
     /** 上涨概率横截面百分位。 */
     private Double directionProbabilityPercentile;
 
+    /** `v5` 横截面排序原始分数。 */
+    private Double rankScore;
+
+    /** 排序分数横截面百分位。 */
+    private Double crossSectionPercentile;
+
+    /** 预测市场和行业中性后的超额收益率。 */
+    private Double expectedExcessReturn;
+
+    /** 经模型制品参数校准后的上涨概率。 */
+    private Double calibratedUpProbability;
+
+    /** 预测下行风险分位。 */
+    private Double downsideQuantile;
+
+    /** 模型架构类型。 */
+    private String architectureType;
+
+    /** 推理使用的特征契约版本。 */
+    private String featureSchemaVersion;
+
     /** 实际收盘价。 */
     private Double actualClosePrice;
 
@@ -95,4 +116,4 @@ public class PredictionResultResponse {
     /** 实际结果评估时间。 */
     private LocalDateTime evaluatedAt;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

@@ -100,7 +100,10 @@ public class PredictionCandidateQueryService {
                 && item.getPredictedReturnPercentile() != null
                 && Double.isFinite(item.getPredictedReturnPercentile())
                 && item.getDirectionProbabilityPercentile() != null
-                && Double.isFinite(item.getDirectionProbabilityPercentile());
+                && Double.isFinite(item.getDirectionProbabilityPercentile())
+                && (item.getRankScore() == null
+                || item.getCrossSectionPercentile() != null
+                && Double.isFinite(item.getCrossSectionPercentile()));
     }
 
     private PredictionCandidateItemDto toItem(ModelPredictionDocument item) {
@@ -114,6 +117,11 @@ public class PredictionCandidateQueryService {
                 .downsideRisk(item.getDownsideRisk())
                 .predictedReturnPercentile(item.getPredictedReturnPercentile())
                 .directionProbabilityPercentile(item.getDirectionProbabilityPercentile())
+                .rankScore(item.getRankScore())
+                .crossSectionPercentile(item.getCrossSectionPercentile())
+                .expectedExcessReturn(item.getExpectedExcessReturn())
+                .calibratedUpProbability(item.getCalibratedUpProbability())
+                .downsideQuantile(item.getDownsideQuantile())
                 .build();
     }
 

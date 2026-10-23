@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START---------
 package com.stock.model.entity;
 
 import lombok.Data;
@@ -63,6 +63,39 @@ public class TrainingDatasetSnapshotDocument {
     /** 验证样本数量。 */
     private int valSamples;
 
+    /** 独立测试样本数量。 */
+    private int testSamples;
+
+    /** 主策略 Walk-Forward 折叠数量。 */
+    private int walkForwardFoldCount;
+
+    /** 60 日严格隔离敏感性折叠数量。 */
+    private int strictIsolationFoldCount;
+
+    /** 全市场日期切分策略版本。 */
+    private String splitPolicyVersion;
+
+    /** 模型数据来源版本。 */
+    private String dataSourceVersion;
+
+    /** 训练集开始日期。 */
+    private LocalDate trainStartDate;
+
+    /** 训练集结束日期。 */
+    private LocalDate trainEndDate;
+
+    /** 验证集开始日期。 */
+    private LocalDate validationStartDate;
+
+    /** 验证集结束日期。 */
+    private LocalDate validationEndDate;
+
+    /** 独立测试集开始日期。 */
+    private LocalDate testStartDate;
+
+    /** 独立测试集结束日期。 */
+    private LocalDate testEndDate;
+
     /** 工件存储类型，如 MONGO_GRIDFS 或 LOCAL_FILE。 */
     private String artifactStorage;
 
@@ -91,4 +124,4 @@ public class TrainingDatasetSnapshotDocument {
     @Lob
     private String errorMessage;
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END---------

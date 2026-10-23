@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------
+// AI_GENERATE_START----------------------------
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Button,
@@ -15,7 +15,7 @@ import {
 } from 'antd';
 import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { useAppTheme, type ThemeMode } from '../../theme/AppThemeProvider';
+import { THEME_PRESET_OPTIONS, useAppTheme, type ThemePreset } from '../../theme/AppThemeProvider';
 import request from '../../utils/request';
 import { getApiErrorMessage, readApiData, type ApiResponse } from '../../utils/api';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
@@ -26,7 +26,7 @@ const { Text } = Typography;
 const AUTO_REFRESH_INTERVAL_MS = 10_000;
 
 interface SettingsFormValues {
-  theme: ThemeMode;
+  theme: ThemePreset;
   autoThemeEnabled: boolean;
   language: 'en' | 'zh';
   notifications: boolean;
@@ -103,7 +103,7 @@ const healthTag = (state: ServiceHealth<unknown>['state']) => {
 const Settings: React.FC = () => {
   const [form] = Form.useForm<SettingsFormValues>();
   const { t, i18n } = useTranslation();
-  const { mode, autoThemeEnabled, setMode, setAutoThemeEnabled, resetToAutomatic } = useAppTheme();
+  const { themePreset, autoThemeEnabled, setThemePreset, setAutoThemeEnabled, resetToAutomatic } = useAppTheme();
   const formAutoThemeEnabled = Form.useWatch('autoThemeEnabled', form);
   const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -112,6 +112,10 @@ const Settings: React.FC = () => {
   const [lastStatusCheckedAt, setLastStatusCheckedAt] = useState<string>();
   const [brokerHealth, setBrokerHealth] = useState<ServiceHealth<BrokerReadStatus>>({ state: 'unknown' });
   const [tradingHealth, setTradingHealth] = useState<ServiceHealth<RealTradingStatus>>({ state: 'unknown' });
+
+  useEffect(() => {
+    form.setFieldsValue({ theme: themePreset, autoThemeEnabled });
+  }, [autoThemeEnabled, form, themePreset]);
   const loadRuntimeSettings = useCallback(async () => {
     setRuntimeLoading(true);
     try {
@@ -185,7 +189,7 @@ const Settings: React.FC = () => {
       window.localStorage.setItem(STORAGE_KEYS.notifications, String(values.notifications));
       setAutoThemeEnabled(values.autoThemeEnabled);
       if (!values.autoThemeEnabled) {
-        setMode(values.theme);
+        setThemePreset(values.theme);
       }
       await i18n.changeLanguage(values.language);
       message.success(t('settings.successMsg'));
@@ -200,7 +204,7 @@ const Settings: React.FC = () => {
     window.localStorage.removeItem(STORAGE_KEYS.notifications);
     const automaticMode = resetToAutomatic();
     form.setFieldsValue({
-      theme: automaticMode,
+      theme: automaticMode === 'dark' ? 'dark' : 'cloudBlue',
       autoThemeEnabled: true,
       language: i18n.language.startsWith('zh') ? 'zh' : 'en',
       notifications: true,
@@ -210,7 +214,7 @@ const Settings: React.FC = () => {
   };
 
   const formInitialValues: SettingsFormValues = {
-    theme: mode,
+    theme: themePreset,
     autoThemeEnabled,
     language: i18n.language.startsWith('zh') ? 'zh' : 'en',
     notifications: readBoolean(STORAGE_KEYS.notifications, true),
@@ -257,7 +261,13 @@ const Settings: React.FC = () => {
               </Col>
               <Col xs={24} md={12}>
                 <Form.Item label={t('settings.fields.theme')} name="theme">
-                  <Select disabled={formAutoThemeEnabled ?? autoThemeEnabled} options={[{ value: 'light', label: t('settings.options.theme.light') }, { value: 'dark', label: t('settings.options.theme.dark') }]} />
+                  <Select
+                    disabled={formAutoThemeEnabled ?? autoThemeEnabled}
+                    options={THEME_PRESET_OPTIONS.map((option) => ({
+                      value: option.id,
+                      label: t(`settings.options.theme.${option.id}`),
+                    }))}
+                  />
                 </Form.Item>
               </Col>
               <Col xs={24} md={12}>
@@ -322,4 +332,4 @@ const Settings: React.FC = () => {
 };
 
 export default Settings;
-// AI_GENERATE_END-------------------------
+// AI_GENERATE_END----------------------------

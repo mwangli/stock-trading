@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.agent.rag;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -96,7 +96,7 @@ public class EmbeddingArtifactService {
 
     private Path resolveRoot(String configuredRoot) {
         Path configured = Path.of(configuredRoot == null || configuredRoot.isBlank()
-                ? "./model-artifacts/embedding" : configuredRoot.trim());
+                ? "./model-files/embedding" : configuredRoot.trim());
         return configured.isAbsolute()
                 ? configured.normalize()
                 : Path.of("").toAbsolutePath().normalize().resolve(configured).normalize();
@@ -126,4 +126,4 @@ public class EmbeddingArtifactService {
         }
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

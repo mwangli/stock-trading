@@ -145,7 +145,12 @@ models:
       # 预测基准日或评估目标日行情覆盖率达到该阈值后才允许入队。
       min-price-coverage-rate: ${LSTM_PREDICTION_MIN_PRICE_COVERAGE_RATE:0.95}
     sequence-length: 60
-    input-size: 16
+    input-size: 31
+    architecture-type: RANKING_LSTM
+    random-seed: 20261023
+    data-source: MODEL_FOUNDATION
+    data-source-version: CURRENT
+    benchmark-series-code: CSI300
     train-ratio: 0.8
     validation-gap: 2
     target-return-scale: 0.1
@@ -156,7 +161,8 @@ models:
     industry-embedding-buckets: 512
     industry-embedding-size: 8
     group-head-count: 8
-    residual-head-enabled: true
+    market-embedding-size: 4
+    residual-head-enabled: false
     group-head-scale: 0.1
     residual-head-scale: 0.1
     hidden-size: 50
@@ -168,6 +174,20 @@ models:
     return-loss-weight: 0.5
     direction-loss-weight: 0.3
     downside-loss-weight: 0.2
+    ranking-loss-weight: 0.45
+    excess-return-loss-weight: 0.25
+    cost-aware-direction-loss-weight: 0.15
+    downside-quantile-loss-weight: 0.10
+    consistency-loss-weight: 0.05
+    cost-threshold: 0.002
+    neutral-direction-weight: 0.25
+    training-window-years: 3
+    validation-window-months: 6
+    test-window-months: 3
+    walk-forward-step-months: 3
+    purge-trading-days: 2
+    embargo-trading-days: 20
+    strict-isolation-trading-days: 60
     early-stopping: true
     patience: 10
     min-delta: 0.0001
@@ -178,7 +198,7 @@ models:
     model-name: sentiment-finbert
     model-version: finbert-tone-chinese-e91b1a3a
     pretrained-model: yiyanghkust/finbert-tone-chinese
-    model-path: ${SENTIMENT_MODEL_PATH:./model-artifacts/sentiment}
+    model-path: ${SENTIMENT_MODEL_PATH:./model-files/sentiment}
     max-single-file-bytes: ${SENTIMENT_MAX_SINGLE_FILE_BYTES:2147483648}
     max-total-artifact-bytes: ${SENTIMENT_MAX_TOTAL_ARTIFACT_BYTES:4294967296}
 
@@ -215,7 +235,14 @@ app:
       minimum-training-stock-count: 100
       minimum-train-samples: 1000
       minimum-validation-samples: 200
+      minimum-test-samples: 200
       maximum-validation-loss: 1.0
+      minimum-test-rank-ic: 0.02
+      minimum-top-decile-net-return: 0.0
+      minimum-walk-forward-fold-count: 3
+      minimum-walk-forward-mean-rank-ic: 0.02
+      minimum-walk-forward-rank-ic-ir: 0.30
+      minimum-positive-rank-ic-window-ratio: 0.60
       minimum-available-memory-mb: 256
       skip-training-codes: []
 

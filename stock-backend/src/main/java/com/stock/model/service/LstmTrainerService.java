@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------------------------------
+// AI_GENERATE_START-------------------------------------------
 package com.stock.model.service;
 
 import ai.djl.Device;
@@ -21,8 +21,9 @@ import com.stock.model.config.LstmDataQualityConfig;
 import com.stock.model.config.LstmTrainingConfig;
 import com.stock.model.entity.TrainingDatasetSnapshotDocument;
 import com.stock.model.model.ModelBinaryCodec;
-import com.stock.model.model.MultiTaskStockLoss;
-import com.stock.model.model.StockLSTMModel;
+import com.stock.model.model.LstmArchitectureType;
+import com.stock.model.model.RankingLSTMModel;
+import com.stock.model.model.RankingStockLoss;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Comparator;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -61,6 +64,7 @@ public class LstmTrainerService {
     private final LstmModelArtifactService artifactService;
     private final TrainingDatasetSnapshotService snapshotService;
     private final ModelBinaryCodec modelBinaryCodec;
+    private final RankingValidationMetricsCalculator rankingMetricsCalculator;
     private String currentModelPath;
 
     /**
@@ -147,6 +151,28 @@ public class LstmTrainerService {
                                            Integer batchSize, Double learningRate,
                                            TrainingProgressListener progressListener,
                                            String snapshotId) {
+        return trainSharedModel(stockCodes, days, epochs, batchSize, learningRate,
+                progressListener, snapshotId, config.getArchitectureType());
+    }
+
+    /**
+     * 训练指定架构的 `v5` 横截面模型。
+     *
+     * @param stockCodes 参与训练的股票代码
+     * @param days 每只股票读取的交易日数量
+     * @param epochs 训练轮次，可为空
+     * @param batchSize 批次大小，可为空
+     * @param learningRate 学习率，可为空
+     * @param progressListener 训练进度监听器
+     * @param snapshotId 指定训练数据快照 ID，可为空
+     * @param architectureType 本次候选模型架构
+     * @return 训练结果
+     */
+    public TrainingResult trainSharedModel(List<String> stockCodes, int days, Integer epochs,
+                                           Integer batchSize, Double learningRate,
+                                           TrainingProgressListener progressListener,
+                                           String snapshotId,
+                                           LstmArchitectureType architectureType) {
         String trainingId = "shared_training_" + System.currentTimeMillis();
         long trainingStartedNanos = System.nanoTime();
         TrainingProgressListener listener = progressListener == null
@@ -166,6 +192,7 @@ public class LstmTrainerService {
             float trainLearningRate = learningRate != null
                     ? learningRate.floatValue()
                     : (float) config.getLearningRate();
+            validateArchitectureType(architectureType);
             validateTrainingConfiguration(trainEpochs, trainBatchSize, trainLearningRate);
             int fetchDays = Math.max(days, config.getSequenceLength() + config.getValidationGap() + 2);
 
@@ -219,6 +246,7 @@ public class LstmTrainerService {
             int trainedStocks = processedData.getSampleCounts().size();
             int trainSize = processedData.getTrainSamples().size();
             int valSize = processedData.getValSamples().size();
+            int testSize = processedData.getTestSamples() == null ? 0 : processedData.getTestSamples().size();
             DirectionLabelStats trainLabelStats = summarizeDirectionLabels(processedData.getTrainTargets());
             DirectionLabelStats validationLabelStats = summarizeDirectionLabels(processedData.getValTargets());
             DirectionClassWeights directionClassWeights = calculateDirectionClassWeights(trainLabelStats);
@@ -234,7 +262,10 @@ public class LstmTrainerService {
                     .valSamples(valSize)
                     .snapshotId(snapshot == null ? null : snapshot.getId())
                     .build());
-            String dataQualityError = validateTrainingData(trainedStocks, trainSize, valSize);
+            int walkForwardFoldCount = processedData.getWalkForwardFolds() == null
+                    ? 0 : processedData.getWalkForwardFolds().size();
+            String dataQualityError = validateTrainingData(
+                    trainedStocks, trainSize, valSize, testSize, walkForwardFoldCount);
             if (dataQualityError != null) {
                 return TrainingResult.builder()
                         .success(false)
@@ -249,11 +280,16 @@ public class LstmTrainerService {
             byte[] bestParams = null;
             double bestValLoss = Double.MAX_VALUE;
             double bestTrainLoss = Double.MAX_VALUE;
+            double bestSelectionScore = Double.NEGATIVE_INFINITY;
+            RankingValidationMetricsCalculator.RankingValidationMetrics bestValidationMetrics = null;
+            RankingValidationMetricsCalculator.RankingValidationMetrics bestTestMetrics = null;
+            double probabilityTemperature = 1D;
             int bestEpoch = 0;
             int patienceCounter = 0;
 
+            Engine.getInstance().setRandomSeed(config.getRandomSeed());
             try (Model model = Model.newInstance("lstm-global-shared", "PyTorch")) {
-                StockLSTMModel block = createModelBlock();
+                RankingLSTMModel block = createModelBlock(processedData, architectureType);
                 model.setBlock(block);
                 Optimizer optimizer = Optimizer.adam()
                         .optLearningRateTracker(Tracker.fixed(trainLearningRate))
@@ -263,11 +299,14 @@ public class LstmTrainerService {
                 Device device = availableDevices.length == 0 ? Device.cpu() : availableDevices[0];
                 log.info("共享 LSTM 方向任务启用自动类别加权: positiveWeight={}, negativeWeight={}",
                         directionClassWeights.positiveWeight(), directionClassWeights.negativeWeight());
-                DefaultTrainingConfig trainingConfig = new DefaultTrainingConfig(new MultiTaskStockLoss(
-                        (float) config.getReturnLossWeight(),
-                        (float) config.getDirectionLossWeight(),
-                        (float) config.getDownsideLossWeight(),
-                        directionClassWeights.positiveWeight(), directionClassWeights.negativeWeight()))
+                DefaultTrainingConfig trainingConfig = new DefaultTrainingConfig(new RankingStockLoss(
+                        (float) config.getRankingLossWeight(),
+                        (float) config.getExcessReturnLossWeight(),
+                        (float) config.getCostAwareDirectionLossWeight(),
+                        (float) config.getDownsideQuantileLossWeight(),
+                        (float) config.getConsistencyLossWeight(),
+                        (float) (config.getCostThreshold() / config.getTargetReturnScale()),
+                        (float) config.getNeutralDirectionWeight()))
                         .optOptimizer(optimizer)
                         .optDevices(new Device[]{device})
                         .addTrainingListeners(TrainingListener.Defaults.logging());
@@ -276,16 +315,12 @@ public class LstmTrainerService {
                     int initBatchSize = Math.min(trainBatchSize, Math.max(1, trainSize));
                     trainer.initialize(new Shape(initBatchSize,
                             config.getSequenceLength() * config.getInputSize()));
-                    ArrayDataset trainDataset = createDataset(
-                            trainer.getManager(),
-                            flattenInputs(processedData.getTrainInputs()),
-                            processedData.getTrainTargets(),
-                            trainBatchSize);
-                    ArrayDataset valDataset = createDataset(
-                            trainer.getManager(),
-                            flattenInputs(processedData.getValInputs()),
-                            processedData.getValTargets(),
-                            Math.min(trainBatchSize, Math.max(1, valSize)));
+                    List<ArrayDataset> trainDatasets = createDateGroupedDatasets(
+                            trainer.getManager(), processedData.getTrainSamples(), trainBatchSize);
+                    List<ArrayDataset> valDatasets = createDateGroupedDatasets(
+                            trainer.getManager(), processedData.getValSamples(), trainBatchSize);
+                    List<ArrayDataset> testDatasets = createDateGroupedDatasets(
+                            trainer.getManager(), processedData.getTestSamples(), trainBatchSize);
                     long epochTrainingStartedNanos = System.nanoTime();
                     reportProgress(listener, TrainingProgress.builder()
                             .stage("TRAINING")
@@ -300,18 +335,32 @@ public class LstmTrainerService {
                             .build());
 
                     for (int epoch = 0; epoch < trainEpochs; epoch++) {
-                        float trainLoss = trainEpoch(trainer, trainDataset);
-                        float valLoss = valDataset == null ? trainLoss : evaluateModel(trainer, valDataset);
+                        float trainLoss = trainEpoch(trainer, trainDatasets);
+                        RankingEvaluation validationEvaluation = evaluateRankingModel(trainer, valDatasets);
+                        float valLoss = validationEvaluation.loss();
+                        RankingValidationMetricsCalculator.RankingValidationMetrics validationMetrics =
+                                rankingMetricsCalculator.calculate(
+                                        validationEvaluation.rankScores(), validationEvaluation.actualReturns(),
+                                        validationEvaluation.upProbabilities(), validationEvaluation.directionLabels(),
+                                        validationEvaluation.groupSizes(), valLoss,
+                                        config.getCostThreshold(), 1D);
                         Map<String, Object> entry = new LinkedHashMap<>();
                         entry.put("epoch", epoch + 1);
                         entry.put("trainLoss", (double) trainLoss);
                         entry.put("valLoss", (double) valLoss);
+                        entry.put("rankIc", validationMetrics.rankIc());
+                        entry.put("topDecileNetReturn", validationMetrics.topDecileNetReturn());
+                        entry.put("selectionScore", validationMetrics.selectionScore());
+                        entry.put("collapsed", validationMetrics.collapsed());
                         trainingLog.add(entry);
 
                         boolean improved = false;
-                        if (valLoss < bestValLoss - config.getMinDelta()) {
+                        if (!validationMetrics.collapsed()
+                                && validationMetrics.selectionScore() > bestSelectionScore + config.getMinDelta()) {
                             bestValLoss = valLoss;
                             bestTrainLoss = trainLoss;
+                            bestSelectionScore = validationMetrics.selectionScore();
+                            bestValidationMetrics = validationMetrics;
                             bestEpoch = epoch + 1;
                             bestParams = modelBinaryCodec.serialize(model);
                             patienceCounter = 0;
@@ -334,7 +383,7 @@ public class LstmTrainerService {
                                 elapsedSeconds, estimatedRemainingSeconds);
                         reportProgress(listener, TrainingProgress.builder()
                                 .stage("TRAINING")
-                                .message(improved ? "验证损失改善" : "验证损失未改善")
+                                .message(improved ? "横截面验证组合分数改善" : "横截面验证组合分数未改善")
                                 .progressPercent(progressPercent)
                                 .currentEpoch(completedEpochs)
                                 .totalEpochs(trainEpochs)
@@ -353,21 +402,54 @@ public class LstmTrainerService {
                         }
                     }
 
-                    if (bestParams == null) {
-                        bestParams = modelBinaryCodec.serialize(model);
-                        bestEpoch = trainingLog.size();
-                        Map<String, Object> last = trainingLog.get(trainingLog.size() - 1);
-                        bestTrainLoss = (double) last.get("trainLoss");
-                        bestValLoss = (double) last.get("valLoss");
+                    if (bestParams == null || bestValidationMetrics == null) {
+                        throw new IllegalStateException("所有训练轮次均发生输出塌缩或未形成有效横截面排序");
                     }
+                    modelBinaryCodec.deserialize(bestParams, model);
+                    RankingEvaluation calibratedValidationEvaluation = evaluateRankingModel(trainer, valDatasets);
+                    probabilityTemperature = rankingMetricsCalculator.fitProbabilityTemperature(
+                            calibratedValidationEvaluation.upProbabilities(),
+                            calibratedValidationEvaluation.directionLabels());
+                    bestValidationMetrics = rankingMetricsCalculator.calculate(
+                            calibratedValidationEvaluation.rankScores(),
+                            calibratedValidationEvaluation.actualReturns(),
+                            calibratedValidationEvaluation.upProbabilities(),
+                            calibratedValidationEvaluation.directionLabels(),
+                            calibratedValidationEvaluation.groupSizes(),
+                            calibratedValidationEvaluation.loss(), config.getCostThreshold(),
+                            probabilityTemperature);
+                    RankingEvaluation testEvaluation = evaluateRankingModel(trainer, testDatasets);
+                    RankingValidationMetricsCalculator.RankingValidationMetrics testMetrics =
+                            rankingMetricsCalculator.calculate(
+                                    testEvaluation.rankScores(), testEvaluation.actualReturns(),
+                                    testEvaluation.upProbabilities(), testEvaluation.directionLabels(),
+                                    testEvaluation.groupSizes(), testEvaluation.loss(),
+                                    config.getCostThreshold(), probabilityTemperature);
+                    if (testMetrics.collapsed()) {
+                        throw new IllegalStateException("最佳候选模型在独立测试集发生输出塌缩");
+                    }
+                    trainingLog.add(Map.of(
+                            "stage", "INDEPENDENT_TEST",
+                            "rankIc", testMetrics.rankIc(),
+                            "topDecileNetReturn", testMetrics.topDecileNetReturn(),
+                            "selectionScore", testMetrics.selectionScore(),
+                            "loss", (double) testEvaluation.loss()));
+                    bestTestMetrics = testMetrics;
                 }
             }
+
+            RankingValidationMetricsCalculator.WalkForwardMetrics walkForwardMetrics =
+                    evaluateWalkForwardFolds(processedData, processedData.getWalkForwardFolds(), architectureType,
+                            bestEpoch, trainBatchSize, trainLearningRate, bestTestMetrics, trainingLog);
+            RankingValidationMetricsCalculator.WalkForwardMetrics strictIsolationMetrics =
+                    evaluateWalkForwardFolds(processedData, processedData.getStrictIsolationFolds(), architectureType,
+                            bestEpoch, trainBatchSize, trainLearningRate, null, trainingLog);
 
             reportProgress(listener, TrainingProgress.builder()
                     .stage("SAVING_MODEL")
                     .message("正在保存最佳模型参数")
                     .progressPercent(95)
-                    .currentEpoch(trainingLog.size())
+                    .currentEpoch(bestEpoch)
                     .totalEpochs(trainEpochs)
                     .elapsedSeconds(elapsedSeconds(trainingStartedNanos))
                     .estimatedRemainingSeconds(0L)
@@ -379,7 +461,9 @@ public class LstmTrainerService {
                     .build());
             currentModelPath = artifactService.saveModel(bestParams, processedData, bestEpoch,
                     bestTrainLoss, bestValLoss, trainLabelStats, validationLabelStats,
-                    directionClassWeights);
+                    directionClassWeights, bestValidationMetrics, bestTestMetrics,
+                    walkForwardMetrics, strictIsolationMetrics, probabilityTemperature,
+                    architectureType);
             return TrainingResult.builder()
                     .success(true)
                     .message("共享基础模型训练完成")
@@ -397,6 +481,23 @@ public class LstmTrainerService {
                     .valDownSamples(validationLabelStats.negativeCount())
                     .directionPositiveWeight(directionClassWeights.positiveWeight())
                     .directionNegativeWeight(directionClassWeights.negativeWeight())
+                    .validationRankIc(bestValidationMetrics.rankIc())
+                    .validationTopDecileNetReturn(bestValidationMetrics.topDecileNetReturn())
+                    .validationSelectionScore(bestValidationMetrics.selectionScore())
+                    .testRankIc(bestTestMetrics.rankIc())
+                    .testTopDecileNetReturn(bestTestMetrics.topDecileNetReturn())
+                    .testSelectionScore(bestTestMetrics.selectionScore())
+                    .walkForwardFoldCount(walkForwardMetrics.foldCount())
+                    .walkForwardMeanRankIc(walkForwardMetrics.meanRankIc())
+                    .walkForwardRankIcIr(walkForwardMetrics.rankIcIr())
+                    .positiveRankIcWindowRatio(walkForwardMetrics.positiveRankIcRatio())
+                    .walkForwardTopDecileNetReturn(walkForwardMetrics.averageTopDecileNetReturn())
+                    .brierScore(walkForwardMetrics.brierScore())
+                    .brierBaseline(walkForwardMetrics.brierBaseline())
+                    .probabilityTemperature(probabilityTemperature)
+                    .maximumDrawdown(walkForwardMetrics.maximumDrawdown())
+                    .strictIsolationMeanRankIc(strictIsolationMetrics.meanRankIc())
+                    .outputCollapsed(walkForwardMetrics.collapsed())
                     .snapshotId(snapshot == null ? null : snapshot.getId())
                     .details(trainingLog)
                     .build();
@@ -451,27 +552,36 @@ public class LstmTrainerService {
         return Math.max(1L, (long) Math.ceil(remainingNanos / 1_000_000_000D));
     }
 
-    private StockLSTMModel createModelBlock() {
-        return new StockLSTMModel(
+    private RankingLSTMModel createModelBlock(
+            LstmDataPreprocessor.ProcessedData data, LstmArchitectureType architectureType) {
+        int stockDictionarySize = Math.max(2, data.getStockDictionary().size());
+        int industryDictionarySize = Math.max(2, data.getIndustryDictionary().size());
+        int marketDictionarySize = Math.max(2, data.getMarketDictionary().size());
+        return new RankingLSTMModel(
+                architectureType,
                 config.getInputSize(),
                 config.getHiddenSize(),
                 config.getNumLayers(),
                 (float) config.getDropout(),
                 config.getSequenceLength(),
-                config.getStockEmbeddingBuckets(),
+                stockDictionarySize,
                 config.getStockEmbeddingSize(),
-                config.getIndustryEmbeddingBuckets(),
+                industryDictionarySize,
                 config.getIndustryEmbeddingSize(),
-                config.getGroupHeadCount(),
-                config.isResidualHeadEnabled(),
-                (float) config.getGroupHeadScale(),
-                (float) config.getResidualHeadScale());
+                marketDictionarySize,
+                config.getMarketEmbeddingSize());
+    }
+
+    private void validateArchitectureType(LstmArchitectureType architectureType) {
+        if (architectureType == null || architectureType == LstmArchitectureType.LEGACY_MULTITASK_LSTM) {
+            throw new IllegalArgumentException("v5 训练仅支持 RANKING_LSTM 或 DUAL_ATTENTION_RANKING_LSTM");
+        }
     }
 
     /**
      * 统计训练或验证数据中的方向标签分布。
      *
-     * @param targets 训练或验证标签，第二列为方向标签
+     * @param targets 训练或验证标签，第三列为方向标签
      * @return 上涨和下跌样本数量
      */
     private DirectionLabelStats summarizeDirectionLabels(float[][] targets) {
@@ -479,9 +589,9 @@ public class LstmTrainerService {
         int negativeCount = 0;
         if (targets != null) {
             for (float[] target : targets) {
-                if (target != null && target.length > 1 && target[1] >= 0.5F) {
+                if (target != null && target.length > 2 && target[2] > 0.5F) {
                     positiveCount++;
-                } else {
+                } else if (target != null && target.length > 2 && target[2] < 0.5F) {
                     negativeCount++;
                 }
             }
@@ -512,9 +622,11 @@ public class LstmTrainerService {
     }
 
     private void validateTrainingConfiguration(int epochs, int batchSize, float learningRate) {
-        double lossWeightTotal = config.getReturnLossWeight()
-                + config.getDirectionLossWeight()
-                + config.getDownsideLossWeight();
+        double lossWeightTotal = config.getRankingLossWeight()
+                + config.getExcessReturnLossWeight()
+                + config.getCostAwareDirectionLossWeight()
+                + config.getDownsideQuantileLossWeight()
+                + config.getConsistencyLossWeight();
         if (epochs <= 0 || batchSize <= 0 || !Float.isFinite(learningRate) || learningRate <= 0F) {
             throw new IllegalArgumentException("LSTM 训练轮次、批次大小和学习率必须大于 0");
         }
@@ -523,7 +635,12 @@ public class LstmTrainerService {
         }
     }
 
-    private String validateTrainingData(int trainedStocks, int trainSamples, int validationSamples) {
+    private String validateTrainingData(
+            int trainedStocks,
+            int trainSamples,
+            int validationSamples,
+            int testSamples,
+            int walkForwardFoldCount) {
         if (trainedStocks < dataQualityConfig.getMinimumTrainingStockCount()) {
             return "有效训练股票数量不足，要求至少 "
                     + dataQualityConfig.getMinimumTrainingStockCount() + "，实际 " + trainedStocks;
@@ -536,62 +653,252 @@ public class LstmTrainerService {
             return "验证样本数量不足，要求至少 "
                     + dataQualityConfig.getMinimumValidationSamples() + "，实际 " + validationSamples;
         }
+        if (testSamples < dataQualityConfig.getMinimumTestSamples()) {
+            return "独立测试样本数量不足，要求至少 "
+                    + dataQualityConfig.getMinimumTestSamples() + "，实际 " + testSamples;
+        }
+        if (walkForwardFoldCount < dataQualityConfig.getMinimumWalkForwardFoldCount()) {
+            return "Walk-Forward 测试窗口数量不足，要求至少 "
+                    + dataQualityConfig.getMinimumWalkForwardFoldCount() + "，实际 " + walkForwardFoldCount;
+        }
         return null;
     }
 
-    private float trainEpoch(Trainer trainer, ArrayDataset trainDataset)
+    private float trainEpoch(Trainer trainer, List<ArrayDataset> trainDatasets)
             throws IOException, ai.djl.translate.TranslateException {
         float totalLoss = 0F;
         int batchCount = 0;
         Loss loss = trainer.getLoss();
-        for (Batch batch : trainer.iterateDataset(trainDataset)) {
-            try {
-                try (GradientCollector collector = trainer.newGradientCollector();
-                     NDList predictions = trainer.forward(batch.getData());
-                     NDArray lossValue = loss.evaluate(batch.getLabels(), predictions)) {
-                    collector.backward(lossValue);
-                    totalLoss += lossValue.toFloatArray()[0];
-                }
-                trainer.step();
-                batchCount++;
-            } finally {
-                batch.close();
-            }
-        }
-        return batchCount == 0 ? totalLoss : totalLoss / batchCount;
-    }
-
-    private float evaluateModel(Trainer trainer, ArrayDataset dataset)
-            throws IOException, ai.djl.translate.TranslateException {
-        float totalLoss = 0F;
-        int batchCount = 0;
-        Loss loss = trainer.getLoss();
-        for (Batch batch : trainer.iterateDataset(dataset)) {
-            try {
-                try (NDList predictions = trainer.forward(batch.getData());
-                     NDArray lossValue = loss.evaluate(batch.getLabels(), predictions)) {
-                    totalLoss += lossValue.toFloatArray()[0];
+        for (ArrayDataset trainDataset : trainDatasets) {
+            for (Batch batch : trainer.iterateDataset(trainDataset)) {
+                try {
+                    try (GradientCollector collector = trainer.newGradientCollector();
+                         NDList predictions = trainer.forward(batch.getData());
+                         NDArray lossValue = loss.evaluate(batch.getLabels(), predictions)) {
+                        collector.backward(lossValue);
+                        totalLoss += lossValue.toFloatArray()[0];
+                    }
+                    trainer.step();
                     batchCount++;
+                } finally {
+                    batch.close();
                 }
-            } finally {
-                batch.close();
             }
         }
         return batchCount == 0 ? totalLoss : totalLoss / batchCount;
     }
 
-    private ArrayDataset createDataset(NDManager manager, float[][] inputs,
-                                       float[][] targets, int batchSize) {
+    private RankingEvaluation evaluateRankingModel(Trainer trainer, List<ArrayDataset> datasets)
+            throws IOException, ai.djl.translate.TranslateException {
+        float totalLoss = 0F;
+        int batchCount = 0;
+        Loss loss = trainer.getLoss();
+        List<Double> rankScores = new ArrayList<>();
+        List<Double> actualReturns = new ArrayList<>();
+        List<Double> upProbabilities = new ArrayList<>();
+        List<Double> directionLabels = new ArrayList<>();
+        List<Integer> groupSizes = new ArrayList<>();
+        for (ArrayDataset dataset : datasets) {
+            for (Batch batch : trainer.iterateDataset(dataset)) {
+                try {
+                    try (NDList predictions = trainer.forward(batch.getData());
+                         NDArray lossValue = loss.evaluate(batch.getLabels(), predictions)) {
+                        totalLoss += lossValue.toFloatArray()[0];
+                        float[] predictionValues = predictions.singletonOrThrow().toFloatArray();
+                        float[] labelValues = batch.getLabels().singletonOrThrow().toFloatArray();
+                        int rows = (int) predictions.singletonOrThrow().getShape().get(0);
+                        groupSizes.add(rows);
+                        for (int row = 0; row < rows; row++) {
+                            rankScores.add((double) predictionValues[row * RankingLSTMModel.OUTPUT_SIZE]);
+                            actualReturns.add(labelValues[row * RankingLSTMModel.OUTPUT_SIZE]
+                                    * config.getTargetReturnScale());
+                            upProbabilities.add((double) predictionValues[
+                                    row * RankingLSTMModel.OUTPUT_SIZE + 2]);
+                            directionLabels.add((double) labelValues[
+                                    row * RankingLSTMModel.OUTPUT_SIZE + 2]);
+                        }
+                        batchCount++;
+                    }
+                } finally {
+                    batch.close();
+                }
+            }
+        }
+        return new RankingEvaluation(
+                batchCount == 0 ? totalLoss : totalLoss / batchCount,
+                rankScores.stream().mapToDouble(Double::doubleValue).toArray(),
+                actualReturns.stream().mapToDouble(Double::doubleValue).toArray(),
+                upProbabilities.stream().mapToDouble(Double::doubleValue).toArray(),
+                directionLabels.stream().mapToDouble(Double::doubleValue).toArray(),
+                groupSizes.stream().mapToInt(Integer::intValue).toArray());
+    }
+
+    private List<ArrayDataset> createDateGroupedDatasets(
+            NDManager manager, List<LstmDataPreprocessor.TrainingSample> samples, int maximumBatchSize) {
+        if (samples == null || samples.isEmpty()) {
+            return List.of();
+        }
+        Map<java.time.LocalDate, List<LstmDataPreprocessor.TrainingSample>> byDate = samples.stream()
+                .sorted(Comparator.comparing(LstmDataPreprocessor.TrainingSample::getTargetDate)
+                        .thenComparing(LstmDataPreprocessor.TrainingSample::getStockCode))
+                .collect(Collectors.groupingBy(LstmDataPreprocessor.TrainingSample::getTargetDate,
+                        LinkedHashMap::new, Collectors.toList()));
+        List<ArrayDataset> datasets = new ArrayList<>();
+        for (List<LstmDataPreprocessor.TrainingSample> dateSamples : byDate.values()) {
+            for (int start = 0; start < dateSamples.size(); start += maximumBatchSize) {
+                int end = Math.min(dateSamples.size(), start + maximumBatchSize);
+                List<LstmDataPreprocessor.TrainingSample> chunk = dateSamples.subList(start, end);
+                float[][][] inputs = chunk.stream().map(LstmDataPreprocessor.TrainingSample::getInput)
+                        .toArray(float[][][]::new);
+                float[][] targets = chunk.stream().map(sample -> new float[]{
+                        sample.getRankingTarget(), sample.getReturnTarget(),
+                        sample.getDirectionTarget(), sample.getDownsideTarget()}).toArray(float[][]::new);
+                datasets.add(createDataset(manager, flattenInputs(inputs), targets));
+            }
+        }
+        return datasets;
+    }
+
+    private ArrayDataset createDataset(NDManager manager, float[][] inputs, float[][] targets) {
         if (inputs == null || inputs.length == 0 || targets == null || targets.length == 0) {
-            return null;
+            throw new IllegalArgumentException("同日横截面训练批次不能为空");
         }
         NDArray inputArray = manager.create(inputs);
         NDArray targetArray = manager.create(targets);
         return new ArrayDataset.Builder()
                 .setData(inputArray)
                 .optLabels(targetArray)
-                .setSampling(Math.max(1, batchSize), true)
+                .setSampling(inputs.length, false)
                 .build();
+    }
+
+    private RankingValidationMetricsCalculator.WalkForwardMetrics evaluateWalkForwardFolds(
+            LstmDataPreprocessor.ProcessedData processedData,
+            List<LstmDataPreprocessor.WalkForwardFold> folds,
+            LstmArchitectureType architectureType,
+            int epochs,
+            int batchSize,
+            float learningRate,
+            RankingValidationMetricsCalculator.RankingValidationMetrics latestFoldMetrics,
+            List<Map<String, Object>> trainingLog) throws IOException, ai.djl.translate.TranslateException {
+        if (folds == null || folds.isEmpty()) {
+            return rankingMetricsCalculator.aggregate(List.of());
+        }
+        List<RankingValidationMetricsCalculator.RankingValidationMetrics> metrics = new ArrayList<>();
+        int lastFoldNumber = folds.get(folds.size() - 1).getFoldNumber();
+        for (LstmDataPreprocessor.WalkForwardFold fold : folds) {
+            RankingValidationMetricsCalculator.RankingValidationMetrics foldMetrics;
+            if (latestFoldMetrics != null && fold.getFoldNumber() == lastFoldNumber) {
+                foldMetrics = latestFoldMetrics;
+            } else {
+                foldMetrics = trainAndEvaluateFold(
+                        processedData, fold, architectureType, epochs, batchSize, learningRate);
+            }
+            metrics.add(foldMetrics);
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("stage", fold.isStrictIsolation() ? "STRICT_ISOLATION_FOLD" : "WALK_FORWARD_FOLD");
+            entry.put("fold", fold.getFoldNumber());
+            entry.put("testStartDate", fold.getTestStartDate());
+            entry.put("testEndDate", fold.getTestEndDate());
+            entry.put("rankIc", foldMetrics.rankIc());
+            entry.put("topDecileNetReturn", foldMetrics.topDecileNetReturn());
+            entry.put("brierScore", foldMetrics.brierScore());
+            entry.put("brierBaseline", foldMetrics.brierBaseline());
+            entry.put("collapsed", foldMetrics.collapsed());
+            trainingLog.add(entry);
+        }
+        return rankingMetricsCalculator.aggregate(metrics);
+    }
+
+    private RankingValidationMetricsCalculator.RankingValidationMetrics trainAndEvaluateFold(
+            LstmDataPreprocessor.ProcessedData processedData,
+            LstmDataPreprocessor.WalkForwardFold fold,
+            LstmArchitectureType architectureType,
+            int epochs,
+            int batchSize,
+            float learningRate) throws IOException, ai.djl.translate.TranslateException {
+        try (Model model = Model.newInstance("lstm-walk-forward-fold-" + fold.getFoldNumber(), "PyTorch")) {
+            Engine.getInstance().setRandomSeed(config.getRandomSeed() + fold.getFoldNumber());
+            RankingLSTMModel block = createModelBlock(processedData, architectureType);
+            model.setBlock(block);
+            Optimizer optimizer = Optimizer.adam()
+                    .optLearningRateTracker(Tracker.fixed(learningRate))
+                    .optWeightDecays(0.001f)
+                    .build();
+            Device[] availableDevices = Engine.getInstance().getDevices(1);
+            Device device = availableDevices.length == 0 ? Device.cpu() : availableDevices[0];
+            DefaultTrainingConfig trainingConfig = new DefaultTrainingConfig(createRankingLoss())
+                    .optOptimizer(optimizer)
+                    .optDevices(new Device[]{device})
+                    .addTrainingListeners(TrainingListener.Defaults.logging());
+            try (Trainer trainer = model.newTrainer(trainingConfig)) {
+                trainer.initialize(new Shape(Math.min(batchSize, Math.max(1, fold.getTrainSamples().size())),
+                        config.getSequenceLength() * config.getInputSize()));
+                List<ArrayDataset> trainDatasets = createDateGroupedDatasets(
+                        trainer.getManager(), fold.getTrainSamples(), batchSize);
+                List<ArrayDataset> validationDatasets = createDateGroupedDatasets(
+                        trainer.getManager(), fold.getValSamples(), batchSize);
+                List<ArrayDataset> testDatasets = createDateGroupedDatasets(
+                        trainer.getManager(), fold.getTestSamples(), batchSize);
+                byte[] bestParameters = null;
+                double bestSelectionScore = Double.NEGATIVE_INFINITY;
+                int patienceCounter = 0;
+                for (int epoch = 0; epoch < Math.max(1, epochs); epoch++) {
+                    trainEpoch(trainer, trainDatasets);
+                    RankingEvaluation validation = evaluateRankingModel(trainer, validationDatasets);
+                    RankingValidationMetricsCalculator.RankingValidationMetrics validationMetrics =
+                            rankingMetricsCalculator.calculate(
+                                    validation.rankScores(), validation.actualReturns(),
+                                    validation.upProbabilities(), validation.directionLabels(),
+                                    validation.groupSizes(), validation.loss(),
+                                    config.getCostThreshold(), 1D);
+                    if (!validationMetrics.collapsed()
+                            && validationMetrics.selectionScore() > bestSelectionScore + config.getMinDelta()) {
+                        bestSelectionScore = validationMetrics.selectionScore();
+                        bestParameters = modelBinaryCodec.serialize(model);
+                        patienceCounter = 0;
+                    } else if (config.isEarlyStopping()) {
+                        patienceCounter++;
+                    }
+                    if (config.isEarlyStopping() && patienceCounter >= config.getPatience()) {
+                        break;
+                    }
+                }
+                if (bestParameters == null) {
+                    throw new IllegalStateException("Walk-Forward 折叠未形成有效候选: fold="
+                            + fold.getFoldNumber());
+                }
+                modelBinaryCodec.deserialize(bestParameters, model);
+                RankingEvaluation validation = evaluateRankingModel(trainer, validationDatasets);
+                double temperature = rankingMetricsCalculator.fitProbabilityTemperature(
+                        validation.upProbabilities(), validation.directionLabels());
+                RankingEvaluation test = evaluateRankingModel(trainer, testDatasets);
+                return rankingMetricsCalculator.calculate(
+                        test.rankScores(), test.actualReturns(), test.upProbabilities(),
+                        test.directionLabels(), test.groupSizes(), test.loss(),
+                        config.getCostThreshold(), temperature);
+            }
+        }
+    }
+
+    private RankingStockLoss createRankingLoss() {
+        return new RankingStockLoss(
+                (float) config.getRankingLossWeight(),
+                (float) config.getExcessReturnLossWeight(),
+                (float) config.getCostAwareDirectionLossWeight(),
+                (float) config.getDownsideQuantileLossWeight(),
+                (float) config.getConsistencyLossWeight(),
+                (float) (config.getCostThreshold() / config.getTargetReturnScale()),
+                (float) config.getNeutralDirectionWeight());
+    }
+
+    private record RankingEvaluation(
+            float loss,
+            double[] rankScores,
+            double[] actualReturns,
+            double[] upProbabilities,
+            double[] directionLabels,
+            int[] groupSizes) {
     }
 
     private float[][] flattenInputs(float[][][] inputs) {
@@ -757,6 +1064,57 @@ public class LstmTrainerService {
 
         /** 本次训练使用的数据快照 ID。 */
         private String snapshotId;
+
+        /** 验证集 Rank IC。 */
+        private Double validationRankIc;
+
+        /** 验证集 Top 10% 成本后收益。 */
+        private Double validationTopDecileNetReturn;
+
+        /** 验证集组合选模分数。 */
+        private Double validationSelectionScore;
+
+        /** 独立测试集 Rank IC。 */
+        private Double testRankIc;
+
+        /** 独立测试集 Top 10% 成本后收益。 */
+        private Double testTopDecileNetReturn;
+
+        /** 独立测试集组合分数。 */
+        private Double testSelectionScore;
+
+        /** 是否检测到输出塌缩。 */
+        private boolean outputCollapsed;
+
+        /** Walk-Forward 有效测试窗口数量。 */
+        private int walkForwardFoldCount;
+
+        /** Walk-Forward 平均 Rank IC。 */
+        private Double walkForwardMeanRankIc;
+
+        /** Walk-Forward Rank ICIR。 */
+        private Double walkForwardRankIcIr;
+
+        /** Rank IC 为正的测试窗口占比。 */
+        private Double positiveRankIcWindowRatio;
+
+        /** Walk-Forward 平均 Top 10% 成本后收益。 */
+        private Double walkForwardTopDecileNetReturn;
+
+        /** 温度校准后的 Walk-Forward Brier Score。 */
+        private Double brierScore;
+
+        /** 实际上涨比例常数基线 Brier Score。 */
+        private Double brierBaseline;
+
+        /** 概率温度校准参数。 */
+        private Double probabilityTemperature;
+
+        /** Top 10% 窗口收益序列最大回撤。 */
+        private Double maximumDrawdown;
+
+        /** 60 日严格隔离敏感性平均 Rank IC。 */
+        private Double strictIsolationMeanRankIc;
     }
 }
-// AI_GENERATE_END-----------------------------------
+// AI_GENERATE_END-------------------------------------------

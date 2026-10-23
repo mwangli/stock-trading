@@ -351,6 +351,12 @@ public class PredictionExecutionQueueService {
             document.setPredictedReturn(result.getPredictedChangeRatio());
             document.setDirectionProbability(result.getDirectionProbability());
             document.setDownsideRisk(result.getDownsideRisk());
+            document.setRankScore(result.getRankScore());
+            document.setExpectedExcessReturn(result.getExpectedExcessReturn());
+            document.setCalibratedUpProbability(result.getCalibratedUpProbability());
+            document.setDownsideQuantile(result.getDownsideQuantile());
+            document.setArchitectureType(result.getArchitectureType());
+            document.setFeatureSchemaVersion(result.getFeatureSchemaVersion());
             document.setEvaluationStatus("PENDING");
             document.setPredictedAt(predictedAt);
             documents.add(document);

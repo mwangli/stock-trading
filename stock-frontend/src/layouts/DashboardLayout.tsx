@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------------------------
+// AI_GENERATE_START------------------------------------
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, Badge, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
@@ -17,14 +17,14 @@ import {
   FileTextOutlined,
   ExperimentOutlined,
   ScheduleOutlined,
-  MoonOutlined,
-  SunOutlined,
+  BgColorsOutlined,
+  CheckOutlined,
   UserOutlined,
   HolderOutlined,
   MessageOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-import { useAppTheme } from '../theme/AppThemeProvider';
+import { THEME_PRESET_OPTIONS, useAppTheme, type ThemePreset } from '../theme/AppThemeProvider';
 import { PageHeaderContext, type PageHeaderState } from './PageHeaderContext';
 import { checkBackendHealth } from '../utils/backendHealth';
 import { useAuth } from '../auth/AuthContext';
@@ -132,7 +132,7 @@ const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
-  const { mode, toggleMode } = useAppTheme();
+  const { themePreset, setThemePreset } = useAppTheme();
   const { user, logout } = useAuth();
   const [pageHeader, setPageHeader] = useState<PageHeaderState | null>(null);
   const [menuOrder, setMenuOrder] = useState<string[]>(DEFAULT_MENU_ORDER);
@@ -191,6 +191,26 @@ const DashboardLayout: React.FC = () => {
     i18n.changeLanguage(newLang);
   };
 
+  const themeMenuItems = useMemo<MenuProps['items']>(() => THEME_PRESET_OPTIONS.map((option) => ({
+    key: option.id,
+    label: (
+      <span className="app-theme-menu-label">
+        <span
+          className="app-theme-menu-swatch"
+          style={{ background: `linear-gradient(135deg, ${option.softColor} 0 50%, ${option.color} 50% 100%)` }}
+        />
+        <span className="app-theme-menu-name">{t(`layout.themes.${option.id}`)}</span>
+        {themePreset === option.id && <CheckOutlined className="app-theme-menu-check" />}
+      </span>
+    ),
+  })), [t, themePreset]);
+
+  const handleThemeMenuClick: MenuProps['onClick'] = ({ key }) => {
+    const selectedPreset = THEME_PRESET_OPTIONS.find((option) => option.id === key);
+    if (selectedPreset) {
+      setThemePreset(selectedPreset.id as ThemePreset);
+    }
+  };
 
   const menuItems = useMemo<SidebarMenuItem[]>(() => [
     { key: '/dashboard', icon: <DesktopOutlined />, label: t('layout.dashboard') },
@@ -333,9 +353,16 @@ const DashboardLayout: React.FC = () => {
               <span className={`h-2 w-2 rounded-full ${backendStatus === 'online' ? 'bg-emerald-500' : backendStatus === 'offline' ? 'bg-red-500' : 'bg-amber-500'}`} />
               {backendStatus === 'online' ? t('layout.online') : backendStatus === 'offline' ? t('layout.offline') : t('layout.checking')}
             </div>
-            <Tooltip title={mode === 'dark' ? t('layout.lightMode') : t('layout.darkMode')}>
-              <Button type="text" icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />} onClick={toggleMode} />
-            </Tooltip>
+            <Dropdown menu={{ items: themeMenuItems, onClick: handleThemeMenuClick }} placement="bottomRight" trigger={['click']}>
+              <Tooltip title={t('layout.themePicker')}>
+                <Button
+                  type="text"
+                  className="app-theme-picker-button"
+                  icon={<BgColorsOutlined />}
+                  aria-label={t('layout.themePicker')}
+                />
+              </Tooltip>
+            </Dropdown>
             <Button
               type="text"
               className="app-header-language !h-8 !px-2 text-xs"
@@ -348,7 +375,7 @@ const DashboardLayout: React.FC = () => {
             </Badge>
             <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} trigger={['click']}>
               <Button type="text" className="!h-8 !px-1" aria-label={t('layout.userMenu')}>
-                <Avatar size={30} icon={<UserOutlined />} className="app-header-avatar !bg-blue-100 !text-blue-700" />
+                <Avatar size={30} icon={<UserOutlined />} className="app-header-avatar" />
               </Button>
             </Dropdown>
           </div>
@@ -364,4 +391,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END----------------------------------
+// AI_GENERATE_END------------------------------------

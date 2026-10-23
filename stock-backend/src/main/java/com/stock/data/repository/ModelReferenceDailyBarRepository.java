@@ -1,4 +1,4 @@
-// AI_GENERATE_START--
+// AI_GENERATE_START----
 package com.stock.data.repository;
 
 import com.stock.data.entity.ModelReferenceDailyBar;
@@ -6,6 +6,7 @@ import com.stock.data.entity.ReferenceSeriesType;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -25,5 +26,32 @@ public interface ModelReferenceDailyBarRepository extends MongoRepository<ModelR
      * @return 最近的参考序列数据
      */
     List<ModelReferenceDailyBar> findTop100BySeriesTypeOrderByTradeDateDesc(ReferenceSeriesType seriesType);
+
+    /**
+     * 查询指定参考序列和数据版本的完整日线。
+     *
+     * @param seriesType 参考序列类型
+     * @param seriesCode 参考序列代码
+     * @param source 数据来源
+     * @param sourceVersion 数据版本
+     * @return 按交易日升序排列的参考日线
+     */
+    List<ModelReferenceDailyBar> findBySeriesTypeAndSeriesCodeAndSourceAndSourceVersionOrderByTradeDateAsc(
+            ReferenceSeriesType seriesType, String seriesCode, String source, String sourceVersion);
+
+    /**
+     * 查询截止指定日期的参考序列，供历史推理和时间可用性校验使用。
+     *
+     * @param seriesType 参考序列类型
+     * @param seriesCode 参考序列代码
+     * @param endDate 截止日期，包含当天
+     * @param source 数据来源
+     * @param sourceVersion 数据版本
+     * @return 按交易日升序排列的参考日线
+     */
+    List<ModelReferenceDailyBar>
+            findBySeriesTypeAndSeriesCodeAndTradeDateLessThanEqualAndSourceAndSourceVersionOrderByTradeDateAsc(
+                    ReferenceSeriesType seriesType, String seriesCode, LocalDate endDate,
+                    String source, String sourceVersion);
 }
-// AI_GENERATE_END--
+// AI_GENERATE_END----
