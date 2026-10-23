@@ -1,7 +1,8 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.data.service;
 
 import com.alibaba.fastjson2.JSONArray;
+import com.stock.backend.config.CacheNames;
 import com.stock.data.dto.DailyPriceSyncResult;
 import com.stock.data.dto.HistoricalPriceSyncResult;
 import com.stock.data.dto.KlineDataPayloadDto;
@@ -16,6 +17,8 @@ import com.stock.data.support.SecuritiesClient;
 import com.stock.data.support.StockDataParser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -86,6 +89,7 @@ public class StockPriceService {
      * @param tradeDate 已确认的交易日
      * @return 当日日线同步结果
      */
+    @CacheEvict(cacheNames = CacheNames.LATEST_PRICE, key = "#stockCode")
     public DailyPriceSyncResult syncDailyPrice(String stockCode, LocalDate tradeDate) {
         LocalDate listedDate = stockInfoRepository.findByCode(stockCode)
                 .map(StockInfo::getListedDate)
@@ -114,6 +118,7 @@ public class StockPriceService {
      * @param openGapEnd 已登记缺口结束日期，可为空
      * @return 历史回补结果
      */
+    @CacheEvict(cacheNames = CacheNames.LATEST_PRICE, key = "#stockCode")
     public HistoricalPriceSyncResult backfillHistoricalPrices(String stockCode,
                                                                LocalDate earliestDate,
                                                                LocalDate endDate,
@@ -200,6 +205,7 @@ public class StockPriceService {
      * @param stockCode 股票代码
      * @return 最新日线，不存在时返回 null
      */
+    @Cacheable(cacheNames = CacheNames.LATEST_PRICE, key = "#stockCode", unless = "#result == null")
     public StockPrice getLatestPrice(String stockCode) {
         return priceRepository.findTopByCodeOrderByDateDesc(stockCode).orElse(null);
     }
@@ -471,4 +477,4 @@ public class StockPriceService {
     private record DateRange(LocalDate startDate, LocalDate endDate) {
     }
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

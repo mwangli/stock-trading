@@ -1,6 +1,7 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.data.service;
 
+import com.stock.backend.config.CacheNames;
 import com.stock.data.dto.AdjustmentFactorImportItemDto;
 import com.stock.data.dto.HistoricalUniverseImportItemDto;
 import com.stock.data.dto.MinuteBarImportItemDto;
@@ -32,6 +33,7 @@ import com.stock.data.repository.HistoricalStockUniverseRepository;
 import com.stock.data.repository.TradeCalendarRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -107,6 +109,7 @@ public class MarketDataFoundationService {
      * @param request 交易日历批次
      * @return 导入统计
      */
+    @CacheEvict(cacheNames = CacheNames.TRADING_CALENDAR, allEntries = true)
     public MarketDataImportResultDto importTradeCalendar(TradeCalendarImportRequestDto request) {
         LocalDateTime now = LocalDateTime.now();
         List<TradeCalendarImportItemDto> items = deduplicateCalendar(request.getItems());
@@ -478,4 +481,4 @@ public class MarketDataFoundationService {
                 .build();
     }
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.trading.controller;
 
 import com.stock.base.api.ResponseDTO;
@@ -8,6 +8,7 @@ import com.stock.trading.entity.UserEntity;
 import com.stock.trading.service.UserService;
 import com.stock.trading.web.AuthInterceptor;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,7 +48,11 @@ public class AuthController {
             return ResponseDTO.error("用户名或密码错误");
         }
         AuthUserDto authUser = userService.toDto(user);
-        httpRequest.getSession(true).setAttribute(AuthInterceptor.AUTH_USER_SESSION_KEY, authUser);
+        HttpSession session = httpRequest.getSession(true);
+        httpRequest.changeSessionId();
+        session.setAttribute(AuthInterceptor.AUTH_USER_ID_SESSION_KEY, authUser.getId());
+        session.setAttribute(AuthInterceptor.AUTH_USERNAME_SESSION_KEY, authUser.getUsername());
+        session.setAttribute(AuthInterceptor.AUTH_DISPLAY_NAME_SESSION_KEY, authUser.getDisplayName());
         return ResponseDTO.success(authUser);
     }
 
@@ -60,10 +65,16 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseDTO<AuthUserDto> me(HttpServletRequest request) {
         log.info("查询当前登录用户");
-        Object user = request.getSession(false) == null
-                ? null : request.getSession(false).getAttribute(AuthInterceptor.AUTH_USER_SESSION_KEY);
-        if (user instanceof AuthUserDto authUser) {
-            return ResponseDTO.success(authUser);
+        HttpSession session = request.getSession(false);
+        if (session != null
+                && session.getAttribute(AuthInterceptor.AUTH_USER_ID_SESSION_KEY) instanceof Long userId
+                && session.getAttribute(AuthInterceptor.AUTH_USERNAME_SESSION_KEY) instanceof String username) {
+            Object displayName = session.getAttribute(AuthInterceptor.AUTH_DISPLAY_NAME_SESSION_KEY);
+            return ResponseDTO.success(AuthUserDto.builder()
+                    .id(userId)
+                    .username(username)
+                    .displayName(displayName instanceof String value ? value : username)
+                    .build());
         }
         return ResponseDTO.error("未登录");
     }
@@ -83,4 +94,4 @@ public class AuthController {
         return ResponseDTO.success(null);
     }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

@@ -1,5 +1,13 @@
 server:
   port: 8080
+  servlet:
+    session:
+      timeout: ${HTTP_SESSION_TIMEOUT:8h}
+      cookie:
+        name: STOCK_SESSION
+        http-only: true
+        same-site: lax
+        secure: ${HTTP_SESSION_COOKIE_SECURE:false}
   compression:
     enabled: true
     min-response-size: 1024
@@ -53,6 +61,12 @@ spring:
     redis:
       time-to-live: 10m
       cache-null-values: false
+  session:
+    store-type: redis
+    redis:
+      namespace: stock:session
+      flush-mode: on-save
+      save-mode: on-set-attribute
 
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss

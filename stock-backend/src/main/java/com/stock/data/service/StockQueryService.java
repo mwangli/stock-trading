@@ -1,6 +1,7 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.data.service;
 
+import com.stock.backend.config.CacheNames;
 import com.stock.data.dto.StockDataValidationResponseDto;
 import com.stock.data.dto.StockInfoItemDto;
 import com.stock.data.dto.StockInfoListResponseDto;
@@ -12,6 +13,7 @@ import com.stock.data.entity.StockInfo;
 import com.stock.data.repository.StockInfoRepository;
 import com.stock.data.vo.MarketStatsDto;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -102,6 +104,8 @@ public class StockQueryService {
      * @param code 股票代码
      * @return 股票信息，不存在时为空
      */
+    @Cacheable(cacheNames = CacheNames.STOCK_INFO, key = "#code",
+            unless = "#result == null || #result.isEmpty()")
     public Optional<StockInfoItemDto> findByCode(String code) {
         return stockInfoRepository.findByCode(code).map(this::toItemDto);
     }
@@ -376,4 +380,4 @@ public class StockQueryService {
         return value != null && value.signum() < 0;
     }
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

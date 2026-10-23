@@ -1,7 +1,8 @@
-// AI_GENERATE_START--
+// AI_GENERATE_START---
 package com.stock.data.service;
 
 import com.alibaba.fastjson2.JSONArray;
+import com.stock.backend.config.CacheNames;
 import com.stock.data.dto.StockListSyncResult;
 import com.stock.data.entity.StockInfo;
 import com.stock.data.repository.StockInfoRepository;
@@ -9,6 +10,7 @@ import com.stock.data.support.SecuritiesClient;
 import com.stock.data.support.StockDataParser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -44,6 +46,7 @@ public class StockListSyncService {
      * @return 同步结果统计
      * @throws IllegalStateException 证券接口返回为空时抛出
      */
+    @CacheEvict(cacheNames = CacheNames.STOCK_INFO, allEntries = true)
     public StockListSyncResult syncStockList() {
         log.info("========== 开始同步股票列表 ==========");
         long startTime = System.currentTimeMillis();
@@ -194,4 +197,4 @@ public class StockListSyncService {
                                  List<StockInfo> missingStocks) {
     }
 }
-// AI_GENERATE_END--
+// AI_GENERATE_END---
