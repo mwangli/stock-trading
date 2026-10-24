@@ -3,8 +3,13 @@ name: Frontend CI/CD
 on:
   push:
     tags:
-      - 'frontend-v[0-9]+.[0-9]+'
-      - 'frontend-v[0-9]+.[0-9]+.[0-9]+'
+      - 'frontend-v*'
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: Git tag, branch, or commit to build and deploy
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -36,6 +41,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ inputs.release_ref || github.ref }}
+
+      - name: Resolve source commit
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -49,7 +59,7 @@ jobs:
 
       - name: Resolve immutable image tag
         id: image
-        run: echo "value=${IMAGE_REPOSITORY}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+        run: echo "value=${IMAGE_REPOSITORY}:${{ steps.source.outputs.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push image
         uses: docker/build-push-action@v7
@@ -75,6 +85,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ inputs.release_ref || github.ref }}
           sparse-checkout: |
             docker-compose.yml
             .github/scripts/deploy-service.sh
