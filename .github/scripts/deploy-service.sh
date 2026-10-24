@@ -4,15 +4,10 @@ set -Eeuo pipefail
 service_name="${1:?service name is required}"
 container_name="${2:?container name is required}"
 image_variable="${3:?image variable is required}"
-checksum_file="${4:-}"
 
 cd "${DEPLOY_DIR:?DEPLOY_DIR is required}"
 test -f .env
 test -f docker-compose.yml
-if [[ -n "$checksum_file" ]]; then
-  test -f "$checksum_file"
-  sha256sum --check "$checksum_file"
-fi
 
 docker_config="$(mktemp -d)"
 export DOCKER_CONFIG="$docker_config"
@@ -33,7 +28,7 @@ rollback() {
   if [[ -n "$previous_image" ]]; then
     echo "Rolling back $service_name to its previous image."
     export "$image_variable=$previous_image"
-    docker compose --env-file .env up -d --no-deps --force-recreate "$service_name" || true
+    docker compose --env-file .env up -d --no-deps --no-build --force-recreate "$service_name" || true
   fi
   exit "$exit_code"
 }
@@ -52,7 +47,7 @@ if [[ "$container_name" == "stock-frontend" ]] && [[ -z "$previous_image" ]] && 
   docker rm -f "$legacy_container_name"
 fi
 
-docker compose --env-file .env up -d --no-deps --force-recreate "$service_name"
+docker compose --env-file .env up -d --no-deps --no-build --force-recreate "$service_name"
 
 container_id="$(docker compose --env-file .env ps -q "$service_name")"
 test -n "$container_id"

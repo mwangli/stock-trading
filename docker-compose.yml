@@ -41,6 +41,8 @@ services:
     build:
       context: ./stock-backend
       dockerfile: Dockerfile
+      additional_contexts:
+        model-files: ./model-files/sentiment
     container_name: stock-backend
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -62,7 +64,6 @@ services:
       JAVA_TOOL_OPTIONS: -Xms256m -Xmx768m -XX:MaxDirectMemorySize=192m -Duser.timezone=Asia/Shanghai
     volumes:
       - backend-runtime-tmp:/app/.tmp
-      - ./model-files:/app/model-files:ro
     depends_on:
       stock-mysql:
         condition: service_healthy
@@ -93,6 +94,8 @@ services:
     build:
       context: ./stock-agent
       dockerfile: Dockerfile
+      additional_contexts:
+        model-files: ./model-files/embedding
     container_name: stock-agent
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -104,7 +107,6 @@ services:
       JAVA_TOOL_OPTIONS: -Xms192m -Xmx768m -XX:MaxDirectMemorySize=128m -Duser.timezone=Asia/Shanghai
     volumes:
       - agent-runtime-tmp:/app/.tmp
-      - ./model-files:/app/model-files:ro
     depends_on:
       stock-mongo:
         condition: service_healthy

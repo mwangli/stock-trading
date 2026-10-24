@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START -------------------------------------------- -->
+<!-- AI_GENERATE_START ---------------------------------------------- -->
 # AI-AGENT 智能股票交易系统
 
 面向 A 股市场的数据采集、模型预测、策略分析、Agent 决策增强、风险控制和自动交易平台。
@@ -49,7 +49,7 @@ stock-trading4/
 ├── stock-backend/           # Spring Boot 后端，内部按业务包组织
 ├── stock-agent/             # Agent、RAG、Memory 和决策增强
 ├── stock-frontend/          # React + Vite 独立前端
-├── model-files/             # 固定模型制品，运行时只读挂载
+├── model-files/             # Git LFS 固定模型制品，发布时构建进对应镜像
 ├── .tmp/                    # 临时文件和中间脚本，不提交
 ├── docker-compose.yml
 ├── pom.xml                  # 三模块聚合与统一版本管理
@@ -180,8 +180,8 @@ Backend 和 Agent 端口只绑定宿主机回环地址，外部请求统一从 F
 
 | 模块 | 产物 | 发布容器 |
 |---|---|---|
-| `stock-backend` | `stock-backend-*.jar` | Java 17 JRE，8080 |
-| `stock-agent` | `stock-agent-*.jar` | Java 17 JRE，8081 |
+| `stock-backend` | `stock-backend-*.jar` + Sentiment LFS 制品 | Java 17 JRE，8080 |
+| `stock-agent` | `stock-agent-*.jar` + Embedding LFS 制品 | Java 17 JRE，8081 |
 | `stock-frontend` | Vite `dist/` | Nginx，80 |
 
 | 路径 | 目标 |
@@ -198,7 +198,7 @@ Backend 和 Agent 端口只绑定宿主机回环地址，外部请求统一从 F
 - 数据库地址、端口、库名、用户名、运行开关和普通参数统一维护在对应模块的 `application.yml`；容器数据目录维护在 `docker-compose.yml`。
 - `INTERNAL_API_TOKEN` 同时注入 Backend 与 Agent，不能发送到浏览器。
 - MySQL、MongoDB 使用持久化目录；Redis 使用 AOF，但仍只承担 Session 和可重建缓存。
-- `model-files` 以只读卷挂载；Backend 加载 Sentiment，Agent 加载 Embedding。
+- GitHub Runner 分别解析业务源码提交和模型制品提交，仅拉取目标 Git LFS 目录并完成清单校验；Sentiment 与 Embedding 分别构建进 Backend 和 Agent 镜像，两个提交号写入镜像元数据，生产服务器不保存或挂载模型目录。
 
 ### CI/CD
 
@@ -208,7 +208,7 @@ Backend 和 Agent 端口只绑定宿主机回环地址，外部请求统一从 F
 | `agent-vX.Y[.Z]` | `agent-ci-cd.yml` | `stock-agent` |
 | `frontend-vX.Y[.Z]` | `frontend-ci-cd.yml` | `stock-frontend` |
 
-工作流只重建目标服务并保留其他服务。Backend 发布校验 Sentiment 制品，Agent 发布校验 Embedding 制品；失败时收集目标服务日志并恢复原镜像。
+工作流只重建目标服务并保留其他服务。Backend 与 Agent 的业务源码由 `release_ref` 确定，模型制品和 Docker 发布定义由工作流运行引用确定；Runner 下载并校验目标 Git LFS 模型后构建镜像，服务器只拉取镜像并启动。失败时收集目标服务日志并恢复原镜像。
 
 ### 运行环境
 
@@ -284,4 +284,4 @@ Backend 和 Agent 端口只绑定宿主机回环地址，外部请求统一从 F
 - 模型证据必须分层记录：文件和 SHA-256 完整、DJL 加载、固定样本推理、接口启动、金标质量、影子收益分别验收，前一层通过不能替代后一层。
 
 详细输入、训练数据、快照维度和影子评估契约见 `stock-backend/src/main/java/com/stock/model/README.md`；事件事实、截止时间和新闻治理契约见 `stock-backend/src/main/java/com/stock/market/README.md`。
-<!-- AI_GENERATE_END -------------------------------------------- -->
+<!-- AI_GENERATE_END ---------------------------------------------- -->
