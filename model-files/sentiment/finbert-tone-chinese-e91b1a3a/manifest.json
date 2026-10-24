@@ -13,8 +13,8 @@
   "files": [
     {
       "path": "config.json",
-      "size": 1081,
-      "sha256": "93273dc602938756bbf968dba668403f7e555b3da33f99958c9ef98ee8941b06"
+      "size": 1040,
+      "sha256": "3cfec4cf72e3f07f2ba78b4d2bb38e3c16c43381b513fb79791ed0808e7832c9"
     },
     {
       "path": "tokenizer.json",
@@ -23,8 +23,8 @@
     },
     {
       "path": "tokenizer_config.json",
-      "size": 1331,
-      "sha256": "cbe004ed102fc7d706925907e6772aeca04fbe3d90d56a95a09ed75b3f30e7e9"
+      "size": 1273,
+      "sha256": "470cff6e0353b08e2a6e9b4f61729ecdc47ccb3ced335fa5520e9ce334572d59"
     },
     {
       "path": "vocab.txt",
