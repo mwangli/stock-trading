@@ -1,0 +1,59 @@
+name: Production Inspect
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    name: Inspect production host
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect production state
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          envs: DEPLOY_DIR
+          command_timeout: 5m
+          script: |
+            set -Eeuo pipefail
+            cd "$DEPLOY_DIR"
+
+            echo "=== ENV_KEYS ==="
+            test -f .env
+            sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' .env | sort
+
+            echo "=== COMPOSE_SERVICES ==="
+            sed -n 's/^  \(stock-[A-Za-z0-9_-]*\):$/\1/p' docker-compose.yml
+
+            echo "=== CONTAINERS ==="
+            docker ps -a --filter 'name=stock-' \
+              --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
+
+            echo "=== CONTAINER_DETAILS ==="
+            for container in stock-frontend stock-backend stock-agent stock-mysql stock-mongo stock-redis; do
+              if docker inspect "$container" >/dev/null 2>&1; then
+                image="$(docker inspect --format '{{.Config.Image}}' "$container")"
+                state="$(docker inspect --format '{{.State.Status}}' "$container")"
+                health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container")"
+                started="$(docker inspect --format '{{.State.StartedAt}}' "$container")"
+                printf '%s image=%s state=%s health=%s started=%s\n' \
+                  "$container" "$image" "$state" "$health" "$started"
+              else
+                printf '%s missing\n' "$container"
+              fi
+            done
+
+            echo "=== HOST_RESOURCES ==="
+            free -m
+            df -h "$DEPLOY_DIR"
+            docker version --format 'server={{.Server.Version}} client={{.Client.Version}}'
