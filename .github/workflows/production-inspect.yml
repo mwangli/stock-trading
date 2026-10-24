@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       expected_source_sha:
-        description: Full source commit SHA expected in all application image tags
+        description: Full source commit SHA expected in all application images
         required: true
         type: string
 
@@ -58,9 +58,22 @@ jobs:
                 if [[ "$state" != "running" ]] || [[ "$health" != "healthy" ]]; then
                   container_failure=1
                 fi
-                if [[ "$container" == "stock-frontend" || "$container" == "stock-backend" || "$container" == "stock-agent" ]]; then
+                if [[ "$container" == "stock-frontend" ]]; then
                   if [[ "$image" != *":$EXPECTED_SOURCE_SHA" ]]; then
                     echo "Unexpected application image for $container: $image"
+                    container_failure=1
+                  fi
+                fi
+                if [[ "$container" == "stock-backend" || "$container" == "stock-agent" ]]; then
+                  image_id="$(docker inspect --format '{{.Image}}' "$container")"
+                  source_revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image_id")"
+                  model_tree="$(docker image inspect --format '{{index .Config.Labels "com.stock.model.tree"}}' "$image_id")"
+                  model_image="$(docker image inspect --format '{{index .Config.Labels "com.stock.model.image"}}' "$image_id")"
+                  printf '%s sourceRevision=%s modelTree=%s modelImage=%s\n' \
+                    "$container" "$source_revision" "$model_tree" "$model_image"
+                  if [[ "$source_revision" != "$EXPECTED_SOURCE_SHA" ]] \
+                    || [[ -z "$model_tree" ]] \
+                    || [[ -z "$model_image" ]]; then
                     container_failure=1
                   fi
                 fi

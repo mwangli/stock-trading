@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START ---------------------------------------------- -->
+<!-- AI_GENERATE_START ----------------------------------------------- -->
 # AI-AGENT 智能股票交易系统
 
 面向 A 股市场的数据采集、模型预测、策略分析、Agent 决策增强、风险控制和自动交易平台。
@@ -180,8 +180,8 @@ Backend 和 Agent 端口只绑定宿主机回环地址，外部请求统一从 F
 
 | 模块 | 产物 | 发布容器 |
 |---|---|---|
-| `stock-backend` | `stock-backend-*.jar` + Sentiment LFS 制品 | Java 17 JRE，8080 |
-| `stock-agent` | `stock-agent-*.jar` + Embedding LFS 制品 | Java 17 JRE，8081 |
+| `stock-backend` | `stock-backend-*.jar`，继承 Sentiment 模型运行时镜像 | Java 17 JRE，8080 |
+| `stock-agent` | `stock-agent-*.jar`，继承 Embedding 模型运行时镜像 | Java 17 JRE，8081 |
 | `stock-frontend` | Vite `dist/` | Nginx，80 |
 
 | 路径 | 目标 |
@@ -198,7 +198,9 @@ Backend 和 Agent 端口只绑定宿主机回环地址，外部请求统一从 F
 - 数据库地址、端口、库名、用户名、运行开关和普通参数统一维护在对应模块的 `application.yml`；容器数据目录维护在 `docker-compose.yml`。
 - `INTERNAL_API_TOKEN` 同时注入 Backend 与 Agent，不能发送到浏览器。
 - MySQL、MongoDB 使用持久化目录；Redis 使用 AOF，但仍只承担 Session 和可重建缓存。
-- GitHub Runner 分别解析业务源码提交和模型制品提交，仅拉取目标 Git LFS 目录并完成清单校验；Sentiment 与 Embedding 分别构建进 Backend 和 Agent 镜像，两个提交号写入镜像元数据，生产服务器不保存或挂载模型目录。
+- GitHub Runner 仅在模型发布工作流中下载目标 Git LFS 目录并完成精确清单校验，分别生成 Backend Sentiment 和 Agent Embedding 模型运行时镜像。
+- 应用镜像以对应模型运行时镜像为基础镜像，只追加业务 JAR；最终 Backend 和 Agent 应用镜像内部仍包含完整模型，生产服务器不保存或挂载模型目录。
+- 模型镜像使用模型目录 Git tree SHA 作为不可变标签；应用镜像使用“源码 SHA + 模型 tree SHA 前 12 位”的复合标签，并在 OCI label 中记录完整源码、模型版本和模型镜像引用。
 
 ### CI/CD
 
@@ -207,8 +209,19 @@ Backend 和 Agent 端口只绑定宿主机回环地址，外部请求统一从 F
 | `backend-vX.Y[.Z]` | `backend-ci-cd.yml` | `stock-backend` |
 | `agent-vX.Y[.Z]` | `agent-ci-cd.yml` | `stock-agent` |
 | `frontend-vX.Y[.Z]` | `frontend-ci-cd.yml` | `stock-frontend` |
+| `master` 中 `model-files/sentiment/**` 变化 | `backend-model-image.yml` | Backend 模型镜像，然后自动触发 `stock-backend` 重建部署 |
+| `master` 中 `model-files/embedding/**` 变化 | `agent-model-image.yml` | Agent 模型镜像，然后自动触发 `stock-agent` 重建部署 |
 
-工作流只重建目标服务并保留其他服务。Backend 与 Agent 的业务源码由 `release_ref` 确定，模型制品和 Docker 发布定义由工作流运行引用确定；Runner 下载并校验目标 Git LFS 模型后构建镜像，服务器只拉取镜像并启动。失败时收集目标服务日志并恢复原镜像。
+Backend 与 Agent 的业务源码和模型版本都由同一个 `release_ref` 确定。模型变化时，模型工作流先发布独立模型镜像，再使用已解析的不可变提交 SHA 主动派发对应应用工作流；因此模型镜像不会孤立发布，应用会自动重新构建并部署。普通应用构建只验证目标模型镜像已存在，不重复下载 LFS 大文件。生产服务器只通过镜像仓库拉取最终应用镜像并启动，SCP 仅同步小型 Compose 和部署脚本，不传输模型或应用制品；失败时收集目标服务日志并恢复原镜像。
+
+本地通过 Compose 构建 Backend 或 Agent 前，需要先生成本地模型运行时镜像：
+
+```bash
+docker build -f .github/docker/backend-model-runtime.Dockerfile \
+  -t stock-backend-model-runtime:local model-files/sentiment
+docker build -f .github/docker/agent-model-runtime.Dockerfile \
+  -t stock-agent-model-runtime:local model-files/embedding
+```
 
 ### 运行环境
 
@@ -284,4 +297,4 @@ Backend 和 Agent 端口只绑定宿主机回环地址，外部请求统一从 F
 - 模型证据必须分层记录：文件和 SHA-256 完整、DJL 加载、固定样本推理、接口启动、金标质量、影子收益分别验收，前一层通过不能替代后一层。
 
 详细输入、训练数据、快照维度和影子评估契约见 `stock-backend/src/main/java/com/stock/model/README.md`；事件事实、截止时间和新闻治理契约见 `stock-backend/src/main/java/com/stock/market/README.md`。
-<!-- AI_GENERATE_END ---------------------------------------------- -->
+<!-- AI_GENERATE_END ----------------------------------------------- -->
