@@ -41,8 +41,8 @@ services:
     build:
       context: ./stock-backend
       dockerfile: Dockerfile
-      additional_contexts:
-        model-files: ./model-files/sentiment
+      args:
+        MODEL_RUNTIME_IMAGE: ${STOCK_BACKEND_MODEL_IMAGE:-stock-backend-model-runtime:local}
     container_name: stock-backend
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -94,8 +94,8 @@ services:
     build:
       context: ./stock-agent
       dockerfile: Dockerfile
-      additional_contexts:
-        model-files: ./model-files/embedding
+      args:
+        MODEL_RUNTIME_IMAGE: ${STOCK_AGENT_MODEL_IMAGE:-stock-agent-model-runtime:local}
     container_name: stock-agent
     environment:
       SPRING_PROFILES_ACTIVE: docker
