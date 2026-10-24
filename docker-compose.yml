@@ -133,6 +133,8 @@ services:
   stock-mysql:
     image: public.ecr.aws/docker/library/mysql:8.4
     container_name: stock-mysql
+    command:
+      - --lower-case-table-names=1
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
       MYSQL_DATABASE: stock_trading
