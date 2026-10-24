@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "encoder-artifact-v1",
+  "modelName": "mengzi-bert-base-fin",
+  "modelVersion": "mengzi-bert-base-fin-3e525b4d-djl",
+  "artifactRole": "BASE_ENCODER",
+  "engineName": "PyTorch",
+  "sourceRepository": "Langboat/mengzi-bert-base-fin",
+  "sourceRevision": "3e525b4d7a7cc2f886980490ec6ca0734b104dfc",
+  "sourceArtifactVersion": "mengzi-bert-base-fin-3e525b4d",
+  "conversionTool": "djl_converter 0.30.0",
+  "targetDjlVersion": "0.31.1",
+  "targetPyTorchVersion": "2.5.1",
+  "architecture": "BertForMaskedLM",
+  "hiddenSize": 768,
+  "classifierHeadIncluded": false,
+  "productionEligible": false,
+  "files": [
+    {
+      "path": "config.json",
+      "size": 849,
+      "sha256": "4f8085d420b67cceaf8e1406ea93e06560c43fd49d6766edfd0e833a7ac08f3f"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 439124,
+      "sha256": "7dfbf1966ebf99d471c3796e9b457329d2b2182b817e144f1e904b957745c839"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "size": 1305,
+      "sha256": "75a743f7397bf8e240ac050a98e85084af163f8d2cc175448e793897e2f67225"
+    },
+    {
+      "path": "serving.properties",
+      "size": 206,
+      "sha256": "4e6252b05d6b26ae96ebf03af62f4cedcfbaaa9cd78ee5d803a00732713b2ca4"
+    },
+    {
+      "path": "mengzi-bert-base-fin-3e525b4d.pt",
+      "size": 409589213,
+      "sha256": "5a209ad3f9a92cdd1bb908212632d8eb2dad2b66b8d18146f6f8a90cc33e3d03"
+    }
+  ]
+}
