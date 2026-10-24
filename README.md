@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START ----------------------------------------------- -->
+<!-- AI_GENERATE_START ------------------------------------------------ -->
 # AI-AGENT 智能股票交易系统
 
 面向 A 股市场的数据采集、模型预测、策略分析、Agent 决策增强、风险控制和自动交易平台。
@@ -212,7 +212,7 @@ Backend 和 Agent 端口只绑定宿主机回环地址，外部请求统一从 F
 | `master` 中 `model-files/sentiment/**` 变化 | `backend-model-image.yml` | Backend 模型镜像，然后自动触发 `stock-backend` 重建部署 |
 | `master` 中 `model-files/embedding/**` 变化 | `agent-model-image.yml` | Agent 模型镜像，然后自动触发 `stock-agent` 重建部署 |
 
-Backend 与 Agent 的业务源码和模型版本都由同一个 `release_ref` 确定。模型变化时，模型工作流先发布独立模型镜像，再使用已解析的不可变提交 SHA 主动派发对应应用工作流；因此模型镜像不会孤立发布，应用会自动重新构建并部署。普通应用构建只验证目标模型镜像已存在，不重复下载 LFS 大文件。生产服务器只通过镜像仓库拉取最终应用镜像并启动，SCP 仅同步小型 Compose 和部署脚本，不传输模型或应用制品；失败时收集目标服务日志并恢复原镜像。
+Backend 与 Agent 的业务源码由 `release_ref` 确定，模型版本由独立的 `model_ref` 确定；模型工作流会把已校验模型所在的不可变提交 SHA 传给应用工作流。模型变化时，模型工作流先发布独立模型镜像，再主动派发对应应用工作流，因此模型镜像不会孤立发布，应用会自动重新构建并部署。普通应用构建只验证目标模型镜像已存在，不重复下载 LFS 大文件。生产服务器只通过镜像仓库拉取最终应用镜像并启动，SCP 仅同步小型 Compose 和部署脚本，不传输模型或应用制品；失败时收集目标服务日志并恢复原镜像。
 
 本地通过 Compose 构建 Backend 或 Agent 前，需要先生成本地模型运行时镜像：
 
@@ -297,4 +297,4 @@ docker build -f .github/docker/agent-model-runtime.Dockerfile \
 - 模型证据必须分层记录：文件和 SHA-256 完整、DJL 加载、固定样本推理、接口启动、金标质量、影子收益分别验收，前一层通过不能替代后一层。
 
 详细输入、训练数据、快照维度和影子评估契约见 `stock-backend/src/main/java/com/stock/model/README.md`；事件事实、截止时间和新闻治理契约见 `stock-backend/src/main/java/com/stock/market/README.md`。
-<!-- AI_GENERATE_END ----------------------------------------------- -->
+<!-- AI_GENERATE_END ------------------------------------------------ -->
