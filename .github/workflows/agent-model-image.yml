@@ -9,8 +9,12 @@ on:
   workflow_dispatch:
     inputs:
       release_ref:
-        description: Git tag, branch, or commit containing the model artifacts
+        description: Agent Git tag, branch, or commit to rebuild and deploy
         required: true
+        type: string
+      model_ref:
+        description: Optional Git ref containing the embedding artifacts; defaults to the workflow commit
+        required: false
         type: string
 
 permissions:
@@ -48,7 +52,7 @@ jobs:
           GIT_LFS_SKIP_SMUDGE: '1'
         with:
           persist-credentials: false
-          ref: ${{ inputs.release_ref || github.sha }}
+          ref: ${{ inputs.model_ref || github.sha }}
           path: artifacts
           sparse-checkout: model-files/embedding
           sparse-checkout-cone-mode: false
@@ -100,10 +104,12 @@ jobs:
       - name: Trigger agent application rebuild and deployment
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_REF: ${{ steps.model.outputs.source_sha }}
+          RELEASE_REF: ${{ inputs.release_ref || github.sha }}
+          MODEL_REF: ${{ steps.model.outputs.source_sha }}
         run: |
           set -Eeuo pipefail
           gh workflow run agent-ci-cd.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref master \
-            --field release_ref="$RELEASE_REF"
+            --field release_ref="$RELEASE_REF" \
+            --field model_ref="$MODEL_REF"
