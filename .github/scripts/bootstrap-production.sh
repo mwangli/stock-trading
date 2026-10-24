@@ -32,10 +32,29 @@ mkdir -p "${mysql_data_dir:-./data/mysql}" "${mongo_data_dir:-./data/mongo}" "${
 
 docker compose --env-file .env config --quiet
 
-for container in stock-mysql stock-mongo; do
-  state="$(docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null || true)"
-  if [[ "$state" != "running" ]]; then
-    echo "Required database container is not running: $container"
+infrastructure_services=(stock-mysql stock-mongo stock-redis)
+docker compose --env-file .env pull "${infrastructure_services[@]}"
+docker compose --env-file .env up -d --no-build "${infrastructure_services[@]}"
+
+for service_name in "${infrastructure_services[@]}"; do
+  container_id="$(docker compose --env-file .env ps -q "$service_name")"
+  test -n "$container_id"
+
+  healthy=0
+  for _ in $(seq 1 36); do
+    status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")"
+    if [[ "$status" == "healthy" ]]; then
+      healthy=1
+      break
+    fi
+    if [[ "$status" == "unhealthy" || "$status" == "exited" || "$status" == "dead" ]]; then
+      break
+    fi
+    sleep 5
+  done
+
+  if [[ "$healthy" -ne 1 ]]; then
+    docker compose --env-file .env logs --tail=100 "$service_name" || true
     exit 1
   fi
 done
@@ -49,22 +68,4 @@ docker exec \
   stock-mysql mysql --protocol=socket -uroot \
   -e "CREATE DATABASE IF NOT EXISTS stock_trading CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS 'stock'@'%' IDENTIFIED BY '$mysql_password'; ALTER USER 'stock'@'%' IDENTIFIED BY '$mysql_password'; GRANT ALL PRIVILEGES ON stock_trading.* TO 'stock'@'%'; FLUSH PRIVILEGES;"
 
-docker compose --env-file .env pull stock-redis
-docker compose --env-file .env up -d --no-deps stock-redis
-
-redis_id="$(docker compose --env-file .env ps -q stock-redis)"
-test -n "$redis_id"
-for _ in $(seq 1 24); do
-  redis_health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$redis_id")"
-  if [[ "$redis_health" == "healthy" ]]; then
-    echo "Production prerequisites are ready."
-    exit 0
-  fi
-  if [[ "$redis_health" == "unhealthy" || "$redis_health" == "exited" || "$redis_health" == "dead" ]]; then
-    break
-  fi
-  sleep 5
-done
-
-docker compose --env-file .env logs --tail=100 stock-redis || true
-exit 1
+echo "Production prerequisites are ready."
