@@ -149,7 +149,7 @@ jobs:
     name: Deploy agent to production
     needs: build-and-push
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     environment: production
     steps:
       - name: Checkout deployment files
@@ -189,5 +189,5 @@ jobs:
           port: ${{ env.SERVER_PORT }}
           fingerprint: ${{ env.SERVER_FINGERPRINT }}
           envs: DEPLOY_IMAGE,DEPLOY_DIR,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
-          command_timeout: 12m
+          command_timeout: 30m
           script: bash "$DEPLOY_DIR/.github/scripts/deploy-service.sh" stock-agent stock-agent STOCK_AGENT_IMAGE
