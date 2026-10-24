@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START --
 ARG JRE_IMAGE=eclipse-temurin:17.0.16_8-jre-jammy
 
 FROM ${JRE_IMAGE}
@@ -11,6 +11,7 @@ RUN groupadd --system stock \
     && chown -R stock:stock /app
 
 COPY --chown=stock:stock app.jar /app/app.jar
+COPY --from=model-files --chown=stock:stock . /app/model-files/embedding/
 
 USER stock
 
@@ -20,4 +21,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
     CMD bash -c 'echo > /dev/tcp/127.0.0.1/8081' || exit 1
 
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
-# AI_GENERATE_END -
+# AI_GENERATE_END --

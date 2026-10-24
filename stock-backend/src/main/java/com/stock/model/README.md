@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START ------- -->
+<!-- AI_GENERATE_START ---------- -->
 # Model 模型模块
 
 ## 模块定位
@@ -265,7 +265,7 @@ Transformer 输出仍然只是模型事实，不直接改变策略状态、仓�
 
 ### 8. Sentiment 固定制品与推理
 
-`SentimentArtifactService` 管理部署时只读挂载的情感模型工件，启动和首次使用时校验目录、必要文件和契约。固定制品不打入可执行 JAR，也不允许缺失时自动创建空模型。
+`SentimentArtifactService` 管理随 Backend 不可变镜像发布的情感模型工件，启动和首次使用时校验目录、必要文件和契约。固定制品不打入可执行 JAR，而是在 CI 从 Git LFS 下载并校验后写入镜像独立层；不允许缺失时自动创建空模型。
 
 `SentimentInferenceService` 负责文本预处理、模型推理和结果标准化；`SentimentAggregationService` 按股票、事件和时间窗口聚合。推理失败、输入为空、制品缺失和输出结构异常分别记录，不能统一返回中性情感掩盖故障。
 
@@ -291,12 +291,12 @@ Transformer 输出仍然只是模型事实，不直接改变策略状态、仓�
 
 | 制品 | 存储 | 生命周期 |
 |---|---|---|
-| Sentiment 固定模型 | `model-files/sentiment` | 部署时只读挂载 |
-| Mengzi 等候选情感模型 | `model-files` 对应目录 | 影子推理、评估后人工切换 |
+| Sentiment 固定模型 | Backend 镜像 `/app/model-files/sentiment` | Git LFS 校验后随镜像发布 |
+| Mengzi 等候选情感模型 | Backend 镜像内对应版本目录 | 影子推理、评估后人工切换 |
 | LSTM 参数和训练快照 | MongoDB GridFS | 训练、候选、激活和回滚 |
 | 模型元数据与运行记录 | MySQL/MongoDB | 版本、批次、审计和评估 |
 
-固定制品不打入可执行 JAR。旧制品与新制品按各自元数据和输入输出契约加载，不得修改旧元数据伪装兼容。
+固定制品不打入可执行 JAR，但必须与源码提交一起形成不可变容器镜像。生产服务器只拉取镜像，不通过 SCP 接收或挂载宿主机模型目录。旧制品与新制品按各自元数据和输入输出契约加载，不得修改旧元数据伪装兼容。
 
 ## 依赖与安全边界
 
@@ -469,4 +469,4 @@ FinBERT 当前缺陷包括上游约八千条分析师报告句子带来的领域
 影子任务通过 `JobConfig + JobSchedulerService` 注册，默认任务名 `sentimentMengziShadow`，默认 Cron 为工作日 `01:00`。`MENGZI_SHADOW_ENABLED` 与任务状态必须同时开启，单批按配置数量幂等处理，且禁止在交易时段执行大批量推理。
 
 当前源码和本地制品最多证明统一输入输出、官方编码器校验、三分类头结构、日级快照契约、后验评估、`ELIGIBLE` 门槛和自动回滚路径存在。没有人工金标训练、校准和完整影子期证据前，交付状态最高为“编码器制品完整、分类器待训练”，不能描述为 Mengzi 预测效果通过。
-<!-- AI_GENERATE_END ------- -->
+<!-- AI_GENERATE_END ---------- -->

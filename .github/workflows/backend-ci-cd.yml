@@ -33,19 +33,50 @@ jobs:
   build-and-push:
     name: Build and push backend image
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     outputs:
       image: ${{ steps.image.outputs.value }}
     steps:
-      - name: Checkout source
+      - name: Checkout release infrastructure
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.ref }}
+          sparse-checkout: |
+            .github/scripts/verify-model-artifact.py
+            stock-backend/Dockerfile
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout release source
         uses: actions/checkout@v7
         with:
           persist-credentials: false
           ref: ${{ inputs.release_ref || github.ref }}
+          path: release
+          sparse-checkout: |
+            pom.xml
+            stock-backend
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout model artifacts
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.ref }}
+          path: artifacts
+          sparse-checkout: model-files/sentiment
+          sparse-checkout-cone-mode: false
+
+      - name: Download sentiment artifacts from Git LFS
+        run: git -C artifacts lfs pull --include="model-files/sentiment/**" --exclude=""
 
       - name: Resolve source commit
         id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: echo "sha=$(git -C release rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve artifact commit
+        id: artifacts
+        run: echo "sha=$(git -C artifacts rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Java 17
         uses: actions/setup-java@v6
@@ -54,20 +85,29 @@ jobs:
           java-version: '17'
           cache: maven
           cache-dependency-path: |
-            pom.xml
-            stock-backend/pom.xml
+            release/pom.xml
+            release/stock-backend/pom.xml
           verify-signature: true
 
       - name: Package backend
         run: |
           set -Eeuo pipefail
           mvn --batch-mode --no-transfer-progress \
-            --file pom.xml --projects stock-backend --also-make \
+            --file release/pom.xml --projects stock-backend --also-make \
             clean package -DskipTests
-          jar_path="$(find stock-backend/target -maxdepth 1 -type f \
+          jar_path="$(find release/stock-backend/target -maxdepth 1 -type f \
             -name 'stock-backend-*.jar' ! -name '*.original' -print -quit)"
           test -n "$jar_path"
-          install -m 0644 "$jar_path" stock-backend/app.jar
+          install -m 0644 "$jar_path" release/stock-backend/app.jar
+
+      - name: Verify sentiment artifacts
+        run: |
+          python3 .github/scripts/verify-model-artifact.py \
+            artifacts/model-files/sentiment/finbert-tone-chinese-e91b1a3a/manifest.json \
+            /tmp/backend-finbert-artifacts.sha256
+          python3 .github/scripts/verify-model-artifact.py \
+            artifacts/model-files/sentiment/mengzi-bert-base-fin-3e525b4d-djl/manifest.json \
+            /tmp/backend-mengzi-artifacts.sha256
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -86,12 +126,17 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v7
         with:
-          context: stock-backend
+          context: release/stock-backend
           file: stock-backend/Dockerfile
+          build-contexts: |
+            model-files=artifacts/model-files/sentiment
           push: true
           tags: |
             ${{ steps.image.outputs.value }}
             ${{ env.IMAGE_REPOSITORY }}:latest
+          labels: |
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+            com.stock.artifacts.revision=${{ steps.artifacts.outputs.sha }}
           cache-from: type=gha,scope=stock-backend
           cache-to: type=gha,mode=max,scope=stock-backend
           provenance: false
@@ -100,7 +145,7 @@ jobs:
     name: Deploy backend to production
     needs: build-and-push
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     environment: production
     steps:
       - name: Checkout deployment files
@@ -108,19 +153,10 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.ref }}
-          lfs: true
           sparse-checkout: |
             docker-compose.yml
-            .gitattributes
-            .github/scripts
-            model-files/sentiment
+            .github/scripts/deploy-service.sh
           sparse-checkout-cone-mode: false
-
-      - name: Verify sentiment artifacts
-        run: |
-          python3 .github/scripts/verify-model-artifact.py \
-            model-files/sentiment/finbert-tone-chinese-e91b1a3a/manifest.json \
-            deployment-backend-artifacts.sha256
 
       - name: Upload deployment files
         uses: appleboy/scp-action@v1.0.0
@@ -130,10 +166,9 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ env.SERVER_PORT }}
           fingerprint: ${{ env.SERVER_FINGERPRINT }}
-          source: docker-compose.yml,.github/scripts/deploy-service.sh,model-files/sentiment,deployment-backend-artifacts.sha256
+          source: docker-compose.yml,.github/scripts/deploy-service.sh
           target: ${{ env.SERVER_DEPLOY_DIR }}
           overwrite: true
-          command_timeout: 30m
 
       - name: Restart backend
         uses: appleboy/ssh-action@v1.2.5
@@ -151,4 +186,4 @@ jobs:
           fingerprint: ${{ env.SERVER_FINGERPRINT }}
           envs: DEPLOY_IMAGE,DEPLOY_DIR,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
           command_timeout: 12m
-          script: bash "$DEPLOY_DIR/.github/scripts/deploy-service.sh" stock-backend stock-backend STOCK_BACKEND_IMAGE deployment-backend-artifacts.sha256
+          script: bash "$DEPLOY_DIR/.github/scripts/deploy-service.sh" stock-backend stock-backend STOCK_BACKEND_IMAGE
