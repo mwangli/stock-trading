@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -9,10 +9,13 @@ import com.stock.model.dto.ModelTrainingRunPageResponse;
 import com.stock.model.dto.ModelTrainingRunResponse;
 import com.stock.model.dto.ModelVersionPageResponse;
 import com.stock.model.dto.ModelVersionResponse;
+import com.stock.model.dto.TemporalModelEnsembleStatusResponse;
+import com.stock.model.config.TemporalEnsembleConfig;
 import com.stock.model.entity.LstmModelDocument;
 import com.stock.model.entity.ModelActivationDocument;
 import com.stock.model.entity.ModelPredictionBatchDocument;
 import com.stock.model.entity.ModelTrainingRunDocument;
+import com.stock.model.entity.TemporalModelEnsembleStateDocument;
 import com.stock.model.repository.LstmModelRepository;
 import com.stock.model.repository.ModelActivationRepository;
 import com.stock.model.repository.ModelPredictionBatchRepository;
@@ -46,6 +49,8 @@ public class ModelOperationsQueryService {
     private final ModelActivationRepository activationRepository;
     private final ModelTrainingRunRepository trainingRunRepository;
     private final ModelPredictionBatchRepository predictionBatchRepository;
+    private final TemporalModelEnsembleService temporalModelEnsembleService;
+    private final TemporalEnsembleConfig temporalEnsembleConfig;
     private final ObjectMapper objectMapper;
 
     /**
@@ -69,6 +74,29 @@ public class ModelOperationsQueryService {
                 .trainingRunning(trainingRunRepository.existsByModelNameAndStatusIn(modelName, RUNNING_STATUSES))
                 .activeModelHealthy(isActiveVersionHealthy(activation))
                 .activeVersionScore(loadActiveVersionScore(activeVersion))
+                .temporalEnsemble(toTemporalEnsembleStatus())
+                .build();
+    }
+
+    private TemporalModelEnsembleStatusResponse toTemporalEnsembleStatus() {
+        TemporalModelEnsembleStateDocument state = temporalModelEnsembleService.currentState();
+        return TemporalModelEnsembleStatusResponse.builder()
+                .masterShadowEnabled(temporalEnsembleConfig.isMasterShadowEnabled())
+                .productionBlendConfigured(temporalEnsembleConfig.isProductionBlendEnabled())
+                .productionEnabled(state.isProductionEnabled())
+                .masterModelId(state.getMasterModelId())
+                .rankingLstmWeight(state.getRankingLstmWeight())
+                .masterWeight(state.getMasterWeight())
+                .evaluatedTradingDays(state.getEvaluatedTradingDays())
+                .evaluatedSamples(state.getEvaluatedSamples())
+                .rankingLstmRankIc(state.getRankingLstmRankIc())
+                .masterRankIc(state.getMasterRankIc())
+                .rankingLstmIcIr(state.getRankingLstmIcIr())
+                .masterIcIr(state.getMasterIcIr())
+                .rankingLstmQualityScore(state.getRankingLstmQualityScore())
+                .masterQualityScore(state.getMasterQualityScore())
+                .decisionReason(state.getDecisionReason())
+                .updatedAt(state.getUpdatedAt())
                 .build();
     }
 
@@ -276,4 +304,4 @@ public class ModelOperationsQueryService {
         }
     }
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END------

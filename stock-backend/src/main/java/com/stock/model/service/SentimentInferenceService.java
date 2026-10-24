@@ -1,6 +1,7 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START------------
 package com.stock.model.service;
 
+import com.stock.model.dto.SentimentModelInput;
 import com.stock.model.vo.SentimentAnalysisResult;
 import com.stock.model.vo.SentimentArtifactInspection;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +51,16 @@ public class SentimentInferenceService {
         return sentimentTrainerService.analyzeSentimentRequired(text);
     }
 
+    /**
+     * 使用统一分块输入执行 FinBERT 严格推理。
+     *
+     * @param input 标题优先的统一模型输入
+     * @return 情感分析结果
+     */
+    public SentimentAnalysisResult analyzeSentimentRequired(SentimentModelInput input) {
+        return sentimentTrainerService.predict(input);
+    }
+
 
     /**
      * 查询模型是否已加载。
@@ -58,6 +69,15 @@ public class SentimentInferenceService {
      */
     public boolean isModelLoaded() {
         return sentimentTrainerService.isModelLoaded();
+    }
+
+    /**
+     * 卸载 FinBERT 生产模型并释放底层资源。
+     *
+     * 仅供受控的顺序影子推理窗口调用，调用方必须负责恢复生产路由。
+     */
+    public void unloadModel() {
+        sentimentTrainerService.unloadModel();
     }
 
     /**
@@ -87,4 +107,4 @@ public class SentimentInferenceService {
         return sentimentTrainerService.getLastLoadError();
     }
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START------
 package com.stock.model.vo;
 
 import lombok.AllArgsConstructor;
@@ -32,6 +32,18 @@ public class SentimentAnalysisResult {
      * 情感分类置信度，取值范围为 0 到 1。
      */
     private double confidence;
+    /** 温度缩放后的校准置信度，取值范围为 0 到 1。 */
+    private double calibratedConfidence;
+    /** 归一化信息熵，取值范围为 0 到 1，值越高表示越不确定。 */
+    private double entropy;
+    /** 最高与次高类别概率差，取值范围为 0 到 1。 */
+    private double probabilityMargin;
+    /** 是否因置信度或概率间隔不足而弃权。 */
+    private boolean abstained;
+    /** 本次推理使用的文本分块数量，范围为 1 到 3。 */
+    private int chunkCount;
+    /** 实际送入模型的文本覆盖率，取值范围为 0 到 1。 */
+    private double textCoverage;
     /**
      * 归一化情感得分，取值范围为 0 到 100。
      */
@@ -46,4 +58,4 @@ public class SentimentAnalysisResult {
     private String text;
 }
 
-// AI_GENERATE_END----
+// AI_GENERATE_END------

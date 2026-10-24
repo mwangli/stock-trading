@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START----------------------------------------- -->
+<!-- AI_GENERATE_START------------------------------------------------ -->
 # 交互语言要求
 
 1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
@@ -22,21 +22,47 @@
 
 # AGENTS.md - AI 股票交易系统开发指南
 
+## 系统目标与最高优先级设计原则
+
+本项目的最终目标是建设一个面向 A 股的自学习、自适应、无人值守自动交易系统。正常生产链路不依赖人工审批、人工选择模型、人工调整权重或持续人工监督，系统必须能够基于真实数据和交易反馈自动完成：
+
+```text
+数据更新 → 数据校验 → 周期训练 → 候选评估 → 自动晋级或淘汰
+→ 自动预测 → 策略与仓位决策 → Java 风控 → 券商执行
+→ 成交与绩效回写 → 滚动评估 → 自动调权、回退和再训练
+```
+
+后续设计和实现必须遵循以下要求：
+
+1. **无人值守闭环**：模型训练、候选比较、生产切换、融合调权、策略参数调整、失效回退和再训练均由统一调度与确定性规则自动完成。人工界面用于观察、诊断和紧急停机，不作为正常晋级或交易流程的必经审批环节。
+2. **最简单、最快速实现**：优先选择能够形成完整闭环的最少组件、最少状态和单一路径。不得为假设中的扩展增加多套框架、重复评分、兼容适配层、人工工作流或无调用方抽象。
+3. **允许直接收敛旧机制**：本项目不要求前向兼容或保留冗余历史实现。新方案落地后应删除被替代的人工激活、重复 Gate、旧配置、旧状态和旁路入口，只保留一个权威流程。
+4. **自学习采用周期增量闭环**：优先使用定时重训、不可变快照、Champion-Challenger 自动比较和生产反馈评估，不引入复杂在线学习平台。只有现有周期闭环无法满足目标时，才允许增加实时在线学习机制。
+5. **自适应必须有边界**：允许系统自动调整模型版本、融合权重、策略阈值和仓位参数，但所有可调参数必须有明确上下限、观察窗口、最小样本和自动回退条件，禁止模型或 Agent 直接修改权限、资金上限、幂等规则或券商凭据。
+6. **Gate 只保留必要硬门禁**：Gate 仅用于阻止数据/制品无效、数值异常、样本明显不足、回撤越界和真实交易安全违规。普通质量指标统一进入一个可解释的综合评分，不为每个指标建立独立的一票否决规则。
+7. **自动晋级和自动回退**：候选模型通过硬门禁且综合评分稳定优于当前生产模型时自动小权重上线；根据滚动实盘/影子结果自动升权。出现数据异常、输出塌缩、回撤越界、持续劣化或运行失败时自动降权至零并回退到最近健康版本。
+8. **Java 保留最终交易权威**：无人值守不等于取消安全边界。市场事实、账户、权限、资金、持仓、T+1、交易时间、价格保护、仓位上限、最大亏损、幂等和券商执行仍由 Backend 的确定性 Java 逻辑最终决定；模型和 Agent 不能绕过这些规则。
+9. **默认自动、失败保守**：正常情况下系统自动推进；证据不足、状态不一致或关键依赖异常时停止新增风险并自动回退，不等待人工确认后继续冒险。
+
+本节是模型、策略、调度和交易链路的最高优先级业务设计约束。文档或存量代码中关于“必须人工激活、人工审批后才能晋级”的描述不再适用于正常模型生命周期，应在相关能力修改时直接收敛为自动化单一路径。
+
 ## 项目结构
 
 本项目只保留三个 Maven 业务模块。后端内部领域使用 Java 包和子目录隔离，Agent 与前端保持独立模块边界：
 
 ```text
 stock-trading4/
-├── stock-backend/                  # Spring Boot 后端；内部按 base/data/model/strategy/trading/job/backend 分包
+├── stock-backend/                  # Spring Boot 后端；内部按 market/model/decision/execution/schedule/platform 分包
 ├── stock-agent/                    # Agent、RAG、Memory 和受控决策增强
 ├── stock-frontend/                 # React + Vite 独立前端
-├── documents/                      # 与应用平级的需求、设计和运维文档
-├── model-files/                # 固定模型制品，运行时只读挂载
+├── model-files/                    # 固定模型制品，运行时只读挂载
 ├── .tmp/                           # 临时文件（不提交）
+├── README.md                       # 跨模块架构、业务链路、部署和全局文档规范
 ├── pom.xml                         # 三模块聚合与统一版本管理
 └── docker-compose.yml
 ```
+
+**模块文档约定**：根 `README.md` 维护跨模块架构、核心链路、部署运行和全局文档规范；`stock-backend/src/main/java/com/stock/README.md` 维护 Backend 整体架构，六个业务包在各自包根目录维护详细 README；Agent 总览和能力设计维护在 `stock-agent/src/main/java/com/stock/agent/**/README.md`；前端设计维护在 `stock-frontend/README.md`。专项 Proposal 直接归入所属业务包 README 的“专项设计”章节。新增、移动、重构或删除能力时必须同批更新源码旁 README，禁止恢复 `documents/`、`docs/` 或其他集中式项目文档目录。
 
 **临时文件约定**：项目根目录下的 `.tmp/` 用于存放所有临时文件和中间脚本。Agent 生成的一次性脚本、临时输出、中间结果等均应放在此目录，且该目录已加入 `.gitignore`，不纳入版本控制。
 
@@ -92,9 +118,9 @@ java -jar stock-agent/target/stock-agent-1.0.0-SNAPSHOT.jar
 
 ### Java Model Training
 
-模型训练代码位于 `stock-backend/src/main/java/com/stock/model/`，统一使用 DJL API + PyTorch Engine。训练任务必须通过 `stock-backend` 内 `com.stock.job` 的 `JobConfig + JobSchedulerService` 调度，不引入 Python、ONNX 或独立模型服务。
+模型训练代码位于 `stock-backend/src/main/java/com/stock/model/`，统一使用 DJL API + PyTorch Engine。训练任务必须通过 `stock-backend` 内 `com.stock.schedule` 的 `JobConfig + JobSchedulerService` 调度，不引入 Python、ONNX 或独立模型服务。
 
-线上节点允许通过 `LSTM_TRAINING_ENABLED=true` 开启训练能力，但训练触发必须经过业务门禁：禁止交易时段执行、禁止并发训练、校验数据完整性和资源余量、限制参数范围，并将训练版本与生产激活分离。训练成功只生成候选版本，不得直接视为生产上线成功。
+线上节点允许通过 `LSTM_TRAINING_ENABLED=true` 开启训练能力。训练触发只保留禁止交易时段执行、禁止并发训练、数据/资源有效和参数范围合法等必要硬门禁。训练成功先生成候选版本，再由统一自动评估流程执行 Champion-Challenger 比较、小权重晋级、滚动升权和异常回退；不得要求人工激活作为正常生产切换条件。
 
 ## 测试说明
 
@@ -109,28 +135,28 @@ Java 后端当前不维护标准自动化测试；涉及后端行为重构前必
   - 类名 `PascalCase`, 方法/变量 `camelCase`, 常量 `UPPER_SNAKE_CASE`
   - 使用 Lombok (`@Data`, `@Slf4j`, `@RequiredArgsConstructor`) 简化代码
   - Controller 返回统一泛型对象 `ResponseDTO<T>`
-- **分包策略**: `stock-backend` 内固定使用 `com.stock.base`、`com.stock.data`、`com.stock.model`、`com.stock.strategy`、`com.stock.trading`、`com.stock.job`、`com.stock.backend` 作为领域边界；`stock-agent` 使用 `com.stock.agent`。领域内部再按职责分包，禁止恢复内部 Maven 子模块或把不同职责的类平铺在同一个包中。
+- **分包策略**: `stock-backend` 内固定使用 `com.stock.market`、`com.stock.model`、`com.stock.decision`、`com.stock.execution`、`com.stock.schedule`、`com.stock.platform` 作为业务边界；`stock-agent` 使用 `com.stock.agent`。领域内部再按职责分包，禁止恢复内部 Maven 子模块或把不同职责的类平铺在同一个包中。
 - **错误处理**: 使用全局异常处理 (`@ControllerAdvice`)，禁止吞掉异常。
 
 #### 后端代码目录与包结构规范（强制）
 
-0. **先确定三模块边界再确定 package**：后端公共契约、数据、模型、策略、交易、Quartz 和启动装配统一放入 `stock-backend`，分别归属 `com.stock.base`、`com.stock.data`、`com.stock.model`、`com.stock.strategy`、`com.stock.trading`、`com.stock.job`、`com.stock.backend`；Agent 能力只放入 `stock-agent` 的 `com.stock.agent`。前后端与 Agent 不通过复制类或新增兼容模块共享实现。
-1. **业务领域优先、职责子包必建**：后端 Java 代码以 `com.stock.<业务领域>` 为一级边界；在业务领域或其子业务模块内部，只要存在对应职责的类，就必须建立 `controller`、`service`、`repository`、`entity`、`dto`、`vo`、`job`/`scheduler`、`config`、`validator` 等职责子包，不得将这些类平铺在业务包根目录。
+0. **先确定三模块边界再确定 package**：后端市场数据、模型、决策、交易执行、Quartz 和平台装配统一放入 `stock-backend`，分别归属 `com.stock.market`、`com.stock.model`、`com.stock.decision`、`com.stock.execution`、`com.stock.schedule`、`com.stock.platform`；Agent 能力只放入 `stock-agent` 的 `com.stock.agent`。前后端与 Agent 不通过复制类或新增兼容模块共享实现。
+1. **六业务包固定、职责子包必建**：后端 Java 代码固定以 `market`、`model`、`decision`、`execution`、`schedule`、`platform` 为一级业务边界；各业务包下直接建立 `controller`、`service`、`repository`、`entity`、`dto`、`vo`、`job`/`scheduler`、`config`、`validator` 等实际存在的职责子包，不得补建空目录，也不得将职责类平铺在业务包根目录。
 2. **类与目录必须匹配**：`*Service` 放入 `service`，`*Repository` 放入 `repository`，持久化 `*Entity` 放入 `entity`，请求/响应对象分别放入 `dto`/`vo`，定时任务入口放入 `job` 或 `scheduler`；Java `package` 声明必须与物理目录完全一致。
-3. **子业务模块同样适用**：当业务领域下继续按能力拆分子模块时，应先确定子业务边界，再在该边界内按职责分包。例如交易决策代码应采用以下结构，而不是把 Service、Entity、Repository 混放在 `decision` 包中：
+3. **目录只保留两级**：`stock-backend` 目录固定保持“业务包 → 职责层”，不得在职责层下继续复制 `service/repository/entity/dto` 等分层，也不得增加 `domain/application/persistence` 等平行体系。例如决策代码采用以下结构：
    ```text
-   com/stock/agent/decision/
+   com/stock/decision/
    ├── service/
    ├── repository/
    ├── entity/
    ├── dto/
    ├── vo/
-   ├── job/
-   └── validator/
+   ├── algorithm/
+   └── config/
    ```
 4. **禁止按类名代替目录治理**：类名带有 `Service`、`Entity`、`Repository` 后缀，不代表可以留在业务包根目录；新建代码时必须同时选择正确目录和包名，代码评审需检查文件路径、`package` 声明和职责三者一致。
 5. **修改存量代码时同步整理**：新增或修改某个业务模块时，如同一包中已有职责混放，应在本次需求影响范围内一并迁移到对应子包，并定向更新所有 import、组件扫描、Repository 扫描、反射类名、序列化类型和测试引用；不得只移动文件而遗漏调用方，也不得借机重构无关业务模块。
-6. **复用现有结构**：若目标业务领域已经采用 `domain/entity`、`application/service`、`persistence/repository` 等清晰且一致的分层结构，应沿用该领域的既有目录，不得再平行创建语义重复的目录；判断标准仍是同一职责只能有一个明确归属，禁止平铺和重复分层。
+6. **禁止重复分层**：同一职责只能有一个明确归属；存量 `domain/entity`、`application/service`、`persistence/repository` 等重复层级应在影响范围内收敛到业务包直属职责目录，禁止继续新增平行结构。
 
 #### 后端代码设计与注释规范（强制）
 
@@ -142,6 +168,16 @@ Java 后端当前不维护标准自动化测试；涉及后端行为重构前必
 6. **公开方法注释**：每个 `public`/`protected` 方法必须有 Javadoc，说明功能、业务场景、参数、返回值、异常和必要的关联对象；Controller 接口方法还必须记录关键入参和业务含义。
 7. **字段注释**：每个 DTO/VO 字段必须在声明前有字段级注释，说明业务含义、单位、格式、是否可为空及取值范围；日期、金额、数量和枚举使用能表达约束的类型。
 8. **业务注释**：只为复杂算法、关键业务判断、状态转换、数据流转和非显然的技术原因添加注释；禁止为变量赋值、普通循环和直接返回添加无意义注释。
+
+#### 后端数据库与 SQL 脚本规范（强制）
+
+1. **固定双文件基线**：MySQL 初始化脚本只允许保留 `stock-backend/src/main/resources/db/migration/V1__ddl.sql` 和 `V2__dml.sql` 两个文件；禁止继续新增按功能拆分的 V3、V4 等历史增量脚本。
+2. **DDL 单一职责**：所有 `CREATE TABLE`、索引、唯一约束和其他结构定义必须集中在 `V1__ddl.sql`，并按照“被依赖对象先创建、依赖对象后创建”的顺序排列；DDL 文件不得混入 `INSERT`、`UPDATE` 或 `DELETE`。
+3. **DML 单一职责**：所有初始化数据和基础配置必须集中在 `V2__dml.sql`，在 DDL 完成后按明确业务顺序写入，并保证重复执行不会生成重复数据；DML 文件不得包含 `CREATE`、`ALTER` 或 `DROP`。
+4. **数据库中文注释必填**：每张表必须使用 `COMMENT` 说明业务职责，每个字段必须使用中文 `COMMENT` 说明真实业务含义；金额、数量、比例、时间、格式、可空条件、状态或枚举字段应补充单位、格式、取值范围或空值语义，禁止只重复字段名或使用“备用字段”等无业务含义注释。
+5. **最终结构直接维护**：本项目按新项目基线治理，新增或修改关系表时直接更新两个基线文件，并同步检查 JPA Entity、Repository、DTO、查询和索引；除非用户明确要求，不新增历史兼容迁移、重复表或废弃字段。
+6. **存储边界明确**：MySQL DDL 只声明当前 JPA 关系实体；MongoDB `@Document` 集合及索引由对应 Mongo 配置和实体维护，禁止为同一业务对象同时创建无调用方的 MySQL 表。
+7. **执行安全边界**：合并或改写 Flyway 基线会改变历史 checksum，只适用于全新数据库初始化或经明确批准的 rebaseline；未经用户当次明确授权，禁止对共享、生产或已有数据的数据库执行清库、重建、修改 `flyway_schema_history` 或运行整合脚本。
 
 #### LangChain4j Agent 与工具设计规范（强制）
 
@@ -159,7 +195,7 @@ Java 后端当前不维护标准自动化测试；涉及后端行为重构前必
 
 #### 定时任务规范（强制）
 
-1. **统一任务调度中心**：所有后端定时任务必须通过 `stock-backend` 内的 `com.stock.job` 调度体系完成，禁止在业务类中直接使用 `@Scheduled` 注解。
+1. **统一任务调度中心**：所有后端定时任务必须通过 `stock-backend` 内的 `com.stock.schedule` 调度体系完成，禁止在业务类中直接使用 `@Scheduled` 注解。
 2. **任务注册方式**：
    - 在 `job_config` 表中配置任务的 `jobName` / `beanName` / `methodName` / `cronExpression`；
    - 或在 `JobBootstrap` 中添加默认任务配置，由 `JobSchedulerService` 统一加载。
@@ -173,7 +209,7 @@ Java 后端当前不维护标准自动化测试；涉及后端行为重构前必
 #### 接口日志规范（强制）
 
 1. **全局入口日志**：所有 `@RestController` 接口方法必须在入口打印一行访问日志，用于排查“接口未返回/超时/参数异常”等问题。  
-   - 已通过全局 AOP 切面 `com.stock.backend.logging.ApiLoggingAspect` 统一实现，记录控制器类名、方法名和关键参数。
+   - 已通过全局 AOP 切面 `com.stock.platform.aspect.ApiLoggingAspect` 统一实现，记录控制器类名、方法名和关键参数。
 2. **控制器级业务日志**：对于关键接口（如分页查询、大批量操作、模型训练/同步等），在 Controller 方法内 **显式增加入口业务日志**，说明：
    - 调用的业务含义（例如“分页查询模型训练记录”）
    - 关键请求参数（如 `keyword`、`current`、`pageSize` 等）
@@ -632,4 +668,4 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 **Agent 特别指令**:
 - 本项目无自动化测试，不要生成或要求补充测试用例；质量依赖代码审查与手工验证。
 - 项目只允许 `stock-backend`、`stock-agent`、`stock-frontend` 三个 Maven 业务模块；后端领域使用包和子目录组织，禁止恢复旧的内部 Maven 模块。
-<!-- AI_GENERATE_END----------------------------------------- -->
+<!-- AI_GENERATE_END------------------------------------------------ -->

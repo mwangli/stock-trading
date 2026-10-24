@@ -19,7 +19,7 @@ spring:
   data:
     mongodb:
       auto-index-creation: true
-      uri: ${SPRING_DATA_MONGODB_URI:mongodb://admin:${MONGO_ROOT_PASSWORD:}@${DATABASE_HOST:localhost}:27017/stock_trading?authSource=admin}
+      uri: mongodb://admin:${MONGO_ROOT_PASSWORD}@117.72.216.67:27017/stock_trading?authSource=admin
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}
       port: ${SPRING_DATA_REDIS_PORT:6379}
@@ -44,6 +44,7 @@ internal:
 
 backend:
   service:
+    enabled: ${BACKEND_SERVICE_ENABLED:true}
     base-url: ${BACKEND_SERVICE_BASE_URL:http://localhost:8080}
     connect-timeout-ms: ${BACKEND_SERVICE_CONNECT_TIMEOUT_MS:3000}
     read-timeout-ms: ${BACKEND_SERVICE_READ_TIMEOUT_MS:10000}
@@ -110,3 +111,38 @@ logging:
     root: INFO
     com.stock.agent: INFO
     ai.djl: INFO
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  data:
+    mongodb:
+      uri: mongodb://admin:${MONGO_ROOT_PASSWORD}@stock-mongo:27017/stock_trading?authSource=admin
+    redis:
+      host: stock-redis
+      port: 6379
+      password: ${REDIS_PASSWORD}
+
+backend:
+  service:
+    base-url: http://stock-backend:8080
+
+agent:
+  embedding:
+    model-path: /app/model-files/embedding
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  devtools:
+    add-properties: true
+    restart:
+      enabled: true
+      poll-interval: 1s
+      quiet-period: 400ms
+    livereload:
+      enabled: false

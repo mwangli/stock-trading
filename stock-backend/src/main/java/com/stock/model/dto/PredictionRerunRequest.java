@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -22,4 +22,4 @@ public class PredictionRerunRequest {
     /** 发起重算的操作人名称。 */
     private String operatorName;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

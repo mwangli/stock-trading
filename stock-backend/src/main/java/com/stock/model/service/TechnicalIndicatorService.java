@@ -1,7 +1,7 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.model.service;
 
-import com.stock.data.entity.StockPrice;
+import com.stock.market.dto.StockPriceItemDto;
 import org.springframework.stereotype.Service;
 import org.ta4j.core.BarSeries;
 import org.ta4j.core.BaseBarSeries;
@@ -37,9 +37,9 @@ public class TechnicalIndicatorService {
      * @param prices 按交易日期升序排列的股票日线数据
      * @return 以指标名称为键、与行情序列等长的数值数组
      */
-    public Map<String, double[]> calculateIndicators(List<StockPrice> prices) {
+    public Map<String, double[]> calculateIndicators(List<StockPriceItemDto> prices) {
         BarSeries series = new BaseBarSeries("stock");
-        for (StockPrice price : prices) {
+        for (StockPriceItemDto price : prices) {
             ZonedDateTime zdt = ZonedDateTime.of(price.getDate().atStartOfDay(), ZoneId.systemDefault());
             series.addBar(zdt, price.getOpenPrice(), price.getHighPrice(), price.getLowPrice(), price.getClosePrice(), price.getVolume());
         }
@@ -93,4 +93,4 @@ public class TechnicalIndicatorService {
     }
 }
 
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

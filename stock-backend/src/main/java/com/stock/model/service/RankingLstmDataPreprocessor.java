@@ -1,13 +1,12 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START------
 package com.stock.model.service;
 
-import com.stock.data.entity.HistoricalStockUniverseEntity;
-import com.stock.data.entity.ModelReferenceDailyBar;
-import com.stock.data.entity.ModelStockDailyBar;
-import com.stock.data.entity.OpenTradabilityStatus;
-import com.stock.data.entity.StockAdjustmentFactor;
-import com.stock.data.entity.StockDailyTradabilityFact;
-import com.stock.data.entity.StockPrice;
+import com.stock.market.dto.HistoricalStockUniverseDto;
+import com.stock.market.dto.ModelReferenceDailyBarDto;
+import com.stock.market.dto.ModelStockDailyBarDto;
+import com.stock.market.dto.StockAdjustmentFactorDto;
+import com.stock.market.dto.StockTradabilityDto;
+import com.stock.market.dto.StockPriceItemDto;
 import com.stock.model.config.LstmTrainingConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,8 +38,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RankingLstmDataPreprocessor {
 
-    /** `v5` 特征契约版本。 */
-    public static final String FEATURE_VERSION = "cross-sectional-adjusted-v5";
+    /** 价格、横截面和新闻快照联合特征契约版本。 */
+    public static final String FEATURE_VERSION = "cross-sectional-temporal-news-v6";
 
     /** `v5` 标签契约版本。 */
     public static final String LABEL_VERSION = "open-open-neutral-cost-v1";
@@ -51,8 +50,14 @@ public class RankingLstmDataPreprocessor {
     /** `v5` 成本模型版本。 */
     public static final String COST_MODEL_VERSION = "round-trip-threshold-v1";
 
-    /** 连续特征数量。 */
-    public static final int CONTINUOUS_FEATURE_COUNT = 28;
+    /** 价格、技术面和横截面连续特征数量。 */
+    public static final int BASE_CONTINUOUS_FEATURE_COUNT = 28;
+
+    /** `temporal-news-v1` 新闻连续特征数量。 */
+    public static final int NEWS_FEATURE_COUNT = NewsFeatureSnapshotService.FEATURE_COUNT;
+
+    /** 连续特征总数。 */
+    public static final int CONTINUOUS_FEATURE_COUNT = BASE_CONTINUOUS_FEATURE_COUNT + NEWS_FEATURE_COUNT;
 
     /** 总特征数量，末尾三列为股票、行业和市场字典索引。 */
     public static final int FEATURE_COUNT = CONTINUOUS_FEATURE_COUNT + 3;
@@ -71,17 +76,17 @@ public class RankingLstmDataPreprocessor {
     public LstmDataPreprocessor.ProcessedData process(
             RankingLstmTrainingDataService.RankingTrainingDataBundle bundle) {
         validateConfiguration();
-        Map<String, Map<LocalDate, StockAdjustmentFactor>> factorMap = groupFactors(
+        Map<String, Map<LocalDate, StockAdjustmentFactorDto>> factorMap = groupFactors(
                 bundle.getAdjustmentFactors());
-        Map<String, List<HistoricalStockUniverseEntity>> universeMap = bundle.getHistoricalUniverse().stream()
-                .collect(Collectors.groupingBy(HistoricalStockUniverseEntity::getStockCode,
+        Map<String, List<HistoricalStockUniverseDto>> universeMap = bundle.getHistoricalUniverse().stream()
+                .collect(Collectors.groupingBy(HistoricalStockUniverseDto::getStockCode,
                         LinkedHashMap::new, Collectors.toList()));
-        Map<String, StockDailyTradabilityFact> tradabilityMap = bundle.getTradabilityFacts().stream()
+        Map<String, StockTradabilityDto> tradabilityMap = bundle.getTradabilityFacts().stream()
                 .collect(Collectors.toMap(
                         item -> key(item.getStockCode(), item.getTradeDate()),
                         Function.identity(), this::latestTradabilityFact, LinkedHashMap::new));
-        Map<LocalDate, ModelReferenceDailyBar> benchmarkMap = byDate(bundle.getBenchmarkBars());
-        Map<String, Map<LocalDate, ModelReferenceDailyBar>> industryReferenceMap = new LinkedHashMap<>();
+        Map<LocalDate, ModelReferenceDailyBarDto> benchmarkMap = byDate(bundle.getBenchmarkBars());
+        Map<String, Map<LocalDate, ModelReferenceDailyBarDto>> industryReferenceMap = new LinkedHashMap<>();
         bundle.getIndustryReferenceBars().forEach(
                 (industry, bars) -> industryReferenceMap.put(industry, byDate(bars)));
 
@@ -97,7 +102,7 @@ public class RankingLstmDataPreprocessor {
         for (Map.Entry<String, List<AdjustedBar>> entry : adjustedSeries.entrySet()) {
             buildStockSamples(entry.getKey(), entry.getValue(), universeMap.getOrDefault(entry.getKey(), List.of()),
                     tradabilityMap, benchmarkMap, industryReferenceMap, marketBreadth, dictionaries,
-                    provisionalSamples);
+                    bundle.getNewsFeatureSnapshots(), provisionalSamples);
         }
         if (provisionalSamples.isEmpty()) {
             throw new IllegalStateException("v5 数据门禁后没有可交易训练样本");
@@ -171,14 +176,14 @@ public class RankingLstmDataPreprocessor {
                 || featureStdDeviations == null || featureStdDeviations.length != CONTINUOUS_FEATURE_COUNT) {
             throw new IllegalStateException("v5 模型制品中的标准化参数维度不正确");
         }
-        Map<String, Map<LocalDate, StockAdjustmentFactor>> factorMap = groupFactors(
+        Map<String, Map<LocalDate, StockAdjustmentFactorDto>> factorMap = groupFactors(
                 bundle.getAdjustmentFactors());
-        Map<String, List<HistoricalStockUniverseEntity>> universeMap = bundle.getHistoricalUniverse().stream()
-                .collect(Collectors.groupingBy(HistoricalStockUniverseEntity::getStockCode,
+        Map<String, List<HistoricalStockUniverseDto>> universeMap = bundle.getHistoricalUniverse().stream()
+                .collect(Collectors.groupingBy(HistoricalStockUniverseDto::getStockCode,
                         LinkedHashMap::new, Collectors.toList()));
         Map<String, List<AdjustedBar>> adjustedSeries = buildAdjustedSeries(bundle.getPriceSeries(), factorMap);
-        Map<LocalDate, ModelReferenceDailyBar> benchmarkMap = byDate(bundle.getBenchmarkBars());
-        Map<String, Map<LocalDate, ModelReferenceDailyBar>> industryReferenceMap = new LinkedHashMap<>();
+        Map<LocalDate, ModelReferenceDailyBarDto> benchmarkMap = byDate(bundle.getBenchmarkBars());
+        Map<String, Map<LocalDate, ModelReferenceDailyBarDto>> industryReferenceMap = new LinkedHashMap<>();
         bundle.getIndustryReferenceBars().forEach(
                 (industry, bars) -> industryReferenceMap.put(industry, byDate(bars)));
         Map<LocalDate, Double> marketBreadth = calculateMarketBreadth(adjustedSeries);
@@ -191,20 +196,21 @@ public class RankingLstmDataPreprocessor {
                 continue;
             }
             AdjustedBar latest = bars.get(bars.size() - 1);
-            HistoricalStockUniverseEntity context = resolveUniverse(
+            HistoricalStockUniverseDto context = resolveUniverse(
                     universeMap.getOrDefault(entry.getKey(), List.of()), latest.tradeDate());
             if (context == null) {
                 continue;
             }
             Map<String, double[]> indicators = technicalIndicatorService.calculateIndicators(
-                    toStockPrices(entry.getKey(), bars));
+                    toStockPriceItemDtos(entry.getKey(), bars));
             float[][] input = new float[config.getSequenceLength()][FEATURE_COUNT];
             int start = bars.size() - config.getSequenceLength();
             for (int timeStep = 0; timeStep < config.getSequenceLength(); timeStep++) {
                 int barIndex = start + timeStep;
                 double[] features = buildContinuousFeatures(
-                        bars, barIndex, indicators, benchmarkMap,
-                        industryReferenceMap.get(context.getIndustryCode()), marketBreadth);
+                        entry.getKey(), bars, barIndex, indicators, benchmarkMap,
+                        industryReferenceMap.get(context.getIndustryCode()), marketBreadth,
+                        bundle.getNewsFeatureSnapshots());
                 for (int featureIndex = 0; featureIndex < CONTINUOUS_FEATURE_COUNT; featureIndex++) {
                     double deviation = featureStdDeviations[featureIndex] < 1.0E-6D
                             ? 1D : featureStdDeviations[featureIndex];
@@ -226,34 +232,34 @@ public class RankingLstmDataPreprocessor {
         return result;
     }
 
-    private Map<String, Map<LocalDate, StockAdjustmentFactor>> groupFactors(
-            List<StockAdjustmentFactor> factors) {
-        Map<String, Map<LocalDate, StockAdjustmentFactor>> result = new LinkedHashMap<>();
-        for (StockAdjustmentFactor factor : factors) {
+    private Map<String, Map<LocalDate, StockAdjustmentFactorDto>> groupFactors(
+            List<StockAdjustmentFactorDto> factors) {
+        Map<String, Map<LocalDate, StockAdjustmentFactorDto>> result = new LinkedHashMap<>();
+        for (StockAdjustmentFactorDto factor : factors) {
             result.computeIfAbsent(factor.getStockCode(), ignored -> new LinkedHashMap<>())
                     .put(factor.getTradeDate(), factor);
         }
         return result;
     }
 
-    private Map<LocalDate, ModelReferenceDailyBar> byDate(List<ModelReferenceDailyBar> bars) {
-        return bars.stream().collect(Collectors.toMap(ModelReferenceDailyBar::getTradeDate,
+    private Map<LocalDate, ModelReferenceDailyBarDto> byDate(List<ModelReferenceDailyBarDto> bars) {
+        return bars.stream().collect(Collectors.toMap(ModelReferenceDailyBarDto::getTradeDate,
                 Function.identity(), (left, right) -> right, LinkedHashMap::new));
     }
 
     private Map<String, List<AdjustedBar>> buildAdjustedSeries(
-            Map<String, List<ModelStockDailyBar>> priceSeries,
-            Map<String, Map<LocalDate, StockAdjustmentFactor>> factorMap) {
+            Map<String, List<ModelStockDailyBarDto>> priceSeries,
+            Map<String, Map<LocalDate, StockAdjustmentFactorDto>> factorMap) {
         Map<String, List<AdjustedBar>> result = new LinkedHashMap<>();
-        for (Map.Entry<String, List<ModelStockDailyBar>> entry : priceSeries.entrySet()) {
-            Map<LocalDate, StockAdjustmentFactor> stockFactors = factorMap.get(entry.getKey());
+        for (Map.Entry<String, List<ModelStockDailyBarDto>> entry : priceSeries.entrySet()) {
+            Map<LocalDate, StockAdjustmentFactorDto> stockFactors = factorMap.get(entry.getKey());
             if (stockFactors == null || stockFactors.isEmpty()) {
                 log.warn("跳过缺少复权因子的 v5 股票序列: stockCode={}", entry.getKey());
                 continue;
             }
             List<AdjustedBar> adjusted = new ArrayList<>();
-            for (ModelStockDailyBar bar : entry.getValue()) {
-                StockAdjustmentFactor factor = stockFactors.get(bar.getTradeDate());
+            for (ModelStockDailyBarDto bar : entry.getValue()) {
+                StockAdjustmentFactorDto factor = stockFactors.get(bar.getTradeDate());
                 if (factor == null || factor.getForwardFactor() == null
                         || factor.getForwardFactor().doubleValue() <= 0D) {
                     adjusted.clear();
@@ -300,11 +306,11 @@ public class RankingLstmDataPreprocessor {
     }
 
     private StableDictionaries buildDictionaries(
-            Set<String> stockCodes, Map<String, List<HistoricalStockUniverseEntity>> universeMap) {
+            Set<String> stockCodes, Map<String, List<HistoricalStockUniverseDto>> universeMap) {
         Set<String> industries = new TreeSet<>();
         Set<String> markets = new TreeSet<>();
-        for (List<HistoricalStockUniverseEntity> records : universeMap.values()) {
-            for (HistoricalStockUniverseEntity record : records) {
+        for (List<HistoricalStockUniverseDto> records : universeMap.values()) {
+            for (HistoricalStockUniverseDto record : records) {
                 addText(industries, record.getIndustryCode());
                 addText(markets, record.getMarket());
             }
@@ -332,20 +338,21 @@ public class RankingLstmDataPreprocessor {
     private void buildStockSamples(
             String stockCode,
             List<AdjustedBar> bars,
-            List<HistoricalStockUniverseEntity> universeRecords,
-            Map<String, StockDailyTradabilityFact> tradabilityMap,
-            Map<LocalDate, ModelReferenceDailyBar> benchmarkMap,
-            Map<String, Map<LocalDate, ModelReferenceDailyBar>> industryReferenceMap,
+            List<HistoricalStockUniverseDto> universeRecords,
+            Map<String, StockTradabilityDto> tradabilityMap,
+            Map<LocalDate, ModelReferenceDailyBarDto> benchmarkMap,
+            Map<String, Map<LocalDate, ModelReferenceDailyBarDto>> industryReferenceMap,
             Map<LocalDate, Double> marketBreadth,
             StableDictionaries dictionaries,
+            Map<String, double[]> newsFeatureSnapshots,
             List<ProvisionalSample> target) {
-        List<StockPrice> technicalPrices = toStockPrices(stockCode, bars);
+        List<StockPriceItemDto> technicalPrices = toStockPriceItemDtos(stockCode, bars);
         Map<String, double[]> indicators = technicalIndicatorService.calculateIndicators(technicalPrices);
         int sequenceLength = config.getSequenceLength();
         for (int targetIndex = sequenceLength; targetIndex + 1 < bars.size(); targetIndex++) {
             AdjustedBar entry = bars.get(targetIndex);
             AdjustedBar exit = bars.get(targetIndex + 1);
-            HistoricalStockUniverseEntity context = resolveUniverse(universeRecords, entry.tradeDate());
+            HistoricalStockUniverseDto context = resolveUniverse(universeRecords, entry.tradeDate());
             if (context == null || !isTradable(tradabilityMap, stockCode, entry.tradeDate(), exit.tradeDate())) {
                 continue;
             }
@@ -360,8 +367,9 @@ public class RankingLstmDataPreprocessor {
             for (int timeStep = 0; timeStep < sequenceLength; timeStep++) {
                 int barIndex = start + timeStep;
                 double[] features = buildContinuousFeatures(
-                        bars, barIndex, indicators, benchmarkMap,
-                        industryReferenceMap.get(context.getIndustryCode()), marketBreadth);
+                        stockCode, bars, barIndex, indicators, benchmarkMap,
+                        industryReferenceMap.get(context.getIndustryCode()), marketBreadth,
+                        newsFeatureSnapshots);
                 for (int featureIndex = 0; featureIndex < CONTINUOUS_FEATURE_COUNT; featureIndex++) {
                     input[timeStep][featureIndex] = (float) features[featureIndex];
                 }
@@ -375,10 +383,10 @@ public class RankingLstmDataPreprocessor {
         }
     }
 
-    private List<StockPrice> toStockPrices(String stockCode, List<AdjustedBar> bars) {
-        List<StockPrice> result = new ArrayList<>(bars.size());
+    private List<StockPriceItemDto> toStockPriceItemDtos(String stockCode, List<AdjustedBar> bars) {
+        List<StockPriceItemDto> result = new ArrayList<>(bars.size());
         for (AdjustedBar bar : bars) {
-            StockPrice price = new StockPrice();
+            StockPriceItemDto price = new StockPriceItemDto();
             price.setCode(stockCode);
             price.setDate(bar.tradeDate());
             price.setOpenPrice(BigDecimal.valueOf(bar.open()));
@@ -393,12 +401,14 @@ public class RankingLstmDataPreprocessor {
     }
 
     private double[] buildContinuousFeatures(
+            String stockCode,
             List<AdjustedBar> bars,
             int index,
             Map<String, double[]> indicators,
-            Map<LocalDate, ModelReferenceDailyBar> benchmarkMap,
-            Map<LocalDate, ModelReferenceDailyBar> industryMap,
-            Map<LocalDate, Double> marketBreadth) {
+            Map<LocalDate, ModelReferenceDailyBarDto> benchmarkMap,
+            Map<LocalDate, ModelReferenceDailyBarDto> industryMap,
+            Map<LocalDate, Double> marketBreadth,
+            Map<String, double[]> newsFeatureSnapshots) {
         AdjustedBar current = bars.get(index);
         double previousClose = index == 0 ? current.close() : bars.get(index - 1).close();
         double benchmarkReturn = referenceDailyReturn(benchmarkMap, current.tradeDate());
@@ -434,6 +444,13 @@ public class RankingLstmDataPreprocessor {
         feature[25] = clamp(stockReturn - industryReturn);
         feature[26] = marketBreadth.getOrDefault(current.tradeDate(), 0D);
         feature[27] = current.amount() > 0D && current.volume() > 0D ? 1D : 0D;
+        double[] newsFeatures = newsFeatureSnapshots == null ? null
+                : newsFeatureSnapshots.get(key(stockCode, current.tradeDate()));
+        if (newsFeatures == null || newsFeatures.length != NEWS_FEATURE_COUNT) {
+            throw new IllegalStateException("缺少 temporal-news-v1 快照: "
+                    + key(stockCode, current.tradeDate()));
+        }
+        System.arraycopy(newsFeatures, 0, feature, BASE_CONTINUOUS_FEATURE_COUNT, NEWS_FEATURE_COUNT);
         return feature;
     }
 
@@ -631,10 +648,10 @@ public class RankingLstmDataPreprocessor {
         }
     }
 
-    private HistoricalStockUniverseEntity resolveUniverse(
-            List<HistoricalStockUniverseEntity> records, LocalDate date) {
-        HistoricalStockUniverseEntity selected = null;
-        for (HistoricalStockUniverseEntity record : records) {
+    private HistoricalStockUniverseDto resolveUniverse(
+            List<HistoricalStockUniverseDto> records, LocalDate date) {
+        HistoricalStockUniverseDto selected = null;
+        for (HistoricalStockUniverseDto record : records) {
             boolean started = record.getEffectiveFrom() == null || !record.getEffectiveFrom().isAfter(date);
             boolean active = record.getEffectiveTo() == null || !record.getEffectiveTo().isBefore(date);
             boolean listed = record.getListedDate() == null || !record.getListedDate().isAfter(date);
@@ -650,16 +667,16 @@ public class RankingLstmDataPreprocessor {
     }
 
     private boolean isTradable(
-            Map<String, StockDailyTradabilityFact> facts, String code, LocalDate entryDate, LocalDate exitDate) {
-        StockDailyTradabilityFact entry = facts.get(key(code, entryDate));
-        StockDailyTradabilityFact exit = facts.get(key(code, exitDate));
+            Map<String, StockTradabilityDto> facts, String code, LocalDate entryDate, LocalDate exitDate) {
+        StockTradabilityDto entry = facts.get(key(code, entryDate));
+        StockTradabilityDto exit = facts.get(key(code, exitDate));
         return entry != null && exit != null
-                && entry.getOpenBuyStatus() == OpenTradabilityStatus.ALLOWED
-                && exit.getOpenSellStatus() == OpenTradabilityStatus.ALLOWED;
+                && "ALLOWED".equals(entry.getOpenBuyStatus())
+                && "ALLOWED".equals(exit.getOpenSellStatus());
     }
 
-    private StockDailyTradabilityFact latestTradabilityFact(
-            StockDailyTradabilityFact left, StockDailyTradabilityFact right) {
+    private StockTradabilityDto latestTradabilityFact(
+            StockTradabilityDto left, StockTradabilityDto right) {
         if (left.getCapturedAt() == null) {
             return right;
         }
@@ -670,21 +687,21 @@ public class RankingLstmDataPreprocessor {
     }
 
     private Double openToOpenReturn(
-            Map<LocalDate, ModelReferenceDailyBar> bars, LocalDate entryDate, LocalDate exitDate) {
-        ModelReferenceDailyBar entry = bars.get(entryDate);
-        ModelReferenceDailyBar exit = bars.get(exitDate);
+            Map<LocalDate, ModelReferenceDailyBarDto> bars, LocalDate entryDate, LocalDate exitDate) {
+        ModelReferenceDailyBarDto entry = bars.get(entryDate);
+        ModelReferenceDailyBarDto exit = bars.get(exitDate);
         if (entry == null || exit == null || safe(entry.getOpenPrice()) <= MIN_VALUE) {
             return null;
         }
         return safe(exit.getOpenPrice()) / safe(entry.getOpenPrice()) - 1D;
     }
 
-    private double referenceDailyReturn(Map<LocalDate, ModelReferenceDailyBar> bars, LocalDate date) {
+    private double referenceDailyReturn(Map<LocalDate, ModelReferenceDailyBarDto> bars, LocalDate date) {
         if (bars == null || bars.isEmpty()) {
             return 0D;
         }
-        List<ModelReferenceDailyBar> ordered = bars.values().stream()
-                .sorted(Comparator.comparing(ModelReferenceDailyBar::getTradeDate)).toList();
+        List<ModelReferenceDailyBarDto> ordered = bars.values().stream()
+                .sorted(Comparator.comparing(ModelReferenceDailyBarDto::getTradeDate)).toList();
         for (int index = 1; index < ordered.size(); index++) {
             if (date.equals(ordered.get(index).getTradeDate())) {
                 return clamp(ratio(safe(ordered.get(index).getClosePrice()),
@@ -695,9 +712,9 @@ public class RankingLstmDataPreprocessor {
     }
 
     private double referencePeriodReturn(
-            Map<LocalDate, ModelReferenceDailyBar> bars, LocalDate date, int period) {
-        List<ModelReferenceDailyBar> ordered = bars.values().stream()
-                .sorted(Comparator.comparing(ModelReferenceDailyBar::getTradeDate)).toList();
+            Map<LocalDate, ModelReferenceDailyBarDto> bars, LocalDate date, int period) {
+        List<ModelReferenceDailyBarDto> ordered = bars.values().stream()
+                .sorted(Comparator.comparing(ModelReferenceDailyBarDto::getTradeDate)).toList();
         for (int index = 0; index < ordered.size(); index++) {
             if (date.equals(ordered.get(index).getTradeDate()) && index >= period) {
                 return clamp(ratio(safe(ordered.get(index).getClosePrice()),
@@ -806,7 +823,7 @@ public class RankingLstmDataPreprocessor {
 
     private void validateConfiguration() {
         if (config.getInputSize() != FEATURE_COUNT) {
-            throw new IllegalStateException("v5 LSTM inputSize 必须为 " + FEATURE_COUNT
+            throw new IllegalStateException("v6 LSTM inputSize 必须为 " + FEATURE_COUNT
                     + "，当前配置为 " + config.getInputSize());
         }
         if (config.getTargetReturnScale() <= 0D || config.getCostThreshold() < 0D) {
@@ -872,4 +889,4 @@ public class RankingLstmDataPreprocessor {
     private record NormalizationStats(double[] means, double[] standardDeviations) {
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END------

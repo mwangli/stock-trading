@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-------
 package com.stock.model.service;
 
 import ai.djl.Model;
@@ -8,13 +8,14 @@ import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
 import ai.djl.training.ParameterStore;
-import com.stock.data.entity.StockPrice;
+import com.stock.market.dto.StockPriceItemDto;
 import com.stock.model.config.LstmTrainingConfig;
 import com.stock.model.dto.LstmPredictionResultDto;
 import com.stock.model.entity.LstmModelDocument;
-import com.stock.model.model.StockLSTMModel;
-import com.stock.model.model.RankingLSTMModel;
-import com.stock.model.model.LstmArchitectureType;
+import com.stock.model.algorithm.StockLSTMModel;
+import com.stock.model.algorithm.MasterTransformerModel;
+import com.stock.model.algorithm.RankingLSTMModel;
+import com.stock.model.algorithm.LstmArchitectureType;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -171,6 +172,18 @@ public class LstmModelRuntimeService {
             artifact = artifactService.loadArtifact(modelVersionId);
         }
         artifactService.validateMetadata(artifact.metadata());
+        Properties metadata = loadMetadata(artifact.metadata());
+        boolean rankingModel = LstmModelArtifactService.MODEL_VERSION.equals(
+                metadata.getProperty("modelVersion"));
+        int sequenceLength = intMetadata(metadata, "sequenceLength", config.getSequenceLength());
+        int fetchDays = Math.max(sequenceLength + 21, sequenceLength * 2);
+        PredictionBatchInput preparedInput = rankingModel
+                ? buildRankingBatchInput(codes, fetchDays, baseTradeDate, metadata)
+                : buildLegacyBatchInput(codes, fetchDays, baseTradeDate);
+        if (preparedInput.validCodes().isEmpty()) {
+            return;
+        }
+        int effectiveBatchSize = resolveForwardBatchSize(metadata, batchSize);
 
         try (NDManager manager = NDManager.newBaseManager("PyTorch");
              Model model = Model.newInstance("lstm-global-predict", "PyTorch")) {
@@ -182,16 +195,16 @@ public class LstmModelRuntimeService {
             }
 
             int succeeded = 0;
-            for (int start = 0; start < codes.size(); start += batchSize) {
-                int end = Math.min(codes.size(), start + batchSize);
-                List<String> currentCodes = List.copyOf(codes.subList(start, end));
+            for (int start = 0; start < preparedInput.validCodes().size(); start += effectiveBatchSize) {
+                int end = Math.min(preparedInput.validCodes().size(), start + effectiveBatchSize);
+                PredictionBatchInput currentInput = slice(preparedInput, start, end);
                 Map<String, LstmPredictionResultDto> chunkResults = predictLoadedModelBatch(
-                        currentCodes, baseTradeDate, artifact, manager, model);
+                        currentInput, artifact, metadata, manager, model);
                 succeeded += chunkResults.size();
-                batchConsumer.accept(currentCodes, chunkResults);
+                batchConsumer.accept(currentInput.validCodes(), chunkResults);
             }
             log.info("共享 LSTM 分块预测完成: requested={}, succeeded={}, batchSize={}, modelVersion={}",
-                    codes.size(), succeeded, batchSize, MODEL_VERSION);
+                    codes.size(), succeeded, effectiveBatchSize, MODEL_VERSION);
         } catch (CancellationException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -201,19 +214,13 @@ public class LstmModelRuntimeService {
     }
 
     private Map<String, LstmPredictionResultDto> predictLoadedModelBatch(
-            List<String> codes,
-            LocalDate baseTradeDate,
+            PredictionBatchInput batchInput,
             LstmModelArtifactService.ModelArtifact artifact,
+            Properties metadata,
             NDManager manager,
             Model model) {
-        Properties metadata = loadMetadata(artifact.metadata());
         boolean rankingModel = LstmModelArtifactService.MODEL_VERSION.equals(
                 metadata.getProperty("modelVersion"));
-        int sequenceLength = intMetadata(metadata, "sequenceLength", config.getSequenceLength());
-        int fetchDays = Math.max(sequenceLength + 21, sequenceLength * 2);
-        PredictionBatchInput batchInput = rankingModel
-                ? buildRankingBatchInput(codes, fetchDays, baseTradeDate, metadata)
-                : buildLegacyBatchInput(codes, fetchDays, baseTradeDate);
         List<String> validCodes = batchInput.validCodes();
         List<float[][]> inputs = batchInput.inputs();
         List<Double> lastClosePrices = batchInput.lastClosePrices();
@@ -242,9 +249,25 @@ public class LstmModelRuntimeService {
         }
     }
 
+    private int resolveForwardBatchSize(Properties metadata, int requestedBatchSize) {
+        if (LstmArchitectureType.MASTER_TRANSFORMER.name()
+                .equals(metadata.getProperty("architectureType"))) {
+            return intMetadata(metadata, "crossSectionBatchSize", config.getBatchSize());
+        }
+        return requestedBatchSize;
+    }
+
+    private PredictionBatchInput slice(PredictionBatchInput source, int start, int end) {
+        return new PredictionBatchInput(
+                List.copyOf(source.validCodes().subList(start, end)),
+                List.copyOf(source.inputs().subList(start, end)),
+                List.copyOf(source.lastClosePrices().subList(start, end)),
+                List.copyOf(source.baseTradeDates().subList(start, end)));
+    }
+
     private PredictionBatchInput buildLegacyBatchInput(
             List<String> codes, int fetchDays, LocalDate baseTradeDate) {
-        Map<String, List<StockPrice>> priceSeries = trainingDataService.loadPriceSeries(
+        Map<String, List<StockPriceItemDto>> priceSeries = trainingDataService.loadPriceSeries(
                 codes, fetchDays, baseTradeDate);
         Map<String, LstmDataPreprocessor.StockContext> contexts = trainingDataService.loadStockContexts(codes);
         List<String> validCodes = new ArrayList<>();
@@ -252,7 +275,7 @@ public class LstmModelRuntimeService {
         List<Double> lastClosePrices = new ArrayList<>();
         List<LocalDate> baseTradeDates = new ArrayList<>();
         for (String code : codes) {
-            List<StockPrice> prices = priceSeries.getOrDefault(code, List.of());
+            List<StockPriceItemDto> prices = priceSeries.getOrDefault(code, List.of());
             LstmDataPreprocessor.PredictionInput input = dataPreprocessor.buildPredictionInput(
                     prices, contexts.getOrDefault(code, LstmDataPreprocessor.StockContext.basic(code)));
             if (input == null) {
@@ -437,8 +460,16 @@ public class LstmModelRuntimeService {
     private Block createModelBlock(String metadataText) {
         Properties metadata = loadMetadata(metadataText);
         if (LstmModelArtifactService.MODEL_VERSION.equals(metadata.getProperty("modelVersion"))) {
+            LstmArchitectureType architectureType = LstmArchitectureType.valueOf(
+                    metadata.getProperty("architectureType"));
+            if (architectureType == LstmArchitectureType.MASTER_TRANSFORMER) {
+                return new MasterTransformerModel(
+                        intMetadata(metadata, "inputSize", RankingLstmDataPreprocessor.FEATURE_COUNT),
+                        intMetadata(metadata, "hiddenSize", config.getHiddenSize()),
+                        intMetadata(metadata, "sequenceLength", config.getSequenceLength()));
+            }
             return new RankingLSTMModel(
-                    LstmArchitectureType.valueOf(metadata.getProperty("architectureType")),
+                    architectureType,
                     intMetadata(metadata, "inputSize", RankingLstmDataPreprocessor.FEATURE_COUNT),
                     intMetadata(metadata, "hiddenSize", config.getHiddenSize()),
                     intMetadata(metadata, "numLayers", config.getNumLayers()),
@@ -540,4 +571,4 @@ public class LstmModelRuntimeService {
             List<LocalDate> baseTradeDates) {
     }
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-------

@@ -1,7 +1,8 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START---------
 package com.stock.model.entity;
 
 import lombok.Data;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -38,10 +39,13 @@ public class LstmModelDocument {
     private String modelVersion;
     private String parentModelVersionId;
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String trainingConfigJson;
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String inputContractJson;
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String metricsJson;
     private String featureVersion;
     private String labelVersion;
@@ -56,8 +60,9 @@ public class LstmModelDocument {
     /** GridFS 中的模型参数文件 ID。 */
     private String parameterFileId;
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String normalizationParams;
     private Double trainLoss;
     private Double valLoss;
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END---------

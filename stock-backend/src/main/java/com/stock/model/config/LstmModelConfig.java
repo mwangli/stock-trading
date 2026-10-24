@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.model.config;
 
 import lombok.Data;
@@ -32,4 +32,4 @@ public class LstmModelConfig {
     private double groupHeadScale = 0.1D;
     private double residualHeadScale = 0.1D;
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

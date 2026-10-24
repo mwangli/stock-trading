@@ -1,7 +1,8 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START------------
 package com.stock.model.entity;
 
 import lombok.Data;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -102,6 +103,7 @@ public class ModelPredictionBatchDocument {
 
     /** 最近一次评估队列执行失败原因。 */
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String evaluationErrorMessage;
 
     /** 预测覆盖率。 */
@@ -193,6 +195,7 @@ public class ModelPredictionBatchDocument {
 
     /** 能力结论说明。 */
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String abilityMessage;
 
     /** 交易门禁状态：DISABLED、OBSERVE_ONLY 或 TRADE_ELIGIBLE。 */
@@ -200,10 +203,12 @@ public class ModelPredictionBatchDocument {
 
     /** 交易门禁原因，禁止仅以能力等级代替交易准入结论。 */
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String tradingEligibilityReason;
 
     /** 批次进度说明。 */
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String progressMessage;
 
     /** 操作人。 */
@@ -217,6 +222,7 @@ public class ModelPredictionBatchDocument {
 
     /** 失败原因。 */
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String errorMessage;
 
     /** 记录创建时间。 */
@@ -229,4 +235,4 @@ public class ModelPredictionBatchDocument {
     @Version
     private Long version;
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END------------

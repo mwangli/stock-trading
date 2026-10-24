@@ -1,10 +1,13 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 import { create } from 'zustand';
 
 export interface AgentConversationMessage {
   role: 'user' | 'assistant';
   content: string;
-  status?: 'COMPLETED' | 'ACCEPTED' | 'DEGRADED' | 'NEEDS_CONFIRMATION' | 'FAILED';
+  status?: string;
+  taskId?: string;
+  createdAt?: string;
+  evidenceSummary?: string;
   evidenceRefs?: string[];
   capabilities?: string[];
   uncertainty?: string;
@@ -22,6 +25,8 @@ interface AgentConversationState {
   setSessionId: (ownerId: string, sessionId: string) => void;
   setQuestion: (ownerId: string, question: string) => void;
   appendMessage: (ownerId: string, message: AgentConversationMessage) => void;
+  replaceConversation: (ownerId: string, sessionId: string, messages: AgentConversationMessage[]) => void;
+  resetConversation: (ownerId: string) => void;
   setLoading: (ownerId: string, loading: boolean) => void;
 }
 
@@ -51,8 +56,14 @@ export const useAgentConversationStore = create<AgentConversationState>((set) =>
   appendMessage: (ownerId, nextMessage) => set((state) => state.ownerId === ownerId
     ? { messages: [...state.messages, nextMessage] }
     : state),
+  replaceConversation: (ownerId, sessionId, messages) => set((state) => state.ownerId === ownerId
+    ? { sessionId, messages, agentOpen: true, question: '', loading: false }
+    : state),
+  resetConversation: (ownerId) => set((state) => state.ownerId === ownerId
+    ? { ...emptyConversation }
+    : state),
   setLoading: (ownerId, loading) => set((state) => state.ownerId === ownerId
     ? { loading }
     : state),
 }));
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

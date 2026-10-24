@@ -15,16 +15,12 @@ server:
 
 # AI_GENERATE_START -----
 spring:
-  config:
-    import:
-      - optional:file:.env[.properties]
-      - optional:file:../.env[.properties]
   application:
     name: stock-backend
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/stock_trading?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
-    username: ${SPRING_DATASOURCE_USERNAME:stock}
-    password: ${SPRING_DATASOURCE_PASSWORD:}
+    url: jdbc:mysql://${MYSQL_HOST_IP:117.72.216.67}:6033/stock_trading?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: root
+    password: ${MYSQL_ROOT_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: ${MYSQL_MAX_POOL_SIZE:10}
@@ -49,7 +45,7 @@ spring:
   data:
     mongodb:
       auto-index-creation: true
-      uri: ${SPRING_DATA_MONGODB_URI:mongodb://admin:${MONGO_ROOT_PASSWORD:}@${DATABASE_HOST:localhost}:27017/stock_trading?authSource=admin}
+      uri: mongodb://admin:${MONGO_ROOT_PASSWORD}@117.72.216.67:27017/stock_trading?authSource=admin
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}
       port: ${SPRING_DATA_REDIS_PORT:6379}
@@ -87,12 +83,12 @@ spring:
 
 # ZX证券协议参数。默认关闭，真实值必须由运行环境注入。
 zxbroker:
-  enabled: ${ZXBROKER_ENABLED:false}
+  enabled: true
   mobile-code: ${ZXBROKER_MOBILE_CODE:}
   account: ${ZXBROKER_ACCOUNT:}
   encoded-password: ${ZXBROKER_ENCODED_PASSWORD:}
 
-  captcha-auto-submit-enabled: ${ZXBROKER_CAPTCHA_AUTO_SUBMIT_ENABLED:false}
+  captcha-auto-submit-enabled: true
   ocr-timeout-ms: 20000
   ocr-request-interval-ms: 1050
   baidu-ocr-api-key: ${BAIDU_OCR_API_KEY:}
@@ -107,7 +103,7 @@ zxbroker:
 
 trading:
   # 自动真实交易固定参数；真实委托仍必须显式开启总门禁。
-  real-write-enabled: ${TRADING_REAL_WRITE_ENABLED:false}
+  real-write-enabled: false
   history-month-interval-ms: 500
   auto-buy-amount: 1000
   auto-candidate-limit: 1
@@ -145,7 +141,7 @@ models:
       # 预测基准日或评估目标日行情覆盖率达到该阈值后才允许入队。
       min-price-coverage-rate: ${LSTM_PREDICTION_MIN_PRICE_COVERAGE_RATE:0.95}
     sequence-length: 60
-    input-size: 31
+    input-size: 56
     architecture-type: RANKING_LSTM
     random-seed: 20261023
     data-source: MODEL_FOUNDATION
@@ -194,6 +190,7 @@ models:
   sentiment:
     train-ratio: 0.8
     max-sequence-length: 128
+    calibration-temperature: ${FINBERT_CALIBRATION_TEMPERATURE:1.0}
     labels: [neutral, positive, negative]
     model-name: sentiment-finbert
     model-version: finbert-tone-chinese-e91b1a3a
@@ -201,6 +198,38 @@ models:
     model-path: ${SENTIMENT_MODEL_PATH:./model-files/sentiment}
     max-single-file-bytes: ${SENTIMENT_MAX_SINGLE_FILE_BYTES:2147483648}
     max-total-artifact-bytes: ${SENTIMENT_MAX_TOTAL_ARTIFACT_BYTES:4294967296}
+  sentiment-shadow:
+    enabled: ${MENGZI_SHADOW_ENABLED:false}
+    model-name: ${MENGZI_MODEL_NAME:sentiment-mengzi}
+    model-version: ${MENGZI_MODEL_VERSION:unconfigured}
+    model-path: ${MENGZI_MODEL_PATH:./model-files/sentiment-mengzi}
+    encoder-path: ${MENGZI_ENCODER_PATH:./model-files/sentiment-mengzi-encoder}
+    encoder-version: ${MENGZI_ENCODER_VERSION:mengzi-bert-base-fin-3e525b4d}
+    max-sequence-length: ${MENGZI_MAX_SEQUENCE_LENGTH:256}
+    calibration-temperature: ${MENGZI_CALIBRATION_TEMPERATURE:1.0}
+    batch-size: ${MENGZI_SHADOW_BATCH_SIZE:200}
+    lookback-days: ${MENGZI_SHADOW_LOOKBACK_DAYS:7}
+    minimum-shadow-trading-days: 20
+    minimum-evaluated-samples: 500
+    minimum-rank-ic: 0.02
+    minimum-direction-accuracy: 0.52
+    maximum-failure-rate: 0.01
+    minimum-top-decile-net-return-improvement: 0.0
+    minimum-output-std: 0.02
+    rollback-window-trading-days: 10
+    labels: [neutral, positive, negative]
+  temporal-ensemble:
+    master-shadow-enabled: ${MASTER_SHADOW_ENABLED:true}
+    production-blend-enabled: ${TEMPORAL_ENSEMBLE_ENABLED:true}
+    news-features-embedded: ${TEMPORAL_NEWS_FEATURES_EMBEDDED:true}
+    news-feature-version: ${TEMPORAL_NEWS_FEATURE_VERSION:temporal-news-v1}
+    initial-master-weight: 0.10
+    rolling-window-trading-days: 20
+    minimum-evaluated-trading-days: 10
+    minimum-evaluated-samples: 500
+    minimum-output-std: 0.01
+    weight-advantage-multiplier: 2.0
+    maximum-master-weight: 0.50
 
 # 策略配置
 strategy:
@@ -230,19 +259,28 @@ app:
       retention-days: ${NEWS_RETENTION_DAYS:365}
       # 单只股票最多保留的新闻和公告总条数，0 表示不启用数量限制。
       max-records-per-stock: ${NEWS_MAX_RECORDS_PER_STOCK:300}
+      collection-backfill:
+        # 历史治理回填的 MongoDB 读取批次，任务默认暂停。
+        batch-size: ${NEWS_COLLECTION_BACKFILL_BATCH_SIZE:500}
+        # 单次任务最大处理量，达到后保留游标等待下一次运行。
+        max-documents-per-run: ${NEWS_COLLECTION_BACKFILL_MAX_DOCUMENTS_PER_RUN:50000}
+      collection-quality:
+        # Rank IC 和扣成本收益 Gate 通过前禁止事件事实参与选股排名。
+        ranking-enabled: ${NEWS_EVENT_RANKING_ENABLED:false}
+        # 风险召回率和误报率 Gate 通过前禁止事件事实阻断交易候选。
+        risk-gate-enabled: ${NEWS_EVENT_RISK_GATE_ENABLED:false}
   lstm:
     data-quality:
       minimum-training-stock-count: 100
       minimum-train-samples: 1000
       minimum-validation-samples: 200
       minimum-test-samples: 200
-      maximum-validation-loss: 1.0
-      minimum-test-rank-ic: 0.02
-      minimum-top-decile-net-return: 0.0
       minimum-walk-forward-fold-count: 3
-      minimum-walk-forward-mean-rank-ic: 0.02
-      minimum-walk-forward-rank-ic-ir: 0.30
-      minimum-positive-rank-ic-window-ratio: 0.60
+      maximum-validation-loss: 1.0
+      minimum-net-return: 0.0
+      maximum-drawdown: 0.20
+      minimum-initial-quality-score: 0.20
+      minimum-quality-score-advantage: 0.05
       minimum-available-memory-mb: 256
       skip-training-codes: []
 
@@ -256,3 +294,33 @@ app:
       # 类型: HTTP 或 SOCKS5
       type: HTTP
 
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:mysql://stock-mysql:3306/stock_trading?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: stock
+    password: ${MYSQL_PASSWORD}
+  data:
+    mongodb:
+      uri: mongodb://admin:${MONGO_ROOT_PASSWORD}@stock-mongo:27017/stock_trading?authSource=admin
+    redis:
+      host: stock-redis
+      port: 6379
+      password: ${REDIS_PASSWORD}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  devtools:
+    add-properties: true
+    restart:
+      enabled: true
+      poll-interval: 1s
+      quiet-period: 400ms
+    livereload:
+      enabled: false

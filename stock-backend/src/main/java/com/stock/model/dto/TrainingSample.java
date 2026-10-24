@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -35,4 +35,4 @@ public class TrainingSample {
     /** 新闻或公告发布时间，用于按时间划分数据集。 */
     private LocalDateTime publishedAt;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

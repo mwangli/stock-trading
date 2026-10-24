@@ -1,4 +1,4 @@
-// AI_GENERATE_START--
+// AI_GENERATE_START---
 package com.stock.model.service;
 
 import com.stock.model.entity.ModelOperationAuditDocument;
@@ -52,4 +52,4 @@ class ModelOperationAuditService {
         return message.substring(0, Math.min(1000, message.length()));
     }
 }
-// AI_GENERATE_END--
+// AI_GENERATE_END---

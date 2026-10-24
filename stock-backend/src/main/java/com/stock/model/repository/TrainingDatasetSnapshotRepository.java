@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.model.repository;
 
 import com.stock.model.entity.TrainingDatasetSnapshotDocument;
@@ -46,4 +46,4 @@ public interface TrainingDatasetSnapshotRepository
      */
     List<TrainingDatasetSnapshotDocument> findByStatus(String status);
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

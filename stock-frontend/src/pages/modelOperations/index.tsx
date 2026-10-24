@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------------------------------------------
+// AI_GENERATE_START----------------------------------------------------------------
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
 import {
@@ -11,9 +11,9 @@ import {
   Input,
   InputNumber,
   Modal,
-  Popconfirm,
   Progress,
   Row,
+  Select,
   Space,
   Spin,
   Statistic,
@@ -60,6 +60,7 @@ interface ModelVersion {
   trainingConfigJson?: string;
   inputContractJson?: string;
   metricsJson?: string;
+  architectureType?: string;
   createdAt?: string;
   active: boolean;
   previous: boolean;
@@ -103,6 +104,26 @@ interface Overview {
   trainingRunning: boolean;
   activeModelHealthy: boolean;
   activeVersionScore?: ModelScoreSummary;
+  temporalEnsemble?: TemporalModelEnsembleStatus;
+}
+
+interface TemporalModelEnsembleStatus {
+  masterShadowEnabled: boolean;
+  productionBlendConfigured: boolean;
+  productionEnabled: boolean;
+  masterModelId?: string;
+  rankingLstmWeight: number;
+  masterWeight: number;
+  evaluatedTradingDays: number;
+  evaluatedSamples: number;
+  rankingLstmRankIc?: number;
+  masterRankIc?: number;
+  rankingLstmIcIr?: number;
+  masterIcIr?: number;
+  rankingLstmQualityScore?: number;
+  masterQualityScore?: number;
+  decisionReason?: string;
+  updatedAt?: string;
 }
 
 interface ModelScoreSummary {
@@ -137,6 +158,7 @@ interface StartTrainingRequest {
   epochs?: number;
   batchSize?: number;
   learningRate?: number;
+  architectureType?: 'RANKING_LSTM' | 'DUAL_ATTENTION_RANKING_LSTM' | 'MASTER_TRANSFORMER';
   operatorName?: string;
 }
 
@@ -262,13 +284,13 @@ const defaultTrainingValues: StartTrainingRequest = {
   epochs: 100,
   batchSize: 32,
   learningRate: 0.001,
+  architectureType: 'RANKING_LSTM',
 };
 
 const statusColors: Record<string, string> = {
   ACTIVE: 'green',
-  READY: 'cyan',
   CANDIDATE: 'gold',
-  ARCHIVED: 'default',
+  RETIRED: 'default',
   QUEUED: 'blue',
   RUNNING: 'processing',
   SUCCEEDED: 'green',
@@ -654,43 +676,6 @@ const ModelOperations: React.FC = () => {
     }
   };
 
-  const activateVersion = async (versionId: string) => {
-    setOperating(true);
-    try {
-      const response = await request.post(`/modelVersions/activate/${versionId}`, undefined, {
-        params: { operatorName: operatorName.trim() || 'web-console' },
-      }) as ApiResponse<OperationResponse>;
-      const result = readApiData(response, localizedText('激活模型版本失败', 'Failed to activate model version'));
-      message.success(result.message);
-      await refreshAfterOperation();
-    } catch (cause) {
-      message.error(getApiErrorMessage(cause, localizedText('激活模型版本失败', 'Failed to activate model version')));
-    } finally {
-      setOperating(false);
-    }
-  };
-
-  const rollback = async () => {
-    if (!overview?.modelName) {
-      return;
-    }
-    setOperating(true);
-    try {
-      const response = await request.post(
-        `/modelVersions/rollback/${encodeURIComponent(overview.modelName)}`,
-        undefined,
-        { params: { operatorName: operatorName.trim() || 'web-console' } },
-      ) as ApiResponse<OperationResponse>;
-      const result = readApiData(response, localizedText('回滚模型版本失败', 'Failed to roll back model version'));
-      message.success(result.message);
-      await refreshAfterOperation();
-    } catch (cause) {
-      message.error(getApiErrorMessage(cause, localizedText('回滚模型版本失败', 'Failed to roll back model version')));
-    } finally {
-      setOperating(false);
-    }
-  };
-
   const showVersionDetails = async (versionId: string) => {
     setDetailsOpen(true);
     setDetailsLoading(true);
@@ -815,6 +800,7 @@ const ModelOperations: React.FC = () => {
       ),
     },
     { title: localizedText('特征版本', 'Feature Version'), dataIndex: 'featureVersion', key: 'featureVersion', width: 140 },
+    { title: localizedText('架构', 'Architecture'), dataIndex: 'architectureType', key: 'architectureType', width: 190, render: (value?: string) => value || '-' },
     { title: localizedText('轮次', 'Epoch'), dataIndex: 'epoch', key: 'epoch', width: 80 },
     { title: localizedText('训练损失', 'Training Loss'), dataIndex: 'trainLoss', key: 'trainLoss', width: 110, render: formatLoss },
     { title: localizedText('验证损失', 'Validation Loss'), dataIndex: 'valLoss', key: 'valLoss', width: 110, render: formatLoss },
@@ -824,23 +810,12 @@ const ModelOperations: React.FC = () => {
       title: localizedText('操作', 'Actions'),
       key: 'actions',
       fixed: 'right',
-      width: 180,
+      width: 100,
       render: (_, record) => (
         <Space size="small" wrap>
           <Button type="link" size="small" className="!px-0" onClick={() => void showTrainingRecords(record)}>
             {localizedText('训练记录', 'Training Records')}
           </Button>
-          {record.status === 'READY' && (
-            <Popconfirm
-              title={localizedText('激活该模型版本？', 'Activate this model version?')}
-              description={localizedText('生产推理指针将切换到该版本，当前版本会成为回滚版本。', 'The production inference pointer will switch to this version, and the current version will become the rollback version.')}
-              okText={localizedText('确认激活', 'Activate')}
-              cancelText={localizedText('取消', 'Cancel')}
-              onConfirm={() => void activateVersion(record.id)}
-            >
-              <Button type="primary" size="small">{localizedText('激活', 'Activate')}</Button>
-            </Popconfirm>
-          )}
         </Space>
       ),
     },
@@ -1137,6 +1112,34 @@ const ModelOperations: React.FC = () => {
                 </span>
               )}
             </div>
+            <Descriptions className="mt-4" bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }}>
+              <Descriptions.Item label={localizedText('MASTER 影子', 'MASTER Shadow')}>
+                <Tag color={overview?.temporalEnsemble?.masterShadowEnabled ? 'processing' : 'default'}>
+                  {overview?.temporalEnsemble?.masterShadowEnabled ? localizedText('已开启', 'Enabled') : localizedText('已关闭', 'Disabled')}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('生产融合', 'Production Blend')}>
+                <Tag color={overview?.temporalEnsemble?.productionEnabled ? 'green' : 'default'}>
+                  {overview?.temporalEnsemble?.productionEnabled
+                    ? localizedText('已自动融合', 'Auto Blended')
+                    : overview?.temporalEnsemble?.productionBlendConfigured
+                      ? localizedText('观察中', 'Observing')
+                      : localizedText('配置关闭', 'Disabled')}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('模型权重', 'Model Weights')}>
+                LSTM {formatPercent(overview?.temporalEnsemble?.rankingLstmWeight)} / MASTER {formatPercent(overview?.temporalEnsemble?.masterWeight)}
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('影子样本', 'Shadow Samples')}>
+                {overview?.temporalEnsemble?.evaluatedTradingDays ?? 0} {localizedText('日', 'days')} / {overview?.temporalEnsemble?.evaluatedSamples ?? 0} {localizedText('条', 'samples')}
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('综合评分', 'Quality Scores')} span={2}>
+                LSTM {formatNumber(overview?.temporalEnsemble?.rankingLstmQualityScore)} / MASTER {formatNumber(overview?.temporalEnsemble?.masterQualityScore)}
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('自动决策', 'Automatic Decision')} span={2}>
+                {overview?.temporalEnsemble?.decisionReason || '-'}
+              </Descriptions.Item>
+            </Descriptions>
           </Card>
         </Col>
         <Col className="model-overview-col" xs={24} lg={8}>
@@ -1146,23 +1149,6 @@ const ModelOperations: React.FC = () => {
               value={overview?.previousVersion?.modelVersion || localizedText('无', 'None')}
               prefix={<RollbackOutlined />}
             />
-            <div className="model-overview-card-footer">
-              <Popconfirm
-                title={localizedText('回滚到上一版本？', 'Rollback to previous version?')}
-                description={localizedText('当前生产版本和上一版本指针将交换。', 'The current production pointer and previous version pointer will be exchanged.')}
-                okText={localizedText('确认回滚', 'Confirm Rollback')}
-                cancelText={localizedText('取消', 'Cancel')}
-                onConfirm={() => void rollback()}
-              >
-                <Button
-                  danger
-                  size="small"
-                  icon={<RollbackOutlined />}
-                >
-                  {localizedText('执行回滚', 'Rollback')}
-                </Button>
-              </Popconfirm>
-            </div>
           </Card>
         </Col>
       </Row>
@@ -1391,7 +1377,7 @@ const ModelOperations: React.FC = () => {
           dataSource={versions}
           loading={versionsLoading}
           locale={{ emptyText: <Empty description={t('modelOperations.versionsEmpty')} /> }}
-          scroll={{ x: 1480 }}
+          scroll={{ x: 1660 }}
           pagination={{
             current: versionPage,
             pageSize,
@@ -1434,6 +1420,13 @@ const ModelOperations: React.FC = () => {
         <Form<StartTrainingRequest> form={form} layout="vertical">
           <Form.Item name="operatorName" label="操作人" rules={[{ required: true, message: '请输入操作人' }]}>
             <Input maxLength={64} />
+          </Form.Item>
+          <Form.Item name="architectureType" label="候选模型架构" rules={[{ required: true, message: '请选择模型架构' }]}>
+            <Select options={[
+              { value: 'RANKING_LSTM', label: 'Ranking LSTM' },
+              { value: 'DUAL_ATTENTION_RANKING_LSTM', label: 'Dual Attention Ranking LSTM' },
+              { value: 'MASTER_TRANSFORMER', label: 'MASTER Shadow Candidate' },
+            ]} />
           </Form.Item>
           <Row gutter={16}>
             <Col span={12}>
@@ -1513,4 +1506,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END-------------------------------------------------------------
+// AI_GENERATE_END----------------------------------------------------------------

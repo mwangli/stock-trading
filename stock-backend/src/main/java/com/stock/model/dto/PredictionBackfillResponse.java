@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -43,4 +43,4 @@ public class PredictionBackfillResponse {
     /** 操作结果说明。 */
     private String message;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

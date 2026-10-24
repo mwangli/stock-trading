@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START-----
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -75,7 +75,16 @@ public class SentimentHealthDto {
     /** 离线评估结论。 */
     private String evaluationConclusion;
 
+    /** Mengzi 官方基础编码器是否完成清单和 SHA-256 校验。 */
+    private boolean mengziEncoderVerified;
+
+    /** Mengzi 官方基础编码器目录。 */
+    private String mengziEncoderPath;
+
+    /** Mengzi 三分类候选状态，不得与编码器加载状态混淆。 */
+    private String mengziClassifierStatus;
+
     /** 最近一次加载或检查错误。 */
     private String lastError;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END-----

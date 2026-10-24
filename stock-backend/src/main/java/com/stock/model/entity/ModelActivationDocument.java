@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.model.entity;
 
 import lombok.Data;
@@ -38,4 +38,4 @@ public class ModelActivationDocument {
 
     private LocalDateTime activatedAt;
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

@@ -1,19 +1,22 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.stock.data.repository.StockInfoRepository;
+import com.stock.market.service.MarketDataQueryService;
 import com.stock.model.config.LstmDataQualityConfig;
 import com.stock.model.config.LstmTrainingConfig;
 import com.stock.model.dto.ModelOperationResponse;
 import com.stock.model.dto.ModelTrainingRequest;
 import com.stock.model.entity.LstmModelDocument;
+import com.stock.model.entity.ModelActivationDocument;
 import com.stock.model.entity.ModelTrainingRunDocument;
 import com.stock.model.entity.TrainingDatasetSnapshotDocument;
 import com.stock.model.repository.LstmModelRepository;
+import com.stock.model.repository.ModelActivationRepository;
 import com.stock.model.repository.ModelTrainingRunRepository;
-import com.stock.model.model.LstmArchitectureType;
+import com.stock.model.algorithm.LstmArchitectureType;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -39,13 +42,17 @@ public class ModelOperationsService {
     private static final int DEFAULT_TRAIN_DAYS = 2000;
     private final LstmTrainingConfig trainingConfig;
     private final LstmDataQualityConfig dataQualityConfig;
-    private final StockInfoRepository stockInfoRepository;
+    private final MarketDataQueryService marketDataQueryService;
     private final LstmTrainerService lstmTrainerService;
     private final TrainingDatasetSnapshotService snapshotService;
     private final LstmModelRepository lstmModelRepository;
+    private final ModelActivationRepository activationRepository;
     private final ModelTrainingRunRepository trainingRunRepository;
     private final ObjectMapper objectMapper;
     private final ModelOperationAuditService auditService;
+    private final ModelPromotionPolicy promotionPolicy;
+    private final ModelActivationService activationService;
+    private final TemporalModelEnsembleService temporalModelEnsembleService;
     private final Executor applicationTaskExecutor;
 
     /**
@@ -53,34 +60,46 @@ public class ModelOperationsService {
      *
      * @param trainingConfig LSTM 训练配置
      * @param dataQualityConfig LSTM 数据质量配置
-     * @param stockInfoRepository 股票信息仓库
+     * @param marketDataQueryService 市场数据查询服务
      * @param lstmTrainerService LSTM 训练服务
      * @param snapshotService 训练数据快照服务
      * @param lstmModelRepository LSTM 模型仓库
+     * @param activationRepository 模型激活指针仓库
      * @param trainingRunRepository 训练运行仓库
      * @param objectMapper JSON 序列化器
      * @param auditService 模型操作审计服务
+     * @param promotionPolicy 模型自动晋级策略
+     * @param activationService 基础模型自动激活服务
+     * @param temporalModelEnsembleService MASTER 候选和融合服务
      * @param applicationTaskExecutor 应用异步执行器
      */
     public ModelOperationsService(LstmTrainingConfig trainingConfig,
                                   LstmDataQualityConfig dataQualityConfig,
-                                  StockInfoRepository stockInfoRepository,
+                                  MarketDataQueryService marketDataQueryService,
                                   LstmTrainerService lstmTrainerService,
                                   TrainingDatasetSnapshotService snapshotService,
                                   LstmModelRepository lstmModelRepository,
+                                  ModelActivationRepository activationRepository,
                                   ModelTrainingRunRepository trainingRunRepository,
                                   ObjectMapper objectMapper,
                                   ModelOperationAuditService auditService,
+                                  ModelPromotionPolicy promotionPolicy,
+                                  ModelActivationService activationService,
+                                  TemporalModelEnsembleService temporalModelEnsembleService,
                                   @Qualifier("applicationTaskExecutor") Executor applicationTaskExecutor) {
         this.trainingConfig = trainingConfig;
         this.dataQualityConfig = dataQualityConfig;
-        this.stockInfoRepository = stockInfoRepository;
+        this.marketDataQueryService = marketDataQueryService;
         this.lstmTrainerService = lstmTrainerService;
         this.snapshotService = snapshotService;
         this.lstmModelRepository = lstmModelRepository;
+        this.activationRepository = activationRepository;
         this.trainingRunRepository = trainingRunRepository;
         this.objectMapper = objectMapper;
         this.auditService = auditService;
+        this.promotionPolicy = promotionPolicy;
+        this.activationService = activationService;
+        this.temporalModelEnsembleService = temporalModelEnsembleService;
         this.applicationTaskExecutor = applicationTaskExecutor;
     }
 
@@ -110,7 +129,7 @@ public class ModelOperationsService {
                 ? new ModelTrainingRequest() : request;
         int days = safeRequest.getDays() == null ? DEFAULT_TRAIN_DAYS : safeRequest.getDays();
         validateRange("训练天数", days, 90, 2000);
-        List<String> stockCodes = stockInfoRepository.findAllCodes().stream()
+        List<String> stockCodes = marketDataQueryService.findTradableStockCodes().stream()
                 .filter(code -> dataQualityConfig.getSkipTrainingCodes() == null
                         || !dataQualityConfig.getSkipTrainingCodes().contains(code))
                 .toList();
@@ -165,6 +184,10 @@ public class ModelOperationsService {
     public synchronized ModelOperationResponse startScheduledTraining() {
         ModelTrainingRequest request = new ModelTrainingRequest();
         request.setOperatorName("job-scheduler");
+        LstmArchitectureType baselineArchitecture = trainingConfig.getArchitectureType()
+                == LstmArchitectureType.MASTER_TRANSFORMER
+                ? LstmArchitectureType.RANKING_LSTM : trainingConfig.getArchitectureType();
+        request.setArchitectureType(baselineArchitecture.name());
         return submitTraining(request, "SCHEDULER", "job-scheduler", false);
     }
 
@@ -260,7 +283,7 @@ public class ModelOperationsService {
                         "message", executionCheck.message())));
                 throw new IllegalStateException(executionCheck.message());
             }
-            List<String> stockCodes = stockInfoRepository.findAllCodes().stream()
+            List<String> stockCodes = marketDataQueryService.findTradableStockCodes().stream()
                     .filter(code -> dataQualityConfig.getSkipTrainingCodes() == null
                             || !dataQualityConfig.getSkipTrainingCodes().contains(code))
                     .toList();
@@ -292,23 +315,22 @@ public class ModelOperationsService {
             run.setCandidateModelVersionId(candidateVersionId);
             try {
                 lstmTrainerService.validateModelVersion(candidateVersionId);
-                validateCandidateQuality(result);
-                candidate.setStatus("READY");
-                lstmModelRepository.save(candidate);
+                double candidateScore = validateCandidateQuality(result);
+                handleCandidate(candidate, architectureType, candidateScore, run.getTriggeredBy());
             } catch (RuntimeException exception) {
-                candidate.setStatus("REJECTED");
+                candidate.setStatus("RETIRED");
                 lstmModelRepository.save(candidate);
                 throw exception;
             }
 
             run.setStatus("SUCCEEDED");
             run.setProgressStage("COMPLETED");
-            run.setProgressMessage("训练完成，候选模型已通过校验");
+            run.setProgressMessage("训练完成，候选模型已完成自动评估");
             run.setProgressPercent(100);
             run.setEstimatedRemainingSeconds(0L);
             run.setLastProgressAt(LocalDateTime.now());
             auditService.record(run.getModelName(), "TRAIN_COMPLETED", run.getTriggeredBy(),
-                    null, candidateVersionId, true, "候选模型训练和兼容性校验通过");
+                    null, candidateVersionId, true, "候选模型训练和自动评估完成");
         } catch (LstmTrainerService.TrainingCancelledException exception) {
             log.info("受控模型训练已停止: runId={}, reason={}", runId, exception.getMessage());
             run.setStatus("CANCELLED");
@@ -330,6 +352,35 @@ public class ModelOperationsService {
         } finally {
             run.setFinishedAt(LocalDateTime.now());
             trainingRunRepository.save(run);
+        }
+        if ("SUCCEEDED".equals(run.getStatus())
+                && "SCHEDULER".equals(run.getTriggerSource())
+                && architectureType != LstmArchitectureType.MASTER_TRANSFORMER
+                && isActiveCandidate(run.getCandidateModelVersionId())
+                && temporalModelEnsembleService.shouldTrainMasterCandidate(
+                        run.getCandidateModelVersionId())) {
+            submitScheduledMasterTraining(days, epochs, batchSize, learningRate);
+        }
+    }
+
+    private boolean isActiveCandidate(String candidateVersionId) {
+        return candidateVersionId != null
+                && lstmModelRepository.findById(candidateVersionId)
+                .map(candidate -> "ACTIVE".equals(candidate.getStatus()))
+                .orElse(false);
+    }
+
+    private void submitScheduledMasterTraining(
+            int days, int epochs, int batchSize, double learningRate) {
+        ModelTrainingRequest request = new ModelTrainingRequest();
+        request.setDays(days);
+        request.setEpochs(epochs);
+        request.setBatchSize(batchSize);
+        request.setLearningRate(learningRate);
+        request.setArchitectureType(LstmArchitectureType.MASTER_TRANSFORMER.name());
+        request.setOperatorName("job-scheduler");
+        synchronized (this) {
+            submitTraining(request, "SCHEDULER_CHAIN", "job-scheduler", false);
         }
     }
 
@@ -391,7 +442,7 @@ public class ModelOperationsService {
     }
 
     private TrainingCheckResult evaluateTrainingEnvironment() {
-        if (stockInfoRepository.countTradable() <= 0) {
+        if (marketDataQueryService.countTradableStocks() <= 0) {
             return new TrainingCheckResult(false, "股票基础数据为空，无法训练");
         }
         long minimumMemoryBytes = Math.max(1L, dataQualityConfig.getMinimumAvailableMemoryMb())
@@ -427,7 +478,7 @@ public class ModelOperationsService {
         }
     }
 
-    private void validateCandidateQuality(LstmTrainerService.TrainingResult result) {
+    private double validateCandidateQuality(LstmTrainerService.TrainingResult result) {
         if (result.getTrainedStocks() < dataQualityConfig.getMinimumTrainingStockCount()) {
             throw new IllegalStateException("候选模型有效股票数量未达到质量阈值");
         }
@@ -445,48 +496,86 @@ public class ModelOperationsService {
         if (result.isOutputCollapsed()) {
             throw new IllegalStateException("候选模型输出发生塌缩");
         }
-        if (result.getTestRankIc() == null
-                || result.getTestRankIc() < dataQualityConfig.getMinimumTestRankIc()) {
-            throw new IllegalStateException("候选模型独立测试 Rank IC 未达到阈值: "
-                    + result.getTestRankIc() + " < " + dataQualityConfig.getMinimumTestRankIc());
+        double walkForwardMeanRankIc = requireFiniteMetric(
+                "Walk-Forward 平均 Rank IC", result.getWalkForwardMeanRankIc());
+        double walkForwardTopDecileNetReturn = requireFiniteMetric(
+                "Walk-Forward Top 10% 成本后收益", result.getWalkForwardTopDecileNetReturn());
+        double maximumDrawdown = requireFiniteMetric(
+                "Walk-Forward 最大回撤", result.getMaximumDrawdown());
+        promotionPolicy.requirePerformanceHardGate(walkForwardTopDecileNetReturn, maximumDrawdown);
+        return promotionPolicy.qualityScore(
+                walkForwardMeanRankIc, walkForwardTopDecileNetReturn, maximumDrawdown);
+    }
+
+    private double requireFiniteMetric(String metricName, Double value) {
+        if (value == null || !Double.isFinite(value)) {
+            throw new IllegalStateException("候选模型" + metricName + "不是有效数值: " + value);
         }
-        if (result.getTestTopDecileNetReturn() == null
-                || result.getTestTopDecileNetReturn() <= dataQualityConfig.getMinimumTopDecileNetReturn()) {
-            throw new IllegalStateException("候选模型 Top 10% 成本后收益未达到阈值: "
-                    + result.getTestTopDecileNetReturn());
+        return value;
+    }
+
+    private void handleCandidate(
+            LstmModelDocument candidate, LstmArchitectureType architectureType,
+            double candidateScore, String operatorName) {
+        candidate.setStatus("CANDIDATE");
+        lstmModelRepository.save(candidate);
+        if (architectureType == LstmArchitectureType.MASTER_TRANSFORMER) {
+            temporalModelEnsembleService.registerMasterCandidate(candidate.getId());
+            auditService.record(candidate.getModelName(), "MASTER_CANDIDATE_REGISTERED", operatorName,
+                    null, candidate.getId(), true, "MASTER 候选已自动进入影子评估");
+            return;
         }
-        if (result.getWalkForwardFoldCount() < dataQualityConfig.getMinimumWalkForwardFoldCount()) {
-            throw new IllegalStateException("候选模型 Walk-Forward 测试窗口不足: "
-                    + result.getWalkForwardFoldCount() + " < "
-                    + dataQualityConfig.getMinimumWalkForwardFoldCount());
+        Double activeScore = activeQualityScore(candidate);
+        if (promotionPolicy.shouldPromote(candidateScore, activeScore)) {
+            activationService.activateCandidate(candidate.getId(), operatorName);
+            return;
         }
-        if (result.getWalkForwardMeanRankIc() == null
-                || result.getWalkForwardMeanRankIc() <= dataQualityConfig.getMinimumWalkForwardMeanRankIc()) {
-            throw new IllegalStateException("候选模型 Walk-Forward 平均 Rank IC 未达到阈值: "
-                    + result.getWalkForwardMeanRankIc());
+        candidate.setStatus("RETIRED");
+        lstmModelRepository.save(candidate);
+        auditService.record(candidate.getModelName(), "AUTO_PROMOTE_SKIPPED", operatorName,
+                null, candidate.getId(), true,
+                "候选综合质量分未达到自动晋级要求: candidate=" + candidateScore
+                        + ", active=" + activeScore);
+    }
+
+    private Double activeQualityScore(LstmModelDocument candidate) {
+        ModelActivationDocument activation = activationRepository.findByModelName(candidate.getModelName())
+                .orElse(null);
+        if (activation == null || activation.getActiveModelVersionId() == null
+                || activation.getActiveModelVersionId().isBlank()) {
+            return null;
         }
-        if (result.getWalkForwardRankIcIr() == null
-                || result.getWalkForwardRankIcIr() <= dataQualityConfig.getMinimumWalkForwardRankIcIr()) {
-            throw new IllegalStateException("候选模型 Walk-Forward Rank ICIR 未达到阈值: "
-                    + result.getWalkForwardRankIcIr());
+        LstmModelDocument active = lstmModelRepository.findById(activation.getActiveModelVersionId()).orElse(null);
+        if (active == null || active.getMetricsJson() == null || active.getMetricsJson().isBlank()) {
+            return null;
         }
-        if (result.getPositiveRankIcWindowRatio() == null
-                || result.getPositiveRankIcWindowRatio()
-                < dataQualityConfig.getMinimumPositiveRankIcWindowRatio()) {
-            throw new IllegalStateException("候选模型正 Rank IC 窗口占比未达到阈值: "
-                    + result.getPositiveRankIcWindowRatio());
+        try {
+            JsonNode metrics = objectMapper.readTree(active.getMetricsJson());
+            if (metrics == null || !metrics.isObject()) {
+                return null;
+            }
+            Double activeRankIc = comparableMetric(metrics, "walkForwardMeanRankIc");
+            Double activeNetReturn = comparableMetric(metrics, "walkForwardTopDecileNetReturn");
+            Double activeDrawdown = comparableMetric(metrics, "walkForwardMaximumDrawdown");
+            if (activeRankIc == null || activeNetReturn == null || activeDrawdown == null) {
+                return null;
+            }
+            return promotionPolicy.qualityScore(activeRankIc, activeNetReturn, activeDrawdown);
+        } catch (JsonProcessingException | RuntimeException exception) {
+            log.warn("当前生产模型指标无法解析，按无可比较生产评分处理: modelId={}", active.getId());
+            return null;
         }
-        if (result.getWalkForwardTopDecileNetReturn() == null
-                || result.getWalkForwardTopDecileNetReturn()
-                <= dataQualityConfig.getMinimumTopDecileNetReturn()) {
-            throw new IllegalStateException("候选模型 Walk-Forward Top 10% 成本后收益未达到阈值: "
-                    + result.getWalkForwardTopDecileNetReturn());
+    }
+
+    private Double comparableMetric(JsonNode metrics, String fieldName) {
+        if (!metrics.has(fieldName) || metrics.path(fieldName).isNull()) {
+            return null;
         }
-        if (result.getBrierScore() == null || result.getBrierBaseline() == null
-                || result.getBrierScore() > result.getBrierBaseline()) {
-            throw new IllegalStateException("候选模型 Brier Score 劣于实际上涨比例基线: score="
-                    + result.getBrierScore() + ", baseline=" + result.getBrierBaseline());
+        JsonNode valueNode = metrics.path(fieldName);
+        if (!valueNode.isNumber() || !Double.isFinite(valueNode.doubleValue())) {
+            throw new IllegalStateException("当前激活模型指标无效: " + fieldName);
         }
+        return valueNode.doubleValue();
     }
 
     private void validateRange(String name, Integer value, int min, int max) {
@@ -548,8 +637,8 @@ public class ModelOperationsService {
             }
             return type;
         } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException("architectureType 仅支持 RANKING_LSTM 或 "
-                    + "DUAL_ATTENTION_RANKING_LSTM", exception);
+            throw new IllegalArgumentException("architectureType 仅支持 RANKING_LSTM、"
+                    + "DUAL_ATTENTION_RANKING_LSTM 或 MASTER_TRANSFORMER", exception);
         }
     }
 
@@ -592,4 +681,4 @@ public class ModelOperationsService {
     }
 
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END------------------

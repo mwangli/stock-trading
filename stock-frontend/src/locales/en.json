@@ -46,6 +46,8 @@
     "sentimentModel": "Sentiment Model",
     "strategyConfig": "Trading Strategy",
     "agent": "Intelligent Decision",
+    "agentConversation": "Agent Conversation",
+    "adaptiveStrategy": "Adaptive Strategy",
     "jobs": "Job Management",
     "pageTitles": {
       "dashboard": "Dashboard",
@@ -58,6 +60,8 @@
       "sentimentModel": "Sentiment Model",
       "strategyConfig": "Trading Strategy",
       "agent": "Intelligent Decision",
+      "agentConversation": "Agent Conversation",
+      "adaptiveStrategy": "Adaptive Strategy",
       "jobs": "Job Management",
       "settings": "Settings"
     },

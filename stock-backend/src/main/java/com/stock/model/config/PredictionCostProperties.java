@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.model.config;
 
 import lombok.Data;
@@ -33,4 +33,4 @@ public class PredictionCostProperties {
     /** 预测候选的额外安全边际收益率。 */
     private BigDecimal candidateSafetyMarginRate = new BigDecimal("0.0010");
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

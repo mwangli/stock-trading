@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.model.vo;
 
 import lombok.Builder;
@@ -44,4 +44,4 @@ public class SentimentArtifactInspection {
     /** 制品不可用时的原因。 */
     String errorMessage;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

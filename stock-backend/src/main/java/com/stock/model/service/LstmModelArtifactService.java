@@ -1,17 +1,17 @@
-// AI_GENERATE_START----------------
+// AI_GENERATE_START-------------------
 package com.stock.model.service;
 
 import ai.djl.Model;
 import ai.djl.engine.Engine;
-import com.stock.backend.config.CacheNames;
+import com.stock.platform.config.CacheNames;
 import com.mongodb.client.gridfs.model.GridFSFile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.model.config.LstmTrainingConfig;
 import com.stock.model.entity.LstmModelDocument;
 import com.stock.model.entity.ModelActivationDocument;
-import com.stock.model.model.StockLSTMModel;
-import com.stock.model.model.RankingLSTMModel;
-import com.stock.model.model.LstmArchitectureType;
+import com.stock.model.algorithm.StockLSTMModel;
+import com.stock.model.algorithm.RankingLSTMModel;
+import com.stock.model.algorithm.LstmArchitectureType;
 import com.stock.model.repository.LstmModelRepository;
 import com.stock.model.repository.ModelActivationRepository;
 import lombok.RequiredArgsConstructor;
@@ -79,6 +79,7 @@ public class LstmModelArtifactService {
      * @param strictIsolationMetrics 60 日严格隔离敏感性指标
      * @param probabilityTemperature 概率温度校准参数
      * @param architectureType 本次候选模型架构
+     * @param crossSectionBatchSize 训练使用的同日横截面块大小
      * @return 模型版本标识
      * @throws IOException 制品序列化或保存失败
      */
@@ -92,8 +93,10 @@ public class LstmModelArtifactService {
                             RankingValidationMetricsCalculator.WalkForwardMetrics walkForwardMetrics,
                             RankingValidationMetricsCalculator.WalkForwardMetrics strictIsolationMetrics,
                             double probabilityTemperature,
-                            LstmArchitectureType architectureType) throws IOException {
-        String metadata = buildMetadata(processedData, epoch, probabilityTemperature, architectureType);
+                            LstmArchitectureType architectureType,
+                            int crossSectionBatchSize) throws IOException {
+        String metadata = buildMetadata(processedData, epoch, probabilityTemperature,
+                architectureType, crossSectionBatchSize);
         try {
             ModelActivationDocument activation = modelActivationRepository.findByModelName(getModelName()).orElse(null);
             LstmModelDocument document = new LstmModelDocument();
@@ -119,6 +122,7 @@ public class LstmModelArtifactService {
                     "outputSize", RankingLSTMModel.OUTPUT_SIZE, "featureVersion", processedData.getFeatureVersion(),
                     "labelVersion", RankingLstmDataPreprocessor.LABEL_VERSION,
                     "outputSchemaVersion", OUTPUT_SCHEMA_VERSION,
+                    "crossSectionBatchSize", crossSectionBatchSize,
                     "architectureType", architectureType.name())));
             Map<String, Object> metrics = new LinkedHashMap<>();
             metrics.put("trainLoss", trainLoss);
@@ -260,11 +264,16 @@ public class LstmModelArtifactService {
         requireMetadata(properties, "outputSize", String.valueOf(RankingLSTMModel.OUTPUT_SIZE));
         requireOneOfMetadata(properties, "architectureType",
                 LstmArchitectureType.RANKING_LSTM.name(),
-                LstmArchitectureType.DUAL_ATTENTION_RANKING_LSTM.name());
+                LstmArchitectureType.DUAL_ATTENTION_RANKING_LSTM.name(),
+                LstmArchitectureType.MASTER_TRANSFORMER.name());
         requireMetadata(properties, "lossVersion", RANKING_LOSS_VERSION);
         requireMetadata(properties, "targetReturnScale", String.valueOf(config.getTargetReturnScale()));
         requirePositiveDoubleMetadata(properties, "probabilityTemperature");
         requirePositiveIntegerMetadata(properties, "walkForwardFoldCount");
+        if (LstmArchitectureType.MASTER_TRANSFORMER.name()
+                .equals(properties.getProperty("architectureType"))) {
+            requirePositiveIntegerMetadata(properties, "crossSectionBatchSize");
+        }
     }
 
     private void validateLegacyMetadata(Properties properties) {
@@ -290,7 +299,8 @@ public class LstmModelArtifactService {
             LstmDataPreprocessor.ProcessedData data,
             int epoch,
             double probabilityTemperature,
-            LstmArchitectureType architectureType) throws IOException {
+            LstmArchitectureType architectureType,
+            int crossSectionBatchSize) throws IOException {
         Properties properties = new Properties();
         properties.setProperty("modelVersion", MODEL_VERSION);
         properties.setProperty("featureVersion", data.getFeatureVersion());
@@ -303,6 +313,7 @@ public class LstmModelArtifactService {
         properties.setProperty("sequenceLength", String.valueOf(data.getSequenceLength()));
         properties.setProperty("inputSize", String.valueOf(data.getFeatureCount()));
         properties.setProperty("outputSize", String.valueOf(RankingLSTMModel.OUTPUT_SIZE));
+        properties.setProperty("crossSectionBatchSize", String.valueOf(crossSectionBatchSize));
         properties.setProperty("stockDictionarySize", String.valueOf(data.getStockDictionary().size()));
         properties.setProperty("stockEmbeddingSize", String.valueOf(config.getStockEmbeddingSize()));
         properties.setProperty("industryDictionarySize", String.valueOf(data.getIndustryDictionary().size()));
@@ -441,4 +452,4 @@ public class LstmModelArtifactService {
      */
     public record ModelArtifact(byte[] params, String metadata, String modelId) { }
 }
-// AI_GENERATE_END----------------
+// AI_GENERATE_END-------------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START--------------
 package com.stock.model.config;
 
 import lombok.Data;
@@ -32,6 +32,9 @@ public class SentimentTrainingConfig {
     /** 最大输入序列长度。 */
     private int maxSequenceLength = 128;
 
+    /** 金标验证集拟合得到的温度缩放参数，未校准时固定为 1。 */
+    private double calibrationTemperature = 1D;
+
     /** 预留训练轮次，仅用于后续真实训练流水线。 */
     private int epochs = 5;
 
@@ -56,4 +59,4 @@ public class SentimentTrainingConfig {
     /** 情感标签顺序，必须与 manifest 和模型输出一致。 */
     private String[] labels = {"neutral", "positive", "negative"};
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END--------------

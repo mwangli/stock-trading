@@ -1,23 +1,17 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START------
 package com.stock.model.service;
 
-import com.stock.data.entity.HistoricalStockUniverseEntity;
-import com.stock.data.entity.ModelReferenceDailyBar;
-import com.stock.data.entity.ModelStockDailyBar;
-import com.stock.data.entity.ReferenceSeriesType;
-import com.stock.data.entity.StockAdjustmentFactor;
-import com.stock.data.entity.StockDailyTradabilityFact;
-import com.stock.data.repository.HistoricalStockUniverseRepository;
-import com.stock.data.repository.ModelReferenceDailyBarRepository;
-import com.stock.data.repository.ModelStockDailyBarRepository;
-import com.stock.data.repository.StockAdjustmentFactorRepository;
-import com.stock.data.repository.StockDailyTradabilityFactRepository;
+import com.stock.market.dto.HistoricalStockUniverseDto;
+import com.stock.market.dto.ModelReferenceDailyBarDto;
+import com.stock.market.dto.ModelStockDailyBarDto;
+import com.stock.market.dto.StockAdjustmentFactorDto;
+import com.stock.market.dto.StockTradabilityDto;
+import com.stock.market.service.MarketDataQueryService;
 import com.stock.model.config.LstmTrainingConfig;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -42,11 +36,8 @@ import java.util.Set;
 public class RankingLstmTrainingDataService {
 
     private final LstmTrainingConfig config;
-    private final ModelStockDailyBarRepository stockDailyBarRepository;
-    private final ModelReferenceDailyBarRepository referenceDailyBarRepository;
-    private final StockAdjustmentFactorRepository adjustmentFactorRepository;
-    private final HistoricalStockUniverseRepository historicalStockUniverseRepository;
-    private final StockDailyTradabilityFactRepository tradabilityFactRepository;
+    private final MarketDataQueryService marketDataQueryService;
+    private final NewsFeatureSnapshotService newsFeatureSnapshotService;
 
     /**
      * 加载一次训练快照需要的版本化数据。
@@ -88,15 +79,10 @@ public class RankingLstmTrainingDataService {
         }
 
         int queryLimit = Math.max(days, config.getSequenceLength() + 2);
-        PageRequest pageRequest = PageRequest.of(0, queryLimit);
-        Map<String, List<ModelStockDailyBar>> priceSeries = new LinkedHashMap<>();
+        Map<String, List<ModelStockDailyBarDto>> priceSeries = new LinkedHashMap<>();
         for (String code : codes) {
-            List<ModelStockDailyBar> bars = new ArrayList<>(endDate == null
-                    ? stockDailyBarRepository.findByStockCodeAndSourceAndSourceVersionOrderByTradeDateDesc(
-                            code, source, sourceVersion, pageRequest)
-                    : stockDailyBarRepository
-                            .findByStockCodeAndTradeDateLessThanEqualAndSourceAndSourceVersionOrderByTradeDateDesc(
-                                    code, endDate, source, sourceVersion, pageRequest));
+            List<ModelStockDailyBarDto> bars = new ArrayList<>(marketDataQueryService
+                    .findModelStockBars(code, endDate, source, sourceVersion, queryLimit));
             if (!bars.isEmpty()) {
                 Collections.reverse(bars);
                 priceSeries.put(code, bars);
@@ -106,61 +92,55 @@ public class RankingLstmTrainingDataService {
             throw new IllegalStateException("model_stock_daily_bars 没有匹配来源版本的训练行情");
         }
 
-        List<StockAdjustmentFactor> adjustmentFactors = endDate == null
-                ? adjustmentFactorRepository
-                .findByStockCodeInAndSourceAndSourceVersionOrderByStockCodeAscTradeDateAsc(
-                        priceSeries.keySet(), source, sourceVersion)
-                : adjustmentFactorRepository
-                .findByStockCodeInAndTradeDateLessThanEqualAndSourceAndSourceVersionOrderByStockCodeAscTradeDateAsc(
-                        priceSeries.keySet(), endDate, source, sourceVersion);
+        List<StockAdjustmentFactorDto> adjustmentFactors = marketDataQueryService
+                .findAdjustmentFactors(priceSeries.keySet(), endDate, source, sourceVersion);
         if (adjustmentFactors.isEmpty()) {
             throw new IllegalStateException("stock_adjustment_factors 缺少匹配来源版本的复权因子");
         }
 
-        List<HistoricalStockUniverseEntity> universe = endDate == null
-                ? historicalStockUniverseRepository
-                .findByStockCodeInAndSourceAndSourceVersionOrderByStockCodeAscEffectiveFromAsc(
-                        priceSeries.keySet(), source, sourceVersion)
-                : historicalStockUniverseRepository
-                .findByStockCodeInAndEffectiveFromLessThanEqualAndSourceAndSourceVersionOrderByStockCodeAscEffectiveFromAsc(
-                        priceSeries.keySet(), endDate, source, sourceVersion);
+        List<HistoricalStockUniverseDto> universe = marketDataQueryService
+                .findHistoricalUniverse(priceSeries.keySet(), endDate, source, sourceVersion);
         if (universe.isEmpty()) {
             throw new IllegalStateException("historical_stock_universe 缺少匹配来源版本的历史股票池");
         }
 
-        List<ModelReferenceDailyBar> benchmarkBars = loadReferenceBars(
-                ReferenceSeriesType.MARKET, benchmarkCode, source, sourceVersion, endDate);
+        List<ModelReferenceDailyBarDto> benchmarkBars = loadReferenceBars(
+                "MARKET", benchmarkCode, source, sourceVersion, endDate);
         if (benchmarkBars.isEmpty()) {
             throw new IllegalStateException("model_reference_daily_bars 缺少市场基准序列: " + benchmarkCode);
         }
 
-        Map<String, List<ModelReferenceDailyBar>> industryReferenceBars = new LinkedHashMap<>();
+        Map<String, List<ModelReferenceDailyBarDto>> industryReferenceBars = new LinkedHashMap<>();
         Set<String> industryCodes = new LinkedHashSet<>();
-        for (HistoricalStockUniverseEntity item : universe) {
+        for (HistoricalStockUniverseDto item : universe) {
             if (item.getIndustryCode() != null && !item.getIndustryCode().isBlank()) {
                 industryCodes.add(item.getIndustryCode().trim());
             }
         }
         for (String industryCode : industryCodes) {
-            List<ModelReferenceDailyBar> bars = loadReferenceBars(
-                    ReferenceSeriesType.INDUSTRY, industryCode, source, sourceVersion, endDate);
+            List<ModelReferenceDailyBarDto> bars = loadReferenceBars(
+                    "INDUSTRY", industryCode, source, sourceVersion, endDate);
             if (!bars.isEmpty()) {
                 industryReferenceBars.put(industryCode, bars);
             }
         }
 
         LocalDate startDate = priceSeries.values().stream().flatMap(List::stream)
-                .map(ModelStockDailyBar::getTradeDate).min(LocalDate::compareTo)
+                .map(ModelStockDailyBarDto::getTradeDate).min(LocalDate::compareTo)
                 .orElseThrow(() -> new IllegalStateException("模型日线缺少开始日期"));
         LocalDate effectiveEndDate = priceSeries.values().stream().flatMap(List::stream)
-                .map(ModelStockDailyBar::getTradeDate).max(LocalDate::compareTo)
+                .map(ModelStockDailyBarDto::getTradeDate).max(LocalDate::compareTo)
                 .orElseThrow(() -> new IllegalStateException("模型日线缺少结束日期"));
-        List<StockDailyTradabilityFact> tradabilityFacts = tradabilityFactRepository
-                .findByStockCodeInAndTradeDateBetweenAndSourceAndSourceVersion(
-                        priceSeries.keySet(), startDate, effectiveEndDate, source, sourceVersion);
+        List<StockTradabilityDto> tradabilityFacts = marketDataQueryService.findTradabilityFacts(
+                priceSeries.keySet(), startDate, effectiveEndDate, source, sourceVersion);
         if (tradabilityFacts.isEmpty()) {
             throw new IllegalStateException("stock_daily_tradability_facts 缺少训练区间可交易事实");
         }
+        Set<String> requiredNewsSnapshotKeys = new LinkedHashSet<>();
+        priceSeries.forEach((stockCode, bars) -> bars.forEach(bar ->
+                requiredNewsSnapshotKeys.add(stockCode + "|" + bar.getTradeDate())));
+        Map<String, double[]> newsFeatureSnapshots = newsFeatureSnapshotService.loadRequired(
+                priceSeries.keySet(), startDate, effectiveEndDate, requiredNewsSnapshotKeys);
 
         log.info("v5 训练数据加载完成: requestedStocks={}, loadedStocks={}, factors={}, universe={}, "
                         + "tradability={}, benchmarkBars={}, industrySeries={}, source={}, sourceVersion={}",
@@ -176,22 +156,18 @@ public class RankingLstmTrainingDataService {
                 .source(source)
                 .sourceVersion(sourceVersion)
                 .benchmarkCode(benchmarkCode)
+                .newsFeatureSnapshots(newsFeatureSnapshots)
                 .build();
     }
 
-    private List<ModelReferenceDailyBar> loadReferenceBars(
-            ReferenceSeriesType seriesType,
+    private List<ModelReferenceDailyBarDto> loadReferenceBars(
+            String seriesType,
             String seriesCode,
             String source,
             String sourceVersion,
             LocalDate endDate) {
-        return endDate == null
-                ? referenceDailyBarRepository
-                .findBySeriesTypeAndSeriesCodeAndSourceAndSourceVersionOrderByTradeDateAsc(
-                        seriesType, seriesCode, source, sourceVersion)
-                : referenceDailyBarRepository
-                .findBySeriesTypeAndSeriesCodeAndTradeDateLessThanEqualAndSourceAndSourceVersionOrderByTradeDateAsc(
-                        seriesType, seriesCode, endDate, source, sourceVersion);
+        return marketDataQueryService.findReferenceBars(
+                seriesType, seriesCode, endDate, source, sourceVersion);
     }
 
     private String requireText(String value, String message) {
@@ -211,23 +187,25 @@ public class RankingLstmTrainingDataService {
     @Builder
     public static class RankingTrainingDataBundle {
         /** 股票代码到模型专用日线的映射。 */
-        private Map<String, List<ModelStockDailyBar>> priceSeries;
+        private Map<String, List<ModelStockDailyBarDto>> priceSeries;
         /** 股票复权因子。 */
-        private List<StockAdjustmentFactor> adjustmentFactors;
+        private List<StockAdjustmentFactorDto> adjustmentFactors;
         /** 历史股票池记录。 */
-        private List<HistoricalStockUniverseEntity> historicalUniverse;
+        private List<HistoricalStockUniverseDto> historicalUniverse;
         /** 股票单日可交易事实。 */
-        private List<StockDailyTradabilityFact> tradabilityFacts;
+        private List<StockTradabilityDto> tradabilityFacts;
         /** 市场基准日线。 */
-        private List<ModelReferenceDailyBar> benchmarkBars;
+        private List<ModelReferenceDailyBarDto> benchmarkBars;
         /** 行业代码到行业参考日线的映射。 */
-        private Map<String, List<ModelReferenceDailyBar>> industryReferenceBars;
+        private Map<String, List<ModelReferenceDailyBarDto>> industryReferenceBars;
         /** 数据来源。 */
         private String source;
         /** 数据版本。 */
         private String sourceVersion;
         /** 市场基准代码。 */
         private String benchmarkCode;
+        /** `股票代码|交易日` 到 temporal-news-v1 固定 25 维向量的映射。 */
+        private Map<String, double[]> newsFeatureSnapshots;
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.model.repository;
 
 import com.stock.model.entity.ModelMetadataDocument;
@@ -24,4 +24,4 @@ public interface ModelMetadataRepository extends JpaRepository<ModelMetadataDocu
      */
     Optional<ModelMetadataDocument> findByModelName(String modelName);
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

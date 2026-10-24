@@ -1,9 +1,8 @@
-// AI_GENERATE_START-----------------------
+// AI_GENERATE_START-------------------------
 package com.stock.model.service;
 
-import com.stock.data.repository.PriceRepository;
-import com.stock.data.repository.StockInfoRepository;
-import com.stock.data.service.TradingCalendarService;
+import com.stock.market.service.MarketDataQueryService;
+import com.stock.market.service.TradingCalendarService;
 import com.stock.model.config.PredictionBackfillProperties;
 import com.stock.model.dto.PredictionBackfillResponse;
 import com.stock.model.dto.PredictionOperationResponse;
@@ -53,8 +52,7 @@ public class ModelPredictionAnalysisService {
 
     private final LstmTrainerService trainerService;
     private final PredictionBackfillProperties predictionBackfillProperties;
-    private final StockInfoRepository stockInfoRepository;
-    private final PriceRepository priceRepository;
+    private final MarketDataQueryService marketDataQueryService;
     private final TradingCalendarService tradingCalendarService;
     private final ModelActivationRepository activationRepository;
     private final LstmModelRepository modelRepository;
@@ -71,8 +69,7 @@ public class ModelPredictionAnalysisService {
      *
      * @param trainerService LSTM 训练与模型元数据服务
      * @param predictionBackfillProperties 历史预测补缺配置
-     * @param stockInfoRepository 股票基础信息仓库
-     * @param priceRepository 股票日线仓库
+     * @param marketDataQueryService 市场数据查询服务
      * @param tradingCalendarService 可靠交易日解析服务
      * @param activationRepository 模型激活指针仓库
      * @param modelRepository 模型版本仓库
@@ -86,8 +83,7 @@ public class ModelPredictionAnalysisService {
     public ModelPredictionAnalysisService(
             LstmTrainerService trainerService,
             PredictionBackfillProperties predictionBackfillProperties,
-            StockInfoRepository stockInfoRepository,
-            PriceRepository priceRepository,
+            MarketDataQueryService marketDataQueryService,
             TradingCalendarService tradingCalendarService,
             ModelActivationRepository activationRepository,
             LstmModelRepository modelRepository,
@@ -99,8 +95,7 @@ public class ModelPredictionAnalysisService {
             PredictionEvaluationQueueService evaluationQueueService) {
         this.trainerService = trainerService;
         this.predictionBackfillProperties = predictionBackfillProperties;
-        this.stockInfoRepository = stockInfoRepository;
-        this.priceRepository = priceRepository;
+        this.marketDataQueryService = marketDataQueryService;
         this.tradingCalendarService = tradingCalendarService;
         this.activationRepository = activationRepository;
         this.modelRepository = modelRepository;
@@ -343,7 +338,7 @@ public class ModelPredictionAnalysisService {
     }
 
     private boolean hasRequiredPriceCoverage(List<String> stockCodes, LocalDate tradeDate) {
-        long priceCount = priceRepository.countByCodeInAndDate(stockCodes, tradeDate);
+        long priceCount = marketDataQueryService.countPriceCoverage(stockCodes, tradeDate);
         return rate((int) Math.min(priceCount, Integer.MAX_VALUE), stockCodes.size())
                 >= predictionBackfillProperties.resolveMinPriceCoverageRate();
     }
@@ -359,7 +354,7 @@ public class ModelPredictionAnalysisService {
     }
 
     private List<String> loadPredictionStockCodes() {
-        List<String> stockCodes = stockInfoRepository.findAllCodes().stream()
+        List<String> stockCodes = marketDataQueryService.findTradableStockCodes().stream()
                 .filter(code -> code != null && !code.isBlank())
                 .map(String::trim).distinct().sorted().toList();
         if (stockCodes.isEmpty()) {
@@ -449,4 +444,4 @@ public class ModelPredictionAnalysisService {
     private record PredictionBatchPreparation(ModelPredictionBatchDocument batch, boolean created) {
     }
 }
-// AI_GENERATE_END-----------------------
+// AI_GENERATE_END-------------------------

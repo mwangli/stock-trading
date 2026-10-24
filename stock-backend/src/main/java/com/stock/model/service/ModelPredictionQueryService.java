@@ -1,4 +1,4 @@
-// AI_GENERATE_START--
+// AI_GENERATE_START----
 package com.stock.model.service;
 
 import com.stock.model.dto.PredictionAbilityResponse;
@@ -90,6 +90,18 @@ public class ModelPredictionQueryService {
      */
     public PredictionAbilityResponse getAbility(String batchId) {
         return toAbility(resolveBatch(batchId));
+    }
+
+    /**
+     * 查询指定批次和股票的预测明细。
+     *
+     * @param batchId 预测批次标识
+     * @param stockCode 股票代码
+     * @return 预测明细，不存在时返回 null
+     */
+    public PredictionResultResponse getPrediction(String batchId, String stockCode) {
+        return predictionRepository.findByBatchIdAndStockCode(batchId, stockCode)
+                .map(this::toPredictionItem).orElse(null);
     }
 
     ModelPredictionBatchDocument resolveBatch(String batchId) {
@@ -184,4 +196,4 @@ public class ModelPredictionQueryService {
                 .tradingEligibilityReason(item.getTradingEligibilityReason()).build();
     }
 }
-// AI_GENERATE_END--
+// AI_GENERATE_END----

@@ -1,7 +1,7 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START-----
 package com.stock.model.service;
 
-import com.stock.data.repository.PriceRepository;
+import com.stock.market.service.MarketDataQueryService;
 import com.stock.model.config.PredictionBackfillProperties;
 import com.stock.model.dto.PredictionEvaluationRequest;
 import com.stock.model.dto.PredictionOperationResponse;
@@ -42,7 +42,7 @@ public class PredictionEvaluationQueueService {
     private static final ZoneId MARKET_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final PredictionBackfillProperties backfillProperties;
-    private final PriceRepository priceRepository;
+    private final MarketDataQueryService marketDataQueryService;
     private final ModelPredictionBatchRepository batchRepository;
     private final ModelPredictionRepository predictionRepository;
     private final ModelPredictionQueryService queryService;
@@ -55,7 +55,7 @@ public class PredictionEvaluationQueueService {
      * 创建预测评估队列服务。
      *
      * @param backfillProperties 预测补缺配置
-     * @param priceRepository 日线行情仓库
+     * @param marketDataQueryService 市场数据查询服务
      * @param batchRepository 预测批次仓库
      * @param predictionRepository 预测明细仓库
      * @param queryService 预测查询服务
@@ -65,7 +65,7 @@ public class PredictionEvaluationQueueService {
      */
     public PredictionEvaluationQueueService(
             PredictionBackfillProperties backfillProperties,
-            PriceRepository priceRepository,
+            MarketDataQueryService marketDataQueryService,
             ModelPredictionBatchRepository batchRepository,
             ModelPredictionRepository predictionRepository,
             ModelPredictionQueryService queryService,
@@ -73,7 +73,7 @@ public class PredictionEvaluationQueueService {
             PredictionBatchClaimService claimService,
             @Qualifier("modelEvaluationQueueExecutor") Executor queueExecutor) {
         this.backfillProperties = backfillProperties;
-        this.priceRepository = priceRepository;
+        this.marketDataQueryService = marketDataQueryService;
         this.batchRepository = batchRepository;
         this.predictionRepository = predictionRepository;
         this.queryService = queryService;
@@ -320,7 +320,7 @@ public class PredictionEvaluationQueueService {
     }
 
     private boolean hasRequiredPriceCoverage(List<String> stockCodes, LocalDate tradeDate) {
-        long priceCount = priceRepository.countByCodeInAndDate(stockCodes, tradeDate);
+        long priceCount = marketDataQueryService.countPriceCoverage(stockCodes, tradeDate);
         double coverageRate = stockCodes.isEmpty() ? 0D : priceCount / (double) stockCodes.size();
         return coverageRate >= backfillProperties.resolveMinPriceCoverageRate();
     }
@@ -329,4 +329,4 @@ public class PredictionEvaluationQueueService {
         return batch != null && batch.getStatus() != null && statuses.contains(batch.getStatus());
     }
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END-----

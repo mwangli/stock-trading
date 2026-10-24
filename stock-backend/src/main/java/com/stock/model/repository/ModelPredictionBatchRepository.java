@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START------------
 package com.stock.model.repository;
 
 import com.stock.model.entity.ModelPredictionBatchDocument;
@@ -155,6 +155,14 @@ public interface ModelPredictionBatchRepository extends JpaRepository<ModelPredi
             LocalDate targetTradeDate, Collection<String> statuses);
 
     /**
+     * 查询最近一个可用于影子模型对齐的生产预测批次。
+     *
+     * @param statuses 可用批次状态
+     * @return 最近可用批次，不存在时返回 null
+     */
+    ModelPredictionBatchDocument findFirstByStatusInOrderByCreatedAtDesc(Collection<String> statuses);
+
+    /**
      * 查询同一模型最近完成的预测批次，用于滚动窗口评估。
      *
      * @param modelId 模型文档 ID
@@ -174,4 +182,4 @@ public interface ModelPredictionBatchRepository extends JpaRepository<ModelPredi
     ModelPredictionBatchDocument findFirstByModelIdAndEvaluatedCountGreaterThanOrderByEvaluationFinishedAtDescCreatedAtDesc(
             String modelId, int evaluatedCount);
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END------------

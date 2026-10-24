@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -31,4 +31,4 @@ public class PredictionResultPageResponse {
     /** 每页大小。 */
     private int pageSize;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

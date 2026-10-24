@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -25,4 +25,4 @@ public class SentimentAnalyzeRequestDto {
 }
 
 
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.model.entity;
 
 import lombok.Data;
@@ -127,4 +127,4 @@ public class ModelPredictionDocument {
     /** 实际结果评估时间。 */
     private LocalDateTime evaluatedAt;
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

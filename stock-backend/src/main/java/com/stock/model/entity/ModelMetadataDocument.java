@@ -1,7 +1,8 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START-------
 package com.stock.model.entity;
 
 import lombok.Data;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -36,6 +37,7 @@ public class ModelMetadataDocument {
     private String modelVersion;
 
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String artifactUri;
 
     /** 模型制品存储方式，例如 MONGO_GRIDFS。 */
@@ -43,12 +45,15 @@ public class ModelMetadataDocument {
 
     /** GridFS 文件 ID 列表 JSON。 */
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String artifactFileIdsJson;
 
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String configJson;
 
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String metricsJson;
 
     private String status;
@@ -56,8 +61,9 @@ public class ModelMetadataDocument {
     private String engineName;
 
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String lastError;
 
     private LocalDateTime updatedAt;
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END-------
