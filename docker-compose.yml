@@ -139,7 +139,7 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - type: bind
-        source: D:/app/data/mysql
+        source: ${MYSQL_DATA_DIR:-./data/mysql}
         target: /var/lib/mysql
     ports:
       - "127.0.0.1:3306:3306"
@@ -166,7 +166,7 @@ services:
       MONGO_INITDB_DATABASE: stock_trading
     volumes:
       - type: bind
-        source: D:/app/data/mongo
+        source: ${MONGO_DATA_DIR:-./data/mongo}
         target: /data/db
     ports:
       - "127.0.0.1:27017:27017"
@@ -195,7 +195,7 @@ services:
       - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
     volumes:
       - type: bind
-        source: ./data/redis
+        source: ${REDIS_DATA_DIR:-./data/redis}
         target: /data
     ports:
       - "127.0.0.1:6379:6379"

@@ -23,6 +23,7 @@ cleanup_registry() {
 trap cleanup_registry EXIT
 
 previous_image="$(docker inspect --format '{{.Config.Image}}' "$container_name" 2>/dev/null || true)"
+legacy_container_name=""
 
 rollback() {
   exit_code=$?
@@ -44,6 +45,13 @@ docker pull "$DEPLOY_IMAGE"
 
 export "$image_variable=$DEPLOY_IMAGE"
 docker compose --env-file .env config --quiet
+
+if [[ "$container_name" == "stock-frontend" ]] && [[ -z "$previous_image" ]] && docker inspect stock-web >/dev/null 2>&1; then
+  legacy_container_name="stock-web"
+  previous_image="$(docker inspect --format '{{.Config.Image}}' "$legacy_container_name")"
+  docker rm -f "$legacy_container_name"
+fi
+
 docker compose --env-file .env up -d --no-deps --force-recreate "$service_name"
 
 container_id="$(docker compose --env-file .env ps -q "$service_name")"

@@ -1,0 +1,54 @@
+name: Production Bootstrap
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-production
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Bootstrap production prerequisites
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Checkout deployment files
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            docker-compose.yml
+            .github/scripts/bootstrap-production.sh
+            .github/scripts/deploy-service.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Upload deployment files
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          source: docker-compose.yml,.github/scripts/bootstrap-production.sh,.github/scripts/deploy-service.sh
+          target: ${{ vars.SERVER_DEPLOY_DIR }}
+          overwrite: true
+
+      - name: Bootstrap production prerequisites
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          envs: DEPLOY_DIR
+          command_timeout: 10m
+          script: bash "$DEPLOY_DIR/.github/scripts/bootstrap-production.sh"
