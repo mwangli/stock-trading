@@ -21,14 +21,50 @@ ensure_secret() {
   fi
 }
 
+set_env_value() {
+  local key="$1"
+  local value="$2"
+  local temp_file
+  temp_file="$(mktemp)"
+  awk -F= -v key="$key" -v value="$value" '
+    BEGIN { found = 0 }
+    $1 == key { print key "=" value; found = 1; next }
+    { print }
+    END { if (!found) print key "=" value }
+  ' .env > "$temp_file"
+  mv "$temp_file" .env
+}
+
+normalize_data_dir() {
+  local key="$1"
+  local container_name="$2"
+  local container_path="$3"
+  local default_path="$4"
+  local current
+  local existing_source
+
+  current="$(env_value "$key")"
+  if [[ "$current" =~ ^[[:alpha:]]:[/\\] ]]; then
+    existing_source="$(docker inspect --format "{{range .Mounts}}{{if eq .Destination \"$container_path\"}}{{.Source}}{{end}}{{end}}" "$container_name" 2>/dev/null || true)"
+    if [[ "$existing_source" == /* ]]; then
+      current="$existing_source"
+    else
+      current="$DEPLOY_DIR/$default_path"
+    fi
+    set_env_value "$key" "$current"
+    echo "Normalized $key to Linux path: $current"
+  fi
+
+  mkdir -p "${current:-$DEPLOY_DIR/$default_path}"
+}
+
 ensure_secret MYSQL_PASSWORD
 ensure_secret REDIS_PASSWORD
 ensure_secret INTERNAL_API_TOKEN
 
-mysql_data_dir="$(env_value MYSQL_DATA_DIR)"
-mongo_data_dir="$(env_value MONGO_DATA_DIR)"
-redis_data_dir="$(env_value REDIS_DATA_DIR)"
-mkdir -p "${mysql_data_dir:-./data/mysql}" "${mongo_data_dir:-./data/mongo}" "${redis_data_dir:-./data/redis}"
+normalize_data_dir MYSQL_DATA_DIR stock-mysql /var/lib/mysql data/mysql
+normalize_data_dir MONGO_DATA_DIR stock-mongo /data/db data/mongo
+normalize_data_dir REDIS_DATA_DIR stock-redis /data data/redis
 
 docker compose --env-file .env config --quiet
 
