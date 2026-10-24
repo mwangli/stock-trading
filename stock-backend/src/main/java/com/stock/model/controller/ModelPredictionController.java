@@ -1,7 +1,7 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.model.controller;
 
-import com.stock.base.api.ResponseDTO;
+import com.stock.platform.dto.ResponseDTO;
 import com.stock.model.dto.PredictionAbilityResponse;
 import com.stock.model.dto.PredictionBatchPageResponse;
 import com.stock.model.dto.PredictionEvaluationRequest;
@@ -181,4 +181,4 @@ public class ModelPredictionController {
         }
     }
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START-------------
 package com.stock.model.service;
 
 import com.stock.model.dto.LstmPredictionResultDto;
@@ -95,4 +95,4 @@ public class LstmInferenceService {
         return modelRuntimeService.hasSharedModel();
     }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END-------------

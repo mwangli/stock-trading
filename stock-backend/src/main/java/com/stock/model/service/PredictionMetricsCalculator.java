@@ -1,4 +1,4 @@
-// AI_GENERATE_START--
+// AI_GENERATE_START---
 package com.stock.model.service;
 
 import com.stock.model.entity.ModelPredictionDocument;
@@ -177,4 +177,4 @@ public class PredictionMetricsCalculator {
         return denominator == 0D ? 0D : covariance / denominator;
     }
 }
-// AI_GENERATE_END--
+// AI_GENERATE_END---

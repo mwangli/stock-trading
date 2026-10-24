@@ -46,6 +46,8 @@
     "sentimentModel": "新闻分析",
     "strategyConfig": "交易策略",
     "agent": "智能决策",
+    "agentConversation": "智能对话",
+    "adaptiveStrategy": "自适应策略",
     "jobs": "任务管理",
     "pageTitles": {
       "dashboard": "数据总览",
@@ -58,6 +60,8 @@
       "sentimentModel": "新闻分析",
       "strategyConfig": "交易策略",
       "agent": "智能决策",
+      "agentConversation": "智能对话",
+      "adaptiveStrategy": "自适应策略",
       "jobs": "任务管理",
       "settings": "系统设置"
     },

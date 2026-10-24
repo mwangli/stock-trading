@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.model.vo;
 
 import lombok.Builder;
@@ -50,4 +50,4 @@ public class SentimentAggregateResult {
     /** 触发强负面标志的事件标题。 */
     private String strongNegativeTitle;
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

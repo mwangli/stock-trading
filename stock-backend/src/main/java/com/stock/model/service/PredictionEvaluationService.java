@@ -1,8 +1,8 @@
-// AI_GENERATE_START--
+// AI_GENERATE_START----
 package com.stock.model.service;
 
-import com.stock.data.entity.StockPrice;
-import com.stock.data.repository.PriceRepository;
+import com.stock.market.dto.StockPriceItemDto;
+import com.stock.market.service.MarketDataQueryService;
 import com.stock.model.entity.ModelPredictionBatchDocument;
 import com.stock.model.entity.ModelPredictionDocument;
 import com.stock.model.repository.ModelPredictionBatchRepository;
@@ -52,7 +52,7 @@ class PredictionEvaluationService {
     private static final String MANUAL_BACKFILL_TRIGGER_PREFIX = "manual-backfill:";
     private static final ZoneId MARKET_ZONE = ZoneId.of("Asia/Shanghai");
 
-    private final PriceRepository priceRepository;
+    private final MarketDataQueryService marketDataQueryService;
     private final ModelPredictionBatchRepository batchRepository;
     private final ModelPredictionRepository predictionRepository;
     private final MongoTemplate mongoTemplate;
@@ -68,9 +68,7 @@ class PredictionEvaluationService {
         }
 
         LocalDate today = LocalDate.now(MARKET_ZONE);
-        LocalDate latestMarketDate = priceRepository.findTopByOrderByDateDesc()
-                .map(StockPrice::getDate)
-                .orElse(null);
+        LocalDate latestMarketDate = marketDataQueryService.findLatestMarketDate();
         Map<LocalDate, List<ModelPredictionDocument>> byTargetDate = predictions.stream()
                 .filter(item -> item.getTargetTradeDate() != null)
                 .collect(Collectors.groupingBy(ModelPredictionDocument::getTargetTradeDate));
@@ -84,10 +82,10 @@ class PredictionEvaluationService {
                 continue;
             }
             List<String> codes = entry.getValue().stream().map(ModelPredictionDocument::getStockCode).toList();
-            Map<String, StockPrice> actualPrices = priceRepository.findByCodeInAndDate(codes, entry.getKey()).stream()
-                    .collect(Collectors.toMap(StockPrice::getCode, Function.identity(), (left, right) -> left));
+            Map<String, StockPriceItemDto> actualPrices = marketDataQueryService.findPrices(codes, entry.getKey()).stream()
+                    .collect(Collectors.toMap(StockPriceItemDto::getCode, Function.identity(), (left, right) -> left));
             for (ModelPredictionDocument prediction : entry.getValue()) {
-                StockPrice actualPrice = actualPrices.get(prediction.getStockCode());
+                StockPriceItemDto actualPrice = actualPrices.get(prediction.getStockCode());
                 if (actualPrice != null && isPositive(actualPrice.getClosePrice())
                         && prediction.getBaseClosePrice() != null && prediction.getBaseClosePrice() > 0D) {
                     double actualClose = actualPrice.getClosePrice().doubleValue();
@@ -443,4 +441,4 @@ class PredictionEvaluationService {
         return value != null && value.compareTo(BigDecimal.ZERO) > 0;
     }
 }
-// AI_GENERATE_END--
+// AI_GENERATE_END----

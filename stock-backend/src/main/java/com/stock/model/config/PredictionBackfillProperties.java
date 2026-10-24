@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.model.config;
 
 import lombok.Data;
@@ -47,4 +47,4 @@ public class PredictionBackfillProperties {
         return Math.max(0D, Math.min(minPriceCoverageRate, 1D));
     }
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

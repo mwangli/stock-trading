@@ -1,13 +1,11 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START-------
 package com.stock.model.service;
 
-import com.stock.data.entity.StockInfo;
-import com.stock.data.entity.StockPrice;
-import com.stock.data.repository.PriceRepository;
-import com.stock.data.repository.StockInfoRepository;
+import com.stock.market.dto.StockInfoItemDto;
+import com.stock.market.dto.StockPriceItemDto;
+import com.stock.market.service.MarketDataQueryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -30,8 +28,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class LstmTrainingDataService {
 
-    private final PriceRepository priceRepository;
-    private final StockInfoRepository stockInfoRepository;
+    private final MarketDataQueryService marketDataQueryService;
 
     /**
      * 加载多只股票最近指定交易日窗口。
@@ -40,7 +37,7 @@ public class LstmTrainingDataService {
      * @param days 每只股票最大交易日数量
      * @return 按股票代码组织且日期升序的行情
      */
-    public Map<String, List<StockPrice>> loadPriceSeries(List<String> stockCodes, int days) {
+    public Map<String, List<StockPriceItemDto>> loadPriceSeries(List<String> stockCodes, int days) {
         return loadPriceSeries(stockCodes, days, (PreparationProgressListener) null);
     }
 
@@ -52,7 +49,7 @@ public class LstmTrainingDataService {
      * @param listener 进度监听器，可为空
      * @return 按股票代码组织且日期升序的行情
      */
-    public Map<String, List<StockPrice>> loadPriceSeries(
+    public Map<String, List<StockPriceItemDto>> loadPriceSeries(
             List<String> stockCodes, int days, PreparationProgressListener listener) {
         return loadPriceSeries(stockCodes, days, null, listener);
     }
@@ -65,25 +62,22 @@ public class LstmTrainingDataService {
      * @param endDate 行情截止日期，包含当天；为空时读取最新行情
      * @return 按股票代码组织且日期升序排列的行情
      */
-    public Map<String, List<StockPrice>> loadPriceSeries(
+    public Map<String, List<StockPriceItemDto>> loadPriceSeries(
             List<String> stockCodes, int days, LocalDate endDate) {
         return loadPriceSeries(stockCodes, days, endDate, null);
     }
 
-    private Map<String, List<StockPrice>> loadPriceSeries(
+    private Map<String, List<StockPriceItemDto>> loadPriceSeries(
             List<String> stockCodes, int days, LocalDate endDate, PreparationProgressListener listener) {
-        Map<String, List<StockPrice>> result = new LinkedHashMap<>();
+        Map<String, List<StockPriceItemDto>> result = new LinkedHashMap<>();
         int queryLimit = Math.max(1, days);
         int totalStocks = stockCodes.size();
         int reportInterval = Math.max(1, totalStocks / 40);
-        PageRequest pageRequest = PageRequest.of(0, queryLimit);
         int emptyStocks = 0;
         for (int index = 0; index < totalStocks; index++) {
             String stockCode = stockCodes.get(index);
-            List<StockPrice> prices = new ArrayList<>(endDate == null
-                    ? priceRepository.findByCodeOrderByDateDesc(stockCode, pageRequest)
-                    : priceRepository.findByCodeAndDateLessThanEqualOrderByDateDesc(
-                            stockCode, endDate, pageRequest));
+            List<StockPriceItemDto> prices = new ArrayList<>(
+                    marketDataQueryService.findRecentPrices(stockCode, endDate, queryLimit));
             if (prices.isEmpty()) {
                 emptyStocks++;
             } else {
@@ -107,9 +101,9 @@ public class LstmTrainingDataService {
      * @return 股票代码到模型上下文的映射
      */
     public Map<String, LstmDataPreprocessor.StockContext> loadStockContexts(List<String> stockCodes) {
-        return stockInfoRepository.findByCodeIn(stockCodes).stream()
+        return marketDataQueryService.findStocks(stockCodes).stream()
                 .collect(Collectors.toMap(
-                        StockInfo::getCode,
+                        StockInfoItemDto::getCode,
                         stock -> LstmDataPreprocessor.StockContext.builder()
                                 .stockCode(stock.getCode())
                                 .industryCode(stock.getIndustryCode())
@@ -139,4 +133,4 @@ public class LstmTrainingDataService {
         void onProgress(int completedStocks, int totalStocks, int loadedStocks, int emptyStocks);
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END-------

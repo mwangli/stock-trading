@@ -1,14 +1,13 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START-------
 package com.stock.model.controller;
 
-import com.stock.base.api.ResponseDTO;
+import com.stock.platform.dto.ResponseDTO;
 import com.stock.model.dto.ModelOperationResponse;
 import com.stock.model.dto.ModelOverviewResponse;
 import com.stock.model.dto.ModelTrainingRequest;
 import com.stock.model.dto.ModelTrainingRunPageResponse;
 import com.stock.model.dto.ModelVersionPageResponse;
 import com.stock.model.dto.ModelVersionResponse;
-import com.stock.model.service.ModelActivationService;
 import com.stock.model.service.ModelOperationsQueryService;
 import com.stock.model.service.ModelOperationsService;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 模型运维管理接口。
- * 提供模型版本、训练记录、模型训练、激活和回滚能力。
+ * 提供模型版本、训练记录和模型训练能力；模型晋级与回退由系统自动完成。
  *
  * @author mwangli
  * @since 2026-10-10
@@ -36,7 +35,6 @@ public class ModelOperationsController {
 
     private final ModelOperationsService modelOperationsService;
     private final ModelOperationsQueryService modelOperationsQueryService;
-    private final ModelActivationService modelActivationService;
 
     /**
      * 查询模型运维概览和当前运行状态。
@@ -175,46 +173,5 @@ public class ModelOperationsController {
         }
     }
 
-    /**
-     * 激活已通过完整性校验的 READY 模型版本。
-     *
-     * @param versionId 模型版本 ID
-     * @param operatorName 操作人名称
-     * @return 激活结果
-     */
-    @PostMapping("/modelVersions/activate/{versionId}")
-    public ResponseDTO<ModelOperationResponse> activateVersion(
-            @PathVariable String versionId,
-            @RequestParam(required = false) String operatorName) {
-        log.info("[ModelOperations] 激活模型版本: versionId={}, operator={}", versionId, operatorName);
-        try {
-            return ResponseDTO.success(modelActivationService.activateVersion(versionId, operatorName));
-        } catch (RuntimeException exception) {
-            log.warn("[ModelOperations] 激活模型版本失败: versionId={}, reason={}",
-                    versionId, exception.getMessage());
-            return ResponseDTO.error(exception.getMessage());
-        }
-    }
-
-    /**
-     * 将模型回滚到上一激活版本。
-     *
-     * @param modelName 模型逻辑名称
-     * @param operatorName 操作人名称
-     * @return 回滚结果
-     */
-    @PostMapping("/modelVersions/rollback/{modelName}")
-    public ResponseDTO<ModelOperationResponse> rollback(
-            @PathVariable String modelName,
-            @RequestParam(required = false) String operatorName) {
-        log.info("[ModelOperations] 回滚模型版本: modelName={}, operator={}", modelName, operatorName);
-        try {
-            return ResponseDTO.success(modelActivationService.rollback(modelName, operatorName));
-        } catch (RuntimeException exception) {
-            log.warn("[ModelOperations] 回滚模型版本失败: modelName={}, reason={}",
-                    modelName, exception.getMessage());
-            return ResponseDTO.error(exception.getMessage());
-        }
-    }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END-------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START------
 package com.stock.model.service;
 
 import org.springframework.stereotype.Component;
@@ -389,4 +389,4 @@ public class RankingValidationMetricsCalculator {
     private record CrossSectionMetrics(double rankIc, double topDecileNetReturn) {
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END------

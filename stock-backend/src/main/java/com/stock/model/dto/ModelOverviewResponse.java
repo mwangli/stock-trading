@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START-----
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -38,5 +38,8 @@ public class ModelOverviewResponse {
 
     /** 当前激活版本最近一次有效评估的评分摘要。 */
     private ModelScoreSummaryResponse activeVersionScore;
+
+    /** Ranking LSTM 与 MASTER 影子评估和融合状态。 */
+    private TemporalModelEnsembleStatusResponse temporalEnsemble;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END-----

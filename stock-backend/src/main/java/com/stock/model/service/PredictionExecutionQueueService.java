@@ -1,9 +1,9 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START-----
 package com.stock.model.service;
 
-import com.stock.data.entity.StockInfo;
-import com.stock.data.repository.StockInfoRepository;
-import com.stock.data.service.TradingCalendarService;
+import com.stock.market.dto.StockInfoItemDto;
+import com.stock.market.service.MarketDataQueryService;
+import com.stock.market.service.TradingCalendarService;
 import com.stock.model.dto.LstmPredictionResultDto;
 import com.stock.model.dto.PredictionOperationResponse;
 import com.stock.model.entity.ModelPredictionBatchDocument;
@@ -45,7 +45,7 @@ public class PredictionExecutionQueueService {
     private static final String EVALUATION_WAIT_MARKET_DATA = "MARKET_DATA_COVERAGE_LOW";
 
     private final LstmInferenceService inferenceService;
-    private final StockInfoRepository stockInfoRepository;
+    private final MarketDataQueryService marketDataQueryService;
     private final TradingCalendarService tradingCalendarService;
     private final ModelPredictionBatchRepository batchRepository;
     private final ModelPredictionRepository predictionRepository;
@@ -60,7 +60,7 @@ public class PredictionExecutionQueueService {
      * 创建模型预测队列服务。
      *
      * @param inferenceService LSTM 推理服务
-     * @param stockInfoRepository 股票基础信息仓库
+     * @param marketDataQueryService 市场数据查询服务
      * @param tradingCalendarService 交易日历服务
      * @param batchRepository 预测批次仓库
      * @param predictionRepository 预测明细仓库
@@ -72,7 +72,7 @@ public class PredictionExecutionQueueService {
      */
     public PredictionExecutionQueueService(
             LstmInferenceService inferenceService,
-            StockInfoRepository stockInfoRepository,
+            MarketDataQueryService marketDataQueryService,
             TradingCalendarService tradingCalendarService,
             ModelPredictionBatchRepository batchRepository,
             ModelPredictionRepository predictionRepository,
@@ -82,7 +82,7 @@ public class PredictionExecutionQueueService {
             PredictionBatchClaimService claimService,
             @Qualifier("modelPredictionQueueExecutor") Executor queueExecutor) {
         this.inferenceService = inferenceService;
-        this.stockInfoRepository = stockInfoRepository;
+        this.marketDataQueryService = marketDataQueryService;
         this.tradingCalendarService = tradingCalendarService;
         this.batchRepository = batchRepository;
         this.predictionRepository = predictionRepository;
@@ -316,8 +316,8 @@ public class PredictionExecutionQueueService {
         if (Thread.currentThread().isInterrupted()) {
             throw new CancellationException("预测队列消费已被中断");
         }
-        Map<String, StockInfo> stockInfoMap = stockInfoRepository.findByCodeIn(currentCodes).stream()
-                .collect(Collectors.toMap(StockInfo::getCode, Function.identity(), (left, right) -> left));
+        Map<String, StockInfoItemDto> stockInfoMap = marketDataQueryService.findStocks(currentCodes).stream()
+                .collect(Collectors.toMap(StockInfoItemDto::getCode, Function.identity(), (left, right) -> left));
         List<ModelPredictionDocument> documents = new ArrayList<>(results.size());
         LocalDateTime predictedAt = LocalDateTime.now();
         for (LstmPredictionResultDto result : results.values()) {
@@ -330,7 +330,7 @@ public class PredictionExecutionQueueService {
                         batch.getId(), result.getStockCode(), batch.getBaseTradeDate(), result.getBaseTradeDate());
                 continue;
             }
-            StockInfo stockInfo = stockInfoMap.get(result.getStockCode());
+            StockInfoItemDto stockInfo = stockInfoMap.get(result.getStockCode());
             ModelPredictionDocument document = new ModelPredictionDocument();
             document.setBatchId(batch.getId());
             document.setStockCode(result.getStockCode());
@@ -380,7 +380,7 @@ public class PredictionExecutionQueueService {
     }
 
     private List<String> loadPredictionStockCodes() {
-        List<String> stockCodes = stockInfoRepository.findAllCodes().stream()
+        List<String> stockCodes = marketDataQueryService.findTradableStockCodes().stream()
                 .filter(code -> code != null && !code.isBlank())
                 .map(String::trim).distinct().sorted().toList();
         if (stockCodes.isEmpty()) {
@@ -404,4 +404,4 @@ public class PredictionExecutionQueueService {
     private record TradeDateResolution(LocalDate tradeDate, boolean calendarFallback) {
     }
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END-----

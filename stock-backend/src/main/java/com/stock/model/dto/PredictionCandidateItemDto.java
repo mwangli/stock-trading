@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START------
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -59,5 +59,17 @@ public class PredictionCandidateItemDto {
 
     /** 预测下行风险分位。 */
     private Double downsideQuantile;
+
+    /** Ranking LSTM 与 MASTER 融合后的横截面排序分数，范围 0 到 1。 */
+    private Double ensembleRankScore;
+
+    /** 本次融合使用的 Ranking LSTM 权重，范围 0 到 1。 */
+    private Double rankingLstmWeight;
+
+    /** 本次融合使用的 MASTER 权重，范围 0 到 1。 */
+    private Double masterWeight;
+
+    /** 本次融合使用的 MASTER 模型文档 ID。 */
+    private String masterModelId;
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END------

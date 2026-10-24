@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -116,4 +116,4 @@ public class PredictionResultResponse {
     /** 实际结果评估时间。 */
     private LocalDateTime evaluatedAt;
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -54,4 +54,4 @@ public class ModelScoreSummaryResponse {
     /** 模型能力等级，可为空。 */
     private String abilityLevel;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

@@ -1,9 +1,9 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START-----------
 package com.stock.agent.decision.service;
 
 import com.alibaba.fastjson2.JSON;
-import com.stock.agent.dto.TradeDecisionBatchResponse;
-import com.stock.agent.dto.TradeDecisionResponse;
+import com.stock.agent.decision.dto.TradeDecisionBatchResponse;
+import com.stock.agent.decision.dto.TradeDecisionResponse;
 import com.stock.agent.decision.dto.AgentTradeDecisionDraft;
 import com.stock.agent.decision.entity.AgentTradeDecisionEntity;
 import com.stock.agent.decision.repository.AgentTradeDecisionRepository;
@@ -12,10 +12,10 @@ import com.stock.agent.decision.vo.TradeDecisionConfidenceBand;
 import com.stock.agent.decision.vo.TradeDecisionContext;
 import com.stock.agent.decision.vo.TradeDecisionRecommendation;
 import com.stock.agent.decision.vo.TradeDecisionStatus;
-import com.stock.agent.runtime.AgentRuntimeRequest;
-import com.stock.agent.runtime.AgentRuntimeResponse;
-import com.stock.agent.runtime.AgentRuntimeCoordinator;
-import com.stock.agent.service.AgentConversationLockService;
+import com.stock.agent.runtime.api.AgentRuntimeRequest;
+import com.stock.agent.runtime.api.AgentRuntimeResponse;
+import com.stock.agent.runtime.service.AgentRuntimeCoordinator;
+import com.stock.agent.runtime.concurrency.AgentConversationLockService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

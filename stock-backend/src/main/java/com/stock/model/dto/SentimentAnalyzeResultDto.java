@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START------
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -53,6 +53,24 @@ public class SentimentAnalyzeResultDto {
      */
     private Double confidence;
 
+    /** 温度缩放后的校准置信度，范围 0 到 1。 */
+    private Double calibratedConfidence;
+
+    /** 归一化信息熵，范围 0 到 1。 */
+    private Double entropy;
+
+    /** 最高和次高类别概率差，范围 0 到 1。 */
+    private Double probabilityMargin;
+
+    /** 是否因不确定性不足而弃权。 */
+    private Boolean abstained;
+
+    /** 本次推理使用的文本分块数量。 */
+    private Integer chunkCount;
+
+    /** 实际输入文本覆盖率，范围 0 到 1。 */
+    private Double textCoverage;
+
     /**
      * 各情感类别的概率分布
      */
@@ -97,4 +115,4 @@ public class SentimentAnalyzeResultDto {
     /** 是否触发强负面风险阻断。 */
     private Boolean strongNegative;
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END------

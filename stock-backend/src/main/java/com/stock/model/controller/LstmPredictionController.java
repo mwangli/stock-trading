@@ -1,7 +1,7 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.model.controller;
 
-import com.stock.base.api.ResponseDTO;
+import com.stock.platform.dto.ResponseDTO;
 import com.stock.model.dto.LstmPredictionResultDto;
 import com.stock.model.service.LstmInferenceService;
 import lombok.RequiredArgsConstructor;
@@ -43,4 +43,4 @@ public class LstmPredictionController {
         }
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

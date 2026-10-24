@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START----------
 package com.stock.model.config;
 
 import lombok.Data;
@@ -50,32 +50,29 @@ public class LstmDataQualityConfig {
     /** 单次训练要求的最小独立测试样本数量。 */
     private int minimumTestSamples = 200;
 
+    /** Walk-Forward 评估要求的最小有效窗口数量。 */
+    private int minimumWalkForwardFoldCount = 3;
+
     /**
      * 候选模型允许的最大验证损失。
      */
     private double maximumValidationLoss = 1.0D;
 
-    /** 候选模型独立测试集最低 Rank IC。 */
-    private double minimumTestRankIc = 0.02D;
+    /** 候选模型要求的最低扣成本收益，实际判断必须严格大于该值。 */
+    private double minimumNetReturn = 0D;
 
-    /** 候选模型独立测试集最低 Top 10% 成本后收益。 */
-    private double minimumTopDecileNetReturn = 0D;
+    /** 候选模型最大允许回撤。 */
+    private double maximumDrawdown = 0.20D;
 
-    /** 候选模型至少需要的 Walk-Forward 测试窗口数量。 */
-    private int minimumWalkForwardFoldCount = 3;
+    /** 没有生产模型时允许自动晋级的最低综合质量分。 */
+    private double minimumInitialQualityScore = 0.20D;
 
-    /** 候选模型 Walk-Forward 平均 Rank IC 下限。 */
-    private double minimumWalkForwardMeanRankIc = 0.02D;
-
-    /** 候选模型 Walk-Forward Rank ICIR 下限。 */
-    private double minimumWalkForwardRankIcIr = 0.30D;
-
-    /** Rank IC 为正的测试窗口最低占比。 */
-    private double minimumPositiveRankIcWindowRatio = 0.60D;
+    /** 候选模型相对生产模型自动晋级所需的最低综合质量分优势。 */
+    private double minimumQualityScoreAdvantage = 0.05D;
 
     /**
      * 启动训练要求的最小 JVM 可用内存，单位 MB。
      */
     private long minimumAvailableMemoryMb = 256L;
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END----------

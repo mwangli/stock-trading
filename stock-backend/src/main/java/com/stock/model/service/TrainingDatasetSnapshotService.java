@@ -1,8 +1,8 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START-------------
 package com.stock.model.service;
 
-import com.stock.data.repository.ModelStockDailyBarRepository;
-import com.stock.data.service.TradingCalendarService;
+import com.stock.market.service.MarketDataQueryService;
+import com.stock.market.service.TradingCalendarService;
 import com.stock.model.config.LstmTrainingConfig;
 import com.stock.model.entity.TrainingDatasetSnapshotDocument;
 import com.stock.model.repository.TrainingDatasetSnapshotRepository;
@@ -35,7 +35,7 @@ public class TrainingDatasetSnapshotService {
 
     private static final String READY = "READY";
     private final LstmTrainingConfig config;
-    private final ModelStockDailyBarRepository modelStockDailyBarRepository;
+    private final MarketDataQueryService marketDataQueryService;
     private final TradingCalendarService tradingCalendarService;
     private final TrainingDatasetSnapshotRepository snapshotRepository;
     private final TrainingSnapshotArtifactStore artifactStore;
@@ -116,10 +116,8 @@ public class TrainingDatasetSnapshotService {
      * @return 是否允许复用
      */
     private boolean isFreshEnoughForNewTraining(TrainingDatasetSnapshotDocument snapshot) {
-        LocalDate latestMarketDate = modelStockDailyBarRepository
-                .findFirstBySourceAndSourceVersionOrderByTradeDateDesc(
-                        config.getDataSource(), config.getDataSourceVersion())
-                .map(com.stock.data.entity.ModelStockDailyBar::getTradeDate).orElse(null);
+        LocalDate latestMarketDate = marketDataQueryService.findLatestModelStockBarDate(
+                config.getDataSource(), config.getDataSourceVersion());
         LocalDate datasetEndDate = snapshot.getDatasetEndDate();
         if (latestMarketDate == null || datasetEndDate == null || !latestMarketDate.isAfter(datasetEndDate)) {
             return latestMarketDate != null && datasetEndDate != null;
@@ -306,4 +304,4 @@ public class TrainingDatasetSnapshotService {
     }
 
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END-------------

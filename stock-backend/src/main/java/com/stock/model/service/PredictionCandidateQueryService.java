@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START-----------
 package com.stock.model.service;
 
 import com.stock.model.dto.PredictionCandidateItemDto;
@@ -32,6 +32,7 @@ public class PredictionCandidateQueryService {
     private final ModelPredictionBatchRepository batchRepository;
     private final ModelPredictionRepository predictionRepository;
     private final PredictionCostProperties predictionCostProperties;
+    private final TemporalModelEnsembleService temporalModelEnsembleService;
 
     /**
      * 查询指定目标交易日最新可用预测批次。
@@ -57,7 +58,7 @@ public class PredictionCandidateQueryService {
         if (items.size() != predictions.size()) {
             throw new IllegalStateException("预测批次包含无效或版本不一致的预测明细: batchId=" + batch.getId());
         }
-        return PredictionCandidateBatchDto.builder()
+        PredictionCandidateBatchDto baseline = PredictionCandidateBatchDto.builder()
                 .batchId(batch.getId())
                 .modelId(batch.getModelId())
                 .modelVersion(batch.getModelVersion())
@@ -68,6 +69,7 @@ public class PredictionCandidateQueryService {
                 .tradingEligibilityReason(batch.getTradingEligibilityReason())
                 .items(items)
                 .build();
+        return temporalModelEnsembleService.apply(baseline);
     }
 
     /**
@@ -149,4 +151,4 @@ public class PredictionCandidateQueryService {
         return BigDecimal.valueOf(predictedReturn).subtract(roundTripVariableCost).doubleValue();
     }
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END-----------

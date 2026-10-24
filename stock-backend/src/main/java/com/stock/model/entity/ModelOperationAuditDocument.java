@@ -1,7 +1,8 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START------
 package com.stock.model.entity;
 
 import lombok.Data;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -44,8 +45,9 @@ public class ModelOperationAuditDocument {
     private boolean success;
 
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String reason;
 
     private LocalDateTime createdAt;
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END------

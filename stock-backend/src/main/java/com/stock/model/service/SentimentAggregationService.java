@@ -1,10 +1,12 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START------------------
 package com.stock.model.service;
 
-import com.stock.data.entity.StockNews;
-import com.stock.data.service.NewsEventClassifier;
+import com.stock.market.dto.MarketNewsEventDto;
+import com.stock.market.enums.NewsDocumentType;
+import com.stock.market.service.NewsEventClassifier;
 import com.stock.model.vo.SentimentAggregateResult;
 import com.stock.model.vo.SentimentAnalysisResult;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -41,7 +43,7 @@ public class SentimentAggregationService {
     private static final List<String> NEGATION_REVERSAL_MARKERS = List.of(
             "但是", "但其", "然而", "本次", "近日收到", "现收到", "实际发生");
 
-    private final SentimentInferenceService sentimentInferenceService;
+    private final SentimentModelRouterService sentimentModelRouterService;
     private final NewsEventClassifier newsEventClassifier;
 
     /**
@@ -54,7 +56,7 @@ public class SentimentAggregationService {
      */
     public SentimentAggregateResult assessText(String text, String category,
                                                SentimentAnalysisResult modelResult) {
-        StockNews news = new StockNews();
+        AggregationNews news = new AggregationNews();
         news.setTitle(extractTitle(text));
         news.setContent(text);
         news.setCategory(category);
@@ -91,12 +93,12 @@ public class SentimentAggregationService {
      * @param evaluationTime 计算时点
      * @return 去重和加权后的情感结果
      */
-    public SentimentAggregateResult aggregate(List<StockNews> newsItems, LocalDateTime evaluationTime) {
+    private SentimentAggregateResult aggregate(List<AggregationNews> newsItems, LocalDateTime evaluationTime) {
         if (newsItems == null || newsItems.isEmpty()) {
             return neutralResult();
         }
         LocalDateTime now = evaluationTime == null ? LocalDateTime.now() : evaluationTime;
-        Map<String, List<StockNews>> eventGroups = groupByEvent(newsItems);
+        Map<String, List<AggregationNews>> eventGroups = groupByEvent(newsItems);
         double weightedScore = 0D;
         double totalWeight = 0D;
         double weightedConfidence = 0D;
@@ -105,13 +107,14 @@ public class SentimentAggregationService {
         boolean strongNegative = false;
         String strongNegativeTitle = null;
 
-        for (List<StockNews> group : eventGroups.values()) {
-            StockNews primary = group.get(0);
-            String text = buildText(primary);
-            if (text.isBlank()) {
+        for (List<AggregationNews> group : eventGroups.values()) {
+            AggregationNews primary = group.get(0);
+            String title = firstNonBlank(primary.getNormalizedTitle(), primary.getTitle());
+            String content = firstNonBlank(primary.getNormalizedContent(), primary.getContent());
+            if (title.isBlank() && content.isBlank()) {
                 continue;
             }
-            SentimentAnalysisResult modelResult = sentimentInferenceService.analyzeSentimentRequired(text);
+            SentimentAnalysisResult modelResult = sentimentModelRouterService.analyzeRequired(title, content);
             double weight = calculateWeight(primary, group.size(), now, modelResult.getConfidence());
             weightedScore += modelResult.getScore() * weight;
             weightedConfidence += modelResult.getConfidence() * weight;
@@ -162,16 +165,60 @@ public class SentimentAggregationService {
                 .build();
     }
 
-    private Map<String, List<StockNews>> groupByEvent(List<StockNews> newsItems) {
-        Map<String, List<StockNews>> groups = new LinkedHashMap<>();
-        for (StockNews news : newsItems) {
+    /**
+     * 聚合采集层生成的规范事件事实。
+     *
+     * @param eventFacts 点时有效且已按业务角色过滤的事件事实
+     * @param evaluationTime 计算时点
+     * @return 去重和加权后的情感结果
+     */
+    public SentimentAggregateResult aggregateEventFacts(
+            List<MarketNewsEventDto> eventFacts, LocalDateTime evaluationTime) {
+        if (eventFacts == null || eventFacts.isEmpty()) {
+            return neutralResult();
+        }
+        List<AggregationNews> newsItems = eventFacts.stream().map(this::toAggregationInput).toList();
+        return aggregate(newsItems, evaluationTime);
+    }
+
+    private AggregationNews toAggregationInput(MarketNewsEventDto fact) {
+        AggregationNews news = new AggregationNews();
+        news.setExternalId(fact.getSourceExternalIds() == null ? null
+                : fact.getSourceExternalIds().stream().findFirst().orElse(null));
+        news.setStockCode(fact.getStockCode());
+        news.setStockName(fact.getStockName());
+        news.setTitle(fact.getNormalizedTitle());
+        news.setContent(fact.getNormalizedContent());
+        news.setNormalizedTitle(fact.getNormalizedTitle());
+        news.setNormalizedContent(fact.getNormalizedContent());
+        news.setDocumentType(fact.getDocumentType());
+        news.setDocumentRole(fact.getDocumentRole());
+        news.setEventType(fact.getEventType());
+        news.setCanonicalEventId(fact.getCanonicalEventId());
+        news.setContentHash(fact.getContentHash());
+        news.setInformationPriority(fact.getInformationPriority());
+        news.setNoveltyScore(fact.getNoveltyScore());
+        news.setMaterialityScore(fact.getMaterialityScore());
+        news.setStockSpecificity(fact.getStockSpecificity());
+        news.setSource(fact.getSources() == null ? null
+                : fact.getSources().stream().findFirst().orElse(null));
+        news.setPublishTime(fact.getPublishTime());
+        return news;
+    }
+
+    private Map<String, List<AggregationNews>> groupByEvent(List<AggregationNews> newsItems) {
+        Map<String, List<AggregationNews>> groups = new LinkedHashMap<>();
+        for (AggregationNews news : newsItems) {
             String fingerprint = buildFingerprint(news);
             groups.computeIfAbsent(fingerprint, ignored -> new ArrayList<>()).add(news);
         }
         return groups;
     }
 
-    private String buildFingerprint(StockNews news) {
+    private String buildFingerprint(AggregationNews news) {
+        if (news.getCanonicalEventId() != null && !news.getCanonicalEventId().isBlank()) {
+            return news.getCanonicalEventId();
+        }
         if (news.getContentHash() != null && !news.getContentHash().isBlank()) {
             return news.getContentHash();
         }
@@ -195,7 +242,7 @@ public class SentimentAggregationService {
                 .trim();
     }
 
-    private double calculateWeight(StockNews news, int duplicateCount,
+    private double calculateWeight(AggregationNews news, int duplicateCount,
                                    LocalDateTime now, double modelConfidence) {
         long ageMinutes = news.getPublishTime() == null
                 ? 0L
@@ -208,16 +255,22 @@ public class SentimentAggregationService {
                 * timeDecay
                 * sourceWeight(news.getSource())
                 * eventTypeWeight(news)
-                * duplicatePenalty;
+                * duplicatePenalty
+                * optionalQualityWeight(news.getNoveltyScore())
+                * optionalQualityWeight(news.getStockSpecificity());
     }
 
-    private double normalizedPriority(StockNews news) {
+    private double optionalQualityWeight(Double value) {
+        return value == null ? 1D : clamp(value, 0D, 1D);
+    }
+
+    private double normalizedPriority(AggregationNews news) {
         int priority = news.getInformationPriority() == null
                 ? newsEventClassifier.priority(resolveEventType(news)) : news.getInformationPriority();
         return clamp(priority / 5D, 0D, 1D);
     }
 
-    private String resolveEventType(StockNews news) {
+    private String resolveEventType(AggregationNews news) {
         return news.getEventType() == null || news.getEventType().isBlank()
                 ? newsEventClassifier.classify(news.getTitle(), news.getContent(), news.getCategory())
                 : news.getEventType();
@@ -247,7 +300,7 @@ public class SentimentAggregationService {
         return 1D;
     }
 
-    private double eventTypeWeight(StockNews news) {
+    private double eventTypeWeight(AggregationNews news) {
         return switch (resolveEventType(news)) {
             case "REGULATORY_OR_LITIGATION", "EARNINGS" -> 1.45D;
             case "SHAREHOLDER_OR_EXECUTIVE", "MATERIAL_BUSINESS" -> 1.30D;
@@ -256,7 +309,7 @@ public class SentimentAggregationService {
         };
     }
 
-    private boolean isStrongNegative(StockNews news, SentimentAnalysisResult result) {
+    private boolean isStrongNegative(AggregationNews news, SentimentAnalysisResult result) {
         if (result == null || result.getScore() > STRONG_NEGATIVE_SCORE_THRESHOLD) {
             return false;
         }
@@ -315,7 +368,10 @@ public class SentimentAggregationService {
         return firstLine.length() <= 200 ? firstLine : firstLine.substring(0, 200);
     }
 
-    private boolean isAnnouncement(StockNews news) {
+    private boolean isAnnouncement(AggregationNews news) {
+        if (news.getDocumentType() != null) {
+            return news.getDocumentType() == NewsDocumentType.OFFICIAL_DISCLOSURE;
+        }
         String category = news.getCategory();
         return category != null && category.contains("公告");
     }
@@ -329,11 +385,11 @@ public class SentimentAggregationService {
         return false;
     }
 
-    private String buildText(StockNews news) {
-        String title = news.getTitle() == null ? "" : news.getTitle().trim();
-        String content = news.getContent() == null ? "" : news.getContent().trim();
-        String text = (title + "。" + content).trim();
-        return text.length() <= MAX_TEXT_LENGTH ? text : text.substring(0, MAX_TEXT_LENGTH);
+    private String firstNonBlank(String preferred, String fallback) {
+        if (preferred != null && !preferred.isBlank()) {
+            return preferred.trim();
+        }
+        return fallback == null ? "" : fallback.trim();
     }
 
     private SentimentAggregateResult neutralResult() {
@@ -374,5 +430,34 @@ public class SentimentAggregationService {
     private double clamp(double value, double minimum, double maximum) {
         return Math.max(minimum, Math.min(maximum, value));
     }
+
+    /**
+     * 模型包内部使用的新闻聚合输入，不暴露市场持久化对象。
+     *
+     * @author mwangli
+     * @since 2026-10-24
+     */
+    @Data
+    private static class AggregationNews {
+        private String externalId;
+        private String title;
+        private String content;
+        private String stockCode;
+        private String stockName;
+        private String source;
+        private String category;
+        private String normalizedTitle;
+        private String normalizedContent;
+        private NewsDocumentType documentType;
+        private com.stock.market.enums.NewsDocumentRole documentRole;
+        private String eventType;
+        private String contentHash;
+        private String canonicalEventId;
+        private Integer informationPriority;
+        private Double noveltyScore;
+        private Double materialityScore;
+        private Double stockSpecificity;
+        private LocalDateTime publishTime;
+    }
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END------------------

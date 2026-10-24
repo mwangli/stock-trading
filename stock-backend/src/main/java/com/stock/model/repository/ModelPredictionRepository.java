@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.model.repository;
 
 import com.stock.model.entity.ModelPredictionDocument;
@@ -88,4 +88,4 @@ public interface ModelPredictionRepository extends MongoRepository<ModelPredicti
      */
     List<ModelPredictionDocument> findByBatchIdIn(List<String> batchIds);
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------

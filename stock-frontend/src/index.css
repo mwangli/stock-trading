@@ -1,4 +1,4 @@
-/* AI_GENERATE_START------------------------- */
+/* AI_GENERATE_START--------------------------- */
 @import "tailwindcss";
 
 :root,
@@ -98,6 +98,10 @@ body {
   color: var(--text-primary);
   font-family: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+.login-theme-overlay {
+  background: color-mix(in srgb, var(--panel-bg) 18%, transparent);
 }
 
 button,
@@ -354,6 +358,12 @@ select { letter-spacing: 0; }
   border: 1px solid var(--border-color);
   border-radius: 4px;
 }
+
+.app-theme-menu-swatch-cloudBlue { background: linear-gradient(135deg, #e8f1ff 0 50%, #2563eb 50% 100%); }
+.app-theme-menu-swatch-mintTeal { background: linear-gradient(135deg, #ddf3ee 0 50%, #0f766e 50% 100%); }
+.app-theme-menu-swatch-orangeBlue { background: linear-gradient(135deg, #fff0e6 0 50%, #c2410c 50% 100%); }
+.app-theme-menu-swatch-glacierBlue { background: linear-gradient(135deg, #ddf2f8 0 50%, #087ea4 50% 100%); }
+.app-theme-menu-swatch-dark { background: linear-gradient(135deg, #111c2e 0 50%, #3b82f6 50% 100%); }
 
 .app-theme-menu-name {
   min-width: 0;
@@ -1276,4 +1286,4 @@ select { letter-spacing: 0; }
   .detail-modal-hero,
   .prediction-detail-hero { flex-direction: column; }
 }
-/* AI_GENERATE_END------------------------- */
+/* AI_GENERATE_END--------------------------- */

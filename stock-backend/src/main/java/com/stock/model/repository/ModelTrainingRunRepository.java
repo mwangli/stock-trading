@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.model.repository;
 
 import com.stock.model.entity.ModelTrainingRunDocument;
@@ -54,4 +54,4 @@ public interface ModelTrainingRunRepository extends JpaRepository<ModelTrainingR
      */
     ModelTrainingRunDocument findTopByModelNameOrderByCreatedAtDesc(String modelName);
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

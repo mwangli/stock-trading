@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------------------------------
+// AI_GENERATE_START--------------------------------------
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, Badge, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
@@ -42,7 +42,8 @@ const DEFAULT_MENU_ORDER = [
   '/tradeRecords',
   '/modelOperations',
   '/sentimentModel',
-  '/strategyConfig',
+  '/agentConversation',
+  '/adaptiveStrategy',
   '/jobs',
   '/settings',
   '/logs',
@@ -66,17 +67,18 @@ interface DraggableSidebarItemProps {
 }
 
 const normalizeMenuOrder = (menuOrder: unknown) => {
-  if (!Array.isArray(menuOrder) || menuOrder.length !== DEFAULT_MENU_ORDER.length) {
+  if (!Array.isArray(menuOrder)) {
     return DEFAULT_MENU_ORDER;
   }
 
-  const validKeys = menuOrder.filter(
+  const migratedOrder = menuOrder.flatMap((key) => key === '/strategyConfig'
+    ? ['/agentConversation', '/adaptiveStrategy']
+    : [key]);
+  const validKeys = migratedOrder.filter(
     (key): key is string => typeof key === 'string' && DEFAULT_MENU_ORDER.includes(key),
   );
-  const isCompleteOrder = validKeys.length === DEFAULT_MENU_ORDER.length
-    && new Set(validKeys).size === DEFAULT_MENU_ORDER.length;
-
-  return isCompleteOrder ? validKeys : DEFAULT_MENU_ORDER;
+  const uniqueKeys = [...new Set(validKeys)];
+  return [...uniqueKeys, ...DEFAULT_MENU_ORDER.filter((key) => !uniqueKeys.includes(key))];
 };
 
 const DraggableSidebarItem: React.FC<DraggableSidebarItemProps> = ({
@@ -195,10 +197,7 @@ const DashboardLayout: React.FC = () => {
     key: option.id,
     label: (
       <span className="app-theme-menu-label">
-        <span
-          className="app-theme-menu-swatch"
-          style={{ background: `linear-gradient(135deg, ${option.softColor} 0 50%, ${option.color} 50% 100%)` }}
-        />
+        <span className={`app-theme-menu-swatch app-theme-menu-swatch-${option.id}`} />
         <span className="app-theme-menu-name">{t(`layout.themes.${option.id}`)}</span>
         {themePreset === option.id && <CheckOutlined className="app-theme-menu-check" />}
       </span>
@@ -221,7 +220,8 @@ const DashboardLayout: React.FC = () => {
     { key: '/logs', icon: <FileTextOutlined />, label: t('layout.logs') },
     { key: '/modelOperations', icon: <ExperimentOutlined />, label: t('layout.modelOperations') },
     { key: '/sentimentModel', icon: <MessageOutlined />, label: t('layout.sentimentModel') },
-    { key: '/strategyConfig', icon: <RobotOutlined />, label: t('layout.agent') },
+    { key: '/agentConversation', icon: <MessageOutlined />, label: t('layout.agentConversation') },
+    { key: '/adaptiveStrategy', icon: <RobotOutlined />, label: t('layout.adaptiveStrategy') },
     { key: '/jobs', icon: <ScheduleOutlined />, label: t('layout.jobs') },
     { key: '/settings', icon: <SettingOutlined />, label: t('layout.settings') },
   ], [t]);
@@ -278,7 +278,8 @@ const DashboardLayout: React.FC = () => {
     '/logs': t('layout.pageTitles.logs'),
     '/modelOperations': t('layout.pageTitles.modelOperations'),
     '/sentimentModel': t('layout.pageTitles.sentimentModel'),
-    '/strategyConfig': t('layout.pageTitles.agent'),
+    '/agentConversation': t('layout.pageTitles.agentConversation'),
+    '/adaptiveStrategy': t('layout.pageTitles.adaptiveStrategy'),
     '/jobs': t('layout.pageTitles.jobs'),
     '/settings': t('layout.pageTitles.settings'),
   };
@@ -391,4 +392,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END------------------------------------
+// AI_GENERATE_END--------------------------------------

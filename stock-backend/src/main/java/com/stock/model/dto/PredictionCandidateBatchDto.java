@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START-------
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -49,5 +49,8 @@ public class PredictionCandidateBatchDto {
     /** 可用于策略排序的预测明细。 */
     private List<PredictionCandidateItemDto> items;
 
+    /** 融合模型是否已按配置的新闻事件特征版本完成重训。 */
+    private boolean newsFeaturesEmbedded;
+
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END-------

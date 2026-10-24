@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.model.repository;
 
 import com.stock.model.entity.ModelActivationDocument;
@@ -24,4 +24,4 @@ public interface ModelActivationRepository extends JpaRepository<ModelActivation
      */
     Optional<ModelActivationDocument> findByModelName(String modelName);
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

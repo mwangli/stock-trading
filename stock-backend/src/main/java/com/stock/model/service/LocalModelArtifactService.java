@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------
+// AI_GENERATE_START--------------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -156,4 +156,4 @@ public class LocalModelArtifactService {
         }
     }
 }
-// AI_GENERATE_END-------------
+// AI_GENERATE_END--------------

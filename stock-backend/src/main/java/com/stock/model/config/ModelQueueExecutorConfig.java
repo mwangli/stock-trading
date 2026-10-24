@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.model.config;
 
 import org.springframework.context.annotation.Bean;
@@ -49,4 +49,4 @@ public class ModelQueueExecutorConfig {
         return executor;
     }
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

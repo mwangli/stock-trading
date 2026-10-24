@@ -1,0 +1,206 @@
+// AI_GENERATE_START---
+package com.stock.market.service;
+
+import com.stock.market.dto.NewsCollectionBackfillResult;
+import com.stock.market.dto.NewsEventFactSyncResult;
+import com.stock.market.entity.NewsCollectionBackfillState;
+import com.stock.market.entity.StockNews;
+import com.stock.market.enums.NewsBackfillStatus;
+import com.stock.market.enums.NewsDocumentRole;
+import com.stock.market.enums.NewsQualityStatus;
+import com.stock.market.repository.NewsCollectionBackfillStateRepository;
+import com.stock.market.repository.NewsRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+/**
+ * 历史新闻采集治理回填服务。
+ * 复用在线采集管线，按 MongoDB 文档 ID 游标幂等补齐治理字段和事件事实。
+ *
+ * @author mwangli
+ * @since 2026-10-23
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class NewsCollectionBackfillService {
+
+    private final MongoTemplate mongoTemplate;
+    private final NewsRepository newsRepository;
+    private final NewsCollectionBackfillStateRepository stateRepository;
+    private final NewsCollectionPipelineService pipelineService;
+    private final NewsEventFactService eventFactService;
+
+    /** 单批处理文档数。 */
+    @Value("${app.runtime.news.collection-backfill.batch-size:500}")
+    private int batchSize;
+
+    /** 单次任务最多处理文档数，控制 2C4G 节点资源占用。 */
+    @Value("${app.runtime.news.collection-backfill.max-documents-per-run:50000}")
+    private int maximumDocumentsPerRun;
+
+    /**
+     * 执行当前管线版本的历史新闻回填。
+     *
+     * @return 当前任务运行统计和持久化游标
+     * @throws IllegalStateException 原始文档或事件事实持久化失败时抛出
+     */
+    public NewsCollectionBackfillResult backfill() {
+        String version = NewsCollectionPipelineService.PIPELINE_VERSION;
+        NewsCollectionBackfillState state = stateRepository.findById(version)
+                .orElseGet(() -> initialState(version));
+        if (state.getStatus() == NewsBackfillStatus.COMPLETED) {
+            return result(state, 0, 0, 0, 0, 0, Map.of(), Map.of(), 0, true);
+        }
+
+        state.setStatus(NewsBackfillStatus.RUNNING);
+        state.setLastError(null);
+        state.setUpdateTime(LocalDateTime.now());
+        stateRepository.save(state);
+
+        long scanned = 0;
+        long updated = 0;
+        long eventFacts = 0;
+        long duplicates = 0;
+        long ignored = 0;
+        long activeBatchSize = 0;
+        Map<String, Long> documentTypeCounts = new LinkedHashMap<>();
+        Map<String, Long> documentRoleCounts = new LinkedHashMap<>();
+        try {
+            while (scanned < maximumDocumentsPerRun) {
+                int currentBatchSize = (int) Math.min(batchSize, maximumDocumentsPerRun - scanned);
+                List<StockNews> batch = loadNextBatch(state.getLastProcessedId(), currentBatchSize);
+                if (batch.isEmpty()) {
+                    state.setStatus(NewsBackfillStatus.COMPLETED);
+                    state.setUpdateTime(LocalDateTime.now());
+                    stateRepository.save(state);
+                    return result(state, scanned, updated, eventFacts, duplicates, ignored,
+                            documentTypeCounts, documentRoleCounts, 0, true);
+                }
+                activeBatchSize = batch.size();
+
+                for (StockNews news : batch) {
+                    pipelineService.process(news);
+                }
+                newsRepository.saveAll(batch);
+                NewsEventFactSyncResult factResult = eventFactService.synchronizeBatch(batch);
+                long ignoredInBatch = batch.stream()
+                        .filter(news -> news.getDocumentRole() == NewsDocumentRole.IGNORE)
+                        .count();
+                Map<String, Long> typeCountsInBatch = countBy(
+                        batch, news -> enumName(news.getDocumentType()));
+                Map<String, Long> roleCountsInBatch = countBy(
+                        batch, news -> enumName(news.getDocumentRole()));
+                String lastProcessedId = batch.get(batch.size() - 1).getId();
+
+                scanned += batch.size();
+                updated += batch.size();
+                eventFacts += factResult.insertedEventCount();
+                duplicates += factResult.duplicateDocumentCount();
+                ignored += ignoredInBatch;
+                mergeCounts(documentTypeCounts, typeCountsInBatch);
+                mergeCounts(documentRoleCounts, roleCountsInBatch);
+                state.setLastProcessedId(lastProcessedId);
+                state.setScannedCount(state.getScannedCount() + batch.size());
+                state.setUpdatedCount(state.getUpdatedCount() + batch.size());
+                state.setEventFactCount(state.getEventFactCount() + factResult.insertedEventCount());
+                state.setDuplicateCount(state.getDuplicateCount() + factResult.duplicateDocumentCount());
+                state.setIgnoredCount(state.getIgnoredCount() + ignoredInBatch);
+                state.setDocumentTypeCounts(mergedCopy(state.getDocumentTypeCounts(), typeCountsInBatch));
+                state.setDocumentRoleCounts(mergedCopy(state.getDocumentRoleCounts(), roleCountsInBatch));
+                state.setUpdateTime(LocalDateTime.now());
+                stateRepository.save(state);
+                activeBatchSize = 0;
+                log.info("新闻采集治理回填批次完成: version={}, scanned={}, lastProcessedId={}",
+                        version, state.getScannedCount(), lastProcessedId);
+            }
+            state.setStatus(NewsBackfillStatus.PENDING);
+            state.setUpdateTime(LocalDateTime.now());
+            stateRepository.save(state);
+            return result(state, scanned, updated, eventFacts, duplicates, ignored,
+                    documentTypeCounts, documentRoleCounts, 0, false);
+        } catch (RuntimeException exception) {
+            state.setStatus(NewsBackfillStatus.FAILED);
+            state.setFailedCount(state.getFailedCount() + Math.max(1, activeBatchSize));
+            state.setLastError(limitError(exception.getMessage()));
+            state.setUpdateTime(LocalDateTime.now());
+            stateRepository.save(state);
+            throw new IllegalStateException("历史新闻采集治理回填失败，已保留最后成功游标", exception);
+        }
+    }
+
+    private List<StockNews> loadNextBatch(String lastProcessedId, int limit) {
+        Criteria needsProcessing = new Criteria().orOperator(
+                Criteria.where("pipelineVersion").ne(NewsCollectionPipelineService.PIPELINE_VERSION),
+                Criteria.where("qualityStatus").ne(NewsQualityStatus.READY));
+        Criteria criteria = lastProcessedId == null || lastProcessedId.isBlank()
+                ? needsProcessing
+                : new Criteria().andOperator(Criteria.where("_id").gt(lastProcessedId), needsProcessing);
+        Query query = Query.query(criteria)
+                .with(Sort.by(Sort.Direction.ASC, "_id"))
+                .limit(Math.max(1, limit));
+        return mongoTemplate.find(query, StockNews.class, "stock_news");
+    }
+
+    private NewsCollectionBackfillState initialState(String version) {
+        NewsCollectionBackfillState state = new NewsCollectionBackfillState();
+        state.setPipelineVersion(version);
+        state.setStatus(NewsBackfillStatus.PENDING);
+        state.setUpdateTime(LocalDateTime.now());
+        return state;
+    }
+
+    private NewsCollectionBackfillResult result(NewsCollectionBackfillState state,
+                                                long scanned, long updated, long eventFacts, long duplicates,
+                                                long ignored, Map<String, Long> documentTypeCounts,
+                                                Map<String, Long> documentRoleCounts,
+                                                long failed, boolean completed) {
+        return new NewsCollectionBackfillResult(
+                state.getPipelineVersion(), scanned, updated, eventFacts, duplicates, ignored,
+                Map.copyOf(documentTypeCounts), Map.copyOf(documentRoleCounts), failed,
+                state.getLastProcessedId(), completed);
+    }
+
+    private Map<String, Long> countBy(List<StockNews> batch, Function<StockNews, String> classifier) {
+        return batch.stream().collect(Collectors.groupingBy(
+                classifier, LinkedHashMap::new, Collectors.counting()));
+    }
+
+    private String enumName(Enum<?> value) {
+        return value == null ? "UNKNOWN" : value.name();
+    }
+
+    private Map<String, Long> mergedCopy(Map<String, Long> current, Map<String, Long> additions) {
+        Map<String, Long> merged = new LinkedHashMap<>();
+        if (current != null) {
+            merged.putAll(current);
+        }
+        mergeCounts(merged, additions);
+        return merged;
+    }
+
+    private void mergeCounts(Map<String, Long> target, Map<String, Long> additions) {
+        additions.forEach((key, value) -> target.merge(key, value, Long::sum));
+    }
+
+    private String limitError(String message) {
+        if (message == null) {
+            return "UNKNOWN_BACKFILL_ERROR";
+        }
+        return message.length() <= 500 ? message : message.substring(0, 500);
+    }
+}
+// AI_GENERATE_END---

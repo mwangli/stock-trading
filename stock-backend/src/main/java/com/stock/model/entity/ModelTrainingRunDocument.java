@@ -1,7 +1,8 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START----------
 package com.stock.model.entity;
 
 import lombok.Data;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -40,12 +41,15 @@ public class ModelTrainingRunDocument {
     private String triggeredBy;
 
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String requestedConfigJson;
 
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String effectiveConfigJson;
 
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String gateResultJson;
 
     private LocalDateTime startedAt;
@@ -58,6 +62,7 @@ public class ModelTrainingRunDocument {
     private String datasetSnapshotId;
 
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String errorMessage;
 
     /** 实际参与训练并产生有效样本的股票数量。 */
@@ -68,6 +73,7 @@ public class ModelTrainingRunDocument {
 
     /** 当前训练阶段说明。 */
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String progressMessage;
 
     /** 当前完成比例，范围 0-100。 */
@@ -98,4 +104,4 @@ public class ModelTrainingRunDocument {
 
     private LocalDateTime createdAt;
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END----------

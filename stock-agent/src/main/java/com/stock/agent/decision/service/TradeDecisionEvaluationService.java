@@ -1,16 +1,16 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.agent.decision.service;
 
 import com.alibaba.fastjson2.JSON;
-import com.stock.agent.client.BackendFactsClient;
-import com.stock.agent.client.dto.TradeDecisionEvaluationFact;
-import com.stock.agent.client.dto.TradeDecisionEvaluationFactRequest;
-import com.stock.agent.client.dto.TradeDecisionEvaluationFacts;
-import com.stock.agent.dto.TradeDecisionEvaluationBatchResponse;
-import com.stock.agent.dto.TradeDecisionEvaluationResponse;
-import com.stock.agent.dto.TradeDecisionEvaluationSummaryResponse;
-import com.stock.agent.dto.TradeDecisionProviderMetricResponse;
-import com.stock.agent.dto.TradeDecisionProviderStatisticsResponse;
+import com.stock.agent.decision.port.TradeDecisionFactPort;
+import com.stock.agent.decision.port.model.TradeDecisionEvaluationFact;
+import com.stock.agent.decision.port.model.TradeDecisionEvaluationFactRequest;
+import com.stock.agent.decision.port.model.TradeDecisionEvaluationFacts;
+import com.stock.agent.decision.dto.TradeDecisionEvaluationBatchResponse;
+import com.stock.agent.decision.dto.TradeDecisionEvaluationResponse;
+import com.stock.agent.decision.dto.TradeDecisionEvaluationSummaryResponse;
+import com.stock.agent.decision.dto.TradeDecisionProviderMetricResponse;
+import com.stock.agent.decision.dto.TradeDecisionProviderStatisticsResponse;
 import com.stock.agent.decision.entity.AgentTradeDecisionEntity;
 import com.stock.agent.decision.entity.TradeDecisionContextEntity;
 import com.stock.agent.decision.entity.TradeDecisionEvaluationEntity;
@@ -52,7 +52,7 @@ public class TradeDecisionEvaluationService {
     private final AgentTradeDecisionRepository decisionRepository;
     private final TradeDecisionContextRepository contextRepository;
     private final TradeDecisionEvaluationRepository evaluationRepository;
-    private final BackendFactsClient backendFactsClient;
+    private final TradeDecisionFactPort decisionFactPort;
 
     /**
      * 评估行情已经到达的交易建议。
@@ -89,7 +89,7 @@ public class TradeDecisionEvaluationService {
                 .map(context -> new TradeDecisionEvaluationFactRequest(
                         context.getCandidateBatchId(), context.getStockCode(), context.getTargetTradeDate()))
                 .toList();
-        TradeDecisionEvaluationFacts backendFacts = backendFactsClient.tradeDecisionEvaluationFacts(requests);
+        TradeDecisionEvaluationFacts backendFacts = decisionFactPort.tradeDecisionEvaluationFacts(requests);
         LocalDate latestMarketDate = backendFacts.latestMarketDate();
         if (latestMarketDate == null) {
             return 0;

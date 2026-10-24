@@ -1,7 +1,8 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START-----------
 package com.stock.model.entity;
 
 import lombok.Data;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -122,6 +123,7 @@ public class TrainingDatasetSnapshotDocument {
 
     /** 失败原因。 */
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String errorMessage;
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END-----------

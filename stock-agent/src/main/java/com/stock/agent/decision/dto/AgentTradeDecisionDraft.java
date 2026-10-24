@@ -1,7 +1,7 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.agent.decision.dto;
 
-import com.stock.agent.runtime.AgentStructuredOutput;
+import com.stock.agent.runtime.api.AgentStructuredOutput;
 import lombok.Data;
 
 import java.time.LocalDateTime;

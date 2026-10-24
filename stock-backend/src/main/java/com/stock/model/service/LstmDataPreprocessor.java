@@ -1,7 +1,7 @@
-// AI_GENERATE_START----------------
+// AI_GENERATE_START-----------------
 package com.stock.model.service;
 
-import com.stock.data.entity.StockPrice;
+import com.stock.market.dto.StockPriceItemDto;
 import com.stock.model.config.LstmModelConfig;
 import lombok.Builder;
 import lombok.Data;
@@ -49,9 +49,9 @@ public class LstmDataPreprocessor {
      * @param prices 股票价格列表，必须按日期升序排列
      * @return 训练集和验证集
      */
-    public ProcessedData processData(List<StockPrice> prices) {
+    public ProcessedData processData(List<StockPriceItemDto> prices) {
         String stockCode = prices == null || prices.isEmpty() ? "unknown" : prices.get(0).getCode();
-        Map<String, List<StockPrice>> priceSeries = Map.of(stockCode, prices == null ? List.of() : prices);
+        Map<String, List<StockPriceItemDto>> priceSeries = Map.of(stockCode, prices == null ? List.of() : prices);
         return processPanelData(priceSeries, Map.of(stockCode, StockContext.basic(stockCode)));
     }
 
@@ -63,7 +63,7 @@ public class LstmDataPreprocessor {
      * @param contexts 股票代码到静态特征的映射
      * @return 合并后的训练集和验证集
      */
-    public ProcessedData processPanelData(Map<String, List<StockPrice>> priceSeries,
+    public ProcessedData processPanelData(Map<String, List<StockPriceItemDto>> priceSeries,
                                           Map<String, StockContext> contexts) {
         validateFeatureCount();
         List<TrainingSample> trainSamples = new ArrayList<>();
@@ -76,9 +76,9 @@ public class LstmDataPreprocessor {
 
         int sampleLimitPerStock = resolveSampleLimit(priceSeries.size());
 
-        for (Map.Entry<String, List<StockPrice>> entry : priceSeries.entrySet()) {
+        for (Map.Entry<String, List<StockPriceItemDto>> entry : priceSeries.entrySet()) {
             String stockCode = entry.getKey();
-            List<StockPrice> prices = entry.getValue();
+            List<StockPriceItemDto> prices = entry.getValue();
             StockContext context = contexts == null
                     ? StockContext.basic(stockCode)
                     : contexts.getOrDefault(stockCode, StockContext.basic(stockCode));
@@ -131,7 +131,7 @@ public class LstmDataPreprocessor {
      * @param sampleLimit 单只股票允许保留的样本上限
      * @return 单股票处理结果，数据不足时返回空
      */
-    public StockProcessedData processStockData(List<StockPrice> prices, StockContext context, int sampleLimit) {
+    public StockProcessedData processStockData(List<StockPriceItemDto> prices, StockContext context, int sampleLimit) {
         validateFeatureCount();
         StockContext safeContext = context == null
                 ? StockContext.basic(prices == null || prices.isEmpty() ? null : prices.get(0).getCode())
@@ -172,7 +172,7 @@ public class LstmDataPreprocessor {
      * @param context 股票静态特征
      * @return 最新预测输入
      */
-    public PredictionInput buildPredictionInput(List<StockPrice> prices, StockContext context) {
+    public PredictionInput buildPredictionInput(List<StockPriceItemDto> prices, StockContext context) {
         validateFeatureCount();
         int sequenceLength = config.getSequenceLength();
         if (prices == null || prices.size() < sequenceLength + 1) {
@@ -202,7 +202,7 @@ public class LstmDataPreprocessor {
                 .build();
     }
 
-    private SeriesSamples createSeriesSamples(List<StockPrice> prices, StockContext context,
+    private SeriesSamples createSeriesSamples(List<StockPriceItemDto> prices, StockContext context,
                                               int sampleLimit) {
         int sequenceLength = config.getSequenceLength();
         if (prices == null || prices.size() < sequenceLength + 2) {
@@ -251,7 +251,7 @@ public class LstmDataPreprocessor {
         return new SeriesSamples(samples);
     }
 
-    private List<double[]> buildFeatures(List<StockPrice> prices, StockContext context) {
+    private List<double[]> buildFeatures(List<StockPriceItemDto> prices, StockContext context) {
         Map<String, double[]> indicators = technicalIndicatorService.calculateIndicators(prices);
         double[] rsi = indicators.get("RSI");
         double[] macd = indicators.get("MACD");
@@ -262,7 +262,7 @@ public class LstmDataPreprocessor {
 
         List<double[]> features = new ArrayList<>(prices.size());
         for (int index = 0; index < prices.size(); index++) {
-            StockPrice current = prices.get(index);
+            StockPriceItemDto current = prices.get(index);
             double close = safeNumber(current.getClosePrice());
             double previousClose = index == 0
                     ? close
@@ -298,12 +298,12 @@ public class LstmDataPreprocessor {
         return features;
     }
 
-    private double rollingVolumeMean(List<StockPrice> prices, int endIndex, int lookback) {
+    private double rollingVolumeMean(List<StockPriceItemDto> prices, int endIndex, int lookback) {
         int start = Math.max(0, endIndex - lookback + 1);
         return rollingVolumeSum(prices, endIndex, lookback) / Math.max(1, endIndex - start + 1);
     }
 
-    private double rollingVolumeSum(List<StockPrice> prices, int endIndex, int lookback) {
+    private double rollingVolumeSum(List<StockPriceItemDto> prices, int endIndex, int lookback) {
         int start = Math.max(0, endIndex - lookback + 1);
         double total = 0D;
         for (int index = start; index <= endIndex; index++) {
@@ -312,7 +312,7 @@ public class LstmDataPreprocessor {
         return total;
     }
 
-    private double rollingAmountMean(List<StockPrice> prices, int endIndex, int lookback) {
+    private double rollingAmountMean(List<StockPriceItemDto> prices, int endIndex, int lookback) {
         int start = Math.max(0, endIndex - lookback + 1);
         double total = 0D;
         for (int index = start; index <= endIndex; index++) {
@@ -707,4 +707,4 @@ public class LstmDataPreprocessor {
         private String featureVersion;
     }
 }
-// AI_GENERATE_END----------------
+// AI_GENERATE_END-----------------

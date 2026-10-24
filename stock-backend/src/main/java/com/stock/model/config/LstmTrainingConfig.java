@@ -1,7 +1,7 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START--------------
 package com.stock.model.config;
 
-import com.stock.model.model.LstmArchitectureType;
+import com.stock.model.algorithm.LstmArchitectureType;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -84,7 +84,7 @@ public class LstmTrainingConfig {
     /**
      * 每个时间步的总特征维度。
      */
-    private int inputSize = 31;
+    private int inputSize = 56;
 
     /** `v5` 候选模型架构。 */
     private LstmArchitectureType architectureType = LstmArchitectureType.RANKING_LSTM;
@@ -220,4 +220,4 @@ public class LstmTrainingConfig {
     private double minDelta = 0.0001;
 
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END--------------

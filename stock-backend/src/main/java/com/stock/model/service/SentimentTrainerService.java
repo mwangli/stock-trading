@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------------
+// AI_GENERATE_START-------------------
 package com.stock.model.service;
 
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
@@ -11,6 +11,7 @@ import ai.djl.training.util.ProgressBar;
 import ai.djl.translate.Translator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.model.config.SentimentTrainingConfig;
+import com.stock.model.dto.SentimentModelInput;
 import com.stock.model.entity.ModelMetadataDocument;
 import java.nio.file.Path;
 import com.stock.model.vo.SentimentAnalysisResult;
@@ -23,8 +24,9 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * DJL PyTorch 情感模型加载与推理服务。
@@ -36,7 +38,7 @@ import java.util.Objects;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class SentimentTrainerService {
+public class SentimentTrainerService implements SentimentModelRuntime {
 
     private final SentimentTrainingConfig config;
     private final SentimentDataPreprocessor dataPreprocessor;
@@ -44,6 +46,8 @@ public class SentimentTrainerService {
     private final SentimentArtifactService artifactService;
     private final LocalModelArtifactService localArtifactService;
     private final ObjectMapper objectMapper;
+    private final SentimentInputAssembler inputAssembler;
+    private final SentimentPredictionNormalizer predictionNormalizer;
 
     private volatile ZooModel<String, Classifications> loadedModel;
     private volatile boolean modelLoaded;
@@ -113,7 +117,7 @@ public class SentimentTrainerService {
             return analyzeWithRules(text);
         }
         try {
-            return predict(text);
+            return predict(inputAssembler.assembleText(text));
         } catch (Exception exception) {
             log.error("情感分析推理失败，使用规则分析", exception);
             markModelUnhealthy(exception);
@@ -136,7 +140,7 @@ public class SentimentTrainerService {
             throw new IllegalStateException("情感分析模型未加载: " + lastLoadError);
         }
         try {
-            return predict(text);
+            return predict(inputAssembler.assembleText(text));
         } catch (Exception exception) {
             markModelUnhealthy(exception);
             throw new IllegalStateException("情感分析模型推理失败", exception);
@@ -197,27 +201,41 @@ public class SentimentTrainerService {
     }
 
 
-    private SentimentAnalysisResult predict(String text) throws Exception {
+    @Override
+    public String modelName() {
+        return config.getModelName();
+    }
+
+    /**
+     * 使用已加载 FinBERT 对统一分块输入执行推理。
+     *
+     * @param input 标题优先的统一模型输入
+     * @return 完成概率平均和不确定性计算的三分类结果
+     */
+    @Override
+    public SentimentAnalysisResult predict(SentimentModelInput input) {
+        if (input == null || input.getChunks() == null || input.getChunks().isEmpty()) {
+            throw new IllegalArgumentException("FinBERT 情感分析输入不能为空");
+        }
+        if ((!modelLoaded || loadedModel == null) && !loadModel()) {
+            throw new IllegalStateException("情感分析模型未加载: " + lastLoadError);
+        }
         try (Predictor<String, Classifications> predictor = loadedModel.newPredictor()) {
-            Classifications classifications = predictor.predict(text);
-            Map<String, Double> probabilities = new HashMap<>();
-            String bestLabel = null;
-            double bestProbability = 0D;
-            for (Classifications.Classification classification : classifications.items()) {
-                probabilities.put(classification.getClassName(), classification.getProbability());
-                if (classification.getProbability() > bestProbability) {
-                    bestProbability = classification.getProbability();
-                    bestLabel = classification.getClassName();
+            List<Map<String, Double>> chunkProbabilities = new ArrayList<>();
+            for (String chunk : input.getChunks()) {
+                Classifications classifications = predictor.predict(chunk);
+                Map<String, Double> probabilities = new HashMap<>();
+                for (Classifications.Classification classification : classifications.items()) {
+                    probabilities.put(normalizeLabel(classification.getClassName()),
+                            classification.getProbability());
                 }
+                chunkProbabilities.add(probabilities);
             }
-            return SentimentAnalysisResult.builder()
-                    .label(bestLabel)
-                    .score(calculateSentimentScore(probabilities))
-                    .normalizedScore(calculateNormalizedScore(bestLabel, bestProbability))
-                    .confidence(bestProbability)
-                    .probabilities(probabilities)
-                    .text(text)
-                    .build();
+            return predictionNormalizer.normalize(
+                    chunkProbabilities, input, config.getCalibrationTemperature());
+        } catch (Exception exception) {
+            markModelUnhealthy(exception);
+            throw new IllegalStateException("FinBERT 情感模型推理失败", exception);
         }
     }
 
@@ -245,6 +263,12 @@ public class SentimentTrainerService {
                 .score(label == 2 ? -0.7D : label == 1 ? 0.7D : 0D)
                 .normalizedScore(calculateNormalizedScore(labelText, 0.7D))
                 .confidence(0.7D)
+                .calibratedConfidence(0.7D)
+                .entropy(0.75D)
+                .probabilityMargin(0.55D)
+                .abstained(false)
+                .chunkCount(1)
+                .textCoverage(1D)
                 .probabilities(probabilities)
                 .text(safeText)
                 .build();
@@ -263,23 +287,16 @@ public class SentimentTrainerService {
         return 50D;
     }
 
-    private double calculateSentimentScore(Map<String, Double> probabilities) {
-        if (probabilities == null || probabilities.isEmpty()) {
-            return 0D;
+    private String normalizeLabel(String rawLabel) {
+        if (rawLabel == null) {
+            throw new IllegalStateException("FinBERT 输出标签为空");
         }
-        double positive = probabilities.entrySet().stream()
-                .filter(entry -> "positive".equalsIgnoreCase(entry.getKey()))
-                .map(Map.Entry::getValue)
-                .filter(Objects::nonNull)
-                .findFirst()
-                .orElse(0D);
-        double negative = probabilities.entrySet().stream()
-                .filter(entry -> "negative".equalsIgnoreCase(entry.getKey()))
-                .map(Map.Entry::getValue)
-                .filter(Objects::nonNull)
-                .findFirst()
-                .orElse(0D);
-        return Math.max(-1D, Math.min(1D, positive - negative));
+        for (String label : config.getLabels()) {
+            if (label.equalsIgnoreCase(rawLabel)) {
+                return label.toLowerCase(java.util.Locale.ROOT);
+            }
+        }
+        throw new IllegalStateException("FinBERT 输出标签无法映射: " + rawLabel);
     }
 
     private String resolveArtifactUri(SentimentArtifactInspection inspection) {
@@ -316,4 +333,4 @@ public class SentimentTrainerService {
         }
     }
 }
-// AI_GENERATE_END-----------------
+// AI_GENERATE_END-------------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.model.vo;
 
 import lombok.AllArgsConstructor;
@@ -100,4 +100,4 @@ public class SentimentArtifactManifest {
         private String conclusion;
     }
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

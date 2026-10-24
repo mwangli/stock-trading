@@ -1,9 +1,9 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.agent.decision.service;
 
 import com.alibaba.fastjson2.JSON;
-import com.stock.agent.client.BackendFactsClient;
-import com.stock.agent.client.dto.BackendTradeDecisionContextFact;
+import com.stock.agent.decision.port.TradeDecisionFactPort;
+import com.stock.agent.decision.port.model.BackendTradeDecisionContextFact;
 import com.stock.agent.decision.entity.TradeDecisionContextEntity;
 import com.stock.agent.decision.repository.TradeDecisionContextRepository;
 import com.stock.agent.decision.vo.TradeDecisionContext;
@@ -24,7 +24,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class TradeDecisionContextService {
 
-    private final BackendFactsClient backendFactsClient;
+    private final TradeDecisionFactPort decisionFactPort;
     private final TradeDecisionContextRepository contextRepository;
 
     /**
@@ -35,7 +35,7 @@ public class TradeDecisionContextService {
      * @return 按候选排名排列的决策上下文
      */
     public List<TradeDecisionContext> buildBatch(String candidateBatchId, int maxCandidates) {
-        List<TradeDecisionContext> contexts = backendFactsClient
+        List<TradeDecisionContext> contexts = decisionFactPort
                 .tradeDecisionContexts(candidateBatchId, maxCandidates).stream()
                 .map(this::toContext)
                 .toList();

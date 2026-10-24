@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-------
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -28,11 +28,11 @@ public class ModelTrainingRequest {
     /** 学习率覆盖值。 */
     private Double learningRate;
 
-    /** 候选模型架构，如 RANKING_LSTM 或 DUAL_ATTENTION_RANKING_LSTM。 */
+    /** 候选模型架构：RANKING_LSTM、DUAL_ATTENTION_RANKING_LSTM 或 MASTER_TRANSFORMER。 */
     private String architectureType;
 
     /** 操作人名称。 */
     private String operatorName;
 
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-------

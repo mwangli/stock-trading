@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START--
 package com.stock.model.service;
 
 import com.stock.model.entity.ModelPredictionBatchDocument;
@@ -91,4 +91,4 @@ public class PredictionBatchClaimService {
         return batchRepository.saveAndFlush(batch);
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END--

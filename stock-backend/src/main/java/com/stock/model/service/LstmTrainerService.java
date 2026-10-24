@@ -1,9 +1,10 @@
-// AI_GENERATE_START-------------------------------------------
+// AI_GENERATE_START----------------------------------------------
 package com.stock.model.service;
 
 import ai.djl.Device;
 import ai.djl.Model;
 import ai.djl.engine.Engine;
+import ai.djl.nn.Block;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
@@ -20,10 +21,11 @@ import ai.djl.training.tracker.Tracker;
 import com.stock.model.config.LstmDataQualityConfig;
 import com.stock.model.config.LstmTrainingConfig;
 import com.stock.model.entity.TrainingDatasetSnapshotDocument;
-import com.stock.model.model.ModelBinaryCodec;
-import com.stock.model.model.LstmArchitectureType;
-import com.stock.model.model.RankingLSTMModel;
-import com.stock.model.model.RankingStockLoss;
+import com.stock.model.algorithm.ModelBinaryCodec;
+import com.stock.model.algorithm.LstmArchitectureType;
+import com.stock.model.algorithm.MasterTransformerModel;
+import com.stock.model.algorithm.RankingLSTMModel;
+import com.stock.model.algorithm.RankingStockLoss;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -289,7 +291,7 @@ public class LstmTrainerService {
 
             Engine.getInstance().setRandomSeed(config.getRandomSeed());
             try (Model model = Model.newInstance("lstm-global-shared", "PyTorch")) {
-                RankingLSTMModel block = createModelBlock(processedData, architectureType);
+                Block block = createModelBlock(processedData, architectureType);
                 model.setBlock(block);
                 Optimizer optimizer = Optimizer.adam()
                         .optLearningRateTracker(Tracker.fixed(trainLearningRate))
@@ -306,7 +308,9 @@ public class LstmTrainerService {
                         (float) config.getDownsideQuantileLossWeight(),
                         (float) config.getConsistencyLossWeight(),
                         (float) (config.getCostThreshold() / config.getTargetReturnScale()),
-                        (float) config.getNeutralDirectionWeight()))
+                        (float) config.getNeutralDirectionWeight(),
+                        directionClassWeights.positiveWeight(),
+                        directionClassWeights.negativeWeight()))
                         .optOptimizer(optimizer)
                         .optDevices(new Device[]{device})
                         .addTrainingListeners(TrainingListener.Defaults.logging());
@@ -463,7 +467,7 @@ public class LstmTrainerService {
                     bestTrainLoss, bestValLoss, trainLabelStats, validationLabelStats,
                     directionClassWeights, bestValidationMetrics, bestTestMetrics,
                     walkForwardMetrics, strictIsolationMetrics, probabilityTemperature,
-                    architectureType);
+                    architectureType, trainBatchSize);
             return TrainingResult.builder()
                     .success(true)
                     .message("共享基础模型训练完成")
@@ -552,8 +556,12 @@ public class LstmTrainerService {
         return Math.max(1L, (long) Math.ceil(remainingNanos / 1_000_000_000D));
     }
 
-    private RankingLSTMModel createModelBlock(
+    private Block createModelBlock(
             LstmDataPreprocessor.ProcessedData data, LstmArchitectureType architectureType) {
+        if (architectureType == LstmArchitectureType.MASTER_TRANSFORMER) {
+            return new MasterTransformerModel(
+                    config.getInputSize(), config.getHiddenSize(), config.getSequenceLength());
+        }
         int stockDictionarySize = Math.max(2, data.getStockDictionary().size());
         int industryDictionarySize = Math.max(2, data.getIndustryDictionary().size());
         int marketDictionarySize = Math.max(2, data.getMarketDictionary().size());
@@ -574,7 +582,8 @@ public class LstmTrainerService {
 
     private void validateArchitectureType(LstmArchitectureType architectureType) {
         if (architectureType == null || architectureType == LstmArchitectureType.LEGACY_MULTITASK_LSTM) {
-            throw new IllegalArgumentException("v5 训练仅支持 RANKING_LSTM 或 DUAL_ATTENTION_RANKING_LSTM");
+            throw new IllegalArgumentException(
+                    "v5 训练仅支持 RANKING_LSTM、DUAL_ATTENTION_RANKING_LSTM 或 MASTER_TRANSFORMER");
         }
     }
 
@@ -819,7 +828,7 @@ public class LstmTrainerService {
             float learningRate) throws IOException, ai.djl.translate.TranslateException {
         try (Model model = Model.newInstance("lstm-walk-forward-fold-" + fold.getFoldNumber(), "PyTorch")) {
             Engine.getInstance().setRandomSeed(config.getRandomSeed() + fold.getFoldNumber());
-            RankingLSTMModel block = createModelBlock(processedData, architectureType);
+            Block block = createModelBlock(processedData, architectureType);
             model.setBlock(block);
             Optimizer optimizer = Optimizer.adam()
                     .optLearningRateTracker(Tracker.fixed(learningRate))
@@ -827,7 +836,10 @@ public class LstmTrainerService {
                     .build();
             Device[] availableDevices = Engine.getInstance().getDevices(1);
             Device device = availableDevices.length == 0 ? Device.cpu() : availableDevices[0];
-            DefaultTrainingConfig trainingConfig = new DefaultTrainingConfig(createRankingLoss())
+            DirectionClassWeights foldClassWeights = calculateDirectionClassWeights(
+                    summarizeDirectionLabels(fold.getTrainSamples()));
+            DefaultTrainingConfig trainingConfig = new DefaultTrainingConfig(
+                    createRankingLoss(foldClassWeights))
                     .optOptimizer(optimizer)
                     .optDevices(new Device[]{device})
                     .addTrainingListeners(TrainingListener.Defaults.logging());
@@ -881,7 +893,21 @@ public class LstmTrainerService {
         }
     }
 
-    private RankingStockLoss createRankingLoss() {
+    private DirectionLabelStats summarizeDirectionLabels(
+            List<LstmDataPreprocessor.TrainingSample> samples) {
+        int positiveCount = 0;
+        int negativeCount = 0;
+        for (LstmDataPreprocessor.TrainingSample sample : samples) {
+            if (sample.getDirectionTarget() > 0.5F) {
+                positiveCount++;
+            } else if (sample.getDirectionTarget() < 0.5F) {
+                negativeCount++;
+            }
+        }
+        return new DirectionLabelStats(positiveCount, negativeCount);
+    }
+
+    private RankingStockLoss createRankingLoss(DirectionClassWeights classWeights) {
         return new RankingStockLoss(
                 (float) config.getRankingLossWeight(),
                 (float) config.getExcessReturnLossWeight(),
@@ -889,7 +915,9 @@ public class LstmTrainerService {
                 (float) config.getDownsideQuantileLossWeight(),
                 (float) config.getConsistencyLossWeight(),
                 (float) (config.getCostThreshold() / config.getTargetReturnScale()),
-                (float) config.getNeutralDirectionWeight());
+                (float) config.getNeutralDirectionWeight(),
+                classWeights.positiveWeight(),
+                classWeights.negativeWeight());
     }
 
     private record RankingEvaluation(
@@ -1117,4 +1145,4 @@ public class LstmTrainerService {
         private Double strictIsolationMeanRankIc;
     }
 }
-// AI_GENERATE_END-------------------------------------------
+// AI_GENERATE_END----------------------------------------------

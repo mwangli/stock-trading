@@ -1,7 +1,7 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START----------
 package com.stock.model.controller;
 
-import com.stock.base.api.ResponseDTO;
+import com.stock.platform.dto.ResponseDTO;
 import com.stock.model.dto.SentimentAnalyzeRequestDto;
 import com.stock.model.dto.SentimentAnalyzeResultDto;
 import com.stock.model.dto.SentimentHealthDto;
@@ -10,6 +10,7 @@ import com.stock.model.vo.SentimentArtifactManifest;
 import com.stock.model.vo.SentimentAnalysisResult;
 import com.stock.model.service.SentimentInferenceService;
 import com.stock.model.service.SentimentAggregationService;
+import com.stock.model.service.MengziModelRuntimeService;
 import com.stock.model.vo.SentimentAggregateResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +36,7 @@ public class SentimentController {
 
     private final SentimentInferenceService inferenceService;
     private final SentimentAggregationService aggregationService;
+    private final MengziModelRuntimeService mengziModelRuntimeService;
 
     /**
      * 分析单条新闻或公告文本。
@@ -73,6 +75,13 @@ public class SentimentController {
         SentimentArtifactManifest.EvaluationMetrics metrics = inspection.getMetrics();
         String loadError = inferenceService.getLastLoadError();
         String error = loadError != null ? loadError : inspection.getErrorMessage();
+        java.nio.file.Path mengziEncoderPath = null;
+        String mengziEncoderError = null;
+        try {
+            mengziEncoderPath = mengziModelRuntimeService.validateEncoderArtifact();
+        } catch (RuntimeException exception) {
+            mengziEncoderError = exception.getMessage();
+        }
         return ResponseDTO.success(SentimentHealthDto.builder()
                 .status(modelLoaded ? "UP" : inspection.isAvailable() ? "ARTIFACT_READY" : "NOT_READY")
                 .service("Sentiment Analysis Service")
@@ -93,7 +102,11 @@ public class SentimentController {
                 .expectedCalibrationError(metrics == null ? null : metrics.getExpectedCalibrationError())
                 .p95LatencyMs(metrics == null ? null : metrics.getP95LatencyMs())
                 .evaluationConclusion(metrics == null ? null : metrics.getConclusion())
-                .lastError(error)
+                .mengziEncoderVerified(mengziEncoderPath != null)
+                .mengziEncoderPath(mengziEncoderPath == null ? null : mengziEncoderPath.toString())
+                .mengziClassifierStatus(mengziModelRuntimeService.isLoaded()
+                        ? "CLASSIFIER_LOADED" : "WAITING_FOR_GOLD_LABEL_TRAINING")
+                .lastError(error != null ? error : mengziEncoderError)
                 .build());
     }
 
@@ -104,6 +117,12 @@ public class SentimentController {
                 .score(result.getScore())
                 .normalizedScore(result.getNormalizedScore())
                 .confidence(result.getConfidence())
+                .calibratedConfidence(result.getCalibratedConfidence())
+                .entropy(result.getEntropy())
+                .probabilityMargin(result.getProbabilityMargin())
+                .abstained(result.isAbstained())
+                .chunkCount(result.getChunkCount())
+                .textCoverage(result.getTextCoverage())
                 .probabilities(result.getProbabilities() == null ? java.util.Map.of() : result.getProbabilities())
                 .text(result.getText() == null ? "" : result.getText())
                 .modelLoaded(true)
@@ -123,4 +142,4 @@ public class SentimentController {
         return result;
     }
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END----------
