@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------
+// AI_GENERATE_START-----------------
 package com.stock.execution.service;
 
 import com.stock.execution.dto.PerformanceOverviewDto;
@@ -148,6 +148,35 @@ public class PerformanceReportService {
                 .topLosses(losses)
                 .availabilityReason(records.isEmpty() ? "该自然月没有已实现交易记录" : null)
                 .build();
+    }
+
+    /**
+     * 查询最近一个存在已实现交易的自然月收益和主要损益来源。
+     *
+     * @return 最近有交易月份的收益分析；账户无已实现交易时返回明确无数据结果
+     */
+    public PerformanceAnalysisDto getLatestAnalysisWithTrades() {
+        String brokerCode = brokerIdentityService.getBrokerCode();
+        String accountId = brokerIdentityService.getAccountId();
+        return tradeRecordRepository
+                .findFirstByBrokerCodeAndAccountIdAndSoldQuantityGreaterThanAndLastSellTimeIsNotNullOrderByLastSellTimeDesc(
+                        brokerCode, accountId, 0)
+                .map(record -> getAnalysis(YearMonth.from(record.getLastSellTime())))
+                .orElseGet(() -> PerformanceAnalysisDto.builder()
+                        .yearMonth(null)
+                        .asOf(LocalDateTime.now())
+                        .grossProfit(BigDecimal.ZERO)
+                        .netProfit(BigDecimal.ZERO)
+                        .totalFees(BigDecimal.ZERO)
+                        .returnRate(BigDecimal.ZERO.setScale(RATE_SCALE))
+                        .tradeCount(0)
+                        .winningTradeCount(0)
+                        .losingTradeCount(0)
+                        .winRate(BigDecimal.ZERO.setScale(RATE_SCALE))
+                        .topGains(List.of())
+                        .topLosses(List.of())
+                        .availabilityReason("账户没有已实现交易记录")
+                        .build());
     }
 
     private List<PerformanceRankingItemDto> buildRanking(List<TradeRecordEntity> records) {
@@ -322,4 +351,4 @@ public class PerformanceReportService {
         private long winningCount;
     }
 }
-// AI_GENERATE_END----------------
+// AI_GENERATE_END-----------------
