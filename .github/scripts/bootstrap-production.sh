@@ -21,6 +21,18 @@ ensure_secret() {
   fi
 }
 
+remove_legacy_database_secrets() {
+  local temp_file
+  temp_file="$(mktemp)"
+  awk -F= '
+    $1 != "MYSQL_ROOT_PASSWORD" &&
+    $1 != "MYSQL_PASSWORD" &&
+    $1 != "MONGO_ROOT_PASSWORD" &&
+    $1 != "REDIS_PASSWORD"
+  ' .env > "$temp_file"
+  mv "$temp_file" .env
+}
+
 set_env_value() {
   local key="$1"
   local value="$2"
@@ -58,9 +70,26 @@ normalize_data_dir() {
   mkdir -p "${current:-$DEPLOY_DIR/$default_path}"
 }
 
-ensure_secret MYSQL_PASSWORD
-ensure_secret REDIS_PASSWORD
+if [[ -z "$(env_value DATABASE_PASSWORD)" ]]; then
+  legacy_database_password="$(env_value MYSQL_ROOT_PASSWORD)"
+  if [[ -z "$legacy_database_password" ]]; then
+    legacy_database_password="$(env_value MYSQL_PASSWORD)"
+  fi
+  if [[ -z "$legacy_database_password" ]]; then
+    legacy_database_password="$(env_value MONGO_ROOT_PASSWORD)"
+  fi
+  if [[ -z "$legacy_database_password" ]]; then
+    legacy_database_password="$(env_value REDIS_PASSWORD)"
+  fi
+  if [[ -z "$legacy_database_password" ]]; then
+    legacy_database_password="$(openssl rand -hex 32)"
+  fi
+  set_env_value DATABASE_PASSWORD "$legacy_database_password"
+  echo "Added missing production variable: DATABASE_PASSWORD"
+fi
+remove_legacy_database_secrets
 ensure_secret INTERNAL_API_TOKEN
+chmod 600 .env
 
 normalize_data_dir MYSQL_DATA_DIR stock-mysql /var/lib/mysql data/mysql
 normalize_data_dir MONGO_DATA_DIR stock-mongo /data/db data/mongo
@@ -95,13 +124,11 @@ for service_name in "${infrastructure_services[@]}"; do
   fi
 done
 
-mysql_root_password="$(env_value MYSQL_ROOT_PASSWORD)"
-mysql_password="$(env_value MYSQL_PASSWORD)"
-test -n "$mysql_root_password"
-test -n "$mysql_password"
+database_password="$(env_value DATABASE_PASSWORD)"
+test -n "$database_password"
 docker exec \
-  -e MYSQL_PWD="$mysql_root_password" \
+  -e MYSQL_PWD="$database_password" \
   stock-mysql mysql --protocol=socket -uroot \
-  -e "CREATE DATABASE IF NOT EXISTS stock_trading CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS 'stock'@'%' IDENTIFIED BY '$mysql_password'; ALTER USER 'stock'@'%' IDENTIFIED BY '$mysql_password'; GRANT ALL PRIVILEGES ON stock_trading.* TO 'stock'@'%'; FLUSH PRIVILEGES;"
+  -e "CREATE DATABASE IF NOT EXISTS stock_trading CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS 'stock'@'%' IDENTIFIED BY '$database_password'; ALTER USER 'stock'@'%' IDENTIFIED BY '$database_password'; GRANT ALL PRIVILEGES ON stock_trading.* TO 'stock'@'%'; FLUSH PRIVILEGES;"
 
 echo "Production prerequisites are ready."

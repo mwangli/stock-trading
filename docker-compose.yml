@@ -11,8 +11,8 @@ services:
   stock-frontend:
     image: ${STOCK_FRONTEND_IMAGE:-stock-trading-frontend:local}
     build:
-      context: ./stock-frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: stock-frontend/Dockerfile
     container_name: stock-frontend
     depends_on:
       stock-backend:
@@ -46,9 +46,7 @@ services:
     container_name: stock-backend
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
-      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD is required}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
       APP_NODE_ID: ${APP_NODE_ID:-stock-backend}
       SPRING_QUARTZ_AUTO_STARTUP: ${SPRING_QUARTZ_AUTO_STARTUP:-true}
@@ -99,8 +97,7 @@ services:
     container_name: stock-agent
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD is required}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DJL_DEFAULT_ENGINE: PyTorch
@@ -136,10 +133,10 @@ services:
     command:
       - --lower-case-table-names=1
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+      MYSQL_ROOT_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
       MYSQL_DATABASE: stock_trading
       MYSQL_USER: stock
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      MYSQL_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
       TZ: Asia/Shanghai
     volumes:
       - type: bind
@@ -166,7 +163,7 @@ services:
     container_name: stock-mongo
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD is required}
+      MONGO_INITDB_ROOT_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
       MONGO_INITDB_DATABASE: stock_trading
     volumes:
       - type: bind
@@ -192,7 +189,7 @@ services:
     image: public.ecr.aws/docker/library/redis:7.4-alpine
     container_name: stock-redis
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      REDIS_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
     command:
       - sh
       - -c

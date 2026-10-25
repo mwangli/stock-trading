@@ -35,6 +35,19 @@ set_env_value() {
   chmod 600 .env
 }
 
+remove_env_values() {
+  local temp_file
+  temp_file="$(mktemp)"
+  awk -F= '
+    $1 != "MYSQL_ROOT_PASSWORD" &&
+    $1 != "MYSQL_PASSWORD" &&
+    $1 != "MONGO_ROOT_PASSWORD" &&
+    $1 != "REDIS_PASSWORD"
+  ' .env > "$temp_file"
+  mv "$temp_file" .env
+  chmod 600 .env
+}
+
 container_env_value() {
   local container_name="$1"
   local key="$2"
@@ -99,9 +112,8 @@ docker exec \
   --authenticationDatabase admin \
   --eval 'db.getSiblingDB("admin").updateUser("admin", {pwd: process.env.MONGO_NEW_PASSWORD})'
 
-for key in MYSQL_ROOT_PASSWORD MYSQL_PASSWORD MONGO_ROOT_PASSWORD REDIS_PASSWORD; do
-  set_env_value "$key" "$database_password"
-done
+set_env_value DATABASE_PASSWORD "$database_password"
+remove_env_values
 
 backend_image="$(docker inspect --format '{{.Config.Image}}' stock-backend 2>/dev/null || true)"
 agent_image="$(docker inspect --format '{{.Config.Image}}' stock-agent 2>/dev/null || true)"

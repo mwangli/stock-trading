@@ -13,17 +13,16 @@ spring:
   config:
     import:
       - optional:file:.env[.properties]
-      - optional:file:../.env[.properties]
   application:
     name: stock-agent
   data:
     mongodb:
       auto-index-creation: true
-      uri: mongodb://admin:${MONGO_ROOT_PASSWORD}@${MONGO_HOST_IP:117.72.216.67}:${MONGO_PORT:27017}/stock_trading?authSource=admin
+      uri: mongodb://admin:${DATABASE_PASSWORD}@117.72.216.67:27017/stock_trading?authSource=admin
     redis:
-      host: ${SPRING_DATA_REDIS_HOST:117.72.216.67}
-      port: ${SPRING_DATA_REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD}
+      host: 117.72.216.67
+      port: 6379
+      password: ${DATABASE_PASSWORD}
       timeout: 3s
       connect-timeout: 3s
   session:
@@ -119,11 +118,11 @@ spring:
       on-profile: docker
   data:
     mongodb:
-      uri: mongodb://admin:${MONGO_ROOT_PASSWORD}@stock-mongo:27017/stock_trading?authSource=admin
+      uri: mongodb://admin:${DATABASE_PASSWORD}@stock-mongo:27017/stock_trading?authSource=admin
     redis:
       host: stock-redis
       port: 6379
-      password: ${REDIS_PASSWORD}
+      password: ${DATABASE_PASSWORD}
 
 backend:
   service:
