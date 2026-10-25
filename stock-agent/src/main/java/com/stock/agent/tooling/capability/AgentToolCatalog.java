@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------
+// AI_GENERATE_START---------------
 package com.stock.agent.tooling.capability;
 
 import com.stock.agent.tooling.tool.read.AdaptiveStrategyQueryTool;
@@ -7,6 +7,7 @@ import com.stock.agent.tooling.tool.read.BrokerHistoryQueryTool;
 import com.stock.agent.tooling.tool.read.BrokerStatusQueryTool;
 import com.stock.agent.tooling.tool.read.JobDiagnosticTool;
 import com.stock.agent.tooling.tool.read.JobOperationsQueryTool;
+import com.stock.agent.tooling.tool.read.KnowledgeSearchTool;
 import com.stock.agent.tooling.tool.read.LatestPriceQueryTool;
 import com.stock.agent.tooling.tool.read.MarketDataQualityQueryTool;
 import com.stock.agent.tooling.tool.read.ModelOverviewQueryTool;
@@ -51,6 +52,7 @@ public class AgentToolCatalog {
     private final TradeExecutionGateQueryTool tradeExecutionGateQueryTool;
     private final ProjectDocumentSearchTool projectDocumentSearchTool;
     private final WebSearchTool webSearchTool;
+    private final KnowledgeSearchTool knowledgeSearchTool;
     private final MarketAdvancersQueryTool marketAdvancersQueryTool;
     private final PerformanceAnalysisQueryTool performanceAnalysisQueryTool;
     private final StockDirectoryQueryTool stockDirectoryQueryTool;
@@ -77,6 +79,7 @@ public class AgentToolCatalog {
      * @param tradeExecutionGateQueryTool 真实交易执行门禁工具
      * @param projectDocumentSearchTool 项目文档检索工具
      * @param webSearchTool 公开网页搜索工具
+     * @param knowledgeSearchTool 用户范围内业务知识检索工具
      * @param marketAdvancersQueryTool 市场涨跌统计工具
      * @param performanceAnalysisQueryTool 月度收益分析工具
      * @param stockDirectoryQueryTool 股票目录工具
@@ -100,6 +103,7 @@ public class AgentToolCatalog {
                             TradeExecutionGateQueryTool tradeExecutionGateQueryTool,
                             ProjectDocumentSearchTool projectDocumentSearchTool,
                             WebSearchTool webSearchTool,
+                            KnowledgeSearchTool knowledgeSearchTool,
                             MarketAdvancersQueryTool marketAdvancersQueryTool,
                             PerformanceAnalysisQueryTool performanceAnalysisQueryTool,
                             StockDirectoryQueryTool stockDirectoryQueryTool,
@@ -122,6 +126,7 @@ public class AgentToolCatalog {
         this.tradeExecutionGateQueryTool = tradeExecutionGateQueryTool;
         this.projectDocumentSearchTool = projectDocumentSearchTool;
         this.webSearchTool = webSearchTool;
+        this.knowledgeSearchTool = knowledgeSearchTool;
         this.marketAdvancersQueryTool = marketAdvancersQueryTool;
         this.performanceAnalysisQueryTool = performanceAnalysisQueryTool;
         this.stockDirectoryQueryTool = stockDirectoryQueryTool;
@@ -150,6 +155,7 @@ public class AgentToolCatalog {
         return switch (toolName) {
             case PROJECT_DOCUMENT_SEARCH -> projectDocumentSearchTool;
             case WEB_SEARCH -> webSearchTool;
+            case KNOWLEDGE_SEARCH -> knowledgeSearchTool;
             case MARKET_ADVANCERS -> marketAdvancersQueryTool;
             case PERFORMANCE_ANALYSIS -> performanceAnalysisQueryTool;
             case TRADING_CALENDAR -> tradingCalendarQueryTool;
@@ -173,4 +179,4 @@ public class AgentToolCatalog {
         };
     }
 }
-// AI_GENERATE_END-------------
+// AI_GENERATE_END--------------

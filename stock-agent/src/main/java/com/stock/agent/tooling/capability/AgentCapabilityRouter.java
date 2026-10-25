@@ -1,8 +1,12 @@
-// AI_GENERATE_START-------------
+// AI_GENERATE_START---------------
 package com.stock.agent.tooling.capability;
 
 import com.stock.agent.interaction.dto.AgentTaskStrategy;
+import com.stock.agent.interaction.dto.KnowledgeMode;
 import org.springframework.stereotype.Component;
+
+import java.util.EnumSet;
+import java.util.Set;
 
 /**
  * Agent 通用对话能力路由器。
@@ -17,12 +21,17 @@ public class AgentCapabilityRouter {
     /**
      * 为当前问题选择通用对话策略和完整只读工具集。
      *
-     * @param question 用户问题
+     * @param knowledgeMode API 指定的知识库模式，为空时按 AUTO 处理
      * @return 能力路由结果
      */
-    public AgentCapabilitySelection route(String question) {
+    public AgentCapabilitySelection route(KnowledgeMode knowledgeMode) {
+        KnowledgeMode effectiveMode = knowledgeMode == null ? KnowledgeMode.AUTO : knowledgeMode;
+        EnumSet<AgentToolName> tools = EnumSet.allOf(AgentToolName.class);
+        if (effectiveMode != KnowledgeMode.AUTO) {
+            tools.remove(AgentToolName.KNOWLEDGE_SEARCH);
+        }
         return new AgentCapabilitySelection(
-                AgentTaskStrategy.CONVERSATION, AgentToolName.conversationTools());
+                AgentTaskStrategy.CONVERSATION, Set.copyOf(tools));
     }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END--------------

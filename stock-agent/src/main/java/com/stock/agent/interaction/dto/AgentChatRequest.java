@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.agent.interaction.dto;
 
 import lombok.Data;
@@ -40,5 +40,8 @@ public class AgentChatRequest {
 
     /** 当前页面标识，仅用于补充业务上下文，不作为权限依据。 */
     private String pageContext;
+
+    /** 知识库使用模式，默认 AUTO。 */
+    private KnowledgeMode knowledgeMode = KnowledgeMode.AUTO;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

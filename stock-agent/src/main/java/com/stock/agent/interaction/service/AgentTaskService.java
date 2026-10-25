@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.agent.interaction.service;
 
 import com.stock.agent.interaction.model.AgentTaskType;
@@ -64,6 +64,7 @@ public class AgentTaskService {
                 .setQuestion(question)
                 .setCreatedAt(now)
                 .setUpdatedAt(now));
+        sessionService.updateTitleFromQuestion(session, question);
         sessionService.touch(session.getSessionId());
         log.info("[Agent][Progress] taskId={} sessionId={} type={} progress=1/5 stage=TASK_CREATED questionLength={}",
                 task.getTaskId(), task.getSessionId(), task.getTaskType(), question == null ? 0 : question.length());
@@ -224,4 +225,4 @@ public class AgentTaskService {
                 ? value.substring(0, properties.getMaxOutputChars()) : value;
     }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

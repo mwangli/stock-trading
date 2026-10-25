@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START--------
 package com.stock.agent.runtime.service;
 
 import com.stock.agent.interaction.model.AgentTaskStatus;
@@ -51,6 +51,8 @@ public class AgentRuntimeManagementService {
         var providerStatus = runtimeService.providerStatus();
         EmbeddingRuntimeStatus embeddingStatus = embeddingService.status();
         FactSourceStatus backendFactsStatus = factSourceStatusPort.status();
+        String projectDocumentsStatus = documentSearchService.status();
+        int projectDocumentSectionCount = documentSearchService.sectionCount();
         return RuntimeStatus.builder()
                 .enabled(properties.isEnabled()).provider(runtimeService.providerName())
                 .agentCoreStatus(properties.isEnabled() ? "UP" : "DISABLED")
@@ -76,12 +78,14 @@ public class AgentRuntimeManagementService {
                 .embeddingModelVersion(embeddingStatus.getModelVersion())
                 .embeddingDimension(embeddingStatus.getDimension())
                 .embeddingStatus(embeddingStatus.getStatus())
+                .embeddingMessage(embeddingStatus.getMessage())
                 .embeddingFallback(embeddingStatus.isFallback())
                 .backendFactsEnabled(backendFactsStatus.enabled())
                 .backendFactsAvailable(backendFactsStatus.available())
                 .backendFactsStatus(backendFactsStatus.status())
-                .projectDocumentsReady(documentSearchService.sectionCount() > 0)
-                .projectDocumentSectionCount(documentSearchService.sectionCount())
+                .projectDocumentsReady("READY".equals(projectDocumentsStatus))
+                .projectDocumentsStatus(projectDocumentsStatus)
+                .projectDocumentSectionCount(projectDocumentSectionCount)
                 .webSearchConfigured(webSearchClient.configured())
                 .marketDataToolAvailable(backendFactsStatus.available())
                 .performanceToolAvailable(backendFactsStatus.available())
@@ -146,4 +150,4 @@ public class AgentRuntimeManagementService {
         return ProviderModeResponse.builder().provider(runtimeService.providerName()).build();
     }
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END--------

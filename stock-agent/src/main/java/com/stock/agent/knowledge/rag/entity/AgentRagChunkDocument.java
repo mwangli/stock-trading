@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START---------
 package com.stock.agent.knowledge.rag.entity;
 
 import lombok.Data;
@@ -52,6 +52,9 @@ public class AgentRagChunkDocument {
     /** 内容哈希。 */
     private String contentHash;
 
+    /** 来源全文哈希，用于自动摄取幂等和版本替换。 */
+    private String sourceContentHash;
+
     /** Embedding 模型版本。 */
     private String embeddingModelVersion;
 
@@ -76,4 +79,4 @@ public class AgentRagChunkDocument {
     /** 创建时间。 */
     private LocalDateTime createdAt;
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

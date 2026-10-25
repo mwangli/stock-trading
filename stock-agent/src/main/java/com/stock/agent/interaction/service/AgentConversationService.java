@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START------------
 package com.stock.agent.interaction.service;
 
 import com.alibaba.fastjson2.JSON;
@@ -47,7 +47,8 @@ public class AgentConversationService {
      */
     public AgentChatResponse chat(AgentChatRequest request, String userScope) {
         String question = requireQuestion(request == null ? null : request.getQuestion());
-        AgentCapabilitySelection selection = capabilityRouter.route(question);
+        AgentCapabilitySelection selection = capabilityRouter.route(
+                request == null ? null : request.getKnowledgeMode());
         String conversationKey = userScope + ":" + (StringUtils.hasText(request.getSessionId())
                 ? request.getSessionId().trim() : "new-session");
         return conversationLockService.execute(conversationKey,
@@ -85,6 +86,7 @@ public class AgentConversationService {
         target.setPredictionBatchId(request.getPredictionBatchId());
         target.setStrategyVersion(request.getStrategyVersion());
         target.setTargetTradeDate(request.getTargetTradeDate());
+        target.setKnowledgeMode(request.getKnowledgeMode());
         return target;
     }
 
@@ -151,4 +153,4 @@ public class AgentConversationService {
         return normalized;
     }
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END-----------

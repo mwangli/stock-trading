@@ -1,8 +1,5 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START-----------
 package com.stock.agent.tooling.capability;
-
-import java.util.EnumSet;
-import java.util.Set;
 
 /**
  * Agent 首期只读工具能力枚举。
@@ -18,6 +15,9 @@ public enum AgentToolName {
 
     /** 公开网页搜索。 */
     WEB_SEARCH("searchWeb"),
+
+    /** 用户范围内的业务 RAG 检索。 */
+    KNOWLEDGE_SEARCH("searchKnowledge"),
 
     /** 最近可用行情日涨幅榜。 */
     MARKET_ADVANCERS("queryMarketAdvancers"),
@@ -94,13 +94,5 @@ public enum AgentToolName {
         return toolName;
     }
 
-    /**
-     * 返回通用对话可使用的完整只读工具集合。
-     *
-     * @return 不可变只读工具集合
-     */
-    public static Set<AgentToolName> conversationTools() {
-        return Set.copyOf(EnumSet.allOf(AgentToolName.class));
-    }
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END----------

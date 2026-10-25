@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------------
+// AI_GENERATE_START-----------------------
 package com.stock.agent.shared.config;
 
 import lombok.Data;
@@ -68,6 +68,12 @@ public class AgentProperties {
 
     /** MongoDB RAG 集合名称。 */
     private String ragCollection = "agent_rag_chunks";
+
+    /** 是否在 Agent 启动且 Embedding 就绪后自动初始化业务知识。 */
+    private boolean ragAutoInitializationEnabled = true;
+
+    /** 项目工程文档检索配置。 */
+    private ProjectDocumentsProperties projectDocuments = new ProjectDocumentsProperties();
 
     /** Memory 默认有效期，单位天。 */
     private int memoryDefaultTtlDays = 90;
@@ -250,5 +256,21 @@ public class AgentProperties {
         /** 原始响应最大字符数。 */
         private int maxResponseChars = 100000;
     }
+
+    /**
+     * 项目工程文档文件系统配置。
+     *
+     * @author mwangli
+     * @since 2026-10-25
+     */
+    @Data
+    public static class ProjectDocumentsProperties {
+
+        /** 是否启用项目工程文档检索。 */
+        private boolean enabled = true;
+
+        /** 项目工程文档根目录，支持绝对路径和相对当前工作目录的路径。 */
+        private String path = "./documents";
+    }
 }
-// AI_GENERATE_END-------------------
+// AI_GENERATE_END----------------------
