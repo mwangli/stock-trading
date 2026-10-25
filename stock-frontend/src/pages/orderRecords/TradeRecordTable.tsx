@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------
+// AI_GENERATE_START---------------------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { Button, DatePicker, Empty, Input, Pagination, Space, Table, Typography } from 'antd';
@@ -9,6 +9,7 @@ import type { ApiResponse } from '../../utils/api';
 import { formatDateTime } from '../../utils/dateTime';
 import { localizedText } from '../../utils/localizedText';
 import { useTranslation } from 'react-i18next';
+import StockDetailDrawer, { type StockDetailSelection } from '../../components/StockDetailDrawer';
 
 const { Text } = Typography;
 
@@ -85,6 +86,7 @@ const TradeRecordTable: React.FC = () => {
   const [page, setPage] = useState<PageState>({ current: 1, pageSize: 10, total: 0 });
   const [loading, setLoading] = useState(false);
   const [, setError] = useState<string | null>(null);
+  const [detailStock, setDetailStock] = useState<StockDetailSelection | null>(null);
 
   const loadRecords = useCallback(async () => {
     setLoading(true);
@@ -166,7 +168,34 @@ const TradeRecordTable: React.FC = () => {
   );
 
   const columns: ColumnsType<TradeRecord> = [
-    { title: '股票', key: 'stock', fixed: 'left', width: 190, render: (_: unknown, item) => <div className="trade-record-stock"><strong>{item.stockCode}</strong><span>{item.stockName ?? '-'}</span></div> },
+    {
+      title: t('tradeRecords.columns.stockCode'),
+      dataIndex: 'stockCode',
+      key: 'stockCode',
+      fixed: 'left',
+      width: 110,
+      render: (code: string, item) => (
+        <button
+          type="button"
+          className="order-records-stock-code"
+          aria-label={localizedText(`查看 ${item.stockName || code}（${code}）详情`, `View details for ${item.stockName || code} (${code})`)}
+          onClick={(event) => {
+            event.stopPropagation();
+            setDetailStock({ code, name: item.stockName });
+          }}
+        >
+          {code}
+        </button>
+      ),
+    },
+    {
+      title: t('tradeRecords.columns.stockName'),
+      dataIndex: 'stockName',
+      key: 'stockName',
+      width: 130,
+      ellipsis: true,
+      render: (name?: string) => <span className="order-records-stock-name">{name || '-'}</span>,
+    },
     { title: '买入时间', dataIndex: 'buyTime', key: 'buyTime', width: 180, render: formatDateTime },
     { title: '卖出时间', dataIndex: 'lastSellTime', key: 'lastSellTime', width: 180, render: (value?: string) => value ? formatDateTime(value) : <Typography.Text type="secondary">待卖出</Typography.Text> },
     { title: '买入价格', dataIndex: 'buyPrice', key: 'buyPrice', width: 120, className: 'trade-record-number', render: money },
@@ -237,9 +266,10 @@ const TradeRecordTable: React.FC = () => {
             />
           </div>
         </div>
+        <StockDetailDrawer stock={detailStock} onClose={() => setDetailStock(null)} />
     </div>
   );
 };
 
 export default TradeRecordTable;
-// AI_GENERATE_END-------------------------
+// AI_GENERATE_END---------------------------
