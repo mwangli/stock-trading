@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -31,6 +31,24 @@ public class PredictionCandidateBatchDto {
     /** 模型业务版本。 */
     private String modelVersion;
 
+    /** 当前 Ranking LSTM 模型文档 ID。 */
+    private String rankingLstmModelId;
+
+    /** 当前 MASTER 模型文档 ID，可为空。 */
+    private String masterModelId;
+
+    /** 本批次实际使用的 Ranking LSTM 权重。 */
+    private double rankingLstmWeight;
+
+    /** 本批次实际使用的 MASTER 权重。 */
+    private double masterWeight;
+
+    /** 本批次使用的自动权重版本。 */
+    private long weightVersion;
+
+    /** 本批次的融合运行状态。 */
+    private String ensembleStatus;
+
     /** 推理输入基准交易日。 */
     private LocalDate baseTradeDate;
 
@@ -53,4 +71,4 @@ public class PredictionCandidateBatchDto {
     private boolean newsFeaturesEmbedded;
 
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

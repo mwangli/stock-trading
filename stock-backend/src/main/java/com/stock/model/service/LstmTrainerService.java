@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------------------------------------
+// AI_GENERATE_START--------------------------------------------------
 package com.stock.model.service;
 
 import ai.djl.Device;
@@ -48,6 +48,7 @@ import java.util.stream.Stream;
  * @author mwangli
  * @since 2026-10-08
  */
+@Data
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -64,6 +65,7 @@ public class LstmTrainerService {
     private final LstmTrainingConfig config;
     private final LstmDataQualityConfig dataQualityConfig;
     private final LstmModelArtifactService artifactService;
+    private final LstmModelRuntimeService modelRuntimeService;
     private final TrainingDatasetSnapshotService snapshotService;
     private final ModelBinaryCodec modelBinaryCodec;
     private final RankingValidationMetricsCalculator rankingMetricsCalculator;
@@ -267,7 +269,7 @@ public class LstmTrainerService {
             int walkForwardFoldCount = processedData.getWalkForwardFolds() == null
                     ? 0 : processedData.getWalkForwardFolds().size();
             String dataQualityError = validateTrainingData(
-                    trainedStocks, trainSize, valSize, testSize, walkForwardFoldCount);
+                    codes.size(), trainedStocks, trainSize, valSize, testSize, walkForwardFoldCount);
             if (dataQualityError != null) {
                 return TrainingResult.builder()
                         .success(false)
@@ -566,7 +568,6 @@ public class LstmTrainerService {
         int industryDictionarySize = Math.max(2, data.getIndustryDictionary().size());
         int marketDictionarySize = Math.max(2, data.getMarketDictionary().size());
         return new RankingLSTMModel(
-                architectureType,
                 config.getInputSize(),
                 config.getHiddenSize(),
                 config.getNumLayers(),
@@ -581,9 +582,10 @@ public class LstmTrainerService {
     }
 
     private void validateArchitectureType(LstmArchitectureType architectureType) {
-        if (architectureType == null || architectureType == LstmArchitectureType.LEGACY_MULTITASK_LSTM) {
+        if (architectureType != LstmArchitectureType.RANKING_LSTM
+                && architectureType != LstmArchitectureType.MASTER_TRANSFORMER) {
             throw new IllegalArgumentException(
-                    "v5 训练仅支持 RANKING_LSTM、DUAL_ATTENTION_RANKING_LSTM 或 MASTER_TRANSFORMER");
+                    "训练仅支持 RANKING_LSTM 或 MASTER_TRANSFORMER");
         }
     }
 
@@ -645,6 +647,7 @@ public class LstmTrainerService {
     }
 
     private String validateTrainingData(
+            int requestedStocks,
             int trainedStocks,
             int trainSamples,
             int validationSamples,
@@ -653,6 +656,18 @@ public class LstmTrainerService {
         if (trainedStocks < dataQualityConfig.getMinimumTrainingStockCount()) {
             return "有效训练股票数量不足，要求至少 "
                     + dataQualityConfig.getMinimumTrainingStockCount() + "，实际 " + trainedStocks;
+        }
+        double minimumCoverageRate = dataQualityConfig.getMinimumSourceCoverageRate();
+        if (!Double.isFinite(minimumCoverageRate)
+                || minimumCoverageRate <= 0D || minimumCoverageRate > 1D) {
+            return "关键数据源最低覆盖率配置必须在 0 到 1 之间";
+        }
+        double processedCoverageRate = requestedStocks <= 0
+                ? 0D : trainedStocks / (double) requestedStocks;
+        if (processedCoverageRate < minimumCoverageRate) {
+            return "预处理后有效股票覆盖率不足，要求至少 " + minimumCoverageRate
+                    + "，实际 " + processedCoverageRate + "，请求 " + requestedStocks
+                    + "，有效 " + trainedStocks;
         }
         if (trainSamples < dataQualityConfig.getMinimumTrainSamples()) {
             return "训练样本数量不足，要求至少 "
@@ -953,6 +968,7 @@ public class LstmTrainerService {
      */
     public void validateModelVersion(String versionId) {
         artifactService.validateModelVersion(versionId);
+        modelRuntimeService.validateModelVersionRuntime(versionId);
     }
 
     /**
@@ -1145,4 +1161,4 @@ public class LstmTrainerService {
         private Double strictIsolationMeanRankIc;
     }
 }
-// AI_GENERATE_END----------------------------------------------
+// AI_GENERATE_END--------------------------------------------------

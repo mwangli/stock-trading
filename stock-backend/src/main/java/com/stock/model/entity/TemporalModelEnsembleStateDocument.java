@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.model.entity;
 
 import lombok.Data;
@@ -6,9 +6,10 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 
 /**
- * Ranking LSTM 与 MASTER 的滚动指标、动态权重和生产启用状态。
+ * Ranking LSTM 与 MASTER 的滚动指标、连续权重和自动选择状态。
  *
  * @author mwangli
  * @since 2026-10-24
@@ -21,6 +22,12 @@ public class TemporalModelEnsembleStateDocument {
     @Id
     private String id;
 
+    /** 状态结构版本；不匹配时直接重新初始化。 */
+    private String schemaVersion;
+
+    /** 当前 Ranking LSTM 生产基础模型文档 ID。 */
+    private String rankingLstmModelId;
+
     /** 当前自动注册的 MASTER 候选模型文档 ID，可为空。 */
     private String masterModelId;
 
@@ -30,8 +37,26 @@ public class TemporalModelEnsembleStateDocument {
     /** MASTER 当前权重，范围 0 到 1。 */
     private double masterWeight;
 
-    /** 是否允许生产候选应用融合。 */
-    private boolean productionEnabled;
+    /** 目标 Ranking LSTM 权重，范围 0 到 1。 */
+    private double targetRankingLstmWeight;
+
+    /** 目标 MASTER 权重，范围 0 到 1。 */
+    private double targetMasterWeight;
+
+    /** 当前组合综合质量分。 */
+    private Double currentCombinationQualityScore;
+
+    /** 最近窗口内最优组合综合质量分。 */
+    private Double bestCombinationQualityScore;
+
+    /** 自动选择状态：OBSERVING、ACTIVE、DEGRADED 或 UNAVAILABLE。 */
+    private String status;
+
+    /** 权重版本；仅在实际权重变化时递增。 */
+    private long weightVersion;
+
+    /** 当前权重最近生效的交易日。 */
+    private LocalDate effectiveTradeDate;
 
     /** Ranking LSTM 滚动 Rank IC。 */
     private Double rankingLstmRankIc;
@@ -81,4 +106,4 @@ public class TemporalModelEnsembleStateDocument {
     /** 最近更新时间。 */
     private LocalDateTime updatedAt;
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

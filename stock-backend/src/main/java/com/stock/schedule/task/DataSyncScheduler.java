@@ -1,11 +1,13 @@
-// AI_GENERATE_START----------------------------------------
+// AI_GENERATE_START--------------------------------------------
 package com.stock.schedule.task;
 
+import com.stock.market.dto.ExternalNewsCollectionResult;
 import com.stock.market.dto.NewsCollectionBackfillResult;
 import com.stock.market.dto.StockListSyncResult;
 import com.stock.market.dto.DailyPriceSyncResult;
 import com.stock.market.dto.HistoricalPriceSyncResult;
 
+import com.stock.market.service.ExternalNewsCollectionService;
 import com.stock.market.service.NewsCollectionBackfillService;
 import com.stock.market.service.StockListSyncService;
 import com.stock.market.service.StockPriceService;
@@ -15,6 +17,8 @@ import com.stock.market.service.TradingCalendarMaintenanceService;
 import com.stock.market.service.TradingCalendarMaintenanceService.CalendarMaintenanceResult;
 import com.stock.market.service.TradingCalendarService;
 import com.stock.model.service.PredictionEvaluationQueueService;
+import com.stock.model.service.NewsFeatureSnapshotBackfillService;
+import com.stock.model.dto.NewsFeatureSnapshotBackfillResult;
 import com.stock.platform.exception.JobSkippedException;
 import com.stock.execution.service.SyncStateService;
 import com.stock.execution.service.SyncStateService.SyncStateSnapshot;
@@ -67,7 +71,9 @@ public class DataSyncScheduler {
     private final StockPriceService stockPriceService;
     private final StockQueryService stockQueryService;
     private final StockNewsService stockNewsService;
+    private final ExternalNewsCollectionService externalNewsCollectionService;
     private final NewsCollectionBackfillService newsCollectionBackfillService;
+    private final NewsFeatureSnapshotBackfillService newsFeatureSnapshotBackfillService;
     private final TradingCalendarService tradingCalendarService;
     private final TradingCalendarMaintenanceService tradingCalendarMaintenanceService;
     private final SyncStateService syncStateService;
@@ -313,6 +319,19 @@ public class DataSyncScheduler {
     }
 
     /**
+     * 分批回填 `temporal-news-v1` 股票日级快照并执行点时审计。
+     *
+     * @throws IllegalStateException 快照生成或审计失败时抛出
+     */
+    public void backfillNewsFeatureSnapshots() {
+        log.info("========== [数据同步任务] 开始回填新闻日级特征快照 ==========");
+        NewsFeatureSnapshotBackfillResult result = newsFeatureSnapshotBackfillService.backfill();
+        log.info("[数据同步任务] 新闻快照回填完成: scanned={}, generated={}, skipped={}, failed={}, lastBarId={}, completed={}, audit={}",
+                result.scannedCount(), result.generatedCount(), result.skippedCount(), result.failedCount(),
+                result.lastProcessedBarId(), result.completed(), result.audit());
+        log.info("========== [数据同步任务] 新闻日级特征快照回填结束 ==========");
+    }
+    /**
      * 每日增量新闻采集
      * <p>
      * 对应任务: newsDailySync
@@ -330,6 +349,18 @@ public class DataSyncScheduler {
             if (result.partialCount() > 0 || result.failedCount() > 0) {
                 throw new IllegalStateException("每日新闻同步存在部分失败或失败股票");
             }
+            ExternalNewsCollectionResult externalResult = externalNewsCollectionService.collectIncremental();
+            if (externalResult.enabled()) {
+                log.info("[数据同步任务] 外部新闻来源采集完成: configuredSources={}, successfulSources={}, "
+                                + "fetched={}, inserted={}, eventDocuments={}, errors={}",
+                        externalResult.configuredSourceCount(), externalResult.successfulSourceCount(),
+                        externalResult.fetchedCount(), externalResult.insertedCount(),
+                        externalResult.eventFactCount(), externalResult.errors());
+                if (externalResult.configuredSourceCount() > 0
+                        && externalResult.successfulSourceCount() == 0) {
+                    throw new IllegalStateException("已启用的外部新闻来源全部采集失败");
+                }
+            }
         } catch (Exception e) {
             log.error("[数据同步任务] 每日增量新闻采集失败", e);
             throw new RuntimeException("每日增量新闻采集失败: " + e.getMessage(), e);
@@ -337,4 +368,4 @@ public class DataSyncScheduler {
         log.info("========== [数据同步任务] 每日增量新闻采集结束 ==========");
     }
 }
-// AI_GENERATE_END----------------------------------------
+// AI_GENERATE_END--------------------------------------------

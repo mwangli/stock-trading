@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.model.service;
 
 import com.stock.market.dto.MarketNewsEventDto;
@@ -80,6 +80,8 @@ public class NewsEventFeatureService {
                 .noEffectiveEvent(noEffectiveEvent)
                 .missingMask(noEffectiveEvent ? 1 : 0)
                 .pipelineVersion(resolvePipelineVersion(tradeSignals))
+                .inputEventCount(tradeSignals.size())
+                .latestInputPublishTime(latestPublishTime(tradeSignals))
                 .sentimentModelVersion(noEffectiveEvent ? null
                         : sentimentModelRouterService.activeModelVersion())
                 .temporalFeatures(buildTemporalFeatures(
@@ -191,6 +193,13 @@ public class NewsEventFeatureService {
         return counts;
     }
 
+    private LocalDateTime latestPublishTime(List<MarketNewsEventDto> facts) {
+        return facts.stream()
+                .map(MarketNewsEventDto::getPublishTime)
+                .filter(Objects::nonNull)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
+    }
     private String resolvePipelineVersion(List<MarketNewsEventDto> facts) {
         List<String> versions = facts.stream()
                 .map(MarketNewsEventDto::getPipelineVersion)
@@ -213,4 +222,4 @@ public class NewsEventFeatureService {
         return 0D;
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

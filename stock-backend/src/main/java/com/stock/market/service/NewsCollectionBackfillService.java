@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.market.service;
 
 import com.stock.market.dto.NewsCollectionBackfillResult;
@@ -38,6 +38,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class NewsCollectionBackfillService {
 
+    private static final int MAX_DOCUMENT_RETRIES = 3;
+
     private final MongoTemplate mongoTemplate;
     private final NewsRepository newsRepository;
     private final NewsCollectionBackfillStateRepository stateRepository;
@@ -62,8 +64,12 @@ public class NewsCollectionBackfillService {
         String version = NewsCollectionPipelineService.PIPELINE_VERSION;
         NewsCollectionBackfillState state = stateRepository.findById(version)
                 .orElseGet(() -> initialState(version));
-        if (state.getStatus() == NewsBackfillStatus.COMPLETED) {
+        if (state.getStatus() == NewsBackfillStatus.COMPLETED && !hasRemainingWork()) {
             return result(state, 0, 0, 0, 0, 0, Map.of(), Map.of(), 0, true);
+        }
+        if (state.getStatus() == NewsBackfillStatus.COMPLETED) {
+            state.setStatus(NewsBackfillStatus.PENDING);
+            state.setLastProcessedId(null);
         }
 
         state.setStatus(NewsBackfillStatus.RUNNING);
@@ -84,6 +90,12 @@ public class NewsCollectionBackfillService {
                 int currentBatchSize = (int) Math.min(batchSize, maximumDocumentsPerRun - scanned);
                 List<StockNews> batch = loadNextBatch(state.getLastProcessedId(), currentBatchSize);
                 if (batch.isEmpty()) {
+                    if (hasRemainingWork() && state.getLastProcessedId() != null) {
+                        state.setLastProcessedId(null);
+                        state.setUpdateTime(LocalDateTime.now());
+                        stateRepository.save(state);
+                        continue;
+                    }
                     state.setStatus(NewsBackfillStatus.COMPLETED);
                     state.setUpdateTime(LocalDateTime.now());
                     stateRepository.save(state);
@@ -93,10 +105,13 @@ public class NewsCollectionBackfillService {
                 activeBatchSize = batch.size();
 
                 for (StockNews news : batch) {
-                    pipelineService.process(news);
+                    processWithIsolation(news, state);
                 }
                 newsRepository.saveAll(batch);
-                NewsEventFactSyncResult factResult = eventFactService.synchronizeBatch(batch);
+                List<StockNews> factCandidates = batch.stream()
+                        .filter(news -> news.getQualityStatus() != NewsQualityStatus.INVALID)
+                        .toList();
+                NewsEventFactSyncResult factResult = eventFactService.synchronizeBatch(factCandidates);
                 long ignoredInBatch = batch.stream()
                         .filter(news -> news.getDocumentRole() == NewsDocumentRole.IGNORE)
                         .count();
@@ -145,7 +160,7 @@ public class NewsCollectionBackfillService {
     private List<StockNews> loadNextBatch(String lastProcessedId, int limit) {
         Criteria needsProcessing = new Criteria().orOperator(
                 Criteria.where("pipelineVersion").ne(NewsCollectionPipelineService.PIPELINE_VERSION),
-                Criteria.where("qualityStatus").ne(NewsQualityStatus.READY));
+                Criteria.where("qualityStatus").in(NewsQualityStatus.FACT_PENDING, null));
         Criteria criteria = lastProcessedId == null || lastProcessedId.isBlank()
                 ? needsProcessing
                 : new Criteria().andOperator(Criteria.where("_id").gt(lastProcessedId), needsProcessing);
@@ -153,6 +168,40 @@ public class NewsCollectionBackfillService {
                 .with(Sort.by(Sort.Direction.ASC, "_id"))
                 .limit(Math.max(1, limit));
         return mongoTemplate.find(query, StockNews.class, "stock_news");
+    }
+
+    private boolean hasRemainingWork() {
+        Criteria criteria = new Criteria().orOperator(
+                Criteria.where("pipelineVersion").ne(NewsCollectionPipelineService.PIPELINE_VERSION),
+                Criteria.where("qualityStatus").in(NewsQualityStatus.FACT_PENDING, null));
+        return mongoTemplate.exists(Query.query(criteria), StockNews.class, "stock_news");
+    }
+
+    private void processWithIsolation(StockNews news, NewsCollectionBackfillState state) {
+        try {
+            pipelineService.process(news);
+            if (news.getId() != null && state.getFailureRetryCounts() != null) {
+                state.getFailureRetryCounts().remove(news.getId());
+            }
+        } catch (RuntimeException exception) {
+            String documentId = news.getId() == null ? "UNKNOWN" : news.getId();
+            Map<String, Integer> retries = state.getFailureRetryCounts();
+            if (retries == null) {
+                retries = new LinkedHashMap<>();
+                state.setFailureRetryCounts(retries);
+            }
+            int retryCount = retries.merge(documentId, 1, Integer::sum);
+            if (retryCount < MAX_DOCUMENT_RETRIES) {
+                throw exception;
+            }
+            news.setPipelineVersion(NewsCollectionPipelineService.PIPELINE_VERSION);
+            news.setQualityStatus(NewsQualityStatus.INVALID);
+            news.setQualityReason("PIPELINE_ERROR_AFTER_" + MAX_DOCUMENT_RETRIES + "_RETRIES");
+            retries.remove(documentId);
+            state.setFailedCount(state.getFailedCount() + 1);
+            log.error("新闻治理文档连续失败并隔离: documentId={}, retries={}, reason={}",
+                    documentId, retryCount, limitError(exception.getMessage()));
+        }
     }
 
     private NewsCollectionBackfillState initialState(String version) {
@@ -203,4 +252,4 @@ public class NewsCollectionBackfillService {
         return message.length() <= 500 ? message : message.substring(0, 500);
     }
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------------
+// AI_GENERATE_START-------------------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -637,8 +637,8 @@ public class ModelOperationsService {
             }
             return type;
         } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException("architectureType 仅支持 RANKING_LSTM、"
-                    + "DUAL_ATTENTION_RANKING_LSTM 或 MASTER_TRANSFORMER", exception);
+            throw new IllegalArgumentException(
+                    "architectureType 仅支持 RANKING_LSTM 或 MASTER_TRANSFORMER", exception);
         }
     }
 
@@ -681,4 +681,4 @@ public class ModelOperationsService {
     }
 
 }
-// AI_GENERATE_END------------------
+// AI_GENERATE_END-------------------

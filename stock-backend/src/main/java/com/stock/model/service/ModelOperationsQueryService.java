@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -83,10 +83,17 @@ public class ModelOperationsQueryService {
         return TemporalModelEnsembleStatusResponse.builder()
                 .masterShadowEnabled(temporalEnsembleConfig.isMasterShadowEnabled())
                 .productionBlendConfigured(temporalEnsembleConfig.isProductionBlendEnabled())
-                .productionEnabled(state.isProductionEnabled())
+                .status(state.getStatus())
+                .rankingLstmModelId(state.getRankingLstmModelId())
                 .masterModelId(state.getMasterModelId())
                 .rankingLstmWeight(state.getRankingLstmWeight())
                 .masterWeight(state.getMasterWeight())
+                .targetRankingLstmWeight(state.getTargetRankingLstmWeight())
+                .targetMasterWeight(state.getTargetMasterWeight())
+                .currentCombinationQualityScore(state.getCurrentCombinationQualityScore())
+                .bestCombinationQualityScore(state.getBestCombinationQualityScore())
+                .weightVersion(state.getWeightVersion())
+                .effectiveTradeDate(state.getEffectiveTradeDate())
                 .evaluatedTradingDays(state.getEvaluatedTradingDays())
                 .evaluatedSamples(state.getEvaluatedSamples())
                 .rankingLstmRankIc(state.getRankingLstmRankIc())
@@ -304,4 +311,4 @@ public class ModelOperationsQueryService {
         }
     }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

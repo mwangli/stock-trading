@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START-------------
 package com.stock.model.config;
 
 import lombok.Data;
@@ -53,6 +53,18 @@ public class LstmDataQualityConfig {
     /** Walk-Forward 评估要求的最小有效窗口数量。 */
     private int minimumWalkForwardFoldCount = 3;
 
+    /** 关键数据源按股票或行业标识计算的最低覆盖率。 */
+    private double minimumSourceCoverageRate = 0.95D;
+
+    /**
+     * 获取关键数据源最低覆盖率。
+     *
+     * @return 最低覆盖率，取值范围为大于 0 且小于等于 1
+     */
+    public double getMinimumSourceCoverageRate() {
+        return minimumSourceCoverageRate;
+    }
+
     /**
      * 候选模型允许的最大验证损失。
      */
@@ -75,4 +87,4 @@ public class LstmDataQualityConfig {
      */
     private long minimumAvailableMemoryMb = 256L;
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END-------------

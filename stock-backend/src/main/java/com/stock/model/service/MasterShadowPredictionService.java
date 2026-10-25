@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START -----------
 package com.stock.model.service;
 
 import com.stock.model.config.TemporalEnsembleConfig;
@@ -30,6 +30,8 @@ import java.util.Properties;
 /**
  * MASTER 候选模型影子预测、结果对齐和后验评估服务。
  *
+ * @see <a href="http://localhost:5173/docs/backend/model/designs/temporal-model-ensemble">
+ *     双模型连续权重融合详细设计</a>
  * @author mwangli
  * @since 2026-10-24
  */
@@ -63,23 +65,36 @@ public class MasterShadowPredictionService {
             log.info("当前没有 MASTER 候选模型，本次影子任务跳过");
             return;
         }
+        LstmModelDocument masterModel = modelRepository.findById(masterModelId)
+                .orElseThrow(() -> new IllegalStateException("MASTER 候选模型不存在: " + masterModelId));
+        if (masterModel.getCreatedAt() == null) {
+            throw new IllegalStateException("MASTER 候选模型缺少创建时间，无法确定样本外边界");
+        }
         evaluatePendingShadowPredictions(masterModelId);
-        ModelPredictionBatchDocument baseline = batchRepository
-                .findFirstByStatusInOrderByCreatedAtDesc(USABLE_STATUSES);
-        if (baseline == null) {
-            log.info("当前没有可用于 MASTER 影子预测的生产基线批次，本次任务跳过");
+        int batchLimit = Math.max(10, config.getRollingWindowTradingDays() * 2);
+        List<ModelPredictionBatchDocument> baselines = batchRepository
+                .findByStatusInAndCreatedAtGreaterThanEqualAndRerunSourceBatchIdIsNullOrderByCreatedAtDesc(
+                        USABLE_STATUSES, masterModel.getCreatedAt(), PageRequest.of(0, batchLimit));
+        if (baselines.isEmpty()) {
+            log.info("MASTER 候选创建后尚无可用于影子预测的生产批次，本次任务跳过: modelId={}", masterModelId);
             return;
         }
-        if (!shadowRepository.existsByBaselineBatchIdAndModelId(baseline.getId(), masterModelId)) {
-            createShadowPredictions(baseline, masterModelId);
+        int createdBatches = 0;
+        for (ModelPredictionBatchDocument baseline : baselines) {
+            if (!shadowRepository.existsByBaselineBatchIdAndModelId(baseline.getId(), masterModelId)) {
+                createShadowPredictions(baseline, masterModel);
+                createdBatches++;
+            }
         }
         evaluatePendingShadowPredictions(masterModelId);
         ensembleService.refreshState();
+        log.info("MASTER 影子周期完成: modelId={}, scannedBatches={}, createdBatches={}",
+                masterModelId, baselines.size(), createdBatches);
     }
 
-    private void createShadowPredictions(ModelPredictionBatchDocument baseline, String masterModelId) {
-        LstmModelDocument masterModel = modelRepository.findById(masterModelId)
-                .orElseThrow(() -> new IllegalStateException("MASTER 候选模型不存在: " + masterModelId));
+    private void createShadowPredictions(
+            ModelPredictionBatchDocument baseline, LstmModelDocument masterModel) {
+        String masterModelId = masterModel.getId();
         LstmModelDocument baselineModel = modelRepository.findById(baseline.getModelId())
                 .orElseThrow(() -> new IllegalStateException("生产基线模型不存在: " + baseline.getModelId()));
         requireCompatibleModels(masterModel, baselineModel);
@@ -249,4 +264,4 @@ public class MasterShadowPredictionService {
         return modelId.trim();
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END -----------

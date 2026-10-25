@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------------------
+// AI_GENERATE_START--------------------------------------
 package com.stock.decision.algorithm;
 
 import com.stock.model.dto.PredictionCandidateItemDto;
@@ -50,10 +50,6 @@ public class StockSelector {
     private static final String CANDIDATE_STATUS_ELIGIBLE = "ELIGIBLE";
     private static final String CANDIDATE_STATUS_RANKED = "RANKED";
     private static final int SENTIMENT_LOOKBACK_HOURS = 36;
-    private static final double LSTM_SCORE_SCALE = 20D;
-    private static final double RETURN_TASK_WEIGHT = 0.55D;
-    private static final double DIRECTION_TASK_WEIGHT = 0.30D;
-    private static final double RISK_TASK_WEIGHT = 0.15D;
 
     private final ScoreCalculator scoreCalculator;
     private final StrategyConfigManager configService;
@@ -91,30 +87,30 @@ public class StockSelector {
             validatePredictionBatch(predictionBatch);
 
             Map<String, String> stockNames = loadStockNames(predictionBatch.getItems());
-            Map<String, Double> lstmScores = calculateLstmScores(predictionBatch.getItems());
-            if (lstmScores.isEmpty()) {
+            Map<String, Double> modelScores = calculateTemporalModelScores(predictionBatch.getItems());
+            if (modelScores.isEmpty()) {
                 throw new IllegalStateException("预测收益扣除交易成本和安全边际后没有可选股票");
             }
-            filterByMinimumListingYears(lstmScores, config.getMinimumListingYears(), predictionBatch.getTargetTradeDate());
-            if (lstmScores.isEmpty()) {
+            filterByMinimumListingYears(modelScores, config.getMinimumListingYears(), predictionBatch.getTargetTradeDate());
+            if (modelScores.isEmpty()) {
                 throw new IllegalStateException("所有模型候选均不满足最小上市年限条件");
             }
             LocalDateTime informationCutoffAt = LocalDateTime.now();
             boolean ensembleWithNewsFeatures = predictionBatch.isNewsFeaturesEmbedded()
                     && predictionBatch.getItems().stream()
-                    .anyMatch(item -> item.getEnsembleRankScore() != null);
+                    .anyMatch(item -> item.getEffectiveModelScore() != null);
             boolean standaloneNewsRankingEnabled = newsRankingEnabled && !ensembleWithNewsFeatures;
             NewsFeatureSnapshot newsSnapshot = loadNewsFeatureSnapshot(
-                    new ArrayList<>(lstmScores.keySet()), informationCutoffAt,
+                    new ArrayList<>(modelScores.keySet()), informationCutoffAt,
                     standaloneNewsRankingEnabled);
             Map<String, SentimentAggregateResult> sentimentResults = newsSnapshot.sentimentResults();
 
             newsSnapshot.riskEvents().forEach((stockCode, fact) -> {
-                lstmScores.remove(stockCode);
+                modelScores.remove(stockCode);
                 log.warn("重大风险事件阻断买入候选: stockCode={}, canonicalEventId={}, title={}",
                         stockCode, fact.getCanonicalEventId(), fact.getNormalizedTitle());
             });
-            if (lstmScores.isEmpty()) {
+            if (modelScores.isEmpty()) {
                 throw new IllegalStateException("所有模型候选均被重大风险事件阻断");
             }
 
@@ -124,7 +120,7 @@ public class StockSelector {
                     : "DISABLED_PENDING_NEWS_QUALITY_GATE";
             Map<String, Double> newsImpactScores = sentimentResults.entrySet().stream()
                     .filter(entry -> standaloneNewsRankingEnabled)
-                    .filter(entry -> lstmScores.containsKey(entry.getKey()))
+                    .filter(entry -> modelScores.containsKey(entry.getKey()))
                     .filter(entry -> entry.getValue().isActionable())
                     .collect(Collectors.toMap(
                             Map.Entry::getKey,
@@ -132,7 +128,7 @@ public class StockSelector {
                             (left, right) -> left,
                             LinkedHashMap::new));
             Map<String, Double> totalScores = scoreCalculator.calculateTotalScores(
-                    lstmScores, newsImpactScores, config);
+                    modelScores, newsImpactScores, config);
             String candidateBatchId = UUID.randomUUID().toString();
             LocalDateTime calculatedAt = LocalDateTime.now();
             Map<String, Double> currentPrices = predictionBatch.getItems().stream()
@@ -143,7 +139,7 @@ public class StockSelector {
                             (left, right) -> left,
                             LinkedHashMap::new));
             List<StockRankingDto> rankings = rankAndSelect(
-                    totalScores, lstmScores, newsImpactScores, currentPrices, stockNames, n, config,
+                    totalScores, modelScores, newsImpactScores, currentPrices, stockNames, n, config,
                     predictionBatch, sentimentModelVersion, candidateBatchId,
                     informationCutoffAt, calculatedAt);
 
@@ -153,7 +149,7 @@ public class StockSelector {
                     candidateBatchId, predictionBatch.getBatchId(), rankings.size(), costTime);
             return SelectionResult.builder()
                     .executeTime(calculatedAt)
-                    .totalStocks(lstmScores.size())
+                    .totalStocks(modelScores.size())
                     .topN(rankings.stream()
                             .filter(item -> CANDIDATE_STATUS_ELIGIBLE.equals(item.getStatus()))
                             .toList())
@@ -269,27 +265,21 @@ public class StockSelector {
         return stockNames;
     }
 
-    private Map<String, Double> calculateLstmScores(
+    private Map<String, Double> calculateTemporalModelScores(
             List<PredictionCandidateItemDto> items) {
         Map<String, Double> scores = new LinkedHashMap<>();
         for (PredictionCandidateItemDto item : items) {
-            if (item.getEstimatedNetExpectedReturn() == null
-                    || !Double.isFinite(item.getEstimatedNetExpectedReturn())
-                    || item.getEstimatedNetExpectedReturn()
+            if (item.getEffectiveEstimatedNetReturn() == null
+                    || !Double.isFinite(item.getEffectiveEstimatedNetReturn())
+                    || item.getEffectiveEstimatedNetReturn()
                     < backtestProperties.getMinimumCandidateNetReturnRate().doubleValue()) {
                 continue;
             }
-            double absoluteReturnScore = 1D / (1D + Math.exp(-LSTM_SCORE_SCALE * item.getPredictedReturn()));
-            double absoluteDirectionScore = clamp(item.getDirectionProbability());
-            double returnScore = item.getEnsembleRankScore() == null
-                    ? 0.7D * clamp(item.getPredictedReturnPercentile()) + 0.3D * absoluteReturnScore
-                    : clamp(item.getEnsembleRankScore());
-            double directionScore = 0.7D * clamp(item.getDirectionProbabilityPercentile())
-                    + 0.3D * absoluteDirectionScore;
-            double riskScore = 1D - clamp(item.getDownsideRisk());
-            scores.put(item.getStockCode(), returnScore * RETURN_TASK_WEIGHT
-                    + directionScore * DIRECTION_TASK_WEIGHT
-                    + riskScore * RISK_TASK_WEIGHT);
+            if (item.getEffectiveModelScore() == null
+                    || !Double.isFinite(item.getEffectiveModelScore())) {
+                throw new IllegalStateException("生产有效模型评分无效: stockCode=" + item.getStockCode());
+            }
+            scores.put(item.getStockCode(), item.getEffectiveModelScore());
         }
         return scores;
     }
@@ -327,10 +317,6 @@ public class StockSelector {
         rejectedCodes.forEach(scores::remove);
         log.info("上市年限门槛过滤完成: minimumListingYears={}, rejected={}, remaining={}",
                 minimumListingYears, rejectedCodes.size(), scores.size());
-    }
-
-    private double clamp(double value) {
-        return Math.max(0D, Math.min(1D, value));
     }
 
     private NewsFeatureSnapshot loadNewsFeatureSnapshot(
@@ -506,4 +492,4 @@ public class StockSelector {
                 .build();
     }
 }
-// AI_GENERATE_END-------------------------------------
+// AI_GENERATE_END--------------------------------------

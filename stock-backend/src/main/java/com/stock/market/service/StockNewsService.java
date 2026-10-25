@@ -1,10 +1,9 @@
-// AI_GENERATE_START---------------
+// AI_GENERATE_START----------------
 package com.stock.market.service;
 
 import com.stock.market.dto.NewsEventFactSyncResult;
 import com.stock.market.entity.StockInfo;
 import com.stock.market.entity.StockNews;
-import com.stock.market.entity.StockNewsEventFact;
 import com.stock.market.enums.NewsSyncStatus;
 import com.stock.market.repository.NewsRepository;
 import com.stock.market.repository.StockInfoRepository;
@@ -352,7 +351,6 @@ public class StockNewsService {
      */
     private void cleanupStockNews(String stockCode, String label) {
         long deletedByAge = 0;
-        long deletedFactsByAge = 0;
         long deletedByLimit = 0;
 
         if (newsRetentionDays > 0) {
@@ -360,10 +358,6 @@ public class StockNewsService {
             Query expiredQuery = Query.query(Criteria.where("stockCode").is(stockCode)
                     .and("publishTime").lt(cutoff));
             deletedByAge = mongoTemplate.remove(expiredQuery, StockNews.class).getDeletedCount();
-            Query expiredFactQuery = Query.query(Criteria.where("stockCode").is(stockCode)
-                    .and("publishTime").lt(cutoff));
-            deletedFactsByAge = mongoTemplate.remove(expiredFactQuery, StockNewsEventFact.class)
-                    .getDeletedCount();
         }
 
         if (maxNewsRecordsPerStock > 0) {
@@ -388,9 +382,9 @@ public class StockNewsService {
             }
         }
 
-        if (deletedByAge > 0 || deletedFactsByAge > 0 || deletedByLimit > 0) {
-            log.info("股票 {} 新闻数据清理完成: 原始文档按时间删除 {} 条，事件事实按时间删除 {} 条，原始文档按数量删除 {} 条，保留上限 {} 条/股",
-                    label, deletedByAge, deletedFactsByAge, deletedByLimit, maxNewsRecordsPerStock);
+        if (deletedByAge > 0 || deletedByLimit > 0) {
+            log.info("股票 {} 原始新闻清理完成: 按时间删除 {} 条，按数量删除 {} 条，保留上限 {} 条/股；事件事实独立长期保留",
+                    label, deletedByAge, deletedByLimit, maxNewsRecordsPerStock);
         }
     }
 
@@ -551,4 +545,4 @@ public class StockNewsService {
     /** 采集来源（新闻/公告）。 */
     private record NewsSource(String menuId, String category) {}
 }
-// AI_GENERATE_END---------------
+// AI_GENERATE_END----------------

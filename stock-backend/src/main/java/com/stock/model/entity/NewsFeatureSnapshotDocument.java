@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.model.entity;
 
 import lombok.Data;
@@ -48,10 +48,22 @@ public class NewsFeatureSnapshotDocument {
     /** 新闻采集治理版本。 */
     private String pipelineVersion;
 
+    /** 模型行情数据来源。 */
+    private String marketDataSource;
+
+    /** 模型行情数据版本。 */
+    private String marketDataSourceVersion;
+
+    /** 进入快照计算的规范事件数量。 */
+    private int inputEventCount;
+
+    /** 进入快照计算的最晚事件发布时间，可为空。 */
+    private LocalDateTime latestInputPublishTime;
+
     /** 快照是否通过维度、时间和来源完整性检查。 */
     private boolean complete;
 
     /** 快照生成时间。 */
     private LocalDateTime generatedAt;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START --------------
 package com.stock.model.service;
 
 import com.stock.market.dto.MarketNewsEventDto;
@@ -31,6 +31,8 @@ import java.util.Map;
 /**
  * Mengzi 影子推理、后验评估、人工候选和自动回滚编排服务。
  *
+ * @see <a href="http://localhost:5173/docs/backend/model/designs/mengzi-shadow-deployment">
+ *     Mengzi 影子部署详细设计</a>
  * @author mwangli
  * @since 2026-10-24
  */
@@ -497,4 +499,4 @@ public class SentimentShadowDeploymentService {
             double actualReturn) {
     }
 }
-// AI_GENERATE_END ------------
+// AI_GENERATE_END --------------

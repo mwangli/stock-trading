@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START--------
 package com.stock.market.entity;
 
 import com.stock.market.enums.NewsDocumentRole;
@@ -70,6 +70,9 @@ public class StockNews {
     /** 原始采集渠道名称，不承担真实文档类型语义。 */
     private String sourceChannel;
 
+    /** 来源原始页面或附件地址，可为空，用于审计追溯。 */
+    private String sourceUrl;
+
     /** 根据来源和正文推导的真实文档类型。 */
     private NewsDocumentType documentType;
 
@@ -113,4 +116,4 @@ public class StockNews {
     /** 本地入库时间。 */
     private LocalDateTime createTime;
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END--------

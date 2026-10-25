@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START---------------
 package com.stock.model.repository;
 
 import com.stock.model.entity.ModelPredictionBatchDocument;
@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -155,12 +156,16 @@ public interface ModelPredictionBatchRepository extends JpaRepository<ModelPredi
             LocalDate targetTradeDate, Collection<String> statuses);
 
     /**
-     * 查询最近一个可用于影子模型对齐的生产预测批次。
+     * 查询候选模型创建后可用于影子预测的非重算生产批次。
      *
      * @param statuses 可用批次状态
-     * @return 最近可用批次，不存在时返回 null
+     * @param createdAt 候选模型创建时间下限
+     * @param pageable 最大读取数量
+     * @return 按创建时间倒序排列的最近可补跑批次
      */
-    ModelPredictionBatchDocument findFirstByStatusInOrderByCreatedAtDesc(Collection<String> statuses);
+    List<ModelPredictionBatchDocument>
+            findByStatusInAndCreatedAtGreaterThanEqualAndRerunSourceBatchIdIsNullOrderByCreatedAtDesc(
+            Collection<String> statuses, LocalDateTime createdAt, Pageable pageable);
 
     /**
      * 查询同一模型最近完成的预测批次，用于滚动窗口评估。
@@ -182,4 +187,4 @@ public interface ModelPredictionBatchRepository extends JpaRepository<ModelPredi
     ModelPredictionBatchDocument findFirstByModelIdAndEvaluatedCountGreaterThanOrderByEvaluationFinishedAtDescCreatedAtDesc(
             String modelId, int evaluatedCount);
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END---------------

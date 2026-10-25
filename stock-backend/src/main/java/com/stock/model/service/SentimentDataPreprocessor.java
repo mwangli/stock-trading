@@ -1,10 +1,11 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START-------------
 package com.stock.model.service;
 
 import com.stock.market.dto.MarketNewsEventDto;
 import com.stock.market.enums.NewsDocumentRole;
 import com.stock.market.service.MarketDataQueryService;
 import com.stock.model.dto.TrainingSample;
+import com.stock.model.enums.SentimentLabelQuality;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -84,6 +85,9 @@ public class SentimentDataPreprocessor {
                     samples.add(TrainingSample.builder()
                             .text(text)
                             .label(label)
+                            .labelQuality(SentimentLabelQuality.WEAK)
+                            .labelMethod("RULE_KEYWORD")
+                            .labelConfidence(ruleLabelConfidence(text))
                             .source(fact.getStockCode())
                             .sampleId(buildSampleId(fact))
                             .publishedAt(fact.getPublishTime())
@@ -134,6 +138,25 @@ public class SentimentDataPreprocessor {
         return 0;
     }
 
+    private double ruleLabelConfidence(String text) {
+        int positiveCount = 0;
+        int negativeCount = 0;
+        for (String word : POSITIVE_WORDS) {
+            if (text.contains(word)) {
+                positiveCount++;
+            }
+        }
+        for (String word : NEGATIVE_WORDS) {
+            if (text.contains(word)) {
+                negativeCount++;
+            }
+        }
+        int evidenceCount = positiveCount + negativeCount;
+        if (evidenceCount == 0) {
+            return 0.34D;
+        }
+        return Math.min(0.70D, 0.40D + Math.abs(positiveCount - negativeCount) * 0.10D);
+    }
     /**
      * 对事件事实文本执行模型输入所需的轻量字符约束。
      * 采集层已经处理 HTML、URL、模板和重复前缀，本方法不再承担业务清洗。
@@ -154,4 +177,4 @@ public class SentimentDataPreprocessor {
         return preferred == null || preferred.isBlank() ? fallback : preferred;
     }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END-------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.market.service;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -171,23 +171,23 @@ public class StockListSyncService {
     private void updateStockInfo(StockInfo target, StockInfo source) {
         if (source.getName() != null) target.setName(source.getName());
         if (source.getMarket() != null) target.setMarket(source.getMarket());
-        if (source.getPrice() != null) target.setPrice(source.getPrice());
-        if (source.getChangeAmount() != null) target.setChangeAmount(source.getChangeAmount());
-        if (source.getChangePercent() != null) target.setChangePercent(source.getChangePercent());
-        if (source.getVolume() != null) target.setVolume(source.getVolume());
-        if (source.getTotalMarketValue() != null) target.setTotalMarketValue(source.getTotalMarketValue());
-        if (source.getTurnoverRate() != null) target.setTurnoverRate(source.getTurnoverRate());
-        if (source.getVolumeRatio() != null) target.setVolumeRatio(source.getVolumeRatio());
-        if (source.getBidPrice() != null) target.setBidPrice(source.getBidPrice());
-        if (source.getAskPrice() != null) target.setAskPrice(source.getAskPrice());
+        target.setPrice(source.getPrice());
+        target.setChangeAmount(source.getPrice() == null ? null : source.getChangeAmount());
+        target.setChangePercent(source.getPrice() == null ? null : source.getChangePercent());
+        target.setVolume(source.getPrice() == null ? null : source.getVolume());
+        target.setTotalMarketValue(source.getPrice() == null ? null : source.getTotalMarketValue());
+        target.setTurnoverRate(source.getPrice() == null ? null : source.getTurnoverRate());
+        target.setVolumeRatio(source.getPrice() == null ? null : source.getVolumeRatio());
+        target.setBidPrice(source.getPrice() == null ? null : source.getBidPrice());
+        target.setAskPrice(source.getPrice() == null ? null : source.getAskPrice());
         if (source.getSecurityCategory() != null) target.setSecurityCategory(source.getSecurityCategory());
         if (source.getMarketCode() != null) target.setMarketCode(source.getMarketCode());
-        if (source.getMomentumStrength() != null) target.setMomentumStrength(source.getMomentumStrength());
-        if (source.getVolumePriceSignal() != null) target.setVolumePriceSignal(source.getVolumePriceSignal());
-        if (source.getTurnoverAnomaly() != null) target.setTurnoverAnomaly(source.getTurnoverAnomaly());
-        if (source.getVolumePriceSignal() != null) target.setAbnormalVolumeFlag(source.isAbnormalVolumeFlag());
-        if (source.getBidAskSpread() != null) target.setBidAskSpread(source.getBidAskSpread());
-        if (source.getBidAskSpreadRate() != null) target.setBidAskSpreadRate(source.getBidAskSpreadRate());
+        target.setMomentumStrength(source.getPrice() == null ? null : source.getMomentumStrength());
+        target.setVolumePriceSignal(source.getPrice() == null ? null : source.getVolumePriceSignal());
+        target.setTurnoverAnomaly(source.getPrice() == null ? null : source.getTurnoverAnomaly());
+        target.setAbnormalVolumeFlag(source.getPrice() != null && source.isAbnormalVolumeFlag());
+        target.setBidAskSpread(source.getPrice() == null ? null : source.getBidAskSpread());
+        target.setBidAskSpreadRate(source.getPrice() == null ? null : source.getBidAskSpreadRate());
         if (source.getIndustryCode() != null) target.setIndustryCode(source.getIndustryCode());
         if (source.getListedDate() != null) target.setListedDate(source.getListedDate());
     }
@@ -197,4 +197,4 @@ public class StockListSyncService {
                                  List<StockInfo> missingStocks) {
     }
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

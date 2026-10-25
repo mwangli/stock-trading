@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------
+// AI_GENERATE_START--------------------------
 package com.stock.schedule.bootstrap;
 
 import com.stock.market.dto.StockListSyncResult;
@@ -35,6 +35,8 @@ public class JobBootstrap implements ApplicationRunner {
             defaultJob("stockPriceHistoryBackfill", "0 0 3 ? * SAT", "每周回补最近三年已确认交易日的股票历史日线缺口", "data", "BACKFILL"),
             defaultJob("newsDailySync", "0 0 5 ? * MON-FRI", "每日同步股票新闻和公告", "data", "INCREMENTAL"),
             defaultPausedJob("newsCollectionBackfill", "0 0 2 ? * *", "分批回填历史新闻采集治理和事件事实", "data", "BACKFILL"),
+            defaultPausedJob("newsFeatureSnapshotBackfill", "0 30 2 ? * *",
+                    "分批生成 temporal-news-v1 股票日级快照并执行点时审计", "model", "BACKFILL"),
             defaultPausedJob("sentimentMengziShadow", "0 0 1 ? * MON-FRI",
                     "顺序执行 Mengzi 情感影子推理和自动路由评估", "model", "INCREMENTAL"),
             defaultJob("tradeCalendarMonthlySync", "0 10 4 1 * ?", "每月回补交易日历缺口并维持未来一年滚动窗口", "data", "BACKFILL"),
@@ -147,4 +149,4 @@ public class JobBootstrap implements ApplicationRunner {
         return defaultJob(jobName, cronExpression, description, module, syncMode).setStatus(0);
     }
 }
-// AI_GENERATE_END-------------------------
+// AI_GENERATE_END--------------------------
