@@ -85,6 +85,10 @@ agent:
   rag-enabled: true
   memory-enabled: true
   rag-collection: agent_rag_chunks
+  rag-auto-initialization-enabled: ${AGENT_RAG_AUTO_INITIALIZATION_ENABLED:true}
+  project-documents:
+    enabled: ${AGENT_PROJECT_DOCUMENTS_ENABLED:true}
+    path: ./documents
   memory-default-ttl-days: 90
   chat-memory-max-messages: 20
   tool-timeout-ms: 5000

@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START------
 package com.stock.agent.knowledge.rag.embedding;
 
 import lombok.Builder;
@@ -38,7 +38,10 @@ public class EmbeddingRuntimeStatus {
     /** 当前状态。 */
     String status;
 
+    /** 初始化或失败原因摘要。 */
+    String message;
+
     /** 是否使用 hash 降级。 */
     boolean fallback;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END------

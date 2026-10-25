@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ------
 package com.stock.agent.knowledge.rag.embedding;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -12,8 +12,8 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * 校验 Agent 固定 Embedding 模型制品目录。
@@ -28,6 +28,8 @@ public class EmbeddingArtifactService {
 
     private static final String SCHEMA_VERSION = "embedding-artifact-v1";
     private static final String MANIFEST_FILE = "manifest.json";
+    private static final String MODEL_CONFIG_FILE = "config.json";
+    private static final String TOKENIZER_FILE = "tokenizer.json";
 
     private final ObjectMapper objectMapper;
 
@@ -70,28 +72,43 @@ public class EmbeddingArtifactService {
                     || !modelVersion.equals(manifest.path("modelVersion").asText())) {
                 return false;
             }
-            Set<String> listed = new HashSet<>();
-            boolean hasWeights = false;
-            boolean hasExpectedModel = false;
             String expectedModelFile = modelName + ".pt";
+            Map<String, JsonNode> files = new HashMap<>();
             for (JsonNode file : manifest.path("files")) {
                 String relative = file.path("path").asText("").replace('\\', '/');
-                Path target = directory.resolve(relative).normalize();
-                if (relative.isBlank() || !listed.add(relative) || !target.startsWith(directory)
-                        || !Files.isRegularFile(target)
-                        || Files.size(target) != file.path("size").asLong(-1)
-                        || !file.path("sha256").asText().equalsIgnoreCase(sha256(target))) {
-                    return false;
+                if (!relative.isBlank()) {
+                    files.putIfAbsent(relative, file);
                 }
-                hasWeights = hasWeights || isWeightFile(relative);
-                hasExpectedModel = hasExpectedModel || expectedModelFile.equals(relative);
             }
-            return listed.contains("config.json") && listed.contains("tokenizer.json")
-                    && hasWeights && hasExpectedModel;
+            return validRequiredJson(directory, MODEL_CONFIG_FILE)
+                    && validRequiredJson(directory, TOKENIZER_FILE)
+                    && validWeight(directory, expectedModelFile, files.get(expectedModelFile));
         } catch (Exception exception) {
             log.warn("Embedding 固定制品校验失败: directory={}, reason={}", directory, exception.getMessage());
             return false;
         }
+    }
+
+    private boolean validRequiredJson(Path directory, String relative) {
+        Path target = directory.resolve(relative).normalize();
+        if (!target.startsWith(directory) || !Files.isRegularFile(target)) {
+            return false;
+        }
+        try (var reader = Files.newBufferedReader(target)) {
+            return !objectMapper.readTree(reader).isMissingNode();
+        } catch (Exception exception) {
+            log.warn("Embedding 必需配置不可解析: file={}, reason={}", target, exception.getMessage());
+            return false;
+        }
+    }
+
+    private boolean validWeight(Path directory, String relative, JsonNode manifestEntry) throws IOException {
+        Path target = directory.resolve(relative).normalize();
+        return manifestEntry != null
+                && target.startsWith(directory)
+                && Files.isRegularFile(target)
+                && Files.size(target) == manifestEntry.path("size").asLong(-1)
+                && manifestEntry.path("sha256").asText().equalsIgnoreCase(sha256(target));
     }
 
     private Path resolveRoot(String configuredRoot) {
@@ -100,12 +117,6 @@ public class EmbeddingArtifactService {
         return configured.isAbsolute()
                 ? configured.normalize()
                 : Path.of("").toAbsolutePath().normalize().resolve(configured).normalize();
-    }
-
-    private boolean isWeightFile(String path) {
-        String normalized = path.toLowerCase();
-        return normalized.endsWith(".bin") || normalized.endsWith(".pt")
-                || normalized.endsWith(".safetensors");
     }
 
     private String sha256(Path file) throws IOException {
@@ -126,4 +137,4 @@ public class EmbeddingArtifactService {
         }
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ------

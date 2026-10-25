@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START--------
 package com.stock.agent.interaction.service;
 
 import com.stock.agent.interaction.model.AgentSessionStatus;
@@ -7,6 +7,7 @@ import com.stock.agent.interaction.dto.CreateSessionRequest;
 import com.stock.agent.interaction.dto.SessionResponse;
 import com.stock.agent.interaction.entity.AgentSessionEntity;
 import com.stock.agent.interaction.repository.AgentSessionRepository;
+import com.stock.agent.interaction.repository.AgentTaskRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -29,8 +31,12 @@ import java.util.UUID;
 public class AgentSessionService {
 
     private static final int MAX_SESSION_HISTORY = 50;
+    private static final int MAX_TITLE_LENGTH = 28;
+    private static final Set<String> DEFAULT_TITLES = Set.of(
+            "Agent 会话", "Agent 自动会话", "智能策略对话", "新对话");
 
     private final AgentSessionRepository sessionRepository;
+    private final AgentTaskRepository taskRepository;
 
     /**
      * 创建当前用户的 Agent 会话。
@@ -72,8 +78,27 @@ public class AgentSessionService {
     public List<SessionResponse> list(String userScope) {
         return sessionRepository.findByUserScopeOrderByUpdatedAtDesc(
                         requireUserScope(userScope), PageRequest.of(0, MAX_SESSION_HISTORY)).stream()
+                .map(this::backfillTitleFromFirstQuestion)
                 .map(this::toResponse)
                 .toList();
+    }
+
+    /**
+     * 使用首个用户问题更新默认会话标题。
+     *
+     * @param session 会话实体
+     * @param question 用户问题
+     */
+    public void updateTitleFromQuestion(AgentSessionEntity session, String question) {
+        if (session == null || !isDefaultTitle(session.getTitle())) {
+            return;
+        }
+        String summarizedTitle = summarizeTitle(question);
+        if (!StringUtils.hasText(summarizedTitle)) {
+            return;
+        }
+        session.setTitle(summarizedTitle);
+        sessionRepository.save(session);
     }
 
     /**
@@ -127,6 +152,55 @@ public class AgentSessionService {
         return userScope.trim();
     }
 
+    private AgentSessionEntity backfillTitleFromFirstQuestion(AgentSessionEntity session) {
+        if (!isDefaultTitle(session.getTitle())) {
+            return session;
+        }
+        taskRepository.findFirstBySessionIdOrderByCreatedAtAsc(session.getSessionId())
+                .ifPresent(task -> updateTitleFromQuestion(session, task.getQuestion()));
+        return session;
+    }
+
+    private boolean isDefaultTitle(String title) {
+        return !StringUtils.hasText(title) || DEFAULT_TITLES.contains(title.trim());
+    }
+
+    private String summarizeTitle(String question) {
+        if (!StringUtils.hasText(question)) {
+            return null;
+        }
+        String normalized = question
+                .replaceAll("(?s)```.*?```", " ")
+                .replaceAll("`([^`]*)`", "$1")
+                .replaceAll("!\\[([^]]*)]\\([^)]*\\)", "$1")
+                .replaceAll("\\[([^]]+)]\\([^)]*\\)", "$1")
+                .replaceAll("(?m)^\\s{0,3}(?:#{1,6}|>|[-*+]\\s|\\d+[.)]\\s)\\s*", "")
+                .replaceAll("[*_~]", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+        if (!StringUtils.hasText(normalized)) {
+            return null;
+        }
+        int sentenceEnd = firstSentenceEnd(normalized);
+        String firstSentence = sentenceEnd < 0 ? normalized : normalized.substring(0, sentenceEnd + 1).trim();
+        int[] codePoints = firstSentence.codePoints().toArray();
+        if (codePoints.length <= MAX_TITLE_LENGTH) {
+            return firstSentence;
+        }
+        return new String(codePoints, 0, MAX_TITLE_LENGTH) + "…";
+    }
+
+    private int firstSentenceEnd(String content) {
+        int firstEnd = -1;
+        for (char delimiter : new char[]{'。', '！', '？', '!', '?'}) {
+            int index = content.indexOf(delimiter);
+            if (index >= 0 && (firstEnd < 0 || index < firstEnd)) {
+                firstEnd = index;
+            }
+        }
+        return firstEnd;
+    }
+
     private SessionResponse toResponse(AgentSessionEntity entity) {
         return SessionResponse.builder()
                 .sessionId(entity.getSessionId())
@@ -137,4 +211,4 @@ public class AgentSessionService {
                 .build();
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END-------

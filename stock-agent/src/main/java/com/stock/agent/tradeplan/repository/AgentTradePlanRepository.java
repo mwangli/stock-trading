@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------
+// AI_GENERATE_START--------------
 package com.stock.agent.tradeplan.repository;
 
 import com.stock.agent.tradeplan.entity.AgentTradePlanEntity;
@@ -53,5 +53,12 @@ public interface AgentTradePlanRepository extends MongoRepository<AgentTradePlan
      */
     long deleteByPredictionBatchId(String predictionBatchId);
 
+    /**
+     * 查询最近一百条包含用户复核意见的交易计划。
+     *
+     * @return 按更新时间倒序排列的交易计划
+     */
+    List<AgentTradePlanEntity> findTop100ByReviewCommentIsNotNullOrderByUpdatedAtDesc();
+
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END-------------

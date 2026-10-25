@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.agent.interaction.dto;
 
 import java.time.LocalDate;
@@ -28,5 +28,7 @@ public class ResearchRequest {
     private String predictionBatchId;
     /** 当前目标交易日上下文，可为空。 */
     private LocalDate targetTradeDate;
+    /** 知识库使用模式，默认 AUTO。 */
+    private KnowledgeMode knowledgeMode = KnowledgeMode.AUTO;
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

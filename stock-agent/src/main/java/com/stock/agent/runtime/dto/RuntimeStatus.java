@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START----------
 package com.stock.agent.runtime.dto;
 
 import java.time.LocalDateTime;
@@ -70,6 +70,8 @@ public class RuntimeStatus {
     private int embeddingDimension;
     /** Embedding 当前状态。 */
     private String embeddingStatus;
+    /** Embedding 初始化或失败原因摘要。 */
+    private String embeddingMessage;
     /** 是否使用 hash 降级。 */
     private boolean embeddingFallback;
     /** Backend 权威事实源是否启用。 */
@@ -81,6 +83,9 @@ public class RuntimeStatus {
 
     /** 项目文档确定性索引是否可用。 */
     private boolean projectDocumentsReady;
+
+    /** 项目文档索引状态，取值为 DISABLED、READY 或 UNAVAILABLE。 */
+    private String projectDocumentsStatus;
 
     /** 已建立索引的项目文档章节数量。 */
     private int projectDocumentSectionCount;
@@ -94,4 +99,4 @@ public class RuntimeStatus {
     /** 收益分析工具是否具备 Backend 事实源。 */
     private boolean performanceToolAvailable;
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END----------

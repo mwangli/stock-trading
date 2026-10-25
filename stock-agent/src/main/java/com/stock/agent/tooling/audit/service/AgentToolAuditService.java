@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.agent.tooling.audit.service;
 
 import com.alibaba.fastjson2.JSON;
@@ -112,7 +112,8 @@ public class AgentToolAuditService {
                 continue;
             }
             String normalized = value.trim();
-            if (normalized.startsWith("documents/") || normalized.startsWith("https://")
+            if (normalized.startsWith("documents/") || normalized.startsWith("rag:")
+                    || normalized.startsWith("https://")
                     || normalized.startsWith("http://")) {
                 sanitized.add(limit(normalized));
             }
@@ -127,4 +128,4 @@ public class AgentToolAuditService {
         return value.length() > 2000 ? value.substring(0, 2000) : value;
     }
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END-----------

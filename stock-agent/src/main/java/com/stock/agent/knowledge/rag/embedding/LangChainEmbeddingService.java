@@ -1,9 +1,7 @@
-// AI_GENERATE_START-------------
+// AI_GENERATE_START----------------
 package com.stock.agent.knowledge.rag.embedding;
 
 import com.stock.agent.shared.config.AgentProperties;
-import com.stock.agent.knowledge.rag.embedding.DjlEmbeddingModel;
-import com.stock.agent.knowledge.rag.embedding.EmbeddingRuntimeStatus;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
@@ -74,21 +72,25 @@ public class LangChainEmbeddingService {
         String provider = embedding.getProvider() == null ? "disabled" : embedding.getProvider();
         boolean configured = embedding.isEnabled() && isProviderConfigured(embedding, provider);
         boolean ready = false;
+        String message = null;
         if (configured) {
             try {
                 EmbeddingModel model = embeddingModelProvider.getIfAvailable();
                 if (model instanceof DjlEmbeddingModel djlModel) {
                     ready = djlModel.isReady();
+                    message = djlModel.lastLoadError();
                 } else {
                     ready = model != null;
                 }
             } catch (RuntimeException exception) {
                 ready = false;
+                message = exception.getMessage();
             }
         }
         boolean fallback = !ready && embedding.isAllowHashFallback();
         String status = !embedding.isEnabled() || "disabled".equalsIgnoreCase(provider)
-                ? "DISABLED" : fallback ? "HASH_FALLBACK" : ready ? "READY" : "UNAVAILABLE";
+                ? "DISABLED" : fallback ? "HASH_FALLBACK" : ready ? "READY"
+                : message == null ? "INITIALIZING" : "UNAVAILABLE";
         return EmbeddingRuntimeStatus.builder()
                 .enabled(embedding.isEnabled())
                 .provider(provider)
@@ -98,6 +100,7 @@ public class LangChainEmbeddingService {
                 .modelVersion(modelVersion())
                 .dimension(embedding.getDimension())
                 .status(status)
+                .message(message)
                 .fallback(fallback)
                 .build();
     }
@@ -148,14 +151,15 @@ public class LangChainEmbeddingService {
     }
 
     private boolean isProviderConfigured(AgentProperties.EmbeddingProperties embedding, String provider) {
-        if (!content(embedding.getBaseUrl()) || !content(embedding.getModel())) {
+        if (!content(embedding.getModel())) {
             return false;
         }
-        if ("openaicompatible".equalsIgnoreCase(provider)) {
-            return content(embedding.getApiKey());
-        }
-        return "ollama".equalsIgnoreCase(provider)
-                || "djl".equalsIgnoreCase(provider) && content(embedding.getModelVersion());
+        return switch (provider.toLowerCase(Locale.ROOT)) {
+            case "djl" -> content(embedding.getModelVersion()) && content(embedding.getModelPath());
+            case "ollama" -> content(embedding.getBaseUrl());
+            case "openaicompatible" -> content(embedding.getBaseUrl()) && content(embedding.getApiKey());
+            default -> false;
+        };
     }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END----------------
