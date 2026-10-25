@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.platform.service;
 
 import com.stock.platform.dto.InternalBrokerFactsResponse;
@@ -7,6 +7,10 @@ import com.stock.platform.dto.InternalJobDiagnosticResponse;
 import com.stock.platform.dto.InternalLatestPriceResponse;
 import com.stock.platform.dto.InternalModelOverviewResponse;
 import com.stock.platform.dto.InternalPerformanceOverviewResponse;
+import com.stock.platform.dto.InternalMarketAdvancerItemResponse;
+import com.stock.platform.dto.InternalMarketAdvancersResponse;
+import com.stock.platform.dto.InternalPerformanceAnalysisItemResponse;
+import com.stock.platform.dto.InternalPerformanceAnalysisResponse;
 import com.stock.platform.dto.InternalPredictionCandidateItem;
 import com.stock.platform.dto.InternalPredictionCandidateResponse;
 import com.stock.platform.dto.InternalStrategyStateResponse;
@@ -16,6 +20,7 @@ import com.stock.platform.port.JobExecutionQueryPort;
 import com.stock.platform.dto.JobExecutionSnapshot;
 import com.stock.market.dto.StockPriceItemDto;
 import com.stock.market.service.MarketDataQueryService;
+import com.stock.market.service.StockQueryService;
 import com.stock.market.service.TradingCalendarService;
 import com.stock.model.dto.ModelOverviewResponse;
 import com.stock.model.dto.ModelTrainingRunResponse;
@@ -35,6 +40,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,6 +56,7 @@ import java.util.List;
 public class InternalAgentFactsService {
 
     private final MarketDataQueryService marketDataQueryService;
+    private final StockQueryService stockQueryService;
     private final TradingCalendarService tradingCalendarService;
     private final StrategyStateManager strategyStateManager;
     private final BrokerReadService brokerReadService;
@@ -181,6 +188,46 @@ public class InternalAgentFactsService {
     }
 
     /**
+     * 查询最近可用行情日的涨跌分布。
+     *
+     * @return 市场涨幅事实
+     */
+    public InternalMarketAdvancersResponse marketAdvancers() {
+        var result = stockQueryService.getMarketAdvancers(20);
+        var items = result.getItems().stream()
+                .map(item -> new InternalMarketAdvancerItemResponse(
+                        item.getStockCode(), item.getStockName(), item.getPrice(), item.getChangePercent()))
+                .toList();
+        return new InternalMarketAdvancersResponse(
+                result.getDataDate(), result.getAsOf(), result.getTotalCount(), result.getUpCount(),
+                result.getDownCount(), result.getFlatCount(), items, result.getAvailabilityReason());
+    }
+
+    /**
+     * 查询指定自然月的已实现收益分析。
+     *
+     * @param yearMonth 查询自然月
+     * @return 月度收益事实
+     */
+    public InternalPerformanceAnalysisResponse performanceAnalysis(YearMonth yearMonth) {
+        var result = performanceReportService.getAnalysis(yearMonth);
+        return new InternalPerformanceAnalysisResponse(
+                result.getYearMonth(), result.getAsOf(), result.getGrossProfit(), result.getNetProfit(),
+                result.getTotalFees(), result.getReturnRate(), result.getTradeCount(),
+                result.getWinningTradeCount(), result.getLosingTradeCount(), result.getWinRate(),
+                result.getTopGains().stream().map(this::toPerformanceAnalysisItem).toList(),
+                result.getTopLosses().stream().map(this::toPerformanceAnalysisItem).toList(),
+                result.getAvailabilityReason());
+    }
+
+    private InternalPerformanceAnalysisItemResponse toPerformanceAnalysisItem(
+            com.stock.execution.dto.PerformanceAnalysisItemDto item) {
+        return new InternalPerformanceAnalysisItemResponse(
+                item.getStockCode(), item.getStockName(), item.getGrossProfit(), item.getNetProfit(),
+                item.getFees(), item.getReturnRate(), item.getSellTime());
+    }
+
+    /**
      * 查询模型运维概览。
      *
      * @return 模型运维概览
@@ -247,4 +294,4 @@ public class InternalAgentFactsService {
                 targetTradeDate, List.of(), reason);
     }
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

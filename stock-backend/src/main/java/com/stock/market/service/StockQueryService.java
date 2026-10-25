@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START----------
 package com.stock.market.service;
 
 import com.stock.platform.config.CacheNames;
@@ -9,6 +9,8 @@ import com.stock.market.dto.StockListPageResponseDto;
 import com.stock.market.dto.StockStatisticsResponseDto;
 import com.stock.market.dto.TopIncreaseItemDto;
 import com.stock.market.dto.TopIncreaseListResponseDto;
+import com.stock.market.dto.MarketAdvancerItemDto;
+import com.stock.market.dto.MarketAdvancersDto;
 import com.stock.market.entity.StockInfo;
 import com.stock.market.repository.StockInfoRepository;
 import com.stock.market.dto.MarketStatsDto;
@@ -25,6 +27,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -210,6 +213,54 @@ public class StockQueryService {
     }
 
     /**
+     * 查询最近可用行情日的涨跌分布和涨幅榜。
+     *
+     * @param limit 涨幅榜最大数量，范围 1 到 20
+     * @return 最近行情日统计
+     */
+    public MarketAdvancersDto getMarketAdvancers(int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 20));
+        List<StockInfo> visibleStocks = stockInfoRepository.findAll().stream()
+                .filter(this::isMarketVisibleStock)
+                .filter(stock -> stock.getUpdateTime() != null)
+                .toList();
+        LocalDateTime latestUpdateTime = visibleStocks.stream()
+                .map(StockInfo::getUpdateTime)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
+        if (latestUpdateTime == null) {
+            return MarketAdvancersDto.builder().items(List.of())
+                    .availabilityReason("股票行情尚无有效更新时间").build();
+        }
+        LocalDate dataDate = latestUpdateTime.toLocalDate();
+        List<StockInfo> dailyStocks = visibleStocks.stream()
+                .filter(stock -> dataDate.equals(stock.getUpdateTime().toLocalDate()))
+                .toList();
+        int upCount = (int) dailyStocks.stream().filter(stock -> positive(stock.getChangePercent())).count();
+        int downCount = (int) dailyStocks.stream().filter(stock -> negative(stock.getChangePercent())).count();
+        List<MarketAdvancerItemDto> items = dailyStocks.stream()
+                .filter(stock -> positive(stock.getChangePercent()))
+                .sorted(Comparator.comparing(StockInfo::getChangePercent).reversed())
+                .limit(safeLimit)
+                .map(stock -> MarketAdvancerItemDto.builder()
+                        .stockCode(stock.getCode())
+                        .stockName(stock.getName())
+                        .price(stock.getPrice())
+                        .changePercent(stock.getChangePercent())
+                        .build())
+                .toList();
+        return MarketAdvancersDto.builder()
+                .dataDate(dataDate)
+                .asOf(latestUpdateTime)
+                .totalCount(dailyStocks.size())
+                .upCount(upCount)
+                .downCount(downCount)
+                .flatCount(dailyStocks.size() - upCount - downCount)
+                .items(items)
+                .build();
+    }
+
+    /**
      * 汇总当前市场状态和涨跌分布。
      *
      * @return 市场统计数据
@@ -343,7 +394,7 @@ public class StockQueryService {
     }
 
     private Criteria tradableCriteria() {
-        Pattern inactive = Pattern.compile("ST|退|DELIST|TERMINATED", Pattern.CASE_INSENSITIVE);
+        Pattern inactive = Pattern.compile("ST|PT|退|DELIST|TERMINATED", Pattern.CASE_INSENSITIVE);
         return new Criteria().andOperator(
                 Criteria.where("name").not().regex(inactive),
                 Criteria.where("securityCategory").not().regex(inactive),
@@ -353,6 +404,8 @@ public class StockQueryService {
     private Criteria marketVisibleCriteria() {
         return new Criteria().andOperator(
                 tradableCriteria(),
+                Criteria.where("code").regex(Pattern.compile("\\S")),
+                Criteria.where("name").regex(Pattern.compile("\\S")),
                 Criteria.where("price").gt(BigDecimal.ZERO),
                 Criteria.where("totalMarketValue").gt(BigDecimal.ZERO));
     }
@@ -362,7 +415,9 @@ public class StockQueryService {
     }
 
     private boolean isMarketVisibleStock(StockInfo stock) {
-        return positive(stock.getPrice())
+        return hasText(stock.getCode())
+                && hasText(stock.getName())
+                && positive(stock.getPrice())
                 && positive(stock.getTotalMarketValue())
                 && isActiveText(stock.getName())
                 && isActiveText(stock.getSecurityCategory())
@@ -375,9 +430,14 @@ public class StockQueryService {
         }
         String normalized = value.toUpperCase(Locale.ROOT);
         return !normalized.contains("ST")
+                && !normalized.contains("PT")
                 && !value.contains("退")
                 && !normalized.contains("DELIST")
                 && !normalized.contains("TERMINATED");
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private boolean positive(BigDecimal value) {
@@ -388,4 +448,4 @@ public class StockQueryService {
         return value != null && value.signum() < 0;
     }
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END----------

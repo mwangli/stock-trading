@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.agent.tooling.port;
 
 import com.stock.agent.tooling.model.BrokerFacts;
@@ -7,12 +7,15 @@ import com.stock.agent.tooling.model.JobDiagnosticFact;
 import com.stock.agent.tooling.model.LatestPriceFact;
 import com.stock.agent.tooling.model.ModelOverviewFact;
 import com.stock.agent.tooling.model.PerformanceOverviewFact;
+import com.stock.agent.tooling.model.MarketAdvancersFact;
+import com.stock.agent.tooling.model.PerformanceAnalysisFact;
 import com.stock.agent.tooling.model.PredictionCandidateFact;
 import com.stock.agent.tooling.model.StrategyStateFact;
 import com.stock.agent.tooling.model.TradeExecutionGateFact;
 import com.stock.agent.tooling.model.TradingCalendarFact;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
 
 /**
  * Agent 只读工具所需权威事实查询端口。
@@ -46,6 +49,12 @@ public interface ToolFactQueryPort {
     /** @return 账户收益概览事实 */
     PerformanceOverviewFact performanceOverview();
 
+    /** @return 最近可用行情日的涨跌分布事实 */
+    MarketAdvancersFact marketAdvancers();
+
+    /** @param yearMonth 查询自然月 @return 月度收益分析事实 */
+    PerformanceAnalysisFact performanceAnalysis(YearMonth yearMonth);
+
     /** @return 模型运维概览事实 */
     ModelOverviewFact modelOverview();
 
@@ -55,4 +64,4 @@ public interface ToolFactQueryPort {
     /** @return 交易执行门禁事实 */
     TradeExecutionGateFact tradeExecutionGate();
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --
