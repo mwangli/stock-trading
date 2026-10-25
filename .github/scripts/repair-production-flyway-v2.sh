@@ -3,6 +3,10 @@ set -Eeuo pipefail
 
 readonly expected_old_checksum="1627667484"
 readonly expected_new_checksum="-735681307"
+readonly expected_old_description="remove startup full sync switches"
+readonly expected_new_description="dml"
+readonly expected_old_script="V2__remove_startup_full_sync_switches.sql"
+readonly expected_new_script="V2__dml.sql"
 readonly migration_version="2"
 readonly dml_file="${1:?V2 DML file is required}"
 
@@ -23,41 +27,53 @@ read_migration_state() {
 SELECT COUNT(*),
        COALESCE(MIN(checksum), 0),
        COALESCE(MAX(checksum), 0),
+       COALESCE(MIN(description), ''),
+       COALESCE(MIN(type), ''),
+       COALESCE(MIN(script), ''),
        COALESCE(SUM(success = 1), 0)
 FROM flyway_schema_history
 WHERE version = '${migration_version}';
 SQL
 }
 
-expected_old_state=$'1\t'"${expected_old_checksum}"$'\t'"${expected_old_checksum}"$'\t1'
-old_state="$(read_migration_state)"
-if [[ "$old_state" != "$expected_old_state" ]]; then
-  echo "Flyway V2 state does not match the authorized repair precondition."
-  echo "Expected one successful V2 row with the authorized old checksum."
-  exit 1
-fi
+expected_old_state=$'1\t'"${expected_old_checksum}"$'\t'"${expected_old_checksum}"$'\t'"${expected_old_description}"$'\tSQL\t'"${expected_old_script}"$'\t1'
+expected_partial_state=$'1\t'"${expected_new_checksum}"$'\t'"${expected_new_checksum}"$'\t'"${expected_old_description}"$'\tSQL\t'"${expected_old_script}"$'\t1'
+expected_new_state=$'1\t'"${expected_new_checksum}"$'\t'"${expected_new_checksum}"$'\t'"${expected_new_description}"$'\tSQL\t'"${expected_new_script}"$'\t1'
+current_state="$(read_migration_state)"
 
-echo "Flyway V2 precondition verified; replaying the idempotent v5.1.1 DML."
-mysql_exec < "$dml_file"
+if [[ "$current_state" == "$expected_old_state" || "$current_state" == "$expected_partial_state" ]]; then
+  echo "Flyway V2 precondition verified; replaying the idempotent v5.1.1 DML."
+  mysql_exec < "$dml_file"
 
-updated_rows="$(mysql_exec <<SQL
+  updated_rows="$(mysql_exec <<SQL
 UPDATE flyway_schema_history
-SET checksum = ${expected_new_checksum}
+SET checksum = ${expected_new_checksum},
+    description = '${expected_new_description}',
+    type = 'SQL',
+    script = '${expected_new_script}'
 WHERE version = '${migration_version}'
-  AND checksum = ${expected_old_checksum}
+  AND checksum IN (${expected_old_checksum}, ${expected_new_checksum})
+  AND description = '${expected_old_description}'
+  AND type = 'SQL'
+  AND script = '${expected_old_script}'
   AND success = 1;
 SELECT ROW_COUNT();
 SQL
 )"
-if [[ "$updated_rows" != "1" ]]; then
-  echo "Flyway V2 checksum update affected an unexpected number of rows: $updated_rows"
+  if [[ "$updated_rows" != "1" ]]; then
+    echo "Flyway V2 metadata update affected an unexpected number of rows: $updated_rows"
+    exit 1
+  fi
+elif [[ "$current_state" == "$expected_new_state" ]]; then
+  echo "Flyway V2 metadata is already repaired; continuing with Backend verification."
+else
+  echo "Flyway V2 state does not match an authorized repair precondition."
   exit 1
 fi
 
-expected_new_state=$'1\t'"${expected_new_checksum}"$'\t'"${expected_new_checksum}"$'\t1'
 new_state="$(read_migration_state)"
 if [[ "$new_state" != "$expected_new_state" ]]; then
-  echo "Flyway V2 checksum verification failed after the repair."
+  echo "Flyway V2 metadata verification failed after the repair."
   exit 1
 fi
 
@@ -97,5 +113,5 @@ if [[ "$running_image" != "$backend_image" ]]; then
   exit 1
 fi
 
-echo "Flyway V2 checksum repaired and Backend is healthy on the preserved image."
+echo "Flyway V2 metadata repaired and Backend is healthy on the preserved image."
 docker compose --env-file .env ps stock-backend
