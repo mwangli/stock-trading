@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.platform.service;
 
 import com.stock.platform.dto.InternalBrokerFactsResponse;
@@ -84,9 +84,12 @@ public class InternalAgentFactsService {
      */
     public InternalTradingCalendarResponse tradingCalendar(LocalDate tradeDate) {
         boolean tradingDay = tradingCalendarService.isTradingDay(tradeDate);
-        return new InternalTradingCalendarResponse(tradeDate, tradingDay,
-                tradingCalendarService.isConfirmedDate(tradeDate),
-                tradingDay ? tradeDate : tradingCalendarService.nextTradingDay(tradeDate));
+        boolean confirmed = tradingCalendarService.isConfirmedDate(tradeDate);
+        LocalDate nextConfirmedTradingDay = tradingDay
+                ? tradeDate
+                : tradingCalendarService.findNextTradingDay(tradeDate).orElse(null);
+        return new InternalTradingCalendarResponse(
+                tradeDate, tradingDay, confirmed, nextConfirmedTradingDay);
     }
 
     /**
@@ -244,4 +247,4 @@ public class InternalAgentFactsService {
                 targetTradeDate, List.of(), reason);
     }
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

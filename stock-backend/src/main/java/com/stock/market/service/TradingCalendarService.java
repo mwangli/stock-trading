@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.market.service;
 
 import com.stock.platform.config.CacheNames;
@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 生产交易日解析服务。
@@ -102,12 +103,29 @@ public class TradingCalendarService {
     @Cacheable(cacheNames = CacheNames.TRADING_CALENDAR, key = "'nextTradingDay:' + #date")
     public LocalDate nextTradingDay(LocalDate date) {
         requireConfirmedDate(date);
-        TradeCalendarEntity candidate = tradeCalendarRepository
+        return findNextTradingDay(date)
+                .orElseThrow(() -> new IllegalStateException(
+                        "交易日历未连续覆盖基准日期之后的已确认交易日: " + date));
+    }
+
+    /**
+     * 尝试解析指定日期之后的首个已确认交易日。
+     *
+     * 只读诊断场景使用该方法表达日历未知状态；生产交易、预测和风控仍应调用
+     * {@link #nextTradingDay(LocalDate)} 保持失败保守。
+     *
+     * @param date 基准日期
+     * @return 连续日历覆盖完整时返回下一交易日，否则返回空
+     */
+    public Optional<LocalDate> findNextTradingDay(LocalDate date) {
+        if (date == null || !isConfirmedDate(date)) {
+            return Optional.empty();
+        }
+        return tradeCalendarRepository
                 .findFirstByMarketAndDayStatusAndVerificationStatusAndTradeDateAfterOrderByTradeDateAsc(
                         MARKET, CalendarDayStatus.OPEN, CalendarVerificationStatus.CONFIRMED, date)
-                .orElseThrow(() -> new IllegalStateException("交易日历未覆盖基准日期之后的已确认交易日: " + date));
-        verifyContinuousCoverage(date.plusDays(1), candidate.getTradeDate());
-        return candidate.getTradeDate();
+                .filter(candidate -> hasContinuousCoverage(date.plusDays(1), candidate.getTradeDate()))
+                .map(TradeCalendarEntity::getTradeDate);
     }
 
     /**
@@ -139,15 +157,19 @@ public class TradingCalendarService {
     }
 
     private void verifyContinuousCoverage(LocalDate startDate, LocalDate endDate) {
+        if (!hasContinuousCoverage(startDate, endDate)) {
+            throw new IllegalStateException("交易日历区间存在缺口或未确认日期: " + startDate + "~" + endDate);
+        }
+    }
+
+    private boolean hasContinuousCoverage(LocalDate startDate, LocalDate endDate) {
         if (endDate.isBefore(startDate)) {
-            return;
+            return true;
         }
         List<TradeCalendarEntity> records = tradeCalendarRepository
                 .findByMarketAndTradeDateBetweenOrderByTradeDateAsc(MARKET, startDate, endDate);
         long expectedDays = java.time.temporal.ChronoUnit.DAYS.between(startDate, endDate) + 1;
-        if (records.size() != expectedDays || records.stream().anyMatch(item -> !isConfirmed(item))) {
-            throw new IllegalStateException("交易日历区间存在缺口或未确认日期: " + startDate + "~" + endDate);
-        }
+        return records.size() == expectedDays && records.stream().allMatch(this::isConfirmed);
     }
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------
