@@ -16,7 +16,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[任务注册 `JobSchedulerService.java`](../../../stock-backend/src/main/java/com/stock/schedule/service/JobSchedulerService.java) · [任务执行 `JobExecutionService.java`](../../../stock-backend/src/main/java/com/stock/schedule/service/JobExecutionService.java) · [启动对账 `JobBootstrap.java`](../../../stock-backend/src/main/java/com/stock/schedule/bootstrap/JobBootstrap.java)
+**IDEA 源码入口**：[任务注册 `JobSchedulerService.java`](pathname://../../../stock-backend/src/main/java/com/stock/schedule/service/JobSchedulerService.java) · [任务执行 `JobExecutionService.java`](pathname://../../../stock-backend/src/main/java/com/stock/schedule/service/JobExecutionService.java) · [启动对账 `JobBootstrap.java`](pathname://../../../stock-backend/src/main/java/com/stock/schedule/bootstrap/JobBootstrap.java)
 
 # Schedule 统一调度模块
 

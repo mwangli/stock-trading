@@ -16,7 +16,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[会话接口 `AgentConversationController.java`](../../../stock-agent/src/main/java/com/stock/agent/interaction/controller/AgentConversationController.java) · [任务编排 `AgentApplicationService.java`](../../../stock-agent/src/main/java/com/stock/agent/interaction/service/AgentApplicationService.java) · [会话管理 `AgentSessionService.java`](../../../stock-agent/src/main/java/com/stock/agent/interaction/service/AgentSessionService.java)
+**IDEA 源码入口**：[会话接口 `AgentConversationController.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/interaction/controller/AgentConversationController.java) · [任务编排 `AgentApplicationService.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/interaction/service/AgentApplicationService.java) · [会话管理 `AgentSessionService.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/interaction/service/AgentSessionService.java)
 
 # interaction 业务包
 

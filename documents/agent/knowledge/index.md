@@ -16,7 +16,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[RAG 服务 `AgentRagService.java`](../../../stock-agent/src/main/java/com/stock/agent/knowledge/rag/service/AgentRagService.java) · [长期记忆 `AgentMemoryService.java`](../../../stock-agent/src/main/java/com/stock/agent/knowledge/memory/service/AgentMemoryService.java) · [向量生成 `LangChainEmbeddingService.java`](../../../stock-agent/src/main/java/com/stock/agent/knowledge/rag/embedding/LangChainEmbeddingService.java)
+**IDEA 源码入口**：[RAG 服务 `AgentRagService.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/knowledge/rag/service/AgentRagService.java) · [长期记忆 `AgentMemoryService.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/knowledge/memory/service/AgentMemoryService.java) · [向量生成 `LangChainEmbeddingService.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/knowledge/rag/embedding/LangChainEmbeddingService.java)
 
 # knowledge 业务包
 

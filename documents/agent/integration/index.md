@@ -16,7 +16,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[内部 API 客户端 `BackendInternalApiClient.java`](../../../stock-agent/src/main/java/com/stock/agent/integration/client/BackendInternalApiClient.java) · [工具事实适配 `BackendToolFactAdapter.java`](../../../stock-agent/src/main/java/com/stock/agent/integration/adapter/BackendToolFactAdapter.java) · [决策事实适配 `BackendDecisionFactAdapter.java`](../../../stock-agent/src/main/java/com/stock/agent/integration/adapter/BackendDecisionFactAdapter.java)
+**IDEA 源码入口**：[内部 API 客户端 `BackendInternalApiClient.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/integration/client/BackendInternalApiClient.java) · [工具事实适配 `BackendToolFactAdapter.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/integration/adapter/BackendToolFactAdapter.java) · [决策事实适配 `BackendDecisionFactAdapter.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/integration/adapter/BackendDecisionFactAdapter.java)
 
 # integration 业务包
 

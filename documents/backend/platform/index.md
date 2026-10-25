@@ -16,7 +16,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[内部事实接口 `InternalAgentFactsController.java`](../../../stock-backend/src/main/java/com/stock/platform/controller/InternalAgentFactsController.java) · [事实聚合 `InternalAgentFactsService.java`](../../../stock-backend/src/main/java/com/stock/platform/service/InternalAgentFactsService.java) · [接口日志 `ApiLoggingAspect.java`](../../../stock-backend/src/main/java/com/stock/platform/aspect/ApiLoggingAspect.java)
+**IDEA 源码入口**：[内部事实接口 `InternalAgentFactsController.java`](pathname://../../../stock-backend/src/main/java/com/stock/platform/controller/InternalAgentFactsController.java) · [事实聚合 `InternalAgentFactsService.java`](pathname://../../../stock-backend/src/main/java/com/stock/platform/service/InternalAgentFactsService.java) · [接口日志 `ApiLoggingAspect.java`](pathname://../../../stock-backend/src/main/java/com/stock/platform/aspect/ApiLoggingAspect.java)
 
 # Platform 平台装配模块
 

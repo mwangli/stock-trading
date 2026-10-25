@@ -14,7 +14,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[Backend 应用入口 `StockBackendApplication.java`](../../stock-backend/src/main/java/com/stock/StockBackendApplication.java) · [领域目录 `com.stock/README.md`](../../stock-backend/src/main/java/com/stock/README.md)
+**IDEA 源码入口**：[Backend 应用入口 `StockBackendApplication.java`](pathname://../../stock-backend/src/main/java/com/stock/StockBackendApplication.java) · [领域目录 `com.stock/README.md`](pathname://../../stock-backend/src/main/java/com/stock/README.md)
 
 # Stock Backend 整体架构
 

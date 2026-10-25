@@ -16,7 +16,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[模型 Provider `LangChain4jAgentModelProvider.java`](../../../stock-agent/src/main/java/com/stock/agent/runtime/provider/LangChain4jAgentModelProvider.java) · [运行协调 `AgentRuntimeCoordinator.java`](../../../stock-agent/src/main/java/com/stock/agent/runtime/service/AgentRuntimeCoordinator.java) · [类型化 Agent `StrategyAgent.java`](../../../stock-agent/src/main/java/com/stock/agent/runtime/agent/StrategyAgent.java)
+**IDEA 源码入口**：[模型 Provider `LangChain4jAgentModelProvider.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/runtime/provider/LangChain4jAgentModelProvider.java) · [运行协调 `AgentRuntimeCoordinator.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/runtime/service/AgentRuntimeCoordinator.java) · [类型化 Agent `StrategyAgent.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/runtime/agent/StrategyAgent.java)
 
 # runtime 业务包
 

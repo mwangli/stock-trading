@@ -16,7 +16,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[工具目录 `AgentToolCatalog.java`](../../../stock-agent/src/main/java/com/stock/agent/tooling/capability/AgentToolCatalog.java) · [执行边界 `AgentToolSupport.java`](../../../stock-agent/src/main/java/com/stock/agent/tooling/tool/AgentToolSupport.java) · [工具审计 `AgentToolAuditService.java`](../../../stock-agent/src/main/java/com/stock/agent/tooling/audit/service/AgentToolAuditService.java)
+**IDEA 源码入口**：[工具目录 `AgentToolCatalog.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/tooling/capability/AgentToolCatalog.java) · [执行边界 `AgentToolSupport.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/tooling/tool/AgentToolSupport.java) · [工具审计 `AgentToolAuditService.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/tooling/audit/service/AgentToolAuditService.java)
 
 # tooling 业务包
 

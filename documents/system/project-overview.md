@@ -12,7 +12,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 工程入口**：[仓库说明 `README.md`](../../README.md) · [Maven 聚合 `pom.xml`](../../pom.xml) · [容器编排 `docker-compose.yml`](../../docker-compose.yml)
+**IDEA 工程入口**：[仓库说明 `README.md`](pathname://../../README.md) · [Maven 聚合 `pom.xml`](pathname://../../pom.xml) · [容器编排 `docker-compose.yml`](pathname://../../docker-compose.yml)
 
 # AI-AGENT 智能股票交易系统
 

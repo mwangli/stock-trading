@@ -1,7 +1,8 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ------------
 import type {Config} from '@docusaurus/types';
 import type {Options, ThemeConfig} from '@docusaurus/preset-classic';
 
+// documentation/package.json intentionally omits "type" so generated modules support ESM and require().
 const config: Config = {
   title: 'Stock Trading 工程文档',
   tagline: '架构、领域设计、运行边界与源码索引',
@@ -89,4 +90,4 @@ const config: Config = {
 };
 
 export default config;
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ------------

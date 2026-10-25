@@ -18,7 +18,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[路由入口 `App.tsx`](../../stock-frontend/src/App.tsx) · [主布局 `DashboardLayout.tsx`](../../stock-frontend/src/layouts/DashboardLayout.tsx) · [文档跳转配置 `documentation.ts`](../../stock-frontend/src/utils/documentation.ts)
+**IDEA 源码入口**：[路由入口 `App.tsx`](pathname://../../stock-frontend/src/App.tsx) · [主布局 `DashboardLayout.tsx`](pathname://../../stock-frontend/src/layouts/DashboardLayout.tsx) · [文档跳转配置 `documentation.ts`](pathname://../../stock-frontend/src/utils/documentation.ts)
 
 # AI-AGENT 智能股票交易系统前端
 

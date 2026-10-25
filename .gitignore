@@ -43,6 +43,7 @@ build/
 # Node.js / Frontend
 node_modules/
 .vite/
+**/.docusaurus/
 dist/
 build/
 .umi/

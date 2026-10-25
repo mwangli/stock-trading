@@ -14,7 +14,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 工程入口**：[仓库说明 `README.md`](../README.md) · [文档站配置 `docusaurus.config.ts`](../stock-frontend/documentation/docusaurus.config.ts)
+**IDEA 工程入口**：[仓库说明 `README.md`](pathname://../README.md) · [文档站配置 `docusaurus.config.ts`](pathname://../stock-frontend/documentation/docusaurus.config.ts)
 
 # 工程文档工作台
 

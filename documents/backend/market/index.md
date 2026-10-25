@@ -16,7 +16,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[股票主数据同步 `StockListSyncService.java`](../../../stock-backend/src/main/java/com/stock/market/service/StockListSyncService.java) · [新闻治理管线 `NewsCollectionPipelineService.java`](../../../stock-backend/src/main/java/com/stock/market/service/NewsCollectionPipelineService.java) · [跨域只读查询 `MarketDataQueryService.java`](../../../stock-backend/src/main/java/com/stock/market/service/MarketDataQueryService.java)
+**IDEA 源码入口**：[股票主数据同步 `StockListSyncService.java`](pathname://../../../stock-backend/src/main/java/com/stock/market/service/StockListSyncService.java) · [新闻治理管线 `NewsCollectionPipelineService.java`](pathname://../../../stock-backend/src/main/java/com/stock/market/service/NewsCollectionPipelineService.java) · [跨域只读查询 `MarketDataQueryService.java`](pathname://../../../stock-backend/src/main/java/com/stock/market/service/MarketDataQueryService.java)
 
 # Market 市场事实模块
 
