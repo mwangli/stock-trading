@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.agent.runtime.dto;
 
 import java.time.LocalDateTime;
@@ -78,5 +78,20 @@ public class RuntimeStatus {
     private boolean backendFactsAvailable;
     /** Backend 权威事实源状态。 */
     private String backendFactsStatus;
+
+    /** 项目文档确定性索引是否可用。 */
+    private boolean projectDocumentsReady;
+
+    /** 已建立索引的项目文档章节数量。 */
+    private int projectDocumentSectionCount;
+
+    /** 网页搜索配置是否完整。 */
+    private boolean webSearchConfigured;
+
+    /** 行情统计工具是否具备 Backend 事实源。 */
+    private boolean marketDataToolAvailable;
+
+    /** 收益分析工具是否具备 Backend 事实源。 */
+    private boolean performanceToolAvailable;
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

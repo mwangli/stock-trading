@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.agent.runtime.service;
 
 import com.stock.agent.interaction.model.AgentTaskStatus;
@@ -15,6 +15,8 @@ import com.stock.agent.knowledge.rag.embedding.EmbeddingRuntimeStatus;
 import com.stock.agent.knowledge.rag.embedding.LangChainEmbeddingService;
 import com.stock.agent.interaction.repository.AgentTaskRepository;
 import com.stock.agent.runtime.service.AgentRuntimeCoordinator;
+import com.stock.agent.integration.client.DeepSeekWebSearchClient;
+import com.stock.agent.knowledge.document.service.ProjectDocumentSearchService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -37,6 +39,8 @@ public class AgentRuntimeManagementService {
     private final AgentProperties properties;
     private final LangChainEmbeddingService embeddingService;
     private final FactSourceStatusPort factSourceStatusPort;
+    private final ProjectDocumentSearchService documentSearchService;
+    private final DeepSeekWebSearchClient webSearchClient;
 
     /**
      * 获取 Agent 运行状态。
@@ -76,6 +80,11 @@ public class AgentRuntimeManagementService {
                 .backendFactsEnabled(backendFactsStatus.enabled())
                 .backendFactsAvailable(backendFactsStatus.available())
                 .backendFactsStatus(backendFactsStatus.status())
+                .projectDocumentsReady(documentSearchService.sectionCount() > 0)
+                .projectDocumentSectionCount(documentSearchService.sectionCount())
+                .webSearchConfigured(webSearchClient.configured())
+                .marketDataToolAvailable(backendFactsStatus.available())
+                .performanceToolAvailable(backendFactsStatus.available())
                 .build();
     }
 
@@ -137,4 +146,4 @@ public class AgentRuntimeManagementService {
         return ProviderModeResponse.builder().provider(runtimeService.providerName()).build();
     }
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----
