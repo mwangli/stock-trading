@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.agent.tooling.capability;
 
 import com.stock.agent.interaction.dto.AgentTaskStrategy;
@@ -46,6 +46,16 @@ public class AgentCapabilityRouter {
             tools.add(AgentToolName.PROJECT_DOCUMENT_SEARCH);
             strategy = AgentTaskStrategy.CONVERSATION;
         }
+        if (containsAny(normalized, "上涨股票", "哪些股票上涨", "今天上涨", "今日上涨", "涨幅榜",
+                "市场涨跌", "下跌股票")) {
+            tools.add(AgentToolName.MARKET_ADVANCERS);
+            strategy = AgentTaskStrategy.FACT_QUERY;
+        }
+        if (containsAny(normalized, "上个月收益", "上月收益", "月度收益", "收益为负", "亏损原因",
+                "为什么亏损", "亏损最多", "主要亏损", "主要盈利")) {
+            return new AgentCapabilitySelection(
+                    AgentTaskStrategy.ANALYSIS, Set.of(AgentToolName.PERFORMANCE_ANALYSIS));
+        }
         if (containsAny(normalized, "累计收益", "当日收益", "今日收益", "本月收益", "胜率", "收益率", "收益情况", "账户收益")) {
             return new AgentCapabilitySelection(
                     AgentTaskStrategy.FACT_QUERY, Set.of(AgentToolName.PERFORMANCE_OVERVIEW));
@@ -90,4 +100,4 @@ public class AgentCapabilityRouter {
         return false;
     }
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END-----------

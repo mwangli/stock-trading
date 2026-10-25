@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.agent.integration.adapter;
 
 import com.stock.agent.integration.client.BackendInternalApiClient;
@@ -11,6 +11,10 @@ import com.stock.agent.tooling.model.JobDiagnosticFact;
 import com.stock.agent.tooling.model.LatestPriceFact;
 import com.stock.agent.tooling.model.ModelOverviewFact;
 import com.stock.agent.tooling.model.PerformanceOverviewFact;
+import com.stock.agent.tooling.model.MarketAdvancerItemFact;
+import com.stock.agent.tooling.model.MarketAdvancersFact;
+import com.stock.agent.tooling.model.PerformanceAnalysisFact;
+import com.stock.agent.tooling.model.PerformanceAnalysisItemFact;
 import com.stock.agent.tooling.model.PredictionCandidateFact;
 import com.stock.agent.tooling.model.PredictionCandidateItemFact;
 import com.stock.agent.tooling.model.StrategyStateFact;
@@ -21,6 +25,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
 
 /**
  * 基于 Backend 内部 HTTP API 的工具事实适配器。
@@ -99,6 +104,31 @@ public class BackendToolFactAdapter implements ToolFactQueryPort, FactSourceStat
 
     /** {@inheritDoc} */
     @Override
+    public MarketAdvancersFact marketAdvancers() {
+        var wire = client.marketAdvancers();
+        var items = wire.items().stream()
+                .map(item -> new MarketAdvancerItemFact(
+                        item.stockCode(), item.stockName(), item.price(), item.changePercent()))
+                .toList();
+        return new MarketAdvancersFact(
+                wire.dataDate(), wire.asOf(), wire.totalCount(), wire.upCount(), wire.downCount(),
+                wire.flatCount(), items, wire.availabilityReason());
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public PerformanceAnalysisFact performanceAnalysis(YearMonth yearMonth) {
+        var wire = client.performanceAnalysis(yearMonth);
+        return new PerformanceAnalysisFact(
+                wire.yearMonth(), wire.asOf(), wire.grossProfit(), wire.netProfit(), wire.totalFees(),
+                wire.returnRate(), wire.tradeCount(), wire.winningTradeCount(), wire.losingTradeCount(),
+                wire.winRate(), wire.topGains().stream().map(this::toPerformanceItem).toList(),
+                wire.topLosses().stream().map(this::toPerformanceItem).toList(),
+                wire.availabilityReason());
+    }
+
+    /** {@inheritDoc} */
+    @Override
     public ModelOverviewFact modelOverview() {
         var wire = client.modelOverview();
         return new ModelOverviewFact(wire.modelName(), wire.activeVersionId(), wire.activeVersion(),
@@ -133,5 +163,12 @@ public class BackendToolFactAdapter implements ToolFactQueryPort, FactSourceStat
         return new PredictionCandidateFact(wire.candidateBatchId(), wire.predictionBatchId(),
                 wire.strategyVersion(), wire.targetTradeDate(), items, wire.availabilityReason());
     }
+
+    private PerformanceAnalysisItemFact toPerformanceItem(
+            com.stock.agent.integration.dto.BackendPerformanceAnalysisItemResponse item) {
+        return new PerformanceAnalysisItemFact(
+                item.stockCode(), item.stockName(), item.grossProfit(), item.netProfit(), item.fees(),
+                item.returnRate(), item.sellTime());
+    }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

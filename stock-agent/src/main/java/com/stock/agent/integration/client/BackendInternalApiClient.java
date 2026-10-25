@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START --------
 package com.stock.agent.integration.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,6 +10,8 @@ import com.stock.agent.integration.dto.BackendJobDiagnosticResponse;
 import com.stock.agent.integration.dto.BackendLatestPriceResponse;
 import com.stock.agent.integration.dto.BackendModelOverviewResponse;
 import com.stock.agent.integration.dto.BackendPerformanceOverviewResponse;
+import com.stock.agent.integration.dto.BackendMarketAdvancersResponse;
+import com.stock.agent.integration.dto.BackendPerformanceAnalysisResponse;
 import com.stock.agent.integration.dto.BackendPredictionCandidateResponse;
 import com.stock.agent.integration.dto.BackendStrategyStateResponse;
 import com.stock.agent.integration.dto.BackendTradeDecisionContextResponse;
@@ -28,6 +30,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -136,6 +139,26 @@ public class BackendInternalApiClient {
      */
     public BackendPerformanceOverviewResponse performanceOverview() {
         return get("/api/internal/agentFacts/performanceOverview", BackendPerformanceOverviewResponse.class);
+    }
+
+    /**
+     * 查询最近可用行情日的涨跌分布。
+     *
+     * @return 最近行情日事实
+     */
+    public BackendMarketAdvancersResponse marketAdvancers() {
+        return get("/api/internal/agentFacts/marketAdvancers", BackendMarketAdvancersResponse.class);
+    }
+
+    /**
+     * 查询指定自然月的收益分析。
+     *
+     * @param yearMonth 查询自然月
+     * @return 月度收益分析事实
+     */
+    public BackendPerformanceAnalysisResponse performanceAnalysis(YearMonth yearMonth) {
+        return get("/api/internal/agentFacts/performanceAnalysis?yearMonth={yearMonth}",
+                BackendPerformanceAnalysisResponse.class, yearMonth.toString());
     }
 
     /**
@@ -269,4 +292,4 @@ public class BackendInternalApiClient {
         }
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------

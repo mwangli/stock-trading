@@ -1,10 +1,12 @@
-// AI_GENERATE_START---------------
+// AI_GENERATE_START----------------
 package com.stock.execution.service;
 
 import com.stock.execution.dto.PerformanceOverviewDto;
 import com.stock.execution.dto.PerformanceDailyReturnItemDto;
 import com.stock.execution.dto.PerformancePeriodItemDto;
 import com.stock.execution.dto.PerformanceRankingItemDto;
+import com.stock.execution.dto.PerformanceAnalysisDto;
+import com.stock.execution.dto.PerformanceAnalysisItemDto;
 import com.stock.execution.entity.AccountSnapshotEntity;
 import com.stock.execution.entity.TradeRecordEntity;
 import com.stock.execution.repository.AccountSnapshotRepository;
@@ -97,6 +99,54 @@ public class PerformanceReportService {
                 .ranking(buildRanking(realizedRecords))
                 .dailyReturns(buildDailyItems(realizedRecords))
                 .monthlyReturns(buildPeriodItems(realizedRecords, false))
+                .build();
+    }
+
+    /**
+     * 查询指定自然月的已实现收益和主要损益来源。
+     *
+     * @param yearMonth 查询自然月
+     * @return 月度收益分析
+     */
+    public PerformanceAnalysisDto getAnalysis(YearMonth yearMonth) {
+        if (yearMonth == null) {
+            throw new IllegalArgumentException("yearMonth 不能为空");
+        }
+        String brokerCode = brokerIdentityService.getBrokerCode();
+        String accountId = brokerIdentityService.getAccountId();
+        List<TradeRecordEntity> records = tradeRecordRepository
+                .findByBrokerCodeAndAccountIdOrderByBuyTimeDesc(brokerCode, accountId).stream()
+                .filter(this::isRealized)
+                .filter(record -> sameMonth(record.getLastSellTime(), yearMonth))
+                .toList();
+        BigDecimal grossProfit = records.stream().map(record -> zero(record.getGrossProfit()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal netProfit = sumProfit(records);
+        BigDecimal totalFees = records.stream().map(this::fees).reduce(BigDecimal.ZERO, BigDecimal::add);
+        long winningCount = countWinning(records);
+        long losingCount = countLosing(records);
+        List<PerformanceAnalysisItemDto> gains = records.stream()
+                .filter(record -> zero(record.getNetProfit()).signum() > 0)
+                .sorted(Comparator.comparing((TradeRecordEntity record) -> zero(record.getNetProfit())).reversed())
+                .limit(5).map(this::toAnalysisItem).toList();
+        List<PerformanceAnalysisItemDto> losses = records.stream()
+                .filter(record -> zero(record.getNetProfit()).signum() < 0)
+                .sorted(Comparator.comparing(record -> zero(record.getNetProfit())))
+                .limit(5).map(this::toAnalysisItem).toList();
+        return PerformanceAnalysisDto.builder()
+                .yearMonth(yearMonth.format(MONTH_FORMATTER))
+                .asOf(LocalDateTime.now())
+                .grossProfit(grossProfit)
+                .netProfit(netProfit)
+                .totalFees(totalFees)
+                .returnRate(rate(netProfit, sumCost(records)))
+                .tradeCount(records.size())
+                .winningTradeCount(winningCount)
+                .losingTradeCount(losingCount)
+                .winRate(rate(winningCount, records.size()))
+                .topGains(gains)
+                .topLosses(losses)
+                .availabilityReason(records.isEmpty() ? "该自然月没有已实现交易记录" : null)
                 .build();
     }
 
@@ -203,6 +253,22 @@ public class PerformanceReportService {
         return zero(record.getSoldCostAmount()).add(zero(record.getAllocatedBuyFee()));
     }
 
+    private BigDecimal fees(TradeRecordEntity record) {
+        return zero(record.getAllocatedBuyFee()).add(zero(record.getSellFee()));
+    }
+
+    private PerformanceAnalysisItemDto toAnalysisItem(TradeRecordEntity record) {
+        return PerformanceAnalysisItemDto.builder()
+                .stockCode(record.getStockCode())
+                .stockName(record.getStockName())
+                .grossProfit(zero(record.getGrossProfit()))
+                .netProfit(zero(record.getNetProfit()))
+                .fees(fees(record))
+                .returnRate(safeReturnRate(record))
+                .sellTime(record.getLastSellTime())
+                .build();
+    }
+
     private long countWinning(List<TradeRecordEntity> records) {
         return records.stream().filter(record -> safeReturnRate(record).compareTo(BigDecimal.ZERO) > 0).count();
     }
@@ -256,4 +322,4 @@ public class PerformanceReportService {
         private long winningCount;
     }
 }
-// AI_GENERATE_END---------------
+// AI_GENERATE_END----------------

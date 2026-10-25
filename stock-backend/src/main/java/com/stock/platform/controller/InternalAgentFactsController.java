@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.platform.controller;
 
 import com.stock.platform.dto.InternalBrokerFactsResponse;
@@ -7,6 +7,8 @@ import com.stock.platform.dto.InternalJobDiagnosticResponse;
 import com.stock.platform.dto.InternalLatestPriceResponse;
 import com.stock.platform.dto.InternalModelOverviewResponse;
 import com.stock.platform.dto.InternalPerformanceOverviewResponse;
+import com.stock.platform.dto.InternalMarketAdvancersResponse;
+import com.stock.platform.dto.InternalPerformanceAnalysisResponse;
 import com.stock.platform.dto.InternalPredictionCandidateResponse;
 import com.stock.platform.dto.InternalStrategyStateResponse;
 import com.stock.platform.dto.InternalTradeExecutionGateResponse;
@@ -29,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 
 /**
@@ -142,6 +145,30 @@ public class InternalAgentFactsController {
     }
 
     /**
+     * 查询最近可用行情日的涨跌分布和涨幅榜。
+     *
+     * @return 最近行情日事实
+     */
+    @GetMapping("/marketAdvancers")
+    public ResponseDTO<InternalMarketAdvancersResponse> marketAdvancers() {
+        log.info("Agent 内部事实查询: marketAdvancers");
+        return ResponseDTO.success(factsService.marketAdvancers());
+    }
+
+    /**
+     * 查询指定自然月的已实现收益分析。
+     *
+     * @param yearMonth 查询自然月，格式 yyyy-MM
+     * @return 月度收益分析事实
+     */
+    @GetMapping("/performanceAnalysis")
+    public ResponseDTO<InternalPerformanceAnalysisResponse> performanceAnalysis(
+            @RequestParam YearMonth yearMonth) {
+        log.info("Agent 内部事实查询: performanceAnalysis, yearMonth={}", yearMonth);
+        return ResponseDTO.success(factsService.performanceAnalysis(yearMonth));
+    }
+
+    /**
      * 查询模型运维概览。
      *
      * @return 模型运维概览
@@ -204,4 +231,4 @@ public class InternalAgentFactsController {
         return ResponseDTO.success(evaluationFactsService.query(request.items()));
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------
