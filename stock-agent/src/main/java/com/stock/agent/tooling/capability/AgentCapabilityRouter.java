@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.agent.tooling.capability;
 
 import com.stock.agent.interaction.dto.AgentTaskStrategy;
@@ -35,6 +35,11 @@ public class AgentCapabilityRouter {
 
         if (containsAny(normalized, "你好", "您好", "hello", "hi", "你是谁", "能做什么")) {
             return new AgentCapabilitySelection(AgentTaskStrategy.CONVERSATION, Set.of());
+        }
+        if (containsAny(normalized, "模块", "架构", "设计", "项目文档", "怎么实现", "如何实现",
+                "model", "backend", "frontend", "agent")) {
+            tools.add(AgentToolName.PROJECT_DOCUMENT_SEARCH);
+            strategy = AgentTaskStrategy.CONVERSATION;
         }
         if (containsAny(normalized, "累计收益", "当日收益", "今日收益", "本月收益", "胜率", "收益率", "收益情况", "账户收益")) {
             return new AgentCapabilitySelection(
@@ -80,4 +85,4 @@ public class AgentCapabilityRouter {
         return false;
     }
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END---------

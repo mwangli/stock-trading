@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------------
+// AI_GENERATE_START-------------------
 package com.stock.agent.runtime.service;
 
 import com.stock.agent.interaction.output.ResearchResult;
@@ -32,7 +32,7 @@ import java.util.Set;
 public class AgentRuntimeCoordinator {
 
     private static final Set<String> SUPPORTED_OUTPUT_TYPES = Set.of(
-            "RESEARCH", "DIAGNOSTIC", "REPORT", "TRADE_PLAN", "TRADE_DECISION");
+            "CONVERSATION", "RESEARCH", "DIAGNOSTIC", "REPORT", "TRADE_PLAN", "TRADE_DECISION");
 
     private final AgentModelProvider modelProvider;
     private final AgentProperties properties;
@@ -229,4 +229,4 @@ public class AgentRuntimeCoordinator {
                 .build();
     }
 }
-// AI_GENERATE_END-----------------
+// AI_GENERATE_END------------------

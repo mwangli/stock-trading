@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START---------
 package com.stock.agent.tooling.capability;
 
 import com.stock.agent.tooling.tool.read.BrokerStatusQueryTool;
@@ -6,6 +6,7 @@ import com.stock.agent.tooling.tool.read.JobDiagnosticTool;
 import com.stock.agent.tooling.tool.read.LatestPriceQueryTool;
 import com.stock.agent.tooling.tool.read.ModelOverviewQueryTool;
 import com.stock.agent.tooling.tool.read.PerformanceOverviewQueryTool;
+import com.stock.agent.tooling.tool.read.ProjectDocumentSearchTool;
 import com.stock.agent.tooling.tool.read.PredictionCandidateQueryTool;
 import com.stock.agent.tooling.tool.read.StrategyStateQueryTool;
 import com.stock.agent.tooling.tool.read.TradingCalendarQueryTool;
@@ -32,6 +33,7 @@ public class AgentToolCatalog {
     private final PerformanceOverviewQueryTool performanceOverviewQueryTool;
     private final BrokerStatusQueryTool brokerStatusQueryTool;
     private final JobDiagnosticTool jobDiagnosticTool;
+    private final ProjectDocumentSearchTool projectDocumentSearchTool;
 
     /**
      * 创建首期只读工具目录。
@@ -52,7 +54,8 @@ public class AgentToolCatalog {
                             ModelOverviewQueryTool modelOverviewQueryTool,
                             PerformanceOverviewQueryTool performanceOverviewQueryTool,
                             BrokerStatusQueryTool brokerStatusQueryTool,
-                            JobDiagnosticTool jobDiagnosticTool) {
+                            JobDiagnosticTool jobDiagnosticTool,
+                            ProjectDocumentSearchTool projectDocumentSearchTool) {
         this.tradingCalendarQueryTool = tradingCalendarQueryTool;
         this.latestPriceQueryTool = latestPriceQueryTool;
         this.strategyStateQueryTool = strategyStateQueryTool;
@@ -61,6 +64,7 @@ public class AgentToolCatalog {
         this.performanceOverviewQueryTool = performanceOverviewQueryTool;
         this.brokerStatusQueryTool = brokerStatusQueryTool;
         this.jobDiagnosticTool = jobDiagnosticTool;
+        this.projectDocumentSearchTool = projectDocumentSearchTool;
     }
 
     /**
@@ -78,6 +82,7 @@ public class AgentToolCatalog {
 
     private Object resolve(AgentToolName toolName) {
         return switch (toolName) {
+            case PROJECT_DOCUMENT_SEARCH -> projectDocumentSearchTool;
             case TRADING_CALENDAR -> tradingCalendarQueryTool;
             case LATEST_PRICE -> latestPriceQueryTool;
             case STRATEGY_STATE -> strategyStateQueryTool;
@@ -89,4 +94,4 @@ public class AgentToolCatalog {
         };
     }
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

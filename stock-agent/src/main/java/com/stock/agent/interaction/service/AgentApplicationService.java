@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------------------------
+// AI_GENERATE_START--------------------------------------------
 package com.stock.agent.interaction.service;
 
 import com.stock.agent.interaction.model.AgentTaskType;
@@ -48,6 +48,43 @@ public class AgentApplicationService {
     private final EvidenceAssembler evidenceAssembler;
     private final AgentSessionService sessionService;
     private final AgentTaskService taskService;
+
+    /**
+     * 执行通用连续对话任务。
+     *
+     * @param request 对话请求
+     * @param userScope 服务端认证用户范围
+     * @param allowedTools 本轮允许模型调用的只读工具
+     * @return 任务响应
+     */
+    public TaskResponse conversation(ResearchRequest request, String userScope, Set<AgentToolName> allowedTools) {
+        requireEnabled();
+        String question = requireQuestion(request == null ? null : request.getQuestion());
+        AgentSessionEntity session = sessionService.ensure(request == null ? null : request.getSessionId(), userScope);
+        AgentTaskEntity task = taskService.create(session, AgentTaskType.CONVERSATION, question);
+        try {
+            String prompt = "用户问题：" + question
+                    + "\n候选批次=" + (request == null ? "" : request.getCandidateBatchId())
+                    + "\n预测批次=" + (request == null ? "" : request.getPredictionBatchId())
+                    + "\n股票代码=" + (request == null ? "" : request.getStockCode())
+                    + "\n策略版本=" + (request == null ? "" : request.getStrategyVersion())
+                    + "\n目标交易日=" + (request == null ? "" : request.getTargetTradeDate());
+            AgentRuntimeResponse response = runtimeService.execute(runtimeRequest(
+                    task, session, "CONVERSATION",
+                    "你是股票交易系统的通用中文 Agent。可以回答普通问题，也可以在服务端授权的只读工具集合内按需查询。"
+                            + "项目设计问题必须先查询项目文档；实时事实、行情和账户统计必须调用对应工具，禁止凭空补造。"
+                            + "天气问题未提供城市时直接追问城市，不得按 IP 或默认地点猜测。"
+                            + "工具返回的数据时间不是今天时，必须明确称为最近可用数据。"
+                            + "不得承诺收益，不得生成可直接执行的券商订单；Java 风控和交易执行始终具有最终权威。"
+                            + "只返回合法 JSON，不要使用 Markdown 代码围栏，字段为："
+                            + "{summary,status,evidenceRefs,uncertainty}。summary 是完整自然语言回答，最多 6000 个汉字；"
+                            + "status 只能是 PASS、WARN 或 UNKNOWN；evidenceRefs 固定返回空数组，动态工具证据由服务端补充。",
+                    prompt, "", "CONVERSATION", List.of(), allowedTools));
+            return taskService.complete(task, response);
+        } catch (Exception exception) {
+            return taskService.fail(task, exception);
+        }
+    }
 
     /**
      * 执行 Research 任务。
@@ -314,4 +351,4 @@ public class AgentApplicationService {
         }
     }
 }
-// AI_GENERATE_END------------------------------------------
+// AI_GENERATE_END-------------------------------------------
