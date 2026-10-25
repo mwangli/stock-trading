@@ -146,7 +146,7 @@ services:
         source: ${MYSQL_DATA_DIR:-./data/mysql}
         target: /var/lib/mysql
     ports:
-      - "0.0.0.0:3306:3306"
+      - "0.0.0.0:6033:3306"
     networks:
       - stock-internal
       - stock-db-access

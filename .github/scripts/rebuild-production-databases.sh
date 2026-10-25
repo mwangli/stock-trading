@@ -136,17 +136,33 @@ docker exec -e REDISCLI_AUTH="$database_password" stock-redis redis-cli -h 127.0
   | grep -q '^PONG$'
 
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
-  ufw allow 3306/tcp
+  ufw allow 6033/tcp
   ufw allow 27017/tcp
   ufw allow 6379/tcp
 fi
 
 if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-  firewall-cmd --permanent --add-port=3306/tcp
+  firewall-cmd --permanent --add-port=6033/tcp
   firewall-cmd --permanent --add-port=27017/tcp
   firewall-cmd --permanent --add-port=6379/tcp
   firewall-cmd --reload
 fi
 
+if command -v iptables >/dev/null 2>&1; then
+  for port in 6033 27017 6379; do
+    iptables -C INPUT -p tcp --dport "$port" -j ACCEPT >/dev/null 2>&1 \
+      || iptables -I INPUT 1 -p tcp --dport "$port" -j ACCEPT
+    if iptables -nL DOCKER-USER >/dev/null 2>&1; then
+      iptables -C DOCKER-USER -p tcp --dport "$port" -j ACCEPT >/dev/null 2>&1 \
+        || iptables -I DOCKER-USER 1 -p tcp --dport "$port" -j ACCEPT
+    fi
+  done
+
+  if command -v netfilter-persistent >/dev/null 2>&1; then
+    netfilter-persistent save
+  fi
+fi
+
 docker compose --env-file .env ps "${infrastructure_services[@]}" "${application_services[@]}"
+ss -lnt | awk '$4 ~ /:(6033|27017|6379)$/ {print}'
 echo "Production databases were rebuilt through Docker Compose and passed authenticated server-side checks."
