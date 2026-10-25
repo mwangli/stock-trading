@@ -89,6 +89,7 @@ jobs:
           sparse-checkout: |
             docker-compose.yml
             .github/scripts/deploy-service.sh
+            .github/scripts/production-maintenance.sh
           sparse-checkout-cone-mode: false
 
       - name: Upload deployment files
@@ -99,7 +100,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ env.SERVER_PORT }}
           fingerprint: ${{ env.SERVER_FINGERPRINT }}
-          source: docker-compose.yml,.github/scripts/deploy-service.sh
+          source: docker-compose.yml,.github/scripts/deploy-service.sh,.github/scripts/production-maintenance.sh
           target: ${{ env.SERVER_DEPLOY_DIR }}
           overwrite: true
 

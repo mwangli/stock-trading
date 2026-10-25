@@ -68,3 +68,4 @@ done
 test "$healthy" -eq 1
 trap - INT TERM HUP ERR
 docker compose --env-file .env ps "$service_name"
+bash "$DEPLOY_DIR/.github/scripts/production-maintenance.sh" deploy
