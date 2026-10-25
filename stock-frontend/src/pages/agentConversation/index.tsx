@@ -1,4 +1,5 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
+import './styles.css';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Spin, Tag, Tooltip, Typography, message, type InputRef } from 'antd';
 import {
@@ -283,9 +284,9 @@ const AgentConversation: React.FC = () => {
   ];
 
   return (
-    <div className="app-page min-h-0">
-      <div className="grid min-h-[calc(100vh-146px)] gap-4 xl:grid-cols-[240px_minmax(0,1fr)_280px]">
-        <aside className="min-h-0 border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+    <div className="app-page agent-conversation-page min-h-0">
+      <div className="agent-conversation-layout grid gap-4 xl:grid-cols-[224px_minmax(0,1fr)_292px]">
+        <aside className="agent-panel agent-session-panel min-h-0 border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-700">
             <div>
               <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">会话记录</div>
@@ -328,7 +329,7 @@ const AgentConversation: React.FC = () => {
           </div>
         </aside>
 
-        <main className="flex min-h-0 flex-col border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <main className="agent-panel agent-chat-panel flex min-h-0 flex-col border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex size-10 shrink-0 items-center justify-center bg-emerald-600 text-white"><RobotOutlined /></div>
@@ -345,7 +346,7 @@ const AgentConversation: React.FC = () => {
             </div>
           </header>
 
-          <div className="min-h-[360px] flex-1 overflow-y-auto px-5 py-5">
+          <div className="agent-message-scroll min-h-[360px] flex-1 overflow-y-auto px-5 py-5">
             {historyLoading ? (
               <div className="flex h-full items-center justify-center"><Spin /></div>
             ) : messages.length === 0 ? (
@@ -353,6 +354,21 @@ const AgentConversation: React.FC = () => {
                 <BulbOutlined className="text-3xl text-amber-500" />
                 <div className="mt-3 text-base font-semibold text-slate-900 dark:text-slate-100">从当前策略事实开始提问</div>
                 <div className="mt-2 max-w-md text-sm leading-6 text-slate-500">回答会携带候选批次、策略版本与数据截止时间；缺少事实时会明确标注不确定性。</div>
+                <div className="agent-starter-grid mt-6 grid w-full max-w-2xl gap-2 md:grid-cols-3">
+                  {quickPrompts.slice(0, 3).map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => {
+                        setQuestion(ownerId, prompt);
+                        inputRef.current?.focus();
+                      }}
+                      className="agent-starter-question border px-3 py-3 text-left text-xs leading-5"
+                    >
+                      <MessageOutlined className="mr-2" />{prompt}
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : (
               <div className="space-y-4">
@@ -393,7 +409,7 @@ const AgentConversation: React.FC = () => {
             )}
           </div>
 
-          <footer className="border-t border-slate-200 p-4 dark:border-slate-700">
+          <footer className="agent-composer border-t border-slate-200 p-4 dark:border-slate-700">
             <div className="flex items-end gap-3">
               <Input.TextArea
                 ref={inputRef}
@@ -415,8 +431,8 @@ const AgentConversation: React.FC = () => {
           </footer>
         </main>
 
-        <aside className="space-y-4">
-          <section className="border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <aside className="agent-context-rail space-y-4">
+          <section className="agent-panel border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100"><DatabaseOutlined />当前上下文</div>
             <dl className="mt-4 space-y-3 text-xs">
               <div><dt className="text-slate-500">候选批次</dt><dd className="mt-1 break-all font-medium text-slate-800 dark:text-slate-200">{candidateBatch?.candidateBatchId || '不可用'}</dd></div>
@@ -427,7 +443,7 @@ const AgentConversation: React.FC = () => {
             {contextError && <div className="mt-4 border-l-2 border-amber-500 pl-3 text-xs leading-5 text-amber-700 dark:text-amber-300">{contextError}</div>}
           </section>
 
-          <section className="border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <section className="agent-panel border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100"><SafetyCertificateOutlined />能力状态</div>
             <div className="mt-4 space-y-3 text-xs">
               <div className="flex items-center justify-between gap-3"><span className="text-slate-500">当前模型</span><strong className="truncate">{activeModel}</strong></div>
@@ -437,7 +453,7 @@ const AgentConversation: React.FC = () => {
             </div>
           </section>
 
-          <section className="border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <section className="agent-panel border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100"><FileSearchOutlined />快捷问题</div>
             <div className="mt-3 space-y-2">
               {quickPrompts.map((prompt) => (
@@ -463,4 +479,4 @@ const AgentConversation: React.FC = () => {
 };
 
 export default AgentConversation;
-// AI_GENERATE_END---
+// AI_GENERATE_END----

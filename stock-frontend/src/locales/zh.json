@@ -20,13 +20,12 @@
     "pagination": "第 {{start}}-{{end}} 条，共 {{total}} 条"
   },
   "layout": {
-    "dashboard": "数据总览",
-    "market": "市场行情",
+    "dashboard": "收益总览",
+    "market": "股票行情",
     "models": "量化模型",
     "analysis": "智能决策",
     "jobs": "定时任务",
     "logs": "运行日志",
-    "settings": "系统设置",
 
     "profile": "个人资料",
     "systemStatus": "系统状态",
@@ -39,31 +38,25 @@
       "month": "本月收益"
     },
     "title": "智能交易终端",
-    "stockInformation": "股票信息",
-    "historyOrders": "历史订单",
-    "tradeRecords": "交易记录",
+    "orderRecords": "订单记录",
     "modelOperations": "模型训练",
-    "sentimentModel": "新闻分析",
     "strategyConfig": "交易策略",
     "agent": "智能决策",
     "agentConversation": "智能对话",
-    "adaptiveStrategy": "自适应策略",
-    "jobs": "任务管理",
+    "adaptiveStrategy": "策略模式",
+    "documentationBrowse": "文档查阅",
+    "jobs": "任务调度",
     "pageTitles": {
-      "dashboard": "数据总览",
-      "market": "市场行情",
-      "stockInformation": "股票信息",
-      "historyOrders": "历史订单",
-      "tradeRecords": "交易记录",
+      "dashboard": "收益总览",
+      "market": "股票行情",
+      "orderRecords": "订单记录",
       "logs": "运行日志",
       "modelOperations": "模型训练",
-      "sentimentModel": "新闻分析",
       "strategyConfig": "交易策略",
       "agent": "智能决策",
       "agentConversation": "智能对话",
-      "adaptiveStrategy": "自适应策略",
-      "jobs": "任务管理",
-      "settings": "系统设置"
+      "adaptiveStrategy": "策略模式",
+      "jobs": "任务调度"
     },
     "expandMenu": "展开导航菜单",
     "collapseMenu": "收缩导航菜单",
@@ -75,21 +68,7 @@
     "checking": "检测中",
     "lightMode": "切换浅色模式",
     "darkMode": "切换深色模式",
-    "themePicker": "切换全局主题",
-    "themes": {
-      "cloudBlue": "清透云蓝",
-      "mintTeal": "薄荷青蓝",
-      "orangeBlue": "明亮橙蓝",
-      "glacierBlue": "冰川青蓝",
-      "dark": "深色模式"
-    }
-  },
-  "stockInformation": {
-    "subtitle": "展示系统已维护的股票基础信息",
-    "loadError": "股票信息读取失败",
-    "searchPlaceholder": "搜索股票代码或名称",
-    "empty": "暂无股票基础信息",
-    "columns": { "code": "股票代码", "name": "股票名称", "market": "市场", "price": "最新价", "changeAmount": "涨跌额", "changePercent": "涨跌幅", "marketCap": "总市值", "turnover": "换手率", "volumeRatio": "量比", "category": "证券类别", "listedDate": "上市日期", "updatedAt": "更新时间" }
+    "adaptiveTheme": "自适应主题"
   },
   "historyOrders": {
     "subtitle": "仅展示券商返回并已落库的全部成交委托",
@@ -102,6 +81,13 @@
     "columns": { "time": "委托时间", "stock": "股票", "direction": "方向", "orderPrice": "委托价", "orderQuantity": "委托数量", "filledQuantity": "成交数量", "averageFillPrice": "成交均价", "transactionAmount": "成交金额", "commission": "手续费", "status": "状态", "orderId": "委托编号" },
     "filled": "已成交",
     "dateError": "开始日期不能晚于结束日期"
+  },
+  "orderRecords": {
+    "subtitle": "统一查询券商成交委托和按 FIFO 聚合的交易收益记录",
+    "tabs": {
+      "orders": "历史订单",
+      "trades": "交易记录"
+    }
   },
   "modelOperations": {
     "subtitle": "模型版本、训练运行、候选激活与生产回滚",
@@ -118,10 +104,28 @@
     "runsEmpty": "暂无训练记录"
   },
   "tradeRecords": { "subtitle": "按 FIFO 规则将已成交历史订单汇总为买入批次交易记录", "searchPlaceholder": "股票代码或名称", "empty": "暂无已组装交易记录", "columns": { "stock": "股票", "buyTime": "买入时间", "sellTime": "卖出时间", "buyPrice": "买入均价", "sellPrice": "卖出均价", "buyAmount": "买入金额", "sellAmount": "卖出金额", "grossProfit": "毛收益", "netProfit": "净收益", "grossReturn": "毛收益率", "returnRate": "收益率", "holdingTime": "持仓时间", "dailyReturn": "日收益率" } },
-  "marketPage": { "subtitle": "查看市场广度、自选列表与股票 K 线走势", "searchPlaceholder": "搜索股票名称或代码", "timeRange": "选择时间范围", "daily": "日K", "noData": "无数据" },
+  "marketPage": {
+    "subtitle": "查看市场广度、股票详情与 K 线走势",
+    "searchPlaceholder": "搜索股票名称或代码",
+    "timeRange": "选择时间范围",
+    "daily": "日K",
+    "noData": "无数据",
+    "details": {
+      "title": "股票详情",
+      "market": "市场",
+      "category": "证券类别",
+      "price": "最新价",
+      "changeAmount": "涨跌额",
+      "changePercent": "涨跌幅",
+      "marketCap": "总市值",
+      "turnover": "换手率",
+      "volumeRatio": "量比",
+      "listedDate": "上市日期",
+      "updatedAt": "更新时间"
+    }
+  },
   "jobsPage": { "subtitle": "查询任务运行状态，手动触发或停止任务并按任务追踪执行历史", "refresh": "刷新", "status": "任务状态", "emptyGroup": "该分组暂无任务配置", "emptyRuns": "该任务暂无执行记录", "history": "历史", "details": "执行记录详情" },
   "strategyPage": { "subtitle": "管理交易策略、模型候选和真实执行门禁", "refresh": "刷新", "reset": "恢复默认", "save": "保存配置", "candidates": "当前交易候选", "select": "立即选股" },
-  "sentimentPage": { "subtitle": "情感模型制品、离线评估与在线推理验证", "runStatus": "运行状态", "artifact": "模型制品", "offline": "离线评估", "single": "单条文本验证" },
   "login": {
     "systemOnline": "系统在线",
     "systemOffline": "系统离线",
@@ -148,7 +152,7 @@
     "subtitle": "账户资产、已实现收益和交易统计报表",
     "lastSync": "最近同步",
     "cards": { "totalAssets": "总资产", "availableCash": "可用资金", "positionValue": "持仓市值", "frozenCash": "冻结资金", "realizedTotal": "累计已实现收益", "realizedToday": "今日已实现收益", "realizedMonth": "本月已实现收益", "realizedRate": "累计收益率", "dailyRate": "日收益率", "monthlyRate": "月收益率" },
-    "sections": { "returnStats": "收益率统计", "returnDetails": "收益明细", "completedTrades": "已完成交易", "winRate": "胜率", "averageReturn": "平均收益率", "profitLoss": "盈利 / 亏损", "ranking": "收益率排行", "daily": "日收益率", "monthly": "月收益率", "positions": "当前持仓", "best": "最高收益率", "worst": "最低收益率", "basis": "收益指标基于已实现 FIFO 交易记录计算" },
+    "sections": { "returnStats": "收益率统计", "returnDetails": "收益明细", "completedTrades": "已完成交易", "winRate": "胜率", "averageReturn": "平均收益率", "profitLoss": "盈利 / 亏损", "ranking": "收益率排行", "daily": "日收益率", "monthly": "月收益率", "positions": "当前持仓", "best": "最高收益率", "worst": "最低收益率" },
     "returnTypes": { "daily": "日收益", "monthly": "月收益", "ranking": "收益排行" },
     "columns": { "type": "类型", "stockCode": "股票代码", "stockName": "股票名称", "totalQuantity": "持仓数量", "availableQuantity": "可卖数量", "averageCost": "成本价", "currentPrice": "现价", "marketValue": "市值", "stock": "股票", "netProfit": "净收益", "cumulativeNetProfit": "累计净收益", "returnRate": "收益率", "dailyReturnRate": "日收益率", "buyTime": "买入时间", "holdingDays": "持仓天数", "sellTime": "卖出时间", "period": "周期", "transactionAmount": "交易金额", "buyAmount": "买入金额", "sellAmount": "卖出金额", "tradeQuantity": "交易数量", "tradeCount": "交易笔数", "winningTradeCount": "盈利笔数" },
     "units": { "days": "天" },
@@ -206,9 +210,11 @@
     },
     "columns": {
       "symbol": "代码",
+      "name": "名称",
       "price": "价格",
       "change": "涨跌幅",
       "volume": "成交量",
+      "marketCap": "总市值",
       "action": "操作"
     },
     "kline": {
@@ -381,7 +387,7 @@
     }
   },
     "jobs": {
-      "title": "定时任务管理",
+      "title": "定时任务调度",
       "subtitle": "管理和监控系统自动化任务",
       "table": {
         "name": "任务名称",
@@ -416,61 +422,6 @@
         "updated": "调度规则已更新"
       }
     },
-  "settings": {
-    "title": "系统配置",
-    "save": "保存更改",
-    "sections": {
-      "general": "通用偏好",
-      "api": "API 连接",
-      "risk": "风险管理协议"
-    },
-    "fields": {
-      "theme": "主题模式",
-      "autoTheme": "主题自适应",
-      "language": "语言",
-      "notifications": "启用系统通知",
-      "apiKey": "数据提供商 API 密钥",
-      "refreshRate": "状态刷新间隔 (ms)",
-      "riskLevel": "全局风险概况",
-      "maxDrawdown": "最大单日回撤 (%)"
-    },
-    "options": {
-      "theme": {
-        "cloudBlue": "清透云蓝",
-        "mintTeal": "薄荷青蓝",
-        "orangeBlue": "明亮橙蓝",
-        "glacierBlue": "冰川青蓝",
-        "dark": "深色模式"
-      },
-      "language": {
-        "en": "English",
-        "zh": "简体中文"
-      },
-      "risk": {
-        "conservative": "保守 (低波动)",
-        "moderate": "稳健 (平衡)",
-        "aggressive": "激进 (高收益)"
-      }
-    },
-    "testConnection": "测试连接",
-    "successMsg": "设置保存成功",
-    "checkStatus": "检查服务状态",
-    "themeAutoHint": "开启后按北京时间 06:00-18:00 使用清透云蓝，其余时间使用深色模式",
-    "resetPreferences": "恢复默认偏好",
-    "generalTitle": "界面偏好",
-    "runtimeTitle": "运行控制",
-    "securityTitle": "生产安全边界",
-    "refreshHint": "前端状态轮询统一固定为 10 秒，不会改变 Quartz 后端任务调度频率",
-    "switchOn": "开",
-    "switchOff": "关",
-    "summary": { "title": "运行摘要", "brokerSessionValid": "券商会话有效", "brokerSessionInvalid": "券商会话无效", "realWriteOff": "真实写入关闭", "autoExecutionStopped": "自动执行停止", "refreshStatus": "刷新状态" },
-    "runtime": { "justUpdated": "运行配置", "schedulerHint": "控制 Quartz 固定任务和手动触发入口", "startupDataHint": "下次应用启动时检查并补充股票基础数据" },
-    "safety": { "realWrite": "真实写入", "unattended": "无人值守", "brokerSession": "券商会话", "notReady": "未就绪" },
-    "info": { "title": "运行与配置信息", "checkedAt": "状态检查：{{time}}", "nodeId": "运行节点", "updatedAt": "配置更新时间", "refreshCycle": "页面刷新周期", "seconds": "{{seconds}} 秒", "schedulerMode": "调度方式", "unifiedScheduler": "统一任务调度", "schedulerDisabled": "调度已停用", "preferenceStorage": "偏好存储", "currentBrowser": "当前浏览器", "runtimeStorage": "运行配置", "serverPersisted": "服务端持久化" },
-    "health": { "gateway": "券商查询网关", "brokerSession": "券商会话", "tradingGate": "真实交易门禁" },
-    "fieldsRuntime": { "scheduler": "统一任务调度", "dataCollection": "数据采集总开关", "newsCollection": "新闻采集", "startupData": "启动数据初始化", "training": "LSTM 模型训练" }
-    ,"status": { "normal": "正常", "error": "异常", "unchecked": "未检查", "notConfigured": "未配置", "sessionValid": "会话有效", "sessionMissing": "会话未建立", "autoReady": "自动执行就绪", "controlledStop": "受控停止", "realWriteOn": "真实写入开启", "readOnly": "只读观察", "loaded": "已加载", "notLoaded": "未加载", "artifactAvailable": "制品可用", "artifactMissing": "制品不可用", "verified": "摘要已校验", "unverified": "摘要未校验" }
-  },
   "transactions": {
     "title": "交易记录",
     "subtitle": "所有买入与卖出执行指令的完整记录",

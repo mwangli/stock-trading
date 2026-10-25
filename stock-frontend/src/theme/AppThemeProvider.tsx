@@ -1,18 +1,10 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START------------
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { App as AntdApp, ConfigProvider, theme } from 'antd';
 
 export type ThemeMode = 'light' | 'dark';
-export type ThemePreset = 'cloudBlue' | 'mintTeal' | 'orangeBlue' | 'glacierBlue' | 'dark';
-
-export interface ThemePresetOption {
-  id: ThemePreset;
-  color: string;
-  softColor: string;
-}
 
 interface ThemePalette {
-  mode: ThemeMode;
   appBg: string;
   panelBg: string;
   panelMuted: string;
@@ -25,26 +17,14 @@ interface ThemePalette {
 
 interface AppThemeContextValue {
   mode: ThemeMode;
-  themePreset: ThemePreset;
   autoThemeEnabled: boolean;
   setMode: (mode: ThemeMode) => void;
-  setThemePreset: (preset: ThemePreset) => void;
   setAutoThemeEnabled: (enabled: boolean) => void;
   toggleMode: () => void;
-  resetToAutomatic: () => ThemeMode;
 }
 
-export const THEME_PRESET_OPTIONS: readonly ThemePresetOption[] = [
-  { id: 'cloudBlue', color: '#2563eb', softColor: '#e8f1ff' },
-  { id: 'mintTeal', color: '#0f766e', softColor: '#ddf3ee' },
-  { id: 'orangeBlue', color: '#c2410c', softColor: '#fff0e6' },
-  { id: 'glacierBlue', color: '#087ea4', softColor: '#ddf2f8' },
-  { id: 'dark', color: '#3b82f6', softColor: '#111c2e' },
-];
-
-const THEME_PALETTES: Record<ThemePreset, ThemePalette> = {
-  cloudBlue: {
-    mode: 'light',
+const THEME_PALETTES: Record<ThemeMode, ThemePalette> = {
+  light: {
     appBg: '#f3f6fa',
     panelBg: '#ffffff',
     panelMuted: '#edf3fa',
@@ -54,41 +34,7 @@ const THEME_PALETTES: Record<ThemePreset, ThemePalette> = {
     brandSoft: '#e8f1ff',
     rowHover: '#f0f6ff',
   },
-  mintTeal: {
-    mode: 'light',
-    appBg: '#f2f8f7',
-    panelBg: '#ffffff',
-    panelMuted: '#e8f3f1',
-    border: '#d2e4e0',
-    textPrimary: '#18312c',
-    brand: '#0f766e',
-    brandSoft: '#ddf3ee',
-    rowHover: '#edf8f5',
-  },
-  orangeBlue: {
-    mode: 'light',
-    appBg: '#f7f8fa',
-    panelBg: '#ffffff',
-    panelMuted: '#f0f3f7',
-    border: '#dde2ea',
-    textPrimary: '#202735',
-    brand: '#c2410c',
-    brandSoft: '#fff0e6',
-    rowHover: '#fff7f0',
-  },
-  glacierBlue: {
-    mode: 'light',
-    appBg: '#f2f7fa',
-    panelBg: '#ffffff',
-    panelMuted: '#e7f1f6',
-    border: '#d1e1e8',
-    textPrimary: '#16303c',
-    brand: '#087ea4',
-    brandSoft: '#ddf2f8',
-    rowHover: '#edf8fb',
-  },
   dark: {
-    mode: 'dark',
     appBg: '#090f1b',
     panelBg: '#0d1524',
     panelMuted: '#111c2e',
@@ -106,70 +52,59 @@ const THEME_MODE_STORAGE_KEY = 'stock-theme';
 const THEME_PRESET_STORAGE_KEY = 'stock-theme-preset';
 const LAST_LIGHT_THEME_STORAGE_KEY = 'stock-theme-last-light';
 
-const isThemePreset = (value: string | null): value is ThemePreset => (
-  THEME_PRESET_OPTIONS.some((option) => option.id === value)
-);
-
 const readAutoThemeEnabled = (): boolean => {
   const storedValue = window.localStorage.getItem(AUTO_THEME_STORAGE_KEY);
   return storedValue === null ? true : storedValue === 'true';
 };
 
-const readStoredThemePreset = (): ThemePreset | null => {
-  const storedPreset = window.localStorage.getItem(THEME_PRESET_STORAGE_KEY);
-  if (isThemePreset(storedPreset)) {
-    return storedPreset;
+const readStoredMode = (): ThemeMode | null => {
+  const storedMode = window.localStorage.getItem(THEME_MODE_STORAGE_KEY);
+  if (storedMode === 'light' || storedMode === 'dark') {
+    return storedMode;
   }
-  return window.localStorage.getItem(THEME_MODE_STORAGE_KEY) === 'dark' ? 'dark' : null;
-};
-
-const readStoredLightTheme = (): Exclude<ThemePreset, 'dark'> => {
-  const storedPreset = window.localStorage.getItem(LAST_LIGHT_THEME_STORAGE_KEY);
-  return isThemePreset(storedPreset) && storedPreset !== 'dark' ? storedPreset : 'cloudBlue';
+  const storedPreset = window.localStorage.getItem(THEME_PRESET_STORAGE_KEY);
+  if (storedPreset) {
+    return storedPreset === 'dark' ? 'dark' : 'light';
+  }
+  const storedLightPreset = window.localStorage.getItem(LAST_LIGHT_THEME_STORAGE_KEY);
+  return storedLightPreset ? 'light' : null;
 };
 
 /**
  * 根据北京时间判断当前应使用的自动主题。
- * 06:00-18:00 使用清透云蓝，其余时间使用深色主题。
+ * 06:00-18:00 使用浅色主题，其余时间使用深色主题。
  */
-const resolveBeijingThemePreset = (): ThemePreset => {
+const resolveBeijingThemeMode = (): ThemeMode => {
   const parts = new Intl.DateTimeFormat('zh-CN', {
     timeZone: 'Asia/Shanghai',
     hour: '2-digit',
     hourCycle: 'h23',
   }).formatToParts(new Date());
   const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 0);
-  return hour >= 6 && hour < 18 ? 'cloudBlue' : 'dark';
+  return hour >= 6 && hour < 18 ? 'light' : 'dark';
 };
 
-const resolveInitialThemePreset = (): ThemePreset => (
-  readAutoThemeEnabled() ? resolveBeijingThemePreset() : (readStoredThemePreset() ?? resolveBeijingThemePreset())
+const resolveInitialThemeMode = (): ThemeMode => (
+  readAutoThemeEnabled() ? resolveBeijingThemeMode() : (readStoredMode() ?? resolveBeijingThemeMode())
 );
 
 /**
  * 全局应用主题提供器。
- * 同步管理主题方案、Ant Design Token、页面属性和本地持久化偏好。
+ * 同步管理明暗主题、Ant Design Token、页面属性和本地持久化偏好。
  */
 export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [autoThemeEnabled, setAutoThemeEnabledState] = useState<boolean>(readAutoThemeEnabled);
-  const [themePreset, setThemePresetState] = useState<ThemePreset>(resolveInitialThemePreset);
-  const palette = THEME_PALETTES[themePreset];
-  const mode = palette.mode;
-
-  const applyManualThemePreset = useCallback((nextPreset: ThemePreset) => {
-    setAutoThemeEnabledState(false);
-    window.localStorage.setItem(AUTO_THEME_STORAGE_KEY, 'false');
-    window.localStorage.setItem(THEME_PRESET_STORAGE_KEY, nextPreset);
-    window.localStorage.setItem(THEME_MODE_STORAGE_KEY, THEME_PALETTES[nextPreset].mode);
-    if (nextPreset !== 'dark') {
-      window.localStorage.setItem(LAST_LIGHT_THEME_STORAGE_KEY, nextPreset);
-    }
-    setThemePresetState(nextPreset);
-  }, []);
+  const [mode, setModeState] = useState<ThemeMode>(resolveInitialThemeMode);
+  const palette = THEME_PALETTES[mode];
 
   const applyManualMode = useCallback((nextMode: ThemeMode) => {
-    applyManualThemePreset(nextMode === 'dark' ? 'dark' : readStoredLightTheme());
-  }, [applyManualThemePreset]);
+    setAutoThemeEnabledState(false);
+    window.localStorage.setItem(AUTO_THEME_STORAGE_KEY, 'false');
+    window.localStorage.setItem(THEME_MODE_STORAGE_KEY, nextMode);
+    window.localStorage.removeItem(THEME_PRESET_STORAGE_KEY);
+    window.localStorage.removeItem(LAST_LIGHT_THEME_STORAGE_KEY);
+    setModeState(nextMode);
+  }, []);
 
   const setAutoThemeEnabled = useCallback((enabled: boolean) => {
     setAutoThemeEnabledState(enabled);
@@ -177,24 +112,17 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
     if (enabled) {
       window.localStorage.removeItem(THEME_MODE_STORAGE_KEY);
       window.localStorage.removeItem(THEME_PRESET_STORAGE_KEY);
-      setThemePresetState(resolveBeijingThemePreset());
+      window.localStorage.removeItem(LAST_LIGHT_THEME_STORAGE_KEY);
+      setModeState(resolveBeijingThemeMode());
+    } else {
+      window.localStorage.setItem(THEME_MODE_STORAGE_KEY, mode);
     }
-  }, []);
-
-  const resetToAutomatic = useCallback(() => {
-    setAutoThemeEnabledState(true);
-    window.localStorage.setItem(AUTO_THEME_STORAGE_KEY, 'true');
-    window.localStorage.removeItem(THEME_MODE_STORAGE_KEY);
-    window.localStorage.removeItem(THEME_PRESET_STORAGE_KEY);
-    const automaticPreset = resolveBeijingThemePreset();
-    setThemePresetState(automaticPreset);
-    return THEME_PALETTES[automaticPreset].mode;
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = mode;
-    document.documentElement.dataset.themePreset = themePreset;
-  }, [mode, themePreset]);
+    delete document.documentElement.dataset.themePreset;
+  }, [mode]);
 
   useEffect(() => {
     if (!autoThemeEnabled) {
@@ -202,7 +130,7 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
     }
 
     const syncWithBeijingTime = () => {
-      setThemePresetState(resolveBeijingThemePreset());
+      setModeState(resolveBeijingThemeMode());
     };
 
     syncWithBeijingTime();
@@ -212,14 +140,11 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
 
   const contextValue = useMemo<AppThemeContextValue>(() => ({
     mode,
-    themePreset,
     autoThemeEnabled,
     setMode: applyManualMode,
-    setThemePreset: applyManualThemePreset,
     setAutoThemeEnabled,
     toggleMode: () => applyManualMode(mode === 'light' ? 'dark' : 'light'),
-    resetToAutomatic,
-  }), [applyManualMode, applyManualThemePreset, autoThemeEnabled, mode, resetToAutomatic, setAutoThemeEnabled, themePreset]);
+  }), [applyManualMode, autoThemeEnabled, mode, setAutoThemeEnabled]);
 
   return (
     <AppThemeContext.Provider value={contextValue}>
@@ -264,7 +189,7 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
 /**
  * 获取当前全局主题状态。
  *
- * @return 主题模式、主题方案和切换方法
+ * @return 主题模式、自适应状态和切换方法
  */
 export const useAppTheme = (): AppThemeContextValue => {
   const context = useContext(AppThemeContext);
@@ -273,4 +198,4 @@ export const useAppTheme = (): AppThemeContextValue => {
   }
   return context;
 };
-// AI_GENERATE_END----------
+// AI_GENERATE_END------------

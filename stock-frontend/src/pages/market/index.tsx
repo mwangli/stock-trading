@@ -1,7 +1,7 @@
-// AI_GENERATE_START----------------------
+// AI_GENERATE_START----------------------------
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { Table, Input, Select } from 'antd';
+import { Descriptions, Drawer, Input, Select, Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { TablePaginationConfig } from 'antd/es/table/interface';
 import type { EChartsOption, TooltipComponentFormatterCallbackParams } from 'echarts';
@@ -13,13 +13,23 @@ import type { ApiResponse } from '../../utils/api';
 import { useAppTheme } from '../../theme/AppThemeProvider';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
 import { localizedText } from '../../utils/localizedText';
+import { formatDateTime } from '../../utils/dateTime';
 
 interface StockInfo {
+  id?: string;
   code: string;
   name: string;
-  price: number;
-  changePercent: number;
-  totalMarketValue: number;
+  market?: string;
+  price?: number;
+  changeAmount?: number;
+  changePercent?: number;
+  volume?: number;
+  totalMarketValue?: number;
+  turnoverRate?: number;
+  volumeRatio?: number;
+  industryCode?: number;
+  listedDate?: string;
+  updateTime?: string;
 }
 
 /** 与后端 StockInfoController#getMarketStats / MarketStatsDto 一致 */
@@ -47,11 +57,12 @@ interface WatchlistItem {
   name: string;
   price: number;
   change: number;
-  volume: string;
+  marketCap: string;
   starred: boolean;
+  stockInfo: StockInfo;
 }
 
-type MarketSortField = 'updateTime' | 'price' | 'change' | 'volume';
+type MarketSortField = 'updateTime' | 'price' | 'change' | 'marketCap';
 type MarketSortOrder = 'asc' | 'desc';
 
 const DEFAULT_SORT_FIELD: MarketSortField = 'updateTime';
@@ -101,9 +112,66 @@ interface MarketStatCard {
 const STOCK_UP_COLOR = '#ef4444';
 const STOCK_DOWN_COLOR = '#22c55e';
 
+const MARKET_LABELS: Record<string, [string, string]> = {
+  SH: ['上海', 'Shanghai'],
+  SZ: ['深圳', 'Shenzhen'],
+  BJ: ['北京', 'Beijing'],
+};
+
+const SECURITY_CATEGORY_LABELS: Record<number, [string, string]> = {
+  0: ['深市主板', 'Shenzhen Main Board'],
+  2: ['深市主板（原中小板）', 'Shenzhen Main Board'],
+  9: ['沪市主板', 'Shanghai Main Board'],
+  18: ['创业板', 'ChiNext'],
+};
+
+const compactAmountFormatters = {
+  zh: new Intl.NumberFormat('zh-CN', {
+    notation: 'compact',
+    maximumFractionDigits: 2,
+  }),
+  en: new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    maximumFractionDigits: 2,
+  }),
+};
+
+const formatNumber = (value?: number, digits = 2) => (
+  value == null ? '-' : Number(value).toFixed(digits)
+);
+
+const formatPercent = (value?: number) => value == null ? '-' : `${Number(value).toFixed(2)}%`;
+
+const formatMarket = (value?: string) => {
+  if (!value) return '-';
+  const labels = MARKET_LABELS[value.toUpperCase()];
+  return labels ? localizedText(labels[0], labels[1]) : value;
+};
+
+const formatSecurityCategory = (value?: number) => {
+  if (value == null) return '-';
+  const labels = SECURITY_CATEGORY_LABELS[value];
+  return labels ? localizedText(labels[0], labels[1]) : localizedText(`其他类别（${value}）`, `Other (${value})`);
+};
+
+const formatCompactAmount = (value?: number) => value == null
+  ? '-'
+  : localizedText(
+    `¥${compactAmountFormatters.zh.format(Number(value))}`,
+    `¥${compactAmountFormatters.en.format(Number(value))}`,
+  );
+
+const formatFullAmount = (value?: number) => value == null
+  ? '-'
+  : `¥${Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
+
 const isVisibleStock = (stock: StockInfo) => {
   const name = stock.name?.trim().toUpperCase() ?? '';
-  return !name.includes('退') && !name.includes('ST') && !name.includes('PT');
+  return !name.includes('退')
+    && !name.includes('ST')
+    && !name.includes('PT')
+    && Number(stock.price) > 0
+    && Number(stock.totalMarketValue) > 0;
 };
 
 const Market: React.FC = () => {
@@ -131,6 +199,7 @@ const Market: React.FC = () => {
     volumes: []
   });
   const [selectedStock, setSelectedStock] = useState<{ code: string; name: string; price?: number; change?: number } | null>(null);
+  const [detailStock, setDetailStock] = useState<StockInfo | null>(null);
   const [klineType] = useState<'daily'>('daily');
   const [timeRange, setTimeRange] = useState<'last1Month' | 'last1Year' | 'last3Years'>('last1Month');
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -237,8 +306,8 @@ const Market: React.FC = () => {
   const [sortField, setSortField] = useState<MarketSortField>(DEFAULT_SORT_FIELD);
   const [sortOrder, setSortOrder] = useState<MarketSortOrder>(DEFAULT_SORT_ORDER);
 
-  const formatVolume = (val: number) => {
-    if (!val) return '0';
+  const formatMarketCap = (val?: number) => {
+    if (val == null || val <= 0) return '--';
     if (val >= 1e9) return (val / 1e9).toFixed(1) + 'B';
     if (val >= 1e6) return (val / 1e6).toFixed(1) + 'M';
     if (val >= 1e3) return (val / 1e3).toFixed(1) + 'K';
@@ -280,10 +349,11 @@ const Market: React.FC = () => {
           key: item.code || String(index),
           symbol: item.code,
           name: item.name,
-          price: item.price ?? 0,
+          price: item.price as number,
           change: item.changePercent ?? 0,
-          volume: formatVolume(item.totalMarketValue),
+          marketCap: formatMarketCap(item.totalMarketValue),
           starred: false,
+          stockInfo: item,
         }));
         setWatchlist(mappedData);
         // 更新分页信息
@@ -319,7 +389,12 @@ const Market: React.FC = () => {
         const latestData = payload.kline[payload.kline.length - 1];
         const previousData = payload.kline.length > 1 ? payload.kline[payload.kline.length - 2] : null;
 
-        const currentPrice = latestData ? latestData[1] : 0; // 收盘价
+        if (!latestData) {
+          setSelectedStock({ code, name });
+          setKlineData({ dates: [], kline: [], volumes: [] });
+          return;
+        }
+        const currentPrice = latestData[1]; // 收盘价
         const previousPrice = previousData ? previousData[1] : currentPrice;
         const change = previousPrice ? ((currentPrice - previousPrice) / previousPrice * 100) : 0;
 
@@ -331,12 +406,12 @@ const Market: React.FC = () => {
         });
       } else {
         console.warn('获取K线数据失败，使用默认数据');
-        setSelectedStock({ code, name, price: 0, change: 0 });
+        setSelectedStock({ code, name });
         setKlineData({ dates: [], kline: [], volumes: [] });
       }
     } catch (error) {
       console.error('获取K线数据失败:', error);
-      setSelectedStock({ code, name, price: 0, change: 0 });
+      setSelectedStock({ code, name });
       setKlineData({ dates: [], kline: [], volumes: [] });
     } finally {
     }
@@ -404,17 +479,34 @@ const Market: React.FC = () => {
       title: t('market.columns.symbol'),
       dataIndex: 'symbol',
       key: 'symbol',
+      width: 100,
       render: (text: string, record: WatchlistItem) => (
-        <div className="flex flex-col">
-          <span className="font-bold text-white text-base tracking-wide">{text}</span>
-          <span className="text-xs text-gray-500 truncate max-w-[100px]">{record.name}</span>
-        </div>
+        <button
+          type="button"
+          className="group max-w-full text-left"
+          aria-label={localizedText(`查看 ${record.name}（${text}）详情`, `View details for ${record.name} (${text})`)}
+          onClick={(event) => {
+            event.stopPropagation();
+            setDetailStock(record.stockInfo);
+          }}
+        >
+          <span className="font-mono text-sm font-semibold text-[var(--brand)] transition-colors group-hover:text-blue-400 group-focus-visible:text-blue-400">{text}</span>
+        </button>
       )
+    },
+    {
+      title: t('market.columns.name'),
+      dataIndex: 'name',
+      key: 'name',
+      width: 118,
+      ellipsis: true,
+      render: (name: string) => <span className="text-sm text-[var(--text-primary)]">{name}</span>,
     },
     {
       title: t('market.columns.price'),
       dataIndex: 'price',
       key: 'price',
+      width: 96,
       align: 'right',
       sorter: true,
       sortOrder: sortField === 'price' ? (sortOrder === 'asc' ? 'ascend' : 'descend') : undefined,
@@ -424,6 +516,7 @@ const Market: React.FC = () => {
       title: t('market.columns.change'),
       dataIndex: 'change',
       key: 'change',
+      width: 96,
       align: 'right',
       sorter: true,
       sortOrder: sortField === 'change' ? (sortOrder === 'asc' ? 'ascend' : 'descend') : undefined,
@@ -434,12 +527,13 @@ const Market: React.FC = () => {
       )
     },
     {
-      title: t('market.columns.volume'),
-      dataIndex: 'volume',
-      key: 'volume',
+      title: t('market.columns.marketCap'),
+      dataIndex: 'marketCap',
+      key: 'marketCap',
+      width: 88,
       align: 'right',
       sorter: true,
-      sortOrder: sortField === 'volume' ? (sortOrder === 'asc' ? 'ascend' : 'descend') : undefined,
+      sortOrder: sortField === 'marketCap' ? (sortOrder === 'asc' ? 'ascend' : 'descend') : undefined,
       className: 'text-gray-400 font-mono text-xs',
       render: (val: string) => <span className="text-gray-400">{val}</span>
     },
@@ -535,10 +629,10 @@ const Market: React.FC = () => {
         ))}
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         {/* Left: Watchlist */}
-        <div className="surface-card flex w-full flex-col overflow-hidden lg:w-1/3">
-          <div className="border-b border-[var(--border-color)] p-4">
+        <div className="surface-card flex w-full flex-col overflow-hidden lg:w-[42%] xl:w-[38%]">
+          <div className="border-b border-[var(--border-color)] p-3">
             <Input
               ref={searchInputRef}
               prefix={<SearchOutlined className="text-gray-500" />}
@@ -571,9 +665,11 @@ const Market: React.FC = () => {
             />
           </div>
           <Table
+            size="small"
             loading={loading}
             dataSource={watchlist}
             columns={columns}
+            scroll={{ x: 498 }}
             showSorterTooltip={{ title: localizedText('点击切换排序', 'Click to change sort') }}
             pagination={{
               current: pagination.current,
@@ -607,7 +703,7 @@ const Market: React.FC = () => {
                 return;
               }
               const nextOrder: MarketSortOrder = activeSorter.order === 'ascend' ? 'asc' : 'desc';
-              if (!nextField || !['price', 'change', 'volume'].includes(nextField)) {
+              if (!nextField || !['price', 'change', 'marketCap'].includes(nextField)) {
                 return;
               }
               setSortField(nextField);
@@ -622,8 +718,8 @@ const Market: React.FC = () => {
         </div>
 
         {/* Right: Chart */}
-        <div className="surface-card flex min-h-[500px] flex-1 flex-col p-5">
-          <div className="flex justify-between items-center mb-6">
+        <div className="surface-card flex min-h-[500px] flex-1 flex-col p-4">
+          <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="flex items-center gap-3 text-2xl font-semibold text-[var(--text-primary)]">
                 {selectedStock?.code || '--'} <span className="text-lg text-gray-500 font-normal">{selectedStock?.name || '--'}</span>
@@ -660,9 +756,54 @@ const Market: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <Drawer
+        open={Boolean(detailStock)}
+        placement="right"
+        width={480}
+        title={detailStock ? (
+          <div className="flex min-w-0 items-baseline gap-3">
+            <span className="truncate text-base font-semibold text-[var(--text-primary)]">{detailStock.name}</span>
+            <span className="shrink-0 font-mono text-sm font-normal text-[var(--text-secondary)]">{detailStock.code}</span>
+          </div>
+        ) : t('marketPage.details.title')}
+        onClose={() => setDetailStock(null)}
+      >
+        {detailStock && (
+          <div className="flex flex-col gap-5">
+            <div className="border-b border-[var(--border-color)] pb-5">
+              <div className="text-xs text-[var(--text-secondary)]">{t('marketPage.details.price')}</div>
+              <div className="mt-2 flex items-end gap-3">
+                <span className="font-mono text-3xl font-semibold text-[var(--text-primary)]">
+                  {detailStock.price == null ? '-' : `¥${formatNumber(detailStock.price, 3)}`}
+                </span>
+                <span className={`pb-1 font-mono text-sm font-semibold ${(detailStock.changePercent ?? 0) >= 0 ? 'text-[#ef4444]' : 'text-[#22c55e]'}`}>
+                  {detailStock.changePercent != null && detailStock.changePercent > 0 ? '+' : ''}{formatPercent(detailStock.changePercent)}
+                </span>
+              </div>
+            </div>
+            <Descriptions
+              bordered
+              size="small"
+              column={1}
+              labelStyle={{ width: 128 }}
+              items={[
+                { key: 'market', label: t('marketPage.details.market'), children: formatMarket(detailStock.market) },
+                { key: 'category', label: t('marketPage.details.category'), children: formatSecurityCategory(detailStock.industryCode) },
+                { key: 'changeAmount', label: t('marketPage.details.changeAmount'), children: formatNumber(detailStock.changeAmount, 3) },
+                { key: 'marketCap', label: t('marketPage.details.marketCap'), children: <span title={formatFullAmount(detailStock.totalMarketValue)}>{formatCompactAmount(detailStock.totalMarketValue)}</span> },
+                { key: 'turnover', label: t('marketPage.details.turnover'), children: formatPercent(detailStock.turnoverRate) },
+                { key: 'volumeRatio', label: t('marketPage.details.volumeRatio'), children: formatNumber(detailStock.volumeRatio) },
+                { key: 'listedDate', label: t('marketPage.details.listedDate'), children: detailStock.listedDate?.slice(0, 10) || '-' },
+                { key: 'updatedAt', label: t('marketPage.details.updatedAt'), children: formatDateTime(detailStock.updateTime) },
+              ]}
+            />
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 };
 
 export default Market;
-// AI_GENERATE_END----------------------
+// AI_GENERATE_END----------------------------

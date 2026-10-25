@@ -1,11 +1,11 @@
-// AI_GENERATE_START------------
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Dropdown, Input, message, Tooltip, type MenuProps } from 'antd';
-import { BgColorsOutlined, CheckOutlined, GlobalOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
+// AI_GENERATE_START-------------
+import React, { useEffect, useRef, useState } from 'react';
+import { Button, Input, message, Tooltip } from 'antd';
+import { GlobalOutlined, LockOutlined, MoonOutlined, SunOutlined, UserOutlined } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../auth/AuthContext';
-import { THEME_PRESET_OPTIONS, useAppTheme, type ThemePreset } from '../../theme/AppThemeProvider';
+import { useAppTheme, type ThemeMode } from '../../theme/AppThemeProvider';
 import SystemMark from '../../components/SystemMark';
 import { checkBackendHealth, isBackendUnavailable } from '../../utils/backendHealth';
 
@@ -19,8 +19,8 @@ interface LoginCanvasPalette {
   volumeDown: string;
 }
 
-const LOGIN_CANVAS_PALETTES: Record<ThemePreset, LoginCanvasPalette> = {
-  cloudBlue: {
+const LOGIN_CANVAS_PALETTES: Record<ThemeMode, LoginCanvasPalette> = {
+  light: {
     background: '#f3f6fa',
     grid: 'rgba(37, 99, 235, 0.10)',
     trend: 'rgba(37, 99, 235, 0.46)',
@@ -28,33 +28,6 @@ const LOGIN_CANVAS_PALETTES: Record<ThemePreset, LoginCanvasPalette> = {
     candleDown: 'rgba(220, 38, 38, 0.38)',
     volumeUp: 'rgba(22, 163, 74, 0.11)',
     volumeDown: 'rgba(220, 38, 38, 0.09)',
-  },
-  mintTeal: {
-    background: '#f0f8f6',
-    grid: 'rgba(15, 118, 110, 0.12)',
-    trend: 'rgba(13, 148, 136, 0.52)',
-    candleUp: 'rgba(5, 150, 105, 0.44)',
-    candleDown: 'rgba(225, 29, 72, 0.34)',
-    volumeUp: 'rgba(5, 150, 105, 0.12)',
-    volumeDown: 'rgba(225, 29, 72, 0.08)',
-  },
-  orangeBlue: {
-    background: '#fff8f3',
-    grid: 'rgba(194, 65, 12, 0.10)',
-    trend: 'rgba(234, 88, 12, 0.48)',
-    candleUp: 'rgba(22, 163, 74, 0.40)',
-    candleDown: 'rgba(220, 38, 38, 0.40)',
-    volumeUp: 'rgba(22, 163, 74, 0.10)',
-    volumeDown: 'rgba(220, 38, 38, 0.10)',
-  },
-  glacierBlue: {
-    background: '#eef8fb',
-    grid: 'rgba(8, 126, 164, 0.11)',
-    trend: 'rgba(6, 182, 212, 0.52)',
-    candleUp: 'rgba(16, 185, 129, 0.42)',
-    candleDown: 'rgba(244, 63, 94, 0.34)',
-    volumeUp: 'rgba(16, 185, 129, 0.11)',
-    volumeDown: 'rgba(244, 63, 94, 0.08)',
   },
   dark: {
     background: '#080d17',
@@ -69,7 +42,7 @@ const LOGIN_CANVAS_PALETTES: Record<ThemePreset, LoginCanvasPalette> = {
 
 const AnimatedMarketBackground: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { themePreset } = useAppTheme();
+  const { mode } = useAppTheme();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -83,7 +56,7 @@ const AnimatedMarketBackground: React.FC = () => {
     let animationFrame = 0;
     let reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const colors = LOGIN_CANVAS_PALETTES[themePreset];
+    const colors = LOGIN_CANVAS_PALETTES[mode];
 
     const draw = (time: number) => {
       context.clearRect(0, 0, width, height);
@@ -200,7 +173,7 @@ const AnimatedMarketBackground: React.FC = () => {
       resizeObserver.disconnect();
       motionPreference.removeEventListener('change', handleMotionPreference);
     };
-  }, [themePreset]);
+  }, [mode]);
 
   return <canvas ref={canvasRef} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" />;
 };
@@ -208,7 +181,7 @@ const AnimatedMarketBackground: React.FC = () => {
 const Login: React.FC = () => {
   const { t, i18n } = useTranslation();
   const { login } = useAuth();
-  const { themePreset, setThemePreset } = useAppTheme();
+  const { mode, toggleMode } = useAppTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [username, setUsername] = useState('admin');
@@ -240,24 +213,6 @@ const Login: React.FC = () => {
 
   const changeLanguage = () => {
     void i18n.changeLanguage(i18n.language.startsWith('en') ? 'zh' : 'en');
-  };
-
-  const themeMenuItems = useMemo<MenuProps['items']>(() => THEME_PRESET_OPTIONS.map((option) => ({
-    key: option.id,
-    label: (
-      <span className="app-theme-menu-label">
-        <span className={`app-theme-menu-swatch app-theme-menu-swatch-${option.id}`} />
-        <span className="app-theme-menu-name">{t(`layout.themes.${option.id}`)}</span>
-        {themePreset === option.id && <CheckOutlined className="app-theme-menu-check" />}
-      </span>
-    ),
-  })), [t, themePreset]);
-
-  const handleThemeMenuClick: MenuProps['onClick'] = ({ key }) => {
-    const selectedPreset = THEME_PRESET_OPTIONS.find((option) => option.id === key);
-    if (selectedPreset) {
-      setThemePreset(selectedPreset.id as ThemePreset);
-    }
   };
 
   const submit = async () => {
@@ -296,16 +251,15 @@ const Login: React.FC = () => {
           <span className={`h-2 w-2 rounded-full ${backendStatus === 'online' ? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(34,197,94,0.12)]' : backendStatus === 'offline' ? 'bg-red-500' : 'bg-amber-500'}`} />
           <span>{backendStatus === 'online' ? t('login.systemOnline') : backendStatus === 'offline' ? t('login.systemOffline') : t('login.systemChecking')}</span>
         </div>
-        <Dropdown menu={{ items: themeMenuItems, onClick: handleThemeMenuClick }} placement="bottomRight" trigger={['click']}>
-          <Tooltip title={t('layout.themePicker')}>
-            <Button
-              type="text"
-              className="app-theme-picker-button !h-9 !w-9"
-              icon={<BgColorsOutlined />}
-              aria-label={t('layout.themePicker')}
-            />
-          </Tooltip>
-        </Dropdown>
+        <Tooltip title={mode === 'dark' ? t('layout.lightMode') : t('layout.darkMode')}>
+          <Button
+            type="text"
+            className="app-theme-picker-button !h-9 !w-9"
+            icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+            onClick={toggleMode}
+            aria-label={mode === 'dark' ? t('layout.lightMode') : t('layout.darkMode')}
+          />
+        </Tooltip>
         <Tooltip title={i18n.language.startsWith('en') ? '中文' : 'English'}>
           <Button
             type="text"
@@ -352,4 +306,4 @@ const Login: React.FC = () => {
 };
 
 export default Login;
-// AI_GENERATE_END------------
+// AI_GENERATE_END-------------

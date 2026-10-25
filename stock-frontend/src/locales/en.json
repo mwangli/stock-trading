@@ -20,13 +20,12 @@
     "pagination": "{{start}}-{{end}} of {{total}}"
   },
   "layout": {
-    "dashboard": "Dashboard",
-    "market": "Market Overview",
+    "dashboard": "Returns Overview",
+    "market": "Stock Market",
     "models": "Quant Models",
     "analysis": "Intelligent Decision",
     "jobs": "Scheduled Jobs",
     "logs": "Run Logs",
-    "settings": "Settings",
 
     "profile": "Profile",
     "systemStatus": "SYSTEM STATUS",
@@ -39,31 +38,25 @@
       "month": "Monthly P&L"
     },
     "title": "AI TRADER",
-    "stockInformation": "Stock Information",
-    "historyOrders": "Order History",
-    "tradeRecords": "Trade Records",
+    "orderRecords": "Order Records",
     "modelOperations": "Price Prediction",
-    "sentimentModel": "Sentiment Model",
     "strategyConfig": "Trading Strategy",
     "agent": "Intelligent Decision",
     "agentConversation": "Agent Conversation",
-    "adaptiveStrategy": "Adaptive Strategy",
-    "jobs": "Job Management",
+    "adaptiveStrategy": "Strategy Mode",
+    "documentationBrowse": "Documentation",
+    "jobs": "Job Scheduling",
     "pageTitles": {
-      "dashboard": "Dashboard",
-      "market": "Market Overview",
-      "stockInformation": "Stock Information",
-      "historyOrders": "Order History",
-      "tradeRecords": "Trade Records",
+      "dashboard": "Returns Overview",
+      "market": "Stock Market",
+      "orderRecords": "Order Records",
       "logs": "Run Logs",
       "modelOperations": "Price Prediction",
-      "sentimentModel": "Sentiment Model",
       "strategyConfig": "Trading Strategy",
       "agent": "Intelligent Decision",
       "agentConversation": "Agent Conversation",
-      "adaptiveStrategy": "Adaptive Strategy",
-      "jobs": "Job Management",
-      "settings": "Settings"
+      "adaptiveStrategy": "Strategy Mode",
+      "jobs": "Job Scheduling"
     },
     "expandMenu": "Expand navigation",
     "collapseMenu": "Collapse navigation",
@@ -75,21 +68,7 @@
     "checking": "Checking",
     "lightMode": "Switch to light mode",
     "darkMode": "Switch to dark mode",
-    "themePicker": "Switch global theme",
-    "themes": {
-      "cloudBlue": "Clear Cloud Blue",
-      "mintTeal": "Mint Teal",
-      "orangeBlue": "Bright Orange Blue",
-      "glacierBlue": "Glacier Blue",
-      "dark": "Dark Mode"
-    }
-  },
-  "stockInformation": {
-    "subtitle": "Browse maintained stock reference information",
-    "loadError": "Failed to load stock information",
-    "searchPlaceholder": "Search stock code or name",
-    "empty": "No stock information",
-    "columns": { "code": "Stock Code", "name": "Stock Name", "market": "Market", "price": "Last Price", "changeAmount": "Change", "changePercent": "Change %", "marketCap": "Market Cap", "turnover": "Turnover", "volumeRatio": "Volume Ratio", "category": "Security Type", "listedDate": "Listing Date", "updatedAt": "Updated At" }
+    "adaptiveTheme": "Adaptive theme"
   },
   "historyOrders": {
     "subtitle": "Filled orders returned by the broker and stored locally",
@@ -102,6 +81,13 @@
     "columns": { "time": "Order Time", "stock": "Stock", "direction": "Direction", "orderPrice": "Order Price", "orderQuantity": "Order Quantity", "filledQuantity": "Filled Quantity", "averageFillPrice": "Average Fill Price", "transactionAmount": "Transaction Amount", "commission": "Commission", "status": "Status", "orderId": "Order ID" },
     "filled": "Filled",
     "dateError": "Start date cannot be later than end date"
+  },
+  "orderRecords": {
+    "subtitle": "Review broker orders and FIFO aggregated trade performance in one place",
+    "tabs": {
+      "orders": "Order History",
+      "trades": "Trade Records"
+    }
   },
   "modelOperations": {
     "subtitle": "Manage model versions, training runs and prediction analysis",
@@ -118,10 +104,28 @@
     "runsEmpty": "No training records"
   },
   "tradeRecords": { "subtitle": "Aggregate filled orders into FIFO trade records", "searchPlaceholder": "Stock code or name", "empty": "No assembled trade records", "columns": { "stock": "Stock", "buyTime": "Buy Time", "sellTime": "Sell Time", "buyPrice": "Buy Price", "sellPrice": "Sell Price", "buyAmount": "Buy Amount", "sellAmount": "Sell Amount", "grossProfit": "Gross Profit", "netProfit": "Net Profit", "grossReturn": "Gross Return", "returnRate": "Return Rate", "holdingTime": "Holding Time", "dailyReturn": "Daily Return" } },
-  "marketPage": { "subtitle": "Explore market breadth, watchlists and stock candlestick trends", "searchPlaceholder": "Search stock name or code", "timeRange": "Select time range", "daily": "Daily", "noData": "No data" },
+  "marketPage": {
+    "subtitle": "Explore market breadth, stock details and candlestick trends",
+    "searchPlaceholder": "Search stock name or code",
+    "timeRange": "Select time range",
+    "daily": "Daily",
+    "noData": "No data",
+    "details": {
+      "title": "Stock Details",
+      "market": "Market",
+      "category": "Security Type",
+      "price": "Last Price",
+      "changeAmount": "Change",
+      "changePercent": "Change %",
+      "marketCap": "Market Cap",
+      "turnover": "Turnover",
+      "volumeRatio": "Volume Ratio",
+      "listedDate": "Listing Date",
+      "updatedAt": "Updated At"
+    }
+  },
   "jobsPage": { "subtitle": "Monitor, trigger and stop scheduled jobs", "refresh": "Refresh", "status": "Task Status", "emptyGroup": "No jobs in this group", "emptyRuns": "No execution records", "history": "History", "details": "Execution Details" },
   "strategyPage": { "subtitle": "Manage trading strategies, model candidates and execution gates", "refresh": "Refresh", "reset": "Restore Defaults", "save": "Save Configuration", "candidates": "Current Trade Candidates", "select": "Select Stocks" },
-  "sentimentPage": { "subtitle": "Inspect sentiment artifacts, offline evaluation and online inference", "runStatus": "Run Status", "artifact": "Model Artifact", "offline": "Offline Evaluation", "single": "Single Text Validation" },
   "login": {
     "systemOnline": "SYSTEM ONLINE",
     "systemOffline": "SYSTEM OFFLINE",
@@ -148,7 +152,7 @@
     "subtitle": "Account assets, realized returns and trading statistics",
     "lastSync": "Last sync",
     "cards": { "totalAssets": "Total Assets", "availableCash": "Available Cash", "positionValue": "Position Value", "frozenCash": "Frozen Cash", "realizedTotal": "Total Realized P&L", "realizedToday": "Today's Realized P&L", "realizedMonth": "This Month's Realized P&L", "realizedRate": "Realized Return", "dailyRate": "Daily Return", "monthlyRate": "Monthly Return" },
-    "sections": { "returnStats": "Return Statistics", "returnDetails": "Return Details", "completedTrades": "Completed Trades", "winRate": "Win Rate", "averageReturn": "Average Return", "profitLoss": "Profit / Loss", "ranking": "Return Ranking", "daily": "Daily Return", "monthly": "Monthly Return", "positions": "Current Positions", "best": "Best Return", "worst": "Worst Return", "basis": "Metrics are calculated from realized FIFO trade records" },
+    "sections": { "returnStats": "Return Statistics", "returnDetails": "Return Details", "completedTrades": "Completed Trades", "winRate": "Win Rate", "averageReturn": "Average Return", "profitLoss": "Profit / Loss", "ranking": "Return Ranking", "daily": "Daily Return", "monthly": "Monthly Return", "positions": "Current Positions", "best": "Best Return", "worst": "Worst Return" },
     "returnTypes": { "daily": "Daily Return", "monthly": "Monthly Return", "ranking": "Return Ranking" },
     "columns": { "type": "Type", "stockCode": "Stock Code", "stockName": "Stock Name", "totalQuantity": "Quantity Held", "availableQuantity": "Available to Sell", "averageCost": "Average Cost", "currentPrice": "Current Price", "marketValue": "Market Value", "stock": "Stock", "netProfit": "Net Profit", "cumulativeNetProfit": "Cumulative Net Profit", "returnRate": "Return Rate", "dailyReturnRate": "Daily Return", "buyTime": "Buy Time", "holdingDays": "Holding Days", "sellTime": "Sell Time", "period": "Period", "transactionAmount": "Transaction Amount", "buyAmount": "Buy Amount", "sellAmount": "Sell Amount", "tradeQuantity": "Trade Quantity", "tradeCount": "Trades", "winningTradeCount": "Winning Trades" },
     "units": { "days": "days" },
@@ -205,10 +209,12 @@
       "trade": "TRADE"
     },
     "columns": {
-      "symbol": "Symbol",
+      "symbol": "Code",
+      "name": "Name",
       "price": "Price",
       "change": "Change",
       "volume": "Volume",
+      "marketCap": "Market Cap",
       "action": "Action"
     },
     "kline": {
@@ -379,7 +385,7 @@
     }
   },
     "jobs": {
-      "title": "Job Management",
+      "title": "Job Scheduling",
       "subtitle": "Manage and Monitor Automated System Tasks",
       "table": {
         "name": "Job Name",
@@ -414,61 +420,6 @@
         "updated": "Job schedule updated"
       }
     },
-  "settings": {
-    "title": "System Configuration",
-    "save": "SAVE CHANGES",
-    "sections": {
-      "general": "General Preferences",
-      "api": "API Connections",
-      "risk": "Risk Management Protocols"
-    },
-    "fields": {
-      "theme": "Theme Mode",
-      "autoTheme": "Adaptive Theme",
-      "language": "Language",
-      "notifications": "Enable System Notifications",
-      "apiKey": "Data Provider API Key",
-      "refreshRate": "Status Refresh Interval (ms)",
-      "riskLevel": "Global Risk Profile",
-      "maxDrawdown": "Max Daily Drawdown (%)"
-    },
-    "options": {
-      "theme": {
-        "cloudBlue": "Clear Cloud Blue",
-        "mintTeal": "Mint Teal",
-        "orangeBlue": "Bright Orange Blue",
-        "glacierBlue": "Glacier Blue",
-        "dark": "Dark Mode"
-      },
-      "language": {
-        "en": "English",
-        "zh": "Chinese (Simplified)"
-      },
-      "risk": {
-        "conservative": "Conservative (Low Volatility)",
-        "moderate": "Moderate (Balanced)",
-        "aggressive": "Aggressive (High Yield)"
-      }
-    },
-    "testConnection": "Test Connection",
-    "successMsg": "Settings Saved Successfully",
-    "checkStatus": "Check Service Status",
-    "themeAutoHint": "Uses Clear Cloud Blue from 06:00 to 18:00 Beijing time and Dark Mode otherwise",
-    "resetPreferences": "Restore Default Preferences",
-    "generalTitle": "Interface Preferences",
-    "runtimeTitle": "Runtime Controls",
-    "securityTitle": "Production Safety Boundary",
-    "refreshHint": "Frontend status polling is fixed at 10 seconds; Quartz scheduling is unchanged",
-    "switchOn": "On",
-    "switchOff": "Off",
-    "summary": { "title": "Runtime Summary", "brokerSessionValid": "Broker session valid", "brokerSessionInvalid": "Broker session invalid", "realWriteOff": "Real writes disabled", "autoExecutionStopped": "Automatic execution stopped", "refreshStatus": "Refresh Status" },
-    "runtime": { "justUpdated": "Runtime configuration", "schedulerHint": "Controls Quartz fixed jobs and manual triggers", "startupDataHint": "Checks and completes stock reference data on the next startup" },
-    "safety": { "realWrite": "Real Writes", "unattended": "Unattended", "brokerSession": "Broker Session", "notReady": "Not Ready" },
-    "info": { "title": "Runtime and Configuration", "checkedAt": "Status checked: {{time}}", "nodeId": "Runtime Node", "updatedAt": "Configuration Updated", "refreshCycle": "Page Refresh Cycle", "seconds": "{{seconds}} seconds", "schedulerMode": "Scheduling Mode", "unifiedScheduler": "Unified Scheduler", "schedulerDisabled": "Scheduler Disabled", "preferenceStorage": "Preference Storage", "currentBrowser": "Current Browser", "runtimeStorage": "Runtime Configuration", "serverPersisted": "Server Persisted" },
-    "health": { "gateway": "Broker Query Gateway", "brokerSession": "Broker Session", "tradingGate": "Live Trading Gate" },
-    "fieldsRuntime": { "scheduler": "Unified Scheduler", "dataCollection": "Data Collection", "newsCollection": "News Collection", "startupData": "Startup Data Initialization", "training": "LSTM Model Training" }
-    ,"status": { "normal": "Healthy", "error": "Error", "unchecked": "Unchecked", "notConfigured": "Not configured", "sessionValid": "Session valid", "sessionMissing": "Session not established", "autoReady": "Automatic execution ready", "controlledStop": "Controlled stop", "realWriteOn": "Real writes enabled", "readOnly": "Read-only observation", "loaded": "Loaded", "notLoaded": "Not loaded", "artifactAvailable": "Artifact available", "artifactMissing": "Artifact unavailable", "verified": "Digest verified", "unverified": "Digest not verified" }
-  },
   "transactions": {
     "title": "Trade History",
     "subtitle": "Comprehensive record of all buy and sell execution orders",

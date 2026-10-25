@@ -1,4 +1,30 @@
-/* AI_GENERATE_START----- */
+/* AI_GENERATE_START------- */
+.order-records-shell {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 18px 18px;
+}
+
+.order-records-shell .ant-tabs-nav {
+  margin-bottom: 18px;
+}
+
+.order-records-shell .ant-tabs-tab {
+  min-height: 50px;
+  padding-inline: 6px;
+  font-weight: 600;
+}
+
+.order-records-shell .ant-tabs-tab-btn > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.order-records-table-view {
+  min-width: 0;
+}
+
 .trade-records-table .ant-table-tbody > tr > td { height: 58px; }
 .trade-records-table .ant-table-tbody > tr.ant-table-expanded-row > td { height: auto; padding: 0 !important; background: var(--panel-muted) !important; }
 .trade-records-table .ant-table-tbody > tr:hover > td { background: var(--brand-soft) !important; }
@@ -22,4 +48,4 @@
   .trade-record-detail-grid { grid-template-columns: repeat(3, minmax(92px, 1fr)); }
   .trade-record-expanded { padding-inline: 16px; }
 }
-/* AI_GENERATE_END----- */
+/* AI_GENERATE_END------- */

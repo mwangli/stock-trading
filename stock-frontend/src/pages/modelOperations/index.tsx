@@ -1,6 +1,7 @@
-// AI_GENERATE_START----------------------------------------------------------------
+// AI_GENERATE_START--------------------------------------------------------------------
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
+import SentimentModelStatusPanel from './SentimentModelStatusPanel';
 import {
   Button,
   Card,
@@ -8,7 +9,6 @@ import {
   Descriptions,
   Empty,
   Form,
-  Input,
   InputNumber,
   Modal,
   Progress,
@@ -16,7 +16,6 @@ import {
   Select,
   Space,
   Spin,
-  Statistic,
   Table,
   Tag,
   Tooltip,
@@ -40,6 +39,7 @@ import { localizedText } from '../../utils/localizedText';
 const { Title, Text } = Typography;
 
 const AUTO_REFRESH_INTERVAL_MS = 10_000;
+const DEFAULT_OPERATOR_NAME = 'web-console';
 
 interface ModelVersion {
   id: string;
@@ -110,10 +110,17 @@ interface Overview {
 interface TemporalModelEnsembleStatus {
   masterShadowEnabled: boolean;
   productionBlendConfigured: boolean;
-  productionEnabled: boolean;
+  status: 'OBSERVING' | 'ACTIVE' | 'DEGRADED' | 'UNAVAILABLE';
+  rankingLstmModelId?: string;
   masterModelId?: string;
   rankingLstmWeight: number;
   masterWeight: number;
+  targetRankingLstmWeight: number;
+  targetMasterWeight: number;
+  currentCombinationQualityScore?: number;
+  bestCombinationQualityScore?: number;
+  weightVersion: number;
+  effectiveTradeDate?: string;
   evaluatedTradingDays: number;
   evaluatedSamples: number;
   rankingLstmRankIc?: number;
@@ -158,8 +165,7 @@ interface StartTrainingRequest {
   epochs?: number;
   batchSize?: number;
   learningRate?: number;
-  architectureType?: 'RANKING_LSTM' | 'DUAL_ATTENTION_RANKING_LSTM' | 'MASTER_TRANSFORMER';
-  operatorName?: string;
+  architectureType?: 'RANKING_LSTM' | 'MASTER_TRANSFORMER';
 }
 
 interface OperationResponse {
@@ -461,7 +467,6 @@ const ModelOperations: React.FC = () => {
   const [versionTotal, setVersionTotal] = useState(0);
   const [versionPage, setVersionPage] = useState(1);
   const [pageSize] = useState(10);
-  const [operatorName, setOperatorName] = useState('web-console');
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [versionsLoading, setVersionsLoading] = useState(true);
   const [operating, setOperating] = useState(false);
@@ -646,7 +651,7 @@ const ModelOperations: React.FC = () => {
     try {
       const response = await request.post('/modelTrainingRuns/start', {
         ...values,
-        operatorName: values.operatorName?.trim() || operatorName.trim() || 'web-console',
+        operatorName: DEFAULT_OPERATOR_NAME,
       }) as ApiResponse<OperationResponse>;
       const result = readApiData(response, localizedText('提交训练失败', 'Failed to submit training'));
       message.success(result.message);
@@ -664,7 +669,7 @@ const ModelOperations: React.FC = () => {
     setOperating(true);
     try {
       const response = await request.post(`/modelTrainingRuns/stop/${runId}`, undefined, {
-        params: { operatorName: operatorName.trim() || 'web-console' },
+        params: { operatorName: DEFAULT_OPERATOR_NAME },
       }) as ApiResponse<OperationResponse>;
       const result = readApiData(response, localizedText('停止训练失败', 'Failed to stop training'));
       message.success(result.message);
@@ -1034,43 +1039,8 @@ const ModelOperations: React.FC = () => {
 
   return (
     <div className="app-page">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Space wrap className="ml-auto">
-          <Input
-            className="w-44"
-            value={operatorName}
-            maxLength={64}
-            placeholder={localizedText('操作人', 'Operator')}
-            onChange={(event) => setOperatorName(event.target.value)}
-          />
-          {trainingInProgress && (
-            <Button
-              icon={<EyeOutlined />}
-              onClick={() => setTrainingProgressOpen(true)}
-            >
-              {localizedText('查看进度', 'View Progress')}
-            </Button>
-          )}
-          <Button
-            type="primary"
-            icon={<ExperimentOutlined />}
-            loading={operating}
-            disabled={operating || trainingInProgress}
-            onClick={() => {
-              form.setFieldsValue({
-                ...defaultTrainingValues,
-                operatorName: operatorName.trim() || 'web-console',
-              });
-              setTrainingModalOpen(true);
-            }}
-          >
-            {localizedText('触发训练', 'Start Training')}
-          </Button>
-        </Space>
-      </div>
-
       <Row className="model-overview-cards" gutter={[16, 16]} align="stretch">
-        <Col className="model-overview-col" xs={24} lg={16}>
+        <Col className="model-overview-col" xs={24} xl={17}>
           <Card className="surface-card compact-card model-overview-card" loading={overviewLoading}>
             <div className="model-version-heading">
               <div className="model-version-identity">
@@ -1118,23 +1088,36 @@ const ModelOperations: React.FC = () => {
                   {overview?.temporalEnsemble?.masterShadowEnabled ? localizedText('已开启', 'Enabled') : localizedText('已关闭', 'Disabled')}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label={localizedText('生产融合', 'Production Blend')}>
-                <Tag color={overview?.temporalEnsemble?.productionEnabled ? 'green' : 'default'}>
-                  {overview?.temporalEnsemble?.productionEnabled
-                    ? localizedText('已自动融合', 'Auto Blended')
-                    : overview?.temporalEnsemble?.productionBlendConfigured
-                      ? localizedText('观察中', 'Observing')
-                      : localizedText('配置关闭', 'Disabled')}
+              <Descriptions.Item label={localizedText('自动选择状态', 'Auto Selection')}>
+                <Tag color={overview?.temporalEnsemble?.status === 'ACTIVE'
+                  ? 'green'
+                  : overview?.temporalEnsemble?.status === 'DEGRADED'
+                    ? 'orange'
+                    : overview?.temporalEnsemble?.status === 'UNAVAILABLE'
+                      ? 'red'
+                      : 'processing'}>
+                  {overview?.temporalEnsemble?.productionBlendConfigured
+                    ? overview?.temporalEnsemble?.status || 'OBSERVING'
+                    : localizedText('配置关闭', 'Disabled')}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label={localizedText('模型权重', 'Model Weights')}>
+              <Descriptions.Item label={localizedText('当前权重', 'Current Weights')}>
                 LSTM {formatPercent(overview?.temporalEnsemble?.rankingLstmWeight)} / MASTER {formatPercent(overview?.temporalEnsemble?.masterWeight)}
               </Descriptions.Item>
-              <Descriptions.Item label={localizedText('影子样本', 'Shadow Samples')}>
+              <Descriptions.Item label={localizedText('目标权重', 'Target Weights')}>
+                LSTM {formatPercent(overview?.temporalEnsemble?.targetRankingLstmWeight)} / MASTER {formatPercent(overview?.temporalEnsemble?.targetMasterWeight)}
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('评估窗口', 'Evaluation Window')}>
                 {overview?.temporalEnsemble?.evaluatedTradingDays ?? 0} {localizedText('日', 'days')} / {overview?.temporalEnsemble?.evaluatedSamples ?? 0} {localizedText('条', 'samples')}
               </Descriptions.Item>
-              <Descriptions.Item label={localizedText('综合评分', 'Quality Scores')} span={2}>
-                LSTM {formatNumber(overview?.temporalEnsemble?.rankingLstmQualityScore)} / MASTER {formatNumber(overview?.temporalEnsemble?.masterQualityScore)}
+              <Descriptions.Item label={localizedText('组合评分', 'Combination Scores')} span={2}>
+                {localizedText('当前', 'Current')} {formatNumber(overview?.temporalEnsemble?.currentCombinationQualityScore)} / {localizedText('最优', 'Best')} {formatNumber(overview?.temporalEnsemble?.bestCombinationQualityScore)}
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('权重版本', 'Weight Version')}>
+                v{overview?.temporalEnsemble?.weightVersion ?? 0}
+              </Descriptions.Item>
+              <Descriptions.Item label={localizedText('生效交易日', 'Effective Date')}>
+                {overview?.temporalEnsemble?.effectiveTradeDate || '-'}
               </Descriptions.Item>
               <Descriptions.Item label={localizedText('自动决策', 'Automatic Decision')} span={2}>
                 {overview?.temporalEnsemble?.decisionReason || '-'}
@@ -1142,16 +1125,66 @@ const ModelOperations: React.FC = () => {
             </Descriptions>
           </Card>
         </Col>
-        <Col className="model-overview-col" xs={24} lg={8}>
-          <Card className="surface-card compact-card model-overview-card" loading={overviewLoading}>
-            <Statistic
-              title={localizedText('上一版本', 'Previous Version')}
-              value={overview?.previousVersion?.modelVersion || localizedText('无', 'None')}
-              prefix={<RollbackOutlined />}
-            />
+        <Col className="model-overview-col" xs={24} xl={7}>
+          <Card className="surface-card compact-card model-overview-card model-previous-card" loading={overviewLoading}>
+            <div className="model-version-heading">
+              <div className="model-version-identity">
+                <span className="model-version-label">{localizedText('上一版本', 'Previous Version')}</span>
+                <div className="model-version-name">
+                  <RollbackOutlined />
+                  <Text ellipsis={{ tooltip: overview?.previousVersion?.modelVersion }}>
+                    {overview?.previousVersion?.modelVersion || localizedText('无可回滚版本', 'No Rollback Version')}
+                  </Text>
+                </div>
+              </div>
+              {overview?.previousVersion?.status && (
+                <Tag color={statusColors[overview.previousVersion.status] ?? 'default'}>
+                  {overview.previousVersion.status}
+                </Tag>
+              )}
+            </div>
+            <div className="model-previous-summary">
+              <div>
+                <span>{localizedText('模型架构', 'Architecture')}</span>
+                <strong>{overview?.previousVersion?.architectureType || '-'}</strong>
+              </div>
+              <div>
+                <span>{localizedText('验证损失', 'Validation Loss')}</span>
+                <strong>{formatLoss(overview?.previousVersion?.valLoss)}</strong>
+              </div>
+              <div>
+                <span>{localizedText('训练轮次', 'Epochs')}</span>
+                <strong>{overview?.previousVersion?.epoch ?? '-'}</strong>
+              </div>
+              <div>
+                <span>{localizedText('创建时间', 'Created At')}</span>
+                <strong>{formatDateTime(overview?.previousVersion?.createdAt)}</strong>
+              </div>
+            </div>
+            <div className="model-overview-actions">
+              {trainingInProgress && (
+                <Button icon={<EyeOutlined />} onClick={() => setTrainingProgressOpen(true)}>
+                  {localizedText('查看训练进度', 'View Training Progress')}
+                </Button>
+              )}
+              <Button
+                type="primary"
+                icon={<ExperimentOutlined />}
+                loading={operating}
+                disabled={operating || trainingInProgress}
+                onClick={() => {
+                  form.setFieldsValue(defaultTrainingValues);
+                  setTrainingModalOpen(true);
+                }}
+              >
+                {localizedText('触发训练', 'Start Training')}
+              </Button>
+            </div>
           </Card>
         </Col>
       </Row>
+
+      <SentimentModelStatusPanel />
 
       <DetailModal
         title={
@@ -1418,13 +1451,9 @@ const ModelOperations: React.FC = () => {
         destroyOnHidden
       >
         <Form<StartTrainingRequest> form={form} layout="vertical">
-          <Form.Item name="operatorName" label="操作人" rules={[{ required: true, message: '请输入操作人' }]}>
-            <Input maxLength={64} />
-          </Form.Item>
           <Form.Item name="architectureType" label="候选模型架构" rules={[{ required: true, message: '请选择模型架构' }]}>
             <Select options={[
               { value: 'RANKING_LSTM', label: 'Ranking LSTM' },
-              { value: 'DUAL_ATTENTION_RANKING_LSTM', label: 'Dual Attention Ranking LSTM' },
               { value: 'MASTER_TRANSFORMER', label: 'MASTER Shadow Candidate' },
             ]} />
           </Form.Item>
@@ -1506,4 +1535,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END----------------------------------------------------------------
+// AI_GENERATE_END--------------------------------------------------------------------

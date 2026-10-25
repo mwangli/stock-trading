@@ -1,13 +1,12 @@
-// AI_GENERATE_START------------------
+// AI_GENERATE_START-------------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
-import { Button, Card, DatePicker, Empty, Input, Pagination, Select, Space, Table, Tag } from 'antd';
+import { Button, DatePicker, Empty, Input, Pagination, Select, Space, Table, Tag } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
 import type { ApiResponse } from '../../utils/api';
 import { formatDateTime } from '../../utils/dateTime';
 import { localizedText } from '../../utils/localizedText';
-import { usePageHeader } from '../../layouts/PageHeaderContext';
 import { useTranslation } from 'react-i18next';
 
 interface BrokerOrder {
@@ -66,7 +65,7 @@ const buildDefaultFilters = (): OrderFilters => {
 
 const money = (value?: number) => value == null ? '-' : `¥${Number(value).toFixed(2)}`;
 
-const HistoryOrders: React.FC = () => {
+const OrderHistoryTable: React.FC = () => {
   const { t } = useTranslation();
   const defaultFilters = useMemo(buildDefaultFilters, []);
   const [draftFilters, setDraftFilters] = useState<OrderFilters>(defaultFilters);
@@ -143,11 +142,8 @@ const HistoryOrders: React.FC = () => {
     { title: t('historyOrders.columns.time'), dataIndex: 'orderTime', key: 'orderTime', render: formatDateTime },
   ];
 
-  usePageHeader(t('historyOrders.subtitle'));
-
   return (
-    <div className="app-page">
-      <Card className="surface-card min-w-0">
+    <div className="order-records-table-view">
         <Space wrap className="mb-4">
           <Input
             prefix={<SearchOutlined />}
@@ -213,10 +209,9 @@ const HistoryOrders: React.FC = () => {
             />
           </div>
         </div>
-      </Card>
     </div>
   );
 };
 
-export default HistoryOrders;
-// AI_GENERATE_END------------------
+export default OrderHistoryTable;
+// AI_GENERATE_END-------------------
