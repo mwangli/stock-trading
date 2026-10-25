@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.agent.interaction.service;
 
 import com.alibaba.fastjson2.JSON;
@@ -59,7 +59,7 @@ public class AgentConversationService {
         TaskResponse task = selection.strategy() == AgentTaskStrategy.DIAGNOSTIC
                 ? applicationService.diagnose(toDiagnosticRequest(request, question), userScope,
                         selection.allowedTools())
-                : applicationService.research(toResearchRequest(request, question), userScope,
+                : applicationService.conversation(toResearchRequest(request, question), userScope,
                         selection.allowedTools());
         List<String> evidenceRefs = mergeEvidenceRefs(
                 parseEvidenceRefs(task.getEvidenceRefs()), toolAuditService.successfulEvidenceRefs(task.getTaskId()));
@@ -151,4 +151,4 @@ public class AgentConversationService {
         return normalized;
     }
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END---------

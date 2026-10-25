@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.agent.interaction.model;
 
 /**
@@ -8,6 +8,6 @@ package com.stock.agent.interaction.model;
  * @since 2026-10-24
  */
 public enum AgentTaskType {
-    RESEARCH, DIAGNOSTIC, REPORT, TRADE_PLAN
+    CONVERSATION, RESEARCH, DIAGNOSTIC, REPORT, TRADE_PLAN
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

@@ -60,6 +60,7 @@ jobs:
           sparse-checkout: |
             pom.xml
             stock-agent
+            documents
           sparse-checkout-cone-mode: false
 
       - name: Checkout model version pointer
