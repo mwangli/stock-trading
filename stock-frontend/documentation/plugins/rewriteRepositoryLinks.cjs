@@ -1,5 +1,4 @@
-// AI_GENERATE_START -
-const fs = require('node:fs');
+// AI_GENERATE_START --
 const path = require('node:path');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '../../..');
@@ -25,8 +24,7 @@ function rewriteUrl(url, sourceFilePath) {
   const [, targetPath, suffix] = match;
   const absoluteTarget = path.resolve(path.dirname(sourceFilePath), decodeURIComponent(targetPath));
   if (!isInside(REPOSITORY_ROOT, absoluteTarget)
-      || isInside(DOCUMENTS_ROOT, absoluteTarget)
-      || !fs.existsSync(absoluteTarget)) {
+      || isInside(DOCUMENTS_ROOT, absoluteTarget)) {
     return url;
   }
 
@@ -42,4 +40,4 @@ module.exports = function rewriteRepositoryLinks() {
     });
   };
 };
-// AI_GENERATE_END -
+// AI_GENERATE_END --
