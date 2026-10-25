@@ -16,7 +16,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[训练编排 `LstmTrainerService.java`](../../../stock-backend/src/main/java/com/stock/model/service/LstmTrainerService.java) · [模型运行时 `LstmModelRuntimeService.java`](../../../stock-backend/src/main/java/com/stock/model/service/LstmModelRuntimeService.java) · [交易候选门禁 `PredictionCandidateQueryService.java`](../../../stock-backend/src/main/java/com/stock/model/service/PredictionCandidateQueryService.java)
+**IDEA 源码入口**：[训练编排 `LstmTrainerService.java`](pathname://../../../stock-backend/src/main/java/com/stock/model/service/LstmTrainerService.java) · [模型运行时 `LstmModelRuntimeService.java`](pathname://../../../stock-backend/src/main/java/com/stock/model/service/LstmModelRuntimeService.java) · [交易候选门禁 `PredictionCandidateQueryService.java`](pathname://../../../stock-backend/src/main/java/com/stock/model/service/PredictionCandidateQueryService.java)
 
 # Model 模型模块
 

@@ -14,7 +14,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 配置入口**：[工程规范 `AGENTS.md`](../../AGENTS.md) · [Docusaurus 配置](../../stock-frontend/documentation/docusaurus.config.ts) · [前端依赖与脚本](../../stock-frontend/package.json)
+**IDEA 配置入口**：[工程规范 `AGENTS.md`](pathname://../../AGENTS.md) · [Docusaurus 配置](pathname://../../stock-frontend/documentation/docusaurus.config.ts) · [前端依赖与脚本](pathname://../../stock-frontend/package.json)
 
 # 文档治理规范
 
@@ -51,7 +51,7 @@ source_paths:
 专题 Markdown 在正文中使用相对当前文档的仓库文件链接，不使用本机绝对路径。例如：
 
 ```markdown
-[打开 RankingLSTMModel.java](../../stock-backend/src/main/java/com/stock/model/algorithm/RankingLSTMModel.java)
+[打开 RankingLSTMModel.java](pathname://../../stock-backend/src/main/java/com/stock/model/algorithm/RankingLSTMModel.java)
 ```
 
 实际相对层级以文档所在目录为准。IDEA 内置 Markdown 插件支持相对文件链接补全和 `Ctrl+Click` 跳转，因此文档作者可以直接进入源码；Docusaurus 页面仍通过 Front Matter 的 `source_paths` 生成 GitHub 源码入口。

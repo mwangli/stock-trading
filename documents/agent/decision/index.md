@@ -16,7 +16,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[建议生成 `AgentTradeDecisionService.java`](../../../stock-agent/src/main/java/com/stock/agent/decision/service/AgentTradeDecisionService.java) · [事实上下文 `TradeDecisionContextService.java`](../../../stock-agent/src/main/java/com/stock/agent/decision/service/TradeDecisionContextService.java) · [事后评估 `TradeDecisionEvaluationService.java`](../../../stock-agent/src/main/java/com/stock/agent/decision/service/TradeDecisionEvaluationService.java)
+**IDEA 源码入口**：[建议生成 `AgentTradeDecisionService.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/decision/service/AgentTradeDecisionService.java) · [事实上下文 `TradeDecisionContextService.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/decision/service/TradeDecisionContextService.java) · [事后评估 `TradeDecisionEvaluationService.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/decision/service/TradeDecisionEvaluationService.java)
 
 # decision 业务包
 

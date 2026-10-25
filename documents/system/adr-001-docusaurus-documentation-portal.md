@@ -14,7 +14,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 配置入口**：[Docusaurus 配置](../../stock-frontend/documentation/docusaurus.config.ts) · [文档导航配置](../../stock-frontend/documentation/sidebars.ts) · [工程规范 `AGENTS.md`](../../AGENTS.md)
+**IDEA 配置入口**：[Docusaurus 配置](pathname://../../stock-frontend/documentation/docusaurus.config.ts) · [文档导航配置](pathname://../../stock-frontend/documentation/sidebars.ts) · [工程规范 `AGENTS.md`](pathname://../../AGENTS.md)
 
 # ADR-001：采用 Docusaurus 文档门户
 

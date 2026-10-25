@@ -16,7 +16,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[计划生成 `TradePlanAgentService.java`](../../../stock-agent/src/main/java/com/stock/agent/tradeplan/service/TradePlanAgentService.java) · [计划服务 `TradePlanService.java`](../../../stock-agent/src/main/java/com/stock/agent/tradeplan/service/TradePlanService.java) · [状态机 `TradePlanStateMachine.java`](../../../stock-agent/src/main/java/com/stock/agent/tradeplan/service/TradePlanStateMachine.java)
+**IDEA 源码入口**：[计划生成 `TradePlanAgentService.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/tradeplan/service/TradePlanAgentService.java) · [计划服务 `TradePlanService.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/tradeplan/service/TradePlanService.java) · [状态机 `TradePlanStateMachine.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/tradeplan/service/TradePlanStateMachine.java)
 
 # tradeplan 业务包
 

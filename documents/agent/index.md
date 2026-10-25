@@ -16,7 +16,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[应用入口 `StockAgentApplication.java`](../../stock-agent/src/main/java/com/stock/agent/StockAgentApplication.java) · [业务编排 `AgentApplicationService.java`](../../stock-agent/src/main/java/com/stock/agent/interaction/service/AgentApplicationService.java) · [运行协调 `AgentRuntimeCoordinator.java`](../../stock-agent/src/main/java/com/stock/agent/runtime/service/AgentRuntimeCoordinator.java)
+**IDEA 源码入口**：[应用入口 `StockAgentApplication.java`](pathname://../../stock-agent/src/main/java/com/stock/agent/StockAgentApplication.java) · [业务编排 `AgentApplicationService.java`](pathname://../../stock-agent/src/main/java/com/stock/agent/interaction/service/AgentApplicationService.java) · [运行协调 `AgentRuntimeCoordinator.java`](pathname://../../stock-agent/src/main/java/com/stock/agent/runtime/service/AgentRuntimeCoordinator.java)
 
 # stock-agent 模块说明
 

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -88,7 +88,10 @@ for (const file of walk(docsRoot).filter((item) => /\.mdx?$/.test(item))) {
     if (/^(?:https?:|mailto:|#|\/)/.test(rawTarget)) {
       continue;
     }
-    const target = rawTarget.split('#', 1)[0].split('?', 1)[0];
+    const normalizedTarget = rawTarget.startsWith('pathname://')
+      ? rawTarget.slice('pathname://'.length)
+      : rawTarget;
+    const target = normalizedTarget.split('#', 1)[0].split('?', 1)[0];
     if (!target || !path.extname(target)) {
       continue;
     }
@@ -108,4 +111,4 @@ if (errors.length > 0) {
 } else {
   console.log(`文档静态检查通过，共检查 ${documentIds.size} 篇文档。`);
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

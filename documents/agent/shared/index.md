@@ -16,7 +16,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[Web 装配 `AgentWebConfig.java`](../../../stock-agent/src/main/java/com/stock/agent/shared/config/AgentWebConfig.java) · [用户鉴权 `AgentAuthInterceptor.java`](../../../stock-agent/src/main/java/com/stock/agent/shared/auth/AgentAuthInterceptor.java) · [异常边界 `AgentExceptionHandler.java`](../../../stock-agent/src/main/java/com/stock/agent/shared/error/AgentExceptionHandler.java)
+**IDEA 源码入口**：[Web 装配 `AgentWebConfig.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/shared/config/AgentWebConfig.java) · [用户鉴权 `AgentAuthInterceptor.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/shared/auth/AgentAuthInterceptor.java) · [异常边界 `AgentExceptionHandler.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/shared/error/AgentExceptionHandler.java)
 
 # shared 业务包
 
