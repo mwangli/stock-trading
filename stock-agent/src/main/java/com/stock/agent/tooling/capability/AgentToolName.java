@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START---------
 package com.stock.agent.tooling.capability;
 
 import java.util.EnumSet;
@@ -56,7 +56,28 @@ public enum AgentToolName {
     PROVIDER_RUNTIME("queryProviderRuntime"),
 
     /** 真实交易执行门禁。 */
-    TRADE_EXECUTION_GATE("queryTradeExecutionGate");
+    TRADE_EXECUTION_GATE("queryTradeExecutionGate"),
+
+    /** 股票目录与行情摘要。 */
+    STOCK_DIRECTORY("queryStockDirectory"),
+
+    /** 市场基础数据质量。 */
+    MARKET_DATA_QUALITY("queryMarketDataQuality"),
+
+    /** 模型版本、训练和预测运维。 */
+    MODEL_OPERATIONS("queryModelOperations"),
+
+    /** 调度任务清单与运行历史。 */
+    JOB_OPERATIONS("queryJobOperations"),
+
+    /** 券商历史委托与成交。 */
+    BROKER_HISTORY("queryBrokerHistory"),
+
+    /** 自适应策略生命周期。 */
+    ADAPTIVE_STRATEGY("queryAdaptiveStrategy"),
+
+    /** 系统运行和只读控制状态。 */
+    SYSTEM_RUNTIME("querySystemRuntime");
 
     private final String toolName;
 
@@ -82,4 +103,4 @@ public enum AgentToolName {
         return Set.copyOf(EnumSet.allOf(AgentToolName.class));
     }
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

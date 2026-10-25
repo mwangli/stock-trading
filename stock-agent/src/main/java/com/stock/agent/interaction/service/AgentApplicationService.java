@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------------------------------------------
+// AI_GENERATE_START-----------------------------------------------------
 package com.stock.agent.interaction.service;
 
 import com.stock.agent.interaction.model.AgentTaskType;
@@ -339,7 +339,7 @@ public class AgentApplicationService {
     }
 
     private String toolUsageInstruction() {
-        return "本轮绑定了完整只读工具目录。凡是项目实现、实时公开信息、行情、账户、收益、模型、策略、任务或交易门禁等可查询事实，"
+        return "本轮绑定了完整只读工具目录。凡是项目实现、实时公开信息、股票目录、行情、数据质量、账户、收益、模型版本、训练、预测、策略生命周期、调度任务、历史委托成交、系统运行状态或交易门禁等可查询事实，"
                 + "必须先选择语义最匹配的一个或多个工具，再基于工具结果回答；普通常识和闲聊无需调用工具。"
                 + "不要因为工具可用就全部调用。缺少城市、股票代码、月份、任务名等必要参数时先追问，不得猜测。";
     }
@@ -366,4 +366,4 @@ public class AgentApplicationService {
         }
     }
 }
-// AI_GENERATE_END---------------------------------------------------
+// AI_GENERATE_END----------------------------------------------------

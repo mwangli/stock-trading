@@ -1,19 +1,26 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ----------
 package com.stock.agent.integration.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.stock.agent.integration.dto.BackendAdaptiveStrategyResponse;
+import com.stock.agent.integration.dto.BackendBrokerHistoryResponse;
 import com.stock.agent.integration.dto.BackendBrokerFactsResponse;
 import com.stock.agent.integration.dto.BackendBrokerStatusResponse;
 import com.stock.agent.integration.dto.BackendFactsEnvelope;
 import com.stock.agent.integration.config.BackendServiceProperties;
 import com.stock.agent.integration.dto.BackendJobDiagnosticResponse;
+import com.stock.agent.integration.dto.BackendJobOperationsResponse;
 import com.stock.agent.integration.dto.BackendLatestPriceResponse;
+import com.stock.agent.integration.dto.BackendMarketDataQualityResponse;
 import com.stock.agent.integration.dto.BackendModelOverviewResponse;
+import com.stock.agent.integration.dto.BackendModelOperationsResponse;
 import com.stock.agent.integration.dto.BackendPerformanceOverviewResponse;
 import com.stock.agent.integration.dto.BackendMarketAdvancersResponse;
 import com.stock.agent.integration.dto.BackendPerformanceAnalysisResponse;
 import com.stock.agent.integration.dto.BackendPredictionCandidateResponse;
+import com.stock.agent.integration.dto.BackendStockDirectoryResponse;
 import com.stock.agent.integration.dto.BackendStrategyStateResponse;
+import com.stock.agent.integration.dto.BackendSystemRuntimeResponse;
 import com.stock.agent.integration.dto.BackendTradeDecisionContextResponse;
 import com.stock.agent.integration.dto.BackendTradeDecisionContextRequest;
 import com.stock.agent.integration.dto.BackendTradeDecisionEvaluationFactRequest;
@@ -201,6 +208,87 @@ public class BackendInternalApiClient {
     }
 
     /**
+     * 查询股票目录和当前行情摘要。
+     *
+     * @param keyword 股票代码或名称关键字
+     * @param limit 最大返回数量
+     * @return 股票目录事实
+     */
+    public BackendStockDirectoryResponse stockDirectory(String keyword, int limit) {
+        return get("/api/internal/agentFacts/stockDirectory?keyword={keyword}&limit={limit}",
+                BackendStockDirectoryResponse.class, keyword == null ? "" : keyword, limit);
+    }
+
+    /**
+     * 查询市场基础数据质量。
+     *
+     * @return 市场数据质量事实
+     */
+    public BackendMarketDataQualityResponse marketDataQuality() {
+        return get("/api/internal/agentFacts/marketDataQuality", BackendMarketDataQualityResponse.class);
+    }
+
+    /**
+     * 查询模型版本、训练和预测运维事实。
+     *
+     * @param mode 查询模式
+     * @param referenceId 关联批次标识
+     * @param limit 最大返回数量
+     * @return 模型运维事实
+     */
+    public BackendModelOperationsResponse modelOperations(String mode, String referenceId, int limit) {
+        return get("/api/internal/agentFacts/modelOperations?mode={mode}&referenceId={referenceId}&limit={limit}",
+                BackendModelOperationsResponse.class, mode, referenceId == null ? "" : referenceId, limit);
+    }
+
+    /**
+     * 查询调度任务清单或运行记录。
+     *
+     * @param mode 查询模式
+     * @param jobName 任务名称
+     * @param limit 最大返回数量
+     * @return 调度任务事实
+     */
+    public BackendJobOperationsResponse jobOperations(String mode, String jobName, int limit) {
+        return get("/api/internal/agentFacts/jobOperations?mode={mode}&jobName={jobName}&limit={limit}",
+                BackendJobOperationsResponse.class, mode, jobName == null ? "" : jobName, limit);
+    }
+
+    /**
+     * 查询脱敏历史委托或成交。
+     *
+     * @param type 查询类型
+     * @param startDate 开始日期
+     * @param endDate 结束日期
+     * @param limit 最大返回数量
+     * @return 券商历史事实
+     */
+    public BackendBrokerHistoryResponse brokerHistory(
+            String type, LocalDate startDate, LocalDate endDate, int limit) {
+        return get("/api/internal/agentFacts/brokerHistory?type={type}&startDate={startDate}"
+                        + "&endDate={endDate}&limit={limit}",
+                BackendBrokerHistoryResponse.class, type, startDate, endDate, limit);
+    }
+
+    /**
+     * 查询自适应策略生命周期和演化事实。
+     *
+     * @return 自适应策略事实
+     */
+    public BackendAdaptiveStrategyResponse adaptiveStrategy() {
+        return get("/api/internal/agentFacts/adaptiveStrategy", BackendAdaptiveStrategyResponse.class);
+    }
+
+    /**
+     * 查询 Backend 运行状态和只读控制状态。
+     *
+     * @return 系统运行事实
+     */
+    public BackendSystemRuntimeResponse systemRuntime() {
+        return get("/api/internal/agentFacts/systemRuntime", BackendSystemRuntimeResponse.class);
+    }
+
+    /**
      * 请求 Backend 构建不可变交易决策上下文。
      *
      * @param candidateBatchId 候选批次标识
@@ -302,4 +390,4 @@ public class BackendInternalApiClient {
         }
     }
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------
