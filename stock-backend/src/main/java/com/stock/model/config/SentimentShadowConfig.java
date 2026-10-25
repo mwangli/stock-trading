@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START -------
 package com.stock.model.config;
 
 import lombok.Data;
@@ -46,19 +46,19 @@ public class SentimentShadowConfig {
     /** 影子任务回看自然日数。 */
     private int lookbackDays = 7;
 
-    /** 进入人工激活候选要求的最少交易日。 */
+    /** 允许自动激活要求的最少影子交易日。 */
     private int minimumShadowTradingDays = 20;
 
-    /** 进入人工激活候选要求的最少已评估样本数。 */
+    /** 允许自动激活要求的最少已评估样本数。 */
     private int minimumEvaluatedSamples = 500;
 
-    /** 进入人工激活候选要求的最低 Rank IC。 */
+    /** 允许自动激活要求的最低 Rank IC。 */
     private double minimumRankIc = 0.02D;
 
-    /** 进入人工激活候选要求的最低方向准确率。 */
+    /** 允许自动激活要求的最低方向准确率。 */
     private double minimumDirectionAccuracy = 0.52D;
 
-    /** 进入人工激活候选允许的最高推理失败率。 */
+    /** 允许自动激活的最高推理失败率。 */
     private double maximumFailureRate = 0.01D;
 
     /** 候选模型相对 FinBERT 的最低扣成本 Top 10% 收益增量。 */
@@ -73,4 +73,4 @@ public class SentimentShadowConfig {
     /** 模型输出标签顺序。 */
     private String[] labels = {"neutral", "positive", "negative"};
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------

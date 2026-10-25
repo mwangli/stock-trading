@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ----
 package com.stock.market.service;
 
 import com.stock.market.dto.HistoricalStockUniverseDto;
@@ -6,6 +6,7 @@ import com.stock.market.dto.MarketNewsDto;
 import com.stock.market.dto.MarketNewsEventDto;
 import com.stock.market.dto.ModelReferenceDailyBarDto;
 import com.stock.market.dto.ModelStockDailyBarDto;
+import com.stock.market.dto.ModelTrainingDataAuditDto;
 import com.stock.market.dto.StockAdjustmentFactorDto;
 import com.stock.market.dto.StockInfoItemDto;
 import com.stock.market.dto.StockPriceItemDto;
@@ -42,8 +43,10 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 向模型、决策、执行和平台包提供只读市场事实。
@@ -294,6 +297,67 @@ public class MarketDataQueryService {
     }
 
     /**
+     * 审计指定来源版本是否具备模型训练要求的基础集合。
+     *
+     * @param stockCodes 本次训练要求的股票代码
+     * @param source 数据来源
+     * @param sourceVersion 数据来源版本
+     * @param benchmarkCode 市场基准序列代码
+     * @return 模型训练基础数据审计结果
+     */
+    public ModelTrainingDataAuditDto auditModelTrainingData(
+            Collection<String> stockCodes,
+            String source,
+            String sourceVersion,
+            String benchmarkCode) {
+        Set<String> requestedCodes = normalizedValues(stockCodes);
+        Query stockSourceScope = Query.query(Criteria.where("source").is(source)
+                .and("sourceVersion").is(sourceVersion)
+                .and("stockCode").in(requestedCodes));
+        Set<String> modelBarCodes = distinctValues(
+                stockSourceScope, "stockCode", ModelStockDailyBar.class);
+        Set<String> factorCodes = distinctValues(
+                stockSourceScope, "stockCode", StockAdjustmentFactor.class);
+        Set<String> universeCodes = distinctValues(
+                stockSourceScope, "stockCode", HistoricalStockUniverseEntity.class);
+        Set<String> tradabilityCodes = distinctValues(
+                stockSourceScope, "stockCode", StockDailyTradabilityFact.class);
+        Set<String> requiredIndustryCodes = distinctValues(
+                Query.query(Criteria.where("source").is(source)
+                        .and("sourceVersion").is(sourceVersion)
+                        .and("stockCode").in(requestedCodes)
+                        .and("industryCode").nin(java.util.Arrays.asList(null, ""))),
+                "industryCode", HistoricalStockUniverseEntity.class);
+        Set<String> availableIndustryCodes = distinctValues(
+                Query.query(Criteria.where("source").is(source)
+                        .and("sourceVersion").is(sourceVersion)
+                        .and("seriesType").is(ReferenceSeriesType.INDUSTRY)),
+                "seriesCode", ModelReferenceDailyBar.class);
+        boolean benchmarkAvailable = mongoTemplate.exists(Query.query(Criteria.where("source").is(source)
+                .and("sourceVersion").is(sourceVersion)
+                .and("seriesType").is(ReferenceSeriesType.MARKET)
+                .and("seriesCode").is(benchmarkCode)), ModelReferenceDailyBar.class);
+        return ModelTrainingDataAuditDto.builder()
+                .source(source)
+                .sourceVersion(sourceVersion)
+                .requestedStockCount(requestedCodes.size())
+                .modelBarStockCount(intersectionSize(requestedCodes, modelBarCodes))
+                .adjustmentFactorStockCount(intersectionSize(requestedCodes, factorCodes))
+                .historicalUniverseStockCount(intersectionSize(requestedCodes, universeCodes))
+                .tradabilityStockCount(intersectionSize(requestedCodes, tradabilityCodes))
+                .requiredIndustrySeriesCount(requiredIndustryCodes.size())
+                .availableIndustrySeriesCount(intersectionSize(requiredIndustryCodes, availableIndustryCodes))
+                .benchmarkSeriesAvailable(benchmarkAvailable)
+                .latestModelBarDate(findLatestModelStockBarDate(source, sourceVersion))
+                .missingModelBarCodes(missingValues(requestedCodes, modelBarCodes))
+                .missingAdjustmentFactorCodes(missingValues(requestedCodes, factorCodes))
+                .missingHistoricalUniverseCodes(missingValues(requestedCodes, universeCodes))
+                .missingTradabilityCodes(missingValues(requestedCodes, tradabilityCodes))
+                .missingIndustrySeriesCodes(missingValues(requiredIndustryCodes, availableIndustryCodes))
+                .build();
+    }
+
+    /**
      * 查询股票复权因子。
      *
      * @param stockCodes 股票代码
@@ -486,6 +550,28 @@ public class MarketDataQueryService {
                 .amount(price.getAmount()).updateTime(price.getUpdateTime()).build();
     }
 
+    private Set<String> distinctValues(Query query, String field, Class<?> entityType) {
+        return new LinkedHashSet<>(mongoTemplate.findDistinct(query, field, entityType, String.class));
+    }
+
+    private Set<String> normalizedValues(Collection<String> values) {
+        if (values == null) {
+            return Set.of();
+        }
+        return values.stream()
+                .filter(value -> value != null && !value.isBlank())
+                .map(String::trim)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private int intersectionSize(Set<String> required, Set<String> actual) {
+        return (int) required.stream().filter(actual::contains).count();
+    }
+
+    private List<String> missingValues(Set<String> required, Set<String> actual) {
+        return required.stream().filter(value -> !actual.contains(value)).limit(20).toList();
+    }
+
     private StockInfoItemDto toStockInfoDto(StockInfo stock) {
         return StockInfoItemDto.builder().id(stock.getId()).code(stock.getCode()).name(stock.getName())
                 .market(stock.getMarket()).price(stock.getPrice()).changeAmount(stock.getChangeAmount())
@@ -549,4 +635,4 @@ public class MarketDataQueryService {
                 .capturedAt(fact.getCapturedAt()).build();
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END ----

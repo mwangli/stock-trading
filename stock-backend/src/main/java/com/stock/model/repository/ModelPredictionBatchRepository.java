@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------------
+// AI_GENERATE_START----------------
 package com.stock.model.repository;
 
 import com.stock.model.entity.ModelPredictionBatchDocument;
@@ -186,5 +186,15 @@ public interface ModelPredictionBatchRepository extends JpaRepository<ModelPredi
      */
     ModelPredictionBatchDocument findFirstByModelIdAndEvaluatedCountGreaterThanOrderByEvaluationFinishedAtDescCreatedAtDesc(
             String modelId, int evaluatedCount);
+
+    /**
+     * 分批查询保留期之前的终态预测批次。
+     *
+     * @param statuses 预测终态集合
+     * @param cutoff 保留期截止时间
+     * @return 最早的待清理批次，最多 200 条
+     */
+    List<ModelPredictionBatchDocument> findTop200ByStatusInAndCreatedAtBeforeOrderByCreatedAtAsc(
+            Collection<String> statuses, LocalDateTime cutoff);
 }
-// AI_GENERATE_END---------------
+// AI_GENERATE_END----------------

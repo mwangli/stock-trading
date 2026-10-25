@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------------------------------------------
+// AI_GENERATE_START---------------------------------------------------
 package com.stock.model.service;
 
 import ai.djl.Device;
@@ -38,7 +38,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Comparator;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * 全市场共享 LSTM 模型训练与推理服务。
@@ -72,125 +71,31 @@ public class LstmTrainerService {
     private String currentModelPath;
 
     /**
-     * 兼容原有训练调用，将传入股票统一训练为共享基础模型。
+     * 使用已完成且可读取的数据快照训练指定架构的横截面模型。
      *
-     * @param stockCodes 逗号分隔的股票代码
-     * @param days 每只股票读取的交易日数量
-     * @param epochs 训练轮次，可为空
-     * @param batchSize 批次大小，可为空
-     * @param learningRate 学习率，可为空
-     * @return 训练结果
-     */
-    public TrainingResult trainModel(String stockCodes, int days, Integer epochs,
-                                     Integer batchSize, Double learningRate) {
-        if (stockCodes == null || stockCodes.isBlank()) {
-            return TrainingResult.builder().success(false).message("股票代码不能为空").build();
-        }
-        List<String> codes = Stream.of(stockCodes.split(","))
-                .map(String::trim)
-                .filter(code -> !code.isBlank())
-                .distinct()
-                .toList();
-        return trainSharedModel(codes, days, epochs, batchSize, learningRate);
-    }
-
-    /**
-     * 训练全市场共享基础模型。
-     *
-     * @param stockCodes 参与训练的股票代码
-     * @param days 每只股票读取的交易日数量
-     * @return 训练结果
-     */
-    public TrainingResult trainSharedModel(List<String> stockCodes, int days) {
-        return trainSharedModel(stockCodes, days, null, null, null);
-    }
-
-    /**
-     * 训练全市场共享基础模型，并允许离线任务覆盖固定训练参数。
-     *
-     * @param stockCodes 参与训练的股票代码
-     * @param days 每只股票读取的交易日数量
-     * @param epochs 训练轮次，可为空
-     * @param batchSize 批次大小，可为空
-     * @param learningRate 学习率，可为空
-     * @return 训练结果
-     */
-    public TrainingResult trainSharedModel(List<String> stockCodes, int days, Integer epochs,
-                                           Integer batchSize, Double learningRate) {
-        return trainSharedModel(stockCodes, days, epochs, batchSize, learningRate,
-                NO_OP_PROGRESS_LISTENER);
-    }
-
-    /**
-     * 训练全市场共享基础模型，并持续上报数据准备和逐轮训练进度。
-     *
-     * @param stockCodes 参与训练的股票代码
-     * @param days 每只股票读取的交易日数量
+     * @param snapshotId 已就绪训练数据快照 ID，不可为空
      * @param epochs 训练轮次，可为空
      * @param batchSize 批次大小，可为空
      * @param learningRate 学习率，可为空
      * @param progressListener 训练进度监听器
-     * @return 训练结果
-     */
-    public TrainingResult trainSharedModel(List<String> stockCodes, int days, Integer epochs,
-                                           Integer batchSize, Double learningRate,
-                                           TrainingProgressListener progressListener) {
-        return trainSharedModel(stockCodes, days, epochs, batchSize, learningRate,
-                progressListener, null);
-    }
-
-    /**
-     * 训练全市场共享基础模型，并支持从已保存的参数检查点继续训练。
-     *
-     * @param stockCodes 参与训练的股票代码
-     * @param days 每只股票读取的交易日数量
-     * @param epochs 训练轮次，可为空
-     * @param batchSize 批次大小，可为空
-     * @param learningRate 学习率，可为空
-     * @param progressListener 训练进度监听器
-     * @param snapshotId 指定训练数据快照 ID，可为空
-     * @return 训练结果
-     */
-    public TrainingResult trainSharedModel(List<String> stockCodes, int days, Integer epochs,
-                                           Integer batchSize, Double learningRate,
-                                           TrainingProgressListener progressListener,
-                                           String snapshotId) {
-        return trainSharedModel(stockCodes, days, epochs, batchSize, learningRate,
-                progressListener, snapshotId, config.getArchitectureType());
-    }
-
-    /**
-     * 训练指定架构的 `v5` 横截面模型。
-     *
-     * @param stockCodes 参与训练的股票代码
-     * @param days 每只股票读取的交易日数量
-     * @param epochs 训练轮次，可为空
-     * @param batchSize 批次大小，可为空
-     * @param learningRate 学习率，可为空
-     * @param progressListener 训练进度监听器
-     * @param snapshotId 指定训练数据快照 ID，可为空
      * @param architectureType 本次候选模型架构
      * @return 训练结果
      */
-    public TrainingResult trainSharedModel(List<String> stockCodes, int days, Integer epochs,
-                                           Integer batchSize, Double learningRate,
-                                           TrainingProgressListener progressListener,
-                                           String snapshotId,
-                                           LstmArchitectureType architectureType) {
+    public TrainingResult trainSnapshot(
+            String snapshotId,
+            Integer epochs,
+            Integer batchSize,
+            Double learningRate,
+            TrainingProgressListener progressListener,
+            LstmArchitectureType architectureType) {
         String trainingId = "shared_training_" + System.currentTimeMillis();
         long trainingStartedNanos = System.nanoTime();
         TrainingProgressListener listener = progressListener == null
                 ? NO_OP_PROGRESS_LISTENER : progressListener;
         try {
-            List<String> codes = stockCodes == null ? List.of() : stockCodes.stream()
-                    .filter(code -> code != null && !code.isBlank())
-                    .map(String::trim)
-                    .distinct()
-                    .toList();
-            if (codes.isEmpty()) {
-                return TrainingResult.builder().success(false).message("没有可训练股票").build();
+            if (snapshotId == null || snapshotId.isBlank()) {
+                throw new IllegalArgumentException("训练数据快照 ID 不能为空");
             }
-
             int trainEpochs = epochs != null ? epochs : config.getEpochs();
             int trainBatchSize = batchSize != null ? batchSize : config.getBatchSize();
             float trainLearningRate = learningRate != null
@@ -198,51 +103,26 @@ public class LstmTrainerService {
                     : (float) config.getLearningRate();
             validateArchitectureType(architectureType);
             validateTrainingConfiguration(trainEpochs, trainBatchSize, trainLearningRate);
-            int fetchDays = Math.max(days, config.getSequenceLength() + config.getValidationGap() + 2);
-
-            log.info("开始共享 LSTM 离线训练: stocks={}, days={}, epochs={}, batchSize={}, learningRate={}",
-                    codes.size(), fetchDays, trainEpochs, trainBatchSize, trainLearningRate);
+            TrainingDatasetSnapshotDocument snapshot = snapshotService.findById(snapshotId)
+                    .filter(item -> "READY".equals(item.getStatus()))
+                    .orElseThrow(() -> new IllegalStateException(
+                            "指定训练数据快照不存在或未就绪: " + snapshotId));
+            log.info("开始共享 LSTM 离线训练: snapshotId={}, stocks={}, days={}, epochs={}, batchSize={}, learningRate={}",
+                    snapshot.getId(), snapshot.getStockCount(), snapshot.getDays(),
+                    trainEpochs, trainBatchSize, trainLearningRate);
             reportProgress(listener, TrainingProgress.builder()
                     .stage("PREPARING_DATA")
-                    .message("正在加载股票历史行情")
-                    .progressPercent(5)
+                    .message("正在加载不可变训练数据快照")
+                    .progressPercent(35)
                     .currentEpoch(0)
                     .totalEpochs(trainEpochs)
                     .elapsedSeconds(elapsedSeconds(trainingStartedNanos))
+                    .snapshotId(snapshot.getId())
                     .build());
-
-            TrainingDatasetSnapshotDocument snapshot = snapshotId == null
-                    ? snapshotService.findReusableSnapshot(artifactService.getModelName(), codes, fetchDays).orElse(null)
-                    : snapshotService.findById(snapshotId)
-                    .orElseThrow(() -> new IllegalStateException("指定训练数据快照不存在: " + snapshotId));
-            LstmDataPreprocessor.ProcessedData processedData;
-            if (snapshot != null) {
-                reportProgress(listener, TrainingProgress.builder()
-                        .stage("PREPARING_DATA")
-                        .message("复用训练数据快照 " + snapshot.getId())
-                        .progressPercent(35)
-                        .currentEpoch(0)
-                        .totalEpochs(trainEpochs)
-                        .elapsedSeconds(elapsedSeconds(trainingStartedNanos))
-                        .snapshotId(snapshot.getId())
-                        .build());
-                processedData = snapshotService.loadSnapshot(snapshot);
-                log.info("共享 LSTM 复用训练数据快照: snapshotId={}, endDate={}, trainSamples={}, valSamples={}",
-                        snapshot.getId(), snapshot.getDatasetEndDate(), snapshot.getTrainSamples(), snapshot.getValSamples());
-            } else {
-                log.info("共享 LSTM 数据快照构建开始: stocks={}, days={}", codes.size(), fetchDays);
-                snapshot = snapshotService.buildSnapshot(artifactService.getModelName(), codes, fetchDays);
-                reportProgress(listener, TrainingProgress.builder()
-                        .stage("PREPARING_DATA")
-                        .message("训练数据快照构建完成 " + snapshot.getId())
-                        .progressPercent(35)
-                        .currentEpoch(0)
-                        .totalEpochs(trainEpochs)
-                        .elapsedSeconds(elapsedSeconds(trainingStartedNanos))
-                        .snapshotId(snapshot.getId())
-                        .build());
-                processedData = snapshotService.loadSnapshot(snapshot);
-            }
+            LstmDataPreprocessor.ProcessedData processedData = snapshotService.loadSnapshot(snapshot);
+            log.info("共享 LSTM 已加载训练数据快照: snapshotId={}, endDate={}, trainSamples={}, valSamples={}",
+                    snapshot.getId(), snapshot.getDatasetEndDate(),
+                    snapshot.getTrainSamples(), snapshot.getValSamples());
             if (processedData == null || processedData.getTrainSamples().isEmpty()) {
                 return TrainingResult.builder().success(false).message("共享训练数据不足").build();
             }
@@ -264,12 +144,13 @@ public class LstmTrainerService {
                     .trainedStocks(trainedStocks)
                     .trainSamples(trainSize)
                     .valSamples(valSize)
-                    .snapshotId(snapshot == null ? null : snapshot.getId())
+                    .snapshotId(snapshot.getId())
                     .build());
             int walkForwardFoldCount = processedData.getWalkForwardFolds() == null
                     ? 0 : processedData.getWalkForwardFolds().size();
             String dataQualityError = validateTrainingData(
-                    codes.size(), trainedStocks, trainSize, valSize, testSize, walkForwardFoldCount);
+                    snapshot.getStockCount(), trainedStocks,
+                    trainSize, valSize, testSize, walkForwardFoldCount);
             if (dataQualityError != null) {
                 return TrainingResult.builder()
                         .success(false)
@@ -1161,4 +1042,4 @@ public class LstmTrainerService {
         private Double strictIsolationMeanRankIc;
     }
 }
-// AI_GENERATE_END--------------------------------------------------
+// AI_GENERATE_END---------------------------------------------------

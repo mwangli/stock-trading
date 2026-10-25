@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.model.service;
 
 import com.stock.model.config.SentimentShadowConfig;
@@ -108,28 +108,6 @@ public class SentimentModelRouterService {
         });
     }
 
-    /**
-     * 人工确认激活已通过影子门槛的 Mengzi 候选。
-     *
-     * @param decisionReason 人工确认原因或变更单标识
-     * @return 激活后的路由状态
-     */
-    public synchronized SentimentModelRoutingStateDocument activateEligibleMengzi(String decisionReason) {
-        SentimentModelRoutingStateDocument state = currentState();
-        if (!"ELIGIBLE".equals(state.getStatus())) {
-            throw new IllegalStateException("Mengzi 尚未进入 ELIGIBLE，禁止激活");
-        }
-        mengziRuntimeService.loadModel();
-        state.setPreviousModel(state.getActiveModel());
-        state.setActiveModel("MENGZI");
-        state.setStatus("ACTIVE");
-        state.setActivatedAt(LocalDateTime.now());
-        state.setDecisionReason(decisionReason == null || decisionReason.isBlank()
-                ? "人工确认激活 Mengzi" : decisionReason.trim());
-        state.setUpdatedAt(LocalDateTime.now());
-        return routingStateRepository.save(state);
-    }
-
     private synchronized void rollbackToFinbert(String reason) {
         SentimentModelRoutingStateDocument state = currentState();
         state.setPreviousModel("MENGZI");
@@ -141,4 +119,4 @@ public class SentimentModelRouterService {
         mengziRuntimeService.unloadModel();
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.model.repository;
 
 import com.stock.model.entity.TrainingDatasetSnapshotDocument;
@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDateTime;
 
 /**
  * LSTM 训练数据快照元数据仓库。
@@ -45,5 +46,23 @@ public interface TrainingDatasetSnapshotRepository
      * @return 指定状态的快照列表
      */
     List<TrainingDatasetSnapshotDocument> findByStatus(String status);
+
+    /**
+     * 按创建时间倒序查询指定状态的快照。
+     *
+     * @param status 快照状态
+     * @return 快照列表
+     */
+    List<TrainingDatasetSnapshotDocument> findByStatusOrderByCreatedAtDesc(String status);
+
+    /**
+     * 查询保留期之前的指定状态快照。
+     *
+     * @param status 快照状态
+     * @param cutoff 保留期截止时间
+     * @return 待清理快照
+     */
+    List<TrainingDatasetSnapshotDocument> findByStatusAndCreatedAtBefore(
+            String status, LocalDateTime cutoff);
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

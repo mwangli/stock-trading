@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------
+// AI_GENERATE_START---------------
 package com.stock.schedule.service;
 
 import com.stock.schedule.entity.JobConfig;
@@ -18,6 +18,7 @@ import com.stock.schedule.quartz.StockListSyncQuartzJob;
 import com.stock.schedule.quartz.StockPriceHistoryBackfillQuartzJob;
 import com.stock.schedule.quartz.StockSelectionQuartzJob;
 import com.stock.schedule.quartz.TradeCalendarMonthlySyncQuartzJob;
+import com.stock.schedule.quartz.GlobalDataCleanupQuartzJob;
 import com.stock.schedule.repository.JobConfigRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -71,6 +72,7 @@ public class JobSchedulerService {
             Map.entry("lstmOfflineTraining", LstmOfflineTrainingQuartzJob.class),
             Map.entry("dailyModelPrediction", DailyModelPredictionQuartzJob.class),
             Map.entry("masterShadowPrediction", MasterShadowPredictionQuartzJob.class),
+            Map.entry("globalDataCleanup", GlobalDataCleanupQuartzJob.class),
             Map.entry("stockSelection", StockSelectionQuartzJob.class),
             Map.entry("realTradingAutoBuy", RealTradingAutoBuyQuartzJob.class),
             Map.entry("realTradingT1Exit", RealTradingT1ExitQuartzJob.class),
@@ -353,4 +355,4 @@ public class JobSchedulerService {
     public record QuartzRuntimeState(String triggerState, LocalDateTime nextFireTime, boolean registered) {
     }
 }
-// AI_GENERATE_END--------------
+// AI_GENERATE_END---------------

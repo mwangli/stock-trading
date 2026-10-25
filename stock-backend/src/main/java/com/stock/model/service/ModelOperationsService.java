@@ -1,22 +1,17 @@
-// AI_GENERATE_START-------------------
+// AI_GENERATE_START------------------------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.market.service.MarketDataQueryService;
 import com.stock.model.config.LstmDataQualityConfig;
 import com.stock.model.config.LstmTrainingConfig;
 import com.stock.model.dto.ModelOperationResponse;
 import com.stock.model.dto.ModelTrainingRequest;
-import com.stock.model.entity.LstmModelDocument;
-import com.stock.model.entity.ModelActivationDocument;
 import com.stock.model.entity.ModelTrainingRunDocument;
-import com.stock.model.entity.TrainingDatasetSnapshotDocument;
-import com.stock.model.repository.LstmModelRepository;
-import com.stock.model.repository.ModelActivationRepository;
 import com.stock.model.repository.ModelTrainingRunRepository;
 import com.stock.model.algorithm.LstmArchitectureType;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -29,7 +24,7 @@ import java.util.concurrent.Executor;
 
 /**
  * 模型运维服务。
- * 负责训练快照准备、异步训练、停止控制和候选模型质量门禁。
+ * 负责统一训练任务提交、并发控制、停止控制和定时训练串行衔接。
  *
  * @author mwangli
  * @since 2026-10-10
@@ -44,14 +39,10 @@ public class ModelOperationsService {
     private final LstmDataQualityConfig dataQualityConfig;
     private final MarketDataQueryService marketDataQueryService;
     private final LstmTrainerService lstmTrainerService;
-    private final TrainingDatasetSnapshotService snapshotService;
-    private final LstmModelRepository lstmModelRepository;
-    private final ModelActivationRepository activationRepository;
+    private final ModelTrainingPipelineService trainingPipelineService;
     private final ModelTrainingRunRepository trainingRunRepository;
     private final ObjectMapper objectMapper;
     private final ModelOperationAuditService auditService;
-    private final ModelPromotionPolicy promotionPolicy;
-    private final ModelActivationService activationService;
     private final TemporalModelEnsembleService temporalModelEnsembleService;
     private final Executor applicationTaskExecutor;
 
@@ -62,14 +53,10 @@ public class ModelOperationsService {
      * @param dataQualityConfig LSTM 数据质量配置
      * @param marketDataQueryService 市场数据查询服务
      * @param lstmTrainerService LSTM 训练服务
-     * @param snapshotService 训练数据快照服务
-     * @param lstmModelRepository LSTM 模型仓库
-     * @param activationRepository 模型激活指针仓库
+     * @param trainingPipelineService 模型训练统一流水线服务
      * @param trainingRunRepository 训练运行仓库
      * @param objectMapper JSON 序列化器
      * @param auditService 模型操作审计服务
-     * @param promotionPolicy 模型自动晋级策略
-     * @param activationService 基础模型自动激活服务
      * @param temporalModelEnsembleService MASTER 候选和融合服务
      * @param applicationTaskExecutor 应用异步执行器
      */
@@ -77,30 +64,49 @@ public class ModelOperationsService {
                                   LstmDataQualityConfig dataQualityConfig,
                                   MarketDataQueryService marketDataQueryService,
                                   LstmTrainerService lstmTrainerService,
-                                  TrainingDatasetSnapshotService snapshotService,
-                                  LstmModelRepository lstmModelRepository,
-                                  ModelActivationRepository activationRepository,
+                                  ModelTrainingPipelineService trainingPipelineService,
                                   ModelTrainingRunRepository trainingRunRepository,
                                   ObjectMapper objectMapper,
                                   ModelOperationAuditService auditService,
-                                  ModelPromotionPolicy promotionPolicy,
-                                  ModelActivationService activationService,
                                   TemporalModelEnsembleService temporalModelEnsembleService,
                                   @Qualifier("applicationTaskExecutor") Executor applicationTaskExecutor) {
         this.trainingConfig = trainingConfig;
         this.dataQualityConfig = dataQualityConfig;
         this.marketDataQueryService = marketDataQueryService;
         this.lstmTrainerService = lstmTrainerService;
-        this.snapshotService = snapshotService;
-        this.lstmModelRepository = lstmModelRepository;
-        this.activationRepository = activationRepository;
+        this.trainingPipelineService = trainingPipelineService;
         this.trainingRunRepository = trainingRunRepository;
         this.objectMapper = objectMapper;
         this.auditService = auditService;
-        this.promotionPolicy = promotionPolicy;
-        this.activationService = activationService;
         this.temporalModelEnsembleService = temporalModelEnsembleService;
         this.applicationTaskExecutor = applicationTaskExecutor;
+    }
+
+    /**
+     * 应用启动时收敛上次进程中断遗留的训练运行状态。
+     * 已完成的数据快照保持不变，后续训练将按数据契约直接复用。
+     */
+    @PostConstruct
+    public void recoverInterruptedTrainingRuns() {
+        List<ModelTrainingRunDocument> interrupted = trainingRunRepository
+                .findByModelNameAndStatusIn(lstmTrainerService.getModelName(), RUNNING_STATUSES)
+                .stream()
+                .filter(run -> run.getFinishedAt() == null)
+                .toList();
+        if (interrupted.isEmpty()) {
+            return;
+        }
+        LocalDateTime recoveredAt = LocalDateTime.now();
+        for (ModelTrainingRunDocument run : interrupted) {
+            run.setStatus("CANCELLED");
+            run.setProgressStage("CANCELLED");
+            run.setProgressMessage("应用重启，训练任务已中断；已完成的数据快照可继续复用");
+            run.setEstimatedRemainingSeconds(0L);
+            run.setFinishedAt(recoveredAt);
+            run.setLastProgressAt(recoveredAt);
+        }
+        trainingRunRepository.saveAll(interrupted);
+        log.warn("已恢复应用重启前遗留的训练运行记录: count={}", interrupted.size());
     }
 
     /**
@@ -115,38 +121,6 @@ public class ModelOperationsService {
                 ? new ModelTrainingRequest() : request;
         return submitTraining(safeRequest, "WEB_CONSOLE",
                 normalizeOperator(safeRequest.getOperatorName()), true);
-    }
-
-    /**
-     * 预先构建可复用的 LSTM 训练数据快照。
-     *
-     * @param request 快照构建参数
-     * @return 快照构建结果
-     */
-    public synchronized ModelOperationResponse prepareTrainingSnapshot(
-            ModelTrainingRequest request) {
-        ModelTrainingRequest safeRequest = request == null
-                ? new ModelTrainingRequest() : request;
-        int days = safeRequest.getDays() == null ? DEFAULT_TRAIN_DAYS : safeRequest.getDays();
-        validateRange("训练天数", days, 90, 2000);
-        List<String> stockCodes = marketDataQueryService.findTradableStockCodes().stream()
-                .filter(code -> dataQualityConfig.getSkipTrainingCodes() == null
-                        || !dataQualityConfig.getSkipTrainingCodes().contains(code))
-                .toList();
-        if (stockCodes.isEmpty()) {
-            throw new IllegalStateException("股票基础数据为空，无法构建训练数据快照");
-        }
-        log.info("构建训练数据快照不受训练开关和训练时间窗口限制: modelName={}, days={}, stocks={}",
-                lstmTrainerService.getModelName(), days, stockCodes.size());
-        TrainingDatasetSnapshotDocument snapshot = snapshotService.buildSnapshot(
-                lstmTrainerService.getModelName(), stockCodes, days);
-        auditService.record(lstmTrainerService.getModelName(), "SNAPSHOT_BUILT",
-                normalizeOperator(safeRequest.getOperatorName()), null, snapshot.getId(), true,
-                "训练数据快照构建完成");
-        return ModelOperationResponse.builder()
-                .operationType("TRAINING_DATASET_SNAPSHOT")
-                .operationId(snapshot.getId())
-                .message("训练数据快照已构建").build();
     }
 
     /**
@@ -259,115 +233,18 @@ public class ModelOperationsService {
     private void executeTraining(
             String runId, int days, int epochs, int batchSize, double learningRate,
             LstmArchitectureType architectureType) {
+        ModelTrainingPipelineService.PipelineExecutionResult result = trainingPipelineService.execute(
+                runId, days, epochs, batchSize, learningRate, architectureType);
         ModelTrainingRunDocument run = trainingRunRepository.findById(runId).orElse(null);
-        if (run == null) {
-            log.warn("模型训练运行记录不存在: runId={}", runId);
-            return;
-        }
-        run.setStatus("RUNNING");
-        run.setStartedAt(LocalDateTime.now());
-        run.setProgressStage("PREPARING_DATA");
-        run.setProgressMessage("正在复核训练数据与资源");
-        run.setProgressPercent(1);
-        run.setCurrentEpoch(0);
-        run.setTotalEpochs(epochs);
-        run.setElapsedSeconds(0L);
-        run.setLastProgressAt(LocalDateTime.now());
-        trainingRunRepository.save(run);
-        try {
-            TrainingCheckResult executionCheck = evaluateTrainingEnvironment();
-            if (!executionCheck.allowed()) {
-                run.setGateResultJson(writeJson(Map.of(
-                        "allowed", false,
-                        "phase", "EXECUTION",
-                        "message", executionCheck.message())));
-                throw new IllegalStateException(executionCheck.message());
-            }
-            List<String> stockCodes = marketDataQueryService.findTradableStockCodes().stream()
-                    .filter(code -> dataQualityConfig.getSkipTrainingCodes() == null
-                            || !dataQualityConfig.getSkipTrainingCodes().contains(code))
-                    .toList();
-            checkTrainingStopRequested(run.getId());
-            LstmTrainerService.TrainingResult result = lstmTrainerService.trainSharedModel(
-                    stockCodes, days, epochs, batchSize, learningRate,
-                    progress -> updateTrainingProgress(run, progress),
-                    run.getDatasetSnapshotId(), architectureType);
-            if (result != null) {
-                run.setTrainedStocks(result.getTrainedStocks());
-                run.setTrainSamples(result.getTrainSamples());
-                run.setValSamples(result.getValSamples());
-                run.setTrainLoss(result.getTrainLoss());
-                run.setValLoss(result.getValLoss());
-                run.setDatasetSnapshotId(result.getSnapshotId());
-            }
-            if (result == null || !result.isSuccess()) {
-                throw new IllegalStateException(result == null ? "训练无返回结果" : result.getMessage());
-            }
-            String candidateVersionId = parseModelVersionId(result.getModelPath());
-            run.setProgressStage("VALIDATING_MODEL");
-            run.setProgressMessage("正在校验候选模型完整性和质量");
-            run.setProgressPercent(98);
-            run.setEstimatedRemainingSeconds(0L);
-            run.setLastProgressAt(LocalDateTime.now());
-            trainingRunRepository.save(run);
-            LstmModelDocument candidate = lstmModelRepository.findById(candidateVersionId)
-                    .orElseThrow(() -> new IllegalStateException("候选模型版本不存在"));
-            run.setCandidateModelVersionId(candidateVersionId);
-            try {
-                lstmTrainerService.validateModelVersion(candidateVersionId);
-                double candidateScore = validateCandidateQuality(result);
-                handleCandidate(candidate, architectureType, candidateScore, run.getTriggeredBy());
-            } catch (RuntimeException exception) {
-                candidate.setStatus("RETIRED");
-                lstmModelRepository.save(candidate);
-                throw exception;
-            }
-
-            run.setStatus("SUCCEEDED");
-            run.setProgressStage("COMPLETED");
-            run.setProgressMessage("训练完成，候选模型已完成自动评估");
-            run.setProgressPercent(100);
-            run.setEstimatedRemainingSeconds(0L);
-            run.setLastProgressAt(LocalDateTime.now());
-            auditService.record(run.getModelName(), "TRAIN_COMPLETED", run.getTriggeredBy(),
-                    null, candidateVersionId, true, "候选模型训练和自动评估完成");
-        } catch (LstmTrainerService.TrainingCancelledException exception) {
-            log.info("受控模型训练已停止: runId={}, reason={}", runId, exception.getMessage());
-            run.setStatus("CANCELLED");
-            run.setProgressStage("CANCELLED");
-            run.setProgressMessage(exception.getMessage());
-            run.setEstimatedRemainingSeconds(0L);
-            run.setLastProgressAt(LocalDateTime.now());
-            auditService.record(run.getModelName(), "TRAIN_CANCELLED", run.getTriggeredBy(), null, null, true, exception.getMessage());
-        } catch (Exception exception) {
-            log.error("受控模型训练失败: runId={}", runId, exception);
-            run.setStatus("FAILED");
-            run.setErrorMessage(limitErrorMessage(exception.getMessage()));
-            run.setProgressStage("FAILED");
-            run.setProgressMessage("训练失败：" + run.getErrorMessage());
-            run.setEstimatedRemainingSeconds(0L);
-            run.setLastProgressAt(LocalDateTime.now());
-            auditService.record(run.getModelName(), "TRAIN_FAILED", run.getTriggeredBy(),
-                    null, null, false, run.getErrorMessage());
-        } finally {
-            run.setFinishedAt(LocalDateTime.now());
-            trainingRunRepository.save(run);
-        }
-        if ("SUCCEEDED".equals(run.getStatus())
+        if (run != null
+                && result.succeeded()
                 && "SCHEDULER".equals(run.getTriggerSource())
                 && architectureType != LstmArchitectureType.MASTER_TRANSFORMER
-                && isActiveCandidate(run.getCandidateModelVersionId())
+                && result.activeCandidate()
                 && temporalModelEnsembleService.shouldTrainMasterCandidate(
-                        run.getCandidateModelVersionId())) {
+                        result.candidateVersionId())) {
             submitScheduledMasterTraining(days, epochs, batchSize, learningRate);
         }
-    }
-
-    private boolean isActiveCandidate(String candidateVersionId) {
-        return candidateVersionId != null
-                && lstmModelRepository.findById(candidateVersionId)
-                .map(candidate -> "ACTIVE".equals(candidate.getStatus()))
-                .orElse(false);
     }
 
     private void submitScheduledMasterTraining(
@@ -381,45 +258,6 @@ public class ModelOperationsService {
         request.setOperatorName("job-scheduler");
         synchronized (this) {
             submitTraining(request, "SCHEDULER_CHAIN", "job-scheduler", false);
-        }
-    }
-
-    private void updateTrainingProgress(ModelTrainingRunDocument run,
-                                        LstmTrainerService.TrainingProgress progress) {
-        checkTrainingStopRequested(run.getId());
-        run.setProgressStage(progress.getStage());
-        run.setProgressMessage(progress.getMessage());
-        run.setProgressPercent(Math.max(0, Math.min(100, progress.getProgressPercent())));
-        run.setCurrentEpoch(progress.getCurrentEpoch());
-        run.setTotalEpochs(progress.getTotalEpochs());
-        run.setElapsedSeconds(progress.getElapsedSeconds());
-        run.setEstimatedRemainingSeconds(progress.getEstimatedRemainingSeconds());
-        run.setLastProgressAt(LocalDateTime.now());
-        if (progress.getTrainedStocks() != null) {
-            run.setTrainedStocks(progress.getTrainedStocks());
-        }
-        if (progress.getTrainSamples() != null) {
-            run.setTrainSamples(progress.getTrainSamples());
-        }
-        if (progress.getValSamples() != null) {
-            run.setValSamples(progress.getValSamples());
-        }
-        if (progress.getTrainLoss() != null) {
-            run.setTrainLoss(progress.getTrainLoss());
-        }
-        if (progress.getValLoss() != null) {
-            run.setValLoss(progress.getValLoss());
-        }
-        if (progress.getSnapshotId() != null && !progress.getSnapshotId().isBlank()) {
-            run.setDatasetSnapshotId(progress.getSnapshotId());
-        }
-        trainingRunRepository.save(run);
-    }
-
-    private void checkTrainingStopRequested(String runId) {
-        ModelTrainingRunDocument current = trainingRunRepository.findById(runId).orElse(null);
-        if (current != null && "STOPPING".equals(current.getStatus())) {
-            throw new LstmTrainerService.TrainingCancelledException("训练已按请求停止");
         }
     }
 
@@ -455,7 +293,8 @@ public class ModelOperationsService {
     }
 
     private boolean hasRunningTraining(String modelName) {
-        return trainingRunRepository.existsByModelNameAndStatusIn(modelName, RUNNING_STATUSES);
+        return trainingRunRepository.existsByModelNameAndStatusInAndFinishedAtIsNull(
+                modelName, RUNNING_STATUSES);
     }
 
     private void validateTrainingParameters(ModelTrainingRequest request) {
@@ -478,125 +317,9 @@ public class ModelOperationsService {
         }
     }
 
-    private double validateCandidateQuality(LstmTrainerService.TrainingResult result) {
-        if (result.getTrainedStocks() < dataQualityConfig.getMinimumTrainingStockCount()) {
-            throw new IllegalStateException("候选模型有效股票数量未达到质量阈值");
-        }
-        if (result.getTrainSamples() < dataQualityConfig.getMinimumTrainSamples()
-                || result.getValSamples() < dataQualityConfig.getMinimumValidationSamples()) {
-            throw new IllegalStateException("候选模型训练或验证样本数量未达到质量阈值");
-        }
-        if (!Double.isFinite(result.getTrainLoss()) || !Double.isFinite(result.getValLoss())) {
-            throw new IllegalStateException("候选模型损失不是有效数值");
-        }
-        if (result.getValLoss() > dataQualityConfig.getMaximumValidationLoss()) {
-            throw new IllegalStateException("候选模型验证损失超过阈值: "
-                    + result.getValLoss() + " > " + dataQualityConfig.getMaximumValidationLoss());
-        }
-        if (result.isOutputCollapsed()) {
-            throw new IllegalStateException("候选模型输出发生塌缩");
-        }
-        double walkForwardMeanRankIc = requireFiniteMetric(
-                "Walk-Forward 平均 Rank IC", result.getWalkForwardMeanRankIc());
-        double walkForwardTopDecileNetReturn = requireFiniteMetric(
-                "Walk-Forward Top 10% 成本后收益", result.getWalkForwardTopDecileNetReturn());
-        double maximumDrawdown = requireFiniteMetric(
-                "Walk-Forward 最大回撤", result.getMaximumDrawdown());
-        promotionPolicy.requirePerformanceHardGate(walkForwardTopDecileNetReturn, maximumDrawdown);
-        return promotionPolicy.qualityScore(
-                walkForwardMeanRankIc, walkForwardTopDecileNetReturn, maximumDrawdown);
-    }
-
-    private double requireFiniteMetric(String metricName, Double value) {
-        if (value == null || !Double.isFinite(value)) {
-            throw new IllegalStateException("候选模型" + metricName + "不是有效数值: " + value);
-        }
-        return value;
-    }
-
-    private void handleCandidate(
-            LstmModelDocument candidate, LstmArchitectureType architectureType,
-            double candidateScore, String operatorName) {
-        candidate.setStatus("CANDIDATE");
-        lstmModelRepository.save(candidate);
-        if (architectureType == LstmArchitectureType.MASTER_TRANSFORMER) {
-            temporalModelEnsembleService.registerMasterCandidate(candidate.getId());
-            auditService.record(candidate.getModelName(), "MASTER_CANDIDATE_REGISTERED", operatorName,
-                    null, candidate.getId(), true, "MASTER 候选已自动进入影子评估");
-            return;
-        }
-        Double activeScore = activeQualityScore(candidate);
-        if (promotionPolicy.shouldPromote(candidateScore, activeScore)) {
-            activationService.activateCandidate(candidate.getId(), operatorName);
-            return;
-        }
-        candidate.setStatus("RETIRED");
-        lstmModelRepository.save(candidate);
-        auditService.record(candidate.getModelName(), "AUTO_PROMOTE_SKIPPED", operatorName,
-                null, candidate.getId(), true,
-                "候选综合质量分未达到自动晋级要求: candidate=" + candidateScore
-                        + ", active=" + activeScore);
-    }
-
-    private Double activeQualityScore(LstmModelDocument candidate) {
-        ModelActivationDocument activation = activationRepository.findByModelName(candidate.getModelName())
-                .orElse(null);
-        if (activation == null || activation.getActiveModelVersionId() == null
-                || activation.getActiveModelVersionId().isBlank()) {
-            return null;
-        }
-        LstmModelDocument active = lstmModelRepository.findById(activation.getActiveModelVersionId()).orElse(null);
-        if (active == null || active.getMetricsJson() == null || active.getMetricsJson().isBlank()) {
-            return null;
-        }
-        try {
-            JsonNode metrics = objectMapper.readTree(active.getMetricsJson());
-            if (metrics == null || !metrics.isObject()) {
-                return null;
-            }
-            Double activeRankIc = comparableMetric(metrics, "walkForwardMeanRankIc");
-            Double activeNetReturn = comparableMetric(metrics, "walkForwardTopDecileNetReturn");
-            Double activeDrawdown = comparableMetric(metrics, "walkForwardMaximumDrawdown");
-            if (activeRankIc == null || activeNetReturn == null || activeDrawdown == null) {
-                return null;
-            }
-            return promotionPolicy.qualityScore(activeRankIc, activeNetReturn, activeDrawdown);
-        } catch (JsonProcessingException | RuntimeException exception) {
-            log.warn("当前生产模型指标无法解析，按无可比较生产评分处理: modelId={}", active.getId());
-            return null;
-        }
-    }
-
-    private Double comparableMetric(JsonNode metrics, String fieldName) {
-        if (!metrics.has(fieldName) || metrics.path(fieldName).isNull()) {
-            return null;
-        }
-        JsonNode valueNode = metrics.path(fieldName);
-        if (!valueNode.isNumber() || !Double.isFinite(valueNode.doubleValue())) {
-            throw new IllegalStateException("当前激活模型指标无效: " + fieldName);
-        }
-        return valueNode.doubleValue();
-    }
-
     private void validateRange(String name, Integer value, int min, int max) {
         if (value != null && (value < min || value > max)) {
             throw new IllegalArgumentException(name + "必须在 " + min + " 到 " + max + " 之间");
-        }
-    }
-
-    private int configInt(ModelTrainingRunDocument run, String key, int fallback) {
-        try {
-            return objectMapper.readTree(run.getEffectiveConfigJson()).path(key).asInt(fallback);
-        } catch (Exception exception) {
-            return fallback;
-        }
-    }
-
-    private double configDouble(ModelTrainingRunDocument run, String key, double fallback) {
-        try {
-            return objectMapper.readTree(run.getEffectiveConfigJson()).path(key).asDouble(fallback);
-        } catch (Exception exception) {
-            return fallback;
         }
     }
 
@@ -650,13 +373,6 @@ public class ModelOperationsService {
         }
     }
 
-    private String parseModelVersionId(String modelPath) {
-        if (modelPath == null || modelPath.isBlank()) {
-            throw new IllegalStateException("训练结果缺少候选模型版本 ID");
-        }
-        return modelPath;
-    }
-
     private long availableJvmMemory() {
         Runtime runtime = Runtime.getRuntime();
         return runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory());
@@ -670,15 +386,8 @@ public class ModelOperationsService {
         return normalized.substring(0, Math.min(64, normalized.length()));
     }
 
-    private String limitErrorMessage(String message) {
-        if (message == null || message.isBlank()) {
-            return null;
-        }
-        return message.substring(0, Math.min(1000, message.length()));
-    }
-
     private record TrainingCheckResult(boolean allowed, String message) {
     }
 
 }
-// AI_GENERATE_END-------------------
+// AI_GENERATE_END------------------------

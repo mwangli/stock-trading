@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.model.controller;
 
 import com.stock.platform.dto.ResponseDTO;
@@ -135,26 +135,6 @@ public class ModelOperationsController {
     }
 
     /**
-     * 预先构建 LSTM 训练数据快照，供后续训练复用。
-     *
-     * @param request 快照构建参数
-     * @return 快照构建结果
-     */
-    @PostMapping("/modelTrainingSnapshots/build")
-    public ResponseDTO<ModelOperationResponse> buildTrainingSnapshot(
-            @RequestBody(required = false) ModelTrainingRequest request) {
-        log.info("[ModelOperations] 构建 LSTM 训练数据快照: days={}, operator={}",
-                request == null ? null : request.getDays(),
-                request == null ? null : request.getOperatorName());
-        try {
-            return ResponseDTO.success(modelOperationsService.prepareTrainingSnapshot(request));
-        } catch (RuntimeException exception) {
-            log.warn("[ModelOperations] 构建训练数据快照失败: {}", exception.getMessage());
-            return ResponseDTO.error(exception.getMessage());
-        }
-    }
-
-    /**
      * 停止排队或运行中的模型训练任务。
      *
      * @param runId 训练运行 ID
@@ -174,4 +154,4 @@ public class ModelOperationsController {
     }
 
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------
