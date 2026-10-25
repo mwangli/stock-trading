@@ -14,7 +14,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[影子部署 `SentimentShadowDeploymentService.java`](pathname://../../../../stock-backend/src/main/java/com/stock/model/service/SentimentShadowDeploymentService.java) · [模型运行时 `MengziModelRuntimeService.java`](pathname://../../../../stock-backend/src/main/java/com/stock/model/service/MengziModelRuntimeService.java) · [模型路由 `SentimentModelRouterService.java`](pathname://../../../../stock-backend/src/main/java/com/stock/model/service/SentimentModelRouterService.java)
+**IDEA 源码入口**：[影子部署 `SentimentShadowDeploymentService.java`](../../../../stock-backend/src/main/java/com/stock/model/service/SentimentShadowDeploymentService.java) · [模型运行时 `MengziModelRuntimeService.java`](../../../../stock-backend/src/main/java/com/stock/model/service/MengziModelRuntimeService.java) · [模型路由 `SentimentModelRouterService.java`](../../../../stock-backend/src/main/java/com/stock/model/service/SentimentModelRouterService.java)
 
 # Mengzi 影子部署
 

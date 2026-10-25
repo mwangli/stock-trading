@@ -14,7 +14,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 配置入口**：[Docusaurus 配置](pathname://../../stock-frontend/documentation/docusaurus.config.ts) · [文档导航配置](pathname://../../stock-frontend/documentation/sidebars.ts) · [工程规范 `AGENTS.md`](pathname://../../AGENTS.md)
+**IDEA 配置入口**：[Docusaurus 配置](../../stock-frontend/documentation/docusaurus.config.ts) · [文档导航配置](../../stock-frontend/documentation/sidebars.ts) · [工程规范 `AGENTS.md`](../../AGENTS.md)
 
 # ADR-001：采用 Docusaurus 文档门户
 
@@ -24,7 +24,7 @@ source_paths:
 
 ## 决策
 
-在 `stock-frontend/documentation/` 中维护 Docusaurus 构建组件，在根 `documents/` 中维护 Markdown 正文。详细文档按系统、架构、领域、专题和实现层级统一管理，源码目录继续保留精简 README 和 Javadoc，形成双向入口。
+在 `stock-frontend/documentation/` 中维护 Docusaurus 构建组件，在根 `documents/` 中维护 Markdown 正文。详细文档按系统、架构、领域、专题和实现层级统一管理，仓库只保留根目录项目级 `README.md`，源码目录通过 Javadoc 和文档页面中的源码链接形成双向入口。
 
 ## 后果
 

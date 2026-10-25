@@ -1,7 +1,7 @@
-// AI_GENERATE_START----------------------------------------------
+// AI_GENERATE_START--------------------------------------------------
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Avatar, Badge, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
+import { Avatar, Badge, Button, Dropdown, Layout, Result, Spin, Tooltip, type MenuProps } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Reorder, useDragControls } from 'framer-motion';
 import {
@@ -44,6 +44,7 @@ const DEFAULT_MENU_ORDER = [
   '/jobs',
   '/logs',
 ];
+const MENU_ORDER_CACHE_PREFIX = 'stockTrading.menuOrder';
 
 interface UserMenuPreferenceResponse {
   menuOrder: string[];
@@ -87,6 +88,36 @@ const normalizeMenuOrder = (menuOrder: unknown) => {
   );
   const uniqueKeys = [...new Set(validKeys)];
   return [...uniqueKeys, ...DEFAULT_MENU_ORDER.filter((key) => !uniqueKeys.includes(key))];
+};
+
+const getMenuOrderCacheKey = (userId: number) => MENU_ORDER_CACHE_PREFIX + '.' + userId;
+
+const readCachedMenuOrder = (userId: number | undefined): string[] | null => {
+  if (userId === undefined) {
+    return null;
+  }
+  try {
+    const cachedValue = window.localStorage.getItem(getMenuOrderCacheKey(userId));
+    if (cachedValue === null) {
+      return null;
+    }
+    const parsedMenuOrder: unknown = JSON.parse(cachedValue);
+    if (!Array.isArray(parsedMenuOrder)) {
+      window.localStorage.removeItem(getMenuOrderCacheKey(userId));
+      return null;
+    }
+    return normalizeMenuOrder(parsedMenuOrder);
+  } catch {
+    window.localStorage.removeItem(getMenuOrderCacheKey(userId));
+    return null;
+  }
+};
+
+const cacheMenuOrder = (userId: number | undefined, menuOrder: string[]) => {
+  if (userId === undefined) {
+    return;
+  }
+  window.localStorage.setItem(getMenuOrderCacheKey(userId), JSON.stringify(menuOrder));
 };
 
 const DraggableSidebarItem: React.FC<DraggableSidebarItemProps> = ({
@@ -145,28 +176,33 @@ const DashboardLayout: React.FC = () => {
   const { mode, autoThemeEnabled, setAutoThemeEnabled, toggleMode } = useAppTheme();
   const { user, logout } = useAuth();
   const [pageHeader, setPageHeader] = useState<PageHeaderState | null>(null);
-  const [menuOrder, setMenuOrder] = useState<string[]>(DEFAULT_MENU_ORDER);
-  const [menuOrderLoaded, setMenuOrderLoaded] = useState(false);
+  const [menuOrder, setMenuOrder] = useState<string[] | null>(() => readCachedMenuOrder(user?.id));
+  const [menuOrderLoadFailed, setMenuOrderLoadFailed] = useState(false);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   useEffect(() => {
     let active = true;
-    setMenuOrderLoaded(false);
+    const cachedMenuOrder = readCachedMenuOrder(user?.id);
+    setMenuOrder(cachedMenuOrder);
+    setMenuOrderLoadFailed(false);
     void (request.get('/userPreferences/menuOrder') as unknown as Promise<ApiResponse<UserMenuPreferenceResponse>>)
       .then((response) => {
         if (!active) {
           return;
         }
-        setMenuOrder(normalizeMenuOrder(response.success ? response.data?.menuOrder : undefined));
+        if (!response.success) {
+          if (cachedMenuOrder === null) {
+            setMenuOrderLoadFailed(true);
+          }
+          return;
+        }
+        const resolvedMenuOrder = normalizeMenuOrder(response.data?.menuOrder);
+        cacheMenuOrder(user?.id, resolvedMenuOrder);
+        setMenuOrder(resolvedMenuOrder);
       })
       .catch(() => {
-        if (active) {
-          setMenuOrder(DEFAULT_MENU_ORDER);
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setMenuOrderLoaded(true);
+        if (active && cachedMenuOrder === null) {
+          setMenuOrderLoadFailed(true);
         }
       });
     return () => {
@@ -215,18 +251,20 @@ const DashboardLayout: React.FC = () => {
   const orderedMenuItems = useMemo(() => {
     const itemMap = new Map(menuItems.map((item) => [item.key, item]));
     return [
-      ...menuOrder.map((key) => itemMap.get(key)).filter((item): item is SidebarMenuItem => Boolean(item)),
-      ...menuItems.filter((item) => !menuOrder.includes(item.key)),
+      ...(menuOrder ?? []).map((key) => itemMap.get(key)).filter((item): item is SidebarMenuItem => Boolean(item)),
+      ...menuItems.filter((item) => !menuOrder?.includes(item.key)),
     ];
   }, [menuItems, menuOrder]);
 
   const reorderMenu = (nextOrder: string[]) => {
     const normalizedOrder = normalizeMenuOrder(nextOrder);
     setMenuOrder(normalizedOrder);
-    if (!menuOrderLoaded) {
-      return;
-    }
     void (request.put('/userPreferences/menuOrder', { menuOrder: normalizedOrder }) as unknown as Promise<ApiResponse<UserMenuPreferenceResponse>>)
+      .then((response) => {
+        if (response.success) {
+          cacheMenuOrder(user?.id, normalizeMenuOrder(response.data?.menuOrder));
+        }
+      })
       .catch(() => undefined);
   };
 
@@ -279,6 +317,23 @@ const DashboardLayout: React.FC = () => {
     '/adaptiveStrategy': t('layout.pageTitles.adaptiveStrategy'),
     '/jobs': t('layout.pageTitles.jobs'),
   };
+
+  if (menuOrder === null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--app-bg)]">
+        {menuOrderLoadFailed ? (
+          <Result
+            status="warning"
+            title="菜单偏好加载失败"
+            subTitle="请刷新页面重试，系统不会使用默认顺序覆盖已有偏好。"
+            extra={<Button onClick={() => window.location.reload()}>重新加载</Button>}
+          />
+        ) : (
+          <Spin size="large" />
+        )}
+      </div>
+    );
+  }
 
   return (
     <PageHeaderContext.Provider value={setPageHeader}>
@@ -401,4 +456,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END----------------------------------------------
+// AI_GENERATE_END--------------------------------------------------

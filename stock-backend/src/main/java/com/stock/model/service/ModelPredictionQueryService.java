@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.model.service;
 
 import com.stock.model.dto.PredictionAbilityResponse;
@@ -43,7 +43,8 @@ public class ModelPredictionQueryService {
         int safePageSize = Math.max(1, Math.min(100, pageSize));
         Sort predictionWindowSort = Sort.by(
                 Sort.Order.desc("targetTradeDate"),
-                Sort.Order.desc("baseTradeDate"));
+                Sort.Order.desc("baseTradeDate"),
+                Sort.Order.desc("id"));
         Page<ModelPredictionBatchDocument> page = batchRepository.findAll(PageRequest.of(
                 safeCurrent - 1, safePageSize, predictionWindowSort));
         return PredictionBatchPageResponse.builder()
@@ -196,4 +197,4 @@ public class ModelPredictionQueryService {
                 .tradingEligibilityReason(item.getTradingEligibilityReason()).build();
     }
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

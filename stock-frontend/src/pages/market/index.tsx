@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------------------
+// AI_GENERATE_START-----------------------------
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Descriptions, Drawer, Input, Select, Table } from 'antd';
@@ -164,15 +164,6 @@ const formatCompactAmount = (value?: number) => value == null
 const formatFullAmount = (value?: number) => value == null
   ? '-'
   : `¥${Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
-
-const isVisibleStock = (stock: StockInfo) => {
-  const name = stock.name?.trim().toUpperCase() ?? '';
-  return !name.includes('退')
-    && !name.includes('ST')
-    && !name.includes('PT')
-    && Number(stock.price) > 0
-    && Number(stock.totalMarketValue) > 0;
-};
 
 const Market: React.FC = () => {
   const { t } = useTranslation();
@@ -344,9 +335,8 @@ const Market: React.FC = () => {
       console.log('[fetchStocks] response:', res);
 
       if (res?.success === true && Array.isArray(res.data?.items)) {
-        const validData = res.data.items.filter(item => item.code && item.name && isVisibleStock(item));
-        const mappedData: WatchlistItem[] = validData.map((item, index) => ({
-          key: item.code || String(index),
+        const mappedData: WatchlistItem[] = res.data.items.map((item) => ({
+          key: item.code,
           symbol: item.code,
           name: item.name,
           price: item.price as number,
@@ -806,4 +796,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END----------------------------
+// AI_GENERATE_END-----------------------------

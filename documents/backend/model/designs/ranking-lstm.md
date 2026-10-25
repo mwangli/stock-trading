@@ -20,7 +20,7 @@ source_paths:
 尚未完成 Maven 编译、DJL 运行、训练、GridFS 写入和实际预测评估。
 :::
 
-**IDEA 源码入口**：[模型结构 `RankingLSTMModel.java`](pathname://../../../../stock-backend/src/main/java/com/stock/model/algorithm/RankingLSTMModel.java) · [训练编排 `LstmTrainerService.java`](pathname://../../../../stock-backend/src/main/java/com/stock/model/service/LstmTrainerService.java) · [训练数据 `RankingLstmTrainingDataService.java`](pathname://../../../../stock-backend/src/main/java/com/stock/model/service/RankingLstmTrainingDataService.java)
+**IDEA 源码入口**：[模型结构 `RankingLSTMModel.java`](../../../../stock-backend/src/main/java/com/stock/model/algorithm/RankingLSTMModel.java) · [训练编排 `LstmTrainerService.java`](../../../../stock-backend/src/main/java/com/stock/model/service/LstmTrainerService.java) · [训练数据 `RankingLstmTrainingDataService.java`](../../../../stock-backend/src/main/java/com/stock/model/service/RankingLstmTrainingDataService.java)
 
 ### 目标与边界
 

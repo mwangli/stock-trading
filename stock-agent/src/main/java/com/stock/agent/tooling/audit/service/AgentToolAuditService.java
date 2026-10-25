@@ -1,6 +1,7 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START-----------
 package com.stock.agent.tooling.audit.service;
 
+import com.alibaba.fastjson2.JSON;
 import com.stock.agent.tooling.audit.entity.AgentToolCallEntity;
 import com.stock.agent.tooling.audit.repository.AgentToolCallRepository;
 
@@ -10,6 +11,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
@@ -32,10 +35,11 @@ public class AgentToolAuditService {
      * @param context 调用上下文
      * @param status 执行状态
      * @param errorCode 错误码
+     * @param evidenceRefs 工具实际返回的来源引用
      * @param startedAt 开始时间
      */
     public void record(String toolName, ToolExecutionContext context, String status,
-                       String errorCode, LocalDateTime startedAt) {
+                       String errorCode, List<String> evidenceRefs, LocalDateTime startedAt) {
         if (!StringUtils.hasText(toolName)) {
             return;
         }
@@ -49,7 +53,7 @@ public class AgentToolAuditService {
                 .setErrorCode(errorCode)
                 .setParameterSummary(context == null ? null : limit("scope=" + context.getUserScope()
                         + ", sessionId=" + context.getSessionId() + ", taskId=" + context.getTaskId()))
-                .setResultSummary(null)
+                .setResultSummary(serializeEvidenceRefs(evidenceRefs))
                 .setStartedAt(startedAt)
                 .setFinishedAt(LocalDateTime.now()));
     }
@@ -74,9 +78,46 @@ public class AgentToolAuditService {
      * @return 工具审计证据编号
      */
     public List<String> successfulEvidenceRefs(String taskId) {
-        return repository.findByTaskIdAndStatusOrderByStartedAtAsc(taskId, "SUCCESS").stream()
-                .map(item -> "toolCall:" + item.getId())
-                .toList();
+        LinkedHashSet<String> references = new LinkedHashSet<>();
+        repository.findByTaskIdAndStatusOrderByStartedAtAsc(taskId, "SUCCESS").forEach(item -> {
+            references.add("toolCall:" + item.getId());
+            references.addAll(parseEvidenceRefs(item.getResultSummary()));
+        });
+        return List.copyOf(references);
+    }
+
+    private String serializeEvidenceRefs(List<String> evidenceRefs) {
+        List<String> sanitized = sanitizeEvidenceRefs(evidenceRefs);
+        return sanitized.isEmpty() ? null : limit(JSON.toJSONString(sanitized));
+    }
+
+    private List<String> parseEvidenceRefs(String value) {
+        if (!StringUtils.hasText(value)) {
+            return List.of();
+        }
+        try {
+            return sanitizeEvidenceRefs(JSON.parseArray(value, String.class));
+        } catch (RuntimeException exception) {
+            return List.of();
+        }
+    }
+
+    private List<String> sanitizeEvidenceRefs(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        List<String> sanitized = new ArrayList<>();
+        for (String value : values) {
+            if (!StringUtils.hasText(value)) {
+                continue;
+            }
+            String normalized = value.trim();
+            if (normalized.startsWith("documents/") || normalized.startsWith("https://")
+                    || normalized.startsWith("http://")) {
+                sanitized.add(limit(normalized));
+            }
+        }
+        return sanitized.stream().distinct().limit(5).toList();
     }
 
     private String limit(String value) {
@@ -86,4 +127,4 @@ public class AgentToolAuditService {
         return value.length() > 2000 ? value.substring(0, 2000) : value;
     }
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------

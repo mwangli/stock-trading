@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.agent.tooling.tool.read;
 
 import com.stock.agent.integration.client.DeepSeekWebSearchClient;
@@ -39,7 +39,9 @@ public class WebSearchTool {
             List<DeepSeekWebSearchClient.WebSearchItem> items = searchClient.search(request.query().trim());
             return new WebSearchResult(!items.isEmpty(), LocalDateTime.now(), items,
                     items.isEmpty() ? "搜索成功但未返回匹配结果" : null);
-        });
+        }, result -> result.items().stream()
+                .map(DeepSeekWebSearchClient.WebSearchItem::url)
+                .toList());
     }
 
     /** 网页搜索请求。 */
@@ -51,4 +53,4 @@ public class WebSearchTool {
                                   List<DeepSeekWebSearchClient.WebSearchItem> items, String message) {
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

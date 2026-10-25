@@ -8,7 +8,6 @@ status: SOURCE_IMPLEMENTED
 last_verified: 2026-10-25
 slug: /agent/shared/
 source_paths:
-  - stock-agent/src/main/java/com/stock/agent/shared/README.md
   - stock-agent/src/main/java/com/stock/agent/shared/config/AgentWebConfig.java
   - stock-agent/src/main/java/com/stock/agent/shared/auth/AgentAuthInterceptor.java
   - stock-agent/src/main/java/com/stock/agent/shared/error/AgentExceptionHandler.java
@@ -16,7 +15,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[Web 装配 `AgentWebConfig.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/shared/config/AgentWebConfig.java) · [用户鉴权 `AgentAuthInterceptor.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/shared/auth/AgentAuthInterceptor.java) · [异常边界 `AgentExceptionHandler.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/shared/error/AgentExceptionHandler.java)
+**IDEA 源码入口**：[Web 装配 `AgentWebConfig.java`](../../../stock-agent/src/main/java/com/stock/agent/shared/config/AgentWebConfig.java) · [用户鉴权 `AgentAuthInterceptor.java`](../../../stock-agent/src/main/java/com/stock/agent/shared/auth/AgentAuthInterceptor.java) · [异常边界 `AgentExceptionHandler.java`](../../../stock-agent/src/main/java/com/stock/agent/shared/error/AgentExceptionHandler.java)
 
 # shared 业务包
 
@@ -32,8 +31,7 @@ shared/
 │   └── ResponseDTO.java          # 统一 HTTP 响应
 ├── auth                           # Session、当前用户和内部令牌解析
 ├── config                         # Agent 通用配置与 Web 装配
-├── error                          # 基础异常和全局异常处理
-└── README.md
+└── error                          # 基础异常和全局异常处理
 ```
 
 ## 允许内容

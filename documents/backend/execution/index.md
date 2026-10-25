@@ -8,7 +8,6 @@ status: SOURCE_IMPLEMENTED
 last_verified: 2026-10-25
 slug: /backend/execution/
 source_paths:
-  - stock-backend/src/main/java/com/stock/execution/README.md
   - stock-backend/src/main/java/com/stock/execution/service/RealTradingService.java
   - stock-backend/src/main/java/com/stock/execution/service/TradeExecutor.java
   - stock-backend/src/main/java/com/stock/execution/validator/TradeRiskChecker.java
@@ -16,7 +15,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[真实交易编排 `RealTradingService.java`](pathname://../../../stock-backend/src/main/java/com/stock/execution/service/RealTradingService.java) · [委托执行 `TradeExecutor.java`](pathname://../../../stock-backend/src/main/java/com/stock/execution/service/TradeExecutor.java) · [交易风控 `TradeRiskChecker.java`](pathname://../../../stock-backend/src/main/java/com/stock/execution/validator/TradeRiskChecker.java)
+**IDEA 源码入口**：[真实交易编排 `RealTradingService.java`](../../../stock-backend/src/main/java/com/stock/execution/service/RealTradingService.java) · [委托执行 `TradeExecutor.java`](../../../stock-backend/src/main/java/com/stock/execution/service/TradeExecutor.java) · [交易风控 `TradeRiskChecker.java`](../../../stock-backend/src/main/java/com/stock/execution/validator/TradeRiskChecker.java)
 
 # Execution 交易执行模块
 

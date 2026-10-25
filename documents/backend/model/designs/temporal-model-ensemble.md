@@ -15,7 +15,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[融合编排 `TemporalModelEnsembleService.java`](pathname://../../../../stock-backend/src/main/java/com/stock/model/service/TemporalModelEnsembleService.java) · [统一输出计算 `TemporalModelOutputCalculator.java`](pathname://../../../../stock-backend/src/main/java/com/stock/model/algorithm/TemporalModelOutputCalculator.java) · [权重优化 `TemporalModelWeightOptimizer.java`](pathname://../../../../stock-backend/src/main/java/com/stock/model/algorithm/TemporalModelWeightOptimizer.java)
+**IDEA 源码入口**：[融合编排 `TemporalModelEnsembleService.java`](../../../../stock-backend/src/main/java/com/stock/model/service/TemporalModelEnsembleService.java) · [统一输出计算 `TemporalModelOutputCalculator.java`](../../../../stock-backend/src/main/java/com/stock/model/algorithm/TemporalModelOutputCalculator.java) · [权重优化 `TemporalModelWeightOptimizer.java`](../../../../stock-backend/src/main/java/com/stock/model/algorithm/TemporalModelWeightOptimizer.java)
 
 # Ranking LSTM 与 MASTER 连续权重融合
 

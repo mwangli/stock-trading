@@ -8,7 +8,6 @@ status: SOURCE_IMPLEMENTED
 last_verified: 2026-10-25
 slug: /agent/integration/
 source_paths:
-  - stock-agent/src/main/java/com/stock/agent/integration/README.md
   - stock-agent/src/main/java/com/stock/agent/integration/client/BackendInternalApiClient.java
   - stock-agent/src/main/java/com/stock/agent/integration/adapter/BackendToolFactAdapter.java
   - stock-agent/src/main/java/com/stock/agent/integration/adapter/BackendDecisionFactAdapter.java
@@ -16,7 +15,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[内部 API 客户端 `BackendInternalApiClient.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/integration/client/BackendInternalApiClient.java) · [工具事实适配 `BackendToolFactAdapter.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/integration/adapter/BackendToolFactAdapter.java) · [决策事实适配 `BackendDecisionFactAdapter.java`](pathname://../../../stock-agent/src/main/java/com/stock/agent/integration/adapter/BackendDecisionFactAdapter.java)
+**IDEA 源码入口**：[内部 API 客户端 `BackendInternalApiClient.java`](../../../stock-agent/src/main/java/com/stock/agent/integration/client/BackendInternalApiClient.java) · [工具事实适配 `BackendToolFactAdapter.java`](../../../stock-agent/src/main/java/com/stock/agent/integration/adapter/BackendToolFactAdapter.java) · [决策事实适配 `BackendDecisionFactAdapter.java`](../../../stock-agent/src/main/java/com/stock/agent/integration/adapter/BackendDecisionFactAdapter.java)
 
 # integration 业务包
 
@@ -47,7 +46,6 @@ integration/
 ├── config
 │   ├── BackendClientConfig.java
 │   └── BackendServiceProperties.java
-└── README.md
 ```
 
 ## 调用流程
@@ -152,4 +150,4 @@ ToolFactQueryPort / TradeDecisionFactPort
 3. 在 `BackendInternalApiClient` 增加协议调用和 Envelope 校验。
 4. 在对应 Adapter 完成 Wire DTO 到业务事实的显式转换。
 5. 定义禁用、鉴权、超时、空数据和解析失败行为。
-6. 更新本 README 的接口表和降级说明。
+6. 更新本页面的接口表和降级说明。

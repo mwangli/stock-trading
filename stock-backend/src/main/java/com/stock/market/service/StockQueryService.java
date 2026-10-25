@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START------------
 package com.stock.market.service;
 
 import com.stock.platform.config.CacheNames;
@@ -220,22 +220,27 @@ public class StockQueryService {
      */
     public MarketAdvancersDto getMarketAdvancers(int limit) {
         int safeLimit = Math.max(1, Math.min(limit, 20));
-        List<StockInfo> visibleStocks = stockInfoRepository.findAll().stream()
-                .filter(this::isMarketVisibleStock)
-                .filter(stock -> stock.getUpdateTime() != null)
-                .toList();
-        LocalDateTime latestUpdateTime = visibleStocks.stream()
-                .map(StockInfo::getUpdateTime)
-                .max(LocalDateTime::compareTo)
-                .orElse(null);
+        Query latestQuery = Query.query(marketVisibleCriteria().and("updateTime").ne(null))
+                .with(Sort.by(Sort.Direction.DESC, "updateTime"))
+                .limit(1);
+        latestQuery.fields().include("updateTime");
+        StockInfo latestStock = mongoTemplate.findOne(latestQuery, StockInfo.class);
+        LocalDateTime latestUpdateTime = latestStock == null ? null : latestStock.getUpdateTime();
         if (latestUpdateTime == null) {
             return MarketAdvancersDto.builder().items(List.of())
                     .availabilityReason("股票行情尚无有效更新时间").build();
         }
+
         LocalDate dataDate = latestUpdateTime.toLocalDate();
-        List<StockInfo> dailyStocks = visibleStocks.stream()
-                .filter(stock -> dataDate.equals(stock.getUpdateTime().toLocalDate()))
-                .toList();
+        Query dailyQuery = Query.query(marketVisibleCriteria()
+                .and("updateTime").gte(dataDate.atStartOfDay()).lt(dataDate.plusDays(1).atStartOfDay()));
+        dailyQuery.fields()
+                .include("code")
+                .include("name")
+                .include("price")
+                .include("changePercent")
+                .include("updateTime");
+        List<StockInfo> dailyStocks = mongoTemplate.find(dailyQuery, StockInfo.class);
         int upCount = (int) dailyStocks.stream().filter(stock -> positive(stock.getChangePercent())).count();
         int downCount = (int) dailyStocks.stream().filter(stock -> negative(stock.getChangePercent())).count();
         List<MarketAdvancerItemDto> items = dailyStocks.stream()
@@ -448,4 +453,4 @@ public class StockQueryService {
         return value != null && value.signum() < 0;
     }
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END------------

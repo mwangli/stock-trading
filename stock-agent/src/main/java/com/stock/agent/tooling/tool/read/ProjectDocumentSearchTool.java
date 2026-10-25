@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.agent.tooling.tool.read;
 
 import com.stock.agent.knowledge.document.service.ProjectDocumentSearchService;
@@ -39,7 +39,9 @@ public class ProjectDocumentSearchTool {
                     documentSearchService.search(request.query().trim(), 5);
             return new ProjectDocumentSearchResult(!items.isEmpty(), items,
                     items.isEmpty() ? "未找到匹配的项目文档章节" : null);
-        });
+        }, result -> result.items().stream()
+                .map(ProjectDocumentSearchService.DocumentSearchResult::path)
+                .toList());
     }
 
     /** 项目文档检索请求。 */
@@ -53,4 +55,4 @@ public class ProjectDocumentSearchTool {
             String message) {
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

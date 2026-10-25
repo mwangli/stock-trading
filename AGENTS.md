@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START----------------------------------------------------- -->
+<!-- AI_GENERATE_START------------------------------------------------------ -->
 # 交互语言要求
 
 1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
@@ -63,7 +63,7 @@ stock-trading4/
 └── docker-compose.yml
 ```
 
-**工程文档约定**：`documents/` 是系统架构、领域设计、专项方案、运行边界、运维手册和 ADR 的统一权威目录；`stock-frontend/documentation/` 只保存 Docusaurus 配置、主题、组件和校验脚本。根 README、Backend/Agent/Frontend 及源码包旁 README 只保留稳定职责和文档入口，不复制详细设计正文；类、方法、字段和局部业务不变量继续维护在 Javadoc 或 TypeScript 类型旁。文档统一使用 `PROPOSED`、`SOURCE_IMPLEMENTED`、`COMPILED`、`RUNTIME_VERIFIED`、`PRODUCTION_VERIFIED`、`SUPERSEDED` 表达证据等级。
+**工程文档约定**：`documents/` 是系统架构、领域设计、专项方案、运行边界、运维手册和 ADR 的统一权威目录；`stock-frontend/documentation/` 只保存 Docusaurus 配置、主题、组件和校验脚本。仓库只保留根目录项目级 `README.md` 作为统一入口，不在 Backend、Agent、Frontend、Docusaurus 构建目录或源码包旁维护模块级 README；类、方法、字段和局部业务不变量继续维护在 Javadoc 或 TypeScript 类型旁。模型制品自带且被清单校验的说明文件不属于工程模块 README。文档统一使用 `PROPOSED`、`SOURCE_IMPLEMENTED`、`COMPILED`、`RUNTIME_VERIFIED`、`PRODUCTION_VERIFIED`、`SUPERSEDED` 表达证据等级。
 
 **Node 版本约定**：前端和文档模块统一使用 Node.js `22.22.3`。根 `.nvmrc`、根 `pom.xml`、两个模块的 `package.json`/`.npmrc` 和前端 Docker 基础镜像必须保持一致；禁止为不同模块维护独立 Node 版本，升级时必须同批修改全部声明。
 
@@ -689,4 +689,4 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 **Agent 特别指令**:
 - 本项目无自动化测试，不要生成或要求补充测试用例；质量依赖代码审查与手工验证。
 - 项目只允许 `stock-backend`、`stock-agent`、`stock-frontend` 三个 Maven 业务模块；后端领域使用包和子目录组织，禁止恢复旧的内部 Maven 模块。
-<!-- AI_GENERATE_END----------------------------------------------------- -->
+<!-- AI_GENERATE_END------------------------------------------------------ -->

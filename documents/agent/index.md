@@ -8,7 +8,6 @@ status: SOURCE_IMPLEMENTED
 last_verified: 2026-10-25
 slug: /agent/
 source_paths:
-  - stock-agent/src/main/java/com/stock/agent/README.md
   - stock-agent/src/main/java/com/stock/agent/StockAgentApplication.java
   - stock-agent/src/main/java/com/stock/agent/interaction/service/AgentApplicationService.java
   - stock-agent/src/main/java/com/stock/agent/runtime/service/AgentRuntimeCoordinator.java
@@ -16,7 +15,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[应用入口 `StockAgentApplication.java`](pathname://../../stock-agent/src/main/java/com/stock/agent/StockAgentApplication.java) · [业务编排 `AgentApplicationService.java`](pathname://../../stock-agent/src/main/java/com/stock/agent/interaction/service/AgentApplicationService.java) · [运行协调 `AgentRuntimeCoordinator.java`](pathname://../../stock-agent/src/main/java/com/stock/agent/runtime/service/AgentRuntimeCoordinator.java)
+**IDEA 源码入口**：[应用入口 `StockAgentApplication.java`](../../stock-agent/src/main/java/com/stock/agent/StockAgentApplication.java) · [业务编排 `AgentApplicationService.java`](../../stock-agent/src/main/java/com/stock/agent/interaction/service/AgentApplicationService.java) · [运行协调 `AgentRuntimeCoordinator.java`](../../stock-agent/src/main/java/com/stock/agent/runtime/service/AgentRuntimeCoordinator.java)
 
 # stock-agent 模块说明
 
@@ -30,14 +29,14 @@ Agent 独立运行不等于复制 Backend 的权威数据和交易能力。行�
 
 | 业务包 | 主要职责 | 详细文档 |
 |---|---|---|
-| `interaction` | 会话、任务、聊天入口与应用编排 | [interaction/README.md](./interaction/index.md) |
-| `knowledge` | RAG、Embedding、长期 Memory | [knowledge/README.md](./knowledge/index.md) |
-| `decision` | 交易建议、冻结上下文与反事实评估 | [decision/README.md](./decision/index.md) |
-| `tradeplan` | 交易计划草案、校验与人工复核 | [tradeplan/README.md](./tradeplan/index.md) |
-| `runtime` | Provider、模型调用、预算、熔断与运行状态 | [runtime/README.md](./runtime/index.md) |
-| `tooling` | 工具白名单、事实模型、证据与审计 | [tooling/README.md](./tooling/index.md) |
-| `integration` | Backend HTTP 客户端、Wire DTO 与 Port 适配器 | [integration/README.md](./integration/index.md) |
-| `shared` | API、认证、公共配置和基础异常 | [shared/README.md](./shared/index.md) |
+| `interaction` | 会话、任务、聊天入口与应用编排 | [Interaction 文档](./interaction/index.md) |
+| `knowledge` | RAG、Embedding、长期 Memory | [Knowledge 文档](./knowledge/index.md) |
+| `decision` | 交易建议、冻结上下文与反事实评估 | [Decision 文档](./decision/index.md) |
+| `tradeplan` | 交易计划草案、校验与人工复核 | [Trade Plan 文档](./tradeplan/index.md) |
+| `runtime` | Provider、模型调用、预算、熔断与运行状态 | [Runtime 文档](./runtime/index.md) |
+| `tooling` | 工具白名单、事实模型、证据与审计 | [Tooling 文档](./tooling/index.md) |
+| `integration` | Backend HTTP 客户端、Wire DTO 与 Port 适配器 | [Integration 文档](./integration/index.md) |
+| `shared` | API、认证、公共配置和基础异常 | [Shared 文档](./shared/index.md) |
 
 ## 依赖原则
 
@@ -69,7 +68,7 @@ Backend 连接只在实际事实查询或显式状态检查时发生。事实源
 
 ## 文档维护规则
 
-`documents/agent` 是 Agent 架构和能力设计的权威目录。新增、移动、重构或删除能力时，应在同一变更中更新对应页面的源码索引和证据状态；源码旁 README 只保留职责与门户入口。
+`documents/agent` 是 Agent 架构和能力设计的权威目录。新增、移动、重构或删除能力时，应在同一变更中更新对应页面的源码索引和证据状态；Agent 模块和源码包不再维护 README。
 
 ## 端到端能力设计
 
@@ -132,4 +131,4 @@ HTTP Controller
 4. 新增工具必须加入能力白名单、`AgentToolCatalog`、审计和 Evidence 设计。
 5. 新增持久化对象必须明确用户范围、生命周期、集合名称和清理策略。
 6. 涉及交易的输出只能是建议或草案，真实写入继续由 Backend 完成复核。
-7. README 与代码同批更新，跨模块文档只链接，不复制完整设计。
+7. 统一文档与代码同批更新，跨模块文档只链接，不复制完整设计。

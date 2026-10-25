@@ -14,7 +14,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 工程入口**：[仓库说明 `README.md`](pathname://../README.md) · [文档站配置 `docusaurus.config.ts`](pathname://../stock-frontend/documentation/docusaurus.config.ts)
+**IDEA 工程入口**：[仓库说明 `README.md`](../README.md) · [文档站配置 `docusaurus.config.ts`](../stock-frontend/documentation/docusaurus.config.ts)
 
 # 工程文档工作台
 
@@ -50,5 +50,5 @@ flowchart LR
 
 - 从领域总览进入专题设计，再通过“关联源码”跳转到实现。
 - `SOURCE_IMPLEMENTED` 只表示源码存在，不代表编译、运行或生产验证通过。
-- 源码旁 README 是入口，详细设计以本门户正文为准。
+- 根目录 `README.md` 是项目入口，模块与源码包的详细设计以本门户正文为准。
 - 类、方法和字段的局部契约以 Javadoc 和类型定义为准。

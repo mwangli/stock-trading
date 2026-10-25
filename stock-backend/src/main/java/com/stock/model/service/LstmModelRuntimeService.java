@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START--------------
 package com.stock.model.service;
 
 import ai.djl.Model;
@@ -58,6 +58,7 @@ public class LstmModelRuntimeService {
     private final LstmModelArtifactService artifactService;
     private final RankingLstmTrainingDataService rankingTrainingDataService;
     private final RankingLstmDataPreprocessor rankingDataPreprocessor;
+    private final ModelRuntimeStatusService runtimeStatusService;
     private final ObjectMapper objectMapper;
     private volatile LstmModelArtifactService.ModelArtifact activeArtifact;
 
@@ -66,12 +67,27 @@ public class LstmModelRuntimeService {
      */
     public void preloadActiveModel() {
         activeArtifact = null;
+        LstmModelDocument activeModel = null;
         try {
-            LstmModelArtifactService.ModelArtifact artifact = artifactService.loadArtifact(null);
+            activeModel = artifactService.loadActiveDocument();
+        } catch (RuntimeException exception) {
+            log.warn("读取激活 LSTM 模型失败: {}", exception.getMessage());
+        }
+        String activeModelVersionId = activeModel == null ? null : activeModel.getId();
+        if (activeModelVersionId == null || activeModelVersionId.isBlank()) {
+            log.warn("当前没有可预热的激活 LSTM 模型");
+            return;
+        }
+        runtimeStatusService.record(activeModel, ModelRuntimeStatusService.STATUS_CHECKING, null);
+        try {
+            LstmModelArtifactService.ModelArtifact artifact = artifactService.loadArtifact(activeModelVersionId);
             validateLoadedArtifact(artifact);
             activeArtifact = artifact;
+            runtimeStatusService.record(activeModel, ModelRuntimeStatusService.STATUS_HEALTHY, null);
             log.info("当前激活共享 LSTM 模型预加载校验成功: modelId={}", artifact.modelId());
         } catch (RuntimeException exception) {
+            runtimeStatusService.record(activeModel, ModelRuntimeStatusService.STATUS_UNHEALTHY,
+                    exception.getMessage());
             log.warn("当前激活共享 LSTM 模型预加载失败，后续状态检查将显示不可用: {}", exception.getMessage());
         }
     }
@@ -638,4 +654,4 @@ public class LstmModelRuntimeService {
             List<LocalDate> baseTradeDates) {
     }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END--------------

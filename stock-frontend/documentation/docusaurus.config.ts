@@ -1,13 +1,16 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START ---------------
 import type {Config} from '@docusaurus/types';
 import type {Options, ThemeConfig} from '@docusaurus/preset-classic';
+import rewriteRepositoryLinks from './plugins/rewriteRepositoryLinks.cjs';
 
 // documentation/package.json intentionally omits "type" so generated modules support ESM and require().
+const siteUrl = process.env.DOCS_URL ?? 'http://localhost:5173';
+
 const config: Config = {
   title: 'Stock Trading 工程文档',
   tagline: '架构、领域设计、运行边界与源码索引',
   favicon: 'img/system-mark.svg',
-  url: process.env.DOCS_URL ?? 'http://localhost:5173',
+  url: siteUrl,
   baseUrl: process.env.DOCS_BASE_URL ?? '/docs/',
   organizationName: 'mwangli',
   projectName: 'stock-trading',
@@ -31,6 +34,7 @@ const config: Config = {
           path: '../../documents',
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
+          beforeDefaultRemarkPlugins: [rewriteRepositoryLinks],
           editUrl: 'https://github.com/mwangli/stock-trading/edit/master/documents/',
           showLastUpdateAuthor: true,
           showLastUpdateTime: true,
@@ -50,7 +54,10 @@ const config: Config = {
         hashed: true,
         language: ['en', 'zh'],
         indexDocs: true,
+        indexBlog: false,
         indexPages: false,
+        docsRouteBasePath: '/',
+        docsDir: '../../documents',
         highlightSearchTermsOnTargetPage: true,
       },
     ],
@@ -73,6 +80,12 @@ const config: Config = {
         {to: '/backend/model/', label: 'Model', position: 'left'},
         {to: '/agent/', label: 'Agent', position: 'left'},
         {
+          href: siteUrl,
+          label: '返回系统',
+          position: 'right',
+          target: '_self',
+        },
+        {
           href: 'https://github.com/mwangli/stock-trading',
           label: '源码',
           position: 'right',
@@ -90,4 +103,4 @@ const config: Config = {
 };
 
 export default config;
-// AI_GENERATE_END ------------
+// AI_GENERATE_END ---------------

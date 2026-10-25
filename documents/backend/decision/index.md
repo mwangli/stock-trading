@@ -8,7 +8,6 @@ status: SOURCE_IMPLEMENTED
 last_verified: 2026-10-25
 slug: /backend/decision/
 source_paths:
-  - stock-backend/src/main/java/com/stock/decision/README.md
   - stock-backend/src/main/java/com/stock/decision/algorithm/DecisionEngine.java
   - stock-backend/src/main/java/com/stock/decision/service/DailyBaselineBacktestService.java
   - stock-backend/src/main/java/com/stock/decision/config/StrategyConfigManager.java
@@ -16,7 +15,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[决策引擎 `DecisionEngine.java`](pathname://../../../stock-backend/src/main/java/com/stock/decision/algorithm/DecisionEngine.java) · [基线回测 `DailyBaselineBacktestService.java`](pathname://../../../stock-backend/src/main/java/com/stock/decision/service/DailyBaselineBacktestService.java) · [策略配置 `StrategyConfigManager.java`](pathname://../../../stock-backend/src/main/java/com/stock/decision/config/StrategyConfigManager.java)
+**IDEA 源码入口**：[决策引擎 `DecisionEngine.java`](../../../stock-backend/src/main/java/com/stock/decision/algorithm/DecisionEngine.java) · [基线回测 `DailyBaselineBacktestService.java`](../../../stock-backend/src/main/java/com/stock/decision/service/DailyBaselineBacktestService.java) · [策略配置 `StrategyConfigManager.java`](../../../stock-backend/src/main/java/com/stock/decision/config/StrategyConfigManager.java)
 
 # Decision 决策模块
 

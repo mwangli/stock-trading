@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ---
 package com.stock.agent.interaction.output;
 
 import com.stock.agent.runtime.api.AgentStructuredOutput;
@@ -29,4 +29,4 @@ public class ConversationResult implements AgentStructuredOutput {
     /** 数据时效、工具失败或事实不足说明，可为空。 */
     private String uncertainty;
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END ---

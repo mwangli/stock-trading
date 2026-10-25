@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.model.service;
 
 import com.stock.model.algorithm.LstmArchitectureType;
@@ -35,6 +35,7 @@ public class ModelActivationService {
     private final LstmModelRepository modelRepository;
     private final ModelActivationRepository activationRepository;
     private final ModelOperationAuditService auditService;
+    private final ModelRuntimeStatusService runtimeStatusService;
     private final Executor applicationTaskExecutor;
 
     /**
@@ -45,6 +46,7 @@ public class ModelActivationService {
      * @param modelRepository 模型版本仓库
      * @param activationRepository 模型激活指针仓库
      * @param auditService 模型操作审计服务
+     * @param runtimeStatusService 模型运行时状态持久化服务
      * @param applicationTaskExecutor 应用异步执行器
      */
     public ModelActivationService(LstmTrainerService trainerService,
@@ -52,12 +54,14 @@ public class ModelActivationService {
                                   LstmModelRepository modelRepository,
                                   ModelActivationRepository activationRepository,
                                   ModelOperationAuditService auditService,
+                                  ModelRuntimeStatusService runtimeStatusService,
                                   @Qualifier("applicationTaskExecutor") Executor applicationTaskExecutor) {
         this.trainerService = trainerService;
         this.modelRuntimeService = modelRuntimeService;
         this.modelRepository = modelRepository;
         this.activationRepository = activationRepository;
         this.auditService = auditService;
+        this.runtimeStatusService = runtimeStatusService;
         this.applicationTaskExecutor = applicationTaskExecutor;
     }
 
@@ -89,6 +93,7 @@ public class ModelActivationService {
         markVersionStatus(currentVersionId, "RETIRED");
         target.setStatus("ACTIVE");
         modelRepository.save(target);
+        runtimeStatusService.record(target, ModelRuntimeStatusService.STATUS_CHECKING, null);
         applicationTaskExecutor.execute(modelRuntimeService::preloadActiveModel);
         auditService.record(target.getModelName(), "AUTO_PROMOTE", operatorName, currentVersionId,
                 target.getId(), true, "候选版本已自动晋级");
@@ -129,4 +134,4 @@ public class ModelActivationService {
         }
     }
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START -------
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -85,13 +85,14 @@ for (const file of walk(docsRoot).filter((item) => /\.mdx?$/.test(item))) {
   }
   for (const match of content.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
     const rawTarget = match[1].trim();
+    if (rawTarget.startsWith('pathname://')) {
+      errors.push(`${relativeFile}: 禁止使用 pathname://，请改用标准相对文件链接 ${rawTarget}`);
+      continue;
+    }
     if (/^(?:https?:|mailto:|#|\/)/.test(rawTarget)) {
       continue;
     }
-    const normalizedTarget = rawTarget.startsWith('pathname://')
-      ? rawTarget.slice('pathname://'.length)
-      : rawTarget;
-    const target = normalizedTarget.split('#', 1)[0].split('?', 1)[0];
+    const target = rawTarget.split('#', 1)[0].split('?', 1)[0];
     if (!target || !path.extname(target)) {
       continue;
     }
@@ -111,4 +112,4 @@ if (errors.length > 0) {
 } else {
   console.log(`文档静态检查通过，共检查 ${documentIds.size} 篇文档。`);
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------
