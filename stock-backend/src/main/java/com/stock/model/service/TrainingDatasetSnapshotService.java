@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------
+// AI_GENERATE_START-----------------
 package com.stock.model.service;
 
 import com.stock.market.service.MarketDataQueryService;
@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
  * LSTM 训练数据快照服务。
@@ -98,12 +99,38 @@ public class TrainingDatasetSnapshotService {
      * @param days 历史交易日数量
      * @return 最新可复用快照，不存在时返回空
      */
-    public Optional<TrainingDatasetSnapshotDocument> findReusableSnapshot(
+    private Optional<TrainingDatasetSnapshotDocument> findReusableSnapshot(
             String modelName, List<String> stockCodes, int days) {
         return snapshotRepository.findFirstByModelNameAndContractHashAndStatusOrderByCreatedAtDesc(
                 modelName, contractHash(modelName, stockCodes, days), READY)
                 .filter(artifactStore::isReadable)
                 .filter(this::isFreshEnoughForNewTraining);
+    }
+
+    /**
+     * 为训练准备可复用的数据快照，并在快照元数据创建后通知调用方持久化关联关系。
+     *
+     * @param modelName 模型名称
+     * @param stockCodes 股票代码
+     * @param days 历史交易日数量
+     * @param snapshotObserver 快照状态观察器
+     * @return 快照准备结果
+     */
+    public synchronized SnapshotPreparationResult prepareSnapshot(
+            String modelName,
+            List<String> stockCodes,
+            int days,
+            Consumer<TrainingDatasetSnapshotDocument> snapshotObserver) {
+        Optional<TrainingDatasetSnapshotDocument> reusable = findReusableSnapshot(
+                modelName, stockCodes, days);
+        if (reusable.isPresent()) {
+            TrainingDatasetSnapshotDocument snapshot = reusable.get();
+            notifySnapshotObserver(snapshotObserver, snapshot);
+            return new SnapshotPreparationResult(snapshot, true);
+        }
+        TrainingDatasetSnapshotDocument snapshot = buildSnapshot(
+                modelName, stockCodes, days, snapshotObserver);
+        return new SnapshotPreparationResult(snapshot, false);
     }
 
     /**
@@ -149,15 +176,11 @@ public class TrainingDatasetSnapshotService {
         return snapshotRepository.findById(snapshotId);
     }
 
-    /**
-     * 从行情数据构建并保存一个新的分片训练数据快照。
-     *
-     * @param modelName 模型名称
-     * @param stockCodes 股票代码
-     * @param days 历史交易日数量
-     * @return 已保存的快照
-     */
-    public TrainingDatasetSnapshotDocument buildSnapshot(String modelName, List<String> stockCodes, int days) {
+    private TrainingDatasetSnapshotDocument buildSnapshot(
+            String modelName,
+            List<String> stockCodes,
+            int days,
+            Consumer<TrainingDatasetSnapshotDocument> snapshotObserver) {
         List<String> codes = stockCodes == null ? List.of() : stockCodes.stream().distinct().toList();
         TrainingDatasetSnapshotDocument document = createBuildingDocument(modelName, codes, days);
         Path snapshotDirectory = null;
@@ -168,6 +191,7 @@ public class TrainingDatasetSnapshotService {
                 document.getId(), modelName, codes.size(), days, config.getArchitectureType(),
                 config.getDataSource(), config.getDataSourceVersion());
         try {
+            notifySnapshotObserver(snapshotObserver, document);
             snapshotDirectory = artifactStore.prepareSnapshotDirectory(document.getId());
             RankingLstmTrainingDataService.RankingTrainingDataBundle bundle =
                     rankingTrainingDataService.loadTrainingData(codes, days);
@@ -184,6 +208,7 @@ public class TrainingDatasetSnapshotService {
                     .walkForwardFolds(processedData.getWalkForwardFolds())
                     .strictIsolationFolds(processedData.getStrictIsolationFolds())
                     .build();
+            stage = "WRITE_CHUNK";
             TrainingSnapshotArtifactStore.ChunkDescriptor descriptor = artifactStore.writeChunk(
                     snapshotDirectory, 1, chunk);
             stage = "WRITE_MANIFEST";
@@ -192,6 +217,12 @@ public class TrainingDatasetSnapshotService {
         } catch (Exception exception) {
             artifactStore.deleteArtifacts(document.getId());
             markFailed(document, stage, startedNanos, exception);
+            if (("LOAD_VERSIONED_MODEL_DATA".equals(stage)
+                    || "BUILD_CROSS_SECTIONAL_SAMPLES".equals(stage))
+                    && exception instanceof IllegalStateException) {
+                throw new ModelTrainingDataNotReadyException(
+                        "训练数据无法形成可用快照: " + rootCauseMessage(exception), exception);
+            }
             throw new IllegalStateException("构建 LSTM 训练数据快照失败", exception);
         }
     }
@@ -287,6 +318,14 @@ public class TrainingDatasetSnapshotService {
                 document.getId(), stage, elapsedSeconds(startedNanos), exception.getMessage(), exception);
     }
 
+    private void notifySnapshotObserver(
+            Consumer<TrainingDatasetSnapshotDocument> snapshotObserver,
+            TrainingDatasetSnapshotDocument snapshot) {
+        if (snapshotObserver != null) {
+            snapshotObserver.accept(snapshot);
+        }
+    }
+
     private long elapsedSeconds(long startedNanos) {
         return TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startedNanos);
     }
@@ -303,5 +342,25 @@ public class TrainingDatasetSnapshotService {
         return java.util.HexFormat.of().formatHex(messageDigest().digest(content));
     }
 
+    private String rootCauseMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current.getMessage() == null || current.getMessage().isBlank()
+                ? current.getClass().getSimpleName() : current.getMessage();
+    }
+
+    /**
+     * 训练数据快照准备结果。
+     *
+     * @param snapshot 已就绪快照
+     * @param reused 是否复用了已有快照
+     */
+    public record SnapshotPreparationResult(
+            TrainingDatasetSnapshotDocument snapshot,
+            boolean reused) {
+    }
+
 }
-// AI_GENERATE_END-------------
+// AI_GENERATE_END-----------------

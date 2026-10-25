@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------------
+// AI_GENERATE_START ----------------
 package com.stock.model.service;
 
 import com.stock.market.dto.MarketNewsEventDto;
@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Mengzi 影子推理、后验评估、人工候选和自动回滚编排服务。
+ * Mengzi 影子推理、后验评估、自动激活和自动回滚编排服务。
  *
  * @see <a href="http://localhost:5173/docs/backend/model/designs/mengzi-shadow-deployment">
  *     Mengzi 影子部署详细设计</a>
@@ -221,10 +221,15 @@ public class SentimentShadowDeploymentService {
         state.setCoverageRate(rate(candidateCovered, points.size()));
         state.setBaselineCoverageRate(rate(baselineCovered, points.size()));
         boolean rollbackRequired = shouldRollback(evaluated);
+        boolean automaticallyActivated = false;
         if (passesPromotionGate(state) && !rollbackRequired
                 && !"MENGZI".equals(state.getActiveModel())) {
-            state.setStatus("ELIGIBLE");
-            state.setDecisionReason("Mengzi 达到影子门槛，等待人工确认激活");
+            state.setPreviousModel(state.getActiveModel());
+            state.setActiveModel("MENGZI");
+            state.setStatus("ACTIVE");
+            state.setActivatedAt(LocalDateTime.now());
+            state.setDecisionReason("Mengzi 达到影子门槛，已自动激活");
+            automaticallyActivated = true;
         } else if ("MENGZI".equals(state.getActiveModel()) && rollbackRequired) {
             state.setPreviousModel("MENGZI");
             state.setActiveModel("FINBERT");
@@ -239,6 +244,9 @@ public class SentimentShadowDeploymentService {
         }
         state.setUpdatedAt(LocalDateTime.now());
         routingStateRepository.save(state);
+        if (automaticallyActivated) {
+            finbertInferenceService.unloadModel();
+        }
     }
 
     private SentimentShadowPredictionDocument toPrediction(
@@ -499,4 +507,4 @@ public class SentimentShadowDeploymentService {
             double actualReturn) {
     }
 }
-// AI_GENERATE_END --------------
+// AI_GENERATE_END ----------------

@@ -14,6 +14,7 @@ INSERT INTO job_config (
     ('lstmOfflineTraining', '0 0 19 ? * MON-FRI', 1, '收盘后检查并更新缺失或过期的共享 LSTM 模型', 'model', 'INCREMENTAL', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),
     ('dailyModelPrediction', '0 15 6 ? * MON-FRI', 1, '工作日开盘前使用最近完整日线生成全市场预测', 'model', 'INCREMENTAL', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),
     ('masterShadowPrediction', '0 20 6 ? * MON-FRI', 1, '对生产预测批次执行 MASTER 影子预测和动态权重评估', 'model', 'INCREMENTAL', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),
+    ('globalDataCleanup', '0 30 3 1 * ?', 1, '每月清理超过保留期且不再引用的业务历史数据', 'platform', 'CLEANUP', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),
     ('stockSelection', '0 30 6 ? * MON-FRI', 1, '使用已训练模型与近期新闻情感生成交易候选', 'strategy', 'FULL', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),
     ('realTradingAutoBuy', '0 35 9 ? * MON-FRI', 1, '执行真实模型候选买入检查', 'trading', 'INCREMENTAL', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),
     ('realTradingT1Exit', '0 50 14 ? * MON-FRI', 1, '检查真实持仓止损、止盈和 T+1 退出', 'trading', 'INCREMENTAL', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),

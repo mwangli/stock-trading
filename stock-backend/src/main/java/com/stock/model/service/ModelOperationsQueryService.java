@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START------------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -76,7 +76,8 @@ public class ModelOperationsQueryService {
                 .previousVersion(previousVersion)
                 .latestTrainingRun(toTrainingRunItem(
                         trainingRunRepository.findTopByModelNameOrderByCreatedAtDesc(modelName)))
-                .trainingRunning(trainingRunRepository.existsByModelNameAndStatusIn(modelName, RUNNING_STATUSES))
+                .trainingRunning(trainingRunRepository
+                        .existsByModelNameAndStatusInAndFinishedAtIsNull(modelName, RUNNING_STATUSES))
                 .activeModelHealthy(isActiveVersionHealthy(activeVersion, runtimeStatus))
                 .activeVersionScore(loadActiveVersionScore(activeVersion))
                 .temporalEnsemble(toTemporalEnsembleStatus())
@@ -334,4 +335,4 @@ public class ModelOperationsQueryService {
                 && ModelRuntimeStatusService.STATUS_HEALTHY.equals(runtimeStatus.getStatus());
     }
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END------------

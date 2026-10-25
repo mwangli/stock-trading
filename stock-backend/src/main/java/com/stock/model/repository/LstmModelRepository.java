@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.model.repository;
 
 import com.stock.model.entity.LstmModelDocument;
@@ -10,6 +10,8 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.List;
+import java.time.LocalDateTime;
 
 /**
  * LSTM 模型元数据 MySQL 仓库
@@ -96,5 +98,15 @@ public interface LstmModelRepository extends JpaRepository<LstmModelDocument, St
             """)
     Optional<LstmModelListProjection> findVersionSummaryById(@Param("id") String id);
 
+    /**
+     * 查询保留期之前已退役且仍持有参数文件的模型。
+     *
+     * @param status 模型状态
+     * @param cutoff 保留期截止时间
+     * @return 待清理模型版本
+     */
+    List<LstmModelDocument> findByStatusAndCreatedAtBeforeAndParameterFileIdIsNotNull(
+            String status, LocalDateTime cutoff);
+
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END------------

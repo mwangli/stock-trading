@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START -------
 package com.stock.model.entity;
 
 import lombok.Data;
@@ -8,7 +8,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import java.time.LocalDateTime;
 
 /**
- * FinBERT 与 Mengzi 的人工激活、指标和自动回滚状态。
+ * FinBERT 与 Mengzi 的自动路由、指标和回滚状态。
  *
  * @author mwangli
  * @since 2026-10-24
@@ -27,7 +27,7 @@ public class SentimentModelRoutingStateDocument {
     /** 上一生产模型，用于自动回滚。 */
     private String previousModel;
 
-    /** 路由状态：SHADOW、ELIGIBLE、ACTIVE、ROLLBACK 或 BLOCKED。 */
+    /** 路由状态：SHADOW、ACTIVE、ROLLBACK 或 BLOCKED。 */
     private String status;
 
     /** 已覆盖交易日数。 */
@@ -75,4 +75,4 @@ public class SentimentModelRoutingStateDocument {
     /** 最近更新时间。 */
     private LocalDateTime updatedAt;
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------
