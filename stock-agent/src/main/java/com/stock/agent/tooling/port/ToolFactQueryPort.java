@@ -1,16 +1,23 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.agent.tooling.port;
 
+import com.stock.agent.tooling.model.AdaptiveStrategyFact;
+import com.stock.agent.tooling.model.BrokerHistoryFact;
 import com.stock.agent.tooling.model.BrokerFacts;
 import com.stock.agent.tooling.model.BrokerStatusFact;
 import com.stock.agent.tooling.model.JobDiagnosticFact;
+import com.stock.agent.tooling.model.JobOperationsFact;
 import com.stock.agent.tooling.model.LatestPriceFact;
+import com.stock.agent.tooling.model.MarketDataQualityFact;
 import com.stock.agent.tooling.model.ModelOverviewFact;
+import com.stock.agent.tooling.model.ModelOperationsFact;
 import com.stock.agent.tooling.model.PerformanceOverviewFact;
 import com.stock.agent.tooling.model.MarketAdvancersFact;
 import com.stock.agent.tooling.model.PerformanceAnalysisFact;
 import com.stock.agent.tooling.model.PredictionCandidateFact;
+import com.stock.agent.tooling.model.StockDirectoryFact;
 import com.stock.agent.tooling.model.StrategyStateFact;
+import com.stock.agent.tooling.model.SystemRuntimeFact;
 import com.stock.agent.tooling.model.TradeExecutionGateFact;
 import com.stock.agent.tooling.model.TradingCalendarFact;
 
@@ -66,5 +73,26 @@ public interface ToolFactQueryPort {
 
     /** @return 交易执行门禁事实 */
     TradeExecutionGateFact tradeExecutionGate();
+
+    /** @param keyword 股票代码或名称关键字 @param limit 最大返回数量 @return 股票目录事实 */
+    StockDirectoryFact stockDirectory(String keyword, int limit);
+
+    /** @return 市场基础数据质量事实 */
+    MarketDataQualityFact marketDataQuality();
+
+    /** @param mode 查询模式 @param referenceId 关联批次标识 @param limit 最大返回数量 @return 模型运维事实 */
+    ModelOperationsFact modelOperations(String mode, String referenceId, int limit);
+
+    /** @param mode 查询模式 @param jobName 任务名称 @param limit 最大返回数量 @return 调度任务事实 */
+    JobOperationsFact jobOperations(String mode, String jobName, int limit);
+
+    /** @param type 历史类型 @param startDate 开始日期 @param endDate 结束日期 @param limit 最大返回数量 @return 券商历史事实 */
+    BrokerHistoryFact brokerHistory(String type, LocalDate startDate, LocalDate endDate, int limit);
+
+    /** @return 自适应策略生命周期事实 */
+    AdaptiveStrategyFact adaptiveStrategy();
+
+    /** @return 系统运行状态事实 */
+    SystemRuntimeFact systemRuntime();
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

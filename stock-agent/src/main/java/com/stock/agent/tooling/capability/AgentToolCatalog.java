@@ -1,11 +1,16 @@
-// AI_GENERATE_START-------------
+// AI_GENERATE_START--------------
 package com.stock.agent.tooling.capability;
 
+import com.stock.agent.tooling.tool.read.AdaptiveStrategyQueryTool;
 import com.stock.agent.tooling.tool.read.BrokerFactQueryTool;
+import com.stock.agent.tooling.tool.read.BrokerHistoryQueryTool;
 import com.stock.agent.tooling.tool.read.BrokerStatusQueryTool;
 import com.stock.agent.tooling.tool.read.JobDiagnosticTool;
+import com.stock.agent.tooling.tool.read.JobOperationsQueryTool;
 import com.stock.agent.tooling.tool.read.LatestPriceQueryTool;
+import com.stock.agent.tooling.tool.read.MarketDataQualityQueryTool;
 import com.stock.agent.tooling.tool.read.ModelOverviewQueryTool;
+import com.stock.agent.tooling.tool.read.ModelOperationsQueryTool;
 import com.stock.agent.tooling.tool.read.MarketAdvancersQueryTool;
 import com.stock.agent.tooling.tool.read.PerformanceOverviewQueryTool;
 import com.stock.agent.tooling.tool.read.PerformanceAnalysisQueryTool;
@@ -13,6 +18,8 @@ import com.stock.agent.tooling.tool.read.ProjectDocumentSearchTool;
 import com.stock.agent.tooling.tool.read.ProviderRuntimeQueryTool;
 import com.stock.agent.tooling.tool.read.PredictionCandidateQueryTool;
 import com.stock.agent.tooling.tool.read.StrategyStateQueryTool;
+import com.stock.agent.tooling.tool.read.StockDirectoryQueryTool;
+import com.stock.agent.tooling.tool.read.SystemRuntimeQueryTool;
 import com.stock.agent.tooling.tool.read.TradingCalendarQueryTool;
 import com.stock.agent.tooling.tool.read.TradeExecutionGateQueryTool;
 import com.stock.agent.tooling.tool.read.WebSearchTool;
@@ -46,6 +53,13 @@ public class AgentToolCatalog {
     private final WebSearchTool webSearchTool;
     private final MarketAdvancersQueryTool marketAdvancersQueryTool;
     private final PerformanceAnalysisQueryTool performanceAnalysisQueryTool;
+    private final StockDirectoryQueryTool stockDirectoryQueryTool;
+    private final MarketDataQualityQueryTool marketDataQualityQueryTool;
+    private final ModelOperationsQueryTool modelOperationsQueryTool;
+    private final JobOperationsQueryTool jobOperationsQueryTool;
+    private final BrokerHistoryQueryTool brokerHistoryQueryTool;
+    private final AdaptiveStrategyQueryTool adaptiveStrategyQueryTool;
+    private final SystemRuntimeQueryTool systemRuntimeQueryTool;
 
     /**
      * 创建首期只读工具目录。
@@ -65,6 +79,13 @@ public class AgentToolCatalog {
      * @param webSearchTool 公开网页搜索工具
      * @param marketAdvancersQueryTool 市场涨跌统计工具
      * @param performanceAnalysisQueryTool 月度收益分析工具
+     * @param stockDirectoryQueryTool 股票目录工具
+     * @param marketDataQualityQueryTool 市场数据质量工具
+     * @param modelOperationsQueryTool 模型运维工具
+     * @param jobOperationsQueryTool 调度任务运维工具
+     * @param brokerHistoryQueryTool 券商历史工具
+     * @param adaptiveStrategyQueryTool 自适应策略工具
+     * @param systemRuntimeQueryTool 系统运行状态工具
      */
     public AgentToolCatalog(TradingCalendarQueryTool tradingCalendarQueryTool,
                             LatestPriceQueryTool latestPriceQueryTool,
@@ -80,7 +101,14 @@ public class AgentToolCatalog {
                             ProjectDocumentSearchTool projectDocumentSearchTool,
                             WebSearchTool webSearchTool,
                             MarketAdvancersQueryTool marketAdvancersQueryTool,
-                            PerformanceAnalysisQueryTool performanceAnalysisQueryTool) {
+                            PerformanceAnalysisQueryTool performanceAnalysisQueryTool,
+                            StockDirectoryQueryTool stockDirectoryQueryTool,
+                            MarketDataQualityQueryTool marketDataQualityQueryTool,
+                            ModelOperationsQueryTool modelOperationsQueryTool,
+                            JobOperationsQueryTool jobOperationsQueryTool,
+                            BrokerHistoryQueryTool brokerHistoryQueryTool,
+                            AdaptiveStrategyQueryTool adaptiveStrategyQueryTool,
+                            SystemRuntimeQueryTool systemRuntimeQueryTool) {
         this.tradingCalendarQueryTool = tradingCalendarQueryTool;
         this.latestPriceQueryTool = latestPriceQueryTool;
         this.strategyStateQueryTool = strategyStateQueryTool;
@@ -96,6 +124,13 @@ public class AgentToolCatalog {
         this.webSearchTool = webSearchTool;
         this.marketAdvancersQueryTool = marketAdvancersQueryTool;
         this.performanceAnalysisQueryTool = performanceAnalysisQueryTool;
+        this.stockDirectoryQueryTool = stockDirectoryQueryTool;
+        this.marketDataQualityQueryTool = marketDataQualityQueryTool;
+        this.modelOperationsQueryTool = modelOperationsQueryTool;
+        this.jobOperationsQueryTool = jobOperationsQueryTool;
+        this.brokerHistoryQueryTool = brokerHistoryQueryTool;
+        this.adaptiveStrategyQueryTool = adaptiveStrategyQueryTool;
+        this.systemRuntimeQueryTool = systemRuntimeQueryTool;
     }
 
     /**
@@ -128,7 +163,14 @@ public class AgentToolCatalog {
             case JOB_DIAGNOSTIC -> jobDiagnosticTool;
             case PROVIDER_RUNTIME -> providerRuntimeQueryTool;
             case TRADE_EXECUTION_GATE -> tradeExecutionGateQueryTool;
+            case STOCK_DIRECTORY -> stockDirectoryQueryTool;
+            case MARKET_DATA_QUALITY -> marketDataQualityQueryTool;
+            case MODEL_OPERATIONS -> modelOperationsQueryTool;
+            case JOB_OPERATIONS -> jobOperationsQueryTool;
+            case BROKER_HISTORY -> brokerHistoryQueryTool;
+            case ADAPTIVE_STRATEGY -> adaptiveStrategyQueryTool;
+            case SYSTEM_RUNTIME -> systemRuntimeQueryTool;
         };
     }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END-------------

@@ -1,16 +1,23 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.platform.controller;
 
+import com.stock.platform.dto.InternalAdaptiveStrategyResponse;
+import com.stock.platform.dto.InternalBrokerHistoryResponse;
 import com.stock.platform.dto.InternalBrokerFactsResponse;
 import com.stock.platform.dto.InternalBrokerStatusResponse;
+import com.stock.platform.dto.InternalJobOperationsResponse;
 import com.stock.platform.dto.InternalJobDiagnosticResponse;
 import com.stock.platform.dto.InternalLatestPriceResponse;
+import com.stock.platform.dto.InternalMarketDataQualityResponse;
 import com.stock.platform.dto.InternalModelOverviewResponse;
+import com.stock.platform.dto.InternalModelOperationsResponse;
 import com.stock.platform.dto.InternalPerformanceOverviewResponse;
 import com.stock.platform.dto.InternalMarketAdvancersResponse;
 import com.stock.platform.dto.InternalPerformanceAnalysisResponse;
 import com.stock.platform.dto.InternalPredictionCandidateResponse;
 import com.stock.platform.dto.InternalStrategyStateResponse;
+import com.stock.platform.dto.InternalStockDirectoryResponse;
+import com.stock.platform.dto.InternalSystemRuntimeResponse;
 import com.stock.platform.dto.InternalTradeExecutionGateResponse;
 import com.stock.platform.dto.InternalTradingCalendarResponse;
 import com.stock.platform.dto.InternalTradeDecisionContextRequest;
@@ -214,6 +221,110 @@ public class InternalAgentFactsController {
     }
 
     /**
+     * 查询股票目录和当前行情摘要。
+     *
+     * @param keyword 股票代码或名称关键字，可为空
+     * @param limit 最大返回数量
+     * @return 股票目录事实
+     */
+    @GetMapping("/stockDirectory")
+    public ResponseDTO<InternalStockDirectoryResponse> stockDirectory(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "10") int limit) {
+        log.info("Agent 内部事实查询: stockDirectory, keyword={}, limit={}", keyword, limit);
+        return ResponseDTO.success(factsService.stockDirectory(keyword, limit));
+    }
+
+    /**
+     * 查询市场基础数据规模和完整性。
+     *
+     * @return 市场数据质量事实
+     */
+    @GetMapping("/marketDataQuality")
+    public ResponseDTO<InternalMarketDataQualityResponse> marketDataQuality() {
+        log.info("Agent 内部事实查询: marketDataQuality");
+        return ResponseDTO.success(factsService.marketDataQuality());
+    }
+
+    /**
+     * 查询模型版本、训练运行、预测批次或能力摘要。
+     *
+     * @param mode 查询模式
+     * @param referenceId 预测批次标识，可为空
+     * @param limit 最大返回数量
+     * @return 模型运维事实
+     */
+    @GetMapping("/modelOperations")
+    public ResponseDTO<InternalModelOperationsResponse> modelOperations(
+            @RequestParam String mode,
+            @RequestParam(required = false) String referenceId,
+            @RequestParam(defaultValue = "10") int limit) {
+        log.info("Agent 内部事实查询: modelOperations, mode={}, referenceId={}, limit={}",
+                mode, referenceId, limit);
+        return ResponseDTO.success(factsService.modelOperations(mode, referenceId, limit));
+    }
+
+    /**
+     * 查询固定任务清单或执行记录。
+     *
+     * @param mode 查询模式
+     * @param jobName 任务名称，可为空
+     * @param limit 最大返回数量
+     * @return 调度任务事实
+     */
+    @GetMapping("/jobOperations")
+    public ResponseDTO<InternalJobOperationsResponse> jobOperations(
+            @RequestParam String mode,
+            @RequestParam(required = false) String jobName,
+            @RequestParam(defaultValue = "10") int limit) {
+        log.info("Agent 内部事实查询: jobOperations, mode={}, jobName={}, limit={}",
+                mode, jobName, limit);
+        return ResponseDTO.success(factsService.jobOperations(mode, jobName, limit));
+    }
+
+    /**
+     * 查询最多 31 天的脱敏历史委托或成交。
+     *
+     * @param type 查询类型
+     * @param startDate 开始日期
+     * @param endDate 结束日期
+     * @param limit 最大返回数量
+     * @return 券商历史事实
+     */
+    @GetMapping("/brokerHistory")
+    public ResponseDTO<InternalBrokerHistoryResponse> brokerHistory(
+            @RequestParam String type,
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate,
+            @RequestParam(defaultValue = "10") int limit) {
+        log.info("Agent 内部事实查询: brokerHistory, type={}, startDate={}, endDate={}, limit={}",
+                type, startDate, endDate, limit);
+        return ResponseDTO.success(factsService.brokerHistory(type, startDate, endDate, limit));
+    }
+
+    /**
+     * 查询自适应策略生命周期和演化事实。
+     *
+     * @return 自适应策略事实
+     */
+    @GetMapping("/adaptiveStrategy")
+    public ResponseDTO<InternalAdaptiveStrategyResponse> adaptiveStrategy() {
+        log.info("Agent 内部事实查询: adaptiveStrategy");
+        return ResponseDTO.success(factsService.adaptiveStrategy());
+    }
+
+    /**
+     * 查询 Backend 健康和只读运行控制状态。
+     *
+     * @return 系统运行事实
+     */
+    @GetMapping("/systemRuntime")
+    public ResponseDTO<InternalSystemRuntimeResponse> systemRuntime() {
+        log.info("Agent 内部事实查询: systemRuntime");
+        return ResponseDTO.success(factsService.systemRuntime());
+    }
+
+    /**
      * 在 Backend 权威事实边界内构建决策上下文。
      *
      * @param request 上下文构建参数
@@ -242,4 +353,4 @@ public class InternalAgentFactsController {
         return ResponseDTO.success(evaluationFactsService.query(request.items()));
     }
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

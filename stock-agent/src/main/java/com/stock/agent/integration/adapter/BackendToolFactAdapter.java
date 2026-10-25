@@ -1,15 +1,20 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.agent.integration.adapter;
 
 import com.stock.agent.integration.client.BackendInternalApiClient;
 import com.stock.agent.integration.dto.BackendPredictionCandidateResponse;
 import com.stock.agent.runtime.api.FactSourceStatus;
 import com.stock.agent.runtime.api.FactSourceStatusPort;
+import com.stock.agent.tooling.model.AdaptiveStrategyFact;
+import com.stock.agent.tooling.model.BrokerHistoryFact;
 import com.stock.agent.tooling.model.BrokerFacts;
 import com.stock.agent.tooling.model.BrokerStatusFact;
 import com.stock.agent.tooling.model.JobDiagnosticFact;
+import com.stock.agent.tooling.model.JobOperationsFact;
 import com.stock.agent.tooling.model.LatestPriceFact;
+import com.stock.agent.tooling.model.MarketDataQualityFact;
 import com.stock.agent.tooling.model.ModelOverviewFact;
+import com.stock.agent.tooling.model.ModelOperationsFact;
 import com.stock.agent.tooling.model.PerformanceOverviewFact;
 import com.stock.agent.tooling.model.MarketAdvancerItemFact;
 import com.stock.agent.tooling.model.MarketAdvancersFact;
@@ -17,7 +22,9 @@ import com.stock.agent.tooling.model.PerformanceAnalysisFact;
 import com.stock.agent.tooling.model.PerformanceAnalysisItemFact;
 import com.stock.agent.tooling.model.PredictionCandidateFact;
 import com.stock.agent.tooling.model.PredictionCandidateItemFact;
+import com.stock.agent.tooling.model.StockDirectoryFact;
 import com.stock.agent.tooling.model.StrategyStateFact;
+import com.stock.agent.tooling.model.SystemRuntimeFact;
 import com.stock.agent.tooling.model.TradeExecutionGateFact;
 import com.stock.agent.tooling.model.TradingCalendarFact;
 import com.stock.agent.tooling.port.ToolFactQueryPort;
@@ -162,6 +169,64 @@ public class BackendToolFactAdapter implements ToolFactQueryPort, FactSourceStat
                 wire.executableCandidateCount(), wire.brokerAuthenticated(), wire.realWriteEnabled(),
                 wire.status(), wire.blockedReasons());
     }
+
+    /** {@inheritDoc} */
+    @Override
+    public StockDirectoryFact stockDirectory(String keyword, int limit) {
+        var wire = client.stockDirectory(keyword, limit);
+        return new StockDirectoryFact(wire.keyword(), wire.total(), wire.items(),
+                wire.asOf(), wire.availabilityReason());
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public MarketDataQualityFact marketDataQuality() {
+        var wire = client.marketDataQuality();
+        return new MarketDataQualityFact(wire.totalRecords(), wire.marketDistribution(),
+                wire.completeness(), wire.missingFields(), wire.valid(), wire.dataQuality(), wire.asOf());
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public ModelOperationsFact modelOperations(String mode, String referenceId, int limit) {
+        var wire = client.modelOperations(mode, referenceId, limit);
+        return new ModelOperationsFact(wire.mode(), wire.total(), wire.items(), wire.summary(), wire.asOf());
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public JobOperationsFact jobOperations(String mode, String jobName, int limit) {
+        var wire = client.jobOperations(mode, jobName, limit);
+        return new JobOperationsFact(wire.mode(), wire.total(), wire.items(), wire.summary(), wire.asOf());
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public BrokerHistoryFact brokerHistory(String type, LocalDate startDate, LocalDate endDate, int limit) {
+        var wire = client.brokerHistory(type, startDate, endDate, limit);
+        return new BrokerHistoryFact(wire.type(), wire.startDate(), wire.endDate(),
+                wire.total(), wire.items(), wire.asOf());
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public AdaptiveStrategyFact adaptiveStrategy() {
+        var wire = client.adaptiveStrategy();
+        return new AdaptiveStrategyFact(wire.lifecycleStage(), wire.lifecycleDescription(),
+                wire.strategyVersion(), wire.currentMode(), wire.strategyEnabled(), wire.targetTradeDate(),
+                wire.lastEvolutionAt(), wire.automaticTradingPaused(), wire.healthItems(), wire.versions(),
+                wire.evolutionEvents(), wire.anomalies(), wire.asOf());
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public SystemRuntimeFact systemRuntime() {
+        var wire = client.systemRuntime();
+        return new SystemRuntimeFact(wire.backendStatus(), wire.nodeId(), wire.schedulerEnabled(),
+                wire.startupDataSyncEnabled(), wire.automaticTradingPaused(), wire.emergencyStopReason(),
+                wire.emergencyStoppedAt(), wire.emergencyStopResult(), wire.updatedAt(), wire.asOf());
+    }
+
     /** {@inheritDoc} */
     @Override public FactSourceStatus status() { return client.status(); }
 
@@ -181,4 +246,4 @@ public class BackendToolFactAdapter implements ToolFactQueryPort, FactSourceStat
                 item.returnRate(), item.sellTime());
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----
