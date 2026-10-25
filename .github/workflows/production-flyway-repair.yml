@@ -1,0 +1,62 @@
+name: Production Flyway Repair
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-production
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Repair production Flyway V2
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Checkout repair script
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/repair-production-flyway-v2.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout v5.1.1 migration
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: v5.1.1
+          path: repair-source
+          sparse-checkout: stock-backend/src/main/resources/db/migration/V2__dml.sql
+          sparse-checkout-cone-mode: false
+
+      - name: Upload repair files
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          source: .github/scripts/repair-production-flyway-v2.sh,repair-source/stock-backend/src/main/resources/db/migration/V2__dml.sql
+          target: ${{ vars.SERVER_DEPLOY_DIR }}
+          overwrite: true
+
+      - name: Repair migration history and restart backend
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          envs: DEPLOY_DIR
+          command_timeout: 10m
+          script: |
+            bash "$DEPLOY_DIR/.github/scripts/repair-production-flyway-v2.sh" \
+              "$DEPLOY_DIR/repair-source/stock-backend/src/main/resources/db/migration/V2__dml.sql"
