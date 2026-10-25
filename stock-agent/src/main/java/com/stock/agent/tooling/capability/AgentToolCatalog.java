@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.agent.tooling.capability;
 
 import com.stock.agent.tooling.tool.read.BrokerStatusQueryTool;
@@ -10,6 +10,7 @@ import com.stock.agent.tooling.tool.read.ProjectDocumentSearchTool;
 import com.stock.agent.tooling.tool.read.PredictionCandidateQueryTool;
 import com.stock.agent.tooling.tool.read.StrategyStateQueryTool;
 import com.stock.agent.tooling.tool.read.TradingCalendarQueryTool;
+import com.stock.agent.tooling.tool.read.WebSearchTool;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -34,6 +35,7 @@ public class AgentToolCatalog {
     private final BrokerStatusQueryTool brokerStatusQueryTool;
     private final JobDiagnosticTool jobDiagnosticTool;
     private final ProjectDocumentSearchTool projectDocumentSearchTool;
+    private final WebSearchTool webSearchTool;
 
     /**
      * 创建首期只读工具目录。
@@ -55,7 +57,8 @@ public class AgentToolCatalog {
                             PerformanceOverviewQueryTool performanceOverviewQueryTool,
                             BrokerStatusQueryTool brokerStatusQueryTool,
                             JobDiagnosticTool jobDiagnosticTool,
-                            ProjectDocumentSearchTool projectDocumentSearchTool) {
+                            ProjectDocumentSearchTool projectDocumentSearchTool,
+                            WebSearchTool webSearchTool) {
         this.tradingCalendarQueryTool = tradingCalendarQueryTool;
         this.latestPriceQueryTool = latestPriceQueryTool;
         this.strategyStateQueryTool = strategyStateQueryTool;
@@ -65,6 +68,7 @@ public class AgentToolCatalog {
         this.brokerStatusQueryTool = brokerStatusQueryTool;
         this.jobDiagnosticTool = jobDiagnosticTool;
         this.projectDocumentSearchTool = projectDocumentSearchTool;
+        this.webSearchTool = webSearchTool;
     }
 
     /**
@@ -83,6 +87,7 @@ public class AgentToolCatalog {
     private Object resolve(AgentToolName toolName) {
         return switch (toolName) {
             case PROJECT_DOCUMENT_SEARCH -> projectDocumentSearchTool;
+            case WEB_SEARCH -> webSearchTool;
             case TRADING_CALENDAR -> tradingCalendarQueryTool;
             case LATEST_PRICE -> latestPriceQueryTool;
             case STRATEGY_STATE -> strategyStateQueryTool;
@@ -94,4 +99,4 @@ public class AgentToolCatalog {
         };
     }
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END---------

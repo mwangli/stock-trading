@@ -89,6 +89,13 @@ agent:
   chat-memory-max-messages: 20
   tool-timeout-ms: 5000
   audit-enabled: true
+  web-search:
+    enabled: true
+    endpoint: https://api.deepseek.com/v1/tools/search
+    timeout-ms: 10000
+    max-results: 5
+    max-query-chars: 300
+    max-response-chars: 100000
   vector-store: mongodb
   embedding:
     enabled: true
