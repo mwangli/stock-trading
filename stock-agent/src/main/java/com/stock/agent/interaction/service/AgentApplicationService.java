@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------------------------------------------
+// AI_GENERATE_START----------------------------------------------------
 package com.stock.agent.interaction.service;
 
 import com.stock.agent.interaction.model.AgentTaskType;
@@ -26,12 +26,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
-import java.time.YearMonth;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Agent 研究、诊断和报告任务编排服务。
@@ -45,9 +42,6 @@ import java.util.regex.Pattern;
 @Service
 @RequiredArgsConstructor
 public class AgentApplicationService {
-
-    private static final Pattern YEAR_MONTH_PATTERN = Pattern.compile(
-            "(?<!\\d)(\\d{4})(?:-|/|年)(0?[1-9]|1[0-2])(?:月)?(?!\\d)");
 
     private final AgentRuntimeCoordinator runtimeService;
     private final AgentProperties properties;
@@ -76,19 +70,17 @@ public class AgentApplicationService {
                     + "\n策略版本=" + (request == null ? "" : request.getStrategyVersion())
                     + "\n目标交易日=" + (request == null ? "" : request.getTargetTradeDate());
             String systemPrompt = "你是股票交易系统的通用中文 Agent。可以回答普通问题，也可以在服务端授权的只读工具集合内按需查询。"
+                    + "服务端当前日期为" + LocalDate.now() + "，相对日期必须按该日期解释。"
                     + "项目设计问题必须先查询项目文档；实时事实、行情和账户统计必须调用对应工具，禁止凭空补造。"
                     + "天气问题未提供城市时直接追问城市，不得按 IP 或默认地点猜测。"
-                    + requiredToolInstruction(allowedTools)
+                    + toolUsageInstruction()
                     + "工具返回的数据时间不是今天时，必须明确称为最近可用数据。"
                     + "不得承诺收益，不得生成可直接执行的券商订单；Java 风控和交易执行始终具有最终权威。"
-                    + "只返回合法 JSON，不要使用 Markdown 代码围栏，字段为："
-                    + "{summary,status,evidenceRefs,uncertainty}。summary 是完整自然语言回答，最多 6000 个汉字；"
-                    + "status 只能是 PASS、WARN 或 UNKNOWN；evidenceRefs 固定返回空数组，动态工具证据由服务端补充。";
+                    + "直接返回完整中文自然语言回答，最多 6000 个汉字；不要自行构造 JSON，动态工具证据由服务端补充。";
             AgentRuntimeResponse response = runtimeService.execute(runtimeRequest(
                     task, session, "CONVERSATION",
                     systemPrompt,
-                    prompt, "", "CONVERSATION", List.of(), allowedTools,
-                    resolvePerformanceYearMonth(question, allowedTools)));
+                    prompt, "", "CONVERSATION", List.of(), allowedTools));
             if (response != null && FactSourceUnavailableException.ERROR_CODE.equals(response.getErrorCode())) {
                 String unavailableReason = StringUtils.hasText(response.getContent())
                         ? response.getContent() : "本轮事实工具不可用";
@@ -96,7 +88,7 @@ public class AgentApplicationService {
                         task, session, "CONVERSATION",
                         systemPrompt + "本轮工具调用失败，禁止继续回答对应实时事实；必须明确说明不可用原因。",
                         prompt + "\n工具不可用原因：" + unavailableReason,
-                        "", "CONVERSATION", List.of(), Set.of(), null));
+                        "", "CONVERSATION", List.of(), Set.of()));
             }
             return taskService.complete(task, response);
         } catch (Exception exception) {
@@ -332,15 +324,6 @@ public class AgentApplicationService {
                                                String taskType, String systemPrompt, String userPrompt,
                                                String evidenceSummary, String outputType,
                                                List<String> evidenceRefs, Set<AgentToolName> allowedTools) {
-        return runtimeRequest(task, session, taskType, systemPrompt, userPrompt, evidenceSummary,
-                outputType, evidenceRefs, allowedTools, null);
-    }
-
-    private AgentRuntimeRequest runtimeRequest(AgentTaskEntity task, AgentSessionEntity session,
-                                               String taskType, String systemPrompt, String userPrompt,
-                                               String evidenceSummary, String outputType,
-                                               List<String> evidenceRefs, Set<AgentToolName> allowedTools,
-                                               YearMonth performanceYearMonth) {
         return AgentRuntimeRequest.builder()
                 .taskType(taskType)
                 .sessionId(session.getSessionId())
@@ -351,40 +334,14 @@ public class AgentApplicationService {
                 .evidenceSummary(evidenceSummary)
                 .evidenceRefs(evidenceRefs)
                 .allowedTools(allowedTools == null ? Set.of() : Set.copyOf(allowedTools))
-                .performanceYearMonth(performanceYearMonth)
                 .outputType(outputType)
                 .build();
     }
 
-    private YearMonth resolvePerformanceYearMonth(String question, Set<AgentToolName> allowedTools) {
-        if (allowedTools == null || !allowedTools.contains(AgentToolName.PERFORMANCE_ANALYSIS)) {
-            return null;
-        }
-        Matcher matcher = YEAR_MONTH_PATTERN.matcher(question);
-        if (matcher.find()) {
-            return YearMonth.of(Integer.parseInt(matcher.group(1)), Integer.parseInt(matcher.group(2)));
-        }
-        return YearMonth.now().minusMonths(1);
-    }
-
-    private String requiredToolInstruction(Set<AgentToolName> allowedTools) {
-        if (allowedTools == null || allowedTools.isEmpty()) {
-            return "";
-        }
-        StringBuilder instruction = new StringBuilder("本轮服务端已授权以下工具，命中对应问题时必须先调用工具再回答：");
-        if (allowedTools.contains(AgentToolName.WEB_SEARCH)) {
-            instruction.append("天气已提供城市或其他近期公开信息时必须调用 searchWeb；");
-        }
-        if (allowedTools.contains(AgentToolName.PROJECT_DOCUMENT_SEARCH)) {
-            instruction.append("项目模块、架构或实现问题必须调用 searchProjectDocuments；");
-        }
-        if (allowedTools.contains(AgentToolName.MARKET_ADVANCERS)) {
-            instruction.append("市场涨跌问题必须调用 queryMarketAdvancers；");
-        }
-        if (allowedTools.contains(AgentToolName.PERFORMANCE_ANALYSIS)) {
-            instruction.append("月度收益与亏损原因问题必须调用 queryPerformanceAnalysis；");
-        }
-        return instruction.toString();
+    private String toolUsageInstruction() {
+        return "本轮绑定了完整只读工具目录。凡是项目实现、实时公开信息、行情、账户、收益、模型、策略、任务或交易门禁等可查询事实，"
+                + "必须先选择语义最匹配的一个或多个工具，再基于工具结果回答；普通常识和闲聊无需调用工具。"
+                + "不要因为工具可用就全部调用。缺少城市、股票代码、月份、任务名等必要参数时先追问，不得猜测。";
     }
     private void requireFactSourceAvailable(AgentRuntimeResponse response) {
         if (response != null
@@ -409,4 +366,4 @@ public class AgentApplicationService {
         }
     }
 }
-// AI_GENERATE_END-------------------------------------------------
+// AI_GENERATE_END---------------------------------------------------

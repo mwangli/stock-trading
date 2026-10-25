@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ------
 package com.stock.agent.interaction.output;
 
 import com.alibaba.fastjson2.JSON;
@@ -37,7 +37,7 @@ public class InteractionStructuredOutputHandler implements AgentStructuredOutput
     @Override
     public AgentStructuredOutput parseAndValidate(String outputType, String content) {
         AgentStructuredOutput output = switch (outputType) {
-            case "CONVERSATION" -> JSON.parseObject(content, ConversationResult.class);
+            case "CONVERSATION" -> parseConversation(content);
             case "RESEARCH" -> JSON.parseObject(content, ResearchResult.class);
             case "DIAGNOSTIC" -> JSON.parseObject(content, DiagnosticResult.class);
             case "REPORT" -> JSON.parseObject(content, ReportResult.class);
@@ -49,13 +49,19 @@ public class InteractionStructuredOutputHandler implements AgentStructuredOutput
         return output;
     }
 
+    private ConversationResult parseConversation(String content) {
+        ConversationResult result = new ConversationResult();
+        result.setSummary(content.trim());
+        result.setStatus("PASS");
+        result.setEvidenceRefs(List.of());
+        return result;
+    }
+
     private void validateCommon(String outputType, AgentStructuredOutput output) {
         if (output == null || !StringUtils.hasText(output.getSummary()) || !StringUtils.hasText(output.getStatus())) {
             throw new IllegalArgumentException("结构化输出缺少 summary 或 status");
         }
-        if (output instanceof ConversationResult result && result.getEvidenceRefs() == null) {
-            result.setEvidenceRefs(List.of());
-        } else if (output instanceof ResearchResult result) {
+        if (output instanceof ResearchResult result) {
             if ("NO_ACTION".equalsIgnoreCase(result.getStatus())) result.setStatus("UNKNOWN");
             if ("PARTIAL_EVIDENCE".equalsIgnoreCase(result.getStatus())) result.setStatus("WARN");
             if (result.getEvidenceRefs() == null) result.setEvidenceRefs(List.of());
@@ -97,4 +103,4 @@ public class InteractionStructuredOutputHandler implements AgentStructuredOutput
         }
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END -----

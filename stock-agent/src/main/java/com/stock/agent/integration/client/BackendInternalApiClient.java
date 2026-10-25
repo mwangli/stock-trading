@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ---------
 package com.stock.agent.integration.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -162,6 +162,16 @@ public class BackendInternalApiClient {
     }
 
     /**
+     * 查询最近一个存在已实现交易的自然月收益分析。
+     *
+     * @return 最近有交易月份的收益分析事实
+     */
+    public BackendPerformanceAnalysisResponse latestPerformanceAnalysis() {
+        return get("/api/internal/agentFacts/latestPerformanceAnalysis",
+                BackendPerformanceAnalysisResponse.class);
+    }
+
+    /**
      * 查询模型运维概览事实。
      *
      * @return 模型运维概览事实
@@ -292,4 +302,4 @@ public class BackendInternalApiClient {
         }
     }
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END --------

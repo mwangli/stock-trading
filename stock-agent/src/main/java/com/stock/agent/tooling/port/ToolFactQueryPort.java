@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.agent.tooling.port;
 
 import com.stock.agent.tooling.model.BrokerFacts;
@@ -55,6 +55,9 @@ public interface ToolFactQueryPort {
     /** @param yearMonth 查询自然月 @return 月度收益分析事实 */
     PerformanceAnalysisFact performanceAnalysis(YearMonth yearMonth);
 
+    /** @return 最近一个存在已实现交易的自然月收益分析事实 */
+    PerformanceAnalysisFact latestPerformanceAnalysis();
+
     /** @return 模型运维概览事实 */
     ModelOverviewFact modelOverview();
 
@@ -64,4 +67,4 @@ public interface ToolFactQueryPort {
     /** @return 交易执行门禁事实 */
     TradeExecutionGateFact tradeExecutionGate();
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

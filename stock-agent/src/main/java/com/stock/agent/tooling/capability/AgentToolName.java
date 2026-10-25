@@ -1,5 +1,8 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.agent.tooling.capability;
+
+import java.util.EnumSet;
+import java.util.Set;
 
 /**
  * Agent 首期只读工具能力枚举。
@@ -43,8 +46,17 @@ public enum AgentToolName {
     /** 券商状态查询。 */
     BROKER_STATUS("queryBrokerStatus"),
 
+    /** 券商账户事实摘要。 */
+    BROKER_FACTS("queryBrokerFacts"),
+
     /** 调度任务诊断。 */
-    JOB_DIAGNOSTIC("queryJobDiagnostic");
+    JOB_DIAGNOSTIC("queryJobDiagnostic"),
+
+    /** Agent Provider 运行状态。 */
+    PROVIDER_RUNTIME("queryProviderRuntime"),
+
+    /** 真实交易执行门禁。 */
+    TRADE_EXECUTION_GATE("queryTradeExecutionGate");
 
     private final String toolName;
 
@@ -60,5 +72,14 @@ public enum AgentToolName {
     public String toolName() {
         return toolName;
     }
+
+    /**
+     * 返回通用对话可使用的完整只读工具集合。
+     *
+     * @return 不可变只读工具集合
+     */
+    public static Set<AgentToolName> conversationTools() {
+        return Set.copyOf(EnumSet.allOf(AgentToolName.class));
+    }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

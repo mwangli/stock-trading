@@ -1,10 +1,9 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.agent.tooling.tool;
 
 import lombok.Builder;
 import lombok.Value;
 
-import java.time.YearMonth;
 import java.util.Set;
 
 /**
@@ -32,7 +31,5 @@ public class ToolExecutionContext {
     /** 本轮服务端允许执行的工具名称。 */
     Set<String> allowedToolNames;
 
-    /** 服务端根据用户问题确定的收益分析自然月，可为空。 */
-    YearMonth performanceYearMonth;
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

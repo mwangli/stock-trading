@@ -1,6 +1,7 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START-------------
 package com.stock.agent.tooling.capability;
 
+import com.stock.agent.tooling.tool.read.BrokerFactQueryTool;
 import com.stock.agent.tooling.tool.read.BrokerStatusQueryTool;
 import com.stock.agent.tooling.tool.read.JobDiagnosticTool;
 import com.stock.agent.tooling.tool.read.LatestPriceQueryTool;
@@ -9,9 +10,11 @@ import com.stock.agent.tooling.tool.read.MarketAdvancersQueryTool;
 import com.stock.agent.tooling.tool.read.PerformanceOverviewQueryTool;
 import com.stock.agent.tooling.tool.read.PerformanceAnalysisQueryTool;
 import com.stock.agent.tooling.tool.read.ProjectDocumentSearchTool;
+import com.stock.agent.tooling.tool.read.ProviderRuntimeQueryTool;
 import com.stock.agent.tooling.tool.read.PredictionCandidateQueryTool;
 import com.stock.agent.tooling.tool.read.StrategyStateQueryTool;
 import com.stock.agent.tooling.tool.read.TradingCalendarQueryTool;
+import com.stock.agent.tooling.tool.read.TradeExecutionGateQueryTool;
 import com.stock.agent.tooling.tool.read.WebSearchTool;
 import org.springframework.stereotype.Component;
 
@@ -35,7 +38,10 @@ public class AgentToolCatalog {
     private final ModelOverviewQueryTool modelOverviewQueryTool;
     private final PerformanceOverviewQueryTool performanceOverviewQueryTool;
     private final BrokerStatusQueryTool brokerStatusQueryTool;
+    private final BrokerFactQueryTool brokerFactQueryTool;
     private final JobDiagnosticTool jobDiagnosticTool;
+    private final ProviderRuntimeQueryTool providerRuntimeQueryTool;
+    private final TradeExecutionGateQueryTool tradeExecutionGateQueryTool;
     private final ProjectDocumentSearchTool projectDocumentSearchTool;
     private final WebSearchTool webSearchTool;
     private final MarketAdvancersQueryTool marketAdvancersQueryTool;
@@ -51,7 +57,14 @@ public class AgentToolCatalog {
      * @param modelOverviewQueryTool 模型概览工具
      * @param performanceOverviewQueryTool 收益概览工具
      * @param brokerStatusQueryTool 券商状态工具
+     * @param brokerFactQueryTool 券商账户事实工具
      * @param jobDiagnosticTool 任务诊断工具
+     * @param providerRuntimeQueryTool Provider 运行状态工具
+     * @param tradeExecutionGateQueryTool 真实交易执行门禁工具
+     * @param projectDocumentSearchTool 项目文档检索工具
+     * @param webSearchTool 公开网页搜索工具
+     * @param marketAdvancersQueryTool 市场涨跌统计工具
+     * @param performanceAnalysisQueryTool 月度收益分析工具
      */
     public AgentToolCatalog(TradingCalendarQueryTool tradingCalendarQueryTool,
                             LatestPriceQueryTool latestPriceQueryTool,
@@ -60,7 +73,10 @@ public class AgentToolCatalog {
                             ModelOverviewQueryTool modelOverviewQueryTool,
                             PerformanceOverviewQueryTool performanceOverviewQueryTool,
                             BrokerStatusQueryTool brokerStatusQueryTool,
+                            BrokerFactQueryTool brokerFactQueryTool,
                             JobDiagnosticTool jobDiagnosticTool,
+                            ProviderRuntimeQueryTool providerRuntimeQueryTool,
+                            TradeExecutionGateQueryTool tradeExecutionGateQueryTool,
                             ProjectDocumentSearchTool projectDocumentSearchTool,
                             WebSearchTool webSearchTool,
                             MarketAdvancersQueryTool marketAdvancersQueryTool,
@@ -72,7 +88,10 @@ public class AgentToolCatalog {
         this.modelOverviewQueryTool = modelOverviewQueryTool;
         this.performanceOverviewQueryTool = performanceOverviewQueryTool;
         this.brokerStatusQueryTool = brokerStatusQueryTool;
+        this.brokerFactQueryTool = brokerFactQueryTool;
         this.jobDiagnosticTool = jobDiagnosticTool;
+        this.providerRuntimeQueryTool = providerRuntimeQueryTool;
+        this.tradeExecutionGateQueryTool = tradeExecutionGateQueryTool;
         this.projectDocumentSearchTool = projectDocumentSearchTool;
         this.webSearchTool = webSearchTool;
         this.marketAdvancersQueryTool = marketAdvancersQueryTool;
@@ -105,8 +124,11 @@ public class AgentToolCatalog {
             case MODEL_OVERVIEW -> modelOverviewQueryTool;
             case PERFORMANCE_OVERVIEW -> performanceOverviewQueryTool;
             case BROKER_STATUS -> brokerStatusQueryTool;
+            case BROKER_FACTS -> brokerFactQueryTool;
             case JOB_DIAGNOSTIC -> jobDiagnosticTool;
+            case PROVIDER_RUNTIME -> providerRuntimeQueryTool;
+            case TRADE_EXECUTION_GATE -> tradeExecutionGateQueryTool;
         };
     }
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END------------

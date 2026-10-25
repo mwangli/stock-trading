@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.agent.integration.adapter;
 
 import com.stock.agent.integration.client.BackendInternalApiClient;
@@ -118,7 +118,17 @@ public class BackendToolFactAdapter implements ToolFactQueryPort, FactSourceStat
     /** {@inheritDoc} */
     @Override
     public PerformanceAnalysisFact performanceAnalysis(YearMonth yearMonth) {
-        var wire = client.performanceAnalysis(yearMonth);
+        return toPerformanceAnalysisFact(client.performanceAnalysis(yearMonth));
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public PerformanceAnalysisFact latestPerformanceAnalysis() {
+        return toPerformanceAnalysisFact(client.latestPerformanceAnalysis());
+    }
+
+    private PerformanceAnalysisFact toPerformanceAnalysisFact(
+            com.stock.agent.integration.dto.BackendPerformanceAnalysisResponse wire) {
         return new PerformanceAnalysisFact(
                 wire.yearMonth(), wire.asOf(), wire.grossProfit(), wire.netProfit(), wire.totalFees(),
                 wire.returnRate(), wire.tradeCount(), wire.winningTradeCount(), wire.losingTradeCount(),
@@ -171,4 +181,4 @@ public class BackendToolFactAdapter implements ToolFactQueryPort, FactSourceStat
                 item.returnRate(), item.sellTime());
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----
