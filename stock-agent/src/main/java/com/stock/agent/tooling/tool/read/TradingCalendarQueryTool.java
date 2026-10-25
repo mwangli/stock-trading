@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START----------
 package com.stock.agent.tooling.tool.read;
 
 import com.stock.agent.tooling.port.ToolFactQueryPort;
@@ -36,29 +36,26 @@ public class TradingCalendarQueryTool {
         }
         return toolSupport.execute("queryTradingCalendar", () -> {
             TradingCalendarFact fact = factQueryPort.tradingCalendar(request.tradeDate());
-            return new TradingCalendarResult(fact.tradeDate(), fact.tradingDay(), fact.confirmed());
+            return new TradingCalendarResult(fact.tradeDate(), fact.tradingDay(), fact.confirmed(),
+                    fact.nextConfirmedTradingDay());
         });
-    }
-
-    /**
-     * 解析指定日期之后的首个确认交易日，避免周末直接作为预测目标日。
-     *
-     * @param date 基准日期
-     * @return 首个确认交易日
-     */
-    public LocalDate nextConfirmedTradingDay(LocalDate date) {
-        if (date == null) {
-            throw new IllegalArgumentException("date 不能为空");
-        }
-        return factQueryPort.tradingCalendar(date).nextConfirmedTradingDay();
     }
 
     /** 交易日历查询请求。 */
     public record TradingCalendarRequest(LocalDate tradeDate) {
     }
 
-    /** 交易日历查询结果。 */
-    public record TradingCalendarResult(LocalDate tradeDate, boolean tradingDay, boolean confirmed) {
+    /**
+     * 交易日历查询结果。
+     *
+     * @param tradeDate 查询日期
+     * @param tradingDay 是否为已确认交易日
+     * @param confirmed 查询日期是否已有权威结论
+     * @param nextConfirmedTradingDay 当日或之后首个确认交易日；日历覆盖不足时为空
+     */
+    public record TradingCalendarResult(
+            LocalDate tradeDate, boolean tradingDay, boolean confirmed,
+            LocalDate nextConfirmedTradingDay) {
     }
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END---------

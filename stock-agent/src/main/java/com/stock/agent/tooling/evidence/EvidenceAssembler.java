@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------------
+// AI_GENERATE_START-----------------------
 package com.stock.agent.tooling.evidence;
 
 import com.stock.agent.interaction.model.AgentTaskType;
@@ -121,14 +121,15 @@ public class EvidenceAssembler {
                 add(items, "queryProviderRuntime", providerRuntimeQueryTool::query);
                 return buildBundle(taskType, taskId, sessionId, items, null, null, null, startedAt);
             }
-            long tradeDateStartedAt = System.nanoTime();
-            log.info("[Agent][Evidence] taskId={} sessionId={} stage=RESOLVE_TRADE_DATE status=STARTED",
-                    taskId, sessionId);
-            LocalDate calendarTradeDate = resolveTargetTradeDate(requestedTradeDate);
-            log.info("[Agent][Evidence] taskId={} sessionId={} stage=RESOLVE_TRADE_DATE status=COMPLETED targetTradeDate={} elapsedMs={}",
-                    taskId, sessionId, calendarTradeDate, elapsedMillis(tradeDateStartedAt));
-            add(items, "queryTradingCalendar",
-                    () -> tradingCalendarQueryTool.query(new TradingCalendarQueryTool.TradingCalendarRequest(calendarTradeDate)));
+            LocalDate baseTradeDate = requestedTradeDate == null ? LocalDate.now() : requestedTradeDate;
+            TradingCalendarQueryTool.TradingCalendarResult calendar = add(items, "queryTradingCalendar",
+                    () -> tradingCalendarQueryTool.query(
+                            new TradingCalendarQueryTool.TradingCalendarRequest(baseTradeDate)));
+            LocalDate calendarTradeDate = calendar == null ? null : calendar.nextConfirmedTradingDay();
+            if (calendarTradeDate == null) {
+                add(items, "queryProviderRuntime", providerRuntimeQueryTool::query);
+                return buildBundle(taskType, taskId, sessionId, items, null, null, null, startedAt);
+            }
             add(items, "queryStrategyState", strategyStateQueryTool::query);
             LocalDate targetTradeDate = calendarTradeDate;
             String predictionBatchId = null;
@@ -255,11 +256,6 @@ public class EvidenceAssembler {
                 || normalized.contains("trade gate");
     }
 
-    private LocalDate resolveTargetTradeDate(LocalDate requestedTradeDate) {
-        LocalDate baseDate = requestedTradeDate == null ? LocalDate.now() : requestedTradeDate;
-        return tradingCalendarQueryTool.nextConfirmedTradingDay(baseDate);
-    }
-
     private <T> T add(List<EvidenceItem> items, String toolName, Supplier<T> action) {
         String id = "E" + String.format("%03d", items.size() + 1);
         ToolExecutionContext context = AgentToolContextHolder.current();
@@ -270,7 +266,7 @@ public class EvidenceAssembler {
             T data = action.get();
             String status = "AVAILABLE";
             if (data instanceof TradingCalendarQueryTool.TradingCalendarResult calendar
-                    && !calendar.confirmed()) {
+                    && (!calendar.confirmed() || calendar.nextConfirmedTradingDay() == null)) {
                 status = "UNKNOWN";
             }
             items.add(EvidenceItem.builder()
@@ -343,4 +339,4 @@ public class EvidenceAssembler {
         return value.length() > 12000 ? value.substring(0, 12000) : value;
     }
 }
-// AI_GENERATE_END---------------------
+// AI_GENERATE_END----------------------
