@@ -12,7 +12,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 工程入口**：[仓库说明 `README.md`](pathname://../../README.md) · [Maven 聚合 `pom.xml`](pathname://../../pom.xml) · [容器编排 `docker-compose.yml`](pathname://../../docker-compose.yml)
+**IDEA 工程入口**：[仓库说明 `README.md`](../../README.md) · [Maven 聚合 `pom.xml`](../../pom.xml) · [容器编排 `docker-compose.yml`](../../docker-compose.yml)
 
 # AI-AGENT 智能股票交易系统
 
@@ -78,7 +78,7 @@ stock-trading4/
 └── AGENTS.md
 ```
 
-`documents/` 统一维护系统架构、领域设计、专项方案、运行边界和运维文档；`stock-frontend/documentation/` 只维护可视化框架代码。源码旁 README 只保留稳定职责和门户入口，Javadoc 维护类、方法和局部业务约束。
+`documents/` 统一维护系统架构、领域设计、专项方案、运行边界和运维文档；`stock-frontend/documentation/` 只维护可视化框架代码。仓库只保留根目录项目级 `README.md` 作为入口，模块和源码包不再维护 README，Javadoc 维护类、方法和局部业务约束。
 
 ## 系统架构
 
@@ -260,7 +260,7 @@ docker build -f .github/docker/agent-model-runtime.Dockerfile \
 
 ## 文档导航
 
-| 阅读目标 | 权威 README |
+| 阅读目标 | 权威文档 |
 |---|---|
 | Backend 整体架构和模块边界 | [Backend 总览](../backend/index.md) |
 | 市场事实和新闻质量 | [Market](../backend/market/index.md) |
@@ -280,7 +280,7 @@ docker build -f .github/docker/agent-model-runtime.Dockerfile \
 1. `documents/system` 维护系统总览、跨模块链路、全局约束和架构决策。
 2. `documents/backend`、`agent` 和 `frontend` 按领域维护当前设计与专项方案。
 3. Proposal、运行手册和 ADR 使用对应类型目录及状态元数据，不再混入模块总览。
-4. 根 README 和源码旁 README 只提供稳定职责、源码位置和门户入口。
+4. 根目录项目级 `README.md` 只提供稳定职责、源码位置和门户入口，模块与源码包不再维护 README。
 5. Javadoc 与 TypeScript 类型维护类、方法、字段和局部不变量。
 6. 模型制品自身的来源、格式和加载要求仍保留在对应 `model-files/**/README.md`。
 
@@ -317,4 +317,4 @@ docker build -f .github/docker/agent-model-runtime.Dockerfile \
 - Mengzi 影子门槛通过后只进入 `ELIGIBLE`，人工确认才能激活；运行故障允许自动回滚 FinBERT。任何模型输出都不能直接调用真实交易写接口。
 - 模型证据必须分层记录：文件和 SHA-256 完整、DJL 加载、固定样本推理、接口启动、金标质量、影子收益分别验收，前一层通过不能替代后一层。
 
-详细输入、训练数据、快照维度和影子评估契约见 `stock-backend/src/main/java/com/stock/model/README.md`；事件事实、截止时间和新闻治理契约见 `stock-backend/src/main/java/com/stock/market/README.md`。
+详细输入、训练数据、快照维度和影子评估契约见[模型文档](../backend/model/index.md)；事件事实、截止时间和新闻治理契约见[市场数据文档](../backend/market/index.md)。

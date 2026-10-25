@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.agent.tooling.audit.entity;
 
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -23,7 +23,7 @@ public class AgentToolCallEntity {
 
     /** 数据库主键。 */
     @Id
-    private Long id;
+    private String id;
 
     /** 追踪标识。 */
     private String traceId;
@@ -58,4 +58,4 @@ public class AgentToolCallEntity {
     /** 结束时间。 */
     private LocalDateTime finishedAt;
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

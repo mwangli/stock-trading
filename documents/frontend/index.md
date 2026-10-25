@@ -8,7 +8,6 @@ status: SOURCE_IMPLEMENTED
 last_verified: 2026-10-25
 slug: /frontend/
 source_paths:
-  - stock-frontend/README.md
   - stock-frontend/src/App.tsx
   - stock-frontend/src/layouts/DashboardLayout.tsx
   - stock-frontend/src/pages/market/index.tsx
@@ -18,7 +17,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[路由入口 `App.tsx`](pathname://../../stock-frontend/src/App.tsx) · [主布局 `DashboardLayout.tsx`](pathname://../../stock-frontend/src/layouts/DashboardLayout.tsx) · [文档跳转配置 `documentation.ts`](pathname://../../stock-frontend/src/utils/documentation.ts)
+**IDEA 源码入口**：[路由入口 `App.tsx`](../../stock-frontend/src/App.tsx) · [主布局 `DashboardLayout.tsx`](../../stock-frontend/src/layouts/DashboardLayout.tsx) · [文档跳转配置 `documentation.ts`](../../stock-frontend/src/utils/documentation.ts)
 
 # AI-AGENT 智能股票交易系统前端
 
@@ -122,10 +121,9 @@ stock-frontend/
 ├── src/locales/      # 国际化资源
 ├── src/utils/        # 请求、格式和通用工具
 ├── nginx.conf        # 生产分流和 SPA 配置
-├── vite.config.ts    # 开发代理和构建配置
-└── README.md         # 本模块设计与维护规则
+└── vite.config.ts    # 开发代理和构建配置
 ```
 
 ## 文档维护
 
-页面、路由、状态模型、接口分流、认证方式或发布方式变化时，必须在同一变更中更新本 README。前端设计不再迁移到集中式文档目录，也不在其他位置维护重复的当前架构说明。
+页面、路由、状态模型、接口分流、认证方式或发布方式变化时，必须在同一变更中更新本页面及对应专题文档。前端模块不再维护独立 README，也不在其他位置复制当前架构说明。

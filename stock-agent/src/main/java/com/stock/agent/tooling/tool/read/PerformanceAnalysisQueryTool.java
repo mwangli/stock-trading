@@ -1,9 +1,11 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.agent.tooling.tool.read;
 
 import com.stock.agent.tooling.model.PerformanceAnalysisFact;
 import com.stock.agent.tooling.port.ToolFactQueryPort;
+import com.stock.agent.tooling.tool.AgentToolContextHolder;
 import com.stock.agent.tooling.tool.AgentToolSupport;
+import com.stock.agent.tooling.tool.ToolExecutionContext;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -33,7 +35,10 @@ public class PerformanceAnalysisQueryTool {
      */
     @Tool(name = "queryPerformanceAnalysis", value = "查询指定自然月的已实现收益、费用、胜率以及主要盈利和亏损交易；上个月使用上一完整自然月")
     public PerformanceAnalysisFact query(PerformanceAnalysisRequest request) {
-        YearMonth yearMonth = parseYearMonth(request == null ? null : request.yearMonth());
+        ToolExecutionContext context = AgentToolContextHolder.current();
+        YearMonth yearMonth = context != null && context.getPerformanceYearMonth() != null
+                ? context.getPerformanceYearMonth()
+                : parseYearMonth(request == null ? null : request.yearMonth());
         return toolSupport.execute("queryPerformanceAnalysis", () -> factQueryPort.performanceAnalysis(yearMonth));
     }
 
@@ -52,4 +57,4 @@ public class PerformanceAnalysisQueryTool {
     public record PerformanceAnalysisRequest(String yearMonth) {
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

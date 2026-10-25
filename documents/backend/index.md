@@ -8,13 +8,12 @@ status: SOURCE_IMPLEMENTED
 last_verified: 2026-10-25
 slug: /backend/
 source_paths:
-  - stock-backend/src/main/java/com/stock/README.md
   - stock-backend/src/main/java/com/stock/StockBackendApplication.java
 ---
 
 <DocMetadata />
 
-**IDEA 源码入口**：[Backend 应用入口 `StockBackendApplication.java`](pathname://../../stock-backend/src/main/java/com/stock/StockBackendApplication.java) · [领域目录 `com.stock/README.md`](pathname://../../stock-backend/src/main/java/com/stock/README.md)
+**IDEA 源码入口**：[Backend 应用入口 `StockBackendApplication.java`](../../stock-backend/src/main/java/com/stock/StockBackendApplication.java)
 
 # Stock Backend 整体架构
 
@@ -29,7 +28,6 @@ source_paths:
 ```text
 com/stock/
 ├── StockBackendApplication.java  # Backend 唯一启动类和 Spring 组合根
-├── README.md                     # Backend 整体架构说明
 ├── market/                       # 股票、行情、新闻、日历和数据质量
 ├── model/                        # 情感、LSTM、训练、预测和模型生命周期
 ├── decision/                     # 选股、信号、策略状态和回测
@@ -189,6 +187,6 @@ Quartz Job 只传播运行上下文并记录执行状态。历史回补、预测
 - 模块内部功能、重点能力和详细设计在 `documents/backend` 对应领域维护。
 - 跨 Backend、Agent、Frontend 的系统关系、端到端业务流程和部署方式见[系统总览](../system/project-overview.md)。
 - 尚未完成完整验证的专项设计保留在所属领域，通过 `PROPOSED`、`SOURCE_IMPLEMENTED`、`COMPILED`、`RUNTIME_VERIFIED`、`PRODUCTION_VERIFIED` 或 `SUPERSEDED` 标识证据等级。
-- 源码旁 README 只保留职责和门户入口，禁止复制详细设计正文。
+- Backend 模块和源码包不维护 README，职责、边界和跨类设计统一维护在本门户。
 
-修改模块职责、跨模块 DTO、启动扫描、持久化配置或安全边界时，必须同步更新本文件和受影响模块 README。
+修改模块职责、跨模块 DTO、启动扫描、持久化配置或安全边界时，必须同步更新本文件和受影响领域文档。

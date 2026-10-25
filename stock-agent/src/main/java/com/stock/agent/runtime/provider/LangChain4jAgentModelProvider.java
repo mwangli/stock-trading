@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------------------------------
+// AI_GENERATE_START-------------------------------------
 package com.stock.agent.runtime.provider;
 
 import com.stock.agent.runtime.agent.StrategyAgent;
@@ -159,6 +159,7 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
                             .allowedToolNames(request.getAllowedTools() == null ? Set.of()
                                     : request.getAllowedTools().stream().map(tool -> tool.toolName()).collect(
                                             java.util.stream.Collectors.toUnmodifiableSet()))
+                            .performanceYearMonth(request.getPerformanceYearMonth())
                             .build();
                     AgentToolContextHolder.set(context);
                     try {
@@ -413,4 +414,4 @@ public class LangChain4jAgentModelProvider implements AgentModelProvider {
         }
     }
 }
-// AI_GENERATE_END-----------------------------------
+// AI_GENERATE_END------------------------------------

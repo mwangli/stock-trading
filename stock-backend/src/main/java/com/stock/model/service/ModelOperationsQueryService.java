@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START----------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -13,11 +13,14 @@ import com.stock.model.dto.TemporalModelEnsembleStatusResponse;
 import com.stock.model.config.TemporalEnsembleConfig;
 import com.stock.model.entity.LstmModelDocument;
 import com.stock.model.entity.ModelActivationDocument;
+import com.stock.model.entity.ModelMetadataDocument;
 import com.stock.model.entity.ModelPredictionBatchDocument;
 import com.stock.model.entity.ModelTrainingRunDocument;
 import com.stock.model.entity.TemporalModelEnsembleStateDocument;
 import com.stock.model.repository.LstmModelRepository;
+import com.stock.model.repository.LstmModelListProjection;
 import com.stock.model.repository.ModelActivationRepository;
+import com.stock.model.repository.ModelMetadataRepository;
 import com.stock.model.repository.ModelPredictionBatchRepository;
 import com.stock.model.repository.ModelTrainingRunRepository;
 import lombok.RequiredArgsConstructor;
@@ -47,6 +50,7 @@ public class ModelOperationsQueryService {
     private final LstmTrainerService trainerService;
     private final LstmModelRepository modelRepository;
     private final ModelActivationRepository activationRepository;
+    private final ModelMetadataRepository metadataRepository;
     private final ModelTrainingRunRepository trainingRunRepository;
     private final ModelPredictionBatchRepository predictionBatchRepository;
     private final TemporalModelEnsembleService temporalModelEnsembleService;
@@ -61,6 +65,7 @@ public class ModelOperationsQueryService {
     public ModelOverviewResponse getOverview() {
         String modelName = trainerService.getModelName();
         ModelActivationDocument activation = activationRepository.findByModelName(modelName).orElse(null);
+        ModelMetadataDocument runtimeStatus = metadataRepository.findByModelName(modelName).orElse(null);
         ModelVersionResponse activeVersion = versionById(
                 activation == null ? null : activation.getActiveModelVersionId(), activation);
         ModelVersionResponse previousVersion = versionById(
@@ -72,7 +77,7 @@ public class ModelOperationsQueryService {
                 .latestTrainingRun(toTrainingRunItem(
                         trainingRunRepository.findTopByModelNameOrderByCreatedAtDesc(modelName)))
                 .trainingRunning(trainingRunRepository.existsByModelNameAndStatusIn(modelName, RUNNING_STATUSES))
-                .activeModelHealthy(isActiveVersionHealthy(activation))
+                .activeModelHealthy(isActiveVersionHealthy(activeVersion, runtimeStatus))
                 .activeVersionScore(loadActiveVersionScore(activeVersion))
                 .temporalEnsemble(toTemporalEnsembleStatus())
                 .build();
@@ -118,11 +123,11 @@ public class ModelOperationsQueryService {
         int safeCurrent = Math.max(1, current);
         int safePageSize = Math.min(100, Math.max(1, pageSize));
         String modelName = trainerService.getModelName();
-        Page<LstmModelDocument> page = modelRepository.findByModelName(modelName,
+        Page<LstmModelListProjection> page = modelRepository.findVersionListByModelName(modelName,
                 PageRequest.of(safeCurrent - 1, safePageSize, Sort.by(Sort.Direction.DESC, "createdAt")));
         ModelActivationDocument activation = activationRepository.findByModelName(modelName).orElse(null);
         return ModelVersionPageResponse.builder()
-                .items(page.getContent().stream().map(item -> toVersionItem(item, activation)).toList())
+                .items(page.getContent().stream().map(item -> toVersionListItem(item, activation)).toList())
                 .total(page.getTotalElements())
                 .current(safeCurrent)
                 .pageSize(safePageSize)
@@ -168,8 +173,8 @@ public class ModelOperationsQueryService {
         if (versionId == null || versionId.isBlank()) {
             return null;
         }
-        return modelRepository.findById(versionId)
-                .map(document -> toVersionItem(document, activation))
+        return modelRepository.findVersionSummaryById(versionId)
+                .map(document -> toVersionListItem(document, activation))
                 .orElse(null);
     }
 
@@ -237,6 +242,28 @@ public class ModelOperationsQueryService {
                 .build();
     }
 
+    private ModelVersionResponse toVersionListItem(
+            LstmModelListProjection document, ModelActivationDocument activation) {
+        String activeId = activation == null ? null : activation.getActiveModelVersionId();
+        String previousId = activation == null ? null : activation.getPreviousModelVersionId();
+        JsonNode inputContract = readJson(document.getInputContractJson());
+        return ModelVersionResponse.builder()
+                .id(document.getId())
+                .modelName(document.getModelName())
+                .modelVersion(document.getModelVersion())
+                .status(document.getStatus())
+                .featureVersion(document.getFeatureVersion())
+                .parameterSize(document.getParameterSize())
+                .epoch(document.getEpoch())
+                .trainLoss(document.getTrainLoss())
+                .valLoss(document.getValLoss())
+                .architectureType(textValue(inputContract, "architectureType"))
+                .createdAt(document.getCreatedAt())
+                .active(document.getId() != null && document.getId().equals(activeId))
+                .previous(document.getId() != null && document.getId().equals(previousId))
+                .build();
+    }
+
     private JsonNode readJson(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -298,17 +325,13 @@ public class ModelOperationsQueryService {
                 .build();
     }
 
-    private boolean isActiveVersionHealthy(ModelActivationDocument activation) {
-        if (activation == null || activation.getActiveModelVersionId() == null) {
-            return false;
-        }
-        try {
-            trainerService.validateModelVersion(activation.getActiveModelVersionId());
-            return true;
-        } catch (RuntimeException exception) {
-            log.warn("当前激活模型健康检查失败: {}", exception.getMessage());
-            return false;
-        }
+    private boolean isActiveVersionHealthy(
+            ModelVersionResponse activeVersion, ModelMetadataDocument runtimeStatus) {
+        return activeVersion != null
+                && activeVersion.getModelVersion() != null
+                && runtimeStatus != null
+                && activeVersion.getModelVersion().equals(runtimeStatus.getModelVersion())
+                && ModelRuntimeStatusService.STATUS_HEALTHY.equals(runtimeStatus.getStatus());
     }
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END----------

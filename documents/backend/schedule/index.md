@@ -8,7 +8,6 @@ status: SOURCE_IMPLEMENTED
 last_verified: 2026-10-25
 slug: /backend/schedule/
 source_paths:
-  - stock-backend/src/main/java/com/stock/schedule/README.md
   - stock-backend/src/main/java/com/stock/schedule/service/JobSchedulerService.java
   - stock-backend/src/main/java/com/stock/schedule/service/JobExecutionService.java
   - stock-backend/src/main/java/com/stock/schedule/bootstrap/JobBootstrap.java
@@ -16,7 +15,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[任务注册 `JobSchedulerService.java`](pathname://../../../stock-backend/src/main/java/com/stock/schedule/service/JobSchedulerService.java) · [任务执行 `JobExecutionService.java`](pathname://../../../stock-backend/src/main/java/com/stock/schedule/service/JobExecutionService.java) · [启动对账 `JobBootstrap.java`](pathname://../../../stock-backend/src/main/java/com/stock/schedule/bootstrap/JobBootstrap.java)
+**IDEA 源码入口**：[任务注册 `JobSchedulerService.java`](../../../stock-backend/src/main/java/com/stock/schedule/service/JobSchedulerService.java) · [任务执行 `JobExecutionService.java`](../../../stock-backend/src/main/java/com/stock/schedule/service/JobExecutionService.java) · [启动对账 `JobBootstrap.java`](../../../stock-backend/src/main/java/com/stock/schedule/bootstrap/JobBootstrap.java)
 
 # Schedule 统一调度模块
 

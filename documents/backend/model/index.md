@@ -8,7 +8,6 @@ status: SOURCE_IMPLEMENTED
 last_verified: 2026-10-25
 slug: /backend/model/
 source_paths:
-  - stock-backend/src/main/java/com/stock/model/README.md
   - stock-backend/src/main/java/com/stock/model/service/LstmTrainerService.java
   - stock-backend/src/main/java/com/stock/model/service/LstmModelRuntimeService.java
   - stock-backend/src/main/java/com/stock/model/service/PredictionCandidateQueryService.java
@@ -16,7 +15,7 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[训练编排 `LstmTrainerService.java`](pathname://../../../stock-backend/src/main/java/com/stock/model/service/LstmTrainerService.java) · [模型运行时 `LstmModelRuntimeService.java`](pathname://../../../stock-backend/src/main/java/com/stock/model/service/LstmModelRuntimeService.java) · [交易候选门禁 `PredictionCandidateQueryService.java`](pathname://../../../stock-backend/src/main/java/com/stock/model/service/PredictionCandidateQueryService.java)
+**IDEA 源码入口**：[训练编排 `LstmTrainerService.java`](../../../stock-backend/src/main/java/com/stock/model/service/LstmTrainerService.java) · [模型运行时 `LstmModelRuntimeService.java`](../../../stock-backend/src/main/java/com/stock/model/service/LstmModelRuntimeService.java) · [交易候选门禁 `PredictionCandidateQueryService.java`](../../../stock-backend/src/main/java/com/stock/model/service/PredictionCandidateQueryService.java)
 
 # Model 模型模块
 

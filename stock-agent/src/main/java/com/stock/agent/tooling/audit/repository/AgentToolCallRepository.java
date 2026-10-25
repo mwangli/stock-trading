@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.agent.tooling.audit.repository;
 
 import com.stock.agent.tooling.audit.entity.AgentToolCallEntity;
@@ -15,7 +15,7 @@ import java.util.List;
  * @since 2026-10-17
  */
 @Repository
-public interface AgentToolCallRepository extends MongoRepository<AgentToolCallEntity, Long> {
+public interface AgentToolCallRepository extends MongoRepository<AgentToolCallEntity, String> {
 
     /**
      * 查询任务内已成功完成的工具调用。
@@ -26,4 +26,4 @@ public interface AgentToolCallRepository extends MongoRepository<AgentToolCallEn
      */
     List<AgentToolCallEntity> findByTaskIdAndStatusOrderByStartedAtAsc(String taskId, String status);
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------
