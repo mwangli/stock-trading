@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 import './styles.css';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Spin, Tag, Tooltip, Typography, message, type InputRef } from 'antd';
@@ -74,6 +74,11 @@ interface RuntimeStatus {
   memoryEnabled: boolean;
   deepseekAvailable?: boolean;
   ollamaAvailable?: boolean;
+  projectDocumentsReady: boolean;
+  projectDocumentSectionCount: number;
+  webSearchConfigured: boolean;
+  marketDataToolAvailable: boolean;
+  performanceToolAvailable: boolean;
 }
 
 interface TradingCandidateBatch {
@@ -276,11 +281,11 @@ const AgentConversation: React.FC = () => {
   };
 
   const quickPrompts = [
-    '当前候选批次中最值得关注的是谁？',
-    '当前策略面临的主要风险是什么？',
-    '为什么当前没有形成可执行候选？',
-    '当前模型、数据和任务链路是否正常？',
-    '当前策略表现与模型信号是否一致？',
+    '你有什么能力？',
+    '北京今天天气怎么样？',
+    'Model 模块是怎么设计的？',
+    '今天上涨的股票有哪些？',
+    '上个月收益如何，主要亏损来自哪里？',
   ];
 
   return (
@@ -388,10 +393,12 @@ const AgentConversation: React.FC = () => {
                       {item.uncertainty && (
                         <div className="mt-3 border-t border-current/20 pt-2 text-xs leading-5">不确定性：{item.uncertainty}</div>
                       )}
-                      {item.role === 'assistant' && ((item.evidenceRefs?.length ?? 0) > 0 || item.evidenceSummary) && (
+                      {item.role === 'assistant' && ((item.evidenceRefs?.length ?? 0) > 0
+                        || (item.capabilities?.length ?? 0) > 0 || item.evidenceSummary) && (
                         <details className="mt-3 text-xs">
                           <summary className="cursor-pointer font-medium">查看证据摘要</summary>
                           {item.evidenceSummary && <div className="mt-2 whitespace-pre-wrap leading-5">{item.evidenceSummary}</div>}
+                          {(item.capabilities?.length ?? 0) > 0 && <div className="mt-2 break-all text-slate-500">使用能力：{item.capabilities?.join('、')}</div>}
                           {(item.evidenceRefs?.length ?? 0) > 0 && <div className="mt-2 break-all text-slate-500">证据编号：{item.evidenceRefs?.join('、')}</div>}
                         </details>
                       )}
@@ -450,6 +457,10 @@ const AgentConversation: React.FC = () => {
               <div className="flex items-center justify-between"><span className="text-slate-500">RAG</span><Tag color={runtime?.ragEnabled && runtime?.embeddingReady ? 'success' : 'default'}>{runtime?.ragEnabled && runtime?.embeddingReady ? '可用' : '未就绪'}</Tag></div>
               <div className="flex items-center justify-between"><span className="text-slate-500">Memory</span><Tag color={runtime?.memoryEnabled ? 'success' : 'default'}>{runtime?.memoryEnabled ? '启用' : '未启用'}</Tag></div>
               <div className="flex items-center justify-between"><span className="text-slate-500">Embedding</span><Tag color={runtime?.embeddingReady ? 'success' : 'warning'}>{runtime?.embeddingReady ? '就绪' : '未就绪'}</Tag></div>
+              <div className="flex items-center justify-between"><span className="text-slate-500">项目文档</span><Tag color={runtime?.projectDocumentsReady ? 'success' : 'warning'}>{runtime?.projectDocumentsReady ? `${runtime.projectDocumentSectionCount} 节` : '未就绪'}</Tag></div>
+              <div className="flex items-center justify-between"><span className="text-slate-500">联网搜索</span><Tag color={runtime?.webSearchConfigured ? 'success' : 'warning'}>{runtime?.webSearchConfigured ? '已配置' : '不可用'}</Tag></div>
+              <div className="flex items-center justify-between"><span className="text-slate-500">行情统计</span><Tag color={runtime?.marketDataToolAvailable ? 'success' : 'warning'}>{runtime?.marketDataToolAvailable ? '可用' : '不可用'}</Tag></div>
+              <div className="flex items-center justify-between"><span className="text-slate-500">收益分析</span><Tag color={runtime?.performanceToolAvailable ? 'success' : 'warning'}>{runtime?.performanceToolAvailable ? '可用' : '不可用'}</Tag></div>
             </div>
           </section>
 
@@ -479,4 +490,4 @@ const AgentConversation: React.FC = () => {
 };
 
 export default AgentConversation;
-// AI_GENERATE_END----
+// AI_GENERATE_END-----
