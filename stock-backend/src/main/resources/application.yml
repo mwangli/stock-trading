@@ -15,10 +15,14 @@ server:
 
 # AI_GENERATE_START -----
 spring:
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:../.env[.properties]
   application:
     name: stock-backend
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST_IP:117.72.216.67}:6033/stock_trading?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    url: jdbc:mysql://${MYSQL_HOST_IP:117.72.216.67}:${MYSQL_PORT:6033}/stock_trading?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: root
     password: ${MYSQL_ROOT_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -45,11 +49,11 @@ spring:
   data:
     mongodb:
       auto-index-creation: true
-      uri: mongodb://admin:${MONGO_ROOT_PASSWORD}@117.72.216.67:27017/stock_trading?authSource=admin
+      uri: mongodb://admin:${MONGO_ROOT_PASSWORD}@${MONGO_HOST_IP:117.72.216.67}:${MONGO_PORT:27017}/stock_trading?authSource=admin
     redis:
-      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      host: ${SPRING_DATA_REDIS_HOST:117.72.216.67}
       port: ${SPRING_DATA_REDIS_PORT:6379}
-      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      password: ${REDIS_PASSWORD}
       timeout: 3s
       connect-timeout: 3s
   cache:
