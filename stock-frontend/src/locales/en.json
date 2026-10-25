@@ -80,7 +80,7 @@
     "allDirections": "All Directions",
     "buy": "Buy",
     "sell": "Sell",
-    "columns": { "time": "Order Time", "stock": "Stock", "direction": "Direction", "orderPrice": "Order Price", "orderQuantity": "Order Quantity", "filledQuantity": "Filled Quantity", "averageFillPrice": "Average Fill Price", "transactionAmount": "Transaction Amount", "commission": "Commission", "status": "Status", "orderId": "Order ID" },
+    "columns": { "time": "Order Time", "stockCode": "Stock Code", "stockName": "Stock Name", "direction": "Direction", "orderPrice": "Order Price", "orderQuantity": "Order Quantity", "filledQuantity": "Filled Quantity", "averageFillPrice": "Average Fill Price", "transactionAmount": "Transaction Amount", "commission": "Commission", "status": "Status", "orderId": "Order ID" },
     "filled": "Filled",
     "dateError": "Start date cannot be later than end date"
   },
@@ -105,7 +105,7 @@
     "versionsEmpty": "No model versions",
     "runsEmpty": "No training records"
   },
-  "tradeRecords": { "subtitle": "Aggregate filled orders into FIFO trade records", "searchPlaceholder": "Stock code or name", "empty": "No assembled trade records", "columns": { "stock": "Stock", "buyTime": "Buy Time", "sellTime": "Sell Time", "buyPrice": "Buy Price", "sellPrice": "Sell Price", "buyAmount": "Buy Amount", "sellAmount": "Sell Amount", "grossProfit": "Gross Profit", "netProfit": "Net Profit", "grossReturn": "Gross Return", "returnRate": "Return Rate", "holdingTime": "Holding Time", "dailyReturn": "Daily Return" } },
+  "tradeRecords": { "subtitle": "Aggregate filled orders into FIFO trade records", "searchPlaceholder": "Stock code or name", "empty": "No assembled trade records", "columns": { "stockCode": "Stock Code", "stockName": "Stock Name", "buyTime": "Buy Time", "sellTime": "Sell Time", "buyPrice": "Buy Price", "sellPrice": "Sell Price", "buyAmount": "Buy Amount", "sellAmount": "Sell Amount", "grossProfit": "Gross Profit", "netProfit": "Net Profit", "grossReturn": "Gross Return", "returnRate": "Return Rate", "holdingTime": "Holding Time", "dailyReturn": "Daily Return" } },
   "marketPage": {
     "subtitle": "Explore market breadth, stock details and candlestick trends",
     "searchPlaceholder": "Search stock name or code",

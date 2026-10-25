@@ -1,4 +1,4 @@
-/* AI_GENERATE_START------- */
+/* AI_GENERATE_START-------- */
 .order-records-shell {
   min-width: 0;
   overflow: hidden;
@@ -30,9 +30,19 @@
 .trade-records-table .ant-table-tbody > tr:hover > td { background: var(--brand-soft) !important; }
 .trade-records-table .ant-table-thead > tr > th { background: var(--panel-muted); }
 .trade-records-table .trade-record-number { text-align: right !important; font-variant-numeric: tabular-nums; }
-.trade-record-stock { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 3px; line-height: 1.3; }
-.trade-record-stock strong { color: var(--text-primary); font-size: 13px; }
-.trade-record-stock span { overflow: hidden; max-width: 140px; color: var(--text-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.order-records-stock-code {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--brand);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.order-records-stock-code:hover { color: #60a5fa; }
+.order-records-stock-code:focus-visible { border-radius: 2px; outline: 2px solid var(--brand); outline-offset: 3px; }
+.order-records-stock-name { color: var(--text-primary); font-size: 13px; }
 .trade-record-result .ant-typography { font-weight: 650; }
 .trade-record-expanded { padding: 10px 48px 12px; background: var(--panel-muted); }
 .trade-record-detail-grid { display: grid; grid-template-columns: repeat(9, minmax(76px, 1fr)); gap: 1px; background: var(--border-soft); }
@@ -48,4 +58,4 @@
   .trade-record-detail-grid { grid-template-columns: repeat(3, minmax(92px, 1fr)); }
   .trade-record-expanded { padding-inline: 16px; }
 }
-/* AI_GENERATE_END------- */
+/* AI_GENERATE_END-------- */

@@ -1,13 +1,15 @@
-// AI_GENERATE_START-------------------
+// AI_GENERATE_START---------------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { Button, DatePicker, Empty, Input, Pagination, Select, Space, Table, Tag } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { SearchOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
 import type { ApiResponse } from '../../utils/api';
 import { formatDateTime } from '../../utils/dateTime';
 import { localizedText } from '../../utils/localizedText';
 import { useTranslation } from 'react-i18next';
+import StockDetailDrawer, { type StockDetailSelection } from '../../components/StockDetailDrawer';
 
 interface BrokerOrder {
   orderId: string;
@@ -74,6 +76,7 @@ const OrderHistoryTable: React.FC = () => {
   const [page, setPage] = useState<PageState>({ current: 1, pageSize: 10, total: 0 });
   const [loading, setLoading] = useState(false);
   const [, setError] = useState<string | null>(null);
+  const [detailStock, setDetailStock] = useState<StockDetailSelection | null>(null);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -130,8 +133,34 @@ const OrderHistoryTable: React.FC = () => {
     return <Tag color={color}>{label}</Tag>;
   };
 
-  const columns = [
-    { title: t('historyOrders.columns.stock'), key: 'stock', render: (_: unknown, item: BrokerOrder) => `${item.stockCode} ${item.stockName ?? ''}` },
+  const columns: ColumnsType<BrokerOrder> = [
+    {
+      title: t('historyOrders.columns.stockCode'),
+      dataIndex: 'stockCode',
+      key: 'stockCode',
+      width: 110,
+      render: (code: string, item) => (
+        <button
+          type="button"
+          className="order-records-stock-code"
+          aria-label={localizedText(`查看 ${item.stockName || code}（${code}）详情`, `View details for ${item.stockName || code} (${code})`)}
+          onClick={(event) => {
+            event.stopPropagation();
+            setDetailStock({ code, name: item.stockName });
+          }}
+        >
+          {code}
+        </button>
+      ),
+    },
+    {
+      title: t('historyOrders.columns.stockName'),
+      dataIndex: 'stockName',
+      key: 'stockName',
+      width: 130,
+      ellipsis: true,
+      render: (name?: string) => <span className="order-records-stock-name">{name || '-'}</span>,
+    },
     { title: t('historyOrders.columns.direction'), dataIndex: 'direction', key: 'direction', render: directionTag },
     { title: t('historyOrders.columns.orderPrice'), dataIndex: 'orderPrice', key: 'orderPrice', render: money },
     { title: t('historyOrders.columns.orderQuantity'), dataIndex: 'orderQuantity', key: 'orderQuantity' },
@@ -209,9 +238,10 @@ const OrderHistoryTable: React.FC = () => {
             />
           </div>
         </div>
+        <StockDetailDrawer stock={detailStock} onClose={() => setDetailStock(null)} />
     </div>
   );
 };
 
 export default OrderHistoryTable;
-// AI_GENERATE_END-------------------
+// AI_GENERATE_END---------------------

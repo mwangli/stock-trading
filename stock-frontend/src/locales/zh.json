@@ -80,7 +80,7 @@
     "allDirections": "全部方向",
     "buy": "买入",
     "sell": "卖出",
-    "columns": { "time": "委托时间", "stock": "股票", "direction": "方向", "orderPrice": "委托价", "orderQuantity": "委托数量", "filledQuantity": "成交数量", "averageFillPrice": "成交均价", "transactionAmount": "成交金额", "commission": "手续费", "status": "状态", "orderId": "委托编号" },
+    "columns": { "time": "委托时间", "stockCode": "股票代码", "stockName": "股票名称", "direction": "方向", "orderPrice": "委托价", "orderQuantity": "委托数量", "filledQuantity": "成交数量", "averageFillPrice": "成交均价", "transactionAmount": "成交金额", "commission": "手续费", "status": "状态", "orderId": "委托编号" },
     "filled": "已成交",
     "dateError": "开始日期不能晚于结束日期"
   },
@@ -105,7 +105,7 @@
     "versionsEmpty": "暂无模型版本",
     "runsEmpty": "暂无训练记录"
   },
-  "tradeRecords": { "subtitle": "按 FIFO 规则将已成交历史订单汇总为买入批次交易记录", "searchPlaceholder": "股票代码或名称", "empty": "暂无已组装交易记录", "columns": { "stock": "股票", "buyTime": "买入时间", "sellTime": "卖出时间", "buyPrice": "买入均价", "sellPrice": "卖出均价", "buyAmount": "买入金额", "sellAmount": "卖出金额", "grossProfit": "毛收益", "netProfit": "净收益", "grossReturn": "毛收益率", "returnRate": "收益率", "holdingTime": "持仓时间", "dailyReturn": "日收益率" } },
+  "tradeRecords": { "subtitle": "按 FIFO 规则将已成交历史订单汇总为买入批次交易记录", "searchPlaceholder": "股票代码或名称", "empty": "暂无已组装交易记录", "columns": { "stockCode": "股票代码", "stockName": "股票名称", "buyTime": "买入时间", "sellTime": "卖出时间", "buyPrice": "买入均价", "sellPrice": "卖出均价", "buyAmount": "买入金额", "sellAmount": "卖出金额", "grossProfit": "毛收益", "netProfit": "净收益", "grossReturn": "毛收益率", "returnRate": "收益率", "holdingTime": "持仓时间", "dailyReturn": "日收益率" } },
   "marketPage": {
     "subtitle": "查看市场广度、股票详情与 K 线走势",
     "searchPlaceholder": "搜索股票名称或代码",
