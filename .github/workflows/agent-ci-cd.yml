@@ -122,6 +122,12 @@ jobs:
           test -n "$jar_path"
           install -m 0644 "$jar_path" release/stock-agent/app.jar
 
+      - name: Assemble project documents
+        run: |
+          set -Eeuo pipefail
+          install -d release/stock-agent/documents
+          cp -R release/documents/. release/stock-agent/documents/
+
       - name: Resolve immutable image tag
         id: image
         run: echo "value=${IMAGE_REPOSITORY}:${{ steps.versions.outputs.source_sha }}-${{ steps.versions.outputs.model_tag }}" >> "$GITHUB_OUTPUT"
@@ -161,6 +167,7 @@ jobs:
           sparse-checkout: |
             docker-compose.yml
             .github/scripts/deploy-service.sh
+            .github/scripts/production-maintenance.sh
           sparse-checkout-cone-mode: false
 
       - name: Upload deployment files
@@ -171,7 +178,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ env.SERVER_PORT }}
           fingerprint: ${{ env.SERVER_FINGERPRINT }}
-          source: docker-compose.yml,.github/scripts/deploy-service.sh
+          source: docker-compose.yml,.github/scripts/deploy-service.sh,.github/scripts/production-maintenance.sh
           target: ${{ env.SERVER_DEPLOY_DIR }}
           overwrite: true
 
