@@ -146,7 +146,7 @@ services:
         source: ${MYSQL_DATA_DIR:-./data/mysql}
         target: /var/lib/mysql
     ports:
-      - "127.0.0.1:3306:3306"
+      - "0.0.0.0:3306:3306"
     networks:
       - stock-internal
       - stock-db-access
@@ -173,7 +173,7 @@ services:
         source: ${MONGO_DATA_DIR:-./data/mongo}
         target: /data/db
     ports:
-      - "127.0.0.1:27017:27017"
+      - "0.0.0.0:27017:27017"
     networks:
       - stock-internal
       - stock-db-access
@@ -202,7 +202,7 @@ services:
         source: ${REDIS_DATA_DIR:-./data/redis}
         target: /data
     ports:
-      - "127.0.0.1:6379:6379"
+      - "0.0.0.0:6379:6379"
     networks:
       - stock-internal
       - stock-db-access

@@ -1,0 +1,54 @@
+name: Production Database Rebuild
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-production
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    name: Rebuild production databases with Compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    steps:
+      - name: Checkout Compose deployment files
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            docker-compose.yml
+            .github/scripts/rebuild-production-databases.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Upload Compose deployment files
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          source: docker-compose.yml,.github/scripts/rebuild-production-databases.sh
+          target: ${{ vars.SERVER_DEPLOY_DIR }}
+          overwrite: true
+
+      - name: Rebuild databases through Compose
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          DATABASE_PASSWORD: ${{ secrets.DATABASE_ROOT_PASSWORD }}
+          DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          envs: DATABASE_PASSWORD,DEPLOY_DIR
+          command_timeout: 20m
+          script: bash "$DEPLOY_DIR/.github/scripts/rebuild-production-databases.sh"
