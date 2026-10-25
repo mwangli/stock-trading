@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START------------------------------------------------------ -->
+<!-- AI_GENERATE_START------------------------------------------------------- -->
 # 交互语言要求
 
 1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
@@ -48,13 +48,13 @@
 
 ## 项目结构
 
-本项目只保留三个 Maven 业务模块。文档内容作为仓库资产集中维护，Docusaurus 作为前端内部构建组件，不再建立独立 Maven 文档模块：
+本项目只保留三个 Maven 业务模块。文档内容作为仓库资产集中维护，并由前端内置只读 Markdown 工作台展示，不建立独立文档项目或运行进程：
 
 ```text
 stock-trading4/
 ├── stock-backend/                  # Spring Boot 后端；内部按 market/model/decision/execution/schedule/platform 分包
 ├── stock-agent/                    # Agent、RAG、Memory 和受控决策增强
-├── stock-frontend/                 # React + Vite 前端；documentation/ 内维护 Docusaurus 框架
+├── stock-frontend/                 # React + Vite 前端；内置 Markdown 文档预览组件
 ├── documents/                      # Markdown 文档唯一事实源
 ├── model-files/                    # 固定模型制品，运行时只读挂载
 ├── .tmp/                           # 临时文件（不提交）
@@ -63,11 +63,11 @@ stock-trading4/
 └── docker-compose.yml
 ```
 
-**工程文档约定**：`documents/` 是系统架构、领域设计、专项方案、运行边界、运维手册和 ADR 的统一权威目录；`stock-frontend/documentation/` 只保存 Docusaurus 配置、主题、组件和校验脚本。仓库只保留根目录项目级 `README.md` 作为统一入口，不在 Backend、Agent、Frontend、Docusaurus 构建目录或源码包旁维护模块级 README；类、方法、字段和局部业务不变量继续维护在 Javadoc 或 TypeScript 类型旁。模型制品自带且被清单校验的说明文件不属于工程模块 README。文档统一使用 `PROPOSED`、`SOURCE_IMPLEMENTED`、`COMPILED`、`RUNTIME_VERIFIED`、`PRODUCTION_VERIFIED`、`SUPERSEDED` 表达证据等级。
+**工程文档约定**：`documents/` 是系统架构、领域设计、专项方案、运行边界、运维手册和 ADR 的统一权威目录；`stock-frontend/src/pages/documentation/` 只负责读取、导航和可视化，`stock-frontend/scripts/validate-docs.mjs` 负责静态校验。仓库只保留根目录项目级 `README.md` 作为统一入口，不在 Backend、Agent、Frontend、文档预览组件目录或源码包旁维护模块级 README；类、方法、字段和局部业务不变量继续维护在 Javadoc 或 TypeScript 类型旁。模型制品自带且被清单校验的说明文件不属于工程模块 README。文档统一使用 `PROPOSED`、`SOURCE_IMPLEMENTED`、`COMPILED`、`RUNTIME_VERIFIED`、`PRODUCTION_VERIFIED`、`SUPERSEDED` 表达证据等级。
 
-**Node 版本约定**：前端和文档模块统一使用 Node.js `22.22.3`。根 `.nvmrc`、根 `pom.xml`、两个模块的 `package.json`/`.npmrc` 和前端 Docker 基础镜像必须保持一致；禁止为不同模块维护独立 Node 版本，升级时必须同批修改全部声明。
+**Node 版本约定**：前端统一使用 Node.js `22.22.3`。根 `.nvmrc`、根 `pom.xml`、前端 `package.json`/`.npmrc` 和 Docker 基础镜像必须保持一致；升级时必须同批修改全部声明。
 
-**Web 构建约定**：`stock-frontend` 使用唯一 `package.json` 和锁文件管理 React 19、Vite 与 Docusaurus。`npm run build` 和 `mvn -pl stock-frontend package` 必须同时生成交易前端与 `/docs/` 文档站点；两者进入同一个 Nginx 镜像并一起发布、一起回滚。
+**Web 构建约定**：`stock-frontend` 使用唯一 `package.json`、Vite 进程和 React Router 路由树。`documents/` 通过 Vite 原始文本导入进入 `/docs/*` 只读预览，`npm run build` 和 `mvn -pl stock-frontend package` 只生成一个 SPA 制品并进入同一个 Nginx 镜像发布、回滚。
 
 **临时文件约定**：项目根目录下的 `.tmp/` 用于存放所有临时文件和中间脚本。Agent 生成的一次性脚本、临时输出、中间结果等均应放在此目录，且该目录已加入 `.gitignore`，不纳入版本控制。
 
@@ -106,17 +106,17 @@ npm run build
 npm run lint
 ```
 
-### Docs (Docusaurus)
+### Docs (React Markdown Preview)
 
 工作目录: `stock-frontend/`
 
 ```bash
-# 本地开发预览
+# 文档与交易前端使用同一个开发进程
 npm ci
-npm run docs:start
+npm run dev
 
-# 同时构建交易前端与文档站点
-npm run build
+# 仅执行文档链接、元数据和源码入口静态校验
+npm run validate:docs
 ```
 
 ### Agent (Java/Maven)
@@ -689,4 +689,4 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 **Agent 特别指令**:
 - 本项目无自动化测试，不要生成或要求补充测试用例；质量依赖代码审查与手工验证。
 - 项目只允许 `stock-backend`、`stock-agent`、`stock-frontend` 三个 Maven 业务模块；后端领域使用包和子目录组织，禁止恢复旧的内部 Maven 模块。
-<!-- AI_GENERATE_END------------------------------------------------------ -->
+<!-- AI_GENERATE_END------------------------------------------------------- -->

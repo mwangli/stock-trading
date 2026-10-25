@@ -15,8 +15,6 @@ source_paths:
 
 <DocMetadata />
 
-**IDEA 源码入口**：[融合编排 `TemporalModelEnsembleService.java`](../../../../stock-backend/src/main/java/com/stock/model/service/TemporalModelEnsembleService.java) · [统一输出计算 `TemporalModelOutputCalculator.java`](../../../../stock-backend/src/main/java/com/stock/model/algorithm/TemporalModelOutputCalculator.java) · [权重优化 `TemporalModelWeightOptimizer.java`](../../../../stock-backend/src/main/java/com/stock/model/algorithm/TemporalModelWeightOptimizer.java)
-
 # Ranking LSTM 与 MASTER 连续权重融合
 
 :::warning 验证边界
@@ -33,10 +31,10 @@ Ranking LSTM 保持生产基线，MASTER 使用相同标签、成本模型和四
 
 | 能力 | 当前实现 | 源码状态 |
 |---|---|---|
-| 数据准备 | `RankingLstmTrainingDataService` 读取模型日线、复权因子、历史股票池、可交易事实、市场和行业参考序列及 `temporal-news-v1`；`RankingLstmDataPreprocessor` 构建 60 日、56 维样本并执行全局日期切分、标准化、Purge、Embargo 和 Walk-Forward；`TrainingDatasetSnapshotService` 将不可变快照保存到 GridFS | 已具备；新闻快照缺失时按硬门禁失败 |
+| 数据准备 | `ModelDataReadinessService` 在快照前检查版本化基础集合，`ModelDataBackfillService` 只对具备可靠来源的新闻快照执行一轮幂等回填；`RankingLstmDataPreprocessor` 构建 60 日、56 维样本并执行全局日期切分、标准化、Purge、Embargo 和 Walk-Forward；`TrainingDatasetSnapshotService` 将不可变快照保存到 GridFS | 已具备；复检仍有缺口时进入 `WAITING_DATA` |
 | 模型训练 | `LstmTrainerService` 按目标交易日分组并按横截面块训练 `MasterTransformerModel`，联合优化排序、收益、方向和下行分位，支持早停、独立测试、Walk-Forward 和严格隔离评估 | 已具备 |
 | 模型预测 | `LstmModelRuntimeService` 根据候选元数据重建 MASTER，从 GridFS 加载参数，按训练时 `crossSectionBatchSize` 执行同日股票池推理；`MasterShadowPredictionService` 保存独立影子结果 | 已具备 |
-| 模型评估 | 训练期计算 Rank IC、成本后 Top 10% 收益、Brier Score、输出塌缩和最大回撤；运行期使用真实目标日收益比较 Ranking LSTM 与 MASTER，并自动调权或退役 | 已具备 |
+| 模型评估 | 训练流水线执行一次性独立测试和 Walk-Forward 离线评估；候选登记后，由独立影子任务使用真实目标日收益持续比较 Ranking LSTM 与 MASTER，并自动调权或退役 | 已具备 |
 | 制品加载校验 | 候选保存后重新读取 GridFS 参数，执行 DJL 参数反序列化和固定横截面前向冒烟，校验输出形状、有限值和概率范围 | 已补全 |
 | 样本外边界 | 影子任务仅处理候选创建后的非重算生产预测批次，并有界补跑最近窗口内漏执行批次 | 已补全 |
 
@@ -47,6 +45,8 @@ Ranking LSTM 保持生产基线，MASTER 使用相同标签、成本模型和四
 `news_feature_snapshots` 以股票、交易日和特征版本唯一，训练和推理批量读取快照，不在样本循环内查询 MongoDB 或重新执行情感模型。任一必需股票交易日缺少完整 25 维快照时直接阻断。Ranking LSTM 与 MASTER 的新契约为 `cross-sectional-temporal-news-v6`：28 个价格/技术/横截面连续特征加 25 个新闻特征，再加 3 个类别索引，共 56 维。旧 31 维制品禁止兼容加载，两个模型必须使用同一快照版本重新训练后才能融合。
 
 ### 双模型连续权重与自动选择
+
+本节是长期模型生命周期，不是训练运行的后置等待阶段。训练任务在 MASTER 候选完成一次性离线评估并登记后即结束；后续 `masterShadowPrediction` 按日积累样本、刷新权重和执行回退，训练中断恢复与长期评估互不耦合。
 
 #### 生产数据流
 
