@@ -6,7 +6,7 @@
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>stock-trading</name>
-    <description>Stock trading backend, agent and frontend aggregator</description>
+    <description>Stock trading backend, agent, frontend and documentation aggregator</description>
     <modules>
         <module>stock-backend</module>
         <module>stock-agent</module>
@@ -18,7 +18,7 @@
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <spring-boot.version>3.2.10</spring-boot.version>
-        <node.version>v20.19.0</node.version>
+        <node.version>v22.22.3</node.version>
         <npm.version>9.8.1</npm.version>
         <langchain4j.version>1.22.0</langchain4j.version>
         <hutool.version>5.8.25</hutool.version>

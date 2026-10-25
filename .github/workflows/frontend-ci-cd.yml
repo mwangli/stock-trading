@@ -64,7 +64,7 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v7
         with:
-          context: stock-frontend
+          context: .
           file: stock-frontend/Dockerfile
           push: true
           tags: |
