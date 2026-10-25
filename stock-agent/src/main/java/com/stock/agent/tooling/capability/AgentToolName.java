@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.agent.tooling.capability;
 
 /**
@@ -12,6 +12,9 @@ public enum AgentToolName {
 
     /** 项目文档检索。 */
     PROJECT_DOCUMENT_SEARCH("searchProjectDocuments"),
+
+    /** 公开网页搜索。 */
+    WEB_SEARCH("searchWeb"),
 
     /** 交易日历查询。 */
     TRADING_CALENDAR("queryTradingCalendar"),
@@ -52,4 +55,4 @@ public enum AgentToolName {
         return toolName;
     }
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

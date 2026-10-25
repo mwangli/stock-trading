@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------
+// AI_GENERATE_START--------------------
 package com.stock.agent.shared.config;
 
 import lombok.Data;
@@ -83,6 +83,9 @@ public class AgentProperties {
 
     /** Embedding 独立运行配置。 */
     private EmbeddingProperties embedding = new EmbeddingProperties();
+
+    /** 公开网页搜索配置。 */
+    private WebSearchProperties webSearch = new WebSearchProperties();
 
     /**
      * DeepSeek API 连接配置。
@@ -219,5 +222,33 @@ public class AgentProperties {
         /** 是否允许使用 hash 降级向量。生产环境默认关闭。 */
         private boolean allowHashFallback = false;
     }
+
+    /**
+     * 公开网页搜索配置。
+     *
+     * @author mwangli
+     * @since 2026-10-25
+     */
+    @Data
+    public static class WebSearchProperties {
+
+        /** 是否启用网页搜索。 */
+        private boolean enabled = true;
+
+        /** DeepSeek 网页搜索接口地址。 */
+        private String endpoint = "https://api.deepseek.com/v1/tools/search";
+
+        /** 单次搜索超时时间，单位毫秒。 */
+        private long timeoutMs = 10000L;
+
+        /** 单次最多返回的搜索结果数量，最大值为 5。 */
+        private int maxResults = 5;
+
+        /** 搜索问题最大字符数。 */
+        private int maxQueryChars = 300;
+
+        /** 原始响应最大字符数。 */
+        private int maxResponseChars = 100000;
+    }
 }
-// AI_GENERATE_END------------------
+// AI_GENERATE_END-------------------
