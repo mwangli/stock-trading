@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------------------------------
+// AI_GENERATE_START--------------------------------------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
@@ -14,6 +14,7 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd';
@@ -255,7 +256,7 @@ const JobManagement: React.FC = () => {
     setLoading(true);
     void loadJobs()
       .catch((cause: unknown) => {
-        message.error(getApiErrorMessage(cause, '读取任务管理数据失败'));
+        message.error(getApiErrorMessage(cause, '读取任务调度数据失败'));
       })
       .finally(() => {
         if (mounted) {
@@ -439,7 +440,21 @@ const JobManagement: React.FC = () => {
     { title: localizedText('开始时间', 'Started At'), dataIndex: 'startedTime', key: 'startedTime', width: 180, render: formatDateTime },
     { title: localizedText('结束时间', 'Finished At'), dataIndex: 'finishedTime', key: 'finishedTime', width: 180, render: formatDateTime },
     { title: localizedText('耗时', 'Duration'), dataIndex: 'durationMs', key: 'durationMs', width: 100, render: formatDuration },
-    { title: localizedText('错误摘要', 'Error Summary'), dataIndex: 'errorMessage', key: 'errorMessage', width: 220, ellipsis: true, render: (value?: string) => value || '-' },
+    {
+      title: localizedText('错误摘要', 'Error Summary'),
+      dataIndex: 'errorMessage',
+      key: 'errorMessage',
+      width: 300,
+      ellipsis: true,
+      render: (value?: string) => value ? (
+        <Tooltip
+          placement="topLeft"
+          title={<span className="job-error-tooltip-text">{value}</span>}
+        >
+          <span className="job-error-summary">{value}</span>
+        </Tooltip>
+      ) : '-',
+    },
     {
       title: localizedText('操作', 'Actions'),
       key: 'actions',
@@ -498,7 +513,7 @@ const JobManagement: React.FC = () => {
       title: localizedText('操作', 'Actions'),
       key: 'actions',
       fixed: 'right',
-      width: 390,
+      width: 300,
       render: (_, record) => {
         const operating = operatingJob === record.jobName;
         const activeRun = record.latestRun?.status === 'RUNNING' ? record.latestRun : undefined;
@@ -509,7 +524,7 @@ const JobManagement: React.FC = () => {
         const toggleAction: 'pause' | 'resume' = record.enabled && !needsRegistrationRepair ? 'pause' : 'resume';
         const canStop = Boolean(activeRun) && operatingRun !== activeRun?.runId;
         return (
-          <Space size="small" className="job-actions">
+          <Space size={4} className="job-actions">
             <span
               className={`job-action ${canTrigger ? '' : 'job-action-disabled'}`}
               aria-disabled={!canTrigger}
@@ -644,8 +659,9 @@ const JobManagement: React.FC = () => {
             columns={historyColumns}
             dataSource={historyRuns}
             loading={historyLoading}
+            tableLayout="fixed"
             locale={{ emptyText: <Empty description={t('jobsPage.emptyRuns')} /> }}
-            scroll={{ x: 'max-content' }}
+            scroll={{ x: 1420 }}
             pagination={{
               current: historyPage,
               pageSize: historyPageSize,
@@ -683,4 +699,4 @@ const JobManagement: React.FC = () => {
 };
 
 export default JobManagement;
-// AI_GENERATE_END-----------------------------------
+// AI_GENERATE_END--------------------------------------

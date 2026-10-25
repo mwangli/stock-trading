@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------------
+// AI_GENERATE_START----------------------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
@@ -166,35 +166,66 @@ const Dashboard: React.FC = () => {
   );
 
   return (
-    <div className="app-page">
-      <Row gutter={[16, 16]}>
+    <div className="app-page returns-overview-page">
+      <Row gutter={[12, 12]}>
         <Col xs={24} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.totalAssets')} value={account?.totalAssets} precision={2} prefix="¥" /></Card></Col>
         <Col xs={24} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.availableCash')} value={account?.availableCash} precision={2} prefix="¥" /></Card></Col>
         <Col xs={24} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.positionValue')} value={account?.totalPosition} precision={2} prefix="¥" /></Card></Col>
         <Col xs={24} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.frozenCash')} value={account?.frozenAmount} precision={2} prefix="¥" /></Card></Col>
       </Row>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} md={8}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.realizedTotal')} value={performance?.cumulativeProfit} precision={2} prefix="¥" /><Text type={profitColor(performance?.cumulativeProfit)}>{t('dashboard.cards.realizedRate')} {percent(performance?.cumulativeReturnRate)}</Text></Card></Col>
-        <Col xs={24} md={8}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.realizedToday')} value={performance?.dailyProfit} precision={2} prefix="¥" /><Text type={profitColor(performance?.dailyProfit)}>{t('dashboard.cards.dailyRate')} {percent(performance?.dailyReturnRate)}</Text></Card></Col>
-        <Col xs={24} md={8}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.realizedMonth')} value={performance?.monthlyProfit} precision={2} prefix="¥" /><Text type={profitColor(performance?.monthlyProfit)}>{t('dashboard.cards.monthlyRate')} {percent(performance?.monthlyReturnRate)}</Text></Card></Col>
+      <Row gutter={[12, 12]}>
+        <Col xs={24} md={8}>
+          <Card className="surface-card compact-card returns-overview-profit-card" loading={loading}>
+            <div className="returns-overview-profit-layout">
+              <Statistic title={t('dashboard.cards.realizedTotal')} value={performance?.cumulativeProfit} precision={2} prefix="¥" />
+              <Text className="returns-overview-rate" type={profitColor(performance?.cumulativeProfit)}>
+                {t('dashboard.cards.realizedRate')} <strong>{percent(performance?.cumulativeReturnRate)}</strong>
+              </Text>
+            </div>
+          </Card>
+        </Col>
+        <Col xs={24} md={8}>
+          <Card className="surface-card compact-card returns-overview-profit-card" loading={loading}>
+            <div className="returns-overview-profit-layout">
+              <Statistic title={t('dashboard.cards.realizedToday')} value={performance?.dailyProfit} precision={2} prefix="¥" />
+              <Text className="returns-overview-rate" type={profitColor(performance?.dailyProfit)}>
+                {t('dashboard.cards.dailyRate')} <strong>{percent(performance?.dailyReturnRate)}</strong>
+              </Text>
+            </div>
+          </Card>
+        </Col>
+        <Col xs={24} md={8}>
+          <Card className="surface-card compact-card returns-overview-profit-card" loading={loading}>
+            <div className="returns-overview-profit-layout">
+              <Statistic title={t('dashboard.cards.realizedMonth')} value={performance?.monthlyProfit} precision={2} prefix="¥" />
+              <Text className="returns-overview-rate" type={profitColor(performance?.monthlyProfit)}>
+                {t('dashboard.cards.monthlyRate')} <strong>{percent(performance?.monthlyReturnRate)}</strong>
+              </Text>
+            </div>
+          </Card>
+        </Col>
       </Row>
 
-      <Card className="surface-card" title={t('dashboard.sections.returnStats')}>
-        <Row gutter={[16, 16]}>
+      <Card
+        className="surface-card returns-overview-summary-card"
+        title={t('dashboard.sections.returnStats')}
+        extra={(
+          <div className="returns-overview-summary-extra">
+            <Tag color="red">{t('dashboard.sections.best')} {percent(performance?.bestReturnRate)}</Tag>
+            <Tag color="green">{t('dashboard.sections.worst')} {percent(performance?.worstReturnRate)}</Tag>
+          </div>
+        )}
+      >
+        <Row gutter={[12, 12]}>
           <Col xs={12} md={6}><Statistic title={t('dashboard.sections.completedTrades')} value={performance?.closedTradeCount ?? 0} suffix={`/ ${performance?.totalTradeCount ?? 0}`} /></Col>
           <Col xs={12} md={6}><Statistic title={t('dashboard.sections.winRate')} value={performance ? Number((performance.winRate * 100).toFixed(2)) : 0} suffix="%" /></Col>
           <Col xs={12} md={6}><Statistic title={t('dashboard.sections.averageReturn')} value={performance ? Number((performance.averageReturnRate * 100).toFixed(2)) : 0} suffix="%" /></Col>
           <Col xs={12} md={6}><Statistic title={t('dashboard.sections.profitLoss')} value={`${performance?.winningTradeCount ?? 0} / ${performance?.losingTradeCount ?? 0}`} /></Col>
         </Row>
-        <div className="mt-5 flex flex-wrap gap-3 text-sm">
-          <Tag color="red">{t('dashboard.sections.best')} {percent(performance?.bestReturnRate)}</Tag>
-          <Tag color="green">{t('dashboard.sections.worst')} {percent(performance?.worstReturnRate)}</Tag>
-          <Text type="secondary">{t('dashboard.sections.basis')}</Text>
-        </div>
       </Card>
 
-      <Row className="dashboard-table-row" gutter={[16, 16]}>
+      <Row className="dashboard-table-row" gutter={[12, 12]}>
         <Col className="dashboard-table-col" xs={24} xl={12}>
           <Card className="surface-card dashboard-table-card" title={t('dashboard.sections.daily')}>
             <Table rowKey={(item) => `${item.period}-${item.stockCode}`} columns={dailyReturnColumns} dataSource={performance?.dailyReturns ?? []} loading={loading} pagination={{ pageSize: 10 }} locale={{ emptyText: <Empty description={t('dashboard.empty.daily')} /> }} />
@@ -216,4 +247,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-// AI_GENERATE_END--------------------
+// AI_GENERATE_END----------------------

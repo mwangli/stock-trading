@@ -1,4 +1,5 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START--------
+import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
@@ -331,8 +332,8 @@ const AdaptiveStrategy: React.FC = () => {
   ];
 
   return (
-    <div className="app-page space-y-5">
-      <section className="border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+    <div className="app-page adaptive-strategy-page">
+      <section className="adaptive-panel adaptive-strategy-header border border-slate-200 bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-4">
             <div className="flex size-11 shrink-0 items-center justify-center bg-emerald-600 text-lg text-white"><ApartmentOutlined /></div>
@@ -370,26 +371,25 @@ const AdaptiveStrategy: React.FC = () => {
         )}
       </section>
 
-      <section>
+      <section className="adaptive-section">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">运行概览</h3>
           <Text type="secondary">只读事实，不提供人工调参</Text>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-          <div className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="策略版本" value={overview?.strategyVersion || '未标记'} /></div>
-          <div className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="内部策略模板" value={overview?.currentMode || '未确认'} /></div>
-          <div className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="最近评估目标日" value={overview?.targetTradeDate || candidateBatch?.targetTradeDate || '未形成'} /></div>
-          <div className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="候选数量" value={candidateBatch?.items.length ?? 0} suffix="只" /></div>
-          <div className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="最近演化记录" value={formatDateTime(overview?.lastEvolutionAt)} /></div>
-          <div className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="下一次评估" value="未形成调度证据" /></div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="adaptive-panel adaptive-metric border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="策略版本" value={overview?.strategyVersion || '未标记'} /></div>
+          <div className="adaptive-panel adaptive-metric border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="内部策略模板" value={overview?.currentMode || '未确认'} /></div>
+          <div className="adaptive-panel adaptive-metric border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="最近评估目标日" value={overview?.targetTradeDate || candidateBatch?.targetTradeDate || '未形成'} /></div>
+          <div className="adaptive-panel adaptive-metric border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="候选数量" value={candidateBatch?.items.length ?? 0} suffix="只" /></div>
+          <div className="adaptive-panel adaptive-metric border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="最近演化记录" value={formatDateTime(overview?.lastEvolutionAt)} /></div>
         </div>
       </section>
 
-      <section>
+      <section className="adaptive-section">
         <h3 className="mb-3 text-base font-semibold text-slate-900 dark:text-slate-100">决策链健康度</h3>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="adaptive-health-grid grid gap-3">
           {healthItems.map((item) => (
-            <div key={item.key} className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+            <div key={item.key} data-status={item.status} className="adaptive-panel adaptive-health-item border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
               <div className="flex items-center justify-between gap-3">
                 <strong className="text-sm text-slate-900 dark:text-slate-100">{item.label}</strong>
                 <Tag color={healthColor(item.status)}>{item.status}</Tag>
@@ -400,26 +400,21 @@ const AdaptiveStrategy: React.FC = () => {
         </div>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
+      <section className="adaptive-section grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
         <div>
           <h3 className="mb-3 text-base font-semibold text-slate-900 dark:text-slate-100">真实交易表现</h3>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            <div className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="累计已实现收益率" value={percent(overview?.performance?.cumulativeReturnRate)} /></div>
-            <div className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="已完成交易胜率" value={percent(overview?.performance?.winRate)} /></div>
-            <div className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="平均已实现收益率" value={percent(overview?.performance?.averageReturnRate)} /></div>
-            <div className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="单笔最差收益率" value={percent(overview?.performance?.worstReturnRate)} /></div>
-            <div className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="已完成交易" value={overview?.performance?.closedTradeCount ?? 0} suffix="笔" /></div>
-            <div className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-              <div className="text-sm text-slate-500">尚未形成的指标</div>
-              <div className="mt-3 flex flex-wrap gap-2"><Tag>最大回撤</Tag><Tag>换手率</Tag><Tag>完整成本后基线对比</Tag></div>
-            </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="adaptive-panel adaptive-metric border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="累计已实现收益率" value={percent(overview?.performance?.cumulativeReturnRate)} /></div>
+            <div className="adaptive-panel adaptive-metric border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="已完成交易胜率" value={percent(overview?.performance?.winRate)} /></div>
+            <div className="adaptive-panel adaptive-metric border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="单笔最差收益率" value={percent(overview?.performance?.worstReturnRate)} /></div>
+            <div className="adaptive-panel adaptive-metric border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><Statistic title="已完成交易" value={overview?.performance?.closedTradeCount ?? 0} suffix="笔" /></div>
           </div>
           <div className="mt-3 text-xs text-slate-500">收益指标来自真实成交派生记录；未卖出持仓不计入已实现收益。最近事实时间：{formatDateTime(overview?.performance?.capturedAt)}</div>
         </div>
 
         <div>
           <h3 className="mb-3 text-base font-semibold text-slate-900 dark:text-slate-100">Agent 反事实评估</h3>
-          <div className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="adaptive-panel adaptive-evaluation-panel border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             {evaluation?.summary && evaluation.summary.evaluatedCount > 0 ? (
               <dl className="grid grid-cols-2 gap-4 text-sm">
                 <div><dt className="text-slate-500">有效评估样本</dt><dd className="mt-1 font-semibold">{evaluation.summary.evaluatedCount}</dd></div>
@@ -438,60 +433,58 @@ const AdaptiveStrategy: React.FC = () => {
         </div>
       </section>
 
-      <section>
+      <section className="adaptive-section">
         <div className="mb-3 flex items-center gap-2"><AuditOutlined /><h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">版本比较</h3></div>
-        <Table<StrategyVersion>
-          rowKey={(row) => `${row.role}-${row.versionId}`}
-          dataSource={overview?.versions ?? []}
-          pagination={false}
-          scroll={{ x: 'max-content' }}
-          locale={{ emptyText: '尚无可比较的生产、回滚或候选版本' }}
-          columns={[
-            { title: '角色', dataIndex: 'role', render: (value: StrategyVersion['role']) => <Tag color={value === 'ACTIVE' ? 'success' : value === 'CANDIDATE' ? 'processing' : 'default'}>{roleLabel[value]}</Tag> },
-            { title: '业务版本', dataIndex: 'modelVersion', render: (value?: string) => value || '未标记' },
-            { title: '状态', dataIndex: 'status', render: (value?: string) => value || '未确认' },
-            { title: '架构', dataIndex: 'architectureType', render: (value?: string) => value || '未记录' },
-            { title: '特征版本', dataIndex: 'featureVersion', render: (value?: string) => value || '未记录' },
-            { title: '平均 Rank IC', dataIndex: 'meanRankIc', render: (value?: number) => metric(value) },
-            { title: 'Rank ICIR', dataIndex: 'rankIcIr', render: (value?: number) => metric(value) },
-            { title: 'Top 10% 成本后收益', dataIndex: 'topDecileNetReturn', render: (value?: number) => percent(value) },
-            { title: '输出塌缩', dataIndex: 'outputCollapsed', render: (value?: boolean) => value === undefined ? <Tag>未评估</Tag> : <Tag color={value ? 'error' : 'success'}>{value ? '是' : '否'}</Tag> },
-            { title: '版本记录时间', dataIndex: 'createdAt', render: formatDateTime },
-          ]}
-        />
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div>
-          <div className="mb-3 flex items-center gap-2"><FileSearchOutlined /><h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">当前候选与独立建议</h3></div>
-          <Table<CandidateRow>
-            rowKey="stockCode"
-            loading={loading}
-            dataSource={rows}
+        <div className="adaptive-table-panel">
+          <Table<StrategyVersion>
+            rowKey={(row) => `${row.role}-${row.versionId}`}
+            dataSource={overview?.versions ?? []}
+            pagination={false}
             scroll={{ x: 'max-content' }}
-            pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50] }}
-            locale={{ emptyText: candidateError || '暂无交易候选' }}
+            locale={{ emptyText: '尚无可比较的生产、回滚或候选版本' }}
             columns={[
-              { title: '排名', dataIndex: 'rank', width: 72 },
-              { title: '股票', render: (_: unknown, row: CandidateRow) => `${row.stockName} (${row.stockCode})` },
-              { title: '模型得分', dataIndex: 'lstmScore', render: (value: number) => metric(value, 3) },
-              { title: '新闻影响', dataIndex: 'newsImpactScore', render: (value: number) => metric(value, 3) },
-              { title: '综合得分', dataIndex: 'totalScore', render: (value: number) => <Tag color={value >= 0.7 ? 'success' : value >= 0.5 ? 'processing' : 'default'}>{metric(value, 3)}</Tag> },
-              { title: 'Agent 建议', render: (_: unknown, row: CandidateRow) => row.agentDecision ? <Tag color={row.agentDecision.recommendation === 'BUY' ? 'success' : row.agentDecision.recommendation === 'SKIP' ? 'warning' : 'default'}>{row.agentDecision.recommendation}</Tag> : <Tag>无建议</Tag> },
-              { title: '风险标记', render: (_: unknown, row: CandidateRow) => row.agentDecision?.riskFlags?.length ? row.agentDecision.riskFlags.map((flag) => <Tag key={flag} color="warning">{flag}</Tag>) : '无独立风险标记' },
-              { title: '最终状态', render: (_: unknown, row: CandidateRow) => <Tag color={row.held ? 'processing' : 'default'}>{row.held ? '已持有' : '等待 Java 风控'}</Tag> },
-              { title: '确定性候选理由', dataIndex: 'reason', width: 260 },
+              { title: '角色', dataIndex: 'role', render: (value: StrategyVersion['role']) => <Tag color={value === 'ACTIVE' ? 'success' : value === 'CANDIDATE' ? 'processing' : 'default'}>{roleLabel[value]}</Tag> },
+              { title: '业务版本', dataIndex: 'modelVersion', render: (value?: string) => value || '未标记' },
+              { title: '状态', dataIndex: 'status', render: (value?: string) => value || '未确认' },
+              { title: '架构', dataIndex: 'architectureType', render: (value?: string) => value || '未记录' },
+              { title: '平均 Rank IC', dataIndex: 'meanRankIc', render: (value?: number) => metric(value) },
+              { title: 'Rank ICIR', dataIndex: 'rankIcIr', render: (value?: number) => metric(value) },
+              { title: 'Top 10% 成本后收益', dataIndex: 'topDecileNetReturn', render: (value?: number) => percent(value) },
             ]}
           />
+        </div>
+      </section>
+
+      <section className="adaptive-section grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div>
+          <div className="mb-3 flex items-center gap-2"><FileSearchOutlined /><h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">当前候选与独立建议</h3></div>
+          <div className="adaptive-table-panel">
+            <Table<CandidateRow>
+              rowKey="stockCode"
+              loading={loading}
+              dataSource={rows}
+              scroll={{ x: 'max-content' }}
+              pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50] }}
+              locale={{ emptyText: candidateError || '暂无交易候选' }}
+              columns={[
+                { title: '排名', dataIndex: 'rank', width: 72 },
+                { title: '股票', render: (_: unknown, row: CandidateRow) => `${row.stockName} (${row.stockCode})` },
+                { title: '综合得分', dataIndex: 'totalScore', render: (value: number) => <Tag color={value >= 0.7 ? 'success' : value >= 0.5 ? 'processing' : 'default'}>{metric(value, 3)}</Tag> },
+                { title: 'Agent 建议', render: (_: unknown, row: CandidateRow) => row.agentDecision ? <Tag color={row.agentDecision.recommendation === 'BUY' ? 'success' : row.agentDecision.recommendation === 'SKIP' ? 'warning' : 'default'}>{row.agentDecision.recommendation}</Tag> : <Tag>无建议</Tag> },
+                { title: '最终状态', render: (_: unknown, row: CandidateRow) => <Tag color={row.held ? 'processing' : 'default'}>{row.held ? '已持有' : '等待 Java 风控'}</Tag> },
+                { title: '确定性候选理由', dataIndex: 'reason', width: 260 },
+              ]}
+            />
+          </div>
           {agentError && <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">{agentError}</div>}
         </div>
 
         <div>
-          <div className="mb-3 flex items-center gap-2"><ApartmentOutlined /><h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">演化时间线</h3></div>
-          <div className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="mb-3 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><ApartmentOutlined /><h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">最近演化</h3></div><Text type="secondary">最近 4 条</Text></div>
+          <div className="adaptive-panel adaptive-evolution-panel border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             {(overview?.evolutionEvents.length ?? 0) === 0 ? (
               <div className="py-6 text-center text-sm text-slate-500">尚无可追溯演化事件</div>
-            ) : overview?.evolutionEvents.map((event, index) => (
+            ) : overview?.evolutionEvents.slice(0, 4).map((event, index) => (
               <div key={`${event.type}-${index}`} className="relative border-l border-slate-300 pb-5 pl-5 last:pb-0 dark:border-slate-600">
                 <span className="absolute -left-1.5 top-1 size-3 bg-emerald-500" />
                 <div className="flex flex-wrap items-center gap-2"><strong className="text-sm">{event.title}</strong><Tag>{event.status}</Tag></div>
@@ -504,9 +497,9 @@ const AdaptiveStrategy: React.FC = () => {
       </section>
 
       {(overview?.anomalies.length ?? 0) > 0 && (
-        <section>
+        <section className="adaptive-section">
           <div className="mb-3 flex items-center gap-2"><AlertOutlined /><h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">异常与证据缺口</h3></div>
-          <div className="divide-y divide-slate-200 border border-slate-200 bg-white dark:divide-slate-700 dark:border-slate-700 dark:bg-slate-900">
+          <div className="adaptive-panel adaptive-anomaly-panel divide-y divide-slate-200 border border-slate-200 bg-white dark:divide-slate-700 dark:border-slate-700 dark:bg-slate-900">
             {overview?.anomalies.map((item) => <div key={item} className="px-4 py-3 text-sm text-amber-700 dark:text-amber-300">{item}</div>)}
           </div>
         </section>
@@ -554,4 +547,4 @@ const AdaptiveStrategy: React.FC = () => {
 };
 
 export default AdaptiveStrategy;
-// AI_GENERATE_END----
+// AI_GENERATE_END--------

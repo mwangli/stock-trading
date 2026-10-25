@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------------------------------
+// AI_GENERATE_START----------------------------------------------
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, Badge, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
@@ -7,45 +7,41 @@ import { Reorder, useDragControls } from 'framer-motion';
 import {
   BellOutlined,
   DesktopOutlined,
-  SettingOutlined,
   StockOutlined,
-  DatabaseOutlined,
   MenuUnfoldOutlined,
   MenuFoldOutlined,
   HistoryOutlined,
-  LineChartOutlined,
   FileTextOutlined,
   ExperimentOutlined,
   ScheduleOutlined,
-  BgColorsOutlined,
   CheckOutlined,
+  MoonOutlined,
+  SunOutlined,
   UserOutlined,
   HolderOutlined,
   MessageOutlined,
   RobotOutlined,
+  ReadOutlined,
 } from '@ant-design/icons';
-import { THEME_PRESET_OPTIONS, useAppTheme, type ThemePreset } from '../theme/AppThemeProvider';
+import { useAppTheme } from '../theme/AppThemeProvider';
 import { PageHeaderContext, type PageHeaderState } from './PageHeaderContext';
 import { checkBackendHealth } from '../utils/backendHealth';
 import { useAuth } from '../auth/AuthContext';
 import SystemMark from '../components/SystemMark';
 import request from '../utils/request';
 import { type ApiResponse } from '../utils/api';
+import { DOCUMENTATION_URL } from '../utils/documentation';
 
 const { Header, Content, Sider } = Layout;
 
 const DEFAULT_MENU_ORDER = [
   '/dashboard',
   '/market',
-  '/stockInformation',
-  '/historyOrders',
-  '/tradeRecords',
+  '/orderRecords',
   '/modelOperations',
-  '/sentimentModel',
   '/agentConversation',
   '/adaptiveStrategy',
   '/jobs',
-  '/settings',
   '/logs',
 ];
 
@@ -71,9 +67,21 @@ const normalizeMenuOrder = (menuOrder: unknown) => {
     return DEFAULT_MENU_ORDER;
   }
 
-  const migratedOrder = menuOrder.flatMap((key) => key === '/strategyConfig'
-    ? ['/agentConversation', '/adaptiveStrategy']
-    : [key]);
+  const migratedOrder = menuOrder.flatMap((key) => {
+    if (key === '/strategyConfig') {
+      return ['/agentConversation', '/adaptiveStrategy'];
+    }
+    if (key === '/historyOrders' || key === '/tradeRecords' || key === '/transactions') {
+      return ['/orderRecords'];
+    }
+    if (key === '/sentimentModel') {
+      return ['/modelOperations'];
+    }
+    if (key === '/stockInformation') {
+      return ['/market'];
+    }
+    return [key];
+  });
   const validKeys = migratedOrder.filter(
     (key): key is string => typeof key === 'string' && DEFAULT_MENU_ORDER.includes(key),
   );
@@ -134,7 +142,7 @@ const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
-  const { themePreset, setThemePreset } = useAppTheme();
+  const { mode, autoThemeEnabled, setAutoThemeEnabled, toggleMode } = useAppTheme();
   const { user, logout } = useAuth();
   const [pageHeader, setPageHeader] = useState<PageHeaderState | null>(null);
   const [menuOrder, setMenuOrder] = useState<string[]>(DEFAULT_MENU_ORDER);
@@ -193,37 +201,15 @@ const DashboardLayout: React.FC = () => {
     i18n.changeLanguage(newLang);
   };
 
-  const themeMenuItems = useMemo<MenuProps['items']>(() => THEME_PRESET_OPTIONS.map((option) => ({
-    key: option.id,
-    label: (
-      <span className="app-theme-menu-label">
-        <span className={`app-theme-menu-swatch app-theme-menu-swatch-${option.id}`} />
-        <span className="app-theme-menu-name">{t(`layout.themes.${option.id}`)}</span>
-        {themePreset === option.id && <CheckOutlined className="app-theme-menu-check" />}
-      </span>
-    ),
-  })), [t, themePreset]);
-
-  const handleThemeMenuClick: MenuProps['onClick'] = ({ key }) => {
-    const selectedPreset = THEME_PRESET_OPTIONS.find((option) => option.id === key);
-    if (selectedPreset) {
-      setThemePreset(selectedPreset.id as ThemePreset);
-    }
-  };
-
   const menuItems = useMemo<SidebarMenuItem[]>(() => [
     { key: '/dashboard', icon: <DesktopOutlined />, label: t('layout.dashboard') },
     { key: '/market', icon: <StockOutlined />, label: t('layout.market') },
-    { key: '/stockInformation', icon: <DatabaseOutlined />, label: t('layout.stockInformation') },
-    { key: '/historyOrders', icon: <HistoryOutlined />, label: t('layout.historyOrders') },
-    { key: '/tradeRecords', icon: <LineChartOutlined />, label: t('layout.tradeRecords') },
+    { key: '/orderRecords', icon: <HistoryOutlined />, label: t('layout.orderRecords') },
     { key: '/logs', icon: <FileTextOutlined />, label: t('layout.logs') },
     { key: '/modelOperations', icon: <ExperimentOutlined />, label: t('layout.modelOperations') },
-    { key: '/sentimentModel', icon: <MessageOutlined />, label: t('layout.sentimentModel') },
     { key: '/agentConversation', icon: <MessageOutlined />, label: t('layout.agentConversation') },
     { key: '/adaptiveStrategy', icon: <RobotOutlined />, label: t('layout.adaptiveStrategy') },
     { key: '/jobs', icon: <ScheduleOutlined />, label: t('layout.jobs') },
-    { key: '/settings', icon: <SettingOutlined />, label: t('layout.settings') },
   ], [t]);
 
   const orderedMenuItems = useMemo(() => {
@@ -258,10 +244,24 @@ const DashboardLayout: React.FC = () => {
       disabled: true,
     },
     { type: 'divider' },
+    {
+      key: 'adaptiveTheme',
+      label: (
+        <span className="flex min-w-[140px] items-center justify-between gap-4">
+          <span>{t('layout.adaptiveTheme')}</span>
+          {autoThemeEnabled && <CheckOutlined className="text-[var(--brand)]" />}
+        </span>
+      ),
+    },
+    { type: 'divider' },
     { key: 'logout', label: t('common.logout'), danger: true },
   ];
 
   const handleUserMenuClick: MenuProps['onClick'] = async ({ key }) => {
+    if (key === 'adaptiveTheme') {
+      setAutoThemeEnabled(!autoThemeEnabled);
+      return;
+    }
     if (key !== 'logout') {
       return;
     }
@@ -272,16 +272,12 @@ const DashboardLayout: React.FC = () => {
   const pageTitles: Record<string, string> = {
     '/dashboard': t('layout.pageTitles.dashboard'),
     '/market': t('layout.pageTitles.market'),
-    '/stockInformation': t('layout.pageTitles.stockInformation'),
-    '/historyOrders': t('layout.pageTitles.historyOrders'),
-    '/tradeRecords': t('layout.pageTitles.tradeRecords'),
+    '/orderRecords': t('layout.pageTitles.orderRecords'),
     '/logs': t('layout.pageTitles.logs'),
     '/modelOperations': t('layout.pageTitles.modelOperations'),
-    '/sentimentModel': t('layout.pageTitles.sentimentModel'),
     '/agentConversation': t('layout.pageTitles.agentConversation'),
     '/adaptiveStrategy': t('layout.pageTitles.adaptiveStrategy'),
     '/jobs': t('layout.pageTitles.jobs'),
-    '/settings': t('layout.pageTitles.settings'),
   };
 
   return (
@@ -350,20 +346,33 @@ const DashboardLayout: React.FC = () => {
           </div>
 
           <div className="app-header-tools">
+            <Tooltip title={t('layout.documentationBrowse')}>
+              <Button
+                className="app-header-documentation"
+                href={DOCUMENTATION_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                icon={<ReadOutlined />}
+                aria-label={t('layout.documentationBrowse')}
+              >
+                <span className="app-header-documentation-label">
+                  {t('layout.documentationBrowse')}
+                </span>
+              </Button>
+            </Tooltip>
             <div className="app-system-status">
               <span className={`h-2 w-2 rounded-full ${backendStatus === 'online' ? 'bg-emerald-500' : backendStatus === 'offline' ? 'bg-red-500' : 'bg-amber-500'}`} />
               {backendStatus === 'online' ? t('layout.online') : backendStatus === 'offline' ? t('layout.offline') : t('layout.checking')}
             </div>
-            <Dropdown menu={{ items: themeMenuItems, onClick: handleThemeMenuClick }} placement="bottomRight" trigger={['click']}>
-              <Tooltip title={t('layout.themePicker')}>
-                <Button
-                  type="text"
-                  className="app-theme-picker-button"
-                  icon={<BgColorsOutlined />}
-                  aria-label={t('layout.themePicker')}
-                />
-              </Tooltip>
-            </Dropdown>
+            <Tooltip title={mode === 'dark' ? t('layout.lightMode') : t('layout.darkMode')}>
+              <Button
+                type="text"
+                className="app-theme-picker-button"
+                icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+                onClick={toggleMode}
+                aria-label={mode === 'dark' ? t('layout.lightMode') : t('layout.darkMode')}
+              />
+            </Tooltip>
             <Button
               type="text"
               className="app-header-language !h-8 !px-2 text-xs"
@@ -392,4 +401,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END--------------------------------------
+// AI_GENERATE_END----------------------------------------------
