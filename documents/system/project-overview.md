@@ -8,11 +8,11 @@ status: SOURCE_IMPLEMENTED
 last_verified: 2026-10-25
 source_paths:
   - README.md
+  - pom.xml
+  - docker-compose.yml
 ---
 
 <DocMetadata />
-
-**IDEA 工程入口**：[仓库说明 `README.md`](../../README.md) · [Maven 聚合 `pom.xml`](../../pom.xml) · [容器编排 `docker-compose.yml`](../../docker-compose.yml)
 
 # AI-AGENT 智能股票交易系统
 
@@ -22,7 +22,7 @@ source_paths:
 
 ## 系统目标与设计要求
 
-项目目标是形成一个自学习、自适应、无人值守的自动交易闭环。Ranking LSTM、MASTER 及已完成生产准入的模型在正常运行中不依赖人工审批、人工选择策略或人工调整融合权重，系统根据数据、预测、成交和绩效反馈自动完成训练、评估、晋级、交易、降权、回退和再训练。新的情感候选模型首次替换生产基线前必须完成金标训练、校准、影子评估和人工确认。
+项目目标是形成一个自学习、自适应、无人值守的自动交易闭环。Ranking LSTM、MASTER 及情感候选模型在正常运行中不依赖人工审批、人工选择策略或人工调整融合权重，系统根据数据、预测、成交和绩效反馈自动完成训练、评估、晋级、交易、降权、回退和再训练。新的情感候选模型首次替换生产基线前必须完成金标训练、校准和影子评估硬门禁，通过后由确定性规则自动激活。
 
 ```text
 市场与账户事实
@@ -37,7 +37,7 @@ source_paths:
 
 设计以最简单、最快形成生产闭环为原则：
 
-- 只保留一个权威训练、评估、晋级、融合和回退流程，不维护重复 Gate 或兼容旁路；新的情感候选模型首次激活保留单点人工确认门禁。
+- 只保留一个权威训练、评估、晋级、融合和回退流程，不维护重复 Gate、兼容旁路或正常流程中的人工确认门禁。
 - 自学习优先采用周期重训、不可变数据快照和生产反馈评估，不预先建设复杂在线学习平台。
 - 自适应集中在模型版本、融合权重、策略阈值和有界仓位参数，所有调整必须有上下限和自动回退条件。
 - Gate 只阻止数据/制品无效、非有限数值、输出塌缩、样本明显不足、回撤越界和真实交易安全违规。
@@ -69,7 +69,7 @@ stock-trading4/
 │   ├── backend/             # 后端领域与模型专题
 │   ├── agent/               # Agent 架构与能力设计
 │   └── frontend/            # 前端页面与交互设计
-├── stock-frontend/documentation/ # Docusaurus 构建组件
+├── stock-frontend/src/pages/documentation/ # 内置 Markdown 文档工作台
 ├── model-files/             # Git LFS 固定模型制品，发布时构建进对应镜像
 ├── .tmp/                    # 临时文件和中间脚本，不提交
 ├── docker-compose.yml
@@ -78,7 +78,7 @@ stock-trading4/
 └── AGENTS.md
 ```
 
-`documents/` 统一维护系统架构、领域设计、专项方案、运行边界和运维文档；`stock-frontend/documentation/` 只维护可视化框架代码。仓库只保留根目录项目级 `README.md` 作为入口，模块和源码包不再维护 README，Javadoc 维护类、方法和局部业务约束。
+`documents/` 统一维护系统架构、领域设计、专项方案、运行边界和运维文档；`stock-frontend/src/pages/documentation/` 只维护只读预览、导航和链接解析。仓库只保留根目录项目级 `README.md` 作为入口，模块和源码包不再维护 README，Javadoc 维护类、方法和局部业务约束。
 
 ## 系统架构
 
@@ -130,7 +130,7 @@ Redis 不保存不可丢失的业务事实。跨模块传递明确 DTO，不传�
 - 模型预测、策略信号和 Agent 建议都不是最终订单。
 - 真实委托前由 Backend 重新读取最新事实，完成权限、交易时间、价格、资金、持仓、T+1、仓位、幂等和券商校验。
 - Agent 不持有券商凭据，不直接调用券商接口，不控制、暂停或放行真实订单。
-- Ranking LSTM 与 MASTER 训练成功后先生成候选版本，由自动评估、渐进升权和自动回退流程决定生产生效；新的情感候选模型通过影子门槛后仅进入 `ELIGIBLE`，必须人工确认才能首次激活。
+- Ranking LSTM 与 MASTER 训练成功后先生成候选版本，由自动评估、渐进升权和自动回退流程决定生产生效；新的情感候选模型通过影子门槛后也由确定性规则自动激活，运行异常或滚动指标劣化时自动回退。
 - Agent、模型、外部 Provider 或缓存不可用时，不得扩大交易权限。
 - `trading.real-write-enabled` 默认关闭。
 
@@ -262,16 +262,16 @@ docker build -f .github/docker/agent-model-runtime.Dockerfile \
 
 | 阅读目标 | 权威文档 |
 |---|---|
-| Backend 整体架构和模块边界 | [Backend 总览](../backend/index.md) |
-| 市场事实和新闻质量 | [Market](../backend/market/index.md) |
-| 训练、推理和模型专项设计 | [Model](../backend/model/index.md) |
-| 选股、信号和回测 | [Decision](../backend/decision/index.md) |
-| 风控、券商和真实交易 | [Execution](../backend/execution/index.md) |
-| Quartz 任务编排 | [Schedule](../backend/schedule/index.md) |
-| 公共装配和内部事实 API | [Platform](../backend/platform/index.md) |
-| Agent 总体边界 | [Agent 总览](../agent/index.md) |
-| Agent 各能力设计 | [Agent 能力目录](../agent/index.md#能力目录) |
-| 前端页面、状态和接口分流 | [Frontend](../frontend/index.md) |
+| Backend 整体架构和模块边界 | [Backend 总览](../backend/后端总览.md) |
+| 市场事实和新闻质量 | [Market](../backend/market/市场事实.md) |
+| 训练、推理和模型专项设计 | [Model](../backend/model/模型模块.md) |
+| 选股、信号和回测 | [Decision](../backend/decision/智能决策.md) |
+| 风控、券商和真实交易 | [Execution](../backend/execution/交易执行.md) |
+| Quartz 任务编排 | [Schedule](../backend/schedule/任务调度.md) |
+| 公共装配和内部事实 API | [Platform](../backend/platform/平台装配.md) |
+| Agent 总体边界 | [Agent 总览](../agent/智能代理总览.md) |
+| Agent 各能力设计 | [Agent 能力目录](../agent/智能代理总览.md#能力目录) |
+| 前端页面、状态和接口分流 | [Frontend](../frontend/前端设计.md) |
 
 ## 工程文档治理规范
 
@@ -314,7 +314,7 @@ docker build -f .github/docker/agent-model-runtime.Dockerfile \
 - 情感模型只输出文本三分类概率、不确定性和覆盖信息，不直接生成最终选股分数。Ranking LSTM 与 MASTER 使用 `temporal-news-v1` 日级快照学习新闻、行情和市场状态对未来收益的联合关系。
 - Ranking LSTM 与 MASTER 的统一输入为 `cross-sectional-temporal-news-v6`，包含 53 个连续特征和 3 个类别索引，共 56 维。旧 31 维制品不兼容，必须重新训练。
 - `RISK_ONLY` 事件不进入普通 Alpha 特征，继续由 Java 权限、风控、资金、持仓、幂等和券商执行边界处理。
-- Mengzi 影子门槛通过后只进入 `ELIGIBLE`，人工确认才能激活；运行故障允许自动回滚 FinBERT。任何模型输出都不能直接调用真实交易写接口。
+- Mengzi 影子门槛通过后自动切换为 `ACTIVE`；运行故障或滚动指标跌破门槛时自动回滚 FinBERT。任何模型输出都不能直接调用真实交易写接口。
 - 模型证据必须分层记录：文件和 SHA-256 完整、DJL 加载、固定样本推理、接口启动、金标质量、影子收益分别验收，前一层通过不能替代后一层。
 
-详细输入、训练数据、快照维度和影子评估契约见[模型文档](../backend/model/index.md)；事件事实、截止时间和新闻治理契约见[市场数据文档](../backend/market/index.md)。
+详细输入、训练数据、快照维度和影子评估契约见[模型文档](../backend/model/模型模块.md)；事件事实、截止时间和新闻治理契约见[市场数据文档](../backend/market/市场事实.md)。

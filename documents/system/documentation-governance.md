@@ -1,20 +1,20 @@
 ---
 id: documentation-governance
 title: 文档治理规范
-sidebar_position: 1
+sidebar_position: 2
 owner: system
 type: governance
 status: SOURCE_IMPLEMENTED
 last_verified: 2026-10-25
 source_paths:
   - AGENTS.md
-  - stock-frontend/documentation/docusaurus.config.ts
+  - stock-frontend/src/pages/documentation/documentRegistry.ts
+  - stock-frontend/src/pages/documentation/MarkdownDocument.tsx
+  - stock-frontend/scripts/validate-docs.mjs
   - stock-frontend/package.json
 ---
 
 <DocMetadata />
-
-**IDEA 配置入口**：[工程规范 `AGENTS.md`](../../AGENTS.md) · [Docusaurus 配置](../../stock-frontend/documentation/docusaurus.config.ts) · [前端依赖与脚本](../../stock-frontend/package.json)
 
 # 文档治理规范
 
@@ -32,6 +32,7 @@ source_paths:
 
 - 详细设计正文只保留在 `documents`。
 - 仓库只保留根目录项目级 `README.md` 作为统一入口，不维护模块级或源码包级 README。
+- 目录入口文档使用与内容一致的中文语义文件名，不使用 `index.md`；稳定访问路径统一由 Front Matter 的 `slug` 声明。
 - Javadoc 只描述单类、单方法契约，不复制跨类流程。
 - 精确默认值、Cron、状态枚举和计算公式以源码、类型化配置和数据库基线为准。
 - 提案和已实现设计使用相同目录体系，通过状态区分，不复制为另一套文档。
@@ -48,17 +49,18 @@ source_paths:
 
 ### 文档跳转源码
 
-专题 Markdown 在正文中使用相对当前文档的仓库文件链接，不使用本机绝对路径。例如：
+源码入口统一维护在 Front Matter 的 `source_paths` 中，不在 Markdown 正文重复维护“IDEA 源码入口”。例如：
 
-```markdown
-[打开 RankingLSTMModel.java](../../stock-backend/src/main/java/com/stock/model/algorithm/RankingLSTMModel.java)
+```yaml
+source_paths:
+  - stock-backend/src/main/java/com/stock/model/algorithm/RankingLSTMModel.java
 ```
 
-实际相对层级以文档所在目录为准。IDEA 内置 Markdown 插件支持相对文件链接补全和 `Ctrl+Click` 跳转，因此文档作者可以直接进入源码；GitHub 也会按仓库路径解析该链接。Docusaurus 构建时由 `rewriteRepositoryLinks` 将指向 `documents` 目录外部仓库文件的链接改写为 GitHub 源码 URL，页面顶部仍通过 Front Matter 的 `source_paths` 生成关联源码入口。
+路径使用仓库根目录相对路径。前端 `MarkdownDocument` 将 `source_paths` 统一渲染为页面顶部的“关联源码”，因此源码入口只维护一份；普通正文中的业务引用仍可按需使用 Markdown 相对链接。
 
 ### 源码跳转文档
 
-Java 类级 Javadoc 使用稳定的 Docusaurus 页面 URL：
+Java 类级 Javadoc 使用稳定的前端文档路由：
 
 ```java
 @see <a href="http://localhost:5173/docs/backend/model/designs/ranking-lstm">Ranking LSTM 设计文档</a>
@@ -72,4 +74,4 @@ IDEA 的 Javadoc Rendered View 可直接点击外部链接。生产部署后，�
 2. 每个被专题文档解释的核心 Java 类，在类级 Javadoc 中保留一个稳定文档 URL。
 3. 移动源码或文档时，同批更新 Markdown 相对链接、`source_paths` 和 Javadoc URL。
 4. 不使用 `file:///D:/...` 等本机绝对链接，避免团队成员和 CI 环境失效。
-5. 不使用 `pathname://` 等 Docusaurus 私有协议；这类链接会被 IDEA 交给操作系统处理，无法完成项目内源码跳转。
+5. 不使用 `pathname://` 等私有协议；这类链接会被 IDEA 交给操作系统处理，无法完成项目内源码跳转。

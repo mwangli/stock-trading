@@ -8,6 +8,7 @@ status: SOURCE_IMPLEMENTED
 last_verified: 2026-10-25
 source_paths:
   - stock-backend/src/main/java/com/stock/model/algorithm/RankingLSTMModel.java
+  - stock-backend/src/main/java/com/stock/model/service/ModelTrainingPipelineService.java
   - stock-backend/src/main/java/com/stock/model/service/LstmTrainerService.java
   - stock-backend/src/main/java/com/stock/model/service/RankingLstmTrainingDataService.java
 ---
@@ -20,13 +21,11 @@ source_paths:
 尚未完成 Maven 编译、DJL 运行、训练、GridFS 写入和实际预测评估。
 :::
 
-**IDEA 源码入口**：[模型结构 `RankingLSTMModel.java`](../../../../stock-backend/src/main/java/com/stock/model/algorithm/RankingLSTMModel.java) · [训练编排 `LstmTrainerService.java`](../../../../stock-backend/src/main/java/com/stock/model/service/LstmTrainerService.java) · [训练数据 `RankingLstmTrainingDataService.java`](../../../../stock-backend/src/main/java/com/stock/model/service/RankingLstmTrainingDataService.java)
-
 ### 目标与边界
 
 本专项定义唯一基础模型 Ranking LSTM 的数据、标签、时间切分、模型结构、联合损失、制品契约和候选门禁。`v6-ranking-master-baseline` 固化唯一基础参数结构，不兼容旧 Ranking 制品；实现保持 Java 17、DJL API 与 PyTorch Engine，不引入 Python、ONNX 或独立模型服务。
 
-本方案不实现对抗训练、市场状态多专家路由、自动真实交易或模型自动激活。历史模型方向 AUC 接近随机、Rank IC 偏弱、概率分布狭窄、多任务输出冲突和横截面方差过低等证据只用于提出优化方向，不代表新架构已改善指标。
+本方案不实现对抗训练、市场状态多专家路由或由模型直接发起真实交易。候选版本的自动晋级和回退由确定性 Java 生命周期规则完成；历史模型方向 AUC 接近随机、Rank IC 偏弱、概率分布狭窄、多任务输出冲突和横截面方差过低等证据只用于提出优化方向，不代表新架构已改善指标。
 
 ### 候选架构
 
@@ -38,11 +37,25 @@ source_paths:
 
 ### 数据与标签契约
 
-正式训练使用 `model_stock_daily_bars`、`model_reference_daily_bars`、`stock_adjustment_factors`、`historical_stock_universe` 和 `stock_daily_tradability_facts`。`stock_prices` 只服务旧模型和既有行情业务，不作为静默回退。关键数据源不满足训练、验证和测试窗口要求时明确失败，不生成候选。
+正式训练使用 `model_stock_daily_bars`、`model_reference_daily_bars`、`stock_adjustment_factors`、`historical_stock_universe` 和 `stock_daily_tradability_facts`。`stock_prices` 只服务旧模型和既有行情业务，不作为静默回退。快照前置检查发现关键数据源不满足股票标识覆盖要求时，运行状态进入 `WAITING_DATA`，不把数据缺口伪装成算法训练失败，也不生成候选。
 
 数据准备额外执行两类成熟度门禁：关键行情、复权、历史股票池、行业参考序列和可交易事实按标识统计覆盖率，预处理后有效股票占请求股票的比例也必须达到同一阈值，默认低于 95% 时中止；`temporal-news-v1` 快照必须使用特征交易日内的截止时间，固定 25 维、所有值有限且符合列取值范围。缺失快照不得在训练时使用推测截止时间自动补造。
 
-历史新闻快照由暂停态任务 `newsFeatureSnapshotBackfill` 分批生成。任务以当前 `model_stock_daily_bars` 来源版本为权威股票日范围，按 `_id` 游标在 2C4G 节点顺序处理，默认每批 200、单次最多 2,000 个股票日，截止时刻固定为交易日 `23:59:59`。完成态必须同时达到 99.5% 覆盖率、25 维契约无异常、`latestInputPublishTime <= cutoffTime` 且有事件的快照具备管线和情感模型版本；训练链仍保持缺失即失败。
+历史新闻快照由 `newsFeatureSnapshotBackfill` 分批生成。任务以当前 `model_stock_daily_bars` 来源版本为权威股票日范围，按 `_id` 游标在 2C4G 节点顺序处理，默认每批 200、单次最多 2,000 个股票日，截止时刻固定为交易日 `23:59:59`。完成态必须同时达到 99.5% 覆盖率、25 维契约无异常、`latestInputPublishTime <= cutoffTime` 且有事件的快照具备管线和情感模型版本。统一训练流水线发现该项未达标时自动执行一轮幂等回填并复检；仍未完成则进入 `WAITING_DATA`，后续任务从持久化游标继续，不在单次训练中无限循环。
+
+### 训练流水线与评估边界
+
+手动和定时触发共用以下单一路径：
+
+```text
+数据质量检查 → 单轮定向回填 → 重新检查 → 准备或复用 READY 快照
+→ 基于 snapshotId 训练 → 独立测试和 Walk-Forward 离线评估
+→ 候选登记 → 流水线结束
+```
+
+模型日线、复权因子、历史股票池、行业参考序列和可交易事实没有可信自动来源时，只记录外部导入缺口，不从 Legacy 行情或当前股票信息推导历史事实。`READY` 快照是训练恢复边界，训练中断后无需重新提取；未完成的 `BUILDING` 快照在应用重启时标记失败并清理临时工件。
+
+上述独立测试和 Walk-Forward 是一次性离线评估，属于训练流水线。候选创建后的真实市场影子评估、滚动窗口比较、融合调权和自动回退是长期生命周期动作，不延长本次训练运行，也不要求训练线程常驻。
 
 样本主键为 `(targetTradeDate, stockCode)`，特征只使用截止日 `t` 及以前的数据：
 
