@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.platform.service;
 
 import com.stock.platform.dto.InternalBrokerFactsResponse;
@@ -210,7 +210,20 @@ public class InternalAgentFactsService {
      * @return 月度收益事实
      */
     public InternalPerformanceAnalysisResponse performanceAnalysis(YearMonth yearMonth) {
-        var result = performanceReportService.getAnalysis(yearMonth);
+        return toPerformanceAnalysisResponse(performanceReportService.getAnalysis(yearMonth));
+    }
+
+    /**
+     * 查询最近一个存在已实现交易的自然月收益分析。
+     *
+     * @return 最近有交易月份的收益事实
+     */
+    public InternalPerformanceAnalysisResponse latestPerformanceAnalysis() {
+        return toPerformanceAnalysisResponse(performanceReportService.getLatestAnalysisWithTrades());
+    }
+
+    private InternalPerformanceAnalysisResponse toPerformanceAnalysisResponse(
+            com.stock.execution.dto.PerformanceAnalysisDto result) {
         return new InternalPerformanceAnalysisResponse(
                 result.getYearMonth(), result.getAsOf(), result.getGrossProfit(), result.getNetProfit(),
                 result.getTotalFees(), result.getReturnRate(), result.getTradeCount(),
@@ -294,4 +307,4 @@ public class InternalAgentFactsService {
                 targetTradeDate, List.of(), reason);
     }
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------
