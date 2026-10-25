@@ -1,0 +1,161 @@
+---
+id: agent-tooling
+title: Tooling 能力
+sidebar_position: 1
+owner: agent-tooling
+type: capability
+status: SOURCE_IMPLEMENTED
+last_verified: 2026-10-25
+slug: /agent/tooling/
+source_paths:
+  - stock-agent/src/main/java/com/stock/agent/tooling/README.md
+  - stock-agent/src/main/java/com/stock/agent/tooling/capability/AgentToolCatalog.java
+  - stock-agent/src/main/java/com/stock/agent/tooling/tool/AgentToolSupport.java
+  - stock-agent/src/main/java/com/stock/agent/tooling/audit/service/AgentToolAuditService.java
+---
+
+<DocMetadata />
+
+**IDEA 源码入口**：[工具目录 `AgentToolCatalog.java`](../../../stock-agent/src/main/java/com/stock/agent/tooling/capability/AgentToolCatalog.java) · [执行边界 `AgentToolSupport.java`](../../../stock-agent/src/main/java/com/stock/agent/tooling/tool/AgentToolSupport.java) · [工具审计 `AgentToolAuditService.java`](../../../stock-agent/src/main/java/com/stock/agent/tooling/audit/service/AgentToolAuditService.java)
+
+# tooling 业务包
+
+## 模块定位
+
+`tooling` 管理 Agent 可调用的只读业务工具、事实查询 Port、内部事实模型、能力白名单、证据组装和工具审计。它将模型可见的工具契约与 Backend HTTP 实现隔离。
+
+## 业务职责
+
+- 使用 LangChain4j `@Tool` 暴露类型化只读工具。
+- 按研究、诊断、报告和交易计划等任务选择最小工具集合。
+- 通过 `ToolFactQueryPort` 查询行情、日历、模型、候选、策略、任务、券商和绩效事实。
+- 控制用户范围、数量、时间范围、超时和敏感字段。
+- 组装带来源的 Evidence，区分事实与模型推断。
+- 记录工具名、输入摘要、状态、耗时和错误码。
+
+## 目录结构
+
+```text
+tooling/
+├── tool
+│   ├── read                 # 具体 @Tool 查询工具
+│   └── context/support      # 受控执行上下文和统一支持
+├── port
+│   └── ToolFactQueryPort.java
+├── model                    # Agent 内部工具事实模型
+├── capability               # 工具目录、任务路由和白名单
+├── evidence                 # 证据条目与证据包
+└── audit                    # 工具调用审计持久化
+```
+
+## 调用流程
+
+```text
+任务类型
+  → AgentCapabilityRouter 选择工具白名单
+  → AiServices 绑定 @Tool
+  → ToolExecutionContext 校验用户与任务范围
+  → ToolFactQueryPort
+  → integration.adapter.BackendToolFactAdapter
+  → Backend 权威事实
+  → Evidence + 审计
+```
+
+## 依赖边界
+
+- 工具实现依赖 `ToolFactQueryPort`，不依赖 HTTP Client 或 Wire DTO。
+- `integration.adapter` 实现 Port 并转换事实模型。
+- 可以依赖 `runtime.api` 获取 Provider 状态类事实，但不能管理 Provider 生命周期。
+- 不直接访问 Controller、SQL、Mongo Repository 或券商适配器。
+- 工具只读，不执行真实交易写入。
+
+## 安全与降级
+
+每个任务只绑定必要工具，工具参数和结果使用明确类型，禁止 `Object`、原始 `Map` 和字符串名称反射分发。Backend 事实不可用时抛出统一事实源异常，不返回伪造结果。审计日志不得保存完整 Prompt、Token、Cookie、账户明细或未脱敏数据库对象。
+
+## 扩展约束
+
+新增工具前先确认它代表稳定、只读、可审计的业务能力，并将查询语义加入 `ToolFactQueryPort`。新增工具必须同步更新能力白名单、类型化参数和结果、证据映射、审计以及对应任务的 `AiServices` 绑定。
+
+## 重点能力详细设计
+
+### 工具能力模型
+
+首期 `AgentToolName` 对外工具名固定为：
+
+| 枚举 | `@Tool` 名称 | 事实用途 |
+|---|---|---|
+| `TRADING_CALENDAR` | `queryTradingCalendar` | 交易日确认 |
+| `LATEST_PRICE` | `queryLatestPrice` | 最新价格 |
+| `STRATEGY_STATE` | `queryStrategyState` | 策略状态和版本 |
+| `PREDICTION_CANDIDATES` | `queryPredictionCandidates` | 候选批次 |
+| `MODEL_OVERVIEW` | `queryModelOverview` | 模型运维概览 |
+| `PERFORMANCE_OVERVIEW` | `queryPerformanceOverview` | 收益概览 |
+| `BROKER_STATUS` | `queryBrokerStatus` | 券商连接状态 |
+| `JOB_DIAGNOSTIC` | `queryJobDiagnostic` | 调度任务诊断 |
+
+`AgentToolCatalog` 保存 Spring 管理的工具对象，并按枚举映射返回给 `AiServices`。不存在字符串反射注册或让模型按名称任意实例化工具的逻辑。
+
+`EvidenceAssembler` 还会在服务端固定流程中直接使用 Provider Runtime、券商事实和交易执行门禁等受控工具。这些能力不是普通聊天可以自行发现的工具，而是由 Java 用例明确触发。
+
+### 三层授权
+
+一次工具调用需要同时通过：
+
+1. `AgentCapabilityRouter` 根据问题选择允许的 `AgentToolName`。
+2. Runtime 只把允许的工具对象绑定到 `AiServices`。
+3. `AgentToolSupport` 从 `AgentToolContextHolder` 再次校验 `userScope` 和 `allowedToolNames`。
+
+任何一层缺失都会失败。`ToolExecutionContext` 保存 trace、session、task、userScope 和允许工具名，通过 ThreadLocal 在模型线程内传递，并在调用结束后清理。
+
+### 超时与错误语义
+
+`AgentToolSupport` 使用独立线程池执行工具，超时由 `agent.toolTimeoutMs` 控制：
+
+| 情况 | 错误码/行为 |
+|---|---|
+| 缺少用户范围 | `SCOPE_REQUIRED` |
+| 工具不在白名单 | `TOOL_NOT_ALLOWED` |
+| 超时 | `TOOL_TIMEOUT`，取消 Future |
+| 线程中断 | `TOOL_INTERRUPTED`，恢复中断标志 |
+| Backend 事实不可用 | 保留 `FACT_SOURCE_UNAVAILABLE` 并原样抛出 |
+| 其他执行异常 | `TOOL_EXECUTION_FAILED` |
+
+事实源错误不会被包装成普通模型异常，从而避免 Provider 回退和熔断掩盖真实原因。
+
+### Evidence 组装
+
+`EvidenceAssembler` 按任务类型组装固定事实，Evidence ID 从 `E001` 递增。每项保存来源类型、来源 ID、版本、事实时间、状态、摘要和错误码。
+
+主要裁剪策略：
+
+- 纯 Provider/超时诊断只查询 Runtime，不访问 Backend。
+- 常规研究先解析确认交易日，再查询策略和候选。
+- 指定候选批次时按 ID 查询，否则按目标交易日查询最新批次。
+- 诊断请求包含交易执行语义时增加执行门禁。
+- 只有资金、账户、持仓、订单或成交语义才查询券商事实。
+- TradePlan 必须查询执行门禁和券商事实。
+
+交易日未确认时 Evidence 状态为 `UNKNOWN`；普通工具异常记录 `FAILED` 后可以继续组装其他证据；`FACT_SOURCE_UNAVAILABLE` 会立即向上抛出，禁止在缺少权威事实时继续模型生成。
+
+Bundle 只把 `AVAILABLE` 项加入 `evidenceRefs`，摘要最大 12000 字符，并携带解析出的预测批次、策略版本和目标交易日。
+
+### 审计设计
+
+`AgentToolAuditService` 将每次调用写入 `agent_tool_call`，保存 trace、session、task、工具名、版本、状态、错误码和耗时边界。参数摘要仅包含受限 scope/session/task 标识，最长 2000 字符；不保存原始工具参数、完整结果、Prompt、Token 或账户明细。
+
+成功调用可转换为 `toolCall:{id}` Evidence 引用，并返回实际成功能力列表。
+
+### Port 与内部事实
+
+`ToolFactQueryPort` 定义 11 类只读事实。`tooling.model` 是 Agent 内部稳定模型，工具负责把它们转换成面向模型的请求/结果 record。工具不得直接接触 `BackendFactsEnvelope` 或 Wire DTO。
+
+## 新增工具检查清单
+
+1. 定义清晰的 Port 语义和内部事实类型。
+2. 在 `integration.adapter` 实现转换。
+3. 使用类型化 `@Tool` 参数和结果，禁止原始 Map/Object。
+4. 加入 `AgentToolName` 和 `AgentToolCatalog`。
+5. 明确哪些任务允许绑定，以及是否需要 Evidence 固定编排。
+6. 接入超时、审计、用户范围和敏感字段限制。
+7. 为不可用、未知、超时和空数据定义不同语义。

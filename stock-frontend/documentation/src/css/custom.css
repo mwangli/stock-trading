@@ -1,0 +1,57 @@
+/* AI_GENERATE_START - */
+:root {
+  --ifm-color-primary: #13745f;
+  --ifm-color-primary-dark: #116955;
+  --ifm-color-primary-darker: #0f624f;
+  --ifm-color-primary-darkest: #0d5142;
+  --ifm-color-primary-light: #16806a;
+  --ifm-color-primary-lighter: #18876f;
+  --ifm-color-primary-lightest: #219a81;
+  --ifm-background-color: #f7f9fa;
+  --ifm-background-surface-color: #ffffff;
+  --ifm-heading-color: #17212b;
+  --ifm-font-family-base: Inter, "Microsoft YaHei", "Segoe UI", sans-serif;
+  --ifm-code-font-size: 92%;
+  --ifm-global-radius: 6px;
+  --doc-sidebar-width: 290px;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #4fc3a1;
+  --ifm-background-color: #14181d;
+  --ifm-background-surface-color: #1c2228;
+  --ifm-heading-color: #f4f7f8;
+}
+
+.navbar {
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  box-shadow: none;
+}
+
+.theme-doc-markdown {
+  max-width: 980px;
+}
+
+.theme-doc-markdown h1 {
+  font-size: 2rem;
+}
+
+.theme-doc-markdown h2 {
+  margin-top: 2.25rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.theme-doc-markdown table {
+  display: table;
+  width: 100%;
+}
+
+.menu__link--active {
+  font-weight: 700;
+}
+
+code {
+  border-radius: 3px;
+}
+/* AI_GENERATE_END - */

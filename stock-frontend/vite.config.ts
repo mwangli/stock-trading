@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START-------
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -20,6 +20,11 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/docs': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        ws: true,
+      },
       '/api/agent': {
         target: 'http://localhost:8081',
         changeOrigin: true,
@@ -56,4 +61,4 @@ export default defineConfig({
     }
   }
 })
-// AI_GENERATE_END---
+// AI_GENERATE_END-------

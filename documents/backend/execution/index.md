@@ -1,0 +1,173 @@
+---
+id: execution-overview
+title: Execution 交易执行
+sidebar_position: 1
+owner: execution
+type: domain
+status: SOURCE_IMPLEMENTED
+last_verified: 2026-10-25
+slug: /backend/execution/
+source_paths:
+  - stock-backend/src/main/java/com/stock/execution/README.md
+  - stock-backend/src/main/java/com/stock/execution/service/RealTradingService.java
+  - stock-backend/src/main/java/com/stock/execution/service/TradeExecutor.java
+  - stock-backend/src/main/java/com/stock/execution/validator/TradeRiskChecker.java
+---
+
+<DocMetadata />
+
+**IDEA 源码入口**：[真实交易编排 `RealTradingService.java`](../../../stock-backend/src/main/java/com/stock/execution/service/RealTradingService.java) · [委托执行 `TradeExecutor.java`](../../../stock-backend/src/main/java/com/stock/execution/service/TradeExecutor.java) · [交易风控 `TradeRiskChecker.java`](../../../stock-backend/src/main/java/com/stock/execution/validator/TradeRiskChecker.java)
+
+# Execution 交易执行模块
+
+## 模块定位
+
+`com.stock.execution` 是 Backend 唯一的真实交易安全边界，负责用户认证、运行开关、账户和持仓事实、风险校验、券商适配、委托、订单与成交同步、交易记录和绩效聚合。
+
+模型、策略和 Agent 只能提供候选或建议，不能直接调用券商写接口，也不能绕过本模块的权限、风控、幂等和最终执行校验。
+
+## 核心能力
+
+| 能力 | 主要职责 |
+|---|---|
+| 交易门禁 | 真实写入总开关、自动交易暂停、交易日和交易时间确认 |
+| 风险校验 | 资金、仓位、T+1、价格、数量、费用和重复执行检查 |
+| 委托执行 | 买卖数量计算、价格监控、券商提交、订单轮询和撤单 |
+| 券商适配 | 内部契约、供应商实现、响应解析和凭据隔离 |
+| 事实同步 | 账户、持仓、订单、成交的当前快照和历史窗口同步 |
+| 绩效 | 基于真实成交和费用聚合收益、胜率和资金表现 |
+
+## 重点能力详细设计
+
+### 1. 自动买入批次
+
+`RealTradingService.executeAutomaticBuys` 是无人值守买入入口，流程如下：
+
+1. 检查自动交易是否被紧急暂停。
+2. 检查券商会话和真实写入总开关。
+3. 通过 `TradingCalendarService` 确认当日为交易日。
+4. 读取目标交易日的可执行候选，并确认候选批次、预测批次和目标日期一致。
+5. 通过 `PredictionCandidateQueryService` 校验预测批次交易资格。
+6. `AutomaticTradeExecutionBatchService` 以执行类型和交易日建立幂等批次。
+7. 读取真实持仓，跳过已持有股票，并按候选上限逐一调用 `TradeExecutor`。
+8. 保存批次处理数、成功数和最终状态；异常时将批次标记为失败。
+
+候选排名只决定尝试顺序，不保证下单。每只股票在执行时重新读取价格、资金和持仓事实。
+
+### 2. 自动退出批次
+
+`RealTradingService.executeAutomaticExits` 遍历真实持仓，只处理可卖数量大于零的仓位。退出条件包括固定止损、止盈以及到达无人值守尾盘强制退出时间。
+
+T+1 约束不由候选或策略推断，而由持仓可卖数量和 `TradeRiskChecker` 再次确认。批次没有符合条件的持仓时可以成功结束，但必须保留零处理统计，不能伪造委托。
+
+### 3. 四级交易门禁
+
+真实委托必须依次通过四级门禁：
+
+| 层级 | 校验内容 | 失败处理 |
+|---|---|---|
+| 运行门禁 | `trading.real-write-enabled`、自动交易暂停状态、券商会话 | 立即拒绝，不调用券商写接口 |
+| 时间门禁 | 已确认交易日、交易时段、禁止窗口 | 跳过或拒绝并记录原因 |
+| 行情门禁 | 最新价格、股票状态、价格有效性和可交易性 | 不用缓存默认值替代 |
+| 账户门禁 | 可用资金、仓位、可卖数量、交易单位、费用和幂等 | 返回具体违规项 |
+
+`TradeRiskChecker` 聚合买入和卖出风险，`TradingTimeChecker` 负责时间窗口。风险校验结果使用明确违规列表，不能只返回 `false` 丢失原因。
+
+### 4. 紧急停止与恢复
+
+`SystemRuntimeConfigService` 持久化自动交易暂停状态、原因、时间、操作人、策略版本和处理结果。紧急停止只阻断后续无人值守委托，不删除历史订单，也不关闭账户查询、事实同步和审计能力。
+
+恢复自动交易必须由受控接口显式执行，并重新经过真实写入总开关和券商会话检查。券商已登录不代表允许真实写入，恢复暂停也不会自动开启环境级写入开关。
+
+### 5. 数量、费用与保本点
+
+`TradeExecutor` 在提交买入前获取实时价格，根据目标金额计算符合交易单位的数量。数量不足最小交易单位时直接返回失败，不提交零数量或碎股委托。
+
+`FeeCalculator` 统一计算佣金、最低佣金、印花税等成本。买入和卖出的费用口径必须与绩效聚合一致；页面估算不能回写为真实费用。需要展示保本价时，应基于双边费用和真实数量计算，而不是只使用买入价。
+
+### 6. 委托提交、轮询与不确定结果
+
+`TradeExecutor` 提交券商委托后，由 `OrderPoller` 查询最终状态。订单状态区分已受理、部分成交、全部成交、拒绝、撤单和未知，不把“请求成功”当作“成交成功”。
+
+网络超时或轮询超时的处理原则：
+
+1. 使用券商订单标识回查状态。
+2. 在可配置等待次数内继续确认。
+3. 符合撤单条件时调用券商撤单。
+4. 状态仍不确定时保留待确认结果。
+5. 禁止因为 HTTP 超时立即重复提交相同业务订单。
+
+`OrderNotificationEvent` 只广播已经形成的执行结果，不参与风控决策。
+
+### 7. 券商契约、适配和解析
+
+券商能力采用明确分层：
+
+- `BrokerAdapter` 定义业务需要的登录、查询、委托和撤单能力。
+- `ZXBrokerAdapter` 实现供应商协议、会话和请求调用。
+- `ZXBrokerResponseParser` 将供应商响应转换为内部账户、持仓、订单和成交对象。
+- Service 只依赖内部契约，不读取供应商私有 JSON 字段。
+
+验证码、密码、Cookie、Token、签名密钥和 OCR Key 只从运行配置或受控会话读取，不写入业务日志、DTO 或数据库明文字段。适配器不承载仓位、T+1 或自动交易放行规则。
+
+### 8. 券商事实同步
+
+`BrokerDataSyncService` 编排账户、持仓、订单和成交同步。`BrokerFactPersistenceService` 负责将外部事实幂等保存为内部记录。
+
+同步分为两类：
+
+- 当前事实：账户和持仓按采集时间保存快照，用于查询当前状态和历史截止时点状态。
+- 历史事实：订单和成交按业务标识幂等更新，避免重复采集制造重复记录。
+
+`SyncWindowExecutor` 在券商接口有单次时间跨度或条数限制时拆分查询窗口。每个窗口成功后再推进 `SyncStateService` 的游标；任一窗口失败时保留最后成功位置，禁止静默跳过或截断。
+
+查询失败可以展示最近一次快照，但必须同时返回采集时间和降级状态。旧快照不能用于放行新的真实委托。
+
+### 9. 真实成交聚合与绩效
+
+`TradeRecordAggregationService` 将订单、成交和费用整理为统一交易记录，`PerformanceReportService` 生成收益、胜率、回撤和持仓表现。
+
+绩效计算只认真实成交数量、成交价和实际费用：
+
+- 未成交委托不计入持仓和已实现收益。
+- 部分成交按实际数量计算。
+- 撤单和拒绝保留审计记录但不计为成交。
+- 预测收益、候选分数和页面估算不写入已实现收益。
+- 数据缺口必须反映为质量或覆盖状态，不能自动补成零收益。
+
+## 依赖与降级边界
+
+- 可以读取 `market`、`model` 和 `decision` 的公开 Service/DTO，但不访问其 Repository 或 Entity。
+- 券商未启用时保留本地数据、策略和模型能力。
+- 券商未登录时允许查看本地历史，但禁止实时查询和真实写入。
+- Agent 不持有券商凭据，不控制、暂停或放行真实订单。
+- Controller、Quartz Job、Agent 和券商适配器都不能绕过 `RealTradingService`、`TradeExecutor` 和风险校验链路。
+
+## 职责目录
+
+```text
+com/stock/execution/
+├── adapter/      # 券商及外部执行实现
+├── calculator/   # 费用和数量等纯计算
+├── config/       # 风控、时间、Web、线程池和券商配置
+├── controller/   # 认证、账户、订单、同步和交易接口
+├── dto/          # 请求、响应和执行摘要
+├── entity/       # 用户、账户、订单、成交和执行状态
+├── event/        # 交易通知事件
+├── handler/      # WebSocket 等协议处理
+├── interceptor/  # 用户认证拦截
+├── logging/      # 交易运行日志广播
+├── parser/       # 券商响应解析
+├── port/         # 券商和通知内部契约
+├── repository/   # 交易事实与状态数据访问
+├── service/      # 风控、执行、同步、记录和绩效编排
+├── validator/    # 风险、交易时间和验证码校验
+└── vo/           # 执行内部值对象
+```
+
+## 维护规则
+
+- 真实写入只能从受控 Service 入口发起，Controller、Agent、Quartz Job 和适配器不得绕过。
+- `adapter` 只适配外部能力，业务风控和幂等必须保留在 Java Service。
+- 修改订单状态、费用或绩效口径时，必须检查同步、聚合、前端展示和审计链路。
+- 错误信息保留业务上下文，但不得泄露账户、密码、Cookie、Token 或签名材料。

@@ -1,0 +1,167 @@
+---
+id: decision-overview
+title: Decision 智能决策
+sidebar_position: 1
+owner: decision
+type: domain
+status: SOURCE_IMPLEMENTED
+last_verified: 2026-10-25
+slug: /backend/decision/
+source_paths:
+  - stock-backend/src/main/java/com/stock/decision/README.md
+  - stock-backend/src/main/java/com/stock/decision/algorithm/DecisionEngine.java
+  - stock-backend/src/main/java/com/stock/decision/service/DailyBaselineBacktestService.java
+  - stock-backend/src/main/java/com/stock/decision/config/StrategyConfigManager.java
+---
+
+<DocMetadata />
+
+**IDEA 源码入口**：[决策引擎 `DecisionEngine.java`](../../../stock-backend/src/main/java/com/stock/decision/algorithm/DecisionEngine.java) · [基线回测 `DailyBaselineBacktestService.java`](../../../stock-backend/src/main/java/com/stock/decision/service/DailyBaselineBacktestService.java) · [策略配置 `StrategyConfigManager.java`](../../../stock-backend/src/main/java/com/stock/decision/config/StrategyConfigManager.java)
+
+# Decision 决策模块
+
+## 模块定位
+
+`com.stock.decision` 是 Backend 的确定性决策边界，将市场事实、模型预测、情感结果和策略配置转换为股票排名、交易信号、策略状态、卖出判断和回测结果。
+
+决策结果是交易前置输入，不是最终订单。真实账户、持仓、价格、T+1 可卖数量和硬风险由 `execution` 在委托前重新确认。
+
+## 核心能力
+
+| 能力 | 主要职责 |
+|---|---|
+| 候选生成 | 读取合格预测，过滤股票池并形成可追溯候选批次 |
+| 综合评分 | 归一化模型、情感和规则指标，生成确定性排名 |
+| 策略配置 | 管理策略参数、版本、当前模式和运行状态 |
+| 信号决策 | 生成买入、卖出、持有及触发原因 |
+| 自动切换 | 按市场条件和冷却规则切换策略模式 |
+| 回测 | 使用历史时点事实模拟成交、费用和资金曲线 |
+
+## 重点能力详细设计
+
+### 1. 候选批次生成与可执行排名
+
+`StockSelector` 是当前股票候选的主要编排入口：
+
+```text
+目标交易日
+  → 查询合格预测批次
+  → 读取市场股票资料和情感事实
+  → 过滤上市年限、数据完整性和业务门槛
+  → 计算综合得分
+  → 稳定排序
+  → 持久化候选批次与排名
+```
+
+每次生成独立 `candidateBatchId`，并绑定 `predictionBatchId`、模型版本、情感模型版本、策略配置版本、基础交易日、目标交易日和信息截止时间。执行模块读取候选时必须确认同一列表中的这些元数据一致。
+
+候选不是简单的股票代码集合。每条排名需要保留原始分项得分、综合得分、排名、合格状态和排除原因，使后续交易、Agent 评价和审计可以还原当时依据。
+
+稳定性要求：同一事实、同一策略版本和同一排序规则应产生确定性结果；分数相同时使用稳定字段完成排序，避免数据库返回顺序改变候选结果。
+
+### 2. 模型、情感与技术指标评分
+
+`ScoreCalculator` 负责将不同量纲的模型收益、排序结果、情感分数和策略阈值转换为可比较分数。归一化和权重只做纯计算，不读取数据库或发起外部调用。
+
+评分设计遵循：
+
+- LSTM 预测必须来自交易资格已确认的批次。
+- 情感分数必须携带模型版本和信息时间，过期结果不能作为实时候选依据。
+- 技术指标使用决策时点前可见的行情，不能引用目标日未来数据。
+- 策略权重与阈值来自明确配置版本，禁止使用未记录的运行时常量替代。
+- 过滤条件与评分条件分开：不合格股票先排除，不能靠极低得分隐式隐藏。
+
+`DecisionAggregator` 聚合移动止损、RSI、成交量、布林带等规则得分，并依据动态阈值形成卖出判断。移动止损触发属于硬信号，可优先于普通加权得分。
+
+### 3. 策略配置版本和模式状态
+
+`StrategyConfigManager` 负责加载与保存策略配置，配置变更必须形成可识别版本。候选、信号和回测结果均应引用实际生效版本，不能只保存“当前配置”。
+
+`StrategyStateManager` 管理运行状态和切换日志，至少保存旧模式、新模式、切换时间、切换类型、触发条件、操作人和原因。手工切换与自动切换使用不同 `SwitchType`，便于审计和回退。
+
+`StrategyModeManager` 将 `AGGRESSIVE`、`BALANCED`、`CONSERVATIVE` 等模式映射为具体策略参数。模式切换不是只改一个枚举，而是生成对应配置版本并更新当前状态。
+
+### 4. 自动策略切换
+
+`StrategySwitcher` 根据时间段、市场涨跌和波动状态提出模式切换。自动切换必须经过：
+
+1. 当前指标是否可用。
+2. 目标模式是否与当前模式不同。
+3. 是否满足自动切换冷却时间。
+4. 目标配置是否完整可用。
+5. 切换日志是否能够持久化。
+
+冷却时间由 `StrategyStateManager.canAutoSwitch` 校验，防止短时间内反复震荡。市场指标缺失或质量不足时应禁用对应切换规则，而不是把缺失值当作零。
+
+自动切换失败不应破坏当前有效模式；成功后需要记录 `system-auto` 等明确触发者和业务原因。
+
+### 5. 卖出规则与移动止损
+
+`TrailingStopCalculator`、`RsiCalculator`、`BollingerCalculator` 和 `VolumeCalculator` 提供独立纯计算能力。`DecisionEngine` 与 `DecisionAggregator` 负责将指标转换为可解释决策。
+
+卖出信号可以来源于：
+
+- 移动止损触发。
+- 固定止损或止盈阈值。
+- RSI、布林带、量价等组合规则。
+- 持有期限或策略状态变化。
+
+决策模块只输出“建议卖出、得分和原因”。实际是否持有、可卖数量、当日是否买入以及 T+1 限制由 `execution` 使用券商事实重新校验。
+
+### 6. 回测数据加载与信息时点
+
+回测编排由 `DailyBaselineBacktestService` 等 Service 完成，市场数据通过公开查询 Service 获取。`BacktestMarketDataLoader` 负责形成回测所需的历史序列和股票池，不允许直接读取未来快照。
+
+关键时点约束：
+
+- 信号日只使用当日决策时点前已经存在的信息。
+- 入场日、退出日按已确认交易日历推进。
+- 股票池使用当时有效的历史成分和上市状态。
+- 新闻、模型和策略版本按各自信息截止时间选择。
+- 无法证明当时可见的数据不得进入回测。
+
+数据覆盖、停牌、涨跌停、上市不足和退市缺口需要形成明确阻断或跳过记录。质量审计能力由 `market` 提供，回测用例和结果归属本模块。
+
+### 7. 成交仿真、费用和持久化
+
+`BacktestExecutionService` 负责根据历史行情模拟成交，`BacktestCapitalScenario` 计算资金、数量和费用，`BacktestPersistenceService` 保存结果。
+
+仿真至少考虑：
+
+- 买入数量和交易单位。
+- 佣金、最低佣金、印花税和滑点。
+- 无法成交、停牌、涨跌停和价格缺失。
+- 持有期、退出点和未平仓处理。
+- 固定随机种子下的随机基线可复现性。
+
+结果至少记录累计收益、最大回撤、胜率、交易次数、总费用、数据覆盖、策略版本、费用版本和跳过原因。回测结果只用于比较策略，不等同于真实可成交收益。
+
+## 依赖与边界
+
+- 可以调用 `market`、`model` 的公开 Service 和 DTO。
+- 不得直接引用其他业务包的 Repository 或 Entity。
+- `decision -> execution` 依赖必须为零，避免策略规则与真实交易实现形成反向耦合。
+- `execution` 可以读取候选和信号，但必须独立完成权限、风控、幂等和券商校验。
+- Agent 可以独立评价候选，但不能修改策略候选、策略状态或自动交易结果。
+
+## 职责目录
+
+```text
+com/stock/decision/
+├── algorithm/    # 选股、指标、评分、信号和策略切换计算
+├── config/       # 策略配置、模式和运行状态管理
+├── controller/   # 选股、状态、配置和回测接口
+├── converter/    # 持久化字段和业务类型转换
+├── dto/          # 决策与回测接口契约
+├── entity/       # 策略、排名、信号和回测持久化对象
+├── repository/   # 决策结果和配置数据访问
+├── service/      # 回测及决策用例编排
+└── vo/           # 算法内部结果对象
+```
+
+## 维护规则
+
+- `controller` 只处理协议、日志和响应封装，策略计算不得进入 Controller。
+- 新指标或评分逻辑放入 `algorithm`；需要事务或多服务协调的流程放入 `service`。
+- 候选批次必须可追溯到市场信息截止时间、模型批次和策略版本。
+- 修改候选、信号或策略状态契约时，检查执行模块、平台内部事实 API、Agent 和前端调用方。

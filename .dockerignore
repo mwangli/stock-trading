@@ -1,0 +1,15 @@
+.git/
+.idea/
+.tmp/
+data/
+graft/
+model-files/
+stock-agent/
+stock-backend/
+**/node_modules/
+**/target/
+**/build/
+**/dist/
+**/.vite/
+**/.docusaurus/
+*.log
