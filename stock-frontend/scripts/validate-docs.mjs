@@ -1,11 +1,11 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START --
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import {fileURLToPath} from 'node:url';
+import { fileURLToPath } from 'node:url';
 
-const portalRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const repositoryRoot = path.resolve(portalRoot, '../..');
+const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const repositoryRoot = path.resolve(frontendRoot, '..');
 const docsRoot = path.join(repositoryRoot, 'documents');
 const allowedStatuses = new Set([
   'PROPOSED',
@@ -17,7 +17,7 @@ const allowedStatuses = new Set([
 ]);
 
 function walk(directory) {
-  return fs.readdirSync(directory, {withFileTypes: true}).flatMap((entry) => {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const entryPath = path.join(directory, entry.name);
     return entry.isDirectory() ? walk(entryPath) : [entryPath];
   });
@@ -97,8 +97,7 @@ for (const file of walk(docsRoot).filter((item) => /\.mdx?$/.test(item))) {
       continue;
     }
     const absoluteTarget = path.resolve(path.dirname(file), target);
-    const isDocumentLink = /\.mdx?$/.test(target)
-      && absoluteTarget.startsWith(docsRoot + path.sep);
+    const isDocumentLink = /\.mdx?$/.test(target) && absoluteTarget.startsWith(docsRoot + path.sep);
     if (!absoluteTarget.startsWith(repositoryRoot + path.sep) || !fs.existsSync(absoluteTarget)) {
       const linkType = isDocumentLink ? '站内文档' : '关联文件';
       errors.push(`${relativeFile}: ${linkType}链接不存在 ${rawTarget}`);
@@ -112,4 +111,4 @@ if (errors.length > 0) {
 } else {
   console.log(`文档静态检查通过，共检查 ${documentIds.size} 篇文档。`);
 }
-// AI_GENERATE_END -------
+// AI_GENERATE_END --

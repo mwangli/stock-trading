@@ -1,6 +1,9 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+
+const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -19,12 +22,10 @@ export default defineConfig({
     chunkSizeWarningLimit: 600,
   },
   server: {
+    fs: {
+      allow: [repositoryRoot],
+    },
     proxy: {
-      '/docs': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-        ws: true,
-      },
       '/api/agent': {
         target: 'http://localhost:8081',
         changeOrigin: true,
@@ -61,4 +62,4 @@ export default defineConfig({
     }
   }
 })
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

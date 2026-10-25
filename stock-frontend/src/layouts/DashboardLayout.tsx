@@ -1,5 +1,14 @@
-// AI_GENERATE_START--------------------------------------------------
-import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
+// AI_GENERATE_START-----------------------------------------------------------
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, Badge, Button, Dropdown, Layout, Result, Spin, Tooltip, type MenuProps } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -22,15 +31,15 @@ import {
   MessageOutlined,
   RobotOutlined,
   ReadOutlined,
+  ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { useAppTheme } from '../theme/AppThemeProvider';
 import { PageHeaderContext, type PageHeaderState } from './PageHeaderContext';
 import { checkBackendHealth } from '../utils/backendHealth';
 import { useAuth } from '../auth/AuthContext';
-import SystemMark from '../components/SystemMark';
+import SystemBrand from '../components/SystemBrand';
 import request from '../utils/request';
 import { type ApiResponse } from '../utils/api';
-import { DOCUMENTATION_URL } from '../utils/documentation';
 
 const { Header, Content, Sider } = Layout;
 
@@ -45,6 +54,17 @@ const DEFAULT_MENU_ORDER = [
   '/logs',
 ];
 const MENU_ORDER_CACHE_PREFIX = 'stockTrading.menuOrder';
+const SIDEBAR_WIDTH_CACHE_PREFIX = 'stockTrading.sidebarWidth';
+const SIDEBAR_WIDTH_LIMITS = { min: 160, max: 360 } as const;
+
+interface SidebarResizeState {
+  pointerId: number;
+  startX: number;
+  startWidth: number;
+  currentWidth: number;
+  previousCursor: string;
+  previousUserSelect: string;
+}
 
 interface UserMenuPreferenceResponse {
   menuOrder: string[];
@@ -91,6 +111,22 @@ const normalizeMenuOrder = (menuOrder: unknown) => {
 };
 
 const getMenuOrderCacheKey = (userId: number) => MENU_ORDER_CACHE_PREFIX + '.' + userId;
+
+const getSidebarWidthCacheKey = (userId: number | undefined) => (
+  `${SIDEBAR_WIDTH_CACHE_PREFIX}.${userId ?? 'anonymous'}`
+);
+
+const getDefaultSidebarWidth = () => Math.min(
+  220,
+  Math.max(SIDEBAR_WIDTH_LIMITS.min, Math.round(window.innerWidth * 0.15)),
+);
+
+const readCachedSidebarWidth = (userId: number | undefined) => {
+  const value = Number(window.localStorage.getItem(getSidebarWidthCacheKey(userId)));
+  return Number.isFinite(value) && value >= SIDEBAR_WIDTH_LIMITS.min && value <= SIDEBAR_WIDTH_LIMITS.max
+    ? value
+    : getDefaultSidebarWidth();
+};
 
 const readCachedMenuOrder = (userId: number | undefined): string[] | null => {
   if (userId === undefined) {
@@ -175,14 +211,26 @@ const DashboardLayout: React.FC = () => {
   const { t, i18n } = useTranslation();
   const { mode, autoThemeEnabled, setAutoThemeEnabled, toggleMode } = useAppTheme();
   const { user, logout } = useAuth();
+  const sidebarResizeStateRef = useRef<SidebarResizeState | null>(null);
   const [pageHeader, setPageHeader] = useState<PageHeaderState | null>(null);
   const [menuOrder, setMenuOrder] = useState<string[] | null>(() => readCachedMenuOrder(user?.id));
+  const [sidebarWidth, setSidebarWidth] = useState(() => readCachedSidebarWidth(user?.id));
   const [menuOrderLoadFailed, setMenuOrderLoadFailed] = useState(false);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const isDocumentationPage = location.pathname === '/docs' || location.pathname.startsWith('/docs/');
+  const documentationActionLabel = isDocumentationPage
+    ? t('layout.returnToSystem')
+    : t('layout.documentationBrowse');
+  const backendStatusLabel = backendStatus === 'online'
+    ? t('layout.online')
+    : backendStatus === 'offline'
+      ? t('layout.offline')
+      : t('layout.checking');
 
   useEffect(() => {
     let active = true;
     const cachedMenuOrder = readCachedMenuOrder(user?.id);
+    setSidebarWidth(readCachedSidebarWidth(user?.id));
     setMenuOrder(cachedMenuOrder);
     setMenuOrderLoadFailed(false);
     void (request.get('/userPreferences/menuOrder') as unknown as Promise<ApiResponse<UserMenuPreferenceResponse>>)
@@ -275,6 +323,77 @@ const DashboardLayout: React.FC = () => {
     }
   };
 
+  const resolveSidebarWidth = (width: number) => Math.min(
+    SIDEBAR_WIDTH_LIMITS.max,
+    Math.max(SIDEBAR_WIDTH_LIMITS.min, width),
+  );
+
+  const persistSidebarWidth = (width: number) => {
+    window.localStorage.setItem(getSidebarWidthCacheKey(user?.id), String(Math.round(width)));
+  };
+
+  const beginSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (sidebarCollapsed || isMobile) {
+      return;
+    }
+    sidebarResizeStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: sidebarWidth,
+      currentWidth: sidebarWidth,
+      previousCursor: window.document.body.style.cursor,
+      previousUserSelect: window.document.body.style.userSelect,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    window.document.body.style.cursor = 'col-resize';
+    window.document.body.style.userSelect = 'none';
+  };
+
+  const continueSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const state = sidebarResizeStateRef.current;
+    if (!state || state.pointerId !== event.pointerId) {
+      return;
+    }
+    const width = resolveSidebarWidth(state.startWidth + event.clientX - state.startX);
+    state.currentWidth = width;
+    setSidebarWidth(width);
+  };
+
+  const finishSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const state = sidebarResizeStateRef.current;
+    if (!state || state.pointerId !== event.pointerId) {
+      return;
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    window.document.body.style.cursor = state.previousCursor;
+    window.document.body.style.userSelect = state.previousUserSelect;
+    persistSidebarWidth(state.currentWidth);
+    sidebarResizeStateRef.current = null;
+  };
+
+  const resizeSidebarByKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Home') {
+      event.preventDefault();
+      window.localStorage.removeItem(getSidebarWidthCacheKey(user?.id));
+      setSidebarWidth(getDefaultSidebarWidth());
+      return;
+    }
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+      return;
+    }
+    event.preventDefault();
+    const width = resolveSidebarWidth(sidebarWidth + (event.key === 'ArrowRight' ? 16 : -16));
+    setSidebarWidth(width);
+    persistSidebarWidth(width);
+  };
+
+  const resetSidebarWidth = () => {
+    window.localStorage.removeItem(getSidebarWidthCacheKey(user?.id));
+    setSidebarWidth(getDefaultSidebarWidth());
+  };
+
   const userMenuItems: MenuProps['items'] = [
     {
       key: 'username',
@@ -317,8 +436,9 @@ const DashboardLayout: React.FC = () => {
     '/adaptiveStrategy': t('layout.pageTitles.adaptiveStrategy'),
     '/jobs': t('layout.pageTitles.jobs'),
   };
+  const appShellStyle = { '--app-sidebar-width': `${sidebarWidth}px` } as CSSProperties;
 
-  if (menuOrder === null) {
+  if (!isDocumentationPage && menuOrder === null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[var(--app-bg)]">
         {menuOrderLoadFailed ? (
@@ -337,88 +457,117 @@ const DashboardLayout: React.FC = () => {
 
   return (
     <PageHeaderContext.Provider value={setPageHeader}>
-      <Layout className="app-shell">
-      <Sider
-        trigger={null}
-        collapsible
-        collapsed={sidebarCollapsed}
-        collapsedWidth={isMobile ? 0 : 76}
-        breakpoint="lg"
-        onBreakpoint={(broken) => {
-          setIsMobile(broken);
-          if (broken) {
-            setSidebarCollapsed(true);
-          }
-        }}
-        onCollapse={setSidebarCollapsed}
-        width={192}
-        className="app-sidebar"
-      >
-        <div className="app-brand" title={t('layout.title')}>
-          <SystemMark size="small" title={t('layout.title')} />
-          {!sidebarCollapsed && (
-            <div className="app-brand-copy">
-              <strong>{t('login.algoTrading')}</strong>
-            </div>
-          )}
-        </div>
-
-        <Reorder.Group
-          as="ul"
-          axis="y"
-          values={orderedMenuItems.map((item) => item.key)}
-          onReorder={reorderMenu}
-          className={`app-menu-list${sidebarCollapsed ? ' app-menu-list-collapsed' : ''}`}
+      <Layout className="app-shell" style={appShellStyle}>
+      {!isDocumentationPage && (
+        <Sider
+          trigger={null}
+          collapsible
+          collapsed={sidebarCollapsed}
+          collapsedWidth={isMobile ? 0 : 76}
+          breakpoint="lg"
+          onBreakpoint={(broken) => {
+            setIsMobile(broken);
+            if (broken) {
+              setSidebarCollapsed(true);
+            }
+          }}
+          onCollapse={setSidebarCollapsed}
+          width={sidebarWidth}
+          className="app-sidebar"
         >
-          {orderedMenuItems.map((item) => (
-            <DraggableSidebarItem
-              key={item.key}
-              item={item}
-              selected={location.pathname === item.key}
-              collapsed={sidebarCollapsed}
-              onSelect={selectMenuItem}
+          <SystemBrand
+            collapsed={sidebarCollapsed}
+            status={backendStatus}
+            statusLabel={backendStatusLabel}
+            title={t('login.algoTrading')}
+          />
+
+          <Reorder.Group
+            as="ul"
+            axis="y"
+            values={orderedMenuItems.map((item) => item.key)}
+            onReorder={reorderMenu}
+            className={`app-menu-list${sidebarCollapsed ? ' app-menu-list-collapsed' : ''}`}
+          >
+            {orderedMenuItems.map((item) => (
+              <DraggableSidebarItem
+                key={item.key}
+                item={item}
+                selected={location.pathname === item.key}
+                collapsed={sidebarCollapsed}
+                onSelect={selectMenuItem}
+              />
+            ))}
+          </Reorder.Group>
+          {!sidebarCollapsed && !isMobile && (
+            <div
+              className="app-sidebar-resize-handle"
+              role="separator"
+              aria-label="调整主菜单宽度"
+              aria-orientation="vertical"
+              tabIndex={0}
+              title="拖动调整宽度，双击恢复默认"
+              onPointerDown={beginSidebarResize}
+              onPointerMove={continueSidebarResize}
+              onPointerUp={finishSidebarResize}
+              onPointerCancel={finishSidebarResize}
+              onKeyDown={resizeSidebarByKeyboard}
+              onDoubleClick={resetSidebarWidth}
             />
-          ))}
-        </Reorder.Group>
-      </Sider>
+          )}
+        </Sider>
+      )}
 
       <Layout className="app-main-layout">
-        <Header className="app-header">
-          <div className="app-header-identity">
-            <Tooltip title={sidebarCollapsed ? t('layout.expandMenu') : t('layout.collapseMenu')}>
-              <Button
-                type="text"
-                icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
-              />
-            </Tooltip>
-            <div className="min-w-0 flex-1">
-              <div className="app-page-title truncate">{pageTitles[location.pathname] ?? '智能交易终端'}</div>
-              <div className="truncate text-xs text-[var(--text-muted)]">
-                {pageHeader?.subtitle ?? 'Stock Operations Console'}
+        <Header className={`app-header${isDocumentationPage ? ' app-header-documentation-page' : ''}`}>
+          {isDocumentationPage ? (
+            <SystemBrand
+              className="app-header-brand"
+              status={backendStatus}
+              statusLabel={backendStatusLabel}
+              title={t('login.algoTrading')}
+            />
+          ) : (
+            <div className="app-header-identity">
+              <Tooltip title={sidebarCollapsed ? t('layout.expandMenu') : t('layout.collapseMenu')}>
+                <Button
+                  type="text"
+                  icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                  onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+                />
+              </Tooltip>
+              <div className="min-w-0 flex-1">
+                <div className="app-page-title truncate">
+                  {pageTitles[location.pathname] ?? t('layout.title')}
+                </div>
+                <div className="truncate text-xs text-[var(--text-muted)]">
+                  {pageHeader?.subtitle ?? 'Stock Operations Console'}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="app-header-tools">
-            <Tooltip title={t('layout.documentationBrowse')}>
+            <Tooltip title={documentationActionLabel}>
               <Button
+                type="text"
                 className="app-header-documentation"
-                href={DOCUMENTATION_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                icon={<ReadOutlined />}
-                aria-label={t('layout.documentationBrowse')}
+                onClick={() => navigate(isDocumentationPage ? '/dashboard' : '/docs')}
+                icon={isDocumentationPage ? <ArrowLeftOutlined /> : <ReadOutlined />}
+                aria-label={documentationActionLabel}
               >
                 <span className="app-header-documentation-label">
-                  {t('layout.documentationBrowse')}
+                  {documentationActionLabel}
                 </span>
               </Button>
             </Tooltip>
-            <div className="app-system-status">
-              <span className={`h-2 w-2 rounded-full ${backendStatus === 'online' ? 'bg-emerald-500' : backendStatus === 'offline' ? 'bg-red-500' : 'bg-amber-500'}`} />
-              {backendStatus === 'online' ? t('layout.online') : backendStatus === 'offline' ? t('layout.offline') : t('layout.checking')}
-            </div>
+            <Button
+              type="text"
+              className="app-header-language !h-8 !px-2 text-xs"
+              onClick={changeLanguage}
+            >
+              {i18n.language === 'en' ? 'EN' : '中文'}
+            </Button>
             <Tooltip title={mode === 'dark' ? t('layout.lightMode') : t('layout.darkMode')}>
               <Button
                 type="text"
@@ -428,13 +577,6 @@ const DashboardLayout: React.FC = () => {
                 aria-label={mode === 'dark' ? t('layout.lightMode') : t('layout.darkMode')}
               />
             </Tooltip>
-            <Button
-              type="text"
-              className="app-header-language !h-8 !px-2 text-xs"
-              onClick={changeLanguage}
-            >
-              {i18n.language === 'en' ? 'EN' : '中文'}
-            </Button>
             <Badge dot color="#22c55e" className="app-header-notification">
               <Button type="text" icon={<BellOutlined />} />
             </Badge>
@@ -446,7 +588,7 @@ const DashboardLayout: React.FC = () => {
           </div>
         </Header>
 
-        <Content className="app-content">
+        <Content className={`app-content${isDocumentationPage ? ' app-content-documentation' : ''}`}>
           <Outlet />
         </Content>
       </Layout>
@@ -456,4 +598,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END--------------------------------------------------
+// AI_GENERATE_END-----------------------------------------------------------

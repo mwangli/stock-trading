@@ -45,6 +45,7 @@
     "agentConversation": "智能对话",
     "adaptiveStrategy": "策略模式",
     "documentationBrowse": "文档查阅",
+    "returnToSystem": "返回系统",
     "jobs": "任务调度",
     "pageTitles": {
       "dashboard": "收益总览",
@@ -56,6 +57,7 @@
       "agent": "智能决策",
       "agentConversation": "智能对话",
       "adaptiveStrategy": "策略模式",
+      "documentation": "工程文档",
       "jobs": "任务调度"
     },
     "expandMenu": "展开导航菜单",
