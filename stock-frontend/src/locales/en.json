@@ -45,6 +45,7 @@
     "agentConversation": "Agent Conversation",
     "adaptiveStrategy": "Strategy Mode",
     "documentationBrowse": "Documentation",
+    "returnToSystem": "Back to system",
     "jobs": "Job Scheduling",
     "pageTitles": {
       "dashboard": "Returns Overview",
@@ -56,6 +57,7 @@
       "agent": "Intelligent Decision",
       "agentConversation": "Agent Conversation",
       "adaptiveStrategy": "Strategy Mode",
+      "documentation": "Engineering Docs",
       "jobs": "Job Scheduling"
     },
     "expandMenu": "Expand navigation",

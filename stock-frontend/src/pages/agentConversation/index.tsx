@@ -1,11 +1,10 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START-----------
 import './styles.css';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Spin, Tag, Tooltip, Typography, message, type InputRef } from 'antd';
 import {
   BulbOutlined,
   ClockCircleOutlined,
-  DatabaseOutlined,
   FileSearchOutlined,
   MessageOutlined,
   PlusOutlined,
@@ -19,6 +18,7 @@ import { usePageHeader } from '../../layouts/PageHeaderContext';
 import { useAgentConversationStore, type AgentConversationMessage } from '../../store/agentConversationStore';
 import { getApiErrorMessage, readApiData, type ApiResponse } from '../../utils/api';
 import request from '../../utils/request';
+import AgentMarkdown from './AgentMarkdown';
 
 const { Text } = Typography;
 
@@ -110,10 +110,27 @@ const statusColor = (status?: string) => {
   return 'processing';
 };
 
+const summarizeConversationTitle = (content: string): string => {
+  const normalized = content
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}(?:#{1,6}|>|[-*+]\s|\d+[.)]\s)\s*/gm, '')
+    .replace(/[*_~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return '新对话';
+  const firstSentence = normalized.match(/^.*?[。！？!?]/)?.[0]?.trim() || normalized;
+  const characters = Array.from(firstSentence);
+  return characters.length > 28 ? `${characters.slice(0, 28).join('')}…` : firstSentence;
+};
+
 const AgentConversation: React.FC = () => {
   usePageHeader('智能对话');
   const { user } = useAuth();
   const ownerId = String(user?.id ?? 'anonymous');
+  const currentUserName = user?.displayName?.trim() || user?.username?.trim() || '当前用户';
   const inputRef = useRef<InputRef>(null);
   const restoredOwnerRef = useRef<string | null>(null);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
@@ -121,7 +138,6 @@ const AgentConversation: React.FC = () => {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const [candidateBatch, setCandidateBatch] = useState<TradingCandidateBatch | null>(null);
-  const [contextError, setContextError] = useState<string | null>(null);
 
   const sessionId = useAgentConversationStore((state) => state.sessionId);
   const question = useAgentConversationStore((state) => state.question);
@@ -140,7 +156,6 @@ const AgentConversation: React.FC = () => {
   }, [activateOwner, ownerId]);
 
   const loadContext = useCallback(async () => {
-    setContextError(null);
     const [runtimeResult, healthResult, candidateResult] = await Promise.allSettled([
       request.get('/agent/runtime/status') as Promise<ApiResponse<RuntimeStatus>>,
       request.get('/agent/runtime/health') as Promise<ApiResponse<Pick<RuntimeStatus, 'deepseekAvailable' | 'ollamaAvailable'>>>,
@@ -158,7 +173,6 @@ const AgentConversation: React.FC = () => {
       setCandidateBatch(candidateResult.value.data);
     } else {
       setCandidateBatch(null);
-      setContextError('当前候选批次不可用，对话仍可继续，但回答可能缺少候选上下文。');
     }
   }, []);
 
@@ -225,9 +239,11 @@ const AgentConversation: React.FC = () => {
     return runtime.provider || '自动路由';
   }, [runtime]);
 
-  const createSession = async (): Promise<string | null> => {
+  const createSession = async (initialQuestion: string): Promise<string | null> => {
     try {
-      const response = await request.post('/agent/sessions', { title: '智能策略对话' }) as ApiResponse<AgentSession>;
+      const response = await request.post('/agent/sessions', {
+        title: summarizeConversationTitle(initialQuestion),
+      }) as ApiResponse<AgentSession>;
       const created = readApiData(response, '创建 Agent 会话失败');
       setSessionId(ownerId, created.sessionId);
       setSessions((current) => [created, ...current]);
@@ -241,7 +257,7 @@ const AgentConversation: React.FC = () => {
   const askAgent = async () => {
     const normalizedQuestion = question.trim();
     if (!normalizedQuestion || loading) return;
-    const activeSessionId = sessionId || await createSession();
+    const activeSessionId = sessionId || await createSession(normalizedQuestion);
     if (!activeSessionId) return;
     appendMessage(ownerId, { role: 'user', content: normalizedQuestion, createdAt: new Date().toISOString() });
     setQuestion(ownerId, '');
@@ -322,7 +338,7 @@ const AgentConversation: React.FC = () => {
                 className={`mb-1 w-full border-l-2 px-3 py-3 text-left transition-colors ${
                   item.sessionId === sessionId
                     ? 'border-emerald-500 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100'
-                    : 'border-transparent text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
+                    : 'agent-session-item border-transparent'
                 }`}
               >
                 <div className="truncate text-sm font-medium">{item.title}</div>
@@ -379,17 +395,21 @@ const AgentConversation: React.FC = () => {
               <div className="space-y-4">
                 {messages.map((item, index) => (
                   <div key={`${item.taskId ?? index}-${item.role}`} className={`flex ${item.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[84%] border px-4 py-3 ${
+                    <div className={`agent-message-bubble max-w-[84%] border px-4 py-3 ${
                       item.role === 'user'
                         ? 'border-emerald-600 bg-emerald-600 text-white'
                         : 'border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
                     }`}>
                       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-                        <strong>{item.role === 'user' ? '你' : '策略 Agent'}</strong>
+                        <strong>{item.role === 'user' ? currentUserName : '策略 Agent'}</strong>
                         {item.status && <Tag color={statusColor(item.status)}>{item.status}</Tag>}
                         {item.createdAt && <span className={item.role === 'user' ? 'text-emerald-100' : 'text-slate-500'}>{formatDateTime(item.createdAt)}</span>}
                       </div>
-                      <div className="whitespace-pre-wrap text-sm leading-6">{item.content}</div>
+                      {item.role === 'assistant' ? (
+                        <AgentMarkdown content={item.content} />
+                      ) : (
+                        <div className="whitespace-pre-wrap text-sm leading-6">{item.content}</div>
+                      )}
                       {item.uncertainty && (
                         <div className="mt-3 border-t border-current/20 pt-2 text-xs leading-5">不确定性：{item.uncertainty}</div>
                       )}
@@ -397,7 +417,7 @@ const AgentConversation: React.FC = () => {
                         || (item.capabilities?.length ?? 0) > 0 || item.evidenceSummary) && (
                         <details className="mt-3 text-xs">
                           <summary className="cursor-pointer font-medium">查看证据摘要</summary>
-                          {item.evidenceSummary && <div className="mt-2 whitespace-pre-wrap leading-5">{item.evidenceSummary}</div>}
+                          {item.evidenceSummary && <AgentMarkdown content={item.evidenceSummary} compact />}
                           {(item.capabilities?.length ?? 0) > 0 && <div className="mt-2 break-all text-slate-500">使用能力：{item.capabilities?.join('、')}</div>}
                           {(item.evidenceRefs?.length ?? 0) > 0 && <div className="mt-2 break-all text-slate-500">证据编号：{item.evidenceRefs?.join('、')}</div>}
                         </details>
@@ -407,7 +427,7 @@ const AgentConversation: React.FC = () => {
                 ))}
                 {loading && (
                   <div className="flex justify-start">
-                    <div className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                    <div className="agent-message-bubble border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                       <Spin size="small" /> <span className="ml-2">正在读取证据并生成回答</span>
                     </div>
                   </div>
@@ -439,17 +459,6 @@ const AgentConversation: React.FC = () => {
         </main>
 
         <aside className="agent-context-rail space-y-4">
-          <section className="agent-panel border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100"><DatabaseOutlined />当前上下文</div>
-            <dl className="mt-4 space-y-3 text-xs">
-              <div><dt className="text-slate-500">候选批次</dt><dd className="mt-1 break-all font-medium text-slate-800 dark:text-slate-200">{candidateBatch?.candidateBatchId || '不可用'}</dd></div>
-              <div><dt className="text-slate-500">策略版本</dt><dd className="mt-1 font-medium text-slate-800 dark:text-slate-200">{candidateBatch?.strategyConfigVersion || '不可用'}</dd></div>
-              <div><dt className="text-slate-500">目标交易日</dt><dd className="mt-1 font-medium text-slate-800 dark:text-slate-200">{candidateBatch?.targetTradeDate || '不可用'}</dd></div>
-              <div><dt className="text-slate-500">信息截止时间</dt><dd className="mt-1 font-medium text-slate-800 dark:text-slate-200">{formatDateTime(candidateBatch?.informationCutoffAt)}</dd></div>
-            </dl>
-            {contextError && <div className="mt-4 border-l-2 border-amber-500 pl-3 text-xs leading-5 text-amber-700 dark:text-amber-300">{contextError}</div>}
-          </section>
-
           <section className="agent-panel border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100"><SafetyCertificateOutlined />能力状态</div>
             <div className="mt-4 space-y-3 text-xs">
@@ -490,4 +499,4 @@ const AgentConversation: React.FC = () => {
 };
 
 export default AgentConversation;
-// AI_GENERATE_END-----
+// AI_GENERATE_END-----------

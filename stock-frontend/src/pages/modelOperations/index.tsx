@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------------------------------------------------------------
+// AI_GENERATE_START-----------------------------------------------------------------------
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
 import SentimentModelStatusPanel from './SentimentModelStatusPanel';
@@ -302,6 +302,7 @@ const statusColors: Record<string, string> = {
   SUCCEEDED: 'green',
   FAILED: 'red',
   STOPPING: 'orange',
+  WAITING_DATA: 'gold',
   CANCELLED: 'default',
   COMPLETED: 'green',
   PARTIAL: 'orange',
@@ -351,22 +352,36 @@ const formatBytes = (value: number) => {
 
 const progressStageLabels: Record<string, string> = {
   QUEUED: '排队中',
+  CHECKING_DATA: '检查数据',
+  BACKFILLING_DATA: '回填数据',
+  RECHECKING_DATA: '复检数据',
+  PREPARING_SNAPSHOT: '提取快照',
+  SNAPSHOT_READY: '快照已就绪',
   PREPARING_DATA: '准备数据',
   PROCESSING_SAMPLES: '构建样本',
   TRAINING: '模型训练',
   SAVING_MODEL: '保存模型',
-  VALIDATING_MODEL: '候选校验',
+  OFFLINE_EVALUATING: '离线评估',
+  CANDIDATE_REGISTERED: '候选已登记',
+  WAITING_DATA: '等待数据',
   COMPLETED: '已完成',
   FAILED: '已失败',
 };
 
 const progressStageLabelsEn: Record<string, string> = {
   QUEUED: 'Queued',
+  CHECKING_DATA: 'Checking Data',
+  BACKFILLING_DATA: 'Backfilling Data',
+  RECHECKING_DATA: 'Rechecking Data',
+  PREPARING_SNAPSHOT: 'Preparing Snapshot',
+  SNAPSHOT_READY: 'Snapshot Ready',
   PREPARING_DATA: 'Preparing Data',
   PROCESSING_SAMPLES: 'Building Samples',
   TRAINING: 'Training Model',
   SAVING_MODEL: 'Saving Model',
-  VALIDATING_MODEL: 'Validating Candidate',
+  OFFLINE_EVALUATING: 'Offline Evaluation',
+  CANDIDATE_REGISTERED: 'Candidate Registered',
+  WAITING_DATA: 'Waiting for Data',
   COMPLETED: 'Completed',
   FAILED: 'Failed',
 };
@@ -857,6 +872,7 @@ const ModelOperations: React.FC = () => {
     { title: localizedText('训练样本', 'Training Samples'), dataIndex: 'trainSamples', key: 'trainSamples', width: 100, render: (value?: number) => value ?? '-' },
     { title: localizedText('验证样本', 'Validation Samples'), dataIndex: 'valSamples', key: 'valSamples', width: 100, render: (value?: number) => value ?? '-' },
     { title: localizedText('验证损失', 'Validation Loss'), dataIndex: 'valLoss', key: 'valLoss', width: 110, render: formatLoss },
+    { title: localizedText('数据快照', 'Dataset Snapshot'), dataIndex: 'datasetSnapshotId', key: 'datasetSnapshotId', width: 200, ellipsis: true, render: (value?: string) => value ?? '-' },
     { title: localizedText('候选版本', 'Candidate Version'), dataIndex: 'candidateModelVersionId', key: 'candidateModelVersionId', width: 200, ellipsis: true, render: (value?: string) => value ?? '-' },
     { title: localizedText('开始时间', 'Started At'), dataIndex: 'startedAt', key: 'startedAt', width: 180, render: formatDateTime },
     { title: localizedText('结束时间', 'Finished At'), dataIndex: 'finishedAt', key: 'finishedAt', width: 180, render: formatDateTime },
@@ -1162,9 +1178,11 @@ const ModelOperations: React.FC = () => {
               </div>
             </div>
             <div className="model-overview-actions">
-              {trainingInProgress && (
+              {latestTraining && (
                 <Button icon={<EyeOutlined />} onClick={() => setTrainingProgressOpen(true)}>
-                  {localizedText('查看训练进度', 'View Training Progress')}
+                  {trainingInProgress
+                    ? localizedText('查看训练进度', 'View Training Progress')
+                    : localizedText('查看最近训练', 'View Latest Training')}
                 </Button>
               )}
               <Button
@@ -1255,6 +1273,9 @@ const ModelOperations: React.FC = () => {
               </Descriptions.Item>
               <Descriptions.Item label="样本规模">
                 {`${latestTraining.trainSamples ?? '-'} / ${latestTraining.valSamples ?? '-'}`}
+              </Descriptions.Item>
+              <Descriptions.Item label="数据快照">
+                {latestTraining.datasetSnapshotId ?? '-'}
               </Descriptions.Item>
             </Descriptions>
           </Space>
@@ -1535,4 +1556,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END--------------------------------------------------------------------
+// AI_GENERATE_END-----------------------------------------------------------------------

@@ -1,4 +1,4 @@
-/* AI_GENERATE_START--------------------------------- */
+/* AI_GENERATE_START----------------------------------------- */
 @import "tailwindcss";
 
 :root,
@@ -69,11 +69,12 @@ select { letter-spacing: 0; }
 }
 
 .app-sidebar {
+  position: relative;
   z-index: 30;
-  width: clamp(160px, 15vw, 220px) !important;
-  min-width: clamp(160px, 15vw, 220px) !important;
-  max-width: clamp(160px, 15vw, 220px) !important;
-  flex: 0 0 clamp(160px, 15vw, 220px) !important;
+  width: var(--app-sidebar-width, clamp(160px, 15vw, 220px)) !important;
+  min-width: var(--app-sidebar-width, clamp(160px, 15vw, 220px)) !important;
+  max-width: var(--app-sidebar-width, clamp(160px, 15vw, 220px)) !important;
+  flex: 0 0 var(--app-sidebar-width, clamp(160px, 15vw, 220px)) !important;
   border-right: 1px solid var(--border-color);
   background: var(--sidebar-bg) !important;
 }
@@ -101,10 +102,11 @@ select { letter-spacing: 0; }
 .app-brand {
   display: flex;
   width: calc(100% - 24px);
-  min-height: 56px;
+  height: 64px;
+  min-height: 64px;
   align-items: center;
   gap: 10px;
-  margin: 12px auto 22px;
+  margin: 0 auto 22px;
 }
 
 .app-brand-copy {
@@ -115,13 +117,40 @@ select { letter-spacing: 0; }
 }
 
 .app-brand-copy strong {
+  min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 750;
   letter-spacing: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.app-brand-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.app-brand-status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.app-brand-status-dot.is-online {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+}
+
+.app-brand-status-dot.is-offline {
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
 }
 
 .app-brand-copy span {
@@ -131,9 +160,48 @@ select { letter-spacing: 0; }
   white-space: nowrap;
 }
 
+.app-brand-collapsed,
 .app-sidebar.ant-layout-sider-collapsed .app-brand {
   width: 44px;
   justify-content: center;
+}
+
+.app-header-brand {
+  width: var(--app-sidebar-width, clamp(160px, 15vw, 220px));
+  min-width: var(--app-sidebar-width, clamp(160px, 15vw, 220px));
+  flex: 0 0 var(--app-sidebar-width, clamp(160px, 15vw, 220px));
+  align-self: stretch;
+  margin: 0;
+  padding: 0 12px;
+}
+
+.app-sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  bottom: 0;
+  z-index: 40;
+  width: 10px;
+  cursor: col-resize;
+  outline: none;
+  touch-action: none;
+}
+
+.app-sidebar-resize-handle::after {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  content: '';
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.app-sidebar-resize-handle:hover::after,
+.app-sidebar-resize-handle:focus-visible::after {
+  background: var(--brand);
+  box-shadow: 0 0 0 2px var(--brand-soft);
 }
 
 .app-page-title { font-size: 18px; font-weight: 750; line-height: 1.25; }
@@ -264,6 +332,10 @@ select { letter-spacing: 0; }
   backdrop-filter: blur(12px);
 }
 
+.app-header-documentation-page {
+  padding-left: 0;
+}
+
 .app-header-identity {
   display: flex;
   min-width: 210px;
@@ -296,29 +368,21 @@ select { letter-spacing: 0; }
   color: var(--brand) !important;
 }
 
-.app-system-status {
-  display: flex;
-  height: 34px;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  padding: 6px 12px;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
 .app-header-documentation {
   height: 34px;
   padding-inline: 12px !important;
-  border-color: var(--border-color) !important;
+  border: 0 !important;
   color: var(--text-secondary) !important;
+  font-size: 12px !important;
 }
 
 .app-header-documentation:hover {
-  border-color: var(--brand) !important;
   background: var(--brand-soft) !important;
   color: var(--brand) !important;
+}
+
+.app-header-language {
+  font-size: 12px !important;
 }
 
 .app-content {
@@ -1042,11 +1106,21 @@ select { letter-spacing: 0; }
     padding: 8px 14px;
   }
 
+  .app-header-documentation-page {
+    flex-wrap: nowrap;
+    padding-left: 0;
+  }
+
+  .app-header-documentation-page .app-header-brand {
+    width: auto;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
   .app-header-identity { min-width: 0; }
 
   .app-page-title { font-size: 17px; }
 
-  .app-system-status,
   .app-header-language,
   .app-header-notification,
   .app-header-avatar { display: none !important; }
@@ -1091,4 +1165,4 @@ select { letter-spacing: 0; }
     border-bottom: 0;
   }
 }
-/* AI_GENERATE_END--------------------------------- */
+/* AI_GENERATE_END----------------------------------------- */

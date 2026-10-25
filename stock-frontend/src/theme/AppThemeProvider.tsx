@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------
+// AI_GENERATE_START-----------------
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { App as AntdApp, ConfigProvider, theme } from 'antd';
 
@@ -51,16 +51,6 @@ const AUTO_THEME_STORAGE_KEY = 'stock-theme-auto';
 const THEME_MODE_STORAGE_KEY = 'stock-theme';
 const THEME_PRESET_STORAGE_KEY = 'stock-theme-preset';
 const LAST_LIGHT_THEME_STORAGE_KEY = 'stock-theme-last-light';
-const SHARED_THEME_STORAGE_KEY = 'theme';
-
-const isThemeMode = (value: string | null): value is ThemeMode => (
-  value === 'light' || value === 'dark'
-);
-
-const isDocumentationUrl = (url: string): boolean => {
-  const pathname = new URL(url).pathname;
-  return pathname === '/docs' || pathname.startsWith('/docs/');
-};
 
 const readAutoThemeEnabled = (): boolean => {
   const storedValue = window.localStorage.getItem(AUTO_THEME_STORAGE_KEY);
@@ -132,29 +122,7 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
   useEffect(() => {
     document.documentElement.dataset.theme = mode;
     delete document.documentElement.dataset.themePreset;
-    window.localStorage.setItem(SHARED_THEME_STORAGE_KEY, mode);
   }, [mode]);
-
-  useEffect(() => {
-    const syncThemeFromDocumentation = (event: StorageEvent) => {
-      if (event.storageArea !== window.localStorage
-        || event.key !== SHARED_THEME_STORAGE_KEY
-        || !isThemeMode(event.newValue)
-        || !isDocumentationUrl(event.url)) {
-        return;
-      }
-
-      setAutoThemeEnabledState(false);
-      window.localStorage.setItem(AUTO_THEME_STORAGE_KEY, 'false');
-      window.localStorage.setItem(THEME_MODE_STORAGE_KEY, event.newValue);
-      window.localStorage.removeItem(THEME_PRESET_STORAGE_KEY);
-      window.localStorage.removeItem(LAST_LIGHT_THEME_STORAGE_KEY);
-      setModeState(event.newValue);
-    };
-
-    window.addEventListener('storage', syncThemeFromDocumentation);
-    return () => window.removeEventListener('storage', syncThemeFromDocumentation);
-  }, []);
 
   useEffect(() => {
     if (!autoThemeEnabled) {
@@ -230,4 +198,4 @@ export const useAppTheme = (): AppThemeContextValue => {
   }
   return context;
 };
-// AI_GENERATE_END--------------
+// AI_GENERATE_END-----------------
