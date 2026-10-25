@@ -1,7 +1,7 @@
-// AI_GENERATE_START------------------------------
+// AI_GENERATE_START-----------------------------
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { Input, Select, Table } from 'antd';
+import { Descriptions, Drawer, Input, Select, Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { TablePaginationConfig } from 'antd/es/table/interface';
 import type { EChartsOption, TooltipComponentFormatterCallbackParams } from 'echarts';
@@ -13,7 +13,7 @@ import type { ApiResponse } from '../../utils/api';
 import { useAppTheme } from '../../theme/AppThemeProvider';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
 import { localizedText } from '../../utils/localizedText';
-import StockDetailDrawer from '../../components/StockDetailDrawer';
+import { formatDateTime } from '../../utils/dateTime';
 
 interface StockInfo {
   id?: string;
@@ -111,6 +111,59 @@ interface MarketStatCard {
 
 const STOCK_UP_COLOR = '#ef4444';
 const STOCK_DOWN_COLOR = '#22c55e';
+
+const MARKET_LABELS: Record<string, [string, string]> = {
+  SH: ['上海', 'Shanghai'],
+  SZ: ['深圳', 'Shenzhen'],
+  BJ: ['北京', 'Beijing'],
+};
+
+const SECURITY_CATEGORY_LABELS: Record<number, [string, string]> = {
+  0: ['深市主板', 'Shenzhen Main Board'],
+  2: ['深市主板（原中小板）', 'Shenzhen Main Board'],
+  9: ['沪市主板', 'Shanghai Main Board'],
+  18: ['创业板', 'ChiNext'],
+};
+
+const compactAmountFormatters = {
+  zh: new Intl.NumberFormat('zh-CN', {
+    notation: 'compact',
+    maximumFractionDigits: 2,
+  }),
+  en: new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    maximumFractionDigits: 2,
+  }),
+};
+
+const formatNumber = (value?: number, digits = 2) => (
+  value == null ? '-' : Number(value).toFixed(digits)
+);
+
+const formatPercent = (value?: number) => value == null ? '-' : `${Number(value).toFixed(2)}%`;
+
+const formatMarket = (value?: string) => {
+  if (!value) return '-';
+  const labels = MARKET_LABELS[value.toUpperCase()];
+  return labels ? localizedText(labels[0], labels[1]) : value;
+};
+
+const formatSecurityCategory = (value?: number) => {
+  if (value == null) return '-';
+  const labels = SECURITY_CATEGORY_LABELS[value];
+  return labels ? localizedText(labels[0], labels[1]) : localizedText(`其他类别（${value}）`, `Other (${value})`);
+};
+
+const formatCompactAmount = (value?: number) => value == null
+  ? '-'
+  : localizedText(
+    `¥${compactAmountFormatters.zh.format(Number(value))}`,
+    `¥${compactAmountFormatters.en.format(Number(value))}`,
+  );
+
+const formatFullAmount = (value?: number) => value == null
+  ? '-'
+  : `¥${Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
 
 const Market: React.FC = () => {
   const { t } = useTranslation();
@@ -694,13 +747,53 @@ const Market: React.FC = () => {
         </div>
       </div>
 
-      <StockDetailDrawer
-        stock={detailStock ? { code: detailStock.code, name: detailStock.name, details: detailStock } : null}
+      <Drawer
+        open={Boolean(detailStock)}
+        placement="right"
+        width={480}
+        title={detailStock ? (
+          <div className="flex min-w-0 items-baseline gap-3">
+            <span className="truncate text-base font-semibold text-[var(--text-primary)]">{detailStock.name}</span>
+            <span className="shrink-0 font-mono text-sm font-normal text-[var(--text-secondary)]">{detailStock.code}</span>
+          </div>
+        ) : t('marketPage.details.title')}
         onClose={() => setDetailStock(null)}
-      />
+      >
+        {detailStock && (
+          <div className="flex flex-col gap-5">
+            <div className="border-b border-[var(--border-color)] pb-5">
+              <div className="text-xs text-[var(--text-secondary)]">{t('marketPage.details.price')}</div>
+              <div className="mt-2 flex items-end gap-3">
+                <span className="font-mono text-3xl font-semibold text-[var(--text-primary)]">
+                  {detailStock.price == null ? '-' : `¥${formatNumber(detailStock.price, 3)}`}
+                </span>
+                <span className={`pb-1 font-mono text-sm font-semibold ${(detailStock.changePercent ?? 0) >= 0 ? 'text-[#ef4444]' : 'text-[#22c55e]'}`}>
+                  {detailStock.changePercent != null && detailStock.changePercent > 0 ? '+' : ''}{formatPercent(detailStock.changePercent)}
+                </span>
+              </div>
+            </div>
+            <Descriptions
+              bordered
+              size="small"
+              column={1}
+              labelStyle={{ width: 128 }}
+              items={[
+                { key: 'market', label: t('marketPage.details.market'), children: formatMarket(detailStock.market) },
+                { key: 'category', label: t('marketPage.details.category'), children: formatSecurityCategory(detailStock.industryCode) },
+                { key: 'changeAmount', label: t('marketPage.details.changeAmount'), children: formatNumber(detailStock.changeAmount, 3) },
+                { key: 'marketCap', label: t('marketPage.details.marketCap'), children: <span title={formatFullAmount(detailStock.totalMarketValue)}>{formatCompactAmount(detailStock.totalMarketValue)}</span> },
+                { key: 'turnover', label: t('marketPage.details.turnover'), children: formatPercent(detailStock.turnoverRate) },
+                { key: 'volumeRatio', label: t('marketPage.details.volumeRatio'), children: formatNumber(detailStock.volumeRatio) },
+                { key: 'listedDate', label: t('marketPage.details.listedDate'), children: detailStock.listedDate?.slice(0, 10) || '-' },
+                { key: 'updatedAt', label: t('marketPage.details.updatedAt'), children: formatDateTime(detailStock.updateTime) },
+              ]}
+            />
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 };
 
 export default Market;
-// AI_GENERATE_END------------------------------
+// AI_GENERATE_END-----------------------------
