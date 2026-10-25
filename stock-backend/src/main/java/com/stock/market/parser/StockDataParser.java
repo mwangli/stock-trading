@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.market.parser;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -77,7 +77,7 @@ public final class StockDataParser {
         entity.setCode(clean(split[4]));
         entity.setName(clean(split[2]));
         entity.setMarket(parseMarket(clean(split[3])));
-        BigDecimal price = parseDecimalField(split[1]);
+        BigDecimal price = parsePositiveDecimalField(split[1]);
         if (price != null) entity.setPrice(price);
         BigDecimal changePercent = parseDecimalField(split[0]);
         if (changePercent != null) entity.setChangePercent(changePercent);
@@ -101,17 +101,17 @@ public final class StockDataParser {
             entity.setSecurityCategory(clean(split[9]));
         }
         if (split.length > 10) {
-            BigDecimal totalMv = parseDecimalField(split[10]);
+            BigDecimal totalMv = parsePositiveDecimalField(split[10]);
             if (totalMv != null) entity.setTotalMarketValue(totalMv);
         }
         if (split.length > 3) {
             entity.setMarketCode(clean(split[3]));
         }
         if (split.length > 11) {
-            entity.setBidPrice(parseDecimalField(split[11]));
+            entity.setBidPrice(parsePositiveDecimalField(split[11]));
         }
         if (split.length > 12) {
-            entity.setAskPrice(parseDecimalField(split[12]));
+            entity.setAskPrice(parsePositiveDecimalField(split[12]));
         }
         calculateCombinationSignals(entity);
         return entity;
@@ -140,6 +140,11 @@ public final class StockDataParser {
                 entity.setBidAskSpreadRate(spread.divide(entity.getPrice(), 8, java.math.RoundingMode.HALF_UP));
             }
         }
+    }
+
+    private static BigDecimal parsePositiveDecimalField(String value) {
+        BigDecimal parsed = parseDecimalField(value);
+        return parsed != null && parsed.signum() > 0 ? parsed : null;
     }
 
     /**
@@ -220,4 +225,4 @@ public final class StockDataParser {
     }
 
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

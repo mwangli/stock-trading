@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START--------
 package com.stock.market.service;
 
 import com.stock.platform.config.CacheNames;
@@ -196,7 +196,7 @@ public class StockQueryService {
      * @return 涨幅榜业务数据
      */
     public TopIncreaseListResponseDto getTopIncreaseList() {
-        Query query = Query.query(tradableCriteria().and("changePercent").ne(null))
+        Query query = Query.query(marketVisibleCriteria().and("changePercent").ne(null))
                 .with(Sort.by(Sort.Direction.DESC, "changePercent"))
                 .limit(10);
         List<TopIncreaseItemDto> items = mongoTemplate.find(query, StockInfo.class).stream()
@@ -216,7 +216,7 @@ public class StockQueryService {
      */
     public MarketStatsDto getMarketStats() {
         List<StockInfo> tradableStocks = stockInfoRepository.findAll().stream()
-                .filter(this::isTradableStock)
+                .filter(this::isMarketVisibleStock)
                 .toList();
         long totalCount = tradableStocks.size();
         if (totalCount == 0) {
@@ -261,8 +261,7 @@ public class StockQueryService {
 
     private Page<StockInfo> queryTradablePage(String keywords, PageRequest pageRequest) {
         List<Criteria> conditions = new java.util.ArrayList<>();
-        conditions.add(tradableCriteria());
-        conditions.add(Criteria.where("totalMarketValue").gt(BigDecimal.ZERO));
+        conditions.add(marketVisibleCriteria());
         if (keywords != null && !keywords.isBlank()) {
             Pattern pattern = containsPattern(keywords);
             conditions.add(new Criteria().orOperator(
@@ -279,7 +278,7 @@ public class StockQueryService {
         String property = switch (sortBy == null ? "" : sortBy.trim()) {
             case "price" -> "price";
             case "change" -> "changePercent";
-            case "volume" -> "totalMarketValue";
+            case "marketCap" -> "totalMarketValue";
             default -> "updateTime";
         };
         Sort.Direction direction = "asc".equalsIgnoreCase(sortOrder) ? Sort.Direction.ASC : Sort.Direction.DESC;
@@ -351,12 +350,21 @@ public class StockQueryService {
                 Criteria.where("market").not().regex(inactive));
     }
 
+    private Criteria marketVisibleCriteria() {
+        return new Criteria().andOperator(
+                tradableCriteria(),
+                Criteria.where("price").gt(BigDecimal.ZERO),
+                Criteria.where("totalMarketValue").gt(BigDecimal.ZERO));
+    }
+
     private Pattern containsPattern(String value) {
         return Pattern.compile(Pattern.quote(value.trim()), Pattern.CASE_INSENSITIVE);
     }
 
-    private boolean isTradableStock(StockInfo stock) {
-        return isActiveText(stock.getName())
+    private boolean isMarketVisibleStock(StockInfo stock) {
+        return positive(stock.getPrice())
+                && positive(stock.getTotalMarketValue())
+                && isActiveText(stock.getName())
                 && isActiveText(stock.getSecurityCategory())
                 && isActiveText(stock.getMarket());
     }
@@ -380,4 +388,4 @@ public class StockQueryService {
         return value != null && value.signum() < 0;
     }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END--------

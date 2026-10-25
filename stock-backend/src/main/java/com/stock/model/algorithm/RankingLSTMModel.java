@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START -----------
 package com.stock.model.algorithm;
 
 import ai.djl.ndarray.NDArray;
@@ -21,27 +21,26 @@ import ai.djl.util.PairList;
 
 /**
  * 横截面排序 LSTM 模型。
- * 支持基础 Ranking LSTM 和特征、时间双注意力结构，并融合稳定的股票、行业和市场类别字典。
+ * 使用最后一个时间步的 LSTM 隐藏表示，并融合稳定的股票、行业和市场类别字典。
  *
+ * @see <a href="http://localhost:5173/docs/backend/model/designs/ranking-lstm">
+ *     Ranking LSTM v6 详细设计</a>
  * @author mwangli
  * @since 2026-10-23
  */
 public class RankingLSTMModel extends AbstractBlock {
 
-    /** `v5` 固定输出数量。 */
+    /** `v6` 固定输出数量。 */
     public static final int OUTPUT_SIZE = 4;
 
     private static final int CATEGORY_COLUMN_COUNT = 3;
 
-    private final LstmArchitectureType architectureType;
     private final int inputSize;
     private final int continuousFeatureCount;
     private final int hiddenSize;
     private final int sequenceLength;
     private final int representationSize;
-    private final SequentialBlock featureAttentionProjection;
     private final SequentialBlock encoder;
-    private final SequentialBlock timeAttentionProjection;
     private final SequentialBlock sharedProjection;
     private final Linear outputProjection;
     private final Parameter stockEmbedding;
@@ -57,7 +56,6 @@ public class RankingLSTMModel extends AbstractBlock {
     /**
      * 创建横截面排序 LSTM。
      *
-     * @param architectureType 模型架构类型
      * @param inputSize 每个时间步的总输入维度，末尾三列固定为类别索引
      * @param hiddenSize LSTM 隐藏维度
      * @param numLayers LSTM 层数
@@ -69,9 +67,9 @@ public class RankingLSTMModel extends AbstractBlock {
      * @param industryEmbeddingSize 行业 Embedding 维度
      * @param marketDictionarySize 市场字典容量
      * @param marketEmbeddingSize 市场 Embedding 维度
+     * @throws IllegalArgumentException 输入维度不包含连续特征和类别索引时抛出
      */
     public RankingLSTMModel(
-            LstmArchitectureType architectureType,
             int inputSize,
             int hiddenSize,
             int numLayers,
@@ -83,14 +81,9 @@ public class RankingLSTMModel extends AbstractBlock {
             int industryEmbeddingSize,
             int marketDictionarySize,
             int marketEmbeddingSize) {
-        if (architectureType != LstmArchitectureType.RANKING_LSTM
-                && architectureType != LstmArchitectureType.DUAL_ATTENTION_RANKING_LSTM) {
-            throw new IllegalArgumentException("v5 模型必须使用 Ranking LSTM 架构");
-        }
         if (inputSize <= CATEGORY_COLUMN_COUNT) {
-            throw new IllegalArgumentException("v5 LSTM 输入必须包含连续特征和三列类别索引");
+            throw new IllegalArgumentException("Ranking LSTM 输入必须包含连续特征和三列类别索引");
         }
-        this.architectureType = architectureType;
         this.inputSize = inputSize;
         this.continuousFeatureCount = inputSize - CATEGORY_COLUMN_COUNT;
         this.hiddenSize = hiddenSize;
@@ -103,9 +96,6 @@ public class RankingLSTMModel extends AbstractBlock {
         this.marketEmbeddingSize = marketEmbeddingSize;
         this.representationSize = hiddenSize + stockEmbeddingSize + industryEmbeddingSize + marketEmbeddingSize;
 
-        featureAttentionProjection = new SequentialBlock();
-        featureAttentionProjection.add(Linear.builder().setUnits(continuousFeatureCount).build());
-
         encoder = new SequentialBlock();
         encoder.add(new LSTM.Builder()
                 .setStateSize(hiddenSize)
@@ -117,22 +107,17 @@ public class RankingLSTMModel extends AbstractBlock {
                 .build());
         encoder.add(LayerNorm.builder().build());
 
-        timeAttentionProjection = new SequentialBlock();
-        timeAttentionProjection.add(Linear.builder().setUnits(1).build());
-
         sharedProjection = new SequentialBlock();
         sharedProjection.add(Linear.builder().setUnits(Math.max(16, hiddenSize / 2)).build());
         sharedProjection.add(Activation::relu);
         outputProjection = Linear.builder().setUnits(OUTPUT_SIZE).build();
 
-        stockEmbedding = createEmbeddingParameter("v5_stock_embedding", stockDictionarySize, stockEmbeddingSize);
+        stockEmbedding = createEmbeddingParameter("v6_stock_embedding", stockDictionarySize, stockEmbeddingSize);
         industryEmbedding = createEmbeddingParameter(
-                "v5_industry_embedding", industryDictionarySize, industryEmbeddingSize);
-        marketEmbedding = createEmbeddingParameter("v5_market_embedding", marketDictionarySize, marketEmbeddingSize);
+                "v6_industry_embedding", industryDictionarySize, industryEmbeddingSize);
+        marketEmbedding = createEmbeddingParameter("v6_market_embedding", marketDictionarySize, marketEmbeddingSize);
 
-        addChildBlock("feature_attention_projection", featureAttentionProjection);
         addChildBlock("encoder", encoder);
-        addChildBlock("time_attention_projection", timeAttentionProjection);
         addChildBlock("shared_projection", sharedProjection);
         addChildBlock("output_projection", outputProjection);
         addParameter(stockEmbedding);
@@ -167,24 +152,9 @@ public class RankingLSTMModel extends AbstractBlock {
         NDArray sequence = flattened.reshape(batchSize, sequenceLength, inputSize);
         NDArray continuous = sequence.get(new NDIndex(":, :, 0:" + continuousFeatureCount));
 
-        NDArray encoderInput = continuous;
-        if (architectureType == LstmArchitectureType.DUAL_ATTENTION_RANKING_LSTM) {
-            NDArray featureScores = featureAttentionProjection.forward(
-                    parameterStore, new NDList(continuous), training, params).singletonOrThrow();
-            encoderInput = continuous.mul(featureScores.softmax(2));
-        }
-
         NDArray encodedSequence = encoder.forward(
-                parameterStore, new NDList(encoderInput), training, params).singletonOrThrow();
-        NDArray temporalRepresentation;
-        if (architectureType == LstmArchitectureType.DUAL_ATTENTION_RANKING_LSTM) {
-            NDArray timeScores = timeAttentionProjection.forward(
-                    parameterStore, new NDList(encodedSequence), training, params).singletonOrThrow();
-            NDArray timeWeights = timeScores.softmax(1);
-            temporalRepresentation = encodedSequence.mul(timeWeights).sum(new int[]{1});
-        } else {
-            temporalRepresentation = encodedSequence.get(new NDIndex(":, -1, :"));
-        }
+                parameterStore, new NDList(continuous), training, params).singletonOrThrow();
+        NDArray temporalRepresentation = encodedSequence.get(new NDIndex(":, -1, :"));
 
         int stockColumn = continuousFeatureCount;
         int industryColumn = continuousFeatureCount + 1;
@@ -237,9 +207,7 @@ public class RankingLSTMModel extends AbstractBlock {
             ai.djl.ndarray.NDManager manager, DataType dataType, Shape... inputShapes) {
         long batchSize = inputShapes[0].get(0);
         Shape sequenceShape = new Shape(batchSize, sequenceLength, continuousFeatureCount);
-        featureAttentionProjection.initialize(manager, dataType, sequenceShape);
         encoder.initialize(manager, dataType, sequenceShape);
-        timeAttentionProjection.initialize(manager, dataType, new Shape(batchSize, sequenceLength, hiddenSize));
         sharedProjection.initialize(manager, dataType, new Shape(batchSize, representationSize));
         outputProjection.initialize(manager, dataType, new Shape(batchSize, Math.max(16, hiddenSize / 2)));
         initializeParameter(manager, dataType, stockEmbedding);
@@ -265,4 +233,4 @@ public class RankingLSTMModel extends AbstractBlock {
         return new Shape[]{new Shape(inputShapes[0].get(0), OUTPUT_SIZE)};
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END -----------

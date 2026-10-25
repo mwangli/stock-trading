@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START--------
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -30,9 +30,6 @@ public class PredictionCandidateItemDto {
     /** 预测收益率。 */
     private Double predictedReturn;
 
-    /** 扣除费用、双边滑点和安全边际后的净预期收益率。 */
-    private Double estimatedNetExpectedReturn;
-
     /** 上涨概率。 */
     private Double directionProbability;
 
@@ -60,16 +57,25 @@ public class PredictionCandidateItemDto {
     /** 预测下行风险分位。 */
     private Double downsideQuantile;
 
-    /** Ranking LSTM 与 MASTER 融合后的横截面排序分数，范围 0 到 1。 */
-    private Double ensembleRankScore;
+    /** 双模型融合后的生产有效横截面排序分数。 */
+    private Double effectiveRankScore;
 
-    /** 本次融合使用的 Ranking LSTM 权重，范围 0 到 1。 */
-    private Double rankingLstmWeight;
+    /** 双模型融合后的生产有效预期超额收益。 */
+    private Double effectiveExpectedExcessReturn;
 
-    /** 本次融合使用的 MASTER 权重，范围 0 到 1。 */
-    private Double masterWeight;
+    /** 双模型融合后的生产有效上涨概率。 */
+    private Double effectiveUpProbability;
 
-    /** 本次融合使用的 MASTER 模型文档 ID。 */
-    private String masterModelId;
+    /** 生产有效上涨概率在当日横截面中的百分位。 */
+    private Double effectiveUpProbabilityPercentile;
+
+    /** 双模型融合后的生产有效下行风险分位。 */
+    private Double effectiveDownsideQuantile;
+
+    /** 按统一四任务公式计算的生产最终模型评分。 */
+    private Double effectiveModelScore;
+
+    /** 生产有效预期超额收益扣除交易成本和安全边际后的净收益。 */
+    private Double effectiveEstimatedNetReturn;
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END--------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.model.dto;
 
 import lombok.Builder;
@@ -61,6 +61,12 @@ public class NewsEventFeatureVector {
     /** 事件事实采集治理版本。 */
     private String pipelineVersion;
 
+    /** 进入快照计算的规范事件数量。 */
+    private int inputEventCount;
+
+    /** 进入快照计算的最晚事件发布时间，可为空。 */
+    private LocalDateTime latestInputPublishTime;
+
     /** 生成方向和置信度特征时使用的情感模型版本。 */
     private String sentimentModelVersion;
 
@@ -71,4 +77,4 @@ public class NewsEventFeatureVector {
      */
     private List<Double> temporalFeatures;
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

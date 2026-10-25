@@ -1,13 +1,12 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.model.service;
 
 import com.stock.model.config.LstmDataQualityConfig;
-import com.stock.model.config.TemporalEnsembleConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * 模型候选统一评分、自动晋级和 MASTER 权重策略。
+ * 模型候选与双模型组合的统一质量评分策略。
  *
  * @author mwangli
  * @since 2026-10-24
@@ -17,7 +16,6 @@ import org.springframework.stereotype.Component;
 public class ModelPromotionPolicy {
 
     private final LstmDataQualityConfig dataQualityConfig;
-    private final TemporalEnsembleConfig temporalEnsembleConfig;
 
     /**
      * 计算模型综合质量分。
@@ -96,20 +94,6 @@ public class ModelPromotionPolicy {
         return candidateScore >= activeScore + dataQualityConfig.getMinimumQualityScoreAdvantage();
     }
 
-    /**
-     * 根据 MASTER 相对质量优势计算有界生产权重。
-     *
-     * @param scoreAdvantage MASTER 相对 Ranking LSTM 的综合质量分优势
-     * @return MASTER 生产融合权重
-     */
-    public double masterWeight(double scoreAdvantage) {
-        requireFinite("MASTER 综合质量分优势", scoreAdvantage);
-        return clamp(temporalEnsembleConfig.getInitialMasterWeight()
-                        + scoreAdvantage * temporalEnsembleConfig.getWeightAdvantageMultiplier(),
-                temporalEnsembleConfig.getInitialMasterWeight(),
-                temporalEnsembleConfig.getMaximumMasterWeight());
-    }
-
     private void requireFinite(String metricName, double value) {
         if (!Double.isFinite(value)) {
             throw new IllegalStateException(metricName + "不是有效数值: " + value);
@@ -120,4 +104,4 @@ public class ModelPromotionPolicy {
         return Math.max(minimum, Math.min(maximum, value));
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

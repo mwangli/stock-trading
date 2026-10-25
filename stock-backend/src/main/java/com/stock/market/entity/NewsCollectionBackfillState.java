@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.market.entity;
 
 import com.stock.market.enums.NewsBackfillStatus;
@@ -51,6 +51,9 @@ public class NewsCollectionBackfillState {
     /** 累计失败文档数。 */
     private long failedCount;
 
+    /** 尚未隔离的失败文档重试次数，键为 MongoDB 文档 ID。 */
+    private Map<String, Integer> failureRetryCounts = new LinkedHashMap<>();
+
     /** 回填运行状态。 */
     private NewsBackfillStatus status;
 
@@ -60,4 +63,4 @@ public class NewsCollectionBackfillState {
     /** 状态最近更新时间。 */
     private LocalDateTime updateTime;
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START------------
 package com.stock.model.service;
 
 import ai.djl.Model;
@@ -7,6 +7,7 @@ import ai.djl.nn.Block;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
+import ai.djl.ndarray.types.Shape;
 import ai.djl.training.ParameterStore;
 import com.stock.market.dto.StockPriceItemDto;
 import com.stock.model.config.LstmTrainingConfig;
@@ -67,19 +68,86 @@ public class LstmModelRuntimeService {
         activeArtifact = null;
         try {
             LstmModelArtifactService.ModelArtifact artifact = artifactService.loadArtifact(null);
-            artifactService.validateMetadata(artifact.metadata());
-            try (ai.djl.ndarray.NDManager manager = ai.djl.ndarray.NDManager.newBaseManager("PyTorch");
-                 Model model = Model.newInstance("lstm-global-preload", "PyTorch")) {
-                Block block = createModelBlock(artifact.metadata());
-                model.setBlock(block);
-                try (ByteArrayInputStream input = new ByteArrayInputStream(artifact.params());
-                     DataInputStream dataInput = new DataInputStream(input)) {
-                    block.loadParameters(manager, dataInput);
+            validateLoadedArtifact(artifact);
+            activeArtifact = artifact;
+            log.info("当前激活共享 LSTM 模型预加载校验成功: modelId={}", artifact.modelId());
+        } catch (RuntimeException exception) {
+            log.warn("当前激活共享 LSTM 模型预加载失败，后续状态检查将显示不可用: {}", exception.getMessage());
+        }
+    }
+
+    /**
+     * 对指定模型版本执行参数加载和固定输入前向冒烟验证。
+     *
+     * 该校验会重新从 GridFS 读取参数，根据元数据重建对应网络，并检查输出形状、有限值和概率范围，
+     * 用于阻止只能通过摘要校验但无法被当前 DJL 运行时加载的候选版本进入后续流程。
+     *
+     * @param modelVersionId 模型版本文档 ID
+     * @throws IllegalArgumentException 模型版本 ID 为空时抛出
+     * @throws IllegalStateException 版本不存在、参数无法加载或前向输出不满足契约时抛出
+     */
+    public void validateModelVersionRuntime(String modelVersionId) {
+        if (modelVersionId == null || modelVersionId.isBlank()) {
+            throw new IllegalArgumentException("模型版本 ID 不能为空");
+        }
+        LstmModelArtifactService.ModelArtifact artifact = artifactService.loadArtifact(modelVersionId.trim());
+        validateLoadedArtifact(artifact);
+    }
+
+    private void validateLoadedArtifact(LstmModelArtifactService.ModelArtifact artifact) {
+        artifactService.validateMetadata(artifact.metadata());
+        Properties metadata = loadMetadata(artifact.metadata());
+        int inputSize = intMetadata(metadata, "inputSize", config.getInputSize());
+        int sequenceLength = intMetadata(metadata, "sequenceLength", config.getSequenceLength());
+        int outputSize = intMetadata(metadata, "outputSize", RankingLSTMModel.OUTPUT_SIZE);
+        boolean master = LstmArchitectureType.MASTER_TRANSFORMER.name()
+                .equals(metadata.getProperty("architectureType"));
+        int batchSize = master
+                ? Math.max(2, Math.min(8, intMetadata(metadata, "crossSectionBatchSize", config.getBatchSize())))
+                : 1;
+        float[][] smokeInput = new float[batchSize][sequenceLength * inputSize];
+
+        try (NDManager manager = NDManager.newBaseManager("PyTorch");
+             Model model = Model.newInstance("lstm-model-runtime-validation", "PyTorch")) {
+            Block block = createModelBlock(artifact.metadata());
+            model.setBlock(block);
+            try (ByteArrayInputStream input = new ByteArrayInputStream(artifact.params());
+                 DataInputStream dataInput = new DataInputStream(input)) {
+                block.loadParameters(manager, dataInput);
+            }
+            try (NDArray inputArray = manager.create(smokeInput);
+                 NDList output = block.forward(
+                         new ParameterStore(manager, false), new NDList(inputArray), false)) {
+                NDArray values = output.singletonOrThrow();
+                Shape expectedShape = new Shape(batchSize, outputSize);
+                if (!expectedShape.equals(values.getShape())) {
+                    throw new IllegalStateException("模型前向输出形状不匹配: expected="
+                            + expectedShape + ", actual=" + values.getShape());
+                }
+                validateSmokeOutput(values.toFloatArray(), outputSize,
+                        LstmModelArtifactService.MODEL_VERSION.equals(metadata.getProperty("modelVersion")));
+            }
+        } catch (RuntimeException | IOException | MalformedModelException exception) {
+            throw new IllegalStateException("模型版本运行时加载验证失败: modelId="
+                    + artifact.modelId() + ", reason=" + exception.getMessage(), exception);
+        }
+    }
+
+    private void validateSmokeOutput(float[] values, int outputSize, boolean rankingModel) {
+        for (float value : values) {
+            if (!Float.isFinite(value)) {
+                throw new IllegalStateException("模型前向输出包含非有限值");
+            }
+        }
+        int firstProbabilityColumn = rankingModel ? 2 : 1;
+        for (int offset = 0; offset < values.length; offset += outputSize) {
+            for (int column = firstProbabilityColumn; column < outputSize; column++) {
+                float value = values[offset + column];
+                if (value < 0F || value > 1F) {
+                    throw new IllegalStateException("模型概率输出超出 0 到 1 范围: column="
+                            + column + ", value=" + value);
                 }
             }
-            log.info("当前激活共享 LSTM 模型预加载校验成功: modelId={}", artifact.modelId());
-        } catch (RuntimeException | IOException | MalformedModelException exception) {
-            log.warn("当前激活共享 LSTM 模型预加载失败，后续状态检查将显示不可用: {}", exception.getMessage());
         }
     }
 
@@ -314,7 +382,7 @@ public class LstmModelRuntimeService {
         for (String code : codes) {
             LstmDataPreprocessor.PredictionInput input = predictionInputs.get(code);
             if (input == null) {
-                log.warn("跳过 v5 LSTM 输入不足股票: stockCode={}", code);
+                log.warn("跳过 Ranking LSTM 输入不足股票: stockCode={}", code);
                 continue;
             }
             if (baseTradeDate != null && !baseTradeDate.equals(input.getBaseTradeDate())) {
@@ -348,7 +416,7 @@ public class LstmModelRuntimeService {
             float downsideQuantile = values[offset + 3];
             if (!Float.isFinite(rankScore) || !Float.isFinite(scaledReturn)
                     || !Float.isFinite(rawProbability) || !Float.isFinite(downsideQuantile)) {
-                log.warn("跳过 v5 LSTM 输出无效股票: stockCode={}", codes.get(index));
+                log.warn("跳过 Ranking LSTM 输出无效股票: stockCode={}", codes.get(index));
                 continue;
             }
             double expectedExcessReturn = scaledReturn * returnScale;
@@ -469,7 +537,6 @@ public class LstmModelRuntimeService {
                         intMetadata(metadata, "sequenceLength", config.getSequenceLength()));
             }
             return new RankingLSTMModel(
-                    architectureType,
                     intMetadata(metadata, "inputSize", RankingLstmDataPreprocessor.FEATURE_COUNT),
                     intMetadata(metadata, "hiddenSize", config.getHiddenSize()),
                     intMetadata(metadata, "numLayers", config.getNumLayers()),
@@ -571,4 +638,4 @@ public class LstmModelRuntimeService {
             List<LocalDate> baseTradeDates) {
     }
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END------------

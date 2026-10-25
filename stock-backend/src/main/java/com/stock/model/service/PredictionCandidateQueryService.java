@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.model.service;
 
 import com.stock.model.dto.PredictionCandidateItemDto;
@@ -8,11 +8,9 @@ import com.stock.model.entity.ModelPredictionBatchDocument;
 import com.stock.model.entity.ModelPredictionDocument;
 import com.stock.model.repository.ModelPredictionBatchRepository;
 import com.stock.model.repository.ModelPredictionRepository;
-import com.stock.model.config.PredictionCostProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -31,7 +29,6 @@ public class PredictionCandidateQueryService {
 
     private final ModelPredictionBatchRepository batchRepository;
     private final ModelPredictionRepository predictionRepository;
-    private final PredictionCostProperties predictionCostProperties;
     private final TemporalModelEnsembleService temporalModelEnsembleService;
 
     /**
@@ -95,17 +92,7 @@ public class PredictionCandidateQueryService {
                 && batch.getModelVersion() != null && batch.getModelVersion().equals(item.getModelVersion())
                 && batch.getBaseTradeDate() != null && batch.getBaseTradeDate().equals(item.getBaseTradeDate())
                 && batch.getTargetTradeDate() != null && batch.getTargetTradeDate().equals(item.getTargetTradeDate())
-                && item.getPredictedReturn() != null && Double.isFinite(item.getPredictedReturn())
-                && item.getDirectionProbability() != null && Double.isFinite(item.getDirectionProbability())
-                && item.getDirectionProbability() >= 0D && item.getDirectionProbability() <= 1D
-                && item.getDownsideRisk() != null && Double.isFinite(item.getDownsideRisk())
-                && item.getPredictedReturnPercentile() != null
-                && Double.isFinite(item.getPredictedReturnPercentile())
-                && item.getDirectionProbabilityPercentile() != null
-                && Double.isFinite(item.getDirectionProbabilityPercentile())
-                && (item.getRankScore() == null
-                || item.getCrossSectionPercentile() != null
-                && Double.isFinite(item.getCrossSectionPercentile()));
+                && item.getModelId() != null && !item.getModelId().isBlank();
     }
 
     private PredictionCandidateItemDto toItem(ModelPredictionDocument item) {
@@ -114,7 +101,6 @@ public class PredictionCandidateQueryService {
                 .stockName(item.getStockName())
                 .currentPrice(item.getBaseClosePrice())
                 .predictedReturn(item.getPredictedReturn())
-                .estimatedNetExpectedReturn(estimateNetExpectedReturn(item.getPredictedReturn()))
                 .directionProbability(item.getDirectionProbability())
                 .downsideRisk(item.getDownsideRisk())
                 .predictedReturnPercentile(item.getPredictedReturnPercentile())
@@ -127,28 +113,5 @@ public class PredictionCandidateQueryService {
                 .build();
     }
 
-    /**
-     * 估算扣除交易成本和安全边际后的单日净预期收益。
-     *
-     * 该值用于候选过滤和审计展示，不等同于真实成交收益；最低佣金、成交失败、
-     * 涨跌停和部分成交需要在后续模拟交易引擎中按订单金额进一步计算。
-     *
-     * @param predictedReturn 模型预测收益率
-     * @return 成本后净预期收益率
-     */
-    private Double estimateNetExpectedReturn(Double predictedReturn) {
-        if (predictedReturn == null || !Double.isFinite(predictedReturn)) {
-            return null;
-        }
-        BigDecimal slippageRate = predictionCostProperties.getSlippageBps()
-                .multiply(BigDecimal.valueOf(2D))
-                .divide(BigDecimal.valueOf(10000D), 10, java.math.RoundingMode.HALF_UP);
-        BigDecimal roundTripVariableCost = predictionCostProperties.getCommissionRate().multiply(BigDecimal.valueOf(2D))
-                .add(predictionCostProperties.getTransferFeeRate().multiply(BigDecimal.valueOf(2D)))
-                .add(predictionCostProperties.getStampDutyRate())
-                .add(slippageRate)
-                .add(predictionCostProperties.getCandidateSafetyMarginRate());
-        return BigDecimal.valueOf(predictedReturn).subtract(roundTripVariableCost).doubleValue();
-    }
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END------------

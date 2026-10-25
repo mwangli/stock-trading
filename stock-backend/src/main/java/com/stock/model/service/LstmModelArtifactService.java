@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------
+// AI_GENERATE_START---------------------
 package com.stock.model.service;
 
 import ai.djl.Model;
@@ -48,7 +48,7 @@ public class LstmModelArtifactService {
     /** 当前共享模型固定名称。 */
     public static final String DEFAULT_SHARED_MODEL_NAME = "global-shared-lstm";
     /** 当前网络结构与标签口径版本。 */
-    public static final String MODEL_VERSION = "v5-cross-sectional-ranking";
+    public static final String MODEL_VERSION = "v6-ranking-master-baseline";
     private static final String V4_MODEL_VERSION = "v4-balanced-direction";
     private static final String LEGACY_MODEL_VERSION = "v3-embedding-multitask";
     private static final String LEGACY_LOSS_VERSION = "huber-bce-huber-v1";
@@ -264,7 +264,6 @@ public class LstmModelArtifactService {
         requireMetadata(properties, "outputSize", String.valueOf(RankingLSTMModel.OUTPUT_SIZE));
         requireOneOfMetadata(properties, "architectureType",
                 LstmArchitectureType.RANKING_LSTM.name(),
-                LstmArchitectureType.DUAL_ATTENTION_RANKING_LSTM.name(),
                 LstmArchitectureType.MASTER_TRANSFORMER.name());
         requireMetadata(properties, "lossVersion", RANKING_LOSS_VERSION);
         requireMetadata(properties, "targetReturnScale", String.valueOf(config.getTargetReturnScale()));
@@ -452,4 +451,4 @@ public class LstmModelArtifactService {
      */
     public record ModelArtifact(byte[] params, String metadata, String modelId) { }
 }
-// AI_GENERATE_END-------------------
+// AI_GENERATE_END---------------------

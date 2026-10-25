@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-----------
 package com.stock.model.service;
 
 import com.stock.market.dto.HistoricalStockUniverseDto;
@@ -7,6 +7,7 @@ import com.stock.market.dto.ModelStockDailyBarDto;
 import com.stock.market.dto.StockAdjustmentFactorDto;
 import com.stock.market.dto.StockTradabilityDto;
 import com.stock.market.service.MarketDataQueryService;
+import com.stock.model.config.LstmDataQualityConfig;
 import com.stock.model.config.LstmTrainingConfig;
 import lombok.Builder;
 import lombok.Data;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -36,6 +38,7 @@ import java.util.Set;
 public class RankingLstmTrainingDataService {
 
     private final LstmTrainingConfig config;
+    private final LstmDataQualityConfig dataQualityConfig;
     private final MarketDataQueryService marketDataQueryService;
     private final NewsFeatureSnapshotService newsFeatureSnapshotService;
 
@@ -45,6 +48,7 @@ public class RankingLstmTrainingDataService {
      * @param stockCodes 参与训练的股票代码
      * @param days 每只股票读取的最大交易日数量
      * @return 已完成完整性门禁的数据集合
+     * @throws IllegalStateException 关键数据源缺失或覆盖率不足时抛出
      */
     public RankingTrainingDataBundle loadTrainingData(List<String> stockCodes, int days) {
         return loadData(stockCodes, days, null);
@@ -57,6 +61,7 @@ public class RankingLstmTrainingDataService {
      * @param days 每只股票最大交易日数量
      * @param endDate 行情截止日期，包含当天
      * @return 版本化推理数据集合
+     * @throws IllegalStateException 关键数据源缺失或覆盖率不足时抛出
      */
     public RankingTrainingDataBundle loadPredictionData(
             List<String> stockCodes, int days, LocalDate endDate) {
@@ -91,18 +96,23 @@ public class RankingLstmTrainingDataService {
         if (priceSeries.isEmpty()) {
             throw new IllegalStateException("model_stock_daily_bars 没有匹配来源版本的训练行情");
         }
+        requireKeyCoverage("model_stock_daily_bars", codes, priceSeries.keySet());
 
         List<StockAdjustmentFactorDto> adjustmentFactors = marketDataQueryService
                 .findAdjustmentFactors(priceSeries.keySet(), endDate, source, sourceVersion);
         if (adjustmentFactors.isEmpty()) {
             throw new IllegalStateException("stock_adjustment_factors 缺少匹配来源版本的复权因子");
         }
+        requireKeyCoverage("stock_adjustment_factors", priceSeries.keySet(), adjustmentFactors.stream()
+                .map(StockAdjustmentFactorDto::getStockCode).toList());
 
         List<HistoricalStockUniverseDto> universe = marketDataQueryService
                 .findHistoricalUniverse(priceSeries.keySet(), endDate, source, sourceVersion);
         if (universe.isEmpty()) {
             throw new IllegalStateException("historical_stock_universe 缺少匹配来源版本的历史股票池");
         }
+        requireKeyCoverage("historical_stock_universe", priceSeries.keySet(), universe.stream()
+                .map(HistoricalStockUniverseDto::getStockCode).toList());
 
         List<ModelReferenceDailyBarDto> benchmarkBars = loadReferenceBars(
                 "MARKET", benchmarkCode, source, sourceVersion, endDate);
@@ -124,6 +134,8 @@ public class RankingLstmTrainingDataService {
                 industryReferenceBars.put(industryCode, bars);
             }
         }
+        requireKeyCoverage("model_reference_daily_bars:INDUSTRY",
+                industryCodes, industryReferenceBars.keySet());
 
         LocalDate startDate = priceSeries.values().stream().flatMap(List::stream)
                 .map(ModelStockDailyBarDto::getTradeDate).min(LocalDate::compareTo)
@@ -136,6 +148,8 @@ public class RankingLstmTrainingDataService {
         if (tradabilityFacts.isEmpty()) {
             throw new IllegalStateException("stock_daily_tradability_facts 缺少训练区间可交易事实");
         }
+        requireKeyCoverage("stock_daily_tradability_facts", priceSeries.keySet(), tradabilityFacts.stream()
+                .map(StockTradabilityDto::getStockCode).toList());
         Set<String> requiredNewsSnapshotKeys = new LinkedHashSet<>();
         priceSeries.forEach((stockCode, bars) -> bars.forEach(bar ->
                 requiredNewsSnapshotKeys.add(stockCode + "|" + bar.getTradeDate())));
@@ -177,6 +191,29 @@ public class RankingLstmTrainingDataService {
         return value.trim();
     }
 
+    private void requireKeyCoverage(
+            String sourceName, Collection<String> requiredCodes, Collection<String> actualCodes) {
+        Set<String> required = requiredCodes == null ? Set.of() : requiredCodes.stream()
+                .filter(code -> code != null && !code.isBlank())
+                .map(String::trim)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<String> actual = actualCodes == null ? Set.of() : actualCodes.stream()
+                .filter(code -> code != null && !code.isBlank())
+                .map(String::trim)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        double minimumRate = dataQualityConfig.getMinimumSourceCoverageRate();
+        if (!Double.isFinite(minimumRate) || minimumRate <= 0D || minimumRate > 1D) {
+            throw new IllegalStateException("关键数据源最低覆盖率配置必须在 0 到 1 之间");
+        }
+        long covered = required.stream().filter(actual::contains).count();
+        double coverageRate = required.isEmpty() ? 0D : covered / (double) required.size();
+        if (coverageRate < minimumRate) {
+            List<String> missing = required.stream().filter(code -> !actual.contains(code)).limit(20).toList();
+            throw new IllegalStateException(sourceName + " 标识覆盖率不足: required=" + required.size()
+                    + ", covered=" + covered + ", rate=" + coverageRate + ", missing=" + missing);
+        }
+    }
+
     /**
      * `v5` 训练数据集合。
      *
@@ -208,4 +245,4 @@ public class RankingLstmTrainingDataService {
         private Map<String, double[]> newsFeatureSnapshots;
     }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-----------
