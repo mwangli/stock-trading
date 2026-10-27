@@ -3,13 +3,8 @@ name: CI/CD
 on:
   workflow_dispatch:
   push:
-    branches:
-      - master
     tags:
-      - 'backend-v*'
-      - 'frontend-v*'
-    paths:
-      - 'model-files/**'
+      - 'v*.*.*'
 
 permissions:
   contents: read
@@ -24,8 +19,32 @@ env:
   MODEL_IMAGE_REPOSITORY: ${{ format('{0}/{1}/{2}-models', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME) }}
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate release tag
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+
+      - name: Upload deployment configuration
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          source: docker-compose.yml
+          target: ${{ vars.SERVER_DEPLOY_DIR }}
+          overwrite: true
+
   backend:
-    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/backend-v')
+    needs: prepare
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -48,12 +67,23 @@ jobs:
           username: ${{ env.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
+      - name: Check model image
+        id: model_image
+        shell: bash
+        run: |
+          image="${MODEL_IMAGE_REPOSITORY}:${{ steps.model.outputs.revision }}"
+          if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download model files
-        if: github.ref == 'refs/heads/master'
+        if: steps.model_image.outputs.exists != 'true'
         run: git lfs pull --include="model-files/**" --exclude=""
 
       - name: Build model image
-        if: github.ref == 'refs/heads/master'
+        if: steps.model_image.outputs.exists != 'true'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -78,7 +108,8 @@ jobs:
             clean package -DskipTests
           cp stock-server/stock-application/target/stock-application-*.jar stock-server/app.jar
 
-      - uses: docker/build-push-action@v7
+      - name: Build and push backend image
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: stock-server/Dockerfile
@@ -87,18 +118,8 @@ jobs:
           push: true
           tags: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME, github.sha) }}
 
-      - uses: appleboy/scp-action@v1.0.0
-        with:
-          host: ${{ vars.SERVER_HOST }}
-          username: ${{ vars.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: ${{ vars.SERVER_PORT }}
-          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
-          source: docker-compose.yml
-          target: ${{ vars.SERVER_DEPLOY_DIR }}
-          overwrite: true
-
-      - uses: appleboy/ssh-action@v1.2.5
+      - name: Deploy backend
+        uses: appleboy/ssh-action@v1.2.5
         env:
           DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
           IMAGE: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME, github.sha) }}
@@ -124,7 +145,7 @@ jobs:
             [ -z "$old_image" ] || [ "$old_image" = "$IMAGE" ] || docker image rm "$old_image" || true
 
   frontend:
-    if: startsWith(github.ref, 'refs/tags/frontend-v')
+    needs: prepare
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -138,7 +159,8 @@ jobs:
           username: ${{ env.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      - uses: docker/build-push-action@v7
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: stock-client/Dockerfile
@@ -146,18 +168,8 @@ jobs:
           push: true
           tags: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.FRONTEND_IMAGE_NAME, github.sha) }}
 
-      - uses: appleboy/scp-action@v1.0.0
-        with:
-          host: ${{ vars.SERVER_HOST }}
-          username: ${{ vars.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: ${{ vars.SERVER_PORT }}
-          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
-          source: docker-compose.yml
-          target: ${{ vars.SERVER_DEPLOY_DIR }}
-          overwrite: true
-
-      - uses: appleboy/ssh-action@v1.2.5
+      - name: Deploy frontend
+        uses: appleboy/ssh-action@v1.2.5
         env:
           DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
           IMAGE: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.FRONTEND_IMAGE_NAME, github.sha) }}
