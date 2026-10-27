@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.trading.dto;
 
 import lombok.Builder;
@@ -23,10 +23,5 @@ public class BrokerReadStatusDto {
     /** 当前券商会话是否有效。 */
     private boolean authenticated;
 
-    /** 真实写入总门禁是否开启。 */
-    private boolean realWriteEnabled;
-
-    /** 当前是否允许真实下单或撤单。 */
-    private boolean liveWriteAllowed;
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

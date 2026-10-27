@@ -57,6 +57,10 @@ services:
       ZXBROKER_INTACT_TO_SERVER: ${ZXBROKER_INTACT_TO_SERVER:-}
       JAVA_TOOL_OPTIONS: -Xms384m -Xmx1024m -XX:MaxDirectMemorySize=256m -Duser.timezone=Asia/Shanghai
     volumes:
+      - type: bind
+        source: ${MODEL_FILES_DIR:-./model-files}
+        target: /app/model-files
+        read_only: true
       - backend-runtime-tmp:/app/.tmp
     depends_on:
       stock-mysql:

@@ -16,7 +16,6 @@ concurrency:
 env:
   ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
   ACR_USERNAME: ${{ vars.ACR_USERNAME }}
-  MODEL_IMAGE_REPOSITORY: ${{ format('{0}/{1}/{2}-models', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME) }}
 
 jobs:
   prepare:
@@ -47,17 +46,8 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     environment: production
-    env:
-      GIT_LFS_SKIP_SMUDGE: '1'
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          lfs: false
-
-      - name: Resolve model version
-        id: model
-        run: echo "revision=$(git log -1 --format=%H -- model-files)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v4
 
@@ -66,34 +56,6 @@ jobs:
           registry: ${{ env.ACR_REGISTRY }}
           username: ${{ env.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
-
-      - name: Check model image
-        id: model_image
-        shell: bash
-        run: |
-          image="${MODEL_IMAGE_REPOSITORY}:${{ steps.model.outputs.revision }}"
-          if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Download model files
-        if: steps.model_image.outputs.exists != 'true'
-        run: git lfs pull --include="model-files/**" --exclude=""
-
-      - name: Build model image
-        if: steps.model_image.outputs.exists != 'true'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: stock-server/Dockerfile
-          target: models
-          provenance: false
-          push: true
-          tags: |
-            ${{ env.MODEL_IMAGE_REPOSITORY }}:${{ steps.model.outputs.revision }}
-            ${{ env.MODEL_IMAGE_REPOSITORY }}:latest
 
       - uses: actions/setup-java@v6
         with:
@@ -113,7 +75,6 @@ jobs:
         with:
           context: .
           file: stock-server/Dockerfile
-          build-args: MODEL_IMAGE=${{ env.MODEL_IMAGE_REPOSITORY }}:${{ steps.model.outputs.revision }}
           provenance: false
           push: true
           tags: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME, github.sha) }}

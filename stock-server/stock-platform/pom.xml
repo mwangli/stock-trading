@@ -15,7 +15,6 @@
         <dependency><groupId>com.stock</groupId><artifactId>stock-base</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>com.stock</groupId><artifactId>stock-data</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>com.stock</groupId><artifactId>stock-model</artifactId><version>${project.version}</version></dependency>
-        <dependency><groupId>com.stock</groupId><artifactId>stock-strategy</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>com.stock</groupId><artifactId>stock-trading</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>

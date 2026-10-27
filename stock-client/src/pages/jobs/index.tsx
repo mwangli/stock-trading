@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------------------------------
+// AI_GENERATE_START-----------------------------------------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
@@ -144,12 +144,119 @@ const formatDuration = (value?: number) => {
   return value < 1000 ? `${value} ms` : `${(value / 1000).toFixed(2)} s`;
 };
 
-type JobDomain = 'data' | 'model' | 'strategy' | 'trading' | 'maintenance';
+interface CronFrequency {
+  label: string;
+  detail?: string;
+}
+
+const weekDayLabels: Record<string, [string, string]> = {
+  SUN: ['周日', 'Sunday'],
+  MON: ['周一', 'Monday'],
+  TUE: ['周二', 'Tuesday'],
+  WED: ['周三', 'Wednesday'],
+  THU: ['周四', 'Thursday'],
+  FRI: ['周五', 'Friday'],
+  SAT: ['周六', 'Saturday'],
+  '1': ['周日', 'Sunday'],
+  '2': ['周一', 'Monday'],
+  '3': ['周二', 'Tuesday'],
+  '4': ['周三', 'Wednesday'],
+  '5': ['周四', 'Thursday'],
+  '6': ['周五', 'Friday'],
+  '7': ['周六', 'Saturday'],
+};
+
+const padCronTime = (value: string) => value.padStart(2, '0');
+
+const resolveCronTimeDetail = (minute: string, hour: string) => {
+  if (/^\d+$/.test(hour) && /^\d+$/.test(minute)) {
+    return `${padCronTime(hour)}:${padCronTime(minute)}`;
+  }
+
+  const minuteStep = minute.match(/^(?:\*|0)\/(\d+)$/)?.[1];
+  const hourRange = hour.match(/^(\d+)-(\d+)$/);
+  if (minuteStep && hourRange) {
+    const step = Number(minuteStep);
+    const lastMinute = step > 0 && step <= 60 ? Math.floor(59 / step) * step : 59;
+    const timeRange = `${padCronTime(hourRange[1])}:00-${padCronTime(hourRange[2])}:${padCronTime(String(lastMinute))}`;
+    return localizedText(`${timeRange}，每 ${minuteStep} 分钟`, `${timeRange}, every ${minuteStep} minutes`);
+  }
+  if (minuteStep) {
+    return localizedText(`每 ${minuteStep} 分钟`, `Every ${minuteStep} minutes`);
+  }
+
+  const hourStep = hour.match(/^(?:\*|0)\/(\d+)$/)?.[1];
+  if (hourStep) {
+    return localizedText(`每 ${hourStep} 小时`, `Every ${hourStep} hours`);
+  }
+  return undefined;
+};
+
+const resolveWeekDayDetail = (dayOfWeek: string) => {
+  const normalized = dayOfWeek.toUpperCase();
+  if (normalized === 'MON-FRI' || normalized === '2-6') {
+    return localizedText('周一至周五', 'Monday to Friday');
+  }
+
+  const labels = normalized
+    .split(',')
+    .map((value) => weekDayLabels[value.trim()])
+    .filter((label): label is [string, string] => Boolean(label));
+  if (labels.length === 0) {
+    return undefined;
+  }
+  return localizedText(labels.map((label) => label[0]).join('、'), labels.map((label) => label[1]).join(', '));
+};
+
+const resolveCronFrequency = (cronExpression: string): CronFrequency => {
+  const fields = cronExpression.trim().split(/\s+/);
+  if (fields.length < 6 || fields.length > 7) {
+    return { label: localizedText('自定义', 'Custom') };
+  }
+
+  const [, minute, hour, dayOfMonth, month, dayOfWeek, year] = fields;
+  const timeDetail = resolveCronTimeDetail(minute, hour);
+  const withTime = (detail?: string) => [detail, timeDetail].filter(Boolean).join(' ');
+
+  if (year && year !== '*' && year !== '?') {
+    return { label: localizedText('指定日期', 'Scheduled date'), detail: timeDetail };
+  }
+  if (month !== '*' && month !== '?') {
+    return { label: localizedText('每年', 'Yearly'), detail: withTime(`${month}/${dayOfMonth}`) };
+  }
+  if (dayOfMonth !== '*' && dayOfMonth !== '?') {
+    const dayDetail = /^\d+$/.test(dayOfMonth)
+      ? localizedText(`${dayOfMonth} 日`, `Day ${dayOfMonth}`)
+      : dayOfMonth;
+    return { label: localizedText('每月', 'Monthly'), detail: withTime(dayDetail) };
+  }
+  if (dayOfWeek !== '*' && dayOfWeek !== '?') {
+    const workday = ['MON-FRI', '2-6'].includes(dayOfWeek.toUpperCase());
+    return {
+      label: workday ? localizedText('工作日', 'Weekdays') : localizedText('每周', 'Weekly'),
+      detail: withTime(resolveWeekDayDetail(dayOfWeek)),
+    };
+  }
+
+  const minuteStep = minute.match(/^(?:\*|0)\/(\d+)$/)?.[1];
+  if (minuteStep && (hour === '*' || hour === '?')) {
+    return { label: localizedText(`每 ${minuteStep} 分钟`, `Every ${minuteStep} minutes`) };
+  }
+  const hourStep = hour.match(/^(?:\*|0)\/(\d+)$/)?.[1];
+  if (hourStep) {
+    return { label: localizedText(`每 ${hourStep} 小时`, `Every ${hourStep} hours`) };
+  }
+  if (hour === '*' && minute === '*') {
+    return { label: localizedText('每分钟', 'Every minute') };
+  }
+  return { label: localizedText('每天', 'Daily'), detail: timeDetail };
+};
+
+type JobDomain = 'data' | 'model' | 'trading' | 'maintenance';
 
 const jobDomains: Array<{ key: JobDomain; label: string }> = [
   { key: 'data', label: '数据采集' },
   { key: 'model', label: '模型任务' },
-  { key: 'strategy', label: '智能决策' },
   { key: 'trading', label: '交易执行' },
   { key: 'maintenance', label: '系统维护' },
 ];
@@ -157,7 +264,6 @@ const jobDomains: Array<{ key: JobDomain; label: string }> = [
 const jobDomainLabelsEn: Record<JobDomain, string> = {
   data: 'Data Collection',
   model: 'Model Tasks',
-  strategy: 'Intelligent Decision',
   trading: 'Trading Execution',
   maintenance: 'System Maintenance',
 };
@@ -168,7 +274,7 @@ const resolveJobDomain = (jobName: string, module?: JobDomain): JobDomain => {
   }
   const normalized = jobName.toLowerCase();
   if (normalized.includes('lstm') || normalized.includes('modelprediction') || normalized.includes('sentiment')) return 'model';
-  if (normalized.includes('strategy') || normalized.includes('selection') || normalized.includes('backtest')) return 'strategy';
+  if (normalized.includes('selection') || normalized.includes('backtest')) return 'model';
   if (normalized.includes('trading') || normalized.includes('broker') || normalized.includes('performance')) return 'trading';
   if (normalized.includes('sync') || normalized.includes('news') || normalized.includes('calendar') || normalized.includes('stockdata')) return 'data';
   return 'maintenance';
@@ -487,12 +593,17 @@ const JobManagement: React.FC = () => {
       render: (value: string, record) => <Text strong>{record.description || value}</Text>,
     },
     {
-      title: localizedText('所属模块', 'Module'),
-      key: 'module',
-      width: 140,
+      title: localizedText('执行频率', 'Frequency'),
+      key: 'frequency',
+      width: 150,
       render: (_, record) => {
-        const domain = resolveJobDomain(record.jobName, record.module);
-        return localizedText(jobDomains.find((item) => item.key === domain)?.label ?? domain, jobDomainLabelsEn[domain]);
+        const frequency = resolveCronFrequency(record.cronExpression);
+        return (
+          <div className="job-frequency">
+            <Text strong>{frequency.label}</Text>
+            {frequency.detail && <Text type="secondary">{frequency.detail}</Text>}
+          </div>
+        );
       },
     },
     { title: 'Cron', dataIndex: 'cronExpression', key: 'cronExpression', width: 170, render: (value: string) => <Text code>{value}</Text> },
@@ -615,7 +726,7 @@ const JobManagement: React.FC = () => {
           dataSource={filteredJobs}
           loading={loading && jobs.length === 0}
           locale={{ emptyText: <Empty description={localizedText('暂无任务配置', 'No job configuration')} /> }}
-          scroll={{ x: 1500 }}
+          scroll={{ x: 1510 }}
           pagination={{
             pageSize: 10,
             showSizeChanger: true,
@@ -699,4 +810,4 @@ const JobManagement: React.FC = () => {
 };
 
 export default JobManagement;
-// AI_GENERATE_END--------------------------------------
+// AI_GENERATE_END-----------------------------------------

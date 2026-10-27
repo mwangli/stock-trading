@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START------------------------------------------------------------------- -->
+<!-- AI_GENERATE_START-------------------------------------------------------------------- -->
 # 交互语言要求
 
 1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
@@ -35,7 +35,7 @@
 
 ```text
 数据更新 → 数据校验 → 周期训练 → 候选评估 → 自动晋级或淘汰
-→ 自动预测 → 策略与仓位决策 → Java 风控 → 券商执行
+→ 自动预测与排名 → 分阶段交易 → 券商执行
 → 成交与绩效回写 → 滚动评估 → 自动调权、回退和再训练
 ```
 
@@ -45,7 +45,7 @@
 2. **最简单、最快速实现**：优先选择能够形成完整闭环的最少组件、最少状态和单一路径。不得为假设中的扩展增加多套框架、重复评分、兼容适配层、人工工作流或无调用方抽象。
 3. **允许直接收敛旧机制**：本项目不要求前向兼容或保留冗余历史实现。新方案落地后应删除被替代的人工激活、重复 Gate、旧配置、旧状态和旁路入口，只保留一个权威流程。
 4. **自学习采用周期增量闭环**：优先使用定时重训、不可变快照、Champion-Challenger 自动比较和生产反馈评估，不引入复杂在线学习平台。只有现有周期闭环无法满足目标时，才允许增加实时在线学习机制。
-5. **自适应必须有边界**：允许系统自动调整模型版本、融合权重、策略阈值和仓位参数，但所有可调参数必须有明确上下限、观察窗口、最小样本和自动回退条件，禁止模型或 Agent 直接修改权限、资金上限、幂等规则或券商凭据。
+5. **自适应必须有边界**：允许系统自动调整模型版本和融合权重，但所有可调参数必须有明确上下限、观察窗口、最小样本和自动回退条件，禁止模型或 Agent 直接修改权限、资金、幂等规则或券商凭据。
 6. **Gate 只保留必要硬门禁**：Gate 仅用于阻止数据/制品无效、数值异常、样本明显不足、回撤越界和真实交易安全违规。普通质量指标统一进入一个可解释的综合评分，不为每个指标建立独立的一票否决规则。
 7. **自动晋级和自动回退**：候选模型通过硬门禁且综合评分稳定优于当前生产模型时自动小权重上线；根据滚动实盘/影子结果自动升权。出现数据异常、输出塌缩、回撤越界、持续劣化或运行失败时自动降权至零并回退到最近健康版本。
 8. **Java 保留最终交易权威**：无人值守不等于取消安全边界。市场事实、账户、权限、资金、持仓、T+1、交易时间、价格保护、仓位上限、最大亏损、幂等和券商执行仍由 Backend 的确定性 Java 逻辑最终决定；模型和 Agent 不能绕过这些规则。
@@ -63,8 +63,7 @@ stock-trading4/
 │   ├── stock-base/             # 最小公共契约
 │   ├── stock-data/               # 市场事实
 │   ├── stock-model/                # 模型训练与推理
-│   ├── stock-strategy/             # 策略与决策
-│   ├── stock-trading/            # 风控与交易执行
+│   ├── stock-trading/            # 分阶段交易与券商执行
 │   ├── stock-agent/                # Agent、RAG、Memory 和受控决策增强
 │   ├── stock-platform/             # Quartz 调度
 │   └── stock-application/          # 唯一 Spring Boot 可执行模块
@@ -170,12 +169,12 @@ java -jar stock-server/stock-application/target/stock-application-1.0.0-SNAPSHOT
   - 类名 `PascalCase`, 方法/变量 `camelCase`, 常量 `UPPER_SNAKE_CASE`
   - 使用 Lombok (`@Data`, `@Slf4j`, `@RequiredArgsConstructor`) 简化代码
   - Controller 返回统一泛型对象 `ResponseDTO<T>`
-- **模块与分包策略**: `stock-server` 固定使用八个 Maven 子模块；`stock-base` 提供最小公共契约，`com.stock.data`、`com.stock.model`、`com.stock.strategy`、`com.stock.trading`、`com.stock.platform`、`com.stock.agent`、`com.stock` 分别归属其余七个业务或装配模块。领域内部再按职责分包，禁止新增平行业务模块、循环依赖或把不同职责的类平铺在同一个包中。
+- **模块与分包策略**: `stock-server` 固定使用七个 Maven 子模块；`stock-base` 提供最小公共契约，`com.stock.data`、`com.stock.model`、`com.stock.trading`、`com.stock.platform`、`com.stock.agent`、`com.stock` 分别归属其余六个业务或装配模块。领域内部再按职责分包，禁止新增平行业务模块、循环依赖或把不同职责的类平铺在同一个包中。
 - **错误处理**: 使用全局异常处理 (`@ControllerAdvice`)，禁止吞掉异常。
 
 #### 后端代码目录与包结构规范（强制）
 
-0. **先确定 Maven 模块边界再确定 package**：后端依赖固定为 `stock-base → stock-data → stock-model → stock-strategy → stock-trading → stock-platform → stock-agent → stock-application`。上层模块可以直接调用下层模块公开 Service 和 DTO，禁止反向依赖、循环依赖、跨模块访问 Repository/Entity，也禁止为单实现的同 JVM 调用新增 Port、Adapter、Facade 或兼容模块。
+0. **先确定 Maven 模块边界再确定 package**：后端依赖固定为 `stock-base → stock-data → stock-model → stock-trading → stock-platform → stock-agent → stock-application`。上层模块可以直接调用下层模块公开 Service 和 DTO，禁止反向依赖、循环依赖、跨模块访问 Repository/Entity，也禁止为单实现的同 JVM 调用新增 Port、Adapter、Facade 或兼容模块。
 1. **业务根包固定、职责子包必建**：后端 Java 代码固定以 `data`、`model`、`strategy`、`trading`、`platform`、`agent`、`application` 为一级业务边界；各业务包下直接建立实际存在的职责子包，不得补建空目录，也不得将不同职责的类平铺在业务包根目录。普通业务模块使用 `controller`、`service`、`repository`、`entity`、`dto`、`vo`、`job`/`scheduler`、`config`、`validator` 等职责包；Agent 模块固定使用 `client`、`config`、`controller`、`dto`、`entity`、`enums`、`model`、`output`、`repository`、`service`、`support`、`tool`、`validator`、`vo`，不得新增 Port/Adapter 中间层，也不得恢复 `decision`、`interaction`、`knowledge`、`runtime`、`tooling`、`tradeplan` 等能力域套职责层级。
 2. **类与目录必须匹配**：`*Service` 放入 `service`，`*Repository` 放入 `repository`，持久化 `*Entity` 放入 `entity`，请求/响应对象分别放入 `dto`/`vo`，定时任务入口放入 `job` 或 `scheduler`；Java `package` 声明必须与物理目录完全一致。
 3. **目录只保留两级**：`stock-server` 目录固定保持“业务包 → 职责层”，不得在职责层下继续复制 `service/repository/entity/dto` 等分层，也不得增加 `domain/application/persistence` 等平行体系。例如决策代码采用以下结构：
@@ -686,7 +685,7 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 1. 生产发布统一使用 `v<主版本>.<次版本>.<补丁版本>` 标签，例如 `v5.6.7`；不再创建 `backend-v*`、`frontend-v*` 或独立 Agent 发布标签。普通分支提交和推送不得触发生产构建。
 2. 推送统一版本标签后，`.github/workflows/ci-cd.yml` 必须执行全量发布，不再检测文件变更范围：Backend 与 Frontend 均构建、推送并部署，Agent 随 Backend/Application 一并发布。
 3. `prepare` 任务只上传一次 `docker-compose.yml`；完成后 Backend 与 Frontend 必须并行执行，不相互等待。两个部署任务分别使用 `--no-deps` 只更新自己的应用服务。
-4. Backend 镜像使用当前 `model-files` 最近变更提交作为模型镜像版本。每次统一版本发布先检查远程仓库是否已有该不可变模型镜像；已存在时直接复用，只有不存在时才下载 Git LFS 模型制品并构建、推送模型镜像。
+4. 固定模型文件由生产服务器部署目录下的 `model-files/` 提供，并通过 `docker-compose.yml` 只读挂载到 Backend 的 `/app/model-files`。CI/CD 不下载、复制、构建或推送模型制品，Backend 镜像只包含 Application JAR 和项目文档。
 5. 完成功能提交和分支推送不等于发布。只有用户在当前请求中明确授权发布版本时，Agent 才能创建并推送版本标签；禁止自动递增版本号、自动打标签或通过删除后重建标签重复触发流水线。
 6. 创建标签前必须确认目标提交、版本号和远程是否已存在同名标签；标签应指向已推送且通过规定静态检查的提交。
 7. 手工触发发布仅用于相同提交的全量补发或故障恢复，不提供 Backend、Frontend 单独发布范围。
@@ -703,5 +702,5 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 5. **报告边界**：明确区分“源码检查通过”和“编译/运行验证通过”；未执行的验证必须如实说明，不得用静态检查替代运行证据。
 **Agent 特别指令**:
 - 本项目无自动化测试，不要生成或要求补充测试用例；质量依赖代码审查与手工验证。
-- Backend 只允许 `stock-base`、`stock-data`、`stock-model`、`stock-strategy`、`stock-trading`、`stock-platform`、`stock-agent`、`stock-application` 八个子模块；只有 `stock-application` 可执行和发布。
-<!-- AI_GENERATE_END------------------------------------------------------------------- -->
+- Backend 只允许 `stock-base`、`stock-data`、`stock-model`、`stock-trading`、`stock-platform`、`stock-agent`、`stock-application` 七个子模块；只有 `stock-application` 可执行和发布。
+<!-- AI_GENERATE_END-------------------------------------------------------------------- -->

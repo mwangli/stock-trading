@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.agent.model;
 
 import lombok.Builder;
@@ -29,10 +29,10 @@ public class EvidenceBundle {
     /** 候选批次事实中的预测批次标识。 */
     String predictionBatchId;
 
-    /** 候选批次事实中的策略版本。 */
-    String strategyVersion;
+    /** 候选批次事实中的模型版本。 */
+    String modelVersion;
 
     /** 候选批次事实中的目标交易日。 */
     LocalDate targetTradeDate;
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END-------

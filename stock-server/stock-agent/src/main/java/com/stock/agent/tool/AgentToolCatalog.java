@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------
+// AI_GENERATE_START-----------------
 package com.stock.agent.tool;
 
 import com.stock.agent.enums.AgentToolName;
@@ -19,7 +19,6 @@ public class AgentToolCatalog {
 
     private final TradingCalendarQueryTool tradingCalendarQueryTool;
     private final LatestPriceQueryTool latestPriceQueryTool;
-    private final StrategyStateQueryTool strategyStateQueryTool;
     private final PredictionCandidateQueryTool predictionCandidateQueryTool;
     private final ModelOverviewQueryTool modelOverviewQueryTool;
     private final PerformanceOverviewQueryTool performanceOverviewQueryTool;
@@ -27,7 +26,6 @@ public class AgentToolCatalog {
     private final BrokerFactQueryTool brokerFactQueryTool;
     private final JobDiagnosticTool jobDiagnosticTool;
     private final ProviderRuntimeQueryTool providerRuntimeQueryTool;
-    private final TradeExecutionGateQueryTool tradeExecutionGateQueryTool;
     private final ProjectDocumentSearchTool projectDocumentSearchTool;
     private final WebSearchTool webSearchTool;
     private final KnowledgeSearchTool knowledgeSearchTool;
@@ -38,15 +36,12 @@ public class AgentToolCatalog {
     private final ModelOperationsQueryTool modelOperationsQueryTool;
     private final JobOperationsQueryTool jobOperationsQueryTool;
     private final BrokerHistoryQueryTool brokerHistoryQueryTool;
-    private final AdaptiveStrategyQueryTool adaptiveStrategyQueryTool;
-    private final SystemRuntimeQueryTool systemRuntimeQueryTool;
 
     /**
      * 创建首期只读工具目录。
      *
      * @param tradingCalendarQueryTool 交易日历工具
      * @param latestPriceQueryTool 最新价格工具
-     * @param strategyStateQueryTool 策略状态工具
      * @param predictionCandidateQueryTool 候选查询工具
      * @param modelOverviewQueryTool 模型概览工具
      * @param performanceOverviewQueryTool 收益概览工具
@@ -54,7 +49,6 @@ public class AgentToolCatalog {
      * @param brokerFactQueryTool 券商账户事实工具
      * @param jobDiagnosticTool 任务诊断工具
      * @param providerRuntimeQueryTool Provider 运行状态工具
-     * @param tradeExecutionGateQueryTool 真实交易执行门禁工具
      * @param projectDocumentSearchTool 项目文档检索工具
      * @param webSearchTool 公开网页搜索工具
      * @param knowledgeSearchTool 用户范围内业务知识检索工具
@@ -65,12 +59,9 @@ public class AgentToolCatalog {
      * @param modelOperationsQueryTool 模型运维工具
      * @param jobOperationsQueryTool 调度任务运维工具
      * @param brokerHistoryQueryTool 券商历史工具
-     * @param adaptiveStrategyQueryTool 自适应策略工具
-     * @param systemRuntimeQueryTool 系统运行状态工具
      */
     public AgentToolCatalog(TradingCalendarQueryTool tradingCalendarQueryTool,
                             LatestPriceQueryTool latestPriceQueryTool,
-                            StrategyStateQueryTool strategyStateQueryTool,
                             PredictionCandidateQueryTool predictionCandidateQueryTool,
                             ModelOverviewQueryTool modelOverviewQueryTool,
                             PerformanceOverviewQueryTool performanceOverviewQueryTool,
@@ -78,7 +69,6 @@ public class AgentToolCatalog {
                             BrokerFactQueryTool brokerFactQueryTool,
                             JobDiagnosticTool jobDiagnosticTool,
                             ProviderRuntimeQueryTool providerRuntimeQueryTool,
-                            TradeExecutionGateQueryTool tradeExecutionGateQueryTool,
                             ProjectDocumentSearchTool projectDocumentSearchTool,
                             WebSearchTool webSearchTool,
                             KnowledgeSearchTool knowledgeSearchTool,
@@ -88,12 +78,9 @@ public class AgentToolCatalog {
                             MarketDataQualityQueryTool marketDataQualityQueryTool,
                             ModelOperationsQueryTool modelOperationsQueryTool,
                             JobOperationsQueryTool jobOperationsQueryTool,
-                            BrokerHistoryQueryTool brokerHistoryQueryTool,
-                            AdaptiveStrategyQueryTool adaptiveStrategyQueryTool,
-                            SystemRuntimeQueryTool systemRuntimeQueryTool) {
+                            BrokerHistoryQueryTool brokerHistoryQueryTool) {
         this.tradingCalendarQueryTool = tradingCalendarQueryTool;
         this.latestPriceQueryTool = latestPriceQueryTool;
-        this.strategyStateQueryTool = strategyStateQueryTool;
         this.predictionCandidateQueryTool = predictionCandidateQueryTool;
         this.modelOverviewQueryTool = modelOverviewQueryTool;
         this.performanceOverviewQueryTool = performanceOverviewQueryTool;
@@ -101,7 +88,6 @@ public class AgentToolCatalog {
         this.brokerFactQueryTool = brokerFactQueryTool;
         this.jobDiagnosticTool = jobDiagnosticTool;
         this.providerRuntimeQueryTool = providerRuntimeQueryTool;
-        this.tradeExecutionGateQueryTool = tradeExecutionGateQueryTool;
         this.projectDocumentSearchTool = projectDocumentSearchTool;
         this.webSearchTool = webSearchTool;
         this.knowledgeSearchTool = knowledgeSearchTool;
@@ -112,8 +98,6 @@ public class AgentToolCatalog {
         this.modelOperationsQueryTool = modelOperationsQueryTool;
         this.jobOperationsQueryTool = jobOperationsQueryTool;
         this.brokerHistoryQueryTool = brokerHistoryQueryTool;
-        this.adaptiveStrategyQueryTool = adaptiveStrategyQueryTool;
-        this.systemRuntimeQueryTool = systemRuntimeQueryTool;
     }
 
     /**
@@ -138,7 +122,6 @@ public class AgentToolCatalog {
             case PERFORMANCE_ANALYSIS -> performanceAnalysisQueryTool;
             case TRADING_CALENDAR -> tradingCalendarQueryTool;
             case LATEST_PRICE -> latestPriceQueryTool;
-            case STRATEGY_STATE -> strategyStateQueryTool;
             case PREDICTION_CANDIDATES -> predictionCandidateQueryTool;
             case MODEL_OVERVIEW -> modelOverviewQueryTool;
             case PERFORMANCE_OVERVIEW -> performanceOverviewQueryTool;
@@ -146,15 +129,12 @@ public class AgentToolCatalog {
             case BROKER_FACTS -> brokerFactQueryTool;
             case JOB_DIAGNOSTIC -> jobDiagnosticTool;
             case PROVIDER_RUNTIME -> providerRuntimeQueryTool;
-            case TRADE_EXECUTION_GATE -> tradeExecutionGateQueryTool;
             case STOCK_DIRECTORY -> stockDirectoryQueryTool;
             case MARKET_DATA_QUALITY -> marketDataQualityQueryTool;
             case MODEL_OPERATIONS -> modelOperationsQueryTool;
             case JOB_OPERATIONS -> jobOperationsQueryTool;
             case BROKER_HISTORY -> brokerHistoryQueryTool;
-            case ADAPTIVE_STRATEGY -> adaptiveStrategyQueryTool;
-            case SYSTEM_RUNTIME -> systemRuntimeQueryTool;
         };
     }
 }
-// AI_GENERATE_END---------------
+// AI_GENERATE_END----------------

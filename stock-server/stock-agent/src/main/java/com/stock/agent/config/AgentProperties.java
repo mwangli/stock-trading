@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------------------
+// AI_GENERATE_START-------------------------
 package com.stock.agent.config;
 
 import lombok.Data;
@@ -80,6 +80,12 @@ public class AgentProperties {
 
     /** 短期会话最多保留的消息数量。 */
     private int chatMemoryMaxMessages = 20;
+
+    /** 进程内短期记忆最多保留的会话数量。 */
+    private int chatMemoryMaxSessions = 500;
+
+    /** 短期会话记忆空闲过期时间，单位分钟。 */
+    private int chatMemoryIdleTtlMinutes = 120;
 
     /** 工具调用超时时间，单位毫秒。 */
     private long toolTimeoutMs = 5000L;
@@ -273,4 +279,4 @@ public class AgentProperties {
         private String path = "./documents";
     }
 }
-// AI_GENERATE_END-----------------------
+// AI_GENERATE_END------------------------

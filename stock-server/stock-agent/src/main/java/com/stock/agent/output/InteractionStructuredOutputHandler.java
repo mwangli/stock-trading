@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START--------
 package com.stock.agent.output;
 
 import com.alibaba.fastjson2.JSON;
@@ -23,7 +23,7 @@ public class InteractionStructuredOutputHandler implements AgentStructuredOutput
     private static final Set<String> REPORT_STATUS = Set.of("PASS", "WARN", "UNKNOWN");
     private static final Set<String> REPORT_SECTIONS = Set.of(
             "marketOverview", "candidateSummary", "modelSignals", "sentimentSignals",
-            "strategyStatus", "riskWarnings", "dataQuality", "abnormalJobs");
+            "tradingStatus", "riskWarnings", "dataQuality", "abnormalJobs");
 
     /** {@inheritDoc} */
     @Override
@@ -101,4 +101,4 @@ public class InteractionStructuredOutputHandler implements AgentStructuredOutput
         }
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END--------

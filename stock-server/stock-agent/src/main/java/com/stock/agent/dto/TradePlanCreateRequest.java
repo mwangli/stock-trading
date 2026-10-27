@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.agent.dto;
 
 import lombok.Data;
@@ -48,7 +48,7 @@ public class TradePlanCreateRequest {
     private LocalDate targetTradeDate;
 
     /** 策略配置版本，可为空。 */
-    private String strategyVersion;
+    private String modelVersion;
 
     /** 价格约束说明，可为空。 */
     private String priceConstraint;
@@ -62,4 +62,4 @@ public class TradePlanCreateRequest {
     /** 不确定性说明，可为空。 */
     private String uncertainty;
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------
+// AI_GENERATE_START---------------
 package com.stock.agent.tool;
 
 import com.stock.agent.service.AgentFactQueryService;
@@ -12,7 +12,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * 策略候选批次只读工具。
+ * 模型排名批次只读工具。
  *
  * @author mwangli
  * @since 2026-10-17
@@ -32,12 +32,12 @@ public class PredictionCandidateQueryTool {
      */
     @Tool(name = "queryPredictionCandidates", value = "查询指定候选批次的脱敏排名摘要")
     public PredictionCandidateResult query(PredictionCandidateRequest request) {
-        if (request == null || !StringUtils.hasText(request.candidateBatchId())) {
-            throw new IllegalArgumentException("candidateBatchId 不能为空");
+        if (request == null || !StringUtils.hasText(request.predictionBatchId())) {
+            throw new IllegalArgumentException("predictionBatchId 不能为空");
         }
         return toolSupport.execute("queryPredictionCandidates", () -> {
             PredictionCandidateFact fact = factQueryService
-                    .predictionCandidates(request.candidateBatchId().trim());
+                    .predictionCandidates(request.predictionBatchId().trim());
             return toResult(fact);
         });
     }
@@ -59,25 +59,25 @@ public class PredictionCandidateQueryTool {
     private PredictionCandidateResult toResult(PredictionCandidateFact fact) {
         List<PredictionCandidateItem> items = fact.items().stream()
                 .map(item -> new PredictionCandidateItem(item.stockCode(), item.stockName(), item.rank(),
-                        item.totalScore(), item.reason()))
+                        item.effectiveModelScore(), item.estimatedNetReturn()))
                 .toList();
-        return new PredictionCandidateResult(fact.candidateBatchId(), fact.predictionBatchId(),
-                fact.strategyVersion(), fact.targetTradeDate(), items, fact.availabilityReason());
+        return new PredictionCandidateResult(fact.predictionBatchId(), fact.modelVersion(),
+                fact.targetTradeDate(), items, fact.availabilityReason());
     }
 
     /** 候选批次查询请求。 */
-    public record PredictionCandidateRequest(String candidateBatchId) {
+    public record PredictionCandidateRequest(String predictionBatchId) {
     }
 
     /** 候选批次脱敏结果。 */
-    public record PredictionCandidateResult(String candidateBatchId, String predictionBatchId,
-                                            String strategyVersion, LocalDate targetTradeDate,
+    public record PredictionCandidateResult(String predictionBatchId, String modelVersion,
+                                            LocalDate targetTradeDate,
                                             List<PredictionCandidateItem> items, String availabilityReason) {
     }
 
     /** 候选股票摘要。 */
     public record PredictionCandidateItem(String stockCode, String stockName, int rank,
-                                          double totalScore, String reason) {
+                                          double effectiveModelScore, Double estimatedNetReturn) {
     }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END---------------

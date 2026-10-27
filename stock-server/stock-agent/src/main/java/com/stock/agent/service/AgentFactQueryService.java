@@ -1,8 +1,7 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START-----------
 package com.stock.agent.service;
 
 import com.stock.agent.model.FactSourceStatus;
-import com.stock.agent.model.AdaptiveStrategyFact;
 import com.stock.agent.model.BrokerHistoryFact;
 import com.stock.agent.model.BrokerFacts;
 import com.stock.agent.model.BrokerStatusFact;
@@ -20,9 +19,6 @@ import com.stock.agent.model.PerformanceAnalysisItemFact;
 import com.stock.agent.model.PredictionCandidateFact;
 import com.stock.agent.model.PredictionCandidateItemFact;
 import com.stock.agent.model.StockDirectoryFact;
-import com.stock.agent.model.StrategyStateFact;
-import com.stock.agent.model.SystemRuntimeFact;
-import com.stock.agent.model.TradeExecutionGateFact;
 import com.stock.agent.model.TradingCalendarFact;
 import com.stock.platform.dto.InternalPerformanceAnalysisItemResponse;
 import com.stock.platform.dto.InternalPerformanceAnalysisResponse;
@@ -62,15 +58,8 @@ public class AgentFactQueryService {
     }
 
     /** 查询并转换 Agent 工具所需的权威事实。 */
-    public StrategyStateFact strategyState() {
-        var wire = factsService.strategyState();
-        return new StrategyStateFact(wire.enabled(), wire.currentMode(), wire.configVersion(),
-                wire.autoSwitchEnabled(), wire.disabledIndicators());
-    }
-
-    /** 查询并转换 Agent 工具所需的权威事实。 */
-    public PredictionCandidateFact predictionCandidates(String candidateBatchId) {
-        return toPredictionCandidate(factsService.predictionCandidates(candidateBatchId));
+    public PredictionCandidateFact predictionCandidates(String predictionBatchId) {
+        return toPredictionCandidate(factsService.predictionCandidates(predictionBatchId));
     }
 
     /** 查询并转换 Agent 工具所需的权威事实。 */
@@ -82,7 +71,7 @@ public class AgentFactQueryService {
     public BrokerStatusFact brokerStatus() {
         var wire = factsService.brokerStatus();
         return new BrokerStatusFact(wire.brokerName(), wire.tradingMode(), wire.authenticated(),
-                wire.realWriteEnabled(), wire.liveWriteAllowed(), wire.asOf());
+                wire.asOf());
     }
 
     /** 查询并转换 Agent 工具所需的权威事实。 */
@@ -149,14 +138,6 @@ public class AgentFactQueryService {
     }
 
     /** 查询并转换 Agent 工具所需的权威事实。 */
-    public TradeExecutionGateFact tradeExecutionGate() {
-        var wire = factsService.tradeExecutionGate();
-        return new TradeExecutionGateFact(wire.targetTradeDate(), wire.tradingDay(),
-                wire.executableCandidateCount(), wire.brokerAuthenticated(), wire.realWriteEnabled(),
-                wire.status(), wire.blockedReasons());
-    }
-
-    /** 查询并转换 Agent 工具所需的权威事实。 */
     public StockDirectoryFact stockDirectory(String keyword, int limit) {
         var wire = factsService.stockDirectory(keyword, limit);
         return new StockDirectoryFact(wire.keyword(), wire.total(), wire.items(),
@@ -190,23 +171,6 @@ public class AgentFactQueryService {
     }
 
     /** 查询并转换 Agent 工具所需的权威事实。 */
-    public AdaptiveStrategyFact adaptiveStrategy() {
-        var wire = factsService.adaptiveStrategy();
-        return new AdaptiveStrategyFact(wire.lifecycleStage(), wire.lifecycleDescription(),
-                wire.strategyVersion(), wire.currentMode(), wire.strategyEnabled(), wire.targetTradeDate(),
-                wire.lastEvolutionAt(), wire.automaticTradingPaused(), wire.healthItems(), wire.versions(),
-                wire.evolutionEvents(), wire.anomalies(), wire.asOf());
-    }
-
-    /** 查询并转换 Agent 工具所需的权威事实。 */
-    public SystemRuntimeFact systemRuntime() {
-        var wire = factsService.systemRuntime();
-        return new SystemRuntimeFact(wire.backendStatus(), wire.nodeId(),
-                wire.startupDataSyncEnabled(), wire.automaticTradingPaused(), wire.emergencyStopReason(),
-                wire.emergencyStoppedAt(), wire.emergencyStopResult(), wire.updatedAt(), wire.asOf());
-    }
-
-    /** 查询并转换 Agent 工具所需的权威事实。 */
     public FactSourceStatus status() {
         try {
             factsService.tradingCalendar(LocalDate.now());
@@ -219,10 +183,10 @@ public class AgentFactQueryService {
     private PredictionCandidateFact toPredictionCandidate(InternalPredictionCandidateResponse wire) {
         var items = wire.items().stream()
                 .map(item -> new PredictionCandidateItemFact(item.stockCode(), item.stockName(),
-                        item.rank(), item.totalScore(), item.reason()))
+                        item.rank(), item.effectiveModelScore(), item.estimatedNetReturn()))
                 .toList();
-        return new PredictionCandidateFact(wire.candidateBatchId(), wire.predictionBatchId(),
-                wire.strategyVersion(), wire.targetTradeDate(), items, wire.availabilityReason());
+        return new PredictionCandidateFact(wire.predictionBatchId(), wire.modelVersion(),
+                wire.targetTradeDate(), items, wire.availabilityReason());
     }
 
     private PerformanceAnalysisItemFact toPerformanceItem(
@@ -232,4 +196,4 @@ public class AgentFactQueryService {
                 item.returnRate(), item.sellTime());
     }
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END-----------

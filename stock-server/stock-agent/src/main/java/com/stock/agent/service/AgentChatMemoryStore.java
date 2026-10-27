@@ -1,15 +1,15 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START-----------
 package com.stock.agent.service;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.stock.agent.config.AgentProperties;
 import dev.langchain4j.memory.ChatMemory;
-import lombok.RequiredArgsConstructor;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.time.Duration;
 
 /**
  * LangChain4j 短期会话记忆提供服务。
@@ -19,12 +19,30 @@ import java.util.concurrent.ConcurrentHashMap;
  * @since 2026-10-17
  */
 @Component
-@RequiredArgsConstructor
 public class AgentChatMemoryStore {
 
-    private final Map<String, ChatMemory> memories = new ConcurrentHashMap<>();
-    private final Map<String, PendingAttempt> pendingAttempts = new ConcurrentHashMap<>();
     private final AgentProperties properties;
+    private final Cache<String, ChatMemory> memories;
+    private final Cache<String, PendingAttempt> pendingAttempts;
+
+    /**
+     * 创建有容量和空闲过期边界的进程内短期记忆存储。
+     *
+     * @param properties Agent 运行配置
+     */
+    public AgentChatMemoryStore(AgentProperties properties) {
+        this.properties = properties;
+        long maximumSessions = Math.max(properties.getChatMemoryMaxSessions(), 1);
+        Duration idleTtl = Duration.ofMinutes(Math.max(properties.getChatMemoryIdleTtlMinutes(), 1));
+        this.memories = Caffeine.newBuilder()
+                .maximumSize(maximumSessions)
+                .expireAfterAccess(idleTtl)
+                .build();
+        this.pendingAttempts = Caffeine.newBuilder()
+                .maximumSize(maximumSessions)
+                .expireAfterWrite(idleTtl)
+                .build();
+    }
 
     /**
      * 创建或获取指定会话的短期记忆。
@@ -34,7 +52,7 @@ public class AgentChatMemoryStore {
      */
     public ChatMemory get(String sessionId) {
         String key = StringUtils.hasText(sessionId) ? sessionId : "anonymous";
-        return memories.computeIfAbsent(key, ignored -> MessageWindowChatMemory.builder()
+        return memories.get(key, ignored -> MessageWindowChatMemory.builder()
                 .id(key)
                 .maxMessages(Math.max(properties.getChatMemoryMaxMessages(), 2))
                 .build());
@@ -76,7 +94,7 @@ public class AgentChatMemoryStore {
      * @param taskId 任务标识
      */
     public void commit(String taskId) {
-        PendingAttempt pendingAttempt = pendingAttempts.remove(taskId);
+        PendingAttempt pendingAttempt = pendingAttempts.asMap().remove(taskId);
         if (pendingAttempt == null) {
             return;
         }
@@ -96,7 +114,7 @@ public class AgentChatMemoryStore {
      */
     public void discard(String taskId) {
         if (taskId != null) {
-            pendingAttempts.remove(taskId);
+            pendingAttempts.invalidate(taskId);
         }
     }
 
@@ -107,11 +125,11 @@ public class AgentChatMemoryStore {
      */
     public void clear(String sessionId) {
         if (StringUtils.hasText(sessionId)) {
-            memories.remove(sessionId);
+            memories.invalidate(sessionId);
         }
     }
 
     private record PendingAttempt(String sessionId, ChatMemory memory) {
     }
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------

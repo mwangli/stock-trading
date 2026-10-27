@@ -24,9 +24,8 @@
     "market": "Stock Market",
     "models": "Quant Models",
     "analysis": "Intelligent Decision",
-    "jobs": "Scheduled Jobs",
+    "jobs": "Job Scheduling",
     "logs": "Run Logs",
-
     "profile": "Profile",
     "systemStatus": "SYSTEM STATUS",
     "connected": "Connected",
@@ -40,23 +39,18 @@
     "title": "AI TRADER",
     "orderRecords": "Order Records",
     "modelOperations": "Price Prediction",
-    "strategyConfig": "Trading Strategy",
     "agent": "Intelligent Decision",
     "agentConversation": "Agent Conversation",
-    "adaptiveStrategy": "Strategy Mode",
     "documentationBrowse": "Documentation",
     "returnToSystem": "Back to system",
-    "jobs": "Job Scheduling",
     "pageTitles": {
       "dashboard": "Returns Overview",
       "market": "Stock Market",
       "orderRecords": "Order Records",
       "logs": "Run Logs",
       "modelOperations": "Price Prediction",
-      "strategyConfig": "Trading Strategy",
       "agent": "Intelligent Decision",
       "agentConversation": "Agent Conversation",
-      "adaptiveStrategy": "Strategy Mode",
       "documentation": "Engineering Docs",
       "jobs": "Job Scheduling"
     },
@@ -80,7 +74,20 @@
     "allDirections": "All Directions",
     "buy": "Buy",
     "sell": "Sell",
-    "columns": { "time": "Order Time", "stockCode": "Stock Code", "stockName": "Stock Name", "direction": "Direction", "orderPrice": "Order Price", "orderQuantity": "Order Quantity", "filledQuantity": "Filled Quantity", "averageFillPrice": "Average Fill Price", "transactionAmount": "Transaction Amount", "commission": "Commission", "status": "Status", "orderId": "Order ID" },
+    "columns": {
+      "time": "Order Time",
+      "stockCode": "Stock Code",
+      "stockName": "Stock Name",
+      "direction": "Direction",
+      "orderPrice": "Order Price",
+      "orderQuantity": "Order Quantity",
+      "filledQuantity": "Filled Quantity",
+      "averageFillPrice": "Average Fill Price",
+      "transactionAmount": "Transaction Amount",
+      "commission": "Commission",
+      "status": "Status",
+      "orderId": "Order ID"
+    },
     "filled": "Filled",
     "dateError": "Start date cannot be later than end date"
   },
@@ -105,7 +112,27 @@
     "versionsEmpty": "No model versions",
     "runsEmpty": "No training records"
   },
-  "tradeRecords": { "subtitle": "Aggregate filled orders into FIFO trade records", "searchPlaceholder": "Stock code or name", "empty": "No assembled trade records", "columns": { "stockCode": "Stock Code", "stockName": "Stock Name", "buyTime": "Buy Time", "sellTime": "Sell Time", "buyPrice": "Buy Price", "sellPrice": "Sell Price", "buyAmount": "Buy Amount", "sellAmount": "Sell Amount", "grossProfit": "Gross Profit", "netProfit": "Net Profit", "grossReturn": "Gross Return", "returnRate": "Return Rate", "holdingTime": "Holding Time", "dailyReturn": "Daily Return" } },
+  "tradeRecords": {
+    "subtitle": "Aggregate filled orders into FIFO trade records",
+    "searchPlaceholder": "Stock code or name",
+    "empty": "No assembled trade records",
+    "columns": {
+      "stockCode": "Stock Code",
+      "stockName": "Stock Name",
+      "buyTime": "Buy Time",
+      "sellTime": "Sell Time",
+      "buyPrice": "Buy Price",
+      "sellPrice": "Sell Price",
+      "buyAmount": "Buy Amount",
+      "sellAmount": "Sell Amount",
+      "grossProfit": "Gross Profit",
+      "netProfit": "Net Profit",
+      "grossReturn": "Gross Return",
+      "returnRate": "Return Rate",
+      "holdingTime": "Holding Time",
+      "dailyReturn": "Daily Return"
+    }
+  },
   "marketPage": {
     "subtitle": "Explore market breadth, stock details and candlestick trends",
     "searchPlaceholder": "Search stock name or code",
@@ -126,8 +153,15 @@
       "updatedAt": "Updated At"
     }
   },
-  "jobsPage": { "subtitle": "Monitor, trigger and stop scheduled jobs", "refresh": "Refresh", "status": "Task Status", "emptyGroup": "No jobs in this group", "emptyRuns": "No execution records", "history": "History", "details": "Execution Details" },
-  "strategyPage": { "subtitle": "Manage trading strategies, model candidates and execution gates", "refresh": "Refresh", "reset": "Restore Defaults", "save": "Save Configuration", "candidates": "Current Trade Candidates", "select": "Select Stocks" },
+  "jobsPage": {
+    "subtitle": "Monitor, trigger and stop scheduled jobs",
+    "refresh": "Refresh",
+    "status": "Task Status",
+    "emptyGroup": "No jobs in this group",
+    "emptyRuns": "No execution records",
+    "history": "History",
+    "details": "Execution Details"
+  },
   "login": {
     "systemOnline": "SYSTEM ONLINE",
     "systemOffline": "SYSTEM OFFLINE",
@@ -153,14 +187,79 @@
   "dashboard": {
     "subtitle": "Account assets, realized returns and trading statistics",
     "lastSync": "Last sync",
-    "cards": { "totalAssets": "Total Assets", "availableCash": "Available Cash", "positionValue": "Position Value", "frozenCash": "Frozen Cash", "realizedTotal": "Total Realized P&L", "realizedToday": "Today's Realized P&L", "realizedMonth": "This Month's Realized P&L", "realizedRate": "Realized Return", "dailyRate": "Daily Return", "monthlyRate": "Monthly Return" },
-    "sections": { "returnStats": "Return Statistics", "returnDetails": "Return Details", "completedTrades": "Completed Trades", "winRate": "Win Rate", "averageReturn": "Average Return", "profitLoss": "Profit / Loss", "ranking": "Return Ranking", "daily": "Daily Return", "monthly": "Monthly Return", "positions": "Current Positions", "best": "Best Return", "worst": "Worst Return" },
-    "returnTypes": { "daily": "Daily Return", "monthly": "Monthly Return", "ranking": "Return Ranking" },
-    "columns": { "type": "Type", "stockCode": "Stock Code", "stockName": "Stock Name", "totalQuantity": "Quantity Held", "availableQuantity": "Available to Sell", "averageCost": "Average Cost", "currentPrice": "Current Price", "marketValue": "Market Value", "stock": "Stock", "netProfit": "Net Profit", "cumulativeNetProfit": "Cumulative Net Profit", "returnRate": "Return Rate", "dailyReturnRate": "Daily Return", "buyTime": "Buy Time", "holdingDays": "Holding Days", "sellTime": "Sell Time", "period": "Period", "transactionAmount": "Transaction Amount", "buyAmount": "Buy Amount", "sellAmount": "Sell Amount", "tradeQuantity": "Trade Quantity", "tradeCount": "Trades", "winningTradeCount": "Winning Trades" },
-    "units": { "days": "days" },
-    "status": { "completed": "Completed", "partial": "Partially Sold" },
-    "empty": { "ranking": "No realized trade ranking", "daily": "No daily return data", "monthly": "No monthly return data", "positions": "No live positions", "returns": "No return details" },
-    "pagination": { "total": "Total" },
+    "cards": {
+      "totalAssets": "Total Assets",
+      "availableCash": "Available Cash",
+      "positionValue": "Position Value",
+      "frozenCash": "Frozen Cash",
+      "realizedTotal": "Total Realized P&L",
+      "realizedToday": "Today's Realized P&L",
+      "realizedMonth": "This Month's Realized P&L",
+      "realizedRate": "Realized Return",
+      "dailyRate": "Daily Return",
+      "monthlyRate": "Monthly Return"
+    },
+    "sections": {
+      "returnStats": "Return Statistics",
+      "returnDetails": "Return Details",
+      "completedTrades": "Completed Trades",
+      "winRate": "Win Rate",
+      "averageReturn": "Average Return",
+      "profitLoss": "Profit / Loss",
+      "ranking": "Return Ranking",
+      "daily": "Daily Return",
+      "monthly": "Monthly Return",
+      "positions": "Current Positions",
+      "best": "Best Return",
+      "worst": "Worst Return"
+    },
+    "returnTypes": {
+      "daily": "Daily Return",
+      "monthly": "Monthly Return",
+      "ranking": "Return Ranking"
+    },
+    "columns": {
+      "type": "Type",
+      "stockCode": "Stock Code",
+      "stockName": "Stock Name",
+      "totalQuantity": "Quantity Held",
+      "availableQuantity": "Available to Sell",
+      "averageCost": "Average Cost",
+      "currentPrice": "Current Price",
+      "marketValue": "Market Value",
+      "stock": "Stock",
+      "netProfit": "Net Profit",
+      "cumulativeNetProfit": "Cumulative Net Profit",
+      "returnRate": "Return Rate",
+      "dailyReturnRate": "Daily Return",
+      "buyTime": "Buy Time",
+      "holdingDays": "Holding Days",
+      "sellTime": "Sell Time",
+      "period": "Period",
+      "transactionAmount": "Transaction Amount",
+      "buyAmount": "Buy Amount",
+      "sellAmount": "Sell Amount",
+      "tradeQuantity": "Trade Quantity",
+      "tradeCount": "Trades",
+      "winningTradeCount": "Winning Trades"
+    },
+    "units": {
+      "days": "days"
+    },
+    "status": {
+      "completed": "Completed",
+      "partial": "Partially Sold"
+    },
+    "empty": {
+      "ranking": "No realized trade ranking",
+      "daily": "No daily return data",
+      "monthly": "No monthly return data",
+      "positions": "No live positions",
+      "returns": "No return details"
+    },
+    "pagination": {
+      "total": "Total"
+    },
     "stats": {
       "totalBalance": "Total Balance",
       "activePositions": "Active Positions",
@@ -170,7 +269,7 @@
         "moderate": "Moderate"
       },
       "pendingOrders": "Pending Orders",
-"today": "Today",
+      "today": "Today",
       "vsYesterday": "vs Yesterday",
       "volatility": "Volatility",
       "status": {
@@ -227,8 +326,8 @@
     }
   },
   "models": {
-  "title": "Quant Model Console",
-  "subtitle": "One place to monitor training, evaluate performance and track sentiment signals",
+    "title": "Quant Model Console",
+    "subtitle": "One place to monitor training, evaluate performance and track sentiment signals",
     "lstm": {
       "title": "LSTM Price Prediction",
       "desc": "LSTM network trained on multi-year OHLCV data, focusing on T+1 trend reversals and short‑term volatility regimes.",
@@ -328,100 +427,42 @@
       "coverage": "Rule coverage"
     }
   },
-  "strategyAnalysis": {
-    "title": "Intelligent Decision Center",
-    "subtitle": "Manage selection, strategy analysis and trading decisions",
-    "fetchError": "Failed to load strategy list. Check backend.",
-    "toggleError": "Update failed. Please retry.",
-    "selection": {
-      "title": "Selection Strategies (Daily)",
-      "doubleFactor": "Double Factor (LSTM + Sentiment)"
+  "jobs": {
+    "title": "Job Scheduling",
+    "subtitle": "Manage and Monitor Automated System Tasks",
+    "table": {
+      "name": "Job Name",
+      "description": "Description",
+      "cron": "Schedule (Cron)",
+      "lastRun": "Last Run",
+      "nextRun": "Next Run",
+      "status": "Status",
+      "actions": "Actions"
     },
-    "trading": {
-      "title": "Trading Strategies (Intraday)",
-      "tplus1": "T+1 Selling",
-      "stopLoss": "Trailing Stop Loss",
-      "rsi": "RSI Overbought",
-      "volume": "Volume Divergence",
-      "bollinger": "Bollinger Breakout"
+    "status": {
+      "active": "Active",
+      "paused": "Paused"
     },
-    "metrics": {
-      "winRate": "Win Rate",
-      "pnl": "P&L",
-      "totalTrades": "Total Trades"
+    "actions": {
+      "run": "Run Now",
+      "edit": "Edit Schedule",
+      "save": "Update",
+      "cancel": "Cancel"
     },
-    "params": {
-      "title": "Strategy Parameters",
-      "save": "Save",
-      "cancel": "Cancel",
-      "saveSuccess": "Parameters saved. Will be used for trading.",
-      "saveError": "Save failed. Please retry.",
-      "doubleFactor": {
-        "lstmWeight": "LSTM Factor Weight",
-        "sentimentWeight": "Sentiment Factor Weight",
-        "topN": "Top N Stocks",
-        "minScore": "Min Composite Score"
-      },
-      "tplus1": {
-        "highReturnThreshold": "High Return Sell Threshold (%)",
-        "normalReturnThreshold": "Normal Return Threshold (%)",
-        "lowReturnThreshold": "Low Return Threshold (%)",
-        "lossReturnThreshold": "Loss Sell Threshold (%)"
-      },
-      "stopLoss": {
-        "trailingStopWeight": "Trailing Stop Weight",
-        "trailingStopTolerance": "Drawdown Tolerance"
-      },
-      "rsi": {
-        "rsiWeight": "RSI Weight",
-        "rsiOverboughtThreshold": "RSI Overbought Threshold"
-      },
-      "volume": {
-        "volumeWeight": "Volume Weight",
-        "volumeShrinkThreshold": "Volume Shrink Threshold"
-      },
-      "bollinger": {
-        "bollingerWeight": "Bollinger Weight",
-        "bollingerBreakoutThreshold": "Bollinger Breakout Threshold"
-      }
+    "modal": {
+      "title": "Edit Schedule",
+      "name": "Job Name",
+      "cron": "Cron Expression",
+      "description": "Description"
+    },
+    "messages": {
+      "starting": "Starting job: {{name}}...",
+      "started": "Job {{name}} started successfully",
+      "resumed": "Job resumed",
+      "paused": "Job paused",
+      "updated": "Job schedule updated"
     }
   },
-    "jobs": {
-      "title": "Job Scheduling",
-      "subtitle": "Manage and Monitor Automated System Tasks",
-      "table": {
-        "name": "Job Name",
-        "description": "Description",
-        "cron": "Schedule (Cron)",
-        "lastRun": "Last Run",
-        "nextRun": "Next Run",
-        "status": "Status",
-        "actions": "Actions"
-      },
-      "status": {
-        "active": "Active",
-        "paused": "Paused"
-      },
-      "actions": {
-        "run": "Run Now",
-        "edit": "Edit Schedule",
-        "save": "Update",
-        "cancel": "Cancel"
-      },
-      "modal": {
-        "title": "Edit Schedule",
-        "name": "Job Name",
-        "cron": "Cron Expression",
-        "description": "Description"
-      },
-      "messages": {
-        "starting": "Starting job: {{name}}...",
-        "started": "Job {{name}} started successfully",
-        "resumed": "Job resumed",
-        "paused": "Job paused",
-        "updated": "Job schedule updated"
-      }
-    },
   "transactions": {
     "title": "Trade History",
     "subtitle": "Comprehensive record of all buy and sell execution orders",
@@ -460,24 +501,23 @@
       "returnRate": "Return Rate"
     }
   },
-    "logs": {
-      "title": "Smart System Terminal LOG",
-      "live": "LIVE",
-
-"offline": "OFFLINE",
-"autoScroll": "Auto-scroll",
-"clear": "Clear",
-"waiting": "Waiting for system logs...",
-"connected": ">>> Connected to log stream <<<",
+  "logs": {
+    "title": "Smart System Terminal LOG",
+    "live": "LIVE",
+    "offline": "OFFLINE",
+    "autoScroll": "Auto-scroll",
+    "clear": "Clear",
+    "waiting": "Waiting for system logs...",
+    "connected": ">>> Connected to log stream <<<",
     "reconnecting": ">>> Connection closed. Reconnecting in 3s... <<<",
     "subtitle": "Backend real-time events and connection status"
-    },
-    "notifications": {
-      "title": "Notifications",
-      "markAllRead": "Mark all as read",
-      "clearAll": "Clear all",
-      "empty": "No new notifications",
-      "viewAll": "View all",
-      "loadMore": "Scroll to load more..."
-    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all as read",
+    "clearAll": "Clear all",
+    "empty": "No new notifications",
+    "viewAll": "View all",
+    "loadMore": "Scroll to load more..."
+  }
 }

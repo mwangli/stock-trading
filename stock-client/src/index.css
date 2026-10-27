@@ -1,4 +1,4 @@
-/* AI_GENERATE_START----------------------------------------- */
+/* AI_GENERATE_START------------------------------------------- */
 @import "tailwindcss";
 
 :root,
@@ -392,9 +392,20 @@ select { letter-spacing: 0; }
   flex: 1 1 0;
   margin: 0;
   padding: 24px;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: auto;
   background: var(--app-bg);
+  scrollbar-color: var(--border-color) transparent;
+  scrollbar-width: thin;
+}
+
+.app-content::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.app-content::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: var(--border-color);
 }
 
 .app-page {
@@ -1098,8 +1109,13 @@ select { letter-spacing: 0; }
     position: fixed !important;
     inset: 0 auto 0 0;
     height: 100vh;
+    transition: transform 0.2s ease;
   }
 
+  .app-sidebar.ant-layout-sider-collapsed {
+    transform: translateX(-100%);
+    pointer-events: none;
+  }
   .app-header {
     flex-wrap: wrap;
     gap: 8px 12px;
@@ -1165,4 +1181,4 @@ select { letter-spacing: 0; }
     border-bottom: 0;
   }
 }
-/* AI_GENERATE_END----------------------------------------- */
+/* AI_GENERATE_END------------------------------------------- */

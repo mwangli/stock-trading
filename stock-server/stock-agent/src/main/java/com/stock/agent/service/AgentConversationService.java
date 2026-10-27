@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------
+// AI_GENERATE_START---------------
 package com.stock.agent.service;
 
 import com.alibaba.fastjson2.JSON;
@@ -82,7 +82,7 @@ public class AgentConversationService {
         target.setStockCode(request.getStockCode());
         target.setCandidateBatchId(request.getCandidateBatchId());
         target.setPredictionBatchId(request.getPredictionBatchId());
-        target.setStrategyVersion(request.getStrategyVersion());
+        target.setModelVersion(request.getModelVersion());
         target.setTargetTradeDate(request.getTargetTradeDate());
         target.setKnowledgeMode(request.getKnowledgeMode());
         return target;
@@ -93,7 +93,7 @@ public class AgentConversationService {
         target.setSessionId(request.getSessionId());
         target.setQuestion(question);
         if (containsTradeDiagnostic(question)) {
-            target.setJobName("realTradingAutoBuy");
+            target.setJobName("realTradingAfternoonBuy");
         }
         return target;
     }
@@ -151,4 +151,4 @@ public class AgentConversationService {
         return normalized;
     }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END---------------

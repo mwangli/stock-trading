@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------
+// AI_GENERATE_START--------------
 package com.stock.agent.entity;
 
 import com.stock.agent.enums.TradePlanStatus;
@@ -85,7 +85,7 @@ public class AgentTradePlanEntity {
     private LocalDate targetTradeDate;
 
     /** 策略配置版本。 */
-    private String strategyVersion;
+    private String modelVersion;
 
     /** 价格约束说明。 */
     private String priceConstraint;
@@ -115,4 +115,4 @@ public class AgentTradePlanEntity {
     private String reviewComment;
 
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END--------------

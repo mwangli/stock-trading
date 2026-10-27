@@ -1,7 +1,6 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START------------
 package com.stock.platform.service;
 
-import com.stock.platform.dto.InternalAdaptiveStrategyResponse;
 import com.stock.platform.dto.InternalBrokerHistoryResponse;
 import com.stock.platform.dto.InternalBrokerFactsResponse;
 import com.stock.platform.dto.InternalBrokerStatusResponse;
@@ -18,10 +17,7 @@ import com.stock.platform.dto.InternalPerformanceAnalysisItemResponse;
 import com.stock.platform.dto.InternalPerformanceAnalysisResponse;
 import com.stock.platform.dto.InternalPredictionCandidateItem;
 import com.stock.platform.dto.InternalPredictionCandidateResponse;
-import com.stock.platform.dto.InternalStrategyStateResponse;
 import com.stock.platform.dto.InternalStockDirectoryResponse;
-import com.stock.platform.dto.InternalSystemRuntimeResponse;
-import com.stock.platform.dto.InternalTradeExecutionGateResponse;
 import com.stock.platform.dto.InternalTradingCalendarResponse;
 import com.stock.platform.dto.JobExecutionSnapshot;
 import com.stock.data.dto.StockPriceItemDto;
@@ -31,22 +27,17 @@ import com.stock.data.service.TradingCalendarService;
 import com.stock.model.dto.ModelOverviewResponse;
 import com.stock.model.dto.ModelTrainingRunResponse;
 import com.stock.model.dto.ModelVersionResponse;
+import com.stock.model.dto.PredictionCandidateBatchDto;
+import com.stock.model.dto.PredictionCandidateItemDto;
 import com.stock.model.service.ModelOperationsQueryService;
 import com.stock.model.service.ModelPredictionQueryService;
-import com.stock.strategy.config.StrategyStateManager;
-import com.stock.strategy.dto.AdaptiveStrategyOverviewResponse;
-import com.stock.strategy.dto.StrategyStateDto;
-import com.stock.strategy.algorithm.StockSelector;
-import com.stock.strategy.dto.StockRankingDto;
+import com.stock.model.service.PredictionCandidateQueryService;
 import com.stock.trading.dto.BrokerReadStatusDto;
 import com.stock.trading.dto.BrokerHistoryQueryRequest;
 import com.stock.trading.dto.PerformanceOverviewDto;
 import com.stock.trading.dto.BrokerAccountDto;
-import com.stock.trading.dto.SystemRuntimeConfigResponse;
-import com.stock.trading.config.TradingProperties;
 import com.stock.trading.service.BrokerReadService;
 import com.stock.trading.service.PerformanceReportService;
-import com.stock.trading.service.SystemRuntimeConfigService;
 import com.stock.platform.dto.JobExecutionResponse;
 import com.stock.platform.service.JobManagementService;
 import lombok.RequiredArgsConstructor;
@@ -55,8 +46,6 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -73,17 +62,13 @@ public class InternalAgentFactsService {
     private final MarketDataQueryService marketDataQueryService;
     private final StockQueryService stockQueryService;
     private final TradingCalendarService tradingCalendarService;
-    private final StrategyStateManager strategyStateManager;
     private final BrokerReadService brokerReadService;
     private final PerformanceReportService performanceReportService;
     private final ModelOperationsQueryService modelOperationsQueryService;
     private final ModelPredictionQueryService modelPredictionQueryService;
     private final JobExecutionService jobExecutionService;
     private final JobManagementService jobManagementService;
-    private final StockSelector stockSelector;
-    private final TradingProperties tradingProperties;
-    private final AdaptiveStrategyOverviewService adaptiveStrategyOverviewService;
-    private final SystemRuntimeConfigService systemRuntimeConfigService;
+    private final PredictionCandidateQueryService predictionCandidateQueryService;
 
     /**
      * 查询股票最新日线事实。
@@ -119,36 +104,34 @@ public class InternalAgentFactsService {
     }
 
     /**
-     * 查询当前策略状态。
-     *
-     * @return 策略状态
-     */
-    public InternalStrategyStateResponse strategyState() {
-        StrategyStateDto state = strategyStateManager.getCurrentState();
-        return new InternalStrategyStateResponse(state.isEnabled(), state.getCurrentMode().name(),
-                state.getConfigVersion(), state.isAutoSwitchEnabled(), state.getDisabledIndicators());
-    }
-
-    /**
      * 查询指定候选批次摘要。
      *
-     * @param candidateBatchId 候选批次标识
-     * @return 候选批次摘要
+     * @param predictionBatchId 预测批次标识
+     * @return 模型排名摘要
      */
-    public InternalPredictionCandidateResponse predictionCandidates(String candidateBatchId) {
-        List<StockRankingDto> rankings = stockSelector.getRankingsByCandidateBatchId(candidateBatchId);
-        if (rankings.isEmpty()) {
-            return emptyCandidates(candidateBatchId, null,
-                    "指定候选批次没有排名记录，无法确认候选排序；请检查候选生成任务、目标交易日和批次是否已过期");
+    public InternalPredictionCandidateResponse predictionCandidates(String predictionBatchId) {
+        PredictionCandidateBatchDto batch = predictionCandidateQueryService.getLatestUsableBatch(LocalDate.now());
+        if (predictionBatchId != null && !predictionBatchId.isBlank()
+                && !predictionBatchId.equals(batch.getBatchId())) {
+            return emptyCandidates(predictionBatchId, batch.getTargetTradeDate(), "指定预测批次不是当日最新可用批次");
         }
-        StockRankingDto first = rankings.get(0);
-        List<InternalPredictionCandidateItem> items = rankings.stream().limit(20)
-                .map(item -> new InternalPredictionCandidateItem(item.getStockCode(), item.getStockName(),
-                        item.getRank(), item.getTotalScore(), item.getReason()))
-                .toList();
-        return new InternalPredictionCandidateResponse(first.getCandidateBatchId(), first.getPredictionBatchId(),
-                first.getStrategyConfigVersion(), first.getTargetTradeDate(), items,
-                "已读取候选排名，共 " + rankings.size() + " 条，展示前 " + items.size() + " 条");
+        return toPredictionCandidates(batch);
+    }
+
+    private InternalPredictionCandidateResponse toPredictionCandidates(PredictionCandidateBatchDto batch) {
+        List<PredictionCandidateItemDto> ranked = batch.getItems().stream()
+                .filter(item -> item.getEffectiveModelScore() != null)
+                .sorted(java.util.Comparator.comparing(PredictionCandidateItemDto::getEffectiveModelScore).reversed())
+                .limit(20).toList();
+        List<InternalPredictionCandidateItem> items = new java.util.ArrayList<>();
+        for (int index = 0; index < ranked.size(); index++) {
+            PredictionCandidateItemDto item = ranked.get(index);
+            items.add(new InternalPredictionCandidateItem(item.getStockCode(), item.getStockName(),
+                    index + 1, item.getEffectiveModelScore(), item.getEffectiveEstimatedNetReturn()));
+        }
+        return new InternalPredictionCandidateResponse(batch.getBatchId(), batch.getModelVersion(),
+                batch.getTargetTradeDate(), items,
+                "已读取模型排名，共 " + batch.getItems().size() + " 条，展示前 " + items.size() + " 条");
     }
 
     /**
@@ -158,11 +141,8 @@ public class InternalAgentFactsService {
      * @return 最新候选批次摘要
      */
     public InternalPredictionCandidateResponse latestPredictionCandidates(LocalDate targetTradeDate) {
-        String candidateBatchId = stockSelector.getLatestCandidateBatchId(targetTradeDate);
-        return candidateBatchId == null
-                ? emptyCandidates(null, targetTradeDate,
-                "目标交易日没有候选排名快照，不能判断候选排序或生成买入计划")
-                : predictionCandidates(candidateBatchId);
+        PredictionCandidateBatchDto batch = predictionCandidateQueryService.getLatestUsableBatch(targetTradeDate);
+        return toPredictionCandidates(batch);
     }
 
     /**
@@ -173,8 +153,7 @@ public class InternalAgentFactsService {
     public InternalBrokerStatusResponse brokerStatus() {
         BrokerReadStatusDto status = brokerReadService.getStatus();
         return new InternalBrokerStatusResponse(status.getBrokerName(), status.getTradingMode(),
-                status.isAuthenticated(), status.isRealWriteEnabled(), status.isLiveWriteAllowed(),
-                LocalDateTime.now());
+                status.isAuthenticated(), LocalDateTime.now());
     }
 
     /**
@@ -289,35 +268,6 @@ public class InternalAgentFactsService {
         return snapshot == null
                 ? new InternalJobDiagnosticResponse(jobName, "UNKNOWN", "没有运行记录")
                 : new InternalJobDiagnosticResponse(jobName, snapshot.status(), snapshot.errorMessage());
-    }
-
-    /**
-     * 查询当前真实交易执行门禁摘要。
-     *
-     * @return 执行门禁摘要
-     */
-    public InternalTradeExecutionGateResponse tradeExecutionGate() {
-        LocalDate targetTradeDate = stockSelector.getCurrentTargetTradeDate();
-        boolean tradingDay = tradingCalendarService.isTradingDay(targetTradeDate);
-        boolean brokerAuthenticated = brokerReadService.getStatus().isAuthenticated();
-        boolean realWriteEnabled = tradingProperties.isLiveWriteAllowed();
-        int candidateCount = stockSelector.getExecutableRankings(targetTradeDate).size();
-        List<String> blockedReasons = new ArrayList<>();
-        if (!tradingDay) {
-            blockedReasons.add("目标交易日不是已确认交易日");
-        }
-        if (candidateCount == 0) {
-            blockedReasons.add("当前目标交易日没有可执行候选");
-        }
-        if (!brokerAuthenticated) {
-            blockedReasons.add("券商会话未认证");
-        }
-        if (!realWriteEnabled) {
-            blockedReasons.add("真实交易写入总门禁未开启");
-        }
-        return new InternalTradeExecutionGateResponse(targetTradeDate, tradingDay, candidateCount,
-                brokerAuthenticated, realWriteEnabled, blockedReasons.isEmpty() ? "READY" : "BLOCKED",
-                List.copyOf(blockedReasons));
     }
 
     /**
@@ -513,48 +463,6 @@ public class InternalAgentFactsService {
                 result.getTotal(), items, LocalDateTime.now());
     }
 
-    /**
-     * 查询自适应策略生命周期、健康状态和演化事实。
-     *
-     * @return 自适应策略事实
-     */
-    public InternalAdaptiveStrategyResponse adaptiveStrategy() {
-        AdaptiveStrategyOverviewResponse overview = adaptiveStrategyOverviewService.getOverview();
-        List<String> health = overview.getHealthItems().stream()
-                .map(item -> item.getLabel() + "=" + item.getStatus() + " | " + item.getDetail())
-                .toList();
-        List<String> versions = overview.getVersions().stream()
-                .map(item -> item.getRole() + " | 版本=" + item.getModelVersion()
-                        + " | 状态=" + item.getStatus() + " | 架构=" + item.getArchitectureType()
-                        + " | RankIC=" + item.getMeanRankIc() + " | 创建时间=" + item.getCreatedAt())
-                .toList();
-        List<String> events = overview.getEvolutionEvents().stream()
-                .sorted(Comparator.comparing(com.stock.strategy.dto.AdaptiveStrategyEvolutionEvent::getOccurredAt,
-                        Comparator.nullsLast(Comparator.reverseOrder())))
-                .limit(10)
-                .map(item -> item.getOccurredAt() + " | " + item.getTitle()
-                        + " | 状态=" + item.getStatus() + " | " + item.getDetail())
-                .toList();
-        return new InternalAdaptiveStrategyResponse(
-                overview.getLifecycleStage(), overview.getLifecycleDescription(), overview.getStrategyVersion(),
-                overview.getCurrentMode(), overview.isStrategyEnabled(), overview.getTargetTradeDate(),
-                overview.getLastEvolutionAt(), overview.isAutomaticTradingPaused(), health, versions, events,
-                overview.getAnomalies(), LocalDateTime.now());
-    }
-
-    /**
-     * 查询 Backend 健康和只读运行控制状态。
-     *
-     * @return 系统运行事实
-     */
-    public InternalSystemRuntimeResponse systemRuntime() {
-        SystemRuntimeConfigResponse runtime = systemRuntimeConfigService.getSettings();
-        return new InternalSystemRuntimeResponse("UP", runtime.getNodeId(),
-                runtime.isStartupDataSyncEnabled(), runtime.isAutomaticTradingPaused(),
-                runtime.getEmergencyStopReason(), runtime.getEmergencyStoppedAt(),
-                runtime.getEmergencyStopResult(), runtime.getUpdatedAt(), LocalDateTime.now());
-    }
-
     private String summarizeJobRun(JobExecutionResponse run) {
         if (run == null) {
             return "无运行记录";
@@ -572,8 +480,8 @@ public class InternalAgentFactsService {
 
     private InternalPredictionCandidateResponse emptyCandidates(
             String candidateBatchId, LocalDate targetTradeDate, String reason) {
-        return new InternalPredictionCandidateResponse(candidateBatchId, null, null,
+        return new InternalPredictionCandidateResponse(candidateBatchId, null,
                 targetTradeDate, List.of(), reason);
     }
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END------------

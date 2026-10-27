@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------
+// AI_GENERATE_START-----------------
 package com.stock.platform.service;
 
 import com.stock.platform.entity.JobConfig;
@@ -11,12 +11,11 @@ import com.stock.platform.quartz.MasterShadowPredictionQuartzJob;
 import com.stock.platform.quartz.NewsCollectionBackfillQuartzJob;
 import com.stock.platform.quartz.NewsFeatureSnapshotBackfillQuartzJob;
 import com.stock.platform.quartz.NewsDailySyncQuartzJob;
-import com.stock.platform.quartz.RealTradingAutoBuyQuartzJob;
-import com.stock.platform.quartz.RealTradingT1ExitQuartzJob;
+import com.stock.platform.quartz.RealTradingMorningSellQuartzJob;
+import com.stock.platform.quartz.RealTradingAfternoonBuyQuartzJob;
 import com.stock.platform.quartz.SentimentShadowQuartzJob;
 import com.stock.platform.quartz.StockListSyncQuartzJob;
 import com.stock.platform.quartz.StockPriceHistoryBackfillQuartzJob;
-import com.stock.platform.quartz.StockSelectionQuartzJob;
 import com.stock.platform.quartz.TradeCalendarMonthlySyncQuartzJob;
 import com.stock.platform.quartz.GlobalDataCleanupQuartzJob;
 import com.stock.platform.repository.JobConfigRepository;
@@ -73,9 +72,8 @@ public class JobSchedulerService {
             Map.entry("dailyModelPrediction", DailyModelPredictionQuartzJob.class),
             Map.entry("masterShadowPrediction", MasterShadowPredictionQuartzJob.class),
             Map.entry("globalDataCleanup", GlobalDataCleanupQuartzJob.class),
-            Map.entry("stockSelection", StockSelectionQuartzJob.class),
-            Map.entry("realTradingAutoBuy", RealTradingAutoBuyQuartzJob.class),
-            Map.entry("realTradingT1Exit", RealTradingT1ExitQuartzJob.class),
+            Map.entry("realTradingMorningSell", RealTradingMorningSellQuartzJob.class),
+            Map.entry("realTradingAfternoonBuy", RealTradingAfternoonBuyQuartzJob.class),
             Map.entry("broker-current-facts-sync", BrokerCurrentFactsSyncQuartzJob.class));
 
     private final JobConfigRepository jobConfigRepository;
@@ -355,4 +353,4 @@ public class JobSchedulerService {
     public record QuartzRuntimeState(String triggerState, LocalDateTime nextFireTime, boolean registered) {
     }
 }
-// AI_GENERATE_END----------------
+// AI_GENERATE_END-----------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------------
+// AI_GENERATE_START---------------------
 package com.stock.trading.service;
 
 import com.stock.trading.dto.BrokerAccountDto;
@@ -14,7 +14,6 @@ import com.stock.trading.vo.BrokerFillSnapshot;
 import com.stock.trading.vo.BrokerOrderSnapshot;
 import com.stock.trading.adapter.ZXBrokerAdapter;
 import com.stock.trading.calculator.FeeCalculator;
-import com.stock.trading.config.TradingProperties;
 import com.stock.trading.repository.AccountSnapshotRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -40,23 +39,19 @@ public class BrokerReadService {
 
     private final ZXBrokerAdapter brokerAdapter;
     private final FeeCalculator feeCalculator;
-    private final TradingProperties tradingProperties;
     private final BrokerIdentityService brokerIdentityService;
     private final AccountSnapshotRepository accountSnapshotRepository;
 
     /**
      * 获取券商只读网关状态。
      *
-     * @return 当前券商、模式和门禁状态
+     * @return 当前券商、模式和认证状态
      */
     public BrokerReadStatusDto getStatus() {
         return BrokerReadStatusDto.builder()
                 .brokerName(brokerAdapter.getName())
                 .tradingMode("AUTOMATIC")
-                .authenticated(brokerAdapter.isAuthenticated())
-                .realWriteEnabled(tradingProperties.isRealWriteEnabled())
-                .liveWriteAllowed(tradingProperties.isLiveWriteAllowed())
-                .build();
+                .authenticated(brokerAdapter.isAuthenticated()).build();
     }
 
     /**
@@ -259,4 +254,4 @@ public class BrokerReadService {
         return "****" + trimmed.substring(trimmed.length() - 4);
     }
 }
-// AI_GENERATE_END--------------------
+// AI_GENERATE_END---------------------

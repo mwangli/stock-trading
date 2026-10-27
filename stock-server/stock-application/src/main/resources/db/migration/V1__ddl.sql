@@ -66,12 +66,6 @@ CREATE TABLE IF NOT EXISTS `sys_user_preference` (
 CREATE TABLE IF NOT EXISTS `system_runtime_config` (
   `node_id` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '运行节点唯一标识',
   `startup_data_sync_enabled` tinyint(1) NOT NULL COMMENT '是否在应用启动后执行股票基础数据初始化。',
-  `automatic_trading_paused` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否已通过紧急停止阻止后续自动交易。',
-  `emergency_stop_reason` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '最近一次紧急停止原因。',
-  `emergency_stopped_at` datetime(6) DEFAULT NULL COMMENT '最近一次紧急停止时间。',
-  `emergency_stop_operator` varchar(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '最近一次紧急停止操作者。',
-  `emergency_stop_strategy_version` varchar(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '紧急停止时生效的策略版本。',
-  `emergency_stop_result` varchar(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '最近一次紧急停止执行结果。',
   `updated_at` datetime NOT NULL COMMENT '配置最后更新时间。',
   PRIMARY KEY (`node_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='运行节点动态控制配置';
@@ -93,51 +87,6 @@ CREATE TABLE IF NOT EXISTS `sync_state` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_sync_state_scope` (`dataset`,`scope_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='数据同步水位与缺口状态';
-
--- 股票选择策略版本配置
-CREATE TABLE IF NOT EXISTS `strategy_config` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '策略配置数据库主键',
-  `bollinger_breakout_threshold` double NOT NULL COMMENT '布林带突破阈值',
-  `bollinger_weight` double NOT NULL COMMENT '布林带指标权重',
-  `config_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '策略配置业务标识',
-  `create_time` datetime(6) DEFAULT NULL COMMENT '策略配置创建时间',
-  `enabled` bit(1) NOT NULL COMMENT '策略配置是否启用',
-  `high_return_threshold` int NOT NULL COMMENT '高收益分档阈值，单位为百分比',
-  `indicator_enabled` longtext COLLATE utf8mb4_unicode_ci COMMENT '指标启用状态 JSON',
-  `loss_return_threshold` int NOT NULL COMMENT '亏损分档阈值，单位为百分比',
-  `low_return_threshold` int NOT NULL COMMENT '低收益分档阈值，单位为百分比',
-  `lstm_weight` double NOT NULL COMMENT 'LSTM 模型得分权重',
-  `min_score` double NOT NULL COMMENT '候选股票最低综合得分',
-  `mode` enum('AGGRESSIVE','BALANCED','CONSERVATIVE') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '策略运行模式',
-  `normal_return_threshold` int NOT NULL COMMENT '正常收益分档阈值，单位为百分比',
-  `rsi_overbought_threshold` double NOT NULL COMMENT 'RSI 超买阈值',
-  `rsi_weight` double NOT NULL COMMENT 'RSI 指标权重',
-  `sentiment_weight` double NOT NULL COMMENT '新闻情感得分权重',
-  `top_n` int NOT NULL COMMENT '最终保留候选股票数量',
-  `trailing_stop_tolerance` double NOT NULL COMMENT '移动止损容忍阈值',
-  `trailing_stop_weight` double NOT NULL COMMENT '移动止损指标权重',
-  `update_time` datetime(6) DEFAULT NULL COMMENT '策略配置最后更新时间',
-  `version` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '策略配置版本号',
-  `volume_shrink_threshold` double NOT NULL COMMENT '成交量缩量阈值',
-  `volume_weight` double NOT NULL COMMENT '成交量指标权重',
-  `minimum_listing_years` double NOT NULL COMMENT '候选股票最小上市年限，单位为年；0 表示不限制',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='股票选择策略版本配置';
-
--- 策略运行状态
-CREATE TABLE IF NOT EXISTS `strategy_runtime_state` (
-  `state_key` varchar(64) NOT NULL COMMENT '策略运行状态唯一键',
-  `enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '策略总开关。',
-  `current_mode` varchar(32) NOT NULL DEFAULT 'BALANCED' COMMENT '当前策略模式。',
-  `disabled_indicators_json` longtext COMMENT '被禁用指标列表的 JSON。',
-  `last_switch_time` datetime(3) DEFAULT NULL COMMENT '最近一次切换时间。',
-  `last_switch_reason` varchar(500) DEFAULT NULL COMMENT '最近一次切换原因。',
-  `config_version` varchar(64) NOT NULL DEFAULT '1' COMMENT '当前策略配置版本。',
-  `auto_switch_enabled` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否允许规则自动切换。',
-  `last_auto_switch_time` datetime(3) DEFAULT NULL COMMENT '最近一次自动切换时间。',
-  `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '最近更新时间。',
-  PRIMARY KEY (`state_key`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='策略运行状态';
 
 -- 券商委托事实
 CREATE TABLE IF NOT EXISTS `broker_order` (

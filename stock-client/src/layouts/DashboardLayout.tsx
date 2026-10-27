@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------------------------------------------------------
+// AI_GENERATE_START-------------------------------------------------------------
 import React, {
   useEffect,
   useMemo,
@@ -29,7 +29,6 @@ import {
   UserOutlined,
   HolderOutlined,
   MessageOutlined,
-  RobotOutlined,
   ReadOutlined,
   ArrowLeftOutlined,
 } from '@ant-design/icons';
@@ -49,7 +48,6 @@ const DEFAULT_MENU_ORDER = [
   '/orderRecords',
   '/modelOperations',
   '/agentConversation',
-  '/adaptiveStrategy',
   '/jobs',
   '/logs',
 ];
@@ -89,9 +87,6 @@ const normalizeMenuOrder = (menuOrder: unknown) => {
   }
 
   const migratedOrder = menuOrder.flatMap((key) => {
-    if (key === '/strategyConfig') {
-      return ['/agentConversation', '/adaptiveStrategy'];
-    }
     if (key === '/historyOrders' || key === '/tradeRecords' || key === '/transactions') {
       return ['/orderRecords'];
     }
@@ -292,7 +287,6 @@ const DashboardLayout: React.FC = () => {
     { key: '/logs', icon: <FileTextOutlined />, label: t('layout.logs') },
     { key: '/modelOperations', icon: <ExperimentOutlined />, label: t('layout.modelOperations') },
     { key: '/agentConversation', icon: <MessageOutlined />, label: t('layout.agentConversation') },
-    { key: '/adaptiveStrategy', icon: <RobotOutlined />, label: t('layout.adaptiveStrategy') },
     { key: '/jobs', icon: <ScheduleOutlined />, label: t('layout.jobs') },
   ], [t]);
 
@@ -433,7 +427,6 @@ const DashboardLayout: React.FC = () => {
     '/logs': t('layout.pageTitles.logs'),
     '/modelOperations': t('layout.pageTitles.modelOperations'),
     '/agentConversation': t('layout.pageTitles.agentConversation'),
-    '/adaptiveStrategy': t('layout.pageTitles.adaptiveStrategy'),
     '/jobs': t('layout.pageTitles.jobs'),
   };
   const appShellStyle = { '--app-sidebar-width': `${sidebarWidth}px` } as CSSProperties;
@@ -598,4 +591,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END-----------------------------------------------------------
+// AI_GENERATE_END-------------------------------------------------------------

@@ -54,14 +54,14 @@ Ranking LSTM 保持生产基线，MASTER 使用相同标签、成本模型和四
 1. `dailyModelPrediction` 在工作日 `06:15` 生成 Ranking LSTM 基础批次。该批次只承担股票池、目标交易日和追溯载体职责，不代表 LSTM 永久占据生产权重。
 2. `masterShadowPrediction` 在 `06:20` 对同一股票池执行 MASTER 影子预测，保存独立四任务输出，并用已经到齐的真实目标日收益回填历史影子样本。
 3. `TemporalModelWeightOptimizer` 读取最近 20 个已评估交易日，只保留双模型同版本、有效样本数不少于 500、有效交易日不少于 10 且每日完整配对覆盖率不低于 95% 的样本外窗口；完整配对要求 Ranking LSTM、MASTER 四任务输出和实际收益同时有效，每日至少 3 只股票。
-4. `masterShadowPrediction` 将优化结果写入全局融合状态，不回写 `06:15` 已持久化的 Ranking LSTM 原始预测。`stockSelection` 在 `06:30` 查询该原始批次时，`PredictionCandidateQueryService` 才调用 `TemporalModelEnsembleService.apply()`，读取当时最新的融合状态并构造 `PredictionCandidateBatchDto`，因此 `06:20` 刷新的权重可以用于当天 `06:30` 的选股。
-5. `PredictionCandidateBatchDto` 在本次查询结果中固定双模型 ID、实际权重、权重版本和状态；DTO 构造完成后，单次选股执行期间不再读取或刷新全局权重。`StockSelector` 只读取融合后的有效输出，不直接读取任一原始模型分数。
+4. `masterShadowPrediction` 将优化结果写入全局融合状态，不回写 `06:15` 已持久化的 Ranking LSTM 原始预测。交易任务查询当日排名时，`PredictionCandidateQueryService` 调用 `TemporalModelEnsembleService.apply()`，读取最新融合状态并构造 `PredictionCandidateBatchDto`，因此 `06:20` 刷新的权重可以用于当天交易。
+5. `PredictionCandidateBatchDto` 在本次查询结果中固定双模型 ID、实际权重、权重版本和状态；DTO 构造完成后，单次交易候选读取期间不再刷新全局权重。Trading 只读取融合后的 `effectiveModelScore` 排名，不直接读取任一原始模型分数。
 
 两个模型每日持续预测，任一生产权重均允许为 `0`。权重为 `0` 的模型不参与当前批次的排名、收益过滤、方向评分或风险评分，但继续积累影子证据以支持自动恢复。
 
 #### 四任务融合与最终评分
 
-`TemporalModelOutputCalculator` 是生产选股和权重回放共用的唯一计算入口。融合输入的 rank 是两个模型各自在当日横截面内归一化后的 percentile；rank、上涨概率和下行风险必须位于 `[0,1]`，预期超额收益必须为有限数值，且 `wl + wm = 1`：
+`TemporalModelOutputCalculator` 是生产排名和权重回放共用的唯一计算入口。融合输入的 rank 是两个模型各自在当日横截面内归一化后的 percentile；rank、上涨概率和下行风险必须位于 `[0,1]`，预期超额收益必须为有限数值，且 `wl + wm = 1`：
 
 ```text
 effectiveRankScore             = wl * lstmRank + wm * masterRank
@@ -170,13 +170,13 @@ Mongo 集合 `temporal_model_ensemble_states` 只保存一条全局状态，主�
 | `TemporalModelEnsembleStateDocument` | 保存全局模型 ID、当前/目标权重、指标、状态和权重版本 | 固定主键；旧 `schemaVersion` 直接重建，不做兼容迁移 |
 | `PredictionCandidateBatchDto` | 将本批次模型 ID、实际权重、权重版本和状态传给决策层 | 权重只保存一次，单股票明细不重复保存 |
 | `PredictionCandidateItemDto` | 提供六个 `effective*` 生产字段 | 决策层不得回退读取原始 LSTM 或 MASTER 分数字段 |
-| `StockSelector` | 使用 `effectiveModelScore` 排序并按融合净收益过滤 | 不参与权重计算，不改变模型状态 |
+| `PredictionCandidateQueryService` | 构造融合后的 `effectiveModelScore` 排名，供 Trading 读取前三名 | 不参与权重计算，不改变模型状态 |
 | `ModelOperationsQueryService` | 把 Mongo 状态组装到模型运维概览 | 只读，不提供人工调权命令 |
 
 #### 一致性与并发
 
 - 当前部署目标是单实例 Backend。`runShadowCycle()`、`refreshState()` 和批次融合入口使用单 JVM 串行保护，Quartz 任务统一由调度中心触发。
-- 权重状态更新只影响之后调用 `getLatestUsableBatch()` / `apply()` 构造的融合 DTO，不修改 Mongo 中已经持久化的 Ranking LSTM 原始预测。已经构造完成的 `PredictionCandidateBatchDto` 所携带的 `weightVersion` 和双权重在本次选股执行期间保持不变。
+- 权重状态更新只影响之后调用 `getLatestUsableBatch()` / `apply()` 构造的融合 DTO，不修改 Mongo 中已经持久化的 Ranking LSTM 原始预测。已经构造完成的 `PredictionCandidateBatchDto` 所携带的 `weightVersion` 和双权重在本次交易候选读取期间保持不变。
 - 状态保存和操作审计是先保存状态、再写审计的两个动作，不属于跨集合原子事务。运行核查必须同时检查状态文档和审计记录；如果未来要求多实例或强原子审计，再引入乐观锁、事务或 Outbox，当前不预先设计。
 - MASTER 权重为 `0` 时影子链仍运行；停掉影子任务会使系统失去自动恢复证据，但不会修改已有生产批次。
 
@@ -189,7 +189,7 @@ Mongo 集合 `temporal_model_ensemble_states` 只保存一条全局状态，主�
 | 3. 制品加载 | 加载 Ranking LSTM 与 MASTER GridFS 参数并执行固定输入前向 | 架构、形状、有限值、概率范围和特征版本一致 | 退役无效候选，不复用随机参数 |
 | 4. 影子数据 | 连续生成 MASTER 影子预测并回填真实收益 | 每日完整配对覆盖率不低于 95%，至少 10 日和 500 样本 | 保持 `OBSERVING`，补数据后自动重评 |
 | 5. 自动选择 | 回放 21 个权重组合并观察多次状态刷新 | 目标、实际步进、权重版本和审计一致 | 无合格组合进入 `DEGRADED` |
-| 6. 策略联调 | 核对选股只消费 `effective*` 字段 | 权重为 0 的模型对排序和净收益无影响 | 停止候选并修复契约 |
+| 6. Trading 联调 | 核对交易候选只消费 `effective*` 字段 | 权重为 0 的模型对排序和净收益无影响 | 停止买入任务并修复契约 |
 | 7. 生产观察 | 覆盖多个市场阶段并纳入滑点、成交失败和仓位相互作用 | 收益、回撤、换手和状态恢复均有可复核证据 | 自动降权或回退，不人工修改权重 |
 
 #### 尚未完成的运行证明

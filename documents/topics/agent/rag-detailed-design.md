@@ -104,7 +104,7 @@ source_paths:
 | Pooling | CLS |
 | 归一化 | L2 |
 
-Docker Profile 使用 `/app/model-files/embedding`。模型基础镜像把固定文件复制到该目录，最终 Backend 镜像直接继承，不通过可写挂载覆盖模型目录。
+Docker Profile 使用 `/app/model-files/embedding`。生产服务器的 `model-files` 目录通过 Compose 只读挂载到 `/app/model-files`，Backend 镜像不包含固定模型文件。
 
 ### 6.2 运行时加载
 
@@ -175,7 +175,6 @@ EmbeddingModelWarmup，Order=100
 
 | 数据分类 | 实际来源 | RAG 来源类型 | 权限 | 说明 |
 |---|---|---|---|---|
-| 稳定业务知识 | Backend `/api/internal/agentFacts/adaptiveStrategy` | `BUSINESS_KNOWLEDGE` | `SHARED` | 保存策略版本、生命周期、模型版本摘要和演化事件，不复制账户或订单 |
 | 研究资料 | Backend `/api/internal/agentFacts/modelOperations?mode=VERSIONS` | `RESEARCH_MATERIAL` | `SHARED` | 保存最近模型版本、离线 Rank IC、Top10% 收益等已治理评估摘要 |
 | 复盘结论 | Agent MongoDB `agent_trade_plan.reviewComment` | `REVIEW_CONCLUSION` | `PRIVATE` | 按交易计划所属 `userScope` 隔离用户批准或拒绝意见 |
 | 用户原始文档 | `POST /api/agent/rag/documents` | `DOCUMENT` | 默认 `PRIVATE` | 只能由用户上传、粘贴或由明确的数据接入功能导入，不从文件系统和浏览器隐式采集 |
@@ -399,8 +398,8 @@ POST /api/agent/chat, knowledgeMode=AUTO
 
 ## 18. 部署与升级
 
-1. `model-files/**` 变化时，CI/CD 才拉取 Git LFS 对象并更新模型基础镜像。
-2. 普通 Backend 发布直接复用对应模型版本的基础镜像，不下载模型文件。
+1. 在生产服务器部署目录预置完整的 `model-files/**`；模型目录位于其他位置时，通过 `MODEL_FILES_DIR` 指定绝对路径。
+2. CI/CD 只发布应用镜像，Compose 将宿主机模型目录只读挂载到 Backend，不下载或复制模型文件。
 3. 应用启动后触发本地模型预热。
 4. 状态接口应从 `INITIALIZING` 转为 `READY`。
 5. 模型版本、维度、Pooling 或归一化任一变化时，发布新版本目录并重建旧向量。
@@ -434,7 +433,7 @@ POST /api/agent/chat, knowledgeMode=AUTO
 | RAG 检索 | 同一用户可检索，其他用户不能读取 PRIVATE 文档 |
 | 自动初始化 | 启动日志出现来源汇总，MongoDB 存在 `BUSINESS_KNOWLEDGE`、`RESEARCH_MATERIAL`；存在复核意见时生成 `REVIEW_CONCLUSION` |
 | 初始化幂等 | 无业务变化时重启记录为 unchanged，活动 Chunk 数不增长 |
-| 来源更新 | 修改复核意见或产生新策略版本后重启，新版本活动、旧版本 `active=false` |
+| 来源更新 | 修改复核意见或工程文档后重启，新版本活动、旧版本 `active=false` |
 | AUTO Tool Calling | 历史复盘问题调用 `searchKnowledge` 并返回 `rag:` 引用；普通闲聊不调用该工具 |
 | REQUIRED 预检索 | 请求传 `REQUIRED` 时模型调用前产生 `RAGxxx` Evidence，且不再调用 `searchKnowledge` |
 | NONE 禁用 | 请求传 `NONE` 时不产生 RAG 检索和 `rag:` 工具审计记录 |
@@ -449,7 +448,7 @@ POST /api/agent/chat, knowledgeMode=AUTO
 
 1. 固定模型权重未损坏时，应用就绪后 Embedding 能主动加载并最终报告 `READY`。
 2. Windows 文本换行差异不再阻止本地模型加载。
-3. Git LFS 指针未展开、权重截断或内容不可加载时，DJL 会阻止模型进入 READY。
+3. 权重缺失、截断或内容不可加载时，DJL 会阻止模型进入 READY。
 4. 模型失败原因可通过状态或日志定位，不再只显示笼统“未就绪”。
 5. RAG 摄取和检索使用相同模型版本、Provider 和维度。
 6. PRIVATE 文档严格按服务端用户范围隔离。

@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START-----------
 package com.stock.agent.dto;
 
 import com.stock.agent.enums.KnowledgeMode;
@@ -24,8 +24,8 @@ public class ResearchRequest {
     private String candidateBatchId;
     /** 当前股票上下文，可为空。 */
     private String stockCode;
-    /** 当前策略版本上下文，可为空。 */
-    private String strategyVersion;
+    /** 当前模型版本上下文，可为空。 */
+    private String modelVersion;
     /** 当前预测批次上下文，可为空。 */
     private String predictionBatchId;
     /** 当前目标交易日上下文，可为空。 */
@@ -33,4 +33,4 @@ public class ResearchRequest {
     /** 知识库使用模式，默认 AUTO。 */
     private KnowledgeMode knowledgeMode = KnowledgeMode.AUTO;
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END-----------

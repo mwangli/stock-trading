@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.agent.dto;
 
 import com.stock.agent.enums.KnowledgeMode;
@@ -33,8 +33,8 @@ public class AgentChatRequest {
     /** 当前预测批次标识，可为空。 */
     private String predictionBatchId;
 
-    /** 当前策略版本，可为空。 */
-    private String strategyVersion;
+    /** 当前模型版本，可为空。 */
+    private String modelVersion;
 
     /** 当前目标交易日，可为空。 */
     private LocalDate targetTradeDate;
@@ -45,4 +45,4 @@ public class AgentChatRequest {
     /** 知识库使用模式，默认 AUTO。 */
     private KnowledgeMode knowledgeMode = KnowledgeMode.AUTO;
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END--------

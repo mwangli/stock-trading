@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START-------------
 package com.stock.agent.enums;
 
 /**
@@ -31,9 +31,6 @@ public enum AgentToolName {
     /** 最新价格查询。 */
     LATEST_PRICE("queryLatestPrice"),
 
-    /** 策略状态查询。 */
-    STRATEGY_STATE("queryStrategyState"),
-
     /** 预测候选查询。 */
     PREDICTION_CANDIDATES("queryPredictionCandidates"),
 
@@ -55,9 +52,6 @@ public enum AgentToolName {
     /** Agent Provider 运行状态。 */
     PROVIDER_RUNTIME("queryProviderRuntime"),
 
-    /** 真实交易执行门禁。 */
-    TRADE_EXECUTION_GATE("queryTradeExecutionGate"),
-
     /** 股票目录与行情摘要。 */
     STOCK_DIRECTORY("queryStockDirectory"),
 
@@ -71,13 +65,7 @@ public enum AgentToolName {
     JOB_OPERATIONS("queryJobOperations"),
 
     /** 券商历史委托与成交。 */
-    BROKER_HISTORY("queryBrokerHistory"),
-
-    /** 自适应策略生命周期。 */
-    ADAPTIVE_STRATEGY("queryAdaptiveStrategy"),
-
-    /** 系统运行和只读控制状态。 */
-    SYSTEM_RUNTIME("querySystemRuntime");
+    BROKER_HISTORY("queryBrokerHistory");
 
     private final String toolName;
 
@@ -95,4 +83,4 @@ public enum AgentToolName {
     }
 
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END------------
