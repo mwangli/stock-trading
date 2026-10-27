@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START---------------------------------------------------------------- -->
+<!-- AI_GENERATE_START------------------------------------------------------------------- -->
 # 交互语言要求
 
 1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
@@ -683,11 +683,14 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 
 ### CI/CD 版本标签规则（项目级强制）
 
-1. Application 与 Frontend 两条 GitHub Actions 仅在推送各自版本标签时触发构建与部署，普通分支提交和推送不得触发生产构建。
-2. 版本标签分别使用 `backend-v<版本>`、`frontend-v<版本>`，版本允许两段或三段数字，例如 `backend-v4.2`、`frontend-v4.2`。Agent 随 Backend/Application 一并发布，不再使用独立应用标签。
-3. 完成功能提交和分支推送不等于发布。只有用户在当前请求中明确授权发布版本时，Agent 才能创建并推送版本标签；禁止自动递增版本号、自动打标签或通过删除后重建标签重复触发流水线。
-4. 创建标签前必须确认目标提交、版本号、变更范围和远程是否已存在同名标签；标签应指向已推送且通过规定静态检查的提交。
-5. 推送版本标签后，只核对该模块对应的 GitHub Actions，并以目标提交 SHA、模块镜像标签和部署结果作为发布追踪依据。
+1. 生产发布统一使用 `v<主版本>.<次版本>.<补丁版本>` 标签，例如 `v5.6.7`；不再创建 `backend-v*`、`frontend-v*` 或独立 Agent 发布标签。普通分支提交和推送不得触发生产构建。
+2. 推送统一版本标签后，`.github/workflows/ci-cd.yml` 必须执行全量发布，不再检测文件变更范围：Backend 与 Frontend 均构建、推送并部署，Agent 随 Backend/Application 一并发布。
+3. `prepare` 任务只上传一次 `docker-compose.yml`；完成后 Backend 与 Frontend 必须并行执行，不相互等待。两个部署任务分别使用 `--no-deps` 只更新自己的应用服务。
+4. Backend 镜像使用当前 `model-files` 最近变更提交作为模型镜像版本。每次统一版本发布先检查远程仓库是否已有该不可变模型镜像；已存在时直接复用，只有不存在时才下载 Git LFS 模型制品并构建、推送模型镜像。
+5. 完成功能提交和分支推送不等于发布。只有用户在当前请求中明确授权发布版本时，Agent 才能创建并推送版本标签；禁止自动递增版本号、自动打标签或通过删除后重建标签重复触发流水线。
+6. 创建标签前必须确认目标提交、版本号和远程是否已存在同名标签；标签应指向已推送且通过规定静态检查的提交。
+7. 手工触发发布仅用于相同提交的全量补发或故障恢复，不提供 Backend、Frontend 单独发布范围。
+8. 推送版本标签后，以目标提交 SHA、前后端镜像标签和两个部署任务的结果作为发布追踪依据。
 
 ## 思考与行动指南 (For Agents)
 
@@ -701,4 +704,4 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 **Agent 特别指令**:
 - 本项目无自动化测试，不要生成或要求补充测试用例；质量依赖代码审查与手工验证。
 - Backend 只允许 `stock-base`、`stock-data`、`stock-model`、`stock-strategy`、`stock-trading`、`stock-platform`、`stock-agent`、`stock-application` 八个子模块；只有 `stock-application` 可执行和发布。
-<!-- AI_GENERATE_END---------------------------------------------------------------- -->
+<!-- AI_GENERATE_END------------------------------------------------------------------- -->
