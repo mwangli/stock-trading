@@ -5,8 +5,7 @@ HELP.md
 
 # Maven
 target/
-stock-backend/app.jar
-stock-agent/app.jar
+stock-server/app.jar
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

@@ -5,11 +5,12 @@ sidebar_position: 1
 owner: system
 type: overview
 status: SOURCE_IMPLEMENTED
-last_verified: 2026-10-25
+last_verified: 2026-10-26
 source_paths:
   - README.md
   - pom.xml
   - docker-compose.yml
+slug: /system/
 ---
 
 <DocMetadata />
@@ -18,7 +19,7 @@ source_paths:
 
 面向 A 股市场的数据采集、模型预测、策略分析、Agent 决策增强、风险控制和自动交易平台。
 
-系统采用三模块架构：`stock-backend` 承载核心业务与交易安全边界，`stock-agent` 承载独立 Agent 能力，`stock-frontend` 承载独立 Web 应用。Java Backend 始终保留权威事实校验、硬风险、幂等和券商执行权。
+系统采用“多 Maven 子模块、单 Spring Boot 应用”的模块化单体架构：`stock-backend` 内部划分市场、模型、决策、执行、Agent、调度和应用装配模块，`stock-frontend` 承载独立 Web 应用。Java Backend 始终保留权威事实校验、硬风险、幂等和券商执行权。
 
 ## 系统目标与设计要求
 
@@ -55,25 +56,34 @@ source_paths:
 - Agent 研究、诊断、RAG、Memory、交易计划和受控候选判断。
 - 账户、持仓、订单、成交、T+1、风险门禁和券商委托。
 - Quartz 统一任务管理、执行记录和跨模块业务编排。
-- React 管理界面独立构建，通过 Nginx 反向代理访问 Backend 与 Agent。
+- React 管理界面独立构建，通过 Nginx 反向代理访问唯一 Application。
 
 ## 项目结构
 
 ```text
 stock-trading4/
-├── stock-backend/           # Spring Boot 后端，内部按业务包组织
-├── stock-agent/             # Agent、RAG、Memory 和决策增强
+├── stock-backend/           # Backend Maven 聚合器
+│   ├── stock-base/      # 最小公共契约
+│   ├── stock-data/        # 市场事实
+│   ├── stock-model/         # 模型训练与推理
+│   ├── stock-strategy/      # 策略与决策
+│   ├── stock-trading/     # 风控与交易执行
+│   ├── stock-agent/         # Agent、RAG、Memory 和决策增强
+│   ├── stock-platform/      # Quartz 调度
+│   └── stock-application/   # 唯一 Spring Boot 可执行模块
 ├── stock-frontend/          # React + Vite 独立前端
 ├── documents/               # Markdown 文档唯一事实源
-│   ├── system/              # 系统总览、治理规范和架构决策
-│   ├── backend/             # 后端领域与模型专题
-│   ├── agent/               # Agent 架构与能力设计
-│   └── frontend/            # 前端页面与交互设计
+│   ├── system/              # 系统入口、全局架构和端到端闭环
+│   ├── modules/             # Maven 模块与 Frontend 职责边界
+│   ├── topics/              # 模型、Agent 等跨类或跨模块专题
+│   ├── operations/          # 有实际内容时维护部署、运行和排障手册
+│   ├── governance/          # 文档状态、元数据和维护规则
+│   └── decisions/           # 架构决策记录 ADR
 ├── stock-frontend/src/pages/documentation/ # 内置 Markdown 文档工作台
 ├── model-files/             # Git LFS 固定模型制品，发布时构建进对应镜像
 ├── .tmp/                    # 临时文件和中间脚本，不提交
 ├── docker-compose.yml
-├── pom.xml                  # 三模块聚合与统一版本管理
+├── pom.xml                  # Backend 与 Frontend 聚合及统一版本管理
 ├── README.md                # 仓库入口和文档门户导航
 └── AGENTS.md
 ```
@@ -86,11 +96,11 @@ stock-trading4/
 
 | 模块 | 当前职责 | 默认端口 |
 |---|---|---:|
-| `stock-backend` | 数据、模型、策略、交易、Quartz、内部事实 API 和唯一真实交易执行边界 | 8080 |
-| `stock-agent` | LangChain4j、RAG、Memory、研究诊断、交易计划草案和独立交易建议 | 8081 |
-| `stock-frontend` | React 页面、交互状态及 Nginx API 分流 | 80 |
+| `stock-application` | 聚合全部 Backend 子模块，提供唯一 Spring Boot 进程和真实交易执行边界 | 8080 |
+| `stock-agent` | Application 内部 Maven 模块，承载 LangChain4j、RAG、Memory 和受控建议 | 同进程 |
+| `stock-frontend` | React 页面、交互状态及 Nginx API 代理 | 80 |
 
-Backend 启动类位于共同父包 `com.stock`，内部使用 `market`、`model`、`decision`、`execution`、`schedule` 和 `platform` 表达业务边界，这些包不是独立 Maven 模块。Agent 与 Backend 不共享 Java 实现或 Maven DTO JAR，通过受保护的 HTTP JSON 契约协作。
+Backend 启动类位于 `stock-application` 的共同父包 `com.stock`。业务能力拆为独立 Maven JAR，但只由 `stock-application` 装配运行；模块依赖固定为 `base → data → model → strategy → trading → platform → agent → application`。Agent 直接调用 Platform 公开 Service，不访问 Backend Repository，也不再通过内部 HTTP 调用自身进程。
 
 ### 运行关系
 
@@ -98,17 +108,14 @@ Backend 启动类位于共同父包 `com.stock`，内部使用 `market`、`model
 浏览器
   |
 stock-frontend:80
-  |-- /api/agent/** --> stock-agent:8081
-  |-- /api/** -------> stock-backend:8080
-  `-- /ws/** --------> stock-backend:8080
+  |-- /api/** --> stock-application:8080
+  `-- /ws/** -> stock-application:8080
 
-stock-agent -- /api/internal/agentFacts/** --> stock-backend
+stock-agent Service -> stock-platform 公开 Service -> Backend 领域 Service
 ```
 
-- `/api/internal/**` 不向浏览器开放，Nginx 对外返回 `404`。
-- Backend 与 Agent 的内部调用使用 `X-Internal-Token`。
-- Agent 可在 Backend 不在线时独立启动；普通对话、Provider、RAG、Memory 和会话管理继续可用。
-- Backend 事实源不可用时，行情、候选、券商、策略和交易决策功能返回 `FACT_SOURCE_UNAVAILABLE`，不得使用 Mock、空对象或模型猜测替代权威事实。
+- Agent 与 Backend 共用进程、登录 Session、Mongo 客户端和生命周期，代码依赖通过 Maven 模块顺序和公开 Service 保持单向边界。
+- Backend 事实查询失败时，Agent 行情、候选、券商、策略和交易决策功能明确失败，不得使用 Mock、空对象或模型猜测替代权威事实。
 
 ### 数据所有权
 
@@ -117,12 +124,13 @@ stock-agent -- /api/internal/agentFacts/** --> stock-backend
 | 用户、配置、任务、模型元数据、交易批次与状态 | MySQL | Backend |
 | 行情、新闻、预测明细、回测、账户和持仓快照 | MongoDB | Backend |
 | Agent 会话、任务、Memory、RAG、计划与审计 | MongoDB | Agent |
-| 登录 Session、可重建查询缓存 | Redis | Backend 与 Agent |
+| 登录 Session | Servlet 单实例内存 | Application |
+| 可重建查询缓存 | Caffeine 进程内缓存 | Application |
 | LSTM 参数和训练快照 | MongoDB GridFS | Backend |
 | Embedding 固定制品 | `model-files/embedding` | Agent |
 | Sentiment 固定制品 | `model-files/sentiment` | Backend |
 
-Redis 不保存不可丢失的业务事实。跨模块传递明确 DTO，不传递持久化 Entity、Repository 或供应商原始响应对象。
+Session 和 Caffeine 缓存随进程重启丢失，不保存不可丢失业务事实。跨模块传递明确 DTO，不传递持久化 Entity、Repository 或供应商原始响应对象。
 
 ### 核心安全边界
 
@@ -183,106 +191,39 @@ Quartz Job 只确定触发时机、调用领域 Service 并记录执行结果，
 
 ## 部署运行
 
-### Compose 服务
+系统以一个 Backend Application 容器和一个 Frontend Nginx 容器发布，Backend 连接 MySQL 与 MongoDB。Agent、模型运行时和文档都进入统一 Application 生命周期，不建立独立服务。
 
-```text
-stock-frontend:80
-  |-- stock-backend:8080
-  `-- stock-agent:8081
-
-stock-backend --> stock-mysql + stock-mongo + stock-redis
-stock-agent   --> stock-mongo + stock-redis
-stock-agent   -.按需.-> stock-backend
-```
-
-Backend 和 Agent 端口只绑定宿主机回环地址，外部请求统一从 Frontend Nginx 进入。Agent 不应通过 Docker `depends_on` 强制等待 Backend，Backend HTTP 连接只在实际事实查询时发生。
-
-### 构建产物与路由
-
-| 模块 | 产物 | 发布容器 |
-|---|---|---|
-| `stock-backend` | `stock-backend-*.jar`，继承 Sentiment 模型运行时镜像 | Java 17 JRE，8080 |
-| `stock-agent` | `stock-agent-*.jar`，继承 Embedding 模型运行时镜像 | Java 17 JRE，8081 |
-| `stock-frontend` | Vite `dist/` | Nginx，80 |
-
-| 路径 | 目标 |
-|---|---|
-| `/api/agent/**` | Agent |
-| `/api/internal/**` | 外部拒绝 |
-| 其他 `/api/**` | Backend |
-| `/ws/**` | Backend |
-| 其他路径 | React SPA |
-
-### 配置与持久化
-
-- `.env` 只保存数据库密码、内部令牌、Provider Key、券商凭据和签名密钥。
-- 数据库地址、端口、库名、用户名、运行开关和普通参数统一维护在对应模块的 `application.yml`；容器数据目录维护在 `docker-compose.yml`。
-- `INTERNAL_API_TOKEN` 同时注入 Backend 与 Agent，不能发送到浏览器。
-- MySQL、MongoDB 使用持久化目录；Redis 使用 AOF，但仍只承担 Session 和可重建缓存。
-- GitHub Runner 仅在模型发布工作流中下载目标 Git LFS 目录并完成精确清单校验，分别生成 Backend Sentiment 和 Agent Embedding 模型运行时镜像。
-- 应用镜像以对应模型运行时镜像为基础镜像，只追加业务 JAR；最终 Backend 和 Agent 应用镜像内部仍包含完整模型，生产服务器不保存或挂载模型目录。
-- 模型镜像使用模型目录 Git tree SHA 作为不可变标签；应用镜像使用“源码 SHA + 模型 tree SHA 前 12 位”的复合标签，并在 OCI label 中记录完整源码、模型版本和模型镜像引用。
-
-### CI/CD
-
-| 标签 | 工作流 | 目标服务 |
-|---|---|---|
-| `backend-vX.Y[.Z]` | `backend-ci-cd.yml` | `stock-backend` |
-| `agent-vX.Y[.Z]` | `agent-ci-cd.yml` | `stock-agent` |
-| `frontend-vX.Y[.Z]` | `frontend-ci-cd.yml` | `stock-frontend` |
-| `master` 中 `model-files/sentiment/**` 变化 | `backend-model-image.yml` | Backend 模型镜像，然后自动触发 `stock-backend` 重建部署 |
-| `master` 中 `model-files/embedding/**` 变化 | `agent-model-image.yml` | Agent 模型镜像，然后自动触发 `stock-agent` 重建部署 |
-
-Backend 与 Agent 的业务源码由 `release_ref` 确定，模型版本由独立的 `model_ref` 确定；模型工作流会把已校验模型所在的不可变提交 SHA 传给应用工作流。模型变化时，模型工作流先发布独立模型镜像，再主动派发对应应用工作流，因此模型镜像不会孤立发布，应用会自动重新构建并部署。普通应用构建只验证目标模型镜像已存在，不重复下载 LFS 大文件。生产服务器只通过镜像仓库拉取最终应用镜像并启动，SCP 仅同步小型 Compose 和部署脚本，不传输模型或应用制品；失败时收集目标服务日志并恢复原镜像。
-
-本地通过 Compose 构建 Backend 或 Agent 前，需要先生成本地模型运行时镜像：
-
-```bash
-docker build -f .github/docker/backend-model-runtime.Dockerfile \
-  -t stock-backend-model-runtime:local model-files/sentiment
-docker build -f .github/docker/agent-model-runtime.Dockerfile \
-  -t stock-agent-model-runtime:local model-files/embedding
-```
-
-### 运行环境
-
-- Java 17
-- Maven 3.8+
-- Node.js 22.22.3（前端与文档模块统一强制版本）
-- MySQL 8
-- MongoDB 8
-- Redis 7
-- Docker 与 Docker Compose
-
-### 验证边界
-
-容器健康或 HTTP 可达只证明进程入口可用，不代表数据库、模型、Provider、Quartz、券商和业务任务全部正常。发布后需要分别核对镜像 SHA、容器健康、启动日志、依赖状态和目标业务终态。
+运行拓扑、镜像内容、配置持久化、CI/CD 触发条件和分层验证要求统一见[部署与发布](../operations/部署与发布.md)。
 
 ## 文档导航
 
 | 阅读目标 | 权威文档 |
 |---|---|
-| Backend 整体架构和模块边界 | [Backend 总览](../backend/后端总览.md) |
-| 市场事实和新闻质量 | [Market](../backend/market/市场事实.md) |
-| 训练、推理和模型专项设计 | [Model](../backend/model/模型模块.md) |
-| 选股、信号和回测 | [Decision](../backend/decision/智能决策.md) |
-| 风控、券商和真实交易 | [Execution](../backend/execution/交易执行.md) |
-| Quartz 任务编排 | [Schedule](../backend/schedule/任务调度.md) |
-| 公共装配和内部事实 API | [Platform](../backend/platform/平台装配.md) |
-| Agent 总体边界 | [Agent 总览](../agent/智能代理总览.md) |
-| Agent 各能力设计 | [Agent 能力目录](../agent/智能代理总览.md#能力目录) |
-| 前端页面、状态和接口分流 | [Frontend](../frontend/前端设计.md) |
+| Backend 整体架构和模块边界 | [Backend 模块总览](../modules/后端模块总览.md) |
+| 最小公共响应和缓存契约 | [stock-base](../modules/stock-base/公共契约.md) |
+| 市场事实和新闻质量 | [stock-data](../modules/stock-data/市场事实.md) |
+| 训练、推理和模型生命周期 | [stock-model](../modules/stock-model/模型模块.md) |
+| 选股、信号和回测 | [stock-strategy](../modules/stock-strategy/智能决策.md) |
+| 风控、券商和真实交易 | [stock-trading](../modules/stock-trading/交易执行.md) |
+| Quartz 任务编排 | [stock-platform](../modules/stock-platform/任务调度.md) |
+| 应用启动、存储配置和最终装配 | [stock-application](../modules/stock-application/应用装配.md) |
+| Agent 总体边界 | [stock-agent](../modules/stock-agent/智能代理总览.md) |
+| Agent 各能力设计 | [Agent 专题](../topics/agent/交互能力.md) |
+| 前端页面、状态和接口分流 | [stock-frontend](../modules/stock-frontend/前端设计.md) |
+| 部署、镜像、配置和 CI/CD | [部署与发布](../operations/部署与发布.md) |
 
 ## 工程文档治理规范
 
 ### 文档归属
 
-1. `documents/system` 维护系统总览、跨模块链路、全局约束和架构决策。
-2. `documents/backend`、`agent` 和 `frontend` 按领域维护当前设计与专项方案。
-3. Proposal、运行手册和 ADR 使用对应类型目录及状态元数据，不再混入模块总览。
-4. 根目录项目级 `README.md` 只提供稳定职责、源码位置和门户入口，模块与源码包不再维护 README。
-5. Javadoc 与 TypeScript 类型维护类、方法、字段和局部不变量。
-6. 模型制品自身的来源、格式和加载要求仍保留在对应 `model-files/**/README.md`。
+1. `documents/system` 维护系统入口、全局架构和端到端闭环。
+2. `documents/modules` 按实际 Maven 模块和 Frontend 维护职责、依赖边界与源码入口。
+3. `documents/topics` 维护模型生命周期、Agent 能力等跨类或跨模块专项设计。
+4. `documents/operations` 仅在存在真实部署、运行检查、模型制品或排障手册时建立内容。
+5. `documents/governance` 和 `documents/decisions` 分别维护治理规则与 ADR。
+6. 根目录项目级 `README.md` 只提供稳定职责、源码位置和门户入口，模块与源码包不再维护 README。
+7. Javadoc 与 TypeScript 类型维护类、方法、字段和局部不变量。
+8. `model-files/` 只保留运行必需的权重和加载配置，不保存重复 README、manifest 或校验元数据。
 
 ### 强制维护规则
 
@@ -312,9 +253,9 @@ docker build -f .github/docker/agent-model-runtime.Dockerfile \
 
 - FinBERT 是当前生产情感基线；Mengzi 首版采用官方金融编码器加冻结编码器的三分类头，没有人工金标训练、温度校准和影子评估证据前不得激活。
 - 情感模型只输出文本三分类概率、不确定性和覆盖信息，不直接生成最终选股分数。Ranking LSTM 与 MASTER 使用 `temporal-news-v1` 日级快照学习新闻、行情和市场状态对未来收益的联合关系。
-- Ranking LSTM 与 MASTER 的统一输入为 `cross-sectional-temporal-news-v6`，包含 53 个连续特征和 3 个类别索引，共 56 维。旧 31 维制品不兼容，必须重新训练。
+- Ranking LSTM 与 MASTER 当前统一输入为 `tushare-free-temporal-news-v6-53d`，包含 25 个免费行情和市场连续特征、25 个新闻连续特征及 3 个类别索引，共 53 维。模型日线由 Tushare 免费 `daily` 自动准备，价格使用 `pre_close` 连续化，市场基准由训练股票池等权构造；付费数据增强目标是在同一 V6 代际恢复 3 项特征并升级为 56 维新制品。旧 31 维和旧 56 维制品均不能冒充当前契约。
 - `RISK_ONLY` 事件不进入普通 Alpha 特征，继续由 Java 权限、风控、资金、持仓、幂等和券商执行边界处理。
 - Mengzi 影子门槛通过后自动切换为 `ACTIVE`；运行故障或滚动指标跌破门槛时自动回滚 FinBERT。任何模型输出都不能直接调用真实交易写接口。
-- 模型证据必须分层记录：文件和 SHA-256 完整、DJL 加载、固定样本推理、接口启动、金标质量、影子收益分别验收，前一层通过不能替代后一层。
+- 模型证据必须分层记录：DJL 加载、固定样本推理、接口启动、金标质量和影子收益分别验收，前一层通过不能替代后一层。
 
-详细输入、训练数据、快照维度和影子评估契约见[模型文档](../backend/model/模型模块.md)；事件事实、截止时间和新闻治理契约见[市场数据文档](../backend/market/市场事实.md)。
+详细输入、训练数据、快照维度和影子评估契约见[模型文档](../modules/stock-model/模型模块.md)；事件事实、截止时间和新闻治理契约见[市场数据文档](../modules/stock-data/市场事实.md)。
