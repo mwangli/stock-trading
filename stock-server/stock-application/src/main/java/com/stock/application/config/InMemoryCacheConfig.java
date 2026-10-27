@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.application.config;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -41,7 +41,6 @@ public class InMemoryCacheConfig implements CachingConfigurer {
         cacheManager.setCaches(List.of(
                 cache(CacheNames.STOCK_INFO, 5_000, Duration.ofMinutes(10)),
                 cache(CacheNames.LATEST_PRICE, 10_000, Duration.ofSeconds(30)),
-                cache(CacheNames.TRADING_CALENDAR, 1_000, Duration.ofHours(6)),
                 cache(CacheNames.ACTIVE_MODEL, 100, Duration.ofMinutes(5)),
                 cache(CacheNames.RUNTIME_CONFIG, 100, Duration.ofMinutes(1))));
         return cacheManager;
@@ -95,4 +94,4 @@ public class InMemoryCacheConfig implements CachingConfigurer {
         }
     }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

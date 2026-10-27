@@ -1,7 +1,8 @@
-// AI_GENERATE_START--------------
+// AI_GENERATE_START---------------
 package com.stock.data.service;
 
 import com.stock.base.cache.CacheNames;
+import com.stock.data.dto.StockDataQualitySnapshotDto;
 import com.stock.data.dto.StockDataValidationResponseDto;
 import com.stock.data.dto.StockInfoItemDto;
 import com.stock.data.dto.StockInfoListResponseDto;
@@ -138,6 +139,23 @@ public class StockQueryService {
      */
     public StockStatisticsResponseDto getStatistics() {
         List<StockInfo> stocks = stockInfoRepository.findAll();
+        return buildStatistics(stocks);
+    }
+
+    /**
+     * 使用同一批股票数据生成统计与完整性校验快照。
+     *
+     * @return 股票数据质量聚合快照
+     */
+    public StockDataQualitySnapshotDto getDataQualitySnapshot() {
+        List<StockInfo> stocks = stockInfoRepository.findAll();
+        return StockDataQualitySnapshotDto.builder()
+                .statistics(buildStatistics(stocks))
+                .validation(buildValidation(stocks))
+                .build();
+    }
+
+    private StockStatisticsResponseDto buildStatistics(List<StockInfo> stocks) {
         long totalCount = stocks.size();
         Map<String, Long> marketDistribution = new HashMap<>();
         Map<String, Long> completeness = new HashMap<>();
@@ -174,6 +192,10 @@ public class StockQueryService {
      */
     public StockDataValidationResponseDto validateData() {
         List<StockInfo> stocks = stockInfoRepository.findAll();
+        return buildValidation(stocks);
+    }
+
+    private StockDataValidationResponseDto buildValidation(List<StockInfo> stocks) {
         Map<String, Integer> missing = new HashMap<>();
         for (StockInfo stock : stocks) {
             incrementMissing(missing, "missingCode", stock.getCode() == null || stock.getCode().isBlank());
@@ -453,4 +475,4 @@ public class StockQueryService {
         return value != null && value.signum() < 0;
     }
 }
-// AI_GENERATE_END--------------
+// AI_GENERATE_END---------------

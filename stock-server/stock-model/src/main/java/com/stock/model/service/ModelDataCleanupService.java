@@ -1,4 +1,4 @@
-// AI_GENERATE_START-
+// AI_GENERATE_START--
 package com.stock.model.service;
 
 import com.mongodb.client.gridfs.model.GridFSFile;
@@ -58,7 +58,7 @@ public class ModelDataCleanupService {
     private static final int MODEL_AUDIT_RETENTION_DAYS = 730;
 
     private static final List<String> TRAINING_TERMINAL_STATUSES =
-            List.of("SUCCEEDED", "FAILED", "CANCELLED", "WAITING_DATA");
+            List.of("SUCCEEDED", "REJECTED", "FAILED", "CANCELLED", "WAITING_DATA");
     private static final List<String> PREDICTION_TERMINAL_STATUSES =
             List.of("COMPLETED", "PARTIAL", "EVALUATED", "FAILED", "CANCELLED");
     private static final List<String> SHADOW_TERMINAL_STATUSES =
@@ -270,4 +270,4 @@ public class ModelDataCleanupService {
         }
     }
 }
-// AI_GENERATE_END-
+// AI_GENERATE_END--

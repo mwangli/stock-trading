@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------
+// AI_GENERATE_START--------------------------
 package com.stock.agent.config;
 
 import lombok.Data;
@@ -88,7 +88,7 @@ public class AgentProperties {
     private int chatMemoryIdleTtlMinutes = 120;
 
     /** 工具调用超时时间，单位毫秒。 */
-    private long toolTimeoutMs = 5000L;
+    private long toolTimeoutMs = 30000L;
 
     /** 是否记录 Agent 审计摘要。 */
     private boolean auditEnabled = true;
@@ -279,4 +279,4 @@ public class AgentProperties {
         private String path = "./documents";
     }
 }
-// AI_GENERATE_END------------------------
+// AI_GENERATE_END-------------------------

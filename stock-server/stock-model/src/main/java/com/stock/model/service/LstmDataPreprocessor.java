@@ -1,8 +1,9 @@
-// AI_GENERATE_START------------------
+// AI_GENERATE_START---------------------
 package com.stock.model.service;
 
 import com.stock.data.dto.StockPriceItemDto;
 import com.stock.model.config.LstmModelConfig;
+import com.stock.model.dto.ModelFeatureMetadata;
 import lombok.Builder;
 import lombok.Data;
 import lombok.AllArgsConstructor;
@@ -470,6 +471,9 @@ public class LstmDataPreprocessor {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ProcessedData {
+        /** 切分和标准化前的唯一原始样本集合，仅用于训练快照持久化与视图重建。 */
+        private List<TrainingSample> allSamples;
+
         /** 训练样本。 */
         private List<TrainingSample> trainSamples;
 
@@ -493,6 +497,12 @@ public class LstmDataPreprocessor {
 
         /** 特征定义版本。 */
         private String featureVersion;
+
+        /** 模型不可变特征元数据。 */
+        private ModelFeatureMetadata featureMetadata;
+
+        /** 排序后样本键集合的 SHA-256。 */
+        private String sampleSetHash;
 
         /** 股票稳定类别字典。 */
         private Map<String, Integer> stockDictionary;
@@ -707,4 +717,4 @@ public class LstmDataPreprocessor {
         private String featureVersion;
     }
 }
-// AI_GENERATE_END------------------
+// AI_GENERATE_END---------------------

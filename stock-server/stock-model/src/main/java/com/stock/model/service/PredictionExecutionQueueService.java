@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START--------
 package com.stock.model.service;
 
 import com.stock.data.dto.StockInfoItemDto;
@@ -61,7 +61,7 @@ public class PredictionExecutionQueueService {
      *
      * @param inferenceService LSTM 推理服务
      * @param marketDataQueryService 市场数据查询服务
-     * @param tradingCalendarService 交易日历服务
+     * @param tradingCalendarService 工作日计算服务
      * @param batchRepository 预测批次仓库
      * @param predictionRepository 预测明细仓库
      * @param queryService 预测查询服务
@@ -251,7 +251,7 @@ public class PredictionExecutionQueueService {
             int[] successCount = {0};
             int[] failedCount = {0};
             int[] processedCount = {0};
-            Map<LocalDate, TradeDateResolution> targetDateCache = new HashMap<>();
+            Map<LocalDate, LocalDate> targetDateCache = new HashMap<>();
             inferenceService.predictNextBatchChunks(
                     stockCodes, batch.getModelId(), batch.getBaseTradeDate(), PREDICTION_BATCH_SIZE,
                     (currentCodes, results) -> persistChunk(batch, stockCodes.size(), currentCodes, results,
@@ -311,7 +311,7 @@ public class PredictionExecutionQueueService {
 
     private void persistChunk(ModelPredictionBatchDocument batch, int totalStocks, List<String> currentCodes,
                               Map<String, LstmPredictionResultDto> results,
-                              Map<LocalDate, TradeDateResolution> targetDateCache,
+                              Map<LocalDate, LocalDate> targetDateCache,
                               int[] processedCount, int[] successCount, int[] failedCount, long startedNanos) {
         if (Thread.currentThread().isInterrupted()) {
             throw new CancellationException("预测队列消费已被中断");
@@ -339,13 +339,10 @@ public class PredictionExecutionQueueService {
             document.setModelId(batch.getModelId());
             document.setModelVersion(batch.getModelVersion());
             document.setBaseTradeDate(result.getBaseTradeDate());
-            TradeDateResolution resultTradeDate = targetDateCache.computeIfAbsent(
+            LocalDate resultTradeDate = targetDateCache.computeIfAbsent(
                     result.getBaseTradeDate(), this::resolveNextTradeDate);
-            document.setTargetTradeDate(resultTradeDate.tradeDate());
-            document.setCalendarFallback(resultTradeDate.calendarFallback());
-            if (resultTradeDate.calendarFallback()) {
-                batch.setCalendarFallback(true);
-            }
+            document.setTargetTradeDate(resultTradeDate);
+            document.setCalendarFallback(false);
             document.setBaseClosePrice(result.getLastClosePrice());
             document.setPredictedClosePrice(result.getPredictedClosePrice());
             document.setPredictedReturn(result.getPredictedChangeRatio());
@@ -389,8 +386,8 @@ public class PredictionExecutionQueueService {
         return stockCodes;
     }
 
-    private TradeDateResolution resolveNextTradeDate(LocalDate baseTradeDate) {
-        return new TradeDateResolution(tradingCalendarService.nextTradingDay(baseTradeDate), false);
+    private LocalDate resolveNextTradeDate(LocalDate baseTradeDate) {
+        return tradingCalendarService.nextTradingDay(baseTradeDate);
     }
 
     private Double rate(int numerator, int denominator) {
@@ -401,7 +398,5 @@ public class PredictionExecutionQueueService {
         return Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000_000L);
     }
 
-    private record TradeDateResolution(LocalDate tradeDate, boolean calendarFallback) {
-    }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END--------

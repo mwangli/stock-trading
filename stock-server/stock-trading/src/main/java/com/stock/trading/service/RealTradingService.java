@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------------------
+// AI_GENERATE_START-----------------------------
 package com.stock.trading.service;
 
 import com.stock.data.service.TradingCalendarService;
@@ -82,7 +82,17 @@ public class RealTradingService {
      * @return 当日模型排名和持仓摘要
      */
     public TradingCandidateListResponseDto getCandidates() {
-        PredictionCandidateBatchDto batch = loadTodayBatch();
+        LocalDate today = LocalDate.now();
+        PredictionCandidateBatchDto batch = predictionCandidateQueryService
+                .findLatestUsableBatch(today)
+                .orElse(null);
+        if (batch == null) {
+            return TradingCandidateListResponseDto.builder()
+                    .targetTradeDate(today)
+                    .positionSnapshotAvailable(false)
+                    .items(List.of())
+                    .build();
+        }
         boolean hasPositions = brokerAdapter.isAuthenticated();
         Set<String> heldCodes = hasPositions
                 ? brokerAdapter.getPositions().stream().map(Position::getStockCode).collect(Collectors.toSet())
@@ -358,4 +368,4 @@ public class RealTradingService {
         }
     }
 }
-// AI_GENERATE_END----------------------------
+// AI_GENERATE_END-----------------------------

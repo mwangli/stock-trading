@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------------------------------------------------------------------
+// AI_GENERATE_START---------------------------------------------------------------------------
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
 import SentimentModelStatusPanel from './SentimentModelStatusPanel';
@@ -319,6 +319,7 @@ const statusColors: Record<string, string> = {
   QUEUED: 'blue',
   RUNNING: 'processing',
   SUCCEEDED: 'green',
+  REJECTED: 'orange',
   FAILED: 'red',
   STOPPING: 'orange',
   WAITING_DATA: 'gold',
@@ -379,11 +380,14 @@ const progressStageLabels: Record<string, string> = {
   PREPARING_DATA: '准备数据',
   PROCESSING_SAMPLES: '构建样本',
   TRAINING: '模型训练',
+  WALK_FORWARD_EVALUATING: '滚动评估',
+  STRICT_ISOLATION_EVALUATING: '严格隔离评估',
   SAVING_MODEL: '保存模型',
   OFFLINE_EVALUATING: '离线评估',
   CANDIDATE_REGISTERED: '候选已登记',
   WAITING_DATA: '等待数据',
   COMPLETED: '已完成',
+  REJECTED: '质量未通过',
   FAILED: '已失败',
 };
 
@@ -397,11 +401,14 @@ const progressStageLabelsEn: Record<string, string> = {
   PREPARING_DATA: 'Preparing Data',
   PROCESSING_SAMPLES: 'Building Samples',
   TRAINING: 'Training Model',
+  WALK_FORWARD_EVALUATING: 'Walk-Forward Evaluation',
+  STRICT_ISOLATION_EVALUATING: 'Strict Isolation Evaluation',
   SAVING_MODEL: 'Saving Model',
   OFFLINE_EVALUATING: 'Offline Evaluation',
   CANDIDATE_REGISTERED: 'Candidate Registered',
   WAITING_DATA: 'Waiting for Data',
   COMPLETED: 'Completed',
+  REJECTED: 'Quality Rejected',
   FAILED: 'Failed',
 };
 
@@ -888,7 +895,9 @@ const ModelOperations: React.FC = () => {
             size="small"
             status={record.status === 'FAILED'
               ? 'exception'
-              : record.status === 'SUCCEEDED' ? 'success' : 'active'}
+              : record.status === 'SUCCEEDED'
+                ? 'success'
+                : record.status === 'REJECTED' ? 'normal' : 'active'}
           />
           <Text type="secondary" className="text-xs break-words">
             {record.progressMessage
@@ -1274,7 +1283,9 @@ const ModelOperations: React.FC = () => {
               percent={latestTraining.progressPercent ?? (latestTraining.status === 'SUCCEEDED' ? 100 : 0)}
               status={latestTraining.status === 'FAILED'
                 ? 'exception'
-                : latestTraining.status === 'SUCCEEDED' ? 'success' : 'active'}
+                : latestTraining.status === 'SUCCEEDED'
+                  ? 'success'
+                  : latestTraining.status === 'REJECTED' ? 'normal' : 'active'}
             />
             <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }}>
               <Descriptions.Item label="训练轮次">
@@ -1316,7 +1327,7 @@ const ModelOperations: React.FC = () => {
       <Card
         className="surface-card"
         title={localizedText('当日模型排名', 'Today Model Ranking')}
-        extra={tradingCandidates && (
+        extra={tradingCandidates?.predictionBatchId && (
           <Space size="small" wrap>
             <Tag>{tradingCandidates.targetTradeDate || '-'}</Tag>
             <Tag color="blue">{tradingCandidates.modelVersion || '-'}</Tag>
@@ -1337,7 +1348,7 @@ const ModelOperations: React.FC = () => {
           ]}
           locale={{ emptyText: localizedText('当日暂无可用模型排名', 'No usable model ranking today') }}
         />
-        {tradingCandidates && (
+        {tradingCandidates?.predictionBatchId && (
           <Text type="secondary">
             {localizedText('预测批次', 'Prediction Batch')}: {tradingCandidates.predictionBatchId}
           </Text>
@@ -1618,4 +1629,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END------------------------------------------------------------------------
+// AI_GENERATE_END---------------------------------------------------------------------------

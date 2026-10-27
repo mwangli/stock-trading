@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.model.entity;
 
 import lombok.Data;
@@ -39,7 +39,7 @@ public class NewsFeatureSnapshotDocument {
     /** 新闻特征契约版本。 */
     private String featureVersion;
 
-    /** 固定 25 维连续特征向量。 */
+    /** 由 featureVersion 定义顺序和维度的连续特征向量。 */
     private List<Double> features;
 
     /** 情感模型版本。 */
@@ -66,4 +66,4 @@ public class NewsFeatureSnapshotDocument {
     /** 快照生成时间。 */
     private LocalDateTime generatedAt;
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

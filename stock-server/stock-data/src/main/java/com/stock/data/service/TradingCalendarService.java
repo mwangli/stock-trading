@@ -1,175 +1,115 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START--------------
 package com.stock.data.service;
 
-import com.stock.base.cache.CacheNames;
-import com.stock.data.entity.TradeCalendarEntity;
-import com.stock.data.enums.CalendarDayStatus;
-import com.stock.data.enums.CalendarVerificationStatus;
-import com.stock.data.repository.TradeCalendarRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * 生产交易日解析服务。
- * 缺失或未确认的日期一律按不可交易处理，避免节假日和来源中断时静默回退到普通工作日。
+ * 股票市场工作日计算服务。
+ *
+ * 系统统一将周一至周五视为交易日，不维护节假日日历，也不访问数据库或外部数据源。
+ * 节假日工作日任务允许正常触发，由行情和交易执行结果决定是否存在可处理数据。
  *
  * @author mwangli
  * @since 2026-10-13
  */
 @Service
-@RequiredArgsConstructor
 public class TradingCalendarService {
 
-    private static final String MARKET = "CN";
-
-    private final TradeCalendarRepository tradeCalendarRepository;
-
     /**
-     * 判断指定日期是否为已确认交易日。
+     * 判断指定日期是否为周一至周五。
      *
      * @param date 自然日期
-     * @return 仅在已确认开市时返回 true
+     * @return 周一至周五返回 true，周末或空值返回 false
      */
-    @Cacheable(cacheNames = CacheNames.TRADING_CALENDAR, key = "'isTradingDay:' + #date")
     public boolean isTradingDay(LocalDate date) {
-        return tradeCalendarRepository.findByMarketAndTradeDate(MARKET, date)
-                .filter(this::isConfirmed)
-                .map(item -> item.getDayStatus() == CalendarDayStatus.OPEN && item.isTradingDay())
-                .orElse(false);
+        return date != null && date.getDayOfWeek() != DayOfWeek.SATURDAY
+                && date.getDayOfWeek() != DayOfWeek.SUNDAY;
     }
 
     /**
-     * 判断指定日期是否已有可靠日历结论。
-     *
-     * @param date 自然日期
-     * @return 开市或休市已确认时返回 true
-     */
-    @Cacheable(cacheNames = CacheNames.TRADING_CALENDAR, key = "'isConfirmedDate:' + #date")
-    public boolean isConfirmedDate(LocalDate date) {
-        return tradeCalendarRepository.findByMarketAndTradeDate(MARKET, date)
-                .map(this::isConfirmed)
-                .orElse(false);
-    }
-
-    /**
-     * 查询日期范围内已确认的交易日。
+     * 查询日期范围内的周一至周五。
      *
      * @param startDate 起始日期
      * @param endDate 结束日期
-     * @return 按日期升序排列的交易日
+     * @return 按日期升序排列的工作日
      */
-    @Cacheable(cacheNames = CacheNames.TRADING_CALENDAR,
-            key = "'tradingDaysBetween:' + #startDate + ':' + #endDate")
     public List<LocalDate> tradingDaysBetween(LocalDate startDate, LocalDate endDate) {
-        if (startDate == null || endDate == null || startDate.isAfter(endDate)) {
-            throw new IllegalArgumentException("交易日历范围无效");
+        validateDateRange(startDate, endDate);
+        List<LocalDate> tradingDays = new ArrayList<>();
+        for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
+            if (isTradingDay(date)) {
+                tradingDays.add(date);
+            }
         }
-        List<TradeCalendarEntity> records = tradeCalendarRepository
-                .findByMarketAndTradeDateBetweenOrderByTradeDateAsc(MARKET, startDate, endDate);
-        long expectedDays = java.time.temporal.ChronoUnit.DAYS.between(startDate, endDate) + 1;
-        if (records.size() != expectedDays || records.stream().anyMatch(item -> !isConfirmed(item))) {
-            throw new IllegalStateException("交易日历区间存在缺口或未确认日期: " + startDate + "~" + endDate);
-        }
-        return records.stream()
-                .filter(item -> item.getDayStatus() == CalendarDayStatus.OPEN && item.isTradingDay())
-                .map(TradeCalendarEntity::getTradeDate)
-                .toList();
+        return List.copyOf(tradingDays);
     }
 
     /**
-     * 要求指定日期必须为已确认交易日。
+     * 要求指定日期必须为周一至周五。
      *
      * @param date 自然日期
-     * @throws IllegalStateException 日期缺失、未确认或休市时抛出
+     * @throws IllegalStateException 日期为空或位于周末时抛出
      */
     public void requireTradingDay(LocalDate date) {
-        TradeCalendarEntity entity = requireConfirmedDate(date);
-        if (entity.getDayStatus() != CalendarDayStatus.OPEN || !entity.isTradingDay()) {
-            throw new IllegalStateException("指定日期不是交易日: " + date);
+        if (!isTradingDay(date)) {
+            throw new IllegalStateException("指定日期不是工作日: " + date);
         }
     }
 
     /**
-     * 解析指定日期之后的首个已确认交易日。
+     * 解析指定日期之后的首个周一至周五。
      *
      * @param date 基准日期
-     * @return 下一交易日
+     * @return 下一工作日
      */
-    @Cacheable(cacheNames = CacheNames.TRADING_CALENDAR, key = "'nextTradingDay:' + #date")
     public LocalDate nextTradingDay(LocalDate date) {
-        requireConfirmedDate(date);
-        return findNextTradingDay(date)
-                .orElseThrow(() -> new IllegalStateException(
-                        "交易日历未连续覆盖基准日期之后的已确认交易日: " + date));
+        if (date == null) {
+            throw new IllegalArgumentException("基准日期不能为空");
+        }
+        LocalDate candidate = date.plusDays(1);
+        while (!isTradingDay(candidate)) {
+            candidate = candidate.plusDays(1);
+        }
+        return candidate;
     }
 
     /**
-     * 尝试解析指定日期之后的首个已确认交易日。
-     *
-     * 只读诊断场景使用该方法表达日历未知状态；生产交易、预测和风控仍应调用
-     * {@link #nextTradingDay(LocalDate)} 保持失败保守。
+     * 尝试解析指定日期之后的首个周一至周五。
      *
      * @param date 基准日期
-     * @return 连续日历覆盖完整时返回下一交易日，否则返回空
+     * @return 日期非空时返回下一工作日，否则返回空
      */
     public Optional<LocalDate> findNextTradingDay(LocalDate date) {
-        if (date == null || !isConfirmedDate(date)) {
-            return Optional.empty();
-        }
-        return tradeCalendarRepository
-                .findFirstByMarketAndDayStatusAndVerificationStatusAndTradeDateAfterOrderByTradeDateAsc(
-                        MARKET, CalendarDayStatus.OPEN, CalendarVerificationStatus.CONFIRMED, date)
-                .filter(candidate -> hasContinuousCoverage(date.plusDays(1), candidate.getTradeDate()))
-                .map(TradeCalendarEntity::getTradeDate);
+        return date == null ? Optional.empty() : Optional.of(nextTradingDay(date));
     }
 
     /**
-     * 解析指定日期之前最近的已确认交易日。
+     * 解析指定日期之前最近的周一至周五。
      *
      * @param date 基准日期
-     * @return 前一交易日
+     * @return 前一工作日
      */
-    @Cacheable(cacheNames = CacheNames.TRADING_CALENDAR, key = "'previousTradingDay:' + #date")
     public LocalDate previousTradingDay(LocalDate date) {
-        requireConfirmedDate(date);
-        TradeCalendarEntity candidate = tradeCalendarRepository
-                .findFirstByMarketAndDayStatusAndVerificationStatusAndTradeDateBeforeOrderByTradeDateDesc(
-                        MARKET, CalendarDayStatus.OPEN, CalendarVerificationStatus.CONFIRMED, date)
-                .orElseThrow(() -> new IllegalStateException("交易日历未覆盖基准日期之前的已确认交易日: " + date));
-        verifyContinuousCoverage(candidate.getTradeDate(), date.minusDays(1));
-        return candidate.getTradeDate();
-    }
-
-    private TradeCalendarEntity requireConfirmedDate(LocalDate date) {
-        return tradeCalendarRepository.findByMarketAndTradeDate(MARKET, date)
-                .filter(this::isConfirmed)
-                .orElseThrow(() -> new IllegalStateException("交易日历日期缺失或尚未确认: " + date));
-    }
-
-    private boolean isConfirmed(TradeCalendarEntity entity) {
-        return entity.getVerificationStatus() == CalendarVerificationStatus.CONFIRMED
-                && entity.getDayStatus() != CalendarDayStatus.UNKNOWN;
-    }
-
-    private void verifyContinuousCoverage(LocalDate startDate, LocalDate endDate) {
-        if (!hasContinuousCoverage(startDate, endDate)) {
-            throw new IllegalStateException("交易日历区间存在缺口或未确认日期: " + startDate + "~" + endDate);
+        if (date == null) {
+            throw new IllegalArgumentException("基准日期不能为空");
         }
+        LocalDate candidate = date.minusDays(1);
+        while (!isTradingDay(candidate)) {
+            candidate = candidate.minusDays(1);
+        }
+        return candidate;
     }
 
-    private boolean hasContinuousCoverage(LocalDate startDate, LocalDate endDate) {
-        if (endDate.isBefore(startDate)) {
-            return true;
+    private void validateDateRange(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null || startDate.isAfter(endDate)) {
+            throw new IllegalArgumentException("工作日查询范围无效");
         }
-        List<TradeCalendarEntity> records = tradeCalendarRepository
-                .findByMarketAndTradeDateBetweenOrderByTradeDateAsc(MARKET, startDate, endDate);
-        long expectedDays = java.time.temporal.ChronoUnit.DAYS.between(startDate, endDate) + 1;
-        return records.size() == expectedDays && records.stream().allMatch(this::isConfirmed);
     }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END--------------

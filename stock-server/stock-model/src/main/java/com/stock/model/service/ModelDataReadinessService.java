@@ -1,4 +1,4 @@
-// AI_GENERATE_START- --
+// AI_GENERATE_START- ---
 package com.stock.model.service;
 
 import com.stock.data.dto.ModelTrainingDataAuditDto;
@@ -7,6 +7,7 @@ import com.stock.data.service.TushareFreeDailySyncService;
 import com.stock.model.config.LstmDataQualityConfig;
 import com.stock.model.config.LstmTrainingConfig;
 import com.stock.model.dto.ModelDataReadinessReport;
+import com.stock.model.dto.ModelFeatureMetadata;
 import com.stock.model.dto.NewsFeatureSnapshotAuditResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -35,9 +36,12 @@ public class ModelDataReadinessService {
      * 检查指定股票范围是否具备 V6 训练快照构建条件。
      *
      * @param stockCodes 本次训练股票代码
+     * @param featureMetadata 本次训练的特征元数据
      * @return 数据就绪检查报告
      */
-    public ModelDataReadinessReport inspect(List<String> stockCodes) {
+    public ModelDataReadinessReport inspect(
+            List<String> stockCodes, ModelFeatureMetadata featureMetadata) {
+        featureMetadata.validate();
         List<String> codes = stockCodes == null ? List.of() : stockCodes.stream()
                 .filter(code -> code != null && !code.isBlank())
                 .map(String::trim)
@@ -54,8 +58,12 @@ public class ModelDataReadinessService {
                 requireText(trainingConfig.getBenchmarkSeriesCode(), "市场基准序列代码不能为空"));
         List<String> foundationGaps = foundationGaps(foundationAudit, minimumCoverageRate);
         boolean foundationReady = !codes.isEmpty() && foundationGaps.isEmpty();
-        NewsFeatureSnapshotAuditResult newsAudit = newsSnapshotBackfillService.audit();
-        boolean newsReady = foundationReady && newsAudit.passed();
+        NewsFeatureSnapshotAuditResult newsAudit = featureMetadata.isNewsFeaturesEnabled()
+                ? newsSnapshotBackfillService.audit(
+                        featureMetadata.getNewsFeatureVersion(), featureMetadata.newsFeatureCount())
+                : new NewsFeatureSnapshotAuditResult(0L, 0L, 1D, 0L, 0L, 0L, true);
+        boolean newsReady = !featureMetadata.isNewsFeaturesEnabled()
+                || foundationReady && newsAudit.passed();
 
         List<String> automaticGaps = new ArrayList<>();
         List<String> externalGaps = new ArrayList<>();
@@ -66,13 +74,14 @@ public class ModelDataReadinessService {
                 externalGaps.addAll(foundationGaps);
             }
         }
-        if (foundationReady && !newsReady && newsAudit.expectedCount() > 0L) {
+        if (featureMetadata.isNewsFeaturesEnabled()
+                && foundationReady && !newsReady && newsAudit.expectedCount() > 0L) {
             automaticGaps.add("news_feature_snapshots");
         }
         boolean automaticBackfillAvailable = !automaticGaps.isEmpty();
         boolean ready = foundationReady && newsReady;
         String message = ready
-                ? "V6 模型训练数据质量检查通过"
+                ? featureMetadata.getModelGeneration() + " 模型训练数据质量检查通过"
                 : buildWaitingMessage(externalGaps, automaticGaps, newsAudit);
         return ModelDataReadinessReport.builder()
                 .ready(ready)
@@ -129,4 +138,4 @@ public class ModelDataReadinessService {
         return value.trim();
     }
 }
-// AI_GENERATE_END- --
+// AI_GENERATE_END- ---

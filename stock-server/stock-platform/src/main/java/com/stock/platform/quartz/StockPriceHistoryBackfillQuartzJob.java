@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.platform.quartz;
 
 import com.stock.platform.service.JobExecutionService;
@@ -26,7 +26,7 @@ public class StockPriceHistoryBackfillQuartzJob extends InterruptibleQuartzJob {
     private DataSyncScheduler dataSyncScheduler;
 
     /**
-     * 执行最近三年已确认交易日的历史缺口回补。
+     * 执行最近三年工作日范围内的历史缺口回补。
      *
      * @param context Quartz 执行上下文
      */
@@ -37,4 +37,4 @@ public class StockPriceHistoryBackfillQuartzJob extends InterruptibleQuartzJob {
                 context.getScheduledFireTime(), dataSyncScheduler::backfillHistoricalStockData);
     }
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

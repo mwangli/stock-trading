@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START---------
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -31,8 +31,11 @@ public class ModelTrainingRequest {
     /** 候选模型架构：RANKING_LSTM 或 MASTER_TRANSFORMER。 */
     private String architectureType;
 
+    /** 特征契约：V6_1_PRICE_18D 或 V6_2_COMPACT_NEWS_26D，默认 V6.1。 */
+    private String featureContract;
+
     /** 操作人名称。 */
     private String operatorName;
 
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END---------

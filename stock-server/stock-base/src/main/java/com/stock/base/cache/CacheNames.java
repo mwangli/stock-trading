@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.base.cache;
 
 /**
@@ -16,9 +16,6 @@ public final class CacheNames {
     /** 最新价格缓存。 */
     public static final String LATEST_PRICE = "latestPrice";
 
-    /** 交易日历缓存。 */
-    public static final String TRADING_CALENDAR = "tradingCalendar";
-
     /** 当前生效模型缓存。 */
     public static final String ACTIVE_MODEL = "activeModel";
 
@@ -28,4 +25,4 @@ public final class CacheNames {
     private CacheNames() {
     }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

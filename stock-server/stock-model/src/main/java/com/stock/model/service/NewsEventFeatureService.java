@@ -1,4 +1,4 @@
-// AI_GENERATE_START- ------
+// AI_GENERATE_START- -------
 package com.stock.model.service;
 
 import com.stock.data.dto.MarketNewsEventDto;
@@ -32,10 +32,6 @@ public class NewsEventFeatureService {
 
     private static final int LOOKBACK_DAYS = 5;
     private static final double LOG_TWO = Math.log(2D);
-    private static final List<String> EVENT_TYPES = List.of(
-            "EARNINGS", "REGULATORY_OR_LITIGATION", "CAPITAL_RISK",
-            "SHAREHOLDER_OR_EXECUTIVE", "MATERIAL_BUSINESS", "MACRO_OR_INDUSTRY", "OTHER");
-
     private final MarketDataQueryService marketDataQueryService;
     private final SentimentAggregationService sentimentAggregationService;
     private final SentimentModelRouterService sentimentModelRouterService;
@@ -95,47 +91,23 @@ public class NewsEventFeatureService {
             SentimentAggregateResult aggregate,
             LocalDateTime cutoffTime,
             boolean missing) {
+        if (missing) {
+            return java.util.Collections.nCopies(NewsFeatureSnapshotService.FEATURE_COUNT, 0D);
+        }
         List<Double> features = new ArrayList<>(NewsFeatureSnapshotService.FEATURE_COUNT);
-        features.add(averageProbability(results, "positive"));
-        features.add(averageProbability(results, "neutral"));
-        features.add(averageProbability(results, "negative"));
-        features.add(results.stream().mapToDouble(SentimentAnalysisResult::getScore).average().orElse(0D));
-        features.add(results.stream().mapToDouble(SentimentAnalysisResult::getCalibratedConfidence)
-                .average().orElse(0D));
-        features.add(results.stream().mapToDouble(SentimentAnalysisResult::getEntropy).average().orElse(0D));
-        features.add(results.stream().mapToDouble(SentimentAnalysisResult::getProbabilityMargin)
-                .average().orElse(0D));
-        features.add(rate(results.stream().filter(SentimentAnalysisResult::isAbstained).count(), results.size()));
-        features.add(Math.min(1D, facts.size() / 5D));
-        features.add(aggregate.getImpactMagnitude());
+        features.add(directionValue(aggregate.getImpactDirection()) * aggregate.getImpactMagnitude());
+        features.add(aggregate.getConfidence());
         features.add(average(facts, true));
         features.add(average(facts, false));
         features.add(facts.stream().map(MarketNewsEventDto::getStockSpecificity)
                 .filter(Objects::nonNull).mapToDouble(Double::doubleValue).average().orElse(0D));
         features.add(averageTimeDecay(facts, cutoffTime));
-        features.add(Math.min(1D, eventAgeHours(facts, cutoffTime) / (LOOKBACK_DAYS * 24D)));
-        features.add(Math.min(1D, Math.log1p(facts.size()) / Math.log(6D)));
         features.add(sourceQuality(facts));
-        Map<String, Integer> typeCounts = eventTypeCounts(facts);
-        for (String eventType : EVENT_TYPES) {
-            int count = "OTHER".equals(eventType)
-                    ? facts.size() - typeCounts.entrySet().stream()
-                    .filter(entry -> !"OTHER".equals(normalizeEventType(entry.getKey())))
-                    .mapToInt(Map.Entry::getValue).sum()
-                    : typeCounts.getOrDefault(eventType, 0);
-            features.add(rate(Math.max(0, count), facts.size()));
-        }
-        features.add(missing ? 1D : 0D);
+        features.add(Math.min(1D, facts.size() / 5D));
         if (features.size() != NewsFeatureSnapshotService.FEATURE_COUNT) {
-            throw new IllegalStateException("temporal-news-v1 特征维度错误: " + features.size());
+            throw new IllegalStateException("temporal-news-v2-8d 特征维度错误: " + features.size());
         }
         return List.copyOf(features);
-    }
-
-    private double averageProbability(List<SentimentAnalysisResult> results, String label) {
-        return results.stream().map(SentimentAnalysisResult::getProbabilities)
-                .filter(Objects::nonNull).map(map -> map.get(label)).filter(Objects::nonNull)
-                .mapToDouble(Double::doubleValue).average().orElse(0D);
     }
 
     private double averageTimeDecay(List<MarketNewsEventDto> facts, LocalDateTime cutoffTime) {
@@ -158,13 +130,6 @@ public class NewsEventFeatureService {
                 }).average().orElse(0D);
     }
 
-    private String normalizeEventType(String eventType) {
-        return EVENT_TYPES.contains(eventType) ? eventType : "OTHER";
-    }
-
-    private double rate(long numerator, long denominator) {
-        return denominator <= 0 ? 0D : numerator / (double) denominator;
-    }
 
     private double average(List<MarketNewsEventDto> facts, boolean materiality) {
         return facts.stream()
@@ -222,4 +187,4 @@ public class NewsEventFeatureService {
         return 0D;
     }
 }
-// AI_GENERATE_END- ------
+// AI_GENERATE_END- -------

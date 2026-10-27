@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START---------
 package com.stock.data.service;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -108,12 +108,12 @@ public class StockPriceService {
     }
 
     /**
-     * 回补单只股票在已确认交易日范围内的历史日线缺口。
+     * 回补单只股票在工作日范围内的历史日线缺口。
      *
      * @param stockCode 股票代码
      * @param earliestDate 最早允许回补日期
      * @param endDate 回补截止日期
-     * @param confirmedTradingDays 已确认交易日
+     * @param expectedTradingDays 周一至周五的待检查日期
      * @param openGapStart 已登记缺口开始日期，可为空
      * @param openGapEnd 已登记缺口结束日期，可为空
      * @return 历史回补结果
@@ -122,14 +122,14 @@ public class StockPriceService {
     public HistoricalPriceSyncResult backfillHistoricalPrices(String stockCode,
                                                                LocalDate earliestDate,
                                                                LocalDate endDate,
-                                                               List<LocalDate> confirmedTradingDays,
+                                                               List<LocalDate> expectedTradingDays,
                                                                LocalDate openGapStart,
                                                                LocalDate openGapEnd) {
         LocalDate expectedStartDate = resolveExpectedStartDate(stockCode, earliestDate);
         if (expectedStartDate.isAfter(endDate)) {
             return new HistoricalPriceSyncResult(0, 0, true, List.of());
         }
-        Set<LocalDate> confirmedDateSet = confirmedTradingDays.stream()
+        Set<LocalDate> expectedDateSet = expectedTradingDays.stream()
                 .filter(date -> date != null && !date.isBefore(expectedStartDate) && !date.isAfter(endDate))
                 .collect(Collectors.toSet());
         Set<LocalDate> existingDates = priceRepository
@@ -140,20 +140,20 @@ public class StockPriceService {
                 .collect(Collectors.toSet());
 
         List<PriceRequestWindow> requestWindows = buildMissingRequestWindows(
-                confirmedTradingDays, existingDates, expectedStartDate, endDate);
+                expectedTradingDays, existingDates, expectedStartDate, endDate);
         addOpenGapWindow(requestWindows, expectedStartDate, endDate, openGapStart, openGapEnd);
         requestWindows = mergeRequestWindows(requestWindows);
 
         int savedCount = 0;
         int apiRequestCount = 0;
         for (PriceRequestWindow requestWindow : requestWindows) {
-            WindowSyncResult result = syncPriceWindow(stockCode, requestWindow, confirmedDateSet);
+            WindowSyncResult result = syncPriceWindow(stockCode, requestWindow, expectedDateSet);
             savedCount += result.savedCount();
             apiRequestCount += result.apiRequestCount();
         }
 
         List<LocalDate> unresolvedDates = findUnresolvedTradingDays(
-                stockCode, expectedStartDate, endDate, confirmedTradingDays, openGapStart, openGapEnd);
+                stockCode, expectedStartDate, endDate, expectedTradingDays, openGapStart, openGapEnd);
         return new HistoricalPriceSyncResult(
                 savedCount, apiRequestCount, requestWindows.isEmpty(), unresolvedDates);
     }
@@ -477,4 +477,4 @@ public class StockPriceService {
     private record DateRange(LocalDate startDate, LocalDate endDate) {
     }
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END---------

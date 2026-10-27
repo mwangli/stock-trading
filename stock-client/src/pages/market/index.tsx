@@ -1,12 +1,12 @@
-// AI_GENERATE_START-----------------------------
+// AI_GENERATE_START-------------------------------
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { Descriptions, Drawer, Input, Select, Table } from 'antd';
+import { Descriptions, Drawer, Empty, Input, Select, Skeleton, Table, Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { TablePaginationConfig } from 'antd/es/table/interface';
 import type { EChartsOption, TooltipComponentFormatterCallbackParams } from 'echarts';
 import type { InputRef } from 'antd';
-import { SearchOutlined, ThunderboltOutlined, RiseOutlined, StarOutlined } from '@ant-design/icons';
+import { NotificationOutlined, SearchOutlined, ThunderboltOutlined, RiseOutlined, StarOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import request from '../../utils/request';
 import type { ApiResponse } from '../../utils/api';
@@ -30,6 +30,19 @@ interface StockInfo {
   industryCode?: number;
   listedDate?: string;
   updateTime?: string;
+}
+
+interface StockNewsSummary {
+  id: string;
+  title: string;
+  summary?: string;
+  source?: string;
+  category?: string;
+  publishTime?: string;
+}
+
+interface StockNewsLatestResult {
+  items: StockNewsSummary[];
 }
 
 /** 与后端 StockInfoController#getMarketStats / MarketStatsDto 一致 */
@@ -191,10 +204,44 @@ const Market: React.FC = () => {
   });
   const [selectedStock, setSelectedStock] = useState<{ code: string; name: string; price?: number; change?: number } | null>(null);
   const [detailStock, setDetailStock] = useState<StockInfo | null>(null);
+  const [latestNews, setLatestNews] = useState<StockNewsSummary[]>([]);
+  const [latestNewsLoading, setLatestNewsLoading] = useState(false);
+  const [latestNewsLoadFailed, setLatestNewsLoadFailed] = useState(false);
   const [klineType] = useState<'daily'>('daily');
   const [timeRange, setTimeRange] = useState<'last1Month' | 'last1Year' | 'last3Years'>('last1Month');
   const [searchKeyword, setSearchKeyword] = useState('');
   const searchInputRef = useRef<InputRef>(null);
+
+  useEffect(() => {
+    if (!detailStock?.code) {
+      setLatestNews([]);
+      setLatestNewsLoadFailed(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setLatestNews([]);
+    setLatestNewsLoading(true);
+    setLatestNewsLoadFailed(false);
+
+    request.get(`/news/latest/${encodeURIComponent(detailStock.code)}`, {
+      signal: controller.signal,
+    }).then((res) => {
+      const response = res as unknown as ApiResponse<StockNewsLatestResult>;
+      setLatestNews(response?.success && Array.isArray(response.data?.items) ? response.data.items : []);
+    }).catch((error) => {
+      if (!controller.signal.aborted) {
+        console.error('获取股票最新新闻失败:', error);
+        setLatestNewsLoadFailed(true);
+      }
+    }).finally(() => {
+      if (!controller.signal.aborted) {
+        setLatestNewsLoading(false);
+      }
+    });
+
+    return () => controller.abort();
+  }, [detailStock?.code]);
 
   // 时间范围选项（默认展示最近一月，移除最近一周）
   const timeRangeOptions = [
@@ -788,6 +835,65 @@ const Market: React.FC = () => {
                 { key: 'updatedAt', label: t('marketPage.details.updatedAt'), children: formatDateTime(detailStock.updateTime) },
               ]}
             />
+            <section className="border-t border-[var(--border-color)] pt-5">
+              <div className="mb-3 flex items-center gap-2">
+                <NotificationOutlined className="text-[var(--brand)]" />
+                <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                  {t('marketPage.details.latestNews')}
+                </h3>
+              </div>
+              {latestNewsLoading ? (
+                <div className="space-y-3" aria-label={t('marketPage.details.loadingNews')}>
+                  {[0, 1, 2].map((item) => (
+                    <Skeleton key={item} active paragraph={{ rows: 2 }} title={{ width: '72%' }} />
+                  ))}
+                </div>
+              ) : latestNewsLoadFailed ? (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('marketPage.details.newsUnavailable')} />
+              ) : latestNews.length === 0 ? (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('marketPage.details.noNews')} />
+              ) : (
+                <div className="space-y-3">
+                  {latestNews.map((news) => (
+                    <Tooltip
+                      key={news.id}
+                      title={(
+                        <div className="max-h-72 overflow-y-auto break-all whitespace-pre-wrap">
+                          <div className="font-semibold">{news.title}</div>
+                          {news.summary && news.summary !== news.title && (
+                            <div className="mt-2 opacity-90">{news.summary}</div>
+                          )}
+                        </div>
+                      )}
+                      placement="left"
+                      overlayStyle={{ maxWidth: 420 }}
+                    >
+                      <article
+                        tabIndex={0}
+                        className="min-h-[112px] border border-[var(--border-color)] bg-[var(--panel-muted)] p-3 outline-none transition-colors hover:border-[var(--brand)] focus-visible:border-[var(--brand)]"
+                      >
+                        <h4
+                          className="overflow-hidden break-all text-sm font-semibold leading-5 text-[var(--text-primary)]"
+                          style={{ display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}
+                        >
+                          {news.title}
+                        </h4>
+                        <p
+                          className="mt-2 overflow-hidden break-all text-xs leading-5 text-[var(--text-secondary)]"
+                          style={{ display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}
+                        >
+                          {news.summary || news.title}
+                        </p>
+                        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-[var(--text-muted)]">
+                          <span className="min-w-0 truncate">{news.source || news.category || t('marketPage.details.unknownSource')}</span>
+                          <span className="shrink-0 font-mono">{formatDateTime(news.publishTime)}</span>
+                        </div>
+                      </article>
+                    </Tooltip>
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
         )}
       </Drawer>
@@ -796,4 +902,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END-----------------------------
+// AI_GENERATE_END-------------------------------

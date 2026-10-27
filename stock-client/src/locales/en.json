@@ -21,7 +21,7 @@
   },
   "layout": {
     "dashboard": "Returns Overview",
-    "market": "Stock Market",
+    "market": "Market Information",
     "models": "Quant Models",
     "analysis": "Intelligent Decision",
     "jobs": "Job Scheduling",
@@ -45,7 +45,7 @@
     "returnToSystem": "Back to system",
     "pageTitles": {
       "dashboard": "Returns Overview",
-      "market": "Stock Market",
+      "market": "Market Information",
       "orderRecords": "Order Records",
       "logs": "Run Logs",
       "modelOperations": "Price Prediction",
@@ -150,7 +150,12 @@
       "turnover": "Turnover",
       "volumeRatio": "Volume Ratio",
       "listedDate": "Listing Date",
-      "updatedAt": "Updated At"
+      "updatedAt": "Updated At",
+      "latestNews": "Latest News",
+      "loadingNews": "Loading latest news",
+      "noNews": "No valid news available",
+      "newsUnavailable": "Latest news is temporarily unavailable",
+      "unknownSource": "Unknown source"
     }
   },
   "jobsPage": {

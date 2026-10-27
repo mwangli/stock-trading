@@ -38,7 +38,7 @@ stock-base → stock-data → stock-model → stock-trading
 | 模块 | 权威职责 |
 |---|---|
 | `stock-base` | 最小公共响应和缓存契约 |
-| `stock-data` | 股票、行情、新闻和交易日历事实 |
+| `stock-data` | 股票、行情、新闻和工作日规则 |
 | `stock-model` | 训练、推理、融合、预测批次和排名 |
 | `stock-trading` | 分阶段买卖、券商委托、订单与成交事实、绩效 |
 | `stock-platform` | Quartz 任务配置、启停、触发和执行记录 |
@@ -48,7 +48,7 @@ stock-base → stock-data → stock-model → stock-trading
 ## 核心业务链路
 
 ```text
-市场数据与交易日历
+市场数据与工作日规则
 → 模型训练、融合和当日预测
 → 按 effectiveModelScore 生成当日排名
 → 09:35 上午分阶段卖出全部可卖持仓

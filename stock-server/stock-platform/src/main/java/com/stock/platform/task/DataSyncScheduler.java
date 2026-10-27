@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------------------------------------
+// AI_GENERATE_START--------------------------------------------------
 package com.stock.platform.task;
 
 import com.stock.data.dto.ExternalNewsCollectionResult;
@@ -13,8 +13,6 @@ import com.stock.data.service.StockListSyncService;
 import com.stock.data.service.StockPriceService;
 import com.stock.data.service.StockQueryService;
 import com.stock.data.service.StockNewsService;
-import com.stock.data.service.TradingCalendarMaintenanceService;
-import com.stock.data.service.TradingCalendarMaintenanceService.CalendarMaintenanceResult;
 import com.stock.data.service.TradingCalendarService;
 import com.stock.model.service.PredictionEvaluationQueueService;
 import com.stock.model.service.NewsFeatureSnapshotBackfillService;
@@ -75,7 +73,6 @@ public class DataSyncScheduler {
     private final NewsCollectionBackfillService newsCollectionBackfillService;
     private final NewsFeatureSnapshotBackfillService newsFeatureSnapshotBackfillService;
     private final TradingCalendarService tradingCalendarService;
-    private final TradingCalendarMaintenanceService tradingCalendarMaintenanceService;
     private final SyncStateService syncStateService;
     private final PredictionEvaluationQueueService predictionEvaluationQueueService;
 
@@ -121,21 +118,18 @@ public class DataSyncScheduler {
     }
 
     /**
-     * 同步当前已确认交易日的全市场日线增量。
+     * 同步当前工作日的全市场日线增量。
      *
      * 每日任务只请求当天数据，不扫描或回补历史缺口。停牌、新股和供应商当日缺失仅记录为
      * 待回补状态，不阻断其他股票；基础设施异常仍在全部股票处理完成后报告任务失败。
      *
-     * @throws JobSkippedException 当前日期尚未确认或不是交易日时抛出
+     * @throws JobSkippedException 当前日期为周末时抛出
      * @throws IllegalStateException 任务超时、中断或出现基础设施异常时抛出
      */
     public void syncDailyStockData() {
         LocalDate today = LocalDate.now();
-        if (!tradingCalendarService.isConfirmedDate(today)) {
-            throw new JobSkippedException("交易日历尚未确认: " + today);
-        }
         if (!tradingCalendarService.isTradingDay(today)) {
-            throw new JobSkippedException("当前日期不是交易日: " + today);
+            throw new JobSkippedException("当前日期为周末: " + today);
         }
 
         List<String> codes = stockQueryService.findAllCodes();
@@ -198,25 +192,26 @@ public class DataSyncScheduler {
     }
 
     /**
-     * 回补最近三年已确认交易日的历史日线缺口。
+     * 回补最近三年工作日范围内的历史日线缺口。
      *
-     * 该任务与每日增量完全分离，按低频计划执行。单只股票的停牌、历史缺失或供应商无数据
-     * 只保留为 OPEN 缺口，不导致全市场回补失败。
+     * 该任务与每日增量完全分离，按低频计划执行，并按周一至周五生成待检查日期。
+     * 单只股票的停牌、历史缺失或供应商无数据只保留为 OPEN 缺口，不导致全市场回补失败。
      *
-     * @throws IllegalStateException 交易日历不可用、任务超时、中断或出现基础设施异常时抛出
+     * @throws IllegalStateException 任务超时、中断或出现基础设施异常时抛出
      */
     public void backfillHistoricalStockData() {
         LocalDate today = LocalDate.now();
         LocalDate endDate = today.minusDays(1);
         LocalDate earliestDate = today.minusYears(PRICE_BACKFILL_YEARS);
-        List<LocalDate> confirmedTradingDays = loadTradingDaysWithCalendarRepair(earliestDate, endDate);
+        List<LocalDate> workingDays = tradingCalendarService
+                .tradingDaysBetween(earliestDate, endDate);
         List<String> codes = stockQueryService.findAllCodes();
         if (codes == null || codes.isEmpty()) {
             throw new IllegalStateException("未找到任何股票代码，无法执行历史日线回补");
         }
-        log.info("[数据同步任务] 历史日线回补开始: range={}~{}, confirmedTradingDays={}, "
+        log.info("[数据同步任务] 历史日线回补开始: range={}~{}, workingDays={}, "
                         + "availableProcessors={}, threads={}, stockCount={}",
-                earliestDate, endDate, confirmedTradingDays.size(),
+                earliestDate, endDate, workingDays.size(),
                 AVAILABLE_PROCESSORS, PRICE_SYNC_THREADS, codes.size());
 
         AtomicInteger saved = new AtomicInteger();
@@ -235,7 +230,7 @@ public class DataSyncScheduler {
                                     code,
                                     earliestDate,
                                     endDate,
-                                    confirmedTradingDays,
+                                    workingDays,
                                     syncState != null && syncState.openGap()
                                             ? syncState.gapStartDate() : null,
                                     syncState != null && syncState.openGap()
@@ -253,7 +248,7 @@ public class DataSyncScheduler {
                                 "stock-price", code,
                                 result.unresolvedDates().get(0),
                                 result.unresolvedDates().get(result.unresolvedDates().size() - 1),
-                                "历史回补后仍存在未解决的已确认交易日");
+                                "历史回补后仍存在未解决的工作日缺口");
                     }
                 } catch (Exception exception) {
                     failed.incrementAndGet();
@@ -284,20 +279,6 @@ public class DataSyncScheduler {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(taskName + "被中断", exception);
-        }
-    }
-
-    private List<LocalDate> loadTradingDaysWithCalendarRepair(LocalDate startDate, LocalDate endDate) {
-        try {
-            return tradingCalendarService.tradingDaysBetween(startDate, endDate);
-        } catch (IllegalStateException exception) {
-            log.warn("[数据同步任务] 交易日历区间不完整，执行一次滚动维护后重试: range={}~{}, reason={}",
-                    startDate, endDate, exception.getMessage());
-            CalendarMaintenanceResult result = tradingCalendarMaintenanceService.maintainRollingCalendar();
-            log.info("[数据同步任务] 交易日历修复完成: range={}~{}, inserted={}, confirmed={}, unverified={}",
-                    result.startDate(), result.endDate(), result.insertedCount(),
-                    result.confirmedCount(), result.unverifiedCount());
-            return tradingCalendarService.tradingDaysBetween(startDate, endDate);
         }
     }
 
@@ -348,7 +329,8 @@ public class DataSyncScheduler {
                     result.batchId(), result.processedCount(), result.savedCount(), result.withChangeCount(),
                     result.noChangeCount(), result.partialCount(), result.failedCount());
             if (result.partialCount() > 0 || result.failedCount() > 0) {
-                throw new IllegalStateException("每日新闻同步存在部分失败或失败股票");
+                throw new IllegalStateException("每日新闻同步未完整成功: batchId=" + result.batchId()
+                        + ", partial=" + result.partialCount() + ", failed=" + result.failedCount());
             }
             ExternalNewsCollectionResult externalResult = externalNewsCollectionService.collectIncremental();
             if (externalResult.enabled()) {
@@ -369,4 +351,4 @@ public class DataSyncScheduler {
         log.info("========== [数据同步任务] 每日增量新闻采集结束 ==========");
     }
 }
-// AI_GENERATE_END----------------------------------------------
+// AI_GENERATE_END--------------------------------------------------

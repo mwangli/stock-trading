@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START----
 package com.stock.data.repository;
 
 import com.stock.data.entity.ModelStockDailyBar;
@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.time.LocalDate;
@@ -46,6 +47,30 @@ public interface ModelStockDailyBarRepository extends MongoRepository<ModelStock
             String stockCode, LocalDate endDate, String source, String sourceVersion, Pageable pageable);
 
     /**
+     * 批量查询指定股票和数据版本的日线。
+     *
+     * @param stockCodes 股票代码集合
+     * @param source 数据来源
+     * @param sourceVersion 数据版本
+     * @return 按股票代码升序、交易日倒序排列的模型日线
+     */
+    List<ModelStockDailyBar> findByStockCodeInAndSourceAndSourceVersionOrderByStockCodeAscTradeDateDesc(
+            Collection<String> stockCodes, String source, String sourceVersion);
+
+    /**
+     * 批量查询截止指定日期的模型日线。
+     *
+     * @param stockCodes 股票代码集合
+     * @param endDate 截止日期，包含当天
+     * @param source 数据来源
+     * @param sourceVersion 数据版本
+     * @return 按股票代码升序、交易日倒序排列的模型日线
+     */
+    List<ModelStockDailyBar>
+            findByStockCodeInAndTradeDateLessThanEqualAndSourceAndSourceVersionOrderByStockCodeAscTradeDateDesc(
+                    Collection<String> stockCodes, LocalDate endDate, String source, String sourceVersion);
+
+    /**
      * 查询固定来源版本的最新模型日线。
      *
      * @param source 数据来源
@@ -55,4 +80,4 @@ public interface ModelStockDailyBarRepository extends MongoRepository<ModelStock
     Optional<ModelStockDailyBar> findFirstBySourceAndSourceVersionOrderByTradeDateDesc(
             String source, String sourceVersion);
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END----

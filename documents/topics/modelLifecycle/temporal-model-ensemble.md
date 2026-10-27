@@ -32,7 +32,7 @@ Ranking LSTM 保持生产基线，MASTER 使用相同标签、成本模型和四
 
 | 能力 | 当前实现 | 源码状态 |
 |---|---|---|
-| 数据准备 | `ModelDataReadinessService` 检查 `TUSHARE_FREE_DAILY/V6` 模型日线和新闻快照；`ModelDataBackfillService` 按轮执行 Tushare 日线与新闻快照自动准备；`RankingLstmDataPreprocessor` 构建 60 日、53 维样本并执行全局日期切分、标准化、Purge、Embargo 和 Walk-Forward；`TrainingDatasetSnapshotService` 将不可变快照保存到 GridFS | 已具备；达到最大轮数、无写入进展或复检仍有缺口时进入 `WAITING_DATA` |
+| 数据准备 | 独立 Quartz 任务准备 `TUSHARE_FREE_DAILY/V6` 日线和新闻快照；训练只检查契约所需数据。`RankingLstmDataPreprocessor` 构建 V6.1 18D 或 V6.2 26D 样本并执行全局日期切分、标准化、Purge、Embargo 和 Walk-Forward；`TrainingDatasetSnapshotService` 将不可变快照保存到 GridFS | 源码已调整；数据有缺口时进入 `WAITING_DATA` |
 | 模型训练 | `LstmTrainerService` 按目标交易日分组并按横截面块训练 `MasterTransformerModel`，联合优化排序、收益、方向和下行分位，支持早停、独立测试、Walk-Forward 和严格隔离评估 | 已具备 |
 | 模型预测 | `LstmModelRuntimeService` 根据候选元数据重建 MASTER，从 GridFS 加载参数，按训练时 `crossSectionBatchSize` 执行同日股票池推理；`MasterShadowPredictionService` 保存独立影子结果 | 已具备 |
 | 模型评估 | 训练流水线执行一次性独立测试和 Walk-Forward 离线评估；候选登记后，由独立影子任务使用真实目标日收益持续比较 Ranking LSTM 与 MASTER，并自动调权或退役 | 已具备 |
@@ -41,9 +41,9 @@ Ranking LSTM 保持生产基线，MASTER 使用相同标签、成本模型和四
 
 ### 新闻特征版本
 
-事件事实按股票和交易日生成 `temporal-news-v1` 快照，只读取选股截止时点之前发布的 `TRADE_SIGNAL`。固定 25 维依次包含三类概率、连续情感分数、校准置信度、归一化熵、概率间隔、弃权率、事件覆盖、影响幅度、重要性、新颖度、个股相关度、时间衰减、事件年龄、事件数量、来源质量、七类事件占比和缺失状态。
+事件事实按股票和交易日生成 `temporal-news-v2-8d` 快照，只读取截止时点之前发布的 `TRADE_SIGNAL`。8 维依次为 `signedImpact`、`effectiveConfidence`、`materiality`、`novelty`、`stockSpecificity`、`recency`、`sourceQuality` 和 `evidenceCoverage`。没有有效事件时使用合法零向量；新闻源、情感模型或治理数据不可用时阻断，不把不可用伪装成无事件。
 
-`news_feature_snapshots` 以股票、交易日和特征版本唯一，训练和推理批量读取快照，不在样本循环内查询 MongoDB 或重新执行情感模型。任一必需股票交易日缺少完整 25 维快照时直接阻断。Ranking LSTM 与 MASTER 当前统一契约为 `tushare-free-temporal-news-v6-53d`：25 个免费行情和股票池市场连续特征、25 个新闻特征，再加 3 个类别索引，共 53 维。行业索引当前统一为 `UNKNOWN`，市场基准由训练股票池等权构造。旧 31 维和旧 56 维制品均不能冒充当前契约，两个模型必须使用同一 53 维快照版本重新训练后才能融合。付费数据增强目标为同一代际的 `V6_PAID_DATA_ENHANCEMENT_56D`。
+`news_feature_snapshots` 以股票、交易日和特征版本唯一。V6.1 完全不读取新闻；V6.2 批量读取 8 维快照。模型输入解释以制品中的 `ModelFeatureMetadata` 为准，Ranking LSTM 与 MASTER 只有在完整特征元数据一致时才能融合，不能仅凭维度相同视为兼容。
 
 ### 双模型连续权重与自动选择
 
@@ -208,4 +208,4 @@ Mongo 集合 `temporal_model_ensemble_states` 只保存一条全局状态，主�
 
 `SentimentDataPreprocessor` 的关键词结果固定记录为 `WEAK + RULE_KEYWORD`，置信度上限为 0.70，不得称为人工金标，也不得单独作为正式模型晋级证据。后续自动银标必须由事件类型、生产模型与候选模型一致性、以及事件后收益方向共同形成，并保留独立固定审计集；审计集允许用于质量验证，不进入训练扩充。
 
-新闻增益必须使用相同股票池、相同训练/验证/测试日期、相同 Purge/Embargo、相同随机种子和相同成本模型运行三组 Walk-Forward：`NO_NEWS` 将 25 维新闻向量置零，`RAW_NEWS` 使用未治理原始文档的点时规则特征，`V6_EVENT_FACTS` 使用 `temporal-news-v1`。比较指标固定为每日横截面 Rank IC、ICIR、Top 10% 扣成本收益、最大回撤、覆盖率和输出标准差。只有 `V6_EVENT_FACTS` 相对 `NO_NEWS` 和 `RAW_NEWS` 均取得稳定增益，新闻特征才允许进入生产排名；否则排名权重保持为 0，风险门禁独立保留。
+新闻增益评估直接比较 V6.1 与 V6.2，两者必须具有相同股票池、`sampleSetHash`、训练/验证/测试日期、Purge/Embargo、随机种子和成本模型。比较指标固定为每日横截面 Rank IC、ICIR、Top 10% 扣成本收益、最大回撤、覆盖率和输出标准差。只有 V6.2 相对 V6.1 取得稳定且可重复的净增益，新闻特征才允许进入生产排名；否则继续使用 V6.1，新闻风险门禁可独立保留。

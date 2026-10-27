@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.model.dto;
 
 import lombok.Builder;
@@ -70,11 +70,7 @@ public class NewsEventFeatureVector {
     /** 生成方向和置信度特征时使用的情感模型版本。 */
     private String sentimentModelVersion;
 
-    /**
-     * `temporal-news-v1` 固定 25 维向量：三类概率、情感分数、校准置信度、熵、概率间隔、
-     * 弃权率、事件覆盖、影响幅度、重要性、新颖度、个股相关度、时间衰减、事件年龄、
-     * 事件数量、来源质量、七类事件占比和缺失状态。
-     */
+    /** `temporal-news-v2-8d` 向量：方向影响、有效置信度、重要性、新颖度、个股相关度、时效性、来源质量和证据覆盖。 */
     private List<Double> temporalFeatures;
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

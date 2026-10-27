@@ -104,7 +104,7 @@ agent:
   chat-memory-max-messages: 20
   chat-memory-max-sessions: ${AGENT_CHAT_MEMORY_MAX_SESSIONS:500}
   chat-memory-idle-ttl-minutes: ${AGENT_CHAT_MEMORY_IDLE_TTL_MINUTES:120}
-  tool-timeout-ms: 5000
+  tool-timeout-ms: ${AGENT_TOOL_TIMEOUT_MS:30000}
   audit-enabled: true
   web-search:
     enabled: true
@@ -131,11 +131,9 @@ agent:
 
 models:
   lstm:
-    input-size: 53
     data-source: TUSHARE_FREE_DAILY
     data-source-version: V6
     benchmark-series-code: MARKET_EQUAL_WEIGHT
-    data-preparation-max-rounds: ${LSTM_DATA_PREPARATION_MAX_ROUNDS:500}
     residual-head-enabled: false
   sentiment:
     model-version: finbert-tone-chinese-e91b1a3a
@@ -145,7 +143,7 @@ models:
     master-shadow-enabled: ${MASTER_SHADOW_ENABLED:true}
     production-blend-enabled: ${TEMPORAL_ENSEMBLE_ENABLED:true}
     news-features-embedded: ${TEMPORAL_NEWS_FEATURES_EMBEDDED:true}
-    news-feature-version: ${TEMPORAL_NEWS_FEATURE_VERSION:temporal-news-v1}
+    news-feature-version: ${TEMPORAL_NEWS_FEATURE_VERSION:temporal-news-v2-8d}
 
 app:
   market:

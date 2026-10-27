@@ -1,4 +1,4 @@
-// AI_GENERATE_START---
+// AI_GENERATE_START-----
 package com.stock.model.service;
 
 import com.stock.data.dto.ModelStockDailyBarDto;
@@ -26,7 +26,7 @@ import java.time.LocalTime;
 import java.util.List;
 
 /**
- * `temporal-news-v1` 历史股票日级快照回填与点时审计服务。
+ * 版本化新闻特征历史股票日级快照回填与点时审计服务。
  * 按模型日线 ID 游标顺序执行小批量、幂等生成，适配 2C4G 节点顺序推理。
  *
  * @author mwangli
@@ -143,26 +143,37 @@ public class NewsFeatureSnapshotBackfillService {
      * @return 点时与覆盖率审计结果
      */
     public NewsFeatureSnapshotAuditResult audit() {
+        return audit(NewsFeatureSnapshotService.FEATURE_VERSION, NewsFeatureSnapshotService.FEATURE_COUNT);
+    }
+
+    /**
+     * 按指定新闻特征契约审计快照覆盖率和完整性。
+     *
+     * @param featureVersion 新闻特征版本
+     * @param featureCount 新闻特征维度
+     * @return 点时与覆盖率审计结果
+     */
+    public NewsFeatureSnapshotAuditResult audit(String featureVersion, int featureCount) {
         String source = requireText(trainingConfig.getDataSource(), "模型行情来源不能为空");
         String sourceVersion = requireText(trainingConfig.getDataSourceVersion(), "模型行情版本不能为空");
         long expected = marketDataQueryService.countModelStockBars(source, sourceVersion);
 
-        Criteria snapshotScope = Criteria.where("featureVersion").is(NewsFeatureSnapshotService.FEATURE_VERSION)
+        Criteria snapshotScope = Criteria.where("featureVersion").is(featureVersion)
                 .and("marketDataSource").is(source)
                 .and("marketDataSourceVersion").is(sourceVersion);
         long actual = mongoTemplate.count(Query.query(snapshotScope), NewsFeatureSnapshotDocument.class);
         long invalidContract = countSnapshots(new Document("$and", List.of(
-                scopeDocument(source, sourceVersion),
+                scopeDocument(source, sourceVersion, featureVersion),
                 new Document("$or", List.of(
                         new Document("complete", new Document("$ne", true)),
                         new Document("cutoffTime", null),
                         new Document("featureTradeDate", null),
-                        new Document("$expr", new Document("$ne", List.of(new Document("$size", new Document("$ifNull", List.of("$features", List.of()))), 25))))))));
+                        new Document("$expr", new Document("$ne", List.of(new Document("$size", new Document("$ifNull", List.of("$features", List.of()))), featureCount))))))));
         long lookAhead = countSnapshots(new Document("$and", List.of(
-                scopeDocument(source, sourceVersion),
+                scopeDocument(source, sourceVersion, featureVersion),
                 new Document("$expr", new Document("$gt", List.of("$latestInputPublishTime", "$cutoffTime"))))));
         long missingProvenance = countSnapshots(new Document("$and", List.of(
-                scopeDocument(source, sourceVersion),
+                scopeDocument(source, sourceVersion, featureVersion),
                 new Document("inputEventCount", new Document("$gt", 0)),
                 new Document("$or", List.of(
                         new Document("pipelineVersion", new Document("$in", java.util.Arrays.asList(null, ""))),
@@ -184,8 +195,8 @@ public class NewsFeatureSnapshotBackfillService {
         return mongoTemplate.count(new BasicQuery(queryDocument), NewsFeatureSnapshotDocument.class);
     }
 
-    private Document scopeDocument(String source, String sourceVersion) {
-        return new Document("featureVersion", NewsFeatureSnapshotService.FEATURE_VERSION)
+    private Document scopeDocument(String source, String sourceVersion, String featureVersion) {
+        return new Document("featureVersion", featureVersion)
                 .append("marketDataSource", source)
                 .append("marketDataSourceVersion", sourceVersion);
     }
@@ -212,4 +223,4 @@ public class NewsFeatureSnapshotBackfillService {
         return value.length() <= 500 ? value : value.substring(0, 500);
     }
 }
-// AI_GENERATE_END---
+// AI_GENERATE_END-----

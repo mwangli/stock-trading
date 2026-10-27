@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------
+// AI_GENERATE_START--------------
 package com.stock.agent.enums;
 
 /**
@@ -25,7 +25,7 @@ public enum AgentToolName {
     /** 指定自然月收益分析。 */
     PERFORMANCE_ANALYSIS("queryPerformanceAnalysis"),
 
-    /** 交易日历查询。 */
+    /** 工作日规则查询，保留原工具名兼容现有调用。 */
     TRADING_CALENDAR("queryTradingCalendar"),
 
     /** 最新价格查询。 */
@@ -83,4 +83,4 @@ public enum AgentToolName {
     }
 
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END-------------

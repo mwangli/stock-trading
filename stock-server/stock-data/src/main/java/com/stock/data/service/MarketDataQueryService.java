@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START-------------
 package com.stock.data.service;
 
 import com.stock.data.dto.HistoricalStockUniverseDto;
@@ -31,7 +31,6 @@ import com.stock.data.repository.PriceRepository;
 import com.stock.data.repository.StockAdjustmentFactorRepository;
 import com.stock.data.repository.StockDailyTradabilityFactRepository;
 import com.stock.data.repository.StockInfoRepository;
-import com.stock.data.repository.TradeCalendarRepository;
 import lombok.RequiredArgsConstructor;
 import org.bson.types.ObjectId;
 import org.springframework.data.domain.PageRequest;
@@ -43,9 +42,12 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -58,6 +60,7 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class MarketDataQueryService {
+    private static final int MODEL_STOCK_BAR_BATCH_SIZE = 100;
     private final PriceRepository priceRepository;
     private final StockInfoRepository stockInfoRepository;
     private final NewsRepository newsRepository;
@@ -67,7 +70,6 @@ public class MarketDataQueryService {
     private final StockAdjustmentFactorRepository adjustmentFactorRepository;
     private final HistoricalStockUniverseRepository historicalUniverseRepository;
     private final StockDailyTradabilityFactRepository tradabilityFactRepository;
-    private final TradeCalendarRepository tradeCalendarRepository;
     private final MongoTemplate mongoTemplate;
 
     /**
@@ -282,6 +284,53 @@ public class MarketDataQueryService {
                 .findByStockCodeAndTradeDateLessThanEqualAndSourceAndSourceVersionOrderByTradeDateDesc(
                         stockCode, endDate, source, sourceVersion, page);
         return bars.stream().map(this::toModelStockBarDto).toList();
+    }
+
+    /**
+     * 批量查询版本化模型股票日线窗口，消除训练快照逐股远程查询。
+     *
+     * @param stockCodes 股票代码集合
+     * @param endDate 截止日期，包含当天
+     * @param source 数据来源
+     * @param sourceVersion 数据版本
+     * @param limitPerStock 每只股票最大返回数量
+     * @return 股票代码到按交易日倒序排列的模型日线映射
+     */
+    public Map<String, List<ModelStockDailyBarDto>> findModelStockBarsByStockCodes(
+            Collection<String> stockCodes,
+            LocalDate endDate,
+            String source,
+            String sourceVersion,
+            int limitPerStock) {
+        if (stockCodes == null || stockCodes.isEmpty()) {
+            return Map.of();
+        }
+        int safeLimit = Math.max(1, limitPerStock);
+        List<String> codes = stockCodes.stream()
+                .filter(code -> code != null && !code.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        Map<String, List<ModelStockDailyBarDto>> grouped = new LinkedHashMap<>();
+        for (int start = 0; start < codes.size(); start += MODEL_STOCK_BAR_BATCH_SIZE) {
+            int end = Math.min(start + MODEL_STOCK_BAR_BATCH_SIZE, codes.size());
+            List<String> batchCodes = codes.subList(start, end);
+            List<ModelStockDailyBar> bars = endDate == null
+                    ? modelStockDailyBarRepository
+                    .findByStockCodeInAndSourceAndSourceVersionOrderByStockCodeAscTradeDateDesc(
+                            batchCodes, source, sourceVersion)
+                    : modelStockDailyBarRepository
+                    .findByStockCodeInAndTradeDateLessThanEqualAndSourceAndSourceVersionOrderByStockCodeAscTradeDateDesc(
+                            batchCodes, endDate, source, sourceVersion);
+            for (ModelStockDailyBar bar : bars) {
+                List<ModelStockDailyBarDto> stockBars = grouped.computeIfAbsent(
+                        bar.getStockCode(), ignored -> new ArrayList<>());
+                if (stockBars.size() < safeLimit) {
+                    stockBars.add(toModelStockBarDto(bar));
+                }
+            }
+        }
+        return grouped;
     }
 
     /**
@@ -512,26 +561,6 @@ public class MarketDataQueryService {
     }
 
     /**
-     * 查询全市场交易日历最早日期。
-     *
-     * @return 最早日历日期
-     */
-    public LocalDate findEarliestCalendarDate() {
-        return tradeCalendarRepository.findFirstByOrderByTradeDateAsc()
-                .map(item -> item.getTradeDate()).orElse(null);
-    }
-
-    /**
-     * 查询全市场交易日历最晚日期。
-     *
-     * @return 最晚日历日期
-     */
-    public LocalDate findLatestCalendarDate() {
-        return tradeCalendarRepository.findFirstByOrderByTradeDateDesc()
-                .map(item -> item.getTradeDate()).orElse(null);
-    }
-
-    /**
      * 查询与指定区间重叠的历史股票池版本。
      *
      * @param startDate 开始日期
@@ -564,20 +593,6 @@ public class MarketDataQueryService {
                 .and("tradeDate").gte(startDate).lte(endDate));
         return mongoTemplate.find(query, StockAdjustmentFactor.class).stream()
                 .map(this::toAdjustmentFactorDto).toList();
-    }
-
-    /**
-     * 查询指定区间内已标记为交易日的日期。
-     *
-     * @param startDate 开始日期
-     * @param endDate 结束日期
-     * @return 交易日期列表
-     */
-    public List<LocalDate> findTradingDates(LocalDate startDate, LocalDate endDate) {
-        Query query = Query.query(Criteria.where("tradingDay").is(true)
-                .and("tradeDate").gte(startDate).lte(endDate));
-        return mongoTemplate.findDistinct(query, "tradeDate", "trade_calendar", LocalDate.class)
-                .stream().sorted().toList();
     }
 
     private StockPriceItemDto toPriceDto(StockPrice price) {
@@ -674,4 +689,4 @@ public class MarketDataQueryService {
                 .capturedAt(fact.getCapturedAt()).build();
     }
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END-------------

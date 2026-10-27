@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.model.service;
 
 import org.springframework.stereotype.Component;
@@ -315,18 +315,14 @@ public class RankingValidationMetricsCalculator {
     private boolean isCollapsed(double[] values) {
         double mean = mean(values);
         double variance = 0D;
-        int positive = 0;
-        int negative = 0;
         for (double value : values) {
-            variance += Math.pow(value - mean, 2D);
-            if (value > 0D) {
-                positive++;
-            } else if (value < 0D) {
-                negative++;
+            if (!Double.isFinite(value)) {
+                return true;
             }
+            variance += Math.pow(value - mean, 2D);
         }
         double standardDeviation = Math.sqrt(variance / values.length);
-        return standardDeviation < 1.0E-5D || positive == values.length || negative == values.length;
+        return standardDeviation < 1.0E-5D;
     }
 
     private double mean(double[] values) {
@@ -389,4 +385,4 @@ public class RankingValidationMetricsCalculator {
     private record CrossSectionMetrics(double rankIc, double topDecileNetReturn) {
     }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

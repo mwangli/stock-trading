@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.data.dto;
 
 import java.time.LocalDate;
@@ -10,7 +10,7 @@ import java.util.List;
  * @param savedCount 历史回补新增条数
  * @param apiRequestCount 供应商接口请求次数
  * @param skipped 是否因无缺口而跳过供应商请求
- * @param unresolvedDates 仍未解决的已确认交易日
+ * @param unresolvedDates 仍未解决的工作日
  * @author mwangli
  * @since 2026-10-23
  */
@@ -19,4 +19,4 @@ public record HistoricalPriceSyncResult(int savedCount,
                                         boolean skipped,
                                         List<LocalDate> unresolvedDates) {
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----
