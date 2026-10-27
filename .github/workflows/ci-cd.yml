@@ -1,0 +1,177 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - 'backend-v*'
+      - 'frontend-v*'
+    paths:
+      - 'model-files/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-production
+  cancel-in-progress: false
+
+env:
+  ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
+  ACR_USERNAME: ${{ vars.ACR_USERNAME }}
+  MODEL_IMAGE_REPOSITORY: ${{ format('{0}/{1}/{2}-models', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME) }}
+
+jobs:
+  backend:
+    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/backend-v')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      GIT_LFS_SKIP_SMUDGE: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          lfs: false
+
+      - name: Resolve model version
+        id: model
+        run: echo "revision=$(git log -1 --format=%H -- model-files)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Download model files
+        if: github.ref == 'refs/heads/master'
+        run: git lfs pull --include="model-files/**" --exclude=""
+
+      - name: Build model image
+        if: github.ref == 'refs/heads/master'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: stock-server/Dockerfile
+          target: models
+          push: true
+          tags: |
+            ${{ env.MODEL_IMAGE_REPOSITORY }}:${{ steps.model.outputs.revision }}
+            ${{ env.MODEL_IMAGE_REPOSITORY }}:latest
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Package backend
+        run: |
+          mvn --batch-mode --no-transfer-progress \
+            --projects stock-server/stock-application --also-make \
+            clean package -DskipTests
+          cp stock-server/stock-application/target/stock-application-*.jar stock-server/app.jar
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: stock-server/Dockerfile
+          build-args: MODEL_IMAGE=${{ env.MODEL_IMAGE_REPOSITORY }}:${{ steps.model.outputs.revision }}
+          push: true
+          tags: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME, github.sha) }}
+
+      - uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          source: docker-compose.yml
+          target: ${{ vars.SERVER_DEPLOY_DIR }}
+          overwrite: true
+
+      - uses: appleboy/ssh-action@v1.2.5
+        env:
+          DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
+          IMAGE: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME, github.sha) }}
+          ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
+          ACR_USERNAME: ${{ vars.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          envs: DEPLOY_DIR,IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
+          script: |
+            set -e
+            cd "$DEPLOY_DIR"
+            old_image="$(docker inspect --format '{{.Config.Image}}' stock-backend 2>/dev/null || true)"
+            printf '%s' "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" --username "$ACR_USERNAME" --password-stdin
+            export STOCK_BACKEND_IMAGE="$IMAGE"
+            docker compose --env-file .env pull stock-backend
+            docker compose --env-file .env up -d --no-deps --no-build stock-backend
+            [ -z "$old_image" ] || [ "$old_image" = "$IMAGE" ] || docker image rm "$old_image" || true
+
+  frontend:
+    if: startsWith(github.ref, 'refs/tags/frontend-v')
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: stock-client/Dockerfile
+          push: true
+          tags: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.FRONTEND_IMAGE_NAME, github.sha) }}
+
+      - uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          source: docker-compose.yml
+          target: ${{ vars.SERVER_DEPLOY_DIR }}
+          overwrite: true
+
+      - uses: appleboy/ssh-action@v1.2.5
+        env:
+          DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
+          IMAGE: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.FRONTEND_IMAGE_NAME, github.sha) }}
+          ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
+          ACR_USERNAME: ${{ vars.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          envs: DEPLOY_DIR,IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
+          script: |
+            set -e
+            cd "$DEPLOY_DIR"
+            old_image="$(docker inspect --format '{{.Config.Image}}' stock-frontend 2>/dev/null || true)"
+            printf '%s' "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" --username "$ACR_USERNAME" --password-stdin
+            export STOCK_FRONTEND_IMAGE="$IMAGE"
+            docker compose --env-file .env pull stock-frontend
+            docker compose --env-file .env up -d --no-deps --no-build stock-frontend
+            [ -z "$old_image" ] || [ "$old_image" = "$IMAGE" ] || docker image rm "$old_image" || true
