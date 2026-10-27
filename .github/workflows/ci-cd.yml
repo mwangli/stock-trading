@@ -111,6 +111,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          command_timeout: 30m
           envs: DEPLOY_DIR,IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
           script: |
             set -e
@@ -169,6 +170,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          command_timeout: 30m
           envs: DEPLOY_DIR,IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
           script: |
             set -e
