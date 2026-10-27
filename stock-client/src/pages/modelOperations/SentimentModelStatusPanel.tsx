@@ -1,12 +1,10 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Space, Tag, Typography } from 'antd';
+import { Button, Card, Space, Tag } from 'antd';
 import { CheckCircleOutlined, MessageOutlined, ReloadOutlined, WarningOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
 import { getApiErrorMessage, readApiData, type ApiResponse } from '../../utils/api';
 import { localizedText } from '../../utils/localizedText';
-
-const { Text } = Typography;
 
 interface SentimentHealth {
   status: string;
@@ -69,4 +67,4 @@ const SentimentModelStatusPanel: React.FC = () => {
 };
 
 export default SentimentModelStatusPanel;
-// AI_GENERATE_END --
+// AI_GENERATE_END ----
