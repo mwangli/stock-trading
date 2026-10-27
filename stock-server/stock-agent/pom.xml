@@ -20,6 +20,7 @@
         <dependency><groupId>dev.langchain4j</groupId><artifactId>langchain4j</artifactId></dependency>
         <dependency><groupId>dev.langchain4j</groupId><artifactId>langchain4j-open-ai</artifactId></dependency>
         <dependency><groupId>dev.langchain4j</groupId><artifactId>langchain4j-ollama</artifactId></dependency>
+        <dependency><groupId>com.github.ben-manes.caffeine</groupId><artifactId>caffeine</artifactId></dependency>
         <dependency><groupId>ai.djl</groupId><artifactId>api</artifactId></dependency>
         <dependency><groupId>ai.djl.pytorch</groupId><artifactId>pytorch-engine</artifactId></dependency>
         <dependency><groupId>ai.djl.huggingface</groupId><artifactId>tokenizers</artifactId></dependency>

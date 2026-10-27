@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.trading.dto;
 
 import lombok.Builder;
@@ -20,22 +20,16 @@ public class TradingCandidateDto {
     /** 股票名称。 */
     private String stockName;
 
-    /** LSTM 预测得分。 */
-    private double lstmScore;
+    /** 融合后的生产有效模型得分。 */
+    private Double effectiveModelScore;
 
-    /** 可交易新闻影响分数。 */
-    private double newsImpactScore;
-
-    /** 综合得分。 */
-    private double totalScore;
+    /** 扣除费用和安全边际后的预估净收益。 */
+    private Double effectiveEstimatedNetReturn;
 
     /** 当日候选排名。 */
     private int rank;
 
-    /** 候选产生原因。 */
-    private String reason;
-
     /** 当前账户是否已经持有该股票。 */
     private boolean held;
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

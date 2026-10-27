@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START----
 package com.stock.agent.output;
 
 import com.alibaba.fastjson2.JSON;
@@ -29,7 +29,7 @@ public class TradePlanStructuredOutputHandler implements AgentStructuredOutputHa
                 || !StringUtils.hasText(draft.getPredictionBatchId())
                 || !StringUtils.hasText(draft.getStockCode())
                 || draft.getTargetTradeDate() == null
-                || !StringUtils.hasText(draft.getStrategyVersion())
+                || !StringUtils.hasText(draft.getModelVersion())
                 || (!"BUY".equalsIgnoreCase(draft.getDirection()) && !"SELL".equalsIgnoreCase(draft.getDirection()))
                 || draft.getExpiresAt() == null || !draft.getExpiresAt().isAfter(java.time.LocalDateTime.now())
                 || draft.getEvidenceRefs() == null || draft.getEvidenceRefs().isEmpty()
@@ -47,4 +47,4 @@ public class TradePlanStructuredOutputHandler implements AgentStructuredOutputHa
         return draft;
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END----

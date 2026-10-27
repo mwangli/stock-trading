@@ -1,21 +1,13 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START-------------
 package com.stock.trading.controller;
 
-import com.stock.strategy.config.StrategyConfigManager;
 import com.stock.base.web.ResponseDTO;
 import com.stock.trading.dto.RealTradingStatusDto;
-import com.stock.trading.dto.AutomaticTradingEmergencyStopRequest;
-import com.stock.trading.dto.SystemRuntimeConfigResponse;
 import com.stock.trading.dto.TradingCandidateListResponseDto;
 import com.stock.trading.service.RealTradingService;
-import com.stock.trading.service.SystemRuntimeConfigService;
-import com.stock.trading.interceptor.AuthInterceptor;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -35,8 +27,6 @@ import java.util.function.Supplier;
 public class RealTradingController {
 
     private final RealTradingService realTradingService;
-    private final SystemRuntimeConfigService runtimeConfigService;
-    private final StrategyConfigManager strategyConfigManager;
 
     /**
      * 查询真实交易运行状态。
@@ -60,44 +50,6 @@ public class RealTradingController {
         return execute(realTradingService::getCandidates);
     }
 
-    /**
-     * 紧急停止后续自动交易。
-     *
-     * @param request 紧急停止请求
-     * @param httpRequest HTTP 请求
-     * @return 保存后的运行控制状态
-     */
-    @PostMapping("/emergencyStop")
-    public ResponseDTO<SystemRuntimeConfigResponse> emergencyStop(
-            @RequestBody AutomaticTradingEmergencyStopRequest request,
-            HttpServletRequest httpRequest) {
-        log.warn("收到自动交易紧急停止请求");
-        return execute(() -> runtimeConfigService.emergencyStopAutomaticTrading(
-                request == null ? null : request.getReason(),
-                currentOperator(httpRequest),
-                currentStrategyVersion()));
-    }
-
-    private String currentOperator(HttpServletRequest request) {
-        if (request.getSession(false) != null) {
-            Object username = request.getSession(false)
-                    .getAttribute(AuthInterceptor.AUTH_USERNAME_SESSION_KEY);
-            if (username instanceof String value && !value.isBlank()) {
-                return value;
-            }
-        }
-        return "UNKNOWN";
-    }
-
-    private String currentStrategyVersion() {
-        try {
-            return strategyConfigManager.getCurrentConfigDto().getVersion();
-        } catch (RuntimeException exception) {
-            log.warn("紧急停止时读取策略版本失败: {}", exception.getMessage());
-            return "UNAVAILABLE";
-        }
-    }
-
     private <T> ResponseDTO<T> execute(Supplier<T> supplier) {
         try {
             return ResponseDTO.success(supplier.get());
@@ -110,4 +62,4 @@ public class RealTradingController {
         }
     }
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END-------------

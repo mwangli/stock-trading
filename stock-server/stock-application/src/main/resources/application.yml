@@ -59,9 +59,6 @@ zxbroker:
   sign-key: ${ZXBROKER_SIGN_KEY:}
   intact-to-server: ${ZXBROKER_INTACT_TO_SERVER:}
 
-trading:
-  real-write-enabled: false
-
 agent:
   enabled: true
   provider: ${AGENT_PROVIDER:deepseek}
@@ -105,6 +102,8 @@ agent:
     path: ./documents
   memory-default-ttl-days: 90
   chat-memory-max-messages: 20
+  chat-memory-max-sessions: ${AGENT_CHAT_MEMORY_MAX_SESSIONS:500}
+  chat-memory-idle-ttl-minutes: ${AGENT_CHAT_MEMORY_IDLE_TTL_MINUTES:120}
   tool-timeout-ms: 5000
   audit-enabled: true
   web-search:

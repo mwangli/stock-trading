@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------
+// AI_GENERATE_START---------------------------
 package com.stock.agent.service;
 
 import com.stock.agent.enums.AgentTaskType;
@@ -14,8 +14,6 @@ import com.stock.agent.tool.PredictionCandidateQueryTool;
 import com.stock.agent.tool.ProviderRuntimeQueryTool;
 import com.stock.agent.tool.TradingCalendarQueryTool;
 import com.stock.agent.tool.BrokerFactQueryTool;
-import com.stock.agent.tool.StrategyStateQueryTool;
-import com.stock.agent.tool.TradeExecutionGateQueryTool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -40,12 +38,10 @@ import java.util.function.Supplier;
 public class EvidenceAssembler {
 
     private final TradingCalendarQueryTool tradingCalendarQueryTool;
-    private final StrategyStateQueryTool strategyStateQueryTool;
     private final PredictionCandidateQueryTool predictionCandidateQueryTool;
     private final ProviderRuntimeQueryTool providerRuntimeQueryTool;
     private final JobDiagnosticTool jobDiagnosticTool;
     private final BrokerFactQueryTool brokerFactQueryTool;
-    private final TradeExecutionGateQueryTool tradeExecutionGateQueryTool;
 
     /**
      * 按任务类型组装固定只读证据。
@@ -108,8 +104,8 @@ public class EvidenceAssembler {
                 .taskId(taskId)
                 .userScope(userScope)
                 .allowedToolNames(Set.of("queryProviderRuntime", "queryTradingCalendar",
-                        "queryStrategyState", "queryPredictionCandidates", "queryLatestPredictionCandidate",
-                        "queryJobDiagnostic", "queryTradeExecutionGate", "queryBrokerFacts"))
+                        "queryPredictionCandidates", "queryLatestPredictionCandidate",
+                        "queryJobDiagnostic", "queryBrokerFacts"))
                 .build();
         List<EvidenceItem> items = new ArrayList<>();
         boolean runtimeOnly = isRuntimeDiagnostic(taskType, diagnosticQuestion);
@@ -132,10 +128,9 @@ public class EvidenceAssembler {
                 add(items, "queryProviderRuntime", providerRuntimeQueryTool::query);
                 return buildBundle(taskType, taskId, sessionId, items, null, null, null, startedAt);
             }
-            add(items, "queryStrategyState", strategyStateQueryTool::query);
             LocalDate targetTradeDate = calendarTradeDate;
             String predictionBatchId = null;
-            String strategyVersion = null;
+            String modelVersion = null;
             if (StringUtils.hasText(candidateBatchId)) {
                 PredictionCandidateQueryTool.PredictionCandidateResult candidateData = add(items,
                         "queryPredictionCandidates",
@@ -143,7 +138,7 @@ public class EvidenceAssembler {
                                 new PredictionCandidateQueryTool.PredictionCandidateRequest(candidateBatchId.trim())));
                 if (candidateData != null) {
                     predictionBatchId = candidateData.predictionBatchId();
-                    strategyVersion = candidateData.strategyVersion();
+                    modelVersion = candidateData.modelVersion();
                     targetTradeDate = candidateData.targetTradeDate() == null
                             ? targetTradeDate : candidateData.targetTradeDate();
                 }
@@ -154,7 +149,7 @@ public class EvidenceAssembler {
                         () -> predictionCandidateQueryTool.queryLatest(lookupTradeDate));
                 if (candidateData != null) {
                     predictionBatchId = candidateData.predictionBatchId();
-                    strategyVersion = candidateData.strategyVersion();
+                    modelVersion = candidateData.modelVersion();
                     targetTradeDate = candidateData.targetTradeDate() == null
                             ? targetTradeDate : candidateData.targetTradeDate();
                 }
@@ -163,15 +158,11 @@ public class EvidenceAssembler {
                 add(items, "queryJobDiagnostic",
                         () -> jobDiagnosticTool.query(new JobDiagnosticTool.JobDiagnosticRequest(jobName.trim())));
             }
-            if (taskType == AgentTaskType.TRADE_PLAN
-                    || requiresTradeGate(taskType, diagnosticQuestion)) {
-                add(items, "queryTradeExecutionGate", tradeExecutionGateQueryTool::query);
-            }
             if (brokerFactsRequired) {
                 add(items, "queryBrokerFacts", brokerFactQueryTool::query);
             }
             add(items, "queryProviderRuntime", providerRuntimeQueryTool::query);
-            return buildBundle(taskType, taskId, sessionId, items, predictionBatchId, strategyVersion,
+            return buildBundle(taskType, taskId, sessionId, items, predictionBatchId, modelVersion,
                     targetTradeDate, startedAt);
         } finally {
             AgentToolContextHolder.clear();
@@ -179,7 +170,7 @@ public class EvidenceAssembler {
     }
 
     private EvidenceBundle buildBundle(AgentTaskType taskType, String taskId, String sessionId,
-                                       List<EvidenceItem> items, String predictionBatchId, String strategyVersion,
+                                       List<EvidenceItem> items, String predictionBatchId, String modelVersion,
                                        LocalDate targetTradeDate, long startedAt) {
         List<String> refs = items.stream()
                 .filter(item -> "AVAILABLE".equals(item.getStatus()))
@@ -194,7 +185,7 @@ public class EvidenceAssembler {
                 summary.length(), elapsedMillis(startedAt));
         return EvidenceBundle.builder().items(List.copyOf(items)).evidenceRefs(refs).summary(limit(summary))
                 .predictionBatchId(predictionBatchId)
-                .strategyVersion(strategyVersion)
+                .modelVersion(modelVersion)
                 .targetTradeDate(targetTradeDate)
                 .build();
     }
@@ -341,4 +332,4 @@ public class EvidenceAssembler {
         return value.length() > 12000 ? value.substring(0, 12000) : value;
     }
 }
-// AI_GENERATE_END------------------------
+// AI_GENERATE_END---------------------------

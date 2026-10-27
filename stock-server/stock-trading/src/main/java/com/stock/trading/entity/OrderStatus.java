@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.trading.entity;
 
 /**
@@ -60,7 +60,7 @@ public enum OrderStatus {
      * @return 终态时返回 true
      */
     public boolean isFinal() {
-        return this == FILLED || this == CANCELLED || this == REJECTED || this == TIMEOUT;
+        return this == FILLED || this == CANCELLED || this == REJECTED;
     }
 
     /**
@@ -72,4 +72,4 @@ public enum OrderStatus {
         return this == FILLED;
     }
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

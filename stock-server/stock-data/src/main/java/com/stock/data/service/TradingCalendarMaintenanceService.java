@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START---------------
 package com.stock.data.service;
 
 import com.stock.base.cache.CacheNames;
@@ -12,6 +12,11 @@ import com.stock.data.client.TradingCalendarSourceClient.CalendarSourceSnapshot;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.data.mongodb.core.BulkOperations;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 import java.time.DayOfWeek;
@@ -37,12 +42,13 @@ import java.util.TreeSet;
 public class TradingCalendarMaintenanceService {
 
     private static final String MARKET = "CN";
-    private static final String SOURCE = "EASTMONEY_CLOSURE_CALENDAR";
+    private static final String SOURCE = "EASTMONEY_INDEX_CLOSURE_CALENDAR";
     private static final int HISTORY_BACKFILL_YEARS = 3;
     private static final ZoneId MARKET_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final TradeCalendarRepository tradeCalendarRepository;
     private final TradingCalendarSourceClient sourceClient;
+    private final MongoTemplate mongoTemplate;
 
     /**
      * 回补历史缺口、确认已发布年份，并将滚动日历维持到未来一年月末。
@@ -52,16 +58,15 @@ public class TradingCalendarMaintenanceService {
      */
     @CacheEvict(cacheNames = CacheNames.TRADING_CALENDAR, allEntries = true)
     public CalendarMaintenanceResult maintainRollingCalendar() {
-        CalendarSourceSnapshot snapshot = sourceClient.fetchAStockClosures();
         LocalDate today = LocalDate.now(MARKET_ZONE);
         LocalDate startDate = today.minusYears(HISTORY_BACKFILL_YEARS);
         LocalDate endDate = YearMonth.from(today).plusMonths(12).atEndOfMonth();
+        CalendarSourceSnapshot snapshot = sourceClient.fetchAStockCalendar(startDate, today.minusDays(1));
         List<TradeCalendarEntity> existingRecords = tradeCalendarRepository
                 .findByMarketAndTradeDateBetweenOrderByTradeDateAsc(MARKET, startDate, endDate);
         Map<LocalDate, TradeCalendarEntity> recordsByDate = new HashMap<>();
         existingRecords.forEach(item -> recordsByDate.put(item.getTradeDate(), item));
 
-        int insertedCount = 0;
         int confirmedCount = 0;
         int unverifiedCount = 0;
         for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
@@ -73,7 +78,6 @@ public class TradingCalendarMaintenanceService {
                         .createdAt(snapshot.fetchedAt())
                         .build();
                 recordsByDate.put(date, entity);
-                insertedCount++;
             }
             applyCalendarStatus(entity, date, snapshot);
             entity.setSource(SOURCE);
@@ -93,12 +97,38 @@ public class TradingCalendarMaintenanceService {
                 .sorted(java.util.Comparator.comparing(TradeCalendarEntity::getTradeDate))
                 .toList();
         rebuildTradingDayLinks(records);
-        tradeCalendarRepository.saveAll(records);
+        int insertedCount = upsertCalendarRecords(records);
         log.info("交易日历滚动维护完成: range={}~{}, inserted={}, confirmed={}, unverified={}, sourceVersion={}",
                 startDate, endDate, insertedCount, confirmedCount, unverifiedCount,
                 snapshot.sourceVersion());
         return new CalendarMaintenanceResult(startDate, endDate, insertedCount,
                 confirmedCount, unverifiedCount, snapshot.sourceVersion());
+    }
+
+    private int upsertCalendarRecords(List<TradeCalendarEntity> records) {
+        BulkOperations bulk = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED,
+                TradeCalendarEntity.class);
+        for (TradeCalendarEntity entity : records) {
+            Query query = Query.query(Criteria.where("market").is(entity.getMarket())
+                    .and("tradeDate").is(entity.getTradeDate()));
+            Update update = new Update()
+                    .set("tradingDay", entity.isTradingDay())
+                    .set("dayStatus", entity.getDayStatus())
+                    .set("closureType", entity.getClosureType())
+                    .set("verificationStatus", entity.getVerificationStatus())
+                    .set("previousTradingDay", entity.getPreviousTradingDay())
+                    .set("nextTradingDay", entity.getNextTradingDay())
+                    .set("source", entity.getSource())
+                    .set("sourceVersion", entity.getSourceVersion())
+                    .set("sourceFetchedAt", entity.getSourceFetchedAt())
+                    .set("confirmedAt", entity.getConfirmedAt())
+                    .set("updatedAt", entity.getUpdatedAt())
+                    .setOnInsert("market", entity.getMarket())
+                    .setOnInsert("tradeDate", entity.getTradeDate())
+                    .setOnInsert("createdAt", entity.getCreatedAt());
+            bulk.upsert(query, update);
+        }
+        return bulk.execute().getUpserts().size();
     }
 
     private void applyCalendarStatus(TradeCalendarEntity entity, LocalDate date,
@@ -107,6 +137,14 @@ public class TradingCalendarMaintenanceService {
             entity.setTradingDay(false);
             entity.setDayStatus(CalendarDayStatus.CLOSED);
             entity.setClosureType(CalendarClosureType.WEEKEND);
+            entity.setVerificationStatus(CalendarVerificationStatus.CONFIRMED);
+            return;
+        }
+        if (snapshot.coversHistoricalDate(date)) {
+            boolean tradingDay = snapshot.isHistoricalTradingDay(date);
+            entity.setTradingDay(tradingDay);
+            entity.setDayStatus(tradingDay ? CalendarDayStatus.OPEN : CalendarDayStatus.CLOSED);
+            entity.setClosureType(tradingDay ? CalendarClosureType.NONE : CalendarClosureType.HOLIDAY);
             entity.setVerificationStatus(CalendarVerificationStatus.CONFIRMED);
             return;
         }
@@ -162,4 +200,4 @@ public class TradingCalendarMaintenanceService {
                                             int unverifiedCount, String sourceVersion) {
     }
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END---------------

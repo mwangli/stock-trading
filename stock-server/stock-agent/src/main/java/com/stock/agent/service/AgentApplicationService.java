@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------------------------------------------------------
+// AI_GENERATE_START----------------------------------------------------------
 package com.stock.agent.service;
 
 import com.stock.agent.enums.AgentTaskType;
@@ -72,7 +72,7 @@ public class AgentApplicationService {
                     + "\n候选批次=" + (request == null ? "" : request.getCandidateBatchId())
                     + "\n预测批次=" + (request == null ? "" : request.getPredictionBatchId())
                     + "\n股票代码=" + (request == null ? "" : request.getStockCode())
-                    + "\n策略版本=" + (request == null ? "" : request.getStrategyVersion())
+                    + "\n模型版本=" + (request == null ? "" : request.getModelVersion())
                     + "\n目标交易日=" + (request == null ? "" : request.getTargetTradeDate())
                     + "\n知识库模式=" + knowledgeMode
                     + "\nRAG背景证据：\n" + knowledgeSummary;
@@ -134,7 +134,7 @@ public class AgentApplicationService {
                     + (request == null ? "" : request.getCandidateBatchId())
                     + "\n预测批次=" + (request == null ? "" : request.getPredictionBatchId())
                     + "\n股票代码=" + (request == null ? "" : request.getStockCode())
-                    + "\n策略版本=" + (request == null ? "" : request.getStrategyVersion())
+                    + "\n模型版本=" + (request == null ? "" : request.getModelVersion())
                     + "\n目标交易日=" + (request == null ? "" : request.getTargetTradeDate())
                     + "\n知识库模式=" + knowledgeMode
                     + "\n结构化证据：" + evidenceSummary;
@@ -251,7 +251,7 @@ public class AgentApplicationService {
                     task, session, "REPORT",
                     "你是投研报告 Agent。严格按照固定章节输出，不得补造行情、收益或交易结论。"
                             + "只返回 Report JSON：{reportDate,summary,status,sections,dataQuality,evidenceRefs,uncertainty}。"
-                            + "sections 必须包含 marketOverview、candidateSummary、modelSignals、sentimentSignals、strategyStatus、riskWarnings、dataQuality、abnormalJobs。",
+                            + "sections 必须包含 marketOverview、candidateSummary、modelSignals、sentimentSignals、tradingStatus、riskWarnings、dataQuality、abnormalJobs。",
                     template, template, "REPORT", factEvidence.getEvidenceRefs(), Set.of()));
             requireFactSourceAvailable(response);
             return taskService.complete(task, response);
@@ -410,4 +410,4 @@ public class AgentApplicationService {
         }
     }
 }
-// AI_GENERATE_END--------------------------------------------------------
+// AI_GENERATE_END----------------------------------------------------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------
+// AI_GENERATE_START-----------------
 package com.stock.agent.service;
 
 import com.stock.agent.enums.AgentTaskType;
@@ -100,7 +100,7 @@ public class TradePlanAgentService {
         createRequest.setExpiresAt(draft.getExpiresAt());
         createRequest.setIdempotencyKey(draft.getIdempotencyKey());
         createRequest.setTargetTradeDate(draft.getTargetTradeDate() == null ? LocalDate.now() : draft.getTargetTradeDate());
-        createRequest.setStrategyVersion(draft.getStrategyVersion());
+        createRequest.setModelVersion(draft.getModelVersion());
         createRequest.setPriceConstraint(draft.getPriceConstraint());
         createRequest.setReason(draft.getReason());
         createRequest.setRiskWarnings(draft.getRiskWarnings());
@@ -120,9 +120,9 @@ public class TradePlanAgentService {
             throw new IllegalStateException("交易计划所需事实证据不可用，暂不生成草案");
         }
         if (!StringUtils.hasText(evidence.getPredictionBatchId())
-                || !StringUtils.hasText(evidence.getStrategyVersion())
+                || !StringUtils.hasText(evidence.getModelVersion())
                 || evidence.getTargetTradeDate() == null) {
-            throw new IllegalStateException("候选批次缺少预测批次、策略版本或目标交易日");
+            throw new IllegalStateException("候选批次缺少预测批次、模型版本或目标交易日");
         }
         if (StringUtils.hasText(request.getStockCode())
                 && evidence.getItems().stream().noneMatch(item -> item.getSummary() != null
@@ -135,7 +135,7 @@ public class TradePlanAgentService {
                                TradePlanDraftRequest request) {
         if (!request.getCandidateBatchId().trim().equals(draft.getCandidateBatchId())
                 || !evidence.getPredictionBatchId().equals(draft.getPredictionBatchId())
-                || !evidence.getStrategyVersion().equals(draft.getStrategyVersion())
+                || !evidence.getModelVersion().equals(draft.getModelVersion())
                 || !evidence.getTargetTradeDate().equals(draft.getTargetTradeDate())) {
             throw new IllegalArgumentException("模型返回的交易计划与候选批次事实不一致");
         }
@@ -145,4 +145,4 @@ public class TradePlanAgentService {
         }
     }
 }
-// AI_GENERATE_END---------------
+// AI_GENERATE_END-----------------

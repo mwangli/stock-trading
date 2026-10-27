@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------------------------------------------
+// AI_GENERATE_START----------------------------------------------
 package com.stock.platform.task;
 
 import com.stock.data.dto.ExternalNewsCollectionResult;
@@ -206,8 +206,9 @@ public class DataSyncScheduler {
      * @throws IllegalStateException 交易日历不可用、任务超时、中断或出现基础设施异常时抛出
      */
     public void backfillHistoricalStockData() {
-        LocalDate endDate = LocalDate.now().minusDays(1);
-        LocalDate earliestDate = endDate.minusYears(PRICE_BACKFILL_YEARS);
+        LocalDate today = LocalDate.now();
+        LocalDate endDate = today.minusDays(1);
+        LocalDate earliestDate = today.minusYears(PRICE_BACKFILL_YEARS);
         List<LocalDate> confirmedTradingDays = loadTradingDaysWithCalendarRepair(earliestDate, endDate);
         List<String> codes = stockQueryService.findAllCodes();
         if (codes == null || codes.isEmpty()) {
@@ -368,4 +369,4 @@ public class DataSyncScheduler {
         log.info("========== [数据同步任务] 每日增量新闻采集结束 ==========");
     }
 }
-// AI_GENERATE_END---------------------------------------------
+// AI_GENERATE_END----------------------------------------------

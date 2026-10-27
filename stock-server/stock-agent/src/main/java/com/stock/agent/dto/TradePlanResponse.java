@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.agent.dto;
 
 import lombok.Builder;
@@ -65,7 +65,7 @@ public class TradePlanResponse {
     LocalDate targetTradeDate;
 
     /** 策略配置版本。 */
-    String strategyVersion;
+    String modelVersion;
 
     /** 价格约束说明。 */
     String priceConstraint;
@@ -95,4 +95,4 @@ public class TradePlanResponse {
     String reviewComment;
 
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END-------

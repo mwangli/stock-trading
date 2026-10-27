@@ -1,4 +1,4 @@
-// AI_GENERATE_START- --
+// AI_GENERATE_START-- --
 package com.stock.data.client;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -95,7 +95,7 @@ public class TushareDailyClient {
                     decimal(row, indexes.get("high")),
                     decimal(row, indexes.get("low")),
                     decimal(row, indexes.get("close")),
-                    decimal(row, indexes.get("pre_close")),
+                    nullableDecimal(row, indexes.get("pre_close")),
                     decimal(row, indexes.get("vol")),
                     decimal(row, indexes.get("amount"))));
         }
@@ -137,6 +137,10 @@ public class TushareDailyClient {
         return value;
     }
 
+    private BigDecimal nullableDecimal(JSONArray row, int index) {
+        return row.getBigDecimal(index);
+    }
+
     /**
      * Tushare 单只股票单交易日免费行情。
      *
@@ -162,4 +166,4 @@ public class TushareDailyClient {
             BigDecimal amount) {
     }
 }
-// AI_GENERATE_END- --
+// AI_GENERATE_END-- --

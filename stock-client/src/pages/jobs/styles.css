@@ -1,4 +1,4 @@
-/* AI_GENERATE_START--------- */
+/* AI_GENERATE_START---------- */
 .job-filters { width: 100%; margin-bottom: 16px; }
 .jobs-summary-inline { display: flex; align-items: center; gap: 18px; }
 .jobs-summary-inline > span { display: inline-flex; min-width: 52px; flex-direction: column; gap: 1px; color: var(--text-primary); line-height: 1.15; }
@@ -9,6 +9,9 @@
 .jobs-summary-attention { color: #dc2626; }
 .job-module-filter { width: 190px; }
 .job-name-filter { width: min(360px, 100%); }
+.job-frequency { display: flex; flex-direction: column; gap: 2px; line-height: 1.35; }
+.job-frequency .ant-typography { margin: 0; white-space: nowrap; }
+.job-frequency .ant-typography-secondary { font-size: 12px; }
 .job-actions { align-items: center; }
 .job-action { display: inline-flex; min-width: 42px; justify-content: center; white-space: nowrap; font-size: 13px; line-height: 1.5; }
 .job-action:not(.job-action-disabled) { color: var(--brand); cursor: pointer; }
@@ -40,4 +43,4 @@
   .job-module-filter,
   .job-name-filter { width: 100%; }
 }
-/* AI_GENERATE_END--------- */
+/* AI_GENERATE_END---------- */

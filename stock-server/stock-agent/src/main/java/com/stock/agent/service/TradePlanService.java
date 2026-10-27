@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------
+// AI_GENERATE_START---------------
 package com.stock.agent.service;
 
 import com.stock.agent.enums.TradePlanStatus;
@@ -74,7 +74,7 @@ public class TradePlanService {
                 .setUpdatedAt(now)
                 .setDecisionMessage("等待所属用户人工审批，尚未进入执行队列");
         entity.setTargetTradeDate(request.getTargetTradeDate())
-                .setStrategyVersion(request.getStrategyVersion())
+                .setModelVersion(request.getModelVersion())
                 .setPriceConstraint(request.getPriceConstraint())
                 .setReason(request.getReason())
                 .setRiskWarnings(request.getRiskWarnings() == null ? null : JSON.toJSONString(request.getRiskWarnings()))
@@ -199,7 +199,7 @@ public class TradePlanService {
                 .updatedAt(entity.getUpdatedAt())
                 .version(entity.getVersion())
                 .targetTradeDate(entity.getTargetTradeDate())
-                .strategyVersion(entity.getStrategyVersion())
+                .modelVersion(entity.getModelVersion())
                 .priceConstraint(entity.getPriceConstraint())
                 .reason(entity.getReason())
                 .riskWarnings(StringUtils.hasText(entity.getRiskWarnings())
@@ -213,4 +213,4 @@ public class TradePlanService {
                 .build();
     }
 }
-// AI_GENERATE_END-------------
+// AI_GENERATE_END---------------

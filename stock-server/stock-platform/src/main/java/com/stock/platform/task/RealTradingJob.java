@@ -1,15 +1,16 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START----------
 package com.stock.platform.task;
 
 import com.stock.trading.dto.TradeExecutionBatchResponseDto;
 import com.stock.trading.service.RealTradingService;
+import com.stock.platform.repository.JobConfigRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
  * 真实交易统一调度入口。
- * 固定任务执行时仍受券商会话、真实写入总门禁和交易风控共同约束。
+ * 任务启停是自动交易唯一控制，订单执行仍依赖券商会话和交易事实。
  *
  * @author mwangli
  * @since 2026-09-25
@@ -20,23 +21,32 @@ import org.springframework.stereotype.Component;
 public class RealTradingJob {
 
     private final RealTradingService realTradingService;
+    private final JobConfigRepository jobConfigRepository;
 
     /**
-     * 执行无人值守候选买入检查。
+     * 执行上午分阶段卖出。
      */
-    public void executeAutoBuys() {
-        TradeExecutionBatchResponseDto result = realTradingService.executeAutomaticBuys();
-        log.info("无人值守候选买入检查结束: 执行数={}, 成功数={}",
+    public void executeMorningSell() {
+        TradeExecutionBatchResponseDto result = realTradingService.executeMorningSell(
+                () -> isEnabled("realTradingMorningSell"));
+        log.info("上午分阶段卖出结束: 执行数={}, 成功数={}",
                 result.getItems().size(), result.getSuccessCount());
     }
 
     /**
-     * 执行无人值守 T+1 退出检查。
+     * 执行下午模型前三名竞争买入。
      */
-    public void checkT1Exits() {
-        TradeExecutionBatchResponseDto result = realTradingService.executeAutomaticExits();
-        log.info("无人值守 T+1 退出检查结束: 执行数={}, 成功数={}",
+    public void executeAfternoonBuy() {
+        TradeExecutionBatchResponseDto result = realTradingService.executeAfternoonBuy(
+                () -> isEnabled("realTradingAfternoonBuy"));
+        log.info("下午模型候选竞争买入结束: 执行数={}, 成功数={}",
                 result.getItems().size(), result.getSuccessCount());
+    }
+
+    private boolean isEnabled(String jobName) {
+        return jobConfigRepository.findByJobName(jobName)
+                .map(config -> Integer.valueOf(1).equals(config.getStatus()))
+                .orElse(false);
     }
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END----------

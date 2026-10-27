@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------------
+// AI_GENERATE_START----------------
 package com.stock.data.repository;
 
 import com.stock.data.enums.CalendarDayStatus;
@@ -67,18 +67,6 @@ public interface TradeCalendarRepository extends MongoRepository<TradeCalendarEn
             LocalDate tradeDate);
 
     /**
-     * 查询指定市场、自然日期、来源和来源版本的日历记录。
-     *
-     * @param market 市场代码
-     * @param tradeDate 自然日期
-     * @param source 数据来源
-     * @param sourceVersion 数据来源版本
-     * @return 日历记录
-     */
-    Optional<TradeCalendarEntity> findByMarketAndTradeDateAndSourceAndSourceVersion(
-            String market, LocalDate tradeDate, String source, String sourceVersion);
-
-    /**
      * 统计指定市场日期区间内的日历记录。
      *
      * @param market 市场代码
@@ -119,4 +107,4 @@ public interface TradeCalendarRepository extends MongoRepository<TradeCalendarEn
     Optional<TradeCalendarEntity> findFirstByOrderByTradeDateDesc();
 
 }
-// AI_GENERATE_END---------------
+// AI_GENERATE_END----------------

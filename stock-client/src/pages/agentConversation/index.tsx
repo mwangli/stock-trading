@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 import './styles.css';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Spin, Tag, Tooltip, Typography, message, type InputRef } from 'antd';
@@ -82,9 +82,8 @@ interface RuntimeStatus {
 }
 
 interface TradingCandidateBatch {
-  candidateBatchId: string;
   predictionBatchId: string;
-  strategyConfigVersion: string;
+  modelVersion: string;
   targetTradeDate: string;
   informationCutoffAt: string;
 }
@@ -266,9 +265,8 @@ const AgentConversation: React.FC = () => {
       const response = await request.post('/agent/chat', {
         sessionId: activeSessionId,
         question: normalizedQuestion,
-        candidateBatchId: candidateBatch?.candidateBatchId,
         predictionBatchId: candidateBatch?.predictionBatchId,
-        strategyVersion: candidateBatch?.strategyConfigVersion,
+        modelVersion: candidateBatch?.modelVersion,
         targetTradeDate: candidateBatch?.targetTradeDate,
         pageContext: 'agentConversation',
       }) as ApiResponse<AgentChatResponse>;
@@ -374,7 +372,7 @@ const AgentConversation: React.FC = () => {
               <div className="flex h-full min-h-[320px] flex-col items-center justify-center text-center">
                 <BulbOutlined className="text-3xl text-amber-500" />
                 <div className="mt-3 text-base font-semibold text-slate-900 dark:text-slate-100">从当前策略事实开始提问</div>
-                <div className="mt-2 max-w-md text-sm leading-6 text-slate-500">回答会携带候选批次、策略版本与数据截止时间；缺少事实时会明确标注不确定性。</div>
+                <div className="mt-2 max-w-md text-sm leading-6 text-slate-500">回答会携带候选批次、模型版本与数据截止时间；缺少事实时会明确标注不确定性。</div>
                 <div className="agent-starter-grid mt-6 grid w-full max-w-2xl gap-2 md:grid-cols-3">
                   {quickPrompts.slice(0, 3).map((prompt) => (
                     <button
@@ -499,4 +497,4 @@ const AgentConversation: React.FC = () => {
 };
 
 export default AgentConversation;
-// AI_GENERATE_END-----------
+// AI_GENERATE_END------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------------
+// AI_GENERATE_START-------------------
 package com.stock.trading.config;
 
 import lombok.Data;
@@ -129,5 +129,11 @@ public class ZXBrokerConfig {
      * 撤单等待次数
      */
     private Integer cancelWaitTimes = 6;
+
+    /** 券商协议是否已确认支持最优五档即时成交剩余撤销。 */
+    private Boolean bestFiveIocSupported = false;
+
+    /** 券商最优五档即时成交剩余撤销对应的 PriceType。 */
+    private Integer bestFiveIocPriceType;
 }
-// AI_GENERATE_END------------------
+// AI_GENERATE_END-------------------

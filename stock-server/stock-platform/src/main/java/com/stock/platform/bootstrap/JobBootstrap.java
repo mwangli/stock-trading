@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------------------------
+// AI_GENERATE_START------------------------------
 package com.stock.platform.bootstrap;
 
 import com.stock.data.dto.StockListSyncResult;
@@ -46,9 +46,8 @@ public class JobBootstrap implements ApplicationRunner {
                     "对生产预测批次执行 MASTER 影子预测和动态权重评估", "model", "INCREMENTAL"),
             defaultJob("globalDataCleanup", "0 30 3 1 * ?",
                     "每月清理超过保留期且不再引用的业务历史数据", "platform", "CLEANUP"),
-            defaultJob("stockSelection", "0 30 6 ? * MON-FRI", "使用已训练模型与近期新闻情感生成交易候选", "strategy", "FULL"),
-            defaultJob("realTradingAutoBuy", "0 35 9 ? * MON-FRI", "执行真实模型候选买入检查", "trading", "INCREMENTAL"),
-            defaultJob("realTradingT1Exit", "0 50 14 ? * MON-FRI", "检查真实持仓止损、止盈和 T+1 退出", "trading", "INCREMENTAL"),
+            defaultJob("realTradingMorningSell", "0 35 9 ? * MON-FRI", "上午分阶段卖出全部可卖持仓", "trading", "INCREMENTAL"),
+            defaultJob("realTradingAfternoonBuy", "0 5 13 ? * MON-FRI", "下午模型前三名竞争唯一买入执行权", "trading", "INCREMENTAL"),
             defaultJob("broker-current-facts-sync", "0 0/5 9-15 ? * MON-FRI", "同步券商账户、持仓、委托和成交事实", "trading", "INCREMENTAL"));
 
     private final JobSchedulerService jobSchedulerService;
@@ -150,4 +149,4 @@ public class JobBootstrap implements ApplicationRunner {
         return defaultJob(jobName, cronExpression, description, module, syncMode).setStatus(0);
     }
 }
-// AI_GENERATE_END-----------------------------
+// AI_GENERATE_END------------------------------

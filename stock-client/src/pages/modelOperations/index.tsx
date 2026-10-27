@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------------------------------------------------------------------
+// AI_GENERATE_START------------------------------------------------------------------------
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDateTime } from '../../utils/dateTime';
 import SentimentModelStatusPanel from './SentimentModelStatusPanel';
@@ -285,6 +285,25 @@ interface ModelAbility {
   tradingEligibilityReason?: string;
 }
 
+interface TradingCandidate {
+  stockCode: string;
+  stockName?: string;
+  effectiveModelScore?: number;
+  effectiveEstimatedNetReturn?: number;
+  rank: number;
+  held: boolean;
+}
+
+interface TradingCandidateBatch {
+  predictionBatchId: string;
+  modelVersion: string;
+  baseTradeDate?: string;
+  targetTradeDate?: string;
+  informationCutoffAt?: string;
+  positionSnapshotAvailable: boolean;
+  items: TradingCandidate[];
+}
+
 const defaultTrainingValues: StartTrainingRequest = {
   days: 1000,
   epochs: 100,
@@ -509,6 +528,8 @@ const ModelOperations: React.FC = () => {
   const [predictionDetailsLoading, setPredictionDetailsLoading] = useState(false);
   const [modelAbility, setModelAbility] = useState<ModelAbility | null>(null);
   const [predictionPollingPaused, setPredictionPollingPaused] = useState(false);
+  const [tradingCandidates, setTradingCandidates] = useState<TradingCandidateBatch | null>(null);
+  const [tradingCandidatesLoading, setTradingCandidatesLoading] = useState(false);
   const predictionDataRequestIdRef = useRef(0);
   const selectedPredictionBatchIdRef = useRef<string | undefined>(undefined);
 
@@ -528,6 +549,16 @@ const ModelOperations: React.FC = () => {
       if (showLoading) {
         setOverviewLoading(false);
       }
+    }
+  }, []);
+
+  const loadTradingCandidates = useCallback(async () => {
+    setTradingCandidatesLoading(true);
+    try {
+      const response = await request.get('/realTrading/candidates') as ApiResponse<TradingCandidateBatch>;
+      setTradingCandidates(readApiData(response, localizedText('读取当日模型排名失败', 'Failed to load today model ranking')));
+    } finally {
+      setTradingCandidatesLoading(false);
     }
   }, []);
 
@@ -607,10 +638,10 @@ const ModelOperations: React.FC = () => {
   }, [updateSelectedPredictionBatchId]);
 
   useEffect(() => {
-    void Promise.all([loadOverview(true), loadPredictionData(1, 10)]).catch((cause) => {
+    void Promise.all([loadOverview(true), loadPredictionData(1, 10), loadTradingCandidates()]).catch((cause) => {
       message.error(getApiErrorMessage(cause, localizedText('读取模型运维数据失败', 'Failed to load model operations data')));
     });
-  }, [loadOverview, loadPredictionData]);
+  }, [loadOverview, loadPredictionData, loadTradingCandidates]);
 
   useEffect(() => {
     void loadVersions(versionPage).catch((cause) => {
@@ -1282,6 +1313,37 @@ const ModelOperations: React.FC = () => {
         )}
       </DetailModal>
 
+      <Card
+        className="surface-card"
+        title={localizedText('当日模型排名', 'Today Model Ranking')}
+        extra={tradingCandidates && (
+          <Space size="small" wrap>
+            <Tag>{tradingCandidates.targetTradeDate || '-'}</Tag>
+            <Tag color="blue">{tradingCandidates.modelVersion || '-'}</Tag>
+          </Space>
+        )}
+      >
+        <Table<TradingCandidate>
+          rowKey="stockCode"
+          loading={tradingCandidatesLoading}
+          dataSource={tradingCandidates?.items ?? []}
+          pagination={false}
+          columns={[
+            { title: localizedText('排名', 'Rank'), dataIndex: 'rank', width: 80 },
+            { title: localizedText('股票', 'Stock'), key: 'stock', render: (_, row) => `${row.stockName || '-'} (${row.stockCode})` },
+            { title: localizedText('有效模型得分', 'Effective Model Score'), dataIndex: 'effectiveModelScore', render: (value?: number) => formatNumber(value, 6) },
+            { title: localizedText('预估净收益', 'Estimated Net Return'), dataIndex: 'effectiveEstimatedNetReturn', render: (value?: number) => formatPercent(value, 4) },
+            { title: localizedText('持仓', 'Held'), dataIndex: 'held', width: 100, render: (value: boolean) => <Tag color={value ? 'blue' : 'default'}>{value ? localizedText('已持有', 'Held') : localizedText('未持有', 'Not Held')}</Tag> },
+          ]}
+          locale={{ emptyText: localizedText('当日暂无可用模型排名', 'No usable model ranking today') }}
+        />
+        {tradingCandidates && (
+          <Text type="secondary">
+            {localizedText('预测批次', 'Prediction Batch')}: {tradingCandidates.predictionBatchId}
+          </Text>
+        )}
+      </Card>
+
 
       <Card
         className="surface-card"
@@ -1556,4 +1618,4 @@ const ModelOperations: React.FC = () => {
 };
 
 export default ModelOperations;
-// AI_GENERATE_END-----------------------------------------------------------------------
+// AI_GENERATE_END------------------------------------------------------------------------

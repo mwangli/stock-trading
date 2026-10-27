@@ -2,6 +2,7 @@
 .idea/
 .tmp/
 data/
+model-files/
 graft/
 stock-agent/
 **/node_modules/

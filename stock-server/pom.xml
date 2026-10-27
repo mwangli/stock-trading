@@ -16,7 +16,6 @@
         <module>stock-base</module>
         <module>stock-data</module>
         <module>stock-model</module>
-        <module>stock-strategy</module>
         <module>stock-trading</module>
         <module>stock-platform</module>
         <module>stock-agent</module>

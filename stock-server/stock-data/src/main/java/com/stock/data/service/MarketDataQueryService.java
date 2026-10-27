@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START---------
 package com.stock.data.service;
 
 import com.stock.data.dto.HistoricalStockUniverseDto;
@@ -33,6 +33,7 @@ import com.stock.data.repository.StockDailyTradabilityFactRepository;
 import com.stock.data.repository.StockInfoRepository;
 import com.stock.data.repository.TradeCalendarRepository;
 import lombok.RequiredArgsConstructor;
+import org.bson.types.ObjectId;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -311,7 +312,8 @@ public class MarketDataQueryService {
                 .and("sourceVersion").is(sourceVersion);
         Criteria criteria = lastProcessedId == null || lastProcessedId.isBlank()
                 ? sourceCriteria
-                : new Criteria().andOperator(sourceCriteria, Criteria.where("_id").gt(lastProcessedId));
+                : new Criteria().andOperator(sourceCriteria,
+                        Criteria.where("_id").gt(new ObjectId(lastProcessedId)));
         return mongoTemplate.find(Query.query(criteria)
                         .with(Sort.by(Sort.Direction.ASC, "_id"))
                         .limit(Math.max(1, limit)), ModelStockDailyBar.class).stream()
@@ -672,4 +674,4 @@ public class MarketDataQueryService {
                 .capturedAt(fact.getCapturedAt()).build();
     }
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END---------

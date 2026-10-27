@@ -1,12 +1,13 @@
-// AI_GENERATE_START----------------------
+// AI_GENERATE_START------------------------
 package com.stock.trading.adapter;
 
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
-import com.stock.trading.config.TradingProperties;
 import com.stock.trading.config.ZXBrokerConfig;
 import com.stock.trading.entity.OrderStatus;
 import com.stock.trading.entity.Position;
+import com.stock.trading.dto.FiveLevelQuoteDto;
+import com.stock.trading.enums.BrokerOrderType;
 import com.stock.trading.parser.ZXBrokerResponseParser;
 import com.stock.trading.vo.AccountStatus;
 import com.stock.trading.vo.BrokerFillSnapshot;
@@ -30,7 +31,7 @@ import java.util.Optional;
 
 /**
  * ZX证券适配器。
- * 首期恢复只读账户、持仓、委托和成交能力，真实写操作由独立总门禁保护。
+ * 提供账户、持仓、五档行情、委托、撤单和成交事实能力。
  *
  * @author mwangli
  * @since 2026-09-25
@@ -53,7 +54,6 @@ public class ZXBrokerAdapter {
 
     private final ZXRequestUtils requestUtils;
     private final ZXBrokerConfig config;
-    private final TradingProperties tradingProperties;
     private final ZXBrokerResponseParser responseParser;
 
     /**
@@ -126,6 +126,41 @@ public class ZXBrokerAdapter {
     }
 
     /**
+     * 查询券商真实五档行情。
+     *
+     * @param stockCode 股票代码
+     * @return 买一至买五、卖一至卖五和行情时间
+     */
+    public FiveLevelQuoteDto getFiveLevelQuote(String stockCode) {
+        log.info("[ZXBroker] 获取股票五档行情: stockCode={}", stockCode);
+        Map<String, Object> parameters = new HashMap<>();
+        parameters.put("stockcode", stockCode);
+        parameters.put("action", ACTION_GET_PRICE);
+        parameters.put("ReqlinkType", 1);
+        parameters.put("Level", 5);
+        parameters.put("UseBPrice", 1);
+        JSONObject response = requestUtils.request(requestUtils.buildParams(parameters));
+        FiveLevelQuoteDto quote = FiveLevelQuoteDto.builder()
+                .stockCode(stockCode)
+                .bid1(readPrice(response, "BUY1", "BID1"))
+                .bid2(readPrice(response, "BUY2", "BID2"))
+                .bid3(readPrice(response, "BUY3", "BID3"))
+                .bid4(readPrice(response, "BUY4", "BID4"))
+                .bid5(readPrice(response, "BUY5", "BID5"))
+                .ask1(readPrice(response, "SELL1", "ASK1"))
+                .ask2(readPrice(response, "SELL2", "ASK2"))
+                .ask3(readPrice(response, "SELL3", "ASK3"))
+                .ask4(readPrice(response, "SELL4", "ASK4"))
+                .ask5(readPrice(response, "SELL5", "ASK5"))
+                .quoteTime(LocalDateTime.now())
+                .build();
+        if (!hasCompleteDepth(quote)) {
+            throw new IllegalStateException("券商未返回完整五档行情，禁止使用单一实时价推算: " + stockCode);
+        }
+        return quote;
+    }
+
+    /**
      * 提交券商委托订单。
      *
      * @param direction 买卖方向
@@ -135,13 +170,23 @@ public class ZXBrokerAdapter {
      * @return 委托结果
      */
     public OrderResult submitOrder(String direction, String stockCode, BigDecimal price, Integer quantity) {
+        return submitOrder(direction, stockCode, price, quantity, BrokerOrderType.LIMIT);
+    }
+
+    /**
+     * 按明确委托类型提交券商订单。
+     *
+     * @param direction 买卖方向
+     * @param stockCode 股票代码
+     * @param price 限价价格；最优五档委托可为空
+     * @param quantity 委托数量
+     * @param orderType 委托类型
+     * @return 委托结果
+     */
+    public OrderResult submitOrder(String direction, String stockCode, BigDecimal price, Integer quantity,
+                                   BrokerOrderType orderType) {
         log.info("[ZXBroker] 请求提交委托: direction={}, stockCode={}, price={}, quantity={}",
                 direction, stockCode, price, quantity);
-        if (!tradingProperties.isLiveWriteAllowed()) {
-            log.warn("[ZXBroker] 真实委托被交易写入总门禁阻止");
-            return OrderResult.fail("真实交易写入门禁未开启");
-        }
-
         String directionCode = normalizeWriteDirection(direction);
         if (directionCode == null) {
             return OrderResult.fail("不支持的买卖方向");
@@ -153,10 +198,12 @@ public class ZXBrokerAdapter {
 
         Map<String, Object> parameters = new HashMap<>();
         parameters.put("action", ACTION_SUBMIT_ORDER);
-        parameters.put("PriceType", 0);
+        parameters.put("PriceType", resolvePriceType(orderType));
         parameters.put("Direction", directionCode);
         parameters.put("StockCode", stockCode);
-        parameters.put("Price", price);
+        if (price != null) {
+            parameters.put("Price", price);
+        }
         parameters.put("Volume", quantity);
         parameters.put("token", token);
 
@@ -206,10 +253,6 @@ public class ZXBrokerAdapter {
      */
     public Boolean cancelOrder(String orderId) {
         log.info("[ZXBroker] 请求撤销委托: orderId={}", orderId);
-        if (!tradingProperties.isLiveWriteAllowed()) {
-            log.warn("[ZXBroker] 真实撤单被交易写入总门禁阻止");
-            return false;
-        }
         String token = requireToken();
         if (token == null) {
             return false;
@@ -443,6 +486,33 @@ public class ZXBrokerAdapter {
         return null;
     }
 
+    private int resolvePriceType(BrokerOrderType orderType) {
+        if (orderType == BrokerOrderType.LIMIT) {
+            return 0;
+        }
+        if (!Boolean.TRUE.equals(config.getBestFiveIocSupported())
+                || config.getBestFiveIocPriceType() == null) {
+            throw new UnsupportedOperationException("券商最优五档即时成交剩余撤销协议尚未确认");
+        }
+        return config.getBestFiveIocPriceType();
+    }
+
+    private BigDecimal readPrice(JSONObject response, String primaryKey, String alternateKey) {
+        BigDecimal value = response.getBigDecimal(primaryKey);
+        return value != null ? value : response.getBigDecimal(alternateKey);
+    }
+
+    private boolean hasCompleteDepth(FiveLevelQuoteDto quote) {
+        return isPositive(quote.getBid1()) && isPositive(quote.getBid2())
+                && isPositive(quote.getBid3()) && isPositive(quote.getBid4()) && isPositive(quote.getBid5())
+                && isPositive(quote.getAsk1()) && isPositive(quote.getAsk2())
+                && isPositive(quote.getAsk3()) && isPositive(quote.getAsk4()) && isPositive(quote.getAsk5());
+    }
+
+    private boolean isPositive(BigDecimal value) {
+        return value != null && value.compareTo(BigDecimal.ZERO) > 0;
+    }
+
     private void pauseBetweenHistoryRequests() {
         try {
             Thread.sleep(Math.max(0, config.getHistoryRequestIntervalMs()));
@@ -452,4 +522,4 @@ public class ZXBrokerAdapter {
         }
     }
 }
-// AI_GENERATE_END----------------------
+// AI_GENERATE_END------------------------

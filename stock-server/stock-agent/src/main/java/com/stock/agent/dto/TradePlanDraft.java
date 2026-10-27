@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.agent.dto;
 
 import com.stock.agent.output.AgentStructuredOutput;
@@ -47,7 +47,7 @@ public class TradePlanDraft implements AgentStructuredOutput {
     private LocalDate targetTradeDate;
 
     /** 策略配置版本。 */
-    private String strategyVersion;
+    private String modelVersion;
 
     /** 计划有效期。 */
     private LocalDateTime expiresAt;
@@ -70,4 +70,4 @@ public class TradePlanDraft implements AgentStructuredOutput {
     /** 幂等键。 */
     private String idempotencyKey;
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END------

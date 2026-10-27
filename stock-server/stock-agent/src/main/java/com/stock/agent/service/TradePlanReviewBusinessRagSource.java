@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START---
 package com.stock.agent.service;
 
 import com.stock.agent.entity.AgentTradePlanEntity;
@@ -53,7 +53,7 @@ public class TradePlanReviewBusinessRagSource implements BusinessRagSource {
                 + "计划标识：" + value(plan.getPlanId()) + "\n"
                 + "股票代码：" + value(plan.getStockCode()) + "\n"
                 + "目标交易日：" + value(plan.getTargetTradeDate()) + "\n"
-                + "策略版本：" + value(plan.getStrategyVersion()) + "\n"
+                + "模型版本：" + value(plan.getModelVersion()) + "\n"
                 + "复核结果：" + value(plan.getStatus()) + "\n"
                 + "原计划理由：" + value(plan.getReason()) + "\n"
                 + "用户复核意见：" + plan.getReviewComment().trim() + "\n"
@@ -79,4 +79,4 @@ public class TradePlanReviewBusinessRagSource implements BusinessRagSource {
         return value == null ? "未知" : String.valueOf(value);
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END---

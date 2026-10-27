@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------------
+// AI_GENERATE_START------------------
 package com.stock.data.service;
 
 import com.stock.base.cache.CacheNames;
@@ -30,7 +30,6 @@ import com.stock.data.enums.CalendarClosureType;
 import com.stock.data.enums.CalendarDayStatus;
 import com.stock.data.enums.CalendarVerificationStatus;
 import com.stock.data.repository.HistoricalStockUniverseRepository;
-import com.stock.data.repository.TradeCalendarRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
@@ -60,7 +59,6 @@ import java.util.Map;
 public class MarketDataFoundationService {
 
     private final HistoricalStockUniverseRepository historicalStockUniverseRepository;
-    private final TradeCalendarRepository tradeCalendarRepository;
     private final MongoTemplate mongoTemplate;
 
     /**
@@ -113,33 +111,32 @@ public class MarketDataFoundationService {
     public MarketDataImportResultDto importTradeCalendar(TradeCalendarImportRequestDto request) {
         LocalDateTime now = LocalDateTime.now();
         List<TradeCalendarImportItemDto> items = deduplicateCalendar(request.getItems());
-        List<TradeCalendarEntity> entities = new ArrayList<>();
+        BulkOperations bulk = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED,
+                TradeCalendarEntity.class);
         for (TradeCalendarImportItemDto item : items) {
-            TradeCalendarEntity entity = tradeCalendarRepository
-                    .findByMarketAndTradeDateAndSourceAndSourceVersion(
-                            item.getMarket().trim(), item.getTradeDate(), request.getSource().trim(),
-                            request.getSourceVersion().trim())
-                    .orElseGet(() -> TradeCalendarEntity.builder()
-                            .market(item.getMarket().trim())
-                            .tradeDate(item.getTradeDate())
-                            .createdAt(now)
-                            .build());
-            entity.setTradingDay(item.isTradingDay());
-            entity.setDayStatus(item.isTradingDay() ? CalendarDayStatus.OPEN : CalendarDayStatus.CLOSED);
-            entity.setClosureType(item.isTradingDay() ? CalendarClosureType.NONE : CalendarClosureType.UNKNOWN);
-            entity.setVerificationStatus(CalendarVerificationStatus.CONFIRMED);
-            entity.setPreviousTradingDay(item.getPreviousTradingDay());
-            entity.setNextTradingDay(item.getNextTradingDay());
-            entity.setSource(request.getSource().trim());
-            entity.setSourceVersion(request.getSourceVersion().trim());
-            entity.setSourceFetchedAt(now);
-            entity.setConfirmedAt(now);
-            entity.setUpdatedAt(now);
-            entities.add(entity);
+            String market = item.getMarket().trim();
+            Query query = Query.query(Criteria.where("market").is(market)
+                    .and("tradeDate").is(item.getTradeDate()));
+            Update update = new Update()
+                    .set("tradingDay", item.isTradingDay())
+                    .set("dayStatus", item.isTradingDay() ? CalendarDayStatus.OPEN : CalendarDayStatus.CLOSED)
+                    .set("closureType", item.isTradingDay() ? CalendarClosureType.NONE : CalendarClosureType.UNKNOWN)
+                    .set("verificationStatus", CalendarVerificationStatus.CONFIRMED)
+                    .set("previousTradingDay", item.getPreviousTradingDay())
+                    .set("nextTradingDay", item.getNextTradingDay())
+                    .set("source", request.getSource().trim())
+                    .set("sourceVersion", request.getSourceVersion().trim())
+                    .set("sourceFetchedAt", now)
+                    .set("confirmedAt", now)
+                    .set("updatedAt", now)
+                    .setOnInsert("market", market)
+                    .setOnInsert("tradeDate", item.getTradeDate())
+                    .setOnInsert("createdAt", now);
+            bulk.upsert(query, update);
         }
-        tradeCalendarRepository.saveAll(entities);
+        bulk.execute();
         return result("TRADE_CALENDAR", request.getSource(), request.getSourceVersion(),
-                request.getItems().size(), entities.size());
+                request.getItems().size(), items.size());
     }
 
     /**
@@ -482,4 +479,4 @@ public class MarketDataFoundationService {
                 .build();
     }
 }
-// AI_GENERATE_END-----------------
+// AI_GENERATE_END------------------
