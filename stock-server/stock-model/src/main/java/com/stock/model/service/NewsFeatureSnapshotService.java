@@ -1,14 +1,17 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.model.service;
 
 import com.stock.model.dto.NewsEventFeatureVector;
 import com.stock.model.entity.NewsFeatureSnapshotDocument;
 import com.stock.model.repository.NewsFeatureSnapshotRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,6 +26,7 @@ import java.util.Set;
  * @since 2026-10-24
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class NewsFeatureSnapshotService {
 
@@ -31,6 +35,10 @@ public class NewsFeatureSnapshotService {
 
     /** 新闻连续特征数量。 */
     public static final int FEATURE_COUNT = 25;
+
+    private static final int QUERY_STOCK_BATCH_SIZE = 50;
+    private static final int MAX_QUERY_ATTEMPTS = 3;
+    private static final long QUERY_RETRY_DELAY_MILLIS = 1000L;
 
     private final NewsFeatureSnapshotRepository repository;
     private final NewsEventFeatureService featureService;
@@ -109,29 +117,65 @@ public class NewsFeatureSnapshotService {
             LocalDate startDate,
             LocalDate endDate,
             Set<String> requiredKeys) {
-        List<NewsFeatureSnapshotDocument> documents = repository
-                .findByFeatureVersionAndStockCodeInAndFeatureTradeDateBetween(
-                        FEATURE_VERSION, stockCodes, startDate, endDate);
         Map<String, double[]> result = new LinkedHashMap<>();
-        for (NewsFeatureSnapshotDocument document : documents) {
-            if (!document.isComplete() || document.getFeatures() == null
-                    || document.getFeatures().size() != FEATURE_COUNT
-                    || document.getCutoffTime() == null
-                    || document.getFeatureTradeDate() == null
-                    || !document.getCutoffTime().toLocalDate().equals(document.getFeatureTradeDate())
-                    || (document.getLatestInputPublishTime() != null
-                    && document.getLatestInputPublishTime().isAfter(document.getCutoffTime()))
-                    || !validFeatures(document.getFeatures())) {
-                continue;
+        List<String> codes = stockCodes == null ? List.of() : stockCodes.stream()
+                .filter(code -> code != null && !code.isBlank())
+                .map(String::trim)
+                .distinct()
+                .sorted()
+                .toList();
+        for (int offset = 0; offset < codes.size(); offset += QUERY_STOCK_BATCH_SIZE) {
+            List<String> batchCodes = new ArrayList<>(codes.subList(
+                    offset, Math.min(offset + QUERY_STOCK_BATCH_SIZE, codes.size())));
+            List<NewsFeatureSnapshotDocument> documents = loadBatchWithRetry(
+                    batchCodes, startDate, endDate);
+            for (NewsFeatureSnapshotDocument document : documents) {
+                if (!document.isComplete() || document.getFeatures() == null
+                        || document.getFeatures().size() != FEATURE_COUNT
+                        || document.getCutoffTime() == null
+                        || document.getFeatureTradeDate() == null
+                        || !document.getCutoffTime().toLocalDate().equals(document.getFeatureTradeDate())
+                        || (document.getLatestInputPublishTime() != null
+                        && document.getLatestInputPublishTime().isAfter(document.getCutoffTime()))
+                        || !validFeatures(document.getFeatures())) {
+                    continue;
+                }
+                result.put(key(document.getStockCode(), document.getFeatureTradeDate()),
+                        document.getFeatures().stream().mapToDouble(Double::doubleValue).toArray());
             }
-            result.put(key(document.getStockCode(), document.getFeatureTradeDate()),
-                    document.getFeatures().stream().mapToDouble(Double::doubleValue).toArray());
         }
         List<String> missing = requiredKeys.stream().filter(key -> !result.containsKey(key)).limit(20).toList();
         if (!missing.isEmpty() || result.size() < requiredKeys.size()) {
             throw new IllegalStateException("temporal-news-v1 快照不完整，禁止训练或推理，缺失示例: " + missing);
         }
         return result;
+    }
+
+    private List<NewsFeatureSnapshotDocument> loadBatchWithRetry(
+            List<String> stockCodes, LocalDate startDate, LocalDate endDate) {
+        for (int attempt = 1; attempt <= MAX_QUERY_ATTEMPTS; attempt++) {
+            try {
+                return repository.findByFeatureVersionAndStockCodeInAndFeatureTradeDateBetween(
+                        FEATURE_VERSION, stockCodes, startDate, endDate);
+            } catch (DataAccessException exception) {
+                if (attempt == MAX_QUERY_ATTEMPTS) {
+                    throw exception;
+                }
+                log.warn("新闻特征快照批量读取失败，准备重试: attempt={}/{}, stocks={}, reason={}",
+                        attempt, MAX_QUERY_ATTEMPTS, stockCodes.size(), exception.getMessage());
+                sleepBeforeRetry();
+            }
+        }
+        throw new IllegalStateException("新闻特征快照批量读取重试状态异常");
+    }
+
+    private void sleepBeforeRetry() {
+        try {
+            Thread.sleep(QUERY_RETRY_DELAY_MILLIS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("新闻特征快照批量读取重试被中断", exception);
+        }
     }
 
     private void validateSnapshotIdentity(
@@ -166,4 +210,4 @@ public class NewsFeatureSnapshotService {
         return stockCode + "|" + tradeDate;
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------
