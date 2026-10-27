@@ -1,7 +1,8 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START-----------
 package com.stock.data.repository;
 
 import com.stock.data.entity.StockNews;
+import com.stock.data.enums.NewsQualityStatus;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.data.mongodb.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -28,6 +29,16 @@ public interface NewsRepository extends MongoRepository<StockNews, String> {
      * @return 最新新闻或公告，不存在时返回 empty
      */
     Optional<StockNews> findFirstByStockCodeOrderByPublishTimeDesc(String stockCode);
+
+    /**
+     * 查询指定股票最近三条可消费新闻。
+     *
+     * @param stockCode 股票代码
+     * @param qualityStatus 新闻治理状态
+     * @return 按发布时间倒序排列的新闻，最多 3 条
+     */
+    List<StockNews> findTop3ByStockCodeAndQualityStatusOrderByPublishTimeDesc(
+            String stockCode, NewsQualityStatus qualityStatus);
 
     /**
      * 查询指定时间之后最近的股票新闻和公告。
@@ -90,4 +101,4 @@ public interface NewsRepository extends MongoRepository<StockNews, String> {
     @Query(value = "{ 'stockCode' : ?0, 'externalId' : { $in : ?1 } }", fields = "{ 'externalId' : 1, '_id' : 0 }")
     List<StockNews> findExternalIdsByStockCodeAndExternalIdIn(String stockCode, List<String> externalIds);
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END-----------

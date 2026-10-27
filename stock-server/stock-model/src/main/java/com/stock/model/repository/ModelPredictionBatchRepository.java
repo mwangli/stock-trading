@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------
+// AI_GENERATE_START-----------------
 package com.stock.model.repository;
 
 import com.stock.model.entity.ModelPredictionBatchDocument;
@@ -27,9 +27,9 @@ import java.util.Optional;
 public interface ModelPredictionBatchRepository extends JpaRepository<ModelPredictionBatchDocument, String> {
 
     /**
-     * 查询尚未记录交易日历来源的历史批次。
+     * 查询尚未记录工作日解析来源的历史批次。
      *
-     * @return 待回填日历来源的批次
+     * @return 待回填工作日来源的批次
      */
     List<ModelPredictionBatchDocument> findByCalendarFallbackIsNull();
 
@@ -197,4 +197,4 @@ public interface ModelPredictionBatchRepository extends JpaRepository<ModelPredi
     List<ModelPredictionBatchDocument> findTop200ByStatusInAndCreatedAtBeforeOrderByCreatedAtAsc(
             Collection<String> statuses, LocalDateTime cutoff);
 }
-// AI_GENERATE_END----------------
+// AI_GENERATE_END-----------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START----------
 package com.stock.trading.validator;
 
 import com.stock.data.service.TradingCalendarService;
@@ -13,7 +13,7 @@ import java.time.LocalTime;
 
 /**
  * 交易时间检查器。
- * 交易日期由已确认的交易日历决定，避免法定休市日被普通工作日规则误判。
+ * 交易日期只按周一至周五判断，节假日由下游无行情或券商执行结果自然处理。
  *
  * @author mwangli
  * @since 2026-10-13
@@ -137,7 +137,7 @@ public class TradingTimeChecker {
     }
 
     /**
-     * 判断日期是否为已确认交易日。
+     * 判断日期是否为周一至周五。
      *
      * @param date 自然日期
      * @return 是否为交易日
@@ -147,7 +147,7 @@ public class TradingTimeChecker {
     }
 
     /**
-     * 判断今天是否为已确认交易日。
+     * 判断今天是否为周一至周五。
      *
      * @return 是否为交易日
      */
@@ -191,4 +191,4 @@ public class TradingTimeChecker {
         }
     }
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END----------

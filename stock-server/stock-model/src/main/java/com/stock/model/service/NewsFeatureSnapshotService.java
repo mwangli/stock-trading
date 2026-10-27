@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START --------
 package com.stock.model.service;
 
 import com.stock.model.dto.NewsEventFeatureVector;
@@ -20,7 +20,7 @@ import java.util.Set;
 
 /**
  * 日级新闻时序特征快照服务。
- * 负责生成、持久化和完整批量读取 `temporal-news-v1`，缺失快照时阻断模型训练或推理。
+ * 负责生成、持久化和完整批量读取紧凑新闻特征，缺失快照时阻断模型训练或推理。
  *
  * @author mwangli
  * @since 2026-10-24
@@ -31,10 +31,10 @@ import java.util.Set;
 public class NewsFeatureSnapshotService {
 
     /** 新闻时序特征版本。 */
-    public static final String FEATURE_VERSION = "temporal-news-v1";
+    public static final String FEATURE_VERSION = "temporal-news-v2-8d";
 
     /** 新闻连续特征数量。 */
-    public static final int FEATURE_COUNT = 25;
+    public static final int FEATURE_COUNT = 8;
 
     private static final int QUERY_STOCK_BATCH_SIZE = 50;
     private static final int MAX_QUERY_ATTEMPTS = 3;
@@ -109,7 +109,7 @@ public class NewsFeatureSnapshotService {
      * @param startDate 起始交易日
      * @param endDate 结束交易日
      * @param requiredKeys 必须存在的 `股票代码|交易日` 集合
-     * @return 快照键到 25 维特征的映射
+     * @return 快照键到紧凑新闻特征的映射
      * @throws IllegalStateException 快照缺失、截止时间错误或特征数值无效时抛出
      */
     public Map<String, double[]> loadRequired(
@@ -146,7 +146,7 @@ public class NewsFeatureSnapshotService {
         }
         List<String> missing = requiredKeys.stream().filter(key -> !result.containsKey(key)).limit(20).toList();
         if (!missing.isEmpty() || result.size() < requiredKeys.size()) {
-            throw new IllegalStateException("temporal-news-v1 快照不完整，禁止训练或推理，缺失示例: " + missing);
+            throw new IllegalStateException(FEATURE_VERSION + " 快照不完整，禁止训练或推理，缺失示例: " + missing);
         }
         return result;
     }
@@ -198,7 +198,7 @@ public class NewsFeatureSnapshotService {
             if (value == null || !Double.isFinite(value)) {
                 return false;
             }
-            double minimum = index == 3 ? -1D : 0D;
+            double minimum = index == 0 ? -1D : 0D;
             if (value < minimum || value > 1D) {
                 return false;
             }
@@ -210,4 +210,4 @@ public class NewsFeatureSnapshotService {
         return stockCode + "|" + tradeDate;
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END --------

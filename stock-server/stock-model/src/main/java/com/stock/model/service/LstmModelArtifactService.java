@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------------------
+// AI_GENERATE_START------------------------------
 package com.stock.model.service;
 
 import ai.djl.Model;
@@ -7,6 +7,7 @@ import com.stock.base.cache.CacheNames;
 import com.mongodb.client.gridfs.model.GridFSFile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.model.config.LstmTrainingConfig;
+import com.stock.model.dto.ModelFeatureMetadata;
 import com.stock.model.entity.LstmModelDocument;
 import com.stock.model.entity.ModelActivationDocument;
 import com.stock.model.algorithm.StockLSTMModel;
@@ -49,13 +50,12 @@ public class LstmModelArtifactService {
     /** 当前共享模型固定名称。 */
     public static final String DEFAULT_SHARED_MODEL_NAME = "global-shared-lstm";
     /** 当前网络结构与标签口径版本。 */
-    public static final String MODEL_VERSION = "v6-free-daily-temporal-news-53d";
+    public static final String MODEL_VERSION = "ranking-feature-metadata-v1";
     private static final String V4_MODEL_VERSION = "v4-balanced-direction";
     private static final String LEGACY_MODEL_VERSION = "v3-embedding-multitask";
     private static final String LEGACY_LOSS_VERSION = "huber-bce-huber-v1";
     private static final String LOSS_VERSION = "huber-weighted-bce-huber-v2";
     private static final String RANKING_LOSS_VERSION = "pairwise-ranking-multitask-v1";
-    private static final String OUTPUT_SCHEMA_VERSION = "ranking-return-probability-downside-v1";
 
     private final LstmTrainingConfig config;
     private final LstmModelRepository lstmModelRepository;
@@ -102,7 +102,8 @@ public class LstmModelArtifactService {
             ModelActivationDocument activation = modelActivationRepository.findByModelName(getModelName()).orElse(null);
             LstmModelDocument document = new LstmModelDocument();
             document.setModelName(getModelName());
-            document.setModelVersion(MODEL_VERSION + "-"
+            ModelFeatureMetadata featureMetadata = requireFeatureMetadata(processedData);
+            document.setModelVersion(featureMetadata.getModelVersion() + "-"
                     + architectureType.name().toLowerCase(java.util.Locale.ROOT) + "-"
                     + System.currentTimeMillis());
             document.setParentModelVersionId(activation == null ? null : activation.getActiveModelVersionId());
@@ -117,7 +118,7 @@ public class LstmModelArtifactService {
                             .append("artifactType", "LSTM_MODEL_PARAMETERS"))
                     .toHexString());
             document.setNormalizationParams(metadata);
-            document.setTrainingConfigJson(buildTrainingConfigJson(architectureType));
+            document.setTrainingConfigJson(buildTrainingConfigJson(processedData, architectureType));
             document.setInputContractJson(buildInputContractJson(
                     processedData, architectureType, crossSectionBatchSize));
             Map<String, Object> metrics = new LinkedHashMap<>();
@@ -139,7 +140,10 @@ public class LstmModelArtifactService {
             metrics.put("testRankIc", testMetrics.rankIc());
             metrics.put("testTopDecileNetReturn", testMetrics.topDecileNetReturn());
             metrics.put("testSelectionScore", testMetrics.selectionScore());
-            metrics.put("outputCollapsed", testMetrics.collapsed());
+            metrics.put("testOutputCollapsed", testMetrics.collapsed());
+            metrics.put("walkForwardOutputCollapsed", walkForwardMetrics.collapsed());
+            metrics.put("strictIsolationOutputCollapsed", strictIsolationMetrics.collapsed());
+            metrics.put("outputCollapsed", walkForwardMetrics.collapsed());
             metrics.put("probabilityTemperature", probabilityTemperature);
             metrics.put("validationBrierScore", validationMetrics.brierScore());
             metrics.put("validationBrierBaseline", validationMetrics.brierBaseline());
@@ -163,7 +167,7 @@ public class LstmModelArtifactService {
             metrics.put("testEndDate", processedData.getTestEndDate());
             document.setMetricsJson(objectMapper.writeValueAsString(metrics));
             document.setFeatureVersion(processedData.getFeatureVersion());
-            document.setLabelVersion(RankingLstmDataPreprocessor.LABEL_VERSION);
+            document.setLabelVersion(featureMetadata.getLabelVersion());
             document.setEngineName("PyTorch");
             document.setEngineVersion(Engine.getInstance().getVersion());
             document.setDjlVersion(Model.class.getPackage().getImplementationVersion());
@@ -250,30 +254,32 @@ public class LstmModelArtifactService {
     }
 
     private void validateRankingMetadata(Properties properties) {
-        requireMetadata(properties, "featureVersion", RankingLstmDataPreprocessor.FEATURE_VERSION);
-        requireMetadata(properties, "labelVersion", RankingLstmDataPreprocessor.LABEL_VERSION);
-        requireMetadata(properties, "splitPolicyVersion", RankingLstmDataPreprocessor.SPLIT_POLICY_VERSION);
-        requireMetadata(properties, "costModelVersion", RankingLstmDataPreprocessor.COST_MODEL_VERSION);
-        requireMetadata(properties, "outputSchemaVersion", OUTPUT_SCHEMA_VERSION);
-        requireMetadata(properties, "sequenceLength", String.valueOf(config.getSequenceLength()));
-        requireMetadata(properties, "inputSize", String.valueOf(RankingLstmDataPreprocessor.FEATURE_COUNT));
-        requireMetadata(properties, "modelGeneration", RankingLstmDataPreprocessor.MODEL_GENERATION);
-        requireMetadata(properties, "marketFeatureCount",
-                String.valueOf(RankingLstmDataPreprocessor.MARKET_FEATURE_COUNT));
-        requireMetadata(properties, "newsFeatureCount",
-                String.valueOf(RankingLstmDataPreprocessor.NEWS_FEATURE_COUNT));
+        ModelFeatureMetadata featureMetadata = parseFeatureMetadata(properties);
+        requireText(properties.getProperty("sampleSetHash"), "Ranking LSTM 元数据缺少样本集合哈希");
+        requireMetadata(properties, "featureVersion", featureMetadata.getFeatureVersion());
+        requireMetadata(properties, "labelVersion", featureMetadata.getLabelVersion());
+        requireMetadata(properties, "splitPolicyVersion", featureMetadata.getSplitPolicyVersion());
+        requireMetadata(properties, "costModelVersion", featureMetadata.getCostModelVersion());
+        requireMetadata(properties, "outputSchemaVersion", featureMetadata.getOutputSchemaVersion());
+        requirePositiveIntegerMetadata(properties, "sequenceLength");
+        requireMetadata(properties, "inputSize", String.valueOf(featureMetadata.inputSize()));
+        requireMetadata(properties, "modelGeneration", featureMetadata.getModelGeneration());
+        requireMetadata(properties, "marketFeatureCount", String.valueOf(featureMetadata.marketFeatureCount()));
+        requireMetadata(properties, "newsFeatureCount", String.valueOf(featureMetadata.newsFeatureCount()));
         requireMetadata(properties, "continuousFeatureCount",
-                String.valueOf(RankingLstmDataPreprocessor.CONTINUOUS_FEATURE_COUNT));
-        requireMetadata(properties, "categoryFeatureCount", "3");
+                String.valueOf(featureMetadata.continuousFeatureCount()));
+        requireMetadata(properties, "categoryFeatureCount",
+                String.valueOf(featureMetadata.categoryFeatureCount()));
         requireMetadata(properties, "dataSource", config.getDataSource());
         requireMetadata(properties, "dataSourceVersion", config.getDataSourceVersion());
-        requireMetadata(properties, "priceBasis", RankingLstmDataPreprocessor.PRICE_BASIS);
-        requireMetadata(properties, "benchmarkType", RankingLstmDataPreprocessor.BENCHMARK_TYPE);
+        requireMetadata(properties, "priceBasis", featureMetadata.getPriceBasis());
+        requireMetadata(properties, "benchmarkType", featureMetadata.getBenchmarkType());
         requireMetadata(properties, "industryCategoryMode", "UNKNOWN_ONLY");
         requireMetadata(properties, "officialAdjustmentFactor", "false");
         requireMetadata(properties, "historicalIndustryEnabled", "false");
         requireMetadata(properties, "exactTradabilityEnabled", "false");
-        requireMetadata(properties, "newsFeaturesEnabled", "true");
+        requireMetadata(properties, "newsFeaturesEnabled",
+                String.valueOf(featureMetadata.isNewsFeaturesEnabled()));
         requireMetadata(properties, "outputSize", String.valueOf(RankingLSTMModel.OUTPUT_SIZE));
         requireOneOfMetadata(properties, "architectureType",
                 LstmArchitectureType.RANKING_LSTM.name(),
@@ -314,33 +320,34 @@ public class LstmModelArtifactService {
             LstmArchitectureType architectureType,
             int crossSectionBatchSize) throws IOException {
         Properties properties = new Properties();
+        ModelFeatureMetadata featureMetadata = requireFeatureMetadata(data);
         properties.setProperty("modelVersion", MODEL_VERSION);
         properties.setProperty("featureVersion", data.getFeatureVersion());
-        properties.setProperty("labelVersion", RankingLstmDataPreprocessor.LABEL_VERSION);
-        properties.setProperty("splitPolicyVersion", RankingLstmDataPreprocessor.SPLIT_POLICY_VERSION);
-        properties.setProperty("costModelVersion", RankingLstmDataPreprocessor.COST_MODEL_VERSION);
-        properties.setProperty("outputSchemaVersion", OUTPUT_SCHEMA_VERSION);
+        properties.setProperty("featureMetadataJson", objectMapper.writeValueAsString(featureMetadata));
+        properties.setProperty("sampleSetHash", requireText(data.getSampleSetHash(), "训练快照缺少样本集合哈希"));
+        properties.setProperty("labelVersion", featureMetadata.getLabelVersion());
+        properties.setProperty("splitPolicyVersion", featureMetadata.getSplitPolicyVersion());
+        properties.setProperty("costModelVersion", featureMetadata.getCostModelVersion());
+        properties.setProperty("outputSchemaVersion", featureMetadata.getOutputSchemaVersion());
         properties.setProperty("architectureType", architectureType.name());
         properties.setProperty("randomSeed", String.valueOf(config.getRandomSeed()));
         properties.setProperty("sequenceLength", String.valueOf(data.getSequenceLength()));
         properties.setProperty("inputSize", String.valueOf(data.getFeatureCount()));
-        properties.setProperty("modelGeneration", RankingLstmDataPreprocessor.MODEL_GENERATION);
-        properties.setProperty("marketFeatureCount",
-                String.valueOf(RankingLstmDataPreprocessor.MARKET_FEATURE_COUNT));
-        properties.setProperty("newsFeatureCount",
-                String.valueOf(RankingLstmDataPreprocessor.NEWS_FEATURE_COUNT));
+        properties.setProperty("modelGeneration", featureMetadata.getModelGeneration());
+        properties.setProperty("marketFeatureCount", String.valueOf(featureMetadata.marketFeatureCount()));
+        properties.setProperty("newsFeatureCount", String.valueOf(featureMetadata.newsFeatureCount()));
         properties.setProperty("continuousFeatureCount",
-                String.valueOf(RankingLstmDataPreprocessor.CONTINUOUS_FEATURE_COUNT));
-        properties.setProperty("categoryFeatureCount", "3");
+                String.valueOf(featureMetadata.continuousFeatureCount()));
+        properties.setProperty("categoryFeatureCount", String.valueOf(featureMetadata.categoryFeatureCount()));
         properties.setProperty("dataSource", config.getDataSource());
         properties.setProperty("dataSourceVersion", config.getDataSourceVersion());
-        properties.setProperty("priceBasis", RankingLstmDataPreprocessor.PRICE_BASIS);
-        properties.setProperty("benchmarkType", RankingLstmDataPreprocessor.BENCHMARK_TYPE);
+        properties.setProperty("priceBasis", featureMetadata.getPriceBasis());
+        properties.setProperty("benchmarkType", featureMetadata.getBenchmarkType());
         properties.setProperty("industryCategoryMode", "UNKNOWN_ONLY");
         properties.setProperty("officialAdjustmentFactor", "false");
         properties.setProperty("historicalIndustryEnabled", "false");
         properties.setProperty("exactTradabilityEnabled", "false");
-        properties.setProperty("newsFeaturesEnabled", "true");
+        properties.setProperty("newsFeaturesEnabled", String.valueOf(featureMetadata.isNewsFeaturesEnabled()));
         properties.setProperty("outputSize", String.valueOf(RankingLSTMModel.OUTPUT_SIZE));
         properties.setProperty("crossSectionBatchSize", String.valueOf(crossSectionBatchSize));
         properties.setProperty("stockDictionarySize", String.valueOf(data.getStockDictionary().size()));
@@ -384,32 +391,29 @@ public class LstmModelArtifactService {
             LstmDataPreprocessor.ProcessedData processedData,
             LstmArchitectureType architectureType,
             int crossSectionBatchSize) throws IOException {
-        Map<String, Object> contract = new LinkedHashMap<>();
-        contract.put("modelGeneration", RankingLstmDataPreprocessor.MODEL_GENERATION);
+        ModelFeatureMetadata featureMetadata = requireFeatureMetadata(processedData);
+        Map<String, Object> contract = objectMapper.convertValue(featureMetadata,
+                new com.fasterxml.jackson.core.type.TypeReference<LinkedHashMap<String, Object>>() { });
         contract.put("sequenceLength", processedData.getSequenceLength());
         contract.put("inputSize", processedData.getFeatureCount());
-        contract.put("marketFeatureCount", RankingLstmDataPreprocessor.MARKET_FEATURE_COUNT);
-        contract.put("newsFeatureCount", RankingLstmDataPreprocessor.NEWS_FEATURE_COUNT);
-        contract.put("continuousFeatureCount", RankingLstmDataPreprocessor.CONTINUOUS_FEATURE_COUNT);
-        contract.put("categoryFeatureCount", 3);
+        contract.put("marketFeatureCount", featureMetadata.marketFeatureCount());
+        contract.put("newsFeatureCount", featureMetadata.newsFeatureCount());
+        contract.put("continuousFeatureCount", featureMetadata.continuousFeatureCount());
+        contract.put("categoryFeatureCount", featureMetadata.categoryFeatureCount());
         contract.put("outputSize", RankingLSTMModel.OUTPUT_SIZE);
         contract.put("featureVersion", processedData.getFeatureVersion());
-        contract.put("labelVersion", RankingLstmDataPreprocessor.LABEL_VERSION);
-        contract.put("outputSchemaVersion", OUTPUT_SCHEMA_VERSION);
+        contract.put("sampleSetHash", processedData.getSampleSetHash());
         contract.put("crossSectionBatchSize", crossSectionBatchSize);
         contract.put("architectureType", architectureType.name());
         contract.put("dataSource", config.getDataSource());
         contract.put("dataSourceVersion", config.getDataSourceVersion());
-        contract.put("priceBasis", RankingLstmDataPreprocessor.PRICE_BASIS);
-        contract.put("benchmarkType", RankingLstmDataPreprocessor.BENCHMARK_TYPE);
         contract.put("stockCategoryEnabled", true);
         contract.put("industryCategoryMode", "UNKNOWN_ONLY");
         contract.put("marketCategoryEnabled", true);
         contract.put("officialAdjustmentFactor", false);
         contract.put("historicalIndustryEnabled", false);
         contract.put("exactTradabilityEnabled", false);
-        contract.put("newsFeaturesEnabled", true);
-        contract.put("capabilityLevel", "V6_FREE_DATA_PRODUCTION");
+        contract.put("capabilityLevel", featureMetadata.getModelGeneration() + "_FREE_DATA_PRODUCTION");
         contract.put("limitations", List.of(
                 "无官方复权因子，使用 pre_close 构造连续价格",
                 "无可靠历史行业归属，行业类别统一为 UNKNOWN",
@@ -418,17 +422,19 @@ public class LstmModelArtifactService {
         return objectMapper.writeValueAsString(contract);
     }
 
-    private String buildTrainingConfigJson(LstmArchitectureType architectureType) throws IOException {
+    private String buildTrainingConfigJson(
+            LstmDataPreprocessor.ProcessedData processedData,
+            LstmArchitectureType architectureType) throws IOException {
+        ModelFeatureMetadata featureMetadata = requireFeatureMetadata(processedData);
         return objectMapper.writeValueAsString(Map.ofEntries(
                 Map.entry("architectureType", architectureType.name()),
                 Map.entry("randomSeed", config.getRandomSeed()),
-                Map.entry("modelGeneration", RankingLstmDataPreprocessor.MODEL_GENERATION),
+                Map.entry("modelGeneration", featureMetadata.getModelGeneration()),
                 Map.entry("dataSource", config.getDataSource()),
                 Map.entry("dataSourceVersion", config.getDataSourceVersion()),
-                Map.entry("priceBasis", RankingLstmDataPreprocessor.PRICE_BASIS),
-                Map.entry("benchmarkType", RankingLstmDataPreprocessor.BENCHMARK_TYPE),
-                Map.entry("dataPreparationMaxRounds", config.getDataPreparationMaxRounds()),
-                Map.entry("inputSize", config.getInputSize()), Map.entry("hiddenSize", config.getHiddenSize()),
+                Map.entry("priceBasis", featureMetadata.getPriceBasis()),
+                Map.entry("benchmarkType", featureMetadata.getBenchmarkType()),
+                Map.entry("inputSize", featureMetadata.inputSize()), Map.entry("hiddenSize", config.getHiddenSize()),
                 Map.entry("numLayers", config.getNumLayers()), Map.entry("dropout", config.getDropout()),
                 Map.entry("sequenceLength", config.getSequenceLength()),
                 Map.entry("stockEmbeddingSize", config.getStockEmbeddingSize()),
@@ -439,6 +445,38 @@ public class LstmModelArtifactService {
                 Map.entry("embargoTradingDays", config.getEmbargoTradingDays()),
                 Map.entry("learningRate", config.getLearningRate()), Map.entry("batchSize", config.getBatchSize()),
                 Map.entry("epochs", config.getEpochs())));
+    }
+
+    private ModelFeatureMetadata requireFeatureMetadata(LstmDataPreprocessor.ProcessedData data) {
+        if (data == null || data.getFeatureMetadata() == null) {
+            throw new IllegalStateException("训练数据缺少模型特征元数据");
+        }
+        data.getFeatureMetadata().validate();
+        if (data.getFeatureCount() != data.getFeatureMetadata().inputSize()) {
+            throw new IllegalStateException("训练数据维度与模型特征元数据不一致");
+        }
+        return data.getFeatureMetadata();
+    }
+
+    private ModelFeatureMetadata parseFeatureMetadata(Properties properties) {
+        String json = properties.getProperty("featureMetadataJson");
+        if (json == null || json.isBlank()) {
+            throw new IllegalStateException("Ranking LSTM 元数据缺少 featureMetadataJson");
+        }
+        try {
+            ModelFeatureMetadata metadata = objectMapper.readValue(json, ModelFeatureMetadata.class);
+            metadata.validate();
+            return metadata;
+        } catch (IOException exception) {
+            throw new IllegalStateException("Ranking LSTM 特征元数据无法解析", exception);
+        }
+    }
+
+    private String requireText(String value, String message) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException(message);
+        }
+        return value;
     }
 
     private void validateParameterIntegrity(LstmModelDocument document) {
@@ -525,4 +563,4 @@ public class LstmModelArtifactService {
      */
     public record ModelArtifact(byte[] params, String metadata, String modelId) { }
 }
-// AI_GENERATE_END------------------------
+// AI_GENERATE_END------------------------------

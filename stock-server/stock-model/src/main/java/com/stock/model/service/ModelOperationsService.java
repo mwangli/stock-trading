@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------
+// AI_GENERATE_START----------------------------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -7,7 +7,9 @@ import com.stock.data.service.MarketDataQueryService;
 import com.stock.model.config.LstmDataQualityConfig;
 import com.stock.model.config.LstmTrainingConfig;
 import com.stock.model.dto.ModelOperationResponse;
+import com.stock.model.dto.ModelFeatureMetadata;
 import com.stock.model.dto.ModelTrainingRequest;
+import com.stock.model.enums.LstmFeatureContract;
 import com.stock.model.entity.ModelTrainingRunDocument;
 import com.stock.model.repository.ModelTrainingRunRepository;
 import com.stock.model.algorithm.LstmArchitectureType;
@@ -20,6 +22,8 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
 /**
@@ -45,6 +49,7 @@ public class ModelOperationsService {
     private final ModelOperationAuditService auditService;
     private final TemporalModelEnsembleService temporalModelEnsembleService;
     private final Executor applicationTaskExecutor;
+    private final Set<String> activeTrainingRunIds = ConcurrentHashMap.newKeySet();
 
     /**
      * 创建模型运维服务。
@@ -88,6 +93,7 @@ public class ModelOperationsService {
      */
     @PostConstruct
     public void recoverInterruptedTrainingRuns() {
+        LocalDateTime recoveredAt = LocalDateTime.now();
         List<ModelTrainingRunDocument> interrupted = trainingRunRepository
                 .findByModelNameAndStatusIn(lstmTrainerService.getModelName(), RUNNING_STATUSES)
                 .stream()
@@ -96,7 +102,6 @@ public class ModelOperationsService {
         if (interrupted.isEmpty()) {
             return;
         }
-        LocalDateTime recoveredAt = LocalDateTime.now();
         for (ModelTrainingRunDocument run : interrupted) {
             run.setStatus("CANCELLED");
             run.setProgressStage("CANCELLED");
@@ -139,6 +144,8 @@ public class ModelOperationsService {
         String operator = normalizeOperator(operatorName);
         if ("QUEUED".equals(run.getStatus())) {
             markTrainingCancelled(run, "训练任务在排队阶段被停止");
+        } else if (!activeTrainingRunIds.contains(runId)) {
+            markTrainingCancelled(run, "训练执行线程不存在，已收敛遗留任务状态");
         } else {
             run.setStatus("STOPPING");
             run.setProgressMessage("已收到停止请求，等待当前训练检查点结束");
@@ -192,6 +199,8 @@ public class ModelOperationsService {
         double learningRate = safeRequest.getLearningRate() == null
                 ? trainingConfig.getLearningRate() : safeRequest.getLearningRate();
         LstmArchitectureType architectureType = resolveArchitectureType(safeRequest.getArchitectureType());
+        ModelFeatureMetadata featureMetadata = LstmFeatureContract
+                .resolve(safeRequest.getFeatureContract()).metadata();
         validateEffectiveTrainingParameters(days, epochs, batchSize, learningRate);
 
         ModelTrainingRunDocument run = new ModelTrainingRunDocument();
@@ -201,7 +210,7 @@ public class ModelOperationsService {
         run.setTriggeredBy(operatorName);
         run.setRequestedConfigJson(writeJson(trainingRequestMap(safeRequest)));
         run.setEffectiveConfigJson(writeJson(
-                effectiveConfigMap(days, epochs, batchSize, learningRate, architectureType)));
+                effectiveConfigMap(days, epochs, batchSize, learningRate, architectureType, featureMetadata)));
         run.setGateResultJson(writeJson(Map.of("allowed", true, "message", checkResult.message())));
         run.setProgressStage("QUEUED");
         run.setProgressMessage("训练任务已进入队列");
@@ -220,9 +229,16 @@ public class ModelOperationsService {
         final int effectiveBatchSize = batchSize;
         final double effectiveLearningRate = learningRate;
         final LstmArchitectureType effectiveArchitectureType = architectureType;
-        applicationTaskExecutor.execute(() -> executeTraining(
-                saved.getId(), effectiveDays, effectiveEpochs, effectiveBatchSize,
-                effectiveLearningRate, effectiveArchitectureType));
+        final ModelFeatureMetadata effectiveFeatureMetadata = featureMetadata;
+        activeTrainingRunIds.add(saved.getId());
+        applicationTaskExecutor.execute(() -> {
+            try {
+                executeTraining(saved.getId(), effectiveDays, effectiveEpochs, effectiveBatchSize,
+                        effectiveLearningRate, effectiveArchitectureType, effectiveFeatureMetadata);
+            } finally {
+                activeTrainingRunIds.remove(saved.getId());
+            }
+        });
         return ModelOperationResponse.builder()
                 .operationType("TRAIN")
                 .operationId(saved.getId())
@@ -232,9 +248,9 @@ public class ModelOperationsService {
 
     private void executeTraining(
             String runId, int days, int epochs, int batchSize, double learningRate,
-            LstmArchitectureType architectureType) {
+            LstmArchitectureType architectureType, ModelFeatureMetadata featureMetadata) {
         ModelTrainingPipelineService.PipelineExecutionResult result = trainingPipelineService.execute(
-                runId, days, epochs, batchSize, learningRate, architectureType);
+                runId, days, epochs, batchSize, learningRate, architectureType, featureMetadata);
         ModelTrainingRunDocument run = trainingRunRepository.findById(runId).orElse(null);
         if (run != null
                 && result.succeeded()
@@ -243,18 +259,20 @@ public class ModelOperationsService {
                 && result.activeCandidate()
                 && temporalModelEnsembleService.shouldTrainMasterCandidate(
                         result.candidateVersionId())) {
-            submitScheduledMasterTraining(days, epochs, batchSize, learningRate);
+            submitScheduledMasterTraining(days, epochs, batchSize, learningRate, featureMetadata);
         }
     }
 
     private void submitScheduledMasterTraining(
-            int days, int epochs, int batchSize, double learningRate) {
+            int days, int epochs, int batchSize, double learningRate,
+            ModelFeatureMetadata featureMetadata) {
         ModelTrainingRequest request = new ModelTrainingRequest();
         request.setDays(days);
         request.setEpochs(epochs);
         request.setBatchSize(batchSize);
         request.setLearningRate(learningRate);
         request.setArchitectureType(LstmArchitectureType.MASTER_TRANSFORMER.name());
+        request.setFeatureContract(featureMetadata.getModelGeneration());
         request.setOperatorName("job-scheduler");
         synchronized (this) {
             submitTraining(request, "SCHEDULER_CHAIN", "job-scheduler", false);
@@ -330,13 +348,14 @@ public class ModelOperationsService {
         values.put("batchSize", request.getBatchSize());
         values.put("learningRate", request.getLearningRate());
         values.put("architectureType", request.getArchitectureType());
+        values.put("featureContract", request.getFeatureContract());
         values.put("operatorName", normalizeOperator(request.getOperatorName()));
         return values;
     }
 
     private Map<String, Object> effectiveConfigMap(
             int days, int epochs, int batchSize, double learningRate,
-            LstmArchitectureType architectureType) {
+            LstmArchitectureType architectureType, ModelFeatureMetadata featureMetadata) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("days", days);
         values.put("epochs", epochs);
@@ -344,8 +363,8 @@ public class ModelOperationsService {
         values.put("learningRate", learningRate);
         values.put("architectureType", architectureType.name());
         values.put("sequenceLength", trainingConfig.getSequenceLength());
-        values.put("inputSize", trainingConfig.getInputSize());
-        values.put("featureVersion", RankingLstmDataPreprocessor.FEATURE_VERSION);
+        values.put("inputSize", featureMetadata.inputSize());
+        values.put("featureMetadata", featureMetadata);
         return values;
     }
 
@@ -390,4 +409,4 @@ public class ModelOperationsService {
     }
 
 }
-// AI_GENERATE_END-------------------------
+// AI_GENERATE_END----------------------------

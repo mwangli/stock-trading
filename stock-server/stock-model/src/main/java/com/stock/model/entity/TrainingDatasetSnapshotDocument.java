@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START----------------
 package com.stock.model.entity;
 
 import lombok.Data;
@@ -109,7 +109,7 @@ public class TrainingDatasetSnapshotDocument {
     /** 快照文件大小，单位字节。 */
     private long artifactSize;
 
-    /** 快照制品格式，如 CHUNKED_JSON_GZIP_V1。 */
+    /** 快照制品格式，如 CHUNKED_JSON_GZIP_V4。 */
     private String artifactFormat;
 
     /** 快照分片数量，历史单文件快照为 0。 */
@@ -126,4 +126,4 @@ public class TrainingDatasetSnapshotDocument {
     @Column(columnDefinition = "LONGTEXT")
     private String errorMessage;
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END----------------

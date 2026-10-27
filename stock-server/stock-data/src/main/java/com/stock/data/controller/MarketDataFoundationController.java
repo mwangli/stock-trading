@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------
+// AI_GENERATE_START-----------
 package com.stock.data.controller;
 
 import com.stock.data.dto.AdjustmentFactorImportRequestDto;
@@ -8,7 +8,6 @@ import com.stock.data.dto.MinuteBarImportRequestDto;
 import com.stock.data.dto.ModelReferenceDailyBarImportRequestDto;
 import com.stock.data.dto.ModelStockDailyBarImportRequestDto;
 import com.stock.base.web.ResponseDTO;
-import com.stock.data.dto.TradeCalendarImportRequestDto;
 import com.stock.data.dto.StockDailyTradabilityImportRequestDto;
 import com.stock.data.service.MarketDataFoundationService;
 import jakarta.validation.Valid;
@@ -46,20 +45,6 @@ public class MarketDataFoundationController {
         log.info("[MarketDataFoundation] 导入历史股票池: source={}, version={}, count={}",
                 request.getSource(), request.getSourceVersion(), request.getItems().size());
         return ResponseDTO.success(marketDataFoundationService.importHistoricalUniverse(request));
-    }
-
-    /**
-     * 导入证券市场交易日历。
-     *
-     * @param request 交易日历批次
-     * @return 导入统计
-     */
-    @PostMapping("/tradeCalendar/import")
-    public ResponseDTO<MarketDataImportResultDto> importTradeCalendar(
-            @Valid @RequestBody TradeCalendarImportRequestDto request) {
-        log.info("[MarketDataFoundation] 导入交易日历: source={}, version={}, count={}",
-                request.getSource(), request.getSourceVersion(), request.getItems().size());
-        return ResponseDTO.success(marketDataFoundationService.importTradeCalendar(request));
     }
 
     /**
@@ -135,4 +120,4 @@ public class MarketDataFoundationController {
         return ResponseDTO.success(marketDataFoundationService.importStockDailyTradability(request));
     }
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END-----------

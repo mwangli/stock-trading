@@ -1,4 +1,4 @@
-// AI_GENERATE_START- --------------------
+// AI_GENERATE_START- ---------------------
 package com.stock.model.service;
 
 import com.stock.model.algorithm.TemporalModelOutputCalculator;
@@ -25,6 +25,8 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.io.IOException;
+import java.io.StringReader;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -32,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -109,14 +112,42 @@ public class TemporalModelEnsembleService {
         }
         LstmModelDocument baseline = modelRepository.findById(baselineModelId).orElse(null);
         LstmModelDocument master = modelRepository.findById(state.getMasterModelId()).orElse(null);
-        if (baseline != null && master != null
-                && Objects.equals(baseline.getFeatureVersion(), master.getFeatureVersion())) {
+        if (baseline != null && master != null && sameTrainingContract(baseline, master)) {
             return false;
         }
         retireMaster(state.getMasterModelId());
         resetState(state, baselineModelId, null,
                 "基础模型特征契约变化，旧 MASTER 已退役并等待自动重训");
         return true;
+    }
+
+    private boolean sameTrainingContract(LstmModelDocument baseline, LstmModelDocument master) {
+        if (!Objects.equals(baseline.getFeatureVersion(), master.getFeatureVersion())) {
+            return false;
+        }
+        try {
+            Properties baselineMetadata = loadMetadata(baseline.getNormalizationParams());
+            Properties masterMetadata = loadMetadata(master.getNormalizationParams());
+            return Objects.equals(baselineMetadata.getProperty("featureMetadataJson"),
+                    masterMetadata.getProperty("featureMetadataJson"))
+                    && Objects.equals(baselineMetadata.getProperty("sampleSetHash"),
+                    masterMetadata.getProperty("sampleSetHash"));
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
+    private Properties loadMetadata(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("模型缺少训练元数据");
+        }
+        Properties properties = new Properties();
+        try {
+            properties.load(new StringReader(value));
+            return properties;
+        } catch (IOException exception) {
+            throw new IllegalStateException("模型训练元数据无法解析", exception);
+        }
     }
 
     /**
@@ -657,4 +688,4 @@ public class TemporalModelEnsembleService {
         return batchId + "|" + stockCode;
     }
 }
-// AI_GENERATE_END- --------------------
+// AI_GENERATE_END- ---------------------

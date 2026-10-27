@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.data.dto;
 
 import lombok.AllArgsConstructor;
@@ -77,15 +77,6 @@ public class BacktestDataAuditDto {
     /** 历史股票池最早生效日期。 */
     private LocalDate earliestHistoricalUniverseDate;
 
-    /** 请求区间内去重后的交易日历自然日期数量。 */
-    private long tradeCalendarRecordCount;
-
-    /** 交易日历最早日期。 */
-    private LocalDate earliestTradeCalendarDate;
-
-    /** 交易日历最晚日期。 */
-    private LocalDate latestTradeCalendarDate;
-
     /** 请求区间内复权因子数量。 */
     private long adjustmentFactorRecordCount;
 
@@ -104,9 +95,6 @@ public class BacktestDataAuditDto {
     /** 是否存在带生效日期的历史股票池。 */
     private boolean historicalUniverseAvailable;
 
-    /** 是否存在独立交易日历。 */
-    private boolean tradeCalendarAvailable;
-
     /** 成交量单位是否已经通过数据源文档或真实样本确认。 */
     private boolean volumeUnitVerified;
 
@@ -122,4 +110,4 @@ public class BacktestDataAuditDto {
     /** 审计执行时间。 */
     private LocalDateTime auditedAt;
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END------------

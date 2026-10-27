@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------------------------------------------------
+// AI_GENERATE_START-------------------------------------------------------
 package com.stock.model.service;
 
 import ai.djl.Device;
@@ -37,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Comparator;
+import java.util.function.IntConsumer;
 import java.util.stream.Collectors;
 
 /**
@@ -66,6 +67,7 @@ public class LstmTrainerService {
     private final LstmModelArtifactService artifactService;
     private final LstmModelRuntimeService modelRuntimeService;
     private final TrainingDatasetSnapshotService snapshotService;
+    private final RankingLstmDataPreprocessor rankingDataPreprocessor;
     private final ModelBinaryCodec modelBinaryCodec;
     private final RankingValidationMetricsCalculator rankingMetricsCalculator;
     private String currentModelPath;
@@ -149,8 +151,7 @@ public class LstmTrainerService {
             int walkForwardFoldCount = processedData.getWalkForwardFolds() == null
                     ? 0 : processedData.getWalkForwardFolds().size();
             String dataQualityError = validateTrainingData(
-                    snapshot.getStockCount(), trainedStocks,
-                    trainSize, valSize, testSize, walkForwardFoldCount);
+                    trainedStocks, trainSize, valSize, testSize, walkForwardFoldCount);
             if (dataQualityError != null) {
                 return TrainingResult.builder()
                         .success(false)
@@ -201,7 +202,7 @@ public class LstmTrainerService {
                 try (Trainer trainer = model.newTrainer(trainingConfig)) {
                     int initBatchSize = Math.min(trainBatchSize, Math.max(1, trainSize));
                     trainer.initialize(new Shape(initBatchSize,
-                            config.getSequenceLength() * config.getInputSize()));
+                            processedData.getSequenceLength() * processedData.getFeatureCount()));
                     List<ArrayDataset> trainDatasets = createDateGroupedDatasets(
                             trainer.getManager(), processedData.getTrainSamples(), trainBatchSize);
                     List<ArrayDataset> valDatasets = createDateGroupedDatasets(
@@ -327,10 +328,14 @@ public class LstmTrainerService {
 
             RankingValidationMetricsCalculator.WalkForwardMetrics walkForwardMetrics =
                     evaluateWalkForwardFolds(processedData, processedData.getWalkForwardFolds(), architectureType,
-                            bestEpoch, trainBatchSize, trainLearningRate, bestTestMetrics, trainingLog);
+                            bestEpoch, trainBatchSize, trainLearningRate, bestTestMetrics, trainingLog,
+                            listener, trainingStartedNanos, "WALK_FORWARD_EVALUATING",
+                            "Walk-Forward", 90, 93);
             RankingValidationMetricsCalculator.WalkForwardMetrics strictIsolationMetrics =
                     evaluateWalkForwardFolds(processedData, processedData.getStrictIsolationFolds(), architectureType,
-                            bestEpoch, trainBatchSize, trainLearningRate, null, trainingLog);
+                            bestEpoch, trainBatchSize, trainLearningRate, null, trainingLog,
+                            listener, trainingStartedNanos, "STRICT_ISOLATION_EVALUATING",
+                            "严格隔离", 93, 95);
 
             reportProgress(listener, TrainingProgress.builder()
                     .stage("SAVING_MODEL")
@@ -443,13 +448,13 @@ public class LstmTrainerService {
             LstmDataPreprocessor.ProcessedData data, LstmArchitectureType architectureType) {
         if (architectureType == LstmArchitectureType.MASTER_TRANSFORMER) {
             return new MasterTransformerModel(
-                    config.getInputSize(), config.getHiddenSize(), config.getSequenceLength());
+                    data.getFeatureCount(), config.getHiddenSize(), data.getSequenceLength());
         }
         int stockDictionarySize = Math.max(2, data.getStockDictionary().size());
         int industryDictionarySize = Math.max(2, data.getIndustryDictionary().size());
         int marketDictionarySize = Math.max(2, data.getMarketDictionary().size());
         return new RankingLSTMModel(
-                config.getInputSize(),
+                data.getFeatureCount(),
                 config.getHiddenSize(),
                 config.getNumLayers(),
                 (float) config.getDropout(),
@@ -528,7 +533,6 @@ public class LstmTrainerService {
     }
 
     private String validateTrainingData(
-            int requestedStocks,
             int trainedStocks,
             int trainSamples,
             int validationSamples,
@@ -537,18 +541,6 @@ public class LstmTrainerService {
         if (trainedStocks < dataQualityConfig.getMinimumTrainingStockCount()) {
             return "有效训练股票数量不足，要求至少 "
                     + dataQualityConfig.getMinimumTrainingStockCount() + "，实际 " + trainedStocks;
-        }
-        double minimumCoverageRate = dataQualityConfig.getMinimumSourceCoverageRate();
-        if (!Double.isFinite(minimumCoverageRate)
-                || minimumCoverageRate <= 0D || minimumCoverageRate > 1D) {
-            return "关键数据源最低覆盖率配置必须在 0 到 1 之间";
-        }
-        double processedCoverageRate = requestedStocks <= 0
-                ? 0D : trainedStocks / (double) requestedStocks;
-        if (processedCoverageRate < minimumCoverageRate) {
-            return "预处理后有效股票覆盖率不足，要求至少 " + minimumCoverageRate
-                    + "，实际 " + processedCoverageRate + "，请求 " + requestedStocks
-                    + "，有效 " + trainedStocks;
         }
         if (trainSamples < dataQualityConfig.getMinimumTrainSamples()) {
             return "训练样本数量不足，要求至少 "
@@ -685,20 +677,38 @@ public class LstmTrainerService {
             int batchSize,
             float learningRate,
             RankingValidationMetricsCalculator.RankingValidationMetrics latestFoldMetrics,
-            List<Map<String, Object>> trainingLog) throws IOException, ai.djl.translate.TranslateException {
+            List<Map<String, Object>> trainingLog,
+            TrainingProgressListener listener,
+            long trainingStartedNanos,
+            String progressStage,
+            String progressLabel,
+            int progressStart,
+            int progressEnd) throws IOException, ai.djl.translate.TranslateException {
         if (folds == null || folds.isEmpty()) {
             return rankingMetricsCalculator.aggregate(List.of());
         }
         List<RankingValidationMetricsCalculator.RankingValidationMetrics> metrics = new ArrayList<>();
         int lastFoldNumber = folds.get(folds.size() - 1).getFoldNumber();
-        for (LstmDataPreprocessor.WalkForwardFold fold : folds) {
+        for (int foldIndex = 0; foldIndex < folds.size(); foldIndex++) {
+            LstmDataPreprocessor.WalkForwardFold fold = folds.get(foldIndex);
+            int currentFoldIndex = foldIndex;
+            reportFoldProgress(listener, trainingStartedNanos, progressStage, progressLabel,
+                    progressStart, progressEnd, currentFoldIndex, folds.size(), 0, epochs);
             RankingValidationMetricsCalculator.RankingValidationMetrics foldMetrics;
             if (latestFoldMetrics != null && fold.getFoldNumber() == lastFoldNumber) {
                 foldMetrics = latestFoldMetrics;
             } else {
+                LstmDataPreprocessor.WalkForwardFold materializedFold =
+                        rankingDataPreprocessor.materializeFold(processedData, fold);
                 foldMetrics = trainAndEvaluateFold(
-                        processedData, fold, architectureType, epochs, batchSize, learningRate);
+                        processedData, materializedFold, architectureType, epochs, batchSize, learningRate,
+                        completedEpoch -> reportFoldProgress(
+                                listener, trainingStartedNanos, progressStage, progressLabel,
+                                progressStart, progressEnd, currentFoldIndex, folds.size(),
+                                completedEpoch, epochs));
             }
+            reportFoldProgress(listener, trainingStartedNanos, progressStage, progressLabel,
+                    progressStart, progressEnd, currentFoldIndex, folds.size(), epochs, epochs);
             metrics.add(foldMetrics);
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("stage", fold.isStrictIsolation() ? "STRICT_ISOLATION_FOLD" : "WALK_FORWARD_FOLD");
@@ -721,7 +731,8 @@ public class LstmTrainerService {
             LstmArchitectureType architectureType,
             int epochs,
             int batchSize,
-            float learningRate) throws IOException, ai.djl.translate.TranslateException {
+            float learningRate,
+            IntConsumer epochProgressObserver) throws IOException, ai.djl.translate.TranslateException {
         try (Model model = Model.newInstance("lstm-walk-forward-fold-" + fold.getFoldNumber(), "PyTorch")) {
             Engine.getInstance().setRandomSeed(config.getRandomSeed() + fold.getFoldNumber());
             Block block = createModelBlock(processedData, architectureType);
@@ -741,7 +752,7 @@ public class LstmTrainerService {
                     .addTrainingListeners(TrainingListener.Defaults.logging());
             try (Trainer trainer = model.newTrainer(trainingConfig)) {
                 trainer.initialize(new Shape(Math.min(batchSize, Math.max(1, fold.getTrainSamples().size())),
-                        config.getSequenceLength() * config.getInputSize()));
+                        processedData.getSequenceLength() * processedData.getFeatureCount()));
                 List<ArrayDataset> trainDatasets = createDateGroupedDatasets(
                         trainer.getManager(), fold.getTrainSamples(), batchSize);
                 List<ArrayDataset> validationDatasets = createDateGroupedDatasets(
@@ -768,6 +779,9 @@ public class LstmTrainerService {
                     } else if (config.isEarlyStopping()) {
                         patienceCounter++;
                     }
+                    if (epochProgressObserver != null) {
+                        epochProgressObserver.accept(epoch + 1);
+                    }
                     if (config.isEarlyStopping() && patienceCounter >= config.getPatience()) {
                         break;
                     }
@@ -787,6 +801,35 @@ public class LstmTrainerService {
                         config.getCostThreshold(), temperature);
             }
         }
+    }
+
+    private void reportFoldProgress(
+            TrainingProgressListener listener,
+            long trainingStartedNanos,
+            String stage,
+            String label,
+            int progressStart,
+            int progressEnd,
+            int foldIndex,
+            int foldCount,
+            int completedEpochs,
+            int totalEpochs) {
+        int safeFoldCount = Math.max(1, foldCount);
+        int safeTotalEpochs = Math.max(1, totalEpochs);
+        double completed = foldIndex + Math.min(completedEpochs, safeTotalEpochs)
+                / (double) safeTotalEpochs;
+        int progress = progressStart + (int) Math.floor(
+                (progressEnd - progressStart) * completed / safeFoldCount);
+        reportProgress(listener, TrainingProgress.builder()
+                .stage(stage)
+                .message("正在评估" + label + "折叠 " + (foldIndex + 1) + "/" + safeFoldCount
+                        + "，轮次 " + Math.min(completedEpochs, safeTotalEpochs)
+                        + "/" + safeTotalEpochs)
+                .progressPercent(Math.max(progressStart, Math.min(progressEnd, progress)))
+                .currentEpoch(Math.min(completedEpochs, safeTotalEpochs))
+                .totalEpochs(safeTotalEpochs)
+                .elapsedSeconds(elapsedSeconds(trainingStartedNanos))
+                .build());
     }
 
     private DirectionLabelStats summarizeDirectionLabels(
@@ -1042,4 +1085,4 @@ public class LstmTrainerService {
         private Double strictIsolationMeanRankIc;
     }
 }
-// AI_GENERATE_END---------------------------------------------------
+// AI_GENERATE_END-------------------------------------------------------

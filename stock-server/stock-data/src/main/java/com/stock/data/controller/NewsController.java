@@ -1,10 +1,12 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.data.controller;
 
 import com.stock.data.dto.NewsCollectResponseDto;
 import com.stock.data.dto.NewsSampleResponseDto;
+import com.stock.data.dto.StockNewsLatestResult;
 import com.stock.base.web.ResponseDTO;
 import com.stock.data.entity.StockNews;
+import com.stock.data.service.StockNewsQueryService;
 import com.stock.data.service.StockNewsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,19 @@ import org.springframework.web.bind.annotation.*;
 public class NewsController {
 
     private final StockNewsService stockNewsService;
+    private final StockNewsQueryService stockNewsQueryService;
+
+    /**
+     * 查询指定股票最新三条有效新闻。
+     *
+     * @param stockCode 股票代码，如 600519
+     * @return 最新有效新闻摘要列表
+     */
+    @GetMapping("/latest/{stockCode}")
+    public ResponseDTO<StockNewsLatestResult> latestByStockCode(@PathVariable String stockCode) {
+        log.info("[News] 查询股票最新有效新闻 | stockCode={}", stockCode);
+        return ResponseDTO.success(stockNewsQueryService.findLatestValidNews(stockCode));
+    }
 
     /**
      * 随机读取一条信息表样本，用于情感模型单条验证。
@@ -121,4 +136,4 @@ public class NewsController {
                 .build();
     }
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

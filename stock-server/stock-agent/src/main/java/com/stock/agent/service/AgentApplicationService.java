@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------------------------------------------------
+// AI_GENERATE_START-----------------------------------------------------------
 package com.stock.agent.service;
 
 import com.stock.agent.enums.AgentTaskType;
@@ -150,8 +150,8 @@ public class AgentApplicationService {
                             + "只返回合法的 Research JSON，不要输出 Markdown、标题或解释文字，字段为："
                             + "{summary,status,keyFindings,evidenceRefs,uncertainty,nextActions}。"
                             + "summary 和 uncertainty 各不超过 80 个汉字；keyFindings 最多 5 项，nextActions 最多 3 项，每项不超过 50 个汉字。"
-                            + "所有自然语言字段使用中文；confirmed 只表示交易日历数据已确认，绝不表示交易已确认或已执行；"
-                            + "tradingDay 才表示当天是否为交易日。"
+                            + "所有自然语言字段使用中文；confirmed 是兼容字段，日期非空时固定为 true，绝不表示交易已确认或已执行；"
+                            + "tradingDay 表示当天是否为周一至周五。"
                             + "status 只能是 PASS、WARN 或 UNKNOWN；evidenceRefs 只能填写本次证据编号："
                             + String.join(",", factEvidence.getEvidenceRefs()) + "。",
                     prompt, evidenceSummary, "RESEARCH", factEvidence.getEvidenceRefs(), effectiveTools));
@@ -410,4 +410,4 @@ public class AgentApplicationService {
         }
     }
 }
-// AI_GENERATE_END----------------------------------------------------------
+// AI_GENERATE_END-----------------------------------------------------------

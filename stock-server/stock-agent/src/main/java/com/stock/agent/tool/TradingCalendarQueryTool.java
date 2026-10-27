@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.agent.tool;
 
 import com.stock.agent.service.AgentFactQueryService;
@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 
 /**
- * 交易日历只读工具。
+ * 工作日规则只读工具。
  *
  * @author mwangli
  * @since 2026-10-17
@@ -23,12 +23,12 @@ public class TradingCalendarQueryTool {
     private final AgentToolSupport toolSupport;
 
     /**
-     * 查询指定日期的已确认交易日状态。
+     * 查询指定日期是否为周一至周五。
      *
      * @param request 查询请求
      * @return 交易日状态
      */
-    @Tool(name = "queryTradingCalendar", value = "查询指定日期的已确认交易日状态")
+    @Tool(name = "queryTradingCalendar", value = "查询指定日期是否为周一至周五")
     public TradingCalendarResult query(TradingCalendarRequest request) {
         if (request == null || request.tradeDate() == null) {
             throw new IllegalArgumentException("tradeDate 不能为空");
@@ -40,21 +40,21 @@ public class TradingCalendarQueryTool {
         });
     }
 
-    /** 交易日历查询请求。 */
+    /** 工作日规则查询请求。 */
     public record TradingCalendarRequest(LocalDate tradeDate) {
     }
 
     /**
-     * 交易日历查询结果。
+     * 工作日规则查询结果。
      *
      * @param tradeDate 查询日期
-     * @param tradingDay 是否为已确认交易日
-     * @param confirmed 查询日期是否已有权威结论
-     * @param nextConfirmedTradingDay 当日或之后首个确认交易日；日历覆盖不足时为空
+     * @param tradingDay 是否为周一至周五
+     * @param confirmed 日期非空时固定为 true
+     * @param nextConfirmedTradingDay 当日或之后首个周一至周五
      */
     public record TradingCalendarResult(
             LocalDate tradeDate, boolean tradingDay, boolean confirmed,
             LocalDate nextConfirmedTradingDay) {
     }
 }
-// AI_GENERATE_END----------
+// AI_GENERATE_END-----------

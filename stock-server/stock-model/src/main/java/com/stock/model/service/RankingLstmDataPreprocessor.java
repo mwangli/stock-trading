@@ -1,9 +1,10 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START------------
 package com.stock.model.service;
 
 import com.stock.data.dto.ModelStockDailyBarDto;
 import com.stock.data.dto.StockPriceItemDto;
 import com.stock.model.config.LstmTrainingConfig;
+import com.stock.model.dto.ModelFeatureMetadata;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -13,6 +14,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,42 +35,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RankingLstmDataPreprocessor {
 
-    /** 价格、横截面和新闻快照联合特征契约版本。 */
-    public static final String FEATURE_VERSION = "tushare-free-temporal-news-v6-53d";
-
-    /** `V6` 标签契约版本。 */
-    public static final String LABEL_VERSION = "open-open-market-neutral-cost-v1";
-
-    /** `V6` 时间切分契约版本。 */
-    public static final String SPLIT_POLICY_VERSION = "global-walk-forward-purge-embargo-v1";
-
-    /** `V6` 成本模型版本。 */
-    public static final String COST_MODEL_VERSION = "round-trip-threshold-v1";
-
-    /** 免费行情和股票池市场特征数量。 */
-    public static final int MARKET_FEATURE_COUNT = 25;
-
-    /** 价格、技术面和横截面连续特征数量。 */
-    public static final int BASE_CONTINUOUS_FEATURE_COUNT = MARKET_FEATURE_COUNT;
-
-    /** `temporal-news-v1` 新闻连续特征数量。 */
-    public static final int NEWS_FEATURE_COUNT = NewsFeatureSnapshotService.FEATURE_COUNT;
-
-    /** 连续特征总数。 */
-    public static final int CONTINUOUS_FEATURE_COUNT = BASE_CONTINUOUS_FEATURE_COUNT + NEWS_FEATURE_COUNT;
-
-    /** 总特征数量，末尾三列为股票、行业和市场字典索引。 */
-    public static final int FEATURE_COUNT = CONTINUOUS_FEATURE_COUNT + 3;
-
-    /** 正式模型代际。 */
-    public static final String MODEL_GENERATION = "V6";
-
-    /** 免费日线价格连续化口径。 */
-    public static final String PRICE_BASIS = "NORMALIZED_PRE_CLOSE_V1";
-
-    /** 市场基准构造口径。 */
-    public static final String BENCHMARK_TYPE = "MARKET_EQUAL_WEIGHT";
-
     private static final String UNKNOWN_INDUSTRY = "UNKNOWN";
     private static final double MIN_VALUE = 1.0E-8D;
 
@@ -83,7 +49,8 @@ public class RankingLstmDataPreprocessor {
      */
     public LstmDataPreprocessor.ProcessedData process(
             RankingLstmTrainingDataService.RankingTrainingDataBundle bundle) {
-        validateConfiguration();
+        ModelFeatureMetadata featureMetadata = bundle.getFeatureMetadata();
+        validateConfiguration(featureMetadata);
         Map<String, List<AdjustedBar>> adjustedSeries = buildAdjustedSeries(bundle.getPriceSeries());
         if (adjustedSeries.isEmpty()) {
             throw new IllegalStateException("价格连续化后没有可用于 V6 训练的股票序列");
@@ -91,11 +58,17 @@ public class RankingLstmDataPreprocessor {
         Map<LocalDate, Double> marketBreadth = calculateMarketBreadth(adjustedSeries);
         MarketSeries marketSeries = buildMarketSeries(adjustedSeries);
         StableDictionaries dictionaries = buildDictionaries(adjustedSeries.keySet());
+        Map<String, Set<Integer>> selectedTargetIndices = selectSampleTargetIndices(
+                adjustedSeries, marketSeries);
 
         List<ProvisionalSample> provisionalSamples = new ArrayList<>();
         for (Map.Entry<String, List<AdjustedBar>> entry : adjustedSeries.entrySet()) {
+            Set<Integer> stockTargetIndices = selectedTargetIndices.get(entry.getKey());
+            if (stockTargetIndices == null || stockTargetIndices.isEmpty()) {
+                continue;
+            }
             buildStockSamples(entry.getKey(), entry.getValue(), marketSeries, marketBreadth, dictionaries,
-                    bundle.getNewsFeatureSnapshots(), provisionalSamples);
+                    bundle.getNewsFeatureSnapshots(), featureMetadata, stockTargetIndices, provisionalSamples);
         }
         if (provisionalSamples.isEmpty()) {
             throw new IllegalStateException("V6 数据门禁后没有可交易训练样本");
@@ -104,9 +77,9 @@ public class RankingLstmDataPreprocessor {
         List<LstmDataPreprocessor.TrainingSample> samples = createTrainingSamples(provisionalSamples);
         samples.sort(Comparator.comparing(LstmDataPreprocessor.TrainingSample::getTargetDate)
                 .thenComparing(LstmDataPreprocessor.TrainingSample::getStockCode));
-        List<LstmDataPreprocessor.WalkForwardFold> walkForwardFolds = buildWalkForwardFolds(
+        List<LstmDataPreprocessor.WalkForwardFold> walkForwardFolds = buildWalkForwardBoundaries(
                 samples, config.getPurgeTradingDays() + config.getEmbargoTradingDays(), false);
-        List<LstmDataPreprocessor.WalkForwardFold> strictIsolationFolds = buildWalkForwardFolds(
+        List<LstmDataPreprocessor.WalkForwardFold> strictIsolationFolds = buildWalkForwardBoundaries(
                 samples, config.getPurgeTradingDays() + config.getStrictIsolationTradingDays(), true);
         if (walkForwardFolds.isEmpty()) {
             throw new IllegalStateException("V6 全市场样本无法生成 Walk-Forward 折叠");
@@ -116,26 +89,26 @@ public class RankingLstmDataPreprocessor {
         Map<String, Integer> sampleCounts = samples.stream().collect(Collectors.groupingBy(
                 LstmDataPreprocessor.TrainingSample::getStockCode,
                 LinkedHashMap::new, Collectors.summingInt(ignored -> 1)));
-        log.info("V6 横截面样本构建完成: stocks={}, train={}, validation={}, test={}, "
+        log.info("V6 横截面原始样本构建完成: stocks={}, total={}, train={}, validation={}, test={}, "
                         + "trainRange={}..{}, validationRange={}..{}, testRange={}..{}",
-                sampleCounts.size(), latestFold.getTrainSamples().size(), latestFold.getValSamples().size(),
-                latestFold.getTestSamples().size(), latestFold.getTrainStartDate(), latestFold.getTrainEndDate(),
+                sampleCounts.size(), samples.size(), countSamples(samples,
+                        latestFold.getTrainStartDate(), latestFold.getTrainEndDate()),
+                countSamples(samples, latestFold.getValidationStartDate(), latestFold.getValidationEndDate()),
+                countSamples(samples, latestFold.getTestStartDate(), latestFold.getTestEndDate()),
+                latestFold.getTrainStartDate(), latestFold.getTrainEndDate(),
                 latestFold.getValidationStartDate(), latestFold.getValidationEndDate(),
                 latestFold.getTestStartDate(), latestFold.getTestEndDate());
         return LstmDataPreprocessor.ProcessedData.builder()
-                .trainSamples(latestFold.getTrainSamples())
-                .valSamples(latestFold.getValSamples())
-                .testSamples(latestFold.getTestSamples())
+                .allSamples(samples)
                 .sampleCounts(sampleCounts)
-                .featureCount(FEATURE_COUNT)
+                .featureCount(featureMetadata.inputSize())
                 .sequenceLength(config.getSequenceLength())
                 .targetReturnScale(config.getTargetReturnScale())
-                .featureVersion(FEATURE_VERSION)
+                .featureVersion(featureMetadata.getFeatureVersion())
+                .featureMetadata(featureMetadata)
                 .stockDictionary(dictionaries.stockDictionary())
                 .industryDictionary(dictionaries.industryDictionary())
                 .marketDictionary(dictionaries.marketDictionary())
-                .featureMeans(latestFold.getFeatureMeans())
-                .featureStdDeviations(latestFold.getFeatureStdDeviations())
                 .trainStartDate(latestFold.getTrainStartDate())
                 .trainEndDate(latestFold.getTrainEndDate())
                 .validationStartDate(latestFold.getValidationStartDate())
@@ -145,6 +118,76 @@ public class RankingLstmDataPreprocessor {
                 .walkForwardFolds(walkForwardFolds)
                 .strictIsolationFolds(strictIsolationFolds)
                 .build();
+    }
+
+    /**
+     * 将快照中的唯一原始样本按最新主策略边界重建为可训练视图。
+     * 其余 Walk-Forward 折叠保留日期边界，由训练评估阶段逐折按需生成。
+     *
+     * @param rawData 仅包含原始样本、折叠边界和特征元数据的快照数据
+     * @return 已生成主训练、验证和测试样本，并保留原始样本与折叠边界的数据
+     */
+    public LstmDataPreprocessor.ProcessedData materializeTrainingViews(
+            LstmDataPreprocessor.ProcessedData rawData) {
+        if (rawData == null || rawData.getAllSamples() == null || rawData.getAllSamples().isEmpty()) {
+            throw new IllegalStateException("训练快照缺少唯一原始样本");
+        }
+        ModelFeatureMetadata featureMetadata = rawData.getFeatureMetadata();
+        validateConfiguration(featureMetadata);
+        validateRawSamples(rawData, featureMetadata);
+        List<LstmDataPreprocessor.WalkForwardFold> walkForwardBoundaries = rawData.getWalkForwardFolds();
+        if (walkForwardBoundaries == null || walkForwardBoundaries.isEmpty()) {
+            throw new IllegalStateException("训练快照缺少主策略 Walk-Forward 边界");
+        }
+        LstmDataPreprocessor.WalkForwardFold latestBoundary =
+                walkForwardBoundaries.get(walkForwardBoundaries.size() - 1);
+        LstmDataPreprocessor.WalkForwardFold latestFold = materializeFold(rawData, latestBoundary);
+        return LstmDataPreprocessor.ProcessedData.builder()
+                .allSamples(rawData.getAllSamples())
+                .trainSamples(latestFold.getTrainSamples())
+                .valSamples(latestFold.getValSamples())
+                .testSamples(latestFold.getTestSamples())
+                .sampleCounts(rawData.getSampleCounts())
+                .featureCount(rawData.getFeatureCount())
+                .sequenceLength(rawData.getSequenceLength())
+                .targetReturnScale(rawData.getTargetReturnScale())
+                .featureVersion(rawData.getFeatureVersion())
+                .featureMetadata(featureMetadata)
+                .sampleSetHash(rawData.getSampleSetHash())
+                .stockDictionary(rawData.getStockDictionary())
+                .industryDictionary(rawData.getIndustryDictionary())
+                .marketDictionary(rawData.getMarketDictionary())
+                .featureMeans(latestFold.getFeatureMeans())
+                .featureStdDeviations(latestFold.getFeatureStdDeviations())
+                .trainStartDate(latestFold.getTrainStartDate())
+                .trainEndDate(latestFold.getTrainEndDate())
+                .validationStartDate(latestFold.getValidationStartDate())
+                .validationEndDate(latestFold.getValidationEndDate())
+                .testStartDate(latestFold.getTestStartDate())
+                .testEndDate(latestFold.getTestEndDate())
+                .walkForwardFolds(walkForwardBoundaries)
+                .strictIsolationFolds(rawData.getStrictIsolationFolds())
+                .build();
+    }
+
+    /**
+     * 按单个 Walk-Forward 日期边界生成标准化训练、验证和测试样本。
+     * 该方法用于训练阶段逐折评估，调用方不应长期持有返回折叠。
+     *
+     * @param data 包含唯一原始样本和特征元数据的快照数据
+     * @param boundary 待生成的折叠日期边界
+     * @return 仅使用该折训练窗口拟合标准化参数的完整折叠
+     */
+    public LstmDataPreprocessor.WalkForwardFold materializeFold(
+            LstmDataPreprocessor.ProcessedData data,
+            LstmDataPreprocessor.WalkForwardFold boundary) {
+        if (data == null || data.getAllSamples() == null || data.getAllSamples().isEmpty()) {
+            throw new IllegalStateException("训练快照缺少按需生成折叠所需的原始样本");
+        }
+        ModelFeatureMetadata featureMetadata = data.getFeatureMetadata();
+        validateConfiguration(featureMetadata);
+        validateFoldBoundary(boundary);
+        return materializeFold(data.getAllSamples(), boundary, featureMetadata.continuousFeatureCount());
     }
 
     /**
@@ -165,8 +208,11 @@ public class RankingLstmDataPreprocessor {
             Map<String, Integer> marketDictionary,
             double[] featureMeans,
             double[] featureStdDeviations) {
-        if (featureMeans == null || featureMeans.length != CONTINUOUS_FEATURE_COUNT
-                || featureStdDeviations == null || featureStdDeviations.length != CONTINUOUS_FEATURE_COUNT) {
+        ModelFeatureMetadata featureMetadata = bundle.getFeatureMetadata();
+        validateConfiguration(featureMetadata);
+        int continuousFeatureCount = featureMetadata.continuousFeatureCount();
+        if (featureMeans == null || featureMeans.length != continuousFeatureCount
+                || featureStdDeviations == null || featureStdDeviations.length != continuousFeatureCount) {
             throw new IllegalStateException("V6 模型制品中的标准化参数维度不正确");
         }
         Map<String, List<AdjustedBar>> adjustedSeries = buildAdjustedSeries(bundle.getPriceSeries());
@@ -184,29 +230,29 @@ public class RankingLstmDataPreprocessor {
             String market = resolveMarket(entry.getKey());
             Map<String, double[]> indicators = technicalIndicatorService.calculateIndicators(
                     toStockPriceItemDtos(entry.getKey(), bars));
-            float[][] input = new float[config.getSequenceLength()][FEATURE_COUNT];
+            float[][] input = new float[config.getSequenceLength()][featureMetadata.inputSize()];
             int start = bars.size() - config.getSequenceLength();
             for (int timeStep = 0; timeStep < config.getSequenceLength(); timeStep++) {
                 int barIndex = start + timeStep;
                 double[] features = buildContinuousFeatures(
                         entry.getKey(), bars, barIndex, indicators, marketSeries, marketBreadth,
-                        bundle.getNewsFeatureSnapshots());
-                for (int featureIndex = 0; featureIndex < CONTINUOUS_FEATURE_COUNT; featureIndex++) {
+                        bundle.getNewsFeatureSnapshots(), featureMetadata);
+                for (int featureIndex = 0; featureIndex < continuousFeatureCount; featureIndex++) {
                     double deviation = featureStdDeviations[featureIndex] < 1.0E-6D
                             ? 1D : featureStdDeviations[featureIndex];
                     input[timeStep][featureIndex] = (float) clamp(
                             (features[featureIndex] - featureMeans[featureIndex]) / deviation, -8D, 8D);
                 }
-                input[timeStep][CONTINUOUS_FEATURE_COUNT] = dictionaries.stockIndex(entry.getKey());
-                input[timeStep][CONTINUOUS_FEATURE_COUNT + 1] =
+                input[timeStep][continuousFeatureCount] = dictionaries.stockIndex(entry.getKey());
+                input[timeStep][continuousFeatureCount + 1] =
                         dictionaries.industryIndex(UNKNOWN_INDUSTRY);
-                input[timeStep][CONTINUOUS_FEATURE_COUNT + 2] = dictionaries.marketIndex(market);
+                input[timeStep][continuousFeatureCount + 2] = dictionaries.marketIndex(market);
             }
             result.put(entry.getKey(), LstmDataPreprocessor.PredictionInput.builder()
                     .input(input)
                     .lastClosePrice(latest.rawClose())
                     .baseTradeDate(latest.tradeDate())
-                    .featureVersion(FEATURE_VERSION)
+                    .featureVersion(featureMetadata.getFeatureVersion())
                     .build());
         }
         return result;
@@ -288,7 +334,29 @@ public class RankingLstmDataPreprocessor {
                 }
             }
         }
-        return new MarketSeries(averageByDate(closeReturnValues), averageByDate(openToOpenReturnValues));
+        Map<LocalDate, Double> closeReturns = averageByDate(closeReturnValues);
+        return new MarketSeries(closeReturns, averageByDate(openToOpenReturnValues),
+                rollingMarketReturns(closeReturns, 20));
+    }
+
+    private Map<LocalDate, Double> rollingMarketReturns(
+            Map<LocalDate, Double> dailyReturns, int period) {
+        List<Map.Entry<LocalDate, Double>> ordered = dailyReturns.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .toList();
+        Map<LocalDate, Double> result = new HashMap<>();
+        for (int index = 0; index < ordered.size(); index++) {
+            if (index + 1 < period) {
+                result.put(ordered.get(index).getKey(), 0D);
+                continue;
+            }
+            double compounded = 1D;
+            for (int cursor = index - period + 1; cursor <= index; cursor++) {
+                compounded *= 1D + ordered.get(cursor).getValue();
+            }
+            result.put(ordered.get(index).getKey(), clamp(compounded - 1D));
+        }
+        return result;
     }
 
     private Map<LocalDate, Double> averageByDate(Map<LocalDate, List<Double>> valuesByDate) {
@@ -323,12 +391,17 @@ public class RankingLstmDataPreprocessor {
             Map<LocalDate, Double> marketBreadth,
             StableDictionaries dictionaries,
             Map<String, double[]> newsFeatureSnapshots,
+            ModelFeatureMetadata featureMetadata,
+            Set<Integer> selectedTargetIndices,
             List<ProvisionalSample> target) {
         List<StockPriceItemDto> technicalPrices = toStockPriceItemDtos(stockCode, bars);
         Map<String, double[]> indicators = technicalIndicatorService.calculateIndicators(technicalPrices);
         int sequenceLength = config.getSequenceLength();
         String market = resolveMarket(stockCode);
         for (int targetIndex = sequenceLength; targetIndex + 1 < bars.size(); targetIndex++) {
+            if (!selectedTargetIndices.contains(targetIndex)) {
+                continue;
+            }
             AdjustedBar entry = bars.get(targetIndex);
             AdjustedBar exit = bars.get(targetIndex + 1);
             if (!isDerivedTradable(entry, exit)) {
@@ -340,20 +413,21 @@ public class RankingLstmDataPreprocessor {
             }
             double rawReturn = exit.open() / entry.open() - 1D;
             double excessReturn = rawReturn - benchmarkReturn;
-            float[][] input = new float[sequenceLength][FEATURE_COUNT];
+            int continuousFeatureCount = featureMetadata.continuousFeatureCount();
+            float[][] input = new float[sequenceLength][featureMetadata.inputSize()];
             int start = targetIndex - sequenceLength;
             for (int timeStep = 0; timeStep < sequenceLength; timeStep++) {
                 int barIndex = start + timeStep;
                 double[] features = buildContinuousFeatures(
                         stockCode, bars, barIndex, indicators, marketSeries, marketBreadth,
-                        newsFeatureSnapshots);
-                for (int featureIndex = 0; featureIndex < CONTINUOUS_FEATURE_COUNT; featureIndex++) {
+                        newsFeatureSnapshots, featureMetadata);
+                for (int featureIndex = 0; featureIndex < continuousFeatureCount; featureIndex++) {
                     input[timeStep][featureIndex] = (float) features[featureIndex];
                 }
-                input[timeStep][CONTINUOUS_FEATURE_COUNT] = dictionaries.stockIndex(stockCode);
-                input[timeStep][CONTINUOUS_FEATURE_COUNT + 1] =
+                input[timeStep][continuousFeatureCount] = dictionaries.stockIndex(stockCode);
+                input[timeStep][continuousFeatureCount + 1] =
                         dictionaries.industryIndex(UNKNOWN_INDUSTRY);
-                input[timeStep][CONTINUOUS_FEATURE_COUNT + 2] = dictionaries.marketIndex(market);
+                input[timeStep][continuousFeatureCount + 2] = dictionaries.marketIndex(market);
             }
             target.add(new ProvisionalSample(stockCode, UNKNOWN_INDUSTRY, entry.tradeDate(), input,
                     excessReturn));
@@ -384,45 +458,39 @@ public class RankingLstmDataPreprocessor {
             Map<String, double[]> indicators,
             MarketSeries marketSeries,
             Map<LocalDate, Double> marketBreadth,
-            Map<String, double[]> newsFeatureSnapshots) {
+            Map<String, double[]> newsFeatureSnapshots,
+            ModelFeatureMetadata featureMetadata) {
         AdjustedBar current = bars.get(index);
         double previousClose = index == 0 ? current.close() : bars.get(index - 1).close();
         double benchmarkReturn = marketSeries.closeReturns().getOrDefault(current.tradeDate(), 0D);
         double stockReturn = ratio(current.close(), previousClose) - 1D;
-        double[] feature = new double[CONTINUOUS_FEATURE_COUNT];
+        double[] feature = new double[featureMetadata.continuousFeatureCount()];
         feature[0] = clamp(ratio(current.open(), previousClose) - 1D);
-        feature[1] = clamp(ratio(current.high(), previousClose) - 1D);
-        feature[2] = clamp(ratio(current.low(), previousClose) - 1D);
-        feature[3] = clamp(stockReturn);
-        feature[4] = relativeLog(current.volume(), rollingMean(bars, index, 20, AdjustedBar::volume));
-        feature[5] = relativeLog(current.amount(), rollingMean(bars, index, 20, AdjustedBar::amount));
-        feature[6] = safeIndicator(indicators.get("RSI"), index) / 100D;
-        feature[7] = safeDivide(safeIndicator(indicators.get("MACD"), index), current.close());
-        feature[8] = clamp(ratio(safeIndicator(indicators.get("SMA"), index), current.close()) - 1D);
-        feature[9] = clamp(ratio(safeIndicator(indicators.get("UpperBoll"), index), current.close()) - 1D);
-        feature[10] = clamp(ratio(safeIndicator(indicators.get("LowerBoll"), index), current.close()) - 1D);
-        feature[11] = safeDivide(safeIndicator(indicators.get("OBV"), index),
-                rollingSum(bars, index, 20, AdjustedBar::volume));
-        feature[12] = periodReturn(bars, index, 5);
-        feature[13] = periodReturn(bars, index, 10);
-        feature[14] = periodReturn(bars, index, 20);
-        feature[15] = periodReturn(bars, index, 60);
-        feature[16] = volatility(bars, index, 5);
-        feature[17] = volatility(bars, index, 10);
-        feature[18] = volatility(bars, index, 20);
-        feature[19] = volatility(bars, index, 60);
-        feature[20] = benchmarkReturn;
-        feature[21] = clamp(stockReturn - benchmarkReturn);
-        feature[22] = marketPeriodReturn(marketSeries.closeReturns(), current.tradeDate(), 20);
-        feature[23] = marketBreadth.getOrDefault(current.tradeDate(), 0D);
-        feature[24] = current.amount() > 0D && current.volume() > 0D ? 1D : 0D;
+        feature[1] = clamp(ratio(current.close(), current.open()) - 1D);
+        feature[2] = clamp(safeDivide(current.high() - current.low(), previousClose));
+        feature[3] = clamp(safeDivide(current.close() - current.low(), current.high() - current.low()), 0D, 1D);
+        feature[4] = relativeLog(current.amount(), rollingMean(bars, index, 20, AdjustedBar::amount));
+        feature[5] = safeIndicator(indicators.get("RSI"), index) / 100D;
+        feature[6] = periodReturn(bars, index, 5);
+        feature[7] = periodReturn(bars, index, 20);
+        feature[8] = periodReturn(bars, index, 60);
+        feature[9] = volatility(bars, index, 5);
+        feature[10] = volatility(bars, index, 20);
+        feature[11] = volatility(bars, index, 60);
+        feature[12] = clamp(stockReturn - benchmarkReturn);
+        feature[13] = marketSeries.periodReturns20().getOrDefault(current.tradeDate(), 0D);
+        feature[14] = marketBreadth.getOrDefault(current.tradeDate(), 0D);
+        if (!featureMetadata.isNewsFeaturesEnabled()) {
+            return feature;
+        }
         double[] newsFeatures = newsFeatureSnapshots == null ? null
                 : newsFeatureSnapshots.get(key(stockCode, current.tradeDate()));
-        if (newsFeatures == null || newsFeatures.length != NEWS_FEATURE_COUNT) {
-            throw new IllegalStateException("缺少 temporal-news-v1 快照: "
+        if (newsFeatures == null || newsFeatures.length != featureMetadata.newsFeatureCount()) {
+            throw new IllegalStateException("缺少 " + featureMetadata.getNewsFeatureVersion() + " 快照: "
                     + key(stockCode, current.tradeDate()));
         }
-        System.arraycopy(newsFeatures, 0, feature, BASE_CONTINUOUS_FEATURE_COUNT, NEWS_FEATURE_COUNT);
+        System.arraycopy(newsFeatures, 0, feature, featureMetadata.marketFeatureCount(),
+                featureMetadata.newsFeatureCount());
         return feature;
     }
 
@@ -450,7 +518,7 @@ public class RankingLstmDataPreprocessor {
         return result;
     }
 
-    private List<LstmDataPreprocessor.WalkForwardFold> buildWalkForwardFolds(
+    private List<LstmDataPreprocessor.WalkForwardFold> buildWalkForwardBoundaries(
             List<LstmDataPreprocessor.TrainingSample> samples, int boundaryGap, boolean strictIsolation) {
         List<LocalDate> dates = samples.stream().map(LstmDataPreprocessor.TrainingSample::getTargetDate)
                 .distinct().sorted().toList();
@@ -471,18 +539,9 @@ public class RankingLstmDataPreprocessor {
         List<LstmDataPreprocessor.WalkForwardFold> folds = new ArrayList<>();
         for (int index = 0; index < splits.size(); index++) {
             SplitResult split = splits.get(index);
-            List<LstmDataPreprocessor.TrainingSample> train = copySamples(split.trainSamples());
-            List<LstmDataPreprocessor.TrainingSample> validation = copySamples(split.validationSamples());
-            List<LstmDataPreprocessor.TrainingSample> test = copySamples(split.testSamples());
-            NormalizationStats normalization = normalizeByTrainingWindow(train, validation, test);
             folds.add(LstmDataPreprocessor.WalkForwardFold.builder()
                     .foldNumber(index + 1)
                     .strictIsolation(strictIsolation)
-                    .trainSamples(train)
-                    .valSamples(validation)
-                    .testSamples(test)
-                    .featureMeans(normalization.means())
-                    .featureStdDeviations(normalization.standardDeviations())
                     .trainStartDate(split.trainStartDate())
                     .trainEndDate(split.trainEndDate())
                     .validationStartDate(split.validationStartDate())
@@ -492,6 +551,93 @@ public class RankingLstmDataPreprocessor {
                     .build());
         }
         return folds;
+    }
+
+    private LstmDataPreprocessor.WalkForwardFold materializeFold(
+            List<LstmDataPreprocessor.TrainingSample> allSamples,
+            LstmDataPreprocessor.WalkForwardFold boundary,
+            int continuousFeatureCount) {
+        List<LstmDataPreprocessor.TrainingSample> train = copySamples(filterSamples(
+                allSamples, boundary.getTrainStartDate(), boundary.getTrainEndDate()));
+        List<LstmDataPreprocessor.TrainingSample> validation = copySamples(filterSamples(
+                allSamples, boundary.getValidationStartDate(), boundary.getValidationEndDate()));
+        List<LstmDataPreprocessor.TrainingSample> test = copySamples(filterSamples(
+                allSamples, boundary.getTestStartDate(), boundary.getTestEndDate()));
+        if (train.isEmpty() || validation.isEmpty() || test.isEmpty()) {
+            throw new IllegalStateException("训练快照折叠边界无法匹配完整样本: fold="
+                    + boundary.getFoldNumber());
+        }
+        NormalizationStats normalization = normalizeByTrainingWindow(
+                train, validation, test, continuousFeatureCount);
+        return LstmDataPreprocessor.WalkForwardFold.builder()
+                .foldNumber(boundary.getFoldNumber())
+                .strictIsolation(boundary.isStrictIsolation())
+                .trainSamples(train)
+                .valSamples(validation)
+                .testSamples(test)
+                .featureMeans(normalization.means())
+                .featureStdDeviations(normalization.standardDeviations())
+                .trainStartDate(boundary.getTrainStartDate())
+                .trainEndDate(boundary.getTrainEndDate())
+                .validationStartDate(boundary.getValidationStartDate())
+                .validationEndDate(boundary.getValidationEndDate())
+                .testStartDate(boundary.getTestStartDate())
+                .testEndDate(boundary.getTestEndDate())
+                .build();
+    }
+
+    private void validateRawSamples(
+            LstmDataPreprocessor.ProcessedData rawData,
+            ModelFeatureMetadata featureMetadata) {
+        if (rawData.getFeatureCount() != featureMetadata.inputSize()
+                || rawData.getSequenceLength() != config.getSequenceLength()) {
+            throw new IllegalStateException("训练快照特征维度或序列长度与当前契约不一致");
+        }
+        for (LstmDataPreprocessor.TrainingSample sample : rawData.getAllSamples()) {
+            if (sample.getInput() == null || sample.getInput().length != rawData.getSequenceLength()) {
+                throw new IllegalStateException("训练快照样本序列长度不一致");
+            }
+            for (float[] row : sample.getInput()) {
+                if (row == null || row.length != rawData.getFeatureCount()) {
+                    throw new IllegalStateException("训练快照样本特征维度不一致");
+                }
+            }
+        }
+    }
+
+    private void validateFoldBoundary(LstmDataPreprocessor.WalkForwardFold boundary) {
+        if (boundary == null
+                || boundary.getTrainStartDate() == null || boundary.getTrainEndDate() == null
+                || boundary.getValidationStartDate() == null || boundary.getValidationEndDate() == null
+                || boundary.getTestStartDate() == null || boundary.getTestEndDate() == null) {
+            throw new IllegalStateException("训练快照包含不完整的 Walk-Forward 日期边界");
+        }
+        if (boundary.getTrainStartDate().isAfter(boundary.getTrainEndDate())
+                || boundary.getValidationStartDate().isAfter(boundary.getValidationEndDate())
+                || boundary.getTestStartDate().isAfter(boundary.getTestEndDate())
+                || !boundary.getTrainEndDate().isBefore(boundary.getValidationStartDate())
+                || !boundary.getValidationEndDate().isBefore(boundary.getTestStartDate())) {
+            throw new IllegalStateException("训练快照包含倒置的 Walk-Forward 日期边界: fold="
+                    + boundary.getFoldNumber());
+        }
+    }
+
+    private List<LstmDataPreprocessor.TrainingSample> filterSamples(
+            List<LstmDataPreprocessor.TrainingSample> samples, LocalDate startDate, LocalDate endDate) {
+        return samples.stream()
+                .filter(sample -> sample.getTargetDate() != null
+                        && !sample.getTargetDate().isBefore(startDate)
+                        && !sample.getTargetDate().isAfter(endDate))
+                .toList();
+    }
+
+    private long countSamples(
+            List<LstmDataPreprocessor.TrainingSample> samples, LocalDate startDate, LocalDate endDate) {
+        return samples.stream()
+                .filter(sample -> sample.getTargetDate() != null
+                        && !sample.getTargetDate().isBefore(startDate)
+                        && !sample.getTargetDate().isAfter(endDate))
+                .count();
     }
 
     private SplitResult splitByGlobalDate(
@@ -522,23 +668,27 @@ public class RankingLstmDataPreprocessor {
         LocalDate validationStart = dates.get(validationStartIndex);
         LocalDate validationEnd = dates.get(validationEndIndex);
         LocalDate testStart = dates.get(testStartIndex);
-        List<LstmDataPreprocessor.TrainingSample> train = new ArrayList<>();
-        List<LstmDataPreprocessor.TrainingSample> validation = new ArrayList<>();
-        List<LstmDataPreprocessor.TrainingSample> test = new ArrayList<>();
+        LocalDate actualTrainStart = null;
+        int trainCount = 0;
+        int validationCount = 0;
+        int testCount = 0;
         for (LstmDataPreprocessor.TrainingSample sample : samples) {
             LocalDate date = sample.getTargetDate();
             if (!date.isBefore(trainStart) && !date.isAfter(trainEnd)) {
-                train.add(sample);
+                if (actualTrainStart == null || date.isBefore(actualTrainStart)) {
+                    actualTrainStart = date;
+                }
+                trainCount++;
             } else if (!date.isBefore(validationStart) && !date.isAfter(validationEnd)) {
-                validation.add(sample);
+                validationCount++;
             } else if (!date.isBefore(testStart) && !date.isAfter(datasetEnd)) {
-                test.add(sample);
+                testCount++;
             }
         }
-        if (train.isEmpty() || validation.isEmpty() || test.isEmpty()) {
+        if (trainCount == 0 || validationCount == 0 || testCount == 0) {
             return null;
         }
-        return new SplitResult(train, validation, test, train.get(0).getTargetDate(), trainEnd,
+        return new SplitResult(actualTrainStart, trainEnd,
                 validationStart, validationEnd, testStart, datasetEnd);
     }
 
@@ -567,13 +717,14 @@ public class RankingLstmDataPreprocessor {
     private NormalizationStats normalizeByTrainingWindow(
             List<LstmDataPreprocessor.TrainingSample> train,
             List<LstmDataPreprocessor.TrainingSample> validation,
-            List<LstmDataPreprocessor.TrainingSample> test) {
-        double[] means = new double[CONTINUOUS_FEATURE_COUNT];
-        double[] standardDeviations = new double[CONTINUOUS_FEATURE_COUNT];
+            List<LstmDataPreprocessor.TrainingSample> test,
+            int continuousFeatureCount) {
+        double[] means = new double[continuousFeatureCount];
+        double[] standardDeviations = new double[continuousFeatureCount];
         long observations = 0L;
         for (LstmDataPreprocessor.TrainingSample sample : train) {
             for (float[] row : sample.getInput()) {
-                for (int index = 0; index < CONTINUOUS_FEATURE_COUNT; index++) {
+                for (int index = 0; index < continuousFeatureCount; index++) {
                     means[index] += row[index];
                 }
                 observations++;
@@ -584,7 +735,7 @@ public class RankingLstmDataPreprocessor {
         }
         for (LstmDataPreprocessor.TrainingSample sample : train) {
             for (float[] row : sample.getInput()) {
-                for (int index = 0; index < CONTINUOUS_FEATURE_COUNT; index++) {
+                for (int index = 0; index < continuousFeatureCount; index++) {
                     standardDeviations[index] += Math.pow(row[index] - means[index], 2D);
                 }
             }
@@ -595,17 +746,18 @@ public class RankingLstmDataPreprocessor {
                 standardDeviations[index] = 1D;
             }
         }
-        normalize(train, means, standardDeviations);
-        normalize(validation, means, standardDeviations);
-        normalize(test, means, standardDeviations);
+        normalize(train, means, standardDeviations, continuousFeatureCount);
+        normalize(validation, means, standardDeviations, continuousFeatureCount);
+        normalize(test, means, standardDeviations, continuousFeatureCount);
         return new NormalizationStats(means, standardDeviations);
     }
 
     private void normalize(
-            List<LstmDataPreprocessor.TrainingSample> samples, double[] means, double[] deviations) {
+            List<LstmDataPreprocessor.TrainingSample> samples, double[] means, double[] deviations,
+            int continuousFeatureCount) {
         for (LstmDataPreprocessor.TrainingSample sample : samples) {
             for (float[] row : sample.getInput()) {
-                for (int index = 0; index < CONTINUOUS_FEATURE_COUNT; index++) {
+                for (int index = 0; index < continuousFeatureCount; index++) {
                     row[index] = (float) clamp((row[index] - means[index]) / deviations[index], -8D, 8D);
                 }
             }
@@ -630,23 +782,6 @@ public class RankingLstmDataPreprocessor {
             return "BJ";
         }
         return "SZ";
-    }
-
-    private double marketPeriodReturn(
-            Map<LocalDate, Double> dailyReturns, LocalDate date, int period) {
-        List<Double> values = dailyReturns.entrySet().stream()
-                .filter(entry -> !entry.getKey().isAfter(date))
-                .sorted(Map.Entry.comparingByKey())
-                .map(Map.Entry::getValue)
-                .toList();
-        if (values.size() < period) {
-            return 0D;
-        }
-        double compounded = 1D;
-        for (int index = values.size() - period; index < values.size(); index++) {
-            compounded *= 1D + values.get(index);
-        }
-        return clamp(compounded - 1D);
     }
 
     private double periodReturn(List<AdjustedBar> bars, int index, int period) {
@@ -739,10 +874,16 @@ public class RankingLstmDataPreprocessor {
         return Math.max(minimum, Math.min(maximum, Double.isFinite(value) ? value : 0D));
     }
 
-    private void validateConfiguration() {
-        if (config.getInputSize() != FEATURE_COUNT) {
-            throw new IllegalStateException("v6 LSTM inputSize 必须为 " + FEATURE_COUNT
-                    + "，当前配置为 " + config.getInputSize());
+    private void validateConfiguration(ModelFeatureMetadata featureMetadata) {
+        if (featureMetadata == null) {
+            throw new IllegalStateException("模型特征元数据不能为空");
+        }
+        featureMetadata.validate();
+        if (featureMetadata.marketFeatureCount() != 15
+                || featureMetadata.categoryFeatureCount() != 3
+                || featureMetadata.isNewsFeaturesEnabled()
+                && featureMetadata.newsFeatureCount() != NewsFeatureSnapshotService.FEATURE_COUNT) {
+            throw new IllegalStateException("当前预处理器不支持该模型特征元数据");
         }
         if (config.getTargetReturnScale() <= 0D || config.getCostThreshold() < 0D) {
             throw new IllegalStateException("V6 收益缩放值必须大于 0，成本阈值不能小于 0");
@@ -753,6 +894,102 @@ public class RankingLstmDataPreprocessor {
                 || config.getStrictIsolationTradingDays() < 0) {
             throw new IllegalStateException("V6 Walk-Forward 时间窗口配置无效");
         }
+        if (config.getMaxPanelSamples() <= 0 || config.getMaxSamplesPerStock() <= 0) {
+            throw new IllegalStateException("V6 样本数量上限必须大于 0");
+        }
+    }
+
+    private Map<String, Set<Integer>> selectSampleTargetIndices(
+            Map<String, List<AdjustedBar>> adjustedSeries,
+            MarketSeries marketSeries) {
+        List<SampleCandidate> candidates = new ArrayList<>();
+        int sequenceLength = config.getSequenceLength();
+        int perStockLimit = config.getMaxSamplesPerStock();
+        for (Map.Entry<String, List<AdjustedBar>> entry : adjustedSeries.entrySet()) {
+            List<Integer> eligibleIndices = new ArrayList<>();
+            List<AdjustedBar> bars = entry.getValue();
+            for (int targetIndex = sequenceLength; targetIndex + 1 < bars.size(); targetIndex++) {
+                AdjustedBar targetBar = bars.get(targetIndex);
+                if (isDerivedTradable(targetBar, bars.get(targetIndex + 1))
+                        && marketSeries.openToOpenReturns().containsKey(targetBar.tradeDate())) {
+                    eligibleIndices.add(targetIndex);
+                }
+            }
+            for (Integer targetIndex : evenlySampleIndices(eligibleIndices, perStockLimit)) {
+                candidates.add(new SampleCandidate(
+                        entry.getKey(), targetIndex, bars.get(targetIndex).tradeDate()));
+            }
+        }
+
+        List<SampleCandidate> selected = capPanelCandidates(candidates, config.getMaxPanelSamples());
+        Map<String, Set<Integer>> result = new HashMap<>();
+        for (SampleCandidate candidate : selected) {
+            result.computeIfAbsent(candidate.stockCode(), ignored -> new HashSet<>())
+                    .add(candidate.targetIndex());
+        }
+        long selectedDates = selected.stream().map(SampleCandidate::targetDate).distinct().count();
+        log.info("V6 样本限流完成: perStockCandidates={}, selected={}, targetDates={}, "
+                        + "maxPanelSamples={}, maxSamplesPerStock={}",
+                candidates.size(), selected.size(), selectedDates,
+                config.getMaxPanelSamples(), config.getMaxSamplesPerStock());
+        return result;
+    }
+
+    private List<Integer> evenlySampleIndices(List<Integer> source, int limit) {
+        if (source.size() <= limit) {
+            return source;
+        }
+        List<Integer> result = new ArrayList<>(limit);
+        if (limit == 1) {
+            result.add(source.get(source.size() / 2));
+            return result;
+        }
+        for (int index = 0; index < limit; index++) {
+            int sourceIndex = (int) Math.round(index * (source.size() - 1D) / (limit - 1D));
+            result.add(source.get(sourceIndex));
+        }
+        return result;
+    }
+
+    private List<SampleCandidate> capPanelCandidates(
+            List<SampleCandidate> candidates, int panelLimit) {
+        if (candidates.size() <= panelLimit) {
+            return candidates;
+        }
+        Map<LocalDate, List<SampleCandidate>> candidatesByDate = candidates.stream()
+                .collect(Collectors.groupingBy(
+                        SampleCandidate::targetDate,
+                        java.util.TreeMap::new,
+                        Collectors.toCollection(ArrayList::new)));
+        candidatesByDate.forEach((date, dateCandidates) -> dateCandidates.sort(
+                Comparator.comparingInt((SampleCandidate candidate) ->
+                                stableCandidateOrder(candidate.stockCode(), date))
+                        .thenComparing(SampleCandidate::stockCode)));
+
+        List<List<SampleCandidate>> dateBuckets = new ArrayList<>(candidatesByDate.values());
+        int[] cursors = new int[dateBuckets.size()];
+        List<SampleCandidate> selected = new ArrayList<>(panelLimit);
+        while (selected.size() < panelLimit) {
+            boolean progressed = false;
+            for (int bucketIndex = 0;
+                 bucketIndex < dateBuckets.size() && selected.size() < panelLimit;
+                 bucketIndex++) {
+                List<SampleCandidate> bucket = dateBuckets.get(bucketIndex);
+                if (cursors[bucketIndex] < bucket.size()) {
+                    selected.add(bucket.get(cursors[bucketIndex]++));
+                    progressed = true;
+                }
+            }
+            if (!progressed) {
+                break;
+            }
+        }
+        return selected;
+    }
+
+    private int stableCandidateOrder(String stockCode, LocalDate targetDate) {
+        int hash = 31 * stockCode.hashCode() + targetDate.hashCode();
+        return hash ^ (hash >>> 16);
     }
 
     private record AdjustedBar(
@@ -768,7 +1005,11 @@ public class RankingLstmDataPreprocessor {
 
     private record MarketSeries(
             Map<LocalDate, Double> closeReturns,
-            Map<LocalDate, Double> openToOpenReturns) {
+            Map<LocalDate, Double> openToOpenReturns,
+            Map<LocalDate, Double> periodReturns20) {
+    }
+
+    private record SampleCandidate(String stockCode, int targetIndex, LocalDate targetDate) {
     }
 
     private record ProvisionalSample(
@@ -798,9 +1039,6 @@ public class RankingLstmDataPreprocessor {
     }
 
     private record SplitResult(
-            List<LstmDataPreprocessor.TrainingSample> trainSamples,
-            List<LstmDataPreprocessor.TrainingSample> validationSamples,
-            List<LstmDataPreprocessor.TrainingSample> testSamples,
             LocalDate trainStartDate,
             LocalDate trainEndDate,
             LocalDate validationStartDate,
@@ -812,4 +1050,4 @@ public class RankingLstmDataPreprocessor {
     private record NormalizationStats(double[] means, double[] standardDeviations) {
     }
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END------------

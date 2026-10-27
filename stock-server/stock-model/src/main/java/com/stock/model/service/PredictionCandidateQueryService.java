@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START-------------
 package com.stock.model.service;
 
 import com.stock.model.dto.PredictionCandidateItemDto;
@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 生产策略候选预测批次查询服务。
@@ -39,10 +40,24 @@ public class PredictionCandidateQueryService {
      * @throws IllegalStateException 批次不存在或明细不完整时抛出
      */
     public PredictionCandidateBatchDto getLatestUsableBatch(LocalDate targetTradeDate) {
+        return findLatestUsableBatch(targetTradeDate)
+                .orElseThrow(() -> new IllegalStateException(
+                        "目标交易日没有可用预测批次: " + targetTradeDate));
+    }
+
+    /**
+     * 查询指定目标交易日最新可用预测批次，缺失时返回空结果。
+     * 适用于只读展示场景；真实交易执行仍应调用严格查询方法。
+     *
+     * @param targetTradeDate 目标交易日
+     * @return 可用于策略排序的预测批次
+     * @throws IllegalStateException 批次存在但明细不完整时抛出
+     */
+    public Optional<PredictionCandidateBatchDto> findLatestUsableBatch(LocalDate targetTradeDate) {
         ModelPredictionBatchDocument batch = batchRepository
                 .findFirstByTargetTradeDateAndStatusInOrderByCreatedAtDesc(targetTradeDate, USABLE_STATUSES);
         if (batch == null) {
-            throw new IllegalStateException("目标交易日没有可用预测批次: " + targetTradeDate);
+            return Optional.empty();
         }
         List<ModelPredictionDocument> predictions = predictionRepository.findByBatchId(batch.getId());
         if (predictions.isEmpty() || predictions.size() != batch.getSuccessCount()) {
@@ -66,7 +81,7 @@ public class PredictionCandidateQueryService {
                 .tradingEligibilityReason(batch.getTradingEligibilityReason())
                 .items(items)
                 .build();
-        return temporalModelEnsembleService.apply(baseline);
+        return Optional.of(temporalModelEnsembleService.apply(baseline));
     }
 
     /**
@@ -114,4 +129,4 @@ public class PredictionCandidateQueryService {
     }
 
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END-------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------------
+// AI_GENERATE_START----------------
 package com.stock.data.service;
 
 import com.stock.data.dto.HistoricalStockUniverseDto;
@@ -6,10 +6,8 @@ import com.stock.data.dto.StockAdjustmentFactorDto;
 import com.stock.data.entity.HistoricalStockUniverseEntity;
 import com.stock.data.entity.StockMinuteBar;
 import com.stock.data.dto.StockPriceItemDto;
-import com.stock.data.entity.TradeCalendarEntity;
 import com.stock.data.repository.HistoricalStockUniverseRepository;
 import com.stock.data.repository.StockInfoRepository;
-import com.stock.data.repository.TradeCalendarRepository;
 import com.stock.data.dto.BacktestDataAuditDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,7 +19,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -40,7 +37,7 @@ public class BacktestDataAuditService {
 
     private final StockInfoRepository stockInfoRepository;
     private final HistoricalStockUniverseRepository historicalStockUniverseRepository;
-    private final TradeCalendarRepository tradeCalendarRepository;
+    private final TradingCalendarService tradingCalendarService;
     private final MongoTemplate mongoTemplate;
 
     /**
@@ -80,25 +77,10 @@ public class BacktestDataAuditService {
                 && earliestHistoricalUniverseDate != null
                 && !earliestHistoricalUniverseDate.isAfter(startDate);
 
-        long expectedCalendarDates = ChronoUnit.DAYS.between(startDate, endDate) + 1;
-        long tradeCalendarRecordCount = countDistinctCalendarDates(startDate, endDate);
-        LocalDate earliestTradeCalendarDate = tradeCalendarRepository.findFirstByOrderByTradeDateAsc()
-                .map(TradeCalendarEntity::getTradeDate)
-                .orElse(null);
-        LocalDate latestTradeCalendarDate = tradeCalendarRepository.findFirstByOrderByTradeDateDesc()
-                .map(TradeCalendarEntity::getTradeDate)
-                .orElse(null);
-        boolean tradeCalendarAvailable = tradeCalendarRecordCount == expectedCalendarDates
-                && earliestTradeCalendarDate != null
-                && !earliestTradeCalendarDate.isAfter(startDate)
-                && latestTradeCalendarDate != null
-                && !latestTradeCalendarDate.isBefore(endDate);
-        List<LocalDate> calendarTradingDates = tradeCalendarAvailable
-                ? findTradingDates(startDate, endDate) : List.of();
-        LocalDate requiredDataStart = calendarTradingDates.isEmpty()
-                ? startDate : calendarTradingDates.get(0);
-        LocalDate requiredDataEnd = calendarTradingDates.isEmpty()
-                ? endDate : calendarTradingDates.get(calendarTradingDates.size() - 1);
+        List<LocalDate> workingDays = tradingCalendarService.tradingDaysBetween(startDate, endDate);
+        LocalDate requiredDataStart = workingDays.isEmpty() ? startDate : workingDays.get(0);
+        LocalDate requiredDataEnd = workingDays.isEmpty()
+                ? endDate : workingDays.get(workingDays.size() - 1);
 
         MongoCoverage adjustmentCoverage = inspectMongoCoverage(
                 StockAdjustmentFactorDto.class, "tradeDate", "stockCode", startDate, endDate);
@@ -132,7 +114,7 @@ public class BacktestDataAuditService {
 
         List<String> blockers = buildBlockers(requiredDataStart, requiredDataEnd, currentStockCount,
                 dailyRecordCount, dailyStockCount, earliestDailyDate, latestDailyDate,
-                historicalUniverseAvailable, tradeCalendarAvailable, adjustedPriceAvailable,
+                historicalUniverseAvailable, adjustedPriceAvailable,
                 minuteCoverageAvailable, volumeUnitVerified);
         boolean dailyBaselineRunnable = (currentStockCount > 0 || historicalUniverseAvailable)
                 && dailyRecordCount > 0
@@ -161,16 +143,12 @@ public class BacktestDataAuditService {
                 .historicalUniverseStartCount(historicalUniverseStartCount)
                 .historicalUniverseEndCount(historicalUniverseEndCount)
                 .earliestHistoricalUniverseDate(earliestHistoricalUniverseDate)
-                .tradeCalendarRecordCount(tradeCalendarRecordCount)
-                .earliestTradeCalendarDate(earliestTradeCalendarDate)
-                .latestTradeCalendarDate(latestTradeCalendarDate)
                 .adjustmentFactorRecordCount(adjustmentCoverage.recordCount())
                 .adjustmentFactorStockCount(adjustmentCoverage.stockCount())
                 .earliestAdjustmentFactorDate(adjustmentCoverage.earliestDate())
                 .latestAdjustmentFactorDate(adjustmentCoverage.latestDate())
                 .adjustedPriceAvailable(adjustedPriceAvailable)
                 .historicalUniverseAvailable(historicalUniverseAvailable)
-                .tradeCalendarAvailable(tradeCalendarAvailable)
                 .volumeUnitVerified(volumeUnitVerified)
                 .dailyBaselineRunnable(dailyBaselineRunnable)
                 .productionBacktestReady(blockers.isEmpty())
@@ -279,7 +257,6 @@ public class BacktestDataAuditService {
                                        int dailyStockCount, LocalDate earliestDailyDate,
                                        LocalDate latestDailyDate,
                                        boolean historicalUniverseAvailable,
-                                       boolean tradeCalendarAvailable,
                                        boolean adjustedPriceAvailable,
                                        boolean minuteCoverageAvailable,
                                        boolean volumeUnitVerified) {
@@ -302,9 +279,6 @@ public class BacktestDataAuditService {
         }
         if (!historicalUniverseAvailable) {
             blockers.add("历史股票池未覆盖请求区间起止日期");
-        }
-        if (!tradeCalendarAvailable) {
-            blockers.add("独立交易日历未连续覆盖请求区间全部自然日期");
         }
         if (!minuteCoverageAvailable) {
             blockers.add("5 分钟行情未按请求区间覆盖日线股票范围");
@@ -339,18 +313,6 @@ public class BacktestDataAuditService {
                 HistoricalStockUniverseDto.class, String.class).size();
     }
 
-    private long countDistinctCalendarDates(LocalDate startDate, LocalDate endDate) {
-        Query query = Query.query(Criteria.where("tradeDate").gte(startDate).lte(endDate));
-        return mongoTemplate.findDistinct(query, "tradeDate", TradeCalendarEntity.class, LocalDate.class).size();
-    }
-
-    private List<LocalDate> findTradingDates(LocalDate startDate, LocalDate endDate) {
-        Query query = Query.query(Criteria.where("tradingDay").is(true)
-                .and("tradeDate").gte(startDate).lte(endDate));
-        return mongoTemplate.findDistinct(query, "tradeDate", TradeCalendarEntity.class, LocalDate.class)
-                .stream().sorted().toList();
-    }
-
     private void validateRange(LocalDate startDate, LocalDate endDate) {
         if (startDate == null || endDate == null) {
             throw new IllegalArgumentException("回测数据审计的开始日期和结束日期不能为空");
@@ -368,4 +330,4 @@ public class BacktestDataAuditService {
         }
     }
 }
-// AI_GENERATE_END---------------
+// AI_GENERATE_END----------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------
+// AI_GENERATE_START-----------------
 package com.stock.model.service;
 
 import ai.djl.Model;
@@ -12,6 +12,7 @@ import ai.djl.training.ParameterStore;
 import com.stock.data.dto.StockPriceItemDto;
 import com.stock.model.config.LstmTrainingConfig;
 import com.stock.model.dto.LstmPredictionResultDto;
+import com.stock.model.dto.ModelFeatureMetadata;
 import com.stock.model.entity.LstmModelDocument;
 import com.stock.model.algorithm.StockLSTMModel;
 import com.stock.model.algorithm.MasterTransformerModel;
@@ -113,7 +114,9 @@ public class LstmModelRuntimeService {
     private void validateLoadedArtifact(LstmModelArtifactService.ModelArtifact artifact) {
         artifactService.validateMetadata(artifact.metadata());
         Properties metadata = loadMetadata(artifact.metadata());
-        int inputSize = intMetadata(metadata, "inputSize", config.getInputSize());
+        int inputSize = LstmModelArtifactService.MODEL_VERSION.equals(metadata.getProperty("modelVersion"))
+                ? featureMetadata(metadata).inputSize()
+                : intMetadata(metadata, "inputSize", LstmDataPreprocessor.FEATURE_COUNT);
         int sequenceLength = intMetadata(metadata, "sequenceLength", config.getSequenceLength());
         int outputSize = intMetadata(metadata, "outputSize", RankingLSTMModel.OUTPUT_SIZE);
         boolean master = LstmArchitectureType.MASTER_TRANSFORMER.name()
@@ -381,8 +384,10 @@ public class LstmModelRuntimeService {
 
     private PredictionBatchInput buildRankingBatchInput(
             List<String> codes, int fetchDays, LocalDate baseTradeDate, Properties metadata) {
+        ModelFeatureMetadata featureMetadata = featureMetadata(metadata);
         RankingLstmTrainingDataService.RankingTrainingDataBundle bundle =
-                rankingTrainingDataService.loadPredictionData(codes, fetchDays, baseTradeDate);
+                rankingTrainingDataService.loadPredictionData(
+                        codes, fetchDays, baseTradeDate, featureMetadata);
         Map<String, Integer> stockDictionary = jsonMapMetadata(metadata, "stockDictionaryJson");
         Map<String, Integer> industryDictionary = jsonMapMetadata(metadata, "industryDictionaryJson");
         Map<String, Integer> marketDictionary = jsonMapMetadata(metadata, "marketDictionaryJson");
@@ -548,12 +553,12 @@ public class LstmModelRuntimeService {
                     metadata.getProperty("architectureType"));
             if (architectureType == LstmArchitectureType.MASTER_TRANSFORMER) {
                 return new MasterTransformerModel(
-                        intMetadata(metadata, "inputSize", RankingLstmDataPreprocessor.FEATURE_COUNT),
+                        featureMetadata(metadata).inputSize(),
                         intMetadata(metadata, "hiddenSize", config.getHiddenSize()),
                         intMetadata(metadata, "sequenceLength", config.getSequenceLength()));
             }
             return new RankingLSTMModel(
-                    intMetadata(metadata, "inputSize", RankingLstmDataPreprocessor.FEATURE_COUNT),
+                    featureMetadata(metadata).inputSize(),
                     intMetadata(metadata, "hiddenSize", config.getHiddenSize()),
                     intMetadata(metadata, "numLayers", config.getNumLayers()),
                     (float) config.getDropout(),
@@ -579,6 +584,20 @@ public class LstmModelRuntimeService {
                 Boolean.parseBoolean(metadata.getProperty("residualHeadEnabled", "true")),
                 floatMetadata(metadata, "groupHeadScale", 0.1F),
                 floatMetadata(metadata, "residualHeadScale", 0.1F));
+    }
+
+    private ModelFeatureMetadata featureMetadata(Properties metadata) {
+        String json = metadata.getProperty("featureMetadataJson");
+        if (json == null || json.isBlank()) {
+            throw new IllegalStateException("Ranking LSTM 模型缺少特征元数据");
+        }
+        try {
+            ModelFeatureMetadata result = objectMapper.readValue(json, ModelFeatureMetadata.class);
+            result.validate();
+            return result;
+        } catch (IOException exception) {
+            throw new IllegalStateException("Ranking LSTM 模型特征元数据无法解析", exception);
+        }
     }
 
     private Properties loadMetadata(String metadataText) {
@@ -654,4 +673,4 @@ public class LstmModelRuntimeService {
             List<LocalDate> baseTradeDates) {
     }
 }
-// AI_GENERATE_END----------------
+// AI_GENERATE_END-----------------

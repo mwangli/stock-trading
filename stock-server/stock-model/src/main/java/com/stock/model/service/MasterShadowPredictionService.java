@@ -1,4 +1,4 @@
-// AI_GENERATE_START- -----------
+// AI_GENERATE_START- -------------
 package com.stock.model.service;
 
 import com.stock.model.config.TemporalEnsembleConfig;
@@ -191,6 +191,8 @@ public class MasterShadowPredictionService {
             throw new IllegalStateException("MASTER 与 Ranking LSTM 特征契约版本不一致");
         }
         requireSameProperty(properties, baselineProperties, "labelVersion", "标签版本");
+        requireSameProperty(properties, baselineProperties, "featureMetadataJson", "完整特征元数据");
+        requireSameProperty(properties, baselineProperties, "sampleSetHash", "样本集合哈希");
         requireSameProperty(properties, baselineProperties, "splitPolicyVersion", "时间切分版本");
         requireSameProperty(properties, baselineProperties, "costModelVersion", "成本模型版本");
         requireSameProperty(properties, baselineProperties, "outputSchemaVersion", "输出契约版本");
@@ -264,4 +266,4 @@ public class MasterShadowPredictionService {
         return modelId.trim();
     }
 }
-// AI_GENERATE_END- -----------
+// AI_GENERATE_END- -------------

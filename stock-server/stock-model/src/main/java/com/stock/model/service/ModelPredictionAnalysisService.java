@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------------------
+// AI_GENERATE_START----------------------------
 package com.stock.model.service;
 
 import com.stock.data.service.MarketDataQueryService;
@@ -70,7 +70,7 @@ public class ModelPredictionAnalysisService {
      * @param trainerService LSTM 训练与模型元数据服务
      * @param predictionBackfillProperties 历史预测补缺配置
      * @param marketDataQueryService 市场数据查询服务
-     * @param tradingCalendarService 可靠交易日解析服务
+     * @param tradingCalendarService 工作日计算服务
      * @param activationRepository 模型激活指针仓库
      * @param modelRepository 模型版本仓库
      * @param batchRepository 预测批次仓库
@@ -120,17 +120,17 @@ public class ModelPredictionAnalysisService {
                 continue;
             }
             try {
-                TradeDateResolution resolution = resolveNextTradeDate(batch.getBaseTradeDate());
-                batch.setCalendarFallback(resolution.calendarFallback());
+                resolveNextTradeDate(batch.getBaseTradeDate());
+                batch.setCalendarFallback(false);
                 if (batch.getInformationCutoffAt() == null) {
                     batch.setInformationCutoffAt(batch.getCreatedAt());
                 }
                 batch.setUpdatedAt(LocalDateTime.now());
                 batchRepository.save(batch);
-                log.info("已回填历史预测批次日历来源: batchId={}, calendarFallback={}",
-                        batch.getId(), resolution.calendarFallback());
+                log.info("已回填历史预测批次工作日来源: batchId={}, calendarFallback=false",
+                        batch.getId());
             } catch (IllegalStateException exception) {
-                log.warn("历史预测批次暂无法绑定已确认交易日历: batchId={}, baseTradeDate={}, reason={}",
+                log.warn("历史预测批次暂无法解析工作日: batchId={}, baseTradeDate={}, reason={}",
                         batch.getId(), batch.getBaseTradeDate(), exception.getMessage());
             }
         }
@@ -330,9 +330,6 @@ public class ModelPredictionAnalysisService {
     }
 
     private LocalDate resolveScanStartTradeDate(LocalDate today) {
-        if (!tradingCalendarService.isConfirmedDate(today)) {
-            throw new IllegalStateException("当日交易日历缺失或尚未确认: " + today);
-        }
         return tradingCalendarService.isTradingDay(today)
                 ? today : tradingCalendarService.previousTradingDay(today);
     }
@@ -376,7 +373,7 @@ public class ModelPredictionAnalysisService {
             log.info("准备补充预测时清理不可复用批次明细: batchId={}, status={}, successCount={}",
                     existing.getId(), existing.getStatus(), existing.getSuccessCount());
         }
-        LocalDate resolvedTargetTradeDate = resolveNextTradeDate(baseTradeDate).tradeDate();
+        LocalDate resolvedTargetTradeDate = resolveNextTradeDate(baseTradeDate);
         if (!resolvedTargetTradeDate.equals(targetTradeDate)) {
             throw new IllegalStateException("预测基准日与目标交易日不连续: baseTradeDate=" + baseTradeDate
                     + ", expectedTargetTradeDate=" + targetTradeDate
@@ -419,8 +416,8 @@ public class ModelPredictionAnalysisService {
         return true;
     }
 
-    private TradeDateResolution resolveNextTradeDate(LocalDate baseTradeDate) {
-        return new TradeDateResolution(tradingCalendarService.nextTradingDay(baseTradeDate), false);
+    private LocalDate resolveNextTradeDate(LocalDate baseTradeDate) {
+        return tradingCalendarService.nextTradingDay(baseTradeDate);
     }
 
     private boolean hasStatus(ModelPredictionBatchDocument batch, List<String> statuses) {
@@ -435,13 +432,10 @@ public class ModelPredictionAnalysisService {
         return operatorName == null || operatorName.isBlank() ? "web-console" : operatorName.trim();
     }
 
-    private record TradeDateResolution(LocalDate tradeDate, boolean calendarFallback) {
-    }
-
     private record PredictionContext(String modelName, LstmModelDocument model) {
     }
 
     private record PredictionBatchPreparation(ModelPredictionBatchDocument batch, boolean created) {
     }
 }
-// AI_GENERATE_END--------------------------
+// AI_GENERATE_END----------------------------

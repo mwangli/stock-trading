@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------------
+// AI_GENERATE_START------------------
 package com.stock.agent.tool;
 
 import com.stock.agent.enums.AgentToolName;
@@ -40,7 +40,7 @@ public class AgentToolCatalog {
     /**
      * 创建首期只读工具目录。
      *
-     * @param tradingCalendarQueryTool 交易日历工具
+     * @param tradingCalendarQueryTool 工作日规则工具
      * @param latestPriceQueryTool 最新价格工具
      * @param predictionCandidateQueryTool 候选查询工具
      * @param modelOverviewQueryTool 模型概览工具
@@ -137,4 +137,4 @@ public class AgentToolCatalog {
         };
     }
 }
-// AI_GENERATE_END----------------
+// AI_GENERATE_END-----------------

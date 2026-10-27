@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------
+// AI_GENERATE_START-----------------
 package com.stock.model.config;
 
 import com.stock.model.algorithm.LstmArchitectureType;
@@ -81,11 +81,6 @@ public class LstmTrainingConfig {
      */
     private int maxSamplesPerStock = 80;
 
-    /**
-     * 每个时间步的总特征维度。
-     */
-    private int inputSize = 53;
-
     /** `V6` 候选模型架构。 */
     private LstmArchitectureType architectureType = LstmArchitectureType.RANKING_LSTM;
 
@@ -100,9 +95,6 @@ public class LstmTrainingConfig {
 
     /** 市场基准参考序列代码。 */
     private String benchmarkSeriesCode = "MARKET_EQUAL_WEIGHT";
-
-    /** 单次训练自动准备数据允许执行的最大回填轮数。 */
-    private int dataPreparationMaxRounds = 500;
 
     /** 市场类别 Embedding 最大字典容量，索引 0 保留给未知市场。 */
     private int marketEmbeddingBuckets = 16;
@@ -223,4 +215,4 @@ public class LstmTrainingConfig {
     private double minDelta = 0.0001;
 
 }
-// AI_GENERATE_END----------------
+// AI_GENERATE_END-----------------

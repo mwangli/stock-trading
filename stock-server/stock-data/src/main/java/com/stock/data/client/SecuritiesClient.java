@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 package com.stock.data.client;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -16,6 +16,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -347,11 +348,27 @@ public class SecuritiesClient {
             if (response == null || response.isEmpty()) {
                 throw new IllegalStateException("证券平台新闻列表响应为空");
             }
-            return response;
+            return normalizeNewsListResponse(response, stockCode, menuId);
         } catch (Exception e) {
             log.error("获取股票 {} 新闻列表失败，menuId={}", stockCode, menuId, e);
             throw new IllegalStateException("证券平台新闻列表请求失败", e);
         }
+    }
+
+    private Map<String, Object> normalizeNewsListResponse(Map<String, Object> response,
+                                                           String stockCode, String menuId) {
+        if (response.get("GRID0") instanceof List<?>) {
+            return response;
+        }
+        if ("46101".equals(String.valueOf(response.get("ACTION")))
+                && "0".equals(String.valueOf(response.get("ERRORNO")))) {
+            Map<String, Object> normalized = new LinkedHashMap<>(response);
+            normalized.put("GRID0", List.of());
+            log.info("股票 {} 新闻列表无数据，按空列表处理，menuId={}", stockCode, menuId);
+            return normalized;
+        }
+        throw new IllegalStateException("证券平台新闻列表缺少 GRID0: action="
+                + response.get("ACTION") + ", count=" + response.get("ERRORNO"));
     }
 
     /**
@@ -387,4 +404,4 @@ public class SecuritiesClient {
     }
 
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END------------

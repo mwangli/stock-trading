@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START-------------
 package com.stock.platform.task;
 
 import com.stock.data.service.TradingCalendarService;
@@ -34,11 +34,8 @@ public class DailyModelPredictionJob {
      */
     public void runDailyPrediction() {
         LocalDate today = LocalDate.now(MARKET_ZONE);
-        if (!tradingCalendarService.isConfirmedDate(today)) {
-            throw new IllegalStateException("当日交易日历缺失或尚未确认: " + today);
-        }
         if (!tradingCalendarService.isTradingDay(today)) {
-            throw new JobSkippedException("当日休市，跳过模型预测: " + today);
+            throw new JobSkippedException("当前日期为周末，跳过模型预测: " + today);
         }
         PredictionBackfillResponse result = predictionAnalysisService.startScheduledPrediction();
         log.info("每日预测和评估统一队列任务完成: scanned={}, predictionQueued={}, evaluationQueued={}, message={}",
@@ -46,4 +43,4 @@ public class DailyModelPredictionJob {
                 result.getEvaluationQueuedCount(), result.getMessage());
     }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END-------------

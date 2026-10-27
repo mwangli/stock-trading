@@ -1,4 +1,4 @@
-// AI_GENERATE_START- ------
+// AI_GENERATE_START-- --------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -8,8 +8,8 @@ import com.stock.data.service.MarketDataQueryService;
 import com.stock.model.algorithm.LstmArchitectureType;
 import com.stock.model.config.LstmDataQualityConfig;
 import com.stock.model.config.LstmTrainingConfig;
-import com.stock.model.dto.ModelDataBackfillResult;
 import com.stock.model.dto.ModelDataReadinessReport;
+import com.stock.model.dto.ModelFeatureMetadata;
 import com.stock.model.entity.LstmModelDocument;
 import com.stock.model.entity.ModelActivationDocument;
 import com.stock.model.entity.ModelTrainingRunDocument;
@@ -22,14 +22,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * 模型训练统一流水线服务。
- * 手动和定时触发均依次执行数据盘点、自动数据准备、快照、训练、离线评估和候选登记。
+ * 手动和定时触发均依次执行数据盘点、快照、训练、离线评估和候选登记。
+ * 数据不足时进入 WAITING_DATA，由独立数据任务准备完成后再提交训练。
  *
  * @author mwangli
  * @since 2026-10-25
@@ -43,7 +43,6 @@ public class ModelTrainingPipelineService {
     private final LstmDataQualityConfig dataQualityConfig;
     private final MarketDataQueryService marketDataQueryService;
     private final ModelDataReadinessService readinessService;
-    private final ModelDataBackfillService backfillService;
     private final TrainingDatasetSnapshotService snapshotService;
     private final LstmTrainerService lstmTrainerService;
     private final LstmModelRepository lstmModelRepository;
@@ -64,6 +63,7 @@ public class ModelTrainingPipelineService {
      * @param batchSize 批次大小
      * @param learningRate 学习率
      * @param architectureType 候选模型架构
+     * @param featureMetadata 本次训练固化的特征元数据
      * @return 流水线执行结果
      */
     public PipelineExecutionResult execute(
@@ -72,7 +72,8 @@ public class ModelTrainingPipelineService {
             int epochs,
             int batchSize,
             double learningRate,
-            LstmArchitectureType architectureType) {
+            LstmArchitectureType architectureType,
+            ModelFeatureMetadata featureMetadata) {
         ModelTrainingRunDocument run = trainingRunRepository.findById(runId).orElse(null);
         if (run == null) {
             log.warn("模型训练运行记录不存在: runId={}", runId);
@@ -85,33 +86,17 @@ public class ModelTrainingPipelineService {
             checkTrainingStopRequested(run.getId());
             int snapshotDays = Math.max(days,
                     trainingConfig.getSequenceLength() + trainingConfig.getValidationGap() + 2);
-            ModelDataReadinessReport beforeBackfill = inspectData(run, stockCodes, "CHECKING_DATA", 3);
-            List<ModelDataBackfillResult> backfillResults = new ArrayList<>();
-            ModelDataReadinessReport afterBackfill = beforeBackfill;
-            int maximumPreparationRounds = Math.max(1, trainingConfig.getDataPreparationMaxRounds());
-            for (int round = 1; !afterBackfill.isReady()
-                    && afterBackfill.isAutomaticBackfillAvailable()
-                    && round <= maximumPreparationRounds; round++) {
-                ModelDataReadinessReport roundBefore = afterBackfill;
-                updateStage(run, "PREPARING_DATA",
-                        "正在自动准备 V6 训练数据，第 " + round + " 轮", Math.min(30, 5 + round));
-                ModelDataBackfillResult backfillResult = backfillService.backfillOnce(
-                        roundBefore, stockCodes, snapshotDays);
-                backfillResults.add(backfillResult);
-                checkTrainingStopRequested(run.getId());
-                afterBackfill = inspectData(run, stockCodes, "RECHECKING_DATA", Math.min(32, 8 + round));
-                if (!hasDataPreparationProgress(roundBefore, afterBackfill)) {
-                    break;
-                }
-            }
-            recordDataGate(run, beforeBackfill, backfillResults, afterBackfill);
-            if (!afterBackfill.isReady()) {
-                return markWaitingData(run, afterBackfill);
+            ModelDataReadinessReport readiness = inspectData(
+                    run, stockCodes, featureMetadata, "CHECKING_DATA", 3);
+            recordDataGate(run, readiness);
+            if (!readiness.isReady()) {
+                return markWaitingData(run, readiness);
             }
 
             TrainingDatasetSnapshotService.SnapshotPreparationResult preparation =
                     snapshotService.prepareSnapshot(
                             run.getModelName(), stockCodes, snapshotDays,
+                            featureMetadata,
                             snapshot -> recordPreparingSnapshot(run, snapshot));
             TrainingDatasetSnapshotDocument snapshot = preparation.snapshot();
             recordReadySnapshot(run, snapshot, preparation.reused());
@@ -133,6 +118,11 @@ public class ModelTrainingPipelineService {
                 lstmTrainerService.validateModelVersion(candidateVersionId);
                 double candidateScore = validateCandidateQuality(result);
                 handleCandidate(candidate, architectureType, candidateScore, run.getTriggeredBy());
+            } catch (CandidateQualityRejectedException exception) {
+                candidate.setStatus("RETIRED");
+                lstmModelRepository.save(candidate);
+                rejectRun(run, candidateVersionId, exception.getMessage());
+                return new PipelineExecutionResult(true, false, candidateVersionId);
             } catch (RuntimeException exception) {
                 candidate.setStatus("RETIRED");
                 lstmModelRepository.save(candidate);
@@ -186,10 +176,12 @@ public class ModelTrainingPipelineService {
     private ModelDataReadinessReport inspectData(
             ModelTrainingRunDocument run,
             List<String> stockCodes,
+            ModelFeatureMetadata featureMetadata,
             String stage,
             int progressPercent) {
-        updateStage(run, stage, "正在审计模型基础数据和新闻快照", progressPercent);
-        ModelDataReadinessReport report = readinessService.inspect(stockCodes);
+        updateStage(run, stage, featureMetadata.isNewsFeaturesEnabled()
+                ? "正在审计模型基础数据和紧凑新闻快照" : "正在审计模型基础行情数据", progressPercent);
+        ModelDataReadinessReport report = readinessService.inspect(stockCodes, featureMetadata);
         run.setProgressMessage(report.getMessage());
         run.setLastProgressAt(LocalDateTime.now());
         trainingRunRepository.save(run);
@@ -198,44 +190,13 @@ public class ModelTrainingPipelineService {
 
     private void recordDataGate(
             ModelTrainingRunDocument run,
-            ModelDataReadinessReport beforeBackfill,
-            List<ModelDataBackfillResult> backfillResults,
-            ModelDataReadinessReport afterBackfill) {
+            ModelDataReadinessReport readiness) {
         Map<String, Object> gate = new LinkedHashMap<>();
-        gate.put("allowed", afterBackfill.isReady());
+        gate.put("allowed", readiness.isReady());
         gate.put("phase", "DATA_READINESS");
-        gate.put("beforeBackfill", beforeBackfill);
-        gate.put("backfillRounds", backfillResults);
-        gate.put("afterBackfill", afterBackfill);
+        gate.put("readiness", readiness);
         run.setGateResultJson(writeJson(gate));
         trainingRunRepository.save(run);
-    }
-
-    private boolean hasDataPreparationProgress(
-            ModelDataReadinessReport before, ModelDataReadinessReport after) {
-        if (before == null || after == null) {
-            return false;
-        }
-        if (after.isReady() && !before.isReady()) {
-            return true;
-        }
-        if (before.getFoundationAudit() != null && after.getFoundationAudit() != null) {
-            if (after.getFoundationAudit().getModelBarStockCount()
-                    > before.getFoundationAudit().getModelBarStockCount()) {
-                return true;
-            }
-            if (after.getFoundationAudit().getLatestModelBarDate() != null
-                    && (before.getFoundationAudit().getLatestModelBarDate() == null
-                    || after.getFoundationAudit().getLatestModelBarDate()
-                    .isAfter(before.getFoundationAudit().getLatestModelBarDate()))) {
-                return true;
-            }
-        }
-        return before.getNewsSnapshotAudit() != null && after.getNewsSnapshotAudit() != null
-                && (after.getNewsSnapshotAudit().snapshotCount()
-                > before.getNewsSnapshotAudit().snapshotCount()
-                || after.getNewsSnapshotAudit().coverageRate()
-                > before.getNewsSnapshotAudit().coverageRate());
     }
 
     private PipelineExecutionResult markWaitingData(
@@ -366,6 +327,20 @@ public class ModelTrainingPipelineService {
                 null, candidateVersionId, true, "候选模型训练、离线评估和登记完成");
     }
 
+    private void rejectRun(
+            ModelTrainingRunDocument run, String candidateVersionId, String message) {
+        run.setStatus("REJECTED");
+        run.setProgressStage("REJECTED");
+        run.setProgressMessage("训练完成，候选模型未通过质量门禁：" + message);
+        run.setProgressPercent(100);
+        run.setEstimatedRemainingSeconds(0L);
+        run.setErrorMessage(null);
+        run.setFinishedAt(LocalDateTime.now());
+        run.setLastProgressAt(LocalDateTime.now());
+        auditService.record(run.getModelName(), "TRAIN_REJECTED", run.getTriggeredBy(),
+                null, candidateVersionId, true, message);
+    }
+
     private void cancelRun(ModelTrainingRunDocument run, String message) {
         log.info("受控模型训练已停止: runId={}, reason={}", run.getId(), message);
         run.setStatus("CANCELLED");
@@ -409,21 +384,21 @@ public class ModelTrainingPipelineService {
 
     private double validateCandidateQuality(LstmTrainerService.TrainingResult result) {
         if (result.getTrainedStocks() < dataQualityConfig.getMinimumTrainingStockCount()) {
-            throw new IllegalStateException("候选模型有效股票数量未达到质量阈值");
+            throw new CandidateQualityRejectedException("候选模型有效股票数量未达到质量阈值");
         }
         if (result.getTrainSamples() < dataQualityConfig.getMinimumTrainSamples()
                 || result.getValSamples() < dataQualityConfig.getMinimumValidationSamples()) {
-            throw new IllegalStateException("候选模型训练或验证样本数量未达到质量阈值");
+            throw new CandidateQualityRejectedException("候选模型训练或验证样本数量未达到质量阈值");
         }
         if (!Double.isFinite(result.getTrainLoss()) || !Double.isFinite(result.getValLoss())) {
-            throw new IllegalStateException("候选模型损失不是有效数值");
+            throw new CandidateQualityRejectedException("候选模型损失不是有效数值");
         }
         if (result.getValLoss() > dataQualityConfig.getMaximumValidationLoss()) {
-            throw new IllegalStateException("候选模型验证损失超过阈值: "
+            throw new CandidateQualityRejectedException("候选模型验证损失超过阈值: "
                     + result.getValLoss() + " > " + dataQualityConfig.getMaximumValidationLoss());
         }
         if (result.isOutputCollapsed()) {
-            throw new IllegalStateException("候选模型输出发生塌缩");
+            throw new CandidateQualityRejectedException("候选模型输出发生塌缩");
         }
         double walkForwardMeanRankIc = requireFiniteMetric(
                 "Walk-Forward 平均 Rank IC", result.getWalkForwardMeanRankIc());
@@ -431,14 +406,18 @@ public class ModelTrainingPipelineService {
                 "Walk-Forward Top 10% 成本后收益", result.getWalkForwardTopDecileNetReturn());
         double maximumDrawdown = requireFiniteMetric(
                 "Walk-Forward 最大回撤", result.getMaximumDrawdown());
-        promotionPolicy.requirePerformanceHardGate(walkForwardTopDecileNetReturn, maximumDrawdown);
+        try {
+            promotionPolicy.requirePerformanceHardGate(walkForwardTopDecileNetReturn, maximumDrawdown);
+        } catch (IllegalStateException exception) {
+            throw new CandidateQualityRejectedException(exception.getMessage(), exception);
+        }
         return promotionPolicy.qualityScore(
                 walkForwardMeanRankIc, walkForwardTopDecileNetReturn, maximumDrawdown);
     }
 
     private double requireFiniteMetric(String metricName, Double value) {
         if (value == null || !Double.isFinite(value)) {
-            throw new IllegalStateException("候选模型" + metricName + "不是有效数值: " + value);
+            throw new CandidateQualityRejectedException("候选模型" + metricName + "不是有效数值: " + value);
         }
         return value;
     }
@@ -538,6 +517,17 @@ public class ModelTrainingPipelineService {
         return message.substring(0, Math.min(1000, message.length()));
     }
 
+    private static class CandidateQualityRejectedException extends RuntimeException {
+
+        private CandidateQualityRejectedException(String message) {
+            super(message);
+        }
+
+        private CandidateQualityRejectedException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
     /**
      * 模型训练流水线执行结果。
      *
@@ -551,4 +541,4 @@ public class ModelTrainingPipelineService {
             String candidateVersionId) {
     }
 }
-// AI_GENERATE_END- ------
+// AI_GENERATE_END-- --------

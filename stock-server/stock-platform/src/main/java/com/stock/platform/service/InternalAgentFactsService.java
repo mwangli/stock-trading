@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START---------------
 package com.stock.platform.service;
 
 import com.stock.platform.dto.InternalBrokerHistoryResponse;
@@ -88,19 +88,18 @@ public class InternalAgentFactsService {
     }
 
     /**
-     * 查询交易日历事实。
+     * 查询工作日规则结果。
      *
      * @param tradeDate 查询日期
-     * @return 交易日历事实
+     * @return 工作日规则结果
      */
     public InternalTradingCalendarResponse tradingCalendar(LocalDate tradeDate) {
         boolean tradingDay = tradingCalendarService.isTradingDay(tradeDate);
-        boolean confirmed = tradingCalendarService.isConfirmedDate(tradeDate);
-        LocalDate nextConfirmedTradingDay = tradingDay
+        LocalDate nextWorkingDay = tradingDay
                 ? tradeDate
                 : tradingCalendarService.findNextTradingDay(tradeDate).orElse(null);
         return new InternalTradingCalendarResponse(
-                tradeDate, tradingDay, confirmed, nextConfirmedTradingDay);
+                tradeDate, tradingDay, tradeDate != null, nextWorkingDay);
     }
 
     /**
@@ -296,8 +295,9 @@ public class InternalAgentFactsService {
      * @return 市场数据质量事实
      */
     public InternalMarketDataQualityResponse marketDataQuality() {
-        var statistics = stockQueryService.getStatistics();
-        var validation = stockQueryService.validateData();
+        var snapshot = stockQueryService.getDataQualitySnapshot();
+        var statistics = snapshot.getStatistics();
+        var validation = snapshot.getValidation();
         List<String> distribution = statistics.getMarketDistribution().entrySet().stream()
                 .sorted(java.util.Map.Entry.comparingByKey())
                 .map(entry -> entry.getKey() + "=" + entry.getValue())
@@ -484,4 +484,4 @@ public class InternalAgentFactsService {
                 targetTradeDate, List.of(), reason);
     }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END---------------

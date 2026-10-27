@@ -1,14 +1,12 @@
-// AI_GENERATE_START------------------
+// AI_GENERATE_START--------------------
 package com.stock.data.service;
 
-import com.stock.base.cache.CacheNames;
 import com.stock.data.dto.AdjustmentFactorImportItemDto;
 import com.stock.data.dto.HistoricalUniverseImportItemDto;
 import com.stock.data.dto.MinuteBarImportItemDto;
 import com.stock.data.dto.ModelReferenceDailyBarImportItemDto;
 import com.stock.data.dto.ModelStockDailyBarImportItemDto;
 import com.stock.data.dto.StockDailyTradabilityImportItemDto;
-import com.stock.data.dto.TradeCalendarImportItemDto;
 
 import com.stock.data.dto.AdjustmentFactorImportRequestDto;
 import com.stock.data.dto.HistoricalUniverseImportRequestDto;
@@ -16,7 +14,6 @@ import com.stock.data.dto.MarketDataImportResultDto;
 import com.stock.data.dto.MinuteBarImportRequestDto;
 import com.stock.data.dto.ModelReferenceDailyBarImportRequestDto;
 import com.stock.data.dto.ModelStockDailyBarImportRequestDto;
-import com.stock.data.dto.TradeCalendarImportRequestDto;
 import com.stock.data.dto.StockDailyTradabilityImportRequestDto;
 import com.stock.data.entity.HistoricalStockUniverseEntity;
 import com.stock.data.entity.ModelReferenceDailyBar;
@@ -25,14 +22,9 @@ import com.stock.data.entity.StockAdjustmentFactor;
 import com.stock.data.entity.StockMinuteBar;
 import com.stock.data.entity.StockDailyTradabilityFact;
 import com.stock.data.entity.OpenTradabilityStatus;
-import com.stock.data.entity.TradeCalendarEntity;
-import com.stock.data.enums.CalendarClosureType;
-import com.stock.data.enums.CalendarDayStatus;
-import com.stock.data.enums.CalendarVerificationStatus;
 import com.stock.data.repository.HistoricalStockUniverseRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -48,7 +40,7 @@ import java.util.Map;
 
 /**
  * 生产级回测市场数据基础导入服务。
- * 提供历史股票池、交易日历、复权因子和 5 分钟 K 线的受控幂等写入。
+ * 提供历史股票池、复权因子和 5 分钟 K 线的受控幂等写入。
  *
  * @author mwangli
  * @since 2026-09-25
@@ -99,44 +91,6 @@ public class MarketDataFoundationService {
         historicalStockUniverseRepository.saveAll(entities);
         return result("HISTORICAL_UNIVERSE", request.getSource(), request.getSourceVersion(),
                 request.getItems().size(), entities.size());
-    }
-
-    /**
-     * 导入证券市场交易日历。
-     *
-     * @param request 交易日历批次
-     * @return 导入统计
-     */
-    @CacheEvict(cacheNames = CacheNames.TRADING_CALENDAR, allEntries = true)
-    public MarketDataImportResultDto importTradeCalendar(TradeCalendarImportRequestDto request) {
-        LocalDateTime now = LocalDateTime.now();
-        List<TradeCalendarImportItemDto> items = deduplicateCalendar(request.getItems());
-        BulkOperations bulk = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED,
-                TradeCalendarEntity.class);
-        for (TradeCalendarImportItemDto item : items) {
-            String market = item.getMarket().trim();
-            Query query = Query.query(Criteria.where("market").is(market)
-                    .and("tradeDate").is(item.getTradeDate()));
-            Update update = new Update()
-                    .set("tradingDay", item.isTradingDay())
-                    .set("dayStatus", item.isTradingDay() ? CalendarDayStatus.OPEN : CalendarDayStatus.CLOSED)
-                    .set("closureType", item.isTradingDay() ? CalendarClosureType.NONE : CalendarClosureType.UNKNOWN)
-                    .set("verificationStatus", CalendarVerificationStatus.CONFIRMED)
-                    .set("previousTradingDay", item.getPreviousTradingDay())
-                    .set("nextTradingDay", item.getNextTradingDay())
-                    .set("source", request.getSource().trim())
-                    .set("sourceVersion", request.getSourceVersion().trim())
-                    .set("sourceFetchedAt", now)
-                    .set("confirmedAt", now)
-                    .set("updatedAt", now)
-                    .setOnInsert("market", market)
-                    .setOnInsert("tradeDate", item.getTradeDate())
-                    .setOnInsert("createdAt", now);
-            bulk.upsert(query, update);
-        }
-        bulk.execute();
-        return result("TRADE_CALENDAR", request.getSource(), request.getSourceVersion(),
-                request.getItems().size(), items.size());
     }
 
     /**
@@ -337,15 +291,6 @@ public class MarketDataFoundationService {
         return List.copyOf(unique.values());
     }
 
-    private List<TradeCalendarImportItemDto> deduplicateCalendar(
-            List<TradeCalendarImportItemDto> items) {
-        Map<String, TradeCalendarImportItemDto> unique = new LinkedHashMap<>();
-        for (TradeCalendarImportItemDto item : items) {
-            unique.put(item.getMarket().trim() + "|" + item.getTradeDate(), item);
-        }
-        return List.copyOf(unique.values());
-    }
-
     private List<AdjustmentFactorImportItemDto> deduplicateFactors(
             List<AdjustmentFactorImportItemDto> items) {
         Map<String, AdjustmentFactorImportItemDto> unique = new LinkedHashMap<>();
@@ -479,4 +424,4 @@ public class MarketDataFoundationService {
                 .build();
     }
 }
-// AI_GENERATE_END------------------
+// AI_GENERATE_END--------------------

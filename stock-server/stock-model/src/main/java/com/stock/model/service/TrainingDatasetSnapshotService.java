@@ -1,9 +1,12 @@
-// AI_GENERATE_START-------------------
+// AI_GENERATE_START---------------------------
 package com.stock.model.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.data.service.MarketDataQueryService;
 import com.stock.data.service.TradingCalendarService;
 import com.stock.model.config.LstmTrainingConfig;
+import com.stock.model.dto.ModelFeatureMetadata;
 import com.stock.model.entity.TrainingDatasetSnapshotDocument;
 import com.stock.model.repository.TrainingDatasetSnapshotRepository;
 import jakarta.annotation.PostConstruct;
@@ -35,6 +38,7 @@ import java.util.function.Consumer;
 public class TrainingDatasetSnapshotService {
 
     private static final String READY = "READY";
+    private static final int SNAPSHOT_CHUNK_SAMPLE_COUNT = 2_500;
     private final LstmTrainingConfig config;
     private final MarketDataQueryService marketDataQueryService;
     private final TradingCalendarService tradingCalendarService;
@@ -42,6 +46,7 @@ public class TrainingDatasetSnapshotService {
     private final TrainingSnapshotArtifactStore artifactStore;
     private final RankingLstmTrainingDataService rankingTrainingDataService;
     private final RankingLstmDataPreprocessor rankingDataPreprocessor;
+    private final ObjectMapper objectMapper;
 
     /**
      * 应用启动时清理上次进程中断留下的快照半成品和已完成快照的临时目录。
@@ -68,18 +73,20 @@ public class TrainingDatasetSnapshotService {
      * @param modelName 模型名称
      * @param stockCodes 股票代码
      * @param days 历史交易日数量
+     * @param featureMetadata 本次训练的不可变特征元数据
      * @return 契约摘要
      */
-    public String contractHash(String modelName, List<String> stockCodes, int days) {
+    public String contractHash(
+            String modelName, List<String> stockCodes, int days,
+            ModelFeatureMetadata featureMetadata) {
         List<String> sortedCodes = stockCodes == null ? List.of() : stockCodes.stream().sorted().toList();
         String contract = String.join("|", modelName, String.valueOf(days),
-                RankingLstmDataPreprocessor.FEATURE_VERSION,
-                RankingLstmDataPreprocessor.LABEL_VERSION,
-                RankingLstmDataPreprocessor.SPLIT_POLICY_VERSION,
-                RankingLstmDataPreprocessor.COST_MODEL_VERSION,
+                featureMetadataJson(featureMetadata),
                 config.getDataSource(), config.getDataSourceVersion(),
                 config.getBenchmarkSeriesCode(), String.valueOf(config.getSequenceLength()),
-                String.valueOf(config.getInputSize()), String.valueOf(config.getCostThreshold()),
+                String.valueOf(featureMetadata.inputSize()), String.valueOf(config.getCostThreshold()),
+                String.valueOf(config.getMaxPanelSamples()),
+                String.valueOf(config.getMaxSamplesPerStock()),
                 String.valueOf(config.getTrainingWindowYears()),
                 String.valueOf(config.getValidationWindowMonths()),
                 String.valueOf(config.getTestWindowMonths()),
@@ -100,9 +107,10 @@ public class TrainingDatasetSnapshotService {
      * @return 最新可复用快照，不存在时返回空
      */
     private Optional<TrainingDatasetSnapshotDocument> findReusableSnapshot(
-            String modelName, List<String> stockCodes, int days) {
+            String modelName, List<String> stockCodes, int days,
+            ModelFeatureMetadata featureMetadata) {
         return snapshotRepository.findFirstByModelNameAndContractHashAndStatusOrderByCreatedAtDesc(
-                modelName, contractHash(modelName, stockCodes, days), READY)
+                modelName, contractHash(modelName, stockCodes, days, featureMetadata), READY)
                 .filter(artifactStore::isReadable)
                 .filter(this::isFreshEnoughForNewTraining);
     }
@@ -113,6 +121,7 @@ public class TrainingDatasetSnapshotService {
      * @param modelName 模型名称
      * @param stockCodes 股票代码
      * @param days 历史交易日数量
+     * @param featureMetadata 本次训练的不可变特征元数据
      * @param snapshotObserver 快照状态观察器
      * @return 快照准备结果
      */
@@ -120,23 +129,25 @@ public class TrainingDatasetSnapshotService {
             String modelName,
             List<String> stockCodes,
             int days,
+            ModelFeatureMetadata featureMetadata,
             Consumer<TrainingDatasetSnapshotDocument> snapshotObserver) {
+        featureMetadata.validate();
         Optional<TrainingDatasetSnapshotDocument> reusable = findReusableSnapshot(
-                modelName, stockCodes, days);
+                modelName, stockCodes, days, featureMetadata);
         if (reusable.isPresent()) {
             TrainingDatasetSnapshotDocument snapshot = reusable.get();
             notifySnapshotObserver(snapshotObserver, snapshot);
             return new SnapshotPreparationResult(snapshot, true);
         }
         TrainingDatasetSnapshotDocument snapshot = buildSnapshot(
-                modelName, stockCodes, days, snapshotObserver);
+                modelName, stockCodes, days, featureMetadata, snapshotObserver);
         return new SnapshotPreparationResult(snapshot, false);
     }
 
     /**
      * 判断快照是否仍可用于一次新的训练任务。
      *
-     * 每日预测不调用此方法；只有训练任务准备数据时才会检查。快照最多允许落后一个已确认交易日，
+     * 每日预测不调用此方法；只有训练任务准备数据时才会检查。快照最多允许落后一个工作日，
      * 超过该范围则返回空值，由训练流程构建新快照，避免把旧快照误认为实时数据。
      *
      * @param snapshot 待复用快照
@@ -180,9 +191,11 @@ public class TrainingDatasetSnapshotService {
             String modelName,
             List<String> stockCodes,
             int days,
+            ModelFeatureMetadata featureMetadata,
             Consumer<TrainingDatasetSnapshotDocument> snapshotObserver) {
         List<String> codes = stockCodes == null ? List.of() : stockCodes.stream().distinct().toList();
-        TrainingDatasetSnapshotDocument document = createBuildingDocument(modelName, codes, days);
+        TrainingDatasetSnapshotDocument document = createBuildingDocument(
+                modelName, codes, days, featureMetadata);
         Path snapshotDirectory = null;
         long startedNanos = System.nanoTime();
         String stage = "LOAD_VERSIONED_MODEL_DATA";
@@ -194,26 +207,28 @@ public class TrainingDatasetSnapshotService {
             notifySnapshotObserver(snapshotObserver, document);
             snapshotDirectory = artifactStore.prepareSnapshotDirectory(document.getId());
             RankingLstmTrainingDataService.RankingTrainingDataBundle bundle =
-                    rankingTrainingDataService.loadTrainingData(codes, days);
+                    rankingTrainingDataService.loadTrainingData(codes, days, featureMetadata);
             stage = "BUILD_CROSS_SECTIONAL_SAMPLES";
             LstmDataPreprocessor.ProcessedData processedData = rankingDataPreprocessor.process(bundle);
-            if (processedData.getTrainSamples() == null || processedData.getTrainSamples().isEmpty()) {
-                throw new IllegalStateException("训练快照没有可用样本");
+            if (processedData.getAllSamples() == null || processedData.getAllSamples().isEmpty()) {
+                throw new IllegalStateException("训练快照没有可用原始样本");
             }
-            TrainingSnapshotArtifactStore.ChunkPayload chunk = TrainingSnapshotArtifactStore.ChunkPayload.builder()
-                    .trainSamples(processedData.getTrainSamples())
-                    .valSamples(processedData.getValSamples())
-                    .testSamples(processedData.getTestSamples())
-                    .sampleCounts(processedData.getSampleCounts())
-                    .walkForwardFolds(processedData.getWalkForwardFolds())
-                    .strictIsolationFolds(processedData.getStrictIsolationFolds())
-                    .build();
+            processedData.setSampleSetHash(sampleSetHash(processedData));
             stage = "WRITE_CHUNK";
-            TrainingSnapshotArtifactStore.ChunkDescriptor descriptor = artifactStore.writeChunk(
-                    snapshotDirectory, 1, chunk);
+            List<TrainingSnapshotArtifactStore.ChunkDescriptor> descriptors = new java.util.ArrayList<>();
+            List<LstmDataPreprocessor.TrainingSample> allSamples = processedData.getAllSamples();
+            int chunkNumber = 1;
+            for (int start = 0; start < allSamples.size(); start += SNAPSHOT_CHUNK_SAMPLE_COUNT) {
+                int end = Math.min(start + SNAPSHOT_CHUNK_SAMPLE_COUNT, allSamples.size());
+                TrainingSnapshotArtifactStore.ChunkPayload chunk =
+                        TrainingSnapshotArtifactStore.ChunkPayload.builder()
+                                .samples(allSamples.subList(start, end))
+                                .build();
+                descriptors.add(artifactStore.writeChunk(snapshotDirectory, chunkNumber++, chunk));
+            }
             stage = "WRITE_MANIFEST";
             return completeRankingSnapshot(
-                    document, snapshotDirectory, processedData, List.of(descriptor), startedNanos);
+                    document, snapshotDirectory, processedData, descriptors, startedNanos);
         } catch (Exception exception) {
             artifactStore.deleteArtifacts(document.getId());
             markFailed(document, stage, startedNanos, exception);
@@ -233,17 +248,27 @@ public class TrainingDatasetSnapshotService {
             LstmDataPreprocessor.ProcessedData data,
             List<TrainingSnapshotArtifactStore.ChunkDescriptor> chunks,
             long startedNanos) throws IOException {
+        LstmDataPreprocessor.WalkForwardFold latestFold = latestWalkForwardFold(data);
+        int trainSamples = countSamples(data.getAllSamples(),
+                latestFold.getTrainStartDate(), latestFold.getTrainEndDate());
+        int valSamples = countSamples(data.getAllSamples(),
+                latestFold.getValidationStartDate(), latestFold.getValidationEndDate());
+        int testSamples = countSamples(data.getAllSamples(),
+                latestFold.getTestStartDate(), latestFold.getTestEndDate());
         LocalDate datasetEndDate = data.getTestEndDate() != null
                 ? data.getTestEndDate() : data.getValidationEndDate();
         TrainingSnapshotArtifactStore.ManifestMetadata metadata =
                 new TrainingSnapshotArtifactStore.ManifestMetadata(
                         data.getFeatureCount(), data.getSequenceLength(), data.getTargetReturnScale(),
-                        data.getFeatureVersion(), 0, data.getSampleCounts().size(),
-                        data.getTrainSamples().size(), data.getValSamples().size(), data.getTestSamples().size(),
+                        data.getFeatureVersion(), data.getFeatureMetadata(), data.getSampleSetHash(),
+                        data.getAllSamples().size(), config.getMaxSamplesPerStock(),
+                        data.getSampleCounts().size(),
+                        trainSamples, valSamples, testSamples,
                         datasetEndDate, data.getStockDictionary(), data.getIndustryDictionary(),
-                        data.getMarketDictionary(), data.getFeatureMeans(), data.getFeatureStdDeviations(),
+                        data.getMarketDictionary(), data.getSampleCounts(),
                         data.getTrainStartDate(), data.getTrainEndDate(), data.getValidationStartDate(),
-                        data.getValidationEndDate(), data.getTestStartDate(), data.getTestEndDate());
+                        data.getValidationEndDate(), data.getTestStartDate(), data.getTestEndDate(),
+                        data.getWalkForwardFolds(), data.getStrictIsolationFolds());
         TrainingSnapshotArtifactStore.StoredArtifact artifact = artifactStore.persist(
                 document.getId(), snapshotDirectory, metadata, chunks);
         document.setArtifactStorage(TrainingSnapshotArtifactStore.STORAGE_GRIDFS);
@@ -253,15 +278,15 @@ public class TrainingDatasetSnapshotService {
         document.setArtifactFormat(TrainingSnapshotArtifactStore.FORMAT);
         document.setChunkCount(chunks.size());
         document.setTrainedStocks(data.getSampleCounts().size());
-        document.setTrainSamples(data.getTrainSamples().size());
-        document.setValSamples(data.getValSamples().size());
-        document.setTestSamples(data.getTestSamples().size());
+        document.setTrainSamples(trainSamples);
+        document.setValSamples(valSamples);
+        document.setTestSamples(testSamples);
         document.setWalkForwardFoldCount(data.getWalkForwardFolds() == null
                 ? 0 : data.getWalkForwardFolds().size());
         document.setStrictIsolationFoldCount(data.getStrictIsolationFolds() == null
                 ? 0 : data.getStrictIsolationFolds().size());
         document.setDatasetEndDate(datasetEndDate);
-        document.setSplitPolicyVersion(RankingLstmDataPreprocessor.SPLIT_POLICY_VERSION);
+        document.setSplitPolicyVersion(data.getFeatureMetadata().getSplitPolicyVersion());
         document.setDataSourceVersion(config.getDataSourceVersion());
         document.setTrainStartDate(data.getTrainStartDate());
         document.setTrainEndDate(data.getTrainEndDate());
@@ -287,16 +312,24 @@ public class TrainingDatasetSnapshotService {
      * @return 处理后的训练数据
      */
     public LstmDataPreprocessor.ProcessedData loadSnapshot(TrainingDatasetSnapshotDocument snapshot) {
-        return artifactStore.load(snapshot);
+        LstmDataPreprocessor.ProcessedData data =
+                rankingDataPreprocessor.materializeTrainingViews(artifactStore.load(snapshot));
+        if (data.getTrainSamples().size() != snapshot.getTrainSamples()
+                || data.getValSamples().size() != snapshot.getValSamples()
+                || data.getTestSamples().size() != snapshot.getTestSamples()) {
+            throw new IllegalStateException("训练快照按日期边界重建后的样本数量不一致");
+        }
+        return data;
     }
 
     private TrainingDatasetSnapshotDocument createBuildingDocument(
-            String modelName, List<String> stockCodes, int days) {
+            String modelName, List<String> stockCodes, int days,
+            ModelFeatureMetadata featureMetadata) {
         TrainingDatasetSnapshotDocument document = new TrainingDatasetSnapshotDocument();
         document.setModelName(modelName);
         document.setStatus("BUILDING");
-        document.setContractHash(contractHash(modelName, stockCodes, days));
-        document.setFeatureVersion(RankingLstmDataPreprocessor.FEATURE_VERSION);
+        document.setContractHash(contractHash(modelName, stockCodes, days, featureMetadata));
+        document.setFeatureVersion(featureMetadata.getFeatureVersion());
         document.setDays(days);
         document.setStockCount(stockCodes.size());
         document.setArtifactFormat(TrainingSnapshotArtifactStore.FORMAT);
@@ -351,6 +384,48 @@ public class TrainingDatasetSnapshotService {
                 ? current.getClass().getSimpleName() : current.getMessage();
     }
 
+    private String featureMetadataJson(ModelFeatureMetadata featureMetadata) {
+        try {
+            featureMetadata.validate();
+            return objectMapper.writeValueAsString(featureMetadata);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("模型特征元数据序列化失败", exception);
+        }
+    }
+
+    private String sampleSetHash(LstmDataPreprocessor.ProcessedData data) {
+        List<LstmDataPreprocessor.TrainingSample> allSamples = data.getAllSamples();
+        if (allSamples == null || allSamples.isEmpty()) {
+            throw new IllegalStateException("训练快照缺少可计算哈希的原始样本");
+        }
+        List<String> keys = allSamples.stream()
+                .map(sample -> sample.getStockCode() + "|" + sample.getTargetDate())
+                .sorted()
+                .toList();
+        if (keys.stream().distinct().count() != keys.size()) {
+            throw new IllegalStateException("训练快照包含重复样本键");
+        }
+        return sha256(String.join("\n", keys).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private LstmDataPreprocessor.WalkForwardFold latestWalkForwardFold(
+            LstmDataPreprocessor.ProcessedData data) {
+        List<LstmDataPreprocessor.WalkForwardFold> folds = data.getWalkForwardFolds();
+        if (folds == null || folds.isEmpty()) {
+            throw new IllegalStateException("训练快照缺少主策略 Walk-Forward 日期边界");
+        }
+        return folds.get(folds.size() - 1);
+    }
+
+    private int countSamples(
+            List<LstmDataPreprocessor.TrainingSample> samples, LocalDate startDate, LocalDate endDate) {
+        return Math.toIntExact(samples.stream()
+                .filter(sample -> sample.getTargetDate() != null
+                        && !sample.getTargetDate().isBefore(startDate)
+                        && !sample.getTargetDate().isAfter(endDate))
+                .count());
+    }
+
     /**
      * 训练数据快照准备结果。
      *
@@ -363,4 +438,4 @@ public class TrainingDatasetSnapshotService {
     }
 
 }
-// AI_GENERATE_END-------------------
+// AI_GENERATE_END---------------------------
