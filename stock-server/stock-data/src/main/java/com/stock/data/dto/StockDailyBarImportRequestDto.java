@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START -
 package com.stock.data.dto;
 
 import jakarta.validation.Valid;
@@ -9,41 +9,41 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
 import java.util.List;
 
 /**
- * 模型特征专用股票日线批量导入请求。
+ * 统一股票日线批量导入请求。
  *
  * @author mwangli
- * @since 2026-09-25
+ * @since 2026-10-29
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ModelStockDailyBarImportRequestDto {
+public class StockDailyBarImportRequestDto {
 
-    /** 数据来源。 */
+    /** 行情数据来源。 */
     @NotBlank
     private String source;
 
-    /** 不可覆盖的数据版本。 */
+    /** 独立于模型版本的数据契约版本。 */
     @NotBlank
     private String sourceVersion;
 
-    /** 成交量单位，例如 SHARE。 */
+    /** 成交量单位，例如 LOT。 */
     @NotBlank
     private String volumeUnit;
 
-    /** 成交额单位，例如 CNY。 */
+    /** 成交额单位，例如 CNY_THOUSAND。 */
     @NotBlank
     private String amountUnit;
 
-    /** 股票日线列表。 */
+    /** 待导入的股票日线。 */
     @Valid
     @NotEmpty
     @Size(max = 20000)
-    private List<ModelStockDailyBarImportItemDto> items;
-
+    private List<StockDailyBarImportItemDto> items;
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END -

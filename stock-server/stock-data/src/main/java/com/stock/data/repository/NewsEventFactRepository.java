@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.data.repository;
 
 import com.stock.data.entity.StockNewsEventFact;
@@ -51,7 +51,7 @@ public interface NewsEventFactRepository extends MongoRepository<StockNewsEventF
      * @param pageable 分页与数量限制
      * @return 事件事实列表
      */
-    List<StockNewsEventFact> findByDocumentRoleAndPublishTimeBetweenOrderByPublishTimeAsc(
+    List<StockNewsEventFact> findByDocumentRoleAndPublishTimeBetweenOrderByPublishTimeAscIdAsc(
             NewsDocumentRole role, LocalDateTime startTime, LocalDateTime endTime, Pageable pageable);
 
     /**
@@ -61,4 +61,4 @@ public interface NewsEventFactRepository extends MongoRepository<StockNewsEventF
      */
     void deleteByStockCode(String stockCode);
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

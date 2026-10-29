@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------
+// AI_GENERATE_START--------------------
 package com.stock.model.service;
 
 import com.stock.data.dto.MarketNewsEventDto;
@@ -114,7 +114,9 @@ public class SentimentAggregationService {
             if (title.isBlank() && content.isBlank()) {
                 continue;
             }
-            SentimentAnalysisResult modelResult = sentimentModelRouterService.analyzeRequired(title, content);
+            SentimentAnalysisResult modelResult = primary.getModelResult() == null
+                    ? sentimentModelRouterService.analyzeRequired(title, content)
+                    : primary.getModelResult();
             double weight = calculateWeight(primary, group.size(), now, modelResult.getConfidence());
             weightedScore += modelResult.getScore() * weight;
             weightedConfidence += modelResult.getConfidence() * weight;
@@ -174,14 +176,39 @@ public class SentimentAggregationService {
      */
     public SentimentAggregateResult aggregateEventFacts(
             List<MarketNewsEventDto> eventFacts, LocalDateTime evaluationTime) {
+        return aggregateEventFacts(eventFacts, evaluationTime, List.of());
+    }
+
+    /**
+     * 使用已完成的逐事件模型结果聚合规范事件事实，避免同一特征构建重复推理。
+     *
+     * @param eventFacts 点时有效且已按业务角色过滤的事件事实
+     * @param evaluationTime 计算时点
+     * @param modelResults 与事件事实顺序一致的情感模型结果；空列表表示由聚合服务执行推理
+     * @return 去重和加权后的情感结果
+     * @throws IllegalArgumentException 事件事实与模型结果数量不一致时抛出
+     */
+    public SentimentAggregateResult aggregateEventFacts(
+            List<MarketNewsEventDto> eventFacts,
+            LocalDateTime evaluationTime,
+            List<SentimentAnalysisResult> modelResults) {
         if (eventFacts == null || eventFacts.isEmpty()) {
             return neutralResult();
         }
-        List<AggregationNews> newsItems = eventFacts.stream().map(this::toAggregationInput).toList();
+        List<SentimentAnalysisResult> safeResults = modelResults == null ? List.of() : modelResults;
+        if (!safeResults.isEmpty() && safeResults.size() != eventFacts.size()) {
+            throw new IllegalArgumentException("事件事实与情感模型结果数量不一致");
+        }
+        List<AggregationNews> newsItems = new ArrayList<>(eventFacts.size());
+        for (int index = 0; index < eventFacts.size(); index++) {
+            SentimentAnalysisResult modelResult = safeResults.isEmpty() ? null : safeResults.get(index);
+            newsItems.add(toAggregationInput(eventFacts.get(index), modelResult));
+        }
         return aggregate(newsItems, evaluationTime);
     }
 
-    private AggregationNews toAggregationInput(MarketNewsEventDto fact) {
+    private AggregationNews toAggregationInput(
+            MarketNewsEventDto fact, SentimentAnalysisResult modelResult) {
         AggregationNews news = new AggregationNews();
         news.setExternalId(fact.getSourceExternalIds() == null ? null
                 : fact.getSourceExternalIds().stream().findFirst().orElse(null));
@@ -203,6 +230,7 @@ public class SentimentAggregationService {
         news.setSource(fact.getSources() == null ? null
                 : fact.getSources().stream().findFirst().orElse(null));
         news.setPublishTime(fact.getPublishTime());
+        news.setModelResult(modelResult);
         return news;
     }
 
@@ -458,6 +486,7 @@ public class SentimentAggregationService {
         private Double materialityScore;
         private Double stockSpecificity;
         private LocalDateTime publishTime;
+        private SentimentAnalysisResult modelResult;
     }
 }
-// AI_GENERATE_END-------------------
+// AI_GENERATE_END--------------------

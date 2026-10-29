@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START--------------
 package com.stock.data.repository;
 
 import com.stock.data.entity.StockPrice;
@@ -7,6 +7,7 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,7 +16,7 @@ import java.util.Optional;
  * 提供完整时间序列、日期区间和最近窗口查询，最近窗口查询用于限制模型训练与推理的内存占用。
  *
  * @author mwangli
- * @since 2026-10-08
+ * @since 2026-10-29
  */
 @Repository
 public interface PriceRepository extends MongoRepository<StockPrice, String> {
@@ -47,6 +48,64 @@ public interface PriceRepository extends MongoRepository<StockPrice, String> {
      */
     List<StockPrice> findByCodeAndDateLessThanEqualOrderByDateDesc(
             String code, LocalDate endDate, Pageable pageable);
+
+    /**
+     * 按来源版本查询指定股票的最近日线。
+     *
+     * @param code 股票代码
+     * @param source 数据来源
+     * @param sourceVersion 数据契约版本
+     * @param pageable 查询窗口
+     * @return 日期倒序的统一日线
+     */
+    List<StockPrice> findByCodeAndSourceAndSourceVersionOrderByDateDesc(
+            String code, String source, String sourceVersion, Pageable pageable);
+
+    /**
+     * 按来源版本查询指定股票截止日期的最近日线。
+     *
+     * @param code 股票代码
+     * @param endDate 截止日期，包含当天
+     * @param source 数据来源
+     * @param sourceVersion 数据契约版本
+     * @param pageable 查询窗口
+     * @return 日期倒序的统一日线
+     */
+    List<StockPrice> findByCodeAndDateLessThanEqualAndSourceAndSourceVersionOrderByDateDesc(
+            String code, LocalDate endDate, String source, String sourceVersion, Pageable pageable);
+
+    /**
+     * 批量查询固定来源版本的股票日线。
+     *
+     * @param codes 股票代码集合
+     * @param source 数据来源
+     * @param sourceVersion 数据契约版本
+     * @return 按股票代码升序、日期倒序排列的统一日线
+     */
+    List<StockPrice> findByCodeInAndSourceAndSourceVersionOrderByCodeAscDateDesc(
+            Collection<String> codes, String source, String sourceVersion);
+
+    /**
+     * 批量查询固定来源版本截止日期的股票日线。
+     *
+     * @param codes 股票代码集合
+     * @param endDate 截止日期，包含当天
+     * @param source 数据来源
+     * @param sourceVersion 数据契约版本
+     * @return 按股票代码升序、日期倒序排列的统一日线
+     */
+    List<StockPrice> findByCodeInAndDateLessThanEqualAndSourceAndSourceVersionOrderByCodeAscDateDesc(
+            Collection<String> codes, LocalDate endDate, String source, String sourceVersion);
+
+    /**
+     * 查询固定来源版本的最新日线。
+     *
+     * @param source 数据来源
+     * @param sourceVersion 数据契约版本
+     * @return 最新统一日线
+     */
+    Optional<StockPrice> findFirstBySourceAndSourceVersionOrderByDateDesc(
+            String source, String sourceVersion);
 
     /**
      * 查询股票最新一条日线。
@@ -108,21 +167,5 @@ public interface PriceRepository extends MongoRepository<StockPrice, String> {
      */
     void deleteByCode(String code);
 
-    /**
-     * 判断股票指定交易日日线是否存在。
-     *
-     * @param code 股票代码
-     * @param date 交易日
-     * @return 是否存在
-     */
-    boolean existsByCodeAndDate(String code, LocalDate date);
-
-    /**
-     * 判断股票是否已有日线。
-     *
-     * @param code 股票代码
-     * @return 是否存在
-     */
-    boolean existsByCode(String code);
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END--------------

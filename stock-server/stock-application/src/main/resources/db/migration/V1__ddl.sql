@@ -70,24 +70,6 @@ CREATE TABLE IF NOT EXISTS `system_runtime_config` (
   PRIMARY KEY (`node_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='运行节点动态控制配置';
 
--- 数据同步水位与缺口状态
-CREATE TABLE IF NOT EXISTS `sync_state` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '数据同步状态数据库主键',
-  `dataset` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '数据集名称。',
-  `scope_key` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '业务范围，例如股票代码或账户标识。',
-  `last_success_cursor` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '最近确认成功的供应商游标。',
-  `last_success_date` date DEFAULT NULL COMMENT '最近确认成功的业务日期。',
-  `gap_start_date` date DEFAULT NULL COMMENT '缺口开始日期。',
-  `gap_end_date` date DEFAULT NULL COMMENT '缺口结束日期。',
-  `gap_status` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'RESOLVED' COMMENT '缺口状态，OPEN 或 RESOLVED。',
-  `retry_count` int NOT NULL DEFAULT '0' COMMENT '缺口重试次数。',
-  `last_error` longtext COLLATE utf8mb4_unicode_ci COMMENT '最近一次失败摘要。',
-  `created_at` datetime(6) NOT NULL COMMENT '创建时间。',
-  `updated_at` datetime(6) NOT NULL COMMENT '更新时间。',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_sync_state_scope` (`dataset`,`scope_key`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='数据同步水位与缺口状态';
-
 -- 券商委托事实
 CREATE TABLE IF NOT EXISTS `broker_order` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '券商委托事实数据库主键',

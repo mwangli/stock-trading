@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.model.repository;
 
 import com.stock.model.entity.NewsFeatureSnapshotDocument;
@@ -32,18 +32,6 @@ public interface NewsFeatureSnapshotRepository extends MongoRepository<NewsFeatu
             String featureVersion, Collection<String> stockCodes, LocalDate startDate, LocalDate endDate);
 
     /**
-     * 判断指定股票交易日的版本化快照是否已存在。
-     *
-     * @param featureVersion 新闻特征版本
-     * @param stockCode 股票代码
-     * @param featureTradeDate 特征交易日
-     * @return 已存在时返回 true
-     */
-    boolean existsByFeatureVersionAndMarketDataSourceAndMarketDataSourceVersionAndStockCodeAndFeatureTradeDate(
-            String featureVersion, String marketDataSource, String marketDataSourceVersion,
-            String stockCode, LocalDate featureTradeDate);
-
-    /**
      * 查询指定股票交易日的权威快照，用于行情来源版本升级时原位覆盖。
      *
      * @param featureVersion 新闻特征版本
@@ -54,4 +42,4 @@ public interface NewsFeatureSnapshotRepository extends MongoRepository<NewsFeatu
     Optional<NewsFeatureSnapshotDocument> findByFeatureVersionAndStockCodeAndFeatureTradeDate(
             String featureVersion, String stockCode, LocalDate featureTradeDate);
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------------
+// AI_GENERATE_START--------------------
 package com.stock.model.service;
 
 import ai.djl.Model;
@@ -7,7 +7,6 @@ import ai.djl.nn.Block;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
-import ai.djl.ndarray.types.Shape;
 import ai.djl.training.ParameterStore;
 import com.stock.data.dto.StockPriceItemDto;
 import com.stock.model.config.LstmTrainingConfig;
@@ -15,6 +14,7 @@ import com.stock.model.dto.LstmPredictionResultDto;
 import com.stock.model.dto.ModelFeatureMetadata;
 import com.stock.model.entity.LstmModelDocument;
 import com.stock.model.algorithm.StockLSTMModel;
+import com.stock.model.algorithm.LstmModelOutputBatch;
 import com.stock.model.algorithm.MasterTransformerModel;
 import com.stock.model.algorithm.RankingLSTMModel;
 import com.stock.model.algorithm.LstmArchitectureType;
@@ -137,14 +137,13 @@ public class LstmModelRuntimeService {
             try (NDArray inputArray = manager.create(smokeInput);
                  NDList output = block.forward(
                          new ParameterStore(manager, false), new NDList(inputArray), false)) {
-                NDArray values = output.singletonOrThrow();
-                Shape expectedShape = new Shape(batchSize, outputSize);
-                if (!expectedShape.equals(values.getShape())) {
-                    throw new IllegalStateException("模型前向输出形状不匹配: expected="
-                            + expectedShape + ", actual=" + values.getShape());
-                }
-                validateSmokeOutput(values.toFloatArray(), outputSize,
-                        LstmModelArtifactService.MODEL_VERSION.equals(metadata.getProperty("modelVersion")));
+                LstmModelOutputBatch outputBatch = LstmModelOutputBatch.from(
+                        output.singletonOrThrow(),
+                        metadata.getProperty("modelVersion"),
+                        metadata.getProperty("outputSchemaVersion"),
+                        outputSize,
+                        batchSize);
+                outputBatch.validateAll();
             }
         } catch (RuntimeException | IOException | MalformedModelException exception) {
             throw new IllegalStateException("模型版本运行时加载验证失败: modelId="
@@ -152,23 +151,6 @@ public class LstmModelRuntimeService {
         }
     }
 
-    private void validateSmokeOutput(float[] values, int outputSize, boolean rankingModel) {
-        for (float value : values) {
-            if (!Float.isFinite(value)) {
-                throw new IllegalStateException("模型前向输出包含非有限值");
-            }
-        }
-        int firstProbabilityColumn = rankingModel ? 2 : 1;
-        for (int offset = 0; offset < values.length; offset += outputSize) {
-            for (int column = firstProbabilityColumn; column < outputSize; column++) {
-                float value = values[offset + column];
-                if (value < 0F || value > 1F) {
-                    throw new IllegalStateException("模型概率输出超出 0 到 1 范围: column="
-                            + column + ", value=" + value);
-                }
-            }
-        }
-    }
 
     /**
      * 预测单只股票下一交易日结果。
@@ -306,8 +288,6 @@ public class LstmModelRuntimeService {
             Properties metadata,
             NDManager manager,
             Model model) {
-        boolean rankingModel = LstmModelArtifactService.MODEL_VERSION.equals(
-                metadata.getProperty("modelVersion"));
         List<String> validCodes = batchInput.validCodes();
         List<float[][]> inputs = batchInput.inputs();
         List<Double> lastClosePrices = batchInput.lastClosePrices();
@@ -321,17 +301,14 @@ public class LstmModelRuntimeService {
             NDArray inputArray = batchManager.create(flattened);
             ParameterStore parameterStore = new ParameterStore(manager, false);
             try (NDList output = model.getBlock().forward(parameterStore, new NDList(inputArray), false)) {
-                float[] values = output.singletonOrThrow().toFloatArray();
-                int outputSize = rankingModel ? RankingLSTMModel.OUTPUT_SIZE : StockLSTMModel.OUTPUT_SIZE;
-                int expectedOutputCount = validCodes.size() * outputSize;
-                if (values.length != expectedOutputCount) {
-                    throw new IllegalStateException("共享 LSTM 多任务批量输出数量不匹配");
-                }
-                return rankingModel
-                        ? mapRankingResults(validCodes, lastClosePrices, baseTradeDates,
-                                artifact.modelId(), metadata, values)
-                        : mapLegacyResults(validCodes, lastClosePrices, baseTradeDates,
-                                artifact.modelId(), values);
+                LstmModelOutputBatch outputBatch = LstmModelOutputBatch.from(
+                        output.singletonOrThrow(),
+                        metadata.getProperty("modelVersion"),
+                        metadata.getProperty("outputSchemaVersion"),
+                        intMetadata(metadata, "outputSize", -1),
+                        validCodes.size());
+                return mapModelResults(validCodes, lastClosePrices, baseTradeDates,
+                        artifact.modelId(), metadata, outputBatch);
             }
         }
     }
@@ -419,67 +396,34 @@ public class LstmModelRuntimeService {
         return new PredictionBatchInput(validCodes, inputs, lastClosePrices, baseTradeDates);
     }
 
-    private Map<String, LstmPredictionResultDto> mapRankingResults(
+    private Map<String, LstmPredictionResultDto> mapModelResults(
             List<String> codes,
             List<Double> lastClosePrices,
             List<LocalDate> baseTradeDates,
             String modelId,
             Properties metadata,
-            float[] values) {
+            LstmModelOutputBatch outputBatch) {
         Map<String, LstmPredictionResultDto> results = new LinkedHashMap<>();
         double returnScale = doubleMetadata(metadata, "targetReturnScale", config.getTargetReturnScale());
         double temperature = doubleMetadata(metadata, "probabilityTemperature", 1D);
-        for (int index = 0; index < codes.size(); index++) {
-            int offset = index * RankingLSTMModel.OUTPUT_SIZE;
-            float rankScore = values[offset];
-            float scaledReturn = values[offset + 1];
-            float rawProbability = values[offset + 2];
-            float downsideQuantile = values[offset + 3];
-            if (!Float.isFinite(rankScore) || !Float.isFinite(scaledReturn)
-                    || !Float.isFinite(rawProbability) || !Float.isFinite(downsideQuantile)) {
-                log.warn("跳过 Ranking LSTM 输出无效股票: stockCode={}", codes.get(index));
+        boolean rankingOutput = outputBatch.hasField(LstmModelOutputBatch.OutputField.RANK_SCORE);
+        for (int index = 0; index < outputBatch.sampleCount(); index++) {
+            if (!outputBatch.isValidSample(index)) {
+                log.warn("跳过 LSTM 输出无效股票: stockCode={}, modelVersion={}",
+                        codes.get(index), metadata.getProperty("modelVersion"));
                 continue;
             }
-            double expectedExcessReturn = scaledReturn * returnScale;
-            double calibratedProbability = calibrateProbability(rawProbability, temperature);
-            double lastClose = lastClosePrices.get(index);
-            results.put(codes.get(index), LstmPredictionResultDto.builder()
-                    .stockCode(codes.get(index))
-                    .baseTradeDate(baseTradeDates.get(index))
-                    .predictedClosePrice(lastClose > 0D ? lastClose * (1D + expectedExcessReturn) : 0D)
-                    .lastClosePrice(lastClose > 0D ? lastClose : null)
-                    .predictedChangeRatio(expectedExcessReturn)
-                    .directionProbability(calibratedProbability)
-                    .downsideRisk((double) downsideQuantile)
-                    .rankScore((double) rankScore)
-                    .expectedExcessReturn(expectedExcessReturn)
-                    .calibratedUpProbability(calibratedProbability)
-                    .downsideQuantile((double) downsideQuantile)
-                    .architectureType(metadata.getProperty("architectureType"))
-                    .featureSchemaVersion(metadata.getProperty("featureVersion"))
-                    .modelId(modelId)
-                    .build());
-        }
-        return results;
-    }
-
-    private Map<String, LstmPredictionResultDto> mapLegacyResults(
-            List<String> codes,
-            List<Double> lastClosePrices,
-            List<LocalDate> baseTradeDates,
-            String modelId,
-            float[] values) {
-        Map<String, LstmPredictionResultDto> results = new LinkedHashMap<>();
-        for (int index = 0; index < codes.size(); index++) {
-            int offset = index * StockLSTMModel.OUTPUT_SIZE;
-            float scaledReturn = values[offset];
-            float probability = values[offset + 1];
-            float downsideRisk = values[offset + 2];
-            if (!Float.isFinite(scaledReturn) || !Float.isFinite(probability) || !Float.isFinite(downsideRisk)) {
-                log.warn("跳过历史 LSTM 输出无效股票: stockCode={}", codes.get(index));
-                continue;
-            }
-            double predictedReturn = scaledReturn * config.getTargetReturnScale();
+            double scaledReturn = outputBatch.requiredValue(
+                    index, LstmModelOutputBatch.OutputField.SCALED_RETURN);
+            double rawProbability = outputBatch.requiredValue(
+                    index, LstmModelOutputBatch.OutputField.UP_PROBABILITY);
+            double downsideRisk = outputBatch.requiredValue(
+                    index, LstmModelOutputBatch.OutputField.DOWNSIDE_RISK);
+            Double rankScore = outputBatch.optionalValue(
+                    index, LstmModelOutputBatch.OutputField.RANK_SCORE);
+            double predictedReturn = scaledReturn * returnScale;
+            double effectiveProbability = rankingOutput
+                    ? calibrateProbability(rawProbability, temperature) : rawProbability;
             double lastClose = lastClosePrices.get(index);
             results.put(codes.get(index), LstmPredictionResultDto.builder()
                     .stockCode(codes.get(index))
@@ -487,10 +431,16 @@ public class LstmModelRuntimeService {
                     .predictedClosePrice(lastClose > 0D ? lastClose * (1D + predictedReturn) : 0D)
                     .lastClosePrice(lastClose > 0D ? lastClose : null)
                     .predictedChangeRatio(predictedReturn)
-                    .directionProbability((double) probability)
-                    .downsideRisk((double) downsideRisk)
-                    .architectureType(LstmArchitectureType.LEGACY_MULTITASK_LSTM.name())
-                    .featureSchemaVersion(LstmDataPreprocessor.FEATURE_VERSION)
+                    .directionProbability(effectiveProbability)
+                    .downsideRisk(downsideRisk)
+                    .rankScore(rankScore)
+                    .expectedExcessReturn(rankingOutput ? predictedReturn : null)
+                    .calibratedUpProbability(rankingOutput ? effectiveProbability : null)
+                    .downsideQuantile(rankingOutput ? downsideRisk : null)
+                    .architectureType(metadata.getProperty(
+                            "architectureType", LstmArchitectureType.LEGACY_MULTITASK_LSTM.name()))
+                    .featureSchemaVersion(metadata.getProperty(
+                            "featureVersion", LstmDataPreprocessor.FEATURE_VERSION))
                     .modelId(modelId)
                     .build());
         }
@@ -673,4 +623,4 @@ public class LstmModelRuntimeService {
             List<LocalDate> baseTradeDates) {
     }
 }
-// AI_GENERATE_END-----------------
+// AI_GENERATE_END--------------------

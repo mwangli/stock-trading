@@ -1,11 +1,10 @@
-// AI_GENERATE_START----------------
+// AI_GENERATE_START------------------
 package com.stock.data.service;
 
-import com.stock.data.dto.HistoricalStockUniverseDto;
-import com.stock.data.dto.StockAdjustmentFactorDto;
 import com.stock.data.entity.HistoricalStockUniverseEntity;
+import com.stock.data.entity.StockAdjustmentFactor;
 import com.stock.data.entity.StockMinuteBar;
-import com.stock.data.dto.StockPriceItemDto;
+import com.stock.data.entity.StockPrice;
 import com.stock.data.repository.HistoricalStockUniverseRepository;
 import com.stock.data.repository.StockInfoRepository;
 import com.stock.data.dto.BacktestDataAuditDto;
@@ -28,7 +27,7 @@ import java.util.Locale;
  * 只读取现有 MongoDB 元数据，不创建伪造数据，也不修改行情事实。
  *
  * @author mwangli
- * @since 2026-09-25
+ * @since 2026-10-29
  */
 @Slf4j
 @Service
@@ -55,11 +54,11 @@ public class BacktestDataAuditService {
         LocalDate earliestDailyDate = null;
         LocalDate latestDailyDate = null;
 
-        if (mongoTemplate.collectionExists(StockPriceItemDto.class)) {
+        if (mongoTemplate.collectionExists(StockPrice.class)) {
             Query rangeQuery = Query.query(Criteria.where("date").gte(startDate).lte(endDate));
-            dailyRecordCount = mongoTemplate.count(rangeQuery, StockPriceItemDto.class);
+            dailyRecordCount = mongoTemplate.count(rangeQuery, StockPrice.class);
             dailyStockCount = mongoTemplate.findDistinct(
-                    rangeQuery, "code", StockPriceItemDto.class, String.class).size();
+                    rangeQuery, "code", StockPrice.class, String.class).size();
             earliestDailyDate = findBoundaryDate(rangeQuery, Sort.Direction.ASC);
             latestDailyDate = findBoundaryDate(rangeQuery, Sort.Direction.DESC);
         }
@@ -83,7 +82,7 @@ public class BacktestDataAuditService {
                 ? endDate : workingDays.get(workingDays.size() - 1);
 
         MongoCoverage adjustmentCoverage = inspectMongoCoverage(
-                StockAdjustmentFactorDto.class, "tradeDate", "stockCode", startDate, endDate);
+                StockAdjustmentFactor.class, "tradeDate", "stockCode", startDate, endDate);
         long missingForwardFactorCount = countMissingForwardAdjustmentFactors(startDate, endDate);
         boolean adjustedPriceAvailable = dailyRecordCount > 0
                 && adjustmentCoverage.recordCount() >= dailyRecordCount
@@ -181,7 +180,7 @@ public class BacktestDataAuditService {
                 .with(Sort.by(direction, dateField))
                 .limit(1);
         T entity = mongoTemplate.findOne(boundaryQuery, entityClass);
-        if (entity instanceof StockAdjustmentFactorDto factor) {
+        if (entity instanceof StockAdjustmentFactor factor) {
             return factor.getTradeDate();
         }
         if (entity instanceof StockMinuteBar minuteBar) {
@@ -219,7 +218,7 @@ public class BacktestDataAuditService {
     }
 
     private long countMissingForwardAdjustmentFactors(LocalDate startDate, LocalDate endDate) {
-        if (!mongoTemplate.collectionExists(StockAdjustmentFactorDto.class)) {
+        if (!mongoTemplate.collectionExists(StockAdjustmentFactor.class)) {
             return 0;
         }
         Query query = Query.query(new Criteria().andOperator(
@@ -227,7 +226,7 @@ public class BacktestDataAuditService {
                 new Criteria().orOperator(
                         Criteria.where("forwardFactor").is(null),
                         Criteria.where("forwardFactor").lte(0))));
-        return mongoTemplate.count(query, StockAdjustmentFactorDto.class);
+        return mongoTemplate.count(query, StockAdjustmentFactor.class);
     }
 
     private boolean coversRange(LocalDate earliestDate, LocalDate latestDate,
@@ -248,7 +247,7 @@ public class BacktestDataAuditService {
         Query boundaryQuery = Query.of(rangeQuery)
                 .with(Sort.by(direction, "date"))
                 .limit(1);
-        StockPriceItemDto price = mongoTemplate.findOne(boundaryQuery, StockPriceItemDto.class);
+        StockPrice price = mongoTemplate.findOne(boundaryQuery, StockPrice.class);
         return price == null ? null : price.getDate();
     }
 
@@ -297,7 +296,7 @@ public class BacktestDataAuditService {
                 new Criteria().orOperator(
                         Criteria.where("effectiveTo").is(null),
                         Criteria.where("effectiveTo").gte(startDate))));
-        return mongoTemplate.count(query, HistoricalStockUniverseDto.class);
+        return mongoTemplate.count(query, HistoricalStockUniverseEntity.class);
     }
 
     private long countActiveUniverse(LocalDate date) {
@@ -310,7 +309,7 @@ public class BacktestDataAuditService {
                 new Criteria().orOperator(Criteria.where("delistedDate").is(null),
                         Criteria.where("delistedDate").gte(date))));
         return mongoTemplate.findDistinct(query, "stockCode",
-                HistoricalStockUniverseDto.class, String.class).size();
+                HistoricalStockUniverseEntity.class, String.class).size();
     }
 
     private void validateRange(LocalDate startDate, LocalDate endDate) {
@@ -330,4 +329,4 @@ public class BacktestDataAuditService {
         }
     }
 }
-// AI_GENERATE_END----------------
+// AI_GENERATE_END------------------

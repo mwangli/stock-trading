@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------------
+// AI_GENERATE_START-------------------------
 package com.stock.model.service;
 
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
@@ -15,6 +15,7 @@ import com.stock.model.dto.SentimentModelInput;
 import com.stock.model.entity.ModelMetadataDocument;
 import com.stock.model.repository.ModelMetadataRepository;
 import com.stock.model.vo.SentimentAnalysisResult;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,9 @@ import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * DJL PyTorch 情感模型加载与推理服务。
@@ -39,12 +43,17 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class SentimentTrainerService implements SentimentModelRuntime {
 
+    private static final int INFERENCE_BATCH_SIZE = 64;
+    private static final int INFERENCE_WORKER_COUNT = 2;
+
     private final SentimentTrainingConfig config;
     private final SentimentDataPreprocessor dataPreprocessor;
     private final ModelMetadataRepository modelMetadataRepository;
     private final ObjectMapper objectMapper;
     private final SentimentInputAssembler inputAssembler;
     private final SentimentPredictionNormalizer predictionNormalizer;
+    private final ExecutorService batchInferenceExecutor =
+            Executors.newFixedThreadPool(INFERENCE_WORKER_COUNT);
 
     private volatile ZooModel<String, Classifications> loadedModel;
     private volatile boolean modelLoaded;
@@ -211,13 +220,7 @@ public class SentimentTrainerService implements SentimentModelRuntime {
         try (Predictor<String, Classifications> predictor = loadedModel.newPredictor()) {
             List<Map<String, Double>> chunkProbabilities = new ArrayList<>();
             for (String chunk : input.getChunks()) {
-                Classifications classifications = predictor.predict(chunk);
-                Map<String, Double> probabilities = new HashMap<>();
-                for (Classifications.Classification classification : classifications.items()) {
-                    probabilities.put(normalizeLabel(classification.getClassName()),
-                            classification.getProbability());
-                }
-                chunkProbabilities.add(probabilities);
+                chunkProbabilities.add(toProbabilityMap(predictor.predict(chunk)));
             }
             return predictionNormalizer.normalize(
                     chunkProbabilities, input, config.getCalibrationTemperature());
@@ -225,6 +228,91 @@ public class SentimentTrainerService implements SentimentModelRuntime {
             markModelUnhealthy(exception);
             throw new IllegalStateException("FinBERT 情感模型推理失败", exception);
         }
+    }
+
+    /**
+     * 使用一个 Predictor 分批执行多个统一输入，减少历史回填的模型调用和资源创建开销。
+     *
+     * @param inputs 待推理的统一模型输入列表
+     * @return 与输入顺序一致的情感结果
+     * @throws IllegalArgumentException 输入或分块无效时抛出
+     * @throws IllegalStateException 模型未加载或批量推理失败时抛出
+     */
+    public List<SentimentAnalysisResult> predictBatch(List<SentimentModelInput> inputs) {
+        if (inputs == null || inputs.isEmpty()) {
+            return List.of();
+        }
+        for (SentimentModelInput input : inputs) {
+            if (input == null || input.getChunks() == null || input.getChunks().isEmpty()) {
+                throw new IllegalArgumentException("FinBERT 批量情感分析输入不能为空");
+            }
+        }
+        if ((!modelLoaded || loadedModel == null) && !loadModel()) {
+            throw new IllegalStateException("情感分析模型未加载: " + lastLoadError);
+        }
+        List<String> chunks = new ArrayList<>();
+        List<Integer> owners = new ArrayList<>();
+        List<List<Map<String, Double>>> probabilitiesByInput = new ArrayList<>(inputs.size());
+        for (int inputIndex = 0; inputIndex < inputs.size(); inputIndex++) {
+            probabilitiesByInput.add(new ArrayList<>());
+            for (String chunk : inputs.get(inputIndex).getChunks()) {
+                chunks.add(chunk);
+                owners.add(inputIndex);
+            }
+        }
+        try {
+            List<Integer> batchStarts = new ArrayList<>();
+            List<Future<List<Classifications>>> futures = new ArrayList<>();
+            for (int start = 0; start < chunks.size(); start += INFERENCE_BATCH_SIZE) {
+                int end = Math.min(start + INFERENCE_BATCH_SIZE, chunks.size());
+                List<String> batch = List.copyOf(chunks.subList(start, end));
+                batchStarts.add(start);
+                futures.add(batchInferenceExecutor.submit(() -> {
+                    try (Predictor<String, Classifications> predictor = loadedModel.newPredictor()) {
+                        return predictor.batchPredict(batch);
+                    }
+                }));
+            }
+            for (int batchIndex = 0; batchIndex < futures.size(); batchIndex++) {
+                int start = batchStarts.get(batchIndex);
+                List<Classifications> predictions = futures.get(batchIndex).get();
+                int expectedSize = Math.min(INFERENCE_BATCH_SIZE, chunks.size() - start);
+                if (predictions.size() != expectedSize) {
+                    throw new IllegalStateException("FinBERT 批量推理输出数量与输入分块不一致");
+                }
+                for (int offset = 0; offset < predictions.size(); offset++) {
+                    int owner = owners.get(start + offset);
+                    probabilitiesByInput.get(owner).add(toProbabilityMap(predictions.get(offset)));
+                }
+            }
+            List<SentimentAnalysisResult> results = new ArrayList<>(inputs.size());
+            for (int index = 0; index < inputs.size(); index++) {
+                results.add(predictionNormalizer.normalize(
+                        probabilitiesByInput.get(index), inputs.get(index),
+                        config.getCalibrationTemperature()));
+            }
+            return results;
+        } catch (Exception exception) {
+            markModelUnhealthy(exception);
+            throw new IllegalStateException("FinBERT 情感模型批量推理失败", exception);
+        }
+    }
+
+    /**
+     * 关闭历史批量推理线程池，避免应用停止时遗留后台线程。
+     */
+    @PreDestroy
+    public void shutdownBatchInferenceExecutor() {
+        batchInferenceExecutor.shutdownNow();
+    }
+
+    private Map<String, Double> toProbabilityMap(Classifications classifications) {
+        Map<String, Double> probabilities = new HashMap<>();
+        for (Classifications.Classification classification : classifications.items()) {
+            probabilities.put(normalizeLabel(classification.getClassName()),
+                    classification.getProbability());
+        }
+        return probabilities;
     }
 
     private synchronized void markModelUnhealthy(Exception exception) {
@@ -328,4 +416,4 @@ public class SentimentTrainerService implements SentimentModelRuntime {
         }
     }
 }
-// AI_GENERATE_END----------------------
+// AI_GENERATE_END-------------------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------
+// AI_GENERATE_START---------------
 package com.stock.model.service;
 
 import com.stock.model.dto.SentimentModelInput;
@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 情感模型在线推理门面。
@@ -60,6 +61,17 @@ public class SentimentInferenceService {
         return sentimentTrainerService.predict(input);
     }
 
+    /**
+     * 批量执行统一输入的 FinBERT 严格推理。
+     *
+     * @param inputs 统一模型输入列表
+     * @return 与输入顺序一致的情感结果
+     */
+    public List<SentimentAnalysisResult> analyzeSentimentRequiredBatch(
+            List<SentimentModelInput> inputs) {
+        return sentimentTrainerService.predictBatch(inputs);
+    }
+
 
     /**
      * 查询模型是否已加载。
@@ -106,4 +118,4 @@ public class SentimentInferenceService {
         return sentimentTrainerService.getModelVersion();
     }
 }
-// AI_GENERATE_END--------------
+// AI_GENERATE_END---------------

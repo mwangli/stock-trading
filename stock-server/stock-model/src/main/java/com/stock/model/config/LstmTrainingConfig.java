@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------------
+// AI_GENERATE_START-------------------
 package com.stock.model.config;
 
 import com.stock.model.algorithm.LstmArchitectureType;
@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
  * 配置用于创建新版本；发布时会将完整训练配置固化到 MongoDB 版本文档。
  *
  * @author mwangli
- * @since 2026-10-10
+ * @since 2026-10-29
  */
 @Data
 @Component
@@ -87,11 +87,11 @@ public class LstmTrainingConfig {
     /** 两个候选架构共用的 DJL 随机种子。 */
     private int randomSeed = 20261023;
 
-    /** 模型专用行情和关联事实的数据来源。 */
-    private String dataSource = "TUSHARE_FREE_DAILY";
+    /** 统一行情和关联事实的数据来源。 */
+    private String dataSource = "TUSHARE_DAILY";
 
-    /** 模型专用行情和关联事实的数据版本。 */
-    private String dataSourceVersion = "V6";
+    /** 统一行情和关联事实的数据契约版本。 */
+    private String dataSourceVersion = "TUSHARE_DAILY_V1";
 
     /** 市场基准参考序列代码。 */
     private String benchmarkSeriesCode = "MARKET_EQUAL_WEIGHT";
@@ -215,4 +215,4 @@ public class LstmTrainingConfig {
     private double minDelta = 0.0001;
 
 }
-// AI_GENERATE_END-----------------
+// AI_GENERATE_END-------------------

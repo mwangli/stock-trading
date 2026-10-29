@@ -1,26 +1,28 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.model.dto;
 
+import java.time.LocalDate;
+
 /**
- * 新闻日级特征快照回填结果。
+ * 新闻日级特征稀疏准备结果。
  *
- * @param scannedCount 本次扫描模型日线数量
- * @param generatedCount 本次生成快照数量
- * @param skippedCount 本次跳过已存在快照数量
- * @param failedCount 本次无效模型日线数量
- * @param lastProcessedBarId 最后处理的模型日线文档 ID
- * @param completed 是否已经完成全量回填并通过点时审计
- * @param audit 点时与覆盖率审计结果
+ * @param processedDateCount 本次完成准备的来源日期数量
+ * @param generatedSnapshotCount 本次生成的有事件稀疏快照数量
+ * @param existingSnapshotCount 本次复用的已有稀疏快照数量
+ * @param failedDateCount 本次失败日期数量
+ * @param lastProcessedDate 最后成功完成的特征交易日
+ * @param completed 是否已经完成全部日期准备并通过点时审计
+ * @param audit 日期完备性与稀疏快照审计结果
  * @author mwangli
  * @since 2026-10-25
  */
 public record NewsFeatureSnapshotBackfillResult(
-        long scannedCount,
-        long generatedCount,
-        long skippedCount,
-        long failedCount,
-        String lastProcessedBarId,
+        long processedDateCount,
+        long generatedSnapshotCount,
+        long existingSnapshotCount,
+        long failedDateCount,
+        LocalDate lastProcessedDate,
         boolean completed,
         NewsFeatureSnapshotAuditResult audit) {
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

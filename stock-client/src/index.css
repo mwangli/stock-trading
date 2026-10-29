@@ -1,4 +1,4 @@
-/* AI_GENERATE_START------------------------------------------- */
+/* AI_GENERATE_START---------------------------------------------- */
 @import "tailwindcss";
 
 :root,
@@ -178,10 +178,10 @@ select { letter-spacing: 0; }
 .app-sidebar-resize-handle {
   position: absolute;
   top: 0;
-  right: -5px;
+  right: -6px;
   bottom: 0;
   z-index: 40;
-  width: 10px;
+  width: 12px;
   cursor: col-resize;
   outline: none;
   touch-action: none;
@@ -190,7 +190,7 @@ select { letter-spacing: 0; }
 .app-sidebar-resize-handle::after {
   position: absolute;
   top: 0;
-  right: 4px;
+  right: 5px;
   bottom: 0;
   width: 2px;
   background: transparent;
@@ -202,6 +202,11 @@ select { letter-spacing: 0; }
 .app-sidebar-resize-handle:focus-visible::after {
   background: var(--brand);
   box-shadow: 0 0 0 2px var(--brand-soft);
+}
+
+.app-sidebar-resize-handle:active::after {
+  background: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
 }
 
 .app-page-title { font-size: 18px; font-weight: 750; line-height: 1.25; }
@@ -624,6 +629,36 @@ select { letter-spacing: 0; }
 .ant-modal-content,
 .ant-drawer-content,
 .ant-dropdown-menu { color: var(--text-primary); }
+
+.market-detail-drawer-resize-handle {
+  left: -6px !important;
+  width: 12px !important;
+  background: transparent !important;
+  opacity: 1 !important;
+}
+
+.market-detail-drawer-resize-handle::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 5px;
+  width: 2px;
+  background: transparent;
+  content: '';
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.market-detail-drawer-resize-handle:hover::after,
+.market-detail-drawer-resize-handle:focus-visible::after {
+  background: var(--brand);
+  box-shadow: 0 0 0 2px var(--brand-soft);
+}
+
+.market-detail-drawer-resize-handle:active::after,
+.market-detail-drawer-resize-handle.ant-drawer-resizable-dragger-dragging::after {
+  background: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
 
 .ant-card-head {
   min-height: 48px !important;
@@ -1181,4 +1216,4 @@ select { letter-spacing: 0; }
     border-bottom: 0;
   }
 }
-/* AI_GENERATE_END------------------------------------------- */
+/* AI_GENERATE_END---------------------------------------------- */

@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------------------------
+// AI_GENERATE_START--------------------------------
 package com.stock.model.service;
 
 import ai.djl.Model;
@@ -78,6 +78,8 @@ public class LstmModelArtifactService {
      * @param testMetrics 独立测试集横截面指标
      * @param walkForwardMetrics Walk-Forward 聚合指标
      * @param strictIsolationMetrics 60 日严格隔离敏感性指标
+     * @param walkForwardFoldDetails Walk-Forward 逐折评估明细
+     * @param strictIsolationFoldDetails 严格隔离逐折评估明细
      * @param probabilityTemperature 概率温度校准参数
      * @param architectureType 本次候选模型架构
      * @param crossSectionBatchSize 训练使用的同日横截面块大小
@@ -93,6 +95,8 @@ public class LstmModelArtifactService {
                             RankingValidationMetricsCalculator.RankingValidationMetrics testMetrics,
                             RankingValidationMetricsCalculator.WalkForwardMetrics walkForwardMetrics,
                             RankingValidationMetricsCalculator.WalkForwardMetrics strictIsolationMetrics,
+                            List<Map<String, Object>> walkForwardFoldDetails,
+                            List<Map<String, Object>> strictIsolationFoldDetails,
                             double probabilityTemperature,
                             LstmArchitectureType architectureType,
                             int crossSectionBatchSize) throws IOException {
@@ -135,11 +139,19 @@ public class LstmModelArtifactService {
             metrics.put("directionPositiveWeight", directionClassWeights.positiveWeight());
             metrics.put("directionNegativeWeight", directionClassWeights.negativeWeight());
             metrics.put("validationRankIc", validationMetrics.rankIc());
+            metrics.put("validationTopDecileGrossReturn", validationMetrics.topDecileGrossReturn());
             metrics.put("validationTopDecileNetReturn", validationMetrics.topDecileNetReturn());
             metrics.put("validationSelectionScore", validationMetrics.selectionScore());
+            metrics.put("validationRankScoreMean", validationMetrics.rankScoreMean());
+            metrics.put("validationRankScoreStandardDeviation", validationMetrics.rankScoreStandardDeviation());
+            metrics.put("validationLabelStandardDeviation", validationMetrics.labelStandardDeviation());
             metrics.put("testRankIc", testMetrics.rankIc());
+            metrics.put("testTopDecileGrossReturn", testMetrics.topDecileGrossReturn());
             metrics.put("testTopDecileNetReturn", testMetrics.topDecileNetReturn());
             metrics.put("testSelectionScore", testMetrics.selectionScore());
+            metrics.put("testRankScoreMean", testMetrics.rankScoreMean());
+            metrics.put("testRankScoreStandardDeviation", testMetrics.rankScoreStandardDeviation());
+            metrics.put("testLabelStandardDeviation", testMetrics.labelStandardDeviation());
             metrics.put("testOutputCollapsed", testMetrics.collapsed());
             metrics.put("walkForwardOutputCollapsed", walkForwardMetrics.collapsed());
             metrics.put("strictIsolationOutputCollapsed", strictIsolationMetrics.collapsed());
@@ -153,12 +165,30 @@ public class LstmModelArtifactService {
             metrics.put("walkForwardMeanRankIc", walkForwardMetrics.meanRankIc());
             metrics.put("walkForwardRankIcIr", walkForwardMetrics.rankIcIr());
             metrics.put("positiveRankIcWindowRatio", walkForwardMetrics.positiveRankIcRatio());
+            metrics.put("walkForwardTopDecileGrossReturn",
+                    walkForwardMetrics.averageTopDecileGrossReturn());
             metrics.put("walkForwardTopDecileNetReturn", walkForwardMetrics.averageTopDecileNetReturn());
+            metrics.put("walkForwardMonthlyGrossReturns", walkForwardMetrics.monthlyGrossReturns());
+            metrics.put("walkForwardMonthlyGrossReturnMean",
+                    walkForwardMetrics.monthlyGrossReturnMean());
+            metrics.put("walkForwardMonthlyGrossReturnStandardDeviation",
+                    walkForwardMetrics.monthlyGrossReturnStandardDeviation());
+            metrics.put("walkForwardPositiveMonthRatio", walkForwardMetrics.positiveMonthRatio());
+            metrics.put("walkForwardWorstMonthlyGrossReturn",
+                    walkForwardMetrics.worstMonthlyGrossReturn());
             metrics.put("walkForwardBrierScore", walkForwardMetrics.brierScore());
             metrics.put("walkForwardBrierBaseline", walkForwardMetrics.brierBaseline());
             metrics.put("walkForwardMaximumDrawdown", walkForwardMetrics.maximumDrawdown());
+            metrics.put("walkForwardMinimumRankScoreStandardDeviation",
+                    walkForwardMetrics.minimumRankScoreStandardDeviation());
+            metrics.put("walkForwardCollapsedFoldCount", walkForwardMetrics.collapsedFoldCount());
+            metrics.put("walkForwardFoldDetails", List.copyOf(walkForwardFoldDetails));
             metrics.put("strictIsolationFoldCount", strictIsolationMetrics.foldCount());
             metrics.put("strictIsolationMeanRankIc", strictIsolationMetrics.meanRankIc());
+            metrics.put("strictIsolationMinimumRankScoreStandardDeviation",
+                    strictIsolationMetrics.minimumRankScoreStandardDeviation());
+            metrics.put("strictIsolationCollapsedFoldCount", strictIsolationMetrics.collapsedFoldCount());
+            metrics.put("strictIsolationFoldDetails", List.copyOf(strictIsolationFoldDetails));
             metrics.put("trainStartDate", processedData.getTrainStartDate());
             metrics.put("trainEndDate", processedData.getTrainEndDate());
             metrics.put("validationStartDate", processedData.getValidationStartDate());
@@ -563,4 +593,4 @@ public class LstmModelArtifactService {
      */
     public record ModelArtifact(byte[] params, String metadata, String modelId) { }
 }
-// AI_GENERATE_END------------------------------
+// AI_GENERATE_END--------------------------------

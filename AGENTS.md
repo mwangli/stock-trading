@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START--------------------------------------------------------------------- -->
+<!-- AI_GENERATE_START----------------------------------------------------------------------- -->
 # 交互语言要求
 
 1. **强制使用中文**：所有回答、思考过程、输出内容必须使用中文
@@ -149,7 +149,7 @@ java -jar stock-server/stock-application/target/stock-application-1.0.0-SNAPSHOT
 
 ### Java Model Training
 
-模型训练代码位于 `stock-server/stock-model/src/main/java/com/stock/model/`，统一使用 DJL API + PyTorch Engine。训练任务必须通过 `stock-server/stock-platform` 内 `com.stock.platform` 的 `JobConfig + JobSchedulerService` 调度，不引入 Python、ONNX 或独立模型服务。
+模型训练代码位于 `stock-server/stock-model/src/main/java/com/stock/model/`，统一使用 DJL API + PyTorch Engine。模型训练由滚动评估结果和确定性训练策略自动触发，训练请求必须先持久化再由受控执行器异步执行；不要求通过固定 Cron 周期触发，也不引入 Python、ONNX 或独立模型服务。
 
 线上节点允许通过 `LSTM_TRAINING_ENABLED=true` 开启训练能力。训练触发只保留禁止交易时段执行、禁止并发训练、数据/资源有效和参数范围合法等必要硬门禁。训练成功先生成候选版本，再由统一自动评估流程执行 Champion-Challenger 比较、小权重晋级、滚动升权和异常回退；不得要求人工激活作为正常生产切换条件。
 
@@ -229,16 +229,14 @@ java -jar stock-server/stock-application/target/stock-application-1.0.0-SNAPSHOT
 
 #### 定时任务规范（强制）
 
-1. **统一任务调度中心**：所有后端定时任务必须通过 `stock-server` 内的 `com.stock.platform` 调度体系完成，禁止在业务类中直接使用 `@Scheduled` 注解。
-2. **任务注册方式**：
-   - 在 `job_config` 表中配置任务的 `jobName` / `beanName` / `methodName` / `cronExpression`；
-   - 或在 `JobBootstrap` 中添加默认任务配置，由 `JobSchedulerService` 统一加载。
-3. **任务执行入口**：
-   - 任务执行逻辑应放在独立的 `Scheduler` / `Job` 类中（如 `DataSyncScheduler`、`ModelTrainingRecordSyncJob`）；
-   - 方法为无参 `public void methodName()`，供调度中心通过反射调用。
-4. **Agent 约束**：后续新增或修改任何后台任务时：
-   - **禁止**在任意类上新增 `@Scheduled`；
-   - 必须通过 `JobConfig + JobSchedulerService` 的方式接入统一调度体系。
+1. **集中时间触发入口**：允许在 `stock-server/stock-platform` 的独立 `scheduler` 或 `task` 类中使用 Spring `@Scheduled`。`stock-data`、`stock-model`、`stock-trading`、`stock-agent` 等业务模块不得直接声明定时方法，只提供可复用、可幂等调用的领域 Service。
+2. **触发与业务分离**：`@Scheduled` 方法只负责计算业务日期、生成运行标识并调用对应协调 Service，不得直接实现股票循环、数据清洗、模型训练、预测计算、订单轮询或券商写入。复杂业务流程由所属模块 Service 显式编排。
+3. **按业务频率选择入口**：每日增量数据准备、预测、交易和收盘后评估可以使用固定时间触发；低频模型训练必须由评估结果和训练策略自动触发；仅首次需要的全量采集、清洗和历史回填由启动初始化协调器结合持久化状态执行，不得伪装成每日定时任务。
+4. **时区与交易日**：所有市场相关 `@Scheduled` 必须显式指定 `zone = "Asia/Shanghai"`，并在业务入口再次校验交易日、目标交易日和合法交易窗口；Cron 命中不等于允许执行真实交易。
+5. **幂等与并发**：每次运行必须使用稳定业务键（至少包含任务类型和 `businessDate`），通过数据库唯一约束、条件更新或已有批次状态阻止重复执行；禁止仅依赖 JVM 内存锁防止重复预测、重复训练或重复下单。
+6. **执行记录与恢复**：定时入口必须记录 `QUEUED`、`RUNNING`、`SUCCESS`、`FAILED`、`SKIPPED`、`CANCELLED` 等执行状态。应用重启后应检查未完成运行；错过的预测可在合法时间内补偿，错过交易窗口后不得补发新委托，状态未知的委托必须先以券商事实恢复。
+7. **单一触发路径**：同一业务任务只能保留一套权威触发方式。迁移到 `@Scheduled` 后，应同步删除对应 Quartz Job、`JobConfig` 默认配置、固定任务映射和重复页面入口；除非用户明确要求，不保留 Quartz 与 `@Scheduled` 的兼容双轨。
+8. **线程隔离**：长时间数据处理、模型推理、训练和交易执行不得占用调度线程。定时方法应快速提交到受控执行器，并为预测、训练和交易分别设置明确的并发上限与停止边界。
 
 #### 接口日志规范（强制）
 
@@ -516,6 +514,18 @@ public [返回值类型] [methodName]([参数列表]) {
 10. **数据与空状态**：页面优先展示接口真实数据；接口暂无数据、请求失败或功能未实现时，必须提供明确的加载、空状态和错误状态，不能留下空白区域或报错页面。Mock 数据只能作为明确的展示兜底，不得伪装成真实业务结果。
 11. **修改边界**：UI 调整默认只改变展示层、交互状态和布局，不得无理由改变 API 路径、请求参数、字段名、保存行为或后端业务规则；涉及契约变化时必须同步检查前后端类型和调用方。
 12. **滚动容器单一职责**：页面级内容统一由布局层 `.app-content` 负责纵向滚动，普通页面表格不得设置 `Table.scroll.y`、`100vh` 或固定视口计算高度，以免形成内外双纵向滚动条；表格超出可视宽度时仅使用自适应横向滚动（优先 `scroll={{ x: 'max-content' }}` 或等价容器）。只有 Modal、Drawer、日志面板等明确限定高度的局部容器才允许使用内部纵向滚动，并且必须设置 `min-height: 0`、避免父子滚动区域重复承载同一内容。
+13. **可调宽控件统一**：侧栏、目录、详情抽屉等横向可调宽区域必须复用统一拖拽分隔线规范，不得由各页面分别定义不同的命中宽度、颜色或按住状态。统一样式和交互要求见“可调宽侧栏与抽屉统一规范”。
+
+#### 可调宽侧栏与抽屉统一规范（强制）
+
+1. **统一命中区域**：纵向拖拽分隔线使用 `12px` 透明命中区域，居中覆盖面板边界；中心指示线固定为 `2px`，静止时透明，不得依赖粗边框或整条实色背景表达可拖拽状态。
+2. **统一交互状态**：悬停和键盘焦点使用品牌色指示线与 `0 0 0 2px var(--brand-soft)` 光晕；按住或拖动状态使用品牌色指示线与 `0 0 0 3px var(--brand-soft)` 光晕。组件库默认的整条拖拽背景或透明度变化与本规范冲突时必须覆盖。
+3. **统一指针行为**：纵向分隔线使用 `cursor: col-resize` 和 `touch-action: none`；拖动期间禁止文本选择，并在结束或取消时恢复页面原有 `cursor`、`user-select` 和指针捕获状态，禁止遗留全局交互副作用。
+4. **宽度安全边界**：每个可调宽区域必须定义默认值、最小值和最大值；最大值还需受当前视口和主内容最小可用宽度约束。浏览器窗口缩小时必须把已选宽度收敛到新范围，禁止面板超出视口或挤压主内容至不可用。
+5. **组件能力优先**：Ant Design `Drawer` 优先使用其原生 `resizable`、`size` 和 `maxSize` 能力；普通布局分栏可使用 Pointer Events 和 `setPointerCapture`。不得为同一交互同时维护组件库拖拽、自定义鼠标监听和另一套兼容实现。
+6. **可访问性要求**：自定义拖拽分隔线使用 `role="separator"`、`aria-orientation="vertical"`、可识别的 `aria-label` 和 `tabIndex={0}`；应支持方向键调整，并提供恢复默认宽度的明确操作。纯组件库实现无法补充键盘能力时，不得移除组件原生语义或关闭已有焦点管理。
+7. **样式归属**：跨页面通用拖拽样式维护在 `stock-client/src/index.css`；文档工作台等页面专属布局样式维护在页面 `styles.css`，但状态值必须与全局规范一致。新增同类控件前先复用 `.app-sidebar-resize-handle`、`.documentation-resize-handle` 或 `.market-detail-drawer-resize-handle` 的设计，不得复制后自行改色或改尺寸。
+8. **验证边界**：修改可调宽交互后至少检查默认、最小、最大、窗口缩放、悬停、焦点、按住拖动、取消拖动和内容不重叠场景。未获得用户明确授权时，只进行源码、样式和差异静态检查，不执行前端构建、测试、启动或浏览器运行验证。
 
 #### 日期范围选择组件统一规范（强制）
 
@@ -702,4 +712,4 @@ docker exec stock-mongo sh -lc 'mongosh --quiet --username "$MONGO_INITDB_ROOT_U
 **Agent 特别指令**:
 - 本项目无自动化测试，不要生成或要求补充测试用例；质量依赖代码审查与手工验证。
 - Backend 只允许 `stock-base`、`stock-data`、`stock-model`、`stock-trading`、`stock-platform`、`stock-agent`、`stock-application` 七个子模块；只有 `stock-application` 可执行和发布。
-<!-- AI_GENERATE_END--------------------------------------------------------------------- -->
+<!-- AI_GENERATE_END----------------------------------------------------------------------- -->

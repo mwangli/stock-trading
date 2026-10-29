@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START----------
 package com.stock.model.service;
 
 import com.stock.data.dto.StockInfoItemDto;
@@ -241,78 +241,96 @@ public class PredictionExecutionQueueService {
 
     private void executePrediction(String batchId, List<String> stockCodes) {
         long startedNanos = System.nanoTime();
-        ModelPredictionBatchDocument batch = batchRepository.findById(batchId).orElseThrow();
+        ModelPredictionBatchDocument runningBatch = batchRepository.findById(batchId).orElseThrow();
         try {
-            batch.setStatus("RUNNING");
-            batch.setStartedAt(LocalDateTime.now());
-            batch.setProgressMessage("正在执行全市场预测");
-            batch.setUpdatedAt(LocalDateTime.now());
-            batchRepository.save(batch);
+            runningBatch.setStatus("RUNNING");
+            runningBatch.setStartedAt(LocalDateTime.now());
+            runningBatch.setProgressMessage("正在执行全市场预测");
+            runningBatch.setUpdatedAt(LocalDateTime.now());
+            runningBatch = batchRepository.saveAndFlush(runningBatch);
+            LocalDate baseTradeDate = runningBatch.getBaseTradeDate();
+            String modelId = runningBatch.getModelId();
+            String modelVersion = runningBatch.getModelVersion();
             int[] successCount = {0};
             int[] failedCount = {0};
             int[] processedCount = {0};
             Map<LocalDate, LocalDate> targetDateCache = new HashMap<>();
             inferenceService.predictNextBatchChunks(
-                    stockCodes, batch.getModelId(), batch.getBaseTradeDate(), PREDICTION_BATCH_SIZE,
-                    (currentCodes, results) -> persistChunk(batch, stockCodes.size(), currentCodes, results,
+                    stockCodes, modelId, baseTradeDate, PREDICTION_BATCH_SIZE,
+                    (currentCodes, results) -> persistChunk(
+                            batchId, baseTradeDate, modelId, modelVersion,
+                            stockCodes.size(), currentCodes, results,
                             targetDateCache, processedCount, successCount, failedCount, startedNanos));
+            ModelPredictionBatchDocument completedBatch = batchRepository.findById(batchId).orElseThrow();
             if (successCount[0] <= 0) {
-                batch.setStatus("FAILED");
-                batch.setErrorMessage("全市场预测未生成任何有效结果");
-                batch.setProgressMessage("全市场预测失败：未生成有效结果");
-                batch.setEvaluationQueueStatus("FAILED");
-                batch.setEvaluationWaitReason(null);
-                batch.setEvaluationErrorMessage("预测任务未生成有效结果，无法进入评估队列");
-                batch.setFinishedAt(LocalDateTime.now());
-                batch.setUpdatedAt(LocalDateTime.now());
-                batchRepository.save(batch);
+                completedBatch.setStatus("FAILED");
+                completedBatch.setErrorMessage("全市场预测未生成任何有效结果");
+                completedBatch.setProgressMessage("全市场预测失败：未生成有效结果");
+                completedBatch.setEvaluationQueueStatus("FAILED");
+                completedBatch.setEvaluationWaitReason(null);
+                completedBatch.setEvaluationErrorMessage("预测任务未生成有效结果，无法进入评估队列");
+                completedBatch.setFinishedAt(LocalDateTime.now());
+                completedBatch.setUpdatedAt(LocalDateTime.now());
+                batchRepository.saveAndFlush(completedBatch);
                 log.error("全市场模型预测无有效结果: batchId={}, modelId={}, failed={}",
-                        batch.getId(), batch.getModelId(), failedCount[0]);
+                        batchId, modelId, failedCount[0]);
                 return;
             }
-            batch.setStatus(failedCount[0] == 0 ? "COMPLETED" : "PARTIAL");
-            batch.setFinishedAt(LocalDateTime.now());
-            batch.setProgressMessage("全市场预测完成");
-            batch.setEvaluationQueueStatus("WAITING");
-            batch.setEvaluationWaitReason(EVALUATION_WAIT_MARKET_DATA);
-            batch.setUpdatedAt(LocalDateTime.now());
-            batchRepository.save(batch);
-            evaluationService.refreshAbility(batch, predictionRepository.findByBatchId(batch.getId()));
-            ModelPredictionBatchDocument completed = batchRepository.findById(batch.getId()).orElse(batch);
-            if (evaluationQueueService.enqueue(completed)) {
+            completedBatch.setStatus(failedCount[0] == 0 ? "COMPLETED" : "PARTIAL");
+            completedBatch.setFinishedAt(LocalDateTime.now());
+            completedBatch.setProgressMessage("全市场预测完成");
+            completedBatch.setEvaluationQueueStatus("WAITING");
+            completedBatch.setEvaluationWaitReason(EVALUATION_WAIT_MARKET_DATA);
+            completedBatch.setUpdatedAt(LocalDateTime.now());
+            completedBatch = batchRepository.saveAndFlush(completedBatch);
+            evaluationService.refreshAbility(
+                    completedBatch, predictionRepository.findByBatchId(completedBatch.getId()));
+            ModelPredictionBatchDocument refreshedBatch = batchRepository.findById(batchId).orElse(completedBatch);
+            if (evaluationQueueService.enqueue(refreshedBatch)) {
                 evaluationQueueService.submitWorker();
             }
             log.info("全市场模型预测完成: batchId={}, modelId={}, success={}, failed={}, elapsedSeconds={}",
-                    batch.getId(), batch.getModelId(), successCount[0], failedCount[0], elapsedSeconds(startedNanos));
+                    batchId, modelId, successCount[0], failedCount[0], elapsedSeconds(startedNanos));
         } catch (CancellationException exception) {
-            batch.setStatus("CANCELLED");
-            batch.setProgressMessage("预测任务已停止");
-            batch.setEvaluationQueueStatus("FAILED");
-            batch.setEvaluationWaitReason(null);
-            batch.setEvaluationErrorMessage("预测任务已停止，无法进入评估队列");
-            batch.setFinishedAt(LocalDateTime.now());
-            batch.setUpdatedAt(LocalDateTime.now());
-            batchRepository.save(batch);
+            ModelPredictionBatchDocument cancelledBatch = batchRepository.findById(batchId).orElseThrow();
+            cancelledBatch.setStatus("CANCELLED");
+            cancelledBatch.setProgressMessage("预测任务已停止");
+            cancelledBatch.setEvaluationQueueStatus("FAILED");
+            cancelledBatch.setEvaluationWaitReason(null);
+            cancelledBatch.setEvaluationErrorMessage("预测任务已停止，无法进入评估队列");
+            cancelledBatch.setFinishedAt(LocalDateTime.now());
+            cancelledBatch.setUpdatedAt(LocalDateTime.now());
+            batchRepository.saveAndFlush(cancelledBatch);
             log.warn("全市场模型预测已停止: batchId={}, processed={}/{}",
-                    batch.getId(), batch.getProcessedStocks(), stockCodes.size());
+                    batchId, cancelledBatch.getProcessedStocks(), stockCodes.size());
         } catch (Exception exception) {
-            batch.setStatus("FAILED");
-            batch.setErrorMessage(exception.getMessage());
-            batch.setProgressMessage("全市场预测失败");
-            batch.setEvaluationQueueStatus("FAILED");
-            batch.setEvaluationWaitReason(null);
-            batch.setEvaluationErrorMessage("预测任务失败，无法进入评估队列");
-            batch.setFinishedAt(LocalDateTime.now());
-            batch.setUpdatedAt(LocalDateTime.now());
-            batchRepository.save(batch);
+            ModelPredictionBatchDocument failedBatch = batchRepository.findById(batchId).orElseThrow();
+            failedBatch.setStatus("FAILED");
+            failedBatch.setErrorMessage(exception.getMessage());
+            failedBatch.setProgressMessage("全市场预测失败");
+            failedBatch.setEvaluationQueueStatus("FAILED");
+            failedBatch.setEvaluationWaitReason(null);
+            failedBatch.setEvaluationErrorMessage("预测任务失败，无法进入评估队列");
+            failedBatch.setFinishedAt(LocalDateTime.now());
+            failedBatch.setUpdatedAt(LocalDateTime.now());
+            batchRepository.saveAndFlush(failedBatch);
             log.error("全市场模型预测失败: batchId={}", batchId, exception);
         }
     }
 
-    private void persistChunk(ModelPredictionBatchDocument batch, int totalStocks, List<String> currentCodes,
-                              Map<String, LstmPredictionResultDto> results,
-                              Map<LocalDate, LocalDate> targetDateCache,
-                              int[] processedCount, int[] successCount, int[] failedCount, long startedNanos) {
+    private void persistChunk(
+            String batchId,
+            LocalDate baseTradeDate,
+            String modelId,
+            String modelVersion,
+            int totalStocks,
+            List<String> currentCodes,
+            Map<String, LstmPredictionResultDto> results,
+            Map<LocalDate, LocalDate> targetDateCache,
+            int[] processedCount,
+            int[] successCount,
+            int[] failedCount,
+            long startedNanos) {
         if (Thread.currentThread().isInterrupted()) {
             throw new CancellationException("预测队列消费已被中断");
         }
@@ -325,19 +343,19 @@ public class PredictionExecutionQueueService {
                     || result.getPredictedChangeRatio() == null) {
                 continue;
             }
-            if (!batch.getBaseTradeDate().equals(result.getBaseTradeDate())) {
+            if (!baseTradeDate.equals(result.getBaseTradeDate())) {
                 log.warn("跳过基准交易日落后的个股预测: batchId={}, stockCode={}, expectedBaseDate={}, actualBaseDate={}",
-                        batch.getId(), result.getStockCode(), batch.getBaseTradeDate(), result.getBaseTradeDate());
+                        batchId, result.getStockCode(), baseTradeDate, result.getBaseTradeDate());
                 continue;
             }
             StockInfoItemDto stockInfo = stockInfoMap.get(result.getStockCode());
             ModelPredictionDocument document = new ModelPredictionDocument();
-            document.setBatchId(batch.getId());
+            document.setBatchId(batchId);
             document.setStockCode(result.getStockCode());
             document.setStockName(stockInfo == null ? null : stockInfo.getName());
             document.setIndustryCode(stockInfo == null ? null : stockInfo.getIndustryCode());
-            document.setModelId(batch.getModelId());
-            document.setModelVersion(batch.getModelVersion());
+            document.setModelId(modelId);
+            document.setModelVersion(modelVersion);
             document.setBaseTradeDate(result.getBaseTradeDate());
             LocalDate resultTradeDate = targetDateCache.computeIfAbsent(
                     result.getBaseTradeDate(), this::resolveNextTradeDate);
@@ -364,15 +382,16 @@ public class PredictionExecutionQueueService {
         processedCount[0] += currentCodes.size();
         successCount[0] += documents.size();
         failedCount[0] += currentCodes.size() - documents.size();
-        batch.setProcessedStocks(processedCount[0]);
-        batch.setSuccessCount(successCount[0]);
-        batch.setFailedCount(failedCount[0]);
-        batch.setCoverageRate(rate(successCount[0], totalStocks));
-        batch.setProgressMessage("已完成 " + processedCount[0] + "/" + totalStocks + " 支股票预测");
-        batch.setUpdatedAt(LocalDateTime.now());
-        batchRepository.save(batch);
+        ModelPredictionBatchDocument progressBatch = batchRepository.findById(batchId).orElseThrow();
+        progressBatch.setProcessedStocks(processedCount[0]);
+        progressBatch.setSuccessCount(successCount[0]);
+        progressBatch.setFailedCount(failedCount[0]);
+        progressBatch.setCoverageRate(rate(successCount[0], totalStocks));
+        progressBatch.setProgressMessage("已完成 " + processedCount[0] + "/" + totalStocks + " 支股票预测");
+        progressBatch.setUpdatedAt(LocalDateTime.now());
+        batchRepository.saveAndFlush(progressBatch);
         log.info("全市场模型预测进度: batchId={}, processed={}/{}, success={}, failed={}, elapsedSeconds={}",
-                batch.getId(), processedCount[0], totalStocks, successCount[0], failedCount[0],
+                batchId, processedCount[0], totalStocks, successCount[0], failedCount[0],
                 elapsedSeconds(startedNanos));
     }
 
@@ -399,4 +418,4 @@ public class PredictionExecutionQueueService {
     }
 
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END----------

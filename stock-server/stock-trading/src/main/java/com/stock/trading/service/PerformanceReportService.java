@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------------
+// AI_GENERATE_START-------------------
 package com.stock.trading.service;
 
 import com.stock.trading.dto.PerformanceOverviewDto;
@@ -46,7 +46,6 @@ public class PerformanceReportService {
 
     private final AccountSnapshotRepository accountSnapshotRepository;
     private final TradeRecordRepository tradeRecordRepository;
-    private final BrokerIdentityService brokerIdentityService;
 
     /**
      * 查询当前账户的收益报表总览。
@@ -54,11 +53,9 @@ public class PerformanceReportService {
      * @return 收益统计、排行、日收益和月收益
      */
     public PerformanceOverviewDto getOverview() {
-        String brokerCode = brokerIdentityService.getBrokerCode();
-        String accountId = brokerIdentityService.getAccountId();
-        AccountSnapshotEntity account = accountSnapshotRepository
-                .findFirstByBrokerCodeAndAccountIdOrderByCapturedAtDesc(brokerCode, accountId)
-                .orElse(null);
+        AccountSnapshotEntity account = getLatestAccountSnapshot();
+        String brokerCode = account.getBrokerCode();
+        String accountId = account.getAccountId();
         List<TradeRecordEntity> records = tradeRecordRepository
                 .findByBrokerCodeAndAccountIdOrderByBuyTimeDesc(brokerCode, accountId);
 
@@ -77,11 +74,11 @@ public class PerformanceReportService {
                 .toList();
 
         return PerformanceOverviewDto.builder()
-                .capturedAt(account != null ? account.getCapturedAt() : null)
-                .totalAssets(account != null ? account.getTotalAssets() : BigDecimal.ZERO)
-                .availableCash(account != null ? account.getAvailableCash() : BigDecimal.ZERO)
-                .marketValue(account != null ? account.getMarketValue() : BigDecimal.ZERO)
-                .frozenCash(account != null ? account.getFrozenCash() : BigDecimal.ZERO)
+                .capturedAt(account.getCapturedAt())
+                .totalAssets(zero(account.getTotalAssets()))
+                .availableCash(zero(account.getAvailableCash()))
+                .marketValue(zero(account.getMarketValue()))
+                .frozenCash(zero(account.getFrozenCash()))
                 .cumulativeProfit(cumulativeProfit)
                 .cumulativeReturnRate(rate(cumulativeProfit, cumulativeCost))
                 .dailyProfit(sumProfit(dailyRecords))
@@ -112,8 +109,9 @@ public class PerformanceReportService {
         if (yearMonth == null) {
             throw new IllegalArgumentException("yearMonth 不能为空");
         }
-        String brokerCode = brokerIdentityService.getBrokerCode();
-        String accountId = brokerIdentityService.getAccountId();
+        AccountSnapshotEntity account = getLatestAccountSnapshot();
+        String brokerCode = account.getBrokerCode();
+        String accountId = account.getAccountId();
         List<TradeRecordEntity> records = tradeRecordRepository
                 .findByBrokerCodeAndAccountIdOrderByBuyTimeDesc(brokerCode, accountId).stream()
                 .filter(this::isRealized)
@@ -156,8 +154,9 @@ public class PerformanceReportService {
      * @return 最近有交易月份的收益分析；账户无已实现交易时返回明确无数据结果
      */
     public PerformanceAnalysisDto getLatestAnalysisWithTrades() {
-        String brokerCode = brokerIdentityService.getBrokerCode();
-        String accountId = brokerIdentityService.getAccountId();
+        AccountSnapshotEntity account = getLatestAccountSnapshot();
+        String brokerCode = account.getBrokerCode();
+        String accountId = account.getAccountId();
         return tradeRecordRepository
                 .findFirstByBrokerCodeAndAccountIdAndSoldQuantityGreaterThanAndLastSellTimeIsNotNullOrderByLastSellTimeDesc(
                         brokerCode, accountId, 0)
@@ -177,6 +176,16 @@ public class PerformanceReportService {
                         .topLosses(List.of())
                         .availabilityReason("账户没有已实现交易记录")
                         .build());
+    }
+
+    private AccountSnapshotEntity getLatestAccountSnapshot() {
+        AccountSnapshotEntity account = accountSnapshotRepository.findFirstByOrderByCapturedAtDesc()
+                .orElseThrow(() -> new IllegalStateException("暂无账户资金快照，请等待券商定时同步任务执行"));
+        if (account.getBrokerCode() == null || account.getBrokerCode().isBlank()
+                || account.getAccountId() == null || account.getAccountId().isBlank()) {
+            throw new IllegalStateException("最新账户资金快照缺少券商或账户标识");
+        }
+        return account;
     }
 
     private List<PerformanceRankingItemDto> buildRanking(List<TradeRecordEntity> records) {
@@ -351,4 +360,4 @@ public class PerformanceReportService {
         private long winningCount;
     }
 }
-// AI_GENERATE_END------------------
+// AI_GENERATE_END-------------------

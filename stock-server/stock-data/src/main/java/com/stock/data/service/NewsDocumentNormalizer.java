@@ -1,4 +1,4 @@
-// AI_GENERATE_START----
+// AI_GENERATE_START-----
 package com.stock.data.service;
 
 import com.stock.data.dto.NewsNormalizedDocument;
@@ -16,6 +16,9 @@ import java.util.regex.Pattern;
  */
 @Component
 public class NewsDocumentNormalizer {
+
+    /** 规范化正文最大字符数，完整供应商原文继续由 content 或 rawContent 保留。 */
+    private static final int MAXIMUM_NORMALIZED_CONTENT_LENGTH = 100_000;
 
     private static final Pattern SCRIPT_STYLE_PATTERN = Pattern.compile(
             "(?is)<(script|style)[^>]*>.*?</\\1>");
@@ -55,7 +58,7 @@ public class NewsDocumentNormalizer {
         content = DISCLAIMER_PATTERN.matcher(content).replaceAll("");
         content = SPACE_PATTERN.matcher(content).replaceAll(" ");
         content = BLANK_LINE_PATTERN.matcher(content).replaceAll("\n\n").trim();
-        return new NewsNormalizedDocument(title, content);
+        return new NewsNormalizedDocument(title, limit(content, MAXIMUM_NORMALIZED_CONTENT_LENGTH));
     }
 
     private String normalizeCommon(String value) {
@@ -74,5 +77,9 @@ public class NewsDocumentNormalizer {
         normalized = SPACE_PATTERN.matcher(normalized).replaceAll(" ");
         return normalized.trim();
     }
+
+    private String limit(String value, int maximumLength) {
+        return value.length() <= maximumLength ? value : value.substring(0, maximumLength);
+    }
 }
-// AI_GENERATE_END----
+// AI_GENERATE_END-----

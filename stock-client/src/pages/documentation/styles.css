@@ -1,4 +1,4 @@
-/* AI_GENERATE_START ----------- */
+/* AI_GENERATE_START-- ----------- */
 .app-content-documentation {
   min-height: 0;
   overflow: hidden;
@@ -35,7 +35,7 @@
   top: 0;
   bottom: 0;
   z-index: 8;
-  width: 10px;
+  width: 12px;
   cursor: col-resize;
   outline: none;
   touch-action: none;
@@ -45,7 +45,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 4px;
+  left: 5px;
   width: 2px;
   background: transparent;
   content: '';
@@ -58,12 +58,17 @@
   box-shadow: 0 0 0 2px var(--brand-soft);
 }
 
+.documentation-resize-handle:active::after {
+  background: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+
 .documentation-resize-handle-left {
-  right: -5px;
+  right: -6px;
 }
 
 .documentation-resize-handle-right {
-  left: 0;
+  left: -6px;
 }
 
 .documentation-sidebar {
@@ -663,4 +668,4 @@
     text-align: left;
   }
 }
-/* AI_GENERATE_END ----------- */
+/* AI_GENERATE_END-- ----------- */

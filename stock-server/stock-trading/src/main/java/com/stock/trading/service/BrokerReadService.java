@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------------------
+// AI_GENERATE_START-----------------------
 package com.stock.trading.service;
 
 import com.stock.trading.dto.BrokerAccountDto;
@@ -39,7 +39,6 @@ public class BrokerReadService {
 
     private final ZXBrokerAdapter brokerAdapter;
     private final FeeCalculator feeCalculator;
-    private final BrokerIdentityService brokerIdentityService;
     private final AccountSnapshotRepository accountSnapshotRepository;
 
     /**
@@ -61,8 +60,7 @@ public class BrokerReadService {
      */
     public BrokerAccountDto getAccount() {
         AccountSnapshotEntity account = accountSnapshotRepository
-                .findFirstByBrokerCodeAndAccountIdOrderByCapturedAtDesc(
-                        brokerIdentityService.getBrokerCode(), brokerIdentityService.getAccountId())
+                .findFirstByOrderByCapturedAtDesc()
                 .orElseThrow(() -> new IllegalStateException("暂无账户资金快照，请等待券商定时同步任务执行"));
         return toAccountDto(account);
     }
@@ -80,10 +78,11 @@ public class BrokerReadService {
         if (informationCutoffAt == null) {
             throw new IllegalArgumentException("账户快照截止时间不能为空");
         }
+        AccountSnapshotEntity currentAccount = accountSnapshotRepository.findFirstByOrderByCapturedAtDesc()
+                .orElseThrow(() -> new IllegalStateException("暂无账户资金快照，请等待券商定时同步任务执行"));
         AccountSnapshotEntity account = accountSnapshotRepository
                 .findFirstByBrokerCodeAndAccountIdAndCapturedAtLessThanEqualOrderByCapturedAtDesc(
-                        brokerIdentityService.getBrokerCode(), brokerIdentityService.getAccountId(),
-                        informationCutoffAt)
+                        currentAccount.getBrokerCode(), currentAccount.getAccountId(), informationCutoffAt)
                 .orElseThrow(() -> new IllegalStateException("信息截止时间前无可用账户资金快照"));
         return toAccountDto(account);
     }
@@ -254,4 +253,4 @@ public class BrokerReadService {
         return "****" + trimmed.substring(trimmed.length() - 4);
     }
 }
-// AI_GENERATE_END---------------------
+// AI_GENERATE_END-----------------------

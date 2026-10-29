@@ -1,4 +1,4 @@
-// AI_GENERATE_START-- --------
+// AI_GENERATE_START-- ---------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -402,17 +402,18 @@ public class ModelTrainingPipelineService {
         }
         double walkForwardMeanRankIc = requireFiniteMetric(
                 "Walk-Forward 平均 Rank IC", result.getWalkForwardMeanRankIc());
-        double walkForwardTopDecileNetReturn = requireFiniteMetric(
-                "Walk-Forward Top 10% 成本后收益", result.getWalkForwardTopDecileNetReturn());
+        double walkForwardTopDecileGrossReturn = requireFiniteMetric(
+                "Walk-Forward Top 10% 毛收益", result.getWalkForwardTopDecileGrossReturn());
         double maximumDrawdown = requireFiniteMetric(
-                "Walk-Forward 最大回撤", result.getMaximumDrawdown());
+                "Walk-Forward 毛收益最大回撤", result.getMaximumDrawdown());
         try {
-            promotionPolicy.requirePerformanceHardGate(walkForwardTopDecileNetReturn, maximumDrawdown);
+            promotionPolicy.requireOfflineGrossPerformanceGate(
+                    walkForwardTopDecileGrossReturn, maximumDrawdown);
         } catch (IllegalStateException exception) {
             throw new CandidateQualityRejectedException(exception.getMessage(), exception);
         }
-        return promotionPolicy.qualityScore(
-                walkForwardMeanRankIc, walkForwardTopDecileNetReturn, maximumDrawdown);
+        return promotionPolicy.offlineGrossQualityScore(
+                walkForwardMeanRankIc, walkForwardTopDecileGrossReturn, maximumDrawdown);
     }
 
     private double requireFiniteMetric(String metricName, Double value) {
@@ -465,12 +466,13 @@ public class ModelTrainingPipelineService {
                 return null;
             }
             Double activeRankIc = comparableMetric(metrics, "walkForwardMeanRankIc");
-            Double activeNetReturn = comparableMetric(metrics, "walkForwardTopDecileNetReturn");
+            Double activeGrossReturn = comparableMetric(metrics, "walkForwardTopDecileGrossReturn");
             Double activeDrawdown = comparableMetric(metrics, "walkForwardMaximumDrawdown");
-            if (activeRankIc == null || activeNetReturn == null || activeDrawdown == null) {
+            if (activeRankIc == null || activeGrossReturn == null || activeDrawdown == null) {
                 return null;
             }
-            return promotionPolicy.qualityScore(activeRankIc, activeNetReturn, activeDrawdown);
+            return promotionPolicy.offlineGrossQualityScore(
+                    activeRankIc, activeGrossReturn, activeDrawdown);
         } catch (JsonProcessingException | RuntimeException exception) {
             log.warn("当前生产模型指标无法解析，按无可比较生产评分处理: modelId={}", active.getId());
             return null;
@@ -541,4 +543,4 @@ public class ModelTrainingPipelineService {
             String candidateVersionId) {
     }
 }
-// AI_GENERATE_END-- --------
+// AI_GENERATE_END-- ---------

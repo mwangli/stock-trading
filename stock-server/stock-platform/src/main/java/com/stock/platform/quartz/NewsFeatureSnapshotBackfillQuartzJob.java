@@ -10,7 +10,7 @@ import org.quartz.JobExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
- * 新闻日级特征快照历史回填 Quartz 任务。
+ * 新闻日级特征稀疏准备 Quartz 任务。
  *
  * @author mwangli
  * @since 2026-10-25
@@ -25,7 +25,7 @@ public class NewsFeatureSnapshotBackfillQuartzJob extends InterruptibleQuartzJob
     private DataSyncScheduler dataSyncScheduler;
 
     /**
-     * 执行 `temporal-news-v1` 分批回填与完成态审计。
+     * 按交易日执行 `temporal-news-v2-8d` 稀疏准备与完成态审计。
      *
      * @param context Quartz 执行上下文
      */

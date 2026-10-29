@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------
+// AI_GENERATE_START------------------
 package com.stock.data.service;
 
 import com.stock.data.dto.HistoricalStockUniverseDto;
@@ -13,7 +13,7 @@ import com.stock.data.dto.StockPriceItemDto;
 import com.stock.data.dto.StockTradabilityDto;
 import com.stock.data.entity.HistoricalStockUniverseEntity;
 import com.stock.data.entity.ModelReferenceDailyBar;
-import com.stock.data.entity.ModelStockDailyBar;
+import com.stock.data.entity.NewsCollectionBackfillState;
 import com.stock.data.entity.ReferenceSeriesType;
 import com.stock.data.entity.StockAdjustmentFactor;
 import com.stock.data.entity.StockDailyTradabilityFact;
@@ -21,10 +21,10 @@ import com.stock.data.entity.StockInfo;
 import com.stock.data.entity.StockNews;
 import com.stock.data.entity.StockNewsEventFact;
 import com.stock.data.entity.StockPrice;
+import com.stock.data.enums.NewsBackfillStatus;
 import com.stock.data.enums.NewsDocumentRole;
 import com.stock.data.repository.HistoricalStockUniverseRepository;
 import com.stock.data.repository.ModelReferenceDailyBarRepository;
-import com.stock.data.repository.ModelStockDailyBarRepository;
 import com.stock.data.repository.NewsEventFactRepository;
 import com.stock.data.repository.NewsRepository;
 import com.stock.data.repository.PriceRepository;
@@ -32,9 +32,10 @@ import com.stock.data.repository.StockAdjustmentFactorRepository;
 import com.stock.data.repository.StockDailyTradabilityFactRepository;
 import com.stock.data.repository.StockInfoRepository;
 import lombok.RequiredArgsConstructor;
-import org.bson.types.ObjectId;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -44,6 +45,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -55,17 +57,20 @@ import java.util.Set;
  * 向模型、决策、执行和平台包提供只读市场事实。
  *
  * @author mwangli
- * @since 2026-10-24
+ * @since 2026-10-29
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class MarketDataQueryService {
     private static final int MODEL_STOCK_BAR_BATCH_SIZE = 100;
+    private static final int NEWS_EVENT_QUERY_BATCH_SIZE = 200;
+    private static final int NEWS_EVENT_QUERY_MAX_ATTEMPTS = 3;
+    private static final long NEWS_EVENT_QUERY_RETRY_DELAY_MS = 1_000L;
     private final PriceRepository priceRepository;
     private final StockInfoRepository stockInfoRepository;
     private final NewsRepository newsRepository;
     private final NewsEventFactRepository newsEventFactRepository;
-    private final ModelStockDailyBarRepository modelStockDailyBarRepository;
     private final ModelReferenceDailyBarRepository modelReferenceDailyBarRepository;
     private final StockAdjustmentFactorRepository adjustmentFactorRepository;
     private final HistoricalStockUniverseRepository historicalUniverseRepository;
@@ -207,10 +212,56 @@ public class MarketDataQueryService {
                                                     LocalDateTime startTime,
                                                     LocalDateTime endTime,
                                                     Collection<NewsDocumentRole> roles) {
-        return newsEventFactRepository
-                .findByStockCodeInAndPublishTimeBetweenAndDocumentRoleInOrderByPublishTimeDesc(
-                        stockCodes, startTime, endTime, roles)
-                .stream().map(this::toNewsEventDto).toList();
+        List<String> normalizedStockCodes = stockCodes == null ? List.of() : stockCodes.stream()
+                .filter(code -> code != null && !code.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (normalizedStockCodes.isEmpty()) {
+            return List.of();
+        }
+        List<StockNewsEventFact> facts = new ArrayList<>();
+        for (int start = 0; start < normalizedStockCodes.size(); start += NEWS_EVENT_QUERY_BATCH_SIZE) {
+            int end = Math.min(start + NEWS_EVENT_QUERY_BATCH_SIZE, normalizedStockCodes.size());
+            facts.addAll(findNewsEventBatchWithRetry(
+                    normalizedStockCodes.subList(start, end), startTime, endTime, roles));
+        }
+        facts.sort(Comparator.comparing(
+                StockNewsEventFact::getPublishTime,
+                Comparator.nullsLast(Comparator.reverseOrder())));
+        return facts.stream().map(this::toNewsEventDto).toList();
+    }
+
+    private List<StockNewsEventFact> findNewsEventBatchWithRetry(
+            Collection<String> stockCodes,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            Collection<NewsDocumentRole> roles) {
+        for (int attempt = 1; attempt <= NEWS_EVENT_QUERY_MAX_ATTEMPTS; attempt++) {
+            try {
+                return newsEventFactRepository
+                        .findByStockCodeInAndPublishTimeBetweenAndDocumentRoleInOrderByPublishTimeDesc(
+                                stockCodes, startTime, endTime, roles);
+            } catch (DataAccessResourceFailureException exception) {
+                if (attempt >= NEWS_EVENT_QUERY_MAX_ATTEMPTS) {
+                    throw exception;
+                }
+                log.warn("批量新闻事件查询连接异常，准备重试: stocks={}, attempt={}/{}, reason={}",
+                        stockCodes.size(), attempt, NEWS_EVENT_QUERY_MAX_ATTEMPTS,
+                        exception.getMostSpecificCause().getMessage());
+                sleepBeforeNewsEventRetry();
+            }
+        }
+        throw new IllegalStateException("批量新闻事件查询重试流程异常结束");
+    }
+
+    private void sleepBeforeNewsEventRetry() {
+        try {
+            Thread.sleep(NEWS_EVENT_QUERY_RETRY_DELAY_MS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("批量新闻事件查询重试被中断", exception);
+        }
     }
 
     /**
@@ -239,7 +290,7 @@ public class MarketDataQueryService {
                                                     LocalDateTime endTime,
                                                     int page,
                                                     int size) {
-        return newsEventFactRepository.findByDocumentRoleAndPublishTimeBetweenOrderByPublishTimeAsc(
+        return newsEventFactRepository.findByDocumentRoleAndPublishTimeBetweenOrderByPublishTimeAscIdAsc(
                         role, startTime, endTime, PageRequest.of(page, size))
                 .stream().map(this::toNewsEventDto).toList();
     }
@@ -276,12 +327,12 @@ public class MarketDataQueryService {
                                                           String sourceVersion,
                                                           int limit) {
         PageRequest page = PageRequest.of(0, Math.max(1, limit));
-        List<ModelStockDailyBar> bars = endDate == null
-                ? modelStockDailyBarRepository
-                .findByStockCodeAndSourceAndSourceVersionOrderByTradeDateDesc(
+        List<StockPrice> bars = endDate == null
+                ? priceRepository
+                .findByCodeAndSourceAndSourceVersionOrderByDateDesc(
                         stockCode, source, sourceVersion, page)
-                : modelStockDailyBarRepository
-                .findByStockCodeAndTradeDateLessThanEqualAndSourceAndSourceVersionOrderByTradeDateDesc(
+                : priceRepository
+                .findByCodeAndDateLessThanEqualAndSourceAndSourceVersionOrderByDateDesc(
                         stockCode, endDate, source, sourceVersion, page);
         return bars.stream().map(this::toModelStockBarDto).toList();
     }
@@ -315,16 +366,16 @@ public class MarketDataQueryService {
         for (int start = 0; start < codes.size(); start += MODEL_STOCK_BAR_BATCH_SIZE) {
             int end = Math.min(start + MODEL_STOCK_BAR_BATCH_SIZE, codes.size());
             List<String> batchCodes = codes.subList(start, end);
-            List<ModelStockDailyBar> bars = endDate == null
-                    ? modelStockDailyBarRepository
-                    .findByStockCodeInAndSourceAndSourceVersionOrderByStockCodeAscTradeDateDesc(
+            List<StockPrice> bars = endDate == null
+                    ? priceRepository
+                    .findByCodeInAndSourceAndSourceVersionOrderByCodeAscDateDesc(
                             batchCodes, source, sourceVersion)
-                    : modelStockDailyBarRepository
-                    .findByStockCodeInAndTradeDateLessThanEqualAndSourceAndSourceVersionOrderByStockCodeAscTradeDateDesc(
+                    : priceRepository
+                    .findByCodeInAndDateLessThanEqualAndSourceAndSourceVersionOrderByCodeAscDateDesc(
                             batchCodes, endDate, source, sourceVersion);
-            for (ModelStockDailyBar bar : bars) {
+            for (StockPrice bar : bars) {
                 List<ModelStockDailyBarDto> stockBars = grouped.computeIfAbsent(
-                        bar.getStockCode(), ignored -> new ArrayList<>());
+                        bar.getCode(), ignored -> new ArrayList<>());
                 if (stockBars.size() < safeLimit) {
                     stockBars.add(toModelStockBarDto(bar));
                 }
@@ -334,41 +385,93 @@ public class MarketDataQueryService {
     }
 
     /**
-     * 统计固定来源版本的模型股票日线数量。
+     * 查询固定来源版本包含的去重交易日。
      *
      * @param source 数据来源
      * @param sourceVersion 数据版本
-     * @return 日线记录数量
+     * @return 按日期升序排列的交易日
      */
-    public long countModelStockBars(String source, String sourceVersion) {
+    public List<LocalDate> findModelStockBarDates(String source, String sourceVersion) {
         Query query = Query.query(Criteria.where("source").is(source)
                 .and("sourceVersion").is(sourceVersion));
-        return mongoTemplate.count(query, ModelStockDailyBar.class);
+        return mongoTemplate.findDistinct(
+                        query, "date", StockPrice.class, LocalDate.class).stream()
+                .filter(java.util.Objects::nonNull)
+                .sorted()
+                .toList();
     }
 
     /**
-     * 按主键游标顺序查询固定来源版本的模型股票日线。
+     * 查询点时窗口内指定角色涉及的去重股票代码。
      *
-     * @param lastProcessedId 上次处理的记录主键；首次查询时为空
-     * @param source 数据来源
-     * @param sourceVersion 数据版本
-     * @param limit 最大返回数量
-     * @return 主键升序的模型股票日线 DTO
+     * @param startTime 窗口开始时间，包含
+     * @param endTime 信息截止时间，包含
+     * @param roles 允许进入新闻特征的事件角色
+     * @return 股票代码集合
      */
-    public List<ModelStockDailyBarDto> findModelStockBarsAfterId(
-            String lastProcessedId, String source, String sourceVersion, int limit) {
-        Criteria sourceCriteria = Criteria.where("source").is(source)
-                .and("sourceVersion").is(sourceVersion);
-        Criteria criteria = lastProcessedId == null || lastProcessedId.isBlank()
-                ? sourceCriteria
-                : new Criteria().andOperator(sourceCriteria,
-                        Criteria.where("_id").gt(new ObjectId(lastProcessedId)));
-        return mongoTemplate.find(Query.query(criteria)
-                        .with(Sort.by(Sort.Direction.ASC, "_id"))
-                        .limit(Math.max(1, limit)), ModelStockDailyBar.class).stream()
-                .map(this::toModelStockBarDto)
-                .toList();
+    public Set<String> findNewsEventStockCodes(
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            Collection<NewsDocumentRole> roles) {
+        Query query = Query.query(Criteria.where("publishTime").gte(startTime).lte(endTime)
+                .and("documentRole").in(roles));
+        return mongoTemplate.findDistinct(
+                        query, "stockCode", StockNewsEventFact.class, String.class).stream()
+                .filter(code -> code != null && !code.isBlank())
+                .map(String::trim)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
+
+    /**
+     * 统计点时窗口内指定角色的去重事件事实数量。
+     *
+     * @param startTime 窗口开始时间，包含
+     * @param endTime 信息截止时间，包含
+     * @param roles 允许进入新闻特征的事件角色
+     * @return 事件事实数量
+     */
+    public long countNewsEvents(
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            Collection<NewsDocumentRole> roles) {
+        Query query = Query.query(Criteria.where("publishTime").gte(startTime).lte(endTime)
+                .and("documentRole").in(roles));
+        return mongoTemplate.count(query, StockNewsEventFact.class);
+    }
+
+    /**
+     * 查询点时窗口内指定角色事件的最晚发布时间。
+     *
+     * @param startTime 窗口开始时间，包含
+     * @param endTime 信息截止时间，包含
+     * @param roles 允许进入新闻特征的事件角色
+     * @return 最晚发布时间；窗口内无事件时返回 null
+     */
+    public LocalDateTime findLatestNewsEventTime(
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            Collection<NewsDocumentRole> roles) {
+        Query query = Query.query(Criteria.where("publishTime").gte(startTime).lte(endTime)
+                        .and("documentRole").in(roles))
+                .with(Sort.by(Sort.Direction.DESC, "publishTime"))
+                .limit(1);
+        query.fields().include("publishTime");
+        StockNewsEventFact latest = mongoTemplate.findOne(query, StockNewsEventFact.class);
+        return latest == null ? null : latest.getPublishTime();
+    }
+
+    /**
+     * 判断指定新闻治理版本的历史清洗和事件事实回填是否完整结束。
+     *
+     * @param pipelineVersion 新闻治理管线版本
+     * @return 历史治理状态为 COMPLETED 时返回 true
+     */
+    public boolean isNewsCollectionBackfillComplete(String pipelineVersion) {
+        NewsCollectionBackfillState state = mongoTemplate.findById(
+                pipelineVersion, NewsCollectionBackfillState.class);
+        return state != null && state.getStatus() == NewsBackfillStatus.COMPLETED;
+    }
+
     /**
      * 查询固定来源版本的最新模型日线日期。
      *
@@ -377,9 +480,8 @@ public class MarketDataQueryService {
      * @return 最新数据日期，不存在时返回 null
      */
     public LocalDate findLatestModelStockBarDate(String source, String sourceVersion) {
-        return modelStockDailyBarRepository
-                .findFirstBySourceAndSourceVersionOrderByTradeDateDesc(source, sourceVersion)
-                .map(ModelStockDailyBar::getTradeDate).orElse(null);
+        return priceRepository.findFirstBySourceAndSourceVersionOrderByDateDesc(source, sourceVersion)
+                .map(StockPrice::getDate).orElse(null);
     }
 
     /**
@@ -399,15 +501,18 @@ public class MarketDataQueryService {
         Set<String> requestedCodes = normalizedValues(stockCodes);
         Query stockSourceScope = Query.query(Criteria.where("source").is(source)
                 .and("sourceVersion").is(sourceVersion)
-                .and("stockCode").in(requestedCodes));
+                .and("code").in(requestedCodes));
         Set<String> modelBarCodes = distinctValues(
-                stockSourceScope, "stockCode", ModelStockDailyBar.class);
+                stockSourceScope, "code", StockPrice.class);
+        Query relatedFactScope = Query.query(Criteria.where("source").is(source)
+                .and("sourceVersion").is(sourceVersion)
+                .and("stockCode").in(requestedCodes));
         Set<String> factorCodes = distinctValues(
-                stockSourceScope, "stockCode", StockAdjustmentFactor.class);
+                relatedFactScope, "stockCode", StockAdjustmentFactor.class);
         Set<String> universeCodes = distinctValues(
-                stockSourceScope, "stockCode", HistoricalStockUniverseEntity.class);
+                relatedFactScope, "stockCode", HistoricalStockUniverseEntity.class);
         Set<String> tradabilityCodes = distinctValues(
-                stockSourceScope, "stockCode", StockDailyTradabilityFact.class);
+                relatedFactScope, "stockCode", StockDailyTradabilityFact.class);
         Set<String> requiredIndustryCodes = distinctValues(
                 Query.query(Criteria.where("source").is(source)
                         .and("sourceVersion").is(sourceVersion)
@@ -652,13 +757,13 @@ public class MarketDataQueryService {
                 .publishTime(news.getPublishTime()).build();
     }
 
-    private ModelStockDailyBarDto toModelStockBarDto(ModelStockDailyBar bar) {
-        return ModelStockDailyBarDto.builder().id(bar.getId()).stockCode(bar.getStockCode())
-                .tradeDate(bar.getTradeDate())
+    private ModelStockDailyBarDto toModelStockBarDto(StockPrice bar) {
+        return ModelStockDailyBarDto.builder().id(bar.getId()).stockCode(bar.getCode())
+                .tradeDate(bar.getDate())
                 .openPrice(bar.getOpenPrice()).highPrice(bar.getHighPrice()).lowPrice(bar.getLowPrice())
                 .closePrice(bar.getClosePrice()).preClosePrice(bar.getPreClosePrice())
                 .volume(bar.getVolume()).amount(bar.getAmount())
-                .turnoverRate(bar.getTurnoverRate()).volumeUnit(bar.getVolumeUnit())
+                .turnoverRate(null).volumeUnit(bar.getVolumeUnit())
                 .amountUnit(bar.getAmountUnit()).build();
     }
 
@@ -689,4 +794,4 @@ public class MarketDataQueryService {
                 .capturedAt(fact.getCapturedAt()).build();
     }
 }
-// AI_GENERATE_END-------------
+// AI_GENERATE_END------------------

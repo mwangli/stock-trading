@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START-------------
 package com.stock.data.controller;
 
 import com.stock.data.dto.AdjustmentFactorImportRequestDto;
@@ -6,7 +6,7 @@ import com.stock.data.dto.HistoricalUniverseImportRequestDto;
 import com.stock.data.dto.MarketDataImportResultDto;
 import com.stock.data.dto.MinuteBarImportRequestDto;
 import com.stock.data.dto.ModelReferenceDailyBarImportRequestDto;
-import com.stock.data.dto.ModelStockDailyBarImportRequestDto;
+import com.stock.data.dto.StockDailyBarImportRequestDto;
 import com.stock.base.web.ResponseDTO;
 import com.stock.data.dto.StockDailyTradabilityImportRequestDto;
 import com.stock.data.service.MarketDataFoundationService;
@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 外部数据源协议由后续适配器负责，本接口只接收已明确来源和版本的结构化事实。
  *
  * @author mwangli
- * @since 2026-09-25
+ * @since 2026-10-29
  */
 @Slf4j
 @RestController
@@ -77,18 +77,18 @@ public class MarketDataFoundationController {
     }
 
     /**
-     * 导入模型特征专用的版本化股票日线。
+     * 导入全系统统一使用的版本化股票日线。
      *
      * @param request 股票日线批次
      * @return 导入统计
      */
-    @PostMapping("/modelStockDailyBars/import")
-    public ResponseDTO<MarketDataImportResultDto> importModelStockDailyBars(
-            @Valid @RequestBody ModelStockDailyBarImportRequestDto request) {
-        log.info("[MarketDataFoundation] 导入模型股票日线: source={}, version={}, count={}, volumeUnit={}",
+    @PostMapping("/stockDailyBars/import")
+    public ResponseDTO<MarketDataImportResultDto> importStockDailyBars(
+            @Valid @RequestBody StockDailyBarImportRequestDto request) {
+        log.info("[MarketDataFoundation] 导入统一股票日线: source={}, version={}, count={}, volumeUnit={}",
                 request.getSource(), request.getSourceVersion(), request.getItems().size(),
                 request.getVolumeUnit());
-        return ResponseDTO.success(marketDataFoundationService.importModelStockDailyBars(request));
+        return ResponseDTO.success(marketDataFoundationService.importStockDailyBars(request));
     }
 
     /**
@@ -120,4 +120,4 @@ public class MarketDataFoundationController {
         return ResponseDTO.success(marketDataFoundationService.importStockDailyTradability(request));
     }
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END-------------

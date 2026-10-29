@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.data.service;
 
 import com.stock.data.dto.StockNewsLatestResult;
@@ -6,6 +6,7 @@ import com.stock.data.dto.StockNewsSummaryResponse;
 import com.stock.data.entity.StockNews;
 import com.stock.data.enums.NewsQualityStatus;
 import com.stock.data.repository.NewsRepository;
+import com.stock.data.validator.NewsContentQualityValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -25,6 +26,7 @@ public class StockNewsQueryService {
     private static final int SUMMARY_MAX_LENGTH = 500;
 
     private final NewsRepository newsRepository;
+    private final NewsContentQualityValidator contentQualityValidator;
 
     /**
      * 查询指定股票最近三条可消费新闻。
@@ -39,9 +41,11 @@ public class StockNewsQueryService {
         }
 
         List<StockNewsSummaryResponse> items = newsRepository
-                .findTop3ByStockCodeAndQualityStatusOrderByPublishTimeDesc(
+                .findTop20ByStockCodeAndQualityStatusOrderByPublishTimeDesc(
                         normalizedStockCode, NewsQualityStatus.READY)
                 .stream()
+                .filter(this::hasSubstantiveContent)
+                .limit(3)
                 .map(this::toSummaryResponse)
                 .toList();
         return StockNewsLatestResult.builder().items(items).build();
@@ -58,6 +62,12 @@ public class StockNewsQueryService {
                 .category(news.getCategory())
                 .publishTime(news.getPublishTime())
                 .build();
+    }
+
+    private boolean hasSubstantiveContent(StockNews news) {
+        String title = firstNonBlank(news.getNormalizedTitle(), news.getTitle(), news.getRawTitle());
+        String content = firstNonBlank(news.getNormalizedContent(), news.getContent(), news.getRawContent());
+        return contentQualityValidator.hasSubstantiveContent(title, content);
     }
 
     private String toSummary(String content) {
@@ -77,4 +87,4 @@ public class StockNewsQueryService {
         return "";
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

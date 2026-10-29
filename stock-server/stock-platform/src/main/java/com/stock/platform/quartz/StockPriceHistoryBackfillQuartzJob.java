@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START---------
 package com.stock.platform.quartz;
 
 import com.stock.platform.service.JobExecutionService;
@@ -14,7 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
  * 股票历史日线低频回补 Quartz 任务。
  *
  * @author mwangli
- * @since 2026-10-22
+ * @since 2026-10-29
  */
 @DisallowConcurrentExecution
 public class StockPriceHistoryBackfillQuartzJob extends InterruptibleQuartzJob {
@@ -26,7 +26,7 @@ public class StockPriceHistoryBackfillQuartzJob extends InterruptibleQuartzJob {
     private DataSyncScheduler dataSyncScheduler;
 
     /**
-     * 执行最近三年工作日范围内的历史缺口回补。
+     * 执行最近 1000 个交易日的全市场日线幂等回填。
      *
      * @param context Quartz 执行上下文
      */
@@ -37,4 +37,4 @@ public class StockPriceHistoryBackfillQuartzJob extends InterruptibleQuartzJob {
                 context.getScheduledFireTime(), dataSyncScheduler::backfillHistoricalStockData);
     }
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END---------

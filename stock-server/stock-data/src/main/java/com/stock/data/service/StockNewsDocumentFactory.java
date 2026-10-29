@@ -1,8 +1,9 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START-------
 package com.stock.data.service;
 
 import com.stock.data.entity.StockNews;
 import com.stock.data.client.SecuritiesClient;
+import com.stock.data.validator.NewsContentQualityValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -13,6 +14,7 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 股票新闻原始文档工厂。
@@ -30,6 +32,7 @@ public class StockNewsDocumentFactory {
     private static final DateTimeFormatter DATES_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final SecuritiesClient securitiesClient;
+    private final NewsContentQualityValidator contentQualityValidator;
 
     /**
      * 拉取并转换新闻或公告详情。
@@ -49,12 +52,13 @@ public class StockNewsDocumentFactory {
         if (detailResponse.isEmpty()) {
             return null;
         }
-        Object gridObject = detailResponse.get("GRID0");
-        String content = "";
-        if (gridObject instanceof List<?> rows && !rows.isEmpty() && rows.get(0) instanceof String row) {
-            content = row.trim();
-        }
         String title = value(detailResponse, "TITLE", listTitle);
+        String content = extractContent(detailResponse.get("GRID0"));
+        if (!contentQualityValidator.hasSubstantiveContent(title, content)) {
+            log.warn("新闻详情正文不完整，跳过本次入库并等待后续重试: externalId={}, menuId={}, contentLength={}",
+                    externalId, menuId, content.length());
+            return null;
+        }
         String dates = value(detailResponse, "DATES", "");
         String time = value(detailResponse, "TIME", "00:00:00");
         String source = value(detailResponse, "MEDIA", "");
@@ -74,6 +78,21 @@ public class StockNewsDocumentFactory {
         news.setPublishTime(parsePublishTime(dateText, dates, time));
         news.setCreateTime(LocalDateTime.now());
         return news;
+    }
+
+    private String extractContent(Object gridObject) {
+        if (gridObject instanceof String content) {
+            return content.trim();
+        }
+        if (!(gridObject instanceof List<?> rows)) {
+            return "";
+        }
+        return rows.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .collect(Collectors.joining("\n"));
     }
 
     private String value(Map<String, Object> values, String key, String defaultValue) {
@@ -97,4 +116,4 @@ public class StockNewsDocumentFactory {
         return LocalDateTime.now();
     }
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END-------

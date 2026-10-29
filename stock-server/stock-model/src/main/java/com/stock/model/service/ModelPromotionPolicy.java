@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.model.service;
 
 import com.stock.model.config.LstmDataQualityConfig;
@@ -33,6 +33,44 @@ public class ModelPromotionPolicy {
         double returnScore = clamp(netReturn / 0.02D, -1D, 1D);
         double drawdownScore = 1D - clamp(maximumDrawdown / dataQualityConfig.getMaximumDrawdown(), 0D, 1D);
         return 0.45D * rankIcScore + 0.35D * returnScore + 0.20D * drawdownScore;
+    }
+
+    /**
+     * 按离线毛收益口径计算模型综合质量分。
+     *
+     * @param rankIc 排名相关系数
+     * @param grossReturn 毛收益率
+     * @param maximumDrawdown 毛收益序列最大回撤率
+     * @return 范围约为 -0.8 到 1 的综合质量分
+     */
+    public double offlineGrossQualityScore(
+            double rankIc, double grossReturn, double maximumDrawdown) {
+        requireFinite("Rank IC", rankIc);
+        requireFinite("毛收益", grossReturn);
+        requireFinite("毛收益最大回撤", maximumDrawdown);
+        double rankIcScore = clamp(rankIc / 0.05D, -1D, 1D);
+        double returnScore = clamp(grossReturn / 0.02D, -1D, 1D);
+        double drawdownScore = 1D - clamp(
+                maximumDrawdown / dataQualityConfig.getMaximumDrawdown(), 0D, 1D);
+        return 0.45D * rankIcScore + 0.35D * returnScore + 0.20D * drawdownScore;
+    }
+
+    /**
+     * 校验离线候选的必要数值和回撤硬门禁。
+     * 毛收益不作为一票否决项，由综合评分和 Champion 对比决定是否晋级。
+     *
+     * @param grossReturn 毛收益率
+     * @param maximumDrawdown 毛收益序列最大回撤率
+     * @throws IllegalStateException 指标无效或回撤越界时抛出
+     */
+    public void requireOfflineGrossPerformanceGate(
+            double grossReturn, double maximumDrawdown) {
+        requireFinite("毛收益", grossReturn);
+        requireFinite("毛收益最大回撤", maximumDrawdown);
+        if (maximumDrawdown > dataQualityConfig.getMaximumDrawdown()) {
+            throw new IllegalStateException("候选模型毛收益最大回撤超过阈值: "
+                    + maximumDrawdown + " > " + dataQualityConfig.getMaximumDrawdown());
+        }
     }
 
     /**
@@ -104,4 +142,4 @@ public class ModelPromotionPolicy {
         return Math.max(minimum, Math.min(maximum, value));
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

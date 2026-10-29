@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START----------------
 package com.stock.data.client;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -14,6 +14,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
@@ -24,7 +25,7 @@ import java.util.Map;
  * 证券平台 API 客户端，对接证券平台获取股票数据
  *
  * @author mwangli
- * @since 2026-03-14
+ * @since 2026-10-29
  */
 @Slf4j
 @Component
@@ -147,47 +148,6 @@ public class SecuritiesClient {
         }
     }
 
-    /**
-     * 查询证券平台默认时间区间的股票日线。
-     *
-     * @param stockCode 六位股票代码
-     * @param count 保留参数，当前由证券平台默认区间决定返回范围
-     * @return 日线数据数组，请求失败时返回空数组
-     */
-    public JSONArray getHistoryPrices(String stockCode, int count) {
-        log.info("获取股票 {} 的历史价格数据(平台默认区间)", stockCode);
-        Map<String, Object> paramMap = new java.util.HashMap<>(10);
-        paramMap.put("c.funcno", 20009);
-        paramMap.put("c.version", 1);
-        paramMap.put("c.stock_code", stockCode);
-        paramMap.put("c.type", "day");
-        return requestDataList(paramMap);
-    }
-
-    /**
-     * 按日期范围查询股票日线。
-     *
-     * @param stockCode 六位股票代码
-     * @param startDate 起始交易日，可为空
-     * @param endDate 结束交易日，可为空
-     * @return 日线数据数组，请求失败时返回空数组
-     */
-    public JSONArray getHistoryPrices(String stockCode, LocalDate startDate, LocalDate endDate) {
-        log.info("获取股票 {} 的历史价格数据({} ~ {})", stockCode, startDate, endDate);
-        Map<String, Object> paramMap = new java.util.HashMap<>(10);
-        paramMap.put("c.funcno", 20009);
-        paramMap.put("c.version", 1);
-        paramMap.put("c.stock_code", stockCode);
-        paramMap.put("c.type", "day");
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
-        if (startDate != null) {
-            paramMap.put("c.begin_date", startDate.format(formatter));
-        }
-        if (endDate != null) {
-            paramMap.put("c.end_date", endDate.format(formatter));
-        }
-        return requestDataList(paramMap);
-    }
 
     /**
      * 查询证券平台当前股票列表。
@@ -273,13 +233,13 @@ public class SecuritiesClient {
         }
     }
 
-    @SuppressWarnings("unchecked")
     /**
      * 查询股票实时行情。
      *
      * @param stockCode 六位股票代码
      * @return 实时行情对象，请求失败或无数据时返回空对象
      */
+    @SuppressWarnings("unchecked")
     public JSONObject getRealtimePrice(String stockCode) {
         log.debug("获取股票 {} 的实时价格", stockCode);
         try {
@@ -392,7 +352,16 @@ public class SecuritiesClient {
             params.add("tfrom", "PC");
             params.add("CHANNEL", "");
             HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(params, headers);
-            Map<String, Object> response = restTemplate.postForObject(NEWS_API_URL, requestEntity, Map.class);
+            byte[] responseBody = restTemplate.postForObject(NEWS_API_URL, requestEntity, byte[].class);
+            if (responseBody == null || responseBody.length == 0) {
+                throw new IllegalStateException("News detail response is empty");
+            }
+            String responseText = new String(responseBody, StandardCharsets.UTF_8);
+            if (responseText.indexOf('\uFFFD') >= 0) {
+                log.warn("News detail contained malformed UTF-8 bytes; replacements applied: externalId={}, menuId={}",
+                        externalId, menuId);
+            }
+            Map<String, Object> response = JSON.parseObject(responseText, Map.class);
             if (response == null || response.isEmpty()) {
                 throw new IllegalStateException("证券平台新闻详情响应为空");
             }
@@ -404,4 +373,4 @@ public class SecuritiesClient {
     }
 
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END----------------
