@@ -1,15 +1,19 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START---------
 package com.stock.model.service;
 
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 横截面排序模型验证指标计算器。
- * 负责计算 Rank IC、Top-K 成本后收益、选模分数和输出塌缩状态。
+ * 负责计算 Rank IC、Top-K 毛收益与成本后收益、输出分布和塌缩状态。
  *
  * @author mwangli
  * @since 2026-10-23
@@ -80,32 +84,88 @@ public class RankingValidationMetricsCalculator {
         if (rankScores == null || actualReturns == null
                 || rankScores.length == 0 || rankScores.length != actualReturns.length) {
             return new RankingValidationMetrics(
-                    0D, 0D, Double.NEGATIVE_INFINITY, true, null, null, probabilityTemperature);
+                    0D, 0D, 0D, Double.NEGATIVE_INFINITY, true,
+                    null, null, probabilityTemperature,
+                    0D, 0D, 0D, 0D, 0D, 0D, 0, 0,
+                    Map.of(), 0D, 0D, 0D, 0D, 0D);
+        }
+        return calculate(rankScores, actualReturns, upProbabilities, directionLabels,
+                groupSizes, null, normalizedLoss, costThreshold, probabilityTemperature);
+    }
+
+    /**
+     * 按交易日横截面计算排序、逐月毛收益和毛收益回撤指标。
+     *
+     * @param rankScores 模型排序分数
+     * @param actualReturns 实际中性收益
+     * @param upProbabilities 原始上涨概率
+     * @param directionLabels 方向标签
+     * @param groupSizes 按日期排列的横截面样本数量
+     * @param groupDates 与横截面分组一一对应的交易日
+     * @param normalizedLoss 当前验证损失
+     * @param costThreshold 单次组合成本阈值
+     * @param probabilityTemperature 概率温度参数
+     * @return 横截面排序、概率和毛收益稳定性指标
+     */
+    public RankingValidationMetrics calculate(
+            double[] rankScores,
+            double[] actualReturns,
+            double[] upProbabilities,
+            double[] directionLabels,
+            int[] groupSizes,
+            List<LocalDate> groupDates,
+            double normalizedLoss,
+            double costThreshold,
+            double probabilityTemperature) {
+        if (rankScores == null || actualReturns == null
+                || rankScores.length == 0 || rankScores.length != actualReturns.length) {
+            return new RankingValidationMetrics(
+                    0D, 0D, 0D, Double.NEGATIVE_INFINITY, true,
+                    null, null, probabilityTemperature,
+                    0D, 0D, 0D, 0D, 0D, 0D, 0, 0,
+                    Map.of(), 0D, 0D, 0D, 0D, 0D);
         }
         CrossSectionMetrics crossSection = crossSectionMetrics(
                 rankScores, actualReturns, groupSizes, costThreshold);
         double rankIc = crossSection.rankIc();
+        double topDecileGrossReturn = crossSection.topDecileGrossReturn();
         double topDecileNetReturn = crossSection.topDecileNetReturn();
-        double selectionScore = rankIc + 0.25D * topDecileNetReturn - 0.10D * normalizedLoss;
+        double selectionScore = rankIc + 0.25D * topDecileGrossReturn - 0.10D * normalizedLoss;
         ProbabilityMetrics probabilityMetrics = probabilityMetrics(
                 upProbabilities, directionLabels, probabilityTemperature);
+        DistributionMetrics scoreDistribution = distribution(rankScores);
+        DistributionMetrics labelDistribution = distribution(actualReturns);
+        boolean collapsed = !scoreDistribution.finite()
+                || scoreDistribution.standardDeviation() < 1.0E-5D;
+        MonthlyGrossMetrics monthlyGross = monthlyGrossMetrics(
+                crossSection.dailyGrossReturns(), groupDates);
         return new RankingValidationMetrics(
-                rankIc, topDecileNetReturn, selectionScore, isCollapsed(rankScores),
+                rankIc, topDecileGrossReturn, topDecileNetReturn, selectionScore, collapsed,
                 probabilityMetrics == null ? null : probabilityMetrics.brierScore(),
                 probabilityMetrics == null ? null : probabilityMetrics.brierBaseline(),
-                probabilityTemperature);
+                probabilityTemperature,
+                scoreDistribution.mean(), scoreDistribution.standardDeviation(),
+                scoreDistribution.minimum(), scoreDistribution.maximum(),
+                labelDistribution.mean(), labelDistribution.standardDeviation(),
+                rankScores.length, crossSection.crossSectionCount(),
+                monthlyGross.monthlyReturns(), monthlyGross.mean(), monthlyGross.standardDeviation(),
+                monthlyGross.positiveRatio(), monthlyGross.worstReturn(),
+                maximumDrawdown(crossSection.dailyGrossReturns()));
     }
 
     private CrossSectionMetrics crossSectionMetrics(
             double[] scores, double[] returns, int[] groupSizes, double costThreshold) {
         if (groupSizes == null || groupSizes.length == 0) {
+            double grossReturn = topDecileReturn(scores, returns);
             return new CrossSectionMetrics(
-                    spearman(scores, returns), topDecileReturn(scores, returns) - costThreshold);
+                    spearman(scores, returns), grossReturn, grossReturn - costThreshold, 1,
+                    List.of(grossReturn));
         }
         int offset = 0;
         double rankIcTotal = 0D;
-        double topReturnTotal = 0D;
+        double topGrossReturnTotal = 0D;
         int validGroups = 0;
+        List<Double> dailyGrossReturns = new ArrayList<>();
         for (int groupSize : groupSizes) {
             if (groupSize <= 1 || offset + groupSize > scores.length) {
                 offset += Math.max(0, groupSize);
@@ -114,15 +174,23 @@ public class RankingValidationMetricsCalculator {
             double[] groupScores = java.util.Arrays.copyOfRange(scores, offset, offset + groupSize);
             double[] groupReturns = java.util.Arrays.copyOfRange(returns, offset, offset + groupSize);
             rankIcTotal += spearman(groupScores, groupReturns);
-            topReturnTotal += topDecileReturn(groupScores, groupReturns) - costThreshold;
+            double dailyGrossReturn = topDecileReturn(groupScores, groupReturns);
+            topGrossReturnTotal += dailyGrossReturn;
+            dailyGrossReturns.add(dailyGrossReturn);
             validGroups++;
             offset += groupSize;
         }
         if (validGroups == 0 || offset != scores.length) {
+            double grossReturn = topDecileReturn(scores, returns);
             return new CrossSectionMetrics(
-                    spearman(scores, returns), topDecileReturn(scores, returns) - costThreshold);
+                    spearman(scores, returns), grossReturn, grossReturn - costThreshold, 1,
+                    List.of(grossReturn));
         }
-        return new CrossSectionMetrics(rankIcTotal / validGroups, topReturnTotal / validGroups);
+        double averageGrossReturn = topGrossReturnTotal / validGroups;
+        return new CrossSectionMetrics(
+                rankIcTotal / validGroups, averageGrossReturn,
+                averageGrossReturn - costThreshold, validGroups,
+                List.copyOf(dailyGrossReturns));
     }
 
     /**
@@ -157,7 +225,8 @@ public class RankingValidationMetricsCalculator {
      */
     public WalkForwardMetrics aggregate(List<RankingValidationMetrics> foldMetrics) {
         if (foldMetrics == null || foldMetrics.isEmpty()) {
-            return new WalkForwardMetrics(0, 0D, 0D, 0D, 0D, null, null, true, 0D);
+            return new WalkForwardMetrics(0, 0D, 0D, 0D, 0D, 0D,
+                    null, null, true, 0D, 0D, 0, Map.of(), 0D, 0D, 0D, 0D);
         }
         double meanRankIc = foldMetrics.stream().mapToDouble(RankingValidationMetrics::rankIc).average().orElse(0D);
         double variance = foldMetrics.stream()
@@ -165,16 +234,30 @@ public class RankingValidationMetricsCalculator {
         double rankIcIr = Math.sqrt(variance) <= 1.0E-12D ? 0D : meanRankIc / Math.sqrt(variance);
         double positiveRatio = foldMetrics.stream().filter(item -> item.rankIc() > 0D).count()
                 / (double) foldMetrics.size();
-        double averageTopReturn = foldMetrics.stream()
+        double averageTopGrossReturn = foldMetrics.stream()
+                .mapToDouble(RankingValidationMetrics::topDecileGrossReturn).average().orElse(0D);
+        double averageTopNetReturn = foldMetrics.stream()
                 .mapToDouble(RankingValidationMetrics::topDecileNetReturn).average().orElse(0D);
         Double brierScore = nullableAverage(foldMetrics.stream()
                 .map(RankingValidationMetrics::brierScore).toList());
         Double brierBaseline = nullableAverage(foldMetrics.stream()
                 .map(RankingValidationMetrics::brierBaseline).toList());
-        boolean collapsed = foldMetrics.stream().anyMatch(RankingValidationMetrics::collapsed);
+        int collapsedFoldCount = (int) foldMetrics.stream()
+                .filter(RankingValidationMetrics::collapsed).count();
+        double minimumRankScoreStandardDeviation = foldMetrics.stream()
+                .mapToDouble(RankingValidationMetrics::rankScoreStandardDeviation)
+                .min().orElse(0D);
+        Map<String, Double> monthlyReturns = new LinkedHashMap<>();
+        foldMetrics.forEach(item -> monthlyReturns.putAll(item.monthlyGrossReturns()));
+        MonthlyGrossMetrics monthlyGross = summarizeMonthlyReturns(monthlyReturns);
         return new WalkForwardMetrics(foldMetrics.size(), meanRankIc, rankIcIr, positiveRatio,
-                averageTopReturn, brierScore, brierBaseline, collapsed,
-                maximumDrawdown(foldMetrics));
+                averageTopGrossReturn, averageTopNetReturn,
+                brierScore, brierBaseline, collapsedFoldCount > 0,
+                foldMetrics.stream().mapToDouble(RankingValidationMetrics::grossMaximumDrawdown)
+                        .max().orElse(0D),
+                minimumRankScoreStandardDeviation, collapsedFoldCount,
+                monthlyGross.monthlyReturns(), monthlyGross.mean(), monthlyGross.standardDeviation(),
+                monthlyGross.positiveRatio(), monthlyGross.worstReturn());
     }
 
     private ProbabilityMetrics probabilityMetrics(
@@ -241,12 +324,52 @@ public class RankingValidationMetricsCalculator {
         return count == 0 ? null : total / count;
     }
 
-    private double maximumDrawdown(List<RankingValidationMetrics> foldMetrics) {
+    private MonthlyGrossMetrics monthlyGrossMetrics(
+            List<Double> dailyGrossReturns, List<LocalDate> groupDates) {
+        if (dailyGrossReturns == null || groupDates == null
+                || dailyGrossReturns.size() != groupDates.size()) {
+            return summarizeMonthlyReturns(Map.of());
+        }
+        Map<String, Double> monthlyWealth = new LinkedHashMap<>();
+        for (int index = 0; index < dailyGrossReturns.size(); index++) {
+            LocalDate date = groupDates.get(index);
+            double dailyReturn = dailyGrossReturns.get(index);
+            if (date == null || !Double.isFinite(dailyReturn)) {
+                continue;
+            }
+            String month = YearMonth.from(date).toString();
+            monthlyWealth.merge(month, 1D + dailyReturn, (left, right) -> left * right);
+        }
+        Map<String, Double> monthlyReturns = new LinkedHashMap<>();
+        monthlyWealth.forEach((month, wealth) -> monthlyReturns.put(month, wealth - 1D));
+        return summarizeMonthlyReturns(monthlyReturns);
+    }
+
+    private MonthlyGrossMetrics summarizeMonthlyReturns(Map<String, Double> monthlyReturns) {
+        if (monthlyReturns == null || monthlyReturns.isEmpty()) {
+            return new MonthlyGrossMetrics(Map.of(), 0D, 0D, 0D, 0D);
+        }
+        double mean = monthlyReturns.values().stream().mapToDouble(Double::doubleValue)
+                .average().orElse(0D);
+        double variance = monthlyReturns.values().stream()
+                .mapToDouble(value -> Math.pow(value - mean, 2D)).average().orElse(0D);
+        double positiveRatio = monthlyReturns.values().stream().filter(value -> value > 0D).count()
+                / (double) monthlyReturns.size();
+        double worstReturn = monthlyReturns.values().stream().mapToDouble(Double::doubleValue)
+                .min().orElse(0D);
+        return new MonthlyGrossMetrics(Map.copyOf(monthlyReturns), mean,
+                Math.sqrt(variance), positiveRatio, worstReturn);
+    }
+
+    private double maximumDrawdown(List<Double> dailyGrossReturns) {
         double wealth = 1D;
         double peak = 1D;
         double maximumDrawdown = 0D;
-        for (RankingValidationMetrics metrics : foldMetrics) {
-            wealth *= Math.max(0.0001D, 1D + metrics.topDecileNetReturn());
+        for (Double dailyGrossReturn : dailyGrossReturns) {
+            if (dailyGrossReturn == null || !Double.isFinite(dailyGrossReturn)) {
+                continue;
+            }
+            wealth *= Math.max(0.0001D, 1D + dailyGrossReturn);
             peak = Math.max(peak, wealth);
             maximumDrawdown = Math.max(maximumDrawdown, (peak - wealth) / peak);
         }
@@ -312,17 +435,36 @@ public class RankingValidationMetricsCalculator {
         return total / selected;
     }
 
-    private boolean isCollapsed(double[] values) {
-        double mean = mean(values);
-        double variance = 0D;
+    private DistributionMetrics distribution(double[] values) {
+        double total = 0D;
+        double minimum = Double.POSITIVE_INFINITY;
+        double maximum = Double.NEGATIVE_INFINITY;
+        int finiteCount = 0;
+        boolean finite = true;
         for (double value : values) {
             if (!Double.isFinite(value)) {
-                return true;
+                finite = false;
+                continue;
             }
-            variance += Math.pow(value - mean, 2D);
+            total += value;
+            minimum = Math.min(minimum, value);
+            maximum = Math.max(maximum, value);
+            finiteCount++;
         }
-        double standardDeviation = Math.sqrt(variance / values.length);
-        return standardDeviation < 1.0E-5D;
+        double mean = finiteCount == 0 ? 0D : total / finiteCount;
+        double variance = 0D;
+        for (double value : values) {
+            if (Double.isFinite(value)) {
+                variance += Math.pow(value - mean, 2D);
+            }
+        }
+        double standardDeviation = finiteCount == 0 ? 0D
+                : Math.sqrt(variance / finiteCount);
+        return new DistributionMetrics(
+                mean, standardDeviation,
+                minimum == Double.POSITIVE_INFINITY ? 0D : minimum,
+                maximum == Double.NEGATIVE_INFINITY ? 0D : maximum,
+                finite && finiteCount == values.length);
     }
 
     private double mean(double[] values) {
@@ -337,21 +479,51 @@ public class RankingValidationMetricsCalculator {
      * 横截面排序验证结果。
      *
      * @param rankIc Spearman Rank IC
+     * @param topDecileGrossReturn Top 10% 毛收益
      * @param topDecileNetReturn Top 10% 成本后收益
      * @param selectionScore 早停和最佳 Epoch 组合分数
      * @param collapsed 是否发生输出塌缩
      * @param brierScore 温度校准后的 Brier Score
      * @param brierBaseline 实际上涨比例常数基线的 Brier Score
      * @param probabilityTemperature 概率温度参数
+     * @param rankScoreMean 排序分数均值
+     * @param rankScoreStandardDeviation 排序分数标准差
+     * @param rankScoreMinimum 排序分数最小值
+     * @param rankScoreMaximum 排序分数最大值
+     * @param labelMean 排序标签均值
+     * @param labelStandardDeviation 排序标签标准差
+     * @param sampleCount 样本数量
+     * @param crossSectionCount 有效横截面交易日数量
+     * @param monthlyGrossReturns 逐月复合毛收益
+     * @param monthlyGrossReturnMean 月均复合毛收益
+     * @param monthlyGrossReturnStandardDeviation 月度毛收益标准差
+     * @param positiveMonthRatio 正毛收益月份占比
+     * @param worstMonthlyGrossReturn 最差月份毛收益
+     * @param grossMaximumDrawdown 日毛收益序列最大回撤
      */
     public record RankingValidationMetrics(
             double rankIc,
+            double topDecileGrossReturn,
             double topDecileNetReturn,
             double selectionScore,
             boolean collapsed,
             Double brierScore,
             Double brierBaseline,
-            double probabilityTemperature) {
+            double probabilityTemperature,
+            double rankScoreMean,
+            double rankScoreStandardDeviation,
+            double rankScoreMinimum,
+            double rankScoreMaximum,
+            double labelMean,
+            double labelStandardDeviation,
+            int sampleCount,
+            int crossSectionCount,
+            Map<String, Double> monthlyGrossReturns,
+            double monthlyGrossReturnMean,
+            double monthlyGrossReturnStandardDeviation,
+            double positiveMonthRatio,
+            double worstMonthlyGrossReturn,
+            double grossMaximumDrawdown) {
     }
 
     /**
@@ -361,28 +533,65 @@ public class RankingValidationMetricsCalculator {
      * @param meanRankIc 平均 Rank IC
      * @param rankIcIr Rank ICIR
      * @param positiveRankIcRatio Rank IC 为正的窗口占比
+     * @param averageTopDecileGrossReturn 平均 Top 10% 毛收益
      * @param averageTopDecileNetReturn 平均 Top 10% 成本后收益
      * @param brierScore 平均 Brier Score
      * @param brierBaseline 平均 Brier 基线
      * @param collapsed 任一窗口是否输出塌缩
      * @param maximumDrawdown Top 10% 窗口收益序列最大回撤
+     * @param minimumRankScoreStandardDeviation 全部窗口中最低的排序分数标准差
+     * @param collapsedFoldCount 排序分数标准差低于阈值的窗口数量
+     * @param monthlyGrossReturns 逐月复合毛收益
+     * @param monthlyGrossReturnMean 月均复合毛收益
+     * @param monthlyGrossReturnStandardDeviation 月度毛收益标准差
+     * @param positiveMonthRatio 正毛收益月份占比
+     * @param worstMonthlyGrossReturn 最差月份毛收益
      */
     public record WalkForwardMetrics(
             int foldCount,
             double meanRankIc,
             double rankIcIr,
             double positiveRankIcRatio,
+            double averageTopDecileGrossReturn,
             double averageTopDecileNetReturn,
             Double brierScore,
             Double brierBaseline,
             boolean collapsed,
-            double maximumDrawdown) {
+            double maximumDrawdown,
+            double minimumRankScoreStandardDeviation,
+            int collapsedFoldCount,
+            Map<String, Double> monthlyGrossReturns,
+            double monthlyGrossReturnMean,
+            double monthlyGrossReturnStandardDeviation,
+            double positiveMonthRatio,
+            double worstMonthlyGrossReturn) {
     }
 
     private record ProbabilityMetrics(double brierScore, double brierBaseline) {
     }
 
-    private record CrossSectionMetrics(double rankIc, double topDecileNetReturn) {
+    private record DistributionMetrics(
+            double mean,
+            double standardDeviation,
+            double minimum,
+            double maximum,
+            boolean finite) {
+    }
+
+    private record CrossSectionMetrics(
+            double rankIc,
+            double topDecileGrossReturn,
+            double topDecileNetReturn,
+            int crossSectionCount,
+            List<Double> dailyGrossReturns) {
+    }
+
+    private record MonthlyGrossMetrics(
+            Map<String, Double> monthlyReturns,
+            double mean,
+            double standardDeviation,
+            double positiveRatio,
+            double worstReturn) {
     }
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END---------

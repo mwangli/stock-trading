@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 package com.stock.data.entity;
 
 import com.stock.data.enums.NewsDocumentRole;
@@ -25,6 +25,8 @@ import java.time.LocalDateTime;
 @Document(collection = "stock_news")
 @CompoundIndex(name = "idx_stock_publish", def = "{'stockCode': 1, 'publishTime': -1}")
 @CompoundIndex(name = "idx_stock_external", def = "{'stockCode': 1, 'externalId': 1}", unique = true)
+@CompoundIndex(name = "idx_news_pipeline_id", def = "{'pipelineVersion': 1, '_id': 1}")
+@CompoundIndex(name = "idx_news_quality_id", def = "{'qualityStatus': 1, '_id': 1}")
 public class StockNews {
 
     /** MongoDB 文档 ID。 */
@@ -116,4 +118,4 @@ public class StockNews {
     /** 本地入库时间。 */
     private LocalDateTime createTime;
 }
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------

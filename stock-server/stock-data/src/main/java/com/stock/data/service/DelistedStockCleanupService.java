@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START-------------
 package com.stock.data.service;
 
 import com.stock.base.cache.CacheNames;
@@ -17,7 +17,7 @@ import java.util.List;
  * 只清理市场采集和模型派生数据，保留交易账本、持仓、成交和历史回测审计数据。
  *
  * @author mwangli
- * @since 2026-10-18
+ * @since 2026-10-29
  */
 @Slf4j
 @Service
@@ -30,7 +30,6 @@ public class DelistedStockCleanupService {
             "stock_news_event_facts",
             "stock_price_5m",
             "stock_adjustment_factors",
-            "model_stock_daily_bars",
             "stock_daily_tradability_facts",
             "model_predictions",
             "agent_rag_chunks"
@@ -63,4 +62,4 @@ public class DelistedStockCleanupService {
         return deletedMongo;
     }
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END-------------

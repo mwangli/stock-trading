@@ -1,4 +1,4 @@
-// AI_GENERATE_START- --
+// AI_GENERATE_START- ----
 package com.stock.model.dto;
 
 import com.stock.data.dto.ModelTrainingDataAuditDto;
@@ -28,7 +28,7 @@ public class ModelDataReadinessReport {
     /** V6 模型日线是否达到股票标识覆盖门槛。 */
     private boolean foundationReady;
 
-    /** 新闻日级特征快照是否通过覆盖率和点时审计。 */
+    /** 新闻前置检查是否允许继续；实际完整性在固定样本后按所需键校验。 */
     private boolean newsSnapshotsReady;
 
     /** 本次是否允许触发一次自动回填。 */
@@ -40,7 +40,7 @@ public class ModelDataReadinessReport {
     /** 市场基础数据审计详情。 */
     private ModelTrainingDataAuditDto foundationAudit;
 
-    /** 新闻日级特征快照审计详情。 */
+    /** 新闻全量日期运维审计摘要；训练前置阶段不执行时为空。 */
     private NewsFeatureSnapshotAuditResult newsSnapshotAudit;
 
     /** 可由现有幂等服务自动回填的数据缺口。 */
@@ -52,4 +52,4 @@ public class ModelDataReadinessReport {
     /** 面向训练运行记录的检查结论。 */
     private String message;
 }
-// AI_GENERATE_END- --
+// AI_GENERATE_END- ----

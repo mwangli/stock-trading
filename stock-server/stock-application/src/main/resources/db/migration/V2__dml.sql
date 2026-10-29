@@ -6,7 +6,7 @@ INSERT INTO job_config (
 ) VALUES
     ('stockListSync', '0 0 1 ? * SUN', 1, '每周同步证券 API 股票代码和名称', 'data', 'FULL', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),
     ('dailyStockDataSync', '0 0 18 ? * MON-FRI', 1, '每个工作日同步全市场日线增量', 'data', 'INCREMENTAL', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),
-    ('stockPriceHistoryBackfill', '0 0 3 ? * SAT', 1, '每周回补最近三年工作日范围内的股票历史日线缺口', 'data', 'BACKFILL', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),
+    ('stockPriceHistoryBackfill', '0 0 3 ? * SAT', 1, '每周幂等回填最近 1000 个交易日的全市场日线', 'data', 'BACKFILL', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),
     ('newsDailySync', '0 0 5 ? * MON-FRI', 1, '每日同步股票新闻和公告', 'data', 'INCREMENTAL', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),
     ('newsCollectionBackfill', '0 0 2 ? * *', 0, '分批回填历史新闻采集治理和事件事实', 'data', 'BACKFILL', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),
     ('sentimentMengziShadow', '0 0 1 ? * MON-FRI', 0, '顺序执行 Mengzi 情感影子推理和自动路由评估', 'model', 'INCREMENTAL', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),

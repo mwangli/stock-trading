@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------------------------------------
+// AI_GENERATE_START---------------------------------------------------------
 package com.stock.model.service;
 
 import ai.djl.Device;
@@ -32,6 +32,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -230,15 +231,23 @@ public class LstmTrainerService {
                                 rankingMetricsCalculator.calculate(
                                         validationEvaluation.rankScores(), validationEvaluation.actualReturns(),
                                         validationEvaluation.upProbabilities(), validationEvaluation.directionLabels(),
-                                        validationEvaluation.groupSizes(), valLoss,
+                                        dateGroupSizes(processedData.getValSamples()),
+                                        groupDates(processedData.getValSamples()), valLoss,
                                         config.getCostThreshold(), 1D);
                         Map<String, Object> entry = new LinkedHashMap<>();
                         entry.put("epoch", epoch + 1);
                         entry.put("trainLoss", (double) trainLoss);
                         entry.put("valLoss", (double) valLoss);
                         entry.put("rankIc", validationMetrics.rankIc());
+                        entry.put("topDecileGrossReturn", validationMetrics.topDecileGrossReturn());
                         entry.put("topDecileNetReturn", validationMetrics.topDecileNetReturn());
                         entry.put("selectionScore", validationMetrics.selectionScore());
+                        entry.put("rankScoreMean", validationMetrics.rankScoreMean());
+                        entry.put("rankScoreStandardDeviation", validationMetrics.rankScoreStandardDeviation());
+                        entry.put("labelMean", validationMetrics.labelMean());
+                        entry.put("labelStandardDeviation", validationMetrics.labelStandardDeviation());
+                        entry.put("sampleCount", validationMetrics.sampleCount());
+                        entry.put("crossSectionCount", validationMetrics.crossSectionCount());
                         entry.put("collapsed", validationMetrics.collapsed());
                         trainingLog.add(entry);
 
@@ -303,7 +312,8 @@ public class LstmTrainerService {
                             calibratedValidationEvaluation.actualReturns(),
                             calibratedValidationEvaluation.upProbabilities(),
                             calibratedValidationEvaluation.directionLabels(),
-                            calibratedValidationEvaluation.groupSizes(),
+                            dateGroupSizes(processedData.getValSamples()),
+                            groupDates(processedData.getValSamples()),
                             calibratedValidationEvaluation.loss(), config.getCostThreshold(),
                             probabilityTemperature);
                     RankingEvaluation testEvaluation = evaluateRankingModel(trainer, testDatasets);
@@ -311,17 +321,36 @@ public class LstmTrainerService {
                             rankingMetricsCalculator.calculate(
                                     testEvaluation.rankScores(), testEvaluation.actualReturns(),
                                     testEvaluation.upProbabilities(), testEvaluation.directionLabels(),
-                                    testEvaluation.groupSizes(), testEvaluation.loss(),
+                                    dateGroupSizes(processedData.getTestSamples()),
+                                    groupDates(processedData.getTestSamples()), testEvaluation.loss(),
                                     config.getCostThreshold(), probabilityTemperature);
                     if (testMetrics.collapsed()) {
                         throw new IllegalStateException("最佳候选模型在独立测试集发生输出塌缩");
                     }
-                    trainingLog.add(Map.of(
-                            "stage", "INDEPENDENT_TEST",
-                            "rankIc", testMetrics.rankIc(),
-                            "topDecileNetReturn", testMetrics.topDecileNetReturn(),
-                            "selectionScore", testMetrics.selectionScore(),
-                            "loss", (double) testEvaluation.loss()));
+                    Map<String, Object> testEntry = new LinkedHashMap<>();
+                    testEntry.put("stage", "INDEPENDENT_TEST");
+                    testEntry.put("rankIc", testMetrics.rankIc());
+                    testEntry.put("topDecileGrossReturn", testMetrics.topDecileGrossReturn());
+                    testEntry.put("topDecileNetReturn", testMetrics.topDecileNetReturn());
+                    testEntry.put("selectionScore", testMetrics.selectionScore());
+                    testEntry.put("rankScoreMean", testMetrics.rankScoreMean());
+                    testEntry.put("rankScoreStandardDeviation", testMetrics.rankScoreStandardDeviation());
+                    testEntry.put("rankScoreMinimum", testMetrics.rankScoreMinimum());
+                    testEntry.put("rankScoreMaximum", testMetrics.rankScoreMaximum());
+                    testEntry.put("labelMean", testMetrics.labelMean());
+                    testEntry.put("labelStandardDeviation", testMetrics.labelStandardDeviation());
+                    testEntry.put("sampleCount", testMetrics.sampleCount());
+                    testEntry.put("crossSectionCount", testMetrics.crossSectionCount());
+                    testEntry.put("monthlyGrossReturns", testMetrics.monthlyGrossReturns());
+                    testEntry.put("monthlyGrossReturnMean", testMetrics.monthlyGrossReturnMean());
+                    testEntry.put("monthlyGrossReturnStandardDeviation",
+                            testMetrics.monthlyGrossReturnStandardDeviation());
+                    testEntry.put("positiveMonthRatio", testMetrics.positiveMonthRatio());
+                    testEntry.put("worstMonthlyGrossReturn", testMetrics.worstMonthlyGrossReturn());
+                    testEntry.put("grossMaximumDrawdown", testMetrics.grossMaximumDrawdown());
+                    testEntry.put("collapsed", testMetrics.collapsed());
+                    testEntry.put("loss", (double) testEvaluation.loss());
+                    trainingLog.add(testEntry);
                     bestTestMetrics = testMetrics;
                 }
             }
@@ -336,6 +365,10 @@ public class LstmTrainerService {
                             bestEpoch, trainBatchSize, trainLearningRate, null, trainingLog,
                             listener, trainingStartedNanos, "STRICT_ISOLATION_EVALUATING",
                             "严格隔离", 93, 95);
+            List<Map<String, Object>> walkForwardFoldDetails = foldDetails(
+                    trainingLog, "WALK_FORWARD_FOLD");
+            List<Map<String, Object>> strictIsolationFoldDetails = foldDetails(
+                    trainingLog, "STRICT_ISOLATION_FOLD");
 
             reportProgress(listener, TrainingProgress.builder()
                     .stage("SAVING_MODEL")
@@ -354,8 +387,9 @@ public class LstmTrainerService {
             currentModelPath = artifactService.saveModel(bestParams, processedData, bestEpoch,
                     bestTrainLoss, bestValLoss, trainLabelStats, validationLabelStats,
                     directionClassWeights, bestValidationMetrics, bestTestMetrics,
-                    walkForwardMetrics, strictIsolationMetrics, probabilityTemperature,
-                    architectureType, trainBatchSize);
+                    walkForwardMetrics, strictIsolationMetrics,
+                    walkForwardFoldDetails, strictIsolationFoldDetails,
+                    probabilityTemperature, architectureType, trainBatchSize);
             return TrainingResult.builder()
                     .success(true)
                     .message("共享基础模型训练完成")
@@ -383,7 +417,14 @@ public class LstmTrainerService {
                     .walkForwardMeanRankIc(walkForwardMetrics.meanRankIc())
                     .walkForwardRankIcIr(walkForwardMetrics.rankIcIr())
                     .positiveRankIcWindowRatio(walkForwardMetrics.positiveRankIcRatio())
+                    .walkForwardTopDecileGrossReturn(walkForwardMetrics.averageTopDecileGrossReturn())
                     .walkForwardTopDecileNetReturn(walkForwardMetrics.averageTopDecileNetReturn())
+                    .monthlyGrossReturns(walkForwardMetrics.monthlyGrossReturns())
+                    .monthlyGrossReturnMean(walkForwardMetrics.monthlyGrossReturnMean())
+                    .monthlyGrossReturnStandardDeviation(
+                            walkForwardMetrics.monthlyGrossReturnStandardDeviation())
+                    .positiveMonthRatio(walkForwardMetrics.positiveMonthRatio())
+                    .worstMonthlyGrossReturn(walkForwardMetrics.worstMonthlyGrossReturn())
                     .brierScore(walkForwardMetrics.brierScore())
                     .brierBaseline(walkForwardMetrics.brierBaseline())
                     .probabilityTemperature(probabilityTemperature)
@@ -656,6 +697,27 @@ public class LstmTrainerService {
         return datasets;
     }
 
+    private int[] dateGroupSizes(List<LstmDataPreprocessor.TrainingSample> samples) {
+        return dateGroups(samples).values().stream().mapToInt(List::size).toArray();
+    }
+
+    private List<LocalDate> groupDates(List<LstmDataPreprocessor.TrainingSample> samples) {
+        return List.copyOf(dateGroups(samples).keySet());
+    }
+
+    private Map<LocalDate, List<LstmDataPreprocessor.TrainingSample>> dateGroups(
+            List<LstmDataPreprocessor.TrainingSample> samples) {
+        if (samples == null || samples.isEmpty()) {
+            return Map.of();
+        }
+        return samples.stream()
+                .filter(sample -> sample.getTargetDate() != null)
+                .sorted(Comparator.comparing(LstmDataPreprocessor.TrainingSample::getTargetDate)
+                        .thenComparing(LstmDataPreprocessor.TrainingSample::getStockCode))
+                .collect(Collectors.groupingBy(LstmDataPreprocessor.TrainingSample::getTargetDate,
+                        LinkedHashMap::new, Collectors.toList()));
+    }
+
     private ArrayDataset createDataset(NDManager manager, float[][] inputs, float[][] targets) {
         if (inputs == null || inputs.length == 0 || targets == null || targets.length == 0) {
             throw new IllegalArgumentException("同日横截面训练批次不能为空");
@@ -713,16 +775,66 @@ public class LstmTrainerService {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("stage", fold.isStrictIsolation() ? "STRICT_ISOLATION_FOLD" : "WALK_FORWARD_FOLD");
             entry.put("fold", fold.getFoldNumber());
+            entry.put("trainStartDate", fold.getTrainStartDate());
+            entry.put("trainEndDate", fold.getTrainEndDate());
+            entry.put("validationStartDate", fold.getValidationStartDate());
+            entry.put("validationEndDate", fold.getValidationEndDate());
             entry.put("testStartDate", fold.getTestStartDate());
             entry.put("testEndDate", fold.getTestEndDate());
+            entry.put("trainSampleCount", countSamples(
+                    processedData.getAllSamples(), fold.getTrainStartDate(), fold.getTrainEndDate()));
+            entry.put("validationSampleCount", countSamples(
+                    processedData.getAllSamples(), fold.getValidationStartDate(), fold.getValidationEndDate()));
+            entry.put("testSampleCount", foldMetrics.sampleCount());
+            entry.put("crossSectionCount", foldMetrics.crossSectionCount());
             entry.put("rankIc", foldMetrics.rankIc());
+            entry.put("topDecileGrossReturn", foldMetrics.topDecileGrossReturn());
             entry.put("topDecileNetReturn", foldMetrics.topDecileNetReturn());
+            entry.put("selectionScore", foldMetrics.selectionScore());
+            entry.put("rankScoreMean", foldMetrics.rankScoreMean());
+            entry.put("rankScoreStandardDeviation", foldMetrics.rankScoreStandardDeviation());
+            entry.put("rankScoreMinimum", foldMetrics.rankScoreMinimum());
+            entry.put("rankScoreMaximum", foldMetrics.rankScoreMaximum());
+            entry.put("labelMean", foldMetrics.labelMean());
+            entry.put("labelStandardDeviation", foldMetrics.labelStandardDeviation());
+            entry.put("monthlyGrossReturns", foldMetrics.monthlyGrossReturns());
+            entry.put("monthlyGrossReturnMean", foldMetrics.monthlyGrossReturnMean());
+            entry.put("monthlyGrossReturnStandardDeviation",
+                    foldMetrics.monthlyGrossReturnStandardDeviation());
+            entry.put("positiveMonthRatio", foldMetrics.positiveMonthRatio());
+            entry.put("worstMonthlyGrossReturn", foldMetrics.worstMonthlyGrossReturn());
+            entry.put("grossMaximumDrawdown", foldMetrics.grossMaximumDrawdown());
             entry.put("brierScore", foldMetrics.brierScore());
             entry.put("brierBaseline", foldMetrics.brierBaseline());
             entry.put("collapsed", foldMetrics.collapsed());
             trainingLog.add(entry);
         }
         return rankingMetricsCalculator.aggregate(metrics);
+    }
+
+    private List<Map<String, Object>> foldDetails(
+            List<Map<String, Object>> trainingLog, String stage) {
+        List<Map<String, Object>> details = new ArrayList<>();
+        for (Map<String, Object> entry : trainingLog) {
+            if (stage.equals(entry.get("stage"))) {
+                details.add(new LinkedHashMap<>(entry));
+            }
+        }
+        return List.copyOf(details);
+    }
+
+    private int countSamples(
+            List<LstmDataPreprocessor.TrainingSample> samples,
+            java.time.LocalDate startDate,
+            java.time.LocalDate endDate) {
+        if (samples == null || startDate == null || endDate == null) {
+            return 0;
+        }
+        return (int) samples.stream()
+                .filter(sample -> sample.getTargetDate() != null)
+                .filter(sample -> !sample.getTargetDate().isBefore(startDate)
+                        && !sample.getTargetDate().isAfter(endDate))
+                .count();
     }
 
     private RankingValidationMetricsCalculator.RankingValidationMetrics trainAndEvaluateFold(
@@ -769,7 +881,8 @@ public class LstmTrainerService {
                             rankingMetricsCalculator.calculate(
                                     validation.rankScores(), validation.actualReturns(),
                                     validation.upProbabilities(), validation.directionLabels(),
-                                    validation.groupSizes(), validation.loss(),
+                                    dateGroupSizes(fold.getValSamples()),
+                                    groupDates(fold.getValSamples()), validation.loss(),
                                     config.getCostThreshold(), 1D);
                     if (!validationMetrics.collapsed()
                             && validationMetrics.selectionScore() > bestSelectionScore + config.getMinDelta()) {
@@ -797,7 +910,8 @@ public class LstmTrainerService {
                 RankingEvaluation test = evaluateRankingModel(trainer, testDatasets);
                 return rankingMetricsCalculator.calculate(
                         test.rankScores(), test.actualReturns(), test.upProbabilities(),
-                        test.directionLabels(), test.groupSizes(), test.loss(),
+                        test.directionLabels(), dateGroupSizes(fold.getTestSamples()),
+                        groupDates(fold.getTestSamples()), test.loss(),
                         config.getCostThreshold(), temperature);
             }
         }
@@ -1069,6 +1183,24 @@ public class LstmTrainerService {
         /** Walk-Forward 平均 Top 10% 成本后收益。 */
         private Double walkForwardTopDecileNetReturn;
 
+        /** Walk-Forward 平均 Top 10% 毛收益。 */
+        private Double walkForwardTopDecileGrossReturn;
+
+        /** Walk-Forward 逐月复合毛收益。 */
+        private Map<String, Double> monthlyGrossReturns;
+
+        /** Walk-Forward 月均复合毛收益。 */
+        private Double monthlyGrossReturnMean;
+
+        /** Walk-Forward 月度毛收益标准差。 */
+        private Double monthlyGrossReturnStandardDeviation;
+
+        /** Walk-Forward 正毛收益月份占比。 */
+        private Double positiveMonthRatio;
+
+        /** Walk-Forward 最差月份毛收益。 */
+        private Double worstMonthlyGrossReturn;
+
         /** 温度校准后的 Walk-Forward Brier Score。 */
         private Double brierScore;
 
@@ -1085,4 +1217,4 @@ public class LstmTrainerService {
         private Double strictIsolationMeanRankIc;
     }
 }
-// AI_GENERATE_END-------------------------------------------------------
+// AI_GENERATE_END---------------------------------------------------------

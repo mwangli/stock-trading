@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------------------------
+// AI_GENERATE_START---------------------------------
 package com.stock.platform.bootstrap;
 
 import com.stock.data.dto.StockListSyncResult;
@@ -23,7 +23,7 @@ import java.util.concurrent.Executor;
  * 已存在任务保留用户维护的 Cron 和启停状态，仅为全新数据库写入默认值。
  *
  * @author mwangli
- * @since 2026-09-25
+ * @since 2026-10-29
  */
 @Slf4j
 @Component
@@ -32,11 +32,11 @@ public class JobBootstrap implements ApplicationRunner {
     private static final List<JobConfig> DEFAULT_JOBS = List.of(
             defaultJob("stockListSync", "0 0 1 ? * SUN", "每周同步证券 API 股票代码和名称", "data", "FULL"),
             defaultJob("dailyStockDataSync", "0 0 18 ? * MON-FRI", "每个工作日同步全市场日线增量", "data", "INCREMENTAL"),
-            defaultJob("stockPriceHistoryBackfill", "0 0 3 ? * SAT", "每周回补最近三年工作日范围内的股票历史日线缺口", "data", "BACKFILL"),
+            defaultJob("stockPriceHistoryBackfill", "0 0 3 ? * SAT", "每周幂等回填最近 1000 个交易日的全市场日线", "data", "BACKFILL"),
             defaultJob("newsDailySync", "0 0 5 ? * MON-FRI", "每日同步股票新闻和公告", "data", "INCREMENTAL"),
             defaultPausedJob("newsCollectionBackfill", "0 0 2 ? * *", "分批回填历史新闻采集治理和事件事实", "data", "BACKFILL"),
             defaultPausedJob("newsFeatureSnapshotBackfill", "0 30 2 ? * *",
-                    "分批生成 temporal-news-v1 股票日级快照并执行点时审计", "model", "BACKFILL"),
+                    "按交易日生成 temporal-news-v2-8d 有事件稀疏快照和 COMPLETE 水位", "model", "BACKFILL"),
             defaultPausedJob("sentimentMengziShadow", "0 0 1 ? * MON-FRI",
                     "顺序执行 Mengzi 情感影子推理和自动路由评估", "model", "INCREMENTAL"),
             defaultJob("lstmOfflineTraining", "0 0 19 ? * MON-FRI", "收盘后检查并更新缺失或过期的共享 LSTM 模型", "model", "INCREMENTAL"),
@@ -148,4 +148,4 @@ public class JobBootstrap implements ApplicationRunner {
         return defaultJob(jobName, cronExpression, description, module, syncMode).setStatus(0);
     }
 }
-// AI_GENERATE_END--------------------------------
+// AI_GENERATE_END---------------------------------

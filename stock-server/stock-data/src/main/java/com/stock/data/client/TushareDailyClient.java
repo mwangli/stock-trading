@@ -1,4 +1,4 @@
-// AI_GENERATE_START-- --
+// AI_GENERATE_START--- --
 package com.stock.data.client;
 
 import com.alibaba.fastjson2.JSONArray;
@@ -54,7 +54,7 @@ public class TushareDailyClient {
      */
     public List<TushareDailyBar> fetchDaily(LocalDate tradeDate) {
         if (!properties.isConfigured()) {
-            throw new IllegalStateException("Tushare 免费日线未启用或 TUSHARE_TOKEN_KEY 未配置");
+            throw new IllegalStateException("Tushare 免费日线未启用或 TUSHARE_TOKEN 未配置");
         }
         JSONObject body = new JSONObject();
         body.put("api_name", "daily");
@@ -166,4 +166,4 @@ public class TushareDailyClient {
             BigDecimal amount) {
     }
 }
-// AI_GENERATE_END-- --
+// AI_GENERATE_END--- --

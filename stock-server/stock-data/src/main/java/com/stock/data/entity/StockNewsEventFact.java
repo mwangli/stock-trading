@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 package com.stock.data.entity;
 
 import com.stock.data.enums.NewsDocumentRole;
@@ -25,7 +25,9 @@ import java.util.Set;
 @CompoundIndexes({
         @CompoundIndex(name = "uk_news_event_stock", def = "{'stockCode': 1, 'canonicalEventId': 1}", unique = true),
         @CompoundIndex(name = "idx_news_event_stock_time", def = "{'stockCode': 1, 'publishTime': -1}"),
-        @CompoundIndex(name = "idx_news_event_role_time", def = "{'documentRole': 1, 'publishTime': -1}")
+        @CompoundIndex(name = "idx_news_event_role_time", def = "{'documentRole': 1, 'publishTime': -1}"),
+        @CompoundIndex(name = "idx_news_event_role_time_id",
+                def = "{'documentRole': 1, 'publishTime': 1, '_id': 1}")
 })
 public class StockNewsEventFact {
 
@@ -96,4 +98,4 @@ public class StockNewsEventFact {
     /** 事件事实最近更新时间。 */
     private LocalDateTime updateTime;
 }
-// AI_GENERATE_END-----
+// AI_GENERATE_END------

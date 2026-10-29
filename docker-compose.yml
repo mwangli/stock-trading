@@ -1,14 +1,17 @@
 # AI_GENERATE_START---
 name: stock-trading
 
-x-default-logging: &default-logging
-  driver: local
-  options:
-    max-size: "20m"
-    max-file: "5"
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  logging:
+    driver: local
+    options:
+      max-size: "20m"
+      max-file: "5"
 
 services:
   stock-frontend:
+    <<: *service-defaults
     image: ${STOCK_FRONTEND_IMAGE:-stock-trading-frontend:local}
     build:
       context: .
@@ -19,9 +22,6 @@ services:
         condition: service_healthy
     ports:
       - "0.0.0.0:80:80"
-    networks:
-      - stock-public
-    restart: unless-stopped
     mem_limit: 96m
     cpus: 0.15
     security_opt:
@@ -32,27 +32,31 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 5
-    logging: *default-logging
 
   stock-backend:
+    <<: *service-defaults
     image: ${STOCK_BACKEND_IMAGE:-stock-trading-backend:local}
     build:
       context: .
       dockerfile: stock-server/Dockerfile
     container_name: stock-backend
     environment:
-      SPRING_PROFILES_ACTIVE: docker
-      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
+      SPRING_DATASOURCE_URL: jdbc:mysql://stock-mysql:3306/stock_trading?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      SPRING_DATASOURCE_USERNAME: stock
+      SPRING_DATASOURCE_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
+      SPRING_DATA_MONGODB_URI: mongodb://admin:${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}@stock-mongo:27017/stock_trading?authSource=admin
+      SPRING_FLYWAY_ENABLED: "true"
+      AGENT_EMBEDDING_MODEL_PATH: /app/model-files/embedding
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      TUSHARE_TOKEN_KEY: ${TUSHARE_TOKEN_KEY:-}
+      TUSHARE_TOKEN: ${TUSHARE_TOKEN:-}
       APP_NODE_ID: ${APP_NODE_ID:-stock-backend}
       APP_STARTUP_DATA_SYNC_ENABLED: ${APP_STARTUP_DATA_SYNC_ENABLED:-true}
       DJL_DEFAULT_ENGINE: PyTorch
       ZXBROKER_MOBILE_CODE: ${ZXBROKER_MOBILE_CODE:-}
       ZXBROKER_ACCOUNT: ${ZXBROKER_ACCOUNT:-}
       ZXBROKER_ENCODED_PASSWORD: ${ZXBROKER_ENCODED_PASSWORD:-}
-      BAIDU_OCR_API_KEY: ${BAIDU_OCR_API_KEY:-}
-      BAIDU_OCR_SECRET_KEY: ${BAIDU_OCR_SECRET_KEY:-}
+      ZXBROKER_BAIDU_OCR_API_KEY: ${BAIDU_OCR_API_KEY:-}
+      ZXBROKER_BAIDU_OCR_SECRET_KEY: ${BAIDU_OCR_SECRET_KEY:-}
       ZXBROKER_SIGN_KEY: ${ZXBROKER_SIGN_KEY:-}
       ZXBROKER_INTACT_TO_SERVER: ${ZXBROKER_INTACT_TO_SERVER:-}
       JAVA_TOOL_OPTIONS: -Xms384m -Xmx1024m -XX:MaxDirectMemorySize=256m -Duser.timezone=Asia/Shanghai
@@ -70,9 +74,8 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     networks:
-      - stock-public
+      - default
       - stock-internal
-    restart: unless-stopped
     mem_limit: 1536m
     cpus: 1.0
     security_opt:
@@ -83,13 +86,12 @@ services:
       timeout: 5s
       start_period: 90s
       retries: 5
-    logging: *default-logging
 
   stock-mysql:
+    <<: *service-defaults
     image: public.ecr.aws/docker/library/mysql:8.4
     container_name: stock-mysql
-    command:
-      - --lower-case-table-names=1
+    command: --lower-case-table-names=1
     environment:
       MYSQL_ROOT_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
       MYSQL_DATABASE: stock_trading
@@ -105,7 +107,6 @@ services:
     networks:
       - stock-internal
       - stock-db-access
-    restart: unless-stopped
     mem_limit: 512m
     cpus: 0.35
     healthcheck:
@@ -114,9 +115,9 @@ services:
       timeout: 10s
       start_period: 60s
       retries: 10
-    logging: *default-logging
 
   stock-mongo:
+    <<: *service-defaults
     image: public.ecr.aws/docker/library/mongo:8.0.32
     container_name: stock-mongo
     environment:
@@ -132,7 +133,6 @@ services:
     networks:
       - stock-internal
       - stock-db-access
-    restart: unless-stopped
     mem_limit: 512m
     cpus: 0.35
     healthcheck:
@@ -141,16 +141,11 @@ services:
       timeout: 10s
       start_period: 45s
       retries: 10
-    logging: *default-logging
 
 networks:
-  stock-public:
-    driver: bridge
   stock-internal:
-    driver: bridge
     internal: true
   stock-db-access:
-    driver: bridge
 
 volumes:
   backend-runtime-tmp:

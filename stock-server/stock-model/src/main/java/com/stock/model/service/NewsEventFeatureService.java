@@ -1,19 +1,25 @@
-// AI_GENERATE_START- -------
+// AI_GENERATE_START---------------
 package com.stock.model.service;
 
 import com.stock.data.dto.MarketNewsEventDto;
 import com.stock.data.enums.NewsDocumentRole;
 import com.stock.data.service.MarketDataQueryService;
 import com.stock.model.dto.NewsEventFeatureVector;
+import com.stock.model.dto.SentimentModelInput;
+import com.stock.model.entity.SentimentEventCacheDocument;
+import com.stock.model.repository.SentimentEventCacheRepository;
 import com.stock.model.vo.SentimentAggregateResult;
 import com.stock.model.vo.SentimentAnalysisResult;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -27,14 +33,26 @@ import java.util.Set;
  * @since 2026-10-24
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class NewsEventFeatureService {
 
     private static final int LOOKBACK_DAYS = 5;
+    private static final int MAX_SENTIMENT_CACHE_SIZE = 200_000;
+    private static final int PERSISTED_INFERENCE_BATCH_SIZE = 256;
     private static final double LOG_TWO = Math.log(2D);
     private final MarketDataQueryService marketDataQueryService;
     private final SentimentAggregationService sentimentAggregationService;
     private final SentimentModelRouterService sentimentModelRouterService;
+    private final SentimentInputAssembler sentimentInputAssembler;
+    private final SentimentEventCacheRepository sentimentEventCacheRepository;
+    private final Map<String, SentimentAnalysisResult> sentimentResultCache =
+            Collections.synchronizedMap(new LinkedHashMap<>(16, 0.75F, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, SentimentAnalysisResult> eldest) {
+                    return size() > MAX_SENTIMENT_CACHE_SIZE;
+                }
+            });
 
     /**
      * 生成单只股票在指定交易日截止时点的新闻事件特征。
@@ -54,35 +72,229 @@ public class NewsEventFeatureService {
         List<MarketNewsEventDto> tradeSignals = marketDataQueryService.findNewsEvents(
                         List.of(stockCode.trim()), cutoffTime.minusDays(LOOKBACK_DAYS), cutoffTime,
                         List.of(NewsDocumentRole.TRADE_SIGNAL));
-        SentimentAggregateResult aggregate = sentimentAggregationService
-                .aggregateEventFacts(tradeSignals, cutoffTime);
-        boolean noEffectiveEvent = tradeSignals.isEmpty();
-        List<SentimentAnalysisResult> modelResults = tradeSignals.stream()
-                .map(item -> sentimentModelRouterService.analyzeRequired(
-                        item.getNormalizedTitle(), item.getNormalizedContent()))
+        return buildFeature(stockCode, featureTradeDate, cutoffTime, tradeSignals);
+    }
+
+    /**
+     * 使用已批量加载的事件生成单只股票新闻特征，避免历史回填逐股重复查询。
+     *
+     * @param stockCode 股票代码
+     * @param featureTradeDate 特征归属交易日
+     * @param cutoffTime 信息截止时间
+     * @param tradeSignals 已按点时窗口加载的交易信号事件
+     * @return 固定结构的新闻事件特征
+     * @throws IllegalArgumentException 股票代码、交易日或截止时间无效时抛出
+     */
+    public NewsEventFeatureVector buildFeature(
+            String stockCode, LocalDate featureTradeDate, LocalDateTime cutoffTime,
+            List<MarketNewsEventDto> tradeSignals) {
+        return buildFeature(stockCode, featureTradeDate, cutoffTime, tradeSignals, null);
+    }
+
+    /**
+     * 使用批量预加载的情感模型版本生成单只股票新闻特征。
+     *
+     * @param stockCode 股票代码
+     * @param featureTradeDate 特征归属交易日
+     * @param cutoffTime 信息截止时间
+     * @param tradeSignals 已按点时窗口加载的交易信号事件
+     * @param preloadedSentimentModelVersion 已批量预加载的情感模型版本，可为空
+     * @return 固定结构的新闻事件特征
+     * @throws IllegalArgumentException 股票代码、交易日或截止时间无效时抛出
+     */
+    public NewsEventFeatureVector buildFeature(
+            String stockCode, LocalDate featureTradeDate, LocalDateTime cutoffTime,
+            List<MarketNewsEventDto> tradeSignals,
+            String preloadedSentimentModelVersion) {
+        if (stockCode == null || stockCode.isBlank()
+                || featureTradeDate == null || cutoffTime == null) {
+            throw new IllegalArgumentException("新闻事件特征必须提供股票代码、交易日和截止时间");
+        }
+        List<MarketNewsEventDto> safeTradeSignals = tradeSignals == null ? List.of() : tradeSignals;
+        boolean noEffectiveEvent = safeTradeSignals.isEmpty();
+        String sentimentModelVersion = noEffectiveEvent ? null
+                : hasText(preloadedSentimentModelVersion)
+                ? preloadedSentimentModelVersion : sentimentModelRouterService.activeModelVersion();
+        List<SentimentAnalysisResult> modelResults = safeTradeSignals.stream()
+                .map(item -> analyzeEvent(item, sentimentModelVersion))
                 .toList();
+        SentimentAggregateResult aggregate = sentimentAggregationService
+                .aggregateEventFacts(safeTradeSignals, cutoffTime, modelResults);
         return NewsEventFeatureVector.builder()
                 .stockCode(stockCode.trim())
                 .featureTradeDate(featureTradeDate)
                 .cutoffTime(cutoffTime)
                 .impactDirection(directionValue(aggregate.getImpactDirection()))
                 .impactMagnitude(aggregate.getImpactMagnitude())
-                .materiality(average(tradeSignals, true))
-                .novelty(average(tradeSignals, false))
+                .materiality(average(safeTradeSignals, true))
+                .novelty(average(safeTradeSignals, false))
                 .confidence(aggregate.getConfidence())
-                .eventAgeHours(eventAgeHours(tradeSignals, cutoffTime))
+                .eventAgeHours(eventAgeHours(safeTradeSignals, cutoffTime))
                 .riskFlag(false)
-                .eventTypeCounts(eventTypeCounts(tradeSignals))
+                .eventTypeCounts(eventTypeCounts(safeTradeSignals))
                 .noEffectiveEvent(noEffectiveEvent)
                 .missingMask(noEffectiveEvent ? 1 : 0)
-                .pipelineVersion(resolvePipelineVersion(tradeSignals))
-                .inputEventCount(tradeSignals.size())
-                .latestInputPublishTime(latestPublishTime(tradeSignals))
-                .sentimentModelVersion(noEffectiveEvent ? null
-                        : sentimentModelRouterService.activeModelVersion())
+                .pipelineVersion(resolvePipelineVersion(safeTradeSignals))
+                .inputEventCount(safeTradeSignals.size())
+                .latestInputPublishTime(latestPublishTime(safeTradeSignals))
+                .sentimentModelVersion(sentimentModelVersion)
                 .temporalFeatures(buildTemporalFeatures(
-                        tradeSignals, modelResults, aggregate, cutoffTime, noEffectiveEvent))
+                        safeTradeSignals, modelResults, aggregate, cutoffTime, noEffectiveEvent))
                 .build();
+    }
+
+    /**
+     * 批量预加载事件情感结果并写入有界缓存。
+     *
+     * @param events 同一日期点时窗口内的规范事件
+     * @return 本批次使用的情感模型版本；无事件时为空
+     */
+    public String preloadSentimentResults(List<MarketNewsEventDto> events) {
+        if (events == null || events.isEmpty()) {
+            return null;
+        }
+        String sentimentModelVersion = sentimentModelRouterService.activeModelVersion();
+        Map<String, MarketNewsEventDto> uniqueEventsByCacheKey = new LinkedHashMap<>();
+        Set<String> uniqueCacheKeys = new LinkedHashSet<>();
+        for (MarketNewsEventDto event : events) {
+            String cacheKey = cacheKey(event, sentimentModelVersion);
+            uniqueCacheKeys.add(cacheKey);
+            uniqueEventsByCacheKey.putIfAbsent(cacheKey, event);
+        }
+        sentimentEventCacheRepository.findAllById(uniqueCacheKeys).forEach(document -> {
+            if (document != null && document.getId() != null) {
+                sentimentResultCache.put(document.getId(), toSentimentResult(document));
+            }
+        });
+        Map<String, MarketNewsEventDto> missingByCacheKey = new LinkedHashMap<>();
+        synchronized (sentimentResultCache) {
+            for (Map.Entry<String, MarketNewsEventDto> entry : uniqueEventsByCacheKey.entrySet()) {
+                String cacheKey = entry.getKey();
+                if (!sentimentResultCache.containsKey(cacheKey)) {
+                    missingByCacheKey.put(cacheKey, entry.getValue());
+                }
+            }
+        }
+        log.info("新闻情感预加载统计: events={}, uniqueEvents={}, cacheHits={}, pendingInference={}",
+                events.size(), uniqueCacheKeys.size(),
+                uniqueCacheKeys.size() - missingByCacheKey.size(), missingByCacheKey.size());
+        if (missingByCacheKey.isEmpty()) {
+            return sentimentModelVersion;
+        }
+        List<String> cacheKeys = new ArrayList<>(missingByCacheKey.keySet());
+        List<MarketNewsEventDto> missingEvents = new ArrayList<>(missingByCacheKey.values());
+        for (int start = 0; start < cacheKeys.size(); start += PERSISTED_INFERENCE_BATCH_SIZE) {
+            int end = Math.min(start + PERSISTED_INFERENCE_BATCH_SIZE, cacheKeys.size());
+            List<String> batchCacheKeys = cacheKeys.subList(start, end);
+            List<MarketNewsEventDto> batchEvents = missingEvents.subList(start, end);
+            List<SentimentModelInput> inputs = batchEvents.stream()
+                    .map(event -> sentimentInputAssembler.assemble(
+                            event.getNormalizedTitle(), event.getNormalizedContent()))
+                    .toList();
+            List<SentimentAnalysisResult> results = sentimentModelRouterService
+                    .analyzeRequiredBatch(inputs);
+            if (results.size() != batchCacheKeys.size()) {
+                throw new IllegalStateException("批量情感推理输出数量与事件数量不一致");
+            }
+            List<SentimentEventCacheDocument> documents = new ArrayList<>(results.size());
+            synchronized (sentimentResultCache) {
+                for (int index = 0; index < batchCacheKeys.size(); index++) {
+                    String cacheKey = batchCacheKeys.get(index);
+                    SentimentAnalysisResult result = results.get(index);
+                    sentimentResultCache.put(cacheKey, result);
+                    documents.add(toCacheDocument(
+                            cacheKey, sentimentModelVersion, batchEvents.get(index), result));
+                }
+            }
+            sentimentEventCacheRepository.saveAll(documents);
+            log.info("新闻情感持久化批次完成: completed={}, total={}", end, cacheKeys.size());
+        }
+        return sentimentModelVersion;
+    }
+
+    private SentimentAnalysisResult analyzeEvent(
+            MarketNewsEventDto event, String sentimentModelVersion) {
+        String cacheKey = cacheKey(event, sentimentModelVersion);
+        synchronized (sentimentResultCache) {
+            SentimentAnalysisResult cached = sentimentResultCache.get(cacheKey);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        SentimentAnalysisResult analyzed = sentimentModelRouterService.analyzeRequired(
+                event.getNormalizedTitle(), event.getNormalizedContent());
+        synchronized (sentimentResultCache) {
+            SentimentAnalysisResult cached = sentimentResultCache.get(cacheKey);
+            if (cached != null) {
+                return cached;
+            }
+            sentimentResultCache.put(cacheKey, analyzed);
+            return analyzed;
+        }
+    }
+
+    private String cacheKey(MarketNewsEventDto event, String sentimentModelVersion) {
+        return sentimentModelVersion + "|" + eventIdentity(event);
+    }
+
+    private String eventIdentity(MarketNewsEventDto event) {
+        return firstText(event.getContentHash(), event.getCanonicalEventId(), event.getId(),
+                String.valueOf(Objects.hash(event.getNormalizedTitle(), event.getNormalizedContent())));
+    }
+
+    private SentimentEventCacheDocument toCacheDocument(
+            String cacheKey,
+            String sentimentModelVersion,
+            MarketNewsEventDto event,
+            SentimentAnalysisResult result) {
+        SentimentEventCacheDocument document = new SentimentEventCacheDocument();
+        document.setId(cacheKey);
+        document.setSentimentModelVersion(sentimentModelVersion);
+        document.setEventIdentity(eventIdentity(event));
+        document.setLabel(result.getLabel());
+        document.setScore(result.getScore());
+        document.setConfidence(result.getConfidence());
+        document.setCalibratedConfidence(result.getCalibratedConfidence());
+        document.setEntropy(result.getEntropy());
+        document.setProbabilityMargin(result.getProbabilityMargin());
+        document.setAbstained(result.isAbstained());
+        document.setChunkCount(result.getChunkCount());
+        document.setTextCoverage(result.getTextCoverage());
+        document.setNormalizedScore(result.getNormalizedScore());
+        document.setProbabilities(result.getProbabilities() == null
+                ? Map.of() : Map.copyOf(result.getProbabilities()));
+        document.setUpdatedAt(LocalDateTime.now());
+        return document;
+    }
+
+    private SentimentAnalysisResult toSentimentResult(SentimentEventCacheDocument document) {
+        return SentimentAnalysisResult.builder()
+                .label(document.getLabel())
+                .score(document.getScore())
+                .confidence(document.getConfidence())
+                .calibratedConfidence(document.getCalibratedConfidence())
+                .entropy(document.getEntropy())
+                .probabilityMargin(document.getProbabilityMargin())
+                .abstained(document.isAbstained())
+                .chunkCount(document.getChunkCount())
+                .textCoverage(document.getTextCoverage())
+                .normalizedScore(document.getNormalizedScore())
+                .probabilities(document.getProbabilities() == null
+                        ? Map.of() : Map.copyOf(document.getProbabilities()))
+                .build();
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private String firstText(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "UNKNOWN_EVENT";
     }
 
     private List<Double> buildTemporalFeatures(
@@ -187,4 +399,4 @@ public class NewsEventFeatureService {
         return 0D;
     }
 }
-// AI_GENERATE_END- -------
+// AI_GENERATE_END---------------

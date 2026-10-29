@@ -1,4 +1,4 @@
-// AI_GENERATE_START- ----
+// AI_GENERATE_START-- ----
 package com.stock.model.service;
 
 import com.stock.model.config.SentimentShadowConfig;
@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * FinBERT 与 Mengzi 的生产推理路由服务。
@@ -69,6 +70,23 @@ public class SentimentModelRouterService {
     }
 
     /**
+     * 批量执行当前生产路由的严格情感推理。
+     * FinBERT 使用原生批量推理；Mengzi 激活时保留逐项回退语义。
+     *
+     * @param inputs 统一模型输入列表
+     * @return 与输入顺序一致的情感结果
+     */
+    public List<SentimentAnalysisResult> analyzeRequiredBatch(List<SentimentModelInput> inputs) {
+        if (inputs == null || inputs.isEmpty()) {
+            return List.of();
+        }
+        if (isMengziActive()) {
+            return inputs.stream().map(this::analyzeRequired).toList();
+        }
+        return finbertInferenceService.analyzeSentimentRequiredBatch(inputs);
+    }
+
+    /**
      * 返回当前生产情感模型版本。
      *
      * @return 可追溯模型版本
@@ -119,4 +137,4 @@ public class SentimentModelRouterService {
         mengziRuntimeService.unloadModel();
     }
 }
-// AI_GENERATE_END- ----
+// AI_GENERATE_END-- ----

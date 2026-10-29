@@ -1,10 +1,9 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START-------------
 package com.stock.data.repository;
 
 import com.stock.data.entity.StockNews;
 import com.stock.data.enums.NewsQualityStatus;
 import org.springframework.data.mongodb.repository.MongoRepository;
-import org.springframework.data.mongodb.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -31,13 +30,13 @@ public interface NewsRepository extends MongoRepository<StockNews, String> {
     Optional<StockNews> findFirstByStockCodeOrderByPublishTimeDesc(String stockCode);
 
     /**
-     * 查询指定股票最近三条可消费新闻。
+     * 查询指定股票最近二十条可消费新闻，为展示层过滤截断正文预留候选数量。
      *
      * @param stockCode 股票代码
      * @param qualityStatus 新闻治理状态
-     * @return 按发布时间倒序排列的新闻，最多 3 条
+     * @return 按发布时间倒序排列的新闻，最多 20 条
      */
-    List<StockNews> findTop3ByStockCodeAndQualityStatusOrderByPublishTimeDesc(
+    List<StockNews> findTop20ByStockCodeAndQualityStatusOrderByPublishTimeDesc(
             String stockCode, NewsQualityStatus qualityStatus);
 
     /**
@@ -90,15 +89,12 @@ public interface NewsRepository extends MongoRepository<StockNews, String> {
     Optional<StockNews> findByStockCodeAndExternalId(String stockCode, String externalId);
 
     /**
-     * 批量查询指定股票下已存在的外部 ID，用于方案 A 批量预查去重
-     * 同一条新闻可关联多只股票，需按 (stockCode, externalId) 联合判重
-     * 使用 projection 仅返回 externalId，避免传输 content 等大字段
+     * 批量查询指定股票下已存在的新闻，用于区分完整记录和需要重新采集的截断记录。
      *
-     * @param stockCode  股票代码
+     * @param stockCode 股票代码
      * @param externalIds 待检查的外部 ID 列表
-     * @return 已存在的新闻（仅 externalId 有值），用于提取 Set
+     * @return 已存在的完整新闻文档
      */
-    @Query(value = "{ 'stockCode' : ?0, 'externalId' : { $in : ?1 } }", fields = "{ 'externalId' : 1, '_id' : 0 }")
-    List<StockNews> findExternalIdsByStockCodeAndExternalIdIn(String stockCode, List<String> externalIds);
+    List<StockNews> findByStockCodeAndExternalIdIn(String stockCode, List<String> externalIds);
 }
-// AI_GENERATE_END-----------
+// AI_GENERATE_END-------------

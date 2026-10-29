@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------
+// AI_GENERATE_START-------------------
 package com.stock.model.service;
 
 import com.stock.data.dto.ModelStockDailyBarDto;
@@ -6,6 +6,7 @@ import com.stock.data.service.MarketDataQueryService;
 import com.stock.model.config.LstmDataQualityConfig;
 import com.stock.model.config.LstmTrainingConfig;
 import com.stock.model.dto.ModelFeatureMetadata;
+import com.stock.model.dto.RankingSampleSelectionPlan;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -24,10 +25,10 @@ import java.util.Set;
 
 /**
  * V6 Ranking LSTM 训练数据加载服务。
- * 只加载 Tushare 免费模型日线和点时新闻快照，不依赖付费复权、历史行业或精确可交易事实。
+ * 只加载固定来源版本的统一日线和点时新闻快照，不依赖付费复权、历史行业或精确可交易事实。
  *
  * @author mwangli
- * @since 2026-10-23
+ * @since 2026-10-29
  */
 @Slf4j
 @Service
@@ -38,6 +39,7 @@ public class RankingLstmTrainingDataService {
     private final LstmDataQualityConfig dataQualityConfig;
     private final MarketDataQueryService marketDataQueryService;
     private final NewsFeatureSnapshotService newsFeatureSnapshotService;
+    private final RankingLstmDataPreprocessor rankingDataPreprocessor;
 
     /**
      * 加载一次训练快照需要的 V6 数据。
@@ -49,7 +51,7 @@ public class RankingLstmTrainingDataService {
      */
     public RankingTrainingDataBundle loadTrainingData(
             List<String> stockCodes, int days, ModelFeatureMetadata featureMetadata) {
-        return loadData(stockCodes, days, null, featureMetadata);
+        return loadData(stockCodes, days, null, featureMetadata, true);
     }
 
     /**
@@ -64,12 +66,12 @@ public class RankingLstmTrainingDataService {
     public RankingTrainingDataBundle loadPredictionData(
             List<String> stockCodes, int days, LocalDate endDate,
             ModelFeatureMetadata featureMetadata) {
-        return loadData(stockCodes, days, endDate, featureMetadata);
+        return loadData(stockCodes, days, endDate, featureMetadata, false);
     }
 
     private RankingTrainingDataBundle loadData(
             List<String> stockCodes, int days, LocalDate endDate,
-            ModelFeatureMetadata featureMetadata) {
+            ModelFeatureMetadata featureMetadata, boolean trainingMode) {
         featureMetadata.validate();
         String source = requireText(config.getDataSource(), "模型数据来源不能为空");
         String sourceVersion = requireText(config.getDataSourceVersion(), "模型数据版本不能为空");
@@ -92,30 +94,52 @@ public class RankingLstmTrainingDataService {
             }
         }
         if (priceSeries.isEmpty()) {
-            throw new IllegalStateException("model_stock_daily_bars 没有匹配 V6 来源版本的训练行情");
+            throw new IllegalStateException("stock_prices 没有匹配训练数据来源版本的统一日线");
         }
-        requireKeyCoverage("model_stock_daily_bars", codes, priceSeries.keySet());
+        requireKeyCoverage("stock_prices", codes, priceSeries.keySet());
 
-        LocalDate startDate = priceSeries.values().stream().flatMap(List::stream)
-                .map(ModelStockDailyBarDto::getTradeDate).min(LocalDate::compareTo)
-                .orElseThrow(() -> new IllegalStateException("V6 模型日线缺少开始日期"));
-        LocalDate effectiveEndDate = priceSeries.values().stream().flatMap(List::stream)
-                .map(ModelStockDailyBarDto::getTradeDate).max(LocalDate::compareTo)
-                .orElseThrow(() -> new IllegalStateException("V6 模型日线缺少结束日期"));
+        RankingSampleSelectionPlan sampleSelectionPlan = trainingMode
+                ? rankingDataPreprocessor.planSampleSelection(priceSeries, featureMetadata) : null;
         Set<String> requiredNewsSnapshotKeys = new LinkedHashSet<>();
-        Map<String, double[]> newsFeatureSnapshots = Map.of();
+        Set<String> requiredNewsStockCodes = new LinkedHashSet<>();
+        LocalDate newsStartDate = null;
+        LocalDate newsEndDate = null;
         if (featureMetadata.isNewsFeaturesEnabled()) {
-            priceSeries.forEach((stockCode, bars) -> bars.forEach(bar ->
-                    requiredNewsSnapshotKeys.add(stockCode + "|" + bar.getTradeDate())));
-            newsFeatureSnapshots = newsFeatureSnapshotService.loadRequired(
-                    priceSeries.keySet(), startDate, effectiveEndDate, requiredNewsSnapshotKeys);
+            if (trainingMode) {
+                requiredNewsSnapshotKeys.addAll(sampleSelectionPlan.getRequiredNewsSnapshotKeys());
+                requiredNewsStockCodes.addAll(sampleSelectionPlan.getRequiredStockCodes());
+                newsStartDate = sampleSelectionPlan.getStartDate();
+                newsEndDate = sampleSelectionPlan.getEndDate();
+            } else {
+                int sequenceLength = config.getSequenceLength();
+                for (Map.Entry<String, List<ModelStockDailyBarDto>> entry : priceSeries.entrySet()) {
+                    List<ModelStockDailyBarDto> bars = entry.getValue();
+                    int start = Math.max(0, bars.size() - sequenceLength);
+                    for (int index = start; index < bars.size(); index++) {
+                        LocalDate tradeDate = bars.get(index).getTradeDate();
+                        requiredNewsSnapshotKeys.add(entry.getKey() + "|" + tradeDate);
+                        requiredNewsStockCodes.add(entry.getKey());
+                        newsStartDate = newsStartDate == null || tradeDate.isBefore(newsStartDate)
+                                ? tradeDate : newsStartDate;
+                        newsEndDate = newsEndDate == null || tradeDate.isAfter(newsEndDate)
+                                ? tradeDate : newsEndDate;
+                    }
+                }
+            }
         }
+        Map<String, double[]> newsFeatureSnapshots = featureMetadata.isNewsFeaturesEnabled()
+                ? newsFeatureSnapshotService.loadRequired(
+                        requiredNewsStockCodes, newsStartDate, newsEndDate, source, sourceVersion,
+                        requiredNewsSnapshotKeys)
+                : Map.of();
 
         long barCount = priceSeries.values().stream().mapToLong(List::size).sum();
-        log.info("V6 训练数据加载完成: requestedStocks={}, loadedStocks={}, bars={}, newsSnapshots={}, "
-                        + "source={}, sourceVersion={}, benchmark={}",
+        log.info("V6 训练数据加载完成: requestedStocks={}, loadedStocks={}, bars={}, selectedTargets={}, "
+                        + "requiredNewsKeys={}, newsSnapshots={}, source={}, sourceVersion={}, benchmark={}",
                 codes.size(), priceSeries.size(), barCount,
-                newsFeatureSnapshots.size(), source, sourceVersion, benchmarkCode);
+                sampleSelectionPlan == null ? 0 : sampleSelectionPlan.getSelectedTargetCount(),
+                requiredNewsSnapshotKeys.size(), newsFeatureSnapshots.size(),
+                source, sourceVersion, benchmarkCode);
         return RankingTrainingDataBundle.builder()
                 .priceSeries(priceSeries)
                 .source(source)
@@ -123,6 +147,7 @@ public class RankingLstmTrainingDataService {
                 .benchmarkCode(benchmarkCode)
                 .featureMetadata(featureMetadata)
                 .newsFeatureSnapshots(newsFeatureSnapshots)
+                .sampleSelectionPlan(sampleSelectionPlan)
                 .build();
     }
 
@@ -165,7 +190,7 @@ public class RankingLstmTrainingDataService {
      * V6 训练数据集合。
      *
      * @author mwangli
-     * @since 2026-10-23
+     * @since 2026-10-29
      */
     @Data
     @Builder
@@ -182,6 +207,8 @@ public class RankingLstmTrainingDataService {
         private ModelFeatureMetadata featureMetadata;
         /** `股票代码|交易日` 到版本化紧凑新闻向量的映射。 */
         private Map<String, double[]> newsFeatureSnapshots;
+        /** 训练样本选择计划；推理数据加载时为空。 */
+        private RankingSampleSelectionPlan sampleSelectionPlan;
     }
 }
-// AI_GENERATE_END----------------
+// AI_GENERATE_END-------------------

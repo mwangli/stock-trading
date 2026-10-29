@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------------
+// AI_GENERATE_START---------------------
 package com.stock.data.service;
 
 import com.stock.data.dto.NewsEventFactSyncResult;
@@ -9,6 +9,7 @@ import com.stock.data.repository.NewsRepository;
 import com.stock.data.repository.StockInfoRepository;
 import com.stock.data.client.SecuritiesClient;
 import com.stock.data.validator.DelistedStockDetector;
+import com.stock.data.validator.NewsContentQualityValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -62,6 +63,7 @@ public class StockNewsService {
     private final NewsCollectionPipelineService newsCollectionPipelineService;
     private final NewsEventFactService newsEventFactService;
     private final StockNewsSyncStateService syncStateService;
+    private final NewsContentQualityValidator contentQualityValidator;
 
     /** 新闻发布时间保留天数，0 表示不按时间清理。 */
     @Value("${app.runtime.news.retention-days:365}")
@@ -126,7 +128,7 @@ public class StockNewsService {
      * 采集指定股票的新闻和公告（单只调用，使用全局缓存）。
      *
      * @param stockCode 股票代码，如 600519
-     * @return 本次采集新增的新闻数量
+     * @return 本次新增或修复的新闻数量
      * @throws IllegalStateException 新闻或公告来源未全部同步成功时抛出
      */
     public int collectStockNewsByCode(String stockCode) {
@@ -209,6 +211,7 @@ public class StockNewsService {
                                 int sourceIndex, int sourceTotal) {
         List<StockNews> batch = new ArrayList<>(BATCH_INSERT_SIZE);
         int totalSaved = 0;
+        int totalRefreshed = 0;
         int totalSkipped = 0;
         int page = 1;
         boolean hasMore = true;
@@ -227,7 +230,7 @@ public class StockNewsService {
                 break;
             }
 
-            // 方案 A：批量预查已存在的 externalId，将 N 次 exists 合并为 1 次 in 查询
+            // 批量预查候选 ID，完整记录直接跳过，截断记录允许重新采集覆盖。
             List<String> externalIds = new ArrayList<>();
             List<String> titles = new ArrayList<>();
             List<String> dateStrs = new ArrayList<>();
@@ -255,17 +258,21 @@ public class StockNewsService {
                     .collect(Collectors.joining(" | "));
             log.info("股票 {} {} 第 {} 页: 采集到 {} 条标题，示例: {}", label, src.category, page, titles.size(), titlePreview);
 
-            Set<String> existingIds = externalIds.isEmpty() ? Set.of()
-                    : newsRepository.findExternalIdsByStockCodeAndExternalIdIn(stockCode, externalIds).stream()
-                            .map(StockNews::getExternalId)
-                            .filter(Objects::nonNull)
-                            .collect(Collectors.toSet());
-            int skipCount = (int) externalIds.stream().filter(existingIds::contains).count();
-            totalSkipped += skipCount;
+            Map<String, StockNews> existingNews = externalIds.isEmpty() ? Map.of()
+                    : newsRepository.findByStockCodeAndExternalIdIn(stockCode, externalIds).stream()
+                            .filter(news -> news.getExternalId() != null)
+                            .collect(Collectors.toMap(StockNews::getExternalId, news -> news, (left, right) -> left));
+            List<StockNews> refreshBatch = new ArrayList<>();
 
             for (int i = 0; i < externalIds.size(); i++) {
                 String externalId = externalIds.get(i);
-                if (existingIds.contains(externalId) || !seenIdsInRun.add(externalId)) {
+                if (!seenIdsInRun.add(externalId)) {
+                    totalSkipped++;
+                    continue;
+                }
+                StockNews existing = existingNews.get(externalId);
+                if (existing != null && hasSubstantiveContent(existing)) {
+                    totalSkipped++;
                     log.debug("{} externalId={} 已存在，跳过", src.category, externalId);
                     continue;
                 }
@@ -274,13 +281,23 @@ public class StockNewsService {
                         stockCode, stockName, src.menuId(), src.category());
                 if (news != null) {
                     newsCollectionPipelineService.process(news);
-                    batch.add(news);
-                    if (batch.size() >= BATCH_INSERT_SIZE) {
-                        totalSaved += batchInsert(batch, src.category);
-                        batch.clear();
+                    if (existing == null) {
+                        batch.add(news);
+                        if (batch.size() >= BATCH_INSERT_SIZE) {
+                            totalSaved += batchInsert(batch, src.category);
+                            batch.clear();
+                        }
+                    } else {
+                        news.setId(existing.getId());
+                        news.setCreateTime(existing.getCreateTime());
+                        refreshBatch.add(news);
                     }
                 }
                 sleep(REQUEST_DELAY_MS);
+            }
+
+            if (!refreshBatch.isEmpty()) {
+                totalRefreshed += batchRefresh(refreshBatch, src.category);
             }
 
             if (grid0.size() < PAGE_SIZE || page >= MAX_PAGES) {
@@ -295,8 +312,33 @@ public class StockNewsService {
             totalSaved += batchInsert(batch, src.category);
         }
 
-        log.info("股票 {} {} 采集完成，新增 {} 条，已存在跳过 {} 条（单股进度 {}/{}）", label, src.category, totalSaved, totalSkipped, sourceIndex, sourceTotal);
-        return totalSaved;
+        log.info("股票 {} {} 采集完成，新增 {} 条，修复截断记录 {} 条，已存在跳过 {} 条（单股进度 {}/{}）",
+                label, src.category, totalSaved, totalRefreshed, totalSkipped, sourceIndex, sourceTotal);
+        return totalSaved + totalRefreshed;
+    }
+
+    private boolean hasSubstantiveContent(StockNews news) {
+        String title = firstNonBlank(news.getNormalizedTitle(), news.getTitle(), news.getRawTitle());
+        String content = firstNonBlank(news.getNormalizedContent(), news.getContent(), news.getRawContent());
+        return contentQualityValidator.hasSubstantiveContent(title, content);
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
+    private int batchRefresh(List<StockNews> batch, String category) {
+        List<StockNews> refreshed = newsRepository.saveAll(batch);
+        NewsEventFactSyncResult factResult = newsEventFactService.synchronizeBatch(refreshed);
+        log.info("股票 {} {} 截断新闻修复完成: 原始文档={}，新增事件事实={}，重复文档={}",
+                refreshed.get(0).getStockCode(), category, refreshed.size(), factResult.insertedEventCount(),
+                factResult.duplicateDocumentCount());
+        return refreshed.size();
     }
 
     /**
@@ -429,7 +471,7 @@ public class StockNewsService {
                         case FAILED -> failedCount.incrementAndGet();
                         default -> failedCount.incrementAndGet();
                     }
-                    log.info("股票 {} 采集完成（状态={}，本股新增 {} 条）",
+                    log.info("股票 {} 采集完成（状态={}，本股新增或修复 {} 条）",
                             resolveStockLabel(code, codeToName), result.status(), result.savedCount());
                 } catch (Exception e) {
                     failedCount.incrementAndGet();
@@ -437,7 +479,7 @@ public class StockNewsService {
                 } finally {
                     int processed = processedCount.incrementAndGet();
                     if (processed % 20 == 0 || processed == limit) {
-                        log.info("新闻采集整体进度: {}/{} 只股票，累计新增 {} 条，部分失败 {} 只，失败 {} 只",
+                        log.info("新闻采集整体进度: {}/{} 只股票，累计新增或修复 {} 条，部分失败 {} 只，失败 {} 只",
                                 processed, limit, totalSaved.get(), partialCount.get(), failedCount.get());
                     }
                     latch.countDown();
@@ -456,7 +498,7 @@ public class StockNewsService {
         }
 
         long costMs = System.currentTimeMillis() - startMs;
-        log.info("批量新闻采集完成: batchId={}，处理 {} 只，新增 {} 条，有新增 {} 只，无新增 {} 只，部分失败 {} 只，失败 {} 只，耗时 {} 分钟",
+        log.info("批量新闻采集完成: batchId={}，处理 {} 只，新增或修复 {} 条，有变更 {} 只，无变更 {} 只，部分失败 {} 只，失败 {} 只，耗时 {} 分钟",
                 batchId, processedCount.get(), totalSaved.get(), withChangeCount.get(), noChangeCount.get(),
                 partialCount.get(), failedCount.get(), costMs / 60_000);
         return new CollectResult(batchId, processedCount.get(), totalSaved.get(), withChangeCount.get(),
@@ -520,9 +562,9 @@ public class StockNewsService {
      *
      * @param batchId 批次 ID
      * @param processedCount 已处理股票数量
-     * @param savedCount 新增新闻数量
-     * @param withChangeCount 有新增股票数量
-     * @param noChangeCount 无新增股票数量
+     * @param savedCount 新增或修复新闻数量
+     * @param withChangeCount 有变更股票数量
+     * @param noChangeCount 无变更股票数量
      * @param partialCount 部分失败股票数量
      * @param failedCount 失败股票数量
      */
@@ -545,4 +587,4 @@ public class StockNewsService {
     /** 采集来源（新闻/公告）。 */
     private record NewsSource(String menuId, String category) {}
 }
-// AI_GENERATE_END-----------------
+// AI_GENERATE_END---------------------

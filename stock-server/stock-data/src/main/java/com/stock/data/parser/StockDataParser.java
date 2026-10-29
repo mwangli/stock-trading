@@ -1,23 +1,20 @@
-// AI_GENERATE_START--------
+// AI_GENERATE_START----------
 package com.stock.data.parser;
 
 import com.alibaba.fastjson2.JSONArray;
 import com.stock.data.entity.StockInfo;
-import com.stock.data.entity.StockPrice;
 import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * 证券接口文本数据解析器。
- * 负责把股票列表和历史价格的外部数组记录转换为明确领域对象，非法字段按字段级空值处理。
+ * 负责把股票列表的外部数组记录转换为明确领域对象，非法字段按字段级空值处理。
  *
  * @author mwangli
- * @since 2026-10-23
+ * @since 2026-10-29
  */
 @Slf4j
 public final class StockDataParser {
@@ -147,58 +144,6 @@ public final class StockDataParser {
         return parsed != null && parsed.signum() > 0 ? parsed : null;
     }
 
-    /**
-     * 批量解析指定股票的历史价格记录。
-     *
-     * @param results 外部接口价格数组
-     * @param stockCode 股票代码
-     * @return 成功解析的价格列表
-     */
-    public static List<StockPrice> parsePriceList(JSONArray results, String stockCode) {
-        List<StockPrice> prices = new ArrayList<>();
-        if (results == null || results.isEmpty()) return prices;
-        for (int i = 0; i < results.size(); i++) {
-            try {
-                StockPrice price = parseStockPrice(results.getString(i), stockCode);
-                if (price != null) prices.add(price);
-            } catch (Exception e) {
-                log.debug("解析价格数据失败: {}", e.getMessage());
-            }
-        }
-        return prices;
-    }
-
-    /**
-     * 解析单条历史价格记录。
-     *
-     * @param data 外部接口逗号分隔记录
-     * @param stockCode 股票代码
-     * @return 价格记录，关键字段无效时返回空
-     */
-    public static StockPrice parseStockPrice(String data, String stockCode) {
-        if (data == null || data.isEmpty()) return null;
-        String cleaned = data.replaceAll("[\\[\\]]", "");
-        String[] split = cleaned.split(",");
-        if (split.length < 5) return null;
-        StockPrice price = new StockPrice();
-        price.setCode(stockCode);
-        try {
-            price.setDate(LocalDate.parse(split[0], DateTimeFormatter.BASIC_ISO_DATE));
-        } catch (Exception e) {
-            log.debug("解析价格日期失败: {}", split[0]);
-            return null;
-        }
-        price.setOpenPrice(parsePrice(split[1]));
-        price.setHighPrice(parsePrice(split[2]));
-        price.setClosePrice(parsePrice(split[3]));
-        price.setLowPrice(parsePrice(split[4]));
-        if (split.length > 6) {
-            price.setVolume(parseDecimalField(split[5]));
-            price.setAmount(parseDecimalField(split[6]));
-        }
-        return price;
-    }
-
     private static String clean(String field) {
         return field == null ? "" : field.replaceAll("\"", "").trim();
     }
@@ -216,13 +161,6 @@ public final class StockDataParser {
         }
     }
 
-    private static BigDecimal parsePrice(String value) {
-        try {
-            return BigDecimal.valueOf(Double.parseDouble(value) / 100);
-        } catch (Exception e) {
-            return null;
-        }
-    }
 
 }
-// AI_GENERATE_END--------
+// AI_GENERATE_END----------

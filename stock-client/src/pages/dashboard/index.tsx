@@ -1,4 +1,4 @@
-// AI_GENERATE_START----------------------
+// AI_GENERATE_START-----------------------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
@@ -99,31 +99,25 @@ const Dashboard: React.FC = () => {
 
   const loadBrokerData = useCallback(async () => {
     setLoading(true);
-    const [accountResult, performanceResult] = await Promise.allSettled([
-      request.get('/brokerQuery/account') as Promise<ApiResult<BrokerAccount>>,
-      request.get('/performance/overview') as Promise<ApiResult<PerformanceOverview>>,
-    ]);
-
-    const accountData = accountResult.status === 'fulfilled' ? readApiData(accountResult.value) : null;
-    const performanceData = performanceResult.status === 'fulfilled' ? readApiData(performanceResult.value) : null;
-
-    if (accountData) {
-      setAccount(accountData);
-    } else if (performanceData) {
-      setAccount({
-        totalAssets: performanceData.totalAssets,
-        availableCash: performanceData.availableCash,
-        frozenAmount: performanceData.frozenCash,
-        totalPosition: performanceData.marketValue,
-        capturedAt: performanceData.capturedAt ?? '',
-      });
+    try {
+      const result = await request.get('/performance/overview') as ApiResult<PerformanceOverview>;
+      const performanceData = readApiData(result);
+      if (performanceData) {
+        setPerformance(performanceData);
+        setAccount({
+          totalAssets: performanceData.totalAssets,
+          availableCash: performanceData.availableCash,
+          frozenAmount: performanceData.frozenCash,
+          totalPosition: performanceData.marketValue,
+          capturedAt: performanceData.capturedAt ?? '',
+        });
+      }
+    } catch {
+      setAccount(null);
+      setPerformance(null);
+    } finally {
+      setLoading(false);
     }
-
-    if (performanceData) {
-      setPerformance(performanceData);
-    }
-
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -247,4 +241,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-// AI_GENERATE_END----------------------
+// AI_GENERATE_END-----------------------

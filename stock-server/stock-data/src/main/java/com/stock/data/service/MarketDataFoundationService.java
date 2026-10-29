@@ -1,11 +1,12 @@
-// AI_GENERATE_START--------------------
+// AI_GENERATE_START----------------------
 package com.stock.data.service;
 
+import com.stock.base.cache.CacheNames;
 import com.stock.data.dto.AdjustmentFactorImportItemDto;
 import com.stock.data.dto.HistoricalUniverseImportItemDto;
 import com.stock.data.dto.MinuteBarImportItemDto;
 import com.stock.data.dto.ModelReferenceDailyBarImportItemDto;
-import com.stock.data.dto.ModelStockDailyBarImportItemDto;
+import com.stock.data.dto.StockDailyBarImportItemDto;
 import com.stock.data.dto.StockDailyTradabilityImportItemDto;
 
 import com.stock.data.dto.AdjustmentFactorImportRequestDto;
@@ -13,11 +14,11 @@ import com.stock.data.dto.HistoricalUniverseImportRequestDto;
 import com.stock.data.dto.MarketDataImportResultDto;
 import com.stock.data.dto.MinuteBarImportRequestDto;
 import com.stock.data.dto.ModelReferenceDailyBarImportRequestDto;
-import com.stock.data.dto.ModelStockDailyBarImportRequestDto;
+import com.stock.data.dto.StockDailyBarImportRequestDto;
 import com.stock.data.dto.StockDailyTradabilityImportRequestDto;
 import com.stock.data.entity.HistoricalStockUniverseEntity;
 import com.stock.data.entity.ModelReferenceDailyBar;
-import com.stock.data.entity.ModelStockDailyBar;
+import com.stock.data.entity.StockPrice;
 import com.stock.data.entity.StockAdjustmentFactor;
 import com.stock.data.entity.StockMinuteBar;
 import com.stock.data.entity.StockDailyTradabilityFact;
@@ -30,7 +31,9 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -43,7 +46,7 @@ import java.util.Map;
  * 提供历史股票池、复权因子和 5 分钟 K 线的受控幂等写入。
  *
  * @author mwangli
- * @since 2026-09-25
+ * @since 2026-10-29
  */
 @Slf4j
 @Service
@@ -164,27 +167,25 @@ public class MarketDataFoundationService {
     }
 
     /**
-     * 导入模型特征专用的版本化股票日线。
+     * 导入全系统统一使用的版本化股票日线。
      *
      * @param request 股票日线批次
      * @return 导入统计
      */
-    public MarketDataImportResultDto importModelStockDailyBars(ModelStockDailyBarImportRequestDto request) {
-        List<ModelStockDailyBarImportItemDto> items = deduplicateModelStockDailyBars(request.getItems());
-        BulkOperations bulk = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, ModelStockDailyBar.class);
+    @CacheEvict(cacheNames = CacheNames.LATEST_PRICE, allEntries = true)
+    public MarketDataImportResultDto importStockDailyBars(StockDailyBarImportRequestDto request) {
+        List<StockDailyBarImportItemDto> items = deduplicateStockDailyBars(request.getItems());
+        BulkOperations bulk = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, StockPrice.class);
         LocalDateTime now = LocalDateTime.now();
-        for (ModelStockDailyBarImportItemDto item : items) {
+        for (StockDailyBarImportItemDto item : items) {
             validateDailyBar(item.getStockCode(), item.getTradeDate().toString(), item.getOpenPrice(),
                     item.getHighPrice(), item.getLowPrice(), item.getClosePrice());
-            Query query = Query.query(Criteria.where("stockCode").is(item.getStockCode().trim())
-                    .and("tradeDate").is(item.getTradeDate())
-                    .and("source").is(request.getSource().trim())
-                    .and("sourceVersion").is(request.getSourceVersion().trim()));
+            Query query = Query.query(Criteria.where("code").is(item.getStockCode().trim())
+                    .and("date").is(item.getTradeDate()));
             Update update = new Update()
-                    .setOnInsert("stockCode", item.getStockCode().trim())
-                    .setOnInsert("tradeDate", item.getTradeDate())
-                    .setOnInsert("source", request.getSource().trim())
-                    .setOnInsert("sourceVersion", request.getSourceVersion().trim())
+                    .setOnInsert("code", item.getStockCode().trim())
+                    .setOnInsert("date", item.getTradeDate())
+                    .setOnInsert("createTime", now)
                     .set("openPrice", item.getOpenPrice())
                     .set("highPrice", item.getHighPrice())
                     .set("lowPrice", item.getLowPrice())
@@ -192,14 +193,16 @@ public class MarketDataFoundationService {
                     .set("preClosePrice", item.getPreClosePrice())
                     .set("volume", item.getVolume())
                     .set("amount", item.getAmount())
-                    .set("turnoverRate", item.getTurnoverRate())
                     .set("volumeUnit", request.getVolumeUnit().trim())
                     .set("amountUnit", request.getAmountUnit().trim())
-                    .set("ingestedAt", now);
+                    .set("source", request.getSource().trim())
+                    .set("sourceVersion", request.getSourceVersion().trim())
+                    .set("ingestedAt", now)
+                    .set("updateTime", now);
             bulk.upsert(query, update);
         }
         bulk.execute();
-        return result("MODEL_STOCK_DAILY_BAR", request.getSource(), request.getSourceVersion(),
+        return result("STOCK_DAILY_BAR", request.getSource(), request.getSourceVersion(),
                 request.getItems().size(), items.size());
     }
 
@@ -309,10 +312,10 @@ public class MarketDataFoundationService {
         return List.copyOf(unique.values());
     }
 
-    private List<ModelStockDailyBarImportItemDto> deduplicateModelStockDailyBars(
-            List<ModelStockDailyBarImportItemDto> items) {
-        Map<String, ModelStockDailyBarImportItemDto> unique = new LinkedHashMap<>();
-        for (ModelStockDailyBarImportItemDto item : items) {
+    private List<StockDailyBarImportItemDto> deduplicateStockDailyBars(
+            List<StockDailyBarImportItemDto> items) {
+        Map<String, StockDailyBarImportItemDto> unique = new LinkedHashMap<>();
+        for (StockDailyBarImportItemDto item : items) {
             unique.put(item.getStockCode().trim() + "|" + item.getTradeDate(), item);
         }
         return List.copyOf(unique.values());
@@ -424,4 +427,4 @@ public class MarketDataFoundationService {
                 .build();
     }
 }
-// AI_GENERATE_END--------------------
+// AI_GENERATE_END----------------------

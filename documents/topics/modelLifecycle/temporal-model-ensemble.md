@@ -32,7 +32,7 @@ Ranking LSTM 保持生产基线，MASTER 使用相同标签、成本模型和四
 
 | 能力 | 当前实现 | 源码状态 |
 |---|---|---|
-| 数据准备 | 独立 Quartz 任务准备 `TUSHARE_FREE_DAILY/V6` 日线和新闻快照；训练只检查契约所需数据。`RankingLstmDataPreprocessor` 构建 V6.1 18D 或 V6.2 26D 样本并执行全局日期切分、标准化、Purge、Embargo 和 Walk-Forward；`TrainingDatasetSnapshotService` 将不可变快照保存到 GridFS | 源码已调整；数据有缺口时进入 `WAITING_DATA` |
+| 数据准备 | 独立 Quartz 任务按交易日一次获取 `TUSHARE_DAILY/TUSHARE_DAILY_V1` 全市场日线并写入统一 `stock_prices`，同时准备新闻快照；训练只检查契约所需数据。`RankingLstmDataPreprocessor` 构建 V6.1 18D 或 V6.2 26D 样本并执行全局日期切分、标准化、Purge、Embargo 和 Walk-Forward；`TrainingDatasetSnapshotService` 将不可变快照保存到 GridFS | 源码已调整；数据有缺口或已过期时进入 `WAITING_DATA` |
 | 模型训练 | `LstmTrainerService` 按目标交易日分组并按横截面块训练 `MasterTransformerModel`，联合优化排序、收益、方向和下行分位，支持早停、独立测试、Walk-Forward 和严格隔离评估 | 已具备 |
 | 模型预测 | `LstmModelRuntimeService` 根据候选元数据重建 MASTER，从 GridFS 加载参数，按训练时 `crossSectionBatchSize` 执行同日股票池推理；`MasterShadowPredictionService` 保存独立影子结果 | 已具备 |
 | 模型评估 | 训练流水线执行一次性独立测试和 Walk-Forward 离线评估；候选登记后，由独立影子任务使用真实目标日收益持续比较 Ranking LSTM 与 MASTER，并自动调权或退役 | 已具备 |

@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------------
+// AI_GENERATE_START--------------------------------
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Descriptions, Drawer, Empty, Input, Select, Skeleton, Table, Tooltip } from 'antd';
@@ -80,6 +80,18 @@ type MarketSortOrder = 'asc' | 'desc';
 
 const DEFAULT_SORT_FIELD: MarketSortField = 'updateTime';
 const DEFAULT_SORT_ORDER: MarketSortOrder = 'desc';
+const DEFAULT_DETAIL_DRAWER_WIDTH = 480;
+const MIN_DETAIL_DRAWER_WIDTH = 360;
+const DETAIL_DRAWER_VIEWPORT_GAP = 24;
+
+const getDetailDrawerMaxWidth = () => typeof window === 'undefined'
+  ? DEFAULT_DETAIL_DRAWER_WIDTH
+  : Math.max(0, window.innerWidth - DETAIL_DRAWER_VIEWPORT_GAP);
+
+const clampDetailDrawerWidth = (width: number, maxWidth: number) => Math.min(
+  Math.max(width, Math.min(MIN_DETAIL_DRAWER_WIDTH, maxWidth)),
+  maxWidth,
+);
 
 interface StockInfoPage {
   items: StockInfo[];
@@ -207,10 +219,26 @@ const Market: React.FC = () => {
   const [latestNews, setLatestNews] = useState<StockNewsSummary[]>([]);
   const [latestNewsLoading, setLatestNewsLoading] = useState(false);
   const [latestNewsLoadFailed, setLatestNewsLoadFailed] = useState(false);
+  const [detailDrawerMaxWidth, setDetailDrawerMaxWidth] = useState(getDetailDrawerMaxWidth);
+  const [detailDrawerWidth, setDetailDrawerWidth] = useState(() => clampDetailDrawerWidth(
+    DEFAULT_DETAIL_DRAWER_WIDTH,
+    getDetailDrawerMaxWidth(),
+  ));
   const [klineType] = useState<'daily'>('daily');
   const [timeRange, setTimeRange] = useState<'last1Month' | 'last1Year' | 'last3Years'>('last1Month');
   const [searchKeyword, setSearchKeyword] = useState('');
   const searchInputRef = useRef<InputRef>(null);
+
+  useEffect(() => {
+    const syncDetailDrawerWidth = () => {
+      const nextMaxWidth = getDetailDrawerMaxWidth();
+      setDetailDrawerMaxWidth(nextMaxWidth);
+      setDetailDrawerWidth((currentWidth) => clampDetailDrawerWidth(currentWidth, nextMaxWidth));
+    };
+
+    window.addEventListener('resize', syncDetailDrawerWidth);
+    return () => window.removeEventListener('resize', syncDetailDrawerWidth);
+  }, []);
 
   useEffect(() => {
     if (!detailStock?.code) {
@@ -797,7 +825,14 @@ const Market: React.FC = () => {
       <Drawer
         open={Boolean(detailStock)}
         placement="right"
-        width={480}
+        size={detailDrawerWidth}
+        maxSize={detailDrawerMaxWidth}
+        resizable={{
+          onResize: (nextWidth) => {
+            setDetailDrawerWidth(clampDetailDrawerWidth(nextWidth, detailDrawerMaxWidth));
+          },
+        }}
+        classNames={{ dragger: 'market-detail-drawer-resize-handle' }}
         title={detailStock ? (
           <div className="flex min-w-0 items-baseline gap-3">
             <span className="truncate text-base font-semibold text-[var(--text-primary)]">{detailStock.name}</span>
@@ -902,4 +937,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END-------------------------------
+// AI_GENERATE_END--------------------------------

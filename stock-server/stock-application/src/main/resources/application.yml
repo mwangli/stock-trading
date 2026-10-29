@@ -8,8 +8,7 @@ spring:
     username: root
     password: ${DATABASE_PASSWORD}
     hikari:
-      maximum-pool-size: "${MYSQL_MAX_POOL_SIZE:10}"
-      minimum-idle: "${MYSQL_MIN_IDLE:2}"
+      minimum-idle: 2
   jpa:
     open-in-view: false
     hibernate:
@@ -18,12 +17,10 @@ spring:
       hibernate.jdbc.time_zone: Asia/Shanghai
   flyway:
     enabled: false
-  main:
-    allow-bean-definition-overriding: true
   data:
     mongodb:
       auto-index-creation: true
-      uri: "mongodb://admin:${DATABASE_PASSWORD}@117.72.216.67:27017/stock_trading?authSource=admin"
+      uri: "mongodb://admin:${DATABASE_PASSWORD}@117.72.216.67:27017/stock_trading?authSource=admin&compressors=zlib&zlibCompressionLevel=6"
   jackson:
     date-format: "yyyy-MM-dd HH:mm:ss"
     time-zone: Asia/Shanghai
@@ -40,9 +37,7 @@ server:
       timeout: ${HTTP_SESSION_TIMEOUT:8h}
       cookie:
         name: STOCK_SESSION
-        http-only: true
         same-site: lax
-        secure: "${HTTP_SESSION_COOKIE_SECURE:false}"
   compression:
     enabled: true
     min-response-size: 1KB
@@ -50,133 +45,33 @@ server:
 
 zxbroker:
   enabled: true
-  mobile-code: ${ZXBROKER_MOBILE_CODE:}
-  account: ${ZXBROKER_ACCOUNT:}
-  encoded-password: ${ZXBROKER_ENCODED_PASSWORD:}
   captcha-auto-submit-enabled: true
-  baidu-ocr-api-key: ${BAIDU_OCR_API_KEY:}
-  baidu-ocr-secret-key: ${BAIDU_OCR_SECRET_KEY:}
-  sign-key: ${ZXBROKER_SIGN_KEY:}
-  intact-to-server: ${ZXBROKER_INTACT_TO_SERVER:}
 
 agent:
   enabled: true
-  provider: ${AGENT_PROVIDER:deepseek}
+  provider: deepseek
   deepseek:
     enabled: true
-    base-url: https://api.deepseek.com/v1
     api-key: ${DEEPSEEK_API_KEY:}
-    model: deepseek-flash
-    max-tokens: 1024
-    thinking-enabled: false
-    daily-budget:
-      enabled: true
-      daily-limit-cny: 1.00
-      input-price-cny-per-million: 2.10
-      output-price-cny-per-million: 8.40
-      safety-factor: 1.10
-      reservation-overhead-tokens: 1024
-  ollama:
-    enabled: false
-    base-url: http://localhost:11434
-    api-key: ollama
-    model: deepseek-r1:7b
-    think: false
-    max-tokens: 256
-  max-steps: 6
-  max-model-rounds: 3
   timeout-ms: 120000
-  max-output-chars: 12000
-  max-concurrency: 1
-  circuit-breaker-enabled: true
   circuit-breaker-failure-threshold: 1
-  circuit-breaker-open-duration-ms: 60000
-  report-enabled: false
-  trade-plan-enabled: false
   rag-enabled: true
-  memory-enabled: true
-  rag-collection: agent_rag_chunks
-  rag-auto-initialization-enabled: ${AGENT_RAG_AUTO_INITIALIZATION_ENABLED:true}
-  project-documents:
-    enabled: ${AGENT_PROJECT_DOCUMENTS_ENABLED:true}
-    path: ./documents
-  memory-default-ttl-days: 90
-  chat-memory-max-messages: 20
-  chat-memory-max-sessions: ${AGENT_CHAT_MEMORY_MAX_SESSIONS:500}
-  chat-memory-idle-ttl-minutes: ${AGENT_CHAT_MEMORY_IDLE_TTL_MINUTES:120}
-  tool-timeout-ms: ${AGENT_TOOL_TIMEOUT_MS:30000}
-  audit-enabled: true
-  web-search:
-    enabled: true
-    endpoint: https://api.deepseek.com/v1/tools/search
-    timeout-ms: 10000
-    max-results: 5
-    max-query-chars: 300
-    max-response-chars: 100000
-  vector-store: mongodb
   embedding:
     enabled: true
     provider: djl
-    base-url: http://localhost:11434
-    api-key: ollama
-    model: bge-base-zh-v1.5
-    model-path: ${EMBEDDING_MODEL_PATH:./model-files/embedding}
-    model-version: bge-base-zh-v1.5
-    dimension: 768
-    timeout-ms: 30000
-    max-sequence-length: 512
-    pooling-mode: cls
-    normalize: true
-    allow-hash-fallback: false
 
 models:
   lstm:
-    data-source: TUSHARE_FREE_DAILY
-    data-source-version: V6
-    benchmark-series-code: MARKET_EQUAL_WEIGHT
     residual-head-enabled: false
   sentiment:
     model-version: finbert-tone-chinese-e91b1a3a
-  sentiment-shadow:
-    enabled: ${MENGZI_SHADOW_ENABLED:false}
   temporal-ensemble:
-    master-shadow-enabled: ${MASTER_SHADOW_ENABLED:true}
-    production-blend-enabled: ${TEMPORAL_ENSEMBLE_ENABLED:true}
-    news-features-embedded: ${TEMPORAL_NEWS_FEATURES_EMBEDDED:true}
-    news-feature-version: ${TEMPORAL_NEWS_FEATURE_VERSION:temporal-news-v2-8d}
+    master-shadow-enabled: true
+    production-blend-enabled: true
+    news-features-embedded: true
+    news-feature-version: temporal-news-v2-8d
 
 app:
   market:
     tushare:
-      enabled: ${TUSHARE_FREE_DAILY_ENABLED:true}
-      endpoint: ${TUSHARE_ENDPOINT:http://api.tushare.pro}
-      token: ${TUSHARE_TOKEN_KEY:}
-      requests-per-minute: ${TUSHARE_REQUESTS_PER_MINUTE:45}
-  runtime:
-    node-id: ${APP_NODE_ID:}
-    startup-data-sync-enabled: ${APP_STARTUP_DATA_SYNC_ENABLED:true}
-    news:
-      external:
-        enabled: ${NEWS_EXTERNAL_SOURCES_ENABLED:false}
-        csrc-enabled: ${NEWS_EXTERNAL_CSRC_ENABLED:false}
-      collection-quality:
-        ranking-enabled: ${NEWS_EVENT_RANKING_ENABLED:false}
-        risk-gate-enabled: ${NEWS_EVENT_RISK_GATE_ENABLED:false}
-
----
-spring:
-  config:
-    activate:
-      on-profile: docker
-  datasource:
-    url: jdbc:mysql://stock-mysql:3306/stock_trading?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
-    username: stock
-  flyway:
-    enabled: true
-  data:
-    mongodb:
-      uri: "mongodb://admin:${DATABASE_PASSWORD}@stock-mongo:27017/stock_trading?authSource=admin"
-
-agent:
-  embedding:
-    model-path: /app/model-files/embedding
+      token: ${TUSHARE_TOKEN:}

@@ -1,4 +1,4 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START--------
 package com.stock.data.entity;
 
 import lombok.Data;
@@ -16,13 +16,15 @@ import java.time.LocalDateTime;
  * 同时提供按股票时间序列查询和按交易日跨股票审计所需的索引。
  *
  * @author mwangli
- * @since 2026-09-25
+ * @since 2026-10-29
  */
 @Data
 @Document(collection = "stock_prices")
 @CompoundIndexes({
         @CompoundIndex(name = "idx_code_date", def = "{'code': 1, 'date': -1}", unique = true),
-        @CompoundIndex(name = "idx_date_code", def = "{'date': 1, 'code': 1}")
+        @CompoundIndex(name = "idx_date_code", def = "{'date': 1, 'code': 1}"),
+        @CompoundIndex(name = "idx_source_version_date_code",
+                def = "{'source': 1, 'sourceVersion': 1, 'date': -1, 'code': 1}")
 })
 public class StockPrice {
 
@@ -37,9 +39,21 @@ public class StockPrice {
     private BigDecimal highPrice;
     private BigDecimal lowPrice;
     private BigDecimal closePrice;
+    /** 数据源给出的除权昨收，用于构造连续价格。 */
+    private BigDecimal preClosePrice;
     private BigDecimal volume;
     private BigDecimal amount;
+    /** 成交量单位，例如 LOT。 */
+    private String volumeUnit;
+    /** 成交额单位，例如 CNY_THOUSAND。 */
+    private String amountUnit;
+    /** 行情数据来源。 */
+    private String source;
+    /** 独立于模型版本的数据契约版本。 */
+    private String sourceVersion;
+    /** 外部行情写入时间。 */
+    private LocalDateTime ingestedAt;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END--------

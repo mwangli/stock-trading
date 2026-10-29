@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------
+// AI_GENERATE_START--------
 package com.stock.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 模型版本列表项和详情响应。
@@ -131,6 +132,24 @@ public class ModelVersionResponse {
     /** Walk-Forward Top 10% 成本后收益。 */
     private Double walkForwardTopDecileNetReturn;
 
+    /** Walk-Forward Top 10% 毛收益。 */
+    private Double walkForwardTopDecileGrossReturn;
+
+    /** Walk-Forward 逐月复合毛收益。 */
+    private Map<String, Double> walkForwardMonthlyGrossReturns;
+
+    /** Walk-Forward 月均复合毛收益。 */
+    private Double walkForwardMonthlyGrossReturnMean;
+
+    /** Walk-Forward 月度毛收益标准差。 */
+    private Double walkForwardMonthlyGrossReturnStandardDeviation;
+
+    /** Walk-Forward 正毛收益月份占比。 */
+    private Double walkForwardPositiveMonthRatio;
+
+    /** Walk-Forward 最差月份毛收益。 */
+    private Double walkForwardWorstMonthlyGrossReturn;
+
     /** 温度校准后的 Brier Score。 */
     private Double brierScore;
 
@@ -149,4 +168,4 @@ public class ModelVersionResponse {
     /** 是否为上一可回滚版本。 */
     private boolean previous;
 }
-// AI_GENERATE_END-------
+// AI_GENERATE_END--------

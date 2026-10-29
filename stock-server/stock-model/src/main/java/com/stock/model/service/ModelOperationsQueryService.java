@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------
+// AI_GENERATE_START---------------
 package com.stock.model.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -31,7 +31,9 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 模型运维只读查询服务。
@@ -247,7 +249,19 @@ public class ModelOperationsQueryService {
                 .walkForwardMeanRankIc(doubleValue(metrics, "walkForwardMeanRankIc"))
                 .walkForwardRankIcIr(doubleValue(metrics, "walkForwardRankIcIr"))
                 .positiveRankIcWindowRatio(doubleValue(metrics, "positiveRankIcWindowRatio"))
+                .walkForwardTopDecileGrossReturn(
+                        doubleValue(metrics, "walkForwardTopDecileGrossReturn"))
                 .walkForwardTopDecileNetReturn(doubleValue(metrics, "walkForwardTopDecileNetReturn"))
+                .walkForwardMonthlyGrossReturns(
+                        doubleMapValue(metrics, "walkForwardMonthlyGrossReturns"))
+                .walkForwardMonthlyGrossReturnMean(
+                        doubleValue(metrics, "walkForwardMonthlyGrossReturnMean"))
+                .walkForwardMonthlyGrossReturnStandardDeviation(
+                        doubleValue(metrics, "walkForwardMonthlyGrossReturnStandardDeviation"))
+                .walkForwardPositiveMonthRatio(
+                        doubleValue(metrics, "walkForwardPositiveMonthRatio"))
+                .walkForwardWorstMonthlyGrossReturn(
+                        doubleValue(metrics, "walkForwardWorstMonthlyGrossReturn"))
                 .brierScore(doubleValue(metrics, "walkForwardBrierScore"))
                 .brierBaseline(doubleValue(metrics, "walkForwardBrierBaseline"))
                 .outputCollapsed(booleanValue(metrics, "outputCollapsed"))
@@ -331,6 +345,19 @@ public class ModelOperationsQueryService {
                 ? null : node.path(field).asDouble();
     }
 
+    private Map<String, Double> doubleMapValue(JsonNode node, String field) {
+        if (node == null || !node.hasNonNull(field) || !node.path(field).isObject()) {
+            return Map.of();
+        }
+        Map<String, Double> values = new LinkedHashMap<>();
+        node.path(field).fields().forEachRemaining(entry -> {
+            if (entry.getValue().isNumber()) {
+                values.put(entry.getKey(), entry.getValue().asDouble());
+            }
+        });
+        return Map.copyOf(values);
+    }
+
     private Boolean booleanValue(JsonNode node, String field) {
         return node == null || !node.hasNonNull(field) || !node.path(field).isBoolean()
                 ? null : node.path(field).asBoolean();
@@ -380,4 +407,4 @@ public class ModelOperationsQueryService {
                 && ModelRuntimeStatusService.STATUS_HEALTHY.equals(runtimeStatus.getStatus());
     }
 }
-// AI_GENERATE_END--------------
+// AI_GENERATE_END---------------

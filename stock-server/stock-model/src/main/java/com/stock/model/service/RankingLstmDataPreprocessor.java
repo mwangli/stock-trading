@@ -1,10 +1,11 @@
-// AI_GENERATE_START------------
+// AI_GENERATE_START-------------
 package com.stock.model.service;
 
 import com.stock.data.dto.ModelStockDailyBarDto;
 import com.stock.data.dto.StockPriceItemDto;
 import com.stock.model.config.LstmTrainingConfig;
 import com.stock.model.dto.ModelFeatureMetadata;
+import com.stock.model.dto.RankingSampleSelectionPlan;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -42,6 +43,60 @@ public class RankingLstmDataPreprocessor {
     private final TechnicalIndicatorService technicalIndicatorService;
 
     /**
+     * 在加载新闻特征前固定训练样本集合，并展开入选样本的序列新闻键。
+     *
+     * @param priceSeries 股票代码到按交易日升序行情的映射
+     * @param featureMetadata 本次训练的特征元数据
+     * @return 可由正式预处理直接复用的样本选择计划
+     */
+    public RankingSampleSelectionPlan planSampleSelection(
+            Map<String, List<ModelStockDailyBarDto>> priceSeries,
+            ModelFeatureMetadata featureMetadata) {
+        validateConfiguration(featureMetadata);
+        Map<String, List<AdjustedBar>> adjustedSeries = buildAdjustedSeries(priceSeries);
+        if (adjustedSeries.isEmpty()) {
+            throw new IllegalStateException("价格连续化后没有可用于 V6 训练的股票序列");
+        }
+        MarketSeries marketSeries = buildMarketSeries(adjustedSeries);
+        Map<String, Set<Integer>> selectedTargetIndices = selectSampleTargetIndices(
+                adjustedSeries, marketSeries);
+        Map<String, Set<Integer>> immutableSelection = new LinkedHashMap<>();
+        selectedTargetIndices.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> immutableSelection.put(entry.getKey(), Set.copyOf(entry.getValue())));
+
+        Set<String> requiredKeys = new TreeSet<>();
+        Set<String> requiredStockCodes = new TreeSet<>();
+        if (featureMetadata.isNewsFeaturesEnabled()) {
+            int sequenceLength = config.getSequenceLength();
+            for (Map.Entry<String, Set<Integer>> entry : immutableSelection.entrySet()) {
+                List<AdjustedBar> bars = adjustedSeries.get(entry.getKey());
+                for (Integer targetIndex : entry.getValue()) {
+                    int start = targetIndex - sequenceLength;
+                    for (int index = start; index < targetIndex; index++) {
+                        requiredKeys.add(key(entry.getKey(), bars.get(index).tradeDate()));
+                        requiredStockCodes.add(entry.getKey());
+                    }
+                }
+            }
+        }
+        LocalDate startDate = requiredKeys.stream().map(this::dateFromKey)
+                .min(LocalDate::compareTo).orElse(null);
+        LocalDate endDate = requiredKeys.stream().map(this::dateFromKey)
+                .max(LocalDate::compareTo).orElse(null);
+        int selectedTargetCount = immutableSelection.values().stream().mapToInt(Set::size).sum();
+        return RankingSampleSelectionPlan.builder()
+                .selectedTargetIndices(Map.copyOf(immutableSelection))
+                .requiredNewsSnapshotKeys(Set.copyOf(requiredKeys))
+                .requiredStockCodes(Set.copyOf(requiredStockCodes))
+                .startDate(startDate)
+                .endDate(endDate)
+                .selectedTargetCount(selectedTargetCount)
+                .uniqueSequenceDayCount(requiredKeys.size())
+                .build();
+    }
+
+    /**
      * 构建 `V6` 训练、验证和独立测试样本。
      *
      * @param bundle 版本化模型训练数据
@@ -58,8 +113,13 @@ public class RankingLstmDataPreprocessor {
         Map<LocalDate, Double> marketBreadth = calculateMarketBreadth(adjustedSeries);
         MarketSeries marketSeries = buildMarketSeries(adjustedSeries);
         StableDictionaries dictionaries = buildDictionaries(adjustedSeries.keySet());
-        Map<String, Set<Integer>> selectedTargetIndices = selectSampleTargetIndices(
-                adjustedSeries, marketSeries);
+        RankingSampleSelectionPlan selectionPlan = bundle.getSampleSelectionPlan();
+        Map<String, Set<Integer>> selectedTargetIndices = selectionPlan == null
+                ? selectSampleTargetIndices(adjustedSeries, marketSeries)
+                : selectionPlan.getSelectedTargetIndices();
+        if (selectedTargetIndices == null || selectedTargetIndices.isEmpty()) {
+            throw new IllegalStateException("V6 样本选择计划为空");
+        }
 
         List<ProvisionalSample> provisionalSamples = new ArrayList<>();
         for (Map.Entry<String, List<AdjustedBar>> entry : adjustedSeries.entrySet()) {
@@ -935,6 +995,14 @@ public class RankingLstmDataPreprocessor {
         return result;
     }
 
+    private LocalDate dateFromKey(String snapshotKey) {
+        int separator = snapshotKey.lastIndexOf('|');
+        if (separator < 0 || separator == snapshotKey.length() - 1) {
+            throw new IllegalStateException("新闻快照键格式无效: " + snapshotKey);
+        }
+        return LocalDate.parse(snapshotKey.substring(separator + 1));
+    }
+
     private List<Integer> evenlySampleIndices(List<Integer> source, int limit) {
         if (source.size() <= limit) {
             return source;
@@ -1050,4 +1118,4 @@ public class RankingLstmDataPreprocessor {
     private record NormalizationStats(double[] means, double[] standardDeviations) {
     }
 }
-// AI_GENERATE_END------------
+// AI_GENERATE_END-------------

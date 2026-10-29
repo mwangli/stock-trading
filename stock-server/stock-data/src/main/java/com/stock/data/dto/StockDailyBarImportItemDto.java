@@ -1,5 +1,6 @@
-// AI_GENERATE_START------
+// AI_GENERATE_START -
 package com.stock.data.dto;
+
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -7,20 +8,21 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * 单只股票单日模型特征行情。
+ * 单只股票单交易日的统一日线导入项。
  *
  * @author mwangli
- * @since 2026-09-25
+ * @since 2026-10-29
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ModelStockDailyBarImportItemDto {
+public class StockDailyBarImportItemDto {
 
     /** 股票代码。 */
     @NotBlank
@@ -30,42 +32,38 @@ public class ModelStockDailyBarImportItemDto {
     @NotNull
     private LocalDate tradeDate;
 
-    /** 开盘价。 */
+    /** 开盘价，单位为元。 */
     @NotNull
     @DecimalMin(value = "0", inclusive = false)
     private BigDecimal openPrice;
 
-    /** 最高价。 */
+    /** 最高价，单位为元。 */
     @NotNull
     @DecimalMin(value = "0", inclusive = false)
     private BigDecimal highPrice;
 
-    /** 最低价。 */
+    /** 最低价，单位为元。 */
     @NotNull
     @DecimalMin(value = "0", inclusive = false)
     private BigDecimal lowPrice;
 
-    /** 收盘价。 */
+    /** 收盘价，单位为元。 */
     @NotNull
     @DecimalMin(value = "0", inclusive = false)
     private BigDecimal closePrice;
 
-    /** 昨日收盘参考价；用于免费日线连续归一化，首个可用交易日允许为空。 */
+    /** 数据源给出的除权昨收，首个可用交易日允许为空。 */
     @DecimalMin(value = "0", inclusive = false)
     private BigDecimal preClosePrice;
 
-    /** 成交量。 */
+    /** 成交量，单位由导入请求统一声明。 */
     @NotNull
     @DecimalMin("0")
     private BigDecimal volume;
 
-    /** 成交额。 */
+    /** 成交额，单位由导入请求统一声明。 */
     @NotNull
     @DecimalMin("0")
     private BigDecimal amount;
-
-    /** 当日换手率；Tushare 免费 daily 不提供时允许为空。 */
-    @DecimalMin("0")
-    private BigDecimal turnoverRate;
 }
-// AI_GENERATE_END------
+// AI_GENERATE_END -
