@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------
+# AI_GENERATE_START -------------------
 from __future__ import annotations
 
 import hashlib
@@ -9,11 +9,48 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterable, Iterator
 
 import pandas as pd
 
-from stock_trading.broker.models import BrokerSyncSnapshot
+from stock_trading.broker.models import BrokerOrder, BrokerSyncSnapshot
+
+ORDER_TERMINAL_STATUSES = frozenset({"FILLED", "CANCELLED", "REJECTED"})
+ORDER_ACTIVE_STATUSES = frozenset(
+    {
+        "PREPARED",
+        "SUBMITTING",
+        "SUBMITTED",
+        "PARTIAL",
+        "CANCEL_SUBMITTING",
+        "UNKNOWN",
+    }
+)
+ORDER_TRANSITIONS = {
+    "PREPARED": {"SUBMITTING", "REJECTED", "UNKNOWN"},
+    "SUBMITTING": {
+        "SUBMITTED",
+        "PARTIAL",
+        "FILLED",
+        "CANCELLED",
+        "REJECTED",
+        "UNKNOWN",
+    },
+    "SUBMITTED": {
+        "PARTIAL",
+        "FILLED",
+        "CANCEL_SUBMITTING",
+        "CANCELLED",
+        "REJECTED",
+        "UNKNOWN",
+    },
+    "PARTIAL": {"FILLED", "CANCEL_SUBMITTING", "CANCELLED", "UNKNOWN"},
+    "CANCEL_SUBMITTING": {"FILLED", "CANCELLED", "REJECTED", "UNKNOWN"},
+    "UNKNOWN": {"SUBMITTED", "PARTIAL", "FILLED", "CANCELLED", "REJECTED"},
+    "FILLED": set(),
+    "CANCELLED": set(),
+    "REJECTED": set(),
+}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS task_run (
@@ -405,7 +442,7 @@ class StateStore:
         side: str,
         quantity: int,
         price: Decimal,
-    ) -> None:
+    ) -> dict[str, Any]:
         if not client_order_id.strip():
             raise ValueError("client_order_id 不能为空")
         if side not in {"BUY", "SELL"}:
@@ -418,7 +455,28 @@ class StateStore:
             raise ValueError("委托价格必须大于零")
         self.initialize()
         with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT * FROM broker_order_intent WHERE client_order_id = ?",
+                (client_order_id,),
+            ).fetchone()
+            if existing is not None:
+                self._assert_same_order_intent(
+                    existing, instrument, side, quantity, price
+                )
+                return dict(existing)
             self._assert_real_trading_ready(connection)
+            active = connection.execute(
+                f"""
+                SELECT client_order_id, status FROM broker_order_intent
+                WHERE status IN ({','.join('?' for _ in ORDER_ACTIVE_STATUSES)})
+                ORDER BY created_at ASC LIMIT 1
+                """,
+                tuple(sorted(ORDER_ACTIVE_STATUSES)),
+            ).fetchone()
+            if active is not None:
+                raise PermissionError(
+                    f"存在未确认终态订单，禁止新增风险: {active['client_order_id']}:{active['status']}"
+                )
             connection.execute(
                 """
                 INSERT INTO broker_order_intent(
@@ -436,6 +494,16 @@ class StateStore:
                     _now(),
                 ),
             )
+            connection.execute(
+                "UPDATE shadow_order SET status = 'PREPARED' WHERE client_order_id = ?",
+                (client_order_id,),
+            )
+            return dict(
+                connection.execute(
+                    "SELECT * FROM broker_order_intent WHERE client_order_id = ?",
+                    (client_order_id,),
+                ).fetchone()
+            )
 
     def authorize_real_write(self, client_order_id: str) -> None:
         self.initialize()
@@ -451,6 +519,10 @@ class StateStore:
             )
             if cursor.rowcount != 1:
                 raise PermissionError("订单未预留或已提交，拒绝重复券商写入")
+            connection.execute(
+                "UPDATE shadow_order SET status = 'SUBMITTING' WHERE client_order_id = ?",
+                (client_order_id,),
+            )
 
     def finish_real_order(
         self,
@@ -459,21 +531,21 @@ class StateStore:
         broker_order_id: str | None = None,
         error_message: str | None = None,
     ) -> None:
+        if status not in ORDER_TRANSITIONS:
+            raise ValueError(f"不支持的订单状态: {status}")
         self.initialize()
         with self._connect() as connection:
-            connection.execute(
-                """
-                UPDATE broker_order_intent
-                SET status = ?, broker_order_id = ?, error_message = ?, updated_at = ?
-                WHERE client_order_id = ?
-                """,
-                (status, broker_order_id, error_message, _now(), client_order_id),
+            self._transition_order_intent(
+                connection,
+                client_order_id,
+                status,
+                broker_order_id=broker_order_id,
+                error_message=error_message,
             )
 
     def authorize_cancel_write(self, client_order_id: str) -> None:
         self.initialize()
         with self._connect() as connection:
-            self._assert_real_trading_ready(connection)
             cursor = connection.execute(
                 """
                 UPDATE broker_order_intent
@@ -486,6 +558,111 @@ class StateStore:
             )
             if cursor.rowcount != 1:
                 raise PermissionError("订单不可撤销或撤单已提交，拒绝重复券商写入")
+            connection.execute(
+                """
+                UPDATE shadow_order SET status = 'CANCEL_SUBMITTING'
+                WHERE client_order_id = ?
+                """,
+                (client_order_id,),
+            )
+
+    def get_shadow_order(self, client_order_id: str) -> dict[str, Any] | None:
+        self.initialize()
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM shadow_order WHERE client_order_id = ?",
+                (client_order_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_order_intent(self, client_order_id: str) -> dict[str, Any] | None:
+        self.initialize()
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM broker_order_intent WHERE client_order_id = ?",
+                (client_order_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_order_intents(self, active_only: bool = False) -> list[dict[str, Any]]:
+        self.initialize()
+        with self._connect() as connection:
+            if active_only:
+                rows = connection.execute(
+                    f"""
+                    SELECT * FROM broker_order_intent
+                    WHERE status IN ({','.join('?' for _ in ORDER_ACTIVE_STATUSES)})
+                    ORDER BY created_at ASC
+                    """,
+                    tuple(sorted(ORDER_ACTIVE_STATUSES)),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT * FROM broker_order_intent ORDER BY created_at ASC"
+                ).fetchall()
+        return [dict(row) for row in rows]
+
+    def reconcile_order_intents(
+        self,
+        orders: Iterable[BrokerOrder],
+        mark_unmatched_unknown: bool = False,
+    ) -> list[dict[str, Any]]:
+        self.initialize()
+        broker_orders = tuple(order for order in orders if order.order_id)
+        with self._connect() as connection:
+            intents = connection.execute(
+                f"""
+                SELECT * FROM broker_order_intent
+                WHERE status IN ({','.join('?' for _ in ORDER_ACTIVE_STATUSES)})
+                ORDER BY created_at ASC
+                """,
+                tuple(sorted(ORDER_ACTIVE_STATUSES)),
+            ).fetchall()
+            bound_order_ids = {
+                str(row["broker_order_id"])
+                for row in intents
+                if row["broker_order_id"] is not None
+            }
+            matched_clients: set[str] = set()
+            for intent in intents:
+                matched = self._match_broker_order(
+                    intent, broker_orders, bound_order_ids
+                )
+                if matched is None:
+                    continue
+                matched_clients.add(str(intent["client_order_id"]))
+                bound_order_ids.add(str(matched.order_id))
+                if (
+                    intent["status"] == "CANCEL_SUBMITTING"
+                    and matched.status in {"SUBMITTED", "PARTIAL"}
+                ):
+                    continue
+                self._transition_order_intent(
+                    connection,
+                    str(intent["client_order_id"]),
+                    matched.status,
+                    broker_order_id=str(matched.order_id),
+                    error_message=(
+                        f"券商返回未知状态: {matched.raw_status}"
+                        if matched.status == "UNKNOWN"
+                        else None
+                    ),
+                )
+            if mark_unmatched_unknown:
+                for intent in intents:
+                    client_order_id = str(intent["client_order_id"])
+                    if client_order_id in matched_clients or intent["status"] == "PREPARED":
+                        continue
+                    self._transition_order_intent(
+                        connection,
+                        client_order_id,
+                        "UNKNOWN",
+                        error_message="重启恢复未找到唯一券商委托事实",
+                    )
+            rows = connection.execute(
+                "SELECT * FROM broker_order_intent ORDER BY created_at ASC"
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def summary(self) -> dict[str, Any]:
         self.initialize()
@@ -711,6 +888,87 @@ class StateStore:
             rows,
         )
         return len(rows)
+
+    @staticmethod
+    def _assert_same_order_intent(
+        existing: sqlite3.Row,
+        instrument: str,
+        side: str,
+        quantity: int,
+        price: Decimal,
+    ) -> None:
+        same = (
+            existing["instrument"] == instrument
+            and existing["side"] == side
+            and int(existing["quantity"]) == quantity
+            and Decimal(str(existing["price"])) == price
+        )
+        if not same:
+            raise ValueError("client_order_id 已绑定不同订单参数")
+
+    @staticmethod
+    def _match_broker_order(
+        intent: sqlite3.Row,
+        orders: tuple[BrokerOrder, ...],
+        bound_order_ids: set[str],
+    ) -> BrokerOrder | None:
+        broker_order_id = intent["broker_order_id"]
+        if broker_order_id is not None:
+            return next(
+                (
+                    order
+                    for order in orders
+                    if str(order.order_id) == str(broker_order_id)
+                ),
+                None,
+            )
+        candidates = [
+            order
+            for order in orders
+            if str(order.order_id) not in bound_order_ids
+            and _broker_order_matches_intent(order, intent)
+        ]
+        return candidates[0] if len(candidates) == 1 else None
+
+    @staticmethod
+    def _transition_order_intent(
+        connection: sqlite3.Connection,
+        client_order_id: str,
+        target_status: str,
+        broker_order_id: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        row = connection.execute(
+            "SELECT status, broker_order_id FROM broker_order_intent WHERE client_order_id = ?",
+            (client_order_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"订单意图不存在: {client_order_id}")
+        current_status = str(row["status"])
+        if (
+            target_status != current_status
+            and target_status not in ORDER_TRANSITIONS[current_status]
+        ):
+            raise ValueError(f"非法订单状态转换: {current_status} -> {target_status}")
+        effective_order_id = broker_order_id or row["broker_order_id"]
+        connection.execute(
+            """
+            UPDATE broker_order_intent
+            SET status = ?, broker_order_id = ?, error_message = ?, updated_at = ?
+            WHERE client_order_id = ?
+            """,
+            (
+                target_status,
+                effective_order_id,
+                error_message,
+                _now(),
+                client_order_id,
+            ),
+        )
+        connection.execute(
+            "UPDATE shadow_order SET status = ? WHERE client_order_id = ?",
+            (target_status, client_order_id),
+        )
 
     @staticmethod
     def _assert_real_trading_ready(connection: sqlite3.Connection) -> None:
@@ -982,4 +1240,14 @@ def _json_default(value: object) -> str:
 
 def _optional_float(value: Decimal | None) -> float | None:
     return float(value) if value is not None else None
-# AI_GENERATE_END -------------
+
+
+def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> bool:
+    instrument = str(intent["instrument"])
+    return (
+        order.stock_code == instrument[-6:]
+        and order.direction == intent["side"]
+        and order.order_quantity == int(intent["quantity"])
+        and order.order_price == Decimal(str(intent["price"]))
+    )
+# AI_GENERATE_END -------------------

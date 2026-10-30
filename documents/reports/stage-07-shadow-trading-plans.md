@@ -108,4 +108,4 @@ SHADOW_AFTERNOON_BUY:businessDate
 
 ## 下一阶段
 
-阶段 08 实现订单执行状态机和券商事实恢复。仍先使用伪券商测试 `SUBMITTING → SUBMITTED/PARTIAL/FILLED/CANCELLED/REJECTED`，真实交易开关继续关闭。
+阶段 08 实现订单执行状态机和券商事实恢复。仍先使用伪券商测试 `SUBMITTING → SUBMITTED/PARTIAL/FILLED/CANCELLED/REJECTED`，真实交易开关继续关闭。实施结果见《阶段 08：订单执行与恢复报告》。

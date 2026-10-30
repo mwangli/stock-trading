@@ -75,7 +75,7 @@ broker_order_intent       真实写入幂等意图
 3. 先使用唯一 `client_order_id` 创建 `PREPARED` 订单意图。
 4. 提交前原子切换为 `SUBMITTING`，同一业务键不能重复提交。
 5. A 股数量大于零且为 100 股整数倍，价格大于零，方向只能为 `BUY` 或 `SELL`。
-6. 撤单仅允许已记录券商订单号且状态为 `SUBMITTED` 或 `PARTIAL` 的订单，并原子切换为 `CANCEL_SUBMITTING`。
+6. 撤单仅允许已记录券商订单号且状态为 `SUBMITTED` 或 `PARTIAL` 的订单，并原子切换为 `CANCEL_SUBMITTING`。阶段 08 起，关闭新增真实交易后仍允许撤销既有活动订单，避免安全开关反而阻止降风险动作。
 
 当前真实交易开关为 `false`，最新模型为 `REJECTED`，两层门禁都会拒绝真实写入。
 
