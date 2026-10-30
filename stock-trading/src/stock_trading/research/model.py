@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 import json
@@ -102,7 +102,9 @@ def train_alpha158_lightgbm(
     top = (
         scored.dropna(subset=["score"])
         .reset_index()
-        .sort_values(["datetime", "score"], ascending=[True, False])
+        .sort_values(
+            ["datetime", "score", "instrument"], ascending=[True, False, True]
+        )
         .groupby("datetime", sort=True)
         .head(top_k)
     )
@@ -127,6 +129,92 @@ def train_alpha158_lightgbm(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return payload
+
+
+def predict_alpha158_lightgbm(
+    qlib_dir: Path,
+    model_dir: Path,
+    prediction_date: date,
+    top_k: int = 5,
+) -> dict[str, object]:
+    """Run one deterministic cross-sectional prediction with an existing model."""
+    import qlib
+    from qlib.constant import REG_CN
+    from qlib.contrib.data.handler import Alpha158
+    from qlib.data.dataset import DatasetH
+    from qlib.data.dataset.handler import DataHandlerLP
+
+    metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
+    segments = metrics["segments"]
+    calendar = pd.to_datetime(
+        (qlib_dir / "calendars" / "day.txt").read_text(encoding="utf-8").splitlines()
+    )
+    target = pd.Timestamp(prediction_date)
+    if target not in calendar:
+        raise ValueError(f"prediction date is absent from Qlib calendar: {prediction_date}")
+
+    qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=2)
+    handler = Alpha158(
+        instruments="all",
+        start_time=pd.Timestamp(calendar.min()).date(),
+        end_time=prediction_date,
+        fit_start_time=date.fromisoformat(segments["train_start"]),
+        fit_end_time=date.fromisoformat(segments["train_end"]),
+        label=(["$label"], ["LABEL0"]),
+    )
+    dataset = DatasetH(
+        handler=handler,
+        segments={"prediction": (prediction_date, prediction_date)},
+    )
+    features = dataset.prepare(
+        "prediction", col_set="feature", data_key=DataHandlerLP.DK_I
+    )
+    if features.empty:
+        raise ValueError(f"no Alpha158 features for prediction date: {prediction_date}")
+    with (model_dir / "model.pkl").open("rb") as stream:
+        model = pickle.load(stream)
+    model_columns = list(getattr(model, "feature_name_", []))
+    if model_columns:
+        missing = sorted(set(model_columns) - set(features.columns))
+        if missing:
+            raise ValueError(f"prediction features are missing model columns: {missing[:5]}")
+        features = features.loc[:, model_columns]
+    scored = pd.Series(
+        model.predict(features), index=features.index, name="score"
+    ).dropna()
+    scored.index.names = ["datetime", "instrument"]
+    top = (
+        scored.reset_index()
+        .sort_values(
+            ["datetime", "score", "instrument"], ascending=[True, False, True]
+        )
+        .head(top_k)
+    )
+    top["label"] = float("nan")
+    output_dir = model_dir / "predictions"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output = output_dir / f"top{top_k}-{prediction_date.isoformat()}.parquet"
+    temporary = output.with_suffix(".parquet.tmp")
+    try:
+        top.to_parquet(temporary, index=False)
+        temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return {
+        "model": metrics["model"],
+        "featureSet": metrics["featureSet"],
+        "predictionDate": prediction_date.isoformat(),
+        "universeRows": int(len(scored)),
+        "topK": int(len(top)),
+        "path": str(output),
+        "candidates": [
+            {
+                "instrument": str(row.instrument),
+                "score": float(row.score),
+            }
+            for row in top.itertuples(index=False)
+        ],
+    }
 
 
 def _cross_sectional_metrics(frame: pd.DataFrame) -> dict[str, float | int]:
@@ -165,4 +253,4 @@ def _daily_correlations(group: pd.DataFrame) -> pd.Series:
 
 def _segments_record(segments: ModelSegments) -> dict[str, str]:
     return {key: value.isoformat() for key, value in asdict(segments).items()}
-# AI_GENERATE_END ------
+# AI_GENERATE_END --------

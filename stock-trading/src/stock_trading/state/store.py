@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START ----------
 from __future__ import annotations
 
 import hashlib
@@ -277,6 +277,44 @@ class StateStore:
             "positions": position_rows,
             "orders": order_rows,
             "fills": fill_rows,
+        } | self.summary()
+
+    def import_prediction_artifact(
+        self, model_dir: Path, prediction_path: Path
+    ) -> dict[str, Any]:
+        self.initialize()
+        self.recover_interrupted_runs()
+        predictions = pd.read_parquet(prediction_path)
+        required = {"datetime", "instrument", "score", "label"}
+        missing = sorted(required - set(predictions.columns))
+        if missing:
+            raise ValueError(f"prediction artifact is missing columns: {missing}")
+        prediction_dates = pd.to_datetime(predictions["datetime"]).dt.date.unique()
+        if len(prediction_dates) != 1:
+            raise ValueError("prediction artifact must contain exactly one business date")
+        business_date = prediction_dates[0].isoformat()
+        metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
+        model_hash = hashlib.sha256((model_dir / "model.pkl").read_bytes()).hexdigest()
+        business_key = f"PREDICT:{business_date}:{model_hash[:16]}"
+        if self._successful_run_exists(business_key):
+            return {"businessKey": business_key, "status": "SKIPPED"} | self.summary()
+
+        self._start_run(business_key, "PREDICT", business_date)
+        try:
+            with self._connect() as connection:
+                model_id = self._upsert_model(connection, model_dir, metrics)
+                prediction_rows = self._upsert_predictions(
+                    connection, model_id, predictions
+                )
+            self._finish_run(business_key, "SUCCESS", None)
+        except BaseException as error:
+            self._finish_run(business_key, "FAILED", str(error))
+            raise
+        return {
+            "businessKey": business_key,
+            "status": "SUCCESS",
+            "predictionDate": business_date,
+            "predictions": prediction_rows,
         } | self.summary()
 
     def prepare_real_order(
@@ -819,4 +857,4 @@ def _json_default(value: object) -> str:
 
 def _optional_float(value: Decimal | None) -> float | None:
     return float(value) if value is not None else None
-# AI_GENERATE_END -------
+# AI_GENERATE_END ----------

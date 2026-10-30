@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------
+# AI_GENERATE_START --------------
 from __future__ import annotations
 
 import argparse
@@ -7,6 +7,7 @@ import time
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 from stock_trading.config import AppConfig
 from stock_trading.broker.client import ZXBrokerClient
@@ -14,7 +15,11 @@ from stock_trading.market.audit import audit_minute_days, expected_bar_ends
 from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
 from stock_trading.market.models import AdjustmentFactor, DailyBar, MinuteBar
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.research.model import ModelSegments, train_alpha158_lightgbm
+from stock_trading.research.model import (
+    ModelSegments,
+    predict_alpha158_lightgbm,
+    train_alpha158_lightgbm,
+)
 from stock_trading.research.backtest import BacktestConfig, PortfolioBacktester
 from stock_trading.research.qlib_store import QlibBinaryStore
 from stock_trading.state.store import StateStore
@@ -55,6 +60,8 @@ def main() -> None:
         _print_json({"recoveredRuns": recovered} | StateStore(config.state_db_path).summary())
     elif arguments.command == "sync-broker-shadow":
         _sync_broker_shadow(config, arguments.business_date)
+    elif arguments.command == "predict-latest":
+        _predict_latest(config, arguments.prediction_date)
     else:
         parser.error(f"Unsupported command: {arguments.command}")
 
@@ -125,6 +132,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     broker_sync.add_argument(
         "--date", dest="business_date", type=date.fromisoformat, default=date.today()
+    )
+    prediction = subparsers.add_parser(
+        "predict-latest", help="Run one Alpha158 cross-sectional prediction and persist Top K"
+    )
+    prediction.add_argument(
+        "--date", dest="prediction_date", type=date.fromisoformat, required=True
     )
     return parser
 
@@ -294,6 +307,20 @@ def _sync_broker_shadow(config: AppConfig, business_date: date) -> None:
     _print_json(result)
 
 
+def _predict_latest(config: AppConfig, prediction_date: date) -> None:
+    model_dir = config.artifact_dir / "alpha158-lightgbm"
+    prediction = predict_alpha158_lightgbm(
+        config.qlib_dir,
+        model_dir,
+        prediction_date,
+        5,
+    )
+    state = StateStore(config.state_db_path).import_prediction_artifact(
+        model_dir, Path(prediction["path"])
+    )
+    _print_json({"prediction": prediction, "state": state})
+
+
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END -----------
+# AI_GENERATE_END --------------
