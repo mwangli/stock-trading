@@ -1,15 +1,20 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START ------
 from __future__ import annotations
 
 import argparse
 import json
+import time
 from collections import defaultdict
 from datetime import date
+from decimal import Decimal
 
 from stock_trading.config import AppConfig
 from stock_trading.market.audit import audit_minute_days, expected_bar_ends
-from stock_trading.market.baostock_client import BaoStockClient
+from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
+from stock_trading.market.models import AdjustmentFactor, DailyBar, MinuteBar
 from stock_trading.market.storage import ParquetMarketStore
+from stock_trading.research.model import ModelSegments, train_alpha158_lightgbm
+from stock_trading.research.qlib_store import QlibBinaryStore
 
 
 def main() -> None:
@@ -25,6 +30,17 @@ def main() -> None:
         _probe_minute(config, arguments.code, arguments.trade_date)
     elif arguments.command == "show-boundaries":
         _show_boundaries(arguments.trade_date)
+    elif arguments.command == "sync-research":
+        _sync_research(
+            config,
+            arguments.codes,
+            arguments.start_date,
+            arguments.end_date,
+        )
+    elif arguments.command == "build-qlib":
+        _build_qlib(config, arguments.codes)
+    elif arguments.command == "train-baseline":
+        _train_baseline(config, arguments)
     else:
         parser.error(f"Unsupported command: {arguments.command}")
 
@@ -47,6 +63,26 @@ def _build_parser() -> argparse.ArgumentParser:
 
     boundaries = subparsers.add_parser("show-boundaries", help="Show expected BaoStock 5-minute ends")
     boundaries.add_argument("--date", dest="trade_date", type=date.fromisoformat, required=True)
+
+    research = subparsers.add_parser(
+        "sync-research", help="Download daily, adjustment and minute history for a fixed universe"
+    )
+    research.add_argument("--codes", nargs="+", required=True)
+    research.add_argument("--start", dest="start_date", type=date.fromisoformat, required=True)
+    research.add_argument("--end", dest="end_date", type=date.fromisoformat, required=True)
+
+    qlib = subparsers.add_parser("build-qlib", help="Rebuild Qlib binaries from raw Parquet")
+    qlib.add_argument("--codes", nargs="+", required=True)
+
+    training = subparsers.add_parser(
+        "train-baseline", help="Train Alpha158 with the custom T+1 label"
+    )
+    training.add_argument("--train-start", type=date.fromisoformat, required=True)
+    training.add_argument("--train-end", type=date.fromisoformat, required=True)
+    training.add_argument("--valid-start", type=date.fromisoformat, required=True)
+    training.add_argument("--valid-end", type=date.fromisoformat, required=True)
+    training.add_argument("--test-start", type=date.fromisoformat, required=True)
+    training.add_argument("--test-end", type=date.fromisoformat, required=True)
     return parser
 
 
@@ -90,6 +126,87 @@ def _show_boundaries(trade_date: date) -> None:
     )
 
 
+def _sync_research(
+    config: AppConfig, codes: list[str], start_date: date, end_date: date
+) -> None:
+    if end_date < start_date:
+        raise ValueError("end date must not be earlier than start date")
+    store = ParquetMarketStore(config.data_dir)
+    rows: dict[str, dict[str, int | str]] = {}
+    for code in codes:
+        if store.research_data_covers(code, start_date, end_date):
+            rows[code] = {"status": "skipped"}
+            continue
+        daily, factors, minutes = _fetch_research_code(
+            config, code, start_date, end_date
+        )
+        grouped: dict[date, list] = defaultdict(list)
+        for bar in minutes:
+            grouped[bar.trade_date].append(bar)
+        for trade_date, values in grouped.items():
+            store.write_minutes(code, trade_date, values)
+        store.write_daily_history(code, daily)
+        store.write_adjustment_factors(code, factors)
+        store.write_research_manifest(
+            code, start_date, end_date, len(daily), len(grouped)
+        )
+        rows[code] = {
+            "status": "downloaded",
+            "daily": len(daily),
+            "adjustmentFactors": len(factors),
+            "minuteBars": len(minutes),
+            "minuteDays": len(grouped),
+        }
+    _print_json(
+        {
+            "startDate": start_date.isoformat(),
+            "endDate": end_date.isoformat(),
+            "codes": rows,
+        }
+    )
+
+
+def _fetch_research_code(
+    config: AppConfig, code: str, start_date: date, end_date: date
+) -> tuple[list[DailyBar], list[AdjustmentFactor], list[MinuteBar]]:
+    for attempt in range(1, 4):
+        try:
+            with BaoStockClient(config.baostock_proxy) as client:
+                daily = client.fetch_daily_history(code, start_date, end_date)
+                factors = client.fetch_adjustment_factors(code, date(1990, 1, 1), end_date)
+                minutes = client.fetch_minutes(code, start_date, end_date)
+            if not factors:
+                factors = [AdjustmentFactor(code, start_date, Decimal("1"))]
+            return daily, factors, minutes
+        except (BaoStockError, OSError, TimeoutError):
+            if attempt == 3:
+                raise
+            time.sleep(attempt * 3)
+    raise RuntimeError(f"unreachable retry state for {code}")
+
+
+def _build_qlib(config: AppConfig, codes: list[str]) -> None:
+    result = QlibBinaryStore(ParquetMarketStore(config.data_dir), config.qlib_dir).rebuild(codes)
+    _print_json(result)
+
+
+def _train_baseline(config: AppConfig, arguments: argparse.Namespace) -> None:
+    segments = ModelSegments(
+        train_start=arguments.train_start,
+        train_end=arguments.train_end,
+        valid_start=arguments.valid_start,
+        valid_end=arguments.valid_end,
+        test_start=arguments.test_start,
+        test_end=arguments.test_end,
+    )
+    result = train_alpha158_lightgbm(
+        config.qlib_dir,
+        config.artifact_dir / "alpha158-lightgbm",
+        segments,
+    )
+    _print_json(result)
+
+
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END -
+# AI_GENERATE_END ------
