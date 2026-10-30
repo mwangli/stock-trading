@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------
+# AI_GENERATE_START -----------
 from __future__ import annotations
 
 import argparse
@@ -9,6 +9,7 @@ from datetime import date
 from decimal import Decimal
 
 from stock_trading.config import AppConfig
+from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.market.audit import audit_minute_days, expected_bar_ends
 from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
 from stock_trading.market.models import AdjustmentFactor, DailyBar, MinuteBar
@@ -52,6 +53,8 @@ def main() -> None:
     elif arguments.command == "recover-state":
         recovered = StateStore(config.state_db_path).recover_interrupted_runs()
         _print_json({"recoveredRuns": recovered} | StateStore(config.state_db_path).summary())
+    elif arguments.command == "sync-broker-shadow":
+        _sync_broker_shadow(config, arguments.business_date)
     else:
         parser.error(f"Unsupported command: {arguments.command}")
 
@@ -117,6 +120,12 @@ def _build_parser() -> argparse.ArgumentParser:
     state_sync.add_argument("--backtest-name", default="portfolio-backtest-realistic")
     subparsers.add_parser("show-state", help="Show SQLite state counts and safety setting")
     subparsers.add_parser("recover-state", help="Fail conservatively any interrupted task runs")
+    broker_sync = subparsers.add_parser(
+        "sync-broker-shadow", help="Read broker facts and persist a shadow snapshot"
+    )
+    broker_sync.add_argument(
+        "--date", dest="business_date", type=date.fromisoformat, default=date.today()
+    )
     return parser
 
 
@@ -273,6 +282,18 @@ def _sync_state(config: AppConfig, backtest_name: str) -> None:
     _print_json(result)
 
 
+def _sync_broker_shadow(config: AppConfig, business_date: date) -> None:
+    store = StateStore(config.state_db_path)
+    client = ZXBrokerClient(
+        config,
+        write_guard=store.authorize_real_write,
+        cancel_guard=store.authorize_cancel_write,
+    )
+    snapshot = client.read_shadow_snapshot()
+    result = store.sync_broker_snapshot(snapshot, business_date.isoformat())
+    _print_json(result)
+
+
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END ---------
+# AI_GENERATE_END -----------
