@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 import argparse
@@ -14,6 +14,7 @@ from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
 from stock_trading.market.models import AdjustmentFactor, DailyBar, MinuteBar
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.research.model import ModelSegments, train_alpha158_lightgbm
+from stock_trading.research.backtest import BacktestConfig, PortfolioBacktester
 from stock_trading.research.qlib_store import QlibBinaryStore
 
 
@@ -41,6 +42,8 @@ def main() -> None:
         _build_qlib(config, arguments.codes)
     elif arguments.command == "train-baseline":
         _train_baseline(config, arguments)
+    elif arguments.command == "backtest-portfolio":
+        _backtest_portfolio(config, arguments)
     else:
         parser.error(f"Unsupported command: {arguments.command}")
 
@@ -83,6 +86,22 @@ def _build_parser() -> argparse.ArgumentParser:
     training.add_argument("--valid-end", type=date.fromisoformat, required=True)
     training.add_argument("--test-start", type=date.fromisoformat, required=True)
     training.add_argument("--test-end", type=date.fromisoformat, required=True)
+
+    backtest = subparsers.add_parser(
+        "backtest-portfolio", help="Backtest one-position afternoon-buy next-morning-sell trading"
+    )
+    backtest.add_argument("--initial-cash", type=float, default=10_000.0)
+    backtest.add_argument("--min-price", type=float, default=5.0)
+    backtest.add_argument("--max-price", type=float, default=20.0)
+    backtest.add_argument("--commission-rate", type=float, default=0.0003)
+    backtest.add_argument("--min-commission", type=float, default=5.0)
+    backtest.add_argument("--stamp-duty-rate", type=float, default=0.0005)
+    backtest.add_argument("--transfer-fee-rate", type=float, default=0.00001)
+    backtest.add_argument("--slippage-bps", type=float, default=10.0)
+    backtest.add_argument("--buy-slices", type=int, default=1)
+    backtest.add_argument("--sell-slices", type=int, default=1)
+    backtest.add_argument("--allowed-prefixes", nargs="*", default=[])
+    backtest.add_argument("--output-name", default="portfolio-backtest")
     return parser
 
 
@@ -207,6 +226,29 @@ def _train_baseline(config: AppConfig, arguments: argparse.Namespace) -> None:
     _print_json(result)
 
 
+def _backtest_portfolio(config: AppConfig, arguments: argparse.Namespace) -> None:
+    backtest_config = BacktestConfig(
+        initial_cash=arguments.initial_cash,
+        min_price=arguments.min_price,
+        max_price=arguments.max_price,
+        commission_rate=arguments.commission_rate,
+        min_commission=arguments.min_commission,
+        stamp_duty_rate=arguments.stamp_duty_rate,
+        transfer_fee_rate=arguments.transfer_fee_rate,
+        slippage_bps=arguments.slippage_bps,
+        buy_slices=arguments.buy_slices,
+        sell_slices=arguments.sell_slices,
+        allowed_prefixes=tuple(arguments.allowed_prefixes),
+    )
+    result = PortfolioBacktester(
+        ParquetMarketStore(config.data_dir),
+        config.qlib_dir / "calendars" / "day.txt",
+        config.artifact_dir / "alpha158-lightgbm" / "top5.parquet",
+        backtest_config,
+    ).run(config.artifact_dir / arguments.output_name)
+    _print_json(result)
+
+
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END ------
+# AI_GENERATE_END --------
