@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stock-trading"
+version = "0.1.0"
+description = "Minimal A-share T+1 model research and trading application"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "baostock==0.9.4",
+    "pandas>=2.2,<4",
+    "pyarrow>=18,<24",
+    "lightgbm>=4.5,<5",
+    "pyqlib==0.9.7",
+]
+
+[project.scripts]
+stock-trading = "stock_trading.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

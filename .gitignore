@@ -86,3 +86,6 @@ graft
 .idea
 .tmp
 .env
+/stock-trading/.venv/
+/stock-trading/var/
+*.egg-info/
