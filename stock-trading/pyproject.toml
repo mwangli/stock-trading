@@ -10,6 +10,7 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
     "baostock==0.9.4",
     "pandas>=2.2,<4",
+    "Pillow>=11,<13",
     "pyarrow>=18,<24",
 ]
 

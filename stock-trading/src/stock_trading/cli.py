@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------
+# AI_GENERATE_START --------------------
 from __future__ import annotations
 
 import argparse
@@ -11,6 +11,7 @@ from pathlib import Path
 
 from stock_trading.config import AppConfig
 from stock_trading.broker.client import ZXBrokerClient
+from stock_trading.broker.captcha import BaiduCaptchaSolver
 from stock_trading.market.audit import audit_minute_days, expected_bar_ends
 from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
 from stock_trading.market.models import AdjustmentFactor, DailyBar, MinuteBar
@@ -26,6 +27,7 @@ from stock_trading.state.store import StateStore
 from stock_trading.trading.execution import OrderExecutionOrchestrator
 from stock_trading.trading.orchestrator import ShadowTradingOrchestrator
 from stock_trading.trading.performance import LivePerformanceService
+from stock_trading.trading.validation import RealValidationService
 
 
 def main() -> None:
@@ -79,6 +81,16 @@ def main() -> None:
         )
     elif arguments.command == "show-training-requests":
         _print_json(StateStore(config.state_db_path).list_training_requests())
+    elif arguments.command == "validate-real-readiness":
+        _validate_real_readiness(config, arguments.business_date)
+    elif arguments.command == "enable-real-trading":
+        _print_json(
+            StateStore(config.state_db_path).enable_real_trading(
+                arguments.business_date.isoformat()
+            )
+        )
+    elif arguments.command == "disable-real-trading":
+        _print_json(StateStore(config.state_db_path).disable_real_trading())
     else:
         parser.error(f"Unsupported command: {arguments.command}")
 
@@ -191,6 +203,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     subparsers.add_parser(
         "show-training-requests", help="Show deterministic retraining requests"
+    )
+    validation = subparsers.add_parser(
+        "validate-real-readiness",
+        help="Run local gates and real broker read-only validation",
+    )
+    validation.add_argument(
+        "--date", dest="business_date", type=date.fromisoformat, required=True
+    )
+    enable = subparsers.add_parser(
+        "enable-real-trading",
+        help="Enable new orders after same-day read-only validation",
+    )
+    enable.add_argument(
+        "--date", dest="business_date", type=date.fromisoformat, required=True
+    )
+    subparsers.add_parser(
+        "disable-real-trading",
+        help="Stop new buy orders while preserving sell and cancel paths",
     )
     return parser
 
@@ -350,11 +380,7 @@ def _sync_state(config: AppConfig, backtest_name: str) -> None:
 
 def _sync_broker_shadow(config: AppConfig, business_date: date) -> None:
     store = StateStore(config.state_db_path)
-    client = ZXBrokerClient(
-        config,
-        write_guard=store.authorize_real_write,
-        cancel_guard=store.authorize_cancel_write,
-    )
+    client = _build_broker(config, store)
     snapshot = client.read_shadow_snapshot()
     result = store.sync_broker_snapshot(snapshot, business_date.isoformat())
     _print_json(result)
@@ -376,7 +402,7 @@ def _predict_latest(config: AppConfig, prediction_date: date) -> None:
 
 def _plan_shadow(config: AppConfig, business_date: date, morning: bool) -> None:
     store = StateStore(config.state_db_path)
-    broker = ZXBrokerClient(config)
+    broker = _build_broker(config)
     orchestrator = ShadowTradingOrchestrator(config, store, broker)
     result = (
         orchestrator.plan_morning_sell(business_date)
@@ -388,11 +414,7 @@ def _plan_shadow(config: AppConfig, business_date: date, morning: bool) -> None:
 
 def _execute_shadow_order(config: AppConfig, client_order_id: str) -> None:
     store = StateStore(config.state_db_path)
-    broker = ZXBrokerClient(
-        config,
-        write_guard=store.authorize_real_write,
-        cancel_guard=store.authorize_cancel_write,
-    )
+    broker = _build_broker(config, store)
     result = OrderExecutionOrchestrator(config, store, broker).execute_stage(
         client_order_id
     )
@@ -401,11 +423,7 @@ def _execute_shadow_order(config: AppConfig, client_order_id: str) -> None:
 
 def _recover_broker_orders(config: AppConfig, business_date: date) -> None:
     store = StateStore(config.state_db_path)
-    broker = ZXBrokerClient(
-        config,
-        write_guard=store.authorize_real_write,
-        cancel_guard=store.authorize_cancel_write,
-    )
+    broker = _build_broker(config, store)
     result = OrderExecutionOrchestrator(config, store, broker).recover_pending_orders(
         business_date
     )
@@ -418,17 +436,36 @@ def _update_live_performance(
     external_cash_flow: Decimal,
 ) -> None:
     store = StateStore(config.state_db_path)
-    broker = ZXBrokerClient(
-        config,
-        write_guard=store.authorize_real_write,
-        cancel_guard=store.authorize_cancel_write,
-    )
+    broker = _build_broker(config, store)
     result = LivePerformanceService(config, store, broker).update(
         business_date, external_cash_flow
     )
     _print_json(result)
 
 
+def _validate_real_readiness(config: AppConfig, business_date: date) -> None:
+    store = StateStore(config.state_db_path)
+    broker = _build_broker(config, store)
+    result = RealValidationService(config, store, broker).validate(business_date)
+    _print_json(result)
+
+
+def _build_broker(
+    config: AppConfig, store: StateStore | None = None
+) -> ZXBrokerClient:
+    captcha_solver = (
+        BaiduCaptchaSolver(config).solve
+        if config.broker_captcha_auto_submit_enabled
+        else None
+    )
+    return ZXBrokerClient(
+        config,
+        captcha_solver=captcha_solver,
+        write_guard=store.authorize_real_write if store else None,
+        cancel_guard=store.authorize_cancel_write if store else None,
+    )
+
+
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END -----------------
+# AI_GENERATE_END --------------------

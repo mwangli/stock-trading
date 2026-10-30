@@ -29,7 +29,7 @@ execute-shadow-order --client-order-id <稳定订单键>
 recover-broker-orders --date YYYY-MM-DD
 ```
 
-执行命令仍受 SQLite `REAL_TRADING_ENABLED=true`、最新模型 `ACTIVE` 和唯一活动订单三重门禁约束。当前项目状态不满足前两项，因此无法通过 CLI 发出真实委托。
+买入执行仍受 SQLite `REAL_TRADING_ENABLED=true`、计划绑定当前 `ACTIVE` 模型和唯一活动订单三重门禁约束。卖出和撤单属于降低已有风险，关闭新增交易或模型降级后仍允许执行。当前项目没有可执行的 `ACTIVE` 模型买入计划，因此无法通过 CLI 发出真实买单。
 
 ## 状态机
 
@@ -53,6 +53,7 @@ PLANNED
 ## 提交与撤单
 
 - 订单意图必须先持久化为 `PREPARED`，券商客户端写入守卫再原子切换到 `SUBMITTING`。
+- 每次创建新订单意图前重新读取券商资金、持仓和五档；恢复既有活动订单或重放终态时不重复提交。
 - 券商明确返回拒绝时记录 `REJECTED`；网络或协议结果不确定时记录 `UNKNOWN`。
 - 活动订单在配置的轮询次数内未终结时发起撤单。
 - `REAL_TRADING_ENABLED=false` 只阻止新增委托，不阻止撤销已经存在的活动订单。

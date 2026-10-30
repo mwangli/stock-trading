@@ -1,9 +1,10 @@
-# AI_GENERATE_START --------
+# AI_GENERATE_START ----------
 from __future__ import annotations
 
 import base64
 import binascii
 import json
+import threading
 import time
 from collections.abc import Callable
 from datetime import date
@@ -76,6 +77,8 @@ class ZXBrokerClient:
             if config.broker_token
             else 0.0
         )
+        self._login_lock = threading.Lock()
+        self._login_blocked_until = 0.0
 
     def build_params(self, values: dict[str, object] | None = None) -> dict[str, object]:
         params = dict(values or {})
@@ -99,6 +102,31 @@ class ZXBrokerClient:
             raise BrokerSafetyError("未配置经过验收的验证码识别器，禁止自动登录")
         if not self._config.broker_account or not self._config.broker_encoded_password:
             raise BrokerSafetyError("未配置券商资金账号或加密密码")
+        with self._login_lock:
+            if self._valid_token():
+                return self._token
+            remaining = self._login_blocked_until - time.monotonic()
+            if remaining > 0:
+                raise BrokerSafetyError(
+                    f"券商登录处于失败冷却期，请在 {max(1, int(remaining) + 1)} 秒后重试"
+                )
+            last_error = "未知错误"
+            for _ in range(self._config.broker_captcha_max_retries):
+                try:
+                    token = self._login_once()
+                    self._login_blocked_until = 0.0
+                    return token
+                except Exception as error:
+                    last_error = f"{type(error).__name__}: {error}"
+            self._login_blocked_until = (
+                time.monotonic()
+                + self._config.broker_login_failure_cooldown_seconds
+            )
+            raise BrokerSafetyError(
+                f"券商登录失败并进入冷却期，最后错误={last_error}"
+            )
+
+    def _login_once(self) -> str:
         captcha = self._request(self.build_params({"action": ACTION_CAPTCHA}))
         data_uri = captcha.get("MESSAGE")
         check_token = captcha.get("CHECKTOKEN")
@@ -253,7 +281,14 @@ class ZXBrokerClient:
         )
         order_id = response.get("ANSWERNO")
         if not order_id:
-            raise BrokerRejectedError(f"券商拒绝委托，错误码={response.get('ERRORNO')}")
+            error_message = (
+                response.get("ERRORMESSAGE")
+                or response.get("ERRORINFO")
+                or response.get("ERROR_INFO_ALL")
+            )
+            raise BrokerRejectedError(
+                f"券商拒绝委托，错误码={response.get('ERRORNO')}，原因={error_message}"
+            )
         return str(order_id)
 
     def cancel_order(self, client_order_id: str, broker_order_id: str) -> bool:
@@ -354,4 +389,4 @@ def _required_price(response: dict[str, Any], primary: str, alternate: str) -> D
 
 def _reject_all_writes(client_order_id: str) -> None:
     raise BrokerSafetyError(f"真实券商写入默认关闭: {client_order_id}")
-# AI_GENERATE_END --------
+# AI_GENERATE_END ----------

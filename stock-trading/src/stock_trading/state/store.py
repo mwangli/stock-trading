@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------
+# AI_GENERATE_START ------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -6,7 +6,7 @@ import json
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable, Iterator
@@ -98,6 +98,8 @@ CREATE TABLE IF NOT EXISTS shadow_order (
     price REAL NOT NULL,
     status TEXT NOT NULL,
     candidate_rank INTEGER,
+    model_version_id INTEGER,
+    prediction_date TEXT,
     created_at TEXT NOT NULL
 );
 
@@ -171,6 +173,17 @@ CREATE TABLE IF NOT EXISTS training_request (
     trigger_type TEXT NOT NULL,
     status TEXT NOT NULL,
     requested_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(model_version_id) REFERENCES model_version(id)
+);
+
+CREATE TABLE IF NOT EXISTS real_validation_run (
+    business_date TEXT PRIMARY KEY,
+    model_version_id INTEGER,
+    status TEXT NOT NULL,
+    blockers_json TEXT NOT NULL,
+    summary_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(model_version_id) REFERENCES model_version(id)
 );
@@ -261,6 +274,15 @@ class StateStore:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.executescript(SCHEMA)
+            self._ensure_column(
+                connection, "shadow_order", "model_version_id", "INTEGER"
+            )
+            self._ensure_column(
+                connection, "shadow_order", "prediction_date", "TEXT"
+            )
+            self._ensure_column(
+                connection, "live_performance_snapshot", "model_version_id", "INTEGER"
+            )
             connection.execute(
                 """
                 INSERT INTO system_setting(setting_key, setting_value, updated_at)
@@ -399,30 +421,44 @@ class StateStore:
         } | self.summary()
 
     def latest_prediction_candidates(
-        self, before_business_date: str, limit: int
+        self,
+        before_business_date: str,
+        limit: int,
+        model_version_id: int | None = None,
     ) -> list[dict[str, Any]]:
         self.initialize()
         with self._connect() as connection:
-            prediction_date = connection.execute(
-                "SELECT MAX(prediction_date) FROM prediction WHERE prediction_date < ?",
-                (before_business_date,),
-            ).fetchone()[0]
+            if model_version_id is None:
+                prediction_date = connection.execute(
+                    "SELECT MAX(prediction_date) FROM prediction WHERE prediction_date < ?",
+                    (before_business_date,),
+                ).fetchone()[0]
+            else:
+                prediction_date = connection.execute(
+                    """
+                    SELECT MAX(prediction_date) FROM prediction
+                    WHERE prediction_date < ? AND model_version_id = ?
+                    """,
+                    (before_business_date, model_version_id),
+                ).fetchone()[0]
             if prediction_date is None:
                 return []
-            model_id = connection.execute(
-                """
-                SELECT model_version_id
-                FROM prediction
-                WHERE prediction_date = ?
-                GROUP BY model_version_id
-                ORDER BY MAX(created_at) DESC, model_version_id DESC
-                LIMIT 1
-                """,
-                (prediction_date,),
-            ).fetchone()[0]
+            model_id = model_version_id
+            if model_id is None:
+                model_id = connection.execute(
+                    """
+                    SELECT model_version_id
+                    FROM prediction
+                    WHERE prediction_date = ?
+                    GROUP BY model_version_id
+                    ORDER BY MAX(created_at) DESC, model_version_id DESC
+                    LIMIT 1
+                    """,
+                    (prediction_date,),
+                ).fetchone()[0]
             rows = connection.execute(
                 """
-                SELECT p.prediction_date, p.instrument, p.rank, p.score,
+                SELECT p.model_version_id, p.prediction_date, p.instrument, p.rank, p.score,
                        mv.status AS model_status
                 FROM prediction p
                 JOIN model_version mv ON mv.id = p.model_version_id
@@ -470,7 +506,7 @@ class StateStore:
             rows = connection.execute(
                 """
                 SELECT client_order_id, business_date, instrument, side, quantity,
-                       price, status, candidate_rank
+                       price, status, candidate_rank, model_version_id, prediction_date
                 FROM shadow_order
                 WHERE business_date = ?
                 ORDER BY id ASC
@@ -508,7 +544,16 @@ class StateStore:
                     existing, instrument, side, quantity, price
                 )
                 return dict(existing)
-            self._assert_real_trading_ready(connection)
+            shadow_order = connection.execute(
+                "SELECT * FROM shadow_order WHERE client_order_id = ?",
+                (client_order_id,),
+            ).fetchone()
+            if shadow_order is None:
+                raise PermissionError("真实订单必须来自已持久化的影子计划")
+            self._assert_same_shadow_order(
+                shadow_order, instrument, side, quantity, price
+            )
+            self._assert_order_write_ready(connection, shadow_order)
             active = connection.execute(
                 f"""
                 SELECT client_order_id, status FROM broker_order_intent
@@ -552,7 +597,13 @@ class StateStore:
     def authorize_real_write(self, client_order_id: str) -> None:
         self.initialize()
         with self._connect() as connection:
-            self._assert_real_trading_ready(connection)
+            shadow_order = connection.execute(
+                "SELECT * FROM shadow_order WHERE client_order_id = ?",
+                (client_order_id,),
+            ).fetchone()
+            if shadow_order is None:
+                raise PermissionError("真实订单必须来自已持久化的影子计划")
+            self._assert_order_write_ready(connection, shadow_order)
             cursor = connection.execute(
                 """
                 UPDATE broker_order_intent
@@ -924,6 +975,98 @@ class StateStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def save_real_validation(
+        self,
+        business_date: str,
+        model_version_id: int | None,
+        status: str,
+        blockers: list[str],
+        summary: dict[str, object],
+    ) -> dict[str, Any]:
+        if status not in {"BLOCKED", "READ_ONLY_VERIFIED"}:
+            raise ValueError(f"不支持的真实验证状态: {status}")
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO real_validation_run(
+                    business_date, model_version_id, status, blockers_json,
+                    summary_json, created_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(business_date) DO UPDATE SET
+                    model_version_id = excluded.model_version_id,
+                    status = excluded.status,
+                    blockers_json = excluded.blockers_json,
+                    summary_json = excluded.summary_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    business_date,
+                    model_version_id,
+                    status,
+                    json.dumps(blockers, ensure_ascii=False),
+                    json.dumps(summary, ensure_ascii=False),
+                    _now(),
+                    _now(),
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM real_validation_run WHERE business_date = ?",
+                (business_date,),
+            ).fetchone()
+        return dict(row)
+
+    def enable_real_trading(self, business_date: str) -> dict[str, Any]:
+        if business_date != date.today().isoformat():
+            raise PermissionError("只能使用当日真实券商只读验证开启交易")
+        self.initialize()
+        with self._connect() as connection:
+            validation = connection.execute(
+                "SELECT * FROM real_validation_run WHERE business_date = ?",
+                (business_date,),
+            ).fetchone()
+            if validation is None or validation["status"] != "READ_ONLY_VERIFIED":
+                raise PermissionError("当日真实券商只读验证未通过")
+            model = connection.execute(
+                """
+                SELECT id FROM model_version
+                WHERE status = 'ACTIVE'
+                ORDER BY id DESC LIMIT 1
+                """
+            ).fetchone()
+            if model is None or model["id"] != validation["model_version_id"]:
+                raise PermissionError("只读验证模型与当前 ACTIVE 模型不一致")
+            active_order = connection.execute(
+                f"""
+                SELECT client_order_id FROM broker_order_intent
+                WHERE status IN ({','.join('?' for _ in ORDER_ACTIVE_STATUSES)})
+                LIMIT 1
+                """,
+                tuple(sorted(ORDER_ACTIVE_STATUSES)),
+            ).fetchone()
+            if active_order is not None:
+                raise PermissionError("存在未确认终态订单，禁止开启新增交易")
+            connection.execute(
+                """
+                UPDATE system_setting SET setting_value = 'true', updated_at = ?
+                WHERE setting_key = 'REAL_TRADING_ENABLED'
+                """,
+                (_now(),),
+            )
+        return self.summary()
+
+    def disable_real_trading(self) -> dict[str, Any]:
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE system_setting SET setting_value = 'false', updated_at = ?
+                WHERE setting_key = 'REAL_TRADING_ENABLED'
+                """,
+                (_now(),),
+            )
+        return self.summary()
+
     def summary(self) -> dict[str, Any]:
         self.initialize()
         with self._connect() as connection:
@@ -940,6 +1083,7 @@ class StateStore:
                     "live_performance_snapshot",
                     "model_evaluation",
                     "training_request",
+                    "real_validation_run",
                     "broker_account_snapshot",
                     "broker_position_snapshot",
                     "broker_order_fact",
@@ -1040,6 +1184,8 @@ class StateStore:
         quantity = int(order["quantity"])
         price = Decimal(str(order["price"]))
         candidate_rank = order.get("candidateRank")
+        model_version_id = order.get("modelVersionId")
+        prediction_date = order.get("predictionDate")
         if not client_order_id or not instrument:
             raise ValueError("影子订单业务键和股票代码不能为空")
         if side not in {"BUY", "SELL"}:
@@ -1054,8 +1200,9 @@ class StateStore:
             """
             INSERT INTO shadow_order(
                 client_order_id, business_date, instrument, side, quantity,
-                price, status, candidate_rank, created_at
-            ) VALUES(?, ?, ?, ?, ?, ?, 'PLANNED', ?, ?)
+                price, status, candidate_rank, model_version_id, prediction_date,
+                created_at
+            ) VALUES(?, ?, ?, ?, ?, ?, 'PLANNED', ?, ?, ?, ?)
             ON CONFLICT(client_order_id) DO NOTHING
             """,
             (
@@ -1066,6 +1213,8 @@ class StateStore:
                 quantity,
                 float(price),
                 candidate_rank,
+                model_version_id,
+                prediction_date,
                 _now(),
             ),
         )
@@ -1170,6 +1319,23 @@ class StateStore:
             raise ValueError("client_order_id 已绑定不同订单参数")
 
     @staticmethod
+    def _assert_same_shadow_order(
+        shadow_order: sqlite3.Row,
+        instrument: str,
+        side: str,
+        quantity: int,
+        price: Decimal,
+    ) -> None:
+        same = (
+            shadow_order["instrument"] == instrument
+            and shadow_order["side"] == side
+            and int(shadow_order["quantity"]) == quantity
+            and Decimal(str(shadow_order["price"])) == price
+        )
+        if not same:
+            raise ValueError("影子计划与真实订单参数不一致")
+
+    @staticmethod
     def _match_broker_order(
         intent: sqlite3.Row,
         orders: tuple[BrokerOrder, ...],
@@ -1234,17 +1400,32 @@ class StateStore:
         )
 
     @staticmethod
-    def _assert_real_trading_ready(connection: sqlite3.Connection) -> None:
+    def _assert_order_write_ready(
+        connection: sqlite3.Connection, shadow_order: sqlite3.Row
+    ) -> None:
+        if shadow_order["side"] == "SELL":
+            return
         setting = connection.execute(
             "SELECT setting_value FROM system_setting WHERE setting_key = 'REAL_TRADING_ENABLED'"
         ).fetchone()
         if setting is None or setting[0] != "true":
             raise PermissionError("REAL_TRADING_ENABLED 未开启")
         model = connection.execute(
-            "SELECT status FROM model_version ORDER BY id DESC LIMIT 1"
+            """
+            SELECT id FROM model_version
+            WHERE status = 'ACTIVE'
+            ORDER BY id DESC LIMIT 1
+            """
         ).fetchone()
-        if model is None or model[0] != "ACTIVE":
+        if model is None:
             raise PermissionError("没有 ACTIVE 模型，禁止真实券商写入")
+        if shadow_order["model_version_id"] != model["id"]:
+            raise PermissionError("买入计划未绑定当前 ACTIVE 模型，禁止真实券商写入")
+        prediction_date = shadow_order["prediction_date"]
+        if prediction_date is None or str(prediction_date) >= str(
+            shadow_order["business_date"]
+        ):
+            raise PermissionError("买入计划预测日期必须早于目标交易日")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -1261,6 +1442,22 @@ class StateStore:
             raise
         finally:
             connection.close()
+
+    @staticmethod
+    def _ensure_column(
+        connection: sqlite3.Connection,
+        table_name: str,
+        column_name: str,
+        column_type: str,
+    ) -> None:
+        columns = {
+            str(row["name"])
+            for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+        if column_name not in columns:
+            connection.execute(
+                f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+            )
 
     def _successful_run_exists(self, business_key: str) -> bool:
         with self._connect() as connection:
@@ -1513,4 +1710,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END -----------------------
+# AI_GENERATE_END ------------------------------

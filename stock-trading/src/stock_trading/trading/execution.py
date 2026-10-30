@@ -1,4 +1,4 @@
-# AI_GENERATE_START --
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 import time
@@ -7,7 +7,13 @@ from decimal import Decimal
 from typing import Protocol
 
 from stock_trading.broker.client import BrokerRejectedError, BrokerSafetyError
-from stock_trading.broker.models import BrokerOrder, BrokerSyncSnapshot
+from stock_trading.broker.models import (
+    BrokerAccount,
+    BrokerOrder,
+    BrokerPosition,
+    BrokerSyncSnapshot,
+    FiveLevelQuote,
+)
 from stock_trading.config import AppConfig
 from stock_trading.state.store import ORDER_TERMINAL_STATUSES, StateStore
 
@@ -29,6 +35,12 @@ class BrokerExecutionClient(Protocol):
     def get_today_orders(self) -> tuple[BrokerOrder, ...]: ...
 
     def read_shadow_snapshot(self) -> BrokerSyncSnapshot: ...
+
+    def get_account(self) -> BrokerAccount: ...
+
+    def get_positions(self) -> tuple[BrokerPosition, ...]: ...
+
+    def get_five_level_quote(self, stock_code: str) -> FiveLevelQuote: ...
 
 
 class OrderExecutionError(RuntimeError):
@@ -52,6 +64,11 @@ class OrderExecutionOrchestrator:
         shadow_order = self._state_store.get_shadow_order(client_order_id)
         if shadow_order is None:
             raise ValueError(f"影子订单不存在: {client_order_id}")
+        existing = self._state_store.get_order_intent(client_order_id)
+        if existing is not None and existing["status"] in ORDER_TERMINAL_STATUSES:
+            return self._result(existing)
+        if existing is None or existing["status"] == "PREPARED":
+            self._validate_fresh_order(shadow_order)
         intent = self._state_store.prepare_real_order(
             client_order_id=client_order_id,
             instrument=str(shadow_order["instrument"]),
@@ -127,6 +144,53 @@ class OrderExecutionOrchestrator:
         )
         return self._required_intent(client_order_id)
 
+    def _validate_fresh_order(self, shadow_order: dict[str, object]) -> None:
+        instrument = str(shadow_order["instrument"]).upper()
+        side = str(shadow_order["side"])
+        quantity = int(shadow_order["quantity"])
+        price = Decimal(str(shadow_order["price"]))
+        stock_code = instrument[-6:]
+        positions = tuple(
+            position
+            for position in self._broker.get_positions()
+            if position.quantity > 0
+        )
+        if side == "SELL":
+            position = next(
+                (
+                    item
+                    for item in positions
+                    if item.stock_code == stock_code
+                ),
+                None,
+            )
+            if position is None or position.available_quantity < quantity:
+                raise PermissionError("最新券商持仓不足以执行卖出计划")
+            return
+        if positions:
+            raise PermissionError("账户已有持仓，禁止新增买单")
+        if self._config.trading_allowed_prefixes and not instrument.startswith(
+            self._config.trading_allowed_prefixes
+        ):
+            raise PermissionError("股票不在允许交易权限范围")
+        quote = self._broker.get_five_level_quote(stock_code)
+        reference_price = quote.price or quote.asks[0]
+        minimum = Decimal(str(self._config.trading_min_price))
+        maximum = Decimal(str(self._config.trading_max_price))
+        if not minimum <= reference_price <= maximum:
+            raise PermissionError("最新价格超出允许交易范围")
+        account = self._broker.get_account()
+        notional = price * quantity
+        commission = max(
+            Decimal(str(self._config.trading_min_commission)),
+            notional * Decimal(str(self._config.trading_commission_rate)),
+        )
+        transfer_fee = notional * Decimal(
+            str(self._config.trading_transfer_fee_rate)
+        )
+        if notional + commission + transfer_fee > account.available_cash:
+            raise PermissionError("最新可用资金不足以执行买入计划")
+
     def _await_terminal(self, client_order_id: str) -> dict[str, object]:
         intent = self._poll(client_order_id)
         if intent["status"] in ORDER_TERMINAL_STATUSES:
@@ -195,4 +259,4 @@ class OrderExecutionOrchestrator:
             "status": intent["status"],
             "errorMessage": intent["error_message"],
         }
-# AI_GENERATE_END --
+# AI_GENERATE_END ---
