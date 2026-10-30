@@ -1,14 +1,19 @@
-# AI_GENERATE_START --
+# AI_GENERATE_START -------
 from __future__ import annotations
 
 import hashlib
 import json
 import sqlite3
+from contextlib import contextmanager
+from dataclasses import asdict
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import pandas as pd
+
+from stock_trading.broker.models import BrokerSyncSnapshot
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS task_run (
@@ -94,6 +99,74 @@ CREATE TABLE IF NOT EXISTS system_setting (
     setting_value TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS broker_account_snapshot (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_key TEXT NOT NULL UNIQUE,
+    business_date TEXT NOT NULL,
+    available_cash REAL NOT NULL,
+    total_assets REAL NOT NULL,
+    total_position REAL NOT NULL,
+    frozen_amount REAL NOT NULL,
+    captured_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS broker_position_snapshot (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_key TEXT NOT NULL,
+    instrument TEXT NOT NULL,
+    stock_name TEXT,
+    quantity INTEGER NOT NULL,
+    available_quantity INTEGER NOT NULL,
+    frozen_quantity INTEGER NOT NULL,
+    average_cost REAL,
+    current_price REAL NOT NULL,
+    market TEXT,
+    captured_at TEXT NOT NULL,
+    UNIQUE(business_key, instrument)
+);
+
+CREATE TABLE IF NOT EXISTS broker_order_fact (
+    broker_order_id TEXT PRIMARY KEY,
+    instrument TEXT,
+    stock_name TEXT,
+    direction TEXT NOT NULL,
+    order_price REAL NOT NULL,
+    order_quantity INTEGER NOT NULL,
+    average_fill_price REAL,
+    filled_quantity INTEGER,
+    raw_status TEXT,
+    status TEXT NOT NULL,
+    market TEXT,
+    order_time TEXT,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS broker_fill_fact (
+    fill_key TEXT PRIMARY KEY,
+    broker_order_id TEXT,
+    instrument TEXT,
+    stock_name TEXT,
+    direction TEXT NOT NULL,
+    fill_price REAL NOT NULL,
+    fill_quantity INTEGER NOT NULL,
+    fill_amount REAL NOT NULL,
+    fill_time TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS broker_order_intent (
+    client_order_id TEXT PRIMARY KEY,
+    instrument TEXT NOT NULL,
+    side TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    price REAL NOT NULL,
+    status TEXT NOT NULL,
+    broker_order_id TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 
@@ -111,9 +184,7 @@ class StateStore:
                 """
                 INSERT INTO system_setting(setting_key, setting_value, updated_at)
                 VALUES('REAL_TRADING_ENABLED', 'false', ?)
-                ON CONFLICT(setting_key) DO UPDATE SET
-                    setting_value = excluded.setting_value,
-                    updated_at = excluded.updated_at
+                ON CONFLICT(setting_key) DO NOTHING
                 """,
                 (_now(),),
             )
@@ -178,6 +249,123 @@ class StateStore:
             "performanceSnapshots": performance_rows,
         } | self.summary()
 
+    def sync_broker_snapshot(
+        self, snapshot: BrokerSyncSnapshot, business_date: str
+    ) -> dict[str, Any]:
+        self.initialize()
+        self.recover_interrupted_runs()
+        payload = json.dumps(asdict(snapshot), default=_json_default, sort_keys=True)
+        fingerprint = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        business_key = f"SYNC_BROKER:{business_date}:{fingerprint[:16]}"
+        if self._successful_run_exists(business_key):
+            return {"businessKey": business_key, "status": "SKIPPED"} | self.summary()
+
+        self._start_run(business_key, "SYNC_BROKER", business_date)
+        try:
+            with self._connect() as connection:
+                self._insert_broker_account(connection, business_key, business_date, snapshot)
+                position_rows = self._insert_broker_positions(connection, business_key, snapshot)
+                order_rows = self._upsert_broker_orders(connection, snapshot)
+                fill_rows = self._upsert_broker_fills(connection, snapshot)
+            self._finish_run(business_key, "SUCCESS", None)
+        except BaseException as error:
+            self._finish_run(business_key, "FAILED", str(error))
+            raise
+        return {
+            "businessKey": business_key,
+            "status": "SUCCESS",
+            "positions": position_rows,
+            "orders": order_rows,
+            "fills": fill_rows,
+        } | self.summary()
+
+    def prepare_real_order(
+        self,
+        client_order_id: str,
+        instrument: str,
+        side: str,
+        quantity: int,
+        price: Decimal,
+    ) -> None:
+        if not client_order_id.strip():
+            raise ValueError("client_order_id 不能为空")
+        if side not in {"BUY", "SELL"}:
+            raise ValueError("订单方向必须是 BUY 或 SELL")
+        if quantity <= 0 or quantity % 100 != 0:
+            raise ValueError("A股委托数量必须是正整数整手")
+        if price <= 0:
+            raise ValueError("委托价格必须大于零")
+        self.initialize()
+        with self._connect() as connection:
+            self._assert_real_trading_ready(connection)
+            connection.execute(
+                """
+                INSERT INTO broker_order_intent(
+                    client_order_id, instrument, side, quantity, price, status,
+                    created_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, 'PREPARED', ?, ?)
+                """,
+                (
+                    client_order_id,
+                    instrument,
+                    side,
+                    quantity,
+                    float(price),
+                    _now(),
+                    _now(),
+                ),
+            )
+
+    def authorize_real_write(self, client_order_id: str) -> None:
+        self.initialize()
+        with self._connect() as connection:
+            self._assert_real_trading_ready(connection)
+            cursor = connection.execute(
+                """
+                UPDATE broker_order_intent
+                SET status = 'SUBMITTING', updated_at = ?
+                WHERE client_order_id = ? AND status = 'PREPARED'
+                """,
+                (_now(), client_order_id),
+            )
+            if cursor.rowcount != 1:
+                raise PermissionError("订单未预留或已提交，拒绝重复券商写入")
+
+    def finish_real_order(
+        self,
+        client_order_id: str,
+        status: str,
+        broker_order_id: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE broker_order_intent
+                SET status = ?, broker_order_id = ?, error_message = ?, updated_at = ?
+                WHERE client_order_id = ?
+                """,
+                (status, broker_order_id, error_message, _now(), client_order_id),
+            )
+
+    def authorize_cancel_write(self, client_order_id: str) -> None:
+        self.initialize()
+        with self._connect() as connection:
+            self._assert_real_trading_ready(connection)
+            cursor = connection.execute(
+                """
+                UPDATE broker_order_intent
+                SET status = 'CANCEL_SUBMITTING', updated_at = ?
+                WHERE client_order_id = ?
+                  AND broker_order_id IS NOT NULL
+                  AND status IN ('SUBMITTED', 'PARTIAL')
+                """,
+                (_now(), client_order_id),
+            )
+            if cursor.rowcount != 1:
+                raise PermissionError("订单不可撤销或撤单已提交，拒绝重复券商写入")
+
     def summary(self) -> dict[str, Any]:
         self.initialize()
         with self._connect() as connection:
@@ -191,6 +379,11 @@ class StateStore:
                     "shadow_execution",
                     "position",
                     "performance_snapshot",
+                    "broker_account_snapshot",
+                    "broker_position_snapshot",
+                    "broker_order_fact",
+                    "broker_fill_fact",
+                    "broker_order_intent",
                 )
             }
             latest_run = connection.execute(
@@ -216,13 +409,174 @@ class StateStore:
             "realTradingEnabled": setting[0] == "true" if setting else False,
         }
 
-    def _connect(self) -> sqlite3.Connection:
+    @staticmethod
+    def _insert_broker_account(
+        connection: sqlite3.Connection,
+        business_key: str,
+        business_date: str,
+        snapshot: BrokerSyncSnapshot,
+    ) -> None:
+        account = snapshot.account
+        connection.execute(
+            """
+            INSERT INTO broker_account_snapshot(
+                business_key, business_date, available_cash, total_assets,
+                total_position, frozen_amount, captured_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                business_key,
+                business_date,
+                float(account.available_cash),
+                float(account.total_assets),
+                float(account.total_position),
+                float(account.frozen_amount),
+                _now(),
+            ),
+        )
+
+    @staticmethod
+    def _insert_broker_positions(
+        connection: sqlite3.Connection,
+        business_key: str,
+        snapshot: BrokerSyncSnapshot,
+    ) -> int:
+        rows = [
+            (
+                business_key,
+                item.stock_code,
+                item.stock_name,
+                item.quantity,
+                item.available_quantity,
+                item.frozen_quantity,
+                _optional_float(item.average_cost),
+                float(item.current_price),
+                item.market,
+                _now(),
+            )
+            for item in snapshot.positions
+        ]
+        connection.executemany(
+            """
+            INSERT INTO broker_position_snapshot(
+                business_key, instrument, stock_name, quantity, available_quantity,
+                frozen_quantity, average_cost, current_price, market, captured_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        return len(rows)
+
+    @staticmethod
+    def _upsert_broker_orders(
+        connection: sqlite3.Connection, snapshot: BrokerSyncSnapshot
+    ) -> int:
+        rows = [item for item in snapshot.orders if item.order_id]
+        connection.executemany(
+            """
+            INSERT INTO broker_order_fact(
+                broker_order_id, instrument, stock_name, direction, order_price,
+                order_quantity, average_fill_price, filled_quantity, raw_status,
+                status, market, order_time, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(broker_order_id) DO UPDATE SET
+                average_fill_price = excluded.average_fill_price,
+                filled_quantity = excluded.filled_quantity,
+                raw_status = excluded.raw_status,
+                status = excluded.status,
+                updated_at = excluded.updated_at
+            """,
+            [
+                (
+                    item.order_id,
+                    item.stock_code,
+                    item.stock_name,
+                    item.direction,
+                    float(item.order_price),
+                    item.order_quantity,
+                    _optional_float(item.average_fill_price),
+                    item.filled_quantity,
+                    item.raw_status,
+                    item.status,
+                    item.market,
+                    item.order_time.isoformat() if item.order_time else None,
+                    _now(),
+                )
+                for item in rows
+            ],
+        )
+        return len(rows)
+
+    @staticmethod
+    def _upsert_broker_fills(
+        connection: sqlite3.Connection, snapshot: BrokerSyncSnapshot
+    ) -> int:
+        rows = []
+        for item in snapshot.fills:
+            raw_key = "|".join(
+                (
+                    item.order_id or "",
+                    item.stock_code or "",
+                    item.direction,
+                    str(item.fill_price),
+                    str(item.fill_quantity),
+                    item.fill_time.isoformat() if item.fill_time else "",
+                )
+            )
+            rows.append(
+                (
+                    hashlib.sha256(raw_key.encode("utf-8")).hexdigest(),
+                    item.order_id,
+                    item.stock_code,
+                    item.stock_name,
+                    item.direction,
+                    float(item.fill_price),
+                    item.fill_quantity,
+                    float(item.fill_amount),
+                    item.fill_time.isoformat() if item.fill_time else None,
+                    _now(),
+                )
+            )
+        connection.executemany(
+            """
+            INSERT INTO broker_fill_fact(
+                fill_key, broker_order_id, instrument, stock_name, direction,
+                fill_price, fill_quantity, fill_amount, fill_time, created_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(fill_key) DO NOTHING
+            """,
+            rows,
+        )
+        return len(rows)
+
+    @staticmethod
+    def _assert_real_trading_ready(connection: sqlite3.Connection) -> None:
+        setting = connection.execute(
+            "SELECT setting_value FROM system_setting WHERE setting_key = 'REAL_TRADING_ENABLED'"
+        ).fetchone()
+        if setting is None or setting[0] != "true":
+            raise PermissionError("REAL_TRADING_ENABLED 未开启")
+        model = connection.execute(
+            "SELECT status FROM model_version ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if model is None or model[0] != "ACTIVE":
+            raise PermissionError("没有 ACTIVE 模型，禁止真实券商写入")
+
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self._path, timeout=30)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA journal_mode = WAL")
         connection.execute("PRAGMA busy_timeout = 30000")
-        return connection
+        try:
+            yield connection
+            connection.commit()
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _successful_run_exists(self, business_key: str) -> bool:
         with self._connect() as connection:
@@ -455,4 +809,14 @@ def _artifact_fingerprint(*paths: Path) -> str:
         digest.update(str(path).encode("utf-8"))
         digest.update(path.read_bytes() if path.exists() else b"MISSING")
     return digest.hexdigest()
-# AI_GENERATE_END --
+
+
+def _json_default(value: object) -> str:
+    if isinstance(value, (Decimal, datetime)):
+        return str(value)
+    raise TypeError(f"unsupported JSON value: {type(value).__name__}")
+
+
+def _optional_float(value: Decimal | None) -> float | None:
+    return float(value) if value is not None else None
+# AI_GENERATE_END -------
