@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------
+# AI_GENERATE_START ------------
 from __future__ import annotations
 
 import os
@@ -34,10 +34,14 @@ class AppConfig:
     trading_min_commission: float
     trading_commission_rate: float
     trading_transfer_fee_rate: float
+    trading_stamp_duty_rate: float
     trading_allowed_prefixes: tuple[str, ...]
     trading_max_prediction_age_days: int
     trading_order_poll_attempts: int
     trading_order_poll_interval_seconds: float
+    model_evaluation_window_days: int
+    model_max_drawdown: float
+    model_min_total_gross_return: float
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -93,6 +97,9 @@ class AppConfig:
             trading_transfer_fee_rate=max(
                 0.0, float(os.getenv("STOCK_TRADING_TRANSFER_FEE_RATE", "0.00001"))
             ),
+            trading_stamp_duty_rate=max(
+                0.0, float(os.getenv("STOCK_TRADING_STAMP_DUTY_RATE", "0.0005"))
+            ),
             trading_allowed_prefixes=tuple(
                 value.strip().upper()
                 for value in os.getenv(
@@ -110,6 +117,15 @@ class AppConfig:
                 0.0,
                 float(os.getenv("STOCK_TRADING_ORDER_POLL_INTERVAL_SECONDS", "2")),
             ),
+            model_evaluation_window_days=max(
+                2, int(os.getenv("MODEL_EVALUATION_WINDOW_DAYS", "20"))
+            ),
+            model_max_drawdown=min(
+                1.0, max(0.0, float(os.getenv("MODEL_MAX_DRAWDOWN", "0.10")))
+            ),
+            model_min_total_gross_return=float(
+                os.getenv("MODEL_MIN_TOTAL_GROSS_RETURN", "0")
+            ),
         )
 
 
@@ -118,4 +134,4 @@ def _env_bool(name: str, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
-# AI_GENERATE_END -----------
+# AI_GENERATE_END ------------

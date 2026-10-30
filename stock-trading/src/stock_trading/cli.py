@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------
+# AI_GENERATE_START -----------------
 from __future__ import annotations
 
 import argparse
@@ -25,6 +25,7 @@ from stock_trading.research.qlib_store import QlibBinaryStore
 from stock_trading.state.store import StateStore
 from stock_trading.trading.execution import OrderExecutionOrchestrator
 from stock_trading.trading.orchestrator import ShadowTradingOrchestrator
+from stock_trading.trading.performance import LivePerformanceService
 
 
 def main() -> None:
@@ -72,6 +73,12 @@ def main() -> None:
         _execute_shadow_order(config, arguments.client_order_id)
     elif arguments.command == "recover-broker-orders":
         _recover_broker_orders(config, arguments.business_date)
+    elif arguments.command == "update-live-performance":
+        _update_live_performance(
+            config, arguments.business_date, arguments.external_cash_flow
+        )
+    elif arguments.command == "show-training-requests":
+        _print_json(StateStore(config.state_db_path).list_training_requests())
     else:
         parser.error(f"Unsupported command: {arguments.command}")
 
@@ -168,6 +175,22 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     recovery.add_argument(
         "--date", dest="business_date", type=date.fromisoformat, required=True
+    )
+    performance = subparsers.add_parser(
+        "update-live-performance",
+        help="Persist broker performance and run rolling model evaluation",
+    )
+    performance.add_argument(
+        "--date", dest="business_date", type=date.fromisoformat, required=True
+    )
+    performance.add_argument(
+        "--external-cash-flow",
+        type=Decimal,
+        default=Decimal("0"),
+        help="Known deposit or withdrawal excluded from daily PnL",
+    )
+    subparsers.add_parser(
+        "show-training-requests", help="Show deterministic retraining requests"
     )
     return parser
 
@@ -389,6 +412,23 @@ def _recover_broker_orders(config: AppConfig, business_date: date) -> None:
     _print_json(result)
 
 
+def _update_live_performance(
+    config: AppConfig,
+    business_date: date,
+    external_cash_flow: Decimal,
+) -> None:
+    store = StateStore(config.state_db_path)
+    broker = ZXBrokerClient(
+        config,
+        write_guard=store.authorize_real_write,
+        cancel_guard=store.authorize_cancel_write,
+    )
+    result = LivePerformanceService(config, store, broker).update(
+        business_date, external_cash_flow
+    )
+    _print_json(result)
+
+
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END ----------------
+# AI_GENERATE_END -----------------

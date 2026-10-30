@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------
+# AI_GENERATE_START -----------------------
 from __future__ import annotations
 
 import hashlib
@@ -129,6 +129,50 @@ CREATE TABLE IF NOT EXISTS performance_snapshot (
     equity REAL NOT NULL,
     created_at TEXT NOT NULL,
     UNIQUE(scenario, business_date)
+);
+
+CREATE TABLE IF NOT EXISTS live_performance_snapshot (
+    business_date TEXT PRIMARY KEY,
+    model_version_id INTEGER,
+    cash REAL NOT NULL,
+    market_value REAL NOT NULL,
+    equity REAL NOT NULL,
+    external_cash_flow REAL NOT NULL,
+    turnover REAL NOT NULL,
+    estimated_fees REAL NOT NULL,
+    gross_pnl REAL,
+    net_pnl REAL,
+    gross_return REAL,
+    net_return REAL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(model_version_id) REFERENCES model_version(id)
+);
+
+CREATE TABLE IF NOT EXISTS model_evaluation (
+    business_key TEXT PRIMARY KEY,
+    model_version_id INTEGER,
+    business_date TEXT NOT NULL,
+    window_days INTEGER NOT NULL,
+    observations INTEGER NOT NULL,
+    gross_positive_ratio REAL,
+    total_gross_return REAL,
+    total_net_return REAL,
+    max_drawdown REAL,
+    decision TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(model_version_id) REFERENCES model_version(id)
+);
+
+CREATE TABLE IF NOT EXISTS training_request (
+    business_key TEXT PRIMARY KEY,
+    model_version_id INTEGER,
+    trigger_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    requested_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(model_version_id) REFERENCES model_version(id)
 );
 
 CREATE TABLE IF NOT EXISTS system_setting (
@@ -664,6 +708,222 @@ class StateStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def latest_live_performance_before(
+        self, business_date: str
+    ) -> dict[str, Any] | None:
+        self.initialize()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM live_performance_snapshot
+                WHERE business_date < ?
+                ORDER BY business_date DESC LIMIT 1
+                """,
+                (business_date,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def active_model_id(self) -> int | None:
+        self.initialize()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id FROM model_version
+                WHERE status = 'ACTIVE'
+                ORDER BY id DESC LIMIT 1
+                """
+            ).fetchone()
+        return int(row["id"]) if row else None
+
+    def save_live_performance(self, snapshot: dict[str, object]) -> dict[str, Any]:
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO live_performance_snapshot(
+                    business_date, model_version_id, cash, market_value, equity,
+                    external_cash_flow, turnover, estimated_fees, gross_pnl,
+                    net_pnl, gross_return, net_return, created_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(business_date) DO UPDATE SET
+                    model_version_id = excluded.model_version_id,
+                    cash = excluded.cash,
+                    market_value = excluded.market_value,
+                    equity = excluded.equity,
+                    external_cash_flow = excluded.external_cash_flow,
+                    turnover = excluded.turnover,
+                    estimated_fees = excluded.estimated_fees,
+                    gross_pnl = excluded.gross_pnl,
+                    net_pnl = excluded.net_pnl,
+                    gross_return = excluded.gross_return,
+                    net_return = excluded.net_return,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    snapshot["businessDate"],
+                    snapshot["modelVersionId"],
+                    snapshot["cash"],
+                    snapshot["marketValue"],
+                    snapshot["equity"],
+                    snapshot["externalCashFlow"],
+                    snapshot["turnover"],
+                    snapshot["estimatedFees"],
+                    snapshot["grossPnl"],
+                    snapshot["netPnl"],
+                    snapshot["grossReturn"],
+                    snapshot["netReturn"],
+                    _now(),
+                    _now(),
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM live_performance_snapshot WHERE business_date = ?",
+                (snapshot["businessDate"],),
+            ).fetchone()
+        return dict(row)
+
+    def recent_live_performance(
+        self, model_version_id: int | None, limit: int
+    ) -> list[dict[str, Any]]:
+        self.initialize()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM live_performance_snapshot
+                WHERE gross_return IS NOT NULL AND net_return IS NOT NULL
+                  AND model_version_id IS ?
+                ORDER BY business_date DESC LIMIT ?
+                """,
+                (model_version_id, max(1, limit)),
+            ).fetchall()
+        return [dict(row) for row in reversed(rows)]
+
+    def save_model_evaluation(
+        self,
+        business_date: str,
+        window_days: int,
+        observations: int,
+        gross_positive_ratio: float | None,
+        total_gross_return: float | None,
+        total_net_return: float | None,
+        max_drawdown: float | None,
+        decision: str,
+        reason: str,
+    ) -> dict[str, Any]:
+        self.initialize()
+        with self._connect() as connection:
+            existing = connection.execute(
+                """
+                SELECT * FROM model_evaluation
+                WHERE business_date = ?
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (business_date,),
+            ).fetchone()
+            if existing is not None:
+                request_key = (
+                    f"TRAINING_REQUEST:{existing['model_version_id'] or 'NONE'}:"
+                    f"{business_date}"
+                )
+                request = connection.execute(
+                    "SELECT * FROM training_request WHERE business_key = ?",
+                    (request_key,),
+                ).fetchone()
+                return {
+                    "evaluation": dict(existing),
+                    "trainingRequest": dict(request) if request else None,
+                }
+            model = connection.execute(
+                """
+                SELECT id FROM model_version
+                WHERE status = 'ACTIVE'
+                ORDER BY id DESC LIMIT 1
+                """
+            ).fetchone()
+            model_id = int(model["id"]) if model else None
+            if model_id is None and decision not in {"WARMUP", "TRAIN_REQUIRED"}:
+                decision = "TRAIN_REQUIRED"
+                reason = f"没有 ACTIVE 模型；{reason}"
+            business_key = f"MODEL_EVALUATION:{model_id or 'NONE'}:{business_date}"
+            connection.execute(
+                """
+                INSERT INTO model_evaluation(
+                    business_key, model_version_id, business_date, window_days,
+                    observations, gross_positive_ratio, total_gross_return,
+                    total_net_return, max_drawdown, decision, reason, created_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    business_key,
+                    model_id,
+                    business_date,
+                    window_days,
+                    observations,
+                    gross_positive_ratio,
+                    total_gross_return,
+                    total_net_return,
+                    max_drawdown,
+                    decision,
+                    reason,
+                    _now(),
+                ),
+            )
+            training_request = None
+            if decision in {"RETRAIN", "TRAIN_REQUIRED"}:
+                if decision == "RETRAIN" and model_id is not None:
+                    connection.execute(
+                        "UPDATE model_version SET status = 'DEGRADED' WHERE id = ?",
+                        (model_id,),
+                    )
+                connection.execute(
+                    """
+                    UPDATE system_setting
+                    SET setting_value = 'false', updated_at = ?
+                    WHERE setting_key = 'REAL_TRADING_ENABLED'
+                    """,
+                    (_now(),),
+                )
+                request_key = f"TRAINING_REQUEST:{model_id or 'NONE'}:{business_date}"
+                connection.execute(
+                    """
+                    INSERT INTO training_request(
+                        business_key, model_version_id, trigger_type, status,
+                        requested_at, updated_at
+                    ) VALUES(?, ?, ?, 'REQUESTED', ?, ?)
+                    ON CONFLICT(business_key) DO NOTHING
+                    """,
+                    (
+                        request_key,
+                        model_id,
+                        "PERFORMANCE_DEGRADATION"
+                        if decision == "RETRAIN"
+                        else "NO_ACTIVE_MODEL",
+                        _now(),
+                        _now(),
+                    ),
+                )
+                request = connection.execute(
+                    "SELECT * FROM training_request WHERE business_key = ?",
+                    (request_key,),
+                ).fetchone()
+                training_request = dict(request)
+            evaluation = connection.execute(
+                "SELECT * FROM model_evaluation WHERE business_key = ?",
+                (business_key,),
+            ).fetchone()
+        return {
+            "evaluation": dict(evaluation),
+            "trainingRequest": training_request,
+        }
+
+    def list_training_requests(self) -> list[dict[str, Any]]:
+        self.initialize()
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM training_request ORDER BY requested_at ASC"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def summary(self) -> dict[str, Any]:
         self.initialize()
         with self._connect() as connection:
@@ -677,6 +937,9 @@ class StateStore:
                     "shadow_execution",
                     "position",
                     "performance_snapshot",
+                    "live_performance_snapshot",
+                    "model_evaluation",
+                    "training_request",
                     "broker_account_snapshot",
                     "broker_position_snapshot",
                     "broker_order_fact",
@@ -1250,4 +1513,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END -------------------
+# AI_GENERATE_END -----------------------

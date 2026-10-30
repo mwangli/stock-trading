@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START------------ -->
+<!-- AI_GENERATE_START------------- -->
 # stock-trading
 
 本仓库正在从 Java 多模块交易平台收敛为纯 Python 的最小 T+1 验证系统。改造期间以 `documents/decisions/adr-002-python-t1-minimal-rebuild.md` 为目标方案，现有 Java、React 和数据库代码只作为交易编排与运行恢复的迁移参考，尚未删除。
@@ -37,7 +37,8 @@ D-1 收盘更新日线并生成 Top 5
 - 已完成指定交易日生产推理，`2026-10-29` 重算 Top 5 与训练制品最大分数差为 0。
 - 已完成上午卖出和下午买入影子计划，真实 Top 5 可直接生成单股票 `PLANNED` 订单。
 - 已完成单阶段订单执行、部分成交后撤单、未知状态阻断和重启事实恢复。
-- 当前模型为 `REJECTED`，真实交易开关为 `false`；下一步实现成交驱动的持仓、绩效和自动评估。
+- 已完成成交驱动的毛/净绩效、模型版本归属、滚动评估和唯一重训请求。
+- 当前模型为 `REJECTED`，真实交易开关为 `false`；下一步进入真实券商只读验证和受控小资金准入。
 - Java、React、Quartz、Agent、MySQL 和 MongoDB 仅在 Python 交易闭环和小资金验证完成后删除。
 
 ## 文档入口
@@ -47,4 +48,4 @@ D-1 收盘更新日线并生成 Top 5
 - [现有交易执行](documents/modules/stock-trading/交易执行.md)
 
 `SOURCE_IMPLEMENTED` 只表示源码已经落地，不代表编译、运行、数据库或真实交易验证通过。
-<!-- AI_GENERATE_END------------ -->
+<!-- AI_GENERATE_END------------- -->
