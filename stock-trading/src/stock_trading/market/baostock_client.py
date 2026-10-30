@@ -1,4 +1,4 @@
-# AI_GENERATE_START --
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 import socket
@@ -12,7 +12,7 @@ import baostock.common.context as bs_context
 import baostock.common.contants as bs_constants
 import baostock.util.socketutil as bs_socket
 
-from stock_trading.market.models import DailyBar, MinuteBar
+from stock_trading.market.models import AdjustmentFactor, DailyBar, MinuteBar
 
 DAILY_FIELDS = (
     "date,code,open,high,low,close,preclose,volume,amount,adjustflag,turn,"
@@ -76,6 +76,27 @@ class BaoStockClient:
         )
         rows = self._rows(result)
         return DailyBar.from_baostock(rows[0]) if rows else None
+
+    def fetch_daily_history(self, code: str, start_date: date, end_date: date) -> list[DailyBar]:
+        result = bs.query_history_k_data_plus(
+            code,
+            DAILY_FIELDS,
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+            frequency="d",
+            adjustflag="3",
+        )
+        return [DailyBar.from_baostock(row) for row in self._rows(result)]
+
+    def fetch_adjustment_factors(
+        self, code: str, start_date: date, end_date: date
+    ) -> list[AdjustmentFactor]:
+        result = bs.query_adjust_factor(
+            code,
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+        )
+        return [AdjustmentFactor.from_baostock(row) for row in self._rows(result)]
 
     def fetch_minutes(self, code: str, start_date: date, end_date: date) -> list[MinuteBar]:
         result = bs.query_history_k_data_plus(
@@ -143,4 +164,4 @@ class BaoStockClient:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END --
+# AI_GENERATE_END ---

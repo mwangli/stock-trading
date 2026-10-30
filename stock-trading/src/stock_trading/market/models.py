@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START --
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -52,6 +52,28 @@ class DailyBar:
 
 
 @dataclass(frozen=True)
+class AdjustmentFactor:
+    code: str
+    operate_date: date
+    forward_factor: Decimal
+
+    @classmethod
+    def from_baostock(cls, row: dict[str, str]) -> "AdjustmentFactor":
+        return cls(
+            code=row["code"],
+            operate_date=date.fromisoformat(row["dividOperateDate"]),
+            forward_factor=_decimal(row["foreAdjustFactor"]),
+        )
+
+    def as_record(self) -> dict[str, object]:
+        return {
+            "code": self.code,
+            "operate_date": self.operate_date.isoformat(),
+            "forward_factor": float(self.forward_factor),
+        }
+
+
+@dataclass(frozen=True)
 class MinuteBar:
     trade_date: date
     bar_end: datetime
@@ -96,4 +118,4 @@ class MinuteBar:
         for field in ("open", "high", "low", "close", "volume", "amount"):
             record[field] = float(record[field])
         return record
-# AI_GENERATE_END -
+# AI_GENERATE_END --

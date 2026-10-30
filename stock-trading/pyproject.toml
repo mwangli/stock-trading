@@ -11,6 +11,10 @@ dependencies = [
     "baostock==0.9.4",
     "pandas>=2.2,<4",
     "pyarrow>=18,<24",
+]
+
+[project.optional-dependencies]
+research = [
     "lightgbm>=4.5,<5",
     "pyqlib==0.9.7",
 ]

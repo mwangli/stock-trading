@@ -98,4 +98,4 @@ stock-trading/
 
 ## 验证边界
 
-当前完成 BaoStock 外部只读探测、第一阶段 Python 源码和日线/分钟 Parquet 真实回读验证。尚未执行 Qlib 转换、模型训练、组合回测、SQLite 写入或券商请求；现有 Java 和前端也未编译、构建、测试或启动。
+当前已完成前两个阶段：BaoStock 日线/分钟数据基础、复权因子、Parquet 到 Qlib 确定性转换、自定义 T+1 标签、Alpha158 特征、LightGBM 训练、每日 Top 5 和横截面指标。20 只股票真实样本的最终测试 IC 与 Rank IC 均为负，工程链路通过但模型业务能力未通过。尚未执行组合回测、SQLite 写入或券商请求；现有 Java 和前端也未编译、构建、测试或启动。
