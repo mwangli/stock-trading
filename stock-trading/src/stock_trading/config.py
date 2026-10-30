@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START ----------
 from __future__ import annotations
 
 import os
@@ -29,6 +29,13 @@ class AppConfig:
     broker_history_page_size: int
     broker_history_max_records: int
     broker_history_request_interval_seconds: float
+    trading_min_price: float
+    trading_max_price: float
+    trading_min_commission: float
+    trading_commission_rate: float
+    trading_transfer_fee_rate: float
+    trading_allowed_prefixes: tuple[str, ...]
+    trading_max_prediction_age_days: int
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -69,6 +76,31 @@ class AppConfig:
             broker_history_request_interval_seconds=max(
                 0.0, float(os.getenv("ZXBROKER_HISTORY_REQUEST_INTERVAL_SECONDS", "0.2"))
             ),
+            trading_min_price=max(
+                0.01, float(os.getenv("STOCK_TRADING_MIN_PRICE", "5"))
+            ),
+            trading_max_price=max(
+                0.01, float(os.getenv("STOCK_TRADING_MAX_PRICE", "20"))
+            ),
+            trading_min_commission=max(
+                0.0, float(os.getenv("STOCK_TRADING_MIN_COMMISSION", "5"))
+            ),
+            trading_commission_rate=max(
+                0.0, float(os.getenv("STOCK_TRADING_COMMISSION_RATE", "0.0003"))
+            ),
+            trading_transfer_fee_rate=max(
+                0.0, float(os.getenv("STOCK_TRADING_TRANSFER_FEE_RATE", "0.00001"))
+            ),
+            trading_allowed_prefixes=tuple(
+                value.strip().upper()
+                for value in os.getenv(
+                    "STOCK_TRADING_ALLOWED_PREFIXES", "SH60,SZ00"
+                ).split(",")
+                if value.strip()
+            ),
+            trading_max_prediction_age_days=max(
+                1, int(os.getenv("STOCK_TRADING_MAX_PREDICTION_AGE_DAYS", "7"))
+            ),
         )
 
 
@@ -77,4 +109,4 @@ def _env_bool(name: str, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
-# AI_GENERATE_END ------
+# AI_GENERATE_END ----------

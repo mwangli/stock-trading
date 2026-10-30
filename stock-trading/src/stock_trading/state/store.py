@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------
+# AI_GENERATE_START -------------
 from __future__ import annotations
 
 import hashlib
@@ -317,6 +317,87 @@ class StateStore:
             "predictions": prediction_rows,
         } | self.summary()
 
+    def latest_prediction_candidates(
+        self, before_business_date: str, limit: int
+    ) -> list[dict[str, Any]]:
+        self.initialize()
+        with self._connect() as connection:
+            prediction_date = connection.execute(
+                "SELECT MAX(prediction_date) FROM prediction WHERE prediction_date < ?",
+                (before_business_date,),
+            ).fetchone()[0]
+            if prediction_date is None:
+                return []
+            model_id = connection.execute(
+                """
+                SELECT model_version_id
+                FROM prediction
+                WHERE prediction_date = ?
+                GROUP BY model_version_id
+                ORDER BY MAX(created_at) DESC, model_version_id DESC
+                LIMIT 1
+                """,
+                (prediction_date,),
+            ).fetchone()[0]
+            rows = connection.execute(
+                """
+                SELECT p.prediction_date, p.instrument, p.rank, p.score,
+                       mv.status AS model_status
+                FROM prediction p
+                JOIN model_version mv ON mv.id = p.model_version_id
+                WHERE p.prediction_date = ? AND p.model_version_id = ?
+                ORDER BY p.rank ASC, p.instrument ASC
+                LIMIT ?
+                """,
+                (prediction_date, model_id, max(1, limit)),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def save_shadow_plan(
+        self,
+        task_type: str,
+        business_date: str,
+        orders: list[dict[str, object]],
+    ) -> dict[str, Any]:
+        if task_type not in {"SHADOW_MORNING_SELL", "SHADOW_AFTERNOON_BUY"}:
+            raise ValueError(f"unsupported shadow plan type: {task_type}")
+        self.initialize()
+        self.recover_interrupted_runs()
+        business_key = f"{task_type}:{business_date}"
+        if self._successful_run_exists(business_key):
+            return {"businessKey": business_key, "status": "SKIPPED"} | self.summary()
+
+        self._start_run(business_key, task_type, business_date)
+        try:
+            with self._connect() as connection:
+                for order in orders:
+                    self._insert_shadow_plan_order(connection, business_date, order)
+            final_status = "SUCCESS" if orders else "SKIPPED"
+            self._finish_run(business_key, final_status, None)
+        except BaseException as error:
+            self._finish_run(business_key, "FAILED", str(error))
+            raise
+        return {
+            "businessKey": business_key,
+            "status": final_status,
+            "plannedOrders": len(orders),
+        } | self.summary()
+
+    def list_shadow_orders(self, business_date: str) -> list[dict[str, Any]]:
+        self.initialize()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT client_order_id, business_date, instrument, side, quantity,
+                       price, status, candidate_rank
+                FROM shadow_order
+                WHERE business_date = ?
+                ORDER BY id ASC
+                """,
+                (business_date,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def prepare_real_order(
         self,
         client_order_id: str,
@@ -329,8 +410,10 @@ class StateStore:
             raise ValueError("client_order_id 不能为空")
         if side not in {"BUY", "SELL"}:
             raise ValueError("订单方向必须是 BUY 或 SELL")
-        if quantity <= 0 or quantity % 100 != 0:
-            raise ValueError("A股委托数量必须是正整数整手")
+        if quantity <= 0:
+            raise ValueError("委托数量必须大于零")
+        if side == "BUY" and quantity % 100 != 0:
+            raise ValueError("A股买入数量必须是 100 股整数倍")
         if price <= 0:
             raise ValueError("委托价格必须大于零")
         self.initialize()
@@ -504,6 +587,48 @@ class StateStore:
             rows,
         )
         return len(rows)
+
+    @staticmethod
+    def _insert_shadow_plan_order(
+        connection: sqlite3.Connection,
+        business_date: str,
+        order: dict[str, object],
+    ) -> None:
+        client_order_id = str(order["clientOrderId"])
+        instrument = str(order["instrument"])
+        side = str(order["side"])
+        quantity = int(order["quantity"])
+        price = Decimal(str(order["price"]))
+        candidate_rank = order.get("candidateRank")
+        if not client_order_id or not instrument:
+            raise ValueError("影子订单业务键和股票代码不能为空")
+        if side not in {"BUY", "SELL"}:
+            raise ValueError("影子订单方向必须是 BUY 或 SELL")
+        if quantity <= 0:
+            raise ValueError("影子订单数量必须大于零")
+        if side == "BUY" and quantity % 100 != 0:
+            raise ValueError("影子买入数量必须是 100 股整数倍")
+        if price <= 0:
+            raise ValueError("影子订单价格必须大于零")
+        connection.execute(
+            """
+            INSERT INTO shadow_order(
+                client_order_id, business_date, instrument, side, quantity,
+                price, status, candidate_rank, created_at
+            ) VALUES(?, ?, ?, ?, ?, ?, 'PLANNED', ?, ?)
+            ON CONFLICT(client_order_id) DO NOTHING
+            """,
+            (
+                client_order_id,
+                business_date,
+                instrument,
+                side,
+                quantity,
+                float(price),
+                candidate_rank,
+                _now(),
+            ),
+        )
 
     @staticmethod
     def _upsert_broker_orders(
@@ -857,4 +982,4 @@ def _json_default(value: object) -> str:
 
 def _optional_float(value: Decimal | None) -> float | None:
     return float(value) if value is not None else None
-# AI_GENERATE_END ----------
+# AI_GENERATE_END -------------

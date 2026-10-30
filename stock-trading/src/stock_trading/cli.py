@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------
+# AI_GENERATE_START ---------------
 from __future__ import annotations
 
 import argparse
@@ -23,6 +23,7 @@ from stock_trading.research.model import (
 from stock_trading.research.backtest import BacktestConfig, PortfolioBacktester
 from stock_trading.research.qlib_store import QlibBinaryStore
 from stock_trading.state.store import StateStore
+from stock_trading.trading.orchestrator import ShadowTradingOrchestrator
 
 
 def main() -> None:
@@ -62,6 +63,10 @@ def main() -> None:
         _sync_broker_shadow(config, arguments.business_date)
     elif arguments.command == "predict-latest":
         _predict_latest(config, arguments.prediction_date)
+    elif arguments.command == "plan-shadow-morning":
+        _plan_shadow(config, arguments.business_date, morning=True)
+    elif arguments.command == "plan-shadow-afternoon":
+        _plan_shadow(config, arguments.business_date, morning=False)
     else:
         parser.error(f"Unsupported command: {arguments.command}")
 
@@ -139,6 +144,14 @@ def _build_parser() -> argparse.ArgumentParser:
     prediction.add_argument(
         "--date", dest="prediction_date", type=date.fromisoformat, required=True
     )
+    for command, help_text in (
+        ("plan-shadow-morning", "Create idempotent morning sell plans without broker writes"),
+        ("plan-shadow-afternoon", "Create one afternoon buy plan without broker writes"),
+    ):
+        shadow = subparsers.add_parser(command, help=help_text)
+        shadow.add_argument(
+            "--date", dest="business_date", type=date.fromisoformat, required=True
+        )
     return parser
 
 
@@ -321,6 +334,18 @@ def _predict_latest(config: AppConfig, prediction_date: date) -> None:
     _print_json({"prediction": prediction, "state": state})
 
 
+def _plan_shadow(config: AppConfig, business_date: date, morning: bool) -> None:
+    store = StateStore(config.state_db_path)
+    broker = ZXBrokerClient(config)
+    orchestrator = ShadowTradingOrchestrator(config, store, broker)
+    result = (
+        orchestrator.plan_morning_sell(business_date)
+        if morning
+        else orchestrator.plan_afternoon_buy(business_date)
+    )
+    _print_json(result)
+
+
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END --------------
+# AI_GENERATE_END ---------------

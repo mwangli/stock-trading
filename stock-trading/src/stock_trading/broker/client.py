@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START -------
 from __future__ import annotations
 
 import base64
@@ -230,8 +230,10 @@ class ZXBrokerClient:
             raise ValueError("不支持的买卖方向")
         if price <= 0:
             raise ValueError("委托价格必须大于零")
-        if quantity <= 0 or quantity % 100 != 0:
-            raise ValueError("A股委托数量必须是正整数整手")
+        if quantity <= 0:
+            raise ValueError("委托数量必须大于零")
+        if direction_code == "B" and quantity % 100 != 0:
+            raise ValueError("A股买入数量必须是 100 股整数倍")
         response = self._request(
             self.build_params(
                 {
@@ -348,4 +350,4 @@ def _required_price(response: dict[str, Any], primary: str, alternate: str) -> D
 
 def _reject_all_writes(client_order_id: str) -> None:
     raise BrokerSafetyError(f"真实券商写入默认关闭: {client_order_id}")
-# AI_GENERATE_END ------
+# AI_GENERATE_END -------
