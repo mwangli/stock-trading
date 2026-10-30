@@ -4,15 +4,17 @@ title: ADR-002：纯 Python T+1 最小化重建
 sidebar_position: 4
 owner: system
 type: decision
-status: PROPOSED
+status: SOURCE_IMPLEMENTED
 last_verified: 2026-10-30
 slug: /decisions/adr-002-python-t1-minimal-rebuild/
 source_paths:
   - stock-trading/pyproject.toml
+  - stock-trading/src/stock_trading/cli.py
   - stock-trading/src/stock_trading/market/baostock_client.py
-  - stock-trading/src/stock_trading/market/audit.py
-  - stock-server/stock-trading/src/main/java/com/stock/trading/adapter/ZXBrokerAdapter.java
-  - stock-server/stock-trading/src/main/java/com/stock/trading/adapter/ZXRequestUtils.java
+  - stock-trading/src/stock_trading/research/model.py
+  - stock-trading/src/stock_trading/broker/client.py
+  - stock-trading/src/stock_trading/state/store.py
+  - stock-trading/src/stock_trading/trading/execution.py
 ---
 
 <DocMetadata />
@@ -99,8 +101,8 @@ stock-trading/
 8. **订单执行与恢复**：实现分阶段委托、部分成交、撤单终态、未知状态和应用重启后的券商事实恢复。
 9. **绩效与自动评估**：按真实成交更新持仓和绩效，触发滚动模型评估和受控重训。
 10. **真实验证**：先完成券商只读影子同步，再由通过门槛的 `ACTIVE` 模型执行受控小资金验证。
-11. **替换收口**：小资金稳定运行后删除 Java、React、Quartz、Agent 和旧数据库链路，不保留双轨。
+11. **替换收口**：删除 Java、React、Quartz、Agent、旧模型制品和旧数据库运行链路，以 Python CLI、SQLite 和操作系统定时器作为唯一生产路径。
 
 ## 验证边界
 
-当前已完成前九个阶段和阶段 10 的源码准入门禁：BaoStock 数据基础、Qlib Alpha158 与 LightGBM 基线、单持仓 T+1 组合回测、SQLite 状态闭环、Python 券商契约迁移、生产推理、影子交易计划、订单执行与恢复、成交绩效与自动评估，以及真实券商只读准入。生产推理在 `2026-10-29` 真实 Qlib 数据上重算的 Top 5 与阶段 2 制品顺序完全一致，最大分数差为 0；订单执行与绩效链已通过伪券商验证。`2026-10-30` 已使用根 `.env`、百度 OCR 双路径和券商验证码完成真实登录，账户、持仓、委托及成交只读同步成功，账户总资产和可用资金均为 0.02 元，持仓、委托与成交均为 0。一次 `000001`、100 股、0.01 元的真实限价买入探测被券商协议明确拒绝，错误指出交易所字段为空，未生成委托；这证明现有 Java/Python 下单参数仍不完整，不能视为真实写入已验证。当前准入仍因 Qlib 日历未覆盖 `2026-10-30` 且模型状态为 `REJECTED` 而 `BLOCKED`，真实交易开关保持关闭。阶段 11 删除旧系统必须继续等待完整下单字段来源和受控真实成交证据。
+阶段 1-10 已完成数据、模型、回测、SQLite、券商协议、生产推理、影子计划、订单执行恢复、绩效评估和真实准入的源码闭环。`2026-10-30` 的真实 Action 110 探测已通过股东账号和市场参数校验并到达券商交易时间门禁，当日委托仍为 0。经用户明确决定，阶段 11 不再以成功委托、真实撤单或成交终态作为删除旧系统的前置门禁：Java、React、Quartz、Agent、MySQL/MongoDB 运行配置、旧 CI/CD 和旧模型制品已经从版本库删除；Python 新增上午和下午无人值守交易窗口入口，操作系统定时器成为唯一时间触发方式。外部历史数据库未执行清库、迁移或写入。当前证据等级为 `SOURCE_IMPLEMENTED`；成功委托、撤单和成交终态恢复仍由后续合法交易时段验证。

@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------
+# AI_GENERATE_START ---------------------
 from __future__ import annotations
 
 import argparse
@@ -71,6 +71,10 @@ def main() -> None:
         _plan_shadow(config, arguments.business_date, morning=True)
     elif arguments.command == "plan-shadow-afternoon":
         _plan_shadow(config, arguments.business_date, morning=False)
+    elif arguments.command == "run-morning-trading":
+        _run_trading_window(config, arguments.business_date, morning=True)
+    elif arguments.command == "run-afternoon-trading":
+        _run_trading_window(config, arguments.business_date, morning=False)
     elif arguments.command == "execute-shadow-order":
         _execute_shadow_order(config, arguments.client_order_id)
     elif arguments.command == "recover-broker-orders":
@@ -174,6 +178,14 @@ def _build_parser() -> argparse.ArgumentParser:
     ):
         shadow = subparsers.add_parser(command, help=help_text)
         shadow.add_argument(
+            "--date", dest="business_date", type=date.fromisoformat, required=True
+        )
+    for command, help_text in (
+        ("run-morning-trading", "Recover broker facts, plan sells and execute them"),
+        ("run-afternoon-trading", "Recover broker facts, plan one buy and execute it"),
+    ):
+        trading = subparsers.add_parser(command, help=help_text)
+        trading.add_argument(
             "--date", dest="business_date", type=date.fromisoformat, required=True
         )
     execution = subparsers.add_parser(
@@ -412,6 +424,34 @@ def _plan_shadow(config: AppConfig, business_date: date, morning: bool) -> None:
     _print_json(result)
 
 
+def _run_trading_window(
+    config: AppConfig, business_date: date, morning: bool
+) -> None:
+    store = StateStore(config.state_db_path)
+    broker = _build_broker(config, store)
+    execution = OrderExecutionOrchestrator(config, store, broker)
+    recovery = execution.recover_pending_orders(business_date)
+    planner = ShadowTradingOrchestrator(config, store, broker)
+    plan = (
+        planner.plan_morning_sell(business_date)
+        if morning
+        else planner.plan_afternoon_buy(business_date)
+    )
+    executed = [
+        execution.execute_stage(str(order["clientOrderId"]))
+        for order in plan["orders"]
+    ]
+    _print_json(
+        {
+            "businessDate": business_date.isoformat(),
+            "mode": "MORNING_SELL" if morning else "AFTERNOON_BUY",
+            "recovery": recovery,
+            "plan": plan,
+            "executed": executed,
+        }
+    )
+
+
 def _execute_shadow_order(config: AppConfig, client_order_id: str) -> None:
     store = StateStore(config.state_db_path)
     broker = _build_broker(config, store)
@@ -468,4 +508,4 @@ def _build_broker(
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END --------------------
+# AI_GENERATE_END ---------------------
