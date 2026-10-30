@@ -1,7 +1,7 @@
-# AI_GENERATE_START --
+# AI_GENERATE_START -----
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
@@ -38,6 +38,7 @@ class BrokerOrder:
     filled_quantity: int | None
     raw_status: str | None
     status: str
+    shareholder_account: str | None = field(repr=False)
     market: str | None
     order_time: datetime | None
 
@@ -68,4 +69,4 @@ class BrokerSyncSnapshot:
     positions: tuple[BrokerPosition, ...]
     orders: tuple[BrokerOrder, ...]
     fills: tuple[BrokerFill, ...]
-# AI_GENERATE_END --
+# AI_GENERATE_END -----

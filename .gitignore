@@ -1,91 +1,41 @@
-HELP.md
+# Local secrets
+.env
+*.env.local
 
-# Compiled class files
-*.class
+# Python
+.venv/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 
-# Maven
-target/
-stock-server/app.jar
-!.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
+# Legacy local build leftovers
+**/target/
+**/node_modules/
+**/dist/
+**/.vite/
 
-# IDE
+# Runtime data and artifacts
+.tmp/
+stock-trading/var/
+mlruns/
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# IDE and OS
 .idea/
 .vscode/
-*.iws
 *.iml
-*.ipr
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-# 临时文件与中间脚本
-.tmp/
-/graft/
-/data/
-
-# NetBeans
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
-
-# Node.js / Frontend
-node_modules/
-.vite/
-**/.docusaurus/
-dist/
-build/
-.umi/
-.umi-production/
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Application
-*.env
-*.env.local
-!.env.example
-application-local.yml
-application-dev.yml
-application-prod.yml
-
-# H2 Database
-*.db
-*.mv.db
-*.trace.db
-
+# Local analysis workspaces
+/graft/
 /.sisyphus/
-.worktrees/
-backups/
-.understand-anything/
-/python/runtime/
-/python/.venv/
-**/__pycache__/
-**/.pytest_cache/
-**/.ruff_cache/
-*.pyc
-
-graft
-.idea
-.tmp
-.env
-/stock-trading/.venv/
-/stock-trading/var/
-*.egg-info/
+/.worktrees/
+/backups/
+/.understand-anything/

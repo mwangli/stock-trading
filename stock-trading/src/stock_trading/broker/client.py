@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------
+# AI_GENERATE_START --------------
 from __future__ import annotations
 
 import base64
@@ -7,7 +7,7 @@ import json
 import threading
 import time
 from collections.abc import Callable
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from urllib.parse import urlencode
@@ -79,6 +79,7 @@ class ZXBrokerClient:
         )
         self._login_lock = threading.Lock()
         self._login_blocked_until = 0.0
+        self._shareholder_accounts: dict[str, str] | None = None
 
     def build_params(self, values: dict[str, object] | None = None) -> dict[str, object]:
         params = dict(values or {})
@@ -266,15 +267,22 @@ class ZXBrokerClient:
             raise ValueError("委托数量必须大于零")
         if direction_code == "B" and quantity % 100 != 0:
             raise ValueError("A股买入数量必须是 100 股整数倍")
+        shareholder_account, shareholder_account_type = self._resolve_order_account(
+            stock_code
+        )
         response = self._request(
             self.build_params(
                 {
                     "action": ACTION_SUBMIT_ORDER,
+                    "isformat": 1,
                     "PriceType": 0,
                     "Direction": direction_code,
                     "StockCode": stock_code,
                     "Price": price,
                     "Volume": quantity,
+                    "WTAccount": shareholder_account,
+                    "WTAccountType": shareholder_account_type,
+                    "ProPrice": "",
                     "token": self._require_token(),
                 }
             )
@@ -290,6 +298,55 @@ class ZXBrokerClient:
                 f"券商拒绝委托，错误码={response.get('ERRORNO')}，原因={error_message}"
             )
         return str(order_id)
+
+    def _resolve_order_account(self, stock_code: str) -> tuple[str, str]:
+        response = self._request(
+            self.build_params(
+                {
+                    "stockcode": stock_code,
+                    "action": ACTION_GET_PRICE,
+                    "ReqlinkType": 1,
+                    "Level": 1,
+                    "UseBPrice": 1,
+                }
+            )
+        )
+        account_type = str(response.get("WTACCOUNTTYPE") or "").strip().upper()
+        market = {
+            "SHACCOUNT": "上海",
+            "SZACCOUNT": "深圳",
+        }.get(account_type)
+        if market is None:
+            raise BrokerProtocolError(f"券商未返回可识别的股东账号类型: {stock_code}")
+        accounts = self._load_shareholder_accounts(market)
+        account = accounts.get(market)
+        if not account:
+            raise BrokerProtocolError(f"历史委托中没有{market}股东账号")
+        return account, account_type
+
+    def _load_shareholder_accounts(self, required_market: str) -> dict[str, str]:
+        accounts = dict(self._shareholder_accounts or {})
+        if required_market in accounts:
+            return accounts
+        window_end = date.today()
+        earliest = date(2000, 1, 1)
+        while window_end >= earliest and required_market not in accounts:
+            window_start = max(earliest, window_end - timedelta(days=729))
+            latest: dict[str, tuple[datetime, str]] = {}
+            for order in self.get_history_orders(window_start, window_end):
+                market = (order.market or "").strip()
+                account = (order.shareholder_account or "").strip()
+                if market not in {"上海", "深圳"} or not account:
+                    continue
+                order_time = order.order_time or datetime.min
+                current = latest.get(market)
+                if current is None or order_time > current[0]:
+                    latest[market] = (order_time, account)
+            for market, (_, account) in latest.items():
+                accounts.setdefault(market, account)
+            window_end = window_start - timedelta(days=1)
+        self._shareholder_accounts = accounts
+        return accounts
 
     def cancel_order(self, client_order_id: str, broker_order_id: str) -> bool:
         self._cancel_guard(client_order_id)
@@ -389,4 +446,4 @@ def _required_price(response: dict[str, Any], primary: str, alternate: str) -> D
 
 def _reject_all_writes(client_order_id: str) -> None:
     raise BrokerSafetyError(f"真实券商写入默认关闭: {client_order_id}")
-# AI_GENERATE_END ----------
+# AI_GENERATE_END --------------

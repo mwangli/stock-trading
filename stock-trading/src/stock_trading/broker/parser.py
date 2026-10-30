@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ----
 from __future__ import annotations
 
 from datetime import datetime
@@ -113,6 +113,7 @@ def parse_order_rows(rows: Iterable[str]) -> tuple[BrokerOrder, ...]:
                 filled_quantity=parse_integer(fields[11]),
                 raw_status=_text(fields[6]),
                 status=_order_status(fields[6]),
+                shareholder_account=_text(fields[12]),
                 market=_text(fields[13]),
                 order_time=_date_time(fields[0], fields[1]),
             )
@@ -214,4 +215,4 @@ def _text(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
-# AI_GENERATE_END ---
+# AI_GENERATE_END ----
