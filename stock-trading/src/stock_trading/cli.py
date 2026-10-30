@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------
+# AI_GENERATE_START ---------
 from __future__ import annotations
 
 import argparse
@@ -16,6 +16,7 @@ from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.research.model import ModelSegments, train_alpha158_lightgbm
 from stock_trading.research.backtest import BacktestConfig, PortfolioBacktester
 from stock_trading.research.qlib_store import QlibBinaryStore
+from stock_trading.state.store import StateStore
 
 
 def main() -> None:
@@ -44,6 +45,13 @@ def main() -> None:
         _train_baseline(config, arguments)
     elif arguments.command == "backtest-portfolio":
         _backtest_portfolio(config, arguments)
+    elif arguments.command == "sync-state":
+        _sync_state(config, arguments.backtest_name)
+    elif arguments.command == "show-state":
+        _print_json(StateStore(config.state_db_path).summary())
+    elif arguments.command == "recover-state":
+        recovered = StateStore(config.state_db_path).recover_interrupted_runs()
+        _print_json({"recoveredRuns": recovered} | StateStore(config.state_db_path).summary())
     else:
         parser.error(f"Unsupported command: {arguments.command}")
 
@@ -102,6 +110,13 @@ def _build_parser() -> argparse.ArgumentParser:
     backtest.add_argument("--sell-slices", type=int, default=1)
     backtest.add_argument("--allowed-prefixes", nargs="*", default=[])
     backtest.add_argument("--output-name", default="portfolio-backtest")
+
+    state_sync = subparsers.add_parser(
+        "sync-state", help="Import model, predictions and shadow backtest into SQLite"
+    )
+    state_sync.add_argument("--backtest-name", default="portfolio-backtest-realistic")
+    subparsers.add_parser("show-state", help="Show SQLite state counts and safety setting")
+    subparsers.add_parser("recover-state", help="Fail conservatively any interrupted task runs")
     return parser
 
 
@@ -249,6 +264,15 @@ def _backtest_portfolio(config: AppConfig, arguments: argparse.Namespace) -> Non
     _print_json(result)
 
 
+def _sync_state(config: AppConfig, backtest_name: str) -> None:
+    result = StateStore(config.state_db_path).import_research_artifacts(
+        config.artifact_dir / "alpha158-lightgbm",
+        config.artifact_dir / backtest_name,
+        backtest_name,
+    )
+    _print_json(result)
+
+
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END --------
+# AI_GENERATE_END ---------

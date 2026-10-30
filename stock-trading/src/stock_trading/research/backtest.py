@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ----
 from __future__ import annotations
 
 import json
@@ -342,7 +342,7 @@ class PortfolioBacktester:
             "totalBuyNotional": _money(total_buy_notional),
             "totalSellNotional": _money(total_sell_notional),
             "turnover": (total_buy_notional + total_sell_notional) / self._config.initial_cash,
-            "openPosition": asdict(open_position) if open_position else None,
+            "openPosition": _position_record(open_position),
             "rejectCounts": reject_counts,
         }
 
@@ -431,10 +431,24 @@ def _reject_record(
     }
 
 
+def _position_record(position: Position | None) -> dict[str, object] | None:
+    if position is None:
+        return None
+    return {
+        "instrument": position.instrument,
+        "quantity": position.quantity,
+        "buyDate": position.buy_date.isoformat(),
+        "buyPrice": position.buy_price,
+        "buyNotional": position.buy_notional,
+        "buyFees": position.buy_fees,
+        "candidateRank": position.candidate_rank,
+    }
+
+
 def _to_baostock_code(instrument: str) -> str:
     return f"{instrument[:2].lower()}.{instrument[2:]}"
 
 
 def _money(value: float) -> float:
     return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-# AI_GENERATE_END ---
+# AI_GENERATE_END ----
