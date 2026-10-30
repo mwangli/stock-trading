@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------
+# AI_GENERATE_START ----------------
 from __future__ import annotations
 
 import base64
@@ -40,7 +40,6 @@ ACTION_CAPTCHA = 41092
 
 Transport = Callable[[str, dict[str, object], float], dict[str, Any]]
 CaptchaSolver = Callable[[bytes], int]
-WriteGuard = Callable[[str], None]
 
 
 class BrokerProtocolError(RuntimeError):
@@ -63,14 +62,10 @@ class ZXBrokerClient:
         config: AppConfig,
         transport: Transport | None = None,
         captcha_solver: CaptchaSolver | None = None,
-        write_guard: WriteGuard | None = None,
-        cancel_guard: WriteGuard | None = None,
     ) -> None:
         self._config = config
         self._transport = transport or _post_form
         self._captcha_solver = captcha_solver
-        self._write_guard = write_guard or _reject_all_writes
-        self._cancel_guard = cancel_guard or _reject_all_writes
         self._token = config.broker_token
         self._token_expire_at = (
             time.monotonic() + config.broker_token_expire_minutes * 60
@@ -251,13 +246,11 @@ class ZXBrokerClient:
 
     def submit_limit_order(
         self,
-        client_order_id: str,
         direction: str,
         stock_code: str,
         price: Decimal,
         quantity: int,
     ) -> str:
-        self._write_guard(client_order_id)
         direction_code = {"BUY": "B", "SELL": "S"}.get(direction.upper())
         if direction_code is None:
             raise ValueError("不支持的买卖方向")
@@ -348,8 +341,7 @@ class ZXBrokerClient:
         self._shareholder_accounts = accounts
         return accounts
 
-    def cancel_order(self, client_order_id: str, broker_order_id: str) -> bool:
-        self._cancel_guard(client_order_id)
+    def cancel_order(self, broker_order_id: str) -> bool:
         response = self._request(
             self.build_params(
                 {
@@ -442,8 +434,4 @@ def _required_price(response: dict[str, Any], primary: str, alternate: str) -> D
     if value is None or value <= 0:
         raise BrokerProtocolError("券商未返回完整五档行情")
     return value
-
-
-def _reject_all_writes(client_order_id: str) -> None:
-    raise BrokerSafetyError(f"真实券商写入默认关闭: {client_order_id}")
-# AI_GENERATE_END --------------
+# AI_GENERATE_END ----------------

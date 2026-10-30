@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------
+# AI_GENERATE_START ---------------
 from __future__ import annotations
 
 import os
@@ -45,12 +45,9 @@ class AppConfig:
     trading_stamp_duty_rate: float
     trading_allowed_prefixes: tuple[str, ...]
     trading_max_prediction_age_days: int
-    trading_order_poll_attempts: int
-    trading_order_poll_interval_seconds: float
     model_evaluation_window_days: int
     model_max_drawdown: float
     model_min_total_gross_return: float
-    real_validation_max_assets: float
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -139,13 +136,6 @@ class AppConfig:
             trading_max_prediction_age_days=max(
                 1, int(os.getenv("STOCK_TRADING_MAX_PREDICTION_AGE_DAYS", "7"))
             ),
-            trading_order_poll_attempts=max(
-                1, int(os.getenv("STOCK_TRADING_ORDER_POLL_ATTEMPTS", "30"))
-            ),
-            trading_order_poll_interval_seconds=max(
-                0.0,
-                float(os.getenv("STOCK_TRADING_ORDER_POLL_INTERVAL_SECONDS", "2")),
-            ),
             model_evaluation_window_days=max(
                 2, int(os.getenv("MODEL_EVALUATION_WINDOW_DAYS", "20"))
             ),
@@ -154,9 +144,6 @@ class AppConfig:
             ),
             model_min_total_gross_return=float(
                 os.getenv("MODEL_MIN_TOTAL_GROSS_RETURN", "0")
-            ),
-            real_validation_max_assets=max(
-                0.01, float(os.getenv("REAL_VALIDATION_MAX_ASSETS", "5000"))
             ),
         )
 
@@ -185,4 +172,4 @@ def _load_env_file(path: Path) -> None:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         os.environ.setdefault(key, value)
-# AI_GENERATE_END --------------
+# AI_GENERATE_END ---------------

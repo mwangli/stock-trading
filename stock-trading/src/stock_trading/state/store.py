@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------------
+# AI_GENERATE_START --------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -6,7 +6,7 @@ import json
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import asdict
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable, Iterator
@@ -177,23 +177,6 @@ CREATE TABLE IF NOT EXISTS training_request (
     FOREIGN KEY(model_version_id) REFERENCES model_version(id)
 );
 
-CREATE TABLE IF NOT EXISTS real_validation_run (
-    business_date TEXT PRIMARY KEY,
-    model_version_id INTEGER,
-    status TEXT NOT NULL,
-    blockers_json TEXT NOT NULL,
-    summary_json TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    FOREIGN KEY(model_version_id) REFERENCES model_version(id)
-);
-
-CREATE TABLE IF NOT EXISTS system_setting (
-    setting_key TEXT PRIMARY KEY,
-    setting_value TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS broker_account_snapshot (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     business_key TEXT NOT NULL UNIQUE,
@@ -282,14 +265,6 @@ class StateStore:
             )
             self._ensure_column(
                 connection, "live_performance_snapshot", "model_version_id", "INTEGER"
-            )
-            connection.execute(
-                """
-                INSERT INTO system_setting(setting_key, setting_value, updated_at)
-                VALUES('REAL_TRADING_ENABLED', 'false', ?)
-                ON CONFLICT(setting_key) DO NOTHING
-                """,
-                (_now(),),
             )
 
     def recover_interrupted_runs(self) -> int:
@@ -553,19 +528,6 @@ class StateStore:
             self._assert_same_shadow_order(
                 shadow_order, instrument, side, quantity, price
             )
-            self._assert_order_write_ready(connection, shadow_order)
-            active = connection.execute(
-                f"""
-                SELECT client_order_id, status FROM broker_order_intent
-                WHERE status IN ({','.join('?' for _ in ORDER_ACTIVE_STATUSES)})
-                ORDER BY created_at ASC LIMIT 1
-                """,
-                tuple(sorted(ORDER_ACTIVE_STATUSES)),
-            ).fetchone()
-            if active is not None:
-                raise PermissionError(
-                    f"存在未确认终态订单，禁止新增风险: {active['client_order_id']}:{active['status']}"
-                )
             connection.execute(
                 """
                 INSERT INTO broker_order_intent(
@@ -594,16 +556,9 @@ class StateStore:
                 ).fetchone()
             )
 
-    def authorize_real_write(self, client_order_id: str) -> None:
+    def start_order_submission(self, client_order_id: str) -> None:
         self.initialize()
         with self._connect() as connection:
-            shadow_order = connection.execute(
-                "SELECT * FROM shadow_order WHERE client_order_id = ?",
-                (client_order_id,),
-            ).fetchone()
-            if shadow_order is None:
-                raise PermissionError("真实订单必须来自已持久化的影子计划")
-            self._assert_order_write_ready(connection, shadow_order)
             cursor = connection.execute(
                 """
                 UPDATE broker_order_intent
@@ -613,7 +568,7 @@ class StateStore:
                 (_now(), client_order_id),
             )
             if cursor.rowcount != 1:
-                raise PermissionError("订单未预留或已提交，拒绝重复券商写入")
+                raise PermissionError("订单未预留或已提交，拒绝重复提交")
             connection.execute(
                 "UPDATE shadow_order SET status = 'SUBMITTING' WHERE client_order_id = ?",
                 (client_order_id,),
@@ -636,29 +591,6 @@ class StateStore:
                 status,
                 broker_order_id=broker_order_id,
                 error_message=error_message,
-            )
-
-    def authorize_cancel_write(self, client_order_id: str) -> None:
-        self.initialize()
-        with self._connect() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE broker_order_intent
-                SET status = 'CANCEL_SUBMITTING', updated_at = ?
-                WHERE client_order_id = ?
-                  AND broker_order_id IS NOT NULL
-                  AND status IN ('SUBMITTED', 'PARTIAL')
-                """,
-                (_now(), client_order_id),
-            )
-            if cursor.rowcount != 1:
-                raise PermissionError("订单不可撤销或撤单已提交，拒绝重复券商写入")
-            connection.execute(
-                """
-                UPDATE shadow_order SET status = 'CANCEL_SUBMITTING'
-                WHERE client_order_id = ?
-                """,
-                (client_order_id,),
             )
 
     def get_shadow_order(self, client_order_id: str) -> dict[str, Any] | None:
@@ -926,14 +858,6 @@ class StateStore:
                         "UPDATE model_version SET status = 'DEGRADED' WHERE id = ?",
                         (model_id,),
                     )
-                connection.execute(
-                    """
-                    UPDATE system_setting
-                    SET setting_value = 'false', updated_at = ?
-                    WHERE setting_key = 'REAL_TRADING_ENABLED'
-                    """,
-                    (_now(),),
-                )
                 request_key = f"TRAINING_REQUEST:{model_id or 'NONE'}:{business_date}"
                 connection.execute(
                     """
@@ -975,98 +899,6 @@ class StateStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def save_real_validation(
-        self,
-        business_date: str,
-        model_version_id: int | None,
-        status: str,
-        blockers: list[str],
-        summary: dict[str, object],
-    ) -> dict[str, Any]:
-        if status not in {"BLOCKED", "READ_ONLY_VERIFIED"}:
-            raise ValueError(f"不支持的真实验证状态: {status}")
-        self.initialize()
-        with self._connect() as connection:
-            connection.execute(
-                """
-                INSERT INTO real_validation_run(
-                    business_date, model_version_id, status, blockers_json,
-                    summary_json, created_at, updated_at
-                ) VALUES(?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(business_date) DO UPDATE SET
-                    model_version_id = excluded.model_version_id,
-                    status = excluded.status,
-                    blockers_json = excluded.blockers_json,
-                    summary_json = excluded.summary_json,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    business_date,
-                    model_version_id,
-                    status,
-                    json.dumps(blockers, ensure_ascii=False),
-                    json.dumps(summary, ensure_ascii=False),
-                    _now(),
-                    _now(),
-                ),
-            )
-            row = connection.execute(
-                "SELECT * FROM real_validation_run WHERE business_date = ?",
-                (business_date,),
-            ).fetchone()
-        return dict(row)
-
-    def enable_real_trading(self, business_date: str) -> dict[str, Any]:
-        if business_date != date.today().isoformat():
-            raise PermissionError("只能使用当日真实券商只读验证开启交易")
-        self.initialize()
-        with self._connect() as connection:
-            validation = connection.execute(
-                "SELECT * FROM real_validation_run WHERE business_date = ?",
-                (business_date,),
-            ).fetchone()
-            if validation is None or validation["status"] != "READ_ONLY_VERIFIED":
-                raise PermissionError("当日真实券商只读验证未通过")
-            model = connection.execute(
-                """
-                SELECT id FROM model_version
-                WHERE status = 'ACTIVE'
-                ORDER BY id DESC LIMIT 1
-                """
-            ).fetchone()
-            if model is None or model["id"] != validation["model_version_id"]:
-                raise PermissionError("只读验证模型与当前 ACTIVE 模型不一致")
-            active_order = connection.execute(
-                f"""
-                SELECT client_order_id FROM broker_order_intent
-                WHERE status IN ({','.join('?' for _ in ORDER_ACTIVE_STATUSES)})
-                LIMIT 1
-                """,
-                tuple(sorted(ORDER_ACTIVE_STATUSES)),
-            ).fetchone()
-            if active_order is not None:
-                raise PermissionError("存在未确认终态订单，禁止开启新增交易")
-            connection.execute(
-                """
-                UPDATE system_setting SET setting_value = 'true', updated_at = ?
-                WHERE setting_key = 'REAL_TRADING_ENABLED'
-                """,
-                (_now(),),
-            )
-        return self.summary()
-
-    def disable_real_trading(self) -> dict[str, Any]:
-        self.initialize()
-        with self._connect() as connection:
-            connection.execute(
-                """
-                UPDATE system_setting SET setting_value = 'false', updated_at = ?
-                WHERE setting_key = 'REAL_TRADING_ENABLED'
-                """,
-                (_now(),),
-            )
-        return self.summary()
-
     def summary(self) -> dict[str, Any]:
         self.initialize()
         with self._connect() as connection:
@@ -1083,7 +915,6 @@ class StateStore:
                     "live_performance_snapshot",
                     "model_evaluation",
                     "training_request",
-                    "real_validation_run",
                     "broker_account_snapshot",
                     "broker_position_snapshot",
                     "broker_order_fact",
@@ -1097,9 +928,6 @@ class StateStore:
                 FROM task_run ORDER BY id DESC LIMIT 1
                 """
             ).fetchone()
-            setting = connection.execute(
-                "SELECT setting_value FROM system_setting WHERE setting_key = 'REAL_TRADING_ENABLED'"
-            ).fetchone()
             latest_model = connection.execute(
                 """
                 SELECT model_name, feature_set, status, artifact_hash
@@ -1111,7 +939,6 @@ class StateStore:
             "counts": counts,
             "latestRun": dict(latest_run) if latest_run else None,
             "latestModel": dict(latest_model) if latest_model else None,
-            "realTradingEnabled": setting[0] == "true" if setting else False,
         }
 
     @staticmethod
@@ -1399,34 +1226,6 @@ class StateStore:
             (target_status, client_order_id),
         )
 
-    @staticmethod
-    def _assert_order_write_ready(
-        connection: sqlite3.Connection, shadow_order: sqlite3.Row
-    ) -> None:
-        if shadow_order["side"] == "SELL":
-            return
-        setting = connection.execute(
-            "SELECT setting_value FROM system_setting WHERE setting_key = 'REAL_TRADING_ENABLED'"
-        ).fetchone()
-        if setting is None or setting[0] != "true":
-            raise PermissionError("REAL_TRADING_ENABLED 未开启")
-        model = connection.execute(
-            """
-            SELECT id FROM model_version
-            WHERE status = 'ACTIVE'
-            ORDER BY id DESC LIMIT 1
-            """
-        ).fetchone()
-        if model is None:
-            raise PermissionError("没有 ACTIVE 模型，禁止真实券商写入")
-        if shadow_order["model_version_id"] != model["id"]:
-            raise PermissionError("买入计划未绑定当前 ACTIVE 模型，禁止真实券商写入")
-        prediction_date = shadow_order["prediction_date"]
-        if prediction_date is None or str(prediction_date) >= str(
-            shadow_order["business_date"]
-        ):
-            raise PermissionError("买入计划预测日期必须早于目标交易日")
-
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self._path, timeout=30)
@@ -1710,4 +1509,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END ------------------------------
+# AI_GENERATE_END --------------------------------
