@@ -1,7 +1,7 @@
-<!-- AI_GENERATE_START-------- -->
+<!-- AI_GENERATE_START--------- -->
 # stock-trading
 
-本仓库正在从 Java 多模块交易平台收敛为纯 Python 的最小 T+1 验证系统。改造期间以 `documents/decisions/adr-002-python-t1-minimal-rebuild.md` 为目标方案，现有 Java、React 和数据库代码只作为已验证券商契约与历史实现参考，尚未删除。
+本仓库正在从 Java 多模块交易平台收敛为纯 Python 的最小 T+1 验证系统。改造期间以 `documents/decisions/adr-002-python-t1-minimal-rebuild.md` 为目标方案，现有 Java、React 和数据库代码只作为交易编排与运行恢复的迁移参考，尚未删除。
 
 ## 当前结构
 
@@ -30,10 +30,13 @@ D-1 收盘更新日线并生成 Top 5
 
 ## 当前进度
 
-- 已建立 Python 工程骨架、BaoStock 客户端、5 分钟边界定义、Parquet 写入和数据质量审计源码。
-- 已验证 BaoStock `0.9.4` 可返回全市场日线和 5 分钟 K 线。
-- 已完成 BaoStock CLI、全市场日线和分钟 Parquet 的真实只读验证；尚未运行 Qlib、训练模型、回测或执行券商请求。
-- Java、React、Quartz、Agent、MySQL 和 MongoDB 仅在新链路完成影子与小资金验证后删除。
+- 已完成 BaoStock 日线与 5 分钟数据、Parquet 分区和时间边界审计。
+- 已完成 Qlib Alpha158、LightGBM 基线、自定义 T+1 标签和真实成本组合回测。
+- 已完成 SQLite 任务、模型、预测、影子订单、成交、持仓和绩效状态闭环。
+- 已迁移 ZX 券商账户、持仓、行情、委托与成交契约，并通过本地伪响应测试；尚未连接真实券商。
+- 已完成指定交易日生产推理，`2026-10-29` 重算 Top 5 与训练制品最大分数差为 0。
+- 当前模型为 `REJECTED`，真实交易开关为 `false`；下一步实现最小上午卖出和下午买入编排。
+- Java、React、Quartz、Agent、MySQL 和 MongoDB 仅在 Python 交易闭环和小资金验证完成后删除。
 
 ## 文档入口
 
@@ -42,4 +45,4 @@ D-1 收盘更新日线并生成 Top 5
 - [现有交易执行](documents/modules/stock-trading/交易执行.md)
 
 `SOURCE_IMPLEMENTED` 只表示源码已经落地，不代表编译、运行、数据库或真实交易验证通过。
-<!-- AI_GENERATE_END-------- -->
+<!-- AI_GENERATE_END--------- -->
