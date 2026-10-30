@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START--------------- -->
+<!-- AI_GENERATE_START----------------- -->
 # stock-trading
 
 面向 A 股的纯 Python T+1 自动交易验证系统。仓库只保留 BaoStock、Qlib、LightGBM、Parquet、SQLite 和 ZX 券商 HTTP 契约，不再包含 Java、React、Quartz、Agent、MySQL 或 MongoDB 运行链路。
@@ -12,7 +12,7 @@ D+1 日上午：卖出全部可卖持仓
 D+1 收盘后：同步券商事实、绩效和模型评估
 ```
 
-当前基线模型固定为 `Alpha158 + LightGBM Regression`。模型只负责横截面排名，资金、持仓、交易权限、价格范围、T+1、幂等、撤单和券商事实恢复由确定性交易代码控制。
+当前基线模型固定为 `Alpha158 + LightGBM Regression`。模型负责横截面排名，确定性代码根据资金、持仓、价格范围和 T+1 规则生成订单；券商最终判断订单是否接受，本地只保证同一 `clientOrderId` 不重复提交并记录返回结果。
 
 ## 目录
 
@@ -59,18 +59,13 @@ stock-trading train-baseline --train-start YYYY-MM-DD --train-end YYYY-MM-DD \
   --test-start YYYY-MM-DD --test-end YYYY-MM-DD
 stock-trading predict-latest --date YYYY-MM-DD
 
-# 真实交易准入
-stock-trading validate-real-readiness --date YYYY-MM-DD
-stock-trading enable-real-trading --date YYYY-MM-DD
-stock-trading disable-real-trading
-
 # 操作系统调度调用的无人值守窗口
 stock-trading run-morning-trading --date YYYY-MM-DD
 stock-trading run-afternoon-trading --date YYYY-MM-DD
 stock-trading update-live-performance --date YYYY-MM-DD
 ```
 
-上午/下午入口会依次恢复未终态订单、生成幂等计划并执行。真实交易开关、同日准入、模型状态、资金、持仓和价格门禁仍然生效。
+上午/下午入口只生成幂等计划并提交。券商返回委托号时记录为 `SUBMITTED`，明确拒绝时记录为 `REJECTED`，通信结果不确定时记录为 `UNKNOWN`；订单终态由独立恢复命令或收盘后同步更新，本地不再设置真实交易开关或准入门禁。
 
 ## 调度
 
@@ -88,6 +83,7 @@ stock-trading update-live-performance --date YYYY-MM-DD
 - [架构决策](documents/decisions/adr-002-python-t1-minimal-rebuild.md)
 - [阶段 10：真实验证准入](documents/reports/stage-10-real-validation-readiness.md)
 - [阶段 11：纯 Python 替换收口](documents/reports/stage-11-python-only-cutover.md)
+- [阶段 12：券商结果直记](documents/reports/stage-12-broker-result-recording.md)
 
 `SOURCE_IMPLEMENTED` 只表示源码和文件层面完成，不代表测试、运行或真实交易验证通过。
-<!-- AI_GENERATE_END--------------- -->
+<!-- AI_GENERATE_END----------------- -->
