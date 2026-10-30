@@ -49,6 +49,7 @@ plan-shadow-afternoon --date YYYY-MM-DD
 - 第一阶段买入价格使用买三价 `BID3`。
 - 按 100 股整手计算最大数量，同时预留 `max(最低佣金, 成交额×佣金率)` 和过户费。
 - 只生成一笔买入计划；不会把 Top 5 合并成多股票持仓。
+- 买入计划同时固化 `model_version_id` 和预测日期；真实执行时必须仍与当前 `ACTIVE` 模型一致。
 
 ## SQLite 幂等
 

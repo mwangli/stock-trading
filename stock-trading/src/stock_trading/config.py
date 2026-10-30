@@ -1,7 +1,8 @@
-# AI_GENERATE_START ------------
+# AI_GENERATE_START --------------
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +26,13 @@ class AppConfig:
     broker_token: str | None
     broker_timeout_seconds: float
     broker_token_expire_minutes: int
+    broker_captcha_auto_submit_enabled: bool
+    broker_ocr_timeout_seconds: float
+    broker_ocr_request_interval_seconds: float
+    broker_baidu_ocr_api_key: str
+    broker_baidu_ocr_secret_key: str
+    broker_captcha_max_retries: int
+    broker_login_failure_cooldown_seconds: int
     broker_max_order_count: int
     broker_history_page_size: int
     broker_history_max_records: int
@@ -42,10 +50,12 @@ class AppConfig:
     model_evaluation_window_days: int
     model_max_drawdown: float
     model_min_total_gross_return: float
+    real_validation_max_assets: float
 
     @classmethod
     def from_env(cls) -> "AppConfig":
         project_dir = Path(__file__).resolve().parents[2]
+        _load_env_file(project_dir.parent / ".env")
         data_dir = Path(os.getenv("STOCK_TRADING_DATA_DIR", project_dir / "var" / "market"))
         qlib_dir = Path(os.getenv("STOCK_TRADING_QLIB_DIR", project_dir / "var" / "qlib"))
         artifact_dir = Path(
@@ -73,6 +83,25 @@ class AppConfig:
             broker_timeout_seconds=max(1.0, float(os.getenv("ZXBROKER_TIMEOUT_SECONDS", "20"))),
             broker_token_expire_minutes=max(
                 1, int(os.getenv("ZXBROKER_TOKEN_EXPIRE_MINUTES", "30"))
+            ),
+            broker_captcha_auto_submit_enabled=_env_bool(
+                "ZXBROKER_CAPTCHA_AUTO_SUBMIT_ENABLED", False
+            ),
+            broker_ocr_timeout_seconds=max(
+                1.0, float(os.getenv("ZXBROKER_OCR_TIMEOUT_SECONDS", "20"))
+            ),
+            broker_ocr_request_interval_seconds=max(
+                0.0,
+                float(os.getenv("ZXBROKER_OCR_REQUEST_INTERVAL_SECONDS", "1.05")),
+            ),
+            broker_baidu_ocr_api_key=os.getenv("BAIDU_OCR_API_KEY", ""),
+            broker_baidu_ocr_secret_key=os.getenv("BAIDU_OCR_SECRET_KEY", ""),
+            broker_captcha_max_retries=min(
+                3, max(1, int(os.getenv("ZXBROKER_CAPTCHA_MAX_RETRIES", "3")))
+            ),
+            broker_login_failure_cooldown_seconds=max(
+                1,
+                int(os.getenv("ZXBROKER_LOGIN_FAILURE_COOLDOWN_SECONDS", "30")),
             ),
             broker_max_order_count=max(1, int(os.getenv("ZXBROKER_MAX_ORDER_COUNT", "100"))),
             broker_history_page_size=max(1, int(os.getenv("ZXBROKER_HISTORY_PAGE_SIZE", "500"))),
@@ -126,6 +155,9 @@ class AppConfig:
             model_min_total_gross_return=float(
                 os.getenv("MODEL_MIN_TOTAL_GROSS_RETURN", "0")
             ),
+            real_validation_max_assets=max(
+                0.01, float(os.getenv("REAL_VALIDATION_MAX_ASSETS", "5000"))
+            ),
         )
 
 
@@ -134,4 +166,23 @@ def _env_bool(name: str, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
-# AI_GENERATE_END ------------
+
+
+def _load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        key, separator, value = line.partition("=")
+        key = key.strip()
+        if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+# AI_GENERATE_END --------------

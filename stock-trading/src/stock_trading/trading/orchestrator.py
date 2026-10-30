@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----
+# AI_GENERATE_START -----
 from __future__ import annotations
 
 from datetime import date
@@ -143,6 +143,8 @@ class ShadowTradingOrchestrator:
                     "quantity": quantity,
                     "price": order_price,
                     "candidateRank": rank,
+                    "modelVersionId": int(candidate["model_version_id"]),
+                    "predictionDate": str(candidate["prediction_date"]),
                 }
             )
             break
@@ -206,4 +208,4 @@ def _json_order(order: dict[str, object]) -> dict[str, object]:
         key: float(value) if isinstance(value, Decimal) else value
         for key, value in order.items()
     }
-# AI_GENERATE_END ----
+# AI_GENERATE_END -----
