@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START -------
 from __future__ import annotations
 
 import json
@@ -161,4 +161,4 @@ class ParquetMarketStore:
 
 def _without(record: dict[str, object], *fields: str) -> dict[str, object]:
     return {key: value for key, value in record.items() if key not in fields}
-# AI_GENERATE_END ------
+# AI_GENERATE_END -------
