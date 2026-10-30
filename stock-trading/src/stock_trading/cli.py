@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------
+# AI_GENERATE_START ----------------
 from __future__ import annotations
 
 import argparse
@@ -23,6 +23,7 @@ from stock_trading.research.model import (
 from stock_trading.research.backtest import BacktestConfig, PortfolioBacktester
 from stock_trading.research.qlib_store import QlibBinaryStore
 from stock_trading.state.store import StateStore
+from stock_trading.trading.execution import OrderExecutionOrchestrator
 from stock_trading.trading.orchestrator import ShadowTradingOrchestrator
 
 
@@ -67,6 +68,10 @@ def main() -> None:
         _plan_shadow(config, arguments.business_date, morning=True)
     elif arguments.command == "plan-shadow-afternoon":
         _plan_shadow(config, arguments.business_date, morning=False)
+    elif arguments.command == "execute-shadow-order":
+        _execute_shadow_order(config, arguments.client_order_id)
+    elif arguments.command == "recover-broker-orders":
+        _recover_broker_orders(config, arguments.business_date)
     else:
         parser.error(f"Unsupported command: {arguments.command}")
 
@@ -152,6 +157,18 @@ def _build_parser() -> argparse.ArgumentParser:
         shadow.add_argument(
             "--date", dest="business_date", type=date.fromisoformat, required=True
         )
+    execution = subparsers.add_parser(
+        "execute-shadow-order",
+        help="Execute one planned stage behind the SQLite real-trading gates",
+    )
+    execution.add_argument("--client-order-id", required=True)
+    recovery = subparsers.add_parser(
+        "recover-broker-orders",
+        help="Recover pending intents from today's broker facts",
+    )
+    recovery.add_argument(
+        "--date", dest="business_date", type=date.fromisoformat, required=True
+    )
     return parser
 
 
@@ -346,6 +363,32 @@ def _plan_shadow(config: AppConfig, business_date: date, morning: bool) -> None:
     _print_json(result)
 
 
+def _execute_shadow_order(config: AppConfig, client_order_id: str) -> None:
+    store = StateStore(config.state_db_path)
+    broker = ZXBrokerClient(
+        config,
+        write_guard=store.authorize_real_write,
+        cancel_guard=store.authorize_cancel_write,
+    )
+    result = OrderExecutionOrchestrator(config, store, broker).execute_stage(
+        client_order_id
+    )
+    _print_json(result)
+
+
+def _recover_broker_orders(config: AppConfig, business_date: date) -> None:
+    store = StateStore(config.state_db_path)
+    broker = ZXBrokerClient(
+        config,
+        write_guard=store.authorize_real_write,
+        cancel_guard=store.authorize_cancel_write,
+    )
+    result = OrderExecutionOrchestrator(config, store, broker).recover_pending_orders(
+        business_date
+    )
+    _print_json(result)
+
+
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END ---------------
+# AI_GENERATE_END ----------------

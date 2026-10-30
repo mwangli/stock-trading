@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------
+# AI_GENERATE_START -----------
 from __future__ import annotations
 
 import os
@@ -36,6 +36,8 @@ class AppConfig:
     trading_transfer_fee_rate: float
     trading_allowed_prefixes: tuple[str, ...]
     trading_max_prediction_age_days: int
+    trading_order_poll_attempts: int
+    trading_order_poll_interval_seconds: float
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -101,6 +103,13 @@ class AppConfig:
             trading_max_prediction_age_days=max(
                 1, int(os.getenv("STOCK_TRADING_MAX_PREDICTION_AGE_DAYS", "7"))
             ),
+            trading_order_poll_attempts=max(
+                1, int(os.getenv("STOCK_TRADING_ORDER_POLL_ATTEMPTS", "30"))
+            ),
+            trading_order_poll_interval_seconds=max(
+                0.0,
+                float(os.getenv("STOCK_TRADING_ORDER_POLL_INTERVAL_SECONDS", "2")),
+            ),
         )
 
 
@@ -109,4 +118,4 @@ def _env_bool(name: str, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
-# AI_GENERATE_END ----------
+# AI_GENERATE_END -----------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 import base64
@@ -44,6 +44,10 @@ WriteGuard = Callable[[str], None]
 
 class BrokerProtocolError(RuntimeError):
     """The broker returned an incomplete or invalid protocol response."""
+
+
+class BrokerRejectedError(BrokerProtocolError):
+    """The broker explicitly rejected an order request."""
 
 
 class BrokerSafetyError(RuntimeError):
@@ -249,7 +253,7 @@ class ZXBrokerClient:
         )
         order_id = response.get("ANSWERNO")
         if not order_id:
-            raise BrokerProtocolError(f"券商拒绝委托，错误码={response.get('ERRORNO')}")
+            raise BrokerRejectedError(f"券商拒绝委托，错误码={response.get('ERRORNO')}")
         return str(order_id)
 
     def cancel_order(self, client_order_id: str, broker_order_id: str) -> bool:
@@ -350,4 +354,4 @@ def _required_price(response: dict[str, Any], primary: str, alternate: str) -> D
 
 def _reject_all_writes(client_order_id: str) -> None:
     raise BrokerSafetyError(f"真实券商写入默认关闭: {client_order_id}")
-# AI_GENERATE_END -------
+# AI_GENERATE_END --------
