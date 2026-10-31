@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------
+# AI_GENERATE_START ------------------
 from __future__ import annotations
 
 import logging
@@ -22,6 +22,9 @@ YELLOW = "\033[38;5;221m"
 ANSI_RESET = "\033[0m"
 SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 CODE_PATTERN = re.compile(r"\b(?:sh|sz)\.\d{6}\b", re.IGNORECASE)
+COUNT_PATTERN = re.compile(
+    r"(?:数据采集中|数据接收完成).*进度=([\d,]+)/([\d,]+)"
+)
 
 _PROGRESS_COMPLETED: Any | None = None
 _PROGRESS_REMAINING_SECONDS: Any | None = None
@@ -29,8 +32,13 @@ _PROGRESS_MESSAGE: Any | None = None
 _PROGRESS_TOTAL = 0
 _LIVE_RENDERER: _LiveProgressRenderer | None = None
 _LIVE_RENDERER_PID: int | None = None
+_LIVE_LAYOUT = "default"
+_LIVE_STOCK = ""
+_LIVE_DATE = ""
+_LIVE_STEP = ""
 _CONSOLE_LOCK = threading.RLock()
 ProgressContext = tuple[Any | None, Any | None, Any | None, int]
+LiveSessionContext = tuple[str, str, str, str]
 
 
 class ProgressFormatter(logging.Formatter):
@@ -216,8 +224,19 @@ def stop_progress_renderer() -> None:
 
 
 @contextmanager
-def live_progress_session(initial_message: str):
+def live_progress_session(initial_message: str, *, layout: str = "default"):
     """Keep all interactive INFO updates in one line for one CLI operation."""
+    global _LIVE_LAYOUT, _LIVE_STOCK, _LIVE_DATE, _LIVE_STEP
+    previous_session: LiveSessionContext = (
+        _LIVE_LAYOUT,
+        _LIVE_STOCK,
+        _LIVE_DATE,
+        _LIVE_STEP,
+    )
+    _LIVE_LAYOUT = layout
+    _LIVE_STOCK = ""
+    _LIVE_DATE = ""
+    _LIVE_STEP = ""
     message = Array("u", PROGRESS_MESSAGE_LIMIT, lock=True)
     _write_progress_message(message, initial_message)
     previous = bind_progress_context(None, None, 0, message)
@@ -228,6 +247,24 @@ def live_progress_session(initial_message: str):
         if renderer_started:
             stop_progress_renderer()
         restore_progress_context(previous)
+        _LIVE_LAYOUT, _LIVE_STOCK, _LIVE_DATE, _LIVE_STEP = previous_session
+
+
+def update_live_progress_details(
+    *,
+    stock: str | None = None,
+    date_text: str | None = None,
+    step: str | None = None,
+) -> None:
+    """Update stable context displayed beside a live status message."""
+    global _LIVE_STOCK, _LIVE_DATE, _LIVE_STEP
+    with _CONSOLE_LOCK:
+        if stock is not None:
+            _LIVE_STOCK = stock
+        if date_text is not None:
+            _LIVE_DATE = date_text
+        if step is not None:
+            _LIVE_STEP = step
 
 
 def _set_progress_message(message: str) -> bool:
@@ -271,15 +308,23 @@ def _format_live_progress(phase: int, use_color: bool) -> tuple[str, int]:
     if has_numeric_progress:
         completed = max(0, int(_PROGRESS_COMPLETED.value))
         ratio = min(1.0, completed / _PROGRESS_TOTAL)
+    command_complete = "业务命令完成：" in message
     spinner = (
         "✓"
-        if has_numeric_progress and ratio >= 1.0
+        if command_complete or (has_numeric_progress and ratio >= 1.0)
         else SPINNER_FRAMES[phase % len(SPINNER_FRAMES)]
     )
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     head = f"{timestamp} | INFO | {spinner} "
     tail = ""
-    if has_numeric_progress:
+    stock = code if code != "--" else (_LIVE_STOCK or "--")
+    if _LIVE_LAYOUT == "market":
+        count = _extract_progress_count(message)
+        if not count and has_numeric_progress:
+            count = f"{completed:,}/{_PROGRESS_TOTAL:,}"
+        count = count or _LIVE_STEP or "--"
+        tail = f"  |  {stock}  |  {_LIVE_DATE or '--'}  |  {count}"
+    elif has_numeric_progress:
         percent = f"{ratio * 100:.2f}%"
         eta = f"剩余 {_format_remaining(int(_PROGRESS_REMAINING_SECONDS.value))}"
         tail = f"  |  {code}  |  {percent}  |  {eta}"
@@ -289,7 +334,13 @@ def _format_live_progress(phase: int, use_color: bool) -> tuple[str, int]:
     plain = f"{head}{stage}{tail}"
     if use_color:
         rendered = f"{timestamp} | INFO | {GREEN_BOLD}{spinner}{ANSI_RESET} {stage}"
-        if has_numeric_progress:
+        if _LIVE_LAYOUT == "market":
+            rendered += (
+                f"  |  {YELLOW}{stock}{ANSI_RESET}  |  "
+                f"{LIGHT_BLUE}{_LIVE_DATE or '--'}{ANSI_RESET}  |  "
+                f"{GREEN_BOLD}{count}{ANSI_RESET}"
+            )
+        elif has_numeric_progress:
             rendered += (
                 f"  |  {YELLOW}{code}{ANSI_RESET}  |  "
                 f"{GREEN_BOLD}{percent}{ANSI_RESET}  |  "
@@ -300,9 +351,37 @@ def _format_live_progress(phase: int, use_color: bool) -> tuple[str, int]:
     return rendered, _display_width(plain)
 
 
+def _extract_progress_count(message: str) -> str:
+    match = COUNT_PATTERN.search(message)
+    return f"{match.group(1)}/{match.group(2)}" if match else ""
+
+
 def _summarize_progress_message(message: str) -> tuple[str, str]:
     code_match = CODE_PATTERN.search(message)
     code = code_match.group(0).lower() if code_match else "--"
+    if _LIVE_LAYOUT == "market":
+        if "业务命令完成：market" in message or "全市场日线同步完成" in message:
+            return "market 完成", code
+        if "业务命令开始：market" in message:
+            return "正在启动 market", code
+        if "开始采集全市场日线数据" in message:
+            return "正在准备全市场日线", code
+        if "正在采集全市场日线" in message:
+            return "正在采集全市场日线", code
+        if "当日没有行情" in message:
+            return "当日无行情，正在跳过", code
+        if "日线分区写入完成" in message:
+            return "正在写入日线分区", code
+        if any(
+            text in message
+            for text in (
+                "正在请求全市场日线",
+                "任务=全市场日线",
+            )
+        ):
+            return "正在接收全市场日线", code
+        if "开始同步研究数据" in message:
+            return "正在准备指定股票行情", code
     if "业务命令完成：init" in message or "初始化完成" in message:
         return "初始化完成", code
     if "业务命令开始：init" in message:
@@ -432,4 +511,4 @@ def should_log_progress(current: int, total: int, steps: int = 20) -> bool:
         return current == 1
     interval = max(1, total // max(1, steps))
     return current == 1 or current == total or current % interval == 0
-# AI_GENERATE_END ---------------
+# AI_GENERATE_END ------------------

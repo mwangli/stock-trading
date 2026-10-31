@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------
+# AI_GENERATE_START --------------------
 from __future__ import annotations
 
 import atexit
@@ -116,6 +116,7 @@ def sync_research_data(
 
     worker_count = min(MAX_BAOSTOCK_WORKERS, max(1, workers), max(1, len(pending)))
     downloaded = 0
+    last_rows = 0
     failed: dict[str, str] = {}
     with ResearchProgress(
         total_count=len(codes),
@@ -138,6 +139,7 @@ def sync_research_data(
                 "skipped": skipped,
                 "failed": failed,
                 "workers": worker_count,
+                "lastRows": last_rows,
             }
 
         completed = 0
@@ -150,10 +152,11 @@ def sync_research_data(
             try:
                 for code in pending:
                     result = _sync_research_code(code, start_date, end_date)
-                    downloaded, completed = _record_research_result(
+                    downloaded, completed, last_rows = _record_research_result(
                         result,
                         downloaded,
                         completed,
+                        last_rows,
                         failed,
                         progress,
                     )
@@ -183,10 +186,11 @@ def sync_research_data(
                             result = future.result()
                         except Exception as error:
                             result = {"code": code, "error": str(error)}
-                        downloaded, completed = _record_research_result(
+                        downloaded, completed, last_rows = _record_research_result(
                             result,
                             downloaded,
                             completed,
+                            last_rows,
                             failed,
                             progress,
                         )
@@ -210,6 +214,7 @@ def sync_research_data(
             "skipped": skipped,
             "failed": failed,
             "workers": worker_count,
+            "lastRows": last_rows,
         }
 
 
@@ -217,9 +222,10 @@ def _record_research_result(
     result: dict[str, object],
     downloaded: int,
     completed: int,
+    last_rows: int,
     failed: dict[str, str],
     progress: ResearchProgress,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     code = str(result["code"])
     error = str(result.get("error") or "")
     if error:
@@ -227,9 +233,10 @@ def _record_research_result(
         LOGGER.warning("研究数据采集失败：股票=%s；原因=%s", code, error)
     else:
         downloaded += 1
+        last_rows = max(0, int(result.get("rows") or last_rows))
     completed += 1
     progress.update(completed)
-    return downloaded, completed
+    return downloaded, completed, last_rows
 
 
 def _initialize_research_worker(
@@ -324,7 +331,7 @@ def _sync_research_code(
             _WORKER_STORE.write_daily_history(code, daily, start_date, end_date)
             _WORKER_STORE.write_adjustment_factors(code, factors, start_date, end_date)
             _WORKER_STORE.write_minute_history(code, minutes, end_date)
-            return {"code": code, "error": ""}
+            return {"code": code, "error": "", "rows": len(minutes)}
         except (BaoStockError, OSError, TimeoutError) as error:
             _close_worker_client()
             if attempt == 3:
@@ -359,4 +366,4 @@ def _close_worker_client() -> None:
         client.__exit__(None, None, None)
     except Exception as error:
         LOGGER.warning("BaoStock 会话关闭失败，连接将由进程回收：%s", error)
-# AI_GENERATE_END -------------------
+# AI_GENERATE_END --------------------
