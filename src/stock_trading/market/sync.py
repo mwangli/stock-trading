@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START ------------
 from __future__ import annotations
 
 import atexit
@@ -12,14 +12,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from stock_trading.logging_utils import configure_logging
+from stock_trading.logging_utils import bind_progress_context, configure_logging
 from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
 from stock_trading.market.models import AdjustmentFactor
+from stock_trading.market.progress import ResearchProgress
 from stock_trading.market.storage import ParquetMarketStore
 
 LOGGER = logging.getLogger(__name__)
 MAX_BAOSTOCK_WORKERS = 4
-RESEARCH_PROGRESS_INTERVAL = 10
 
 _WORKER_STORE: ParquetMarketStore | None = None
 _WORKER_PROXY_URL: str | None = None
@@ -112,16 +112,75 @@ def sync_research_data(
             pending.append(code)
 
     worker_count = min(MAX_BAOSTOCK_WORKERS, max(1, workers), max(1, len(pending)))
-    LOGGER.info(
-        "研究数据采集计划：目标=%d；待下载=%d；跳过=%d；进程=%d",
-        len(codes),
-        len(pending),
-        skipped,
-        worker_count,
-    )
     downloaded = 0
     failed: dict[str, str] = {}
-    if not pending:
+    with ResearchProgress(
+        total_count=len(codes),
+        skipped=skipped,
+    ) as progress:
+        LOGGER.info(
+            "研究数据采集计划：目标=%d；待下载=%d；跳过=%d；进程=%d",
+            len(codes),
+            len(pending),
+            skipped,
+            worker_count,
+        )
+        if not pending:
+            return {
+                "downloaded": downloaded,
+                "skipped": skipped,
+                "failed": failed,
+                "workers": worker_count,
+            }
+
+        completed = 0
+        if worker_count == 1:
+            _initialize_research_worker(
+                store.root,
+                proxy_url,
+                *progress.worker_context,
+            )
+            try:
+                for code in pending:
+                    result = _sync_research_code(code, start_date, end_date)
+                    downloaded, completed = _record_research_result(
+                        result,
+                        downloaded,
+                        completed,
+                        failed,
+                        progress,
+                    )
+            finally:
+                _close_worker_client()
+        else:
+            with ProcessPoolExecutor(
+                max_workers=worker_count,
+                initializer=_initialize_research_worker,
+                initargs=(store.root, proxy_url, *progress.worker_context),
+            ) as executor:
+                futures = {
+                    executor.submit(_sync_research_code, code, start_date, end_date): code
+                    for code in pending
+                }
+                for future in as_completed(futures):
+                    code = futures[future]
+                    try:
+                        result = future.result()
+                    except Exception as error:
+                        result = {"code": code, "error": str(error)}
+                    downloaded, completed = _record_research_result(
+                        result,
+                        downloaded,
+                        completed,
+                        failed,
+                        progress,
+                    )
+        LOGGER.info(
+            "研究数据采集完成：下载=%d；跳过=%d；失败=%d",
+            downloaded,
+            skipped,
+            len(failed),
+        )
         return {
             "downloaded": downloaded,
             "skipped": skipped,
@@ -129,51 +188,13 @@ def sync_research_data(
             "workers": worker_count,
         }
 
-    completed = 0
-    if worker_count == 1:
-        _initialize_research_worker(store.root, proxy_url)
-        try:
-            for code in pending:
-                result = _sync_research_code(code, start_date, end_date)
-                downloaded, completed = _record_research_result(
-                    result, downloaded, completed, len(pending), skipped, failed
-                )
-        finally:
-            _close_worker_client()
-    else:
-        with ProcessPoolExecutor(
-            max_workers=worker_count,
-            initializer=_initialize_research_worker,
-            initargs=(store.root, proxy_url),
-        ) as executor:
-            futures = {
-                executor.submit(_sync_research_code, code, start_date, end_date): code
-                for code in pending
-            }
-            for future in as_completed(futures):
-                code = futures[future]
-                try:
-                    result = future.result()
-                except Exception as error:
-                    result = {"code": code, "error": str(error)}
-                downloaded, completed = _record_research_result(
-                    result, downloaded, completed, len(pending), skipped, failed
-                )
-    return {
-        "downloaded": downloaded,
-        "skipped": skipped,
-        "failed": failed,
-        "workers": worker_count,
-    }
-
 
 def _record_research_result(
     result: dict[str, object],
     downloaded: int,
     completed: int,
-    pending_count: int,
-    skipped: int,
     failed: dict[str, str],
+    progress: ResearchProgress,
 ) -> tuple[int, int]:
     code = str(result["code"])
     error = str(result.get("error") or "")
@@ -183,25 +204,24 @@ def _record_research_result(
     else:
         downloaded += 1
     completed += 1
-    if (
-        completed == 1
-        or completed == pending_count
-        or completed % RESEARCH_PROGRESS_INTERVAL == 0
-    ):
-        LOGGER.info(
-            "研究数据同步进度：完成=%d/%d；下载=%d；跳过=%d；失败=%d",
-            completed,
-            pending_count,
-            downloaded,
-            skipped,
-            len(failed),
-        )
+    progress.update(completed)
     return downloaded, completed
 
 
-def _initialize_research_worker(root: Path, proxy_url: str | None) -> None:
+def _initialize_research_worker(
+    root: Path,
+    proxy_url: str | None,
+    progress_completed: object,
+    progress_remaining_seconds: object,
+    progress_total: int,
+) -> None:
     global _WORKER_STORE, _WORKER_PROXY_URL
     configure_logging()
+    bind_progress_context(
+        progress_completed,
+        progress_remaining_seconds,
+        progress_total,
+    )
     _WORKER_STORE = ParquetMarketStore(root)
     _WORKER_PROXY_URL = proxy_url
     atexit.register(_close_worker_client)
@@ -262,4 +282,4 @@ def _close_worker_client() -> None:
         client.__exit__(None, None, None)
     except Exception as error:
         LOGGER.warning("BaoStock 会话关闭失败，连接将由进程回收：%s", error)
-# AI_GENERATE_END ------
+# AI_GENERATE_END ------------
