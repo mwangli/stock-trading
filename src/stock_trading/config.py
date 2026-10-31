@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------
+# AI_GENERATE_START -----------------------
 from __future__ import annotations
 
 import os
@@ -29,6 +29,8 @@ class AppConfig:
     artifact_dir: Path
     state_db_path: Path
     baostock_proxy: str | None
+    baostock_workers: int
+    market_history_days: int
     bark_device_key: str
     broker_enabled: bool
     broker_mobile_code: str
@@ -73,7 +75,7 @@ class AppConfig:
     @classmethod
     def from_env(cls) -> "AppConfig":
         project_dir = Path(__file__).resolve().parents[2]
-        _load_env_file(project_dir / "stock-trading.env")
+        _load_env_file(project_dir / ".env")
         data_dir = Path(os.getenv("STOCK_TRADING_DATA_DIR", project_dir / "var" / "market"))
         qlib_dir = Path(os.getenv("STOCK_TRADING_QLIB_DIR", project_dir / "var" / "qlib"))
         artifact_dir = Path(
@@ -91,6 +93,11 @@ class AppConfig:
             artifact_dir=artifact_dir,
             state_db_path=state_db_path,
             baostock_proxy=proxy or None,
+            baostock_workers=min(4, max(1, int(os.getenv("BAOSTOCK_WORKERS", "2")))),
+            market_history_days=min(
+                365 * 5,
+                max(365, int(os.getenv("STOCK_TRADING_HISTORY_DAYS", str(365 * 3)))),
+            ),
             bark_device_key=os.getenv("DEVICE_KEY", "").strip(),
             broker_enabled=True,
             broker_mobile_code=os.getenv("ZXBROKER_MOBILE_CODE", ""),
@@ -187,4 +194,4 @@ def _load_env_file(path: Path) -> None:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         os.environ.setdefault(key, value)
-# AI_GENERATE_END ----------------------
+# AI_GENERATE_END -----------------------

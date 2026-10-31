@@ -45,17 +45,17 @@ jobs:
       - name: Validate cron
         shell: bash
         run: |
-          test "$(grep -c '^# STOCK_TRADING_CRON_BEGIN$' .github/stock-trading.cron)" -eq 1
-          test "$(grep -c '^# STOCK_TRADING_CRON_END$' .github/stock-trading.cron)" -eq 1
-          test "$(grep -Ec '^[0-9]+ [0-9]+ ' .github/stock-trading.cron)" -eq 6
-          grep -Fq '__DEPLOY_DIR__/venv/bin' .github/stock-trading.cron
-          grep -Fq 'stock-trading sell' .github/stock-trading.cron
-          grep -Fq 'stock-trading buy' .github/stock-trading.cron
-          grep -Fq 'stock-trading market all' .github/stock-trading.cron
-          grep -Fq 'stock-trading evaluate' .github/stock-trading.cron
-          grep -Fq 'stock-trading clean' .github/stock-trading.cron
-          grep -Fq '/usr/sbin/logrotate' .github/stock-trading.cron
-          test -f .github/stock-trading.logrotate
+          test "$(grep -c '^# STOCK_TRADING_CRON_BEGIN$' .github/config/stock-trading.cron)" -eq 1
+          test "$(grep -c '^# STOCK_TRADING_CRON_END$' .github/config/stock-trading.cron)" -eq 1
+          test "$(grep -Ec '^[0-9]+ [0-9]+ ' .github/config/stock-trading.cron)" -eq 6
+          grep -Fq '__DEPLOY_DIR__/venv/bin' .github/config/stock-trading.cron
+          grep -Fq 'stock-trading sell' .github/config/stock-trading.cron
+          grep -Fq 'stock-trading buy' .github/config/stock-trading.cron
+          grep -Fq 'stock-trading market --all' .github/config/stock-trading.cron
+          grep -Fq 'stock-trading evaluate' .github/config/stock-trading.cron
+          grep -Fq 'stock-trading clean' .github/config/stock-trading.cron
+          grep -Fq '/usr/sbin/logrotate' .github/config/stock-trading.cron
+          test -f .github/config/stock-trading.logrotate
 
       - name: Build wheel
         run: |
@@ -79,7 +79,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
-          source: "dist/*.whl,.github/stock-trading.cron,.github/stock-trading.logrotate,.github/stock-trading.env"
+          source: "dist/*.whl,.github/config/stock-trading.cron,.github/config/stock-trading.logrotate,.github/stock-trading.env"
           target: ${{ format('{0}/releases/{1}', vars.SERVER_DEPLOY_DIR, github.ref_name) }}
           strip_components: 1
           overwrite: true
@@ -102,6 +102,9 @@ jobs:
             deploy_dir="${DEPLOY_DIR%/}"
             release_dir="$deploy_dir/releases/$RELEASE_TAG"
             venv_dir="$deploy_dir/venv"
+            cron_template="$release_dir/config/stock-trading.cron"
+            logrotate_template="$release_dir/config/stock-trading.logrotate"
+            env_template="$release_dir/stock-trading.env"
             cron_dir="$deploy_dir/cron"
             cron_file="$cron_dir/stock-trading.cron"
 
@@ -130,7 +133,7 @@ jobs:
             "$venv_dir/bin/stock-trading" --help >/dev/null
 
             install -d -m 700 /etc/stock-trading
-            install -m 600 "$release_dir/stock-trading.env" /etc/stock-trading/env
+            install -m 600 "$env_template" /etc/stock-trading/env
             mkdir -p \
               "$cron_dir" \
               /data/stock-trading/market \
@@ -145,8 +148,8 @@ jobs:
             sed \
               -e "s|__DEPLOY_DIR__|$deploy_dir|g" \
               -e '/^# AI_GENERATE_/d' \
-              "$release_dir/stock-trading.cron" > "$cron_file"
-            cp "$release_dir/stock-trading.logrotate" "$cron_dir/stock-trading.logrotate"
+              "$cron_template" > "$cron_file"
+            cp "$logrotate_template" "$cron_dir/stock-trading.logrotate"
 
             current_cron="$(mktemp)"
             next_cron="$(mktemp)"

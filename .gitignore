@@ -1,5 +1,6 @@
 # Local secrets
 stock-trading.env
+.env
 *.env.local
 
 # Python

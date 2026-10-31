@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------
+# AI_GENERATE_START --------------------
 from __future__ import annotations
 
 import logging
@@ -13,6 +13,7 @@ from stock_trading.config import AppConfig
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.sync import (
     latest_trade_date,
+    live_codes,
     research_codes,
     sync_research_data,
     sync_stock_basics,
@@ -34,12 +35,11 @@ from stock_trading.research.model import (
     automatic_model_segments,
     predict_alpha158_lightgbm,
 )
-from stock_trading.research.qlib_store import QlibBinaryStore
+from stock_trading.research.qlib_store import QlibBinaryStore, to_qlib_code
 from stock_trading.state.store import StateStore
 from stock_trading.trading.permissions import refresh_permissions
 
 LOGGER = logging.getLogger(__name__)
-HISTORY_DAYS = 365 * 3
 MINIMUM_RESEARCH_CODES = 100
 MINIMUM_COMPLETE_RATIO = 0.80
 CAPITAL_SCENARIOS = (2_000, 3_000, 5_000, 10_000)
@@ -67,7 +67,7 @@ class InitializationService:
         LOGGER.info("初始化状态库就绪；各阶段将直接检查实际数据")
 
         end_date = latest_trade_date(self._config.baostock_proxy)
-        start_date = end_date - timedelta(days=HISTORY_DAYS)
+        start_date = end_date - timedelta(days=self._config.market_history_days)
         minute_cleanup = self._market.cleanup_minutes(end_date)
         LOGGER.info(
             "初始化计划确定：研究日期=%s 至 %s；资金档位=%s",
@@ -86,30 +86,43 @@ class InitializationService:
         )
         stocks = self._market.read_stock_basics()
         selected_codes = research_codes(stocks, start_date, end_date)
+        live_metadata_codes = live_codes(stocks, end_date)
         if len(selected_codes) < MINIMUM_RESEARCH_CODES:
             raise ValueError(
                 f"满足 SH60、SZ00 研究规则的股票不足: {len(selected_codes)}"
             )
-        LOGGER.info("研究股票池确定：股票数=%d", len(selected_codes))
+        LOGGER.info(
+            "股票池确定：历史研究=%d；当前快照=%d；历史窗口=%s 至 %s",
+            len(selected_codes),
+            len(live_metadata_codes),
+            start_date,
+            end_date,
+        )
 
         self._step(
             2,
             "历史日线、复权和分钟线",
-            lambda: self._research_ready(selected_codes, start_date, end_date),
+            lambda: self._research_complete(selected_codes, start_date, end_date),
             lambda: sync_research_data(
                 self._market,
                 self._config.baostock_proxy,
                 selected_codes,
                 start_date,
                 end_date,
+                self._config.baostock_workers,
             ),
+            lambda: self._research_ready(selected_codes, start_date, end_date),
         )
         valid_codes = self._market.valid_research_codes(
             selected_codes, start_date, end_date
         )
+        model_codes = self._market.model_research_codes(valid_codes, start_date, end_date)
+        current_codes = self._market.tradable_codes_on(live_metadata_codes, end_date)
         LOGGER.info(
-            "研究数据检查完成：有效=%d；目标=%d；完整率=%.2f%%",
+            "研究数据检查完成：采集有效=%d；模型有效=%d；实时可交易=%d；目标=%d；完整率=%.2f%%",
             len(valid_codes),
+            len(model_codes),
+            len(current_codes),
             len(selected_codes),
             len(valid_codes) / len(selected_codes) * 100,
         )
@@ -118,8 +131,8 @@ class InitializationService:
         qlib_result = self._step(
             3,
             "Qlib 数据构建",
-            lambda: qlib.is_valid(valid_codes, start_date, end_date),
-            lambda: qlib.rebuild(valid_codes),
+            lambda: qlib.is_valid(model_codes, start_date, end_date),
+            lambda: qlib.rebuild(model_codes, start_date, end_date),
         )
         segments = automatic_model_segments(
             self._config.qlib_dir / "calendars" / "day.txt"
@@ -160,7 +173,7 @@ class InitializationService:
             7,
             "最新交易日预测",
             lambda: self._prediction_valid(model_dir, end_date),
-            lambda: self._predict_latest(model_dir, end_date),
+            lambda: self._predict_latest(model_dir, end_date, current_codes),
         )
         if prediction_result is None:
             prediction_result = self._prediction_summary(model_dir, end_date)
@@ -185,7 +198,9 @@ class InitializationService:
             "startDate": start_date.isoformat(),
             "minuteCleanup": minute_cleanup,
             "endDate": end_date.isoformat(),
-            "researchCodes": len(valid_codes),
+            "researchCodes": len(model_codes),
+            "collectedCodes": len(valid_codes),
+            "liveCodes": len(current_codes),
             "capitalScenarios": list(CAPITAL_SCENARIOS),
             "backtests": backtests,
             "prediction": prediction_result,
@@ -198,16 +213,22 @@ class InitializationService:
         title: str,
         validator: Callable[[], bool],
         action: Callable[[], T],
+        post_validator: Callable[[], bool] | None = None,
     ) -> T | None:
         LOGGER.info("初始化阶段 %d/9：%s", index, title)
         if validator():
             LOGGER.info("初始化阶段跳过：%s；实际数据检查通过", title)
             return None
         result = action()
-        if not validator():
+        if not (post_validator or validator)():
             raise ValueError(f"初始化阶段完成后检查失败: {title}")
         LOGGER.info("初始化阶段完成：%s", title)
         return result
+
+    def _research_complete(
+        self, codes: list[str], start_date: date, end_date: date
+    ) -> bool:
+        return len(self._market.valid_research_codes(codes, start_date, end_date)) == len(codes)
 
     def _research_ready(
         self, codes: list[str], start_date: date, end_date: date
@@ -273,9 +294,14 @@ class InitializationService:
             )
         )
 
-    def _predict_latest(self, model_dir: Path, prediction_date: date) -> dict[str, object]:
+    def _predict_latest(
+        self, model_dir: Path, prediction_date: date, current_codes: list[str]
+    ) -> dict[str, object]:
         result = predict_alpha158_lightgbm(
-            self._config.qlib_dir, model_dir, prediction_date
+            self._config.qlib_dir,
+            model_dir,
+            prediction_date,
+            eligible_instruments={to_qlib_code(code) for code in current_codes},
         )
         self._state.import_prediction_artifact(model_dir, Path(str(result["path"])))
         return result
@@ -324,4 +350,4 @@ def _model_valid(model_root_dir: Path) -> bool:
         return model_artifacts_valid(resolve_current_model_dir(model_root_dir))
     except (OSError, ValueError):
         return False
-# AI_GENERATE_END ----------------
+# AI_GENERATE_END --------------------
