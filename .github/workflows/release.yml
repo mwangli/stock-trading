@@ -96,7 +96,7 @@ jobs:
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
           envs: DEPLOY_DIR,RELEASE_TAG
-          command_timeout: 30m
+          command_timeout: 60m
           script: |
             set -eu
             deploy_dir="${DEPLOY_DIR%/}"
@@ -159,7 +159,7 @@ jobs:
               exit 1
             fi
             python3 -m venv "$venv_dir"
-            "$venv_dir/bin/python" -m pip install --upgrade "$1[research]"
+            "$venv_dir/bin/python" -m pip install --timeout 120 --retries 5 --upgrade "$1[research]"
             "$venv_dir/bin/stock-trading" --help >/dev/null
 
             mkdir -p \
