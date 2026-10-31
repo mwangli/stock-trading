@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.console.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -13,7 +13,6 @@ public record ConsoleProperties(
         Path marketDir,
         Path taskLog,
         String documentRoots,
-        int expectedContractVersion,
         Auth auth,
         Agent agent) {
 
@@ -37,4 +36,4 @@ public record ConsoleProperties(
             int maxTokens) {
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

@@ -1,9 +1,8 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START -----
 package com.stock.console.market;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.console.config.ConsoleProperties;
+import com.stock.console.data.RemoteDataSource;
 import org.springframework.stereotype.Repository;
 
 import java.nio.file.Files;
@@ -16,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 @Repository
@@ -23,55 +23,60 @@ public class MarketRepository {
 
     private static final Pattern CODE = Pattern.compile("(?i)(sh|sz)[.]\\d{6}");
     private final ConsoleProperties properties;
-    private final ObjectMapper objectMapper;
+    private final RemoteDataSource remoteData;
 
-    public MarketRepository(ConsoleProperties properties, ObjectMapper objectMapper) {
+    public MarketRepository(ConsoleProperties properties, RemoteDataSource remoteData) {
         this.properties = properties;
-        this.objectMapper = objectMapper;
+        this.remoteData = remoteData;
     }
 
     public Map<String, Object> status() {
-        Path contract = properties.marketDir().resolve("console/contract.json");
-        Path instruments = properties.marketDir().resolve("console/instruments.parquet");
-        if (!Files.isRegularFile(contract)) {
-            return Map.of("available", false, "reason", "行情契约文件不存在", "contract", contract.toString());
+        String instruments = marketSource("instruments/stocks.parquet");
+        if (!marketAvailable("instruments/stocks.parquet")) {
+            return Map.of(
+                    "available", false,
+                    "reason", "股票目录文件不存在",
+                    "path", instruments);
         }
-        try {
-            Map<String, Object> metadata = objectMapper.readValue(
-                    Files.readString(contract), new TypeReference<>() {
-                    });
-            int version = Integer.parseInt(String.valueOf(metadata.getOrDefault("contractVersion", 0)));
-            boolean directoryReadable = Files.isReadable(instruments) && Files.isRegularFile(instruments);
+        String sql = "SELECT count(*) AS instruments, max(snapshot_date) AS as_of_date FROM read_parquet(?)";
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, instruments);
+            List<Map<String, Object>> values = rows(statement);
+            Map<String, Object> summary = values.isEmpty() ? Map.of() : values.get(0);
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("available", version == properties.expectedContractVersion() && directoryReadable);
-            result.put("version", version);
-            result.put("expectedVersion", properties.expectedContractVersion());
-            result.put("asOfDate", metadata.get("asOfDate"));
-            result.put("instrumentsReadable", directoryReadable);
-            result.put("contract", contract.toString());
-            result.put("marketDir", properties.marketDir().toString());
-            if (version != properties.expectedContractVersion()) {
-                result.put("reason", "行情契约版本不兼容");
-            } else if (!directoryReadable) {
-                result.put("reason", "股票目录文件不可读");
-            }
+            result.put("available", true);
+            result.put("engine", "DuckDB");
+            result.put("mode", "READ_ONLY");
+            result.put("path", instruments);
+            result.put("instruments", summary.getOrDefault("instruments", 0));
+            result.put("asOfDate", summary.get("as_of_date"));
+            result.put("latestDailyDate", latestDailyDate().orElse(null));
             return result;
         } catch (Exception exception) {
-            return Map.of("available", false, "reason", "行情契约无法读取", "contract", contract.toString());
+            return Map.of(
+                    "available", false,
+                    "reason", safeMessage(exception),
+                    "path", instruments);
         }
     }
 
     public List<Map<String, Object>> instruments(String keyword, int limit) {
-        Path source = properties.marketDir().resolve("console/instruments.parquet");
-        if (!Files.isRegularFile(source)) {
+        String source = marketSource("instruments/stocks.parquet");
+        if (!marketAvailable("instruments/stocks.parquet")) {
             return List.of();
         }
-        String sql = "SELECT as_of_date,code,name,market,trade_status FROM read_parquet(?) "
-                + "WHERE (? = '' OR code ILIKE ? OR name ILIKE ?) ORDER BY code LIMIT ?";
+        String sql = """
+                SELECT snapshot_date AS as_of_date, code, code_name AS name,
+                       CASE WHEN lower(code) LIKE 'sh.%' THEN 'SH' ELSE 'SZ' END AS market,
+                       trade_status, security_type, status
+                FROM read_parquet(?)
+                WHERE (? = '' OR code ILIKE ? OR code_name ILIKE ?)
+                ORDER BY code
+                LIMIT ?
+                """;
         String value = keyword == null ? "" : keyword.trim();
-        try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, source.toString());
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, source);
             statement.setString(2, value);
             statement.setString(3, "%" + value + "%");
             statement.setString(4, "%" + value + "%");
@@ -83,77 +88,111 @@ public class MarketRepository {
     }
 
     public List<Map<String, Object>> dailyBars(String code, int limit) {
-        String normalized = requireCode(code);
-        Path history = properties.marketDir().resolve("daily_history/code=" + normalized + "/bars.parquet");
-        if (!Files.isRegularFile(history)) {
-            return List.of();
-        }
-        String sql = "SELECT trade_date,open,high,low,close,preclose,volume,amount,tradestatus,is_st "
-                + "FROM read_parquet(?) ORDER BY trade_date DESC LIMIT ?";
-        try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, history.toString());
-            statement.setInt(2, Math.max(1, Math.min(limit, 1000)));
-            return rows(statement);
-        } catch (Exception exception) {
-            return List.of();
-        }
+        String normalizedCode = requireCode(code);
+        String relative = "daily_history/code=" + normalizedCode + "/bars.parquet";
+        return readBars(relative, "trade_date", limit, 1000);
     }
 
     public List<Map<String, Object>> minuteBars(String code, int limit) {
-        String normalized = requireCode(code);
-        Path directory = properties.marketDir().resolve("minute_5m/code=" + normalized);
-        if (!Files.isDirectory(directory)) {
+        String normalizedCode = requireCode(code);
+        String relative = "minute_5m/code=" + normalizedCode + "/bars.parquet";
+        return readBars(relative, "bar_end", limit, 2000);
+    }
+
+    public Map<String, Object> statistics() {
+        Optional<String> latest = latestDailyDate();
+        if (latest.isEmpty()) {
+            return Map.of("available", false, "reason", "全市场日线分区尚未生成");
+        }
+        String source = marketSource("daily/trade_date=" + latest.get() + "/bars.parquet");
+        String sql = """
+                SELECT count(*) AS total,
+                       sum(CASE WHEN close > preclose THEN 1 ELSE 0 END) AS advances,
+                       sum(CASE WHEN close < preclose THEN 1 ELSE 0 END) AS declines,
+                       sum(CASE WHEN close = preclose THEN 1 ELSE 0 END) AS unchanged
+                FROM read_parquet(?)
+                """;
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, source);
+            List<Map<String, Object>> values = rows(statement);
+            Map<String, Object> result = new LinkedHashMap<>(values.isEmpty() ? Map.of() : values.get(0));
+            result.put("available", true);
+            result.put("asOfDate", latest.get());
+            return result;
+        } catch (Exception exception) {
+            return Map.of(
+                    "available", false,
+                    "reason", "市场统计读取失败",
+                    "asOfDate", latest.get());
+        }
+    }
+
+    private List<Map<String, Object>> readBars(
+            String relativePath, String orderColumn, int limit, int maximum) {
+        if (!marketAvailable(relativePath)) {
             return List.of();
         }
-        String source = directory.resolve("trade_date=*/bars.parquet").toString();
-        String sql = "SELECT trade_date,bar_start,bar_end,open,high,low,close,volume,amount "
-                + "FROM read_parquet(?) ORDER BY bar_end DESC LIMIT ?";
-        try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        String source = marketSource(relativePath);
+        String sql = "SELECT * FROM read_parquet(?) ORDER BY " + orderColumn + " DESC LIMIT ?";
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, source);
-            statement.setInt(2, Math.max(1, Math.min(limit, 2000)));
+            statement.setInt(2, Math.max(1, Math.min(limit, maximum)));
             return rows(statement);
         } catch (Exception exception) {
             return List.of();
         }
     }
 
-    public Map<String, Object> statistics() {
-        Map<String, Object> contract = status();
-        Object asOfDate = contract.get("asOfDate");
-        if (!Boolean.TRUE.equals(contract.get("available")) || asOfDate == null) {
-            return Map.of("available", false, "reason", contract.getOrDefault("reason", "行情数据不可用"));
+    private Optional<String> latestDailyDate() {
+        if (remoteData.enabled()) {
+            return remoteData.marketDirectories("daily")
+                    .stream()
+                    .filter(name -> name.startsWith("trade_date="))
+                    .map(name -> name.substring("trade_date=".length()))
+                    .max(String::compareTo);
         }
-        Path source = properties.marketDir().resolve(
-                "daily/trade_date=" + asOfDate + "/bars.parquet");
-        if (!Files.isRegularFile(source)) {
-            return Map.of("available", false, "reason", "最新日线分区不存在", "asOfDate", asOfDate);
+        Path directory = properties.marketDir().resolve("daily");
+        if (!Files.isDirectory(directory)) {
+            return Optional.empty();
         }
-        String sql = "SELECT count(*) AS total, "
-                + "sum(CASE WHEN close > preclose THEN 1 ELSE 0 END) AS advances, "
-                + "sum(CASE WHEN close < preclose THEN 1 ELSE 0 END) AS declines, "
-                + "sum(CASE WHEN close = preclose THEN 1 ELSE 0 END) AS unchanged "
-                + "FROM read_parquet(?)";
-        try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, source.toString());
-            List<Map<String, Object>> values = rows(statement);
-            Map<String, Object> result = new LinkedHashMap<>(values.isEmpty() ? Map.of() : values.get(0));
-            result.put("available", true);
-            result.put("asOfDate", asOfDate);
-            return result;
+        try (var paths = Files.list(directory)) {
+            return paths.filter(Files::isDirectory)
+                    .map(path -> path.getFileName().toString())
+                    .filter(name -> name.startsWith("trade_date="))
+                    .map(name -> name.substring("trade_date=".length()))
+                    .max(String::compareTo);
         } catch (Exception exception) {
-            return Map.of("available", false, "reason", "市场统计读取失败", "asOfDate", asOfDate);
+            return Optional.empty();
         }
     }
 
     private String requireCode(String code) {
-        String normalized = code == null ? "" : code.trim().toLowerCase();
-        if (!CODE.matcher(normalized).matches()) {
+        String normalizedCode = code == null ? "" : code.trim().toLowerCase();
+        if (!CODE.matcher(normalizedCode).matches()) {
             throw new IllegalArgumentException("股票代码格式错误");
         }
-        return normalized;
+        return normalizedCode;
+    }
+
+    private Connection open() throws Exception {
+        Connection connection = DriverManager.getConnection("jdbc:duckdb:");
+        remoteData.configure(connection);
+        return connection;
+    }
+
+    private String marketSource(String relativePath) {
+        if (remoteData.enabled()) {
+            return remoteData.market(relativePath);
+        }
+        return properties.marketDir().resolve(relativePath)
+                .toAbsolutePath().normalize().toString().replace('\\', '/');
+    }
+
+    private boolean marketAvailable(String relativePath) {
+        if (remoteData.enabled()) {
+            return remoteData.exists(remoteData.market(relativePath));
+        }
+        return Files.isRegularFile(properties.marketDir().resolve(relativePath));
     }
 
     private List<Map<String, Object>> rows(PreparedStatement statement) throws Exception {
@@ -170,5 +209,10 @@ public class MarketRepository {
             return result;
         }
     }
+
+    private String safeMessage(Exception exception) {
+        String message = exception.getMessage();
+        return message == null || message.isBlank() ? "行情数据源无法读取" : message;
+    }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END -----

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.console.system;
 
 import com.stock.console.facts.TradingFacts;
@@ -28,8 +28,8 @@ public class SystemController {
         return ApiResponse.ok(Map.of(
                 "status", "UP",
                 "time", Instant.now().toString(),
-                "trading", facts.contractStatus(),
+                "trading", facts.status(),
                 "market", market.status()));
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --
