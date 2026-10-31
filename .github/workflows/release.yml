@@ -140,11 +140,6 @@ jobs:
 
             legacy_var_dir="$venv_dir/lib/python3.12/var"
             migration_marker="/data/stock-trading/state/.legacy-var-migrated"
-            exec 9>/data/stock-trading/state/scheduler.lock
-            if ! flock -n 9; then
-              echo "Another stock-trading task is active; refusing data migration" >&2
-              exit 1
-            fi
             restart_init=0
             init_pattern="$venv_dir/bin/python $venv_dir/bin/[s]tock-trading init"
             if pgrep -af "$init_pattern"; then
@@ -161,6 +156,16 @@ jobs:
               done
               restart_init=1
             fi
+            exec 9>/data/stock-trading/state/scheduler.lock
+            lock_wait_count=0
+            until flock -n 9; do
+              if [ "$lock_wait_count" -ge 10 ]; then
+                echo "Another stock-trading task still holds the scheduler lock" >&2
+                exit 1
+              fi
+              sleep 1
+              lock_wait_count=$((lock_wait_count + 1))
+            done
             if pgrep -af "$venv_dir/bin/[s]tock-trading|$venv_dir/bin/python.*[s]tock_trading"; then
               echo "Another stock-trading process is still writing data; refusing migration" >&2
               exit 1
@@ -224,4 +229,10 @@ jobs:
                 exit 1
               fi
               echo "Init restarted from the fixed runtime directory; pid=$(cat "$init_pid_file")"
+              restarted_init_pids="$(pgrep -d, -f "$venv_dir/bin/python $venv_dir/bin/[s]tock-trading init" || true)"
+              if [ -z "$restarted_init_pids" ]; then
+                echo "The restarted init process is not visible" >&2
+                exit 1
+              fi
+              ps -o pid,ppid,lstart,stat,cmd -p "$restarted_init_pids"
             fi
