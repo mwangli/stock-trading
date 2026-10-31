@@ -2,9 +2,9 @@
 .idea/
 .tmp/
 data/
-model-files/
 graft/
-stock-agent/
+*.env
+*.iml
 **/node_modules/
 **/target/
 **/build/
