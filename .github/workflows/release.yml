@@ -62,6 +62,15 @@ jobs:
           python -m pip install build
           python -m build --wheel
 
+      - name: Prepare runtime environment
+        shell: bash
+        env:
+          STOCK_TRADING_ENV: ${{ secrets.STOCK_TRADING_ENV }}
+        run: |
+          test -n "$STOCK_TRADING_ENV"
+          umask 077
+          printf '%s\n' "$STOCK_TRADING_ENV" > .github/stock-trading.env
+
       - name: Upload release files
         uses: appleboy/scp-action@v1.0.0
         with:
@@ -70,7 +79,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
-          source: "dist/*.whl,.github/stock-trading.cron,.github/stock-trading.logrotate"
+          source: "dist/*.whl,.github/stock-trading.cron,.github/stock-trading.logrotate,.github/stock-trading.env"
           target: ${{ format('{0}/releases/{1}', vars.SERVER_DEPLOY_DIR, github.ref_name) }}
           strip_components: 1
           overwrite: true
@@ -94,6 +103,7 @@ jobs:
             venv_dir="$deploy_dir/venv"
             cron_template="$release_dir/stock-trading.cron"
             logrotate_template="$release_dir/stock-trading.logrotate"
+            env_template="$release_dir/stock-trading.env"
             cron_dir="$deploy_dir/cron"
             cron_file="$cron_dir/stock-trading.cron"
             logrotate_file="$cron_dir/stock-trading.logrotate"
@@ -117,6 +127,7 @@ jobs:
             }
             require_command crontab
             require_command cmp
+            require_command install
             require_command pgrep
             [ -x /usr/sbin/logrotate ] || {
               echo "Missing executable: /usr/sbin/logrotate" >&2
@@ -126,13 +137,20 @@ jobs:
               echo "Missing executable: /usr/bin/flock" >&2
               exit 1
             }
-            require_file /etc/stock-trading/env
             require_file "$cron_template"
             require_file "$logrotate_template"
+            require_file "$env_template"
             if ! pgrep -x cron >/dev/null && ! pgrep -x crond >/dev/null; then
               echo "Cron daemon is not running" >&2
               exit 1
             fi
+
+            install -d -m 700 /etc/stock-trading
+            install -m 600 "$env_template" /etc/stock-trading/env
+            grep -Fq 'STOCK_TRADING_DATA_DIR=/data/stock-trading/market' /etc/stock-trading/env
+            grep -Fq 'STOCK_TRADING_QLIB_DIR=/data/stock-trading/qlib' /etc/stock-trading/env
+            grep -Fq 'STOCK_TRADING_ARTIFACT_DIR=/data/stock-trading/artifacts' /etc/stock-trading/env
+            grep -Fq 'STOCK_TRADING_STATE_DB=/data/stock-trading/state/trading.db' /etc/stock-trading/env
 
             set -- "$release_dir"/*.whl
             if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
