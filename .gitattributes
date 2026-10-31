@@ -1,7 +1,0 @@
-model-files/**/*.bin filter=lfs diff=lfs merge=lfs -text
-model-files/**/*.pt filter=lfs diff=lfs merge=lfs -text
-model-files/**/*.safetensors filter=lfs diff=lfs merge=lfs -text
-model-files/**/*.json text eol=lf
-model-files/**/*.txt text eol=lf
-model-files/**/*.md text eol=lf
-model-files/**/*.properties text eol=lf

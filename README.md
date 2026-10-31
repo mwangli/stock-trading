@@ -1,59 +1,100 @@
-<!-- AI_GENERATE_START------- -->
-# AI-AGENT 智能股票交易系统
+<!-- AI_GENERATE_START----------- -->
+# stock-console
 
-本文件是仓库入口。系统架构、领域设计、运行边界和专项方案由前端内置 Markdown 文档工作台统一展示。
+`master` 分支是纯 Python T+1 交易系统的只读展示与智能控制台。核心行情采集、模型训练、预测、交易执行、状态恢复和绩效计算全部位于长期独立维护的 `stock-trading` 分支。
 
-## 项目结构
+## 工程结构
 
 ```text
 stock-trading4/
-├── stock-server/                  # 七个 Maven 子模块、单 Spring Boot 应用
-│   ├── stock-base/                # 最小公共契约
-│   ├── stock-data/                # 市场事实
-│   ├── stock-model/               # 模型训练、推理与排名
-│   ├── stock-trading/             # 分阶段交易、券商执行与交易事实
-│   ├── stock-platform/            # Quartz 调度
-│   ├── stock-agent/               # Agent、RAG、Memory 和只读事实查询
-│   └── stock-application/         # 唯一可执行 Spring Boot 模块
-├── stock-client/                  # React + Vite 管理界面和文档工作台
-├── documents/                     # 工程文档唯一事实源
-├── model-files/                   # 本地模型制品；生产环境由宿主机目录只读挂载
-├── pom.xml                        # Backend Maven 父工程与聚合器
-└── docker-compose.yml
+├── pom.xml             # 聚合 stock-server 与 stock-web
+├── stock-server/       # 单一 Spring Boot 后端 Maven 模块
+├── stock-web/          # React + Vite 前端 Maven 模块
+├── documents/          # 控制台架构、契约与运维文档
+└── docker-compose.yml  # 仅前端和后端两个服务
 ```
 
-Backend 固定依赖方向：
+根 `pom.xml` 仅负责聚合 `stock-server` 与 `stock-web`。IDEA 导入根 POM 后可同时识别后端和前端 Maven 模块；前端仍由 npm/Vite 完成实际构建。
+
+## 系统边界
 
 ```text
-base → data → model → trading → platform → agent → application
+Host Cron -> Python CLI -> Parquet + trading.db + logs
+                              ↑ read-only
+                         Spring Boot
+                              ↑
+                         React/Nginx
 ```
 
-## 自动交易链路
+- Java 只读查询 Python 生成的 SQLite 视图、Parquet 和日志。
+- Java 不调用券商、不训练模型、不生成或执行交易计划、不触发 Python CLI。
+- Java 不对 `trading.db` 建表、迁移、修复或更新状态。
+- Java 不写数据库或本地状态文件；Agent 会话和消息仅保存在当前登录的 JVM `HttpSession` 内存中。
+- 退出登录、Session 超时或后端重启后对话会清空；PC 与手机的不同登录 Session 不同步。
+- Agent 仅使用 DeepSeek-compatible Provider、SQLite 事实和 Markdown 文档，不包含交易审批、向量库、本地 Embedding 或多 Provider 路由。
+
+## 后端
+
+后端包位于 `com.stock.console`：
+
+- `auth`：环境变量单用户登录和 Cookie Session。
+- `facts`：`trading.db` 只读连接与 `console_v_*` 视图。
+- `market`：DuckDB 查询 Parquet 股票目录和日 K。
+- `dashboard`、`trading`、`model`：只读业务接口。
+- `operations`：任务状态、固定日志文件和 SSE。
+- `agent`：只读事实问答、文档检索和 Session 内对话上下文。
+- `documents`：受控 Markdown 目录扫描、读取与搜索。
+
+依赖仅保留 Spring Web、Validation、Spring Security Crypto、SQLite JDBC、DuckDB JDBC、Jackson 和 LangChain4j OpenAI-compatible。
+
+## 前端
+
+前端固定保留七个页面：概览、行情、交易记录、模型与预测、Agent、运行状态与日志、文档工作台。默认简体中文，主题偏好保存在浏览器 `localStorage`。
+
+已移除旧新闻、情绪模型、训练弹窗、任务控制、券商同步、交易审批、菜单拖拽、双语、WebSocket 日志和旧路由兼容。
+
+## Python 契约
+
+控制台要求契约版本 `1`：
+
+- `var/state/trading.db` 包含 `console_contract_metadata` 和稳定的 `console_v_*` 只读视图。
+- `var/market/console/contract.json` 包含契约版本和数据日期。
+- `var/market/console/instruments.parquet` 包含代码、名称、市场、交易状态和数据日期。
+- 历史日线位于 `var/market/daily_history/code=<code>/bars.parquet`。
+
+契约版本不兼容、文件缺失或不可读时，服务保持启动，相关页面显示不可用原因。
+
+## 配置
+
+本地直接启动后端时默认启用 `local` profile，开发登录账号为 `admin`，密码为 `admin123`。可通过 `CONSOLE_USERNAME` 和 `CONSOLE_PASSWORD_HASH` 覆盖。
+
+生产部署至少需要：
 
 ```text
-模型预测与排名
-→ 上午分阶段卖出
-→ 下午模型前三名资金竞争
-→ 单一活动买单
-→ 成交与收益回写
+CONSOLE_PASSWORD_HASH=<BCrypt hash>
+STOCK_TRADING_VAR_DIR=/srv/stock-trading/var
+STOCK_TRADING_LOG_DIR=/var/log/stock-trading
+STOCK_TRADING_DOCUMENTS_DIR=/srv/stock-trading
 ```
 
-交易任务启停是自动交易唯一控制入口。系统不再维护独立 Strategy 模块、策略模式、候选二次评分、止损止盈、紧急停止或真实写入总门禁。订单轮询、部分成交、撤单终态确认、资金释放、T+1 可卖数量和券商事实同步仍属于交易执行正确性要求。
+Docker Compose 固定启用 `prod` profile，不使用本地默认密码。Agent 可选配置：`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL`、`AGENT_TIMEOUT_SECONDS`、`AGENT_MAX_TOKENS`。生产账号默认为 `admin`，可通过 `CONSOLE_USERNAME` 修改。
 
-## 文档入口
+Agent 对话最多保留 20 个会话，每个会话最多保留 50 条消息；对话只存在于单个登录 Session 内，不需要独立数据目录。
 
-- [系统总览](documents/system/project-overview.md)
-- [Backend 模块总览](documents/modules/后端模块总览.md)
-- [Trading 交易执行](documents/modules/stock-trading/交易执行.md)
-- [Platform 任务调度](documents/modules/stock-platform/任务调度.md)
-- [部署与发布](documents/operations/部署与发布.md)
+## API
 
-本地文档站点与交易前端使用同一个 React/Vite 进程，生产构建也生成同一个 SPA 制品。Frontend 不参与 Maven Reactor。
+- `/api/auth/*`
+- `/api/dashboard/overview`
+- `/api/market/status|instruments|bars`
+- `/api/trading/orders|fills|positions`
+- `/api/models/overview|predictions|evaluations`
+- `/api/operations/status|logs|logs/stream`
+- `/api/agent/status|sessions|chat`
+- `/api/documents/*`
 
-## 维护规则
+不存在训练、预测重试、任务触发、暂停恢复、券商同步、交易审批或运行参数修改接口。
 
-- 本文件只保留稳定架构、核心链路和文档入口。
-- 模块职责维护在 `documents/modules`，跨模块流程维护在 `documents/topics`。
-- 类、方法、字段和局部不变量维护在 Javadoc 或 TypeScript 类型旁。
-- `SOURCE_IMPLEMENTED` 只表示源码已实现，不代表编译、运行、数据库或真实券商验证通过。
-<!-- AI_GENERATE_END------- -->
+## 验证边界
+
+当前重构默认只执行源码、引用、依赖、契约、编码和差异检查。未获得当次明确授权时，不执行 Maven/npm 编译、测试、启动、Docker 构建或浏览器验证；源码检查结果不得描述为编译或运行通过。
+<!-- AI_GENERATE_END----------- -->

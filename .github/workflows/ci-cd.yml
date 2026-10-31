@@ -57,19 +57,6 @@ jobs:
           username: ${{ env.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: maven
-
-      - name: Package backend
-        run: |
-          mvn --batch-mode --no-transfer-progress \
-            --projects stock-server/stock-application --also-make \
-            clean package -DskipTests
-          cp stock-server/stock-application/target/stock-application-*.jar stock-server/app.jar
-
       - name: Build and push backend image
         uses: docker/build-push-action@v7
         with:
@@ -124,7 +111,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: stock-client/Dockerfile
+          file: stock-web/Dockerfile
           provenance: false
           push: true
           tags: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.FRONTEND_IMAGE_NAME, github.sha) }}
