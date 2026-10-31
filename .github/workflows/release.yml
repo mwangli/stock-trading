@@ -138,6 +138,41 @@ jobs:
               /data/stock-trading/state/scheduler.lock \
               /var/log/stock-trading/run.log
 
+            legacy_var_dir="$venv_dir/lib/python3.12/var"
+            migration_marker="/data/stock-trading/state/.legacy-var-migrated-v0.1.13"
+            exec 9>/data/stock-trading/state/scheduler.lock
+            if ! flock -n 9; then
+              echo "Another stock-trading task is active; refusing data migration" >&2
+              exit 1
+            fi
+            if [ ! -f "$migration_marker" ] && [ -d "$legacy_var_dir" ]; then
+              if pgrep -af "$venv_dir/bin/[s]tock-trading|$venv_dir/bin/python.*[s]tock_trading"; then
+                echo "A stock-trading process is still writing data; refusing migration" >&2
+                exit 1
+              fi
+              for runtime_part in market qlib artifacts state; do
+                source_dir="$legacy_var_dir/$runtime_part"
+                target_dir="/data/stock-trading/$runtime_part"
+                if [ ! -d "$source_dir" ]; then
+                  continue
+                fi
+                cp -a "$source_dir/." "$target_dir/"
+                source_files="$(find "$source_dir" -type f | wc -l)"
+                target_files="$(find "$target_dir" -type f | wc -l)"
+                source_bytes="$(du -sb "$source_dir" | awk '{print $1}')"
+                target_bytes="$(du -sb "$target_dir" | awk '{print $1}')"
+                echo "Migrated $runtime_part: sourceFiles=$source_files targetFiles=$target_files sourceBytes=$source_bytes targetBytes=$target_bytes"
+                if [ "$target_files" -lt "$source_files" ] || [ "$target_bytes" -lt "$source_bytes" ]; then
+                  echo "Migration verification failed for $runtime_part" >&2
+                  exit 1
+                fi
+              done
+              touch "$migration_marker"
+              echo "Legacy runtime data migration completed; source data retained at $legacy_var_dir"
+            else
+              echo "Legacy runtime data migration already completed or no source directory exists"
+            fi
+
             sed \
               -e "s|__DEPLOY_DIR__|$deploy_dir|g" \
               -e '/^# AI_GENERATE_/d' \
