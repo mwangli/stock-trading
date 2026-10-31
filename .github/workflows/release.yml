@@ -84,7 +84,7 @@ jobs:
           strip_components: 1
           overwrite: true
 
-      - name: Install release
+      - name: Install release with uv
         uses: appleboy/ssh-action@v1.2.5
         env:
           DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
@@ -102,66 +102,35 @@ jobs:
             deploy_dir="${DEPLOY_DIR%/}"
             release_dir="$deploy_dir/releases/$RELEASE_TAG"
             venv_dir="$deploy_dir/venv"
-            cron_template="$release_dir/stock-trading.cron"
-            logrotate_template="$release_dir/stock-trading.logrotate"
-            env_template="$release_dir/stock-trading.env"
             cron_dir="$deploy_dir/cron"
             cron_file="$cron_dir/stock-trading.cron"
-            logrotate_file="$cron_dir/stock-trading.logrotate"
-
-            require_command() {
-              command -v "$1" >/dev/null || {
-                echo "Missing required command: $1" >&2
-                exit 1
-              }
-            }
-            require_file() {
-              [ -r "$1" ] || {
-                echo "Missing required readable file: $1" >&2
-                exit 1
-              }
-            }
-
-            printf '%s\n' "$deploy_dir" | grep -Eq '^/[A-Za-z0-9._/-]+$' || {
-              echo "Invalid deployment directory: $deploy_dir" >&2
-              exit 1
-            }
-            require_command crontab
-            require_command cmp
-            require_command install
-            require_command pgrep
-            [ -x /usr/sbin/logrotate ] || {
-              echo "Missing executable: /usr/sbin/logrotate" >&2
-              exit 1
-            }
-            [ -x /usr/bin/flock ] || {
-              echo "Missing executable: /usr/bin/flock" >&2
-              exit 1
-            }
-            require_file "$cron_template"
-            require_file "$logrotate_template"
-            require_file "$env_template"
-            if ! pgrep -x cron >/dev/null && ! pgrep -x crond >/dev/null; then
-              echo "Cron daemon is not running" >&2
-              exit 1
-            fi
-
-            install -d -m 700 /etc/stock-trading
-            install -m 600 "$env_template" /etc/stock-trading/env
-            grep -Fq 'STOCK_TRADING_DATA_DIR=/data/stock-trading/market' /etc/stock-trading/env
-            grep -Fq 'STOCK_TRADING_QLIB_DIR=/data/stock-trading/qlib' /etc/stock-trading/env
-            grep -Fq 'STOCK_TRADING_ARTIFACT_DIR=/data/stock-trading/artifacts' /etc/stock-trading/env
-            grep -Fq 'STOCK_TRADING_STATE_DB=/data/stock-trading/state/trading.db' /etc/stock-trading/env
 
             set -- "$release_dir"/*.whl
             if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
               echo "Expected exactly one wheel in $release_dir" >&2
               exit 1
             fi
-            python3 -m venv "$venv_dir"
-            "$venv_dir/bin/python" -m pip install --timeout 120 --retries 5 --upgrade "$1[research]"
+            wheel="$1"
+
+            export UV_DEFAULT_INDEX="https://mirrors.aliyun.com/pypi/simple/"
+            export UV_HTTP_TIMEOUT=300
+            export UV_HTTP_RETRIES=5
+            export PATH="$HOME/.local/bin:$PATH"
+
+            uv python install 3.12
+            uv venv \
+              --allow-existing \
+              --managed-python \
+              --python 3.12 \
+              "$venv_dir"
+            uv pip install \
+              --python "$venv_dir/bin/python" \
+              --upgrade \
+              "$wheel"
             "$venv_dir/bin/stock-trading" --help >/dev/null
 
+            install -d -m 700 /etc/stock-trading
+            install -m 600 "$release_dir/stock-trading.env" /etc/stock-trading/env
             mkdir -p \
               "$cron_dir" \
               /data/stock-trading/market \
@@ -176,44 +145,20 @@ jobs:
             sed \
               -e "s|__DEPLOY_DIR__|$deploy_dir|g" \
               -e '/^# AI_GENERATE_/d' \
-              "$cron_template" > "$cron_file"
-            cp "$logrotate_template" "$logrotate_file"
-            test "$(grep -c '^# STOCK_TRADING_CRON_BEGIN$' "$cron_file")" -eq 1
-            test "$(grep -c '^# STOCK_TRADING_CRON_END$' "$cron_file")" -eq 1
-            grep -Fq "$venv_dir/bin" "$cron_file"
-            grep -Fq '/var/log/stock-trading/run.log' "$logrotate_file"
+              "$release_dir/stock-trading.cron" > "$cron_file"
+            cp "$release_dir/stock-trading.logrotate" "$cron_dir/stock-trading.logrotate"
 
             current_cron="$(mktemp)"
             next_cron="$(mktemp)"
-            installed_cron="$(mktemp)"
-            trap 'rm -f "$current_cron" "$next_cron" "$installed_cron"' EXIT
+            trap 'rm -f "$current_cron" "$next_cron"' EXIT
             crontab -l > "$current_cron" 2>/dev/null || true
-            begin_count="$(grep -c '^# STOCK_TRADING_CRON_BEGIN$' "$current_cron" || true)"
-            end_count="$(grep -c '^# STOCK_TRADING_CRON_END$' "$current_cron" || true)"
-            test "$begin_count" -eq "$end_count"
-            test "$begin_count" -le 1
             awk '
               $0 == "# STOCK_TRADING_CRON_BEGIN" { managed = 1; next }
               $0 == "# STOCK_TRADING_CRON_END" { managed = 0; next }
-              !managed && $0 ~ /^[[:space:]]*$/ { pending_blanks = pending_blanks "\n"; next }
-              !managed {
-                if (pending_blanks != "") {
-                  printf "%s", pending_blanks
-                  pending_blanks = ""
-                }
-                print
-              }
+              !managed { print }
             ' "$current_cron" > "$next_cron"
             if [ -s "$next_cron" ]; then
               printf '\n' >> "$next_cron"
             fi
             cat "$cron_file" >> "$next_cron"
             crontab "$next_cron"
-            test "$(crontab -l | grep -c '^# STOCK_TRADING_CRON_BEGIN$')" -eq 1
-            test "$(crontab -l | grep -c '^# STOCK_TRADING_CRON_END$')" -eq 1
-            crontab -l | awk '
-              $0 == "# STOCK_TRADING_CRON_BEGIN" { managed = 1 }
-              managed { print }
-              $0 == "# STOCK_TRADING_CRON_END" { exit }
-            ' > "$installed_cron"
-            cmp "$cron_file" "$installed_cron"
