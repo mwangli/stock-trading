@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: stock-console
+  profiles:
+    default: local
+server:
+  port: 8080
+  servlet:
+    session:
+      timeout: ${CONSOLE_SESSION_TIMEOUT:8h}
+      cookie:
+        name: STOCK_CONSOLE_SESSION
+        http-only: true
+        same-site: lax
+console:
+  trading-db: ${STOCK_TRADING_DB:/data/stock-trading/state/trading.db}
+  market-dir: ${STOCK_MARKET_DIR:/data/stock-trading/market}
+  task-log: ${STOCK_TASK_LOG:/var/log/stock-trading/tasks.log}
+  document-roots: ${STOCK_DOCUMENT_ROOTS:/app/documents,/data/stock-trading/documents}
+  expected-contract-version: 1
+  auth:
+    username: ${CONSOLE_USERNAME:admin}
+    password-hash: ${CONSOLE_PASSWORD_HASH:}
+  agent:
+    enabled: ${AGENT_ENABLED:true}
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+    api-key: ${DEEPSEEK_API_KEY:}
+    model: ${DEEPSEEK_MODEL:deepseek-chat}
+    timeout-seconds: ${AGENT_TIMEOUT_SECONDS:90}
+    max-tokens: ${AGENT_MAX_TOKENS:1800}
