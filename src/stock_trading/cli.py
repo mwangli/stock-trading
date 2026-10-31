@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------------------------------------
+# AI_GENERATE_START --------------------------------------------------------
 from __future__ import annotations
 
 import argparse
@@ -27,7 +27,6 @@ from stock_trading.research.artifacts import (
     train_model_atomically,
 )
 from stock_trading.research.model import (
-    ModelSegments,
     automatic_model_segments,
     predict_alpha158_lightgbm,
 )
@@ -58,7 +57,7 @@ COMMANDS = (
     (
         "train",
         "训练Alpha158+LightGBM模型",
-        "[训练开始 训练结束 验证开始 验证结束 测试开始 测试结束]",
+        "[训练比例:验证比例:测试比例]",
     ),
     ("backtest", "执行单持仓T+1回测", "[资金规模]"),
     ("predict", "生成Top5预测", "[日期]"),
@@ -189,15 +188,9 @@ def _dispatch(
         )
         _pre_train(config, codes, start_date, end_date)
     elif arguments.command == "train":
-        if len(values) not in {0, 6}:
-            command_parser.error("只能不传日期，或依次传入 6 个训练、验证、测试日期")
-        explicit_dates = [_parse_date(value, command_parser) for value in values]
-        segments = (
-            _explicit_model_segments(explicit_dates, command_parser)
-            if explicit_dates
-            else None
-        )
-        _train(config, segments)
+        _require_argument_count(values, 0, 1, command_parser)
+        split = _parse_model_split(values[0], command_parser) if values else None
+        _train(config, split)
     elif arguments.command == "backtest":
         _require_argument_count(values, 0, 1, command_parser)
         initial_cash = (
@@ -372,6 +365,21 @@ def _parse_decimal(
     return result
 
 
+def _parse_model_split(
+    value: str, parser: argparse.ArgumentParser
+) -> tuple[Decimal, Decimal, Decimal]:
+    parts = value.split(":")
+    if len(parts) != 3:
+        parser.error("训练比例格式错误；请使用 训练:验证:测试，例如 6:3:1")
+    try:
+        ratios = tuple(Decimal(part) for part in parts)
+    except InvalidOperation:
+        parser.error("训练比例必须是数字；例如 6:3:1")
+    if any(not ratio.is_finite() or ratio <= 0 for ratio in ratios):
+        parser.error("训练、验证和测试比例必须全部大于 0")
+    return ratios[0], ratios[1], ratios[2]
+
+
 def _sync_daily(config: AppConfig, start_date: date, end_date: date) -> None:
     requested_days = (end_date - start_date).days + 1
     store = ParquetMarketStore(config.data_dir)
@@ -494,12 +502,14 @@ def _pre_train(
     )
 
 
-def _train(config: AppConfig, segments: ModelSegments | None) -> None:
+def _train(
+    config: AppConfig,
+    split: tuple[Decimal, Decimal, Decimal] | None,
+) -> None:
     calendar_path = config.qlib_dir / "calendars" / "day.txt"
     if not calendar_path.is_file():
         raise ValueError("Qlib 数据不存在，请先执行 prepare")
-    if segments is None:
-        segments = automatic_model_segments(calendar_path)
+    segments = automatic_model_segments(calendar_path, split)
     LOGGER.info(
         "开始训练模型：特征=Alpha158；模型=LightGBM Regression；训练=%s 至 %s；验证=%s 至 %s；测试=%s 至 %s",
         segments.train_start,
@@ -520,23 +530,6 @@ def _train(config: AppConfig, segments: ModelSegments | None) -> None:
         training_result["predictionDays"],
     )
     _print_json({"training": training_result})
-
-
-def _explicit_model_segments(
-    values: list[date], parser: argparse.ArgumentParser
-) -> ModelSegments:
-    try:
-        return ModelSegments(
-            train_start=values[0],
-            train_end=values[1],
-            valid_start=values[2],
-            valid_end=values[3],
-            test_start=values[4],
-            test_end=values[5],
-        )
-    except ValueError:
-        parser.error("训练、验证、测试日期必须按顺序排列且不能重叠")
-    raise AssertionError("模型日期校验失败后应由参数解析器退出")
 
 
 def _backtest(config: AppConfig, initial_cash: Decimal) -> None:
@@ -796,4 +789,4 @@ def _safe_error_text(value: object) -> str:
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END -------------------------------------------------------
+# AI_GENERATE_END --------------------------------------------------------

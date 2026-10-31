@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------
+# AI_GENERATE_START --------------
 from __future__ import annotations
 
 import json
@@ -6,6 +6,7 @@ import logging
 import pickle
 from dataclasses import asdict, dataclass
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
@@ -306,8 +307,11 @@ def _lightgbm_progress_callback():
     return callback
 
 
-def automatic_model_segments(calendar_path: Path) -> ModelSegments:
-    """按 70%/15%/15% 自动切分训练、验证和测试区间。"""
+def automatic_model_segments(
+    calendar_path: Path,
+    split: tuple[Decimal, Decimal, Decimal] | None = None,
+) -> ModelSegments:
+    """按指定比例切分连续交易日；省略比例时使用 70%/15%/15%。"""
     calendar = [
         date.fromisoformat(value)
         for value in calendar_path.read_text(encoding="utf-8").splitlines()
@@ -315,8 +319,21 @@ def automatic_model_segments(calendar_path: Path) -> ModelSegments:
     ]
     if len(calendar) < 120:
         raise ValueError(f"自动切分至少需要 120 个交易日，当前={len(calendar)}")
-    train_end = int(len(calendar) * 0.70) - 1
-    valid_end = int(len(calendar) * 0.85) - 1
+    ratios = split or (Decimal("70"), Decimal("15"), Decimal("15"))
+    if any(not ratio.is_finite() or ratio <= 0 for ratio in ratios):
+        raise ValueError("训练、验证和测试比例必须全部大于 0")
+    total = sum(ratios, Decimal("0"))
+    train_end = int(Decimal(len(calendar)) * ratios[0] / total) - 1
+    valid_end = int(
+        Decimal(len(calendar)) * (ratios[0] + ratios[1]) / total
+    ) - 1
+    train_days = train_end + 1
+    valid_days = valid_end - train_end
+    test_days = len(calendar) - valid_end - 1
+    if min(train_days, valid_days, test_days) <= 0:
+        raise ValueError(
+            "训练比例无法为每个区间分配交易日；请调整训练、验证和测试比例"
+        )
     return ModelSegments(
         train_start=calendar[0],
         train_end=calendar[train_end],
@@ -326,4 +343,4 @@ def automatic_model_segments(calendar_path: Path) -> ModelSegments:
         test_end=calendar[-1],
     )
 
-# AI_GENERATE_END ------------
+# AI_GENERATE_END --------------
