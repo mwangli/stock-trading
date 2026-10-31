@@ -1,11 +1,12 @@
-# AI_GENERATE_START ------------
+# AI_GENERATE_START -------------------
 from __future__ import annotations
 
 import atexit
 import logging
 import os
+import signal
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -20,6 +21,8 @@ from stock_trading.market.storage import ParquetMarketStore
 
 LOGGER = logging.getLogger(__name__)
 MAX_BAOSTOCK_WORKERS = 4
+PROCESS_POOL_POLL_SECONDS = 0.2
+WORKER_SHUTDOWN_TIMEOUT_SECONDS = 5
 
 _WORKER_STORE: ParquetMarketStore | None = None
 _WORKER_PROXY_URL: str | None = None
@@ -126,6 +129,10 @@ def sync_research_data(
             worker_count,
         )
         if not pending:
+            LOGGER.info(
+                "研究数据采集完成：下载=0；跳过=%d；失败=0",
+                skipped,
+            )
             return {
                 "downloaded": downloaded,
                 "skipped": skipped,
@@ -153,28 +160,45 @@ def sync_research_data(
             finally:
                 _close_worker_client()
         else:
-            with ProcessPoolExecutor(
+            executor = ProcessPoolExecutor(
                 max_workers=worker_count,
                 initializer=_initialize_research_worker,
                 initargs=(store.root, proxy_url, *progress.worker_context),
-            ) as executor:
+            )
+            try:
                 futures = {
                     executor.submit(_sync_research_code, code, start_date, end_date): code
                     for code in pending
                 }
-                for future in as_completed(futures):
-                    code = futures[future]
-                    try:
-                        result = future.result()
-                    except Exception as error:
-                        result = {"code": code, "error": str(error)}
-                    downloaded, completed = _record_research_result(
-                        result,
-                        downloaded,
-                        completed,
-                        failed,
-                        progress,
+                pending_futures = set(futures)
+                while pending_futures:
+                    done, pending_futures = wait(
+                        pending_futures,
+                        timeout=PROCESS_POOL_POLL_SECONDS,
+                        return_when=FIRST_COMPLETED,
                     )
+                    for future in done:
+                        code = futures[future]
+                        try:
+                            result = future.result()
+                        except Exception as error:
+                            result = {"code": code, "error": str(error)}
+                        downloaded, completed = _record_research_result(
+                            result,
+                            downloaded,
+                            completed,
+                            failed,
+                            progress,
+                        )
+            except KeyboardInterrupt:
+                LOGGER.warning("收到 Ctrl+C，正在停止全部 BaoStock 采集进程")
+                _terminate_research_executor(executor)
+                raise
+            except BaseException:
+                executor.shutdown(wait=True, cancel_futures=True)
+                raise
+            else:
+                executor.shutdown(wait=True)
         LOGGER.info(
             "研究数据采集完成：下载=%d；跳过=%d；失败=%d",
             downloaded,
@@ -214,18 +238,71 @@ def _initialize_research_worker(
     progress_completed: object,
     progress_remaining_seconds: object,
     progress_total: int,
+    progress_message: object,
 ) -> None:
     global _WORKER_STORE, _WORKER_PROXY_URL
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, _handle_worker_termination)
     configure_logging()
     bind_progress_context(
         progress_completed,
         progress_remaining_seconds,
         progress_total,
+        progress_message,
     )
     _WORKER_STORE = ParquetMarketStore(root)
     _WORKER_PROXY_URL = proxy_url
     atexit.register(_close_worker_client)
     LOGGER.info("BaoStock 采集进程就绪：进程=%d", os.getpid())
+
+
+def _handle_worker_termination(signum: int, _frame: object) -> None:
+    """收到父进程终止请求时关闭 socket，并立即结束当前 worker。"""
+    client = _WORKER_CLIENT
+    if client is not None:
+        client.interrupt()
+    raise SystemExit(128 + signum)
+
+
+def _terminate_research_executor(executor: ProcessPoolExecutor) -> None:
+    """取消排队任务，限时回收 worker，避免中断后遗留孤儿进程。"""
+    started_at = time.monotonic()
+    processes = []
+    forced = 0
+    previous_sigint = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        processes = list(
+            (executor._processes or {}).values()  # type: ignore[attr-defined]
+        )
+        manager_thread = executor._executor_manager_thread  # type: ignore[attr-defined]
+        executor.shutdown(wait=False, cancel_futures=True)
+
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+
+        deadline = time.monotonic() + WORKER_SHUTDOWN_TIMEOUT_SECONDS
+        for process in processes:
+            remaining = max(0.0, deadline - time.monotonic())
+            process.join(remaining)
+
+        for process in processes:
+            if not process.is_alive():
+                continue
+            forced += 1
+            process.kill()
+            process.join()
+
+        if manager_thread is not None:
+            manager_thread.join()
+    finally:
+        signal.signal(signal.SIGINT, previous_sigint)
+    LOGGER.warning(
+        "BaoStock 采集进程已全部停止：进程=%d；强制终止=%d；耗时=%.2f 秒",
+        len(processes),
+        forced,
+        time.monotonic() - started_at,
+    )
 
 
 def _sync_research_code(
@@ -282,4 +359,4 @@ def _close_worker_client() -> None:
         client.__exit__(None, None, None)
     except Exception as error:
         LOGGER.warning("BaoStock 会话关闭失败，连接将由进程回收：%s", error)
-# AI_GENERATE_END ------------
+# AI_GENERATE_END -------------------

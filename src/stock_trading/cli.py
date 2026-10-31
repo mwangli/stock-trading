@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------------------------------------------
+# AI_GENERATE_START ---------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -21,7 +21,11 @@ from stock_trading.broker.captcha import BaiduCaptchaSolver
 from stock_trading.market.baostock_client import BaoStockClient
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.sync import live_codes, sync_research_data
-from stock_trading.logging_utils import configure_logging, should_log_progress
+from stock_trading.logging_utils import (
+    configure_logging,
+    live_progress_session,
+    should_log_progress,
+)
 from stock_trading.research.artifacts import (
     model_root,
     resolve_current_model_dir,
@@ -116,13 +120,15 @@ def init_command(
         typer.Option("--force"),
     ] = False,
 ) -> None:
-    def run(config: AppConfig) -> None:
-        result = InitializationService(config, lambda: _build_broker(config)).run(
+    def run(config: AppConfig) -> dict[str, object]:
+        return InitializationService(config, lambda: _build_broker(config)).run(
             force=force
         )
-        _print_json(result)
 
-    _execute("init", {"force": force}, run)
+    configure_logging()
+    with live_progress_session("正在启动初始化"):
+        result = _execute("init", {"force": force}, run)
+    _print_json(result)
 
 
 @app.command(
@@ -875,4 +881,4 @@ def _safe_error_text(value: object) -> str:
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END --------------------------------------------------------------------
+# AI_GENERATE_END ---------------------------------------------------------------------

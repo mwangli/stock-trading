@@ -1,11 +1,13 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 import logging
 import socket
 import threading
 from collections.abc import Callable
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import date
+from io import StringIO
 from types import TracebackType
 from typing import Any, TypeVar, cast
 from urllib.parse import urlparse
@@ -269,7 +271,9 @@ class BaoStockClient:
 
         def run() -> None:
             try:
-                outcome.append((True, request()))
+                console_noise = StringIO()
+                with redirect_stdout(console_noise), redirect_stderr(console_noise):
+                    outcome.append((True, request()))
             except BaseException as error:
                 outcome.append((False, error))
             finally:
@@ -301,4 +305,4 @@ class BaoStockClient:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END -------
+# AI_GENERATE_END --------
