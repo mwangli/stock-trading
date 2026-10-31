@@ -1,0 +1,32 @@
+# AI_GENERATE_START ----
+# STOCK_TRADING_CRON_BEGIN
+SHELL=/bin/bash
+PATH=__DEPLOY_DIR__/venv/bin:/usr/local/bin:/usr/bin:/bin
+CRON_TZ=Asia/Shanghai
+MAILTO=""
+
+STOCK_ENV=/etc/stock-trading/env
+LOG=/var/log/stock-trading/tasks.log
+LOCK=/data/stock-trading/state/scheduler.lock
+LOGROTATE=__DEPLOY_DIR__/cron/stock-trading.logrotate
+LOGROTATE_STATE=/data/stock-trading/state/logrotate.status
+
+# Data retention cleanup
+10 2 * * 0 /usr/bin/flock -n "$LOCK" /bin/bash -c 'set -a; source "$STOCK_ENV"; set +a; exec stock-trading cleanup' >> "$LOG" 2>&1
+
+# Log rotation
+30 2 * * * /usr/sbin/logrotate -s "$LOGROTATE_STATE" "$LOGROTATE"
+
+# Morning sell
+35 9 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -c 'set -a; source "$STOCK_ENV"; set +a; exec stock-trading sell' >> "$LOG" 2>&1
+
+# Afternoon buy
+5 13 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -c 'set -a; source "$STOCK_ENV"; set +a; exec stock-trading buy' >> "$LOG" 2>&1
+
+# Full-market daily bars
+30 15 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -c 'set -a; source "$STOCK_ENV"; set +a; exec stock-trading sync-market all' >> "$LOG" 2>&1
+
+# Broker facts and performance
+30 16 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -c 'set -a; source "$STOCK_ENV"; set +a; exec stock-trading evaluate' >> "$LOG" 2>&1
+# STOCK_TRADING_CRON_END
+# AI_GENERATE_END ----

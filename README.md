@@ -1,40 +1,83 @@
-<!-- AI_GENERATE_START----------------- -->
+<!-- AI_GENERATE_START---------------------------------------- -->
 # stock-trading
 
-面向 A 股的纯 Python T+1 自动交易验证系统。仓库只保留 BaoStock、Qlib、LightGBM、Parquet、SQLite 和 ZX 券商 HTTP 契约，不再包含 Java、React、Quartz、Agent、MySQL 或 MongoDB 运行链路。
+面向 A 股的纯 Python T+1 自动交易验证系统。项目只保留 BaoStock、Qlib、LightGBM、Parquet、SQLite 和经过真实响应确认的 ZX 券商 HTTP 契约。
+
+## 目标与边界
+
+系统只验证一个问题：`Alpha158 + LightGBM Regression` 产生的横截面 Top 5，能否稳定指导小资金 T+1 交易。
+
+模型只负责评分和排名；Python 确定性逻辑负责候选过滤、数量计算、T+1 时序、幂等提交和结果记录；券商最终判断订单是否接受。项目不包含 Java、Web 页面、Quartz、Agent、MySQL、MongoDB、消息队列或独立模型服务。
 
 ## 交易链路
 
 ```text
-D-1 收盘后：更新数据并生成 Top 5
+D-1 收盘后：更新数据并生成 D 日 Top 5
 D 日下午：从可交易 Top 5 中买入一只
 D+1 日上午：卖出全部可卖持仓
 D+1 收盘后：同步券商事实、绩效和模型评估
 ```
 
-当前基线模型固定为 `Alpha158 + LightGBM Regression`。模型负责横截面排名，确定性代码根据资金、持仓、价格范围和 T+1 规则生成订单；券商最终判断订单是否接受，本地只保证同一 `clientOrderId` 不重复提交并记录返回结果。
+当前标签与实际交易窗口保持一致：
 
-## 目录
+```text
+label(D-1, stock)
+= D+1 上午卖出窗口 VWAP / D 日下午买入窗口 VWAP - 1
+```
+
+BaoStock 5 分钟时间戳按 K 线结束时间解释。买入窗口使用完整落在 `13:05-14:54` 内的 21 根 K 线，卖出窗口使用完整落在 `09:35-11:25` 内的 22 根 K 线。窗口不完整的数据不能进入标签或回测成交。
+
+## 交易规则
+
+- 每次最多持有一只股票，买入数量按 100 股整数倍计算。
+- 候选来自 Top 5，代码固定使用 `0.01-1000000` 元的宽价格边界，等同于不设置业务价格门槛；由真实可用资金、100 股整手和手续费动态决定能否买入。
+- 默认研究和交易范围为沪市 `60`、深市 `00`；历史成功委托确认 `ALLOWED`，明确权限拒绝记录 `DENIED`，证据不足保持 `UNKNOWN`。
+- 上午卖出目标来自券商当前可卖持仓；下午买入目标来自 Top 5，存在其他持仓时不新增股票。
+- 真实委托不保存或复用旧五档价格和旧数量；每次提交前重新读取账户、持仓和五档行情。
+- 每次实时尝试使用独立 `clientOrderId`，SQLite 只记录恢复和审计所需的委托流水，不作为价格或数量事实源。
+- 委托后每 5 秒查询一次券商状态，最多观察 60 秒；未全部成交时申请撤单，只有确认 `CANCELLED` 后才重新报价。
+- 部分成交后按最新资金、持仓和可卖数量计算剩余委托；通信结果不确定或撤单未确认时停止重挂。
+- Action 110 只发送官方 H5 和真实历史响应已经确认的字段，禁止猜测参数。
+
+## 数据与状态
+
+- BaoStock：历史日线、5 分钟线和交易日历。
+- Parquet：不可变原始行情和质量审计输入。
+- Qlib：Alpha158 特征、训练数据和横截面预测。
+- SQLite：任务、模型、预测、委托尝试、券商事实、成交和绩效的本地状态库。
+- ZX 券商：实时账户、持仓、行情、委托和成交事实；不作为历史训练数据源。
+
+运行数据位于 `var/`：
+
+```text
+var/
+├── market/                # Parquet 原始行情
+├── qlib/                  # Qlib 日历、股票池和特征
+├── artifacts/             # 模型、预测和回测制品
+└── state/trading.db       # SQLite 权威状态
+```
+
+## 项目结构
 
 ```text
 stock-trading4/
-├── stock-trading/          # 唯一应用，CLI + SQLite
-├── documents/              # ADR 和阶段证据
-├── .tmp/                   # 临时验证文件，不提交
-├── .env                    # 本地敏感配置，不提交
-└── README.md
+├── pyproject.toml
+├── src/stock_trading/
+│   ├── market/            # 数据采集与质量审计
+│   ├── research/          # 标签、Qlib、训练、推理和回测
+│   ├── broker/            # ZX 券商 HTTP 契约
+│   ├── state/             # SQLite 状态
+│   ├── trading/           # 计划、提交、恢复和绩效
+│   └── initialization.py  # 可恢复、幂等的初始化协调器
+├── var/                   # 本地运行数据，不提交
+├── .tmp/                  # 临时验证文件，不提交
+├── stock-trading.env      # 本地敏感配置，不提交
+└── README.md              # 项目唯一说明文档
 ```
-
-运行数据位于 `stock-trading/var/`：
-
-- `market/`：Parquet 原始行情。
-- `qlib/`：Qlib 日历、股票池和特征数据。
-- `artifacts/`：模型、预测和回测制品。
-- `state/trading.db`：任务、模型、订单、成交、持仓和绩效状态。
 
 ## 安装
 
-在 `stock-trading/` 目录创建 Python 3.11-3.13 虚拟环境：
+在仓库根目录创建 Python 3.11-3.13 虚拟环境：
 
 ```bash
 python -m venv .venv
@@ -43,47 +86,207 @@ python -m venv .venv
 
 Linux 使用 `.venv/bin/python`。
 
-## 关键命令
+## 命令行
 
-```bash
-# 状态与恢复
-stock-trading show-state
-stock-trading recover-state
-stock-trading recover-broker-orders --date YYYY-MM-DD
+以下示例使用安装后生成的 `stock-trading` 命令。Windows 默认推荐使用完整的解释器命令，避免系统中其他 Python 版本干扰：
 
-# 数据、训练与预测
-stock-trading sync-daily --date YYYY-MM-DD
-stock-trading build-qlib --codes sh.600000 sz.000001
-stock-trading train-baseline --train-start YYYY-MM-DD --train-end YYYY-MM-DD \
-  --valid-start YYYY-MM-DD --valid-end YYYY-MM-DD \
-  --test-start YYYY-MM-DD --test-end YYYY-MM-DD
-stock-trading predict-latest --date YYYY-MM-DD
-
-# 操作系统调度调用的无人值守窗口
-stock-trading run-morning-trading --date YYYY-MM-DD
-stock-trading run-afternoon-trading --date YYYY-MM-DD
-stock-trading update-live-performance --date YYYY-MM-DD
+```powershell
+D:\python\python.exe -m stock_trading
 ```
 
-上午/下午入口只生成幂等计划并提交。券商返回委托号时记录为 `SUBMITTED`，明确拒绝时记录为 `REJECTED`，通信结果不确定时记录为 `UNKNOWN`；订单终态由独立恢复命令或收盘后同步更新，本地不再设置真实交易开关或准入门禁。
+例如查看帮助：
+
+```powershell
+D:\python\python.exe -m stock_trading --help
+```
+
+只有将 `D:\python\Scripts` 加入 Windows `PATH` 并重新打开终端后，才能直接使用 `stock-trading`。也可以只在当前 PowerShell 临时启用：
+
+```powershell
+$env:Path = "D:\python\Scripts;$env:Path"
+stock-trading --help
+```
+
+项目只保留 `stock-trading --help` 总帮助，不提供二级帮助。子命令后追加 `-h` 或 `--help` 会直接提示参数错误：
+
+```bash
+stock-trading --help
+```
+
+命令统一使用位置参数和默认值：日期格式固定为 `YYYY-MM-DD`；省略日期时默认当天；日期范围包含开始日和结束日；参数数量或格式错误时直接显示中文提示。
+
+### 初始化
+
+```bash
+# 首次初始化；已完成阶段通过文件检查后自动跳过
+stock-trading init
+
+# 删除项目 var 后从头初始化，属于危险操作
+stock-trading init --force
+```
+
+初始化固定执行最近三年的股票基础信息、日线、复权因子和 5 分钟线采集，然后构建 Qlib、训练 `Alpha158 + LightGBM`、执行 2000/3000/5000/10000 元四档回测、生成最近交易日预测，并尽力同步券商历史委托和成交。采集完成后只保留最近 90 个自然日的原始分钟线，训练和回测使用至少保留 5 年的分钟窗口聚合结果。
+
+初始化不使用任务缓存判断是否跳过。每次运行都直接检查 Parquet、QLib、模型、回测、预测文件和 SQLite 业务数据：实际数据有效就跳过，缺失或损坏就只重建对应阶段。`task_run` 仅保留具体导入动作的执行日志，不作为初始化完成依据。券商历史事实每次都会尝试重新查询和幂等写入；登录或查询失败不阻止模型达到可预测状态，最终结果会分别输出 `modelReady`、`predictionReady` 和 `brokerReady`。
+
+`--force` 只允许所有运行目录位于项目根目录的 `var/` 下；它不会删除代码或 `stock-trading.env`。配置到项目外的数据目录时会拒绝执行强制删除。
+
+初始化不会自动提交无意义真实订单探测权限。历史成功委托和后续真实受理订单会更新市场权限；非交易时间、资金不足等结果不能证明权限，保持 `UNKNOWN` 并由券商在真实提交时最终判断。
+
+### 数据
+
+```bash
+# 同步当天、指定单日或日期范围的全市场日线
+stock-trading sync-market all
+stock-trading sync-market all 2026-10-29
+stock-trading sync-market all 2026-10-01 2026-10-29
+
+# 同步指定股票的日线、复权因子和 5 分钟线；默认最近三年至当天
+stock-trading sync-market sh.600000,sz.000001
+stock-trading sync-market sh.600000,sz.000001 2023-01-01 2026-10-29
+```
+
+`sync-market` 是唯一公开行情采集命令。`all` 模式只采集全市场日线，不采集全市场分钟线，并按请求日期重新拉取、原子覆盖对应日线分区；股票列表模式采集对应股票训练所需的日线、复权因子和 5 分钟线，实际 Parquet 已完整覆盖时跳过。日线和复权因子按日期合并去重；5 分钟原始数据按股票压缩为单个 Parquet，只保留最近 90 个自然日。训练标签和回测需要的上午卖出窗口、下午买入窗口 VWAP/高低价按交易日聚合，每只股票一个聚合文件，至少保留 5 年。旧的 `code/trade_date/bars.parquet` 分区由 `cleanup` 一次性合并后删除。
+
+### 数据清理
+
+`cleanup` 直接检查并整理实际文件，不使用额外清理缓存。默认保留规则：
+
+- 原始 5 分钟数据保留最近 90 个自然日。
+- T+1 分钟窗口聚合结果保留 5 年。
+- SQLite `task_run` 运行日志保留 180 天。
+- 券商账户和持仓快照保留 1 年。
+- 预测、回测/实盘绩效、模型评估、已终结委托和成交事实保留 5 年。
+- 活动委托、当前持仓、模型版本、训练请求、券商权限永久保留；已完成训练请求保留 5 年。
+
+清理完成后 SQLite 会执行 WAL 截断、`VACUUM` 和优化，以实际释放磁盘空间。生产 Cron 每周日凌晨执行一次 `cleanup`。按全市场约三年初始化数据估算，改造后原始分钟数据约 1.2-1.8GB，长期窗口聚合约 100-300MB，整个持久化目录目标控制在 3-5GB；实际大小取决于股票数量、Parquet 压缩率和模型版本数量。
+
+### 模型与回测
+
+```bash
+# 只读取本地 Parquet，核验分钟分区并重建 Qlib；不访问 BaoStock
+stock-trading pre-train sh.600000,sz.000001
+stock-trading pre-train sh.600000,sz.000001 2023-01-01 2026-10-29
+
+# 使用现有 Qlib，按 70%/15%/15% 自动切分后训练
+stock-trading train
+
+# 明确指定训练、验证和测试区间时，一次传入 6 个日期
+stock-trading train 2023-01-01 2025-06-30 2025-07-01 2025-12-31 2026-01-01 2026-10-29
+
+# 使用默认 1 万元执行回测并自动导入 SQLite；也可只传初始资金
+stock-trading backtest
+stock-trading backtest 50000
+
+# 生成当天或指定日期的横截面评分和 Top 5，并写入 SQLite
+stock-trading predict
+stock-trading predict 2026-10-29
+
+# 恢复中断任务，并显示 SQLite 摘要和训练请求
+stock-trading status
+
+# 压缩旧分钟分区，并执行分钟和 SQLite 分级清理；默认以当天为基准
+stock-trading cleanup
+stock-trading cleanup 2026-10-31
+```
+
+每次训练写入 `var/artifacts/alpha158-lightgbm/versions/<version>/` 的独立目录。只有模型、指标和预测制品全部写完并通过读取检查后，才会原子替换 `current.json` 指针。训练失败或 Ctrl+C 不会覆盖当前可用模型；`predict`、`backtest` 和初始化统一读取指针指向的版本。旧固定目录在尚未生成指针时仍可兼容读取。
+
+### 券商与交易
+
+```bash
+# 同步当天券商事实并恢复本地委托；也可指定日期
+stock-trading sync-broker
+stock-trading sync-broker 2026-10-29
+
+# 按实时持仓和五档执行当天上午卖出；也可指定日期
+stock-trading sell
+stock-trading sell 2026-10-29
+
+# 按 Top 5、实时资金和五档执行当天下午买入；也可指定日期
+stock-trading buy
+stock-trading buy 2026-10-29
+
+# 同步绩效并执行滚动评估；第二个参数为入金正数或出金负数
+stock-trading evaluate
+stock-trading evaluate 2026-10-29
+stock-trading evaluate 2026-10-29 10000
+```
+
+原来的 `sync-daily`、`sync-minute`、`sync-research` 和 `check-minute` 已统一为 `sync-market`；Qlib 核验和重建统一由 `pre-train` 完成，`train` 只负责模型训练。`sync-state` 已并入 `backtest`，状态查看、任务恢复和训练请求已并入 `status`，券商事实同步和委托恢复已并入 `sync-broker`。真实交易不再创建影子价格计划，统一由 `buy`、`sell` 在执行窗口内完成实时查询、提交、状态轮询、撤单确认和重新报价。
+
+`buy` 只固定本次使用的模型候选，`sell` 只固定本次处理的持仓标的；价格和数量不缓存。每次尝试前重新读取券商账户、持仓和五档，提交后每 5 秒查询一次，最长观察 60 秒。未全部成交时先申请撤单，确认券商终态为 `CANCELLED` 后，再根据最新事实提交剩余数量。提交结果不确定、撤单未确认、达到最大尝试次数或执行窗口结束时立即停止，禁止盲目重挂。
+
+当前唯一执行策略为固定配置 `FIXED_TIME_URGENCY`，默认执行窗口 15 分钟、最多 12 次尝试：
+
+| 执行窗口进度 | 买入价格 | 卖出价格 | 目的 |
+| --- | --- | --- | --- |
+| 前 50% | 买三 `BID3` | 卖三 `ASK3` | 被动等待价格改善 |
+| 50%-85% | 买一 `BID1` | 卖一 `ASK1` | 回到最优同侧报价 |
+| 最后 15% | 卖一 `ASK1` | 买一 `BID1` | 跨价提高完成率 |
+
+策略参数统一定义在 `src/stock_trading/config.py`，不从 `stock-trading.env` 或操作系统环境变量读取。调整这些值属于代码策略变更，需要同步审查策略行为：
+
+| 代码常量 | 固定值 | 含义 |
+| --- | ---: | --- |
+| `TRADING_MIN_PRICE` | `0.01` | 最低参考价格；当前宽边界不形成实际业务过滤 |
+| `TRADING_MAX_PRICE` | `1000000` | 最高参考价格；当前宽边界不形成实际业务过滤 |
+| `EXECUTION_WINDOW_SECONDS` | `900` | 单次买入或卖出执行窗口 15 分钟 |
+| `ORDER_WAIT_SECONDS` | `60` | 单笔委托最多观察 60 秒 |
+| `ORDER_POLL_SECONDS` | `5` | 每 5 秒查询一次委托状态 |
+| `CANCEL_CONFIRM_SECONDS` | `30` | 撤单后最多等待 30 秒确认终态 |
+| `MAX_ATTEMPTS` | `12` | 一个执行窗口内最多提交 12 次 |
+| `PASSIVE_FRACTION` | `0.50` | 前 50% 窗口使用买三或卖三 |
+| `NORMAL_FRACTION` | `0.85` | 50%-85% 使用买一或卖一，之后进入主动跨价阶段 |
+
+当前五档接口只解析价格，没有每档挂单量，因此最后阶段只跨到对手一档，不直接使用对手二至五档扫单。后续只有在确认五档数量字段并积累真实成交、撤单和滑点数据后，才考虑多策略选择或自动适应。
+
+主动按 `Ctrl+C` 时，如果已有 `SUBMITTED` 或 `PARTIAL` 委托，程序会先申请撤单并等待券商确认；如果正处于提交结果不确定或待撤状态，则保留恢复流水并退出，不会自动提交新单。之后运行 `sync-broker` 或重新执行同一买卖命令，都会先查询券商当日委托再决定是否继续。
 
 ## 调度
 
-应用不内置 Quartz 或其他调度框架。生产环境使用 `cron` 或 `systemd timer` 在北京时间触发 CLI：
+应用不内置调度框架。生产环境使用 `cron` 或 `systemd timer`，按北京时间调用幂等 CLI：
 
-- 交易日前收盘后更新行情并生成预测。
-- 交易日开盘后调用上午卖出入口。
+- 收盘后更新行情、生成预测并同步绩效。
+- 交易日上午调用卖出入口。
 - 交易日下午调用买入入口。
-- 收盘后同步绩效并执行滚动模型评估。
+- 模型重训由 SQLite 训练请求和确定性策略触发，不按每日固定时间训练。
 
-## 当前证据
+## 运行日志
 
-阶段 1-10 已完成数据、模型、回测、SQLite、券商协议、生产推理、影子计划、执行恢复、绩效评估和真实准入源码闭环。真实 Action 110 已进入券商交易时间校验，但成功委托、真实撤单和成交终态恢复由后续合法交易时段验证。
+所有 CLI 命令都会打印业务开始、关键参数、阶段进度、完成耗时和失败原因。行情采集每接收 500 条数据报告一次进度；研究数据、Qlib 构建和回测按数据规模分段报告进度；模型训练打印样本、特征和 LightGBM 迭代指标；预测打印全市场评分和 TopK；买卖打印候选筛选、五档行情、资金数量计算、订单状态流转和券商结果；恢复与绩效打印事实数量、状态分布和模型评估决策。日志不会输出券商凭据、验证码、Token、Cookie 或完整响应报文。
 
-- [架构决策](documents/decisions/adr-002-python-t1-minimal-rebuild.md)
-- [阶段 10：真实验证准入](documents/reports/stage-10-real-validation-readiness.md)
-- [阶段 11：纯 Python 替换收口](documents/reports/stage-11-python-only-cutover.md)
-- [阶段 12：券商结果直记](documents/reports/stage-12-broker-result-recording.md)
+日志写入标准错误流，最终 JSON 结果继续写入标准输出，便于人工观察并保持调度程序可解析。生产环境的 `/var/log/stock-trading/tasks.log` 使用 `logrotate`：每天检查，单文件达到 20MB 即轮转，保留 14 份并压缩历史日志；Cron 每天凌晨执行轮转。
 
-`SOURCE_IMPLEMENTED` 只表示源码和文件层面完成，不代表测试、运行或真实交易验证通过。
-<!-- AI_GENERATE_END----------------- -->
+默认日志级别为 `INFO`，可通过环境变量调整：
+
+```text
+STOCK_TRADING_LOG_LEVEL=WARNING
+```
+
+## Bark 通知
+
+在 `stock-trading.env` 或服务器 `/etc/stock-trading/env` 中配置 `DEVICE_KEY` 后，买卖委托被券商受理时会推送交易摘要；委托被拒绝、结果未知或任意 CLI 业务异常时会推送失败信息。正常的数据同步、训练、预测和评估保持静默。
+
+系统异常通知中的日志入口固定为 `http://117.72.216.67/logs/tasks.log`，对应部署流水线使用的 `/var/log/stock-trading/tasks.log`。Bark 推送失败只记录本地警告，不改变原业务结果。
+
+## 当前验证状态
+
+工程链路已经覆盖数据采集、Alpha158 特征、LightGBM 训练、Top 5 推理、组合回测、SQLite 状态、券商登录、订单提交和事实恢复，但盈利能力尚未通过验证。
+
+已留存的 20 只股票基线结果：
+
+```text
+IC Mean:        -0.0136767
+Rank IC Mean:   -0.0178742
+1 万元完整成本净收益: -22.75%
+2 万元完整成本净收益: -19.00%
+5 万元完整成本净收益: -19.19%
+```
+
+这些结果表明当前模型不能作为“稳定盈利”证据，扩大股票池、消除幸存者偏差并完成滚动样本外验证仍是模型侧的首要任务。代码已经取消本地复杂提单门禁，因此技术上可以按实时券商事实提交委托，但真实交易不应被误认为模型已经达到业务收益目标。
+
+真实券商验证已确认登录、30 分钟 Token 缓存、账户/持仓/委托/成交读取以及 Action 110 的股东账号和市场参数。真实探测已到达券商交易时间校验，但尚未取得成功委托号，也未验证真实撤单、部分成交和完整绩效闭环。
+
+当前仓库变更只完成源码和文件层面检查。除非另有明确记录，不能把 `SOURCE_IMPLEMENTED` 描述为测试通过、运行通过或生产验证通过。
+<!-- AI_GENERATE_END----------------------------------------- -->

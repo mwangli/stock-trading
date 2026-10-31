@@ -1,0 +1,10 @@
+/var/log/stock-trading/tasks.log {
+    daily
+    size 20M
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

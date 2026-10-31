@@ -1,0 +1,169 @@
+name: Release Wheel
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-production
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Validate release version
+        shell: bash
+        run: |
+          project_version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          test "$GITHUB_REF_NAME" = "v$project_version"
+
+      - name: Validate cron
+        shell: bash
+        run: |
+          test "$(grep -c '^# STOCK_TRADING_CRON_BEGIN$' .github/stock-trading.cron)" -eq 1
+          test "$(grep -c '^# STOCK_TRADING_CRON_END$' .github/stock-trading.cron)" -eq 1
+          test "$(grep -Ec '^[0-9]+ [0-9]+ ' .github/stock-trading.cron)" -eq 6
+          grep -Fq '__DEPLOY_DIR__/venv/bin' .github/stock-trading.cron
+          grep -Fq 'stock-trading sell' .github/stock-trading.cron
+          grep -Fq 'stock-trading buy' .github/stock-trading.cron
+          grep -Fq 'stock-trading sync-market all' .github/stock-trading.cron
+          grep -Fq 'stock-trading evaluate' .github/stock-trading.cron
+          grep -Fq 'stock-trading cleanup' .github/stock-trading.cron
+          grep -Fq '/usr/sbin/logrotate' .github/stock-trading.cron
+          test -f .github/stock-trading.logrotate
+
+      - name: Build wheel
+        run: |
+          python -m pip install build
+          python -m build --wheel
+
+      - name: Upload release files
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          source: "dist/*.whl,.github/stock-trading.cron,.github/stock-trading.logrotate"
+          target: ${{ format('{0}/releases/{1}', vars.SERVER_DEPLOY_DIR, github.ref_name) }}
+          strip_components: 1
+          overwrite: true
+
+      - name: Install release
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          envs: DEPLOY_DIR,RELEASE_TAG
+          script: |
+            set -eu
+            deploy_dir="${DEPLOY_DIR%/}"
+            release_dir="$deploy_dir/releases/$RELEASE_TAG"
+            venv_dir="$deploy_dir/venv"
+            cron_template="$release_dir/stock-trading.cron"
+            logrotate_template="$release_dir/stock-trading.logrotate"
+            cron_dir="$deploy_dir/cron"
+            cron_file="$cron_dir/stock-trading.cron"
+            logrotate_file="$cron_dir/stock-trading.logrotate"
+
+            printf '%s\n' "$deploy_dir" | grep -Eq '^/[A-Za-z0-9._/-]+$'
+            command -v crontab >/dev/null
+            command -v cmp >/dev/null
+            command -v pgrep >/dev/null
+            [ -x /usr/sbin/logrotate ]
+            [ -x /usr/bin/flock ]
+            [ -r /etc/stock-trading/env ]
+            [ -f "$cron_template" ]
+            [ -f "$logrotate_template" ]
+            if ! pgrep -x cron >/dev/null && ! pgrep -x crond >/dev/null; then
+              echo "Cron daemon is not running" >&2
+              exit 1
+            fi
+
+            set -- "$release_dir"/*.whl
+            if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+              echo "Expected exactly one wheel in $release_dir" >&2
+              exit 1
+            fi
+            if [ ! -x "$venv_dir/bin/python" ]; then
+              python3 -m venv "$venv_dir"
+            fi
+            "$venv_dir/bin/python" -m pip install --upgrade "$1[research]"
+            "$venv_dir/bin/stock-trading" --help >/dev/null
+
+            mkdir -p \
+              "$cron_dir" \
+              /data/stock-trading/market \
+              /data/stock-trading/qlib \
+              /data/stock-trading/artifacts \
+              /data/stock-trading/state \
+              /var/log/stock-trading
+            touch \
+              /data/stock-trading/state/scheduler.lock \
+              /var/log/stock-trading/tasks.log
+
+            sed \
+              -e "s|__DEPLOY_DIR__|$deploy_dir|g" \
+              -e '/^# AI_GENERATE_/d' \
+              "$cron_template" > "$cron_file"
+            cp "$logrotate_template" "$logrotate_file"
+            test "$(grep -c '^# STOCK_TRADING_CRON_BEGIN$' "$cron_file")" -eq 1
+            test "$(grep -c '^# STOCK_TRADING_CRON_END$' "$cron_file")" -eq 1
+            grep -Fq "$venv_dir/bin" "$cron_file"
+            grep -Fq '/var/log/stock-trading/tasks.log' "$logrotate_file"
+
+            current_cron="$(mktemp)"
+            next_cron="$(mktemp)"
+            installed_cron="$(mktemp)"
+            trap 'rm -f "$current_cron" "$next_cron" "$installed_cron"' EXIT
+            crontab -l > "$current_cron" 2>/dev/null || true
+            begin_count="$(grep -c '^# STOCK_TRADING_CRON_BEGIN$' "$current_cron" || true)"
+            end_count="$(grep -c '^# STOCK_TRADING_CRON_END$' "$current_cron" || true)"
+            test "$begin_count" -eq "$end_count"
+            test "$begin_count" -le 1
+            awk '
+              $0 == "# STOCK_TRADING_CRON_BEGIN" { managed = 1; next }
+              $0 == "# STOCK_TRADING_CRON_END" { managed = 0; next }
+              !managed && $0 ~ /^[[:space:]]*$/ { pending_blanks = pending_blanks "\n"; next }
+              !managed {
+                if (pending_blanks != "") {
+                  printf "%s", pending_blanks
+                  pending_blanks = ""
+                }
+                print
+              }
+            ' "$current_cron" > "$next_cron"
+            if [ -s "$next_cron" ]; then
+              printf '\n' >> "$next_cron"
+            fi
+            cat "$cron_file" >> "$next_cron"
+            crontab "$next_cron"
+            test "$(crontab -l | grep -c '^# STOCK_TRADING_CRON_BEGIN$')" -eq 1
+            test "$(crontab -l | grep -c '^# STOCK_TRADING_CRON_END$')" -eq 1
+            crontab -l | awk '
+              $0 == "# STOCK_TRADING_CRON_BEGIN" { managed = 1 }
+              managed { print }
+              $0 == "# STOCK_TRADING_CRON_END" { exit }
+            ' > "$installed_cron"
+            cmp "$cron_file" "$installed_cron"
