@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------------
+# AI_GENERATE_START -----------------------------------------------
 from __future__ import annotations
 
 import argparse
@@ -45,18 +45,18 @@ PUBLIC_LOG_URL = "http://117.72.216.67/logs/tasks.log"
 
 
 COMMANDS = (
-    ("init", "初始化行情、模型、回测、预测和券商历史状态", "stock-trading init"),
-    ("sync-market", "统一采集全市场日线或指定股票训练行情", "stock-trading sync-market all 2026-10-29"),
-    ("pre-train", "核验本地训练行情并重建 Qlib", "stock-trading pre-train sh.600000,sz.000001"),
-    ("train", "使用现有 Qlib 训练 Alpha158 + LightGBM 模型", "stock-trading train"),
-    ("backtest", "执行单持仓 T+1 回测并自动导入 SQLite", "stock-trading backtest 10000"),
-    ("predict", "生成横截面评分和 Top 5，并写入 SQLite", "stock-trading predict 2026-10-29"),
-    ("status", "恢复中断任务并显示 SQLite 状态和训练请求", "stock-trading status"),
-    ("cleanup", "压缩分钟数据并执行 SQLite 分级清理", "stock-trading cleanup"),
-    ("sync-broker", "同步券商事实并恢复本地委托状态", "stock-trading sync-broker"),
-    ("sell", "按实时五档执行上午卖出", "stock-trading sell"),
-    ("buy", "按实时五档执行下午买入", "stock-trading buy"),
-    ("evaluate", "同步券商绩效并执行滚动模型评估", "stock-trading evaluate 2026-10-29 10000"),
+    ("init", "初始化完整交易环境"),
+    ("market", "更新市场行情数据"),
+    ("prepare", "校验数据并重建 Qlib"),
+    ("train", "训练 Alpha158 + LightGBM 模型"),
+    ("backtest", "执行单持仓 T+1 回测"),
+    ("predict", "生成 Top 5 预测"),
+    ("sell", "执行上午实时卖出"),
+    ("buy", "执行下午实时买入"),
+    ("broker", "同步券商事实并恢复委托"),
+    ("evaluate", "同步绩效并执行模型评估"),
+    ("status", "恢复任务并显示运行状态"),
+    ("clean", "压缩数据并执行分级清理"),
 )
 
 
@@ -147,7 +147,7 @@ def _dispatch(
             config, lambda: _build_broker(config)
         ).run(force=bool(arguments.force))
         _print_json(result)
-    elif arguments.command == "sync-market":
+    elif arguments.command == "market":
         _require_argument_count(values, 1, 3, command_parser)
         if values[0].lower() == "all":
             start_date, end_date = _parse_optional_date_range(
@@ -160,7 +160,7 @@ def _dispatch(
                 values[1:], command_parser, today
             )
             _sync_market_codes(config, codes, start_date, end_date)
-    elif arguments.command == "pre-train":
+    elif arguments.command == "prepare":
         _require_argument_count(values, 1, 3, command_parser)
         codes = _parse_stock_codes(values[0], command_parser)
         start_date, end_date = _parse_history_date_range(
@@ -191,10 +191,10 @@ def _dispatch(
     elif arguments.command == "status":
         _require_argument_count(values, 0, 0, command_parser)
         _status(config)
-    elif arguments.command == "cleanup":
+    elif arguments.command == "clean":
         cleanup_date = _parse_optional_date(values, command_parser, today)
         _cleanup(config, cleanup_date)
-    elif arguments.command == "sync-broker":
+    elif arguments.command == "broker":
         business_date = _parse_optional_date(values, command_parser, today)
         _sync_broker(config, business_date)
     elif arguments.command == "sell":
@@ -228,8 +228,8 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="命令",
         parser_class=ChineseArgumentParser,
     )
-    for name, summary, example in COMMANDS:
-        _add_command(subparsers, name, summary, example)
+    for name, summary in COMMANDS:
+        _add_command(subparsers, name, summary)
     return parser
 
 
@@ -237,11 +237,10 @@ def _add_command(
     subparsers: argparse._SubParsersAction,
     name: str,
     summary: str,
-    example: str,
 ) -> None:
     command = subparsers.add_parser(
         name,
-        help=f"{summary}；示例：{example}",
+        help=summary,
         add_help=False,
     )
     if name == "init":
@@ -443,7 +442,7 @@ def _pre_train(
     missing_codes = [code for code in codes if code not in valid_codes]
     if missing_codes:
         command = (
-            "stock-trading sync-market "
+            "stock-trading market "
             f"{','.join(missing_codes)} {start_date.isoformat()} {end_date.isoformat()}"
         )
         raise ValueError(
@@ -476,7 +475,7 @@ def _pre_train(
 def _train(config: AppConfig, segments: ModelSegments | None) -> None:
     calendar_path = config.qlib_dir / "calendars" / "day.txt"
     if not calendar_path.is_file():
-        raise ValueError("Qlib 数据不存在，请先执行 pre-train")
+        raise ValueError("Qlib 数据不存在，请先执行 prepare")
     if segments is None:
         segments = automatic_model_segments(calendar_path)
     LOGGER.info(
@@ -803,4 +802,4 @@ def _safe_error_text(value: object) -> str:
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END ----------------------------------------------
+# AI_GENERATE_END -----------------------------------------------

@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: stock-production
+  group: stock-trading-wheel-production
   cancel-in-progress: false
 
 jobs:
@@ -19,6 +19,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Validate release branch
+        shell: bash
+        run: |
+          git fetch origin stock-trading --depth=1
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse FETCH_HEAD)" ]; then
+            echo "Release tag must point to the latest origin/stock-trading commit" >&2
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -40,9 +51,9 @@ jobs:
           grep -Fq '__DEPLOY_DIR__/venv/bin' .github/stock-trading.cron
           grep -Fq 'stock-trading sell' .github/stock-trading.cron
           grep -Fq 'stock-trading buy' .github/stock-trading.cron
-          grep -Fq 'stock-trading sync-market all' .github/stock-trading.cron
+          grep -Fq 'stock-trading market all' .github/stock-trading.cron
           grep -Fq 'stock-trading evaluate' .github/stock-trading.cron
-          grep -Fq 'stock-trading cleanup' .github/stock-trading.cron
+          grep -Fq 'stock-trading clean' .github/stock-trading.cron
           grep -Fq '/usr/sbin/logrotate' .github/stock-trading.cron
           test -f .github/stock-trading.logrotate
 
@@ -87,15 +98,37 @@ jobs:
             cron_file="$cron_dir/stock-trading.cron"
             logrotate_file="$cron_dir/stock-trading.logrotate"
 
-            printf '%s\n' "$deploy_dir" | grep -Eq '^/[A-Za-z0-9._/-]+$'
-            command -v crontab >/dev/null
-            command -v cmp >/dev/null
-            command -v pgrep >/dev/null
-            [ -x /usr/sbin/logrotate ]
-            [ -x /usr/bin/flock ]
-            [ -r /etc/stock-trading/env ]
-            [ -f "$cron_template" ]
-            [ -f "$logrotate_template" ]
+            require_command() {
+              command -v "$1" >/dev/null || {
+                echo "Missing required command: $1" >&2
+                exit 1
+              }
+            }
+            require_file() {
+              [ -r "$1" ] || {
+                echo "Missing required readable file: $1" >&2
+                exit 1
+              }
+            }
+
+            printf '%s\n' "$deploy_dir" | grep -Eq '^/[A-Za-z0-9._/-]+$' || {
+              echo "Invalid deployment directory: $deploy_dir" >&2
+              exit 1
+            }
+            require_command crontab
+            require_command cmp
+            require_command pgrep
+            [ -x /usr/sbin/logrotate ] || {
+              echo "Missing executable: /usr/sbin/logrotate" >&2
+              exit 1
+            }
+            [ -x /usr/bin/flock ] || {
+              echo "Missing executable: /usr/bin/flock" >&2
+              exit 1
+            }
+            require_file /etc/stock-trading/env
+            require_file "$cron_template"
+            require_file "$logrotate_template"
             if ! pgrep -x cron >/dev/null && ! pgrep -x crond >/dev/null; then
               echo "Cron daemon is not running" >&2
               exit 1

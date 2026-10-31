@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START---------------------------------------- -->
+<!-- AI_GENERATE_START----------------------------------------- -->
 # stock-trading
 
 面向 A 股的纯 Python T+1 自动交易验证系统。项目只保留 BaoStock、Qlib、LightGBM、Parquet、SQLite 和经过真实响应确认的 ZX 券商 HTTP 契约。
@@ -137,20 +137,20 @@ stock-trading init --force
 
 ```bash
 # 同步当天、指定单日或日期范围的全市场日线
-stock-trading sync-market all
-stock-trading sync-market all 2026-10-29
-stock-trading sync-market all 2026-10-01 2026-10-29
+stock-trading market all
+stock-trading market all 2026-10-29
+stock-trading market all 2026-10-01 2026-10-29
 
 # 同步指定股票的日线、复权因子和 5 分钟线；默认最近三年至当天
-stock-trading sync-market sh.600000,sz.000001
-stock-trading sync-market sh.600000,sz.000001 2023-01-01 2026-10-29
+stock-trading market sh.600000,sz.000001
+stock-trading market sh.600000,sz.000001 2023-01-01 2026-10-29
 ```
 
-`sync-market` 是唯一公开行情采集命令。`all` 模式只采集全市场日线，不采集全市场分钟线，并按请求日期重新拉取、原子覆盖对应日线分区；股票列表模式采集对应股票训练所需的日线、复权因子和 5 分钟线，实际 Parquet 已完整覆盖时跳过。日线和复权因子按日期合并去重；5 分钟原始数据按股票压缩为单个 Parquet，只保留最近 90 个自然日。训练标签和回测需要的上午卖出窗口、下午买入窗口 VWAP/高低价按交易日聚合，每只股票一个聚合文件，至少保留 5 年。旧的 `code/trade_date/bars.parquet` 分区由 `cleanup` 一次性合并后删除。
+`market` 是唯一公开行情采集命令。`all` 模式只采集全市场日线，不采集全市场分钟线，并按请求日期重新拉取、原子覆盖对应日线分区；股票列表模式采集对应股票训练所需的日线、复权因子和 5 分钟线，实际 Parquet 已完整覆盖时跳过。日线和复权因子按日期合并去重；5 分钟原始数据按股票压缩为单个 Parquet，只保留最近 90 个自然日。训练标签和回测需要的上午卖出窗口、下午买入窗口 VWAP/高低价按交易日聚合，每只股票一个聚合文件，至少保留 5 年。旧的 `code/trade_date/bars.parquet` 分区由 `clean` 一次性合并后删除。
 
 ### 数据清理
 
-`cleanup` 直接检查并整理实际文件，不使用额外清理缓存。默认保留规则：
+`clean` 直接检查并整理实际文件，不使用额外清理缓存。默认保留规则：
 
 - 原始 5 分钟数据保留最近 90 个自然日。
 - T+1 分钟窗口聚合结果保留 5 年。
@@ -159,14 +159,14 @@ stock-trading sync-market sh.600000,sz.000001 2023-01-01 2026-10-29
 - 预测、回测/实盘绩效、模型评估、已终结委托和成交事实保留 5 年。
 - 活动委托、当前持仓、模型版本、训练请求、券商权限永久保留；已完成训练请求保留 5 年。
 
-清理完成后 SQLite 会执行 WAL 截断、`VACUUM` 和优化，以实际释放磁盘空间。生产 Cron 每周日凌晨执行一次 `cleanup`。按全市场约三年初始化数据估算，改造后原始分钟数据约 1.2-1.8GB，长期窗口聚合约 100-300MB，整个持久化目录目标控制在 3-5GB；实际大小取决于股票数量、Parquet 压缩率和模型版本数量。
+清理完成后 SQLite 会执行 WAL 截断、`VACUUM` 和优化，以实际释放磁盘空间。生产 Cron 每周日凌晨执行一次 `clean`。按全市场约三年初始化数据估算，改造后原始分钟数据约 1.2-1.8GB，长期窗口聚合约 100-300MB，整个持久化目录目标控制在 3-5GB；实际大小取决于股票数量、Parquet 压缩率和模型版本数量。
 
 ### 模型与回测
 
 ```bash
 # 只读取本地 Parquet，核验分钟分区并重建 Qlib；不访问 BaoStock
-stock-trading pre-train sh.600000,sz.000001
-stock-trading pre-train sh.600000,sz.000001 2023-01-01 2026-10-29
+stock-trading prepare sh.600000,sz.000001
+stock-trading prepare sh.600000,sz.000001 2023-01-01 2026-10-29
 
 # 使用现有 Qlib，按 70%/15%/15% 自动切分后训练
 stock-trading train
@@ -186,8 +186,8 @@ stock-trading predict 2026-10-29
 stock-trading status
 
 # 压缩旧分钟分区，并执行分钟和 SQLite 分级清理；默认以当天为基准
-stock-trading cleanup
-stock-trading cleanup 2026-10-31
+stock-trading clean
+stock-trading clean 2026-10-31
 ```
 
 每次训练写入 `var/artifacts/alpha158-lightgbm/versions/<version>/` 的独立目录。只有模型、指标和预测制品全部写完并通过读取检查后，才会原子替换 `current.json` 指针。训练失败或 Ctrl+C 不会覆盖当前可用模型；`predict`、`backtest` 和初始化统一读取指针指向的版本。旧固定目录在尚未生成指针时仍可兼容读取。
@@ -196,8 +196,8 @@ stock-trading cleanup 2026-10-31
 
 ```bash
 # 同步当天券商事实并恢复本地委托；也可指定日期
-stock-trading sync-broker
-stock-trading sync-broker 2026-10-29
+stock-trading broker
+stock-trading broker 2026-10-29
 
 # 按实时持仓和五档执行当天上午卖出；也可指定日期
 stock-trading sell
@@ -213,7 +213,7 @@ stock-trading evaluate 2026-10-29
 stock-trading evaluate 2026-10-29 10000
 ```
 
-原来的 `sync-daily`、`sync-minute`、`sync-research` 和 `check-minute` 已统一为 `sync-market`；Qlib 核验和重建统一由 `pre-train` 完成，`train` 只负责模型训练。`sync-state` 已并入 `backtest`，状态查看、任务恢复和训练请求已并入 `status`，券商事实同步和委托恢复已并入 `sync-broker`。真实交易不再创建影子价格计划，统一由 `buy`、`sell` 在执行窗口内完成实时查询、提交、状态轮询、撤单确认和重新报价。
+行情采集统一由 `market` 完成；Qlib 核验和重建由 `prepare` 完成，`train` 只负责模型训练。回测制品自动写入 SQLite，状态查看、任务恢复和训练请求统一由 `status` 处理，券商事实同步和委托恢复统一由 `broker` 处理。真实交易由 `buy`、`sell` 在执行窗口内完成实时查询、提交、状态轮询、撤单确认和重新报价。
 
 `buy` 只固定本次使用的模型候选，`sell` 只固定本次处理的持仓标的；价格和数量不缓存。每次尝试前重新读取券商账户、持仓和五档，提交后每 5 秒查询一次，最长观察 60 秒。未全部成交时先申请撤单，确认券商终态为 `CANCELLED` 后，再根据最新事实提交剩余数量。提交结果不确定、撤单未确认、达到最大尝试次数或执行窗口结束时立即停止，禁止盲目重挂。
 
@@ -241,7 +241,7 @@ stock-trading evaluate 2026-10-29 10000
 
 当前五档接口只解析价格，没有每档挂单量，因此最后阶段只跨到对手一档，不直接使用对手二至五档扫单。后续只有在确认五档数量字段并积累真实成交、撤单和滑点数据后，才考虑多策略选择或自动适应。
 
-主动按 `Ctrl+C` 时，如果已有 `SUBMITTED` 或 `PARTIAL` 委托，程序会先申请撤单并等待券商确认；如果正处于提交结果不确定或待撤状态，则保留恢复流水并退出，不会自动提交新单。之后运行 `sync-broker` 或重新执行同一买卖命令，都会先查询券商当日委托再决定是否继续。
+主动按 `Ctrl+C` 时，如果已有 `SUBMITTED` 或 `PARTIAL` 委托，程序会先申请撤单并等待券商确认；如果正处于提交结果不确定或待撤状态，则保留恢复流水并退出，不会自动提交新单。之后运行 `broker` 或重新执行同一买卖命令，都会先查询券商当日委托再决定是否继续。
 
 ## 调度
 
@@ -289,4 +289,4 @@ Rank IC Mean:   -0.0178742
 真实券商验证已确认登录、30 分钟 Token 缓存、账户/持仓/委托/成交读取以及 Action 110 的股东账号和市场参数。真实探测已到达券商交易时间校验，但尚未取得成功委托号，也未验证真实撤单、部分成交和完整绩效闭环。
 
 当前仓库变更只完成源码和文件层面检查。除非另有明确记录，不能把 `SOURCE_IMPLEMENTED` 描述为测试通过、运行通过或生产验证通过。
-<!-- AI_GENERATE_END----------------------------------------- -->
+<!-- AI_GENERATE_END------------------------------------------ -->
