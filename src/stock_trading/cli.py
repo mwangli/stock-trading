@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------------------------------------------------
+# AI_GENERATE_START ------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -25,6 +25,7 @@ from stock_trading.logging_utils import (
     configure_logging,
     live_progress_session,
     should_log_progress,
+    update_live_progress_details,
 )
 from stock_trading.research.artifacts import (
     model_root,
@@ -163,6 +164,11 @@ def market_command(
                 today - timedelta(days=config.market_history_days),
                 today,
             )
+            update_live_progress_details(
+                stock=f"指定股票 {len(parsed_codes)}只",
+                date_text=f"{start.isoformat()}~{end.isoformat()}",
+                step=f"0/{len(parsed_codes)}",
+            )
             _sync_market_codes(config, parsed_codes, start, end)
             return
         start, end = _parse_date_range(
@@ -170,15 +176,25 @@ def market_command(
         )
         _sync_daily(config, start, end)
 
-    _execute(
-        "market",
-        {
-            "codes": codes,
-            "startDate": start_date,
-            "endDate": end_date,
-        },
-        run,
-    )
+    initial_date = start_date or date.today().isoformat()
+    if end_date and end_date != initial_date:
+        initial_date = f"{initial_date}~{end_date}"
+    configure_logging()
+    with live_progress_session("正在启动 market", layout="market"):
+        update_live_progress_details(
+            stock="指定股票" if codes else "全市场",
+            date_text=initial_date,
+            step="0/--",
+        )
+        _execute(
+            "market",
+            {
+                "codes": codes,
+                "startDate": start_date,
+                "endDate": end_date,
+            },
+            run,
+        )
 
 
 @app.command(
@@ -466,6 +482,15 @@ def _sync_daily(config: AppConfig, start_date: date, end_date: date) -> None:
     partitions: list[dict[str, object]] = []
     skipped_dates: list[str] = []
     total_rows = 0
+    update_live_progress_details(
+        stock="全市场",
+        date_text=(
+            start_date.isoformat()
+            if start_date == end_date
+            else f"{start_date.isoformat()}~{end_date.isoformat()}"
+        ),
+        step="0/--",
+    )
     LOGGER.info(
         "开始采集全市场日线数据：日期=%s 至 %s；自然日数=%d",
         start_date,
@@ -475,6 +500,11 @@ def _sync_daily(config: AppConfig, start_date: date, end_date: date) -> None:
     with BaoStockClient(config.baostock_proxy) as client:
         for offset in range(requested_days):
             trade_date = start_date + timedelta(days=offset)
+            update_live_progress_details(
+                stock="全市场",
+                date_text=trade_date.isoformat(),
+                step="0/--",
+            )
             LOGGER.info(
                 "正在采集全市场日线：进度=%d/%d；日期=%s",
                 offset + 1,
@@ -483,9 +513,14 @@ def _sync_daily(config: AppConfig, start_date: date, end_date: date) -> None:
             )
             bars = client.fetch_daily_market(trade_date)
             if not bars:
+                update_live_progress_details(stock="全市场 0只", step="0/0")
                 skipped_dates.append(trade_date.isoformat())
                 LOGGER.info("当日没有行情，按非交易日跳过：日期=%s", trade_date)
                 continue
+            update_live_progress_details(
+                stock=f"全市场 {len(bars):,}只",
+                step=f"{len(bars):,}/{len(bars):,}",
+            )
             target = store.write_daily_market(trade_date, bars)
             total_rows += len(bars)
             partitions.append(
@@ -508,17 +543,6 @@ def _sync_daily(config: AppConfig, start_date: date, end_date: date) -> None:
         len(skipped_dates),
         total_rows,
     )
-    _print_json(
-        {
-            "startDate": start_date.isoformat(),
-            "endDate": end_date.isoformat(),
-            "requestedDays": requested_days,
-            "writtenDays": len(partitions),
-            "skippedDates": skipped_dates,
-            "rows": total_rows,
-            "partitions": partitions,
-        }
-    )
 
 
 def _sync_market_codes(
@@ -539,13 +563,14 @@ def _sync_market_codes(
         end_date,
         config.baostock_workers,
     )
-    _print_json(
-        {
-            "startDate": start_date.isoformat(),
-            "endDate": end_date.isoformat(),
-            "codes": len(codes),
-            "result": result,
-        }
+    final_rows = max(0, int(result.get("lastRows") or 0))
+    update_live_progress_details(step=f"{final_rows:,}/{final_rows:,}")
+    LOGGER.info(
+        "指定股票行情同步完成：股票数=%d；下载=%s；跳过=%s；失败=%d",
+        len(codes),
+        result["downloaded"],
+        result["skipped"],
+        len(result["failed"]),
     )
 
 
@@ -881,4 +906,4 @@ def _safe_error_text(value: object) -> str:
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END ---------------------------------------------------------------------
+# AI_GENERATE_END ------------------------------------------------------------------------

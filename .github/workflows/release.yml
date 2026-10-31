@@ -62,15 +62,6 @@ jobs:
           python -m pip install build
           python -m build --wheel
 
-      - name: Prepare runtime environment
-        shell: bash
-        env:
-          STOCK_TRADING_ENV: ${{ secrets.STOCK_TRADING_ENV }}
-        run: |
-          test -n "$STOCK_TRADING_ENV"
-          umask 077
-          printf '%s\n' "$STOCK_TRADING_ENV" > .github/stock-trading.env
-
       - name: Upload release files
         uses: appleboy/scp-action@v1.0.0
         with:
@@ -79,7 +70,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
-          source: "dist/*.whl,.github/config/stock-trading.cron,.github/config/stock-trading.logrotate,.github/stock-trading.env"
+          source: "dist/*.whl,.github/config/stock-trading.cron,.github/config/stock-trading.logrotate"
           target: ${{ format('{0}/releases/{1}', vars.SERVER_DEPLOY_DIR, github.ref_name) }}
           strip_components: 1
           overwrite: true
@@ -104,9 +95,13 @@ jobs:
             venv_dir="$deploy_dir/venv"
             cron_template="$release_dir/config/stock-trading.cron"
             logrotate_template="$release_dir/config/stock-trading.logrotate"
-            env_template="$release_dir/stock-trading.env"
             cron_dir="$deploy_dir/cron"
             cron_file="$cron_dir/stock-trading.cron"
+
+            if [ ! -s /etc/stock-trading/env ] || [ ! -r /etc/stock-trading/env ]; then
+              echo "Missing or unreadable operator-managed environment file: /etc/stock-trading/env" >&2
+              exit 1
+            fi
 
             set -- "$release_dir"/*.whl
             if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
@@ -132,8 +127,6 @@ jobs:
               "$wheel"
             "$venv_dir/bin/stock-trading" --help >/dev/null
 
-            install -d -m 700 /etc/stock-trading
-            install -m 600 "$env_template" /etc/stock-trading/env
             mkdir -p \
               "$cron_dir" \
               /data/stock-trading/market \

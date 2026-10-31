@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------
+# AI_GENERATE_START ---------
 from __future__ import annotations
 
 import logging
@@ -26,7 +26,7 @@ DAILY_FIELDS = (
 MINUTE_FIELDS = "date,time,code,open,high,low,close,volume,amount,adjustflag"
 LOGGER = logging.getLogger(__name__)
 REQUEST_POLL_SECONDS = 0.2
-ROW_PROGRESS_INTERVAL = 5_000
+ROW_PROGRESS_STEPS = 100
 T = TypeVar("T")
 
 
@@ -197,11 +197,27 @@ class BaoStockClient:
         if result.error_code != "0":
             raise BaoStockError(f"BaoStock query failed: {result.error_code} {result.error_msg}")
         rows: list[dict[str, str]] = []
+        estimated_total = len(result.data)
+        interval = max(1, estimated_total // ROW_PROGRESS_STEPS)
         while result.next():
             rows.append(dict(zip(result.fields, result.get_row_data(), strict=True)))
-            if len(rows) % ROW_PROGRESS_INTERVAL == 0:
-                LOGGER.info("数据采集中：任务=%s；已接收=%d 条", operation, len(rows))
-        LOGGER.info("数据接收完成：任务=%s；总数=%d 条", operation, len(rows))
+            page_remaining = max(0, len(result.data) - int(result.cur_row_num))
+            estimated_total = max(estimated_total, len(rows) + page_remaining)
+            interval = max(1, estimated_total // ROW_PROGRESS_STEPS)
+            if len(rows) == 1 or len(rows) == estimated_total or len(rows) % interval == 0:
+                LOGGER.info(
+                    "数据采集中：任务=%s；进度=%d/%d",
+                    operation,
+                    len(rows),
+                    estimated_total,
+                )
+        LOGGER.info(
+            "数据接收完成：任务=%s；进度=%d/%d；总数=%d 条",
+            operation,
+            len(rows),
+            len(rows),
+            len(rows),
+        )
         return rows
 
     def _install_connector(self) -> None:
@@ -305,4 +321,4 @@ class BaoStockClient:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END --------
+# AI_GENERATE_END ---------
