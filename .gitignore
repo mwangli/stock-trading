@@ -1,5 +1,5 @@
 # Local secrets
-.env
+stock-trading.env
 *.env.local
 
 # Python
@@ -11,16 +11,10 @@
 .ruff_cache/
 .mypy_cache/
 
-# Legacy local build leftovers
-**/target/
-**/node_modules/
-**/dist/
-**/.vite/
 
 # Runtime data and artifacts
 .tmp/
-stock-trading/var/
-mlruns/
+/var/
 *.db
 *.db-shm
 *.db-wal
