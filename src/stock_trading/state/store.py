@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------------------------------
+# AI_GENERATE_START ------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -1419,7 +1419,8 @@ class StateStore:
         connection = sqlite3.connect(self._path, timeout=30)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA journal_mode = DELETE")
+        connection.execute("PRAGMA synchronous = FULL")
         connection.execute("PRAGMA busy_timeout = 30000")
         try:
             yield connection
@@ -1715,4 +1716,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END -----------------------------------------------------
+# AI_GENERATE_END ------------------------------------------------------
