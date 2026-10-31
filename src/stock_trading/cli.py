@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------------------------
+# AI_GENERATE_START -------------------------------------------------------
 from __future__ import annotations
 
 import argparse
@@ -8,7 +8,6 @@ import os
 import re
 import sys
 import urllib.request
-from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -41,22 +40,33 @@ from stock_trading.trading.performance import LivePerformanceService
 
 LOGGER = logging.getLogger(__name__)
 BARK_PUSH_URL = "https://api.day.app/push"
-PUBLIC_LOG_URL = "http://117.72.216.67/logs/tasks.log"
+PUBLIC_LOG_URL = "http://117.72.216.67/logs/run.log"
 
 
 COMMANDS = (
-    ("init", "初始化完整交易环境"),
-    ("market", "更新市场行情数据"),
-    ("prepare", "校验数据并重建 Qlib"),
-    ("train", "训练 Alpha158 + LightGBM 模型"),
-    ("backtest", "执行单持仓 T+1 回测"),
-    ("predict", "生成 Top 5 预测"),
-    ("sell", "执行上午实时卖出"),
-    ("buy", "执行下午实时买入"),
-    ("broker", "同步券商事实并恢复委托"),
-    ("evaluate", "同步绩效并执行模型评估"),
-    ("status", "恢复任务并显示运行状态"),
-    ("clean", "压缩数据并执行分级清理"),
+    ("init", "初始化完整交易环境", "[--force]"),
+    (
+        "market",
+        "更新市场行情数据",
+        "<all|股票代码列表> [开始日期] [结束日期]",
+    ),
+    (
+        "prepare",
+        "校验数据并重建 Qlib",
+        "<股票代码列表> [开始日期] [结束日期]",
+    ),
+    (
+        "train",
+        "训练Alpha158+LightGBM模型",
+        "[训练开始 训练结束 验证开始 验证结束 测试开始 测试结束]",
+    ),
+    ("backtest", "执行单持仓T+1回测", "[资金规模]"),
+    ("predict", "生成Top5预测", "[日期]"),
+    ("sell", "执行上午实时卖出", "[日期]"),
+    ("buy", "执行下午实时买入", "[日期]"),
+    ("broker", "同步券商事实并恢复委托", "[日期]"),
+    ("evaluate", "同步绩效并执行模型评估", "[日期] [资金规模]"),
+    ("clean", "压缩数据并执行分级清理", "[日期]"),
 )
 
 
@@ -81,6 +91,17 @@ class ChineseArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         self.print_usage(sys.stderr)
         self.exit(2, f"{self.prog}: 参数错误：{_translate_parser_error(message)}\n")
+
+
+class CompactCommandParser(ChineseArgumentParser):
+    """仅显示一行说明和命令列表的根命令解析器。"""
+
+    def format_help(self) -> str:
+        command_lines = "\n".join(
+            f"\tstock-trading {name:<9}{summary}; 参数: {parameters}"
+            for name, summary, parameters in COMMANDS
+        )
+        return f"{self.description}\n{command_lines}\n"
 
 
 def main() -> None:
@@ -188,9 +209,6 @@ def _dispatch(
     elif arguments.command == "predict":
         prediction_date = _parse_optional_date(values, command_parser, today)
         _predict(config, prediction_date)
-    elif arguments.command == "status":
-        _require_argument_count(values, 0, 0, command_parser)
-        _status(config)
     elif arguments.command == "clean":
         cleanup_date = _parse_optional_date(values, command_parser, today)
         _cleanup(config, cleanup_date)
@@ -217,9 +235,12 @@ def _dispatch(
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = ChineseArgumentParser(
+    parser = CompactCommandParser(
         prog="stock-trading",
-        description="A 股 T+1 数据、模型、交易和评估命令。日期统一使用 YYYY-MM-DD。",
+        description=(
+            "A股T+1数据.模型,交易和评估命令,日期统一使用YYYY-MM-DD"
+            " <参数>必填,[参数]可选,|表示二选一."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subparsers = parser.add_subparsers(
@@ -228,8 +249,8 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="命令",
         parser_class=ChineseArgumentParser,
     )
-    for name, summary in COMMANDS:
-        _add_command(subparsers, name, summary)
+    for name, summary, parameters in COMMANDS:
+        _add_command(subparsers, name, summary, parameters)
     return parser
 
 
@@ -237,10 +258,11 @@ def _add_command(
     subparsers: argparse._SubParsersAction,
     name: str,
     summary: str,
+    parameters: str,
 ) -> None:
     command = subparsers.add_parser(
         name,
-        help=summary,
+        help=f"{summary}; 参数: {parameters}",
         add_help=False,
     )
     if name == "init":
@@ -550,34 +572,6 @@ def _backtest(config: AppConfig, initial_cash: Decimal) -> None:
     _print_json({"backtest": backtest_result, "state": state_result})
 
 
-def _status(config: AppConfig) -> None:
-    LOGGER.info("开始恢复并读取 SQLite 状态：数据库=%s", config.state_db_path)
-    store = StateStore(config.state_db_path)
-    recovered = store.recover_interrupted_runs()
-    summary = store.summary()
-    training_requests = store.list_training_requests()
-    status_counts: dict[str, int] = defaultdict(int)
-    for request in training_requests:
-        status_counts[str(request["status"])] += 1
-    LOGGER.info(
-        "SQLite 状态读取完成：恢复任务=%d；任务=%s；模型=%s；预测=%s；影子回测订单=%s；训练请求=%d",
-        recovered,
-        summary["counts"]["task_run"],
-        summary["counts"]["model_version"],
-        summary["counts"]["prediction"],
-        summary["counts"]["shadow_order"],
-        len(training_requests),
-    )
-    _print_json(
-        {
-            "recoveredRuns": recovered,
-            "summary": summary,
-            "trainingRequestStatus": dict(status_counts),
-            "trainingRequests": training_requests,
-        }
-    )
-
-
 def _cleanup(config: AppConfig, reference_date: date) -> None:
     LOGGER.info("开始清理持久化数据：基准日期=%s", reference_date)
     market = ParquetMarketStore(config.data_dir).cleanup_minutes(reference_date)
@@ -802,4 +796,4 @@ def _safe_error_text(value: object) -> str:
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END -----------------------------------------------
+# AI_GENERATE_END -------------------------------------------------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------
+# AI_GENERATE_START -------------------
 from __future__ import annotations
 
 import logging
@@ -71,7 +71,13 @@ class OrderExecutionOrchestrator:
         attempts: list[dict[str, object]] = []
         active_client_id: str | None = None
 
-        self._reconcile_orders()
+        LOGGER.info(
+            "交易流程开始：业务日期=%s；股票=%s；方向=%s；模式=%s；最大尝试=%d；执行窗口=%d秒",
+            business_date, instrument, side, mode,
+            self._config.trading_max_attempts,
+            self._config.trading_execution_window_seconds,
+        )
+        self._reconcile_orders(reason="EXECUTION_START")
         existing = self._matching_intents(prefix)
         elapsed_before_resume = self._elapsed_before_resume(existing)
         deadline = started_at + max(
@@ -90,6 +96,10 @@ class OrderExecutionOrchestrator:
         try:
             if active is not None:
                 active_client_id = str(active["client_order_id"])
+                LOGGER.info(
+                    "交易恢复活动委托：clientOrderId=%s；brokerOrderId=%s；状态=%s",
+                    active_client_id, active.get("broker_order_id"), active["status"],
+                )
                 settled = self._wait_then_cancel(active_client_id, deadline)
                 attempts.append(self._attempt_result(None, settled))
                 if settled["status"] == "FILLED":
@@ -113,6 +123,11 @@ class OrderExecutionOrchestrator:
                 client_order_id = f"{prefix}:A{attempt_number}"
                 active_client_id = client_order_id
                 live_order["client_order_id"] = client_order_id
+                LOGGER.info(
+                    "交易动作开始：动作=PREPARE_ORDER；业务日期=%s；尝试=%d/%d；clientOrderId=%s；股票=%s；方向=%s；价格=%s；数量=%s",
+                    business_date, attempt_number, self._config.trading_max_attempts,
+                    client_order_id, instrument, side, live_order["price"], live_order["quantity"],
+                )
                 self._state_store.prepare_real_order(
                     client_order_id=client_order_id,
                     instrument=instrument,
@@ -121,6 +136,10 @@ class OrderExecutionOrchestrator:
                     price=Decimal(str(live_order["price"])),
                 )
                 self._state_store.start_order_submission(client_order_id)
+                LOGGER.info(
+                    "交易动作完成：动作=PREPARE_ORDER；clientOrderId=%s；本地状态=SUBMITTING",
+                    client_order_id,
+                )
                 submitted = self._submit(live_order)
                 if submitted["status"] == "UNKNOWN":
                     submitted = self._wait_for_broker_state(
@@ -267,32 +286,34 @@ class OrderExecutionOrchestrator:
 
     def _submit(self, order: dict[str, object]) -> dict[str, object]:
         client_order_id = str(order["client_order_id"])
+        instrument = str(order["instrument"])
+        side = str(order["side"])
+        price = Decimal(str(order["price"]))
+        quantity = int(order["quantity"])
+        LOGGER.info(
+            "交易动作开始：动作=SUBMIT_ORDER；clientOrderId=%s；股票=%s；方向=%s；价格=%s；数量=%d",
+            client_order_id, instrument, side, price, quantity,
+        )
         try:
             broker_order_id = self._broker.submit_limit_order(
-                direction=str(order["side"]),
-                stock_code=str(order["instrument"])[-6:],
-                price=Decimal(str(order["price"])),
-                quantity=int(order["quantity"]),
+                direction=side, stock_code=instrument[-6:], price=price, quantity=quantity,
             )
         except BrokerRejectedError as error:
-            self._state_store.finish_real_order(
-                client_order_id, "REJECTED", error_message=str(error)
-            )
-            scope = permission_scope(str(order["instrument"]))
+            self._state_store.finish_real_order(client_order_id, "REJECTED", error_message=str(error))
+            scope = permission_scope(instrument)
             if scope and _is_permission_denial(str(error)):
                 self._save_permission(scope, "DENIED", "EXPLICIT_BROKER_REJECTION", str(error))
+            LOGGER.warning("交易动作完成：动作=SUBMIT_ORDER；clientOrderId=%s；结果=REJECTED；原因=%s", client_order_id, error)
             return self._required_intent(client_order_id)
         except Exception as error:
-            self._state_store.finish_real_order(
-                client_order_id, "UNKNOWN", error_message=str(error)
-            )
+            self._state_store.finish_real_order(client_order_id, "UNKNOWN", error_message=str(error))
+            LOGGER.error("交易动作完成：动作=SUBMIT_ORDER；clientOrderId=%s；结果=UNKNOWN；原因=%s", client_order_id, error, exc_info=True)
             return self._required_intent(client_order_id)
-        self._state_store.finish_real_order(
-            client_order_id, "SUBMITTED", broker_order_id=broker_order_id
-        )
-        scope = permission_scope(str(order["instrument"]))
+        self._state_store.finish_real_order(client_order_id, "SUBMITTED", broker_order_id=broker_order_id)
+        scope = permission_scope(instrument)
         if scope:
             self._save_permission(scope, "ALLOWED", "ACCEPTED_ORDER", f"券商委托号={broker_order_id}")
+        LOGGER.info("交易动作完成：动作=SUBMIT_ORDER；clientOrderId=%s；brokerOrderId=%s；结果=SUBMITTED", client_order_id, broker_order_id)
         return self._required_intent(client_order_id)
 
     def _wait_then_cancel(
@@ -325,60 +346,95 @@ class OrderExecutionOrchestrator:
         self, client_order_id: str, wait_seconds: int, deadline: float
     ) -> dict[str, object]:
         poll_deadline = min(deadline, monotonic() + wait_seconds)
+        initial = self._required_intent(client_order_id)
+        LOGGER.info(
+            "委托状态观察开始：clientOrderId=%s；brokerOrderId=%s；初始状态=%s；最长等待=%d秒；查询间隔=%d秒",
+            client_order_id, initial.get("broker_order_id"), initial["status"], wait_seconds,
+            self._config.trading_order_poll_seconds,
+        )
+        poll_number = 0
         while True:
-            self._reconcile_orders()
+            poll_number += 1
+            self._reconcile_orders(client_order_id, f"ORDER_POLL_{poll_number}")
             intent = self._required_intent(client_order_id)
             if intent["status"] in {"FILLED", "CANCELLED", "REJECTED"}:
+                LOGGER.info("委托状态观察结束：clientOrderId=%s；brokerOrderId=%s；查询次数=%d；终态=%s", client_order_id, intent.get("broker_order_id"), poll_number, intent["status"])
                 return intent
             remaining = poll_deadline - monotonic()
             if remaining <= 0:
+                LOGGER.warning("委托状态观察超时：clientOrderId=%s；brokerOrderId=%s；查询次数=%d；当前状态=%s", client_order_id, intent.get("broker_order_id"), poll_number, intent["status"])
                 return intent
-            sleep(min(self._config.trading_order_poll_seconds, remaining))
+            sleep_seconds = min(self._config.trading_order_poll_seconds, remaining)
+            LOGGER.info("委托状态观察等待：clientOrderId=%s；当前状态=%s；下次查询等待=%.1f秒", client_order_id, intent["status"], sleep_seconds)
+            sleep(sleep_seconds)
 
     def _cancel_and_confirm(self, client_order_id: str) -> dict[str, object]:
         intent = self._required_intent(client_order_id)
         broker_order_id = intent.get("broker_order_id")
         if broker_order_id is None:
-            self._state_store.finish_real_order(
-                client_order_id,
-                "UNKNOWN",
-                error_message="没有券商委托号，禁止撤单后重挂",
-            )
+            LOGGER.warning("交易动作跳过：动作=CANCEL_ORDER；clientOrderId=%s；原因=NO_BROKER_ORDER_ID", client_order_id)
+            self._state_store.finish_real_order(client_order_id, "UNKNOWN", error_message="没有券商委托号，禁止撤单后重挂")
             return self._required_intent(client_order_id)
+        LOGGER.info("交易动作开始：动作=CANCEL_ORDER；clientOrderId=%s；brokerOrderId=%s；当前状态=%s", client_order_id, broker_order_id, intent["status"])
         if intent["status"] != "CANCEL_SUBMITTING":
             self._state_store.start_order_cancel(client_order_id)
-        accepted = self._broker.cancel_order(str(broker_order_id))
+            LOGGER.info("撤单本地状态已记录：clientOrderId=%s；brokerOrderId=%s；本地状态=CANCEL_SUBMITTING", client_order_id, broker_order_id)
+        try:
+            accepted = self._broker.cancel_order(str(broker_order_id))
+        except Exception as error:
+            LOGGER.error("交易动作异常：动作=CANCEL_ORDER；clientOrderId=%s；brokerOrderId=%s；原因=%s", client_order_id, broker_order_id, error, exc_info=True)
+            raise
         if not accepted:
-            self._reconcile_orders()
+            LOGGER.warning("交易动作完成：动作=CANCEL_ORDER；clientOrderId=%s；brokerOrderId=%s；结果=NOT_ACCEPTED", client_order_id, broker_order_id)
+            self._reconcile_orders(client_order_id, "CANCEL_NOT_ACCEPTED")
             refreshed = self._required_intent(client_order_id)
             if refreshed["status"] in {"FILLED", "CANCELLED", "REJECTED"}:
                 return refreshed
-            self._state_store.finish_real_order(
-                client_order_id,
-                "UNKNOWN",
-                broker_order_id=str(broker_order_id),
-                error_message="券商未确认撤单请求受理",
-            )
-            return self._required_intent(client_order_id)
-        confirm_deadline = monotonic() + self._config.trading_cancel_confirm_seconds
-        confirmed = self._wait_for_broker_state(
-            client_order_id,
-            self._config.trading_cancel_confirm_seconds,
-            confirm_deadline,
-        )
+            self._state_store.finish_real_order(client_order_id, "UNKNOWN", broker_order_id=str(broker_order_id), error_message="券商未确认撤单请求受理")
+            result = self._required_intent(client_order_id)
+            LOGGER.warning("撤单流程结束：clientOrderId=%s；brokerOrderId=%s；终态=%s", client_order_id, broker_order_id, result["status"])
+            return result
+        LOGGER.info("交易动作完成：动作=CANCEL_ORDER；clientOrderId=%s；brokerOrderId=%s；结果=ACCEPTED；等待终态=%d秒", client_order_id, broker_order_id, self._config.trading_cancel_confirm_seconds)
+        confirmed = self._wait_for_broker_state(client_order_id, self._config.trading_cancel_confirm_seconds, monotonic() + self._config.trading_cancel_confirm_seconds)
         if confirmed["status"] not in {"FILLED", "CANCELLED", "REJECTED"}:
-            self._state_store.finish_real_order(
-                client_order_id,
-                "UNKNOWN",
-                broker_order_id=str(broker_order_id),
-                error_message="撤单已受理但未取得券商终态",
-            )
-            return self._required_intent(client_order_id)
+            self._state_store.finish_real_order(client_order_id, "UNKNOWN", broker_order_id=str(broker_order_id), error_message="撤单已受理但未取得券商终态")
+            confirmed = self._required_intent(client_order_id)
+        LOGGER.info("撤单流程结束：clientOrderId=%s；brokerOrderId=%s；终态=%s", client_order_id, broker_order_id, confirmed["status"])
         return confirmed
 
-    def _reconcile_orders(self) -> tuple[BrokerOrder, ...]:
-        orders = self._broker.get_today_orders()
-        self._state_store.reconcile_order_intents(orders)
+    def _reconcile_orders(
+        self, client_order_id: str | None = None, reason: str = "RECONCILE"
+    ) -> tuple[BrokerOrder, ...]:
+        LOGGER.info("交易动作开始：动作=QUERY_ORDERS；原因=%s；clientOrderId=%s", reason, client_order_id or "-")
+        try:
+            orders = self._broker.get_today_orders()
+            self._state_store.reconcile_order_intents(orders)
+        except Exception as error:
+            LOGGER.error(
+                "交易动作异常：动作=QUERY_ORDERS；原因=%s；clientOrderId=%s；错误=%s",
+                reason,
+                client_order_id or "-",
+                error,
+                exc_info=True,
+            )
+            raise
+        if client_order_id is None:
+            LOGGER.info("交易动作完成：动作=QUERY_ORDERS；原因=%s；券商委托数=%d", reason, len(orders))
+            return orders
+        intent = self._state_store.get_order_intent(client_order_id)
+        if intent is None:
+            LOGGER.warning("交易动作完成：动作=QUERY_ORDERS；原因=%s；clientOrderId=%s；结果=LOCAL_INTENT_NOT_FOUND；券商委托数=%d", reason, client_order_id, len(orders))
+            return orders
+        broker_order_id = intent.get("broker_order_id")
+        broker_order = next((order for order in orders if broker_order_id is not None and order.order_id is not None and str(order.order_id) == str(broker_order_id)), None)
+        LOGGER.info(
+            "交易动作完成：动作=QUERY_ORDERS；原因=%s；clientOrderId=%s；brokerOrderId=%s；本地状态=%s；券商状态=%s；券商原始状态=%s；委托数量=%s；已成交数量=%s；券商委托数=%d",
+            reason, client_order_id, broker_order_id, intent["status"],
+            broker_order.status if broker_order else "NOT_MATCHED",
+            broker_order.raw_status if broker_order else None,
+            broker_order.order_quantity if broker_order else intent["quantity"],
+            broker_order.filled_quantity if broker_order else None, len(orders),
+        )
         return orders
 
     def _matching_intents(self, prefix: str) -> list[dict[str, object]]:
@@ -477,6 +533,13 @@ class OrderExecutionOrchestrator:
         stop_reason: str,
         attempts: list[dict[str, object]],
     ) -> dict[str, object]:
+        last_attempt = attempts[-1] if attempts else None
+        LOGGER.info(
+            "交易流程结束：股票=%s；方向=%s；状态=%s；停止原因=%s；尝试次数=%d；最后clientOrderId=%s；最后brokerOrderId=%s",
+            target["instrument"], target["side"], status, stop_reason, len(attempts),
+            last_attempt["clientOrderId"] if last_attempt else None,
+            last_attempt["brokerOrderId"] if last_attempt else None,
+        )
         return {
             "target": target,
             "status": status,
@@ -491,4 +554,4 @@ def _is_permission_denial(message: str) -> bool:
         keyword in normalized
         for keyword in ("无权限", "没有权限", "未开通", "禁止交易", "不允许交易")
     )
-# AI_GENERATE_END ----------------
+# AI_GENERATE_END -------------------

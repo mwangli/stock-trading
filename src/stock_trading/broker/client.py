@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------
+# AI_GENERATE_START --------------------
 from __future__ import annotations
 
 import base64
@@ -424,6 +424,7 @@ class ZXBrokerClient:
         return accounts
 
     def cancel_order(self, broker_order_id: str) -> bool:
+        LOGGER.info("准备提交券商撤单请求：券商委托号=%s", broker_order_id)
         response = self._request(
             self.build_params(
                 {
@@ -433,7 +434,16 @@ class ZXBrokerClient:
                 }
             )
         )
-        return str(response.get("ERRORNO")) == "0"
+        accepted = str(response.get("ERRORNO")) == "0"
+        log = LOGGER.info if accepted else LOGGER.warning
+        log(
+            "券商撤单请求完成：券商委托号=%s；是否受理=%s；错误码=%s；原因=%s",
+            broker_order_id,
+            accepted,
+            response.get("ERRORNO"),
+            response.get("ERRORMESSAGE") or response.get("ERRORINFO"),
+        )
+        return accepted
 
     def _query_rows(self, action: int, values: dict[str, object]) -> list[str]:
         token = self._require_token()
@@ -535,4 +545,4 @@ def _required_price(response: dict[str, Any], primary: str, alternate: str) -> D
     if value is None or value <= 0:
         raise BrokerProtocolError("券商未返回完整五档行情")
     return value
-# AI_GENERATE_END ------------------
+# AI_GENERATE_END --------------------

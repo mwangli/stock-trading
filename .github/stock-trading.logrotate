@@ -1,4 +1,4 @@
-/var/log/stock-trading/tasks.log {
+/var/log/stock-trading/run.log {
     daily
     size 20M
     rotate 14

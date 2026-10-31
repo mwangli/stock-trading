@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----
+# AI_GENERATE_START ------
 # STOCK_TRADING_CRON_BEGIN
 SHELL=/bin/bash
 PATH=__DEPLOY_DIR__/venv/bin:/usr/local/bin:/usr/bin:/bin
@@ -6,7 +6,7 @@ CRON_TZ=Asia/Shanghai
 MAILTO=""
 
 STOCK_ENV=/etc/stock-trading/env
-LOG=/var/log/stock-trading/tasks.log
+LOG=/var/log/stock-trading/run.log
 LOCK=/data/stock-trading/state/scheduler.lock
 LOGROTATE=__DEPLOY_DIR__/cron/stock-trading.logrotate
 LOGROTATE_STATE=/data/stock-trading/state/logrotate.status
@@ -29,4 +29,4 @@ LOGROTATE_STATE=/data/stock-trading/state/logrotate.status
 # Broker facts and performance
 30 16 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -c 'set -a; source "$STOCK_ENV"; set +a; exec stock-trading evaluate' >> "$LOG" 2>&1
 # STOCK_TRADING_CRON_END
-# AI_GENERATE_END -----
+# AI_GENERATE_END ------

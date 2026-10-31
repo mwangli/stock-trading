@@ -158,15 +158,7 @@ jobs:
               echo "Expected exactly one wheel in $release_dir" >&2
               exit 1
             fi
-            if [ ! -x "$venv_dir/bin/python" ]; then
-              rm -rf "$venv_dir"
-              if ! python3 -m venv "$venv_dir"; then
-                rm -rf "$venv_dir"
-                apt-get update
-                DEBIAN_FRONTEND=noninteractive apt-get install -y python3-venv
-                python3 -m venv "$venv_dir"
-              fi
-            fi
+            python3 -m venv "$venv_dir"
             "$venv_dir/bin/python" -m pip install --upgrade "$1[research]"
             "$venv_dir/bin/stock-trading" --help >/dev/null
 
@@ -179,7 +171,7 @@ jobs:
               /var/log/stock-trading
             touch \
               /data/stock-trading/state/scheduler.lock \
-              /var/log/stock-trading/tasks.log
+              /var/log/stock-trading/run.log
 
             sed \
               -e "s|__DEPLOY_DIR__|$deploy_dir|g" \
@@ -189,7 +181,7 @@ jobs:
             test "$(grep -c '^# STOCK_TRADING_CRON_BEGIN$' "$cron_file")" -eq 1
             test "$(grep -c '^# STOCK_TRADING_CRON_END$' "$cron_file")" -eq 1
             grep -Fq "$venv_dir/bin" "$cron_file"
-            grep -Fq '/var/log/stock-trading/tasks.log' "$logrotate_file"
+            grep -Fq '/var/log/stock-trading/run.log' "$logrotate_file"
 
             current_cron="$(mktemp)"
             next_cron="$(mktemp)"

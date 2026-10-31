@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------------------
+# AI_GENERATE_START -----------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -303,22 +303,6 @@ class StateStore:
             self._ensure_column(
                 connection, "live_performance_snapshot", "model_version_id", "INTEGER"
             )
-
-    def recover_interrupted_runs(self) -> int:
-        """用途：把重启前未结束任务标记为失败；输入：无；输出：恢复记录数。"""
-        self.initialize()
-        with self._connect() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE task_run
-                SET status = 'FAILED', finished_at = ?,
-                    error_message = 'application restarted before task completion'
-                WHERE status IN ('QUEUED', 'RUNNING')
-                """,
-                (_now(),),
-            )
-            LOGGER.info("SQLite 中断任务恢复完成：恢复数量=%d", cursor.rowcount)
-            return cursor.rowcount
 
     def cleanup(self, reference_date: date) -> dict[str, object]:
         """按数据价值分级清理 SQLite，并保留活动委托和长期基础事实。"""
@@ -1152,15 +1136,6 @@ class StateStore:
             "trainingRequest": training_request,
         }
 
-    def list_training_requests(self) -> list[dict[str, Any]]:
-        """用途：查询全部训练请求；输入：无；输出：按请求时间排列的列表。"""
-        self.initialize()
-        with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM training_request ORDER BY requested_at ASC"
-            ).fetchall()
-        return [dict(row) for row in rows]
-
     def summary(self) -> dict[str, Any]:
         """用途：汇总各表记录数和最新任务、模型；输入：无；输出：状态库摘要。"""
         self.initialize()
@@ -1740,4 +1715,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END ----------------------------------------------------
+# AI_GENERATE_END -----------------------------------------------------
