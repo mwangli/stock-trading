@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------------------------------------------
+# AI_GENERATE_START --------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -102,14 +102,18 @@ def _execute(
     return result
 
 
-COMMAND_CONTEXT = {"help_option_names": ["-h", "--help"]}
+COMMAND_CONTEXT = {"help_option_names": []}
 
 
-@app.command("init", help="初始化完整交易环境。", context_settings=COMMAND_CONTEXT)
+@app.command(
+    "init",
+    short_help="[cyan]--force[/cyan] 初始化完整交易环境。",
+    context_settings=COMMAND_CONTEXT,
+)
 def init_command(
     force: Annotated[
         bool,
-        typer.Option("--force", help="删除项目 var 后从头初始化。"),
+        typer.Option("--force"),
     ] = False,
 ) -> None:
     def run(config: AppConfig) -> None:
@@ -123,51 +127,46 @@ def init_command(
 
 @app.command(
     "market",
-    help="更新市场行情数据。--all 与 --codes 必须二选一。",
+    short_help=(
+        "[cyan]--codes[/cyan] TEXT [cyan]--start-date[/cyan] DATE "
+        "[cyan]--end-date[/cyan] DATE 更新市场行情数据。"
+    ),
     context_settings=COMMAND_CONTEXT,
 )
 def market_command(
-    all_stocks: Annotated[
-        bool,
-        typer.Option("--all", help="同步全市场日线。"),
-    ] = False,
     codes: Annotated[
         str | None,
-        typer.Option(help="同步指定股票，多个代码使用逗号分隔。"),
+        typer.Option(),
     ] = None,
     start_date: Annotated[
         str | None,
-        typer.Option(help="开始日期，格式 YYYY-MM-DD。"),
+        typer.Option(),
     ] = None,
     end_date: Annotated[
         str | None,
-        typer.Option(help="结束日期，格式 YYYY-MM-DD。"),
+        typer.Option(),
     ] = None,
 ) -> None:
-    if all_stocks == bool(codes):
-        raise typer.BadParameter("--all 与 --codes 必须且只能指定一个")
-
     def run(config: AppConfig) -> None:
         today = date.today()
-        if all_stocks:
+        if codes:
+            parsed_codes = _parse_stock_codes(codes)
             start, end = _parse_date_range(
-                start_date, end_date, today, today, single_date=True
+                start_date,
+                end_date,
+                today - timedelta(days=config.market_history_days),
+                today,
             )
-            _sync_daily(config, start, end)
+            _sync_market_codes(config, parsed_codes, start, end)
             return
-        parsed_codes = _parse_stock_codes(codes or "")
         start, end = _parse_date_range(
-            start_date,
-            end_date,
-            today - timedelta(days=config.market_history_days),
-            today,
+            start_date, end_date, today, today, single_date=True
         )
-        _sync_market_codes(config, parsed_codes, start, end)
+        _sync_daily(config, start, end)
 
     _execute(
         "market",
         {
-            "all": all_stocks,
             "codes": codes,
             "startDate": start_date,
             "endDate": end_date,
@@ -177,20 +176,25 @@ def market_command(
 
 
 @app.command(
-    "prepare", help="校验指定股票数据并重建 Qlib。", context_settings=COMMAND_CONTEXT
+    "prepare",
+    short_help=(
+        "[cyan]--codes[/cyan] TEXT [cyan]--start-date[/cyan] DATE "
+        "[cyan]--end-date[/cyan] DATE 校验数据并重建 Qlib。"
+    ),
+    context_settings=COMMAND_CONTEXT,
 )
 def prepare_command(
     codes: Annotated[
         str,
-        typer.Option(help="股票代码列表，多个代码使用逗号分隔。"),
+        typer.Option(),
     ],
     start_date: Annotated[
         str | None,
-        typer.Option(help="开始日期，格式 YYYY-MM-DD。"),
+        typer.Option(),
     ] = None,
     end_date: Annotated[
         str | None,
-        typer.Option(help="结束日期，格式 YYYY-MM-DD。"),
+        typer.Option(),
     ] = None,
 ) -> None:
     def run(config: AppConfig) -> None:
@@ -211,12 +215,14 @@ def prepare_command(
 
 
 @app.command(
-    "train", help="训练 Alpha158 + LightGBM 模型。", context_settings=COMMAND_CONTEXT
+    "train",
+    short_help="[cyan]--split[/cyan] RATIO 训练 Alpha158 + LightGBM 模型。",
+    context_settings=COMMAND_CONTEXT,
 )
 def train_command(
     split: Annotated[
         str | None,
-        typer.Option(help="训练:验证:测试比例，例如 6:3:1。"),
+        typer.Option(),
     ] = None,
 ) -> None:
     _execute(
@@ -227,12 +233,14 @@ def train_command(
 
 
 @app.command(
-    "backtest", help="执行单持仓 T+1 回测。", context_settings=COMMAND_CONTEXT
+    "backtest",
+    short_help="[cyan]--cash[/cyan] AMOUNT 执行单持仓 T+1 回测。",
+    context_settings=COMMAND_CONTEXT,
 )
 def backtest_command(
     initial_cash: Annotated[
         str,
-        typer.Option(help="初始资金，必须大于 0。"),
+        typer.Option("--cash"),
     ] = "10000",
 ) -> None:
     _execute(
@@ -253,21 +261,29 @@ def _run_date_command(
     _execute(command, {"date": value}, lambda config: operation(config, business_date))
 
 
-@app.command("predict", help="生成 Top 5 预测。", context_settings=COMMAND_CONTEXT)
+@app.command(
+    "predict",
+    short_help="[cyan]--date[/cyan] DATE 生成 Top 5 预测。",
+    context_settings=COMMAND_CONTEXT,
+)
 def predict_command(
     prediction_date: Annotated[
         str | None,
-        typer.Option("--date", help="预测日期，格式 YYYY-MM-DD。"),
+        typer.Option("--date"),
     ] = None,
 ) -> None:
     _run_date_command("predict", prediction_date, _predict)
 
 
-@app.command("sell", help="执行上午实时卖出。", context_settings=COMMAND_CONTEXT)
+@app.command(
+    "sell",
+    short_help="[cyan]--date[/cyan] DATE 执行上午实时卖出。",
+    context_settings=COMMAND_CONTEXT,
+)
 def sell_command(
     business_date: Annotated[
         str | None,
-        typer.Option("--date", help="业务日期，格式 YYYY-MM-DD。"),
+        typer.Option("--date"),
     ] = None,
 ) -> None:
     _run_date_command(
@@ -279,11 +295,15 @@ def sell_command(
     )
 
 
-@app.command("buy", help="执行下午实时买入。", context_settings=COMMAND_CONTEXT)
+@app.command(
+    "buy",
+    short_help="[cyan]--date[/cyan] DATE 执行下午实时买入。",
+    context_settings=COMMAND_CONTEXT,
+)
 def buy_command(
     business_date: Annotated[
         str | None,
-        typer.Option("--date", help="业务日期，格式 YYYY-MM-DD。"),
+        typer.Option("--date"),
     ] = None,
 ) -> None:
     _run_date_command(
@@ -296,28 +316,35 @@ def buy_command(
 
 
 @app.command(
-    "broker", help="同步券商事实并恢复委托。", context_settings=COMMAND_CONTEXT
+    "broker",
+    short_help="[cyan]--date[/cyan] DATE 同步券商事实并恢复委托。",
+    context_settings=COMMAND_CONTEXT,
 )
 def broker_command(
     business_date: Annotated[
         str | None,
-        typer.Option("--date", help="业务日期，格式 YYYY-MM-DD。"),
+        typer.Option("--date"),
     ] = None,
 ) -> None:
     _run_date_command("broker", business_date, _sync_broker)
 
 
 @app.command(
-    "evaluate", help="同步绩效并执行模型评估。", context_settings=COMMAND_CONTEXT
+    "evaluate",
+    short_help=(
+        "[cyan]--date[/cyan] DATE [cyan]--cash[/cyan] AMOUNT "
+        "同步绩效并执行模型评估。"
+    ),
+    context_settings=COMMAND_CONTEXT,
 )
 def evaluate_command(
     business_date: Annotated[
         str | None,
-        typer.Option("--date", help="业务日期，格式 YYYY-MM-DD。"),
+        typer.Option("--date"),
     ] = None,
     external_cash_flow: Annotated[
         str,
-        typer.Option(help="外部资金流，入金为正数，出金为负数。"),
+        typer.Option("--cash"),
     ] = "0",
 ) -> None:
     target_date = _parse_date(business_date) if business_date else date.today()
@@ -329,11 +356,15 @@ def evaluate_command(
     )
 
 
-@app.command("clean", help="压缩数据并执行分级清理。", context_settings=COMMAND_CONTEXT)
+@app.command(
+    "clean",
+    short_help="[cyan]--date[/cyan] DATE 压缩数据并执行分级清理。",
+    context_settings=COMMAND_CONTEXT,
+)
 def clean_command(
     reference_date: Annotated[
         str | None,
-        typer.Option("--date", help="清理基准日期，格式 YYYY-MM-DD。"),
+        typer.Option("--date"),
     ] = None,
 ) -> None:
     _run_date_command("clean", reference_date, _cleanup)
@@ -844,4 +875,4 @@ def _safe_error_text(value: object) -> str:
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END ---------------------------------------------------------------
+# AI_GENERATE_END --------------------------------------------------------------------

@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START--------------------------------------------------- -->
+<!-- AI_GENERATE_START------------------------------------------------------- -->
 # stock-trading
 
 面向 A 股的纯 Python T+1 自动交易验证系统。项目只保留 BaoStock、Qlib、LightGBM、Parquet、SQLite 和经过真实响应确认的 ZX 券商 HTTP 契约。
@@ -117,11 +117,10 @@ $env:Path = "D:\python\Scripts;$env:Path"
 stock-trading --help
 ```
 
-项目使用 Typer + Rich 生成带颜色的总帮助和子命令帮助。所有业务参数都使用 `--long-option` 形式，变量名中的下划线会显示为中划线：
+项目只提供一层 Typer + Rich 彩色帮助。总帮助直接列出每个命令的主要参数和说明，子命令不再提供独立的 `-h/--help`；所有业务参数都使用 `--long-option` 形式：
 
 ```bash
 stock-trading --help
-stock-trading market --help
 ```
 
 日期格式固定为 `YYYY-MM-DD`；省略日期时默认当天；日期范围包含开始日和结束日；参数数量或格式错误时直接显示中文提示。Linux 交互终端会自动显示 Rich 颜色；若环境中设置了 `NO_COLOR`，帮助页会退回无颜色文本。
@@ -152,16 +151,16 @@ stock-trading init --force
 
 ```bash
 # 同步当天、指定单日或日期范围的全市场日线
-stock-trading market --all
-stock-trading market --all --start-date 2026-10-29
-stock-trading market --all --start-date 2026-10-01 --end-date 2026-10-29
+stock-trading market
+stock-trading market --start-date 2026-10-29
+stock-trading market --start-date 2026-10-01 --end-date 2026-10-29
 
 # 同步指定股票的日线、复权因子和 5 分钟线；默认使用配置的研究窗口至当天
 stock-trading market --codes sh.600000,sz.000001
 stock-trading market --codes sh.600000,sz.000001 --start-date 2023-01-01 --end-date 2026-10-29
 ```
 
-`market` 是唯一公开行情采集命令。`all` 模式只采集全市场日线，不采集全市场分钟线，并按请求日期重新拉取、原子覆盖对应日线分区；股票列表模式采集对应股票训练所需的日线、复权因子和 5 分钟线，实际 Parquet 已完整覆盖时跳过。日线和复权因子按日期合并去重；5 分钟原始数据按股票压缩为单个 Parquet，只保留最近 90 个自然日。训练标签和回测需要的上午卖出窗口、下午买入窗口 VWAP/高低价按交易日聚合，每只股票一个聚合文件，至少保留 5 年。旧的 `code/trade_date/bars.parquet` 分区由 `clean` 一次性合并后删除。
+`market` 是唯一公开行情采集命令。省略 `--codes` 时只采集全市场日线，不采集全市场分钟线，并按请求日期重新拉取、原子覆盖对应日线分区；指定 `--codes` 时采集对应股票训练所需的日线、复权因子和 5 分钟线，实际 Parquet 已完整覆盖时跳过。日线和复权因子按日期合并去重；5 分钟原始数据按股票压缩为单个 Parquet，只保留最近 90 个自然日。训练标签和回测需要的上午卖出窗口、下午买入窗口 VWAP/高低价按交易日聚合，每只股票一个聚合文件，至少保留 5 年。旧的 `code/trade_date/bars.parquet` 分区由 `clean` 一次性合并后删除。
 
 ### 数据清理
 
@@ -191,7 +190,7 @@ stock-trading train --split 6:3:1
 
 # 使用默认 1 万元执行回测并自动导入 SQLite；也可只传初始资金
 stock-trading backtest
-stock-trading backtest --initial-cash 50000
+stock-trading backtest --cash 50000
 
 # 生成当天或指定日期的横截面评分和 Top 5，并写入 SQLite
 stock-trading predict
@@ -222,7 +221,7 @@ stock-trading buy --date 2026-10-29
 # 同步绩效并执行滚动评估；第二个参数为入金正数或出金负数
 stock-trading evaluate
 stock-trading evaluate --date 2026-10-29
-stock-trading evaluate --date 2026-10-29 --external-cash-flow 10000
+stock-trading evaluate --date 2026-10-29 --cash 10000
 ```
 
 行情采集统一由 `market` 完成；Qlib 核验和重建由 `prepare` 完成，`train` 只负责模型训练。回测制品自动写入 SQLite，券商事实同步和委托恢复统一由 `broker` 处理。真实交易由 `buy`、`sell` 在执行窗口内完成实时查询、提交、状态轮询、撤单确认和重新报价。
@@ -301,4 +300,4 @@ Rank IC Mean:   -0.0178742
 真实券商验证已确认登录、30 分钟 Token 缓存、账户/持仓/委托/成交读取以及 Action 110 的股东账号和市场参数。真实探测已到达券商交易时间校验，但尚未取得成功委托号，也未验证真实撤单、部分成交和完整绩效闭环。
 
 当前仓库变更只完成源码和文件层面检查。除非另有明确记录，不能把 `SOURCE_IMPLEMENTED` 描述为测试通过、运行通过或生产验证通过。
-<!-- AI_GENERATE_END---------------------------------------------------- -->
+<!-- AI_GENERATE_END-------------------------------------------------------- -->

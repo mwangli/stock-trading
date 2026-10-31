@@ -51,7 +51,7 @@ jobs:
           grep -Fq '__DEPLOY_DIR__/venv/bin' .github/config/stock-trading.cron
           grep -Fq 'stock-trading sell' .github/config/stock-trading.cron
           grep -Fq 'stock-trading buy' .github/config/stock-trading.cron
-          grep -Fq 'stock-trading market --all' .github/config/stock-trading.cron
+          grep -Fq 'stock-trading market' .github/config/stock-trading.cron
           grep -Fq 'stock-trading evaluate' .github/config/stock-trading.cron
           grep -Fq 'stock-trading clean' .github/config/stock-trading.cron
           grep -Fq '/usr/sbin/logrotate' .github/config/stock-trading.cron
