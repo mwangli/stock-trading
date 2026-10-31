@@ -80,8 +80,9 @@ stock-trading4/
 在仓库根目录创建 Python 3.11-3.13 虚拟环境：
 
 ```bash
-python -m venv .venv
-.venv/Scripts/python -m pip install -e ".[research]"
+py -3.13 -m venv .venv
+.venv\Scripts\activate
+pip install -e .
 ```
 
 Linux 使用 `.venv/bin/python`。
@@ -116,13 +117,14 @@ $env:Path = "D:\python\Scripts;$env:Path"
 stock-trading --help
 ```
 
-项目只保留 `stock-trading --help` 总帮助，不提供二级帮助。子命令后追加 `-h` 或 `--help` 会直接提示参数错误：
+项目使用 Typer + Rich 生成带颜色的总帮助和子命令帮助。所有业务参数都使用 `--long-option` 形式，变量名中的下划线会显示为中划线：
 
 ```bash
 stock-trading --help
+stock-trading market --help
 ```
 
-命令统一使用位置参数和默认值：日期格式固定为 `YYYY-MM-DD`；省略日期时默认当天；日期范围包含开始日和结束日；参数数量或格式错误时直接显示中文提示。
+日期格式固定为 `YYYY-MM-DD`；省略日期时默认当天；日期范围包含开始日和结束日；参数数量或格式错误时直接显示中文提示。Linux 交互终端会自动显示 Rich 颜色；若环境中设置了 `NO_COLOR`，帮助页会退回无颜色文本。
 
 ### 初始化
 
@@ -134,11 +136,15 @@ stock-trading init
 stock-trading init --force
 ```
 
-初始化固定执行最近三年的股票基础信息、日线、复权因子和 5 分钟线采集，然后构建 Qlib、训练 `Alpha158 + LightGBM`、执行 2000/3000/5000/10000 元四档回测、生成最近交易日预测，并尽力同步券商历史委托和成交。采集完成后只保留最近 90 个自然日的原始分钟线，训练和回测使用至少保留 5 年的分钟窗口聚合结果。
+初始化默认执行最近三年的股票基础信息、日线、复权因子和 5 分钟线采集，然后构建 Qlib、训练 `Alpha158 + LightGBM`、执行 2000/3000/5000/10000 元四档回测、生成最近交易日预测，并尽力同步券商历史委托和成交。采集完成后只保留最近 90 个自然日的原始分钟线，训练和回测使用至少保留 5 年的分钟窗口聚合结果。
+
+历史研究股票池按证券生命周期与研究窗口是否相交确定，包含窗口内上市或退市的 SH60/SZ00 股票，避免只保留当前存续股票造成幸存者偏差。最新预测使用独立实时股票池，只保留快照日仍上市、可交易且当日非 ST 的证券；模型构建也会跳过整个研究窗口内没有任何非 ST 有效交易日的股票。窗口开始前已经退市的证券基础档案继续保留用于审计，但不会下载研究行情。
+
+初始化默认使用 2 个独立采集进程，可通过 `BAOSTOCK_WORKERS=1..4` 调整；每个进程独占并复用一个 BaoStock 会话，网络失败时仅重建对应进程会话。`STOCK_TRADING_HISTORY_DAYS` 控制研究窗口，默认 `1095` 天，允许范围为 365 至 1825 天。
 
 初始化不使用任务缓存判断是否跳过。每次运行都直接检查 Parquet、QLib、模型、回测、预测文件和 SQLite 业务数据：实际数据有效就跳过，缺失或损坏就只重建对应阶段。`task_run` 仅保留具体导入动作的执行日志，不作为初始化完成依据。券商历史事实每次都会尝试重新查询和幂等写入；登录或查询失败不阻止模型达到可预测状态，最终结果会分别输出 `modelReady`、`predictionReady` 和 `brokerReady`。
 
-`--force` 只允许所有运行目录位于项目根目录的 `var/` 下；它不会删除代码或 `stock-trading.env`。配置到项目外的数据目录时会拒绝执行强制删除。
+`--force` 只允许所有运行目录位于项目根目录的 `var/` 下；它不会删除代码或 `.env`。配置到项目外的数据目录时会拒绝执行强制删除。
 
 初始化不会自动提交无意义真实订单探测权限。历史成功委托和后续真实受理订单会更新市场权限；非交易时间、资金不足等结果不能证明权限，保持 `UNKNOWN` 并由券商在真实提交时最终判断。
 
@@ -146,13 +152,13 @@ stock-trading init --force
 
 ```bash
 # 同步当天、指定单日或日期范围的全市场日线
-stock-trading market all
-stock-trading market all 2026-10-29
-stock-trading market all 2026-10-01 2026-10-29
+stock-trading market --all
+stock-trading market --all --start-date 2026-10-29
+stock-trading market --all --start-date 2026-10-01 --end-date 2026-10-29
 
-# 同步指定股票的日线、复权因子和 5 分钟线；默认最近三年至当天
-stock-trading market sh.600000,sz.000001
-stock-trading market sh.600000,sz.000001 2023-01-01 2026-10-29
+# 同步指定股票的日线、复权因子和 5 分钟线；默认使用配置的研究窗口至当天
+stock-trading market --codes sh.600000,sz.000001
+stock-trading market --codes sh.600000,sz.000001 --start-date 2023-01-01 --end-date 2026-10-29
 ```
 
 `market` 是唯一公开行情采集命令。`all` 模式只采集全市场日线，不采集全市场分钟线，并按请求日期重新拉取、原子覆盖对应日线分区；股票列表模式采集对应股票训练所需的日线、复权因子和 5 分钟线，实际 Parquet 已完整覆盖时跳过。日线和复权因子按日期合并去重；5 分钟原始数据按股票压缩为单个 Parquet，只保留最近 90 个自然日。训练标签和回测需要的上午卖出窗口、下午买入窗口 VWAP/高低价按交易日聚合，每只股票一个聚合文件，至少保留 5 年。旧的 `code/trade_date/bars.parquet` 分区由 `clean` 一次性合并后删除。
@@ -174,26 +180,26 @@ stock-trading market sh.600000,sz.000001 2023-01-01 2026-10-29
 
 ```bash
 # 只读取本地 Parquet，核验分钟分区并重建 Qlib；不访问 BaoStock
-stock-trading prepare sh.600000,sz.000001
-stock-trading prepare sh.600000,sz.000001 2023-01-01 2026-10-29
+stock-trading prepare --codes sh.600000,sz.000001
+stock-trading prepare --codes sh.600000,sz.000001 --start-date 2023-01-01 --end-date 2026-10-29
 
 # 使用现有 Qlib，按 70%/15%/15% 自动切分后训练
 stock-trading train
 
 # 按交易日先后使用自定义训练、验证和测试比例
-stock-trading train 6:3:1
+stock-trading train --split 6:3:1
 
 # 使用默认 1 万元执行回测并自动导入 SQLite；也可只传初始资金
 stock-trading backtest
-stock-trading backtest 50000
+stock-trading backtest --initial-cash 50000
 
 # 生成当天或指定日期的横截面评分和 Top 5，并写入 SQLite
 stock-trading predict
-stock-trading predict 2026-10-29
+stock-trading predict --date 2026-10-29
 
 # 压缩旧分钟分区，并执行分钟和 SQLite 分级清理；默认以当天为基准
 stock-trading clean
-stock-trading clean 2026-10-31
+stock-trading clean --date 2026-10-31
 ```
 
 每次训练写入 `var/artifacts/alpha158-lightgbm/versions/<version>/` 的独立目录。只有模型、指标和预测制品全部写完并通过读取检查后，才会原子替换 `current.json` 指针。训练失败或 Ctrl+C 不会覆盖当前可用模型；`predict`、`backtest` 和初始化统一读取指针指向的版本。旧固定目录在尚未生成指针时仍可兼容读取。
@@ -203,20 +209,20 @@ stock-trading clean 2026-10-31
 ```bash
 # 同步当天券商事实并恢复本地委托；也可指定日期
 stock-trading broker
-stock-trading broker 2026-10-29
+stock-trading broker --date 2026-10-29
 
 # 按实时持仓和五档执行当天上午卖出；也可指定日期
 stock-trading sell
-stock-trading sell 2026-10-29
+stock-trading sell --date 2026-10-29
 
 # 按 Top 5、实时资金和五档执行当天下午买入；也可指定日期
 stock-trading buy
-stock-trading buy 2026-10-29
+stock-trading buy --date 2026-10-29
 
 # 同步绩效并执行滚动评估；第二个参数为入金正数或出金负数
 stock-trading evaluate
-stock-trading evaluate 2026-10-29
-stock-trading evaluate 2026-10-29 10000
+stock-trading evaluate --date 2026-10-29
+stock-trading evaluate --date 2026-10-29 --external-cash-flow 10000
 ```
 
 行情采集统一由 `market` 完成；Qlib 核验和重建由 `prepare` 完成，`train` 只负责模型训练。回测制品自动写入 SQLite，券商事实同步和委托恢复统一由 `broker` 处理。真实交易由 `buy`、`sell` 在执行窗口内完成实时查询、提交、状态轮询、撤单确认和重新报价。

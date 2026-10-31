@@ -1,9 +1,9 @@
-# AI_GENERATE_START -----
+# AI_GENERATE_START -------
 from __future__ import annotations
 
 import logging
 import shutil
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -23,12 +23,14 @@ class QlibBinaryStore:
         self._market_store = market_store
         self._target = target
 
-    def rebuild(self, codes: list[str]) -> dict[str, object]:
+    def rebuild(
+        self, codes: list[str], start_date: date, end_date: date
+    ) -> dict[str, object]:
         frames: dict[str, pd.DataFrame] = {}
         total_codes = len(codes)
         LOGGER.info("Qlib 构建阶段 1/3：读取并复权日线；股票数=%d", total_codes)
         for index, code in enumerate(codes, start=1):
-            frames[code] = self._adjusted_daily(code)
+            frames[code] = self._adjusted_daily(code, start_date, end_date)
             if should_log_progress(index, total_codes):
                 LOGGER.info("Qlib 日线处理进度：%d/%d；股票=%s", index, total_codes, code)
         calendar = pd.DatetimeIndex(
@@ -110,8 +112,8 @@ class QlibBinaryStore:
         expected = {to_qlib_code(code) for code in codes}
         return (
             len(calendar) >= 120
-            and calendar[0] <= start_date
-            and calendar[-1] >= end_date
+            and start_date <= calendar[0] <= start_date + timedelta(days=15)
+            and end_date - timedelta(days=15) <= calendar[-1] <= end_date
             and instruments == expected
             and all(self._feature_files_valid(instrument) for instrument in expected)
         )
@@ -130,10 +132,16 @@ class QlibBinaryStore:
             )
         except OSError:
             return False
-    def _adjusted_daily(self, code: str) -> pd.DataFrame:
+    def _adjusted_daily(
+        self, code: str, start_date: date, end_date: date
+    ) -> pd.DataFrame:
         daily = self._market_store.read_daily_history(code).set_index("trade_date")
         daily = daily[
+            (daily.index.date >= start_date) & (daily.index.date <= end_date)
+        ]
+        daily = daily[
             (daily["tradestatus"].astype(str) == "1")
+            & (daily["is_st"].astype(str) != "1")
             & (daily["close"].astype(float) > 0)
             & (daily["volume"].astype(float) > 0)
         ]
@@ -177,4 +185,4 @@ class QlibBinaryStore:
 def to_qlib_code(code: str) -> str:
     exchange, symbol = code.split(".", maxsplit=1)
     return f"{exchange.upper()}{symbol}"
-# AI_GENERATE_END -----
+# AI_GENERATE_END -------

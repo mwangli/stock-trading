@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------
+# AI_GENERATE_START -----------------------
 from __future__ import annotations
 
 import logging
@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 from stock_trading.logging_utils import should_log_progress
 from stock_trading.market.minute_summary import summarize_t1_windows
@@ -24,6 +25,10 @@ class ParquetMarketStore:
     def __init__(self, root: Path) -> None:
         self._root = root
 
+    @property
+    def root(self) -> Path:
+        return self._root
+
     def write_daily_market(self, trade_date: date, bars: list[DailyBar]) -> Path:
         target = self._root / "daily" / f"trade_date={trade_date.isoformat()}" / "bars.parquet"
         records = [_without(bar.as_record(), "trade_date") for bar in bars]
@@ -37,7 +42,7 @@ class ParquetMarketStore:
     def read_stock_basics(self) -> pd.DataFrame:
         """读取股票基础信息快照。"""
         target = self._root / "instruments" / "stocks.parquet"
-        frame = pd.read_parquet(target)
+        frame = _read_parquet_file(target)
         for field in ("ipo_date", "out_date", "snapshot_date"):
             frame[field] = pd.to_datetime(frame[field], errors="coerce")
         return frame.sort_values("code").reset_index(drop=True)
@@ -95,7 +100,7 @@ class ParquetMarketStore:
 
     def read_daily_history(self, code: str) -> pd.DataFrame:
         target = self._root / "daily_history" / f"code={code}" / "bars.parquet"
-        frame = pd.read_parquet(target)
+        frame = _read_parquet_file(target)
         if "code" not in frame:
             frame.insert(0, "code", code)
         frame["trade_date"] = pd.to_datetime(frame["trade_date"])
@@ -103,7 +108,7 @@ class ParquetMarketStore:
 
     def read_adjustment_factors(self, code: str) -> pd.DataFrame:
         target = self._root / "adjustment_factor" / f"code={code}" / "factors.parquet"
-        frame = pd.read_parquet(target)
+        frame = _read_parquet_file(target)
         if "code" not in frame:
             frame.insert(0, "code", code)
         frame["operate_date"] = pd.to_datetime(frame["operate_date"])
@@ -121,7 +126,7 @@ class ParquetMarketStore:
             return pd.DataFrame()
         frames: list[pd.DataFrame] = []
         for path in paths:
-            frame = pd.read_parquet(path)
+            frame = _read_parquet_file(path)
             if "code" not in frame:
                 frame.insert(0, "code", code)
             if "trade_date" not in frame and path.parent.name.startswith("trade_date="):
@@ -143,7 +148,7 @@ class ParquetMarketStore:
         target = self._minute_summary_path(code)
         if not target.is_file():
             return pd.DataFrame()
-        frame = pd.read_parquet(target)
+        frame = _read_parquet_file(target)
         frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="raise")
         return frame.sort_values("trade_date").reset_index(drop=True)
 
@@ -154,8 +159,8 @@ class ParquetMarketStore:
         if not daily.is_file() or not factors.is_file():
             return False
         try:
-            daily_frame = pd.read_parquet(daily)
-            factor_frame = pd.read_parquet(factors)
+            daily_frame = _read_parquet_file(daily)
+            factor_frame = _read_parquet_file(factors)
             if not self._coverage_contains(daily_frame, start_date, end_date):
                 return False
             if not self._coverage_contains(factor_frame, start_date, end_date):
@@ -197,6 +202,43 @@ class ParquetMarketStore:
         """返回通过实际文件检查的研究股票。"""
         return [
             code for code in codes if self.research_data_covers(code, start_date, end_date)
+        ]
+
+    def model_research_codes(
+        self, codes: list[str], start_date: date, end_date: date
+    ) -> list[str]:
+        """返回研究窗口内至少存在一个非 ST 可交易日的股票。"""
+        result: list[str] = []
+        for code in codes:
+            try:
+                daily = self._eligible_daily_rows(self.read_daily_history(code))
+                dates = pd.to_datetime(daily["trade_date"], errors="coerce").dt.date
+                if dates.between(start_date, end_date).any():
+                    result.append(code)
+            except (OSError, ValueError, KeyError):
+                continue
+        return result
+
+    def tradable_codes_on(self, codes: list[str], trade_date: date) -> list[str]:
+        """返回指定交易日具备有效非 ST 日线事实的股票。"""
+        result: list[str] = []
+        for code in codes:
+            try:
+                daily = self._eligible_daily_rows(self.read_daily_history(code))
+                dates = pd.to_datetime(daily["trade_date"], errors="coerce").dt.date
+                if dates.eq(trade_date).any():
+                    result.append(code)
+            except (OSError, ValueError, KeyError):
+                continue
+        return result
+
+    @staticmethod
+    def _eligible_daily_rows(frame: pd.DataFrame) -> pd.DataFrame:
+        return frame[
+            (frame["tradestatus"].astype(str) == "1")
+            & (frame["is_st"].astype(str) != "1")
+            & (frame["close"].astype(float) > 0)
+            & (frame["volume"].astype(float) > 0)
         ]
 
     @staticmethod
@@ -331,7 +373,7 @@ class ParquetMarketStore:
         existing = pd.DataFrame()
         if target.is_file():
             try:
-                existing = pd.read_parquet(target)
+                existing = _read_parquet_file(target)
             except Exception:
                 existing = pd.DataFrame()
         if not existing.empty:
@@ -388,4 +430,9 @@ class ParquetMarketStore:
 
 def _without(record: dict[str, object], *fields: str) -> dict[str, object]:
     return {key: value for key, value in record.items() if key not in fields}
-# AI_GENERATE_END -------------------
+
+
+def _read_parquet_file(path: Path) -> pd.DataFrame:
+    """读取单个文件，避免 key=value 父目录触发 Hive 分区字段合并。"""
+    return pq.ParquetFile(path).read().to_pandas()
+# AI_GENERATE_END -----------------------

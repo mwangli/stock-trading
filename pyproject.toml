@@ -4,18 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stock-trading"
-version = "0.1.7"
+version = "0.1.8"
 description = "Minimal A-share T+1 model research and trading application"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<=3.12"
 dependencies = [
     "baostock==0.9.4",
     "pandas>=2.2,<4",
     "Pillow>=11,<13",
     "pyarrow>=18,<24",
-]
-
-[project.optional-dependencies]
-research = [
+    "typer==0.27.3",
     "gym==0.26.2",
     "lightgbm>=4.5,<5",
     "pyqlib==0.9.7",

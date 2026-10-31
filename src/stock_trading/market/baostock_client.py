@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START -------
 from __future__ import annotations
 
 import logging
@@ -24,6 +24,7 @@ DAILY_FIELDS = (
 MINUTE_FIELDS = "date,time,code,open,high,low,close,volume,amount,adjustflag"
 LOGGER = logging.getLogger(__name__)
 REQUEST_POLL_SECONDS = 0.2
+ROW_PROGRESS_INTERVAL = 5_000
 T = TypeVar("T")
 
 
@@ -196,7 +197,7 @@ class BaoStockClient:
         rows: list[dict[str, str]] = []
         while result.next():
             rows.append(dict(zip(result.fields, result.get_row_data(), strict=True)))
-            if len(rows) % 500 == 0:
+            if len(rows) % ROW_PROGRESS_INTERVAL == 0:
                 LOGGER.info("数据采集中：任务=%s；已接收=%d 条", operation, len(rows))
         LOGGER.info("数据接收完成：任务=%s；总数=%d 条", operation, len(rows))
         return rows
@@ -300,4 +301,4 @@ class BaoStockClient:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END ------
+# AI_GENERATE_END -------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------
+# AI_GENERATE_START ---------------
 from __future__ import annotations
 
 import json
@@ -164,6 +164,7 @@ def predict_alpha158_lightgbm(
     model_dir: Path,
     prediction_date: date,
     top_k: int = 5,
+    eligible_instruments: set[str] | None = None,
 ) -> dict[str, object]:
     """Run one deterministic cross-sectional prediction with an existing model."""
     import qlib
@@ -215,6 +216,12 @@ def predict_alpha158_lightgbm(
         model.predict(features), index=features.index, name="score"
     ).dropna()
     scored.index.names = ["datetime", "instrument"]
+    if eligible_instruments is not None:
+        allowed = {value.upper() for value in eligible_instruments}
+        instruments = scored.index.get_level_values("instrument").astype(str).str.upper()
+        scored = scored[instruments.isin(allowed)]
+    if scored.empty:
+        raise ValueError(f"no eligible prediction instruments for date: {prediction_date}")
     top = (
         scored.reset_index()
         .sort_values(
@@ -343,4 +350,4 @@ def automatic_model_segments(
         test_end=calendar[-1],
     )
 
-# AI_GENERATE_END --------------
+# AI_GENERATE_END ---------------

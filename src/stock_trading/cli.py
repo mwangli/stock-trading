@@ -1,17 +1,18 @@
-# AI_GENERATE_START --------------------------------------------------------
+# AI_GENERATE_START ---------------------------------------------------------------
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import os
 import re
-import sys
 import urllib.request
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from time import perf_counter
+from typing import Annotated, Callable, TypeVar
+
+import typer
 
 from stock_trading.config import AppConfig
 from stock_trading.initialization import InitializationService
@@ -19,7 +20,7 @@ from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.broker.captcha import BaiduCaptchaSolver
 from stock_trading.market.baostock_client import BaoStockClient
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.market.sync import sync_research_data
+from stock_trading.market.sync import live_codes, sync_research_data
 from stock_trading.logging_utils import configure_logging, should_log_progress
 from stock_trading.research.artifacts import (
     model_root,
@@ -31,7 +32,7 @@ from stock_trading.research.model import (
     predict_alpha158_lightgbm,
 )
 from stock_trading.research.backtest import run_portfolio_backtest
-from stock_trading.research.qlib_store import QlibBinaryStore
+from stock_trading.research.qlib_store import QlibBinaryStore, to_qlib_code
 from stock_trading.state.store import StateStore
 from stock_trading.trading.execution import OrderExecutionOrchestrator
 from stock_trading.trading.orchestrator import LiveTradingOrchestrator
@@ -42,341 +43,383 @@ BARK_PUSH_URL = "https://api.day.app/push"
 PUBLIC_LOG_URL = "http://117.72.216.67/logs/run.log"
 
 
-COMMANDS = (
-    ("init", "初始化完整交易环境", "[--force]"),
-    (
-        "market",
-        "更新市场行情数据",
-        "<all|股票代码列表> [开始日期] [结束日期]",
-    ),
-    (
-        "prepare",
-        "校验数据并重建 Qlib",
-        "<股票代码列表> [开始日期] [结束日期]",
-    ),
-    (
-        "train",
-        "训练Alpha158+LightGBM模型",
-        "[训练比例:验证比例:测试比例]",
-    ),
-    ("backtest", "执行单持仓T+1回测", "[资金规模]"),
-    ("predict", "生成Top5预测", "[日期]"),
-    ("sell", "执行上午实时卖出", "[日期]"),
-    ("buy", "执行下午实时买入", "[日期]"),
-    ("broker", "同步券商事实并恢复委托", "[日期]"),
-    ("evaluate", "同步绩效并执行模型评估", "[日期] [资金规模]"),
-    ("clean", "压缩数据并执行分级清理", "[日期]"),
+app = typer.Typer(
+    name="stock-trading",
+    help="A股 T+1 数据、模型、交易和评估命令。日期统一使用 YYYY-MM-DD。",
+    no_args_is_help=True,
+    rich_markup_mode="rich",
+    add_completion=False,
+    pretty_exceptions_enable=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
-
-
-class ChineseArgumentParser(argparse.ArgumentParser):
-    """提供中文帮助标题和中文参数错误的命令行解析器。"""
-
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        show_help = bool(kwargs.pop("add_help", True))
-        kwargs["add_help"] = False
-        super().__init__(*args, **kwargs)
-        self._positionals.title = "位置参数"
-        self._optionals.title = "选项"
-        if show_help:
-            self.add_argument("-h", "--help", action="help", help="显示帮助信息并退出")
-
-    def format_usage(self) -> str:
-        return super().format_usage().replace("usage:", "用法：", 1)
-
-    def format_help(self) -> str:
-        return super().format_help().replace("usage:", "用法：", 1)
-
-    def error(self, message: str) -> None:
-        self.print_usage(sys.stderr)
-        self.exit(2, f"{self.prog}: 参数错误：{_translate_parser_error(message)}\n")
-
-
-class CompactCommandParser(ChineseArgumentParser):
-    """仅显示一行说明和命令列表的根命令解析器。"""
-
-    def format_help(self) -> str:
-        command_lines = "\n".join(
-            f"\tstock-trading {name:<9}{summary}; 参数: {parameters}"
-            for name, summary, parameters in COMMANDS
-        )
-        return f"{self.description}\n{command_lines}\n"
+T = TypeVar("T")
 
 
 def main() -> None:
+    app(prog_name="stock-trading")
+
+
+def _execute(
+    command: str,
+    parameters: dict[str, object],
+    operation: Callable[[AppConfig], T],
+) -> T:
     configure_logging()
-    parser = _build_parser()
-    arguments = parser.parse_args()
-    if arguments.command is None:
-        parser.print_help()
-        return
     started_at = perf_counter()
     config: AppConfig | None = None
     try:
         config = AppConfig.from_env()
         LOGGER.info(
             "业务命令开始：%s；参数=%s",
-            arguments.command,
-            json.dumps(
-                {
-                    key: value
-                    for key, value in vars(arguments).items()
-                    if not key.startswith("_") and key != "command"
-                },
-                ensure_ascii=False,
-                default=str,
-            ),
+            command,
+            json.dumps(parameters, ensure_ascii=False, default=str),
         )
-        _dispatch(arguments, config, parser)
+        result = operation(config)
+    except typer.BadParameter as error:
+        LOGGER.warning("业务命令参数错误：%s；原因=%s", command, error)
+        raise
     except Exception as error:
         LOGGER.error(
             "业务命令失败：%s；耗时=%.2f 秒；原因=%s",
-            arguments.command,
+            command,
             perf_counter() - started_at,
             error,
         )
-        _push_system_failure(config, arguments.command, error)
+        _push_system_failure(config, command, error)
         raise
     except KeyboardInterrupt:
         LOGGER.warning(
             "收到 Ctrl+C，业务命令已终止：%s；耗时=%.2f 秒",
-            arguments.command,
+            command,
             perf_counter() - started_at,
         )
         raise SystemExit(130) from None
     LOGGER.info(
         "业务命令完成：%s；总耗时=%.2f 秒",
-        arguments.command,
+        command,
         perf_counter() - started_at,
     )
+    return result
 
 
-def _dispatch(
-    arguments: argparse.Namespace,
-    config: AppConfig,
-    parser: argparse.ArgumentParser,
+COMMAND_CONTEXT = {"help_option_names": ["-h", "--help"]}
+
+
+@app.command("init", help="初始化完整交易环境。", context_settings=COMMAND_CONTEXT)
+def init_command(
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="删除项目 var 后从头初始化。"),
+    ] = False,
 ) -> None:
-    """将精简后的命令分派到对应业务流程。"""
-
-    command_parser = arguments._command_parser
-    values = arguments.values
-    today = date.today()
-    if arguments.command == "init":
-        _require_argument_count(values, 0, 0, command_parser)
-        result = InitializationService(
-            config, lambda: _build_broker(config)
-        ).run(force=bool(arguments.force))
+    def run(config: AppConfig) -> None:
+        result = InitializationService(config, lambda: _build_broker(config)).run(
+            force=force
+        )
         _print_json(result)
-    elif arguments.command == "market":
-        _require_argument_count(values, 1, 3, command_parser)
-        if values[0].lower() == "all":
-            start_date, end_date = _parse_optional_date_range(
-                values[1:], command_parser, today
-            )
-            _sync_daily(config, start_date, end_date)
-        else:
-            codes = _parse_stock_codes(values[0], command_parser)
-            start_date, end_date = _parse_history_date_range(
-                values[1:], command_parser, today
-            )
-            _sync_market_codes(config, codes, start_date, end_date)
-    elif arguments.command == "prepare":
-        _require_argument_count(values, 1, 3, command_parser)
-        codes = _parse_stock_codes(values[0], command_parser)
-        start_date, end_date = _parse_history_date_range(
-            values[1:], command_parser, today
-        )
-        _pre_train(config, codes, start_date, end_date)
-    elif arguments.command == "train":
-        _require_argument_count(values, 0, 1, command_parser)
-        split = _parse_model_split(values[0], command_parser) if values else None
-        _train(config, split)
-    elif arguments.command == "backtest":
-        _require_argument_count(values, 0, 1, command_parser)
-        initial_cash = (
-            _parse_decimal(values[0], "初始资金", command_parser, positive=True)
-            if values
-            else Decimal("10000")
-        )
-        _backtest(config, initial_cash)
-    elif arguments.command == "predict":
-        prediction_date = _parse_optional_date(values, command_parser, today)
-        _predict(config, prediction_date)
-    elif arguments.command == "clean":
-        cleanup_date = _parse_optional_date(values, command_parser, today)
-        _cleanup(config, cleanup_date)
-    elif arguments.command == "broker":
-        business_date = _parse_optional_date(values, command_parser, today)
-        _sync_broker(config, business_date)
-    elif arguments.command == "sell":
-        business_date = _parse_optional_date(values, command_parser, today)
-        _run_trading_window(config, business_date, morning=True)
-    elif arguments.command == "buy":
-        business_date = _parse_optional_date(values, command_parser, today)
-        _run_trading_window(config, business_date, morning=False)
-    elif arguments.command == "evaluate":
-        _require_argument_count(values, 0, 2, command_parser)
-        business_date = _parse_date(values[0], command_parser) if values else today
-        external_cash_flow = (
-            _parse_decimal(values[1], "外部资金流", command_parser)
-            if len(values) == 2
-            else Decimal("0")
-        )
-        _update_live_performance(config, business_date, external_cash_flow)
-    else:
-        parser.error(f"不支持的命令：{arguments.command}")
+
+    _execute("init", {"force": force}, run)
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = CompactCommandParser(
-        prog="stock-trading",
-        description=(
-            "A股T+1数据.模型,交易和评估命令,日期统一使用YYYY-MM-DD"
-            " <参数>必填,[参数]可选,|表示二选一."
+@app.command(
+    "market",
+    help="更新市场行情数据。--all 与 --codes 必须二选一。",
+    context_settings=COMMAND_CONTEXT,
+)
+def market_command(
+    all_stocks: Annotated[
+        bool,
+        typer.Option("--all", help="同步全市场日线。"),
+    ] = False,
+    codes: Annotated[
+        str | None,
+        typer.Option(help="同步指定股票，多个代码使用逗号分隔。"),
+    ] = None,
+    start_date: Annotated[
+        str | None,
+        typer.Option(help="开始日期，格式 YYYY-MM-DD。"),
+    ] = None,
+    end_date: Annotated[
+        str | None,
+        typer.Option(help="结束日期，格式 YYYY-MM-DD。"),
+    ] = None,
+) -> None:
+    if all_stocks == bool(codes):
+        raise typer.BadParameter("--all 与 --codes 必须且只能指定一个")
+
+    def run(config: AppConfig) -> None:
+        today = date.today()
+        if all_stocks:
+            start, end = _parse_date_range(
+                start_date, end_date, today, today, single_date=True
+            )
+            _sync_daily(config, start, end)
+            return
+        parsed_codes = _parse_stock_codes(codes or "")
+        start, end = _parse_date_range(
+            start_date,
+            end_date,
+            today - timedelta(days=config.market_history_days),
+            today,
+        )
+        _sync_market_codes(config, parsed_codes, start, end)
+
+    _execute(
+        "market",
+        {
+            "all": all_stocks,
+            "codes": codes,
+            "startDate": start_date,
+            "endDate": end_date,
+        },
+        run,
+    )
+
+
+@app.command(
+    "prepare", help="校验指定股票数据并重建 Qlib。", context_settings=COMMAND_CONTEXT
+)
+def prepare_command(
+    codes: Annotated[
+        str,
+        typer.Option(help="股票代码列表，多个代码使用逗号分隔。"),
+    ],
+    start_date: Annotated[
+        str | None,
+        typer.Option(help="开始日期，格式 YYYY-MM-DD。"),
+    ] = None,
+    end_date: Annotated[
+        str | None,
+        typer.Option(help="结束日期，格式 YYYY-MM-DD。"),
+    ] = None,
+) -> None:
+    def run(config: AppConfig) -> None:
+        today = date.today()
+        start, end = _parse_date_range(
+            start_date,
+            end_date,
+            today - timedelta(days=config.market_history_days),
+            today,
+        )
+        _pre_train(config, _parse_stock_codes(codes), start, end)
+
+    _execute(
+        "prepare",
+        {"codes": codes, "startDate": start_date, "endDate": end_date},
+        run,
+    )
+
+
+@app.command(
+    "train", help="训练 Alpha158 + LightGBM 模型。", context_settings=COMMAND_CONTEXT
+)
+def train_command(
+    split: Annotated[
+        str | None,
+        typer.Option(help="训练:验证:测试比例，例如 6:3:1。"),
+    ] = None,
+) -> None:
+    _execute(
+        "train",
+        {"split": split},
+        lambda config: _train(config, _parse_model_split(split) if split else None),
+    )
+
+
+@app.command(
+    "backtest", help="执行单持仓 T+1 回测。", context_settings=COMMAND_CONTEXT
+)
+def backtest_command(
+    initial_cash: Annotated[
+        str,
+        typer.Option(help="初始资金，必须大于 0。"),
+    ] = "10000",
+) -> None:
+    _execute(
+        "backtest",
+        {"initialCash": initial_cash},
+        lambda config: _backtest(
+            config, _parse_decimal(initial_cash, "初始资金", positive=True)
         ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    subparsers = parser.add_subparsers(
-        dest="command",
-        title="可用命令",
-        metavar="命令",
-        parser_class=ChineseArgumentParser,
-    )
-    for name, summary, parameters in COMMANDS:
-        _add_command(subparsers, name, summary, parameters)
-    return parser
 
 
-def _add_command(
-    subparsers: argparse._SubParsersAction,
-    name: str,
-    summary: str,
-    parameters: str,
+def _run_date_command(
+    command: str,
+    value: str | None,
+    operation: Callable[[AppConfig, date], None],
 ) -> None:
-    command = subparsers.add_parser(
-        name,
-        help=f"{summary}; 参数: {parameters}",
-        add_help=False,
-    )
-    if name == "init":
-        command.add_argument("--force", action="store_true")
-    command.add_argument("values", nargs="*", metavar="参数")
-    command.set_defaults(_command_parser=command)
+    business_date = _parse_date(value) if value else date.today()
+    _execute(command, {"date": value}, lambda config: operation(config, business_date))
 
 
-def _translate_parser_error(message: str) -> str:
-    invalid_choice = re.search(r"invalid choice: '([^']+)'", message)
-    if invalid_choice:
-        return f"未知命令“{invalid_choice.group(1)}”，请使用 --help 查看可用命令"
-    if message.startswith("unrecognized arguments:"):
-        return f"无法识别的参数：{message.partition(':')[2].strip()}"
-    if message.startswith("the following arguments are required:"):
-        return f"缺少必要参数：{message.partition(':')[2].strip()}"
-    return message
-
-
-def _require_argument_count(
-    values: list[str],
-    minimum: int,
-    maximum: int,
-    parser: argparse.ArgumentParser,
+@app.command("predict", help="生成 Top 5 预测。", context_settings=COMMAND_CONTEXT)
+def predict_command(
+    prediction_date: Annotated[
+        str | None,
+        typer.Option("--date", help="预测日期，格式 YYYY-MM-DD。"),
+    ] = None,
 ) -> None:
-    if minimum <= len(values) <= maximum:
-        return
-    if minimum == maximum:
-        parser.error(f"需要 {minimum} 个参数，实际收到 {len(values)} 个")
-    parser.error(f"只接受 {minimum} 至 {maximum} 个参数，实际收到 {len(values)} 个")
+    _run_date_command("predict", prediction_date, _predict)
 
 
-def _parse_date(value: str, parser: argparse.ArgumentParser) -> date:
+@app.command("sell", help="执行上午实时卖出。", context_settings=COMMAND_CONTEXT)
+def sell_command(
+    business_date: Annotated[
+        str | None,
+        typer.Option("--date", help="业务日期，格式 YYYY-MM-DD。"),
+    ] = None,
+) -> None:
+    _run_date_command(
+        "sell",
+        business_date,
+        lambda config, target_date: _run_trading_window(
+            config, target_date, morning=True
+        ),
+    )
+
+
+@app.command("buy", help="执行下午实时买入。", context_settings=COMMAND_CONTEXT)
+def buy_command(
+    business_date: Annotated[
+        str | None,
+        typer.Option("--date", help="业务日期，格式 YYYY-MM-DD。"),
+    ] = None,
+) -> None:
+    _run_date_command(
+        "buy",
+        business_date,
+        lambda config, target_date: _run_trading_window(
+            config, target_date, morning=False
+        ),
+    )
+
+
+@app.command(
+    "broker", help="同步券商事实并恢复委托。", context_settings=COMMAND_CONTEXT
+)
+def broker_command(
+    business_date: Annotated[
+        str | None,
+        typer.Option("--date", help="业务日期，格式 YYYY-MM-DD。"),
+    ] = None,
+) -> None:
+    _run_date_command("broker", business_date, _sync_broker)
+
+
+@app.command(
+    "evaluate", help="同步绩效并执行模型评估。", context_settings=COMMAND_CONTEXT
+)
+def evaluate_command(
+    business_date: Annotated[
+        str | None,
+        typer.Option("--date", help="业务日期，格式 YYYY-MM-DD。"),
+    ] = None,
+    external_cash_flow: Annotated[
+        str,
+        typer.Option(help="外部资金流，入金为正数，出金为负数。"),
+    ] = "0",
+) -> None:
+    target_date = _parse_date(business_date) if business_date else date.today()
+    cash_flow = _parse_decimal(external_cash_flow, "外部资金流")
+    _execute(
+        "evaluate",
+        {"date": business_date, "externalCashFlow": external_cash_flow},
+        lambda config: _update_live_performance(config, target_date, cash_flow),
+    )
+
+
+@app.command("clean", help="压缩数据并执行分级清理。", context_settings=COMMAND_CONTEXT)
+def clean_command(
+    reference_date: Annotated[
+        str | None,
+        typer.Option("--date", help="清理基准日期，格式 YYYY-MM-DD。"),
+    ] = None,
+) -> None:
+    _run_date_command("clean", reference_date, _cleanup)
+
+
+def _parse_date(value: str) -> date:
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-        parser.error(f"日期格式错误：{value}；请使用 YYYY-MM-DD，例如 2026-10-31")
+        raise typer.BadParameter(
+            f"日期格式错误：{value}；请使用 YYYY-MM-DD，例如 2026-10-31"
+        )
     try:
         return date.fromisoformat(value)
     except ValueError:
-        parser.error(f"日期无效：{value}；请检查年月日是否存在")
-    raise AssertionError("日期解析失败后应由参数解析器退出")
+        raise typer.BadParameter(f"日期无效：{value}；请检查年月日是否存在") from None
 
 
-def _parse_optional_date(
-    values: list[str], parser: argparse.ArgumentParser, default: date
-) -> date:
-    _require_argument_count(values, 0, 1, parser)
-    return _parse_date(values[0], parser) if values else default
-
-
-def _parse_optional_date_range(
-    values: list[str], parser: argparse.ArgumentParser, default: date
+def _parse_date_range(
+    start_value: str | None,
+    end_value: str | None,
+    default_start: date,
+    default_end: date,
+    single_date: bool = False,
 ) -> tuple[date, date]:
-    _require_argument_count(values, 0, 2, parser)
-    if not values:
-        return default, default
-    start_date = _parse_date(values[0], parser)
-    end_date = _parse_date(values[1], parser) if len(values) == 2 else start_date
-    _validate_date_range(start_date, end_date, parser)
-    return start_date, end_date
-
-
-def _parse_history_date_range(
-    values: list[str], parser: argparse.ArgumentParser, today: date
-) -> tuple[date, date]:
-    _require_argument_count(values, 0, 2, parser)
-    if not values:
-        return today - timedelta(days=365 * 3), today
-    start_date = _parse_date(values[0], parser)
-    end_date = _parse_date(values[1], parser) if len(values) == 2 else today
-    _validate_date_range(start_date, end_date, parser)
+    if end_value and not start_value:
+        raise typer.BadParameter("指定 --end-date 时必须同时指定 --start-date")
+    start_date = _parse_date(start_value) if start_value else default_start
+    if end_value:
+        end_date = _parse_date(end_value)
+    elif start_value and single_date:
+        end_date = start_date
+    else:
+        end_date = default_end
+    _validate_date_range(start_date, end_date)
     return start_date, end_date
 
 
 def _validate_date_range(
-    start_date: date, end_date: date, parser: argparse.ArgumentParser
+    start_date: date,
+    end_date: date,
 ) -> None:
     if end_date < start_date:
-        parser.error(f"结束日期 {end_date} 不能早于开始日期 {start_date}")
+        raise typer.BadParameter(f"结束日期 {end_date} 不能早于开始日期 {start_date}")
 
 
-def _parse_stock_code(value: str, parser: argparse.ArgumentParser) -> str:
+def _parse_stock_code(value: str) -> str:
     normalized = value.strip().lower()
     if not re.fullmatch(r"(?:sh|sz)\.\d{6}", normalized):
-        parser.error(f"股票代码格式错误：{value}；示例：sh.600000 或 sz.000001")
+        raise typer.BadParameter(
+            f"股票代码格式错误：{value}；示例：sh.600000 或 sz.000001"
+        )
     return normalized
 
 
-def _parse_stock_codes(value: str, parser: argparse.ArgumentParser) -> list[str]:
+def _parse_stock_codes(value: str) -> list[str]:
     raw_codes = [item.strip() for item in value.split(",") if item.strip()]
     if not raw_codes:
-        parser.error("股票代码列表不能为空")
-    return list(dict.fromkeys(_parse_stock_code(code, parser) for code in raw_codes))
+        raise typer.BadParameter("股票代码列表不能为空")
+    return list(dict.fromkeys(_parse_stock_code(code) for code in raw_codes))
 
 
 def _parse_decimal(
     value: str,
     name: str,
-    parser: argparse.ArgumentParser,
     positive: bool = False,
 ) -> Decimal:
     try:
         result = Decimal(value)
     except InvalidOperation:
-        parser.error(f"{name}格式错误：{value}；请输入数字")
+        raise typer.BadParameter(f"{name}格式错误：{value}；请输入数字") from None
     if not result.is_finite() or (positive and result <= 0):
-        parser.error(f"{name}必须是{'大于 0 的' if positive else '有限'}数字")
+        raise typer.BadParameter(
+            f"{name}必须是{'大于 0 的' if positive else '有限'}数字"
+        )
     return result
 
 
-def _parse_model_split(
-    value: str, parser: argparse.ArgumentParser
-) -> tuple[Decimal, Decimal, Decimal]:
+def _parse_model_split(value: str) -> tuple[Decimal, Decimal, Decimal]:
     parts = value.split(":")
     if len(parts) != 3:
-        parser.error("训练比例格式错误；请使用 训练:验证:测试，例如 6:3:1")
+        raise typer.BadParameter("训练比例格式错误；请使用 训练:验证:测试，例如 6:3:1")
     try:
         ratios = tuple(Decimal(part) for part in parts)
     except InvalidOperation:
-        parser.error("训练比例必须是数字；例如 6:3:1")
+        raise typer.BadParameter("训练比例必须是数字；例如 6:3:1") from None
     if any(not ratio.is_finite() or ratio <= 0 for ratio in ratios):
-        parser.error("训练、验证和测试比例必须全部大于 0")
+        raise typer.BadParameter("训练、验证和测试比例必须全部大于 0")
     return ratios[0], ratios[1], ratios[2]
 
 
@@ -452,7 +495,12 @@ def _sync_market_codes(
         end_date,
     )
     result = sync_research_data(
-        store, config.baostock_proxy, codes, start_date, end_date
+        store,
+        config.baostock_proxy,
+        codes,
+        start_date,
+        end_date,
+        config.baostock_workers,
     )
     _print_json(
         {
@@ -472,20 +520,22 @@ def _pre_train(
     missing_codes = [code for code in codes if code not in valid_codes]
     if missing_codes:
         command = (
-            "stock-trading market "
-            f"{','.join(missing_codes)} {start_date.isoformat()} {end_date.isoformat()}"
+            f"stock-trading market --codes {','.join(missing_codes)} "
+            f"--start-date {start_date.isoformat()} --end-date {end_date.isoformat()}"
         )
         raise ValueError(
             "本地训练行情缺失或分钟聚合不完整："
             f"{','.join(missing_codes)}；请先执行：{command}"
         )
+    model_codes = store.model_research_codes(valid_codes, start_date, end_date)
     LOGGER.info(
-        "开始重建 Qlib：股票数=%d；日期=%s 至 %s",
+        "开始重建 Qlib：采集有效=%d；模型有效=%d；日期=%s 至 %s",
         len(valid_codes),
+        len(model_codes),
         start_date,
         end_date,
     )
-    qlib_result = QlibBinaryStore(store, config.qlib_dir).rebuild(valid_codes)
+    qlib_result = QlibBinaryStore(store, config.qlib_dir).rebuild(model_codes, start_date, end_date)
     LOGGER.info(
         "训练准备完成：股票数=%d；交易日=%s；标签=%s",
         qlib_result["codes"],
@@ -496,7 +546,7 @@ def _pre_train(
         {
             "startDate": start_date.isoformat(),
             "endDate": end_date.isoformat(),
-            "codes": valid_codes,
+            "codes": model_codes,
             "qlib": qlib_result,
         }
     )
@@ -595,11 +645,16 @@ def _sync_broker(config: AppConfig, business_date: date) -> None:
 def _predict(config: AppConfig, prediction_date: date) -> None:
     LOGGER.info("开始生成横截面预测：预测日期=%s；TopK=5", prediction_date)
     model_dir = resolve_current_model_dir(model_root(config.artifact_dir))
+    store = ParquetMarketStore(config.data_dir)
+    stocks = store.read_stock_basics()
+    live_metadata_codes = live_codes(stocks, prediction_date)
+    current_codes = store.tradable_codes_on(live_metadata_codes, prediction_date)
     prediction = predict_alpha158_lightgbm(
         config.qlib_dir,
         model_dir,
         prediction_date,
         5,
+        {to_qlib_code(code) for code in current_codes},
     )
     state = StateStore(config.state_db_path).import_prediction_artifact(
         model_dir, Path(prediction["path"])
@@ -789,4 +844,4 @@ def _safe_error_text(value: object) -> str:
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END --------------------------------------------------------
+# AI_GENERATE_END ---------------------------------------------------------------
