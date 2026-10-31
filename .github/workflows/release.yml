@@ -96,6 +96,7 @@ jobs:
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
           envs: DEPLOY_DIR,RELEASE_TAG
+          command_timeout: 30m
           script: |
             set -eu
             deploy_dir="${DEPLOY_DIR%/}"
@@ -158,7 +159,13 @@ jobs:
               exit 1
             fi
             if [ ! -x "$venv_dir/bin/python" ]; then
-              python3 -m venv "$venv_dir"
+              rm -rf "$venv_dir"
+              if ! python3 -m venv "$venv_dir"; then
+                rm -rf "$venv_dir"
+                apt-get update
+                DEBIAN_FRONTEND=noninteractive apt-get install -y python3-venv
+                python3 -m venv "$venv_dir"
+              fi
             fi
             "$venv_dir/bin/python" -m pip install --upgrade "$1[research]"
             "$venv_dir/bin/stock-trading" --help >/dev/null
