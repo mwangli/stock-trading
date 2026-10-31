@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START --
 from __future__ import annotations
 
 import logging
@@ -18,21 +18,26 @@ POLL_SECONDS = 0.2
 
 
 @contextmanager
-def replace_running_init(state_db_path: Path) -> Iterator[None]:
-    """Replace older Linux init processes and own the init lifecycle."""
+def replace_running_command(command: str, state_db_path: Path) -> Iterator[None]:
+    """Replace older Linux processes for one command and own its lifecycle."""
     if sys.platform != "linux":
         yield
         return
 
     state_dir = state_db_path.parent
     state_dir.mkdir(parents=True, exist_ok=True)
-    owner_path = state_dir / "init-owner.pid"
+    owner_path = state_dir / f"{command}-owner.pid"
     current_pid = os.getpid()
     protected = _ancestor_pids(current_pid) | {current_pid}
-    stale = _find_init_processes() - protected
+    current_start_key = _process_start_key(current_pid)
+    stale = {
+        process_id
+        for process_id, start_key in _find_command_processes(command).items()
+        if process_id not in protected and start_key < current_start_key
+    }
     stale |= _descendant_pids(stale) - protected
     if stale:
-        _stop_processes(stale)
+        _stop_processes(command, stale)
 
     owner_path.write_text(str(current_pid), encoding="ascii")
     try:
@@ -42,69 +47,76 @@ def replace_running_init(state_db_path: Path) -> Iterator[None]:
             if owner_path.read_text(encoding="ascii").strip() == str(current_pid):
                 owner_path.unlink(missing_ok=True)
         except OSError:
-            LOGGER.warning("init owner PID 文件清理失败：%s", owner_path)
+            LOGGER.warning("%s owner PID 文件清理失败：%s", command, owner_path)
 
 
-def _find_init_processes() -> set[int]:
-    matches: set[int] = set()
+def _find_command_processes(command: str) -> dict[int, tuple[int, int]]:
+    matches: dict[int, tuple[int, int]] = {}
     for process_dir in _process_directories():
         arguments = _read_cmdline(process_dir)
-        if _is_init_command(arguments):
-            matches.add(int(process_dir.name))
+        if _is_command(arguments, command):
+            process_id = int(process_dir.name)
+            matches[process_id] = _process_start_key(process_id)
     return matches
 
 
-def _is_init_command(arguments: tuple[str, ...]) -> bool:
-    if "init" not in arguments:
-        return False
+def _is_command(arguments: tuple[str, ...], command: str) -> bool:
     for index, argument in enumerate(arguments):
         if (
             index <= 1
             and Path(argument).name == "stock-trading"
-            and "init" in arguments[index + 1 :]
+            and index + 1 < len(arguments)
+            and arguments[index + 1] == command
         ):
             return True
         if (
             argument == "-m"
-            and index + 1 < len(arguments)
+            and index + 2 < len(arguments)
             and arguments[index + 1] == "stock_trading"
-            and "init" in arguments[index + 2 :]
+            and arguments[index + 2] == command
         ):
             return True
     return False
 
 
-def _stop_processes(process_ids: set[int]) -> None:
+def _stop_processes(command: str, process_ids: set[int]) -> None:
     targets = _live_processes(process_ids)
     if not targets:
         return
-    LOGGER.warning("检测到旧 init 进程，准备接管：PID=%s", _format_pids(targets))
-    _signal_processes(targets, signal.SIGINT)
+    original_targets = set(targets)
+    _signal_processes(command, targets, signal.SIGINT)
     remaining = _wait_for_exit(targets, INTERRUPT_WAIT_SECONDS)
     if remaining:
-        LOGGER.warning(
-            "旧 init 未在中断窗口退出，发送 SIGTERM：PID=%s",
-            _format_pids(remaining),
-        )
-        _signal_processes(remaining, signal.SIGTERM)
+        _signal_processes(command, remaining, signal.SIGTERM)
         remaining = _wait_for_exit(remaining, TERMINATE_WAIT_SECONDS)
     if remaining:
-        LOGGER.warning("旧 init 仍未退出，发送 SIGKILL：PID=%s", _format_pids(remaining))
-        _signal_processes(remaining, signal.SIGKILL)
+        _signal_processes(command, remaining, signal.SIGKILL)
         remaining = _wait_for_exit(remaining, KILL_WAIT_SECONDS)
     if remaining:
-        raise RuntimeError(f"旧 init 进程无法终止: {_format_pids(remaining)}")
-    LOGGER.info("旧 init 进程已全部退出，新初始化继续执行")
+        raise RuntimeError(
+            f"旧 {command} 进程无法终止: {_format_pids(remaining)}"
+        )
+    LOGGER.warning(
+        "检测到并已终止旧 %s 进程：PID=%s",
+        command,
+        _format_pids(original_targets),
+    )
 
 
-def _signal_processes(process_ids: set[int], signal_number: int) -> None:
+def _signal_processes(
+    command: str,
+    process_ids: set[int],
+    signal_number: int,
+) -> None:
     for process_id in sorted(process_ids):
         try:
             os.kill(process_id, signal_number)
         except ProcessLookupError:
             continue
         except PermissionError as error:
-            raise RuntimeError(f"无权终止旧 init 进程: {process_id}") from error
+            raise RuntimeError(
+                f"无权终止旧 {command} 进程: {process_id}"
+            ) from error
 
 
 def _wait_for_exit(process_ids: set[int], timeout_seconds: float) -> set[int]:
@@ -181,15 +193,22 @@ def _read_cmdline(process_dir: Path) -> tuple[str, ...]:
     )
 
 
-def _read_process_stat(process_dir: Path) -> tuple[str, int] | None:
+def _read_process_stat(process_dir: Path) -> tuple[str, int, int] | None:
     try:
         content = (process_dir / "stat").read_text(encoding="ascii")
         fields = content.rsplit(")", 1)[1].strip().split()
-        return fields[0], int(fields[1])
+        return fields[0], int(fields[1]), int(fields[19])
     except (OSError, IndexError, ValueError):
         return None
 
 
+def _process_start_key(process_id: int) -> tuple[int, int]:
+    stat = _read_process_stat(Path("/proc") / str(process_id))
+    if stat is None:
+        return (0, process_id)
+    return (stat[2], process_id)
+
+
 def _format_pids(process_ids: set[int]) -> str:
     return ",".join(str(process_id) for process_id in sorted(process_ids))
-# AI_GENERATE_END -
+# AI_GENERATE_END --

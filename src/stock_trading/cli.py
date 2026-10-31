@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------------------------------------------------------
+# AI_GENERATE_START --------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import urllib.request
+from contextlib import nullcontext
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -21,7 +22,7 @@ from stock_trading.broker.captcha import BaiduCaptchaSolver
 from stock_trading.market.baostock_client import BaoStockClient
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.sync import live_codes, sync_research_data
-from stock_trading.process_control import replace_running_init
+from stock_trading.process_control import replace_running_command
 from stock_trading.logging_utils import (
     configure_logging,
     live_progress_session,
@@ -59,6 +60,7 @@ app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 T = TypeVar("T")
+REPLACEABLE_COMMANDS = frozenset({"init", "market", "buy", "sell"})
 
 
 def main() -> None:
@@ -75,12 +77,18 @@ def _execute(
     config: AppConfig | None = None
     try:
         config = AppConfig.from_env()
-        LOGGER.info(
-            "业务命令开始：%s；参数=%s",
-            command,
-            json.dumps(parameters, ensure_ascii=False, default=str),
+        process_scope = (
+            replace_running_command(command, config.state_db_path)
+            if command in REPLACEABLE_COMMANDS
+            else nullcontext()
         )
-        result = operation(config)
+        with process_scope:
+            LOGGER.info(
+                "业务命令开始：%s；参数=%s",
+                command,
+                json.dumps(parameters, ensure_ascii=False, default=str),
+            )
+            result = operation(config)
     except typer.BadParameter as error:
         LOGGER.warning("业务命令参数错误：%s；原因=%s", command, error)
         raise
@@ -123,10 +131,9 @@ def init_command(
     ] = False,
 ) -> None:
     def run(config: AppConfig) -> dict[str, object]:
-        with replace_running_init(config.state_db_path):
-            return InitializationService(config, lambda: _build_broker(config)).run(
-                force=force
-            )
+        return InitializationService(config, lambda: _build_broker(config)).run(
+            force=force
+        )
 
     configure_logging()
     with live_progress_session("正在启动初始化"):
@@ -908,4 +915,4 @@ def _safe_error_text(value: object) -> str:
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END -------------------------------------------------------------------------
+# AI_GENERATE_END --------------------------------------------------------------------------

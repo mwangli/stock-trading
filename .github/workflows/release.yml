@@ -143,17 +143,35 @@ jobs:
             restart_init=0
             init_pattern="$venv_dir/bin/python $venv_dir/bin/[s]tock-trading init"
             if pgrep -af "$init_pattern"; then
-              echo "Stopping the active init command gracefully before migration"
-              pkill -INT -f "$init_pattern"
+              echo "Stopping the active init command before release"
+              pkill -INT -f "$init_pattern" || true
               wait_count=0
               while pgrep -f "$init_pattern" >/dev/null; do
-                if [ "$wait_count" -ge 12 ]; then
-                  echo "The init command did not stop within 60 seconds; refusing migration" >&2
-                  exit 1
+                if [ "$wait_count" -ge 8 ]; then
+                  break
                 fi
-                sleep 5
+                sleep 1
                 wait_count=$((wait_count + 1))
               done
+              if pgrep -f "$init_pattern" >/dev/null; then
+                pkill -TERM -f "$init_pattern" || true
+                wait_count=0
+                while pgrep -f "$init_pattern" >/dev/null; do
+                  if [ "$wait_count" -ge 3 ]; then
+                    break
+                  fi
+                  sleep 1
+                  wait_count=$((wait_count + 1))
+                done
+              fi
+              if pgrep -f "$init_pattern" >/dev/null; then
+                pkill -KILL -f "$init_pattern" || true
+                sleep 1
+              fi
+              if pgrep -f "$init_pattern" >/dev/null; then
+                echo "The init command could not be stopped; refusing release" >&2
+                exit 1
+              fi
               restart_init=1
             fi
             exec 9>/data/stock-trading/state/scheduler.lock
