@@ -1,8 +1,9 @@
-# AI_GENERATE_START ----
+# AI_GENERATE_START ------
 from __future__ import annotations
 
 import atexit
 import logging
+import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import date, timedelta
@@ -11,13 +12,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from stock_trading.logging_utils import should_log_progress
+from stock_trading.logging_utils import configure_logging
 from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
 from stock_trading.market.models import AdjustmentFactor
 from stock_trading.market.storage import ParquetMarketStore
 
 LOGGER = logging.getLogger(__name__)
 MAX_BAOSTOCK_WORKERS = 4
+RESEARCH_PROGRESS_INTERVAL = 10
 
 _WORKER_STORE: ParquetMarketStore | None = None
 _WORKER_PROXY_URL: str | None = None
@@ -181,7 +183,11 @@ def _record_research_result(
     else:
         downloaded += 1
     completed += 1
-    if should_log_progress(completed, pending_count):
+    if (
+        completed == 1
+        or completed == pending_count
+        or completed % RESEARCH_PROGRESS_INTERVAL == 0
+    ):
         LOGGER.info(
             "研究数据同步进度：完成=%d/%d；下载=%d；跳过=%d；失败=%d",
             completed,
@@ -195,9 +201,11 @@ def _record_research_result(
 
 def _initialize_research_worker(root: Path, proxy_url: str | None) -> None:
     global _WORKER_STORE, _WORKER_PROXY_URL
+    configure_logging()
     _WORKER_STORE = ParquetMarketStore(root)
     _WORKER_PROXY_URL = proxy_url
     atexit.register(_close_worker_client)
+    LOGGER.info("BaoStock 采集进程就绪：进程=%d", os.getpid())
 
 
 def _sync_research_code(
@@ -254,4 +262,4 @@ def _close_worker_client() -> None:
         client.__exit__(None, None, None)
     except Exception as error:
         LOGGER.warning("BaoStock 会话关闭失败，连接将由进程回收：%s", error)
-# AI_GENERATE_END ----
+# AI_GENERATE_END ------
