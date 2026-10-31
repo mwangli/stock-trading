@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------
+# AI_GENERATE_START ---------------------
 from __future__ import annotations
 
 import logging
@@ -68,7 +68,6 @@ class InitializationService:
 
         end_date = latest_trade_date(self._config.baostock_proxy)
         start_date = end_date - timedelta(days=self._config.market_history_days)
-        minute_cleanup = self._market.cleanup_minutes(end_date)
         LOGGER.info(
             "初始化计划确定：研究日期=%s 至 %s；资金档位=%s",
             start_date,
@@ -196,7 +195,6 @@ class InitializationService:
         )
         return {
             "startDate": start_date.isoformat(),
-            "minuteCleanup": minute_cleanup,
             "endDate": end_date.isoformat(),
             "researchCodes": len(model_codes),
             "collectedCodes": len(valid_codes),
@@ -350,4 +348,4 @@ def _model_valid(model_root_dir: Path) -> bool:
         return model_artifacts_valid(resolve_current_model_dir(model_root_dir))
     except (OSError, ValueError):
         return False
-# AI_GENERATE_END --------------------
+# AI_GENERATE_END ---------------------

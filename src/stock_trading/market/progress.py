@@ -1,14 +1,20 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START -----
 from __future__ import annotations
 
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from multiprocessing import Value
+from multiprocessing import Array, Value
 from types import TracebackType
 from typing import Any, Self
 
-from stock_trading.logging_utils import bind_progress_context, clear_progress_context
+from stock_trading.logging_utils import (
+    PROGRESS_MESSAGE_LIMIT,
+    bind_progress_context,
+    restore_progress_context,
+    start_progress_renderer,
+    stop_progress_renderer,
+)
 
 MIN_ESTIMATE_SECONDS = 5 * 60
 ESTIMATE_WINDOW_SECONDS = 10 * 60
@@ -22,6 +28,9 @@ class ResearchProgress:
     skipped: int
     _completed: Any = field(init=False)
     _remaining_seconds: Any = field(init=False)
+    _message: Any = field(init=False)
+    _previous_context: Any = field(init=False)
+    _renderer_started: bool = field(init=False, default=False)
     _started_at: float = field(init=False, default=0.0)
     _samples: deque[tuple[float, int]] = field(init=False, default_factory=deque)
 
@@ -30,13 +39,18 @@ class ResearchProgress:
         self._completed = Value("q", initial, lock=True)
         initial_remaining = 0 if initial >= self.total_count else -1
         self._remaining_seconds = Value("q", initial_remaining, lock=True)
+        self._message = Array("u", PROGRESS_MESSAGE_LIMIT, lock=True)
+        with self._message.get_lock():
+            self._message.get_obj().value = "正在准备研究数据采集"
         self._started_at = time.monotonic()
         self._samples.append((self._started_at, initial))
-        bind_progress_context(
+        self._previous_context = bind_progress_context(
             self._completed,
             self._remaining_seconds,
             self.total_count,
+            self._message,
         )
+        self._renderer_started = start_progress_renderer()
         return self
 
     def __exit__(
@@ -45,11 +59,18 @@ class ResearchProgress:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        clear_progress_context()
+        if self._renderer_started:
+            stop_progress_renderer()
+        restore_progress_context(self._previous_context)
 
     @property
-    def worker_context(self) -> tuple[Any, Any, int]:
-        return self._completed, self._remaining_seconds, self.total_count
+    def worker_context(self) -> tuple[Any, Any, int, Any]:
+        return (
+            self._completed,
+            self._remaining_seconds,
+            self.total_count,
+            self._message,
+        )
 
     def update(self, completed: int) -> None:
         now = time.monotonic()
@@ -79,4 +100,4 @@ class ResearchProgress:
             return -1
         remaining = max(0, self.total_count - processed)
         return max(0, round(remaining * elapsed / progressed))
-# AI_GENERATE_END ---
+# AI_GENERATE_END -----
