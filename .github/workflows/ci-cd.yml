@@ -111,7 +111,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: stock-web/Dockerfile
+          file: stock-client/Dockerfile
           provenance: false
           push: true
           tags: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.FRONTEND_IMAGE_NAME, github.sha) }}

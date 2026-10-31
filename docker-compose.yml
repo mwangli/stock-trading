@@ -14,13 +14,22 @@ services:
     image: ${STOCK_FRONTEND_IMAGE:-stock-front:local}
     build:
       context: .
-      dockerfile: stock-web/Dockerfile
+      dockerfile: stock-client/Dockerfile
     container_name: stock-frontend
     depends_on:
       stock-backend:
         condition: service_healthy
     ports:
       - "${STOCK_CONSOLE_PORT:-80}:80"
+    volumes:
+      - type: bind
+        source: ${STOCK_TRADING_VAR_DIR:?STOCK_TRADING_VAR_DIR is required}
+        target: /data/stock-trading
+        read_only: true
+      - type: bind
+        source: ${STOCK_DEV_DATA_HTPASSWD_FILE:?STOCK_DEV_DATA_HTPASSWD_FILE is required}
+        target: /etc/nginx/auth/dev-data.htpasswd
+        read_only: true
     mem_limit: 128m
     cpus: 0.25
     security_opt:
@@ -41,6 +50,9 @@ services:
       STOCK_MARKET_DIR: /data/stock-trading/market
       STOCK_TASK_LOG: /var/log/stock-trading/tasks.log
       STOCK_DOCUMENT_ROOTS: /app/documents,/data/stock-trading-documents
+      STOCK_REMOTE_DATA_URL: ${STOCK_REMOTE_DATA_URL:-}
+      STOCK_REMOTE_DATA_USERNAME: ${STOCK_REMOTE_DATA_USERNAME:-}
+      STOCK_REMOTE_DATA_PASSWORD: ${STOCK_REMOTE_DATA_PASSWORD:-}
       AGENT_ENABLED: ${AGENT_ENABLED:-true}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}

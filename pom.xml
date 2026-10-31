@@ -22,6 +22,5 @@
     </properties>
     <modules>
         <module>stock-server</module>
-        <module>stock-web</module>
     </modules>
 </project>

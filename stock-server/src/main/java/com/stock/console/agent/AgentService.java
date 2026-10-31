@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.console.agent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -92,7 +92,7 @@ public class AgentService {
         store.appendMessage(httpSession, sessionId, "user", question, null);
         List<DocumentService.SearchHit> hits = documents.search(question, 5);
         List<String> evidence = new ArrayList<>();
-        evidence.add("sqlite:console_v_*");
+        evidence.add("duckdb:sqlite+parquet:read-only");
         hits.forEach(hit -> evidence.add("document:" + hit.path()));
         String answer;
         if (!properties.agent().enabled() || properties.agent().apiKey() == null
@@ -154,4 +154,4 @@ public class AgentService {
         }
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

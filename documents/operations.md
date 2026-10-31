@@ -1,15 +1,16 @@
-<!-- AI_GENERATE_START - -->
+<!-- AI_GENERATE_START -- -->
 # 运行与故障诊断
 
 ## 数据不可用
 
-先查看概览和运行状态页的契约信息，再依次核对：
+先查看概览和运行状态页的数据源信息，再依次核对：
 
 1. `trading.db` 是否存在且控制台容器可读。
-2. `console_contract_version` 是否为 `1`。
-3. `contract.json` 和 `instruments.parquet` 是否存在。
-4. `asOfDate` 是否符合预期。
-5. Python 最近任务是否成功完成。
+2. DuckDB 是否能够以只读方式挂载该 SQLite 文件。
+3. `var/market/instruments/stocks.parquet` 是否存在。
+4. 对应股票的日线或 5 分钟 Parquet 是否存在。
+5. 文件中的 `snapshot_date`、`trade_date` 是否符合预期。
+6. Python 最近任务是否成功完成。
 
 控制台不承担修复动作。数据修复、重跑和恢复只能在 Python 工程中执行。
 
@@ -27,4 +28,4 @@ Agent 未配置 Provider 时仍可创建会话，但只返回“Provider 未配�
 - 编译检查：只说明制品可构建。
 - 运行检查：说明进程和本地数据读取可用。
 - 生产检查：需要实际部署、真实挂载和 Python 并发写入证据。
-<!-- AI_GENERATE_END - -->
+<!-- AI_GENERATE_END -- -->

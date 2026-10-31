@@ -16,11 +16,10 @@ console:
   trading-db: ${STOCK_TRADING_DB:/data/stock-trading/state/trading.db}
   market-dir: ${STOCK_MARKET_DIR:/data/stock-trading/market}
   task-log: ${STOCK_TASK_LOG:/var/log/stock-trading/tasks.log}
-  document-roots: ${STOCK_DOCUMENT_ROOTS:/app/documents,/data/stock-trading/documents}
-  expected-contract-version: 1
+  document-roots: ${STOCK_DOCUMENT_ROOTS:documents,../documents}
   auth:
     username: ${CONSOLE_USERNAME:admin}
-    password-hash: ${CONSOLE_PASSWORD_HASH:}
+    password-hash: '$2a$10$E0XfXvYToWzfLm7t2Q47.u2kKDC087xORzdfEn0efWZzQttV9GIDK'
   agent:
     enabled: ${AGENT_ENABLED:true}
     base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}

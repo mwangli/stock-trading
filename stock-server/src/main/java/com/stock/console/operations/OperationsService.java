@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.console.operations;
 
 import com.stock.console.config.ConsoleProperties;
@@ -31,7 +31,7 @@ public class OperationsService {
 
     public Map<String, Object> status() {
         return Map.of(
-                "contract", facts.contractStatus(),
+                "tradingSource", facts.status(),
                 "taskLogAvailable", Files.isRegularFile(properties.taskLog()),
                 "taskLog", properties.taskLog().toString(),
                 "runs", facts.taskRuns(100));
@@ -86,4 +86,4 @@ public class OperationsService {
         logExecutor.shutdownNow();
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---
