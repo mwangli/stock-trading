@@ -19,7 +19,7 @@ console:
   document-roots: ${STOCK_DOCUMENT_ROOTS:documents,../documents}
   auth:
     username: ${CONSOLE_USERNAME:admin}
-    password-hash: '$2a$10$E0XfXvYToWzfLm7t2Q47.u2kKDC087xORzdfEn0efWZzQttV9GIDK'
+    password-hash: '${CONSOLE_PASSWORD_HASH:}'
   agent:
     enabled: ${AGENT_ENABLED:true}
     base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}

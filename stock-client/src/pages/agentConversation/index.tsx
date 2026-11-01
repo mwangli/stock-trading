@@ -1,16 +1,14 @@
-// AI_GENERATE_START-------------
+// AI_GENERATE_START------------------
 import './styles.css';
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Button, Input, Spin, Tag, Tooltip, Typography, message, type InputRef } from 'antd';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Button, Drawer, Input, Spin, Tag, Tooltip, message, type InputRef } from 'antd';
 import {
-  BulbOutlined,
   ClockCircleOutlined,
-  FileSearchOutlined,
+  HistoryOutlined,
   MessageOutlined,
   PlusOutlined,
   ReloadOutlined,
   RobotOutlined,
-  SafetyCertificateOutlined,
   SendOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../../auth/AuthContext';
@@ -20,7 +18,6 @@ import { getApiErrorMessage, readApiData, type ApiResponse } from '../../utils/a
 import request from '../../utils/request';
 import AgentMarkdown from './AgentMarkdown';
 
-const { Text } = Typography;
 
 interface AgentSession {
   sessionId: string;
@@ -84,22 +81,14 @@ interface AgentChatResponse {
   createdAt: string;
 }
 
-interface RuntimeStatus {
-  enabled: boolean;
-  provider?: string;
-  deepseekModel?: string;
-  ollamaModel?: string;
-  embeddingReady: boolean;
-  ragEnabled: boolean;
-  memoryEnabled: boolean;
-  deepseekAvailable?: boolean;
-  ollamaAvailable?: boolean;
-  projectDocumentsReady: boolean;
-  projectDocumentSectionCount: number;
-  webSearchConfigured: boolean;
-  marketDataToolAvailable: boolean;
-  performanceToolAvailable: boolean;
-}
+const DESKTOP_PROMPT_EXAMPLES = [
+  '今天上涨的股票有哪些？',
+  '当前持仓风险和剩余资金如何？',
+  '上个月收益如何，主要亏损来自哪里？',
+  'Model 模块是怎么设计的？',
+  '最近有哪些运行异常？',
+];
+
 
 
 const parseEvidenceRefs = (value?: string): string[] => {
@@ -171,7 +160,7 @@ const AgentConversation: React.FC = () => {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
+  const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
 
   const sessionId = useAgentConversationStore((state) => state.sessionId);
   const question = useAgentConversationStore((state) => state.question);
@@ -189,31 +178,6 @@ const AgentConversation: React.FC = () => {
     activateOwner(ownerId);
   }, [activateOwner, ownerId]);
 
-  const loadContext = useCallback(async () => {
-    try {
-      const response = await request.get('/agent/status') as ApiResponse<{
-        enabled: boolean;
-        configured?: boolean;
-        model?: string;
-      }>;
-      const status = readApiData(response, '读取 Agent 状态失败');
-      setRuntime({
-        enabled: status.enabled,
-        provider: status.configured ? 'deepseek' : undefined,
-        deepseekModel: status.model,
-        embeddingReady: false,
-        ragEnabled: false,
-        memoryEnabled: false,
-        projectDocumentsReady: false,
-        projectDocumentSectionCount: 0,
-        webSearchConfigured: false,
-        marketDataToolAvailable: true,
-        performanceToolAvailable: true,
-      });
-    } catch {
-      setRuntime(null);
-    }
-  }, []);
 
   const toMessages = useCallback((tasks: AgentTask[]): AgentConversationMessage[] => tasks.flatMap((task) => {
     const assistantContent = task.resultSummary || task.errorMessage
@@ -273,16 +237,10 @@ const AgentConversation: React.FC = () => {
   }, [loadHistory, messages.length, ownerId, sessionId]);
 
   useEffect(() => {
-    void Promise.all([loadSessions(), loadContext()]);
-  }, [loadContext, loadSessions]);
+    void loadSessions();
+  }, [loadSessions]);
 
   const activeSession = sessions.find((item) => item.sessionId === sessionId);
-  const activeModel = useMemo(() => {
-    if (!runtime) return '运行状态不可用';
-    if (runtime.provider === 'deepseek') return runtime.deepseekModel || 'DeepSeek';
-    if (runtime.provider === 'ollama') return runtime.ollamaModel || 'Ollama';
-    return runtime.provider || '自动路由';
-  }, [runtime]);
 
   const createSession = async (initialQuestion: string): Promise<string | null> => {
     try {
@@ -337,22 +295,15 @@ const AgentConversation: React.FC = () => {
     }
   };
 
-  const quickPrompts = [
-    '你有什么能力？',
-    '北京今天天气怎么样？',
-    'Model 模块是怎么设计的？',
-    '今天上涨的股票有哪些？',
-    '上个月收益如何，主要亏损来自哪里？',
-  ];
 
   return (
     <div className="app-page agent-conversation-page min-h-0">
-      <div className="agent-conversation-layout grid gap-4 xl:grid-cols-[224px_minmax(0,1fr)_292px]">
-        <aside className="agent-panel agent-session-panel min-h-0 border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+      <div className="agent-conversation-layout">
+        <aside className="agent-panel agent-session-panel border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-700">
             <div>
               <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">会话记录</div>
-              <div className="mt-1 text-xs text-slate-500">服务端保存</div>
+              <div className="mt-1 text-xs text-slate-500">当前会话保存</div>
             </div>
             <Tooltip title="新建会话">
               <Button
@@ -366,7 +317,7 @@ const AgentConversation: React.FC = () => {
               />
             </Tooltip>
           </div>
-          <div className="max-h-[calc(100vh-220px)] overflow-y-auto p-2">
+          <div className="overflow-y-auto p-2">
             {sessionsLoading ? (
               <div className="flex justify-center py-8"><Spin /></div>
             ) : sessions.length === 0 ? (
@@ -376,11 +327,7 @@ const AgentConversation: React.FC = () => {
                 key={item.sessionId}
                 type="button"
                 onClick={() => void loadHistory(item.sessionId)}
-                className={`mb-1 w-full border-l-2 px-3 py-3 text-left transition-colors ${
-                  item.sessionId === sessionId
-                    ? 'border-emerald-500 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100'
-                    : 'agent-session-item border-transparent'
-                }`}
+                className={`agent-session-item ${item.sessionId === sessionId ? 'is-active' : ''}`}
               >
                 <div className="truncate text-sm font-medium">{item.title}</div>
                 <div className="mt-1 flex items-center gap-1 text-xs text-slate-500">
@@ -394,18 +341,23 @@ const AgentConversation: React.FC = () => {
         <main className="agent-panel agent-chat-panel flex min-h-0 flex-col border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center bg-emerald-600 text-white"><RobotOutlined /></div>
+              <Tooltip title="会话记录">
+                <Button
+                  className="agent-history-button"
+                  type="text"
+                  icon={<HistoryOutlined />}
+                  aria-label="打开会话记录"
+                  onClick={() => setSessionDrawerOpen(true)}
+                />
+              </Tooltip>
+              <div className="flex size-10 shrink-0 items-center justify-center bg-blue-600 text-white"><RobotOutlined /></div>
               <div className="min-w-0">
                 <h2 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">{activeSession?.title || '新对话'}</h2>
-                <div className="mt-1 text-xs text-slate-500">只读研究、解释与诊断，不控制真实交易</div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Tag color={runtime?.enabled ? 'success' : 'default'}>{runtime?.enabled ? 'Agent 可用' : 'Agent 未启用'}</Tag>
-              <Tooltip title="刷新会话与运行上下文">
-                <Button icon={<ReloadOutlined />} aria-label="刷新" onClick={() => void Promise.all([loadSessions(), loadContext()])} />
-              </Tooltip>
-            </div>
+            <Tooltip title="刷新会话">
+              <Button icon={<ReloadOutlined />} aria-label="刷新会话" onClick={() => void loadSessions()} />
+            </Tooltip>
           </header>
 
           <div className="agent-message-scroll min-h-[360px] flex-1 overflow-y-auto px-5 py-5">
@@ -413,24 +365,8 @@ const AgentConversation: React.FC = () => {
               <div className="flex h-full items-center justify-center"><Spin /></div>
             ) : messages.length === 0 ? (
               <div className="flex h-full min-h-[320px] flex-col items-center justify-center text-center">
-                <BulbOutlined className="text-3xl text-amber-500" />
-                <div className="mt-3 text-base font-semibold text-slate-900 dark:text-slate-100">从当前策略事实开始提问</div>
-                <div className="mt-2 max-w-md text-sm leading-6 text-slate-500">回答会携带候选批次、模型版本与数据截止时间；缺少事实时会明确标注不确定性。</div>
-                <div className="agent-starter-grid mt-6 grid w-full max-w-2xl gap-2 md:grid-cols-3">
-                  {quickPrompts.slice(0, 3).map((prompt) => (
-                    <button
-                      key={prompt}
-                      type="button"
-                      onClick={() => {
-                        setQuestion(ownerId, prompt);
-                        inputRef.current?.focus();
-                      }}
-                      className="agent-starter-question border px-3 py-3 text-left text-xs leading-5"
-                    >
-                      <MessageOutlined className="mr-2" />{prompt}
-                    </button>
-                  ))}
-                </div>
+                <MessageOutlined className="text-3xl text-[var(--text-muted)]" />
+                <div className="mt-3 text-sm text-slate-500">发送消息开始新对话</div>
               </div>
             ) : (
               <div className="space-y-4">
@@ -438,13 +374,13 @@ const AgentConversation: React.FC = () => {
                   <div key={`${item.taskId ?? index}-${item.role}`} className={`flex ${item.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`agent-message-bubble max-w-[84%] border px-4 py-3 ${
                       item.role === 'user'
-                        ? 'border-emerald-600 bg-emerald-600 text-white'
+                        ? 'border-blue-600 bg-blue-600 text-white'
                         : 'border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
                     }`}>
                       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
                         <strong>{item.role === 'user' ? currentUserName : '策略 Agent'}</strong>
                         {item.status && <Tag color={statusColor(item.status)}>{item.status}</Tag>}
-                        {item.createdAt && <span className={item.role === 'user' ? 'text-emerald-100' : 'text-slate-500'}>{formatDateTime(item.createdAt)}</span>}
+                        {item.createdAt && <span className={item.role === 'user' ? 'text-blue-100' : 'text-slate-500'}>{formatDateTime(item.createdAt)}</span>}
                       </div>
                       {item.role === 'assistant' ? (
                         <AgentMarkdown content={item.content} />
@@ -483,7 +419,7 @@ const AgentConversation: React.FC = () => {
                 ref={inputRef}
                 value={question}
                 onChange={(event) => setQuestion(ownerId, event.target.value)}
-                placeholder="询问候选原因、风险因素、模型信号或运行异常"
+                placeholder="询问行情、收益、交易记录、模型预测或运行异常"
                 autoSize={{ minRows: 2, maxRows: 5 }}
                 onPressEnter={(event) => {
                   if (!event.shiftKey) {
@@ -499,45 +435,82 @@ const AgentConversation: React.FC = () => {
           </footer>
         </main>
 
-        <aside className="agent-context-rail space-y-4">
-          <section className="agent-panel border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100"><SafetyCertificateOutlined />能力状态</div>
-            <div className="mt-4 space-y-3 text-xs">
-              <div className="flex items-center justify-between gap-3"><span className="text-slate-500">当前模型</span><strong className="truncate">{activeModel}</strong></div>
-              <div className="flex items-center justify-between"><span className="text-slate-500">RAG</span><Tag color={runtime?.ragEnabled && runtime?.embeddingReady ? 'success' : 'default'}>{runtime?.ragEnabled && runtime?.embeddingReady ? '可用' : '未就绪'}</Tag></div>
-              <div className="flex items-center justify-between"><span className="text-slate-500">Memory</span><Tag color={runtime?.memoryEnabled ? 'success' : 'default'}>{runtime?.memoryEnabled ? '启用' : '未启用'}</Tag></div>
-              <div className="flex items-center justify-between"><span className="text-slate-500">Embedding</span><Tag color={runtime?.embeddingReady ? 'success' : 'warning'}>{runtime?.embeddingReady ? '就绪' : '未就绪'}</Tag></div>
-              <div className="flex items-center justify-between"><span className="text-slate-500">项目文档</span><Tag color={runtime?.projectDocumentsReady ? 'success' : 'warning'}>{runtime?.projectDocumentsReady ? `${runtime.projectDocumentSectionCount} 节` : '未就绪'}</Tag></div>
-              <div className="flex items-center justify-between"><span className="text-slate-500">联网搜索</span><Tag color={runtime?.webSearchConfigured ? 'success' : 'warning'}>{runtime?.webSearchConfigured ? '已配置' : '不可用'}</Tag></div>
-              <div className="flex items-center justify-between"><span className="text-slate-500">行情统计</span><Tag color={runtime?.marketDataToolAvailable ? 'success' : 'warning'}>{runtime?.marketDataToolAvailable ? '可用' : '不可用'}</Tag></div>
-              <div className="flex items-center justify-between"><span className="text-slate-500">收益分析</span><Tag color={runtime?.performanceToolAvailable ? 'success' : 'warning'}>{runtime?.performanceToolAvailable ? '可用' : '不可用'}</Tag></div>
-            </div>
-          </section>
-
-          <section className="agent-panel border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100"><FileSearchOutlined />快捷问题</div>
-            <div className="mt-3 space-y-2">
-              {quickPrompts.map((prompt) => (
+        <aside className="agent-example-rail">
+          <section className="agent-panel agent-example-panel border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+            <header className="border-b border-slate-200 px-4 py-4 dark:border-slate-700">
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">问题示例</h2>
+            </header>
+            <div className="agent-example-list">
+              {DESKTOP_PROMPT_EXAMPLES.map((prompt) => (
                 <button
                   key={prompt}
                   type="button"
+                  className="agent-example-item"
                   onClick={() => {
                     setQuestion(ownerId, prompt);
                     inputRef.current?.focus();
                   }}
-                  className="w-full border border-slate-200 px-3 py-2 text-left text-xs leading-5 text-slate-700 hover:border-emerald-500 hover:text-emerald-700 dark:border-slate-700 dark:text-slate-300"
                 >
-                  <MessageOutlined className="mr-2" />{prompt}
+                  <MessageOutlined aria-hidden="true" />
+                  <span>{prompt}</span>
                 </button>
               ))}
             </div>
           </section>
-          <Text type="secondary" className="block px-1 text-xs">Agent 输出仅用于研究、解释和独立建议，Java 风控与交易执行保持权威。</Text>
         </aside>
+
       </div>
+
+      <Drawer
+        className="agent-session-drawer"
+        title="会话记录"
+        placement="left"
+        width="min(88vw, 340px)"
+        open={sessionDrawerOpen}
+        onClose={() => setSessionDrawerOpen(false)}
+        afterOpenChange={(open) => {
+          if (!open) inputRef.current?.focus();
+        }}
+        extra={(
+          <Tooltip title="新建会话">
+            <Button
+              type="text"
+              icon={<PlusOutlined />}
+              aria-label="新建会话"
+              onClick={() => {
+                resetConversation(ownerId);
+                setSessionDrawerOpen(false);
+              }}
+            />
+          </Tooltip>
+        )}
+      >
+        <div className="agent-session-drawer-list">
+          {sessionsLoading ? (
+            <div className="flex justify-center py-8"><Spin /></div>
+          ) : sessions.length === 0 ? (
+            <div className="px-3 py-8 text-center text-sm text-slate-500">暂无历史会话</div>
+          ) : sessions.map((item) => (
+            <button
+              key={item.sessionId}
+              type="button"
+              onClick={() => {
+                setSessionDrawerOpen(false);
+                void loadHistory(item.sessionId);
+              }}
+              className={`agent-session-drawer-item ${item.sessionId === sessionId ? 'is-active' : ''}`}
+            >
+              <div className="truncate text-sm font-medium">{item.title}</div>
+              <div className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                <ClockCircleOutlined />{formatDateTime(item.updatedAt)}
+              </div>
+            </button>
+          ))}
+        </div>
+      </Drawer>
     </div>
   );
 };
 
 export default AgentConversation;
-// AI_GENERATE_END-------------
+// AI_GENERATE_END------------------

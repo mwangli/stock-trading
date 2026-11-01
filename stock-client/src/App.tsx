@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------------
+// AI_GENERATE_START--------------------------------
 import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { Spin } from 'antd';
@@ -12,7 +12,6 @@ const OrderRecords = lazy(() => import('./pages/orderRecords'));
 const TradeRecordDemos = lazy(() => import('./pages/tradeRecordDemos'));
 const Logs = lazy(() => import('./pages/logs'));
 const AgentConversation = lazy(() => import('./pages/agentConversation'));
-const Documentation = lazy(() => import('./pages/documentation'));
 const Login = lazy(() => import('./pages/login'));
 
 const PageFallback = (
@@ -40,7 +39,6 @@ function App() {
               <Route path="adaptiveStrategy" element={<Navigate to="/dashboard" replace />} />
               <Route path="realTrading" element={<Navigate to="/dashboard" replace />} />
               <Route path="jobs" element={<Navigate to="/dashboard" replace />} />
-              <Route path="docs/*" element={<Documentation />} />
             </Route>
           </Route>
 
@@ -69,4 +67,4 @@ function PublicOnlyRoute() {
 }
 
 export default App;
-// AI_GENERATE_END-------------------------------
+// AI_GENERATE_END--------------------------------

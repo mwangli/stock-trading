@@ -9,7 +9,6 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "validate:docs": "node scripts/validate-docs.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.console.market;
 
 import com.stock.console.web.ApiResponse;
@@ -50,5 +50,11 @@ public class MarketController {
     public ApiResponse<Map<String, Object>> statistics() {
         return ApiResponse.ok(market.statistics());
     }
+
+    @GetMapping("/daily-ranking")
+    public ApiResponse<List<Map<String, Object>>> dailyRanking(
+            @RequestParam(defaultValue = "30") int limit) {
+        return ApiResponse.ok(market.latestDailyRanking(limit));
+    }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

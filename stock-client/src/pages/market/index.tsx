@@ -1,12 +1,12 @@
-// AI_GENERATE_START---------------------------------
+// AI_GENERATE_START------------------------------------
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { Descriptions, Drawer, Empty, Input, Select, Skeleton, Table, Tooltip } from 'antd';
+import { Descriptions, Drawer, Empty, Input, Pagination, Select, Skeleton, Table, Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { TablePaginationConfig } from 'antd/es/table/interface';
 import type { EChartsOption, TooltipComponentFormatterCallbackParams } from 'echarts';
 import type { InputRef } from 'antd';
-import { NotificationOutlined, SearchOutlined, ThunderboltOutlined, RiseOutlined, StarOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, InfoCircleOutlined, NotificationOutlined, SearchOutlined, ThunderboltOutlined, RiseOutlined, StarOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import request from '../../utils/request';
 import type { ApiResponse } from '../../utils/api';
@@ -39,10 +39,6 @@ interface StockNewsSummary {
   source?: string;
   category?: string;
   publishTime?: string;
-}
-
-interface StockNewsLatestResult {
-  items: StockNewsSummary[];
 }
 
 /** 与后端 StockInfoController#getMarketStats / MarketStatsDto 一致 */
@@ -93,32 +89,13 @@ const clampDetailDrawerWidth = (width: number, maxWidth: number) => Math.min(
   maxWidth,
 );
 
-interface StockInfoPage {
-  items: StockInfo[];
-  total: number;
-  current: number;
-  pageSize: number;
-}
-
-interface KlineData {
-  dates: string[];
-  kline: number[][];
-  volumes: number[];
-}
-
-interface KlineResponse {
-  payload: KlineData;
-  total: number;
-}
-
-interface TopIncreaseItem {
-  code: string;
-  name: string;
-  changePercent: number;
-}
-
-interface TopIncreaseList {
-  items: TopIncreaseItem[];
+interface DailyRankingItem {
+  period: string;
+  stockCode: string;
+  stockName?: string;
+  close: number;
+  preclose: number;
+  returnRate: number;
 }
 
 interface KlinePoint {
@@ -221,6 +198,7 @@ const Market: React.FC = () => {
   const [latestNewsLoadFailed, setLatestNewsLoadFailed] = useState(false);
   const [detailDrawerMaxWidth, setDetailDrawerMaxWidth] = useState(getDetailDrawerMaxWidth);
   const [isCompactViewport, setIsCompactViewport] = useState(() => window.innerWidth <= 767);
+  const [mobileWorkspaceView, setMobileWorkspaceView] = useState<'list' | 'chart'>('list');
   const [detailDrawerWidth, setDetailDrawerWidth] = useState(() => clampDetailDrawerWidth(
     DEFAULT_DETAIL_DRAWER_WIDTH,
     getDetailDrawerMaxWidth(),
@@ -249,28 +227,9 @@ const Market: React.FC = () => {
       return;
     }
 
-    const controller = new AbortController();
     setLatestNews([]);
-    setLatestNewsLoading(true);
+    setLatestNewsLoading(false);
     setLatestNewsLoadFailed(false);
-
-    request.get(`/news/latest/${encodeURIComponent(detailStock.code)}`, {
-      signal: controller.signal,
-    }).then((res) => {
-      const response = res as unknown as ApiResponse<StockNewsLatestResult>;
-      setLatestNews(response?.success && Array.isArray(response.data?.items) ? response.data.items : []);
-    }).catch((error) => {
-      if (!controller.signal.aborted) {
-        console.error('获取股票最新新闻失败:', error);
-        setLatestNewsLoadFailed(true);
-      }
-    }).finally(() => {
-      if (!controller.signal.aborted) {
-        setLatestNewsLoading(false);
-      }
-    });
-
-    return () => controller.abort();
   }, [detailStock?.code]);
 
   // 时间范围选项（默认展示最近一月，移除最近一周）
@@ -391,44 +350,56 @@ const Market: React.FC = () => {
   ) => {
     setLoading(true);
     try {
-      console.log('[fetchStocks] page:', page, 'keyword:', keyword);
-
-      // 使用 keywords 参数进行模糊搜索 (name 或 code)
-      const params: Record<string, unknown> = {
-        current: page,
-        pageSize: size,
-        sortBy: requestedSortField,
-        sortOrder: requestedSortOrder,
-      };
-      if (keyword && keyword.trim()) {
-        params.keywords = keyword.trim();
-        console.log('[fetchStocks] search params:', params);
-      }
-
-      const res = await request.get('/stockInfo/list', {
-        params
-      }) as unknown as ApiResponse<StockInfoPage>;
-
-      console.log('[fetchStocks] response:', res);
-
-      if (res?.success === true && Array.isArray(res.data?.items)) {
-        const mappedData: WatchlistItem[] = res.data.items.map((item) => ({
+      const [instrumentsResponse, rankingResponse] = await Promise.all([
+        request.get('/market/instruments', {
+          params: { keyword: keyword.trim(), limit: 500 },
+        }) as Promise<ApiResponse<Array<Record<string, unknown>>>>,
+        request.get('/market/daily-ranking', {
+          params: { limit: 100 },
+        }) as Promise<ApiResponse<DailyRankingItem[]>>,
+      ]);
+      if (instrumentsResponse.success && Array.isArray(instrumentsResponse.data)) {
+        const rankingByCode = new Map(
+          (rankingResponse.success ? rankingResponse.data : []).map((item) => [item.stockCode, item]),
+        );
+        const mappedData: WatchlistItem[] = instrumentsResponse.data.map((row) => {
+          const code = String(row.code ?? '');
+          const quote = rankingByCode.get(code);
+          const item: StockInfo = {
+            code,
+            name: String(row.name ?? code),
+            market: row.market == null ? undefined : String(row.market),
+            price: quote?.close,
+            changeAmount: quote ? Number(quote.close) - Number(quote.preclose) : undefined,
+            changePercent: quote ? Number(quote.returnRate) * 100 : undefined,
+            listedDate: row.as_of_date == null ? undefined : String(row.as_of_date),
+            updateTime: quote?.period,
+          };
+          return {
           key: item.code,
           symbol: item.code,
           name: item.name,
-          price: item.price as number,
+          price: item.price ?? 0,
           change: item.changePercent ?? 0,
           marketCap: formatMarketCap(item.totalMarketValue),
           starred: false,
           stockInfo: item,
-        }));
-        setWatchlist(mappedData);
-        // 更新分页信息
+          };
+        });
+        const direction = requestedSortOrder === 'asc' ? 1 : -1;
+        mappedData.sort((left, right) => {
+          if (requestedSortField === 'price') return (left.price - right.price) * direction;
+          if (requestedSortField === 'change') return (left.change - right.change) * direction;
+          if (requestedSortField === 'marketCap') return left.marketCap.localeCompare(right.marketCap) * direction;
+          return left.symbol.localeCompare(right.symbol) * direction;
+        });
+        const offset = (page - 1) * size;
+        setWatchlist(mappedData.slice(offset, offset + size));
         setPagination(prev => ({
           ...prev,
           current: page,
           pageSize: size,
-          total: res.data.total ?? 0,
+          total: mappedData.length,
         }));
         return;
       }
@@ -447,14 +418,22 @@ const Market: React.FC = () => {
   const fetchKlineData = async (code: string, name: string, type: 'daily' = 'daily', range?: 'last1Month' | 'last1Year' | 'last3Years') => {
     const timeRangeParam = range || timeRange;
     try {
-      const res = await request.get(`/stockData/kline/${code}`, {
-        params: { type, timeRange: timeRangeParam }
-      }) as ApiResponse<KlineResponse>;
+      const limit = timeRangeParam === 'last3Years' ? 750 : timeRangeParam === 'last1Year' ? 260 : 40;
+      const res = await request.get('/market/bars', {
+        params: { code, interval: type === 'daily' ? 'day' : 'day', limit },
+      }) as ApiResponse<Array<Record<string, unknown>>>;
 
-      if (res.success && res.data?.payload) {
-        const payload = res.data.payload;
-        const latestData = payload.kline[payload.kline.length - 1];
-        const previousData = payload.kline.length > 1 ? payload.kline[payload.kline.length - 2] : null;
+      if (res.success && Array.isArray(res.data)) {
+        const bars = [...res.data].reverse();
+        const dates = bars.map((item) => String(item.trade_date ?? item.bar_end ?? ''));
+        const points = bars.map((item) => [
+          Number(item.open ?? 0),
+          Number(item.close ?? 0),
+          Number(item.low ?? 0),
+          Number(item.high ?? 0),
+        ]);
+        const latestData = points[points.length - 1];
+        const previousData = points.length > 1 ? points[points.length - 2] : null;
 
         if (!latestData) {
           setSelectedStock({ code, name });
@@ -467,9 +446,9 @@ const Market: React.FC = () => {
 
         setSelectedStock({ code, name, price: currentPrice, change });
         setKlineData({
-          dates: payload.dates || [],
-          kline: payload.kline || [],
-          volumes: payload.volumes || []
+          dates,
+          kline: points,
+          volumes: bars.map((item) => Number(item.volume ?? 0)),
         });
       } else {
         console.warn('获取K线数据失败，使用默认数据');
@@ -484,30 +463,51 @@ const Market: React.FC = () => {
     }
   };
 
+  const selectStockForChart = (record: WatchlistItem) => {
+    setSelectedStock({
+      code: record.symbol,
+      name: record.name,
+      price: record.price,
+      change: record.change,
+    });
+    if (isCompactViewport) {
+      setMobileWorkspaceView('chart');
+    }
+    void fetchKlineData(record.symbol, record.name, klineType, timeRange);
+  };
+
   useEffect(() => {
     fetchStocks(1, 9, searchKeyword);
     fetchMarketStats();
     fetchTopGainers();
   }, []);
 
-    // 市场统计接口：与后端 /api/stockInfo/marketStats 一致。
   const fetchMarketStats = async () => {
     try {
-      const res = await request.get('/stockInfo/marketStats') as ApiResponse<MarketStats>;
+      const res = await request.get('/market/statistics') as ApiResponse<Record<string, unknown>>;
       if (res && res.success === true && res.data != null) {
-        setMarketStats(res.data);
+        setMarketStats({
+          marketStatus: res.data.available ? localizedText(`数据日期 ${String(res.data.asOfDate ?? '-')}`, `As of ${String(res.data.asOfDate ?? '-')}`) : localizedText('数据不可用', 'Unavailable'),
+          upCount: Number(res.data.advances ?? 0),
+          downCount: Number(res.data.declines ?? 0),
+          flatCount: Number(res.data.unchanged ?? 0),
+          totalCount: Number(res.data.total ?? 0),
+        });
       }
     } catch (error) {
       console.error('获取市场统计信息失败:', error);
     }
   };
 
-  // 获取涨幅榜TOP10
   const fetchTopGainers = async () => {
     try {
-      const res = await request.get('/stockInfo/listIncreaseRate') as ApiResponse<TopIncreaseList>;
-      if (res?.success && Array.isArray(res.data?.items)) {
-        setTopGainers(res.data.items);
+      const res = await request.get('/market/daily-ranking', { params: { limit: 10 } }) as ApiResponse<DailyRankingItem[]>;
+      if (res?.success && Array.isArray(res.data)) {
+        setTopGainers(res.data.map((item) => ({
+          code: item.stockCode,
+          name: item.stockName ?? item.stockCode,
+          changePercent: Number(item.returnRate) * 100,
+        })));
       }
     } catch (error) {
       console.error('获取涨幅榜失败:', error);
@@ -696,130 +696,212 @@ const Market: React.FC = () => {
         ))}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
-        {/* Left: Watchlist */}
-        <div className="surface-card flex w-full flex-col overflow-hidden lg:w-[42%] xl:w-[38%]">
-          <div className="border-b border-[var(--border-color)] p-3">
-            <Input
-              ref={searchInputRef}
-              prefix={<SearchOutlined className="text-gray-500" />}
+      <div className={`market-workspace ${mobileWorkspaceView === 'chart' ? 'is-chart-view' : 'is-list-view'}`}>
+        <div className="market-workspace-track">
+          {/* Left: Watchlist */}
+          <div
+            className="surface-card market-workspace-pane market-list-pane flex flex-col overflow-hidden"
+            aria-hidden={isCompactViewport && mobileWorkspaceView !== 'list' ? true : undefined}
+            inert={isCompactViewport && mobileWorkspaceView !== 'list'}
+          >
+            <div className="border-b border-[var(--border-color)] p-3">
+              <Input
+                ref={searchInputRef}
+                prefix={<SearchOutlined className="text-gray-500" />}
                 placeholder={t('marketPage.searchPlaceholder')}
-              className="!rounded"
-              value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-              onPressEnter={() => {
-                // 使用 ref 获取输入框当前值
-                const keyword = searchInputRef.current?.input?.value || '';
-                fetchStocks(1, 9, keyword);
-                setSearchKeyword(keyword);
-              }}
-              allowClear
-              onClear={() => {
-                setSearchKeyword('');
-                fetchStocks(1, 9, '');
-              }}
-              suffix={
-                <SearchOutlined
-                  className="text-gray-400 cursor-pointer hover:text-white"
-                  onClick={() => {
-                    // 使用 ref 获取输入框当前值
-                    const keyword = searchInputRef.current?.input?.value || '';
-                    fetchStocks(1, 9, keyword);
-                    setSearchKeyword(keyword);
-                  }}
-                />
-              }
-            />
+                className="!rounded"
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                onPressEnter={() => {
+                  const keyword = searchInputRef.current?.input?.value || '';
+                  fetchStocks(1, 9, keyword);
+                  setSearchKeyword(keyword);
+                }}
+                allowClear
+                onClear={() => {
+                  setSearchKeyword('');
+                  fetchStocks(1, 9, '');
+                }}
+                suffix={
+                  <SearchOutlined
+                    className="text-gray-400 cursor-pointer hover:text-white"
+                    onClick={() => {
+                      const keyword = searchInputRef.current?.input?.value || '';
+                      fetchStocks(1, 9, keyword);
+                      setSearchKeyword(keyword);
+                    }}
+                  />
+                }
+              />
+            </div>
+            {isCompactViewport ? (
+              <div className="market-mobile-list-shell">
+                <div className="market-mobile-list" aria-busy={loading}>
+                  {loading ? (
+                    Array.from({ length: 5 }, (_, index) => (
+                      <div key={index} className="market-mobile-stock-skeleton">
+                        <Skeleton active title={false} paragraph={{ rows: 2, width: ['44%', '100%'] }} />
+                      </div>
+                    ))
+                  ) : watchlist.length > 0 ? (
+                    watchlist.map((record) => {
+                      const isSelected = selectedStock?.code === record.symbol;
+                      return (
+                        <div key={record.key} className={`market-mobile-stock ${isSelected ? 'is-selected' : ''}`}>
+                          <button
+                            type="button"
+                            className="market-mobile-stock-main"
+                            aria-label={localizedText(`查看 ${record.name}（${record.symbol}）K 线`, `View chart for ${record.name} (${record.symbol})`)}
+                            aria-current={isSelected ? 'true' : undefined}
+                            onClick={() => selectStockForChart(record)}
+                          >
+                            <span className="market-mobile-stock-identity">
+                              <strong>{record.name}</strong>
+                              <span>{record.symbol}</span>
+                            </span>
+                            <span className="market-mobile-stock-quote">
+                              <strong>¥{record.price.toFixed(2)}</strong>
+                              <span className={record.change >= 0 ? 'is-up' : 'is-down'}>
+                                {record.change > 0 ? '+' : ''}{record.change.toFixed(2)}%
+                              </span>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="market-mobile-stock-detail"
+                            aria-label={localizedText(`查看 ${record.name} 详情`, `View details for ${record.name}`)}
+                            onClick={() => setDetailStock(record.stockInfo)}
+                          >
+                            <InfoCircleOutlined aria-hidden="true" />
+                            <span>{localizedText('详情', 'Details')}</span>
+                          </button>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={localizedText('暂无行情数据', 'No market data')} />
+                  )}
+                </div>
+                {pagination.total > 0 && (
+                  <Pagination
+                    className="market-mobile-pagination"
+                    current={pagination.current}
+                    pageSize={9}
+                    total={pagination.total}
+                    showSizeChanger={false}
+                    showQuickJumper={false}
+                    showLessItems
+                    onChange={(page) => fetchStocks(page, 9, searchKeyword)}
+                  />
+                )}
+              </div>
+            ) : (
+              <Table
+                className="market-desktop-table"
+                size="small"
+                loading={loading}
+                dataSource={watchlist}
+                columns={columns}
+                scroll={{ x: 498 }}
+                showSorterTooltip={{ title: localizedText('点击切换排序', 'Click to change sort') }}
+                pagination={{
+                  current: pagination.current,
+                  pageSize: 9,
+                  total: pagination.total,
+                  position: ['bottomCenter'],
+                  className: 'glass-pagination',
+                  showSizeChanger: false,
+                  showQuickJumper: false,
+                  showTotal: (total) => total > 0 ? localizedText(`共 ${Math.ceil(total / 9)} 页`, `${Math.ceil(total / 9)} pages`) : localizedText('无数据', 'No data'),
+                }}
+                onChange={(
+                  tablePagination: TablePaginationConfig,
+                  _filters,
+                  sorter,
+                  extra,
+                ) => {
+                  if (extra.action === 'paginate') {
+                    fetchStocks(tablePagination.current ?? 1, 9, searchKeyword);
+                    return;
+                  }
+                  if (extra.action !== 'sort') {
+                    return;
+                  }
+                  const activeSorter = Array.isArray(sorter) ? sorter[0] : sorter;
+                  const nextField = activeSorter?.columnKey as MarketSortField | undefined;
+                  if (!activeSorter?.order) {
+                    setSortField(DEFAULT_SORT_FIELD);
+                    setSortOrder(DEFAULT_SORT_ORDER);
+                    fetchStocks(1, 9, searchKeyword, DEFAULT_SORT_FIELD, DEFAULT_SORT_ORDER);
+                    return;
+                  }
+                  const nextOrder: MarketSortOrder = activeSorter.order === 'ascend' ? 'asc' : 'desc';
+                  if (!nextField || !['price', 'change', 'marketCap'].includes(nextField)) {
+                    return;
+                  }
+                  setSortField(nextField);
+                  setSortOrder(nextOrder);
+                  fetchStocks(1, 9, searchKeyword, nextField, nextOrder);
+                }}
+                rowClassName={(record) => `hover:bg-white/5 cursor-pointer transition-colors ${selectedStock?.code === record.symbol ? 'market-table-row-selected' : ''}`}
+                onRow={(record) => ({
+                  onClick: () => selectStockForChart(record)
+                })}
+              />
+            )}
           </div>
-          <Table
-            size="small"
-            loading={loading}
-            dataSource={watchlist}
-            columns={columns}
-            scroll={{ x: 498 }}
-            showSorterTooltip={{ title: localizedText('点击切换排序', 'Click to change sort') }}
-            pagination={{
-              current: pagination.current,
-              pageSize: 9,
-              total: pagination.total,
-              position: ['bottomCenter'],
-              className: 'glass-pagination',
-              showSizeChanger: false,
-              showQuickJumper: false,
-              showTotal: (total) => total > 0 ? localizedText(`共 ${Math.ceil(total / 9)} 页`, `${Math.ceil(total / 9)} pages`) : localizedText('无数据', 'No data'),
-            }}
-            onChange={(
-              tablePagination: TablePaginationConfig,
-              _filters,
-              sorter,
-              extra,
-            ) => {
-              if (extra.action === 'paginate') {
-                fetchStocks(tablePagination.current ?? 1, 9, searchKeyword);
-                return;
-              }
-              if (extra.action !== 'sort') {
-                return;
-              }
-              const activeSorter = Array.isArray(sorter) ? sorter[0] : sorter;
-              const nextField = activeSorter?.columnKey as MarketSortField | undefined;
-              if (!activeSorter?.order) {
-                setSortField(DEFAULT_SORT_FIELD);
-                setSortOrder(DEFAULT_SORT_ORDER);
-                fetchStocks(1, 9, searchKeyword, DEFAULT_SORT_FIELD, DEFAULT_SORT_ORDER);
-                return;
-              }
-              const nextOrder: MarketSortOrder = activeSorter.order === 'ascend' ? 'asc' : 'desc';
-              if (!nextField || !['price', 'change', 'marketCap'].includes(nextField)) {
-                return;
-              }
-              setSortField(nextField);
-              setSortOrder(nextOrder);
-              fetchStocks(1, 9, searchKeyword, nextField, nextOrder);
-            }}
-            rowClassName="hover:bg-white/5 cursor-pointer transition-colors"
-            onRow={(record) => ({
-              onClick: () => fetchKlineData(record.symbol, record.name, klineType, timeRange)
-            })}
-          />
-        </div>
 
-        {/* Right: Chart */}
-        <div className="surface-card flex min-h-[500px] flex-1 flex-col p-4">
-          <div className="market-chart-header mb-4 flex items-center justify-between">
-            <div className="market-chart-heading">
-              <h2 className="flex items-center gap-3 text-xl font-semibold text-[var(--text-primary)] sm:text-2xl">
-                {selectedStock?.code || '--'} <span className="text-lg text-gray-500 font-normal">{selectedStock?.name || '--'}</span>
-              </h2>
-              <div className="market-chart-price mt-2 font-mono text-3xl font-bold text-[var(--text-primary)] sm:text-4xl">
-                {selectedStock?.price ? `¥${selectedStock.price.toFixed(2)}` : '¥--'}{' '}
-                <span className={`text-lg ml-2 ${(selectedStock?.change || 0) >= 0 ? 'text-[#ef4444]' : 'text-[#22c55e]'}`}>
-                  {selectedStock?.change !== undefined ? `${selectedStock.change >= 0 ? '+' : ''}${selectedStock.change.toFixed(2)}%` : '--%'}
+          {/* Right: Chart */}
+          <div
+            className="surface-card market-workspace-pane market-chart-pane flex flex-col p-4"
+            aria-hidden={isCompactViewport && mobileWorkspaceView !== 'chart' ? true : undefined}
+            inert={isCompactViewport && mobileWorkspaceView !== 'chart'}
+          >
+            <div className="market-chart-header mb-4 flex items-center justify-between">
+              {isCompactViewport && (
+                <button
+                  type="button"
+                  className="market-chart-back"
+                  aria-label={localizedText('返回股票列表', 'Back to stock list')}
+                  onClick={() => setMobileWorkspaceView('list')}
+                >
+                  <ArrowLeftOutlined aria-hidden="true" />
+                  <span>{localizedText('股票列表', 'Stocks')}</span>
+                </button>
+              )}
+              <div className="market-chart-heading">
+                <h2 className="flex items-center gap-3 text-xl font-semibold text-[var(--text-primary)] sm:text-2xl">
+                  {selectedStock?.code || '--'} <span className="text-lg text-gray-500 font-normal">{selectedStock?.name || '--'}</span>
+                </h2>
+                <div className="market-chart-price mt-2 font-mono text-3xl font-bold text-[var(--text-primary)] sm:text-4xl">
+                  {selectedStock?.price ? `¥${selectedStock.price.toFixed(2)}` : '¥--'}{' '}
+                  <span className={`text-lg ml-2 ${(selectedStock?.change || 0) >= 0 ? 'text-[#ef4444]' : 'text-[#22c55e]'}`}>
+                    {selectedStock?.change !== undefined ? `${selectedStock.change >= 0 ? '+' : ''}${selectedStock.change.toFixed(2)}%` : '--%'}
+                  </span>
+                </div>
+              </div>
+              <div className="market-chart-controls flex items-center gap-2">
+                <Select
+                  value={timeRange}
+                  onChange={handleTimeRangeChange}
+                  options={timeRangeOptions}
+                  className="w-28"
+                  placeholder={localizedText('选择时间范围', 'Select time range')}
+                />
+                <span className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white">
+                  {t('marketPage.daily')}
                 </span>
               </div>
-
             </div>
-            <div className="market-chart-controls flex items-center gap-2">
-              <Select
-                value={timeRange}
-                onChange={handleTimeRangeChange}
-                options={timeRangeOptions}
-                className="w-28"
-                placeholder={localizedText('选择时间范围', 'Select time range')}
+
+            <div className="flex-1 w-full">
+              <ReactECharts
+                option={chartOption}
+                style={{ height: '100%', minHeight: isCompactViewport ? '300px' : '400px', width: '100%' }}
+                notMerge={true}
+                lazyUpdate={false}
               />
-              <span className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white">
-                {t('marketPage.daily')}
-              </span>
             </div>
-          </div>
-
-          <div className="flex-1 w-full">
-            <ReactECharts
-              option={chartOption}
-              style={{ height: '100%', minHeight: isCompactViewport ? '300px' : '400px', width: '100%' }}
-              notMerge={true}
-              lazyUpdate={false}
-            />
           </div>
         </div>
       </div>
@@ -939,4 +1021,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END---------------------------------
+// AI_GENERATE_END------------------------------------

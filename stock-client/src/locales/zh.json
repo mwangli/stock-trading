@@ -41,8 +41,6 @@
     "modelOperations": "模型训练",
     "agent": "智能决策",
     "agentConversation": "智能对话",
-    "documentationBrowse": "文档查阅",
-    "returnToSystem": "返回系统",
     "pageTitles": {
       "dashboard": "收益总览",
       "market": "行情信息",
@@ -51,7 +49,6 @@
       "modelOperations": "模型训练",
       "agent": "智能决策",
       "agentConversation": "智能对话",
-      "documentation": "工程文档",
       "jobs": "任务调度"
     },
     "expandMenu": "展开导航菜单",
@@ -194,12 +191,12 @@
     "lastSync": "最近同步",
     "cards": {
       "totalAssets": "总资产",
-      "availableCash": "可用资金",
-      "positionValue": "持仓市值",
+      "availableCash": "剩余金额",
+      "positionValue": "持仓金额",
       "frozenCash": "冻结资金",
       "realizedTotal": "累计已实现收益",
-      "realizedToday": "今日已实现收益",
-      "realizedMonth": "本月已实现收益",
+      "realizedToday": "今日收益",
+      "realizedMonth": "本月收益",
       "realizedRate": "累计收益率",
       "dailyRate": "日收益率",
       "monthlyRate": "月收益率"
@@ -212,6 +209,7 @@
       "averageReturn": "平均收益率",
       "profitLoss": "盈利 / 亏损",
       "ranking": "收益率排行",
+      "latestDailyRanking": "最新日收益率排行",
       "daily": "日收益率",
       "monthly": "月收益率",
       "positions": "当前持仓",

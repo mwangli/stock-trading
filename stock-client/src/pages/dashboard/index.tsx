@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------------------
+// AI_GENERATE_START-------------------------------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
@@ -77,6 +77,21 @@ interface PerformanceOverview {
   monthlyReturns: PerformancePeriodItem[];
 }
 
+interface DailyMarketRankingItem {
+  period: string;
+  stockCode: string;
+  stockName?: string;
+  close: number;
+  preclose: number;
+  returnRate: number;
+}
+
+interface DashboardOverview {
+  account: Record<string, unknown>;
+  positions: Array<Record<string, unknown>>;
+  performance: Array<Record<string, unknown>>;
+}
+
 type ApiResult<T> = ApiResponse<T> | T;
 
 const readApiData = <T,>(result: ApiResult<T>): T | null => {
@@ -90,19 +105,113 @@ const readApiData = <T,>(result: ApiResult<T>): T | null => {
 const money = (value?: number) => value == null ? '-' : `¥${Number(value).toFixed(2)}`;
 const percent = (value?: number) => value == null ? '-' : `${(Number(value) * 100).toFixed(2)}%`;
 const profitColor = (value?: number): 'success' | 'danger' => value != null && value >= 0 ? 'danger' : 'success';
+const numeric = (value: unknown) => value == null || value === '' ? 0 : Number(value);
+const text = (value: unknown) => value == null ? '' : String(value);
+
+const adaptDashboardOverview = (overview: DashboardOverview): PerformanceOverview => {
+  const performanceRows = overview.performance ?? [];
+  const latest = performanceRows[0] ?? {};
+  const account = overview.account ?? {};
+  const netReturns = performanceRows.map((item) => numeric(item.net_return));
+  const netProfits = performanceRows.map((item) => numeric(item.net_pnl));
+  const winningTradeCount = netProfits.filter((value) => value > 0).length;
+  const losingTradeCount = netProfits.filter((value) => value < 0).length;
+  const monthly = new Map<string, PerformancePeriodItem>();
+
+  performanceRows.forEach((item) => {
+    const period = text(item.business_date).slice(0, 7) || '-';
+    const current = monthly.get(period) ?? {
+      period,
+      netProfit: 0,
+      cumulativeProfit: 0,
+      returnRate: 0,
+      tradeCount: 0,
+      winningTradeCount: 0,
+    };
+    const profit = numeric(item.net_pnl);
+    current.netProfit += profit;
+    current.returnRate += numeric(item.net_return);
+    current.tradeCount += 1;
+    current.winningTradeCount += profit > 0 ? 1 : 0;
+    monthly.set(period, current);
+  });
+
+  let cumulativeProfit = 0;
+  const monthlyReturns = Array.from(monthly.values()).map((item) => {
+    cumulativeProfit += item.netProfit;
+    return { ...item, cumulativeProfit };
+  });
+
+  const ranking = (overview.positions ?? []).map((item): PerformanceRankingItem => {
+    const quantity = numeric(item.quantity);
+    const averageCost = numeric(item.average_cost);
+    const currentPrice = numeric(item.current_price);
+    const buyAmount = averageCost * quantity;
+    const sellAmount = currentPrice * quantity;
+    const returnRate = averageCost ? (currentPrice - averageCost) / averageCost : 0;
+    return {
+      stockCode: text(item.instrument),
+      stockName: text(item.stock_name),
+      transactionAmount: sellAmount,
+      buyAmount,
+      sellAmount,
+      tradeQuantity: quantity,
+      netProfit: sellAmount - buyAmount,
+      returnRate,
+      dailyReturnRate: returnRate,
+      buyTime: text(item.captured_at),
+    };
+  });
+
+  return {
+    capturedAt: text(account.captured_at),
+    totalAssets: numeric(account.total_assets),
+    availableCash: numeric(account.available_cash),
+    marketValue: numeric(account.total_position),
+    frozenCash: numeric(account.frozen_amount),
+    cumulativeProfit: netProfits.reduce((sum, value) => sum + value, 0),
+    cumulativeReturnRate: netReturns.reduce((sum, value) => sum + value, 0),
+    dailyProfit: numeric(latest.net_pnl),
+    dailyReturnRate: numeric(latest.net_return),
+    monthlyProfit: monthlyReturns[0]?.netProfit ?? 0,
+    monthlyReturnRate: monthlyReturns[0]?.returnRate ?? 0,
+    totalTradeCount: performanceRows.length,
+    closedTradeCount: performanceRows.length,
+    winningTradeCount,
+    losingTradeCount,
+    winRate: performanceRows.length ? winningTradeCount / performanceRows.length : 0,
+    averageReturnRate: netReturns.length ? netReturns.reduce((sum, value) => sum + value, 0) / netReturns.length : 0,
+    bestReturnRate: netReturns.length ? Math.max(...netReturns) : 0,
+    worstReturnRate: netReturns.length ? Math.min(...netReturns) : 0,
+    ranking,
+    dailyReturns: performanceRows.map((item) => ({
+      period: text(item.business_date),
+      stockCode: text(item.scenario || item.model_version_id || 'LIVE'),
+      stockName: text(item.scenario),
+      netProfit: numeric(item.net_pnl),
+      buyAmount: numeric(item.cash),
+      sellAmount: numeric(item.equity),
+      returnRate: numeric(item.net_return),
+    })),
+    monthlyReturns,
+  };
+};
 
 const Dashboard: React.FC = () => {
   const { t } = useTranslation();
   const [account, setAccount] = useState<BrokerAccount | null>(null);
   const [performance, setPerformance] = useState<PerformanceOverview | null>(null);
+  const [dailyRanking, setDailyRanking] = useState<DailyMarketRankingItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [dailyRankingLoading, setDailyRankingLoading] = useState(false);
 
   const loadBrokerData = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await request.get('/performance/overview') as ApiResult<PerformanceOverview>;
-      const performanceData = readApiData(result);
-      if (performanceData) {
+      const result = await request.get('/dashboard/overview') as ApiResult<DashboardOverview>;
+      const overview = readApiData(result);
+      if (overview) {
+        const performanceData = adaptDashboardOverview(overview);
         setPerformance(performanceData);
         setAccount({
           totalAssets: performanceData.totalAssets,
@@ -120,9 +229,22 @@ const Dashboard: React.FC = () => {
     }
   }, []);
 
+  const loadDailyRanking = useCallback(async () => {
+    setDailyRankingLoading(true);
+    try {
+      const result = await request.get('/market/daily-ranking?limit=30') as ApiResult<DailyMarketRankingItem[]>;
+      setDailyRanking(readApiData(result) ?? []);
+    } catch {
+      setDailyRanking([]);
+    } finally {
+      setDailyRankingLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadBrokerData();
-  }, [loadBrokerData]);
+    void loadDailyRanking();
+  }, [loadBrokerData, loadDailyRanking]);
 
   const rankingColumns = [
     { title: t('dashboard.columns.stockCode'), dataIndex: 'stockCode', key: 'stockCode', width: 110 },
@@ -161,42 +283,33 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="app-page returns-overview-page">
-      <Row gutter={[12, 12]}>
-        <Col xs={12} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.totalAssets')} value={account?.totalAssets} precision={2} prefix="¥" /></Card></Col>
-        <Col xs={12} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.availableCash')} value={account?.availableCash} precision={2} prefix="¥" /></Card></Col>
-        <Col xs={12} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.positionValue')} value={account?.totalPosition} precision={2} prefix="¥" /></Card></Col>
-        <Col xs={12} md={6}><Card className="surface-card compact-card" loading={loading}><Statistic title={t('dashboard.cards.frozenCash')} value={account?.frozenAmount} precision={2} prefix="¥" /></Card></Col>
-      </Row>
-
-      <Row gutter={[12, 12]}>
-        <Col xs={24} md={8}>
-          <Card className="surface-card compact-card returns-overview-profit-card" loading={loading}>
-            <div className="returns-overview-profit-layout">
-              <Statistic title={t('dashboard.cards.realizedTotal')} value={performance?.cumulativeProfit} precision={2} prefix="¥" />
-              <Text className="returns-overview-rate" type={profitColor(performance?.cumulativeProfit)}>
-                {t('dashboard.cards.realizedRate')} <strong>{percent(performance?.cumulativeReturnRate)}</strong>
-              </Text>
-            </div>
+      <Row className="returns-overview-metric-grid" gutter={[12, 12]}>
+        <Col xs={12} md={6}>
+          <Card className="surface-card compact-card returns-overview-metric-card" loading={loading}>
+            <Statistic title={t('dashboard.cards.positionValue')} value={account?.totalPosition} precision={2} prefix="¥" />
+            <span className="returns-overview-rate returns-overview-rate-placeholder" aria-hidden="true">-</span>
           </Card>
         </Col>
-        <Col xs={24} md={8}>
-          <Card className="surface-card compact-card returns-overview-profit-card" loading={loading}>
-            <div className="returns-overview-profit-layout">
-              <Statistic title={t('dashboard.cards.realizedToday')} value={performance?.dailyProfit} precision={2} prefix="¥" />
-              <Text className="returns-overview-rate" type={profitColor(performance?.dailyProfit)}>
-                {t('dashboard.cards.dailyRate')} <strong>{percent(performance?.dailyReturnRate)}</strong>
-              </Text>
-            </div>
+        <Col xs={12} md={6}>
+          <Card className="surface-card compact-card returns-overview-metric-card" loading={loading}>
+            <Statistic title={t('dashboard.cards.availableCash')} value={account?.availableCash} precision={2} prefix="¥" />
+            <span className="returns-overview-rate returns-overview-rate-placeholder" aria-hidden="true">-</span>
           </Card>
         </Col>
-        <Col xs={24} md={8}>
-          <Card className="surface-card compact-card returns-overview-profit-card" loading={loading}>
-            <div className="returns-overview-profit-layout">
-              <Statistic title={t('dashboard.cards.realizedMonth')} value={performance?.monthlyProfit} precision={2} prefix="¥" />
-              <Text className="returns-overview-rate" type={profitColor(performance?.monthlyProfit)}>
-                {t('dashboard.cards.monthlyRate')} <strong>{percent(performance?.monthlyReturnRate)}</strong>
-              </Text>
-            </div>
+        <Col xs={12} md={6}>
+          <Card className="surface-card compact-card returns-overview-metric-card" loading={loading}>
+            <Statistic title={t('dashboard.cards.realizedToday')} value={performance?.dailyProfit} precision={2} prefix="¥" />
+            <Text className="returns-overview-rate" type={profitColor(performance?.dailyProfit)}>
+              {t('dashboard.cards.dailyRate')} <strong>{percent(performance?.dailyReturnRate)}</strong>
+            </Text>
+          </Card>
+        </Col>
+        <Col xs={12} md={6}>
+          <Card className="surface-card compact-card returns-overview-metric-card" loading={loading}>
+            <Statistic title={t('dashboard.cards.realizedMonth')} value={performance?.monthlyProfit} precision={2} prefix="¥" />
+            <Text className="returns-overview-rate" type={profitColor(performance?.monthlyProfit)}>
+              {t('dashboard.cards.monthlyRate')} <strong>{percent(performance?.monthlyReturnRate)}</strong>
+            </Text>
           </Card>
         </Col>
       </Row>
@@ -219,6 +332,42 @@ const Dashboard: React.FC = () => {
         </Row>
       </Card>
 
+      <Card
+        className="surface-card returns-overview-mobile-ranking"
+        title={t('dashboard.sections.latestDailyRanking')}
+        extra={dailyRanking[0]?.period ? <Text className="returns-overview-mobile-ranking-period">{dailyRanking[0].period}</Text> : null}
+        loading={dailyRankingLoading}
+      >
+        {dailyRanking.length > 0 ? (
+          <div
+            className="returns-overview-mobile-ranking-list"
+            role="list"
+            aria-label={t('dashboard.sections.latestDailyRanking')}
+            tabIndex={0}
+          >
+            {dailyRanking.map((item, index) => (
+              <div
+                className="returns-overview-mobile-ranking-row"
+                key={`${item.period}-${item.stockCode}-${index}`}
+                role="listitem"
+              >
+                <span className={`returns-overview-mobile-ranking-index is-rank-${index + 1}`}>{index + 1}</span>
+                <div className="returns-overview-mobile-ranking-stock">
+                  <strong>{item.stockName || item.stockCode}</strong>
+                  <span>{item.stockCode}</span>
+                </div>
+                <div className="returns-overview-mobile-ranking-value">
+                  <Text strong type={profitColor(item.returnRate)}>{percent(item.returnRate)}</Text>
+                  <span>{money(item.close)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('dashboard.empty.daily')} />
+        )}
+      </Card>
+
       <Row className="dashboard-table-row" gutter={[12, 12]}>
         <Col className="dashboard-table-col" xs={24} xl={12}>
           <Card className="surface-card dashboard-table-card" title={t('dashboard.sections.daily')}>
@@ -232,7 +381,7 @@ const Dashboard: React.FC = () => {
         </Col>
       </Row>
 
-      <Card className="surface-card dashboard-table-card" title={t('dashboard.sections.ranking')}>
+      <Card className="surface-card dashboard-table-card dashboard-ranking-card" title={t('dashboard.sections.ranking')}>
         <Table rowKey={(item) => `${item.stockCode}-${item.sellTime ?? item.buyTime}`} columns={rankingColumns} dataSource={performance?.ranking ?? []} loading={loading} scroll={{ x: 1450 }} pagination={{ pageSize: 10 }} locale={{ emptyText: <Empty description={t('dashboard.empty.ranking')} /> }} />
       </Card>
 
@@ -241,4 +390,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-// AI_GENERATE_END------------------------
+// AI_GENERATE_END-------------------------------

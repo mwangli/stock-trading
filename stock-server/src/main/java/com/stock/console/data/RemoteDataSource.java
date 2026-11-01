@@ -111,7 +111,7 @@ public class RemoteDataSource {
         if (authorization.isEmpty()) {
             throw new SQLException("远程数据源已启用，但未配置用户名或密码");
         }
-        String sql = "CREATE TEMP SECRET stock_remote_data (TYPE http, "
+        String sql = "CREATE SECRET stock_remote_data (TYPE http, "
                 + "EXTRA_HTTP_HEADERS MAP {'Authorization': '"
                 + sqlLiteral(authorization) + "'})";
         try (Statement statement = connection.createStatement()) {

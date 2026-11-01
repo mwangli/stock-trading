@@ -1,7 +1,7 @@
-// AI_GENERATE_START----------------------
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+// AI_GENERATE_START-------------------------
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dayjs from 'dayjs';
-import { Button, DatePicker, Empty, Input, Pagination, Select, Space, Table, Tag } from 'antd';
+import { Button, DatePicker, Empty, Input, Pagination, Select, Space, Spin, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { SearchOutlined } from '@ant-design/icons';
 import request from '../../utils/request';
@@ -26,11 +26,6 @@ interface BrokerOrder {
   orderTime: string;
 }
 
-interface BrokerPage<T> {
-  items: T[];
-  total: number;
-}
-
 interface OrderFilters {
   keyword: string;
   direction: string;
@@ -52,6 +47,7 @@ const formatLocalDate = (date: Date) => {
 };
 
 const DATE_FORMAT = 'YYYY-MM-DD';
+const MOBILE_MEDIA_QUERY = '(max-width: 991px)';
 
 const buildDefaultFilters = (): OrderFilters => {
   const endDate = new Date();
@@ -66,6 +62,10 @@ const buildDefaultFilters = (): OrderFilters => {
 };
 
 const money = (value?: number) => value == null ? '-' : `¥${Number(value).toFixed(2)}`;
+const timestamp = (value?: string) => {
+  const parsed = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 const OrderHistoryTable: React.FC = () => {
   const { t } = useTranslation();
@@ -75,40 +75,125 @@ const OrderHistoryTable: React.FC = () => {
   const [orders, setOrders] = useState<BrokerOrder[]>([]);
   const [page, setPage] = useState<PageState>({ current: 1, pageSize: 10, total: 0 });
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia(MOBILE_MEDIA_QUERY).matches
+  ));
   const [, setError] = useState<string | null>(null);
   const [detailStock, setDetailStock] = useState<StockDetailSelection | null>(null);
+  const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
+  const loadingMoreRef = useRef(false);
+  const mobileLoadedPageRef = useRef(1);
 
-  const loadOrders = useCallback(async () => {
-    setLoading(true);
+  const loadOrders = useCallback(async (targetPage: number, append: boolean) => {
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
-      const response = await request.get('/tradeRecords/orders', {
-        params: {
-          keyword: filters.keyword || undefined,
-          direction: filters.direction === 'ALL' ? undefined : filters.direction,
-          startDate: filters.startDate,
-          endDate: filters.endDate,
-          current: page.current,
-          pageSize: page.pageSize,
-        },
-      }) as ApiResponse<BrokerPage<BrokerOrder>>;
+      const response = await request.get('/trading/orders', {
+        params: { limit: 500 },
+      }) as ApiResponse<Array<Record<string, unknown>>>;
       if (!response.success) {
         throw new Error(response.message || t('historyOrders.loadError'));
       }
-      setOrders(response.data?.items ?? []);
-      setPage((current) => ({ ...current, total: response.data?.total ?? 0 }));
+      const keyword = filters.keyword.toLowerCase();
+      const mappedOrders: BrokerOrder[] = (response.data ?? []).map((item) => {
+        const price = Number(item.price ?? 0);
+        const quantity = Number(item.quantity ?? 0);
+        const filledQuantity = Number(item.filled_quantity ?? 0);
+        const averageFillPrice = item.average_fill_price == null ? undefined : Number(item.average_fill_price);
+        return {
+          orderId: String(item.broker_order_id ?? ''),
+          stockCode: String(item.instrument ?? ''),
+          stockName: String(item.stock_name ?? ''),
+          direction: String(item.side ?? ''),
+          orderPrice: price,
+          orderQuantity: quantity,
+          filledQuantity,
+          averageFillPrice,
+          transactionAmount: (averageFillPrice ?? price) * (filledQuantity || quantity),
+          commission: 0,
+          status: String(item.status ?? item.raw_status ?? ''),
+          orderTime: String(item.order_time ?? item.updated_at ?? ''),
+        };
+      });
+      const filteredOrders = mappedOrders.filter((item) => {
+        const matchesKeyword = !keyword
+          || item.stockCode.toLowerCase().includes(keyword)
+          || item.stockName.toLowerCase().includes(keyword);
+        const matchesDirection = filters.direction === 'ALL' || item.direction === filters.direction;
+        const orderDate = item.orderTime.slice(0, 10);
+        const matchesStart = !filters.startDate || orderDate >= filters.startDate;
+        const matchesEnd = !filters.endDate || orderDate <= filters.endDate;
+        return matchesKeyword && matchesDirection && matchesStart && matchesEnd;
+      }).sort((left, right) => timestamp(right.orderTime) - timestamp(left.orderTime));
+      const offset = (targetPage - 1) * page.pageSize;
+      const nextOrders = filteredOrders.slice(offset, offset + page.pageSize);
+      setOrders((current) => append ? [...current, ...nextOrders] : nextOrders);
+      mobileLoadedPageRef.current = append ? targetPage : 1;
+      setPage((current) => ({ ...current, total: filteredOrders.length }));
     } catch (cause) {
-      setOrders([]);
-      setPage((current) => ({ ...current, total: 0 }));
+      if (!append) {
+        setOrders([]);
+        setPage((current) => ({ ...current, total: 0 }));
+      }
       setError(cause instanceof Error ? cause.message : t('historyOrders.loadError'));
     } finally {
-      setLoading(false);
+      if (append) {
+        setLoadingMore(false);
+      } else {
+        setLoading(false);
+      }
     }
-  }, [filters, page.current, page.pageSize]);
+  }, [filters, page.pageSize, t]);
 
   useEffect(() => {
-    void loadOrders();
-  }, [loadOrders]);
+    void loadOrders(isMobile ? 1 : page.current, false);
+  }, [isMobile, loadOrders, page.current]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(MOBILE_MEDIA_QUERY);
+    const handleViewportChange = (event: MediaQueryListEvent) => {
+      mobileLoadedPageRef.current = 1;
+      setPage((current) => ({ ...current, current: 1 }));
+      setIsMobile(event.matches);
+    };
+    mediaQuery.addEventListener('change', handleViewportChange);
+    return () => mediaQuery.removeEventListener('change', handleViewportChange);
+  }, []);
+
+  useEffect(() => {
+    loadingMoreRef.current = loadingMore;
+  }, [loadingMore]);
+
+  const loadNextMobilePage = useCallback(async () => {
+    if (!isMobile || loadingMoreRef.current || orders.length >= page.total) {
+      return;
+    }
+    loadingMoreRef.current = true;
+    try {
+      await loadOrders(mobileLoadedPageRef.current + 1, true);
+    } finally {
+      loadingMoreRef.current = false;
+    }
+  }, [isMobile, loadOrders, orders.length, page.total]);
+
+  useEffect(() => {
+    const trigger = loadMoreTriggerRef.current;
+    if (!isMobile || !trigger || orders.length >= page.total) {
+      return undefined;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        void loadNextMobilePage();
+      }
+    }, { rootMargin: '160px 0px' });
+    observer.observe(trigger);
+    return () => observer.disconnect();
+  }, [isMobile, loadNextMobilePage, orders.length, page.total]);
 
   const applyFilters = () => {
     if (draftFilters.startDate && draftFilters.endDate && draftFilters.startDate > draftFilters.endDate) {
@@ -214,16 +299,67 @@ const OrderHistoryTable: React.FC = () => {
           />
           <Button icon={<SearchOutlined />} onClick={applyFilters}>{t('common.search')}</Button>
         </Space>
-        <Table
-          rowKey={(item) => `${item.orderId}-${item.orderTime}`}
-          columns={columns}
-          dataSource={orders}
-          loading={loading}
-          locale={{ emptyText: <Empty description={t('historyOrders.empty')} /> }}
-          scroll={{ x: 'max-content' }}
-          pagination={false}
-        />
-        <div className="mt-4 overflow-x-auto pb-1">
+        <div className="order-records-desktop-table">
+          <Table
+            rowKey={(item) => `${item.orderId}-${item.orderTime}`}
+            columns={columns}
+            dataSource={orders}
+            loading={loading}
+            locale={{ emptyText: <Empty description={t('historyOrders.empty')} /> }}
+            scroll={{ x: 'max-content' }}
+            pagination={false}
+          />
+        </div>
+        <div className="order-records-mobile-list" aria-live="polite">
+          {loading && orders.length === 0 ? (
+            <div className="order-records-mobile-state"><Spin /></div>
+          ) : orders.length > 0 ? (
+            <>
+              {orders.map((item) => (
+                <article className="order-records-mobile-card" key={`${item.orderId}-${item.orderTime}`}>
+              <header className="order-records-mobile-card-header">
+                <div className="order-records-mobile-security">
+                  <button
+                    type="button"
+                    className="order-records-stock-code"
+                    aria-label={localizedText(`查看 ${item.stockName || item.stockCode}（${item.stockCode}）详情`, `View details for ${item.stockName || item.stockCode} (${item.stockCode})`)}
+                    onClick={() => setDetailStock({ code: item.stockCode, name: item.stockName })}
+                  >
+                    {item.stockCode}
+                  </button>
+                  <strong>{item.stockName || '-'}</strong>
+                </div>
+                {directionTag(item.direction)}
+              </header>
+              <div className="order-records-mobile-grid">
+                <div><span>{t('historyOrders.columns.orderPrice')}</span><strong>{money(item.orderPrice)}</strong></div>
+                <div><span>{t('historyOrders.columns.averageFillPrice')}</span><strong>{money(item.averageFillPrice)}</strong></div>
+                <div><span>{t('historyOrders.columns.orderQuantity')}</span><strong>{item.orderQuantity}</strong></div>
+                <div><span>{t('historyOrders.columns.filledQuantity')}</span><strong>{item.filledQuantity}</strong></div>
+                <div><span>{t('historyOrders.columns.transactionAmount')}</span><strong>{money(item.transactionAmount)}</strong></div>
+                <div><span>{t('historyOrders.columns.commission')}</span><strong>{money(item.commission)}</strong></div>
+              </div>
+              <footer className="order-records-mobile-card-footer">
+                <span>{formatDateTime(item.orderTime)}</span>
+                <strong>{item.status || '-'}</strong>
+              </footer>
+                </article>
+              ))}
+              {(orders.length < page.total || loadingMore) && (
+                <div
+                  ref={loadMoreTriggerRef}
+                  className="order-records-mobile-load-more"
+                  aria-label={loadingMore ? localizedText('正在加载更多', 'Loading more') : undefined}
+                >
+                  {loadingMore && <Spin size="small" />}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="order-records-mobile-state"><Empty description={t('historyOrders.empty')} /></div>
+          )}
+        </div>
+        <div className="order-records-desktop-pagination mt-4 overflow-x-auto pb-1">
           <div className="flex min-w-max justify-end">
             <Pagination
               current={page.current}
@@ -244,4 +380,4 @@ const OrderHistoryTable: React.FC = () => {
 };
 
 export default OrderHistoryTable;
-// AI_GENERATE_END----------------------
+// AI_GENERATE_END-------------------------

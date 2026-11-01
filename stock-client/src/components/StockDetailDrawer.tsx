@@ -126,13 +126,37 @@ const StockDetailDrawer: React.FC<StockDetailDrawerProps> = ({ stock, onClose })
     setLoading(true);
     void (async () => {
       try {
-        const response = await request.get(`/stockData/code/${encodeURIComponent(stockCode)}`) as ApiResponse<StockDetail>;
-        if (!response.success || !response.data) {
-          throw new Error(response.message || localizedText('股票详情读取失败', 'Failed to load stock details'));
+        const [instrumentResponse, barsResponse] = await Promise.all([
+          request.get('/market/instruments', { params: { keyword: stockCode, limit: 20 } }) as Promise<ApiResponse<Array<Record<string, unknown>>>>,
+          request.get('/market/bars', { params: { code: stockCode, interval: 'day', limit: 2 } }) as Promise<ApiResponse<Array<Record<string, unknown>>>>,
+        ]);
+        const instrument = instrumentResponse.success
+          ? instrumentResponse.data.find((item) => String(item.code) === stockCode)
+          : undefined;
+        const bars = barsResponse.success ? barsResponse.data : [];
+        const latest = bars[0];
+        const previous = bars[1];
+        const close = latest?.close == null ? undefined : Number(latest.close);
+        const preclose = latest?.preclose == null
+          ? (previous?.close == null ? undefined : Number(previous.close))
+          : Number(latest.preclose);
+        const resolvedDetail: StockDetail = {
+          code: stockCode,
+          name: String(instrument?.name ?? fallbackName ?? stockCode),
+          market: instrument?.market == null ? undefined : String(instrument.market),
+          price: close,
+          changeAmount: close != null && preclose != null ? close - preclose : undefined,
+          changePercent: close != null && preclose ? ((close - preclose) / preclose) * 100 : undefined,
+          volume: latest?.volume == null ? undefined : Number(latest.volume),
+          listedDate: instrument?.as_of_date == null ? undefined : String(instrument.as_of_date),
+          updateTime: latest?.trade_date == null ? undefined : String(latest.trade_date),
+        };
+        if (!instrument && !latest) {
+          throw new Error(localizedText('股票详情读取失败', 'Failed to load stock details'));
         }
         if (active) {
-          stockDetailCache.set(stockCode, response.data);
-          setDetail(response.data);
+          stockDetailCache.set(stockCode, resolvedDetail);
+          setDetail(resolvedDetail);
         }
       } catch (cause) {
         if (active) {

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.console.market;
 
 import com.stock.console.config.ConsoleProperties;
@@ -127,6 +127,83 @@ public class MarketRepository {
         }
     }
 
+    public List<Map<String, Object>> latestDailyRanking(int limit) {
+        String instruments = marketSource("instruments/stocks.parquet");
+        if (!marketAvailable("instruments/stocks.parquet")) {
+            return List.of();
+        }
+
+        boolean remote = remoteData.enabled();
+        String dailySource = null;
+        boolean bindDailySource = false;
+        String dailyReader;
+        Optional<String> latest = latestDailyDate();
+        String latestRelative = latest
+                .map(value -> "daily/trade_date=" + value + "/bars.parquet")
+                .orElse("");
+        if (!latestRelative.isEmpty() && marketAvailable(latestRelative)) {
+            dailySource = marketSource(latestRelative);
+            dailyReader = "read_parquet(?)";
+            bindDailySource = true;
+        } else if (remote) {
+            List<String> sources = remoteData.marketDirectories("daily_history").stream()
+                    .filter(name -> name.startsWith("code="))
+                    .map(name -> name.substring("code=".length()))
+                    .filter(code -> CODE.matcher(code).matches())
+                    .map(code -> remoteData.market("daily_history/code=" + code + "/bars.parquet"))
+                    .toList();
+            if (sources.isEmpty()) {
+                return List.of();
+            }
+            dailyReader = "read_parquet([" + String.join(",", sources.stream()
+                    .map(this::sqlString)
+                    .toList()) + "], hive_partitioning = true, union_by_name = true)";
+        } else {
+            Path directory = properties.marketDir().resolve("daily_history");
+            if (!Files.isDirectory(directory)) {
+                return List.of();
+            }
+            dailySource = directory.resolve("code=*/bars.parquet")
+                    .toAbsolutePath().normalize().toString().replace('\\', '/');
+            dailyReader = "read_parquet(?, hive_partitioning = true, union_by_name = true)";
+            bindDailySource = true;
+        }
+
+        String sql = """
+                WITH bars AS MATERIALIZED (
+                    SELECT trade_date, code, close, preclose
+                    FROM %s
+                    WHERE preclose IS NOT NULL AND preclose <> 0
+                ),
+                latest_date AS (
+                    SELECT max(trade_date) AS trade_date
+                    FROM bars
+                )
+                SELECT bars.trade_date AS period,
+                       bars.code AS "stockCode",
+                       instruments.code_name AS "stockName",
+                       bars.close AS close,
+                       bars.preclose AS preclose,
+                       (bars.close - bars.preclose) / bars.preclose AS "returnRate"
+                FROM bars
+                INNER JOIN latest_date ON bars.trade_date = latest_date.trade_date
+                LEFT JOIN read_parquet(?) AS instruments ON instruments.code = bars.code
+                ORDER BY "returnRate" DESC, bars.code
+                LIMIT ?
+                """.formatted(dailyReader);
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            int parameter = 1;
+            if (bindDailySource) {
+                statement.setString(parameter++, dailySource);
+            }
+            statement.setString(parameter++, instruments);
+            statement.setInt(parameter, Math.max(1, Math.min(limit, 100)));
+            return rows(statement);
+        } catch (Exception exception) {
+            return List.of();
+        }
+    }
+
     private List<Map<String, Object>> readBars(
             String relativePath, String orderColumn, int limit, int maximum) {
         if (!marketAvailable(relativePath)) {
@@ -214,5 +291,9 @@ public class MarketRepository {
         String message = exception.getMessage();
         return message == null || message.isBlank() ? "行情数据源无法读取" : message;
     }
+
+    private String sqlString(String value) {
+        return "'" + value.replace("'", "''") + "'";
+    }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

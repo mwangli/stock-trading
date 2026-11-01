@@ -1,7 +1,7 @@
-// AI_GENERATE_START--------------
+// AI_GENERATE_START----------------
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Input, message, Tooltip } from 'antd';
-import { GlobalOutlined, LockOutlined, MoonOutlined, SunOutlined, UserOutlined } from '@ant-design/icons';
+import { LockOutlined, MoonOutlined, SunOutlined, UserOutlined } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../auth/AuthContext';
@@ -185,7 +185,7 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('123456');
+  const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
@@ -247,7 +247,7 @@ const Login: React.FC = () => {
         </div>
       </div>
       <div className="login-tools absolute right-4 top-4 z-20 flex items-center gap-2 sm:right-6 sm:top-6">
-        <div className="login-status flex items-center gap-2 rounded border border-[var(--border-color)] bg-[var(--panel-bg)]/90 px-3 py-2 text-xs text-[var(--text-secondary)] shadow-lg backdrop-blur-md">
+        <div className="login-status flex items-center gap-2 px-3 py-2 text-xs text-[var(--text-secondary)]">
           <span className={`h-2 w-2 rounded-full ${backendStatus === 'online' ? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(34,197,94,0.12)]' : backendStatus === 'offline' ? 'bg-red-500' : 'bg-amber-500'}`} />
           <span className="login-status-label">{backendStatus === 'online' ? t('login.systemOnline') : backendStatus === 'offline' ? t('login.systemOffline') : t('login.systemChecking')}</span>
         </div>
@@ -264,11 +264,10 @@ const Login: React.FC = () => {
           <Button
             type="text"
             className="!h-9 !px-2 text-xs text-[var(--text-secondary)] hover:!bg-[var(--panel-bg)] hover:!text-[var(--text-primary)]"
-            icon={<GlobalOutlined />}
             onClick={changeLanguage}
             aria-label={i18n.language.startsWith('en') ? '中文' : 'English'}
           >
-            {i18n.language.startsWith('en') ? '中文' : 'EN'}
+            EN
           </Button>
         </Tooltip>
       </div>
@@ -299,11 +298,11 @@ const Login: React.FC = () => {
             {t('login.form.button')}
           </Button>
         </div>
-        <p className="mt-6 text-center text-xs text-[var(--text-muted)]">支持账户：admin、test</p>
+        <p className="mt-6 text-center text-xs text-[var(--text-muted)]">使用管理员账户登录</p>
       </section>
     </main>
   );
 };
 
 export default Login;
-// AI_GENERATE_END--------------
+// AI_GENERATE_END----------------

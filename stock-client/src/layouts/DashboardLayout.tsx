@@ -1,4 +1,5 @@
-// AI_GENERATE_START----------------------------------------------------------------
+// AI_GENERATE_START---------------------------------------------------------------------
+import './DashboardLayout.css';
 import React, {
   useEffect,
   useMemo,
@@ -10,7 +11,7 @@ import React, {
   type ReactNode,
 } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Avatar, Badge, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
+import { Avatar, Badge, Button, Drawer, Dropdown, Layout, Menu, Tooltip, type MenuProps } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Reorder, useDragControls } from 'framer-motion';
 import {
@@ -27,16 +28,12 @@ import {
   UserOutlined,
   HolderOutlined,
   MessageOutlined,
-  ReadOutlined,
-  ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { useAppTheme } from '../theme/AppThemeProvider';
 import { PageHeaderContext, type PageHeaderState } from './PageHeaderContext';
 import { checkBackendHealth } from '../utils/backendHealth';
 import { useAuth } from '../auth/AuthContext';
 import SystemBrand from '../components/SystemBrand';
-import request from '../utils/request';
-import { type ApiResponse } from '../utils/api';
 
 const { Header, Content, Sider } = Layout;
 
@@ -58,10 +55,6 @@ interface SidebarResizeState {
   currentWidth: number;
   previousCursor: string;
   previousUserSelect: string;
-}
-
-interface UserMenuPreferenceResponse {
-  menuOrder: string[];
 }
 
 interface SidebarMenuItem {
@@ -194,6 +187,7 @@ const DraggableSidebarItem: React.FC<DraggableSidebarItemProps> = ({
 const DashboardLayout: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [mobileUserMenuOpen, setMobileUserMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
@@ -204,10 +198,7 @@ const DashboardLayout: React.FC = () => {
   const [menuOrder, setMenuOrder] = useState<string[]>(() => readCachedMenuOrder(user?.id) ?? DEFAULT_MENU_ORDER);
   const [sidebarWidth, setSidebarWidth] = useState(() => readCachedSidebarWidth(user?.id));
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
-  const isDocumentationPage = location.pathname === '/docs' || location.pathname.startsWith('/docs/');
-  const documentationActionLabel = isDocumentationPage
-    ? t('layout.returnToSystem')
-    : t('layout.documentationBrowse');
+
   const backendStatusLabel = backendStatus === 'online'
     ? t('layout.online')
     : backendStatus === 'offline'
@@ -215,26 +206,9 @@ const DashboardLayout: React.FC = () => {
       : t('layout.checking');
 
   useEffect(() => {
-    let active = true;
     const cachedMenuOrder = readCachedMenuOrder(user?.id);
     setSidebarWidth(readCachedSidebarWidth(user?.id));
     setMenuOrder(cachedMenuOrder ?? DEFAULT_MENU_ORDER);
-    void (request.get('/userPreferences/menuOrder') as unknown as Promise<ApiResponse<UserMenuPreferenceResponse>>)
-      .then((response) => {
-        if (!active) {
-          return;
-        }
-        if (!response.success) {
-          return;
-        }
-        const resolvedMenuOrder = normalizeMenuOrder(response.data?.menuOrder);
-        cacheMenuOrder(user?.id, resolvedMenuOrder);
-        setMenuOrder(resolvedMenuOrder);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
   }, [user?.id]);
 
   useEffect(() => {
@@ -283,13 +257,7 @@ const DashboardLayout: React.FC = () => {
   const reorderMenu = (nextOrder: string[]) => {
     const normalizedOrder = normalizeMenuOrder(nextOrder);
     setMenuOrder(normalizedOrder);
-    void (request.put('/userPreferences/menuOrder', { menuOrder: normalizedOrder }) as unknown as Promise<ApiResponse<UserMenuPreferenceResponse>>)
-      .then((response) => {
-        if (response.success) {
-          cacheMenuOrder(user?.id, normalizeMenuOrder(response.data?.menuOrder));
-        }
-      })
-      .catch(() => undefined);
+    cacheMenuOrder(user?.id, normalizedOrder);
   };
 
   const selectMenuItem = (key: string) => {
@@ -391,6 +359,7 @@ const DashboardLayout: React.FC = () => {
   ];
 
   const handleUserMenuClick: MenuProps['onClick'] = async ({ key }) => {
+    setMobileUserMenuOpen(false);
     if (key === 'adaptiveTheme') {
       setAutoThemeEnabled(!autoThemeEnabled);
       return;
@@ -415,15 +384,7 @@ const DashboardLayout: React.FC = () => {
   return (
     <PageHeaderContext.Provider value={setPageHeader}>
       <Layout className="app-shell" style={appShellStyle}>
-      {!isDocumentationPage && isMobile && !sidebarCollapsed && (
-        <button
-          type="button"
-          className="app-sidebar-backdrop"
-          aria-label="关闭主菜单"
-          onClick={() => setSidebarCollapsed(true)}
-        />
-      )}
-      {!isDocumentationPage && (
+
         <Sider
           id="primary-navigation"
           trigger={null}
@@ -433,6 +394,7 @@ const DashboardLayout: React.FC = () => {
           breakpoint="lg"
           onBreakpoint={(broken) => {
             setIsMobile(broken);
+            setMobileUserMenuOpen(false);
             if (broken) {
               setSidebarCollapsed(true);
             }
@@ -482,28 +444,21 @@ const DashboardLayout: React.FC = () => {
             />
           )}
         </Sider>
-      )}
 
       <Layout className="app-main-layout">
-        <Header className={`app-header${isDocumentationPage ? ' app-header-documentation-page' : ''}`}>
-          {isDocumentationPage ? (
-            <SystemBrand
-              className="app-header-brand"
-              status={backendStatus}
-              statusLabel={backendStatusLabel}
-              title={t('login.algoTrading')}
-            />
-          ) : (
+        <Header className="app-header">
             <div className="app-header-identity">
-              <Tooltip title={sidebarCollapsed ? t('layout.expandMenu') : t('layout.collapseMenu')}>
-                <Button
-                  type="text"
-                  icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                  aria-controls="primary-navigation"
-                  aria-expanded={!sidebarCollapsed}
-                  onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
-                />
-              </Tooltip>
+              {!isMobile && (
+                <Tooltip title={sidebarCollapsed ? t('layout.expandMenu') : t('layout.collapseMenu')}>
+                  <Button
+                    type="text"
+                    icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                    aria-controls="primary-navigation"
+                    aria-expanded={!sidebarCollapsed}
+                    onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+                  />
+                </Tooltip>
+              )}
               <div className="min-w-0 flex-1">
                 <div className="app-page-title truncate">
                   {pageTitles[location.pathname] ?? t('layout.title')}
@@ -513,22 +468,8 @@ const DashboardLayout: React.FC = () => {
                 </div>
               </div>
             </div>
-          )}
 
           <div className="app-header-tools">
-            <Tooltip title={documentationActionLabel}>
-              <Button
-                type="text"
-                className="app-header-documentation"
-                onClick={() => navigate(isDocumentationPage ? '/dashboard' : '/docs')}
-                icon={isDocumentationPage ? <ArrowLeftOutlined /> : <ReadOutlined />}
-                aria-label={documentationActionLabel}
-              >
-                <span className="app-header-documentation-label">
-                  {documentationActionLabel}
-                </span>
-              </Button>
-            </Tooltip>
             <Button
               type="text"
               className="app-header-language !h-8 !px-2 text-xs"
@@ -548,22 +489,71 @@ const DashboardLayout: React.FC = () => {
             <Badge dot color="#22c55e" className="app-header-notification">
               <Button type="text" icon={<BellOutlined />} />
             </Badge>
-            <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} trigger={['click']}>
-              <Button type="text" className="!h-8 !px-1" aria-label={t('layout.userMenu')}>
+            {isMobile ? (
+              <Button
+                type="text"
+                className="app-mobile-user-menu-button !px-1"
+                aria-label={t('layout.userMenu')}
+                aria-expanded={mobileUserMenuOpen}
+                onClick={() => setMobileUserMenuOpen(true)}
+              >
                 <Avatar size={30} icon={<UserOutlined />} className="app-header-avatar" />
               </Button>
-            </Dropdown>
+            ) : (
+              <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} trigger={['click']}>
+                <Button type="text" className="!h-8 !px-1" aria-label={t('layout.userMenu')}>
+                  <Avatar size={30} icon={<UserOutlined />} className="app-header-avatar" />
+                </Button>
+              </Dropdown>
+            )}
           </div>
         </Header>
 
-        <Content className={`app-content${isDocumentationPage ? ' app-content-documentation' : ''}`}>
+        <Content className="app-content">
           <Outlet />
         </Content>
       </Layout>
+      {isMobile && (
+        <>
+          <nav className="app-mobile-tabbar" aria-label="主导航">
+            {orderedMenuItems.map((item) => {
+              const selected = location.pathname === item.key;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`app-mobile-tab-item${selected ? ' app-mobile-tab-item-active' : ''}`}
+                  aria-current={selected ? 'page' : undefined}
+                  aria-label={item.label}
+                  onClick={() => selectMenuItem(item.key)}
+                >
+                  <span className="app-mobile-tab-icon" aria-hidden="true">{item.icon}</span>
+                  <span className="app-mobile-tab-label">{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+          <Drawer
+            rootClassName="app-mobile-user-drawer"
+            title={t('layout.userMenu')}
+            placement="bottom"
+            height="auto"
+            open={mobileUserMenuOpen}
+            onClose={() => setMobileUserMenuOpen(false)}
+          >
+            <Menu
+              className="app-mobile-user-menu"
+              items={userMenuItems}
+              selectable={false}
+              onClick={handleUserMenuClick}
+            />
+          </Drawer>
+        </>
+      )}
       </Layout>
     </PageHeaderContext.Provider>
   );
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END----------------------------------------------------------------
+// AI_GENERATE_END---------------------------------------------------------------------
