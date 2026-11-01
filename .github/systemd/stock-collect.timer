@@ -6,7 +6,7 @@ OnCalendar=Mon..Fri *-*-* 16:30:00 Asia/Shanghai
 AccuracySec=1s
 RandomizedDelaySec=0
 Persistent=false
-Unit=stock@collect.service
+Unit=stock-collect.service
 
 [Install]
 WantedBy=timers.target

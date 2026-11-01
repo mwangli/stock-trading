@@ -6,7 +6,7 @@ OnCalendar=Mon..Fri *-*-* 20:35:00 Asia/Shanghai
 AccuracySec=1s
 RandomizedDelaySec=0
 Persistent=false
-Unit=stock@evaluate.service
+Unit=stock-evaluate.service
 
 [Install]
 WantedBy=timers.target

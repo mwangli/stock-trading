@@ -15,6 +15,7 @@
 # Runtime data and artifacts
 .tmp/
 /data/
+/var/
 *.db
 *.db-shm
 *.db-wal

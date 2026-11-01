@@ -38,17 +38,20 @@ jobs:
 
           systemd_dir=.github/systemd
           tasks="sell buy collect rank broker perform evaluate clean"
-          test -f "$systemd_dir/stock@.service"
+          test "$(find "$systemd_dir" -maxdepth 1 -name 'stock-*.service' -type f | wc -l)" -eq 8
           test "$(find "$systemd_dir" -maxdepth 1 -name 'stock-*.timer' -type f | wc -l)" -eq 8
-          grep -Fq 'EnvironmentFile=__PROJECT_DIR__/.env' "$systemd_dir/stock@.service"
-          grep -Fq 'ExecStart=__PROJECT_DIR__/venv/bin/stock-%i' "$systemd_dir/stock@.service"
-          grep -Fq 'StandardOutput=journal' "$systemd_dir/stock@.service"
-          grep -Fq 'StandardError=journal' "$systemd_dir/stock@.service"
+          test ! -e "$systemd_dir/stock@.service"
           ! grep -ERq 'flock|Restart=|sleep 300' "$systemd_dir"
           for task in $tasks; do
+            service="$systemd_dir/stock-$task.service"
             timer="$systemd_dir/stock-$task.timer"
+            test -f "$service"
             test -f "$timer"
-            grep -Fq "Unit=stock@$task.service" "$timer"
+            grep -Fq 'EnvironmentFile=__PROJECT_DIR__/.env' "$service"
+            grep -Fq "ExecStart=__PROJECT_DIR__/venv/bin/stock-$task" "$service"
+            grep -Fq 'StandardOutput=journal' "$service"
+            grep -Fq 'StandardError=journal' "$service"
+            grep -Fq "Unit=stock-$task.service" "$timer"
             grep -Fq "stock-$task =" pyproject.toml
           done
           grep -Fq 'OnCalendar=Mon..Fri *-*-* 09:35:00 Asia/Shanghai' "$systemd_dir/stock-sell.timer"
@@ -103,7 +106,9 @@ jobs:
             data_dir="$project_dir/data"
             systemd_source="$release_dir/systemd"
             systemd_target=/etc/systemd/system
+            services="stock-sell.service stock-buy.service stock-collect.service stock-rank.service stock-broker.service stock-perform.service stock-evaluate.service stock-clean.service"
             timers="stock-sell.timer stock-buy.timer stock-collect.timer stock-rank.timer stock-broker.timer stock-perform.timer stock-evaluate.timer stock-clean.timer"
+            commands="stock-sell stock-buy stock-collect stock-rank stock-broker stock-perform stock-evaluate stock-clean"
 
             if [ ! -s "$env_file" ] || [ ! -r "$env_file" ]; then
               echo "Missing or unreadable environment file: $env_file" >&2
@@ -126,19 +131,29 @@ jobs:
             uv venv --allow-existing --managed-python --python 3.12 "$venv_dir"
             uv pip install --python "$venv_dir/bin/python" --upgrade "$wheel"
 
+            for command_name in $commands; do
+              if [ ! -x "$venv_dir/bin/$command_name" ]; then
+                echo "Missing installed command: $venv_dir/bin/$command_name" >&2
+                exit 1
+              fi
+            done
+
             mkdir -p \
               "$data_dir/market" \
               "$data_dir/qlib" \
               "$data_dir/artifacts" \
               "$data_dir/state"
 
-            sed "s|__PROJECT_DIR__|$project_dir|g" \
-              "$systemd_source/stock@.service" \
-              > "$systemd_target/stock@.service"
-            chmod 0644 "$systemd_target/stock@.service"
+            for service in $services; do
+              sed "s|__PROJECT_DIR__|$project_dir|g" \
+                "$systemd_source/$service" \
+                > "$systemd_target/$service"
+              chmod 0644 "$systemd_target/$service"
+            done
             for timer in $timers; do
               install -m 0644 "$systemd_source/$timer" "$systemd_target/$timer"
             done
+            rm -f "$systemd_target/stock@.service"
             systemctl daemon-reload
             systemctl enable --now $timers
 

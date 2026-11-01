@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START------------------------------------------------------------------------------------------ -->
+<!-- AI_GENERATE_START-------------------------------------------------------------------------------------------- -->
 # stock-trading
 
 面向 A 股的纯 Python T+1 自动交易验证系统。项目只保留 BaoStock、Qlib、LightGBM、Parquet、SQLite 和经过真实响应确认的 ZX 券商 HTTP 契约。
@@ -94,10 +94,10 @@ uv pip install --python .venv\Scripts\python.exe -e .
 服务器基础环境由运维预先安装，发布流水线不执行系统软件安装：
 
 - `uv`，用于安装托管的 Python 3.12、创建或复用 `~/stock-trading/venv` 并安装生产依赖；流水线不负责安装 `uv`。
-- `systemd`，用于运行模板 Service、Timer 和 journald 日志。
+- `systemd`，用于运行八个具名 Service、八个 Timer 和 journald 日志。
 - `~/stock-trading/.env`，由用户或运维独立创建和维护。发布流水线不会生成、上传、覆盖或修改该文件；文件缺失、为空或发布账号不可读时，发布会直接失败。
 
-流水线构建并上传当前 Wheel 到 `~/stock-trading/releases/<version>/` 后，使用服务器预装的 `uv` 安装并管理 Python 3.12，在 `~/stock-trading/venv` 创建或复用虚拟环境，然后安装 Wheel、部署一个 `stock@.service` 模板和八个 Timer。Linux 运行数据固定写入 `~/stock-trading/data/`；流水线只创建 `market`、`qlib`、`artifacts` 和 `state` 目录，不迁移或清理旧数据。生产依赖默认从阿里云 PyPI 镜像下载，网络超时为 300 秒并最多重试 5 次。流水线不修改用户 `PATH`，也不执行 `init`；初始化和历史数据迁移均由运维手工执行。
+流水线构建并上传当前 Wheel 到 `~/stock-trading/releases/<version>/` 后，使用服务器预装的 `uv` 安装并管理 Python 3.12，在 `~/stock-trading/venv` 创建或复用虚拟环境，然后安装 Wheel、部署八个具名 Service 和八个 Timer。Linux 运行数据固定写入 `~/stock-trading/data/`；流水线只创建 `market`、`qlib`、`artifacts` 和 `state` 目录，不迁移或清理旧数据。生产依赖默认从阿里云 PyPI 镜像下载，网络超时为 300 秒并最多重试 5 次。流水线不修改用户 `PATH`，也不执行 `init`；初始化和历史数据迁移均由运维手工执行。
 
 ## 命令行
 
@@ -125,8 +125,8 @@ Windows 本地通过 `.venv` 中的入口直接执行，不依赖 PATH：
 Linux 服务器不配置交互 PATH，所有日常任务通过 systemd 启动，日志通过 journald 查看：
 
 ```bash
-systemctl start stock@collect
-journalctl -fu stock@collect
+systemctl start stock-collect
+journalctl -fu stock-collect
 ```
 
 日期格式固定为 `YYYY-MM-DD`；省略日期时默认当天；日期范围包含开始日和结束日；参数数量或格式错误时直接显示中文提示。
@@ -146,7 +146,7 @@ BaoStock 不允许并发采集。初始化和 `collect` 都在主线程使用唯
 
 初始化和 `collect` 不创建采集子进程，也不为当前 BaoStock 请求创建临时线程。按下 `Ctrl+C` 后由同步请求自然返回或抛出中断，再由主线程退出；如果 SDK 正在阻塞读取，可能需要等待当前一轮请求结束。已经按股票编号写入的 Parquet 数据会保留，后续 `init` 仅按对应编号文件是否存在决定跳过。
 
-Linux 每次启动任一业务命令前，都会检查同名旧主进程及其子进程。后启动的同名命令按 `SIGINT`、`SIGTERM`、`SIGKILL` 顺序接管旧实例，确认旧进程全部退出后才继续，并在 `state/<command>-owner.pid` 记录当前主进程；不同业务命令相互隔离，不会终止其他 `stock-trading` 命令或普通 Python 进程。`trading --sell` 和 `trading --buy` 共用 `trading-owner.pid`，任何新的实时交易都会先接管尚未结束的旧交易，禁止买卖并行。未发现旧进程时不增加日志，完成接管时只输出一条 `WARNING`，说明已终止的命令和 PID。该机制用于避免同一命令重复运行，不是 BaoStock 连接锁，也不阻止 `init` 与 `collect` 分别运行。
+Linux 每次启动任一业务命令前，都会检查同名旧主进程及其子进程。后启动的同名命令按 `SIGINT`、`SIGTERM`、`SIGKILL` 顺序接管旧实例，确认旧进程全部退出后才继续，并在 `state/<command>-owner.pid` 记录当前主进程；不同业务命令相互隔离，不会终止其他 `stock-trading` 命令或普通 Python 进程。`stock-sell` 和 `stock-buy` 共用 `trading-owner.pid`，任何新的实时交易都会先接管尚未结束的旧交易，禁止买卖并行。未发现旧进程时不增加日志，完成接管时只输出一条 `WARNING`，说明已终止的命令和 PID。该机制用于避免同一命令重复运行，不是 BaoStock 连接锁，也不阻止 `init` 与 `collect` 分别运行。
 
 初始化不使用任务缓存判断是否跳过。行情阶段按实际文件完整性判断是否跳过；`init` 不执行周期性清理，该职责由生产环境的 `stock-clean.timer` 每周日调用 `clean` 完成。`task_run` 只记录业务任务结果，不作为初始化完成依据。
 
@@ -210,10 +210,10 @@ stock-trading broker
 stock-trading broker --date 2026-10-29
 
 # 按实时持仓和五档执行上海时区当天上午卖出
-stock-trading trading --type S
+stock-sell
 
 # 按 Top 5、实时资金和五档执行上海时区当天下午买入
-stock-trading trading --type B
+stock-buy
 
 # 等待 broker 成功后生成当日已实现绩效
 stock-trading performance
@@ -224,9 +224,9 @@ stock-trading evaluate
 stock-trading evaluate --date 2026-10-29
 ```
 
-日线、复权因子和 5 分钟线统一由 `collect` 完成，成功写入 Parquet 后立即刷新 Qlib；不再保留独立 `prepare` 命令。`rank` 等待同一业务日的 `collect` 成功；`performance` 等待 `broker` 成功；`evaluate` 等待 `performance` 成功。真实交易统一由 `trading --type S` 和 `trading --type B` 在执行窗口内完成；命令不接受日期参数，只处理上海时区当天交易。
+日线、复权因子和 5 分钟线统一由 `collect` 完成，成功写入 Parquet 后立即刷新 Qlib；不再保留独立 `prepare` 命令。`rank` 等待同一业务日的 `collect` 成功；`performance` 等待 `broker` 成功；`evaluate` 等待 `performance` 成功。真实交易统一由 `stock-sell` 和 `stock-buy` 在执行窗口内完成；命令不接受日期参数，只处理上海时区当天交易。
 
-`trading --buy` 从 Top 5 中按顺序检查允许前缀、已确认的券商权限和实时价格范围，固定首个通过的模型候选；不读取或校验其他持仓。每次尝试前重新读取五档并复核价格范围，再按券商实时可用资金计算整手数量，订单最终是否合法仍由券商裁定。`trading --sell` 只固定本次处理的持仓标的，并按券商实时可卖持仓计算数量。价格和数量均不缓存。提交后每 5 秒查询一次，最长观察 60 秒。未全部成交时先申请撤单，确认券商终态为 `CANCELLED` 后，再根据最新事实提交剩余数量。提交结果不确定、撤单未确认、达到最大尝试次数或执行窗口结束时立即停止，禁止盲目重挂。
+`stock-buy` 从 Top 5 中按顺序检查允许前缀、已确认的券商权限和实时价格范围，固定首个通过的模型候选；不读取或校验其他持仓。每次尝试前重新读取五档并复核价格范围，再按券商实时可用资金计算整手数量，订单最终是否合法仍由券商裁定。`stock-sell` 只固定本次处理的持仓标的，并按券商实时可卖持仓计算数量。价格和数量均不缓存。提交后每 5 秒查询一次，最长观察 60 秒。未全部成交时先申请撤单，确认券商终态为 `CANCELLED` 后，再根据最新事实提交剩余数量。提交结果不确定、撤单未确认、达到最大尝试次数或执行窗口结束时立即停止，禁止盲目重挂。
 
 当前唯一执行策略为固定配置 `FIXED_TIME_URGENCY`，默认执行窗口 15 分钟、最多 12 次尝试：
 
@@ -252,7 +252,7 @@ stock-trading evaluate --date 2026-10-29
 
 当前五档接口只解析价格，没有每档挂单量，因此最后阶段只跨到对手一档，不直接使用对手二至五档扫单。后续只有在确认五档数量字段并积累真实成交、撤单和滑点数据后，才考虑多策略选择或自动适应。
 
-主动按 `Ctrl+C` 时，如果已有 `SUBMITTED` 或 `PARTIAL` 委托，程序会先申请撤单并等待券商确认；如果正处于提交结果不确定或待撤状态，则保留恢复流水并退出，不会自动提交新单。之后运行 `broker` 或重新执行相同方向的 `trading` 命令，都会先查询券商当日委托再决定是否继续。
+主动按 `Ctrl+C` 时，如果已有 `SUBMITTED` 或 `PARTIAL` 委托，程序会先申请撤单并等待券商确认；如果正处于提交结果不确定或待撤状态，则保留恢复流水并退出，不会自动提交新单。之后运行 `stock-broker` 或重新执行相同方向的 `stock-sell`、`stock-buy`，都会先查询券商当日委托再决定是否继续。
 
 ## 调度
 
@@ -260,14 +260,14 @@ stock-trading evaluate --date 2026-10-29
 
 | 时间 | Timer | Service | 职责 |
 | --- | --- | --- | --- |
-| 工作日 09:35 | `stock-sell.timer` | `stock@sell` | 上午卖出 |
-| 工作日 13:05 | `stock-buy.timer` | `stock@buy` | 下午买入 |
-| 工作日 16:30 | `stock-collect.timer` | `stock@collect` | 更新 Parquet 并刷新 Qlib |
-| 工作日 17:00 | `stock-rank.timer` | `stock@rank` | 等待 collect 后生成排名 |
-| 工作日 20:20 | `stock-broker.timer` | `stock@broker` | 同步券商订单并组装交易闭环 |
-| 工作日 20:30 | `stock-perform.timer` | `stock@perform` | 等待 broker 后生成已实现绩效 |
-| 工作日 20:35 | `stock-evaluate.timer` | `stock@evaluate` | 等待 performance 后评估模型 |
-| 周日 03:00 | `stock-clean.timer` | `stock@clean` | 清理过期数据 |
+| 工作日 09:35 | `stock-sell.timer` | `stock-sell` | 上午卖出 |
+| 工作日 13:05 | `stock-buy.timer` | `stock-buy` | 下午买入 |
+| 工作日 16:30 | `stock-collect.timer` | `stock-collect` | 更新 Parquet 并刷新 Qlib |
+| 工作日 17:00 | `stock-rank.timer` | `stock-rank` | 等待 collect 后生成排名 |
+| 工作日 20:20 | `stock-broker.timer` | `stock-broker` | 同步券商订单并组装交易闭环 |
+| 工作日 20:30 | `stock-perform.timer` | `stock-perform` | 等待 broker 后生成已实现绩效 |
+| 工作日 20:35 | `stock-evaluate.timer` | `stock-evaluate` | 等待 performance 后评估模型 |
+| 周日 03:00 | `stock-clean.timer` | `stock-clean` | 清理过期数据 |
 
 Timer 不重试、不加锁，非交易日由各业务命令按实际空数据或券商返回结果结束。模型重训不按固定 Timer 执行。
 
@@ -279,13 +279,13 @@ Windows 本地直接执行 `.venv\Scripts\stock-*.exe`，日志显示在当前�
 
 ```bash
 # 手工执行 collect
-systemctl start stock@collect
+systemctl start stock-collect
 
 # 持续查看 collect 日志
-journalctl -fu stock@collect
+journalctl -fu stock-collect
 
 # 查看 collect 当天日志
-journalctl -u stock@collect --since today
+journalctl -u stock-collect --since today
 ```
 
 默认日志级别为 `INFO`，可通过环境变量调整：
@@ -298,7 +298,7 @@ STOCK_TRADING_LOG_LEVEL=WARNING
 
 在项目根目录 `.env` 中配置 `DEVICE_KEY` 后，买卖委托被券商受理时会推送交易摘要；委托被拒绝、结果未知或任意 CLI 业务异常时会推送失败信息。正常的数据同步、训练、预测和评估保持静默。
 
-异常通知只包含经过脱敏和裁剪的错误摘要，不再附加文件日志 URL；完整日志统一通过对应的 `journalctl -u stock@任务` 查询。Bark 推送失败只记录本地警告，不改变原业务结果。
+异常通知只包含经过脱敏和裁剪的错误摘要，不再附加文件日志 URL；完整日志统一通过对应的 `journalctl -u stock-任务` 查询。Bark 推送失败只记录本地警告，不改变原业务结果。
 
 ## 当前验证状态
 
@@ -319,4 +319,4 @@ Rank IC Mean:   -0.0178742
 真实券商验证已确认登录、30 分钟 Token 缓存、账户/持仓/委托/成交读取以及 Action 110 的股东账号和市场参数。真实探测已到达券商交易时间校验，但尚未取得成功委托号，也未验证真实撤单、部分成交和完整绩效闭环。
 
 当前仓库变更只完成源码和文件层面检查。除非另有明确记录，不能把 `SOURCE_IMPLEMENTED` 描述为测试通过、运行通过或生产验证通过。
-<!-- AI_GENERATE_END------------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_END--------------------------------------------------------------------------------------------- -->

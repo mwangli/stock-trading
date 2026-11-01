@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START -----------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -64,6 +64,7 @@ app = typer.Typer(
     name="stock-trading",
     help=(
         "A股 T+1 数据、模型、交易和评估命令。"
+        "生产交易直接使用 stock-sell（卖出）和 stock-buy（买入）。"
         "单日使用 YYYY-MM-DD，日期范围使用 YYYY-MM-DD:YYYY-MM-DD。"
     ),
     no_args_is_help=True,
@@ -251,6 +252,7 @@ def rank_command(
     "trading",
     short_help="[cyan]--type[/cyan] B/S 执行当天实时买入/卖出交易。",
     context_settings=COMMAND_CONTEXT,
+    hidden=True,
 )
 def trading_command(
     trade_type: Annotated[
@@ -786,4 +788,4 @@ def _format_amount(value: object) -> str:
 
 def _format_rate(value: object) -> str:
     return "-" if value is None else f"{float(value):.2%}"
-# AI_GENERATE_END ----------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END -----------------------------------------------------------------------------------------------------------------
