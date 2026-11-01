@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------------------------------------
+# AI_GENERATE_START -------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -14,7 +14,12 @@ from typing import Any, Iterable, Iterator
 
 import pandas as pd
 
-from stock_trading.broker.models import BrokerOrder, BrokerSyncSnapshot
+from stock_trading.broker.models import (
+    BrokerAccount,
+    BrokerFill,
+    BrokerOrder,
+    BrokerSyncSnapshot,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -500,6 +505,65 @@ class StateStore:
             "orders": order_rows,
             "fills": fill_rows,
         } | self.summary()
+
+    def broker_performance_facts(
+        self, business_date: str
+    ) -> tuple[BrokerAccount, tuple[BrokerFill, ...]]:
+        """读取已同步的当日账户和成交事实，不访问券商。"""
+        self.initialize()
+        with self._connect() as connection:
+            account_row = connection.execute(
+                """
+                SELECT available_cash, total_assets, total_position, frozen_amount
+                FROM broker_account_snapshot
+                WHERE business_date = ?
+                ORDER BY captured_at DESC, id DESC
+                LIMIT 1
+                """,
+                (business_date,),
+            ).fetchone()
+            if account_row is None:
+                raise ValueError(
+                    "券商事实不存在："
+                    f"businessDate={business_date}；请先执行 "
+                    f"stock-trading broker --date {business_date}"
+                )
+            fill_rows = connection.execute(
+                """
+                SELECT broker_order_id, instrument, stock_name, direction,
+                       fill_price, fill_quantity, fill_amount, fill_time
+                FROM broker_fill_fact
+                WHERE fill_time IS NOT NULL AND substr(fill_time, 1, 10) = ?
+                ORDER BY fill_time ASC, fill_key ASC
+                """,
+                (business_date,),
+            ).fetchall()
+        account = BrokerAccount(
+            available_cash=Decimal(str(account_row["available_cash"])),
+            total_assets=Decimal(str(account_row["total_assets"])),
+            total_position=Decimal(str(account_row["total_position"])),
+            frozen_amount=Decimal(str(account_row["frozen_amount"])),
+        )
+        fills = tuple(
+            BrokerFill(
+                order_id=str(row["broker_order_id"])
+                if row["broker_order_id"] is not None
+                else None,
+                stock_code=str(row["instrument"])
+                if row["instrument"] is not None
+                else None,
+                stock_name=str(row["stock_name"])
+                if row["stock_name"] is not None
+                else None,
+                direction=str(row["direction"]),
+                fill_price=Decimal(str(row["fill_price"])),
+                fill_quantity=int(row["fill_quantity"]),
+                fill_amount=Decimal(str(row["fill_amount"])),
+                fill_time=datetime.fromisoformat(str(row["fill_time"])),
+            )
+            for row in fill_rows
+        )
+        return account, fills
 
     def import_backtest_performance(
         self, backtest_dir: Path, scenario: str, business_date: str
@@ -1716,4 +1780,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END ------------------------------------------------------
+# AI_GENERATE_END -------------------------------------------------------

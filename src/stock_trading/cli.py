@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------------------------------------------------
+# AI_GENERATE_START ---------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -6,7 +6,6 @@ import logging
 import os
 import re
 import urllib.request
-from contextlib import nullcontext
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -19,14 +18,16 @@ from stock_trading.config import AppConfig
 from stock_trading.initialization import InitializationService
 from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.broker.captcha import BaiduCaptchaSolver
-from stock_trading.market.baostock_client import BaoStockClient
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.market.sync import live_codes, sync_research_data
+from stock_trading.market.sync import (
+    live_codes,
+    research_codes,
+    sync_collection_data,
+)
 from stock_trading.process_control import replace_running_command
 from stock_trading.logging_utils import (
     configure_logging,
     live_progress_session,
-    should_log_progress,
     update_live_progress_details,
 )
 from stock_trading.research.artifacts import (
@@ -52,7 +53,10 @@ PUBLIC_LOG_URL = "http://117.72.216.67/logs/run.log"
 
 app = typer.Typer(
     name="stock-trading",
-    help="A股 T+1 数据、模型、交易和评估命令。日期统一使用 YYYY-MM-DD。",
+    help=(
+        "A股 T+1 数据、模型、交易和评估命令。"
+        "单日使用 YYYY-MM-DD，日期范围使用 YYYY-MM-DD:YYYY-MM-DD。"
+    ),
     no_args_is_help=True,
     rich_markup_mode="rich",
     add_completion=False,
@@ -60,7 +64,6 @@ app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 T = TypeVar("T")
-REPLACEABLE_COMMANDS = frozenset({"init", "market", "buy", "sell"})
 
 
 def main() -> None:
@@ -77,12 +80,7 @@ def _execute(
     config: AppConfig | None = None
     try:
         config = AppConfig.from_env()
-        process_scope = (
-            replace_running_command(command, config.state_db_path)
-            if command in REPLACEABLE_COMMANDS
-            else nullcontext()
-        )
-        with process_scope:
+        with replace_running_command(command, config.state_db_path):
             LOGGER.info(
                 "业务命令开始：%s；参数=%s",
                 command,
@@ -142,65 +140,51 @@ def init_command(
 
 
 @app.command(
-    "market",
+    "collect",
     short_help=(
-        "[cyan]--codes[/cyan] TEXT [cyan]--start-date[/cyan] DATE "
-        "[cyan]--end-date[/cyan] DATE 更新市场行情数据。"
+        "[cyan]--codes[/cyan] TEXT [cyan]--date[/cyan] DATE[:DATE] "
+        "采集日线、复权因子和5分钟线。"
     ),
     context_settings=COMMAND_CONTEXT,
 )
-def market_command(
+def collect_command(
     codes: Annotated[
         str | None,
         typer.Option(),
     ] = None,
-    start_date: Annotated[
+    date_value: Annotated[
         str | None,
-        typer.Option(),
-    ] = None,
-    end_date: Annotated[
-        str | None,
-        typer.Option(),
+        typer.Option("--date"),
     ] = None,
 ) -> None:
     def run(config: AppConfig) -> None:
         today = date.today()
-        if codes:
-            parsed_codes = _parse_stock_codes(codes)
-            start, end = _parse_date_range(
-                start_date,
-                end_date,
-                today - timedelta(days=config.market_history_days),
-                today,
-            )
-            update_live_progress_details(
-                stock=f"指定股票 {len(parsed_codes)}只",
-                date_text=f"{start.isoformat()}~{end.isoformat()}",
-                step=f"0/{len(parsed_codes)}",
-            )
-            _sync_market_codes(config, parsed_codes, start, end)
-            return
-        start, end = _parse_date_range(
-            start_date, end_date, today, today, single_date=True
+        start, end = _parse_date_expression(date_value, today, today)
+        parsed_codes = (
+            _parse_stock_codes(codes)
+            if codes
+            else _default_research_codes(config, start, end)
         )
-        _sync_daily(config, start, end)
-
-    initial_date = start_date or date.today().isoformat()
-    if end_date and end_date != initial_date:
-        initial_date = f"{initial_date}~{end_date}"
-    configure_logging()
-    with live_progress_session("正在启动 market", layout="market"):
         update_live_progress_details(
-            stock="指定股票" if codes else "全市场",
+            stock=f"指定股票 {len(parsed_codes)}只",
+            date_text=_format_date_expression(start, end),
+            step=f"0/{len(parsed_codes)}",
+        )
+        _collect_codes(config, parsed_codes, start, end)
+
+    initial_date = date_value or date.today().isoformat()
+    configure_logging()
+    with live_progress_session("正在启动 collect", layout="collection"):
+        update_live_progress_details(
+            stock="指定股票" if codes else "默认研究股票",
             date_text=initial_date,
             step="0/--",
         )
         _execute(
-            "market",
+            "collect",
             {
                 "codes": codes,
-                "startDate": start_date,
-                "endDate": end_date,
+                "date": date_value,
             },
             run,
         )
@@ -209,8 +193,8 @@ def market_command(
 @app.command(
     "prepare",
     short_help=(
-        "[cyan]--codes[/cyan] TEXT [cyan]--start-date[/cyan] DATE "
-        "[cyan]--end-date[/cyan] DATE 校验数据并重建 Qlib。"
+        "[cyan]--codes[/cyan] TEXT [cyan]--date[/cyan] DATE[:DATE] "
+        "校验数据并重建 Qlib。"
     ),
     context_settings=COMMAND_CONTEXT,
 )
@@ -219,20 +203,15 @@ def prepare_command(
         str,
         typer.Option(),
     ],
-    start_date: Annotated[
+    date_value: Annotated[
         str | None,
-        typer.Option(),
-    ] = None,
-    end_date: Annotated[
-        str | None,
-        typer.Option(),
+        typer.Option("--date"),
     ] = None,
 ) -> None:
     def run(config: AppConfig) -> None:
         today = date.today()
-        start, end = _parse_date_range(
-            start_date,
-            end_date,
+        start, end = _parse_date_expression(
+            date_value,
             today - timedelta(days=config.market_history_days),
             today,
         )
@@ -240,7 +219,7 @@ def prepare_command(
 
     _execute(
         "prepare",
-        {"codes": codes, "startDate": start_date, "endDate": end_date},
+        {"codes": codes, "date": date_value},
         run,
     )
 
@@ -412,32 +391,34 @@ def _parse_date(value: str) -> date:
         raise typer.BadParameter(f"日期无效：{value}；请检查年月日是否存在") from None
 
 
-def _parse_date_range(
-    start_value: str | None,
-    end_value: str | None,
+def _parse_date_expression(
+    value: str | None,
     default_start: date,
     default_end: date,
-    single_date: bool = False,
 ) -> tuple[date, date]:
-    if end_value and not start_value:
-        raise typer.BadParameter("指定 --end-date 时必须同时指定 --start-date")
-    start_date = _parse_date(start_value) if start_value else default_start
-    if end_value:
-        end_date = _parse_date(end_value)
-    elif start_value and single_date:
-        end_date = start_date
-    else:
-        end_date = default_end
-    _validate_date_range(start_date, end_date)
+    if value is None:
+        return default_start, default_end
+    normalized = value.strip()
+    parts = normalized.split(":")
+    example = "正确示例：--date 2025-10-10 或 --date 2025-10-10:2025-10-30"
+    if len(parts) not in {1, 2} or any(not part for part in parts):
+        raise typer.BadParameter(f"日期参数格式错误：{value}；{example}")
+    try:
+        start_date = _parse_date(parts[0])
+        end_date = _parse_date(parts[1]) if len(parts) == 2 else start_date
+    except typer.BadParameter as error:
+        raise typer.BadParameter(f"{error}；{example}") from None
+    if end_date < start_date:
+        raise typer.BadParameter(
+            f"日期范围错误：结束日期 {end_date} 不能早于开始日期 {start_date}；{example}"
+        )
     return start_date, end_date
 
 
-def _validate_date_range(
-    start_date: date,
-    end_date: date,
-) -> None:
-    if end_date < start_date:
-        raise typer.BadParameter(f"结束日期 {end_date} 不能早于开始日期 {start_date}")
+def _format_date_expression(start_date: date, end_date: date) -> str:
+    if start_date == end_date:
+        return start_date.isoformat()
+    return f"{start_date.isoformat()}:{end_date.isoformat()}"
 
 
 def _parse_stock_code(value: str) -> str:
@@ -485,119 +466,77 @@ def _parse_model_split(value: str) -> tuple[Decimal, Decimal, Decimal]:
     return ratios[0], ratios[1], ratios[2]
 
 
-def _sync_daily(config: AppConfig, start_date: date, end_date: date) -> None:
-    requested_days = (end_date - start_date).days + 1
-    store = ParquetMarketStore(config.data_dir)
-    partitions: list[dict[str, object]] = []
-    skipped_dates: list[str] = []
-    total_rows = 0
-    update_live_progress_details(
-        stock="全市场",
-        date_text=(
-            start_date.isoformat()
-            if start_date == end_date
-            else f"{start_date.isoformat()}~{end_date.isoformat()}"
-        ),
-        step="0/--",
-    )
-    LOGGER.info(
-        "开始采集全市场日线数据：日期=%s 至 %s；自然日数=%d",
-        start_date,
-        end_date,
-        requested_days,
-    )
-    with BaoStockClient(config.baostock_proxy) as client:
-        for offset in range(requested_days):
-            trade_date = start_date + timedelta(days=offset)
-            update_live_progress_details(
-                stock="全市场",
-                date_text=trade_date.isoformat(),
-                step="0/--",
-            )
-            LOGGER.info(
-                "正在采集全市场日线：进度=%d/%d；日期=%s",
-                offset + 1,
-                requested_days,
-                trade_date,
-            )
-            bars = client.fetch_daily_market(trade_date)
-            if not bars:
-                update_live_progress_details(stock="全市场 0只", step="0/0")
-                skipped_dates.append(trade_date.isoformat())
-                LOGGER.info("当日没有行情，按非交易日跳过：日期=%s", trade_date)
-                continue
-            update_live_progress_details(
-                stock=f"全市场 {len(bars):,}只",
-                step=f"{len(bars):,}/{len(bars):,}",
-            )
-            target = store.write_daily_market(trade_date, bars)
-            total_rows += len(bars)
-            partitions.append(
-                {
-                    "tradeDate": trade_date.isoformat(),
-                    "rows": len(bars),
-                    "path": str(target),
-                }
-            )
-            LOGGER.info(
-                "日线分区写入完成：日期=%s；记录数=%d；文件=%s",
-                trade_date,
-                len(bars),
-                target,
-            )
-    LOGGER.info(
-        "全市场日线同步完成：请求天数=%d；写入交易日=%d；跳过=%d；总记录=%d",
-        requested_days,
-        len(partitions),
-        len(skipped_dates),
-        total_rows,
-    )
-
-
-def _sync_market_codes(
+def _collect_codes(
     config: AppConfig, codes: list[str], start_date: date, end_date: date
 ) -> None:
-    store = ParquetMarketStore(config.data_dir)
     LOGGER.info(
-        "开始同步研究数据：股票数=%d；日期=%s 至 %s",
+        "开始采集股票数据：股票数=%d；日期=%s 至 %s；连接=1",
         len(codes),
         start_date,
         end_date,
     )
-    result = sync_research_data(
-        store,
+    result = sync_collection_data(
+        ParquetMarketStore(config.data_dir),
         config.baostock_proxy,
         codes,
         start_date,
         end_date,
-        config.baostock_workers,
     )
-    final_rows = max(0, int(result.get("lastRows") or 0))
-    update_live_progress_details(step=f"{final_rows:,}/{final_rows:,}")
+    update_live_progress_details(step=f"{len(codes)}/{len(codes)}")
     LOGGER.info(
-        "指定股票行情同步完成：股票数=%d；下载=%s；跳过=%s；失败=%d",
+        "股票数据采集完成：股票数=%d；完成=%s；跳过=%s；失败=%d",
         len(codes),
-        result["downloaded"],
+        result["completed"],
         result["skipped"],
         len(result["failed"]),
     )
+
+
+def _default_research_codes(
+    config: AppConfig, start_date: date, end_date: date
+) -> list[str]:
+    store = ParquetMarketStore(config.data_dir)
+    try:
+        stocks = store.read_stock_basics()
+    except (OSError, ValueError, KeyError) as error:
+        raise ValueError(
+            "未找到股票基础信息；collect 不会自动执行前置采集，"
+            "请显式传入 --codes 或先运行 init"
+        ) from error
+    codes = research_codes(stocks, start_date, end_date)
+    if not codes:
+        raise ValueError("股票基础信息中没有满足当前日期范围的研究股票")
+    return codes
 
 
 def _pre_train(
     config: AppConfig, codes: list[str], start_date: date, end_date: date
 ) -> None:
     store = ParquetMarketStore(config.data_dir)
-    valid_codes = store.valid_research_codes(codes, start_date, end_date)
-    missing_codes = [code for code in codes if code not in valid_codes]
-    if missing_codes:
+    daily_codes = store.valid_daily_codes(codes, start_date, end_date)
+    minute5_codes = store.valid_minute5_codes(codes, start_date, end_date)
+    missing_daily = [code for code in codes if code not in daily_codes]
+    missing_minute5 = [code for code in codes if code not in minute5_codes]
+    errors: list[str] = []
+    if missing_daily:
+        errors.append(
+            "日线或复权因子缺失："
+            f"{','.join(missing_daily)}"
+        )
+    if missing_minute5:
+        errors.append(
+            "5分钟线或分钟聚合缺失："
+            f"{','.join(missing_minute5)}"
+        )
+    if errors:
+        missing_codes = list(dict.fromkeys(missing_daily + missing_minute5))
+        date_argument = _format_date_expression(start_date, end_date)
         command = (
-            f"stock-trading market --codes {','.join(missing_codes)} "
-            f"--start-date {start_date.isoformat()} --end-date {end_date.isoformat()}"
+            f"stock-trading collect --codes {','.join(missing_codes)} "
+            f"--date {date_argument}"
         )
-        raise ValueError(
-            "本地训练行情缺失或分钟聚合不完整："
-            f"{','.join(missing_codes)}；请先执行：{command}"
-        )
+        raise ValueError(f"{'；'.join(errors)}；请执行：{command}")
+    valid_codes = list(codes)
     model_codes = store.model_research_codes(valid_codes, start_date, end_date)
     LOGGER.info(
         "开始重建 Qlib：采集有效=%d；模型有效=%d；日期=%s 至 %s",
@@ -786,8 +725,7 @@ def _update_live_performance(
 ) -> None:
     LOGGER.info("开始更新实盘绩效：业务日期=%s；外部资金流=%s", business_date, external_cash_flow)
     store = StateStore(config.state_db_path)
-    broker = _build_broker(config)
-    result = LivePerformanceService(config, store, broker).update(
+    result = LivePerformanceService(config, store).update(
         business_date, external_cash_flow
     )
     LOGGER.info(
@@ -915,4 +853,4 @@ def _safe_error_text(value: object) -> str:
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END --------------------------------------------------------------------------
+# AI_GENERATE_END ---------------------------------------------------------------------------------

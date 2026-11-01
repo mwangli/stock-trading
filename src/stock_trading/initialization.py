@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------
+# AI_GENERATE_START -----------------------
 from __future__ import annotations
 
 import logging
@@ -15,7 +15,7 @@ from stock_trading.market.sync import (
     latest_trade_date,
     live_codes,
     research_codes,
-    sync_research_data,
+    sync_collection_data,
     sync_stock_basics,
 )
 from stock_trading.research.backtest import (
@@ -41,7 +41,6 @@ from stock_trading.trading.permissions import refresh_permissions
 
 LOGGER = logging.getLogger(__name__)
 MINIMUM_RESEARCH_CODES = 100
-MINIMUM_COMPLETE_RATIO = 0.80
 CAPITAL_SCENARIOS = (2_000, 3_000, 5_000, 10_000)
 T = TypeVar("T")
 
@@ -100,17 +99,15 @@ class InitializationService:
 
         self._step(
             2,
-            "历史日线、复权和分钟线",
-            lambda: self._research_complete(selected_codes, start_date, end_date),
-            lambda: sync_research_data(
+            "日线、复权因子和5分钟线",
+            lambda: self._collection_complete(selected_codes, start_date, end_date),
+            lambda: sync_collection_data(
                 self._market,
                 self._config.baostock_proxy,
                 selected_codes,
                 start_date,
                 end_date,
-                self._config.baostock_workers,
             ),
-            lambda: self._research_ready(selected_codes, start_date, end_date),
         )
         valid_codes = self._market.valid_research_codes(
             selected_codes, start_date, end_date
@@ -213,7 +210,7 @@ class InitializationService:
         action: Callable[[], T],
         post_validator: Callable[[], bool] | None = None,
     ) -> T | None:
-        LOGGER.info("初始化阶段 %d/9：%s", index, title)
+        LOGGER.info("初始化阶段 %d/8：%s", index, title)
         if validator():
             LOGGER.info("初始化阶段跳过：%s；实际数据检查通过", title)
             return None
@@ -223,17 +220,10 @@ class InitializationService:
         LOGGER.info("初始化阶段完成：%s", title)
         return result
 
-    def _research_complete(
+    def _collection_complete(
         self, codes: list[str], start_date: date, end_date: date
     ) -> bool:
         return len(self._market.valid_research_codes(codes, start_date, end_date)) == len(codes)
-
-    def _research_ready(
-        self, codes: list[str], start_date: date, end_date: date
-    ) -> bool:
-        valid = self._market.valid_research_codes(codes, start_date, end_date)
-        required = max(MINIMUM_RESEARCH_CODES, int(len(codes) * MINIMUM_COMPLETE_RATIO))
-        return len(valid) >= required
 
     def _backtest_dir(self, cash: int) -> Path:
         return self._config.artifact_dir / "backtests" / f"cash-{cash}"
@@ -315,7 +305,7 @@ class InitializationService:
     def _sync_broker_history(
         self, start_date: date, end_date: date
     ) -> dict[str, object] | None:
-        LOGGER.info("初始化阶段 8/9：券商历史事实和账户快照")
+        LOGGER.info("初始化阶段 8/8：券商历史事实和账户快照")
         try:
             broker = self._broker_factory()
             snapshot = broker.read_history_snapshot(start_date, end_date)
@@ -348,4 +338,4 @@ def _model_valid(model_root_dir: Path) -> bool:
         return model_artifacts_valid(resolve_current_model_dir(model_root_dir))
     except (OSError, ValueError):
         return False
-# AI_GENERATE_END ---------------------
+# AI_GENERATE_END -----------------------

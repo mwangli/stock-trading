@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----
+# AI_GENERATE_START ------
 from __future__ import annotations
 
 import time
@@ -21,7 +21,7 @@ ESTIMATE_WINDOW_SECONDS = 10 * 60
 
 
 @dataclass
-class ResearchProgress:
+class CollectionProgress:
     """Share collection progress with worker loggers and estimate remaining time."""
 
     total_count: int
@@ -100,4 +100,4 @@ class ResearchProgress:
             return -1
         remaining = max(0, self.total_count - processed)
         return max(0, round(remaining * elapsed / progressed))
-# AI_GENERATE_END -----
+# AI_GENERATE_END ------

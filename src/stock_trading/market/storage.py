@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------
+# AI_GENERATE_START --------------------------
 from __future__ import annotations
 
 import logging
@@ -28,11 +28,6 @@ class ParquetMarketStore:
     @property
     def root(self) -> Path:
         return self._root
-
-    def write_daily_market(self, trade_date: date, bars: list[DailyBar]) -> Path:
-        target = self._root / "daily" / f"trade_date={trade_date.isoformat()}" / "bars.parquet"
-        records = [_without(bar.as_record(), "trade_date") for bar in bars]
-        return self._write(target, records)
 
     def write_stock_basics(self, stocks: list[StockBasic]) -> Path:
         """原子写入当前股票基础信息快照。"""
@@ -65,7 +60,12 @@ class ParquetMarketStore:
         )
 
     def write_minute_history(
-        self, code: str, bars: list[MinuteBar], reference_date: date
+        self,
+        code: str,
+        bars: list[MinuteBar],
+        start_date: date,
+        end_date: date,
+        reference_date: date,
     ) -> dict[str, object]:
         """合并分钟行情，原始数据保留 90 天，交易窗口聚合保留 5 年。"""
         if not bars:
@@ -74,7 +74,13 @@ class ParquetMarketStore:
         existing = self.read_minutes(code)
         frames = [frame for frame in (existing, incoming) if not frame.empty]
         combined = pd.concat(frames, ignore_index=True)
-        return self._store_minute_frames(code, combined, reference_date)
+        return self._store_minute_frames(
+            code,
+            combined,
+            reference_date,
+            coverage_start=start_date,
+            coverage_end=end_date,
+        )
 
     def write_daily_history(
         self, code: str, bars: list[DailyBar], start_date: date, end_date: date
@@ -152,49 +158,81 @@ class ParquetMarketStore:
         frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="raise")
         return frame.sort_values("trade_date").reset_index(drop=True)
 
-    def research_data_covers(self, code: str, start_date: date, end_date: date) -> bool:
-        """直接检查日线、复权和分钟文件是否覆盖目标日期。"""
+    def daily_data_covers(self, code: str, start_date: date, end_date: date) -> bool:
+        """检查指定股票的日线和复权因子是否覆盖目标日期。"""
+        return self.daily_history_covers(
+            code, start_date, end_date
+        ) and self.adjustment_factor_covers(code, start_date, end_date)
+
+    def daily_history_covers(
+        self, code: str, start_date: date, end_date: date
+    ) -> bool:
+        """检查指定股票的日线文件是否覆盖目标日期。"""
         daily = self._root / "daily_history" / f"code={code}" / "bars.parquet"
-        factors = self._root / "adjustment_factor" / f"code={code}" / "factors.parquet"
-        if not daily.is_file() or not factors.is_file():
+        if not daily.is_file():
             return False
         try:
             daily_frame = _read_parquet_file(daily)
+            return self._coverage_contains(daily_frame, start_date, end_date)
+        except Exception:
+            return False
+
+    def adjustment_factor_covers(
+        self, code: str, start_date: date, end_date: date
+    ) -> bool:
+        """检查指定股票的复权因子文件是否覆盖目标日期。"""
+        factors = self._root / "adjustment_factor" / f"code={code}" / "factors.parquet"
+        if not factors.is_file():
+            return False
+        try:
             factor_frame = _read_parquet_file(factors)
-            if not self._coverage_contains(daily_frame, start_date, end_date):
+            return self._coverage_contains(factor_frame, start_date, end_date)
+        except Exception:
+            return False
+
+    def minute5_data_covers(self, code: str, start_date: date, end_date: date) -> bool:
+        """仅检查5分钟聚合文件自身记录的请求覆盖范围。"""
+        summary = self._minute_summary_path(code)
+        if not summary.is_file():
+            return False
+        try:
+            frame = _read_parquet_file(summary)
+            if not self._coverage_contains(frame, start_date, end_date):
                 return False
-            if not self._coverage_contains(factor_frame, start_date, end_date):
-                return False
-            daily_dates = pd.to_datetime(daily_frame["trade_date"], errors="coerce")
-            valid_dates = daily_dates.dropna()
-            if valid_dates.empty:
-                return False
-            requested = daily_frame[
-                (daily_dates.dt.date >= start_date)
-                & (daily_dates.dt.date <= end_date)
-                & (daily_frame["tradestatus"].astype(str) == "1")
-                & (daily_frame["close"].astype(float) > 0)
-                & (daily_frame["volume"].astype(float) > 0)
+            dates = pd.to_datetime(frame["trade_date"], errors="coerce")
+            requested = frame[
+                (dates.dt.date >= start_date)
+                & (dates.dt.date <= end_date)
             ]
-            trade_dates = sorted(
-                {pd.Timestamp(value).date() for value in requested["trade_date"]}
+            return bool(
+                not requested.empty
+                and requested["buy_complete"].astype(bool).all()
+                and requested["sell_complete"].astype(bool).all()
             )
         except Exception:
             return False
-        if not trade_dates:
-            return False
-        try:
-            summaries = self.read_minute_summaries(code)
-            complete = summaries[
-                summaries["buy_complete"].astype(bool)
-                & summaries["sell_complete"].astype(bool)
-            ]
-            summary_dates = {
-                pd.Timestamp(value).date() for value in complete["trade_date"]
-            }
-        except (OSError, ValueError, KeyError):
-            return False
-        return set(trade_dates).issubset(summary_dates)
+
+    def research_data_covers(self, code: str, start_date: date, end_date: date) -> bool:
+        """组合检查研究流程需要的独立行情制品。"""
+        return self.daily_data_covers(
+            code, start_date, end_date
+        ) and self.minute5_data_covers(code, start_date, end_date)
+
+    def valid_daily_codes(
+        self, codes: list[str], start_date: date, end_date: date
+    ) -> list[str]:
+        """返回日线和复权因子均完整的股票。"""
+        return [
+            code for code in codes if self.daily_data_covers(code, start_date, end_date)
+        ]
+
+    def valid_minute5_codes(
+        self, codes: list[str], start_date: date, end_date: date
+    ) -> list[str]:
+        """返回5分钟数据覆盖完整的股票。"""
+        return [
+            code for code in codes if self.minute5_data_covers(code, start_date, end_date)
+        ]
 
     def valid_research_codes(
         self, codes: list[str], start_date: date, end_date: date
@@ -297,7 +335,12 @@ class ParquetMarketStore:
         }
 
     def _store_minute_frames(
-        self, code: str, minutes: pd.DataFrame, reference_date: date
+        self,
+        code: str,
+        minutes: pd.DataFrame,
+        reference_date: date,
+        coverage_start: date | None = None,
+        coverage_end: date | None = None,
     ) -> dict[str, object]:
         frame = minutes.copy()
         frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="raise")
@@ -315,6 +358,9 @@ class ParquetMarketStore:
 
         generated = summarize_t1_windows(frame)
         existing_summary = self.read_minute_summaries(code)
+        existing_start, existing_end = self._coverage_bounds(existing_summary)
+        starts = [value for value in (existing_start, coverage_start) if value is not None]
+        ends = [value for value in (existing_end, coverage_end) if value is not None]
         summaries = [value for value in (existing_summary, generated) if not value.empty]
         summary = (
             pd.concat(summaries, ignore_index=True)
@@ -330,6 +376,9 @@ class ParquetMarketStore:
         )
         summary_cutoff = reference_date - timedelta(days=MINUTE_SUMMARY_RETENTION_DAYS)
         summary = summary[summary["trade_date"].dt.date >= summary_cutoff]
+        if starts and ends and not summary.empty:
+            summary["coverage_start"] = min(starts).isoformat()
+            summary["coverage_end"] = max(ends).isoformat()
 
         raw_cutoff = reference_date - timedelta(days=RAW_MINUTE_RETENTION_DAYS - 1)
         raw = frame[frame["trade_date"].dt.date >= raw_cutoff]
@@ -435,4 +484,4 @@ def _without(record: dict[str, object], *fields: str) -> dict[str, object]:
 def _read_parquet_file(path: Path) -> pd.DataFrame:
     """读取单个文件，避免 key=value 父目录触发 Hive 分区字段合并。"""
     return pq.ParquetFile(path).read().to_pandas()
-# AI_GENERATE_END -----------------------
+# AI_GENERATE_END --------------------------

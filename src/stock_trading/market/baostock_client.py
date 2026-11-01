@@ -1,15 +1,14 @@
-# AI_GENERATE_START ---------
+# AI_GENERATE_START -------------
 from __future__ import annotations
 
 import logging
 import socket
-import threading
 from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import date
 from io import StringIO
 from types import TracebackType
-from typing import Any, TypeVar, cast
+from typing import Any, TypeVar
 from urllib.parse import urlparse
 
 import baostock as bs
@@ -25,7 +24,6 @@ DAILY_FIELDS = (
 )
 MINUTE_FIELDS = "date,time,code,open,high,low,close,volume,amount,adjustflag"
 LOGGER = logging.getLogger(__name__)
-REQUEST_POLL_SECONDS = 0.2
 ROW_PROGRESS_STEPS = 100
 T = TypeVar("T")
 
@@ -47,11 +45,13 @@ class BaoStockClient:
         LOGGER.info("正在连接 BaoStock：代理=%s", "已配置" if self._proxy_url else "未配置")
         self._install_connector()
         try:
-            result = self._request_interruptibly("BaoStock 登录", bs.login)
+            result = self._request("BaoStock 登录", bs.login)
         except BaseException:
+            self._close_connection()
             self._restore_connector()
             raise
         if result.error_code != "0":
+            self._close_connection()
             self._restore_connector()
             raise BaoStockError(f"BaoStock login failed: {result.error_code} {result.error_msg}")
         self._logged_in = True
@@ -65,17 +65,16 @@ class BaoStockClient:
         traceback: TracebackType | None,
     ) -> None:
         try:
-            if exc_type is KeyboardInterrupt:
-                self.interrupt()
-            elif self._logged_in:
-                self._request_interruptibly("BaoStock 登出", bs.logout)
+            if exc_type is None and self._logged_in:
+                self._request("BaoStock 登出", bs.logout)
         finally:
             self._logged_in = False
+            self._close_connection()
             self._restore_connector()
 
     def fetch_daily_market(self, trade_date: date) -> list[DailyBar]:
         LOGGER.info("正在请求全市场日线：交易日=%s", trade_date)
-        result = self._request_interruptibly(
+        result = self._request(
             f"全市场日线 {trade_date}",
             lambda: bs.query_daily_history_k_AStock(date=trade_date.isoformat()),
         )
@@ -88,14 +87,14 @@ class BaoStockClient:
         """读取全部 A 股基础资料，并合并指定日期的交易状态。"""
         LOGGER.info("正在请求全部股票基础信息：快照日期=%s", snapshot_date)
         market_rows = self._rows(
-            self._request_interruptibly(
+            self._request(
                 f"证券列表 {snapshot_date}",
                 lambda: bs.query_all_stock(day=snapshot_date.isoformat()),
             ),
             f"证券列表 {snapshot_date}",
         )
         basic_rows = self._rows(
-            self._request_interruptibly("股票基础资料", bs.query_stock_basic),
+            self._request("股票基础资料", bs.query_stock_basic),
             "股票基础资料",
         )
         market_by_code = {
@@ -126,7 +125,7 @@ class BaoStockClient:
         return result
 
     def fetch_daily(self, code: str, trade_date: date) -> DailyBar | None:
-        result = self._request_interruptibly(
+        result = self._request(
             f"单股日线 {code} {trade_date}",
             lambda: bs.query_history_k_data_plus(
                 code,
@@ -141,7 +140,7 @@ class BaoStockClient:
         return DailyBar.from_baostock(rows[0]) if rows else None
 
     def fetch_daily_history(self, code: str, start_date: date, end_date: date) -> list[DailyBar]:
-        result = self._request_interruptibly(
+        result = self._request(
             f"日线历史 {code}",
             lambda: bs.query_history_k_data_plus(
                 code,
@@ -160,7 +159,7 @@ class BaoStockClient:
     def fetch_adjustment_factors(
         self, code: str, start_date: date, end_date: date
     ) -> list[AdjustmentFactor]:
-        result = self._request_interruptibly(
+        result = self._request(
             f"复权因子 {code}",
             lambda: bs.query_adjust_factor(
                 code,
@@ -174,7 +173,7 @@ class BaoStockClient:
         ]
 
     def fetch_minutes(self, code: str, start_date: date, end_date: date) -> list[MinuteBar]:
-        result = self._request_interruptibly(
+        result = self._request(
             f"5分钟K线 {code}",
             lambda: bs.query_history_k_data_plus(
                 code,
@@ -267,58 +266,28 @@ class BaoStockClient:
 
         bs_socket.SocketUtil.connect = connect_with_timeout
 
-    def interrupt(self) -> None:
-        """关闭当前 BaoStock socket，使正在阻塞的网络读取尽快退出。"""
+    @staticmethod
+    def _close_connection() -> None:
+        """关闭当前 BaoStock socket，不额外创建中断控制线程。"""
         connection = getattr(bs_context, "default_socket", None)
         if connection is None:
             return
         try:
-            connection.shutdown(socket.SHUT_RDWR)
+            connection.close()
         except OSError:
             pass
         finally:
-            connection.close()
             setattr(bs_context, "default_socket", None)
-            self._logged_in = False
 
-    def _request_interruptibly(self, operation: str, request: Callable[[], T]) -> T:
-        completed = threading.Event()
-        outcome: list[tuple[bool, object]] = []
-
-        def run() -> None:
-            try:
-                console_noise = StringIO()
-                with redirect_stdout(console_noise), redirect_stderr(console_noise):
-                    outcome.append((True, request()))
-            except BaseException as error:
-                outcome.append((False, error))
-            finally:
-                completed.set()
-
-        worker = threading.Thread(
-            target=run,
-            name=f"baostock-{operation}",
-            daemon=True,
-        )
-        worker.start()
-        try:
-            while not completed.wait(REQUEST_POLL_SECONDS):
-                pass
-        except KeyboardInterrupt:
-            LOGGER.warning("收到 Ctrl+C，正在终止 BaoStock 请求：任务=%s", operation)
-            self.interrupt()
-            completed.wait(1)
-            raise
-
-        if not outcome:
-            raise BaoStockError(f"BaoStock request ended without a result: {operation}")
-        succeeded, value = outcome[0]
-        if not succeeded:
-            raise cast(BaseException, value)
-        return cast(T, value)
+    @staticmethod
+    def _request(_operation: str, request: Callable[[], T]) -> T:
+        """同步执行单个 BaoStock 请求并屏蔽 SDK 控制台输出。"""
+        console_noise = StringIO()
+        with redirect_stdout(console_noise), redirect_stderr(console_noise):
+            return request()
 
     def _restore_connector(self) -> None:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END ---------
+# AI_GENERATE_END -------------

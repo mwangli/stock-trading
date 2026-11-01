@@ -47,11 +47,13 @@ jobs:
         run: |
           test "$(grep -c '^# STOCK_TRADING_CRON_BEGIN$' .github/config/stock-trading.cron)" -eq 1
           test "$(grep -c '^# STOCK_TRADING_CRON_END$' .github/config/stock-trading.cron)" -eq 1
-          test "$(grep -Ec '^[0-9]+ [0-9]+ ' .github/config/stock-trading.cron)" -eq 6
-          grep -Fq '__DEPLOY_DIR__/venv/bin' .github/config/stock-trading.cron
+          test "$(grep -Ec '^[0-9]+ [0-9]+ ' .github/config/stock-trading.cron)" -eq 7
+          grep -Fq 'PATH=/usr/local/bin:/usr/bin:/bin' .github/config/stock-trading.cron
+          test "$(grep -Fc '/bin/bash -lc' .github/config/stock-trading.cron)" -eq 6
           grep -Fq 'stock-trading sell' .github/config/stock-trading.cron
           grep -Fq 'stock-trading buy' .github/config/stock-trading.cron
-          grep -Fq 'stock-trading market' .github/config/stock-trading.cron
+          grep -Fq 'stock-trading collect' .github/config/stock-trading.cron
+          grep -Fq 'stock-trading broker' .github/config/stock-trading.cron
           grep -Fq 'stock-trading evaluate' .github/config/stock-trading.cron
           grep -Fq 'stock-trading clean' .github/config/stock-trading.cron
           grep -Fq '/usr/sbin/logrotate' .github/config/stock-trading.cron
@@ -125,7 +127,16 @@ jobs:
               --python "$venv_dir/bin/python" \
               --upgrade \
               "$wheel"
-            "$venv_dir/bin/stock-trading" --help >/dev/null
+            path_line="export PATH=\"$venv_dir/bin:\$PATH\""
+            touch /root/.bash_profile
+            grep -Fqx "$path_line" /root/.bash_profile \
+              || printf '%s\n' "$path_line" >> /root/.bash_profile
+            export PATH="$venv_dir/bin:$PATH"
+            if [ "$(command -v stock-trading)" != "$venv_dir/bin/stock-trading" ]; then
+              echo "stock-trading is not available from PATH: $PATH" >&2
+              exit 1
+            fi
+            stock-trading --help >/dev/null
 
             mkdir -p \
               "$cron_dir" \

@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------
+# AI_GENERATE_START --------------------
 from __future__ import annotations
 
 import logging
@@ -318,10 +318,10 @@ def _format_live_progress(phase: int, use_color: bool) -> tuple[str, int]:
     head = f"{timestamp} | INFO | {spinner} "
     tail = ""
     stock = code if code != "--" else (_LIVE_STOCK or "--")
-    if _LIVE_LAYOUT == "market":
-        count = _extract_progress_count(message)
+    if _LIVE_LAYOUT == "collection":
+        count = _extract_progress_count(message) if stock.startswith("全市场") else ""
         if not count and has_numeric_progress:
-            count = f"{completed:,}/{_PROGRESS_TOTAL:,}"
+            count = f"{completed}/{_PROGRESS_TOTAL}"
         count = count or _LIVE_STEP or "--"
         tail = f"  |  {stock}  |  {_LIVE_DATE or '--'}  |  {count}"
     elif has_numeric_progress:
@@ -334,7 +334,7 @@ def _format_live_progress(phase: int, use_color: bool) -> tuple[str, int]:
     plain = f"{head}{stage}{tail}"
     if use_color:
         rendered = f"{timestamp} | INFO | {GREEN_BOLD}{spinner}{ANSI_RESET} {stage}"
-        if _LIVE_LAYOUT == "market":
+        if _LIVE_LAYOUT == "collection":
             rendered += (
                 f"  |  {YELLOW}{stock}{ANSI_RESET}  |  "
                 f"{LIGHT_BLUE}{_LIVE_DATE or '--'}{ANSI_RESET}  |  "
@@ -353,35 +353,23 @@ def _format_live_progress(phase: int, use_color: bool) -> tuple[str, int]:
 
 def _extract_progress_count(message: str) -> str:
     match = COUNT_PATTERN.search(message)
-    return f"{match.group(1)}/{match.group(2)}" if match else ""
+    if not match:
+        return ""
+    completed = match.group(1).replace(",", "")
+    total = match.group(2).replace(",", "")
+    return f"{completed}/{total}"
 
 
 def _summarize_progress_message(message: str) -> tuple[str, str]:
     code_match = CODE_PATTERN.search(message)
     code = code_match.group(0).lower() if code_match else "--"
-    if _LIVE_LAYOUT == "market":
-        if "业务命令完成：market" in message or "全市场日线同步完成" in message:
-            return "market 完成", code
-        if "业务命令开始：market" in message:
-            return "正在启动 market", code
-        if "开始采集全市场日线数据" in message:
-            return "正在准备全市场日线", code
-        if "正在采集全市场日线" in message:
-            return "正在采集全市场日线", code
-        if "当日没有行情" in message:
-            return "当日无行情，正在跳过", code
-        if "日线分区写入完成" in message:
-            return "正在写入日线分区", code
-        if any(
-            text in message
-            for text in (
-                "正在请求全市场日线",
-                "任务=全市场日线",
-            )
-        ):
-            return "正在接收全市场日线", code
-        if "开始同步研究数据" in message:
-            return "正在准备指定股票行情", code
+    if _LIVE_LAYOUT == "collection":
+        if "业务命令完成：collect" in message:
+            return "collect 完成", code
+        if "业务命令开始：collect" in message:
+            return "正在启动 collect", code
+        if "开始采集股票数据" in message or "股票数据采集计划" in message:
+            return "正在准备股票数据", code
     if "业务命令完成：init" in message or "初始化完成" in message:
         return "初始化完成", code
     if "业务命令开始：init" in message:
@@ -413,7 +401,7 @@ def _summarize_progress_message(message: str) -> tuple[str, str]:
     if any(
         text in message
         for text in (
-            "历史日线、复权和分钟线",
+            "日线、复权因子和5分钟线",
             "研究数据检查完成",
         )
     ):
@@ -430,22 +418,24 @@ def _summarize_progress_message(message: str) -> tuple[str, str]:
         return "正在检查最新预测", code
     if "券商历史事实" in message or "账户快照" in message:
         return "正在检查券商数据", code
-    if "研究数据采集完成" in message:
-        return "研究数据采集完成", code
+    if "股票数据采集完成" in message:
+        return "股票数据采集完成", code
     if "5分钟K线" in message:
         return "正在采集5分钟K线", code
     if "日线历史" in message:
         return "正在采集日线", code
     if "复权因子" in message:
         return "正在采集复权因子", code
-    if "下载研究数据" in message:
-        return "正在下载研究数据", code
+    if "正在采集日线" in message:
+        return "正在采集日线", code
+    if "正在采集复权因子" in message:
+        return "正在采集复权因子", code
+    if "正在采集5分钟线" in message:
+        return "正在采集5分钟线", code
     if "数据采集中" in message:
         return "正在接收行情数据", code
     if "数据接收完成" in message:
         return "行情数据接收完成", code
-    if "研究数据采集计划" in message:
-        return "正在准备研究数据", code
     if "BaoStock 登录成功" in message:
         return "正在检查行情连接", code
     if "正在连接 BaoStock" in message:
@@ -511,4 +501,4 @@ def should_log_progress(current: int, total: int, steps: int = 20) -> bool:
         return current == 1
     interval = max(1, total // max(1, steps))
     return current == 1 or current == total or current % interval == 0
-# AI_GENERATE_END ------------------
+# AI_GENERATE_END --------------------

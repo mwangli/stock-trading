@@ -1,32 +1,18 @@
-# AI_GENERATE_START --------------------
+# AI_GENERATE_START -----------------------
 from __future__ import annotations
 
-import atexit
 import logging
-import os
-import signal
 import time
-from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+from collections.abc import Callable
 from datetime import date, timedelta
-from decimal import Decimal
-from pathlib import Path
 
 import pandas as pd
 
-from stock_trading.logging_utils import bind_progress_context, configure_logging
 from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
-from stock_trading.market.models import AdjustmentFactor
-from stock_trading.market.progress import ResearchProgress
+from stock_trading.market.progress import CollectionProgress
 from stock_trading.market.storage import ParquetMarketStore
 
 LOGGER = logging.getLogger(__name__)
-MAX_BAOSTOCK_WORKERS = 4
-PROCESS_POOL_POLL_SECONDS = 0.2
-WORKER_SHUTDOWN_TIMEOUT_SECONDS = 5
-
-_WORKER_STORE: ParquetMarketStore | None = None
-_WORKER_PROXY_URL: str | None = None
-_WORKER_CLIENT: BaoStockClient | None = None
 
 
 def latest_trade_date(proxy_url: str | None) -> date:
@@ -97,273 +83,216 @@ def sync_stock_basics(
     return {"rows": len(stocks), "path": str(path)}
 
 
-def sync_research_data(
+def sync_collection_data(
     store: ParquetMarketStore,
     proxy_url: str | None,
     codes: list[str],
     start_date: date,
     end_date: date,
-    workers: int = 1,
 ) -> dict[str, object]:
-    """使用独立进程和进程内复用会话幂等同步研究行情。"""
-    pending: list[str] = []
+    """使用单个长期 BaoStock 连接顺序采集股票数据。"""
+    pending: list[tuple[str, bool, bool, bool]] = []
     skipped = 0
     for code in codes:
-        if store.research_data_covers(code, start_date, end_date):
+        needs_daily = not store.daily_history_covers(code, start_date, end_date)
+        needs_adjustment = not store.adjustment_factor_covers(
+            code, start_date, end_date
+        )
+        needs_minute5 = not store.minute5_data_covers(code, start_date, end_date)
+        if not any((needs_daily, needs_adjustment, needs_minute5)):
             skipped += 1
         else:
-            pending.append(code)
+            pending.append((code, needs_daily, needs_adjustment, needs_minute5))
 
-    worker_count = min(MAX_BAOSTOCK_WORKERS, max(1, workers), max(1, len(pending)))
     downloaded = 0
-    last_rows = 0
-    failed: dict[str, str] = {}
-    with ResearchProgress(
+    failed: dict[str, dict[str, str]] = {}
+    with CollectionProgress(
         total_count=len(codes),
         skipped=skipped,
     ) as progress:
         LOGGER.info(
-            "研究数据采集计划：目标=%d；待下载=%d；跳过=%d；进程=%d",
+            "股票数据采集计划：目标=%d；待采集=%d；跳过=%d；连接=1",
             len(codes),
             len(pending),
             skipped,
-            worker_count,
         )
         if not pending:
             LOGGER.info(
-                "研究数据采集完成：下载=0；跳过=%d；失败=0",
+                "股票数据采集完成：新增=0；跳过=%d；失败=0",
                 skipped,
             )
             return {
-                "downloaded": downloaded,
+                "completed": len(codes),
                 "skipped": skipped,
                 "failed": failed,
-                "workers": worker_count,
-                "lastRows": last_rows,
             }
 
         completed = 0
-        if worker_count == 1:
-            _initialize_research_worker(
-                store.root,
-                proxy_url,
-                *progress.worker_context,
-            )
-            try:
-                for code in pending:
-                    result = _sync_research_code(code, start_date, end_date)
-                    downloaded, completed, last_rows = _record_research_result(
-                        result,
-                        downloaded,
-                        completed,
-                        last_rows,
-                        failed,
-                        progress,
-                    )
-            finally:
-                _close_worker_client()
-        else:
-            executor = ProcessPoolExecutor(
-                max_workers=worker_count,
-                initializer=_initialize_research_worker,
-                initargs=(store.root, proxy_url, *progress.worker_context),
-            )
-            try:
-                futures = {
-                    executor.submit(_sync_research_code, code, start_date, end_date): code
-                    for code in pending
-                }
-                pending_futures = set(futures)
-                while pending_futures:
-                    done, pending_futures = wait(
-                        pending_futures,
-                        timeout=PROCESS_POOL_POLL_SECONDS,
-                        return_when=FIRST_COMPLETED,
-                    )
-                    for future in done:
-                        code = futures[future]
-                        try:
-                            result = future.result()
-                        except Exception as error:
-                            result = {"code": code, "error": str(error)}
-                        downloaded, completed, last_rows = _record_research_result(
-                            result,
-                            downloaded,
-                            completed,
-                            last_rows,
-                            failed,
-                            progress,
-                        )
-            except KeyboardInterrupt:
-                LOGGER.warning("收到 Ctrl+C，正在停止全部 BaoStock 采集进程")
-                _terminate_research_executor(executor)
-                raise
-            except BaseException:
-                executor.shutdown(wait=True, cancel_futures=True)
-                raise
-            else:
-                executor.shutdown(wait=True)
+        client = BaoStockClient(proxy_url)
+        client.__enter__()
+        try:
+            for plan in pending:
+                result, client = _sync_collection_code(
+                    store,
+                    client,
+                    proxy_url,
+                    plan[0],
+                    start_date,
+                    end_date,
+                    plan[1],
+                    plan[2],
+                    plan[3],
+                )
+                downloaded, completed = _record_collection_result(
+                    result,
+                    downloaded,
+                    completed,
+                    failed,
+                    progress,
+                )
+        finally:
+            client.__exit__(None, None, None)
         LOGGER.info(
-            "研究数据采集完成：下载=%d；跳过=%d；失败=%d",
+            "股票数据采集完成：新增=%d；跳过=%d；失败=%d",
             downloaded,
             skipped,
             len(failed),
         )
-        return {
-            "downloaded": downloaded,
+        result = {
+            "completed": downloaded + skipped,
             "skipped": skipped,
             "failed": failed,
-            "workers": worker_count,
-            "lastRows": last_rows,
         }
+        if failed:
+            details = "；".join(
+                f"{code}({','.join(sorted(errors))})"
+                for code, errors in sorted(failed.items())
+            )
+            raise ValueError(f"股票数据采集失败：{details}")
+        return result
 
 
-def _record_research_result(
+def _record_collection_result(
     result: dict[str, object],
     downloaded: int,
     completed: int,
-    last_rows: int,
-    failed: dict[str, str],
-    progress: ResearchProgress,
-) -> tuple[int, int, int]:
+    failed: dict[str, dict[str, str]],
+    progress: CollectionProgress,
+) -> tuple[int, int]:
     code = str(result["code"])
-    error = str(result.get("error") or "")
-    if error:
-        failed[code] = error
-        LOGGER.warning("研究数据采集失败：股票=%s；原因=%s", code, error)
+    errors = {
+        str(dataset): str(error)
+        for dataset, error in dict(result.get("errors") or {}).items()
+    }
+    if errors:
+        failed[code] = errors
+        LOGGER.warning(
+            "股票数据采集失败：股票=%s；数据=%s",
+            code,
+            "；".join(f"{dataset}={error}" for dataset, error in errors.items()),
+        )
     else:
         downloaded += 1
-        last_rows = max(0, int(result.get("rows") or last_rows))
     completed += 1
     progress.update(completed)
-    return downloaded, completed, last_rows
+    return downloaded, completed
 
 
-def _initialize_research_worker(
-    root: Path,
+def _sync_collection_code(
+    store: ParquetMarketStore,
+    client: BaoStockClient,
     proxy_url: str | None,
-    progress_completed: object,
-    progress_remaining_seconds: object,
-    progress_total: int,
-    progress_message: object,
-) -> None:
-    global _WORKER_STORE, _WORKER_PROXY_URL
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-    signal.signal(signal.SIGTERM, _handle_worker_termination)
-    configure_logging()
-    bind_progress_context(
-        progress_completed,
-        progress_remaining_seconds,
-        progress_total,
-        progress_message,
-    )
-    _WORKER_STORE = ParquetMarketStore(root)
-    _WORKER_PROXY_URL = proxy_url
-    atexit.register(_close_worker_client)
-    LOGGER.info("BaoStock 采集进程就绪：进程=%d", os.getpid())
+    code: str,
+    start_date: date,
+    end_date: date,
+    needs_daily: bool,
+    needs_adjustment: bool,
+    needs_minute5: bool,
+) -> tuple[dict[str, object], BaoStockClient]:
+    errors: dict[str, str] = {}
 
+    if needs_daily:
+        def collect_daily(active_client: BaoStockClient) -> None:
+            daily = active_client.fetch_daily_history(code, start_date, end_date)
+            if not daily:
+                raise ValueError("日线为空")
+            store.write_daily_history(code, daily, start_date, end_date)
 
-def _handle_worker_termination(signum: int, _frame: object) -> None:
-    """收到父进程终止请求时关闭 socket，并立即结束当前 worker。"""
-    client = _WORKER_CLIENT
-    if client is not None:
-        client.interrupt()
-    raise SystemExit(128 + signum)
-
-
-def _terminate_research_executor(executor: ProcessPoolExecutor) -> None:
-    """取消排队任务，限时回收 worker，避免中断后遗留孤儿进程。"""
-    started_at = time.monotonic()
-    processes = []
-    forced = 0
-    previous_sigint = signal.signal(signal.SIGINT, signal.SIG_IGN)
-    try:
-        processes = list(
-            (executor._processes or {}).values()  # type: ignore[attr-defined]
+        error, client = _collect_component(
+            client, proxy_url, code, "日线", collect_daily
         )
-        manager_thread = executor._executor_manager_thread  # type: ignore[attr-defined]
-        executor.shutdown(wait=False, cancel_futures=True)
+        if error:
+            errors["日线"] = error
 
-        for process in processes:
-            if process.is_alive():
-                process.terminate()
+    if needs_adjustment:
+        def collect_adjustment(active_client: BaoStockClient) -> None:
+            factors = active_client.fetch_adjustment_factors(
+                code, date(1990, 1, 1), end_date
+            )
+            if not factors:
+                raise ValueError("复权因子为空")
+            store.write_adjustment_factors(code, factors, start_date, end_date)
 
-        deadline = time.monotonic() + WORKER_SHUTDOWN_TIMEOUT_SECONDS
-        for process in processes:
-            remaining = max(0.0, deadline - time.monotonic())
-            process.join(remaining)
+        error, client = _collect_component(
+            client, proxy_url, code, "复权因子", collect_adjustment
+        )
+        if error:
+            errors["复权因子"] = error
 
-        for process in processes:
-            if not process.is_alive():
-                continue
-            forced += 1
-            process.kill()
-            process.join()
+    if needs_minute5:
+        def collect_minute5(active_client: BaoStockClient) -> None:
+            minutes = active_client.fetch_minutes(code, start_date, end_date)
+            if not minutes:
+                raise ValueError("5分钟线为空")
+            store.write_minute_history(
+                code, minutes, start_date, end_date, end_date
+            )
 
-        if manager_thread is not None:
-            manager_thread.join()
-    finally:
-        signal.signal(signal.SIGINT, previous_sigint)
-    LOGGER.warning(
-        "BaoStock 采集进程已全部停止：进程=%d；强制终止=%d；耗时=%.2f 秒",
-        len(processes),
-        forced,
-        time.monotonic() - started_at,
-    )
+        error, client = _collect_component(
+            client, proxy_url, code, "5分钟线", collect_minute5
+        )
+        if error:
+            errors["5分钟线"] = error
+
+    return {"code": code, "errors": errors}, client
 
 
-def _sync_research_code(
-    code: str, start_date: date, end_date: date
-) -> dict[str, object]:
-    if _WORKER_STORE is None:
-        raise RuntimeError("研究数据采集进程尚未初始化")
+def _collect_component(
+    client: BaoStockClient,
+    proxy_url: str | None,
+    code: str,
+    dataset_name: str,
+    operation: Callable[[BaoStockClient], None],
+) -> tuple[str | None, BaoStockClient]:
     for attempt in range(1, 4):
         try:
-            LOGGER.info("正在下载研究数据：股票=%s；尝试=%d/3", code, attempt)
-            client = _worker_client()
-            daily = client.fetch_daily_history(code, start_date, end_date)
-            factors = client.fetch_adjustment_factors(code, date(1990, 1, 1), end_date)
-            minutes = client.fetch_minutes(code, start_date, end_date)
-            if not daily or not minutes:
-                raise ValueError("日线或分钟线为空")
-            if not factors:
-                factors = [AdjustmentFactor(code, start_date, Decimal("1"))]
-            _WORKER_STORE.write_daily_history(code, daily, start_date, end_date)
-            _WORKER_STORE.write_adjustment_factors(code, factors, start_date, end_date)
-            _WORKER_STORE.write_minute_history(code, minutes, end_date)
-            return {"code": code, "error": "", "rows": len(minutes)}
+            LOGGER.info(
+                "正在采集%s：股票=%s；尝试=%d/3",
+                dataset_name,
+                code,
+                attempt,
+            )
+            operation(client)
+            return None, client
         except (BaoStockError, OSError, TimeoutError) as error:
-            _close_worker_client()
+            if "10001011" in str(error):
+                raise BaoStockError(f"BaoStock IP 已进入黑名单：{error}") from error
+            client.__exit__(None, None, None)
             if attempt == 3:
-                return {"code": code, "error": str(error)}
+                client = BaoStockClient(proxy_url)
+                client.__enter__()
+                return str(error), client
             LOGGER.warning(
-                "研究数据下载失败，重建会话后重试：股票=%s；尝试=%d/3；原因=%s",
+                "%s采集失败，重建会话后重试：股票=%s；尝试=%d/3；原因=%s",
+                dataset_name,
                 code,
                 attempt,
                 error,
             )
             time.sleep(attempt * 3)
+            client = BaoStockClient(proxy_url)
+            client.__enter__()
         except Exception as error:
-            return {"code": code, "error": str(error)}
-    return {"code": code, "error": "未知采集失败"}
-
-
-def _worker_client() -> BaoStockClient:
-    global _WORKER_CLIENT
-    if _WORKER_CLIENT is None:
-        _WORKER_CLIENT = BaoStockClient(_WORKER_PROXY_URL)
-        _WORKER_CLIENT.__enter__()
-    return _WORKER_CLIENT
-
-
-def _close_worker_client() -> None:
-    global _WORKER_CLIENT
-    client = _WORKER_CLIENT
-    _WORKER_CLIENT = None
-    if client is None:
-        return
-    try:
-        client.__exit__(None, None, None)
-    except Exception as error:
-        LOGGER.warning("BaoStock 会话关闭失败，连接将由进程回收：%s", error)
-# AI_GENERATE_END --------------------
+            return str(error), client
+    return "未知采集失败", client
+# AI_GENERATE_END -----------------------

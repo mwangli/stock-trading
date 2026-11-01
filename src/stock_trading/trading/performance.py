@@ -1,23 +1,16 @@
-# AI_GENERATE_START ----
+# AI_GENERATE_START -----
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
-from typing import Protocol
 
-from stock_trading.broker.models import BrokerFill, BrokerSyncSnapshot
+from stock_trading.broker.models import BrokerFill
 from stock_trading.config import AppConfig
 from stock_trading.state.store import StateStore
 
 LOGGER = logging.getLogger(__name__)
-
-
-class BrokerPerformanceClient(Protocol):
-    def read_shadow_snapshot(self) -> BrokerSyncSnapshot:
-        """用途：读取绩效计算所需券商事实；输入：无；输出：券商同步快照。"""
-        ...
 
 
 class LivePerformanceService:
@@ -27,42 +20,38 @@ class LivePerformanceService:
         self,
         config: AppConfig,
         state_store: StateStore,
-        broker: BrokerPerformanceClient,
     ) -> None:
-        """用途：绑定绩效配置、状态库和券商读取器；输入：配置、状态库和券商客户端；输出：无。"""
+        """用途：绑定绩效配置和状态库；输入：配置和状态库；输出：无。"""
         self._config = config
         self._state_store = state_store
-        self._broker = broker
 
     def update(
         self,
         business_date: date,
         external_cash_flow: Decimal = Decimal("0"),
     ) -> dict[str, object]:
-        """用途：同步券商事实并生成当日绩效和模型评估；输入：业务日期与外部资金流；输出：同步、绩效和评估结果。"""
-        # 数据流：券商快照 -> 事实表 -> 日绩效 -> 滚动指标 -> 保持或重训决策。
-        LOGGER.info("绩效更新阶段 1/5：读取券商事实；业务日期=%s", business_date)
-        snapshot = self._broker.read_shadow_snapshot()
+        """用途：读取已同步事实并生成当日绩效和模型评估；输入：业务日期与外部资金流；输出：绩效和评估结果。"""
+        # 数据流：已同步事实 -> 日绩效 -> 滚动指标 -> 保持或重训决策。
+        LOGGER.info("绩效更新阶段 1/4：读取已同步券商事实；业务日期=%s", business_date)
+        account, fills = self._state_store.broker_performance_facts(
+            business_date.isoformat()
+        )
         LOGGER.info(
             "券商事实读取完成：权益=%s；可用资金=%s；持仓市值=%s；成交数=%d",
-            snapshot.account.total_assets,
-            snapshot.account.available_cash,
-            snapshot.account.total_position,
-            len(snapshot.fills),
+            account.total_assets,
+            account.available_cash,
+            account.total_position,
+            len(fills),
         )
-        LOGGER.info("绩效更新阶段 2/5：保存券商事实")
-        sync = self._state_store.sync_broker_snapshot(
-            snapshot, business_date.isoformat()
-        )
-        LOGGER.info("绩效更新阶段 3/5：计算当日成交额和估算费用")
+        LOGGER.info("绩效更新阶段 2/4：计算当日成交额和估算费用")
         turnover, estimated_fees = self._estimate_trading_costs(
-            snapshot.fills, business_date
+            fills, business_date
         )
         previous = self._state_store.latest_live_performance_before(
             business_date.isoformat()
         )
         model_version_id = self._state_store.active_model_id()
-        equity = snapshot.account.total_assets
+        equity = account.total_assets
         net_pnl: Decimal | None = None
         gross_pnl: Decimal | None = None
         net_return: Decimal | None = None
@@ -92,13 +81,13 @@ class LivePerformanceService:
             estimated_fees,
             external_cash_flow,
         )
-        LOGGER.info("绩效更新阶段 4/5：保存当日绩效")
+        LOGGER.info("绩效更新阶段 3/4：保存当日绩效")
         performance = self._state_store.save_live_performance(
             {
                 "businessDate": business_date.isoformat(),
                 "modelVersionId": model_version_id,
-                "cash": float(snapshot.account.available_cash),
-                "marketValue": float(snapshot.account.total_position),
+                "cash": float(account.available_cash),
+                "marketValue": float(account.total_position),
                 "equity": float(equity),
                 "externalCashFlow": float(external_cash_flow),
                 "turnover": float(turnover),
@@ -109,7 +98,7 @@ class LivePerformanceService:
                 "netReturn": _optional_float(net_return),
             }
         )
-        LOGGER.info("绩效更新阶段 5/5：执行滚动模型评估；模型版本=%s", model_version_id)
+        LOGGER.info("绩效更新阶段 4/4：执行滚动模型评估；模型版本=%s", model_version_id)
         evaluation = self._evaluate(business_date, model_version_id)
         LOGGER.info(
             "滚动模型评估完成：决策=%s；原因=%s",
@@ -118,7 +107,6 @@ class LivePerformanceService:
         )
         return {
             "businessDate": business_date.isoformat(),
-            "brokerSync": sync,
             "performance": performance,
             "evaluation": evaluation,
         }
@@ -226,4 +214,4 @@ def _max_drawdown(returns: list[float]) -> float:
 def _optional_float(value: Decimal | None) -> float | None:
     """用途：转换可空 Decimal；输入：Decimal 或空值；输出：float 或空值。"""
     return float(value) if value is not None else None
-# AI_GENERATE_END ----
+# AI_GENERATE_END -----
