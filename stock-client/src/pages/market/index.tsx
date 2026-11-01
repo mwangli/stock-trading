@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------------------------------
+// AI_GENERATE_START---------------------------------------
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Descriptions, Drawer, Empty, Input, Pagination, Select, Skeleton, Table, Tooltip } from 'antd';
@@ -790,7 +790,10 @@ const Market: React.FC = () => {
                 loading={loading}
                 dataSource={watchlist}
                 columns={columns}
-                scroll={{ x: 498 }}
+                scroll={{
+                  x: 498,
+                  y: 'clamp(240px, calc(100dvh - 470px), 432px)',
+                }}
                 showSorterTooltip={{ title: localizedText('点击切换排序', 'Click to change sort') }}
                 pagination={{
                   current: pagination.current,
@@ -1009,4 +1012,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END--------------------------------------
+// AI_GENERATE_END---------------------------------------
