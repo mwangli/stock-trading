@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START -------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -67,6 +67,7 @@ def _execute(
     command: str,
     parameters: dict[str, object],
     operation: Callable[[AppConfig], T],
+    result_logger: Callable[[T], None] | None = None,
 ) -> T:
     configure_logging()
     started_at = perf_counter()
@@ -98,6 +99,8 @@ def _execute(
             )
             raise SystemExit(130) from None
         set_log_context(progress="1/1", target=command)
+        if result_logger is not None:
+            result_logger(result)
         LOGGER.info("业务命令完成：总耗时=%.2f 秒", perf_counter() - started_at)
         return result
 
@@ -118,12 +121,12 @@ def broker_command(
 ) -> None:
     today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
     start_date, end_date = _parse_date_expression(date_value, today, today)
-    result = _execute(
+    _execute(
         "broker",
         {"date": date_value},
         lambda config: _sync_broker(config, start_date, end_date),
+        result_logger=_log_broker_summary,
     )
-    _print_broker_summary(result)
 
 
 def collect_command(
@@ -221,12 +224,12 @@ def performance_command(
     ] = None,
 ) -> None:
     target_date = _business_date(business_date)
-    result = _execute(
+    _execute(
         "performance",
         {"date": business_date},
         lambda config: _update_realized_performance(config, target_date),
+        result_logger=_log_performance_summary,
     )
-    _print_performance_summary(result)
 
 
 def evaluate_command(
@@ -236,12 +239,12 @@ def evaluate_command(
     ] = None,
 ) -> None:
     target_date = _business_date(business_date)
-    result = _execute(
+    _execute(
         "evaluate",
         {"date": business_date},
         lambda config: _evaluate_model(config, target_date),
+        result_logger=_log_evaluation_summary,
     )
-    _print_evaluation_summary(result)
 
 
 def clean_command(
@@ -251,12 +254,12 @@ def clean_command(
     ] = None,
 ) -> None:
     target_date = _business_date(reference_date)
-    result = _execute(
+    _execute(
         "clean",
         {"date": reference_date},
         lambda config: _cleanup(config, target_date),
+        result_logger=_log_cleanup_summary,
     )
-    _print_cleanup_summary(result)
 
 
 def _business_date(value: str | None) -> date:
@@ -663,50 +666,53 @@ def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
 
 
-def _print_broker_summary(result: dict[str, object]) -> None:
+def _log_broker_summary(result: dict[str, object]) -> None:
     settlement = dict(result["settlement"])
-    print(
-        "券商同步完成："
-        f"日期={result['startDate']}:{result['endDate']}；"
-        f"有效订单={result['validOrders']}；"
-        f"新增={result['insertedOrders']}；"
-        f"更新={result['updatedOrders']}；"
-        f"新增闭环={settlement.get('realizedTrades', 0)}；"
-        f"未匹配卖出={settlement.get('unmatchedSellQuantity', 0)}"
+    LOGGER.info(
+        "券商同步完成：日期=%s:%s；有效订单=%s；新增=%s；更新=%s；"
+        "新增闭环=%s；未匹配卖出=%s",
+        result["startDate"],
+        result["endDate"],
+        result["validOrders"],
+        result["insertedOrders"],
+        result["updatedOrders"],
+        settlement.get("realizedTrades", 0),
+        settlement.get("unmatchedSellQuantity", 0),
     )
 
 
-def _print_performance_summary(result: dict[str, object]) -> None:
+def _log_performance_summary(result: dict[str, object]) -> None:
     performance = dict(result["performance"])
-    print(
-        "已实现绩效完成："
-        f"日期={result['businessDate']}；"
-        f"闭环交易={performance.get('trade_count', 0)}；"
-        f"净损益={_format_amount(performance.get('net_pnl'))}；"
-        f"净收益率={_format_rate(performance.get('net_return'))}"
+    LOGGER.info(
+        "已实现绩效完成：日期=%s；闭环交易=%s；净损益=%s；净收益率=%s",
+        result["businessDate"],
+        performance.get("trade_count", 0),
+        _format_amount(performance.get("net_pnl")),
+        _format_rate(performance.get("net_return")),
     )
 
 
-def _print_evaluation_summary(result: dict[str, object]) -> None:
+def _log_evaluation_summary(result: dict[str, object]) -> None:
     evaluation = dict(result["evaluation"])
-    print(
-        "模型评估完成："
-        f"日期={result['businessDate']}；"
-        f"模型决策={evaluation.get('decision', '-')}；"
-        f"原因={evaluation.get('reason', '-')}"
+    LOGGER.info(
+        "模型评估完成：日期=%s；模型决策=%s；原因=%s",
+        result["businessDate"],
+        evaluation.get("decision", "-"),
+        evaluation.get("reason", "-"),
     )
 
 
-def _print_cleanup_summary(result: dict[str, object]) -> None:
+def _log_cleanup_summary(result: dict[str, object]) -> None:
     market = dict(result["market"])
     state = dict(result["state"])
-    print(
-        "数据清理完成："
-        f"日期={result['referenceDate']}；"
-        f"分钟股票={market.get('codes', 0)}；"
-        f"原始行={market.get('rawRows', 0)}；"
-        f"聚合行={market.get('summaryRows', 0)}；"
-        f"SQLite删除={state.get('deletedRows', 0)}"
+    LOGGER.info(
+        "数据清理完成：日期=%s；分钟股票=%s；原始行=%s；聚合行=%s；"
+        "SQLite删除=%s",
+        result["referenceDate"],
+        market.get("codes", 0),
+        market.get("rawRows", 0),
+        market.get("summaryRows", 0),
+        state.get("deletedRows", 0),
     )
 
 
@@ -716,4 +722,4 @@ def _format_amount(value: object) -> str:
 
 def _format_rate(value: object) -> str:
     return "-" if value is None else f"{float(value):.2%}"
-# AI_GENERATE_END ------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END -------------------------------------------------------------------------------------------------------------------
