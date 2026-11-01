@@ -40,8 +40,8 @@ jobs:
           tasks="sell buy collect rank broker perform evaluate clean"
           test -f "$systemd_dir/stock@.service"
           test "$(find "$systemd_dir" -maxdepth 1 -name 'stock-*.timer' -type f | wc -l)" -eq 8
-          grep -Fq 'EnvironmentFile=/etc/stock-trading/env' "$systemd_dir/stock@.service"
-          grep -Fq 'ExecStart=__DEPLOY_DIR__/venv/bin/stock-%i' "$systemd_dir/stock@.service"
+          grep -Fq 'EnvironmentFile=__PROJECT_DIR__/.env' "$systemd_dir/stock@.service"
+          grep -Fq 'ExecStart=__PROJECT_DIR__/venv/bin/stock-%i' "$systemd_dir/stock@.service"
           grep -Fq 'StandardOutput=journal' "$systemd_dir/stock@.service"
           grep -Fq 'StandardError=journal' "$systemd_dir/stock@.service"
           ! grep -ERq 'flock|Restart=|sleep 300' "$systemd_dir"
@@ -78,14 +78,13 @@ jobs:
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
           source: "dist/*.whl,.github/systemd/*"
-          target: ${{ format('{0}/releases/{1}', vars.SERVER_DEPLOY_DIR, github.ref_name) }}
+          target: ${{ format('~/stock-trading/releases/{0}', github.ref_name) }}
           strip_components: 1
           overwrite: true
 
       - name: Install release and timers
         uses: appleboy/ssh-action@v1.2.5
         env:
-          DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
           RELEASE_TAG: ${{ github.ref_name }}
         with:
           host: ${{ vars.SERVER_HOST }}
@@ -93,19 +92,21 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
-          envs: DEPLOY_DIR,RELEASE_TAG
+          envs: RELEASE_TAG
           command_timeout: 60m
           script: |
             set -eu
-            deploy_dir="${DEPLOY_DIR%/}"
-            release_dir="$deploy_dir/releases/$RELEASE_TAG"
-            venv_dir="$deploy_dir/venv"
+            project_dir="$HOME/stock-trading"
+            release_dir="$project_dir/releases/$RELEASE_TAG"
+            venv_dir="$project_dir/venv"
+            env_file="$project_dir/.env"
+            data_dir="$project_dir/data"
             systemd_source="$release_dir/systemd"
             systemd_target=/etc/systemd/system
             timers="stock-sell.timer stock-buy.timer stock-collect.timer stock-rank.timer stock-broker.timer stock-perform.timer stock-evaluate.timer stock-clean.timer"
 
-            if [ ! -s /etc/stock-trading/env ] || [ ! -r /etc/stock-trading/env ]; then
-              echo "Missing or unreadable environment file: /etc/stock-trading/env" >&2
+            if [ ! -s "$env_file" ] || [ ! -r "$env_file" ]; then
+              echo "Missing or unreadable environment file: $env_file" >&2
               exit 1
             fi
             command -v systemctl >/dev/null
@@ -126,41 +127,18 @@ jobs:
             uv pip install --python "$venv_dir/bin/python" --upgrade "$wheel"
 
             mkdir -p \
-              /data/stock-trading/market \
-              /data/stock-trading/qlib \
-              /data/stock-trading/artifacts \
-              /data/stock-trading/state
+              "$data_dir/market" \
+              "$data_dir/qlib" \
+              "$data_dir/artifacts" \
+              "$data_dir/state"
 
-            sed "s|__DEPLOY_DIR__|$deploy_dir|g" \
+            sed "s|__PROJECT_DIR__|$project_dir|g" \
               "$systemd_source/stock@.service" \
               > "$systemd_target/stock@.service"
             chmod 0644 "$systemd_target/stock@.service"
             for timer in $timers; do
               install -m 0644 "$systemd_source/$timer" "$systemd_target/$timer"
             done
-            rm -f /etc/logrotate.d/stock-trading
-
-            if command -v crontab >/dev/null; then
-              current_cron="$(mktemp)"
-              cleaned_cron="$(mktemp)"
-              crontab -l > "$current_cron" 2>/dev/null || true
-              awk '
-                $0 == "# STOCK_TRADING_CRON_BEGIN" { managed = 1; next }
-                $0 == "# STOCK_TRADING_CRON_END" { managed = 0; next }
-                !managed { print }
-              ' "$current_cron" > "$cleaned_cron"
-              crontab "$cleaned_cron"
-              rm -f "$current_cron" "$cleaned_cron"
-            fi
-            rm -f \
-              "$deploy_dir/cron/stock-trading.cron" \
-              "$deploy_dir/cron/stock-trading.logrotate" \
-              /data/stock-trading/state/scheduler.lock \
-              /data/stock-trading/state/logrotate.status
-            rmdir "$deploy_dir/cron" 2>/dev/null || true
-
-            systemctl disable --now 'stock-trading-*.timer' 2>/dev/null || true
-            rm -f "$systemd_target"/stock-trading-*.timer "$systemd_target"/stock-trading-*.service
             systemctl daemon-reload
             systemctl enable --now $timers
 
