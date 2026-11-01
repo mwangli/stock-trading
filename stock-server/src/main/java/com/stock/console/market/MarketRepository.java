@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ---------
 package com.stock.console.market;
 
 import com.stock.console.config.ConsoleProperties;
@@ -58,26 +58,46 @@ public class MarketRepository {
     }
 
     public List<Map<String, Object>> instruments(String keyword, int limit) {
-        String source = marketSource("instruments/stocks.parquet");
-        if (!marketAvailable("instruments/stocks.parquet")) {
+        String instruments = marketSource("instruments/stocks.parquet");
+        Optional<String> latest = latestDailyDate();
+        if (!marketAvailable("instruments/stocks.parquet") || latest.isEmpty()) {
             return List.of();
         }
+        String dailyRelative = "daily/trade_date=" + latest.get() + "/bars.parquet";
+        if (!marketAvailable(dailyRelative)) {
+            return List.of();
+        }
+        String daily = marketSource(dailyRelative);
         String sql = """
-                SELECT snapshot_date AS as_of_date, code, code_name AS name,
-                       CASE WHEN lower(code) LIKE 'sh.%' THEN 'SH' ELSE 'SZ' END AS market,
-                       trade_status, security_type, status
-                FROM read_parquet(?)
-                WHERE (? = '' OR code ILIKE ? OR code_name ILIKE ?)
-                ORDER BY code
+                SELECT instruments.snapshot_date AS as_of_date,
+                       instruments.code,
+                       instruments.code_name AS name,
+                       CASE WHEN lower(instruments.code) LIKE 'sh.%' THEN 'SH' ELSE 'SZ' END AS market,
+                       instruments.trade_status,
+                       instruments.security_type,
+                       instruments.status,
+                       bars.trade_date AS update_time,
+                       bars.close AS price,
+                       bars.close - bars.preclose AS change_amount,
+                       CASE WHEN bars.preclose IS NULL OR bars.preclose = 0 THEN NULL
+                            ELSE (bars.close - bars.preclose) / bars.preclose * 100 END AS change_percent,
+                       bars.volume,
+                       bars.amount
+                FROM read_parquet(?) AS instruments
+                INNER JOIN read_parquet(?) AS bars ON bars.code = instruments.code
+                WHERE instruments.security_type = '1'
+                  AND (? = '' OR instruments.code ILIKE ? OR instruments.code_name ILIKE ?)
+                ORDER BY instruments.code
                 LIMIT ?
                 """;
         String value = keyword == null ? "" : keyword.trim();
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, source);
-            statement.setString(2, value);
-            statement.setString(3, "%" + value + "%");
+            statement.setString(1, instruments);
+            statement.setString(2, daily);
+            statement.setString(3, value);
             statement.setString(4, "%" + value + "%");
-            statement.setInt(5, Math.max(1, Math.min(limit, 500)));
+            statement.setString(5, "%" + value + "%");
+            statement.setInt(6, Math.max(1, Math.min(limit, 500)));
             return rows(statement);
         } catch (Exception exception) {
             return List.of();
@@ -106,7 +126,9 @@ public class MarketRepository {
                 SELECT count(*) AS total,
                        sum(CASE WHEN close > preclose THEN 1 ELSE 0 END) AS advances,
                        sum(CASE WHEN close < preclose THEN 1 ELSE 0 END) AS declines,
-                       sum(CASE WHEN close = preclose THEN 1 ELSE 0 END) AS unchanged
+                       sum(CASE WHEN close = preclose THEN 1 ELSE 0 END) AS unchanged,
+                       coalesce(sum(amount), 0) AS total_amount,
+                       coalesce(sum(volume), 0) AS total_volume
                 FROM read_parquet(?)
                 """;
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -255,4 +277,4 @@ public class MarketRepository {
         return message == null || message.isBlank() ? "行情数据源无法读取" : message;
     }
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------

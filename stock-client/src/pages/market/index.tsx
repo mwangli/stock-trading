@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------------------------------
+// AI_GENERATE_START-------------------------------------
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Descriptions, Drawer, Empty, Input, Pagination, Select, Skeleton, Table, Tooltip } from 'antd';
@@ -350,30 +350,22 @@ const Market: React.FC = () => {
   ) => {
     setLoading(true);
     try {
-      const [instrumentsResponse, rankingResponse] = await Promise.all([
-        request.get('/market/instruments', {
-          params: { keyword: keyword.trim(), limit: 500 },
-        }) as Promise<ApiResponse<Array<Record<string, unknown>>>>,
-        request.get('/market/daily-ranking', {
-          params: { limit: 100 },
-        }) as Promise<ApiResponse<DailyRankingItem[]>>,
-      ]);
+      const instrumentsResponse = await request.get('/market/instruments', {
+        params: { keyword: keyword.trim(), limit: 500 },
+      }) as ApiResponse<Array<Record<string, unknown>>>;
       if (instrumentsResponse.success && Array.isArray(instrumentsResponse.data)) {
-        const rankingByCode = new Map(
-          (rankingResponse.success ? rankingResponse.data : []).map((item) => [item.stockCode, item]),
-        );
         const mappedData: WatchlistItem[] = instrumentsResponse.data.map((row) => {
           const code = String(row.code ?? '');
-          const quote = rankingByCode.get(code);
           const item: StockInfo = {
             code,
             name: String(row.name ?? code),
             market: row.market == null ? undefined : String(row.market),
-            price: quote?.close,
-            changeAmount: quote ? Number(quote.close) - Number(quote.preclose) : undefined,
-            changePercent: quote ? Number(quote.returnRate) * 100 : undefined,
+            price: row.price == null ? undefined : Number(row.price),
+            changeAmount: row.change_amount == null ? undefined : Number(row.change_amount),
+            changePercent: row.change_percent == null ? undefined : Number(row.change_percent),
+            volume: row.volume == null ? undefined : Number(row.volume),
             listedDate: row.as_of_date == null ? undefined : String(row.as_of_date),
-            updateTime: quote?.period,
+            updateTime: row.update_time == null ? undefined : String(row.update_time),
           };
           return {
           key: item.code,
@@ -492,6 +484,8 @@ const Market: React.FC = () => {
           downCount: Number(res.data.declines ?? 0),
           flatCount: Number(res.data.unchanged ?? 0),
           totalCount: Number(res.data.total ?? 0),
+          totalAmount: Number(res.data.total_amount ?? 0),
+          totalVolume: Number(res.data.total_volume ?? 0),
         });
       }
     } catch (error) {
@@ -1021,4 +1015,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END------------------------------------
+// AI_GENERATE_END-------------------------------------
