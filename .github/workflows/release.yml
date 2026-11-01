@@ -110,6 +110,9 @@ jobs:
             timers="stock-sell.timer stock-buy.timer stock-collect.timer stock-rank.timer stock-broker.timer stock-perform.timer stock-evaluate.timer stock-clean.timer"
             commands="stock-sell stock-buy stock-collect stock-rank stock-broker stock-perform stock-evaluate stock-clean"
 
+            if [ ! -e "$env_file" ] && [ -s /etc/stock-trading/env ] && [ -r /etc/stock-trading/env ]; then
+              install -m 0600 /etc/stock-trading/env "$env_file"
+            fi
             if [ ! -s "$env_file" ] || [ ! -r "$env_file" ]; then
               echo "Missing or unreadable environment file: $env_file" >&2
               exit 1
