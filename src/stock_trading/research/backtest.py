@@ -24,10 +24,7 @@ class BacktestConfig:
     initial_cash: float = 10_000.0
     min_price: float = 0.01
     max_price: float = 1_000_000.0
-    commission_rate: float = 0.0003
-    min_commission: float = 5.0
-    stamp_duty_rate: float = 0.0005
-    transfer_fee_rate: float = 0.00001
+    order_fee: float = 5.0
     slippage_bps: float = 10.0
     lot_size: int = 100
     buy_slices: int = 1
@@ -304,14 +301,11 @@ class PortfolioBacktester:
 
     def _buy_fees(self, notional: float, quantity: int) -> float:
         slices = min(self._config.buy_slices, quantity // self._config.lot_size)
-        commission = max(notional * self._config.commission_rate, self._config.min_commission * slices)
-        return _money(commission + notional * self._config.transfer_fee_rate)
+        return _money(self._config.order_fee * slices)
 
     def _sell_fees(self, notional: float, quantity: int) -> float:
         slices = min(self._config.sell_slices, quantity // self._config.lot_size)
-        commission = max(notional * self._config.commission_rate, self._config.min_commission * slices)
-        taxes = notional * (self._config.stamp_duty_rate + self._config.transfer_fee_rate)
-        return _money(commission + taxes)
+        return _money(self._config.order_fee * slices)
 
     def _market_value(self, position: Position | None, trade_date: date) -> float:
         if position is None:
@@ -387,10 +381,7 @@ def run_portfolio_backtest(
         initial_cash=float(initial_cash),
         min_price=config.trading_min_price,
         max_price=config.trading_max_price,
-        commission_rate=config.trading_commission_rate,
-        min_commission=config.trading_min_commission,
-        stamp_duty_rate=config.trading_stamp_duty_rate,
-        transfer_fee_rate=config.trading_transfer_fee_rate,
+        order_fee=config.trading_order_fee,
         allowed_prefixes=config.trading_allowed_prefixes,
     )
     return PortfolioBacktester(

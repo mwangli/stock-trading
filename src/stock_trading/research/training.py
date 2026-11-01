@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START -----
 from __future__ import annotations
 
 import json
@@ -7,7 +7,6 @@ import shutil
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
 
 from stock_trading.config import AppConfig
 from stock_trading.market.storage import ParquetMarketStore
@@ -32,7 +31,6 @@ from stock_trading.logging_utils import set_log_context
 
 LOGGER = logging.getLogger(__name__)
 EVALUATION_FILE = "evaluation.json"
-BASELINE_CAPITAL = 3_000
 
 
 def default_training_range(config: AppConfig) -> tuple[date, date]:
@@ -56,13 +54,13 @@ def default_training_codes(
     return codes
 
 
-def prepare_training_data(
+def refresh_qlib_from_parquet(
     config: AppConfig,
     codes: list[str],
     start_date: date,
     end_date: date,
 ) -> dict[str, object]:
-    """校验本地行情并重建 Qlib，不触发采集或训练。"""
+    """校验本地行情并从 Parquet 重建 Qlib。"""
     store = ParquetMarketStore(config.data_dir)
     daily_codes = store.valid_daily_codes(codes)
     minute5_codes = store.valid_minute5_codes(codes)
@@ -94,7 +92,7 @@ def prepare_training_data(
         model_codes, start_date, end_date
     )
     LOGGER.info(
-        "训练准备完成：股票数=%d；交易日=%s；标签=%s",
+        "Qlib 刷新完成：股票数=%d；交易日=%s；标签=%s",
         qlib_result["codes"],
         qlib_result["calendarDays"],
         qlib_result["labels"],
@@ -111,19 +109,39 @@ def run_training_pipeline(
     config: AppConfig,
     split: tuple[Decimal, Decimal, Decimal] | None,
 ) -> dict[str, object]:
-    """按准备、训练、测试评估、五档回测和发布顺序执行训练。"""
+    """校验现有 Qlib 后执行训练、评估、回测和发布。"""
     start_date, end_date = default_training_range(config)
     codes = default_training_codes(config, start_date, end_date)
-    preparation = prepare_training_data(config, codes, start_date, end_date)
+    preparation = assert_training_data_ready(config, codes, start_date, end_date)
     lifecycle = train_prepared_model(config, split)
     return {
         "preparation": {
             "startDate": preparation["startDate"],
             "endDate": preparation["endDate"],
             "researchCodes": len(preparation["codes"]),
-            "qlib": preparation["qlib"],
+            "qlibReady": True,
         },
         **lifecycle,
+    }
+
+
+def assert_training_data_ready(
+    config: AppConfig,
+    codes: list[str],
+    start_date: date,
+    end_date: date,
+) -> dict[str, object]:
+    """确认 collect 或 init 已生成当前训练范围的 Qlib。"""
+    store = ParquetMarketStore(config.data_dir)
+    model_codes = store.model_research_codes(codes, start_date, end_date)
+    if not QlibBinaryStore(store, config.qlib_dir).is_valid(
+        model_codes, start_date, end_date
+    ):
+        raise ValueError("Qlib 数据未覆盖当前训练范围；请先执行 stock-trading collect")
+    return {
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "codes": model_codes,
     }
 
 
@@ -146,7 +164,12 @@ def train_prepared_model(
         segments.test_end,
     )
     root = model_root(config.artifact_dir)
-    training = train_model_candidate(config.qlib_dir, root, segments)
+    training = train_model_candidate(
+        config.qlib_dir,
+        root,
+        segments,
+        config.model_feature_batch_days,
+    )
     model_dir = Path(str(training["artifactPath"]))
     backtest_run = run_backtest_scenarios(config, model_dir)
     evaluation = evaluate_candidate(config, model_dir, backtest_run)
@@ -160,7 +183,7 @@ def train_prepared_model(
             f"原因={evaluation['reason']}"
         )
 
-    state = import_training_state(config, store, model_dir, "CANDIDATE")
+    state = import_training_state(store, model_dir, "CANDIDATE")
     previous_version = current_model_version(root)
     activate_model_artifact(root, str(training["modelVersion"]))
     try:
@@ -190,7 +213,7 @@ def run_current_model_backtests(config: AppConfig) -> dict[str, object]:
             for cash, message in backtest_run["errors"].items()
         )
         raise ValueError(f"多资金档位回测未完成：{reasons}")
-    state = import_training_state(config, StateStore(config.state_db_path), model_dir)
+    state = import_training_state(StateStore(config.state_db_path), model_dir)
     return {
         "modelVersion": model_dir.name,
         "capitalScenarios": list(config.backtest_capital_scenarios),
@@ -322,41 +345,12 @@ def backtest_directories(
 
 
 def import_training_state(
-    config: AppConfig,
     store: StateStore,
     model_dir: Path,
     model_status: str | None = None,
 ) -> dict[str, object]:
-    """导入模型、预测和五档回测制品，不负责激活模型。"""
-    directories = backtest_directories(config, model_dir)
-    baseline_key = str(BASELINE_CAPITAL)
-    result = store.import_research_artifacts(
-        model_dir,
-        directories[baseline_key],
-        f"capital-{baseline_key}",
-        model_status=model_status,
-    )
-    business_date = max(
-        str(summary["tradeDate"])
-        for summary in (
-            _latest_equity_row(path) for path in directories.values()
-        )
-    )
-    for cash in config.backtest_capital_scenarios:
-        key = str(cash)
-        if cash == BASELINE_CAPITAL:
-            continue
-        store.import_backtest_performance(
-            directories[key], f"capital-{key}", business_date
-        )
-    return result
-
-
-def _latest_equity_row(backtest_dir: Path) -> dict[str, Any]:
-    import pandas as pd
-
-    equity = pd.read_parquet(backtest_dir / "daily_equity.parquet")
-    return equity.sort_values("tradeDate").iloc[-1].to_dict()
+    """登记模型和预测，不把回测明细复制进 SQLite。"""
+    return store.import_model_artifacts(model_dir, model_status=model_status)
 
 
 def _write_evaluation(model_dir: Path, evaluation: dict[str, object]) -> None:
@@ -370,4 +364,4 @@ def _format_date_expression(start_date: date, end_date: date) -> str:
         return start_date.isoformat()
     return f"{start_date.isoformat()}:{end_date.isoformat()}"
 
-# AI_GENERATE_END ---
+# AI_GENERATE_END -----

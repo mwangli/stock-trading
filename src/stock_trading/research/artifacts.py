@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 import json
@@ -70,6 +70,7 @@ def train_model_candidate(
     qlib_dir: Path,
     root: Path,
     segments: ModelSegments,
+    feature_batch_days: int,
 ) -> dict[str, object]:
     """在独立版本目录训练候选模型，不切换当前模型指针。"""
     versions = root / "versions"
@@ -83,7 +84,12 @@ def train_model_candidate(
     published = versions / version
     shutil.rmtree(staging, ignore_errors=True)
     try:
-        result = train_alpha158_lightgbm_adaptive(qlib_dir, staging, segments)
+        result = train_alpha158_lightgbm_adaptive(
+            qlib_dir,
+            staging,
+            segments,
+            feature_batch_days=feature_batch_days,
+        )
         validate_model_artifacts(staging)
         staging.replace(published)
     finally:
@@ -175,4 +181,4 @@ def _write_current_pointer(root: Path, version: str) -> None:
         temporary.replace(pointer)
     finally:
         temporary.unlink(missing_ok=True)
-# AI_GENERATE_END -------
+# AI_GENERATE_END --------

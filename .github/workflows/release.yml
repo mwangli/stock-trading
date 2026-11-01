@@ -22,43 +22,47 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate release branch
-        shell: bash
-        run: |
-          git fetch origin stock-trading --depth=1
-          if [ "$(git rev-parse HEAD)" != "$(git rev-parse FETCH_HEAD)" ]; then
-            echo "Release tag must point to the latest origin/stock-trading commit" >&2
-            exit 1
-          fi
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
-      - name: Validate release version
+      - name: Validate release
         shell: bash
         run: |
+          git fetch origin stock-trading --depth=1
+          test "$(git rev-parse HEAD)" = "$(git rev-parse FETCH_HEAD)"
+
           project_version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
           test "$GITHUB_REF_NAME" = "v$project_version"
 
-      - name: Validate cron
-        shell: bash
-        run: |
-          test "$(grep -c '^# STOCK_TRADING_CRON_BEGIN$' .github/config/stock-trading.cron)" -eq 1
-          test "$(grep -c '^# STOCK_TRADING_CRON_END$' .github/config/stock-trading.cron)" -eq 1
-          test "$(grep -Ec '^[0-9]+ [0-9]+ ' .github/config/stock-trading.cron)" -eq 5
-          grep -Fq 'PATH=/usr/local/bin:/usr/bin:/bin' .github/config/stock-trading.cron
-          test "$(grep -Fc '/bin/bash -lc' .github/config/stock-trading.cron)" -eq 4
-          grep -Fq 'stock-trading trading --sell' .github/config/stock-trading.cron
-          grep -Fq 'stock-trading trading --buy' .github/config/stock-trading.cron
-          grep -Fq 'stock-trading collect' .github/config/stock-trading.cron
-          test "$(grep -Fc 'stock-trading close' .github/config/stock-trading.cron)" -eq 1
-          ! grep -Fq 'stock-trading broker' .github/config/stock-trading.cron
-          ! grep -Fq 'stock-trading evaluate' .github/config/stock-trading.cron
-          ! grep -Fq 'stock-trading clean' .github/config/stock-trading.cron
-          grep -Fq '/usr/sbin/logrotate' .github/config/stock-trading.cron
-          test -f .github/config/stock-trading.logrotate
+          systemd_dir=.github/systemd
+          tasks="sell buy collect rank broker perform evaluate clean"
+          test -f "$systemd_dir/stock@.service"
+          test "$(find "$systemd_dir" -maxdepth 1 -name 'stock-*.timer' -type f | wc -l)" -eq 8
+          grep -Fq 'EnvironmentFile=/etc/stock-trading/env' "$systemd_dir/stock@.service"
+          grep -Fq 'ExecStart=__DEPLOY_DIR__/venv/bin/stock-%i' "$systemd_dir/stock@.service"
+          grep -Fq 'StandardOutput=journal' "$systemd_dir/stock@.service"
+          grep -Fq 'StandardError=journal' "$systemd_dir/stock@.service"
+          ! grep -ERq 'flock|Restart=|sleep 300' "$systemd_dir"
+          for task in $tasks; do
+            timer="$systemd_dir/stock-$task.timer"
+            test -f "$timer"
+            grep -Fq "Unit=stock@$task.service" "$timer"
+            grep -Fq "stock-$task =" pyproject.toml
+          done
+          grep -Fq 'OnCalendar=Mon..Fri *-*-* 09:35:00 Asia/Shanghai' "$systemd_dir/stock-sell.timer"
+          grep -Fq 'OnCalendar=Mon..Fri *-*-* 13:05:00 Asia/Shanghai' "$systemd_dir/stock-buy.timer"
+          grep -Fq 'OnCalendar=Mon..Fri *-*-* 16:30:00 Asia/Shanghai' "$systemd_dir/stock-collect.timer"
+          grep -Fq 'OnCalendar=Mon..Fri *-*-* 17:00:00 Asia/Shanghai' "$systemd_dir/stock-rank.timer"
+          grep -Fq 'OnCalendar=Mon..Fri *-*-* 20:20:00 Asia/Shanghai' "$systemd_dir/stock-broker.timer"
+          grep -Fq 'OnCalendar=Mon..Fri *-*-* 20:30:00 Asia/Shanghai' "$systemd_dir/stock-perform.timer"
+          grep -Fq 'OnCalendar=Mon..Fri *-*-* 20:35:00 Asia/Shanghai' "$systemd_dir/stock-evaluate.timer"
+          grep -Fq 'OnCalendar=Sun *-*-* 03:00:00 Asia/Shanghai' "$systemd_dir/stock-clean.timer"
+          grep -Fq '_run("stock-sell", ["trading", "--type", "S"])' src/stock_trading/shortcuts.py
+          grep -Fq '_run("stock-buy", ["trading", "--type", "B"])' src/stock_trading/shortcuts.py
+          grep -Fq '_run("stock-perform", ["performance"])' src/stock_trading/shortcuts.py
+          test ! -e .github/config
 
       - name: Build wheel
         run: |
@@ -73,12 +77,12 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
-          source: "dist/*.whl,.github/config/stock-trading.cron,.github/config/stock-trading.logrotate"
+          source: "dist/*.whl,.github/systemd/*"
           target: ${{ format('{0}/releases/{1}', vars.SERVER_DEPLOY_DIR, github.ref_name) }}
           strip_components: 1
           overwrite: true
 
-      - name: Install release with uv
+      - name: Install release and timers
         uses: appleboy/ssh-action@v1.2.5
         env:
           DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
@@ -96,15 +100,16 @@ jobs:
             deploy_dir="${DEPLOY_DIR%/}"
             release_dir="$deploy_dir/releases/$RELEASE_TAG"
             venv_dir="$deploy_dir/venv"
-            cron_template="$release_dir/config/stock-trading.cron"
-            logrotate_template="$release_dir/config/stock-trading.logrotate"
-            cron_dir="$deploy_dir/cron"
-            cron_file="$cron_dir/stock-trading.cron"
+            systemd_source="$release_dir/systemd"
+            systemd_target=/etc/systemd/system
+            timers="stock-sell.timer stock-buy.timer stock-collect.timer stock-rank.timer stock-broker.timer stock-perform.timer stock-evaluate.timer stock-clean.timer"
+            commands="stock-trading stock-sell stock-buy stock-collect stock-rank stock-broker stock-perform stock-evaluate stock-clean"
 
             if [ ! -s /etc/stock-trading/env ] || [ ! -r /etc/stock-trading/env ]; then
-              echo "Missing or unreadable operator-managed environment file: /etc/stock-trading/env" >&2
+              echo "Missing or unreadable environment file: /etc/stock-trading/env" >&2
               exit 1
             fi
+            command -v systemctl >/dev/null
 
             set -- "$release_dir"/*.whl
             if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
@@ -117,152 +122,63 @@ jobs:
             export UV_HTTP_TIMEOUT=300
             export UV_HTTP_RETRIES=5
             export PATH="$HOME/.local/bin:$PATH"
-
             uv python install 3.12
-            uv venv \
-              --allow-existing \
-              --managed-python \
-              --python 3.12 \
-              "$venv_dir"
-            uv pip install \
-              --python "$venv_dir/bin/python" \
-              --upgrade \
-              "$wheel"
+            uv venv --allow-existing --managed-python --python 3.12 "$venv_dir"
+            uv pip install --python "$venv_dir/bin/python" --upgrade "$wheel"
+
             path_line="export PATH=\"$venv_dir/bin:\$PATH\""
-            touch /root/.bash_profile
-            grep -Fqx "$path_line" /root/.bash_profile \
-              || printf '%s\n' "$path_line" >> /root/.bash_profile
+            touch "$HOME/.bash_profile"
+            grep -Fqx "$path_line" "$HOME/.bash_profile" \
+              || printf '%s\n' "$path_line" >> "$HOME/.bash_profile"
             export PATH="$venv_dir/bin:$PATH"
-            if [ "$(command -v stock-trading)" != "$venv_dir/bin/stock-trading" ]; then
-              echo "stock-trading is not available from PATH: $PATH" >&2
-              exit 1
-            fi
-            stock-trading --help >/dev/null
+            for command_name in $commands; do
+              if [ "$(command -v "$command_name")" != "$venv_dir/bin/$command_name" ]; then
+                echo "Command is not available from PATH: $command_name" >&2
+                exit 1
+              fi
+            done
 
             mkdir -p \
-              "$cron_dir" \
               /data/stock-trading/market \
               /data/stock-trading/qlib \
               /data/stock-trading/artifacts \
-              /data/stock-trading/state \
-              /var/log/stock-trading
-            touch \
-              /data/stock-trading/state/scheduler.lock \
-              /var/log/stock-trading/run.log
+              /data/stock-trading/state
 
-            legacy_var_dir="$venv_dir/lib/python3.12/var"
-            migration_marker="/data/stock-trading/state/.legacy-var-migrated"
-            restart_init=0
-            init_pattern="$venv_dir/bin/python $venv_dir/bin/[s]tock-trading init"
-            if pgrep -af "$init_pattern"; then
-              echo "Stopping the active init command before release"
-              pkill -INT -f "$init_pattern" || true
-              wait_count=0
-              while pgrep -f "$init_pattern" >/dev/null; do
-                if [ "$wait_count" -ge 8 ]; then
-                  break
-                fi
-                sleep 1
-                wait_count=$((wait_count + 1))
-              done
-              if pgrep -f "$init_pattern" >/dev/null; then
-                pkill -TERM -f "$init_pattern" || true
-                wait_count=0
-                while pgrep -f "$init_pattern" >/dev/null; do
-                  if [ "$wait_count" -ge 3 ]; then
-                    break
-                  fi
-                  sleep 1
-                  wait_count=$((wait_count + 1))
-                done
-              fi
-              if pgrep -f "$init_pattern" >/dev/null; then
-                pkill -KILL -f "$init_pattern" || true
-                sleep 1
-              fi
-              if pgrep -f "$init_pattern" >/dev/null; then
-                echo "The init command could not be stopped; refusing release" >&2
-                exit 1
-              fi
-              restart_init=1
-            fi
-            exec 9>/data/stock-trading/state/scheduler.lock
-            lock_wait_count=0
-            until flock -n 9; do
-              if [ "$lock_wait_count" -ge 10 ]; then
-                echo "Another stock-trading task still holds the scheduler lock" >&2
-                exit 1
-              fi
-              sleep 1
-              lock_wait_count=$((lock_wait_count + 1))
+            sed "s|__DEPLOY_DIR__|$deploy_dir|g" \
+              "$systemd_source/stock@.service" \
+              > "$systemd_target/stock@.service"
+            chmod 0644 "$systemd_target/stock@.service"
+            for timer in $timers; do
+              install -m 0644 "$systemd_source/$timer" "$systemd_target/$timer"
             done
-            if pgrep -af "$venv_dir/bin/[s]tock-trading|$venv_dir/bin/python.*[s]tock_trading"; then
-              echo "Another stock-trading process is still writing data; refusing migration" >&2
-              exit 1
-            fi
-            if [ ! -f "$migration_marker" ] && [ -d "$legacy_var_dir" ]; then
-              for runtime_part in market qlib artifacts state; do
-                source_dir="$legacy_var_dir/$runtime_part"
-                target_dir="/data/stock-trading/$runtime_part"
-                if [ ! -d "$source_dir" ]; then
-                  continue
-                fi
-                cp -a "$source_dir/." "$target_dir/"
-                source_files="$(find "$source_dir" -type f | wc -l)"
-                target_files="$(find "$target_dir" -type f | wc -l)"
-                source_bytes="$(du -sb "$source_dir" | awk '{print $1}')"
-                target_bytes="$(du -sb "$target_dir" | awk '{print $1}')"
-                echo "Migrated $runtime_part: sourceFiles=$source_files targetFiles=$target_files sourceBytes=$source_bytes targetBytes=$target_bytes"
-                if [ "$target_files" -lt "$source_files" ] || [ "$target_bytes" -lt "$source_bytes" ]; then
-                  echo "Migration verification failed for $runtime_part" >&2
-                  exit 1
-                fi
-              done
-              touch "$migration_marker"
-              echo "Legacy runtime data migration completed; source data retained at $legacy_var_dir"
-            else
-              echo "Legacy runtime data migration already completed or no source directory exists"
-            fi
+            rm -f /etc/logrotate.d/stock-trading
 
-            sed \
-              -e "s|__DEPLOY_DIR__|$deploy_dir|g" \
-              -e '/^# AI_GENERATE_/d' \
-              "$cron_template" > "$cron_file"
-            cp "$logrotate_template" "$cron_dir/stock-trading.logrotate"
-
-            current_cron="$(mktemp)"
-            next_cron="$(mktemp)"
-            trap 'rm -f "$current_cron" "$next_cron"' EXIT
-            crontab -l > "$current_cron" 2>/dev/null || true
-            awk '
-              $0 == "# STOCK_TRADING_CRON_BEGIN" { managed = 1; next }
-              $0 == "# STOCK_TRADING_CRON_END" { managed = 0; next }
-              !managed { print }
-            ' "$current_cron" > "$next_cron"
-            if [ -s "$next_cron" ]; then
-              printf '\n' >> "$next_cron"
+            if command -v crontab >/dev/null; then
+              current_cron="$(mktemp)"
+              cleaned_cron="$(mktemp)"
+              crontab -l > "$current_cron" 2>/dev/null || true
+              awk '
+                $0 == "# STOCK_TRADING_CRON_BEGIN" { managed = 1; next }
+                $0 == "# STOCK_TRADING_CRON_END" { managed = 0; next }
+                !managed { print }
+              ' "$current_cron" > "$cleaned_cron"
+              crontab "$cleaned_cron"
+              rm -f "$current_cron" "$cleaned_cron"
             fi
-            cat "$cron_file" >> "$next_cron"
-            crontab "$next_cron"
+            rm -f \
+              "$deploy_dir/cron/stock-trading.cron" \
+              "$deploy_dir/cron/stock-trading.logrotate" \
+              /data/stock-trading/state/scheduler.lock \
+              /data/stock-trading/state/logrotate.status
+            rmdir "$deploy_dir/cron" 2>/dev/null || true
 
-            flock -u 9
-            exec 9>&-
-            if [ "$restart_init" -eq 1 ]; then
-              init_pid_file="/data/stock-trading/state/init.pid"
-              nohup /usr/bin/flock -n /data/stock-trading/state/scheduler.lock \
-                /bin/bash -c "set -a; source /etc/stock-trading/env; set +a; exec '$venv_dir/bin/stock-trading' init" \
-                >> /var/log/stock-trading/run.log 2>&1 < /dev/null &
-              echo "$!" > "$init_pid_file"
-              sleep 2
-              if ! kill -0 "$(cat "$init_pid_file")" 2>/dev/null; then
-                echo "Failed to restart init after migration" >&2
-                exit 1
-              fi
-              echo "Init restarted from the fixed runtime directory; pid=$(cat "$init_pid_file")"
-              restarted_init_pids="$(pgrep -d, -f "$venv_dir/bin/python $venv_dir/bin/[s]tock-trading init" || true)"
-              if [ -z "$restarted_init_pids" ]; then
-                echo "The restarted init process is not visible" >&2
-                exit 1
-              fi
-              ps -o pid,ppid,lstart,stat,cmd -p "$restarted_init_pids"
-            fi
+            systemctl disable --now 'stock-trading-*.timer' 2>/dev/null || true
+            rm -f "$systemd_target"/stock-trading-*.timer "$systemd_target"/stock-trading-*.service
+            systemctl daemon-reload
+            systemctl enable --now $timers
+
+            for timer in $timers; do
+              systemctl is-enabled --quiet "$timer"
+              systemctl is-active --quiet "$timer"
+            done
+            systemctl list-timers --all $timers --no-pager

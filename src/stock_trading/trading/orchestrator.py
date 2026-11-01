@@ -169,9 +169,7 @@ class LiveTradingOrchestrator:
             quantity = affordable_quantity(
                 account.available_cash,
                 quote.asks[0],
-                Decimal(str(self._config.trading_min_commission)),
-                Decimal(str(self._config.trading_commission_rate)),
-                Decimal(str(self._config.trading_transfer_fee_rate)),
+                Decimal(str(self._config.trading_order_fee)),
             )
             if quantity <= 0:
                 rejected.append(

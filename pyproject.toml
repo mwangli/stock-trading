@@ -20,6 +20,14 @@ dependencies = [
 
 [project.scripts]
 stock-trading = "stock_trading.cli:main"
+stock-collect = "stock_trading.shortcuts:collect"
+stock-rank = "stock_trading.shortcuts:rank"
+stock-sell = "stock_trading.shortcuts:sell"
+stock-buy = "stock_trading.shortcuts:buy"
+stock-broker = "stock_trading.shortcuts:broker"
+stock-perform = "stock_trading.shortcuts:perform"
+stock-evaluate = "stock_trading.shortcuts:evaluate"
+stock-clean = "stock_trading.shortcuts:clean"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

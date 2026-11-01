@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------
+# AI_GENERATE_START --------------------
 from __future__ import annotations
 
 import json
@@ -40,6 +40,7 @@ def train_alpha158_lightgbm_adaptive(
     artifact_dir: Path,
     segments: ModelSegments,
     top_k: int = 5,
+    feature_batch_days: int = 30,
 ) -> dict[str, object]:
     """Select the existing single-pass path or the low-memory batched path."""
     from stock_trading.research.batched_model import (
@@ -69,6 +70,7 @@ def train_alpha158_lightgbm_adaptive(
             work_dir,
             segments,
             _lightgbm_progress_callback(),
+            feature_batch_days,
         )
         return _persist_training_artifacts(
             result.model,
@@ -80,6 +82,7 @@ def train_alpha158_lightgbm_adaptive(
             train_rows=result.train_rows,
             valid_rows=result.valid_rows,
             feature_count=result.feature_count,
+            feature_batch_days=result.feature_batch_days,
         )
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
@@ -228,6 +231,7 @@ def _persist_training_artifacts(
     train_rows: int,
     valid_rows: int,
     feature_count: int,
+    feature_batch_days: int,
 ) -> dict[str, object]:
     evaluation = scored.dropna(subset=["score", "label"])
     metrics = _cross_sectional_metrics(evaluation)
@@ -270,6 +274,7 @@ def _persist_training_artifacts(
         "trainRows": train_rows,
         "validRows": valid_rows,
         "featureCount": feature_count,
+        "featureBatchDays": feature_batch_days,
     }
     (artifact_dir / "metrics.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -505,4 +510,4 @@ def automatic_model_segments(
         test_end=calendar[-1],
     )
 
-# AI_GENERATE_END -------------------
+# AI_GENERATE_END --------------------

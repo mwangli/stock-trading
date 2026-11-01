@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------
+# AI_GENERATE_START ------------
 from __future__ import annotations
 
 import logging
@@ -117,6 +117,29 @@ class QlibBinaryStore:
             and all(self._feature_files_valid(instrument) for instrument in expected)
         )
 
+    def is_date_ready(self, target_date: date) -> bool:
+        """检查目标交易日及现有股票特征是否可直接用于预测。"""
+        calendar_path = self._target / "calendars" / "day.txt"
+        instruments_path = self._target / "instruments" / "all.txt"
+        try:
+            calendar = {
+                date.fromisoformat(value)
+                for value in calendar_path.read_text(encoding="utf-8").splitlines()
+                if value.strip()
+            }
+            instruments = {
+                value.split("\t", maxsplit=1)[0]
+                for value in instruments_path.read_text(encoding="utf-8").splitlines()
+                if value.strip()
+            }
+        except (OSError, ValueError):
+            return False
+        return (
+            target_date in calendar
+            and len(instruments) >= 100
+            and all(self._feature_files_valid(instrument) for instrument in instruments)
+        )
+
     def _feature_files_valid(self, instrument: str) -> bool:
         directory = self._target / "features" / instrument.lower()
         fields = (
@@ -189,4 +212,4 @@ class QlibBinaryStore:
 def to_qlib_code(code: str) -> str:
     exchange, symbol = code.split(".", maxsplit=1)
     return f"{exchange.upper()}{symbol}"
-# AI_GENERATE_END -----------
+# AI_GENERATE_END ------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START ---------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -9,7 +9,7 @@ import urllib.request
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from time import perf_counter
+from time import perf_counter, sleep
 from typing import Annotated, Callable, TypeVar
 from zoneinfo import ZoneInfo
 
@@ -38,17 +38,27 @@ from stock_trading.research.artifacts import (
 from stock_trading.research.model import (
     predict_alpha158_lightgbm,
 )
-from stock_trading.research.qlib_store import to_qlib_code
-from stock_trading.research.training import run_training_pipeline
+from stock_trading.research.qlib_store import QlibBinaryStore, to_qlib_code
+from stock_trading.research.training import (
+    default_training_codes,
+    refresh_qlib_from_parquet,
+    run_training_pipeline,
+)
 from stock_trading.state.store import StateStore
 from stock_trading.trading.broker_sync import BrokerOrderSyncService
 from stock_trading.trading.execution import OrderExecutionOrchestrator
 from stock_trading.trading.orchestrator import LiveTradingOrchestrator
-from stock_trading.trading.performance import LivePerformanceService
+from stock_trading.trading.permissions import refresh_permissions
+from stock_trading.trading.performance import (
+    ModelEvaluationService,
+    RealizedPerformanceService,
+)
 
 LOGGER = logging.getLogger(__name__)
 BARK_PUSH_URL = "https://api.day.app/push"
 PUBLIC_LOG_URL = "http://117.72.216.67/logs/run.log"
+DEPENDENCY_WAIT_SECONDS = 30 * 60
+DEPENDENCY_POLL_SECONDS = 10
 
 
 app = typer.Typer(
@@ -115,12 +125,12 @@ COMMAND_CONTEXT = {"help_option_names": []}
 
 @app.command(
     "init",
-    short_help="初始化完整交易环境，执行同步订单，采集数据，训练模型任务。",
+    short_help="初始化行情、Qlib、模型、回测和最新预测。",
     context_settings=COMMAND_CONTEXT,
 )
 def init_command() -> None:
     def run(config: AppConfig) -> dict[str, object]:
-        return InitializationService(config, lambda: _build_broker(config)).run()
+        return InitializationService(config).run()
 
     result = _execute("init", {}, run)
     _print_json(result)
@@ -128,7 +138,7 @@ def init_command() -> None:
 
 @app.command(
     "broker",
-    short_help="[cyan]--date[/cyan] DATE[:DATE] 同步历史订单并重建交易记录。",
+    short_help="[cyan]--date[/cyan] DATE[:DATE] 同步成交事实并增量结算闭环。",
     context_settings=COMMAND_CONTEXT,
 )
 def broker_command(
@@ -151,7 +161,7 @@ def broker_command(
     "collect",
     short_help=(
         "[cyan]--codes[/cyan] TEXT [cyan]--date[/cyan] DATE[:DATE] "
-        "采集日线、复权因子和5分钟线。"
+        "采集 Parquet 行情并刷新 Qlib。"
     ),
     context_settings=COMMAND_CONTEXT,
 )
@@ -165,17 +175,17 @@ def collect_command(
         typer.Option("--date"),
     ] = None,
 ) -> None:
-    def run(config: AppConfig) -> None:
-        today = date.today()
+    def run(config: AppConfig) -> dict[str, object]:
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
         start, end = _parse_date_expression(date_value, today, today)
         parsed_codes = (
             _parse_stock_codes(codes)
             if codes
             else _default_research_codes(config, start, end)
         )
-        _collect_codes(config, parsed_codes, start, end)
+        return _collect_codes(config, parsed_codes, start, end)
 
-    _execute(
+    result = _execute(
         "collect",
         {
             "codes": codes,
@@ -183,12 +193,13 @@ def collect_command(
         },
         run,
     )
+    _print_json(result)
 
 
 @app.command(
     "train",
     short_help=(
-        "[cyan]--split[/cyan] RATIO 准备数据、训练、评估并回测模型。"
+        "[cyan]--split[/cyan] RATIO 使用现有 Qlib 训练、评估并回测模型。"
     ),
     context_settings=COMMAND_CONTEXT,
 )
@@ -219,7 +230,7 @@ def _run_date_command(
     value: str | None,
     operation: Callable[[AppConfig, date], None],
 ) -> None:
-    business_date = _parse_date(value) if value else date.today()
+    business_date = _business_date(value)
     _execute(command, {"date": value}, lambda config: operation(config, business_date))
 
 
@@ -239,22 +250,18 @@ def rank_command(
 
 @app.command(
     "trading",
-    short_help="[cyan]--buy|--sell[/cyan] 执行当天实时交易。",
+    short_help="[cyan]--type[/cyan] B/S 执行当天实时买入/卖出交易。",
     context_settings=COMMAND_CONTEXT,
 )
 def trading_command(
-    buy: Annotated[
-        bool,
-        typer.Option("--buy"),
-    ] = False,
-    sell: Annotated[
-        bool,
-        typer.Option("--sell"),
-    ] = False,
+    trade_type: Annotated[
+        str,
+        typer.Option("--type"),
+    ],
 ) -> None:
-    if buy == sell:
-        raise typer.BadParameter("必须且只能指定 --buy 或 --sell 其中一个")
-    side = "BUY" if buy else "SELL"
+    if trade_type not in {"B", "S"}:
+        raise typer.BadParameter("--type 只能是 B 或 S")
+    side = "BUY" if trade_type == "B" else "SELL"
     business_date = datetime.now(ZoneInfo("Asia/Shanghai")).date()
     _execute(
         "trading",
@@ -264,28 +271,63 @@ def trading_command(
 
 
 @app.command(
-    "close",
-    short_help="[cyan]--date[/cyan] DATE 执行收盘后同步、评估和清理。",
+    "performance",
+    short_help="[cyan]--date[/cyan] DATE 生成当日已实现绩效。",
     context_settings=COMMAND_CONTEXT,
 )
-def close_command(
+def performance_command(
     business_date: Annotated[
         str | None,
         typer.Option("--date"),
     ] = None,
 ) -> None:
     target_date = _business_date(business_date)
-    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
-    if target_date != today:
-        raise typer.BadParameter(
-            f"close 只支持上海当天 {today.isoformat()}，不能生成历史权益"
-        )
     result = _execute(
-        "close",
+        "performance",
         {"date": business_date},
-        lambda config: _close(config, target_date),
+        lambda config: _update_realized_performance(config, target_date),
     )
-    _print_close_summary(result)
+    _print_performance_summary(result)
+
+
+@app.command(
+    "evaluate",
+    short_help="[cyan]--date[/cyan] DATE 基于已实现绩效评估模型。",
+    context_settings=COMMAND_CONTEXT,
+)
+def evaluate_command(
+    business_date: Annotated[
+        str | None,
+        typer.Option("--date"),
+    ] = None,
+) -> None:
+    target_date = _business_date(business_date)
+    result = _execute(
+        "evaluate",
+        {"date": business_date},
+        lambda config: _evaluate_model(config, target_date),
+    )
+    _print_evaluation_summary(result)
+
+
+@app.command(
+    "clean",
+    short_help="[cyan]--date[/cyan] DATE 清理过期分钟数据和状态。",
+    context_settings=COMMAND_CONTEXT,
+)
+def clean_command(
+    reference_date: Annotated[
+        str | None,
+        typer.Option("--date"),
+    ] = None,
+) -> None:
+    target_date = _business_date(reference_date)
+    result = _execute(
+        "clean",
+        {"date": reference_date},
+        lambda config: _cleanup(config, target_date),
+    )
+    _print_cleanup_summary(result)
 
 
 def _business_date(value: str | None) -> date:
@@ -364,20 +406,32 @@ def _parse_model_split(value: str) -> tuple[Decimal, Decimal, Decimal]:
 
 def _collect_codes(
     config: AppConfig, codes: list[str], start_date: date, end_date: date
-) -> None:
+) -> dict[str, object]:
+    state = StateStore(config.state_db_path)
+    business_key = state.start_task("COLLECT", end_date)
     LOGGER.info(
         "开始采集股票数据：股票数=%d；日期=%s 至 %s；连接=1",
         len(codes),
         start_date,
         end_date,
     )
-    result = sync_collection_data(
-        ParquetMarketStore(config.data_dir),
-        config.baostock_proxy,
-        codes,
-        start_date,
-        end_date,
-    )
+    try:
+        result = sync_collection_data(
+            ParquetMarketStore(config.data_dir),
+            config.baostock_proxy,
+            codes,
+            start_date,
+            end_date,
+        )
+        research_start = end_date - timedelta(days=config.market_history_days)
+        research_codes = default_training_codes(config, research_start, end_date)
+        qlib_refresh = refresh_qlib_from_parquet(
+            config, research_codes, research_start, end_date
+        )
+    except BaseException as error:
+        state.finish_task(business_key, False, error)
+        raise
+    state.finish_task(business_key, True)
     LOGGER.info(
         "股票数据采集完成：股票数=%d；完成=%s；跳过=%s；失败=%d",
         len(codes),
@@ -385,6 +439,7 @@ def _collect_codes(
         result["skipped"],
         len(result["failed"]),
     )
+    return {"collection": result, "qlibRefresh": qlib_refresh}
 
 
 def _default_research_codes(
@@ -423,36 +478,39 @@ def _sync_broker(
 ) -> dict[str, object]:
     LOGGER.info("开始同步券商历史订单：日期=%s 至 %s", start_date, end_date)
     store = StateStore(config.state_db_path)
-    result = BrokerOrderSyncService(
-        config, store, broker or _build_broker(config)
-    ).sync(start_date, end_date)
+    business_key = store.start_task("BROKER", end_date)
+    try:
+        result = BrokerOrderSyncService(
+            config, store, broker or _build_broker(config)
+        ).sync(start_date, end_date)
+        result["permissions"] = refresh_permissions(
+            store, store.broker_orders(), end_date
+        )
+    except BaseException as error:
+        store.finish_task(business_key, False, error)
+        raise
+    store.finish_task(business_key, True)
     LOGGER.info(
-        "券商历史订单同步完成：日期=%s 至 %s；有效订单=%s；交易记录=%s",
+        "券商历史订单同步完成：日期=%s 至 %s；有效订单=%s；新增闭环=%s",
         start_date,
         end_date,
         result["validOrders"],
-        result["tradeRecords"],
+        result["settlement"]["realizedTrades"],
     )
     return result
 
 
-def _close(config: AppConfig, business_date: date) -> dict[str, object]:
-    broker_client = _build_broker(config)
-    broker = _sync_broker(config, business_date, business_date, broker_client)
-    evaluation = _update_live_performance(config, business_date, broker_client)
-    cleanup = _cleanup(config, business_date)
-    return {
-        "businessDate": business_date.isoformat(),
-        "broker": broker,
-        "evaluate": evaluation,
-        "clean": cleanup,
-    }
-
-
 def _rank(config: AppConfig, prediction_date: date) -> None:
     LOGGER.info("开始生成完整横截面预测：预测日期=%s", prediction_date)
-    model_dir = resolve_current_model_dir(model_root(config.artifact_dir))
+    state_store = StateStore(config.state_db_path)
+    _wait_for_task(state_store, "COLLECT", prediction_date)
     store = ParquetMarketStore(config.data_dir)
+    qlib = QlibBinaryStore(store, config.qlib_dir)
+    if not qlib.is_date_ready(prediction_date):
+        raise ValueError(
+            f"collect 已成功但 Qlib 未覆盖目标日期：{prediction_date.isoformat()}"
+        )
+    model_dir = resolve_current_model_dir(model_root(config.artifact_dir))
     stocks = store.read_stock_basics()
     live_metadata_codes = live_codes(stocks, prediction_date)
     current_codes = store.tradable_codes_on(live_metadata_codes, prediction_date)
@@ -462,7 +520,7 @@ def _rank(config: AppConfig, prediction_date: date) -> None:
         prediction_date,
         eligible_instruments={to_qlib_code(code) for code in current_codes},
     )
-    state = StateStore(config.state_db_path).import_prediction_artifact(
+    state = state_store.import_prediction_artifact(
         model_dir, Path(prediction["path"])
     )
     LOGGER.info(
@@ -513,22 +571,54 @@ def _run_trading_window(
         }
     )
 
-def _update_live_performance(
-    config: AppConfig,
-    business_date: date,
-    broker: ZXBrokerClient | None = None,
+def _update_realized_performance(
+    config: AppConfig, business_date: date
 ) -> dict[str, object]:
-    LOGGER.info("开始更新实盘绩效：业务日期=%s；外部资金流=0", business_date)
     store = StateStore(config.state_db_path)
-    result = LivePerformanceService(
-        config, store, broker or _build_broker(config)
-    ).update(business_date)
-    LOGGER.info(
-        "实盘绩效更新完成：业务日期=%s；评估决策=%s",
-        business_date,
-        result["evaluation"]["evaluation"]["decision"],
-    )
+    _wait_for_task(store, "BROKER", business_date)
+    business_key = store.start_task("PERFORMANCE", business_date)
+    try:
+        result = RealizedPerformanceService(store).update(business_date)
+    except BaseException as error:
+        store.finish_task(business_key, False, error)
+        raise
+    store.finish_task(business_key, True)
     return result
+
+
+def _evaluate_model(config: AppConfig, business_date: date) -> dict[str, object]:
+    store = StateStore(config.state_db_path)
+    _wait_for_task(store, "PERFORMANCE", business_date)
+    business_key = store.start_task("EVALUATE", business_date)
+    try:
+        result = ModelEvaluationService(config, store).evaluate(business_date)
+    except BaseException as error:
+        store.finish_task(business_key, False, error)
+        raise
+    store.finish_task(business_key, True)
+    return result
+
+
+def _wait_for_task(
+    store: StateStore, task_type: str, business_date: date
+) -> None:
+    deadline = perf_counter() + DEPENDENCY_WAIT_SECONDS
+    while True:
+        task = store.task_status(task_type, business_date)
+        if task is not None and task["status"] == "SUCCESS":
+            return
+        if task is not None and task["status"] == "FAILED":
+            raise ValueError(
+                f"前置任务失败：{task_type}:{business_date.isoformat()}；"
+                f"{task.get('error_message') or '未知原因'}"
+            )
+        if perf_counter() >= deadline:
+            status = "MISSING" if task is None else str(task["status"])
+            raise TimeoutError(
+                f"等待前置任务超时：{task_type}:{business_date.isoformat()}；"
+                f"状态={status}"
+            )
+        sleep(DEPENDENCY_POLL_SECONDS)
 
 
 def _build_broker(config: AppConfig) -> ZXBrokerClient:
@@ -649,32 +739,36 @@ def _print_json(value: object) -> None:
 
 
 def _print_broker_summary(result: dict[str, object]) -> None:
-    trade_records = dict(result["tradeRecords"])
+    settlement = dict(result["settlement"])
     print(
         "券商同步完成："
         f"日期={result['startDate']}:{result['endDate']}；"
         f"有效订单={result['validOrders']}；"
         f"新增={result['insertedOrders']}；"
         f"更新={result['updatedOrders']}；"
-        f"删除={result['deletedOrders']}；"
-        f"交易记录={trade_records.get('recordCount', 0)}；"
-        f"未匹配卖出={trade_records.get('unmatchedSellQuantity', 0)}"
+        f"新增闭环={settlement.get('realizedTrades', 0)}；"
+        f"未匹配卖出={settlement.get('unmatchedSellQuantity', 0)}"
+    )
+
+
+def _print_performance_summary(result: dict[str, object]) -> None:
+    performance = dict(result["performance"])
+    print(
+        "已实现绩效完成："
+        f"日期={result['businessDate']}；"
+        f"闭环交易={performance.get('trade_count', 0)}；"
+        f"净损益={_format_amount(performance.get('net_pnl'))}；"
+        f"净收益率={_format_rate(performance.get('net_return'))}"
     )
 
 
 def _print_evaluation_summary(result: dict[str, object]) -> None:
-    performance = dict(result["performance"])
-    evaluation_result = dict(result["evaluation"])
-    evaluation = dict(evaluation_result["evaluation"])
-    request = evaluation_result.get("trainingRequest")
+    evaluation = dict(result["evaluation"])
     print(
-        "绩效评估完成："
+        "模型评估完成："
         f"日期={result['businessDate']}；"
-        f"权益={_format_amount(performance.get('equity'))}；"
-        f"净损益={_format_amount(performance.get('net_pnl'))}；"
-        f"净收益率={_format_rate(performance.get('net_return'))}；"
         f"模型决策={evaluation.get('decision', '-')}；"
-        f"训练请求={'是' if request else '否'}"
+        f"原因={evaluation.get('reason', '-')}"
     )
 
 
@@ -691,17 +785,10 @@ def _print_cleanup_summary(result: dict[str, object]) -> None:
     )
 
 
-def _print_close_summary(result: dict[str, object]) -> None:
-    print(f"收盘处理完成：日期={result['businessDate']}")
-    _print_broker_summary(dict(result["broker"]))
-    _print_evaluation_summary(dict(result["evaluate"]))
-    _print_cleanup_summary(dict(result["clean"]))
-
-
 def _format_amount(value: object) -> str:
     return "-" if value is None else f"{float(value):,.2f}"
 
 
 def _format_rate(value: object) -> str:
     return "-" if value is None else f"{float(value):.2%}"
-# AI_GENERATE_END ----------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END ---------------------------------------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------
+# AI_GENERATE_START -------------------------
 from __future__ import annotations
 
 import logging
@@ -125,10 +125,21 @@ class OrderExecutionOrchestrator:
                 )
                 self._state_store.prepare_real_order(
                     client_order_id=client_order_id,
+                    business_date=business_date,
                     instrument=instrument,
                     side=side,
                     quantity=int(live_order["quantity"]),
                     price=Decimal(str(live_order["price"])),
+                    model_version_id=(
+                        int(target["modelVersionId"])
+                        if target.get("modelVersionId") is not None
+                        else None
+                    ),
+                    prediction_date=(
+                        str(target["predictionDate"])
+                        if target.get("predictionDate") is not None
+                        else None
+                    ),
                 )
                 self._state_store.start_order_submission(client_order_id)
                 LOGGER.info(
@@ -235,9 +246,7 @@ class OrderExecutionOrchestrator:
             quantity = affordable_quantity(
                 account.available_cash,
                 decision.price,
-                Decimal(str(self._config.trading_min_commission)),
-                Decimal(str(self._config.trading_commission_rate)),
-                Decimal(str(self._config.trading_transfer_fee_rate)),
+                Decimal(str(self._config.trading_order_fee)),
             )
             if quantity <= 0:
                 return None, "INSUFFICIENT_CASH"
@@ -514,4 +523,4 @@ def _is_permission_denial(message: str) -> bool:
         keyword in normalized
         for keyword in ("无权限", "没有权限", "未开通", "禁止交易", "不允许交易")
     )
-# AI_GENERATE_END ------------------------
+# AI_GENERATE_END -------------------------

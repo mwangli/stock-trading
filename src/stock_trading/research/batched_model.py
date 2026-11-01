@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ----
 from __future__ import annotations
 
 import gc
@@ -22,7 +22,6 @@ if TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 GIB = 1024**3
 MEMORY_THRESHOLD_BYTES = 16 * GIB
-FEATURE_BATCH_DAYS = 20
 
 
 @dataclass(frozen=True)
@@ -40,6 +39,7 @@ class BatchedTrainingResult:
     train_rows: int
     valid_rows: int
     feature_count: int
+    feature_batch_days: int
 
 
 def total_physical_memory_bytes() -> int | None:
@@ -66,6 +66,7 @@ def train_alpha158_lightgbm_batched(
     work_dir: Path,
     segments: ModelSegments,
     progress_callback,
+    feature_batch_days: int,
 ) -> BatchedTrainingResult:
     """Generate Alpha158 by date batches and train from memory-mapped shards."""
     import qlib
@@ -74,7 +75,12 @@ def train_alpha158_lightgbm_batched(
     set_log_context(progress="1/5", target="Qlib")
     LOGGER.info("初始化 Qlib：目录=%s", qlib_dir)
     qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=1)
-    feature_names, shards = _build_feature_shards(qlib_dir, work_dir, segments)
+    feature_names, shards = _build_feature_shards(
+        qlib_dir,
+        work_dir,
+        segments,
+        feature_batch_days,
+    )
     train_shards = shards["train"]
     valid_shards = shards["valid"]
     test_shards = shards["test"]
@@ -151,6 +157,7 @@ def train_alpha158_lightgbm_batched(
         train_rows=len(train_labels),
         valid_rows=len(valid_labels),
         feature_count=len(feature_names),
+        feature_batch_days=feature_batch_days,
     )
 
 
@@ -181,6 +188,7 @@ def _build_feature_shards(
     qlib_dir: Path,
     work_dir: Path,
     segments: ModelSegments,
+    feature_batch_days: int,
 ) -> tuple[list[str], dict[str, list[FeatureShard]]]:
     from qlib.data import D
 
@@ -191,8 +199,8 @@ def _build_feature_shards(
         if value.strip() and segments.train_start <= date.fromisoformat(value) <= segments.test_end
     ]
     batches = [
-        calendar[index : index + FEATURE_BATCH_DAYS]
-        for index in range(0, len(calendar), FEATURE_BATCH_DAYS)
+        calendar[index : index + feature_batch_days]
+        for index in range(0, len(calendar), feature_batch_days)
     ]
     if not batches:
         raise ValueError("no Qlib calendar dates for batched Alpha158 training")
@@ -204,7 +212,7 @@ def _build_feature_shards(
     LOGGER.info(
         "生成 Alpha158 特征：批次=%d；每批交易日=%d",
         len(batches),
-        FEATURE_BATCH_DAYS,
+        feature_batch_days,
     )
     for batch_index, batch in enumerate(batches, start=1):
         frame = D.features(
@@ -354,4 +362,4 @@ class _NpyFeatureSequence(lgb.Sequence):
     def __getitem__(self, index):
         return np.asarray(self._values[index])
 
-# AI_GENERATE_END ---
+# AI_GENERATE_END ----

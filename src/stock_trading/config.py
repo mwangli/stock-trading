@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------------
+# AI_GENERATE_START ---------------------------------
 from __future__ import annotations
 
 import os
@@ -10,6 +10,7 @@ from pathlib import Path
 FIXED_TIME_URGENCY_STRATEGY = "FIXED_TIME_URGENCY"
 TRADING_MIN_PRICE = 0.01
 TRADING_MAX_PRICE = 1_000_000.0
+TRADING_ORDER_FEE = 5.0
 EXECUTION_WINDOW_SECONDS = 15 * 60
 ORDER_WAIT_SECONDS = 60
 ORDER_POLL_SECONDS = 5
@@ -54,10 +55,7 @@ class AppConfig:
     broker_history_request_interval_seconds: float
     trading_min_price: float
     trading_max_price: float
-    trading_min_commission: float
-    trading_commission_rate: float
-    trading_transfer_fee_rate: float
-    trading_stamp_duty_rate: float
+    trading_order_fee: float
     trading_allowed_prefixes: tuple[str, ...]
     trading_max_prediction_age_days: int
     trading_execution_strategy: str
@@ -69,9 +67,10 @@ class AppConfig:
     trading_passive_fraction: float
     trading_normal_fraction: float
     backtest_capital_scenarios: tuple[int, ...]
-    model_evaluation_window_days: int
+    model_evaluation_observations: int
     model_max_drawdown: float
     model_min_total_gross_return: float
+    model_feature_batch_days: int = 30
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -99,6 +98,9 @@ class AppConfig:
             ),
             bark_device_key=os.getenv("DEVICE_KEY", "").strip(),
             broker_enabled=True,
+            model_feature_batch_days=max(
+                1, int(os.getenv("MODEL_FEATURE_BATCH_DAYS", "30"))
+            ),
             broker_mobile_code=os.getenv("ZXBROKER_MOBILE_CODE", ""),
             broker_account=os.getenv("ZXBROKER_ACCOUNT", ""),
             broker_encoded_password=os.getenv("ZXBROKER_ENCODED_PASSWORD", ""),
@@ -134,18 +136,7 @@ class AppConfig:
             ),
             trading_min_price=TRADING_MIN_PRICE,
             trading_max_price=TRADING_MAX_PRICE,
-            trading_min_commission=max(
-                0.0, float(os.getenv("STOCK_TRADING_MIN_COMMISSION", "5"))
-            ),
-            trading_commission_rate=max(
-                0.0, float(os.getenv("STOCK_TRADING_COMMISSION_RATE", "0.0003"))
-            ),
-            trading_transfer_fee_rate=max(
-                0.0, float(os.getenv("STOCK_TRADING_TRANSFER_FEE_RATE", "0.00001"))
-            ),
-            trading_stamp_duty_rate=max(
-                0.0, float(os.getenv("STOCK_TRADING_STAMP_DUTY_RATE", "0.0005"))
-            ),
+            trading_order_fee=TRADING_ORDER_FEE,
             trading_allowed_prefixes=tuple(
                 value.strip().upper()
                 for value in os.getenv(
@@ -165,8 +156,9 @@ class AppConfig:
             trading_passive_fraction=PASSIVE_FRACTION,
             trading_normal_fraction=NORMAL_FRACTION,
             backtest_capital_scenarios=BACKTEST_CAPITAL_SCENARIOS,
-            model_evaluation_window_days=max(
-                2, int(os.getenv("MODEL_EVALUATION_WINDOW_DAYS", "20"))
+            model_evaluation_observations=max(
+                2,
+                int(os.getenv("MODEL_EVALUATION_OBSERVATIONS", "20")),
             ),
             model_max_drawdown=min(
                 1.0, max(0.0, float(os.getenv("MODEL_MAX_DRAWDOWN", "0.10")))
@@ -194,4 +186,4 @@ def _load_env_file(path: Path) -> None:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         os.environ.setdefault(key, value)
-# AI_GENERATE_END -------------------------------
+# AI_GENERATE_END ---------------------------------

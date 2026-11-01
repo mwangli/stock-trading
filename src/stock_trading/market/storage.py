@@ -216,6 +216,72 @@ class ParquetMarketStore:
                 continue
         return result
 
+    def audit_market_date(
+        self, codes: list[str], trade_date: date
+    ) -> dict[str, object]:
+        """校验目标日行情覆盖和可交易股票分钟窗口完整性。"""
+        missing_daily: list[str] = []
+        incomplete_minutes: list[str] = []
+        tradable: list[str] = []
+        for code in codes:
+            try:
+                daily = self.read_daily_history(code)
+                rows = daily[pd.to_datetime(daily["trade_date"]).dt.date.eq(trade_date)]
+            except (OSError, ValueError, KeyError):
+                rows = pd.DataFrame()
+            if rows.empty:
+                missing_daily.append(code)
+                continue
+            eligible = self._eligible_daily_rows(rows)
+            if eligible.empty:
+                continue
+            tradable.append(code)
+            try:
+                summaries = self.read_minute_summaries(code)
+                window = summaries[
+                    pd.to_datetime(summaries["trade_date"]).dt.date.eq(trade_date)
+                ]
+                complete = (
+                    not window.empty
+                    and bool(window.iloc[-1]["buy_complete"])
+                    and bool(window.iloc[-1]["sell_complete"])
+                )
+            except (OSError, ValueError, KeyError):
+                complete = False
+            if not complete:
+                incomplete_minutes.append(code)
+        return {
+            "date": trade_date.isoformat(),
+            "expectedCodes": len(codes),
+            "dailyCodes": len(codes) - len(missing_daily),
+            "tradableCodes": len(tradable),
+            "completeMinuteCodes": len(tradable) - len(incomplete_minutes),
+            "missingDaily": missing_daily,
+            "incompleteMinutes": incomplete_minutes,
+            "tradable": tradable,
+        }
+
+    def latest_research_mtime(self, codes: list[str]) -> int | None:
+        """返回指定股票全部研究源文件的最新修改时间；文件缺失时返回空。"""
+        paths = [
+            path
+            for code in codes
+            for path in (
+                self._root / "daily_history" / f"code={code}" / "bars.parquet",
+                self._root
+                / "adjustment_factor"
+                / f"code={code}"
+                / "factors.parquet",
+                self._minute_summary_path(code),
+            )
+        ]
+        try:
+            if not paths or any(not path.is_file() for path in paths):
+                return None
+            return max(path.stat().st_mtime_ns for path in paths)
+        except OSError:
+            return None
+
     @staticmethod
     def _eligible_daily_rows(frame: pd.DataFrame) -> pd.DataFrame:
         return frame[

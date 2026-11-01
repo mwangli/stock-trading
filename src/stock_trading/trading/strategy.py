@@ -55,20 +55,15 @@ def select_execution_price(
 def affordable_quantity(
     cash: Decimal,
     price: Decimal,
-    min_commission: Decimal,
-    commission_rate: Decimal,
-    transfer_fee_rate: Decimal,
+    order_fee: Decimal,
 ) -> int:
-    """按实时资金、价格、费用和 100 股整手计算最大可买数量。"""
+    """按实时资金、固定订单费用和 100 股整手计算最大可买数量。"""
     if cash <= 0 or price <= 0:
         return 0
     lots = (cash / (price * LOT_SIZE)).to_integral_value(rounding=ROUND_FLOOR)
     quantity = int(lots) * LOT_SIZE
     while quantity > 0:
-        notional = price * quantity
-        commission = max(min_commission, notional * commission_rate)
-        transfer_fee = notional * transfer_fee_rate
-        if notional + commission + transfer_fee <= cash:
+        if price * quantity + order_fee <= cash:
             return quantity
         quantity -= LOT_SIZE
     return 0

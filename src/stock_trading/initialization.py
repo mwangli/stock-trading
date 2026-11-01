@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------------
+# AI_GENERATE_START ----------------------------------------
 from __future__ import annotations
 
 import logging
@@ -7,7 +7,6 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import TypeVar
 
-from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.config import AppConfig
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.logging_utils import set_log_context
@@ -30,14 +29,12 @@ from stock_trading.research.model import (
 )
 from stock_trading.research.qlib_store import QlibBinaryStore, to_qlib_code
 from stock_trading.research.training import (
-    backtest_directories,
     read_backtest_summaries,
+    refresh_qlib_from_parquet,
     train_prepared_model,
     training_artifacts_valid,
 )
 from stock_trading.state.store import StateStore
-from stock_trading.trading.broker_sync import BrokerOrderSyncService
-from stock_trading.trading.permissions import refresh_permissions
 
 LOGGER = logging.getLogger(__name__)
 MINIMUM_RESEARCH_CODES = 100
@@ -45,21 +42,16 @@ T = TypeVar("T")
 
 
 class InitializationService:
-    """按固定阶段初始化行情、模型、回测、预测和券商事实。"""
+    """按固定阶段初始化行情、Qlib、模型、回测和预测。"""
 
-    def __init__(
-        self,
-        config: AppConfig,
-        broker_factory: Callable[[], ZXBrokerClient],
-    ) -> None:
+    def __init__(self, config: AppConfig) -> None:
         self._config = config
-        self._broker_factory = broker_factory
         self._market = ParquetMarketStore(config.data_dir)
         self._state = StateStore(config.state_db_path)
 
     def run(self) -> dict[str, object]:
         """执行可恢复初始化。"""
-        set_log_context(progress="0/6", target="状态库")
+        set_log_context(progress="0/5", target="状态库")
         self._state.initialize()
         LOGGER.info("状态库就绪，将按实际数据检查各初始化步骤")
 
@@ -125,7 +117,9 @@ class InitializationService:
             3,
             "Qlib 数据构建",
             lambda: qlib.is_valid(model_codes, start_date, end_date),
-            lambda: qlib.rebuild(model_codes, start_date, end_date),
+            lambda: refresh_qlib_from_parquet(
+                self._config, model_codes, start_date, end_date
+            ),
         )
         model_root_dir = model_root(self._config.artifact_dir)
         self._step(
@@ -147,24 +141,15 @@ class InitializationService:
         if prediction_result is None:
             prediction_result = self._prediction_summary(model_dir, end_date)
 
-        broker_result = self._sync_broker_history(start_date, end_date)
-        if broker_result:
-            permissions = refresh_permissions(
-                self._state, self._state.history_orders(), end_date
-            )
-        else:
-            permissions = refresh_permissions(self._state, (), end_date)
         readiness = {
             "modelReady": _model_valid(model_root_dir),
             "predictionReady": self._prediction_valid(model_dir, end_date),
-            "brokerReady": broker_result is not None,
         }
-        set_log_context(progress="6/6", target="初始化")
+        set_log_context(progress="5/5", target="初始化")
         LOGGER.info(
-            "初始化完成：模型=%s；预测=%s；券商=%s",
+            "初始化完成：模型=%s；预测=%s",
             readiness["modelReady"],
             readiness["predictionReady"],
-            readiness["brokerReady"],
         )
         return {
             "startDate": start_date.isoformat(),
@@ -175,7 +160,6 @@ class InitializationService:
             "capitalScenarios": list(self._config.backtest_capital_scenarios),
             "backtests": backtests,
             "prediction": prediction_result,
-            "permissions": permissions,
         } | readiness
 
     def _step(
@@ -186,7 +170,7 @@ class InitializationService:
         action: Callable[[], T],
         post_validator: Callable[[], bool] | None = None,
     ) -> T | None:
-        set_log_context(progress=f"{index}/6", target=title)
+        set_log_context(progress=f"{index}/5", target=title)
         LOGGER.info("初始化步骤开始")
         if validator():
             LOGGER.info("实际数据检查通过，初始化步骤跳过")
@@ -194,7 +178,7 @@ class InitializationService:
         result = action()
         if not (post_validator or validator)():
             raise ValueError(f"初始化阶段完成后检查失败: {title}")
-        set_log_context(progress=f"{index}/6", target=title)
+        set_log_context(progress=f"{index}/5", target=title)
         LOGGER.info("初始化步骤完成")
         return result
 
@@ -206,15 +190,9 @@ class InitializationService:
             model_dir = resolve_current_model_dir(model_root_dir)
         except (OSError, ValueError):
             return False
-        directories = {
-            f"capital-{cash}": path
-            for cash, path in backtest_directories(
-                self._config, model_dir
-            ).items()
-        }
         return training_artifacts_valid(
             self._config, model_dir
-        ) and self._state.research_artifacts_registered(model_dir, directories)
+        ) and self._state.model_artifacts_registered(model_dir)
 
     def _prediction_valid(self, model_dir: Path, prediction_date: date) -> bool:
         return (
@@ -244,24 +222,9 @@ class InitializationService:
             "path": str(path),
         }
 
-    def _sync_broker_history(
-        self, start_date: date, end_date: date
-    ) -> dict[str, object] | None:
-        set_log_context(progress="6/6", target="券商历史订单")
-        LOGGER.info("开始同步历史订单并重建 FIFO 交易记录")
-        try:
-            broker = self._broker_factory()
-            return BrokerOrderSyncService(
-                self._config, self._state, broker
-            ).sync(start_date, end_date)
-        except Exception as error:
-            LOGGER.warning("券商初始化已跳过，不影响模型可用性：%s", error)
-            return None
-
-
 def _model_valid(model_root_dir: Path) -> bool:
     try:
         return model_artifacts_valid(resolve_current_model_dir(model_root_dir))
     except (OSError, ValueError):
         return False
-# AI_GENERATE_END --------------------------------------
+# AI_GENERATE_END ----------------------------------------
