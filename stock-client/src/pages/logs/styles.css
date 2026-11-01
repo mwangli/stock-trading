@@ -1,0 +1,17 @@
+/* AI_GENERATE_START -- */
+.logs-desktop-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+@media (max-width: 767px) {
+  .logs-toolbar {
+    display: none;
+  }
+
+  .logs-desktop-actions {
+    display: none;
+  }
+}
+/* AI_GENERATE_END -- */

@@ -1,0 +1,43 @@
+/* AI_GENERATE_START - */
+@media (max-width: 991px) {
+  .app-mobile-user-drawer .ant-drawer-content {
+    max-height: min(70dvh, 420px);
+    border-radius: 8px 8px 0 0;
+    background: var(--panel-bg);
+  }
+
+  .app-mobile-user-drawer .ant-drawer-header {
+    min-height: 56px;
+    border-color: var(--border-color);
+    padding: 12px 16px;
+  }
+
+  .app-mobile-user-drawer .ant-drawer-title,
+  .app-mobile-user-drawer .ant-drawer-close {
+    color: var(--text-primary);
+  }
+
+  .app-mobile-user-drawer .ant-drawer-body {
+    padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+  }
+
+  .app-mobile-user-menu.ant-menu {
+    border-inline-end: 0;
+    background: transparent;
+  }
+
+  .app-mobile-user-menu .ant-menu-item {
+    width: 100%;
+    min-height: 48px;
+    margin: 4px 0;
+    line-height: 48px;
+    touch-action: manipulation;
+  }
+
+  .app-mobile-user-menu .ant-menu-item-divider {
+    margin: 4px 0;
+    border-color: var(--border-color);
+  }
+}
+/* AI_GENERATE_END - */
