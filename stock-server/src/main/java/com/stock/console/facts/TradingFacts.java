@@ -1,8 +1,7 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START -----
 package com.stock.console.facts;
 
 import com.stock.console.config.ConsoleProperties;
-import com.stock.console.data.RemoteDataSource;
 import org.springframework.stereotype.Repository;
 
 import java.nio.file.Files;
@@ -21,16 +20,14 @@ import java.util.Map;
 public class TradingFacts {
 
     private final ConsoleProperties properties;
-    private final RemoteDataSource remoteData;
 
-    public TradingFacts(ConsoleProperties properties, RemoteDataSource remoteData) {
+    public TradingFacts(ConsoleProperties properties) {
         this.properties = properties;
-        this.remoteData = remoteData;
     }
 
     public Map<String, Object> status() {
         String source = databaseSource();
-        if (!databaseAvailable(source)) {
+        if (!databaseAvailable()) {
             return Map.of(
                     "available", false,
                     "reason", "trading.db 不存在",
@@ -198,7 +195,7 @@ public class TradingFacts {
 
     private List<Map<String, Object>> query(String sql, int limit) {
         String source = databaseSource();
-        if (!databaseAvailable(source)) {
+        if (!databaseAvailable()) {
             return List.of();
         }
         try (Connection connection = openReadOnly(); Statement statement = connection.createStatement()) {
@@ -222,7 +219,6 @@ public class TradingFacts {
 
     private Connection openReadOnly() throws SQLException {
         Connection connection = DriverManager.getConnection("jdbc:duckdb:");
-        remoteData.configure(connection);
         String path = databaseSource().replace("'", "''");
         try (Statement statement = connection.createStatement()) {
             statement.execute("ATTACH '" + path + "' AS trading (TYPE sqlite, READ_ONLY)");
@@ -234,16 +230,11 @@ public class TradingFacts {
     }
 
     private String databaseSource() {
-        if (remoteData.enabled()) {
-            return remoteData.tradingDatabase();
-        }
         return properties.tradingDb().toAbsolutePath().normalize().toString().replace('\\', '/');
     }
 
-    private boolean databaseAvailable(String source) {
-        return remoteData.enabled()
-                ? remoteData.exists(source)
-                : Files.isRegularFile(properties.tradingDb());
+    private boolean databaseAvailable() {
+        return Files.isRegularFile(properties.tradingDb());
     }
 
     private String safeMessage(SQLException exception) {
@@ -251,4 +242,4 @@ public class TradingFacts {
         return message == null || message.isBlank() ? "SQLite 数据源无法读取" : message;
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END -----

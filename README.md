@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START------------- -->
+<!-- AI_GENERATE_START-------------- -->
 # stock-console
 
 `stock-web` 分支是纯 Python T+1 交易系统的只读 Web 外壳，与核心交易代码共用同一个代码库。核心行情采集、模型训练、预测、交易执行、状态恢复和绩效计算位于 `stock-trading` 分支；两个分支共享同一套 `var/market` Parquet 和 `var/state/trading.db` 数据结构。
@@ -64,7 +64,7 @@ Host Cron -> Python CLI -> Parquet + trading.db + logs
 
 ## 配置
 
-本地直接启动后端时默认启用 `local` profile，登录账号默认为 `admin`，但密码哈希仍须通过 `CONSOLE_PASSWORD_HASH` 显式提供。可通过 `CONSOLE_USERNAME` 修改账号，不在源码或配置中保存明文开发密码。
+后端只需要通过 `STOCK_TRADING_VAR_DIR` 配置 Python 交易系统的 `var` 数据根目录，并自动读取其下的 `state/trading.db` 与 `market`。本地默认值为 `D:/stock-trading4/var`。本地直接启动后端时默认启用 `local` profile，登录账号默认为 `admin`，但密码哈希仍须通过 `CONSOLE_PASSWORD_HASH` 显式提供。可通过 `CONSOLE_USERNAME` 修改账号，不在源码或配置中保存明文开发密码。
 
 生产部署至少需要：
 
@@ -78,16 +78,6 @@ STOCK_TRADING_DOCUMENTS_DIR=/srv/stock-trading
 Docker Compose 固定启用 `prod` profile，不使用本地默认密码。Agent 可选配置：`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL`、`AGENT_TIMEOUT_SECONDS`、`AGENT_MAX_TOKENS`。生产账号默认为 `admin`，可通过 `CONSOLE_USERNAME` 修改。
 
 Agent 对话最多保留 20 个会话，每个会话最多保留 50 条消息；对话只存在于单个登录 Session 内，不需要独立数据目录。
-
-本地开发可通过 Nginx Basic Auth 直接读取远程 SQLite 和 Parquet：
-
-```text
-STOCK_REMOTE_DATA_URL=http://117.72.216.67/dev-data
-STOCK_REMOTE_DATA_USERNAME=developer
-STOCK_REMOTE_DATA_PASSWORD=<独立只读密码>
-```
-
-未配置 `STOCK_REMOTE_DATA_URL` 时，后端继续读取 `STOCK_TRADING_DB` 和 `STOCK_MARKET_DIR` 指定的本地文件。远程模式通过 DuckDB HTTPFS 读取 `/sqlite/trading.db` 与 `/market/**`，只执行既有固定查询。
 
 ## API
 
@@ -105,4 +95,4 @@ STOCK_REMOTE_DATA_PASSWORD=<独立只读密码>
 ## 验证边界
 
 默认只执行源码、引用、依赖、编码和差异检查。未获得当次明确授权时，不执行 Maven/npm 编译、测试、启动、Docker 构建或浏览器验证；源码检查结果不得描述为编译或运行通过。
-<!-- AI_GENERATE_END------------- -->
+<!-- AI_GENERATE_END-------------- -->

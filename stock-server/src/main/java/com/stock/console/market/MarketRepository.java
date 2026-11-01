@@ -1,8 +1,7 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START --------
 package com.stock.console.market;
 
 import com.stock.console.config.ConsoleProperties;
-import com.stock.console.data.RemoteDataSource;
 import org.springframework.stereotype.Repository;
 
 import java.nio.file.Files;
@@ -23,11 +22,9 @@ public class MarketRepository {
 
     private static final Pattern CODE = Pattern.compile("(?i)(sh|sz)[.]\\d{6}");
     private final ConsoleProperties properties;
-    private final RemoteDataSource remoteData;
 
-    public MarketRepository(ConsoleProperties properties, RemoteDataSource remoteData) {
+    public MarketRepository(ConsoleProperties properties) {
         this.properties = properties;
-        this.remoteData = remoteData;
     }
 
     public Map<String, Object> status() {
@@ -133,9 +130,7 @@ public class MarketRepository {
             return List.of();
         }
 
-        boolean remote = remoteData.enabled();
         String dailySource = null;
-        boolean bindDailySource = false;
         String dailyReader;
         Optional<String> latest = latestDailyDate();
         String latestRelative = latest
@@ -144,20 +139,6 @@ public class MarketRepository {
         if (!latestRelative.isEmpty() && marketAvailable(latestRelative)) {
             dailySource = marketSource(latestRelative);
             dailyReader = "read_parquet(?)";
-            bindDailySource = true;
-        } else if (remote) {
-            List<String> sources = remoteData.marketDirectories("daily_history").stream()
-                    .filter(name -> name.startsWith("code="))
-                    .map(name -> name.substring("code=".length()))
-                    .filter(code -> CODE.matcher(code).matches())
-                    .map(code -> remoteData.market("daily_history/code=" + code + "/bars.parquet"))
-                    .toList();
-            if (sources.isEmpty()) {
-                return List.of();
-            }
-            dailyReader = "read_parquet([" + String.join(",", sources.stream()
-                    .map(this::sqlString)
-                    .toList()) + "], hive_partitioning = true, union_by_name = true)";
         } else {
             Path directory = properties.marketDir().resolve("daily_history");
             if (!Files.isDirectory(directory)) {
@@ -166,7 +147,6 @@ public class MarketRepository {
             dailySource = directory.resolve("code=*/bars.parquet")
                     .toAbsolutePath().normalize().toString().replace('\\', '/');
             dailyReader = "read_parquet(?, hive_partitioning = true, union_by_name = true)";
-            bindDailySource = true;
         }
 
         String sql = """
@@ -193,9 +173,7 @@ public class MarketRepository {
                 """.formatted(dailyReader);
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
             int parameter = 1;
-            if (bindDailySource) {
-                statement.setString(parameter++, dailySource);
-            }
+            statement.setString(parameter++, dailySource);
             statement.setString(parameter++, instruments);
             statement.setInt(parameter, Math.max(1, Math.min(limit, 100)));
             return rows(statement);
@@ -221,13 +199,6 @@ public class MarketRepository {
     }
 
     private Optional<String> latestDailyDate() {
-        if (remoteData.enabled()) {
-            return remoteData.marketDirectories("daily")
-                    .stream()
-                    .filter(name -> name.startsWith("trade_date="))
-                    .map(name -> name.substring("trade_date=".length()))
-                    .max(String::compareTo);
-        }
         Path directory = properties.marketDir().resolve("daily");
         if (!Files.isDirectory(directory)) {
             return Optional.empty();
@@ -252,23 +223,15 @@ public class MarketRepository {
     }
 
     private Connection open() throws Exception {
-        Connection connection = DriverManager.getConnection("jdbc:duckdb:");
-        remoteData.configure(connection);
-        return connection;
+        return DriverManager.getConnection("jdbc:duckdb:");
     }
 
     private String marketSource(String relativePath) {
-        if (remoteData.enabled()) {
-            return remoteData.market(relativePath);
-        }
         return properties.marketDir().resolve(relativePath)
                 .toAbsolutePath().normalize().toString().replace('\\', '/');
     }
 
     private boolean marketAvailable(String relativePath) {
-        if (remoteData.enabled()) {
-            return remoteData.exists(remoteData.market(relativePath));
-        }
         return Files.isRegularFile(properties.marketDir().resolve(relativePath));
     }
 
@@ -291,9 +254,5 @@ public class MarketRepository {
         String message = exception.getMessage();
         return message == null || message.isBlank() ? "行情数据源无法读取" : message;
     }
-
-    private String sqlString(String value) {
-        return "'" + value.replace("'", "''") + "'";
-    }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END --------

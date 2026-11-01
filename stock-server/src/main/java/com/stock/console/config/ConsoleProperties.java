@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.console.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -9,12 +9,19 @@ import java.util.List;
 
 @ConfigurationProperties(prefix = "console")
 public record ConsoleProperties(
-        Path tradingDb,
-        Path marketDir,
+        Path dataDir,
         Path taskLog,
         String documentRoots,
         Auth auth,
         Agent agent) {
+
+    public Path tradingDb() {
+        return dataDir.resolve("state/trading.db");
+    }
+
+    public Path marketDir() {
+        return dataDir.resolve("market");
+    }
 
     public List<Path> resolvedDocumentRoots() {
         return Arrays.stream(documentRoots.split(","))
@@ -36,4 +43,4 @@ public record ConsoleProperties(
             int maxTokens) {
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----
