@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------
+# AI_GENERATE_START ---------------------------
 from __future__ import annotations
 
 import logging
@@ -108,7 +108,6 @@ class InitializationService:
                 start_date,
                 end_date,
                 skip_existing=True,
-                worker_count=self._config.baostock_workers,
             ),
         )
         valid_codes = self._market.valid_research_codes(selected_codes)
@@ -336,4 +335,4 @@ def _model_valid(model_root_dir: Path) -> bool:
         return model_artifacts_valid(resolve_current_model_dir(model_root_dir))
     except (OSError, ValueError):
         return False
-# AI_GENERATE_END --------------------------
+# AI_GENERATE_END ---------------------------

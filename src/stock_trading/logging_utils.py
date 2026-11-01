@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------
+# AI_GENERATE_START ----------------------
 from __future__ import annotations
 
 import logging
@@ -22,9 +22,7 @@ YELLOW = "\033[38;5;221m"
 ANSI_RESET = "\033[0m"
 SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 CODE_PATTERN = re.compile(r"\b(?:sh|sz)\.\d{6}\b", re.IGNORECASE)
-COUNT_PATTERN = re.compile(
-    r"(?:数据采集中|数据接收完成).*进度=([\d,]+)/([\d,]+)"
-)
+COUNT_PATTERN = re.compile(r"进度=([\d,]+)/([\d,]+)")
 
 _PROGRESS_COMPLETED: Any | None = None
 _PROGRESS_REMAINING_SECONDS: Any | None = None
@@ -326,8 +324,9 @@ def _format_live_progress(phase: int, use_color: bool) -> tuple[str, int]:
         tail = f"  |  {stock}  |  {_LIVE_DATE or '--'}  |  {count}"
     elif has_numeric_progress:
         percent = f"{ratio * 100:.2f}%"
+        count = _extract_progress_count(message) or f"{completed}/{_PROGRESS_TOTAL}"
         eta = f"剩余 {_format_remaining(int(_PROGRESS_REMAINING_SECONDS.value))}"
-        tail = f"  |  {code}  |  {percent}  |  {eta}"
+        tail = f"  |  {code}  |  {percent}  |  {count}  |  {eta}"
     columns = max(40, shutil.get_terminal_size((120, 24)).columns)
     stage_width = max(0, columns - _display_width(f"{head}{tail}") - 1)
     stage = _truncate_display(stage, stage_width)
@@ -344,6 +343,7 @@ def _format_live_progress(phase: int, use_color: bool) -> tuple[str, int]:
             rendered += (
                 f"  |  {YELLOW}{code}{ANSI_RESET}  |  "
                 f"{GREEN_BOLD}{percent}{ANSI_RESET}  |  "
+                f"{GREEN_BOLD}{count}{ANSI_RESET}  |  "
                 f"{LIGHT_BLUE}{eta}{ANSI_RESET}"
             )
     else:
@@ -397,7 +397,9 @@ def _summarize_progress_message(message: str) -> tuple[str, str]:
             "股票池确定",
         )
     ):
-        return "正在检查股票基础数据", code
+        return "正在检查数据", code
+    if "股票数据检查完成" in message:
+        return "正在检查数据", code
     if any(
         text in message
         for text in (
@@ -487,10 +489,10 @@ def _format_progress_prefix(use_color: bool) -> str:
 
 def _format_remaining(seconds: int) -> str:
     if seconds < 0:
-        return "--/--"
+        return "-小时-分钟"
     total_minutes = max(0, (seconds + 59) // 60)
     hours, minutes = divmod(total_minutes, 60)
-    return f"{hours:02d}小时/{minutes:02d}分钟"
+    return f"{hours}小时{minutes}分钟"
 
 
 def should_log_progress(current: int, total: int, steps: int = 20) -> bool:
@@ -499,4 +501,4 @@ def should_log_progress(current: int, total: int, steps: int = 20) -> bool:
         return current == 1
     interval = max(1, total // max(1, steps))
     return current == 1 or current == total or current % interval == 0
-# AI_GENERATE_END ---------------------
+# AI_GENERATE_END ----------------------

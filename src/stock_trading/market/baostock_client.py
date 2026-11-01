@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------
+# AI_GENERATE_START --------------
 from __future__ import annotations
 
 import logging
@@ -198,6 +198,11 @@ class BaoStockClient:
         rows: list[dict[str, str]] = []
         estimated_total = len(result.data)
         interval = max(1, estimated_total // ROW_PROGRESS_STEPS)
+        LOGGER.info(
+            "数据采集中：任务=%s；进度=0/%d",
+            operation,
+            estimated_total,
+        )
         while result.next():
             rows.append(dict(zip(result.fields, result.get_row_data(), strict=True)))
             page_remaining = max(0, len(result.data) - int(result.cur_row_num))
@@ -290,4 +295,4 @@ class BaoStockClient:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END -------------
+# AI_GENERATE_END --------------

@@ -50,8 +50,8 @@ jobs:
           test "$(grep -Ec '^[0-9]+ [0-9]+ ' .github/config/stock-trading.cron)" -eq 7
           grep -Fq 'PATH=/usr/local/bin:/usr/bin:/bin' .github/config/stock-trading.cron
           test "$(grep -Fc '/bin/bash -lc' .github/config/stock-trading.cron)" -eq 6
-          grep -Fq 'stock-trading sell' .github/config/stock-trading.cron
-          grep -Fq 'stock-trading buy' .github/config/stock-trading.cron
+          grep -Fq 'stock-trading trading --sell' .github/config/stock-trading.cron
+          grep -Fq 'stock-trading trading --buy' .github/config/stock-trading.cron
           grep -Fq 'stock-trading collect' .github/config/stock-trading.cron
           grep -Fq 'stock-trading broker' .github/config/stock-trading.cron
           grep -Fq 'stock-trading evaluate' .github/config/stock-trading.cron

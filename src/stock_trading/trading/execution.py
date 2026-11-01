@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------
+# AI_GENERATE_START ----------------------
 from __future__ import annotations
 
 import logging
@@ -228,7 +228,6 @@ class OrderExecutionOrchestrator:
         instrument = str(target["instrument"])
         stock_code = instrument[-6:]
         side = str(target["side"])
-        positions = self._broker.get_positions()
         quote = self._broker.get_five_level_quote(stock_code)
         decision = select_execution_price(
             quote=quote,
@@ -239,6 +238,7 @@ class OrderExecutionOrchestrator:
             normal_fraction=self._config.trading_normal_fraction,
         )
         if side == "SELL":
+            positions = self._broker.get_positions()
             position = next(
                 (item for item in positions if item.stock_code == stock_code), None
             )
@@ -246,13 +246,6 @@ class OrderExecutionOrchestrator:
             if quantity <= 0:
                 return None, "NO_AVAILABLE_QUANTITY"
         else:
-            other_positions = [
-                item
-                for item in positions
-                if item.quantity > 0 and item.stock_code != stock_code
-            ]
-            if other_positions:
-                return None, "OTHER_POSITION_EXISTS"
             reference_price = quote.price or quote.asks[0]
             if not Decimal(str(self._config.trading_min_price)) <= reference_price <= Decimal(
                 str(self._config.trading_max_price)
@@ -554,4 +547,4 @@ def _is_permission_denial(message: str) -> bool:
         keyword in normalized
         for keyword in ("无权限", "没有权限", "未开通", "禁止交易", "不允许交易")
     )
-# AI_GENERATE_END -------------------
+# AI_GENERATE_END ----------------------

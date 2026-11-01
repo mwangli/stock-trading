@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------
+# AI_GENERATE_START ---------------
 from __future__ import annotations
 
 import logging
@@ -33,13 +33,20 @@ class LiveTradingOrchestrator:
         state_store: StateStore,
         broker: BrokerReader,
     ) -> None:
-        if config.trading_max_price < config.trading_min_price:
-            raise ValueError("交易价格上限不能小于下限")
         self._config = config
         self._state_store = state_store
         self._broker = broker
 
-    def select_morning_sell_targets(self, business_date: date) -> dict[str, object]:
+    def select_targets(
+        self, business_date: date, side: str
+    ) -> dict[str, object]:
+        if side == "SELL":
+            return self._select_morning_sell_targets(business_date)
+        if side == "BUY":
+            return self._select_afternoon_buy_target(business_date)
+        raise ValueError("交易方向必须是 BUY 或 SELL")
+
+    def _select_morning_sell_targets(self, business_date: date) -> dict[str, object]:
         """按券商当前可卖持仓选择卖出目标，实际数量和价格由每次委托前重算。"""
         targets: list[dict[str, object]] = []
         ignored: list[dict[str, object]] = []
@@ -72,7 +79,7 @@ class LiveTradingOrchestrator:
             "ignored": ignored,
         }
 
-    def select_afternoon_buy_target(self, business_date: date) -> dict[str, object]:
+    def _select_afternoon_buy_target(self, business_date: date) -> dict[str, object]:
         """选择一个模型候选作为买入目标，不保存或复用五档价格和委托数量。"""
         candidates = self._state_store.latest_prediction_candidates(
             business_date.isoformat(), 5
@@ -103,18 +110,6 @@ class LiveTradingOrchestrator:
                 candidates,
                 self._target(existing_target, candidate),
                 [],
-            )
-
-        positions = tuple(
-            position for position in self._broker.get_positions() if position.quantity > 0
-        )
-        if positions:
-            LOGGER.info("下午买入目标选择停止：账户已有持仓")
-            return self._buy_result(
-                business_date,
-                candidates,
-                None,
-                [{"reason": "POSITION_EXISTS"}],
             )
 
         permission_status = {
@@ -216,4 +211,4 @@ def _to_qlib_instrument(stock_code: str, market: str | None) -> str:
     else:
         exchange = "SH" if code.startswith(("6", "68")) else "SZ"
     return f"{exchange}{code}"
-# AI_GENERATE_END -----------
+# AI_GENERATE_END ---------------

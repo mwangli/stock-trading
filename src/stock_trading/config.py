@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------
+# AI_GENERATE_START ----------------------------
 from __future__ import annotations
 
 import os
@@ -33,7 +33,6 @@ class AppConfig:
     sync_port: int
     sync_identity_file: Path | None
     baostock_proxy: str | None
-    baostock_workers: int
     market_history_days: int
     bark_device_key: str
     broker_enabled: bool
@@ -103,11 +102,14 @@ class AppConfig:
             ),
             sync_identity_file=(
                 Path(value).expanduser()
-                if (value := os.getenv("STOCK_TRADING_SYNC_IDENTITY_FILE", "").strip())
+                if (
+                    value := os.getenv(
+                        "STOCK_TRADING_SYNC_IDENTITY_FILE", ""
+                    ).strip()
+                )
                 else None
             ),
             baostock_proxy=proxy or None,
-            baostock_workers=max(1, int(os.getenv("BAOSTOCK_WORKERS", "1"))),
             market_history_days=min(
                 365 * 5,
                 max(365, int(os.getenv("STOCK_TRADING_HISTORY_DAYS", str(365 * 3)))),
@@ -208,4 +210,4 @@ def _load_env_file(path: Path) -> None:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         os.environ.setdefault(key, value)
-# AI_GENERATE_END --------------------------
+# AI_GENERATE_END ----------------------------

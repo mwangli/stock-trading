@@ -1,10 +1,10 @@
-# AI_GENERATE_START --------
+# AI_GENERATE_START ---------
 from __future__ import annotations
 
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from multiprocessing import get_context
+from multiprocessing import Array, Value
 from types import TracebackType
 from typing import Any, Self
 
@@ -36,11 +36,10 @@ class CollectionProgress:
 
     def __enter__(self) -> Self:
         initial = min(self.total_count, max(0, self.initial_completed))
-        context = get_context("spawn")
-        self._completed = context.Value("q", initial, lock=True)
+        self._completed = Value("q", initial, lock=True)
         initial_remaining = 0 if initial >= self.total_count else -1
-        self._remaining_seconds = context.Value("q", initial_remaining, lock=True)
-        self._message = context.Array("u", PROGRESS_MESSAGE_LIMIT, lock=True)
+        self._remaining_seconds = Value("q", initial_remaining, lock=True)
+        self._message = Array("u", PROGRESS_MESSAGE_LIMIT, lock=True)
         with self._message.get_lock():
             self._message.get_obj().value = "正在准备研究数据采集"
         self._previous_context = bind_progress_context(
@@ -125,4 +124,4 @@ class CollectionProgress:
             return -1
         remaining = max(0, self.total_count - processed)
         return max(0, round(remaining * elapsed / progressed))
-# AI_GENERATE_END --------
+# AI_GENERATE_END ---------

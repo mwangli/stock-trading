@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------------------------------------------------------------------
+# AI_GENERATE_START ----------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -11,6 +11,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from time import perf_counter
 from typing import Annotated, Callable, TypeVar
+from zoneinfo import ZoneInfo
 
 import typer
 
@@ -323,42 +324,28 @@ def predict_command(
 
 
 @app.command(
-    "sell",
-    short_help="[cyan]--date[/cyan] DATE 执行上午实时卖出。",
+    "trading",
+    short_help="[cyan]--buy|--sell[/cyan] 执行当天实时交易。",
     context_settings=COMMAND_CONTEXT,
 )
-def sell_command(
-    business_date: Annotated[
-        str | None,
-        typer.Option("--date"),
-    ] = None,
+def trading_command(
+    buy: Annotated[
+        bool,
+        typer.Option("--buy"),
+    ] = False,
+    sell: Annotated[
+        bool,
+        typer.Option("--sell"),
+    ] = False,
 ) -> None:
-    _run_date_command(
-        "sell",
-        business_date,
-        lambda config, target_date: _run_trading_window(
-            config, target_date, morning=True
-        ),
-    )
-
-
-@app.command(
-    "buy",
-    short_help="[cyan]--date[/cyan] DATE 执行下午实时买入。",
-    context_settings=COMMAND_CONTEXT,
-)
-def buy_command(
-    business_date: Annotated[
-        str | None,
-        typer.Option("--date"),
-    ] = None,
-) -> None:
-    _run_date_command(
-        "buy",
-        business_date,
-        lambda config, target_date: _run_trading_window(
-            config, target_date, morning=False
-        ),
+    if buy == sell:
+        raise typer.BadParameter("必须且只能指定 --buy 或 --sell 其中一个")
+    side = "BUY" if buy else "SELL"
+    business_date = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    _execute(
+        "trading",
+        {"side": side, "businessDate": business_date.isoformat()},
+        lambda config: _run_trading_window(config, business_date, side),
     )
 
 
@@ -520,11 +507,10 @@ def _collect_codes(
     config: AppConfig, codes: list[str], start_date: date, end_date: date
 ) -> None:
     LOGGER.info(
-        "开始采集股票数据：股票数=%d；日期=%s 至 %s；连接=%d",
+        "开始采集股票数据：股票数=%d；日期=%s 至 %s；连接=1",
         len(codes),
         start_date,
         end_date,
-        config.baostock_workers,
     )
     result = sync_collection_data(
         ParquetMarketStore(config.data_dir),
@@ -532,7 +518,6 @@ def _collect_codes(
         codes,
         start_date,
         end_date,
-        worker_count=config.baostock_workers,
     )
     update_live_progress_details(step=f"{len(codes)}/{len(codes)}")
     LOGGER.info(
@@ -731,9 +716,12 @@ def _predict(config: AppConfig, prediction_date: date) -> None:
 
 
 def _run_trading_window(
-    config: AppConfig, business_date: date, morning: bool
+    config: AppConfig, business_date: date, side: str
 ) -> None:
-    mode_name = "上午卖出" if morning else "下午买入"
+    if side not in {"BUY", "SELL"}:
+        raise ValueError("交易方向必须是 BUY 或 SELL")
+    mode = "AFTERNOON_BUY" if side == "BUY" else "MORNING_SELL"
+    mode_name = "下午买入" if side == "BUY" else "上午卖出"
     LOGGER.info(
         "开始执行实时交易窗口：日期=%s；时段=%s；策略=%s；窗口=%d秒",
         business_date,
@@ -745,11 +733,7 @@ def _run_trading_window(
     broker = _build_broker(config)
     execution = OrderExecutionOrchestrator(config, store, broker)
     selector = LiveTradingOrchestrator(config, store, broker)
-    selection = (
-        selector.select_morning_sell_targets(business_date)
-        if morning
-        else selector.select_afternoon_buy_target(business_date)
-    )
+    selection = selector.select_targets(business_date, side)
     executed: list[dict[str, object]] = []
     for target in selection["targets"]:
         result = execution.execute_target(business_date, target)
@@ -763,7 +747,7 @@ def _run_trading_window(
     _print_json(
         {
             "businessDate": business_date.isoformat(),
-            "mode": "MORNING_SELL" if morning else "AFTERNOON_BUY",
+            "mode": mode,
             "strategy": config.trading_execution_strategy,
             "selection": selection,
             "executed": executed,
@@ -836,7 +820,6 @@ def _push_execution_result(
             f"状态：{status}",
             f"停止原因：{result['stopReason']}",
             f"原因：{_safe_error_text(last.get('errorMessage'))}",
-            f"日志：{PUBLIC_LOG_URL}",
         )
     )
     _push_bark(config, f"[交易] {action}执行未完成", body, "交易异常", PUBLIC_LOG_URL)
@@ -850,7 +833,6 @@ def _push_system_failure(
             f"任务：{command}",
             f"时间：{datetime.now().astimezone().isoformat(timespec='seconds')}",
             f"原因：{_safe_error_text(error)}",
-            f"日志：{PUBLIC_LOG_URL}",
         )
     )
     _push_bark(config, "[系统] ⚠️ 任务执行异常", body, "系统异常", PUBLIC_LOG_URL)
@@ -871,12 +853,12 @@ def _push_bark(
     payload: dict[str, object] = {
         "device_key": device_key,
         "title": title,
-        "body": body,
         "group": group,
-        "ttl": 600,
     }
     if target_url:
-        payload["url"] = target_url
+        payload["markdown"] = f"{body}\n\n[点击查看]({target_url})"
+    else:
+        payload["body"] = body
     request = urllib.request.Request(
         BARK_PUSH_URL,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -905,4 +887,4 @@ def _safe_error_text(value: object) -> str:
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END ------------------------------------------------------------------------------------
+# AI_GENERATE_END ----------------------------------------------------------------------------------------

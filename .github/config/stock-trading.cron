@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------
+# AI_GENERATE_START -------------
 # STOCK_TRADING_CRON_BEGIN
 SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin
@@ -18,10 +18,10 @@ LOGROTATE_STATE=/data/stock-trading/state/logrotate.status
 30 2 * * * /usr/sbin/logrotate -s "$LOGROTATE_STATE" "$LOGROTATE"
 
 # Morning sell
-35 9 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -lc 'set -a; source "$STOCK_ENV"; set +a; exec stock-trading sell' >> "$LOG" 2>&1
+35 9 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -lc 'set -a; source "$STOCK_ENV"; set +a; exec stock-trading trading --sell' >> "$LOG" 2>&1
 
 # Afternoon buy
-5 13 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -lc 'set -a; source "$STOCK_ENV"; set +a; exec stock-trading buy' >> "$LOG" 2>&1
+5 13 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -lc 'set -a; source "$STOCK_ENV"; set +a; exec stock-trading trading --buy' >> "$LOG" 2>&1
 
 # Daily stock data collection
 30 15 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -lc 'set -a; source "$STOCK_ENV"; set +a; exec stock-trading collect' >> "$LOG" 2>&1
@@ -32,4 +32,4 @@ LOGROTATE_STATE=/data/stock-trading/state/logrotate.status
 # Performance and model evaluation
 30 16 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -lc 'set -a; source "$STOCK_ENV"; set +a; exec stock-trading evaluate' >> "$LOG" 2>&1
 # STOCK_TRADING_CRON_END
-# AI_GENERATE_END ------------
+# AI_GENERATE_END -------------
