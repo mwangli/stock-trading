@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------
+# AI_GENERATE_START ---------------------------
 from __future__ import annotations
 
 import logging
@@ -191,24 +191,36 @@ class ParquetMarketStore:
             return False
 
     def minute5_data_covers(self, code: str, start_date: date, end_date: date) -> bool:
-        """仅检查5分钟聚合文件自身记录的请求覆盖范围。"""
+        """检查5分钟数据是否已采集，并兼容缺少覆盖元数据的旧聚合文件。"""
         summary = self._minute_summary_path(code)
         if not summary.is_file():
             return False
         try:
             frame = _read_parquet_file(summary)
-            if not self._coverage_contains(frame, start_date, end_date):
-                return False
-            dates = pd.to_datetime(frame["trade_date"], errors="coerce")
-            requested = frame[
-                (dates.dt.date >= start_date)
-                & (dates.dt.date <= end_date)
+            if {"coverage_start", "coverage_end"}.issubset(frame.columns):
+                return self._coverage_contains(frame, start_date, end_date)
+
+            daily = self.read_daily_history(code)
+            daily_dates = pd.to_datetime(daily["trade_date"], errors="coerce")
+            requested_daily = daily[
+                (daily_dates.dt.date >= start_date)
+                & (daily_dates.dt.date <= end_date)
+                & (daily["tradestatus"].astype(str) == "1")
+                & (daily["close"].astype(float) > 0)
+                & (daily["volume"].astype(float) > 0)
             ]
-            return bool(
-                not requested.empty
-                and requested["buy_complete"].astype(bool).all()
-                and requested["sell_complete"].astype(bool).all()
-            )
+            required_dates = {
+                pd.Timestamp(value).date() for value in requested_daily["trade_date"]
+            }
+            if not required_dates:
+                return False
+            summary_dates = {
+                pd.Timestamp(value).date()
+                for value in pd.to_datetime(
+                    frame["trade_date"], errors="coerce"
+                ).dropna()
+            }
+            return required_dates.issubset(summary_dates)
         except Exception:
             return False
 
@@ -484,4 +496,4 @@ def _without(record: dict[str, object], *fields: str) -> dict[str, object]:
 def _read_parquet_file(path: Path) -> pd.DataFrame:
     """读取单个文件，避免 key=value 父目录触发 Hive 分区字段合并。"""
     return pq.ParquetFile(path).read().to_pandas()
-# AI_GENERATE_END --------------------------
+# AI_GENERATE_END ---------------------------
