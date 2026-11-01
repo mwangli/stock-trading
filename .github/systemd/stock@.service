@@ -1,0 +1,12 @@
+[Unit]
+Description=Run stock trading task %i
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/stock-trading/env
+Environment=PATH=__DEPLOY_DIR__/venv/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=__DEPLOY_DIR__
+ExecStart=__DEPLOY_DIR__/venv/bin/stock-%i
+TimeoutStartSec=infinity
+StandardOutput=journal
+StandardError=journal

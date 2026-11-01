@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule stock weekly cleanup
+
+[Timer]
+OnCalendar=Sun *-*-* 03:00:00 Asia/Shanghai
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=false
+Unit=stock@clean.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule stock realized performance
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 20:30:00 Asia/Shanghai
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=false
+Unit=stock@perform.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule stock broker synchronization
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 20:20:00 Asia/Shanghai
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=false
+Unit=stock@broker.service
+
+[Install]
+WantedBy=timers.target
