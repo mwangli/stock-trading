@@ -1,13 +1,21 @@
-# AI_GENERATE_START ------------------------
+# AI_GENERATE_START ----------------------------
 from __future__ import annotations
 
 import logging
 import time
 from collections.abc import Callable
 from datetime import date, timedelta
+from multiprocessing import get_context
+from queue import Empty
+from typing import Any
 
 import pandas as pd
 
+from stock_trading.logging_utils import (
+    bind_progress_context,
+    configure_logging,
+    restore_progress_context,
+)
 from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
 from stock_trading.market.progress import CollectionProgress
 from stock_trading.market.storage import ParquetMarketStore
@@ -90,30 +98,45 @@ def sync_collection_data(
     start_date: date,
     end_date: date,
     skip_existing: bool = False,
+    worker_count: int = 1,
 ) -> dict[str, object]:
-    """使用单个长期 BaoStock 连接顺序采集股票数据。"""
+    """使用股票任务队列和多个长期 BaoStock 连接采集数据。"""
     pending: list[tuple[str, bool, bool, bool]] = []
     skipped = 0
-    for code in codes:
-        needs_daily = not skip_existing or not store.has_daily_history(code)
-        needs_adjustment = not skip_existing or not store.has_adjustment_factors(code)
-        needs_minute5 = not skip_existing or not store.has_minute5_data(code)
-        if not any((needs_daily, needs_adjustment, needs_minute5)):
-            skipped += 1
-        else:
-            pending.append((code, needs_daily, needs_adjustment, needs_minute5))
-
     downloaded = 0
     failed: dict[str, dict[str, str]] = {}
+    progress_total = len(codes) * 2 if skip_existing else len(codes)
     with CollectionProgress(
-        total_count=len(codes),
-        skipped=skipped,
+        total_count=progress_total,
     ) as progress:
+        for checked, code in enumerate(codes, start=1):
+            needs_daily = not skip_existing or not store.has_daily_history(code)
+            needs_adjustment = not skip_existing or not store.has_adjustment_factors(code)
+            needs_minute5 = not skip_existing or not store.has_minute5_data(code)
+            if not any((needs_daily, needs_adjustment, needs_minute5)):
+                skipped += 1
+            else:
+                pending.append((code, needs_daily, needs_adjustment, needs_minute5))
+            if skip_existing:
+                progress.update_check(checked + skipped)
+                LOGGER.info(
+                    "股票数据检查完成：股票=%s；进度=%d/%d；待采集=%d；已完整=%d",
+                    code,
+                    checked,
+                    len(codes),
+                    len(pending),
+                    skipped,
+                )
+
+        collection_base = len(codes) + skipped if skip_existing else 0
+        progress.begin_estimate(collection_base)
+        active_workers = min(max(1, worker_count), len(pending)) if pending else 0
         LOGGER.info(
-            "股票数据采集计划：目标=%d；待采集=%d；跳过=%d；连接=1",
+            "股票数据采集计划：目标=%d；待采集=%d；跳过=%d；连接=%d",
             len(codes),
             len(pending),
             skipped,
+            active_workers,
         )
         if not pending:
             LOGGER.info(
@@ -126,31 +149,73 @@ def sync_collection_data(
                 "failed": failed,
             }
 
-        completed = 0
-        client = BaoStockClient(proxy_url)
-        client.__enter__()
-        try:
-            for plan in pending:
-                result, client = _sync_collection_code(
-                    store,
-                    client,
+        context = get_context("spawn")
+        task_queue = context.Queue()
+        result_queue = context.Queue()
+        workers = [
+            context.Process(
+                target=_collection_worker,
+                args=(
+                    task_queue,
+                    result_queue,
+                    store.root,
                     proxy_url,
-                    plan[0],
                     start_date,
                     end_date,
-                    plan[1],
-                    plan[2],
-                    plan[3],
-                )
+                    progress.worker_context,
+                ),
+                name=f"stock-collect-{index}",
+            )
+            for index in range(1, active_workers + 1)
+        ]
+        completed = 0
+        collection_complete = False
+        started_workers = []
+        try:
+            for worker in workers:
+                worker.start()
+                started_workers.append(worker)
+            for plan in pending:
+                task_queue.put(plan)
+            for _ in started_workers:
+                task_queue.put(None)
+
+            while completed < len(pending):
+                try:
+                    result_type, payload = result_queue.get(timeout=1)
+                except Empty:
+                    if not any(worker.is_alive() for worker in started_workers):
+                        raise RuntimeError("股票采集 worker 已全部退出") from None
+                    continue
+                if result_type == "fatal":
+                    raise RuntimeError(f"股票采集 worker 异常退出：{payload}")
                 downloaded, completed = _record_collection_result(
-                    result,
+                    payload,
                     downloaded,
                     completed,
                     failed,
                     progress,
+                    collection_base,
                 )
+            collection_complete = True
         finally:
-            client.__exit__(None, None, None)
+            if not collection_complete:
+                for worker in started_workers:
+                    if worker.is_alive():
+                        worker.terminate()
+            for worker in started_workers:
+                worker.join()
+            failed_workers = [
+                worker.name
+                for worker in started_workers
+                if collection_complete and worker.exitcode != 0
+            ]
+            task_queue.close()
+            result_queue.close()
+            if failed_workers:
+                raise RuntimeError(
+                    f"股票采集 worker 异常退出：{','.join(failed_workers)}"
+                )
         LOGGER.info(
             "股票数据采集完成：新增=%d；跳过=%d；失败=%d",
             downloaded,
@@ -171,12 +236,54 @@ def sync_collection_data(
         return result
 
 
+def _collection_worker(
+    task_queue: Any,
+    result_queue: Any,
+    store_root: Any,
+    proxy_url: str | None,
+    start_date: date,
+    end_date: date,
+    progress_context: tuple[Any, Any, int, Any],
+) -> None:
+    """从共享队列领取股票，并在进程内复用一个 BaoStock 会话。"""
+    configure_logging()
+    previous_context = bind_progress_context(*progress_context)
+    client: BaoStockClient | None = None
+    try:
+        store = ParquetMarketStore(store_root)
+        client = BaoStockClient(proxy_url)
+        client.__enter__()
+        while True:
+            plan = task_queue.get()
+            if plan is None:
+                break
+            result, client = _sync_collection_code(
+                store,
+                client,
+                proxy_url,
+                plan[0],
+                start_date,
+                end_date,
+                plan[1],
+                plan[2],
+                plan[3],
+            )
+            result_queue.put(("result", result))
+    except BaseException as error:
+        result_queue.put(("fatal", str(error)))
+    finally:
+        if client is not None:
+            client.__exit__(None, None, None)
+        restore_progress_context(previous_context)
+
+
 def _record_collection_result(
     result: dict[str, object],
     downloaded: int,
     completed: int,
     failed: dict[str, dict[str, str]],
     progress: CollectionProgress,
+    collection_base: int,
 ) -> tuple[int, int]:
     code = str(result["code"])
     errors = {
@@ -193,7 +300,7 @@ def _record_collection_result(
     else:
         downloaded += 1
     completed += 1
-    progress.update(completed)
+    progress.update(collection_base + completed)
     return downloaded, completed
 
 
@@ -290,4 +397,4 @@ def _collect_component(
         except Exception as error:
             return str(error), client
     return "未知采集失败", client
-# AI_GENERATE_END ------------------------
+# AI_GENERATE_END ----------------------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------------------------------------------------
+# AI_GENERATE_START ------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -15,6 +15,7 @@ from typing import Annotated, Callable, TypeVar
 import typer
 
 from stock_trading.config import AppConfig
+from stock_trading.data_sync import SUPPORTED_DATA, sync_runtime_data
 from stock_trading.initialization import InitializationService
 from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.broker.captcha import BaiduCaptchaSolver
@@ -188,6 +189,42 @@ def collect_command(
             },
             run,
         )
+
+
+@app.command(
+    "sync",
+    short_help=(
+        "[cyan]--push|--pull[/cyan] [cyan]--data[/cyan] TYPE "
+        "同步本地与服务器数据。"
+    ),
+    context_settings=COMMAND_CONTEXT,
+)
+def sync_command(
+    data: Annotated[
+        str,
+        typer.Option("--data"),
+    ],
+    push: Annotated[
+        bool,
+        typer.Option("--push"),
+    ] = False,
+    pull: Annotated[
+        bool,
+        typer.Option("--pull"),
+    ] = False,
+) -> None:
+    if push == pull:
+        raise typer.BadParameter("必须且只能指定 --push 或 --pull 其中一个")
+    data_names = _parse_sync_data(data)
+    result = _execute(
+        "sync",
+        {
+            "direction": "push" if push else "pull",
+            "data": list(data_names),
+        },
+        lambda config: sync_runtime_data(config, data_names, push=push),
+    )
+    _print_json(result)
 
 
 @app.command(
@@ -437,6 +474,19 @@ def _parse_stock_codes(value: str) -> list[str]:
     return list(dict.fromkeys(_parse_stock_code(code) for code in raw_codes))
 
 
+def _parse_sync_data(value: str) -> tuple[str, ...]:
+    raw_names = [item.strip().lower() for item in value.split(",")]
+    if not value.strip() or any(not item for item in raw_names):
+        raise typer.BadParameter("同步数据不能为空；可选值：market,qlib")
+    unsupported = [name for name in raw_names if name not in SUPPORTED_DATA]
+    if unsupported:
+        raise typer.BadParameter(
+            f"不支持的同步数据：{','.join(dict.fromkeys(unsupported))}；"
+            "可选值：market,qlib"
+        )
+    return tuple(dict.fromkeys(raw_names))
+
+
 def _parse_decimal(
     value: str,
     name: str,
@@ -470,10 +520,11 @@ def _collect_codes(
     config: AppConfig, codes: list[str], start_date: date, end_date: date
 ) -> None:
     LOGGER.info(
-        "开始采集股票数据：股票数=%d；日期=%s 至 %s；连接=1",
+        "开始采集股票数据：股票数=%d；日期=%s 至 %s；连接=%d",
         len(codes),
         start_date,
         end_date,
+        config.baostock_workers,
     )
     result = sync_collection_data(
         ParquetMarketStore(config.data_dir),
@@ -481,6 +532,7 @@ def _collect_codes(
         codes,
         start_date,
         end_date,
+        worker_count=config.baostock_workers,
     )
     update_live_progress_details(step=f"{len(codes)}/{len(codes)}")
     LOGGER.info(
@@ -853,4 +905,4 @@ def _safe_error_text(value: object) -> str:
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END ----------------------------------------------------------------------------------
+# AI_GENERATE_END ------------------------------------------------------------------------------------

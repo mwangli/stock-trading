@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------
+# AI_GENERATE_START ---------------------
 from __future__ import annotations
 
 import logging
@@ -487,12 +487,10 @@ def _format_progress_prefix(use_color: bool) -> str:
 
 def _format_remaining(seconds: int) -> str:
     if seconds < 0:
-        return "计算中"
+        return "--/--"
     total_minutes = max(0, (seconds + 59) // 60)
     hours, minutes = divmod(total_minutes, 60)
-    if hours:
-        return f"{hours}小时{minutes:02d}分钟"
-    return f"{minutes}分钟"
+    return f"{hours:02d}小时/{minutes:02d}分钟"
 
 
 def should_log_progress(current: int, total: int, steps: int = 20) -> bool:
@@ -501,4 +499,4 @@ def should_log_progress(current: int, total: int, steps: int = 20) -> bool:
         return current == 1
     interval = max(1, total // max(1, steps))
     return current == 1 or current == total or current % interval == 0
-# AI_GENERATE_END --------------------
+# AI_GENERATE_END ---------------------
