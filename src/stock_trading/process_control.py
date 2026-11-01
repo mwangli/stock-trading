@@ -1,4 +1,4 @@
-# AI_GENERATE_START --
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 import logging
@@ -15,6 +15,17 @@ INTERRUPT_WAIT_SECONDS = 8.0
 TERMINATE_WAIT_SECONDS = 3.0
 KILL_WAIT_SECONDS = 1.0
 POLL_SECONDS = 0.2
+COMMAND_EXECUTABLES = {
+    "init": {"stock-init"},
+    "train": {"stock-train"},
+    "collect": {"stock-collect"},
+    "rank": {"stock-rank"},
+    "trading": {"stock-sell", "stock-buy"},
+    "broker": {"stock-broker"},
+    "performance": {"stock-perform"},
+    "evaluate": {"stock-evaluate"},
+    "clean": {"stock-clean"},
+}
 
 
 @contextmanager
@@ -61,22 +72,11 @@ def _find_command_processes(command: str) -> dict[int, tuple[int, int]]:
 
 
 def _is_command(arguments: tuple[str, ...], command: str) -> bool:
-    for index, argument in enumerate(arguments):
-        if (
-            index <= 1
-            and Path(argument).name == "stock-trading"
-            and index + 1 < len(arguments)
-            and arguments[index + 1] == command
-        ):
-            return True
-        if (
-            argument == "-m"
-            and index + 2 < len(arguments)
-            and arguments[index + 1] == "stock_trading"
-            and arguments[index + 2] == command
-        ):
-            return True
-    return False
+    executables = COMMAND_EXECUTABLES.get(command, set())
+    return any(
+        index <= 1 and Path(argument).name in executables
+        for index, argument in enumerate(arguments)
+    )
 
 
 def _stop_processes(command: str, process_ids: set[int]) -> None:
@@ -211,4 +211,4 @@ def _process_start_key(process_id: int) -> tuple[int, int]:
 
 def _format_pids(process_ids: set[int]) -> str:
     return ",".join(str(process_id) for process_id in sorted(process_ids))
-# AI_GENERATE_END --
+# AI_GENERATE_END ---

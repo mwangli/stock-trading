@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START--------------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_START---------------------------------------------------------------------------------------------- -->
 # stock-trading
 
 面向 A 股的纯 Python T+1 自动交易验证系统。项目只保留 BaoStock、Qlib、LightGBM、Parquet、SQLite 和经过真实响应确认的 ZX 券商 HTTP 契约。
@@ -104,6 +104,8 @@ uv pip install --python .venv\Scripts\python.exe -e .
 Windows 本地通过 `.venv` 中的入口直接执行，不依赖 PATH：
 
 ```cmd
+.venv\Scripts\stock-init.exe
+.venv\Scripts\stock-train.exe
 .venv\Scripts\stock-collect.exe
 .venv\Scripts\stock-rank.exe
 .venv\Scripts\stock-sell.exe
@@ -114,12 +116,11 @@ Windows 本地通过 `.venv` 中的入口直接执行，不依赖 PATH：
 .venv\Scripts\stock-clean.exe
 ```
 
-需要使用完整 CLI 或执行初始化、训练时：
+每个命令都独立提供 `-h` 和 `--help`，帮助页只显示当前命令的功能、参数和示例：
 
 ```cmd
-.venv\Scripts\stock-trading.exe --help
-.venv\Scripts\stock-trading.exe init
-.venv\Scripts\stock-trading.exe train
+.venv\Scripts\stock-broker.exe -h
+.venv\Scripts\stock-collect.exe --help
 ```
 
 Linux 服务器不配置交互 PATH，所有日常任务通过 systemd 启动，日志通过 journald 查看：
@@ -135,10 +136,10 @@ journalctl -fu stock-collect
 
 ```bash
 # 首次初始化；已完成阶段通过文件检查后自动跳过
-stock-trading init
+stock-init
 ```
 
-初始化按五个阶段执行：股票基础信息、日线/复权因子/5 分钟线、Qlib、模型训练与回测、最近交易日预测。券商历史同步已经从 `init` 剥离，需要时单独执行 `stock-trading broker --date DATE[:DATE]`。
+初始化按五个阶段执行：股票基础信息、日线/复权因子/5 分钟线、Qlib、模型训练与回测、最近交易日预测。券商历史同步已经从 `stock-init` 剥离，需要时单独执行 `stock-broker --date DATE[:DATE]`。
 
 历史研究股票池按证券生命周期与研究窗口是否相交确定，包含窗口内上市或退市的 SH60/SZ00 股票，避免只保留当前存续股票造成幸存者偏差。最新预测使用独立实时股票池，只保留快照日仍上市、可交易且当日非 ST 的证券；模型构建也会跳过整个研究窗口内没有任何非 ST 有效交易日的股票。窗口开始前已经退市的证券基础档案继续保留用于审计，但不会下载研究行情。
 
@@ -146,7 +147,7 @@ BaoStock 不允许并发采集。初始化和 `collect` 都在主线程使用唯
 
 初始化和 `collect` 不创建采集子进程，也不为当前 BaoStock 请求创建临时线程。按下 `Ctrl+C` 后由同步请求自然返回或抛出中断，再由主线程退出；如果 SDK 正在阻塞读取，可能需要等待当前一轮请求结束。已经按股票编号写入的 Parquet 数据会保留，后续 `init` 仅按对应编号文件是否存在决定跳过。
 
-Linux 每次启动任一业务命令前，都会检查同名旧主进程及其子进程。后启动的同名命令按 `SIGINT`、`SIGTERM`、`SIGKILL` 顺序接管旧实例，确认旧进程全部退出后才继续，并在 `state/<command>-owner.pid` 记录当前主进程；不同业务命令相互隔离，不会终止其他 `stock-trading` 命令或普通 Python 进程。`stock-sell` 和 `stock-buy` 共用 `trading-owner.pid`，任何新的实时交易都会先接管尚未结束的旧交易，禁止买卖并行。未发现旧进程时不增加日志，完成接管时只输出一条 `WARNING`，说明已终止的命令和 PID。该机制用于避免同一命令重复运行，不是 BaoStock 连接锁，也不阻止 `init` 与 `collect` 分别运行。
+Linux 每次启动任一业务命令前，都会检查同名旧主进程及其子进程。后启动的同名命令按 `SIGINT`、`SIGTERM`、`SIGKILL` 顺序接管旧实例，确认旧进程全部退出后才继续，并在 `state/<command>-owner.pid` 记录当前主进程；不同业务命令相互隔离，不会终止其他 `stock-*` 命令或普通 Python 进程。`stock-sell` 和 `stock-buy` 共用 `trading-owner.pid`，任何新的实时交易都会先接管尚未结束的旧交易，禁止买卖并行。未发现旧进程时不增加日志，完成接管时只输出一条 `WARNING`，说明已终止的命令和 PID。该机制用于避免同一命令重复运行，不是 BaoStock 连接锁，也不阻止 `stock-init` 与 `stock-collect` 分别运行。
 
 初始化不使用任务缓存判断是否跳过。行情阶段按实际文件完整性判断是否跳过；`init` 不执行周期性清理，该职责由生产环境的 `stock-clean.timer` 每周日调用 `clean` 完成。`task_run` 只记录业务任务结果，不作为初始化完成依据。
 
@@ -156,13 +157,13 @@ Linux 每次启动任一业务命令前，都会检查同名旧主进程及其�
 
 ```bash
 # 默认研究股票池，采集当天的日线、复权因子和5分钟线
-stock-trading collect
+stock-collect
 
 # 指定股票和单日
-stock-trading collect --codes sh.600000,sz.000001 --date 2026-10-29
+stock-collect --codes sh.600000,sz.000001 --date 2026-10-29
 
 # 指定股票和日期范围
-stock-trading collect --codes sh.600000,sz.000001 --date 2023-01-01:2026-10-29
+stock-collect --codes sh.600000,sz.000001 --date 2023-01-01:2026-10-29
 ```
 
 `collect` 是唯一公开行情采集命令，同时采集每只股票的日线、复权因子和5分钟线。省略 `--codes` 时从已有股票基础信息中确定默认研究股票，基础信息不存在会直接报错，不自动执行 `init`。省略 `--date` 时只处理当天；单日格式为 `--date 2026-10-29`，范围格式为 `--date 2023-01-01:2026-10-29`，格式错误会返回正确示例。`collect` 不读取覆盖标记，始终采集指定日期并与股票编号对应的真实文件合并。
@@ -186,28 +187,28 @@ stock-trading collect --codes sh.600000,sz.000001 --date 2023-01-01:2026-10-29
 
 ```bash
 # 使用现有 Qlib，按 70%/15%/15% 自动切分后训练
-stock-trading train
+stock-train
 
 # 按交易日先后使用自定义训练、验证和测试比例
-stock-trading train --split 6:3:1
+stock-train --split 6:3:1
 
 # 等待当天 collect 成功后生成完整横截面排名
-stock-trading rank
-stock-trading rank --date 2026-10-29
+stock-rank
+stock-rank --date 2026-10-29
 
 # 压缩旧分钟分区，并执行分钟和 SQLite 分级清理；默认以当天为基准
-stock-trading clean
-stock-trading clean --date 2026-10-31
+stock-clean
+stock-clean --date 2026-10-31
 ```
 
-每次训练写入 `var/artifacts/alpha158-lightgbm/versions/<version>/` 的独立目录。只有模型、指标和预测制品全部写完并通过读取检查后，才会原子替换 `current.json` 指针。训练失败或 Ctrl+C 不会覆盖当前可用模型；`predict`、`backtest` 和初始化统一读取指针指向的版本。旧固定目录在尚未生成指针时仍可兼容读取。
+每次训练写入 `data/artifacts/alpha158-lightgbm/versions/<version>/` 的独立目录。只有模型、指标和预测制品全部写完并通过读取检查后，才会原子替换 `current.json` 指针。训练失败或 Ctrl+C 不会覆盖当前可用模型；排名、回测和初始化统一读取指针指向的版本。
 
 ### 券商与交易
 
 ```bash
 # 同步当天券商事实并恢复本地委托；也可指定日期
-stock-trading broker
-stock-trading broker --date 2026-10-29
+stock-broker
+stock-broker --date 2026-10-29
 
 # 按实时持仓和五档执行上海时区当天上午卖出
 stock-sell
@@ -216,12 +217,12 @@ stock-sell
 stock-buy
 
 # 等待 broker 成功后生成当日已实现绩效
-stock-trading performance
-stock-trading performance --date 2026-10-29
+stock-perform
+stock-perform --date 2026-10-29
 
 # 等待 performance 成功后执行模型评估
-stock-trading evaluate
-stock-trading evaluate --date 2026-10-29
+stock-evaluate
+stock-evaluate --date 2026-10-29
 ```
 
 日线、复权因子和 5 分钟线统一由 `collect` 完成，成功写入 Parquet 后立即刷新 Qlib；不再保留独立 `prepare` 命令。`rank` 等待同一业务日的 `collect` 成功；`performance` 等待 `broker` 成功；`evaluate` 等待 `performance` 成功。真实交易统一由 `stock-sell` 和 `stock-buy` 在执行窗口内完成；命令不接受日期参数，只处理上海时区当天交易。
@@ -319,4 +320,4 @@ Rank IC Mean:   -0.0178742
 真实券商验证已确认登录、30 分钟 Token 缓存、账户/持仓/委托/成交读取以及 Action 110 的股东账号和市场参数。真实探测已到达券商交易时间校验，但尚未取得成功委托号，也未验证真实撤单、部分成交和完整绩效闭环。
 
 当前仓库变更只完成源码和文件层面检查。除非另有明确记录，不能把 `SOURCE_IMPLEMENTED` 描述为测试通过、运行通过或生产验证通过。
-<!-- AI_GENERATE_END---------------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_END----------------------------------------------------------------------------------------------- -->

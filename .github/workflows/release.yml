@@ -54,6 +54,9 @@ jobs:
             grep -Fq "Unit=stock-$task.service" "$timer"
             grep -Fq "stock-$task =" pyproject.toml
           done
+          grep -Fq 'stock-init = "stock_trading.shortcuts:init"' pyproject.toml
+          grep -Fq 'stock-train = "stock_trading.shortcuts:train"' pyproject.toml
+          ! grep -Fq 'stock-trading =' pyproject.toml
           grep -Fq 'OnCalendar=Mon..Fri *-*-* 09:35:00 Asia/Shanghai' "$systemd_dir/stock-sell.timer"
           grep -Fq 'OnCalendar=Mon..Fri *-*-* 13:05:00 Asia/Shanghai' "$systemd_dir/stock-buy.timer"
           grep -Fq 'OnCalendar=Mon..Fri *-*-* 16:30:00 Asia/Shanghai' "$systemd_dir/stock-collect.timer"
@@ -62,9 +65,11 @@ jobs:
           grep -Fq 'OnCalendar=Mon..Fri *-*-* 20:30:00 Asia/Shanghai' "$systemd_dir/stock-perform.timer"
           grep -Fq 'OnCalendar=Mon..Fri *-*-* 20:35:00 Asia/Shanghai' "$systemd_dir/stock-evaluate.timer"
           grep -Fq 'OnCalendar=Sun *-*-* 03:00:00 Asia/Shanghai' "$systemd_dir/stock-clean.timer"
-          grep -Fq '_run("stock-sell", ["trading", "--type", "S"])' src/stock_trading/shortcuts.py
-          grep -Fq '_run("stock-buy", ["trading", "--type", "B"])' src/stock_trading/shortcuts.py
-          grep -Fq '_run("stock-perform", ["performance"])' src/stock_trading/shortcuts.py
+          grep -Fq '"stock-init",' src/stock_trading/shortcuts.py
+          grep -Fq '"stock-train",' src/stock_trading/shortcuts.py
+          grep -Fq '"stock-sell",' src/stock_trading/shortcuts.py
+          grep -Fq '"stock-buy",' src/stock_trading/shortcuts.py
+          grep -Fq 'HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}' src/stock_trading/shortcuts.py
           test ! -e .github/config
 
       - name: Build wheel
@@ -108,7 +113,7 @@ jobs:
             systemd_target=/etc/systemd/system
             services="stock-sell.service stock-buy.service stock-collect.service stock-rank.service stock-broker.service stock-perform.service stock-evaluate.service stock-clean.service"
             timers="stock-sell.timer stock-buy.timer stock-collect.timer stock-rank.timer stock-broker.timer stock-perform.timer stock-evaluate.timer stock-clean.timer"
-            commands="stock-sell stock-buy stock-collect stock-rank stock-broker stock-perform stock-evaluate stock-clean"
+            commands="stock-init stock-train stock-sell stock-buy stock-collect stock-rank stock-broker stock-perform stock-evaluate stock-clean"
 
             if [ ! -e "$env_file" ] && [ -s /etc/stock-trading/env ] && [ -r /etc/stock-trading/env ]; then
               install -m 0600 /etc/stock-trading/env "$env_file"

@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----
+# AI_GENERATE_START ------
 from __future__ import annotations
 
 import json
@@ -75,7 +75,7 @@ def refresh_qlib_from_parquet(
         missing_codes = list(dict.fromkeys(missing_daily + missing_minute5))
         date_argument = _format_date_expression(start_date, end_date)
         command = (
-            f"stock-trading collect --codes {','.join(missing_codes)} "
+            f"stock-collect --codes {','.join(missing_codes)} "
             f"--date {date_argument}"
         )
         raise ValueError(f"{'；'.join(errors)}；请执行：{command}")
@@ -137,7 +137,7 @@ def assert_training_data_ready(
     if not QlibBinaryStore(store, config.qlib_dir).is_valid(
         model_codes, start_date, end_date
     ):
-        raise ValueError("Qlib 数据未覆盖当前训练范围；请先执行 stock-trading collect")
+        raise ValueError("Qlib 数据未覆盖当前训练范围；请先执行 stock-collect")
     return {
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
@@ -364,4 +364,4 @@ def _format_date_expression(start_date: date, end_date: date) -> str:
         return start_date.isoformat()
     return f"{start_date.isoformat()}:{end_date.isoformat()}"
 
-# AI_GENERATE_END -----
+# AI_GENERATE_END ------

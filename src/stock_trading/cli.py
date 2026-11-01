@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START ------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -60,25 +60,7 @@ DEPENDENCY_WAIT_SECONDS = 30 * 60
 DEPENDENCY_POLL_SECONDS = 10
 
 
-app = typer.Typer(
-    name="stock-trading",
-    help=(
-        "A股 T+1 数据、模型、交易和评估命令。"
-        "生产交易直接使用 stock-sell（卖出）和 stock-buy（买入）。"
-        "单日使用 YYYY-MM-DD，日期范围使用 YYYY-MM-DD:YYYY-MM-DD。"
-    ),
-    no_args_is_help=True,
-    rich_markup_mode="rich",
-    add_completion=False,
-    options_metavar="",
-    add_help_option=True,
-    pretty_exceptions_enable=False,
-)
 T = TypeVar("T")
-
-
-def main() -> None:
-    app(prog_name="stock-trading")
 
 
 def _execute(
@@ -120,14 +102,6 @@ def _execute(
         return result
 
 
-COMMAND_CONTEXT = {"help_option_names": []}
-
-
-@app.command(
-    "init",
-    short_help="初始化行情、Qlib、模型、回测和最新预测。",
-    context_settings=COMMAND_CONTEXT,
-)
 def init_command() -> None:
     def run(config: AppConfig) -> dict[str, object]:
         return InitializationService(config).run()
@@ -136,15 +110,10 @@ def init_command() -> None:
     _print_json(result)
 
 
-@app.command(
-    "broker",
-    short_help="[cyan]--date[/cyan] DATE[:DATE] 同步成交事实并增量结算闭环。",
-    context_settings=COMMAND_CONTEXT,
-)
 def broker_command(
     date_value: Annotated[
         str | None,
-        typer.Option("--date"),
+        typer.Option("--date", help="业务日期或日期范围，默认当天。"),
     ] = None,
 ) -> None:
     today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
@@ -157,22 +126,14 @@ def broker_command(
     _print_broker_summary(result)
 
 
-@app.command(
-    "collect",
-    short_help=(
-        "[cyan]--codes[/cyan] TEXT [cyan]--date[/cyan] DATE[:DATE] "
-        "采集 Parquet 行情并刷新 Qlib。"
-    ),
-    context_settings=COMMAND_CONTEXT,
-)
 def collect_command(
     codes: Annotated[
         str | None,
-        typer.Option(),
+        typer.Option(help="股票代码，多个代码使用逗号分隔；默认研究股票池。"),
     ] = None,
     date_value: Annotated[
         str | None,
-        typer.Option("--date"),
+        typer.Option("--date", help="业务日期或日期范围，默认当天。"),
     ] = None,
 ) -> None:
     def run(config: AppConfig) -> dict[str, object]:
@@ -196,17 +157,10 @@ def collect_command(
     _print_json(result)
 
 
-@app.command(
-    "train",
-    short_help=(
-        "[cyan]--split[/cyan] RATIO 使用现有 Qlib 训练、评估并回测模型。"
-    ),
-    context_settings=COMMAND_CONTEXT,
-)
 def train_command(
     split: Annotated[
         str | None,
-        typer.Option(),
+        typer.Option(help="训练、验证、测试比例，例如 6:3:1；默认 70:15:15。"),
     ] = None,
 ) -> None:
     configure_logging()
@@ -234,26 +188,15 @@ def _run_date_command(
     _execute(command, {"date": value}, lambda config: operation(config, business_date))
 
 
-@app.command(
-    "rank",
-    short_help="[cyan]--date[/cyan] DATE 生成完整横截面排名。",
-    context_settings=COMMAND_CONTEXT,
-)
 def rank_command(
     prediction_date: Annotated[
         str | None,
-        typer.Option("--date"),
+        typer.Option("--date", help="排名业务日期，默认当天。"),
     ] = None,
 ) -> None:
     _run_date_command("rank", prediction_date, _rank)
 
 
-@app.command(
-    "trading",
-    short_help="[cyan]--type[/cyan] B/S 执行当天实时买入/卖出交易。",
-    context_settings=COMMAND_CONTEXT,
-    hidden=True,
-)
 def trading_command(
     trade_type: Annotated[
         str,
@@ -271,15 +214,10 @@ def trading_command(
     )
 
 
-@app.command(
-    "performance",
-    short_help="[cyan]--date[/cyan] DATE 生成当日已实现绩效。",
-    context_settings=COMMAND_CONTEXT,
-)
 def performance_command(
     business_date: Annotated[
         str | None,
-        typer.Option("--date"),
+        typer.Option("--date", help="绩效业务日期，默认当天。"),
     ] = None,
 ) -> None:
     target_date = _business_date(business_date)
@@ -291,15 +229,10 @@ def performance_command(
     _print_performance_summary(result)
 
 
-@app.command(
-    "evaluate",
-    short_help="[cyan]--date[/cyan] DATE 基于已实现绩效评估模型。",
-    context_settings=COMMAND_CONTEXT,
-)
 def evaluate_command(
     business_date: Annotated[
         str | None,
-        typer.Option("--date"),
+        typer.Option("--date", help="模型评估业务日期，默认当天。"),
     ] = None,
 ) -> None:
     target_date = _business_date(business_date)
@@ -311,15 +244,10 @@ def evaluate_command(
     _print_evaluation_summary(result)
 
 
-@app.command(
-    "clean",
-    short_help="[cyan]--date[/cyan] DATE 清理过期分钟数据和状态。",
-    context_settings=COMMAND_CONTEXT,
-)
 def clean_command(
     reference_date: Annotated[
         str | None,
-        typer.Option("--date"),
+        typer.Option("--date", help="清理基准日期，默认当天。"),
     ] = None,
 ) -> None:
     target_date = _business_date(reference_date)
@@ -788,4 +716,4 @@ def _format_amount(value: object) -> str:
 
 def _format_rate(value: object) -> str:
     return "-" if value is None else f"{float(value):.2%}"
-# AI_GENERATE_END -----------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END ------------------------------------------------------------------------------------------------------------------
