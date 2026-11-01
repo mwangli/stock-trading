@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----
+# AI_GENERATE_START ------
 from __future__ import annotations
 
 from datetime import datetime
@@ -7,7 +7,6 @@ from typing import Iterable
 
 from stock_trading.broker.models import (
     BrokerAccount,
-    BrokerFill,
     BrokerOrder,
     BrokerPosition,
 )
@@ -121,52 +120,6 @@ def parse_order_rows(rows: Iterable[str]) -> tuple[BrokerOrder, ...]:
     return tuple(orders)
 
 
-def parse_fill_rows(rows: Iterable[str], today_format: bool) -> tuple[BrokerFill, ...]:
-    fills: list[BrokerFill] = []
-    for row in rows:
-        if is_header_or_empty(row):
-            continue
-        fields = split_row(row)
-        if len(fields) < 12:
-            continue
-        values = (
-            (fields[6], fields[5], fields[0], fields[1], fields[3], fields[2], fields[10], fields[11])
-            if today_format
-            else (fields[1], fields[4], fields[5], fields[6], fields[7], fields[8], fields[0], fields[11])
-        )
-        fill = _build_fill(*values)
-        if fill is not None:
-            fills.append(fill)
-    return tuple(fills)
-
-
-def _build_fill(
-    order_id: str,
-    stock_code: str,
-    stock_name: str,
-    direction: str,
-    price_value: str,
-    quantity_value: str,
-    date_value: str,
-    time_value: str,
-) -> BrokerFill | None:
-    price = parse_decimal(price_value)
-    quantity = parse_integer(quantity_value)
-    if price is None or quantity is None or quantity == 0:
-        return None
-    quantity = abs(quantity)
-    return BrokerFill(
-        order_id=_text(order_id),
-        stock_code=_text(stock_code),
-        stock_name=_text(stock_name),
-        direction=_direction(direction),
-        fill_price=price,
-        fill_quantity=quantity,
-        fill_amount=price * quantity,
-        fill_time=_date_time(date_value, time_value),
-    )
-
-
 def _direction(value: object) -> str:
     text = _text(value)
     normalized = text.upper() if text is not None else None
@@ -215,4 +168,4 @@ def _text(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
-# AI_GENERATE_END -----
+# AI_GENERATE_END ------

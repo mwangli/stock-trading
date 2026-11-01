@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------------------------------------------------------------------
+# AI_GENERATE_START ---------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -16,7 +16,6 @@ from zoneinfo import ZoneInfo
 import typer
 
 from stock_trading.config import AppConfig
-from stock_trading.data_sync import SUPPORTED_DATA, sync_runtime_data
 from stock_trading.initialization import InitializationService
 from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.broker.captcha import BaiduCaptchaSolver
@@ -29,8 +28,8 @@ from stock_trading.market.sync import (
 from stock_trading.process_control import replace_running_command
 from stock_trading.logging_utils import (
     configure_logging,
-    live_progress_session,
-    update_live_progress_details,
+    log_context,
+    set_log_context,
 )
 from stock_trading.research.artifacts import (
     model_root,
@@ -40,12 +39,9 @@ from stock_trading.research.model import (
     predict_alpha158_lightgbm,
 )
 from stock_trading.research.qlib_store import to_qlib_code
-from stock_trading.research.training import (
-    prepare_training_data,
-    run_current_model_backtests,
-    run_training_pipeline,
-)
+from stock_trading.research.training import run_training_pipeline
 from stock_trading.state.store import StateStore
+from stock_trading.trading.broker_sync import BrokerOrderSyncService
 from stock_trading.trading.execution import OrderExecutionOrchestrator
 from stock_trading.trading.orchestrator import LiveTradingOrchestrator
 from stock_trading.trading.performance import LivePerformanceService
@@ -64,8 +60,9 @@ app = typer.Typer(
     no_args_is_help=True,
     rich_markup_mode="rich",
     add_completion=False,
+    options_metavar="",
+    add_help_option=False,
     pretty_exceptions_enable=False,
-    context_settings={"help_option_names": ["-h", "--help"]},
 )
 T = TypeVar("T")
 
@@ -82,40 +79,35 @@ def _execute(
     configure_logging()
     started_at = perf_counter()
     config: AppConfig | None = None
-    try:
-        config = AppConfig.from_env()
-        with replace_running_command(command, config.state_db_path):
-            LOGGER.info(
-                "业务命令开始：%s；参数=%s",
-                command,
-                json.dumps(parameters, ensure_ascii=False, default=str),
+    with log_context(task=command, progress="0/1", target=command):
+        try:
+            config = AppConfig.from_env()
+            with replace_running_command(command, config.state_db_path):
+                LOGGER.info(
+                    "业务命令开始：参数=%s",
+                    json.dumps(parameters, ensure_ascii=False, default=str),
+                )
+                result = operation(config)
+        except typer.BadParameter as error:
+            LOGGER.warning("业务命令参数错误：原因=%s", error)
+            raise
+        except Exception as error:
+            LOGGER.error(
+                "业务命令失败：耗时=%.2f 秒；原因=%s",
+                perf_counter() - started_at,
+                error,
             )
-            result = operation(config)
-    except typer.BadParameter as error:
-        LOGGER.warning("业务命令参数错误：%s；原因=%s", command, error)
-        raise
-    except Exception as error:
-        LOGGER.error(
-            "业务命令失败：%s；耗时=%.2f 秒；原因=%s",
-            command,
-            perf_counter() - started_at,
-            error,
-        )
-        _push_system_failure(config, command, error)
-        raise
-    except KeyboardInterrupt:
-        LOGGER.warning(
-            "收到 Ctrl+C，业务命令已终止：%s；耗时=%.2f 秒",
-            command,
-            perf_counter() - started_at,
-        )
-        raise SystemExit(130) from None
-    LOGGER.info(
-        "业务命令完成：%s；总耗时=%.2f 秒",
-        command,
-        perf_counter() - started_at,
-    )
-    return result
+            _push_system_failure(config, command, error)
+            raise
+        except KeyboardInterrupt:
+            LOGGER.warning(
+                "收到 Ctrl+C，业务命令已终止：耗时=%.2f 秒",
+                perf_counter() - started_at,
+            )
+            raise SystemExit(130) from None
+        set_log_context(progress="1/1", target=command)
+        LOGGER.info("业务命令完成：总耗时=%.2f 秒", perf_counter() - started_at)
+        return result
 
 
 COMMAND_CONTEXT = {"help_option_names": []}
@@ -123,24 +115,36 @@ COMMAND_CONTEXT = {"help_option_names": []}
 
 @app.command(
     "init",
-    short_help="[cyan]--force[/cyan] 初始化完整交易环境。",
+    short_help="初始化完整交易环境，执行同步订单，采集数据，训练模型任务。",
     context_settings=COMMAND_CONTEXT,
 )
-def init_command(
-    force: Annotated[
-        bool,
-        typer.Option("--force"),
-    ] = False,
-) -> None:
+def init_command() -> None:
     def run(config: AppConfig) -> dict[str, object]:
-        return InitializationService(config, lambda: _build_broker(config)).run(
-            force=force
-        )
+        return InitializationService(config, lambda: _build_broker(config)).run()
 
-    configure_logging()
-    with live_progress_session("正在启动初始化"):
-        result = _execute("init", {"force": force}, run)
+    result = _execute("init", {}, run)
     _print_json(result)
+
+
+@app.command(
+    "broker",
+    short_help="[cyan]--date[/cyan] DATE[:DATE] 同步历史订单并重建交易记录。",
+    context_settings=COMMAND_CONTEXT,
+)
+def broker_command(
+    date_value: Annotated[
+        str | None,
+        typer.Option("--date"),
+    ] = None,
+) -> None:
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    start_date, end_date = _parse_date_expression(date_value, today, today)
+    result = _execute(
+        "broker",
+        {"date": date_value},
+        lambda config: _sync_broker(config, start_date, end_date),
+    )
+    _print_broker_summary(result)
 
 
 @app.command(
@@ -169,107 +173,23 @@ def collect_command(
             if codes
             else _default_research_codes(config, start, end)
         )
-        update_live_progress_details(
-            stock=f"指定股票 {len(parsed_codes)}只",
-            date_text=_format_date_expression(start, end),
-            step=f"0/{len(parsed_codes)}",
-        )
         _collect_codes(config, parsed_codes, start, end)
 
-    initial_date = date_value or date.today().isoformat()
-    configure_logging()
-    with live_progress_session("正在启动 collect", layout="collection"):
-        update_live_progress_details(
-            stock="指定股票" if codes else "默认研究股票",
-            date_text=initial_date,
-            step="0/--",
-        )
-        _execute(
-            "collect",
-            {
-                "codes": codes,
-                "date": date_value,
-            },
-            run,
-        )
-
-
-@app.command(
-    "sync",
-    short_help=(
-        "[cyan]--push|--pull[/cyan] [cyan]--data[/cyan] TYPE "
-        "同步本地与服务器数据。"
-    ),
-    context_settings=COMMAND_CONTEXT,
-)
-def sync_command(
-    data: Annotated[
-        str,
-        typer.Option("--data"),
-    ],
-    push: Annotated[
-        bool,
-        typer.Option("--push"),
-    ] = False,
-    pull: Annotated[
-        bool,
-        typer.Option("--pull"),
-    ] = False,
-) -> None:
-    if push == pull:
-        raise typer.BadParameter("必须且只能指定 --push 或 --pull 其中一个")
-    data_names = _parse_sync_data(data)
-    result = _execute(
-        "sync",
+    _execute(
+        "collect",
         {
-            "direction": "push" if push else "pull",
-            "data": list(data_names),
+            "codes": codes,
+            "date": date_value,
         },
-        lambda config: sync_runtime_data(config, data_names, push=push),
-    )
-    _print_json(result)
-
-
-@app.command(
-    "prepare",
-    short_help=(
-        "[cyan]--codes[/cyan] TEXT [cyan]--date[/cyan] DATE[:DATE] "
-        "校验数据并重建 Qlib。"
-    ),
-    context_settings=COMMAND_CONTEXT,
-)
-def prepare_command(
-    codes: Annotated[
-        str,
-        typer.Option(),
-    ],
-    date_value: Annotated[
-        str | None,
-        typer.Option("--date"),
-    ] = None,
-) -> None:
-    def run(config: AppConfig) -> dict[str, object]:
-        today = date.today()
-        start, end = _parse_date_expression(
-            date_value,
-            today - timedelta(days=config.market_history_days),
-            today,
-        )
-        return prepare_training_data(
-            config, _parse_stock_codes(codes), start, end
-        )
-
-    result = _execute(
-        "prepare",
-        {"codes": codes, "date": date_value},
         run,
     )
-    _print_json(result)
 
 
 @app.command(
     "train",
-    short_help="[cyan]--split[/cyan] RATIO 训练 Alpha158 + LightGBM 模型。",
+    short_help=(
+        "[cyan]--split[/cyan] RATIO 准备数据、训练、评估并回测模型。"
+    ),
     context_settings=COMMAND_CONTEXT,
 )
 def train_command(
@@ -278,28 +198,20 @@ def train_command(
         typer.Option(),
     ] = None,
 ) -> None:
-    result = _execute(
-        "train",
-        {"split": split},
-        lambda config: run_training_pipeline(
-            config, _parse_model_split(split) if split else None
-        ),
-    )
-    _print_json(result)
-
-
-@app.command(
-    "backtest",
-    short_help="使用固定五档资金执行单持仓 T+1 回测。",
-    context_settings=COMMAND_CONTEXT,
-)
-def backtest_command() -> None:
-    result = _execute(
-        "backtest",
-        {},
-        run_current_model_backtests,
-    )
-    _print_json(result)
+    configure_logging()
+    logger = logging.getLogger("stock_trading")
+    previous_level = logger.level
+    logger.setLevel(logging.WARNING)
+    try:
+        _execute(
+            "train",
+            {"split": split},
+            lambda config: run_training_pipeline(
+                config, _parse_model_split(split) if split else None
+            ),
+        )
+    finally:
+        logger.setLevel(previous_level)
 
 
 def _run_date_command(
@@ -312,17 +224,17 @@ def _run_date_command(
 
 
 @app.command(
-    "predict",
-    short_help="[cyan]--date[/cyan] DATE 生成 Top 5 预测。",
+    "rank",
+    short_help="[cyan]--date[/cyan] DATE 生成完整横截面排名。",
     context_settings=COMMAND_CONTEXT,
 )
-def predict_command(
+def rank_command(
     prediction_date: Annotated[
         str | None,
         typer.Option("--date"),
     ] = None,
 ) -> None:
-    _run_date_command("predict", prediction_date, _predict)
+    _run_date_command("rank", prediction_date, _rank)
 
 
 @app.command(
@@ -352,58 +264,36 @@ def trading_command(
 
 
 @app.command(
-    "broker",
-    short_help="[cyan]--date[/cyan] DATE 同步券商事实并恢复委托。",
+    "close",
+    short_help="[cyan]--date[/cyan] DATE 执行收盘后同步、评估和清理。",
     context_settings=COMMAND_CONTEXT,
 )
-def broker_command(
+def close_command(
     business_date: Annotated[
         str | None,
         typer.Option("--date"),
     ] = None,
 ) -> None:
-    _run_date_command("broker", business_date, _sync_broker)
-
-
-@app.command(
-    "evaluate",
-    short_help=(
-        "[cyan]--date[/cyan] DATE [cyan]--cash[/cyan] AMOUNT "
-        "同步绩效并执行模型评估。"
-    ),
-    context_settings=COMMAND_CONTEXT,
-)
-def evaluate_command(
-    business_date: Annotated[
-        str | None,
-        typer.Option("--date"),
-    ] = None,
-    external_cash_flow: Annotated[
-        str,
-        typer.Option("--cash"),
-    ] = "0",
-) -> None:
-    target_date = _parse_date(business_date) if business_date else date.today()
-    cash_flow = _parse_decimal(external_cash_flow, "外部资金流")
-    _execute(
-        "evaluate",
-        {"date": business_date, "externalCashFlow": external_cash_flow},
-        lambda config: _update_live_performance(config, target_date, cash_flow),
+    target_date = _business_date(business_date)
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    if target_date != today:
+        raise typer.BadParameter(
+            f"close 只支持上海当天 {today.isoformat()}，不能生成历史权益"
+        )
+    result = _execute(
+        "close",
+        {"date": business_date},
+        lambda config: _close(config, target_date),
     )
+    _print_close_summary(result)
 
 
-@app.command(
-    "clean",
-    short_help="[cyan]--date[/cyan] DATE 压缩数据并执行分级清理。",
-    context_settings=COMMAND_CONTEXT,
-)
-def clean_command(
-    reference_date: Annotated[
-        str | None,
-        typer.Option("--date"),
-    ] = None,
-) -> None:
-    _run_date_command("clean", reference_date, _cleanup)
+def _business_date(value: str | None) -> date:
+    return (
+        _parse_date(value)
+        if value
+        else datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    )
 
 
 def _parse_date(value: str) -> date:
@@ -441,10 +331,6 @@ def _parse_date_expression(
     return start_date, end_date
 
 
-def _format_date_expression(start_date: date, end_date: date) -> str:
-    if start_date == end_date:
-        return start_date.isoformat()
-    return f"{start_date.isoformat()}:{end_date.isoformat()}"
 
 
 def _parse_stock_code(value: str) -> str:
@@ -461,35 +347,6 @@ def _parse_stock_codes(value: str) -> list[str]:
     if not raw_codes:
         raise typer.BadParameter("股票代码列表不能为空")
     return list(dict.fromkeys(_parse_stock_code(code) for code in raw_codes))
-
-
-def _parse_sync_data(value: str) -> tuple[str, ...]:
-    raw_names = [item.strip().lower() for item in value.split(",")]
-    if not value.strip() or any(not item for item in raw_names):
-        raise typer.BadParameter("同步数据不能为空；可选值：market,qlib")
-    unsupported = [name for name in raw_names if name not in SUPPORTED_DATA]
-    if unsupported:
-        raise typer.BadParameter(
-            f"不支持的同步数据：{','.join(dict.fromkeys(unsupported))}；"
-            "可选值：market,qlib"
-        )
-    return tuple(dict.fromkeys(raw_names))
-
-
-def _parse_decimal(
-    value: str,
-    name: str,
-    positive: bool = False,
-) -> Decimal:
-    try:
-        result = Decimal(value)
-    except InvalidOperation:
-        raise typer.BadParameter(f"{name}格式错误：{value}；请输入数字") from None
-    if not result.is_finite() or (positive and result <= 0):
-        raise typer.BadParameter(
-            f"{name}必须是{'大于 0 的' if positive else '有限'}数字"
-        )
-    return result
 
 
 def _parse_model_split(value: str) -> tuple[Decimal, Decimal, Decimal]:
@@ -521,7 +378,6 @@ def _collect_codes(
         start_date,
         end_date,
     )
-    update_live_progress_details(step=f"{len(codes)}/{len(codes)}")
     LOGGER.info(
         "股票数据采集完成：股票数=%d；完成=%s；跳过=%s；失败=%d",
         len(codes),
@@ -548,35 +404,53 @@ def _default_research_codes(
     return codes
 
 
-def _cleanup(config: AppConfig, reference_date: date) -> None:
+def _cleanup(config: AppConfig, reference_date: date) -> dict[str, object]:
     LOGGER.info("开始清理持久化数据：基准日期=%s", reference_date)
     market = ParquetMarketStore(config.data_dir).cleanup_minutes(reference_date)
     state = StateStore(config.state_db_path).cleanup(reference_date)
-    _print_json(
-        {
-            "referenceDate": reference_date.isoformat(),
-            "market": market,
-            "state": state,
-        }
-    )
+    return {
+        "referenceDate": reference_date.isoformat(),
+        "market": market,
+        "state": state,
+    }
 
 
-def _sync_broker(config: AppConfig, business_date: date) -> None:
-    LOGGER.info("开始同步券商事实并恢复委托状态：业务日期=%s", business_date)
+def _sync_broker(
+    config: AppConfig,
+    start_date: date,
+    end_date: date,
+    broker: ZXBrokerClient | None = None,
+) -> dict[str, object]:
+    LOGGER.info("开始同步券商历史订单：日期=%s 至 %s", start_date, end_date)
     store = StateStore(config.state_db_path)
-    result = OrderExecutionOrchestrator(
-        config, store, _build_broker(config)
-    ).recover_pending_orders(business_date)
+    result = BrokerOrderSyncService(
+        config, store, broker or _build_broker(config)
+    ).sync(start_date, end_date)
     LOGGER.info(
-        "券商事实同步和委托恢复完成：业务日期=%s；意图数=%d",
-        business_date,
-        len(result["intents"]),
+        "券商历史订单同步完成：日期=%s 至 %s；有效订单=%s；交易记录=%s",
+        start_date,
+        end_date,
+        result["validOrders"],
+        result["tradeRecords"],
     )
-    _print_json(result)
+    return result
 
 
-def _predict(config: AppConfig, prediction_date: date) -> None:
-    LOGGER.info("开始生成横截面预测：预测日期=%s；TopK=5", prediction_date)
+def _close(config: AppConfig, business_date: date) -> dict[str, object]:
+    broker_client = _build_broker(config)
+    broker = _sync_broker(config, business_date, business_date, broker_client)
+    evaluation = _update_live_performance(config, business_date, broker_client)
+    cleanup = _cleanup(config, business_date)
+    return {
+        "businessDate": business_date.isoformat(),
+        "broker": broker,
+        "evaluate": evaluation,
+        "clean": cleanup,
+    }
+
+
+def _rank(config: AppConfig, prediction_date: date) -> None:
+    LOGGER.info("开始生成完整横截面预测：预测日期=%s", prediction_date)
     model_dir = resolve_current_model_dir(model_root(config.artifact_dir))
     store = ParquetMarketStore(config.data_dir)
     stocks = store.read_stock_basics()
@@ -586,16 +460,15 @@ def _predict(config: AppConfig, prediction_date: date) -> None:
         config.qlib_dir,
         model_dir,
         prediction_date,
-        5,
-        {to_qlib_code(code) for code in current_codes},
+        eligible_instruments={to_qlib_code(code) for code in current_codes},
     )
     state = StateStore(config.state_db_path).import_prediction_artifact(
         model_dir, Path(prediction["path"])
     )
     LOGGER.info(
-        "横截面预测完成：全市场评分数=%s；候选数=%s；文件=%s",
+        "横截面预测完成：全市场评分数=%s；排名数=%s；文件=%s",
         prediction["universeRows"],
-        prediction["topK"],
+        prediction["rankingRows"],
         prediction["path"],
     )
     _print_json({"prediction": prediction, "state": state})
@@ -643,19 +516,19 @@ def _run_trading_window(
 def _update_live_performance(
     config: AppConfig,
     business_date: date,
-    external_cash_flow: Decimal,
-) -> None:
-    LOGGER.info("开始更新实盘绩效：业务日期=%s；外部资金流=%s", business_date, external_cash_flow)
+    broker: ZXBrokerClient | None = None,
+) -> dict[str, object]:
+    LOGGER.info("开始更新实盘绩效：业务日期=%s；外部资金流=0", business_date)
     store = StateStore(config.state_db_path)
-    result = LivePerformanceService(config, store).update(
-        business_date, external_cash_flow
-    )
+    result = LivePerformanceService(
+        config, store, broker or _build_broker(config)
+    ).update(business_date)
     LOGGER.info(
         "实盘绩效更新完成：业务日期=%s；评估决策=%s",
         business_date,
         result["evaluation"]["evaluation"]["decision"],
     )
-    _print_json(result)
+    return result
 
 
 def _build_broker(config: AppConfig) -> ZXBrokerClient:
@@ -773,4 +646,62 @@ def _safe_error_text(value: object) -> str:
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END -----------------------------------------------------------------------------------------
+
+
+def _print_broker_summary(result: dict[str, object]) -> None:
+    trade_records = dict(result["tradeRecords"])
+    print(
+        "券商同步完成："
+        f"日期={result['startDate']}:{result['endDate']}；"
+        f"有效订单={result['validOrders']}；"
+        f"新增={result['insertedOrders']}；"
+        f"更新={result['updatedOrders']}；"
+        f"删除={result['deletedOrders']}；"
+        f"交易记录={trade_records.get('recordCount', 0)}；"
+        f"未匹配卖出={trade_records.get('unmatchedSellQuantity', 0)}"
+    )
+
+
+def _print_evaluation_summary(result: dict[str, object]) -> None:
+    performance = dict(result["performance"])
+    evaluation_result = dict(result["evaluation"])
+    evaluation = dict(evaluation_result["evaluation"])
+    request = evaluation_result.get("trainingRequest")
+    print(
+        "绩效评估完成："
+        f"日期={result['businessDate']}；"
+        f"权益={_format_amount(performance.get('equity'))}；"
+        f"净损益={_format_amount(performance.get('net_pnl'))}；"
+        f"净收益率={_format_rate(performance.get('net_return'))}；"
+        f"模型决策={evaluation.get('decision', '-')}；"
+        f"训练请求={'是' if request else '否'}"
+    )
+
+
+def _print_cleanup_summary(result: dict[str, object]) -> None:
+    market = dict(result["market"])
+    state = dict(result["state"])
+    print(
+        "数据清理完成："
+        f"日期={result['referenceDate']}；"
+        f"分钟股票={market.get('codes', 0)}；"
+        f"原始行={market.get('rawRows', 0)}；"
+        f"聚合行={market.get('summaryRows', 0)}；"
+        f"SQLite删除={state.get('deletedRows', 0)}"
+    )
+
+
+def _print_close_summary(result: dict[str, object]) -> None:
+    print(f"收盘处理完成：日期={result['businessDate']}")
+    _print_broker_summary(dict(result["broker"]))
+    _print_evaluation_summary(dict(result["evaluate"]))
+    _print_cleanup_summary(dict(result["clean"]))
+
+
+def _format_amount(value: object) -> str:
+    return "-" if value is None else f"{float(value):,.2f}"
+
+
+def _format_rate(value: object) -> str:
+    return "-" if value is None else f"{float(value):.2%}"
+# AI_GENERATE_END ---------------------------------------------------------------------------------------------------------

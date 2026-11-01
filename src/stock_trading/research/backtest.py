@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------
+# AI_GENERATE_START --------------
 from __future__ import annotations
 
 import json
@@ -13,7 +13,7 @@ import pandas as pd
 
 from stock_trading.config import AppConfig
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.logging_utils import should_log_progress
+from stock_trading.logging_utils import set_log_context, should_log_progress
 
 
 LOGGER = logging.getLogger(__name__)
@@ -66,8 +66,10 @@ class PortfolioBacktester:
         self._calendar = pd.DatetimeIndex(
             pd.to_datetime(calendar_path.read_text(encoding="utf-8").splitlines())
         )
-        self._topk = pd.read_parquet(topk_path).sort_values(
-            ["datetime", "score"], ascending=[True, False]
+        self._topk = (
+            pd.read_parquet(topk_path)
+            .dropna(subset=["score"])
+            .sort_values(["datetime", "score"], ascending=[True, False])
         )
         self._topk["datetime"] = pd.to_datetime(self._topk["datetime"])
         self._config = config
@@ -77,7 +79,8 @@ class PortfolioBacktester:
 
     def run(self, artifact_dir: Path) -> dict[str, object]:
         codes = sorted(self._topk["instrument"].map(_to_baostock_code).unique())
-        LOGGER.info("回测阶段 1/4：加载行情；股票数=%d", len(codes))
+        set_log_context(progress="1/4", target="回测行情")
+        LOGGER.info("加载回测行情：股票数=%d", len(codes))
         self._load_market(codes)
         ranked = {
             pd.Timestamp(day): group.reset_index(drop=True)
@@ -99,7 +102,8 @@ class PortfolioBacktester:
         total_sell_notional = 0.0
 
         total_dates = len(simulation_dates)
-        LOGGER.info("回测阶段 2/4：执行逐日模拟；交易日数=%d", total_dates)
+        set_log_context(progress="2/4", target="逐日模拟")
+        LOGGER.info("开始逐日模拟：交易日数=%d", total_dates)
         for index, timestamp in enumerate(simulation_dates, start=1):
             trade_date = timestamp.date()
             if position is not None and trade_date > position.buy_date:
@@ -148,17 +152,18 @@ class PortfolioBacktester:
                 }
             )
             if should_log_progress(index, total_dates):
+                set_log_context(
+                    progress=f"{index}/{total_dates}", target=str(trade_date)
+                )
                 LOGGER.info(
-                    "回测进度：%d/%d；交易日=%s；权益=%.2f；已平仓=%d；拒绝=%d",
-                    index,
-                    total_dates,
-                    trade_date,
+                    "回测状态：权益=%.2f；已平仓=%d；拒绝=%d",
                     equity_rows[-1]["equity"],
                     len(trades),
                     len(rejects),
                 )
 
-        LOGGER.info("回测阶段 3/4：汇总收益、费用和回撤")
+        set_log_context(progress="3/4", target="收益汇总")
+        LOGGER.info("开始汇总收益、费用和回撤")
         final_equity = equity_rows[-1]["equity"] if equity_rows else cash
         summary = self._summary(
             trades,
@@ -170,7 +175,8 @@ class PortfolioBacktester:
             total_sell_notional,
             position,
         )
-        LOGGER.info("回测阶段 4/4：写入回测制品；目录=%s", artifact_dir)
+        set_log_context(progress="4/4", target=str(artifact_dir))
+        LOGGER.info("开始写入回测制品")
         artifact_dir.mkdir(parents=True, exist_ok=True)
         pd.DataFrame.from_records(trades).to_parquet(artifact_dir / "trades.parquet", index=False)
         pd.DataFrame.from_records(rejects).to_parquet(artifact_dir / "rejects.parquet", index=False)
@@ -201,7 +207,8 @@ class PortfolioBacktester:
                 columns={"sell_vwap": "vwap", "sell_low": "low", "sell_high": "high"}
             )
             if should_log_progress(index, total_codes):
-                LOGGER.info("回测行情加载进度：%d/%d；股票=%s", index, total_codes, code)
+                set_log_context(progress=f"{index}/{total_codes}", target=code)
+                LOGGER.info("回测行情加载完成")
 
     def _try_buy(
         self,
@@ -389,7 +396,7 @@ def run_portfolio_backtest(
     return PortfolioBacktester(
         ParquetMarketStore(config.data_dir),
         config.qlib_dir / "calendars" / "day.txt",
-        model_dir / "top5.parquet",
+        model_dir / "test_predictions.parquet",
         backtest_config,
     ).run(artifact_dir)
 
@@ -495,4 +502,4 @@ def read_backtest_summary(directory: Path) -> dict[str, object]:
     """读取一个资金场景的回测摘要。"""
     return json.loads((directory / "summary.json").read_text(encoding="utf-8"))
 
-# AI_GENERATE_END ---------
+# AI_GENERATE_END --------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------
+# AI_GENERATE_START ---------------
 from __future__ import annotations
 
 import logging
@@ -16,6 +16,7 @@ import baostock.common.context as bs_context
 import baostock.common.contants as bs_constants
 import baostock.util.socketutil as bs_socket
 
+from stock_trading.logging_utils import set_log_context
 from stock_trading.market.models import AdjustmentFactor, DailyBar, MinuteBar, StockBasic
 
 DAILY_FIELDS = (
@@ -198,30 +199,20 @@ class BaoStockClient:
         rows: list[dict[str, str]] = []
         estimated_total = len(result.data)
         interval = max(1, estimated_total // ROW_PROGRESS_STEPS)
-        LOGGER.info(
-            "数据采集中：任务=%s；进度=0/%d",
-            operation,
-            estimated_total,
-        )
+        set_log_context(progress=f"0/{estimated_total}", target=operation)
+        LOGGER.info("开始接收数据")
         while result.next():
             rows.append(dict(zip(result.fields, result.get_row_data(), strict=True)))
             page_remaining = max(0, len(result.data) - int(result.cur_row_num))
             estimated_total = max(estimated_total, len(rows) + page_remaining)
             interval = max(1, estimated_total // ROW_PROGRESS_STEPS)
             if len(rows) == 1 or len(rows) == estimated_total or len(rows) % interval == 0:
-                LOGGER.info(
-                    "数据采集中：任务=%s；进度=%d/%d",
-                    operation,
-                    len(rows),
-                    estimated_total,
+                set_log_context(
+                    progress=f"{len(rows)}/{estimated_total}", target=operation
                 )
-        LOGGER.info(
-            "数据接收完成：任务=%s；进度=%d/%d；总数=%d 条",
-            operation,
-            len(rows),
-            len(rows),
-            len(rows),
-        )
+                LOGGER.info("正在接收数据")
+        set_log_context(progress=f"{len(rows)}/{len(rows)}", target=operation)
+        LOGGER.info("数据接收完成：总数=%d 条", len(rows))
         return rows
 
     def _install_connector(self) -> None:
@@ -295,4 +286,4 @@ class BaoStockClient:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END --------------
+# AI_GENERATE_END ---------------

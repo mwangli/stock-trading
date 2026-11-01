@@ -1,10 +1,9 @@
-# AI_GENERATE_START --
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 import logging
 from datetime import date
 
-from stock_trading.broker.models import BrokerOrder
 from stock_trading.state.store import StateStore
 
 LOGGER = logging.getLogger(__name__)
@@ -22,7 +21,7 @@ def permission_scope(instrument: str | None) -> str | None:
 
 def refresh_permissions(
     store: StateStore,
-    orders: tuple[BrokerOrder, ...] | list[BrokerOrder],
+    orders: list[dict[str, object]],
     observed_date: date,
 ) -> list[dict[str, object]]:
     """根据历史已受理委托刷新主板交易权限证据。"""
@@ -41,21 +40,19 @@ def refresh_permissions(
         for scope in ("SH_MAIN", "SZ_MAIN")
     }
     for order in orders:
-        if order.status in {"REJECTED", "UNKNOWN"}:
+        if str(order["status"]) in {"REJECTED", "UNKNOWN"}:
             continue
-        scope = permission_scope(order.stock_code)
+        scope = permission_scope(order["instrument"])
         if scope is None:
             continue
         observed = (
-            order.order_time.isoformat()
-            if order.order_time
-            else observed_date.isoformat()
+            str(order["order_time"] or observed_date.isoformat())
         )
         records[scope] = {
             "scope": scope,
             "status": "ALLOWED",
             "evidenceType": "HISTORICAL_ORDER",
-            "evidenceDetail": f"历史委托号={order.order_id or 'UNKNOWN'}",
+            "evidenceDetail": f"历史委托号={order['broker_order_id'] or 'UNKNOWN'}",
             "observedAt": observed,
         }
     saved = store.save_broker_permissions(list(records.values()))
@@ -74,4 +71,4 @@ def _unknown_permission(scope: str, observed_date: date) -> dict[str, str]:
         "evidenceDetail": "没有找到可确认权限的历史成功委托",
         "observedAt": observed_date.isoformat(),
     }
-# AI_GENERATE_END --
+# AI_GENERATE_END ---

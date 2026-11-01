@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------
+# AI_GENERATE_START -----------
 from __future__ import annotations
 
 import logging
@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.logging_utils import should_log_progress
+from stock_trading.logging_utils import set_log_context, should_log_progress
 from stock_trading.research.labels import build_t1_labels
 
 LOGGER = logging.getLogger(__name__)
@@ -28,11 +28,13 @@ class QlibBinaryStore:
     ) -> dict[str, object]:
         frames: dict[str, pd.DataFrame] = {}
         total_codes = len(codes)
-        LOGGER.info("Qlib 构建阶段 1/3：读取并复权日线；股票数=%d", total_codes)
+        set_log_context(progress="1/3", target="Qlib 日线")
+        LOGGER.info("开始读取并复权日线：股票数=%d", total_codes)
         for index, code in enumerate(codes, start=1):
             frames[code] = self._adjusted_daily(code, start_date, end_date)
             if should_log_progress(index, total_codes):
-                LOGGER.info("Qlib 日线处理进度：%d/%d；股票=%s", index, total_codes, code)
+                set_log_context(progress=f"{index}/{total_codes}", target=code)
+                LOGGER.info("Qlib 日线处理完成")
         calendar = pd.DatetimeIndex(
             sorted({value for frame in frames.values() for value in frame.index})
         )
@@ -48,7 +50,8 @@ class QlibBinaryStore:
 
         instruments: list[tuple[str, str, str]] = []
         label_count = 0
-        LOGGER.info("Qlib 构建阶段 2/3：生成标签和特征；交易日数=%d", len(calendar))
+        set_log_context(progress="2/3", target="Qlib 特征")
+        LOGGER.info("开始生成标签和特征：交易日数=%d", len(calendar))
         for index, (code, frame) in enumerate(frames.items(), start=1):
             aligned = frame.reindex(calendar)
             labels = build_t1_labels(self._market_store.read_minute_summaries(code), calendar)
@@ -65,13 +68,8 @@ class QlibBinaryStore:
             )
             label_count += int(aligned["label"].notna().sum())
             if should_log_progress(index, total_codes):
-                LOGGER.info(
-                    "Qlib 特征写入进度：%d/%d；股票=%s；累计标签=%d",
-                    index,
-                    total_codes,
-                    code,
-                    label_count,
-                )
+                set_log_context(progress=f"{index}/{total_codes}", target=code)
+                LOGGER.info("Qlib 特征写入完成：累计标签=%d", label_count)
 
         instrument_path = temporary / "instruments" / "all.txt"
         instrument_path.write_text(
@@ -80,7 +78,8 @@ class QlibBinaryStore:
         )
         shutil.rmtree(self._target, ignore_errors=True)
         temporary.replace(self._target)
-        LOGGER.info("Qlib 构建阶段 3/3：制品切换完成；目录=%s", self._target)
+        set_log_context(progress="3/3", target=str(self._target))
+        LOGGER.info("Qlib 制品切换完成")
         return {
             "codes": len(codes),
             "calendarDays": len(calendar),
@@ -190,4 +189,4 @@ class QlibBinaryStore:
 def to_qlib_code(code: str) -> str:
     exchange, symbol = code.split(".", maxsplit=1)
     return f"{exchange.upper()}{symbol}"
-# AI_GENERATE_END --------
+# AI_GENERATE_END -----------

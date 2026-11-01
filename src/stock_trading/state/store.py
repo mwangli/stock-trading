@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------------------------------
+# AI_GENERATE_START --------------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -6,20 +6,16 @@ import json
 import logging
 import sqlite3
 from contextlib import contextmanager
-from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable, Iterator
+from uuid import uuid4
 
 import pandas as pd
 
-from stock_trading.broker.models import (
-    BrokerAccount,
-    BrokerFill,
-    BrokerOrder,
-    BrokerSyncSnapshot,
-)
+from stock_trading.broker.models import BrokerOrder
+from stock_trading.logging_utils import set_log_context
 
 LOGGER = logging.getLogger(__name__)
 
@@ -202,63 +198,69 @@ CREATE TABLE IF NOT EXISTS training_request (
     FOREIGN KEY(model_version_id) REFERENCES model_version(id)
 );
 
--- 券商账户快照：保存一次只读同步取得的账户汇总事实。
-CREATE TABLE IF NOT EXISTS broker_account_snapshot (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, -- 券商账户快照本地主键。
-    business_key TEXT NOT NULL UNIQUE, -- 本次券商同步任务的幂等业务键。
-    business_date TEXT NOT NULL, -- 快照归属业务日期，格式 YYYY-MM-DD。
-    available_cash REAL NOT NULL, -- 券商返回的可用资金。
-    total_assets REAL NOT NULL, -- 券商返回的账户总资产。
-    total_position REAL NOT NULL, -- 券商返回的持仓总市值。
-    frozen_amount REAL NOT NULL, -- 券商返回的冻结资金。
-    captured_at TEXT NOT NULL -- 券商快照采集时间。
-);
-
--- 券商持仓快照：保存一次同步中的逐证券持仓事实。
-CREATE TABLE IF NOT EXISTS broker_position_snapshot (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, -- 券商持仓快照本地主键。
-    business_key TEXT NOT NULL, -- 本次券商同步任务的幂等业务键。
+-- 历史订单：保存券商返回的有效已成交订单。
+CREATE TABLE IF NOT EXISTS history_order (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, -- 本地自增主键。
+    trade_date TEXT NOT NULL, -- 成交归属日期，格式 YYYY-MM-DD。
+    broker_order_id TEXT NOT NULL, -- 券商订单编号。
     instrument TEXT NOT NULL, -- 券商证券代码。
     stock_name TEXT, -- 券商返回的证券名称。
-    quantity INTEGER NOT NULL, -- 总持仓股数。
-    available_quantity INTEGER NOT NULL, -- 当前可卖股数。
-    frozen_quantity INTEGER NOT NULL, -- 已冻结、暂不可卖股数。
-    average_cost REAL, -- 券商返回的持仓平均成本。
-    current_price REAL NOT NULL, -- 快照时点最新价格。
-    market TEXT, -- 券商市场标识，例如 SH 或 SZ。
-    captured_at TEXT NOT NULL, -- 券商快照采集时间。
-    UNIQUE(business_key, instrument)
-);
-
--- 券商委托事实：以券商委托号为权威键保存订单最新状态。
-CREATE TABLE IF NOT EXISTS broker_order_fact (
-    broker_order_id TEXT PRIMARY KEY, -- 券商返回的唯一委托号。
-    instrument TEXT, -- 券商证券代码。
-    stock_name TEXT, -- 券商返回的证券名称。
+    market TEXT, -- 券商市场标识。
     direction TEXT NOT NULL, -- 归一化买卖方向 BUY 或 SELL。
     order_price REAL NOT NULL, -- 委托限价。
     order_quantity INTEGER NOT NULL, -- 委托股数。
-    average_fill_price REAL, -- 已成交部分的平均成交价。
-    filled_quantity INTEGER, -- 已成交股数。
-    raw_status TEXT, -- 券商原始状态文本，便于协议问题追溯。
-    status TEXT NOT NULL, -- 本地归一化状态，例如 SUBMITTED、PARTIAL、FILLED。
-    market TEXT, -- 券商市场标识。
-    order_time TEXT, -- 券商返回的委托时间。
-    updated_at TEXT NOT NULL -- 本地最后同步时间。
+    average_fill_price REAL NOT NULL, -- 平均成交价。
+    filled_quantity INTEGER NOT NULL, -- 成交股数。
+    raw_status TEXT, -- 券商原始状态文本。
+    status TEXT NOT NULL CHECK(status = 'FILLED'), -- 仅保存全部成交订单。
+    order_time TEXT NOT NULL, -- 券商返回的委托时间。
+    sync_run_id TEXT NOT NULL, -- 最近一次确认该订单存在的同步标识。
+    created_at TEXT NOT NULL, -- 本地首次写入时间。
+    updated_at TEXT NOT NULL, -- 本地最后同步时间。
+    UNIQUE(trade_date, broker_order_id)
 );
 
--- 券商成交事实：保存逐笔成交并通过内容指纹去重。
-CREATE TABLE IF NOT EXISTS broker_fill_fact (
-    fill_key TEXT PRIMARY KEY, -- 成交关键字段计算出的 SHA-256 幂等键。
-    broker_order_id TEXT, -- 关联券商委托号；券商未返回时可为空。
-    instrument TEXT, -- 券商证券代码。
-    stock_name TEXT, -- 券商返回的证券名称。
-    direction TEXT NOT NULL, -- 归一化买卖方向 BUY 或 SELL。
-    fill_price REAL NOT NULL, -- 成交价格。
-    fill_quantity INTEGER NOT NULL, -- 成交股数。
-    fill_amount REAL NOT NULL, -- 成交金额。
-    fill_time TEXT, -- 券商返回的成交时间。
-    created_at TEXT NOT NULL -- 本地首次写入时间。
+CREATE INDEX IF NOT EXISTS idx_history_order_trade_date
+ON history_order(trade_date);
+CREATE INDEX IF NOT EXISTS idx_history_order_instrument
+ON history_order(instrument);
+CREATE INDEX IF NOT EXISTS idx_history_order_order_time
+ON history_order(order_time);
+
+-- 交易记录：每条记录对应一个买入订单形成的 FIFO 批次。
+CREATE TABLE IF NOT EXISTS trade_record (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    buy_trade_date TEXT NOT NULL,
+    buy_order_id TEXT NOT NULL,
+    sell_order_ids TEXT NOT NULL,
+    instrument TEXT NOT NULL,
+    stock_name TEXT,
+    market TEXT,
+    status TEXT NOT NULL CHECK(status IN ('OPEN','PARTIAL','CLOSED')),
+    buy_time TEXT NOT NULL,
+    first_sell_time TEXT,
+    last_sell_time TEXT,
+    buy_quantity INTEGER NOT NULL,
+    sold_quantity INTEGER NOT NULL,
+    remaining_quantity INTEGER NOT NULL,
+    buy_price REAL NOT NULL,
+    average_sell_price REAL,
+    buy_amount REAL NOT NULL,
+    sold_cost_amount REAL NOT NULL,
+    sell_amount REAL NOT NULL,
+    buy_fee REAL NOT NULL,
+    allocated_buy_fee REAL NOT NULL,
+    sell_fee REAL NOT NULL,
+    gross_profit REAL NOT NULL,
+    net_profit REAL NOT NULL,
+    gross_return_rate REAL NOT NULL,
+    return_rate REAL NOT NULL,
+    holding_days REAL,
+    daily_return_rate REAL NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(buy_trade_date, buy_order_id),
+    CHECK(buy_quantity = sold_quantity + remaining_quantity)
 );
 
 -- 委托尝试：记录每次实时报价和券商委托事实，承担提交幂等和状态恢复。
@@ -298,7 +300,18 @@ class StateStore:
         """用途：创建目录、数据表和兼容字段；输入：无；输出：无。"""
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
+            legacy_order_exists = self._table_exists(connection, "broker_order_fact")
+            history_order_exists = self._table_exists(connection, "history_order")
             connection.executescript(SCHEMA)
+            if legacy_order_exists and not history_order_exists:
+                self._migrate_legacy_history_orders(connection)
+            for table in (
+                "broker_order_fact",
+                "broker_fill_fact",
+                "broker_account_snapshot",
+                "broker_position_snapshot",
+            ):
+                connection.execute(f"DROP TABLE IF EXISTS {table}")
             self._ensure_column(
                 connection, "shadow_order", "model_version_id", "INTEGER"
             )
@@ -313,24 +326,10 @@ class StateStore:
         """按数据价值分级清理 SQLite，并保留活动委托和长期基础事实。"""
         self.initialize()
         task_cutoff = (reference_date - timedelta(days=180)).isoformat()
-        snapshot_cutoff = (reference_date - timedelta(days=366)).isoformat()
         history_cutoff = (reference_date - timedelta(days=366 * 5)).isoformat()
         deleted: dict[str, int] = {}
         terminal_statuses = "'FILLED','CANCELLED','REJECTED'"
         with self._connect() as connection:
-            old_accounts = (
-                "SELECT business_key FROM broker_account_snapshot "
-                "WHERE business_date < ?"
-            )
-            deleted["broker_position_snapshot"] = connection.execute(
-                f"DELETE FROM broker_position_snapshot WHERE business_key IN ({old_accounts})",
-                (snapshot_cutoff,),
-            ).rowcount
-            deleted["broker_account_snapshot"] = connection.execute(
-                "DELETE FROM broker_account_snapshot WHERE business_date < ?",
-                (snapshot_cutoff,),
-            ).rowcount
-
             old_shadow_orders = (
                 "SELECT id FROM shadow_order WHERE business_date < ? "
                 f"AND status IN ({terminal_statuses})"
@@ -365,17 +364,6 @@ class StateStore:
                     f"substr(updated_at, 1, 10) < ? AND status IN ({terminal_statuses})",
                     history_cutoff,
                 ),
-                (
-                    "broker_order_fact",
-                    f"substr(COALESCE(order_time, updated_at), 1, 10) < ? "
-                    f"AND status IN ({terminal_statuses})",
-                    history_cutoff,
-                ),
-                (
-                    "broker_fill_fact",
-                    "substr(COALESCE(fill_time, created_at), 1, 10) < ?",
-                    history_cutoff,
-                ),
             )
             for table, condition, cutoff in rules:
                 deleted[table] = connection.execute(
@@ -392,17 +380,15 @@ class StateStore:
                 connection.execute("VACUUM")
                 connection.execute("PRAGMA optimize")
         LOGGER.info(
-            "SQLite 分级清理完成：删除=%d；任务截止=%s；快照截止=%s；历史截止=%s",
+            "SQLite 分级清理完成：删除=%d；任务截止=%s；历史截止=%s",
             deleted_rows,
             task_cutoff,
-            snapshot_cutoff,
             history_cutoff,
         )
         return {
             "deletedRows": deleted_rows,
             "deletedByTable": deleted,
             "taskCutoff": task_cutoff,
-            "snapshotCutoff": snapshot_cutoff,
             "historyCutoff": history_cutoff,
         }
 
@@ -415,34 +401,41 @@ class StateStore:
     ) -> dict[str, Any]:
         """用途：事务导入模型、预测、回测交易和绩效；输入：制品目录与场景；输出：导入摘要。"""
         self.initialize()
-        LOGGER.info("研究制品导入阶段 1/5：读取模型指标和 TopK")
+        set_log_context(progress="1/5", target="研究制品")
+        LOGGER.info("读取模型指标和完整测试集排名")
         metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
-        topk = pd.read_parquet(model_dir / "top5.parquet")
-        business_date = pd.to_datetime(topk["datetime"]).max().date().isoformat()
+        rankings = pd.read_parquet(model_dir / "test_predictions.parquet").dropna(
+            subset=["score"]
+        )
+        business_date = pd.to_datetime(rankings["datetime"]).max().date().isoformat()
         fingerprint = _artifact_fingerprint(
             model_dir / "model.pkl",
-            model_dir / "top5.parquet",
+            model_dir / "test_predictions.parquet",
             backtest_dir / "summary.json",
         )
         business_key = f"IMPORT_RESEARCH:{scenario}:{business_date}:{fingerprint[:16]}"
         self._start_run(business_key, "IMPORT_RESEARCH", business_date)
         try:
             with self._connect() as connection:
-                LOGGER.info("研究制品导入阶段 2/5：写入模型和预测")
+                set_log_context(progress="2/5", target="模型和预测")
+                LOGGER.info("写入模型和预测")
                 model_id = self._upsert_model(
                     connection, model_dir, metrics, model_status
                 )
-                prediction_rows = self._upsert_predictions(connection, model_id, topk)
-                LOGGER.info("研究制品导入阶段 3/5：写入回测订单和执行")
+                prediction_rows = self._upsert_predictions(connection, model_id, rankings)
+                set_log_context(progress="3/5", target="回测订单")
+                LOGGER.info("写入回测订单和执行")
                 order_rows, execution_rows = self._upsert_shadow_trades(
                     connection, backtest_dir
                 )
-                LOGGER.info("研究制品导入阶段 4/5：写入绩效和持仓")
+                set_log_context(progress="4/5", target="绩效和持仓")
+                LOGGER.info("写入绩效和持仓")
                 performance_rows = self._upsert_performance(
                     connection, backtest_dir, scenario
                 )
                 position_rows = self._replace_position(connection, backtest_dir)
-            LOGGER.info("研究制品导入阶段 5/5：提交事务并记录成功状态")
+            set_log_context(progress="5/5", target="研究制品")
+            LOGGER.info("提交事务并记录成功状态")
             self._finish_run(business_key, "SUCCESS", None)
         except BaseException as error:
             self._finish_run(business_key, "FAILED", str(error))
@@ -504,108 +497,201 @@ class StateStore:
             ).fetchone()
         return {"activeModel": dict(active), "retiredModels": retired}
 
-    def sync_broker_snapshot(
-        self, snapshot: BrokerSyncSnapshot, business_date: str
-    ) -> dict[str, Any]:
-        """用途：幂等保存账户、持仓、委托和成交事实；输入：券商快照与业务日期；输出：同步摘要。"""
+    def begin_history_order_sync(
+        self, start_date: date, end_date: date
+    ) -> tuple[str, str]:
+        """登记一次月度历史订单同步，不以历史任务结果跳过查询。"""
         self.initialize()
-        LOGGER.info(
-            "券商事实落库准备：日期=%s；持仓=%d；委托=%d；成交=%d",
-            business_date,
-            len(snapshot.positions),
-            len(snapshot.orders),
-            len(snapshot.fills),
+        sync_run_id = uuid4().hex
+        business_key = (
+            f"SYNC_HISTORY_ORDER:{start_date.isoformat()}:{end_date.isoformat()}:"
+            f"{sync_run_id}"
         )
-        payload = json.dumps(asdict(snapshot), default=_json_default, sort_keys=True)
-        fingerprint = hashlib.sha256(payload.encode("utf-8")).hexdigest()
-        business_key = f"SYNC_BROKER:{business_date}:{fingerprint[:16]}"
-        self._start_run(business_key, "SYNC_BROKER", business_date)
-        try:
-            with self._connect() as connection:
-                self._insert_broker_account(connection, business_key, business_date, snapshot)
-                connection.execute(
-                    "DELETE FROM broker_position_snapshot WHERE business_key = ?",
-                    (business_key,),
-                )
-                position_rows = self._insert_broker_positions(connection, business_key, snapshot)
-                order_rows = self._upsert_broker_orders(connection, snapshot)
-                fill_rows = self._upsert_broker_fills(connection, snapshot)
-            self._finish_run(business_key, "SUCCESS", None)
-        except BaseException as error:
-            self._finish_run(business_key, "FAILED", str(error))
-            raise
-        LOGGER.info(
-            "券商事实落库完成：持仓=%d；委托=%d；成交=%d",
-            position_rows,
-            order_rows,
-            fill_rows,
-        )
+        self._start_run(business_key, "SYNC_HISTORY_ORDER", end_date.isoformat())
+        return business_key, sync_run_id
+
+    def complete_history_order_sync(
+        self,
+        business_key: str,
+        sync_run_id: str,
+        start_date: date,
+        end_date: date,
+        orders: tuple[BrokerOrder, ...],
+    ) -> dict[str, Any]:
+        """在单个事务内写入本月订单、删除券商已不再返回的订单并完成审计。"""
+        now = _now()
+        order_keys = {
+            (order.order_time.date().isoformat(), str(order.order_id))
+            for order in orders
+            if order.order_time is not None and order.order_id is not None
+        }
+        with self._connect() as connection:
+            existing_keys = {
+                (str(row["trade_date"]), str(row["broker_order_id"]))
+                for row in connection.execute(
+                    """
+                    SELECT trade_date, broker_order_id FROM history_order
+                    WHERE trade_date BETWEEN ? AND ?
+                    """,
+                    (start_date.isoformat(), end_date.isoformat()),
+                ).fetchall()
+            }
+            connection.executemany(
+                """
+                INSERT INTO history_order(
+                    trade_date, broker_order_id, instrument, stock_name, market,
+                    direction, order_price, order_quantity, average_fill_price,
+                    filled_quantity, raw_status, status, order_time, sync_run_id,
+                    created_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(trade_date, broker_order_id) DO UPDATE SET
+                    instrument = excluded.instrument,
+                    stock_name = excluded.stock_name,
+                    market = excluded.market,
+                    direction = excluded.direction,
+                    order_price = excluded.order_price,
+                    order_quantity = excluded.order_quantity,
+                    average_fill_price = excluded.average_fill_price,
+                    filled_quantity = excluded.filled_quantity,
+                    raw_status = excluded.raw_status,
+                    status = excluded.status,
+                    order_time = excluded.order_time,
+                    sync_run_id = excluded.sync_run_id,
+                    updated_at = excluded.updated_at
+                """,
+                [
+                    (
+                        order.order_time.date().isoformat(),
+                        str(order.order_id),
+                        str(order.stock_code),
+                        order.stock_name,
+                        order.market,
+                        order.direction,
+                        float(order.order_price),
+                        order.order_quantity,
+                        float(order.average_fill_price),
+                        int(order.filled_quantity),
+                        order.raw_status,
+                        order.status,
+                        order.order_time.isoformat(),
+                        sync_run_id,
+                        now,
+                        now,
+                    )
+                    for order in orders
+                    if order.order_time is not None
+                    and order.order_id is not None
+                    and order.stock_code is not None
+                    and order.average_fill_price is not None
+                    and order.filled_quantity is not None
+                ],
+            )
+            deleted = connection.execute(
+                """
+                DELETE FROM history_order
+                WHERE trade_date BETWEEN ? AND ? AND sync_run_id <> ?
+                """,
+                (start_date.isoformat(), end_date.isoformat(), sync_run_id),
+            ).rowcount
+            connection.execute(
+                """
+                UPDATE task_run SET status = 'SUCCESS', finished_at = ?, error_message = NULL
+                WHERE business_key = ?
+                """,
+                (now, business_key),
+            )
+        inserted = len(order_keys - existing_keys)
         return {
             "businessKey": business_key,
+            "syncRunId": sync_run_id,
             "status": "SUCCESS",
-            "positions": position_rows,
-            "orders": order_rows,
-            "fills": fill_rows,
-        } | self.summary()
+            "validOrders": len(order_keys),
+            "insertedOrders": inserted,
+            "updatedOrders": len(order_keys & existing_keys),
+            "deletedOrders": deleted,
+        }
 
-    def broker_performance_facts(
-        self, business_date: str
-    ) -> tuple[BrokerAccount, tuple[BrokerFill, ...]]:
-        """读取已同步的当日账户和成交事实，不访问券商。"""
+    def fail_history_order_sync(self, business_key: str, error: BaseException) -> None:
+        """记录月度同步失败；失败窗口不会修改历史订单。"""
+        self._finish_run(business_key, "FAILED", str(error))
+
+    def history_orders(self) -> list[dict[str, Any]]:
+        """读取全部有效历史订单，供 FIFO 重建使用。"""
         self.initialize()
         with self._connect() as connection:
-            account_row = connection.execute(
+            rows = connection.execute(
                 """
-                SELECT available_cash, total_assets, total_position, frozen_amount
-                FROM broker_account_snapshot
-                WHERE business_date = ?
-                ORDER BY captured_at DESC, id DESC
-                LIMIT 1
-                """,
-                (business_date,),
-            ).fetchone()
-            if account_row is None:
-                raise ValueError(
-                    "券商事实不存在："
-                    f"businessDate={business_date}；请先执行 "
-                    f"stock-trading broker --date {business_date}"
-                )
-            fill_rows = connection.execute(
+                SELECT * FROM history_order
+                ORDER BY order_time ASC, trade_date ASC, broker_order_id ASC
                 """
-                SELECT broker_order_id, instrument, stock_name, direction,
-                       fill_price, fill_quantity, fill_amount, fill_time
-                FROM broker_fill_fact
-                WHERE fill_time IS NOT NULL AND substr(fill_time, 1, 10) = ?
-                ORDER BY fill_time ASC, fill_key ASC
-                """,
-                (business_date,),
             ).fetchall()
-        account = BrokerAccount(
-            available_cash=Decimal(str(account_row["available_cash"])),
-            total_assets=Decimal(str(account_row["total_assets"])),
-            total_position=Decimal(str(account_row["total_position"])),
-            frozen_amount=Decimal(str(account_row["frozen_amount"])),
-        )
-        fills = tuple(
-            BrokerFill(
-                order_id=str(row["broker_order_id"])
-                if row["broker_order_id"] is not None
-                else None,
-                stock_code=str(row["instrument"])
-                if row["instrument"] is not None
-                else None,
-                stock_name=str(row["stock_name"])
-                if row["stock_name"] is not None
-                else None,
-                direction=str(row["direction"]),
-                fill_price=Decimal(str(row["fill_price"])),
-                fill_quantity=int(row["fill_quantity"]),
-                fill_amount=Decimal(str(row["fill_amount"])),
-                fill_time=datetime.fromisoformat(str(row["fill_time"])),
+        return [dict(row) for row in rows]
+
+    def history_orders_for_date(self, business_date: date) -> list[dict[str, Any]]:
+        """读取指定日期的有效历史订单。"""
+        self.initialize()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM history_order WHERE trade_date = ?
+                ORDER BY order_time ASC, broker_order_id ASC
+                """,
+                (business_date.isoformat(),),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def replace_trade_records(self, records: list[dict[str, object]]) -> int:
+        """在单个事务内用 FIFO 计算结果整体替换交易记录。"""
+        now = _now()
+        rows = []
+        for record in records:
+            buy_quantity = int(record["buyQuantity"])
+            sold_quantity = int(record["soldQuantity"])
+            remaining_quantity = int(record["remainingQuantity"])
+            if buy_quantity != sold_quantity + remaining_quantity:
+                raise ValueError("交易记录数量不守恒")
+            if str(record["status"]) not in {"OPEN", "PARTIAL", "CLOSED"}:
+                raise ValueError("交易记录状态无效")
+            rows.append(
+                (
+                    record["buyTradeDate"], record["buyOrderId"],
+                    json.dumps(record["sellOrderIds"], ensure_ascii=False),
+                    record["instrument"], record["stockName"], record["market"],
+                    record["status"], record["buyTime"], record["firstSellTime"],
+                    record["lastSellTime"], buy_quantity, sold_quantity,
+                    remaining_quantity, float(Decimal(str(record["buyPrice"]))),
+                    _optional_float(record["averageSellPrice"]),
+                    float(Decimal(str(record["buyAmount"]))),
+                    float(Decimal(str(record["soldCostAmount"]))),
+                    float(Decimal(str(record["sellAmount"]))),
+                    float(Decimal(str(record["buyFee"]))),
+                    float(Decimal(str(record["allocatedBuyFee"]))),
+                    float(Decimal(str(record["sellFee"]))),
+                    float(Decimal(str(record["grossProfit"]))),
+                    float(Decimal(str(record["netProfit"]))),
+                    float(Decimal(str(record["grossReturnRate"]))),
+                    float(Decimal(str(record["returnRate"]))),
+                    _optional_float(record["holdingDays"]),
+                    float(Decimal(str(record["dailyReturnRate"]))), now, now,
+                )
             )
-            for row in fill_rows
-        )
-        return account, fills
+        with self._connect() as connection:
+            connection.execute("DELETE FROM trade_record")
+            connection.executemany(
+                """
+                INSERT INTO trade_record(
+                    buy_trade_date, buy_order_id, sell_order_ids, instrument,
+                    stock_name, market, status, buy_time, first_sell_time,
+                    last_sell_time, buy_quantity, sold_quantity, remaining_quantity,
+                    buy_price, average_sell_price, buy_amount, sold_cost_amount,
+                    sell_amount, buy_fee, allocated_buy_fee, sell_fee, gross_profit,
+                    net_profit, gross_return_rate, return_rate, holding_days,
+                    daily_return_rate, created_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows,
+            )
+        return len(rows)
 
     def import_backtest_performance(
         self, backtest_dir: Path, scenario: str, business_date: str
@@ -681,8 +767,13 @@ class StateStore:
             return False
         try:
             artifact_hash = hashlib.sha256(model_path.read_bytes()).hexdigest()
-            topk = pd.read_parquet(model_dir / "top5.parquet", columns=["datetime"])
-            prediction_date = pd.to_datetime(topk["datetime"]).max().date().isoformat()
+            rankings = pd.read_parquet(
+                model_dir / "test_predictions.parquet", columns=["datetime", "score"]
+            ).dropna(subset=["score"])
+            ranking_dates = pd.to_datetime(rankings["datetime"]).dt.date
+            first_prediction_date = ranking_dates.min().isoformat()
+            prediction_date = ranking_dates.max().isoformat()
+            expected_prediction_count = len(rankings)
             scenario_dates = {
                 scenario: pd.to_datetime(
                     pd.read_parquet(
@@ -703,9 +794,9 @@ class StateStore:
             prediction_count = int(connection.execute(
                 """
                 SELECT COUNT(*) FROM prediction
-                WHERE model_version_id = ? AND prediction_date = ?
+                WHERE model_version_id = ? AND prediction_date BETWEEN ? AND ?
                 """,
-                (model["id"], prediction_date),
+                (model["id"], first_prediction_date, prediction_date),
             ).fetchone()[0])
             stored_dates = {
                 str(row["scenario"]): str(row["latest_date"])
@@ -717,7 +808,7 @@ class StateStore:
                     """
                 ).fetchall()
             }
-        return prediction_count == 5 and all(
+        return prediction_count == expected_prediction_count and all(
             stored_dates.get(scenario) == expected_date
             for scenario, expected_date in scenario_dates.items()
         )
@@ -749,7 +840,8 @@ class StateStore:
     ) -> dict[str, Any]:
         """用途：导入单日预测制品并绑定模型；输入：模型目录与预测文件；输出：导入摘要。"""
         self.initialize()
-        LOGGER.info("预测制品导入阶段 1/3：读取文件=%s", prediction_path)
+        set_log_context(progress="1/3", target=str(prediction_path))
+        LOGGER.info("读取预测制品")
         predictions = pd.read_parquet(prediction_path)
         required = {"datetime", "instrument", "score", "label"}
         missing = sorted(required - set(predictions.columns))
@@ -765,9 +857,11 @@ class StateStore:
         self._start_run(business_key, "PREDICT", business_date)
         try:
             with self._connect() as connection:
-                LOGGER.info("预测制品导入阶段 2/3：绑定模型版本")
+                set_log_context(progress="2/3", target="模型版本")
+                LOGGER.info("绑定模型版本")
                 model_id = self._upsert_model(connection, model_dir, metrics)
-                LOGGER.info("预测制品导入阶段 3/3：写入横截面排名；候选数=%d", len(predictions))
+                set_log_context(progress="3/3", target="横截面排名")
+                LOGGER.info("写入横截面排名：候选数=%d", len(predictions))
                 prediction_rows = self._upsert_predictions(
                     connection, model_id, predictions
                 )
@@ -786,10 +880,10 @@ class StateStore:
     def latest_prediction_candidates(
         self,
         before_business_date: str,
-        limit: int,
+        limit: int | None = None,
         model_version_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """用途：读取目标日前最近一批候选；输入：截止日期、数量和可选模型；输出：排序候选列表。"""
+        """用途：读取目标日前最近一批排名；输入：截止日期、可选数量和模型；输出：排序列表。"""
         self.initialize()
         with self._connect() as connection:
             if model_version_id is None:
@@ -820,18 +914,19 @@ class StateStore:
                     """,
                     (prediction_date,),
                 ).fetchone()[0]
-            rows = connection.execute(
-                """
+            query = """
                 SELECT p.model_version_id, p.prediction_date, p.instrument, p.rank, p.score,
                        mv.status AS model_status
                 FROM prediction p
                 JOIN model_version mv ON mv.id = p.model_version_id
                 WHERE p.prediction_date = ? AND p.model_version_id = ?
                 ORDER BY p.rank ASC, p.instrument ASC
-                LIMIT ?
-                """,
-                (prediction_date, model_id, max(1, limit)),
-            ).fetchall()
+            """
+            parameters: tuple[object, ...] = (prediction_date, model_id)
+            if limit is not None:
+                query += " LIMIT ?"
+                parameters += (max(1, limit),)
+            rows = connection.execute(query, parameters).fetchall()
         return [dict(row) for row in rows]
 
     def prepare_real_order(
@@ -1056,6 +1151,21 @@ class StateStore:
             ).fetchone()
         return int(row["id"]) if row else None
 
+    def performance_model_id(self, business_date: str) -> int | None:
+        """优先沿用当日绩效已绑定的模型，否则返回当前活动模型。"""
+        self.initialize()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT model_version_id FROM live_performance_snapshot
+                WHERE business_date = ?
+                """,
+                (business_date,),
+            ).fetchone()
+        if row is not None and row["model_version_id"] is not None:
+            return int(row["model_version_id"])
+        return self.active_model_id()
+
     def save_live_performance(self, snapshot: dict[str, object]) -> dict[str, Any]:
         """用途：按业务日期新增或更新实盘绩效；输入：已计算绩效字段；输出：持久化后的快照。"""
         self.initialize()
@@ -1123,6 +1233,7 @@ class StateStore:
 
     def save_model_evaluation(
         self,
+        model_version_id: int | None,
         business_date: str,
         window_days: int,
         observations: int,
@@ -1136,40 +1247,35 @@ class StateStore:
         """用途：保存滚动评估并按决策登记重训请求；输入：窗口指标、决策和原因；输出：评估及训练请求。"""
         self.initialize()
         with self._connect() as connection:
-            existing = connection.execute(
-                """
-                SELECT * FROM model_evaluation
-                WHERE business_date = ?
-                ORDER BY created_at DESC LIMIT 1
-                """,
-                (business_date,),
-            ).fetchone()
-            if existing is not None:
-                request_key = (
-                    f"TRAINING_REQUEST:{existing['model_version_id'] or 'NONE'}:"
-                    f"{business_date}"
-                )
-                request = connection.execute(
-                    "SELECT * FROM training_request WHERE business_key = ?",
-                    (request_key,),
-                ).fetchone()
-                LOGGER.info("模型评估已存在，返回历史结果：日期=%s；决策=%s", business_date, existing["decision"])
-                return {
-                    "evaluation": dict(existing),
-                    "trainingRequest": dict(request) if request else None,
-                }
-            model = connection.execute(
-                """
-                SELECT id FROM model_version
-                WHERE status = 'ACTIVE'
-                ORDER BY id DESC LIMIT 1
-                """
-            ).fetchone()
-            model_id = int(model["id"]) if model else None
+            model_id = model_version_id
             if model_id is None and decision not in {"WARMUP", "TRAIN_REQUIRED"}:
                 decision = "TRAIN_REQUIRED"
                 reason = f"没有 ACTIVE 模型；{reason}"
             business_key = f"MODEL_EVALUATION:{model_id or 'NONE'}:{business_date}"
+            request_key = f"TRAINING_REQUEST:{model_id or 'NONE'}:{business_date}"
+            existing = connection.execute(
+                "SELECT * FROM model_evaluation WHERE business_key = ?",
+                (business_key,),
+            ).fetchone()
+            request = connection.execute(
+                "SELECT * FROM training_request WHERE business_key = ?",
+                (request_key,),
+            ).fetchone()
+            if (
+                existing is not None
+                and request is not None
+                and request["status"] != "REQUESTED"
+                and decision not in {"RETRAIN", "TRAIN_REQUIRED"}
+            ):
+                LOGGER.info(
+                    "模型评估关联的训练请求已开始，保留原决策：日期=%s；状态=%s",
+                    business_date,
+                    request["status"],
+                )
+                return {
+                    "evaluation": dict(existing),
+                    "trainingRequest": dict(request),
+                }
             connection.execute(
                 """
                 INSERT INTO model_evaluation(
@@ -1177,6 +1283,17 @@ class StateStore:
                     observations, gross_positive_ratio, total_gross_return,
                     total_net_return, max_drawdown, decision, reason, created_at
                 ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(business_key) DO UPDATE SET
+                    model_version_id = excluded.model_version_id,
+                    window_days = excluded.window_days,
+                    observations = excluded.observations,
+                    gross_positive_ratio = excluded.gross_positive_ratio,
+                    total_gross_return = excluded.total_gross_return,
+                    total_net_return = excluded.total_net_return,
+                    max_drawdown = excluded.max_drawdown,
+                    decision = excluded.decision,
+                    reason = excluded.reason,
+                    created_at = excluded.created_at
                 """,
                 (
                     business_key,
@@ -1200,7 +1317,6 @@ class StateStore:
                         "UPDATE model_version SET status = 'DEGRADED' WHERE id = ?",
                         (model_id,),
                     )
-                request_key = f"TRAINING_REQUEST:{model_id or 'NONE'}:{business_date}"
                 connection.execute(
                     """
                     INSERT INTO training_request(
@@ -1224,6 +1340,28 @@ class StateStore:
                     (request_key,),
                 ).fetchone()
                 training_request = dict(request)
+            elif request is not None and request["status"] == "REQUESTED":
+                connection.execute(
+                    "DELETE FROM training_request WHERE business_key = ?",
+                    (request_key,),
+                )
+                if model_id is not None:
+                    connection.execute(
+                        """
+                        UPDATE model_version SET status = 'ACTIVE'
+                        WHERE id = ? AND status = 'DEGRADED'
+                          AND NOT EXISTS (
+                              SELECT 1 FROM model_version
+                              WHERE status = 'ACTIVE' AND id <> ?
+                          )
+                          AND NOT EXISTS (
+                              SELECT 1 FROM training_request
+                              WHERE model_version_id = ?
+                                AND status IN ('REQUESTED','RUNNING')
+                          )
+                        """,
+                        (model_id, model_id, model_id),
+                    )
             evaluation = connection.execute(
                 "SELECT * FROM model_evaluation WHERE business_key = ?",
                 (business_key,),
@@ -1246,26 +1384,27 @@ class StateStore:
         """用途：汇总各表记录数和最新任务、模型；输入：无；输出：状态库摘要。"""
         self.initialize()
         with self._connect() as connection:
+            tables = {
+                "task_run": "task_run",
+                "model_version": "model_version",
+                "prediction": "prediction",
+                "shadow_order": "shadow_order",
+                "shadow_execution": "shadow_execution",
+                "position": "position",
+                "performance_snapshot": "performance_snapshot",
+                "live_performance_snapshot": "live_performance_snapshot",
+                "model_evaluation": "model_evaluation",
+                "training_request": "training_request",
+                "historyOrders": "history_order",
+                "tradeRecords": "trade_record",
+                "broker_order_intent": "broker_order_intent",
+                "broker_permission": "broker_permission",
+            }
             counts = {
-                table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-                for table in (
-                    "task_run",
-                    "model_version",
-                    "prediction",
-                    "shadow_order",
-                    "shadow_execution",
-                    "position",
-                    "performance_snapshot",
-                    "live_performance_snapshot",
-                    "model_evaluation",
-                    "training_request",
-                    "broker_account_snapshot",
-                    "broker_position_snapshot",
-                    "broker_order_fact",
-                    "broker_fill_fact",
-                    "broker_order_intent",
-                    "broker_permission",
-                )
+                name: connection.execute(
+                    f"SELECT COUNT(*) FROM {table}"
+                ).fetchone()[0]
+                for name, table in tables.items()
             }
             latest_run = connection.execute(
                 """
@@ -1287,157 +1426,6 @@ class StateStore:
         }
 
     @staticmethod
-    def _insert_broker_account(
-        connection: sqlite3.Connection,
-        business_key: str,
-        business_date: str,
-        snapshot: BrokerSyncSnapshot,
-    ) -> None:
-        """用途：写入一次券商账户快照；输入：连接、同步键、日期和快照；输出：无。"""
-        account = snapshot.account
-        connection.execute(
-            """
-            INSERT INTO broker_account_snapshot(
-                business_key, business_date, available_cash, total_assets,
-                total_position, frozen_amount, captured_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(business_key) DO UPDATE SET
-                business_date = excluded.business_date,
-                available_cash = excluded.available_cash,
-                total_assets = excluded.total_assets,
-                total_position = excluded.total_position,
-                frozen_amount = excluded.frozen_amount,
-                captured_at = excluded.captured_at
-            """,
-            (
-                business_key,
-                business_date,
-                float(account.available_cash),
-                float(account.total_assets),
-                float(account.total_position),
-                float(account.frozen_amount),
-                _now(),
-            ),
-        )
-
-    @staticmethod
-    def _insert_broker_positions(
-        connection: sqlite3.Connection,
-        business_key: str,
-        snapshot: BrokerSyncSnapshot,
-    ) -> int:
-        """用途：批量写入券商持仓快照；输入：连接、同步键和快照；输出：写入条数。"""
-        rows = [
-            (
-                business_key,
-                item.stock_code,
-                item.stock_name,
-                item.quantity,
-                item.available_quantity,
-                item.frozen_quantity,
-                _optional_float(item.average_cost),
-                float(item.current_price),
-                item.market,
-                _now(),
-            )
-            for item in snapshot.positions
-        ]
-        connection.executemany(
-            """
-            INSERT INTO broker_position_snapshot(
-                business_key, instrument, stock_name, quantity, available_quantity,
-                frozen_quantity, average_cost, current_price, market, captured_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            rows,
-        )
-        return len(rows)
-
-    @staticmethod
-    def _upsert_broker_orders(
-        connection: sqlite3.Connection, snapshot: BrokerSyncSnapshot
-    ) -> int:
-        """用途：按券商委托号更新订单事实；输入：连接和券商快照；输出：有效订单数。"""
-        rows = [item for item in snapshot.orders if item.order_id]
-        connection.executemany(
-            """
-            INSERT INTO broker_order_fact(
-                broker_order_id, instrument, stock_name, direction, order_price,
-                order_quantity, average_fill_price, filled_quantity, raw_status,
-                status, market, order_time, updated_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(broker_order_id) DO UPDATE SET
-                average_fill_price = excluded.average_fill_price,
-                filled_quantity = excluded.filled_quantity,
-                raw_status = excluded.raw_status,
-                status = excluded.status,
-                updated_at = excluded.updated_at
-            """,
-            [
-                (
-                    item.order_id,
-                    item.stock_code,
-                    item.stock_name,
-                    item.direction,
-                    float(item.order_price),
-                    item.order_quantity,
-                    _optional_float(item.average_fill_price),
-                    item.filled_quantity,
-                    item.raw_status,
-                    item.status,
-                    item.market,
-                    item.order_time.isoformat() if item.order_time else None,
-                    _now(),
-                )
-                for item in rows
-            ],
-        )
-        return len(rows)
-
-    @staticmethod
-    def _upsert_broker_fills(
-        connection: sqlite3.Connection, snapshot: BrokerSyncSnapshot
-    ) -> int:
-        """用途：按成交指纹幂等写入成交事实；输入：连接和券商快照；输出：待写成交数。"""
-        rows = []
-        for item in snapshot.fills:
-            raw_key = "|".join(
-                (
-                    item.order_id or "",
-                    item.stock_code or "",
-                    item.direction,
-                    str(item.fill_price),
-                    str(item.fill_quantity),
-                    item.fill_time.isoformat() if item.fill_time else "",
-                )
-            )
-            rows.append(
-                (
-                    hashlib.sha256(raw_key.encode("utf-8")).hexdigest(),
-                    item.order_id,
-                    item.stock_code,
-                    item.stock_name,
-                    item.direction,
-                    float(item.fill_price),
-                    item.fill_quantity,
-                    float(item.fill_amount),
-                    item.fill_time.isoformat() if item.fill_time else None,
-                    _now(),
-                )
-            )
-        connection.executemany(
-            """
-            INSERT INTO broker_fill_fact(
-                fill_key, broker_order_id, instrument, stock_name, direction,
-                fill_price, fill_quantity, fill_amount, fill_time, created_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(fill_key) DO NOTHING
-            """,
-            rows,
-        )
-        return len(rows)
-
-    @staticmethod
     def _assert_same_order_intent(
         existing: sqlite3.Row,
         instrument: str,
@@ -1455,7 +1443,6 @@ class StateStore:
         if not same:
             raise ValueError("client_order_id 已绑定不同订单参数")
 
-    @staticmethod
     @staticmethod
     def _match_broker_order(
         intent: sqlite3.Row,
@@ -1536,6 +1523,43 @@ class StateStore:
             raise
         finally:
             connection.close()
+
+    @staticmethod
+    def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+        row = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+        return row is not None
+
+    @staticmethod
+    def _migrate_legacy_history_orders(connection: sqlite3.Connection) -> None:
+        """迁移旧订单表中的有效成交记录；新表已存在时不重复迁移。"""
+        now = _now()
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO history_order(
+                trade_date, broker_order_id, instrument, stock_name, market,
+                direction, order_price, order_quantity, average_fill_price,
+                filled_quantity, raw_status, status, order_time, sync_run_id,
+                created_at, updated_at
+            )
+            SELECT
+                substr(order_time, 1, 10), broker_order_id, instrument, stock_name,
+                market, direction, order_price, order_quantity, average_fill_price,
+                filled_quantity, raw_status, status, order_time,
+                'LEGACY_MIGRATION', COALESCE(updated_at, ?), COALESCE(updated_at, ?)
+            FROM broker_order_fact
+            WHERE status = 'FILLED'
+              AND broker_order_id IS NOT NULL AND trim(broker_order_id) <> ''
+              AND instrument IS NOT NULL AND trim(instrument) <> ''
+              AND direction IN ('BUY', 'SELL')
+              AND order_time IS NOT NULL AND length(order_time) >= 10
+              AND average_fill_price > 0 AND filled_quantity > 0
+              AND average_fill_price * filled_quantity > 0
+            """,
+            (now, now),
+        )
 
     @staticmethod
     def _ensure_column(
@@ -1651,11 +1675,13 @@ class StateStore:
 
     @staticmethod
     def _upsert_predictions(
-        connection: sqlite3.Connection, model_id: int, topk: pd.DataFrame
+        connection: sqlite3.Connection, model_id: int, rankings: pd.DataFrame
     ) -> int:
         """用途：按模型、日期和证券写入预测排名；输入：连接、模型主键和预测表；输出：处理条数。"""
         rows = []
-        ordered = topk.sort_values(["datetime", "score"], ascending=[True, False])
+        ordered = rankings.sort_values(
+            ["datetime", "score", "instrument"], ascending=[True, False, True]
+        )
         for prediction_date, group in ordered.groupby("datetime", sort=True):
             for rank, row in enumerate(group.itertuples(index=False), start=1):
                 label = None if pd.isna(row.label) else float(row.label)
@@ -1676,7 +1702,10 @@ class StateStore:
                 model_version_id, prediction_date, instrument, rank, score, label, created_at
             ) VALUES(?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(model_version_id, prediction_date, instrument) DO UPDATE SET
-                rank = excluded.rank, score = excluded.score, label = excluded.label
+                rank = excluded.rank,
+                score = excluded.score,
+                label = excluded.label,
+                created_at = excluded.created_at
             """,
             rows,
         )
@@ -1828,16 +1857,9 @@ def _artifact_fingerprint(*paths: Path) -> str:
     return digest.hexdigest()
 
 
-def _json_default(value: object) -> str:
-    """用途：把 Decimal 和 datetime 转为 JSON 字符串；输入：待序列化值；输出：字符串表示。"""
-    if isinstance(value, (Decimal, datetime)):
-        return str(value)
-    raise TypeError(f"unsupported JSON value: {type(value).__name__}")
-
-
-def _optional_float(value: Decimal | None) -> float | None:
+def _optional_float(value: object | None) -> float | None:
     """用途：转换可空 Decimal；输入：Decimal 或空值；输出：float 或空值。"""
-    return float(value) if value is not None else None
+    return float(Decimal(str(value))) if value is not None else None
 
 
 def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> bool:
@@ -1849,4 +1871,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END --------------------------------------------------------
+# AI_GENERATE_END --------------------------------------------------------------

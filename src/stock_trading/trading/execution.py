@@ -1,9 +1,9 @@
-# AI_GENERATE_START ----------------------
+# AI_GENERATE_START ------------------------
 from __future__ import annotations
 
 import logging
 from datetime import UTC, date, datetime
-from decimal import Decimal, ROUND_FLOOR
+from decimal import Decimal
 from time import monotonic, sleep
 from typing import Protocol
 
@@ -12,15 +12,13 @@ from stock_trading.broker.models import (
     BrokerAccount,
     BrokerOrder,
     BrokerPosition,
-    BrokerSyncSnapshot,
     FiveLevelQuote,
 )
 from stock_trading.config import AppConfig
 from stock_trading.state.store import ORDER_ACTIVE_STATUSES, StateStore
 from stock_trading.trading.permissions import permission_scope
-from stock_trading.trading.strategy import select_execution_price
+from stock_trading.trading.strategy import affordable_quantity, select_execution_price
 
-LOT_SIZE = 100
 LOGGER = logging.getLogger(__name__)
 
 
@@ -42,9 +40,6 @@ class BrokerExecutionClient(Protocol):
     ) -> str: ...
 
     def cancel_order(self, broker_order_id: str) -> bool: ...
-
-    def read_shadow_snapshot(self) -> BrokerSyncSnapshot: ...
-
 
 class OrderExecutionOrchestrator:
     """基于券商实时事实执行限价委托、撤单确认和重新报价。"""
@@ -207,21 +202,6 @@ class OrderExecutionOrchestrator:
                         LOGGER.error("Ctrl+C 后撤单处理失败，保留恢复状态：%s", error)
             raise
 
-    def recover_pending_orders(self, business_date: date) -> dict[str, object]:
-        """用券商事实恢复本地未终态委托。"""
-        snapshot = self._broker.read_shadow_snapshot()
-        sync = self._state_store.sync_broker_snapshot(
-            snapshot, business_date.isoformat()
-        )
-        intents = self._state_store.reconcile_order_intents(
-            snapshot.orders, mark_unmatched_unknown=True
-        )
-        return {
-            "businessDate": business_date.isoformat(),
-            "sync": sync,
-            "intents": intents,
-        }
-
     def _build_live_order(
         self, target: dict[str, object], elapsed_seconds: float
     ) -> tuple[dict[str, object] | None, str]:
@@ -252,7 +232,13 @@ class OrderExecutionOrchestrator:
             ):
                 return None, "PRICE_OUT_OF_RANGE"
             account = self._broker.get_account()
-            quantity = self._affordable_quantity(account.available_cash, decision.price)
+            quantity = affordable_quantity(
+                account.available_cash,
+                decision.price,
+                Decimal(str(self._config.trading_min_commission)),
+                Decimal(str(self._config.trading_commission_rate)),
+                Decimal(str(self._config.trading_transfer_fee_rate)),
+            )
             if quantity <= 0:
                 return None, "INSUFFICIENT_CASH"
         LOGGER.info(
@@ -455,25 +441,6 @@ class OrderExecutionOrchestrator:
             created_at = created_at.replace(tzinfo=UTC)
         return max(0.0, (datetime.now(UTC) - created_at.astimezone(UTC)).total_seconds())
 
-    def _affordable_quantity(self, cash: Decimal, price: Decimal) -> int:
-        if cash <= 0 or price <= 0:
-            return 0
-        lots = (cash / (price * LOT_SIZE)).to_integral_value(rounding=ROUND_FLOOR)
-        quantity = int(lots) * LOT_SIZE
-        while quantity > 0:
-            notional = price * quantity
-            commission = max(
-                Decimal(str(self._config.trading_min_commission)),
-                notional * Decimal(str(self._config.trading_commission_rate)),
-            )
-            transfer_fee = notional * Decimal(
-                str(self._config.trading_transfer_fee_rate)
-            )
-            if notional + commission + transfer_fee <= cash:
-                return quantity
-            quantity -= LOT_SIZE
-        return 0
-
     def _save_permission(
         self, scope: str, status: str, evidence_type: str, evidence_detail: str
     ) -> None:
@@ -547,4 +514,4 @@ def _is_permission_denial(message: str) -> bool:
         keyword in normalized
         for keyword in ("无权限", "没有权限", "未开通", "禁止交易", "不允许交易")
     )
-# AI_GENERATE_END ----------------------
+# AI_GENERATE_END ------------------------

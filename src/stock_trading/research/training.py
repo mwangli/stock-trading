@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 import json
@@ -28,14 +28,11 @@ from stock_trading.research.backtest import (
 from stock_trading.research.model import automatic_model_segments
 from stock_trading.research.qlib_store import QlibBinaryStore
 from stock_trading.state.store import StateStore
+from stock_trading.logging_utils import set_log_context
 
 LOGGER = logging.getLogger(__name__)
 EVALUATION_FILE = "evaluation.json"
 BASELINE_CAPITAL = 3_000
-
-
-class ModelCapabilityError(ValueError):
-    """候选模型未通过发布门禁。"""
 
 
 def default_training_range(config: AppConfig) -> tuple[date, date]:
@@ -114,7 +111,7 @@ def run_training_pipeline(
     config: AppConfig,
     split: tuple[Decimal, Decimal, Decimal] | None,
 ) -> dict[str, object]:
-    """按准备、训练、回测、门禁和发布顺序执行完整训练生命周期。"""
+    """按准备、训练、测试评估、五档回测和发布顺序执行训练。"""
     start_date, end_date = default_training_range(config)
     codes = default_training_codes(config, start_date, end_date)
     preparation = prepare_training_data(config, codes, start_date, end_date)
@@ -134,10 +131,10 @@ def train_prepared_model(
     config: AppConfig,
     split: tuple[Decimal, Decimal, Decimal] | None,
 ) -> dict[str, object]:
-    """基于现有 Qlib 训练候选模型，通过能力门禁后再发布。"""
+    """基于现有 Qlib 训练候选模型，平均净收益为正时发布。"""
     calendar_path = config.qlib_dir / "calendars" / "day.txt"
     if not calendar_path.is_file():
-        raise ValueError("Qlib 数据不存在，请先执行 prepare")
+        raise ValueError("Qlib 数据不存在，无法训练")
     segments = automatic_model_segments(calendar_path, split)
     LOGGER.info(
         "开始训练候选模型：训练=%s 至 %s；验证=%s 至 %s；测试=%s 至 %s",
@@ -156,11 +153,11 @@ def train_prepared_model(
     _write_evaluation(model_dir, evaluation)
 
     store = StateStore(config.state_db_path)
-    if not evaluation["passed"]:
+    if not evaluation["accepted"]:
         store.register_model_version(model_dir, "REJECTED")
-        reasons = "；".join(str(value) for value in evaluation["failures"])
-        raise ModelCapabilityError(
-            f"模型能力评估未通过；候选版本={training['modelVersion']}；原因={reasons}"
+        raise ValueError(
+            f"候选模型未启用；版本={training['modelVersion']}；"
+            f"原因={evaluation['reason']}"
         )
 
     state = import_training_state(config, store, model_dir, "CANDIDATE")
@@ -172,10 +169,9 @@ def train_prepared_model(
         restore_model_artifact(root, previous_version)
         raise
     LOGGER.info(
-        "候选模型发布完成：版本=%s；平均净收益率=%s；最大回撤=%s",
+        "候选模型发布完成：版本=%s；五档平均净收益率=%s",
         training["modelVersion"],
         evaluation["aggregate"]["averageNetReturn"],
-        evaluation["aggregate"]["worstMaxDrawdown"],
     )
     return {
         "training": training,
@@ -186,7 +182,6 @@ def train_prepared_model(
 
 
 def run_current_model_backtests(config: AppConfig) -> dict[str, object]:
-    """对当前模型执行固定五档回测并导入研究状态。"""
     model_dir = resolve_current_model_dir(model_root(config.artifact_dir))
     backtest_run = run_backtest_scenarios(config, model_dir)
     if backtest_run["errors"]:
@@ -212,12 +207,11 @@ def run_backtest_scenarios(
     errors: dict[str, object] = {}
     directories = backtest_directories(config, model_dir)
     for index, cash in enumerate(config.backtest_capital_scenarios, start=1):
-        LOGGER.info(
-            "资金档位回测：进度=%d/%d；初始资金=%d",
-            index,
-            len(config.backtest_capital_scenarios),
-            cash,
+        set_log_context(
+            progress=f"{index}/{len(config.backtest_capital_scenarios)}",
+            target=f"资金={cash}",
         )
+        LOGGER.info("开始资金档位回测")
         target = directories[str(cash)]
         shutil.rmtree(target, ignore_errors=True)
         try:
@@ -239,14 +233,11 @@ def evaluate_candidate(
     model_dir: Path,
     backtest_run: dict[str, dict[str, object]],
 ) -> dict[str, object]:
-    """根据测试集 Rank IC、平均净收益和逐档回撤形成发布结论。"""
+    """记录测试指标，并仅按五档平均净收益率形成启用结论。"""
     metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
-    rank_ic = float(metrics["metrics"]["rankIcMean"])
     results = backtest_run["results"]
     scenario_results: dict[str, object] = {}
     net_returns: list[float] = []
-    drawdowns: list[float] = []
-    failures: list[str] = []
     directories = backtest_directories(config, model_dir)
 
     for cash in config.backtest_capital_scenarios:
@@ -254,71 +245,57 @@ def evaluate_candidate(
         summary = results.get(key)
         artifact_valid = backtest_artifact_valid(directories[key])
         if summary is None or not artifact_valid:
-            failures.append(f"{cash}元回测制品不完整")
             scenario_results[key] = {"artifactValid": False}
             continue
         net_return = float(summary["netReturn"])
-        drawdown = abs(float(summary["maxDrawdown"]))
         net_returns.append(net_return)
-        drawdowns.append(drawdown)
         scenario_results[key] = {
             "artifactValid": True,
             "netProfit": summary["netProfit"],
             "netReturn": net_return,
-            "maxDrawdown": drawdown,
+            "maxDrawdown": abs(float(summary["maxDrawdown"])),
             "closedTrades": summary["closedTrades"],
         }
-        if drawdown > config.model_max_backtest_drawdown:
-            failures.append(
-                f"{cash}元最大回撤 {drawdown:.6f} 超过 "
-                f"{config.model_max_backtest_drawdown:.6f}"
-            )
 
-    for cash, message in backtest_run["errors"].items():
-        failures.append(f"{cash}元回测失败：{message}")
-    average_return = sum(net_returns) / len(config.backtest_capital_scenarios)
-    worst_drawdown = max(drawdowns, default=0.0)
-    if rank_ic <= config.model_min_rank_ic:
-        failures.append(
-            f"Rank IC {rank_ic:.6f} 未大于 {config.model_min_rank_ic:.6f}"
-        )
-    if average_return <= config.model_min_average_backtest_return:
-        failures.append(
-            f"五档平均净收益率 {average_return:.6f} 未大于 "
-            f"{config.model_min_average_backtest_return:.6f}"
-        )
+    required = len(config.backtest_capital_scenarios)
+    completed = len(net_returns)
+    average_return = sum(net_returns) / required if completed == required else None
+    accepted = average_return is not None and average_return > 0
+    if backtest_run["errors"]:
+        reason = "五档回测未全部完成"
+    elif completed != required:
+        reason = "五档回测制品不完整"
+    elif not accepted:
+        reason = "五档平均净收益率未大于0"
+    else:
+        reason = None
 
     return {
         "createdAt": datetime.now(UTC).isoformat(),
         "modelVersion": model_dir.name,
-        "passed": not failures,
-        "decision": "ACCEPTED" if not failures else "REJECTED",
-        "thresholds": {
-            "minRankIc": config.model_min_rank_ic,
-            "minAverageBacktestReturn": config.model_min_average_backtest_return,
-            "maxBacktestDrawdown": config.model_max_backtest_drawdown,
-        },
-        "modelMetrics": {"rankIcMean": rank_ic},
+        "accepted": accepted,
+        "decision": "ACCEPTED" if accepted else "REJECTED",
+        "reason": reason,
+        "modelMetrics": metrics["metrics"],
         "aggregate": {
             "averageNetReturn": average_return,
-            "worstMaxDrawdown": worst_drawdown,
-            "completedScenarios": len(net_returns),
-            "requiredScenarios": len(config.backtest_capital_scenarios),
+            "completedScenarios": completed,
+            "requiredScenarios": required,
         },
         "backtests": scenario_results,
-        "failures": failures,
+        "errors": backtest_run["errors"],
     }
 
 
 def training_artifacts_valid(config: AppConfig, model_dir: Path) -> bool:
-    """检查当前模型是否具备通过门禁的评估和五档回测制品。"""
+    """检查当前模型是否已完成五档回测并被启用。"""
     try:
         evaluation = json.loads(
             (model_dir / EVALUATION_FILE).read_text(encoding="utf-8")
         )
     except (OSError, ValueError, json.JSONDecodeError):
         return False
-    return bool(evaluation.get("passed")) and all(
+    return bool(evaluation.get("accepted")) and all(
         backtest_artifact_valid(path)
         for path in backtest_directories(config, model_dir).values()
     )
@@ -393,4 +370,4 @@ def _format_date_expression(start_date: date, end_date: date) -> str:
         return start_date.isoformat()
     return f"{start_date.isoformat()}:{end_date.isoformat()}"
 
-# AI_GENERATE_END -
+# AI_GENERATE_END ---

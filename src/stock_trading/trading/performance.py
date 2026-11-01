@@ -1,16 +1,22 @@
-# AI_GENERATE_START -----
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
+from typing import Protocol
+from zoneinfo import ZoneInfo
 
-from stock_trading.broker.models import BrokerFill
+from stock_trading.broker.models import BrokerAccount
 from stock_trading.config import AppConfig
 from stock_trading.state.store import StateStore
+from stock_trading.logging_utils import set_log_context
 
 LOGGER = logging.getLogger(__name__)
+
+
+class PerformanceBrokerClient(Protocol):
+    def get_account(self) -> BrokerAccount: ...
 
 
 class LivePerformanceService:
@@ -20,37 +26,44 @@ class LivePerformanceService:
         self,
         config: AppConfig,
         state_store: StateStore,
+        broker: PerformanceBrokerClient,
     ) -> None:
         """用途：绑定绩效配置和状态库；输入：配置和状态库；输出：无。"""
         self._config = config
         self._state_store = state_store
+        self._broker = broker
 
     def update(
         self,
         business_date: date,
-        external_cash_flow: Decimal = Decimal("0"),
     ) -> dict[str, object]:
-        """用途：读取已同步事实并生成当日绩效和模型评估；输入：业务日期与外部资金流；输出：绩效和评估结果。"""
-        # 数据流：已同步事实 -> 日绩效 -> 滚动指标 -> 保持或重训决策。
-        LOGGER.info("绩效更新阶段 1/4：读取已同步券商事实；业务日期=%s", business_date)
-        account, fills = self._state_store.broker_performance_facts(
-            business_date.isoformat()
-        )
+        """读取实时账户和已同步订单，生成当日绩效与模型评估。"""
+        external_cash_flow = Decimal("0")
+        shanghai_today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+        if business_date != shanghai_today:
+            raise ValueError(
+                f"evaluate 只支持上海当天 {shanghai_today.isoformat()}，不生成历史权益"
+            )
+        set_log_context(progress="1/4", target="账户和历史订单")
+        LOGGER.info("读取券商实时权益和当日历史订单")
+        account = self._broker.get_account()
+        orders = self._state_store.history_orders_for_date(business_date)
         LOGGER.info(
-            "券商事实读取完成：权益=%s；可用资金=%s；持仓市值=%s；成交数=%d",
+            "绩效事实读取完成：权益=%s；可用资金=%s；持仓市值=%s；成交订单=%d",
             account.total_assets,
             account.available_cash,
             account.total_position,
-            len(fills),
+            len(orders),
         )
-        LOGGER.info("绩效更新阶段 2/4：计算当日成交额和估算费用")
-        turnover, estimated_fees = self._estimate_trading_costs(
-            fills, business_date
-        )
+        set_log_context(progress="2/4", target="成交成本")
+        LOGGER.info("计算当日成交额和估算费用")
+        turnover, estimated_fees = self._estimate_trading_costs(orders)
         previous = self._state_store.latest_live_performance_before(
             business_date.isoformat()
         )
-        model_version_id = self._state_store.active_model_id()
+        model_version_id = self._state_store.performance_model_id(
+            business_date.isoformat()
+        )
         equity = account.total_assets
         net_pnl: Decimal | None = None
         gross_pnl: Decimal | None = None
@@ -81,7 +94,8 @@ class LivePerformanceService:
             estimated_fees,
             external_cash_flow,
         )
-        LOGGER.info("绩效更新阶段 3/4：保存当日绩效")
+        set_log_context(progress="3/4", target=str(business_date))
+        LOGGER.info("保存当日绩效")
         performance = self._state_store.save_live_performance(
             {
                 "businessDate": business_date.isoformat(),
@@ -98,7 +112,8 @@ class LivePerformanceService:
                 "netReturn": _optional_float(net_return),
             }
         )
-        LOGGER.info("绩效更新阶段 4/4：执行滚动模型评估；模型版本=%s", model_version_id)
+        set_log_context(progress="4/4", target=f"模型={model_version_id}")
+        LOGGER.info("执行滚动模型评估")
         evaluation = self._evaluate(business_date, model_version_id)
         LOGGER.info(
             "滚动模型评估完成：决策=%s；原因=%s",
@@ -112,22 +127,24 @@ class LivePerformanceService:
         }
 
     def _estimate_trading_costs(
-        self, fills: tuple[BrokerFill, ...], business_date: date
+        self, orders: list[dict[str, object]]
     ) -> tuple[Decimal, Decimal]:
-        """用途：按订单聚合当日成交并估算交易费用；输入：成交列表和日期；输出：成交额与估算费用。"""
-        grouped_amounts: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
-        for index, fill in enumerate(fills):
-            if fill.fill_time is not None and fill.fill_time.date() != business_date:
-                continue
-            key = (fill.order_id or f"UNBOUND:{index}", fill.direction)
-            grouped_amounts[key] += fill.fill_amount
-        turnover = sum(grouped_amounts.values(), Decimal("0"))
+        """按当日已成交订单估算成交额和交易费用。"""
+        amounts = [
+            (
+                str(order["direction"]),
+                Decimal(str(order["average_fill_price"]))
+                * Decimal(str(order["filled_quantity"])),
+            )
+            for order in orders
+        ]
+        turnover = sum((amount for _, amount in amounts), Decimal("0"))
         estimated_fees = Decimal("0")
         commission_rate = Decimal(str(self._config.trading_commission_rate))
         min_commission = Decimal(str(self._config.trading_min_commission))
         transfer_rate = Decimal(str(self._config.trading_transfer_fee_rate))
         stamp_duty_rate = Decimal(str(self._config.trading_stamp_duty_rate))
-        for (_, direction), amount in grouped_amounts.items():
+        for direction, amount in amounts:
             estimated_fees += max(min_commission, amount * commission_rate)
             estimated_fees += amount * transfer_rate
             if direction == "SELL":
@@ -179,6 +196,7 @@ class LivePerformanceService:
             decision,
         )
         return self._state_store.save_model_evaluation(
+            model_version_id=model_version_id,
             business_date=business_date.isoformat(),
             window_days=window_days,
             observations=observations,
@@ -214,4 +232,4 @@ def _max_drawdown(returns: list[float]) -> float:
 def _optional_float(value: Decimal | None) -> float | None:
     """用途：转换可空 Decimal；输入：Decimal 或空值；输出：float 或空值。"""
     return float(value) if value is not None else None
-# AI_GENERATE_END -----
+# AI_GENERATE_END --------

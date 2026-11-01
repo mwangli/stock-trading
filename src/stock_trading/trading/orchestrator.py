@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------
+# AI_GENERATE_START -----------------
 from __future__ import annotations
 
 import logging
@@ -6,15 +6,20 @@ from datetime import date
 from decimal import Decimal
 from typing import Protocol
 
-from stock_trading.broker.models import BrokerPosition, FiveLevelQuote
+from stock_trading.broker.models import BrokerAccount, BrokerPosition, FiveLevelQuote
 from stock_trading.config import AppConfig
 from stock_trading.state.store import StateStore
 from stock_trading.trading.permissions import permission_scope
+from stock_trading.trading.strategy import affordable_quantity
 
 LOGGER = logging.getLogger(__name__)
 
 
 class BrokerReader(Protocol):
+    def get_account(self) -> BrokerAccount:
+        """用途：读取当前账户资金事实；输入：无；输出：券商账户。"""
+        ...
+
     def get_positions(self) -> tuple[BrokerPosition, ...]:
         """用途：读取当前持仓事实；输入：无；输出：券商持仓元组。"""
         ...
@@ -80,12 +85,14 @@ class LiveTradingOrchestrator:
         }
 
     def _select_afternoon_buy_target(self, business_date: date) -> dict[str, object]:
-        """选择一个模型候选作为买入目标，不保存或复用五档价格和委托数量。"""
+        """从完整横截面排名选择最高分可买目标，不保存五档价格和委托数量。"""
         candidates = self._state_store.latest_prediction_candidates(
-            business_date.isoformat(), 5
+            business_date.isoformat()
         )
         if not candidates:
-            raise ValueError("目标交易日前没有可用 Top 5 预测")
+            raise ValueError("目标交易日前没有可用横截面预测")
+        if len(candidates) <= 5:
+            raise ValueError("最近预测仍是旧 Top 5 产物，请先重新执行 rank 生成完整横截面排名")
         prediction_date = date.fromisoformat(str(candidates[0]["prediction_date"]))
         prediction_age = (business_date - prediction_date).days
         if not 1 <= prediction_age <= self._config.trading_max_prediction_age_days:
@@ -116,15 +123,22 @@ class LiveTradingOrchestrator:
             str(item["scope"]): str(item["status"])
             for item in self._state_store.broker_permissions()
         }
+        account = self._broker.get_account()
         rejected: list[dict[str, object]] = []
         for candidate in candidates:
             instrument = str(candidate["instrument"]).upper()
             rank = int(candidate["rank"])
+            score = float(candidate["score"])
             if self._config.trading_allowed_prefixes and not instrument.startswith(
                 self._config.trading_allowed_prefixes
             ):
                 rejected.append(
-                    {"instrument": instrument, "rank": rank, "reason": "NO_TRADING_PERMISSION"}
+                    {
+                        "instrument": instrument,
+                        "rank": rank,
+                        "score": score,
+                        "reason": "NO_TRADING_PERMISSION",
+                    }
                 )
                 continue
             scope = permission_scope(instrument)
@@ -133,6 +147,7 @@ class LiveTradingOrchestrator:
                     {
                         "instrument": instrument,
                         "rank": rank,
+                        "score": score,
                         "reason": "BROKER_PERMISSION_DENIED",
                     }
                 )
@@ -143,11 +158,39 @@ class LiveTradingOrchestrator:
                 str(self._config.trading_max_price)
             ):
                 rejected.append(
-                    {"instrument": instrument, "rank": rank, "reason": "PRICE_OUT_OF_RANGE"}
+                    {
+                        "instrument": instrument,
+                        "rank": rank,
+                        "score": score,
+                        "reason": "PRICE_OUT_OF_RANGE",
+                    }
+                )
+                continue
+            quantity = affordable_quantity(
+                account.available_cash,
+                quote.asks[0],
+                Decimal(str(self._config.trading_min_commission)),
+                Decimal(str(self._config.trading_commission_rate)),
+                Decimal(str(self._config.trading_transfer_fee_rate)),
+            )
+            if quantity <= 0:
+                rejected.append(
+                    {
+                        "instrument": instrument,
+                        "rank": rank,
+                        "score": score,
+                        "reason": "INSUFFICIENT_CASH",
+                    }
                 )
                 continue
             target = self._target(instrument, candidate)
-            LOGGER.info("下午买入目标选择完成：股票=%s；排名=%d", instrument, rank)
+            LOGGER.info(
+                "下午买入目标选择完成：股票=%s；全市场排名=%d；评分=%s；可买数量=%d",
+                instrument,
+                rank,
+                score,
+                quantity,
+            )
             return self._buy_result(business_date, candidates, target, rejected)
 
         LOGGER.info("下午买入目标选择完成：没有可交易候选")
@@ -172,6 +215,7 @@ class LiveTradingOrchestrator:
             "instrument": instrument,
             "side": "BUY",
             "candidateRank": int(candidate["rank"]) if candidate else None,
+            "modelScore": float(candidate["score"]) if candidate else None,
             "modelVersionId": int(candidate["model_version_id"]) if candidate else None,
             "predictionDate": str(candidate["prediction_date"]) if candidate else None,
         }
@@ -187,6 +231,7 @@ class LiveTradingOrchestrator:
             "businessDate": business_date.isoformat(),
             "predictionDate": candidates[0]["prediction_date"],
             "modelStatus": candidates[0]["model_status"],
+            "rankingRows": len(candidates),
             "mode": "AFTERNOON_BUY",
             "targets": [target] if target else [],
             "rejected": rejected,
@@ -211,4 +256,4 @@ def _to_qlib_instrument(stock_code: str, market: str | None) -> str:
     else:
         exchange = "SH" if code.startswith(("6", "68")) else "SZ"
     return f"{exchange}{code}"
-# AI_GENERATE_END ---------------
+# AI_GENERATE_END -----------------

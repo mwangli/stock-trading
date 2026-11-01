@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------
+# AI_GENERATE_START ---------------------------------
 from __future__ import annotations
 
 import logging
@@ -10,9 +10,9 @@ from uuid import uuid4
 import pandas as pd
 import pyarrow.parquet as pq
 
-from stock_trading.logging_utils import should_log_progress
 from stock_trading.market.minute_summary import summarize_t1_windows
 from stock_trading.market.models import AdjustmentFactor, DailyBar, MinuteBar, StockBasic
+from stock_trading.logging_utils import set_log_context, should_log_progress
 
 LOGGER = logging.getLogger(__name__)
 RAW_MINUTE_RETENTION_DAYS = 90
@@ -246,13 +246,9 @@ class ParquetMarketStore:
             summary_rows += int(result["summaryRows"])
             removed_partitions += legacy_count
             if should_log_progress(index, total_codes):
-                LOGGER.info(
-                    "分钟数据清理进度：%d/%d；股票=%s；移除旧分区=%d",
-                    index,
-                    total_codes,
-                    code,
-                    removed_partitions,
-                )
+                set_log_context(progress=f"{index}/{total_codes}", target=code)
+                LOGGER.info("分钟数据清理完成：移除旧分区=%d", removed_partitions)
+        set_log_context(progress=f"{total_codes}/{total_codes}", target="分钟数据")
         LOGGER.info(
             "分钟数据清理完成：股票=%d；原始行=%d；聚合行=%d；移除旧分区=%d",
             compacted,
@@ -392,4 +388,4 @@ def _without(record: dict[str, object], *fields: str) -> dict[str, object]:
 def _read_parquet_file(path: Path) -> pd.DataFrame:
     """读取单个文件，避免 key=value 父目录触发 Hive 分区字段合并。"""
     return pq.ParquetFile(path).read().to_pandas()
-# AI_GENERATE_END ----------------------------
+# AI_GENERATE_END ---------------------------------

@@ -1,8 +1,7 @@
-# AI_GENERATE_START ----------------------------
+# AI_GENERATE_START --------------------------------------
 from __future__ import annotations
 
 import logging
-import shutil
 from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
@@ -11,6 +10,7 @@ from typing import TypeVar
 from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.config import AppConfig
 from stock_trading.market.storage import ParquetMarketStore
+from stock_trading.logging_utils import set_log_context
 from stock_trading.market.sync import (
     latest_trade_date,
     live_codes,
@@ -36,6 +36,7 @@ from stock_trading.research.training import (
     training_artifacts_valid,
 )
 from stock_trading.state.store import StateStore
+from stock_trading.trading.broker_sync import BrokerOrderSyncService
 from stock_trading.trading.permissions import refresh_permissions
 
 LOGGER = logging.getLogger(__name__)
@@ -56,12 +57,11 @@ class InitializationService:
         self._market = ParquetMarketStore(config.data_dir)
         self._state = StateStore(config.state_db_path)
 
-    def run(self, force: bool = False) -> dict[str, object]:
-        """执行可恢复初始化；强制模式会先安全删除项目内 var。"""
-        if force:
-            self._reset_var_directory()
+    def run(self) -> dict[str, object]:
+        """执行可恢复初始化。"""
+        set_log_context(progress="0/6", target="状态库")
         self._state.initialize()
-        LOGGER.info("初始化状态库就绪；各阶段将直接检查实际数据")
+        LOGGER.info("状态库就绪，将按实际数据检查各初始化步骤")
 
         end_date = latest_trade_date(self._config.baostock_proxy)
         start_date = end_date - timedelta(days=self._config.market_history_days)
@@ -130,7 +130,7 @@ class InitializationService:
         model_root_dir = model_root(self._config.artifact_dir)
         self._step(
             4,
-            "模型训练和能力评估",
+            "模型训练和回测评估",
             lambda: qlib_result is None and self._training_valid(model_root_dir),
             lambda: train_prepared_model(self._config, None),
             lambda: self._training_valid(model_root_dir),
@@ -149,7 +149,9 @@ class InitializationService:
 
         broker_result = self._sync_broker_history(start_date, end_date)
         if broker_result:
-            permissions = refresh_permissions(self._state, broker_result.get("orders", ()), end_date)
+            permissions = refresh_permissions(
+                self._state, self._state.history_orders(), end_date
+            )
         else:
             permissions = refresh_permissions(self._state, (), end_date)
         readiness = {
@@ -157,6 +159,7 @@ class InitializationService:
             "predictionReady": self._prediction_valid(model_dir, end_date),
             "brokerReady": broker_result is not None,
         }
+        set_log_context(progress="6/6", target="初始化")
         LOGGER.info(
             "初始化完成：模型=%s；预测=%s；券商=%s",
             readiness["modelReady"],
@@ -183,14 +186,16 @@ class InitializationService:
         action: Callable[[], T],
         post_validator: Callable[[], bool] | None = None,
     ) -> T | None:
-        LOGGER.info("初始化阶段 %d/6：%s", index, title)
+        set_log_context(progress=f"{index}/6", target=title)
+        LOGGER.info("初始化步骤开始")
         if validator():
-            LOGGER.info("初始化阶段跳过：%s；实际数据检查通过", title)
+            LOGGER.info("实际数据检查通过，初始化步骤跳过")
             return None
         result = action()
         if not (post_validator or validator)():
             raise ValueError(f"初始化阶段完成后检查失败: {title}")
-        LOGGER.info("初始化阶段完成：%s", title)
+        set_log_context(progress=f"{index}/6", target=title)
+        LOGGER.info("初始化步骤完成")
         return result
 
     def _collection_complete(self, codes: list[str]) -> bool:
@@ -235,39 +240,23 @@ class InitializationService:
         path = prediction_artifact_path(model_dir, prediction_date)
         return {
             "predictionDate": prediction_date.isoformat(),
-            "topK": 5,
+            "artifactType": "FULL_CROSS_SECTION_RANKING",
             "path": str(path),
         }
 
     def _sync_broker_history(
         self, start_date: date, end_date: date
     ) -> dict[str, object] | None:
-        LOGGER.info("初始化阶段 6/6：券商历史事实和账户快照")
+        set_log_context(progress="6/6", target="券商历史订单")
+        LOGGER.info("开始同步历史订单并重建 FIFO 交易记录")
         try:
             broker = self._broker_factory()
-            snapshot = broker.read_history_snapshot(start_date, end_date)
-            sync = self._state.sync_broker_snapshot(snapshot, end_date.isoformat())
-            return {"sync": sync, "orders": snapshot.orders, "fills": snapshot.fills}
+            return BrokerOrderSyncService(
+                self._config, self._state, broker
+            ).sync(start_date, end_date)
         except Exception as error:
             LOGGER.warning("券商初始化已跳过，不影响模型可用性：%s", error)
             return None
-
-    def _reset_var_directory(self) -> None:
-        root = (self._config.project_dir / "var").resolve()
-        project = self._config.project_dir.resolve()
-        expected = (project / "var").resolve()
-        configured = (
-            self._config.data_dir.resolve(),
-            self._config.qlib_dir.resolve(),
-            self._config.artifact_dir.resolve(),
-            self._config.state_db_path.resolve(),
-        )
-        if root != expected or root == project or root.parent != project:
-            raise ValueError(f"拒绝删除不安全的初始化目录: {root}")
-        if any(root != path and root not in path.parents for path in configured):
-            raise ValueError("--force 仅支持全部运行目录位于项目 var 下")
-        LOGGER.warning("强制初始化：即将删除全部运行数据；目录=%s", root)
-        shutil.rmtree(root, ignore_errors=True)
 
 
 def _model_valid(model_root_dir: Path) -> bool:
@@ -275,4 +264,4 @@ def _model_valid(model_root_dir: Path) -> bool:
         return model_artifacts_valid(resolve_current_model_dir(model_root_dir))
     except (OSError, ValueError):
         return False
-# AI_GENERATE_END ----------------------------
+# AI_GENERATE_END --------------------------------------

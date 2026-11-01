@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------
+# AI_GENERATE_START ----------------------
 from __future__ import annotations
 
 import base64
@@ -14,16 +14,16 @@ from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from stock_trading.broker.models import BrokerSyncSnapshot, FiveLevelQuote
+from stock_trading.broker.models import FiveLevelQuote
 from stock_trading.broker.parser import (
     parse_account_rows,
     parse_decimal,
-    parse_fill_rows,
     is_header_or_empty,
     parse_order_rows,
     parse_position_rows,
 )
 from stock_trading.config import AppConfig
+from stock_trading.logging_utils import set_log_context
 
 REQUEST_URL = "https://weixin.citicsinfo.com/reqxml"
 
@@ -32,8 +32,6 @@ ACTION_LOGIN = 100
 ACTION_SUBMIT_ORDER = 110
 ACTION_CANCEL_ORDER = 111
 ACTION_QUERY_TODAY_ORDERS = 113
-ACTION_QUERY_TODAY_FILLS = 114
-ACTION_QUERY_HISTORY_FILLS = 115
 ACTION_GET_ACCOUNT = 116
 ACTION_GET_POSITIONS = 117
 ACTION_QUERY_HISTORY_ORDERS = 5018
@@ -111,21 +109,33 @@ class ZXBrokerClient:
                     f"券商登录处于失败冷却期，请在 {max(1, int(remaining) + 1)} 秒后重试"
                 )
             last_error = "未知错误"
+            set_log_context(
+                progress=f"0/{self._config.broker_captcha_max_retries}",
+                target="券商登录",
+            )
             LOGGER.info(
-                "开始券商自动登录：最大验证码尝试=%d；Token缓存=%d分钟",
+                "开始自动登录：最大验证码尝试=%d；Token缓存=%d分钟",
                 self._config.broker_captcha_max_retries,
                 self._config.broker_token_expire_minutes,
             )
             for attempt in range(1, self._config.broker_captcha_max_retries + 1):
                 try:
-                    LOGGER.info("券商登录中：验证码尝试=%d/%d", attempt, self._config.broker_captcha_max_retries)
+                    set_log_context(
+                        progress=f"{attempt}/{self._config.broker_captcha_max_retries}",
+                        target="券商登录",
+                    )
+                    LOGGER.info("开始验证码登录尝试")
                     token = self._login_once()
                     self._login_blocked_until = 0.0
                     LOGGER.info("券商登录成功：Token已缓存%d分钟", self._config.broker_token_expire_minutes)
                     return token
                 except Exception as error:
                     last_error = f"{type(error).__name__}: {error}"
-                    LOGGER.warning("券商登录尝试失败：进度=%d/%d；原因=%s", attempt, self._config.broker_captcha_max_retries, error)
+                    set_log_context(
+                        progress=f"{attempt}/{self._config.broker_captcha_max_retries}",
+                        target="券商登录",
+                    )
+                    LOGGER.warning("登录尝试失败：原因=%s", error)
             self._login_blocked_until = (
                 time.monotonic()
                 + self._config.broker_login_failure_cooldown_seconds
@@ -135,7 +145,8 @@ class ZXBrokerClient:
             )
 
     def _login_once(self) -> str:
-        LOGGER.info("券商登录阶段 1/3：获取验证码")
+        set_log_context(progress="1/3", target="券商验证码")
+        LOGGER.info("获取验证码")
         captcha = self._request(self.build_params({"action": ACTION_CAPTCHA}))
         data_uri = captcha.get("MESSAGE")
         check_token = captcha.get("CHECKTOKEN")
@@ -145,9 +156,11 @@ class ZXBrokerClient:
             image = base64.b64decode(str(data_uri).split(",", 1)[-1], validate=True)
         except (ValueError, binascii.Error) as error:
             raise BrokerProtocolError("验证码图片无法解码") from error
-        LOGGER.info("券商登录阶段 2/3：识别验证码；图片字节数=%d", len(image))
+        set_log_context(progress="2/3", target="券商验证码")
+        LOGGER.info("识别验证码：图片字节数=%d", len(image))
         check_code = self._captcha_solver(image)
-        LOGGER.info("券商登录阶段 3/3：提交登录请求")
+        set_log_context(progress="3/3", target="券商登录")
+        LOGGER.info("提交登录请求")
         response = self._request(
             self.build_params(
                 {
@@ -204,36 +217,11 @@ class ZXBrokerClient:
         LOGGER.info("券商当日委托读取完成：委托数量=%d", len(orders))
         return orders
 
-    def get_today_fills(self):
-        LOGGER.info("正在读取券商当日成交")
-        fills = parse_fill_rows(
-            self._query_rows(
-                ACTION_QUERY_TODAY_FILLS,
-                {
-                    "ReqlinkType": 1,
-                    "StartPos": 0,
-                    "MaxCount": self._config.broker_max_order_count,
-                },
-            ),
-            today_format=True,
-        )
-        LOGGER.info("券商当日成交读取完成：成交数量=%d", len(fills))
-        return fills
-
     def get_history_orders(self, start_date: date, end_date: date):
         LOGGER.info("正在读取券商历史委托：日期=%s 至 %s", start_date, end_date)
         orders = parse_order_rows(self._query_history_rows(ACTION_QUERY_HISTORY_ORDERS, start_date, end_date))
         LOGGER.info("券商历史委托读取完成：数量=%d", len(orders))
         return orders
-
-    def get_history_fills(self, start_date: date, end_date: date):
-        LOGGER.info("正在读取券商历史成交：日期=%s 至 %s", start_date, end_date)
-        fills = parse_fill_rows(
-            self._query_history_rows(ACTION_QUERY_HISTORY_FILLS, start_date, end_date),
-            today_format=False,
-        )
-        LOGGER.info("券商历史成交读取完成：数量=%d", len(fills))
-        return fills
 
     def get_realtime_price(self, stock_code: str) -> Decimal:
         response = self._request(
@@ -281,42 +269,6 @@ class ZXBrokerClient:
             quote.asks[2],
         )
         return quote
-
-    def read_shadow_snapshot(self) -> BrokerSyncSnapshot:
-        LOGGER.info("券商快照阶段 1/4：读取账户")
-        account = self.get_account()
-        LOGGER.info("券商快照阶段 2/4：读取持仓")
-        positions = self.get_positions()
-        LOGGER.info("券商快照阶段 3/4：读取委托")
-        orders = self.get_today_orders()
-        LOGGER.info("券商快照阶段 4/4：读取成交")
-        fills = self.get_today_fills()
-        LOGGER.info(
-            "券商快照读取完成：持仓=%d；委托=%d；成交=%d",
-            len(positions),
-            len(orders),
-            len(fills),
-        )
-        return BrokerSyncSnapshot(account=account, positions=positions, orders=orders, fills=fills)
-
-    def read_history_snapshot(
-        self, start_date: date, end_date: date
-    ) -> BrokerSyncSnapshot:
-        """读取账户、持仓以及指定区间的历史委托和成交快照。"""
-        LOGGER.info("券商历史快照阶段 1/4：读取账户")
-        account = self.get_account()
-        LOGGER.info("券商历史快照阶段 2/4：读取持仓")
-        positions = self.get_positions()
-        LOGGER.info("券商历史快照阶段 3/4：读取历史委托")
-        orders = self.get_history_orders(start_date, end_date)
-        LOGGER.info("券商历史快照阶段 4/4：读取历史成交")
-        fills = self.get_history_fills(start_date, end_date)
-        return BrokerSyncSnapshot(
-            account=account,
-            positions=positions,
-            orders=orders,
-            fills=fills,
-        )
 
     def submit_limit_order(
         self,
@@ -465,33 +417,53 @@ class ZXBrokerClient:
         start_position = 0
         rows: list[str] = []
         page_number = 0
-        while start_position < max_records:
+        while len(rows) < max_records:
             page_number += 1
+            request_count = min(page_size, max_records - len(rows))
             page = self._query_rows(
                 action,
                 {
                     "ReqlinkType": 1,
                     "StartPos": start_position,
-                    "MaxCount": page_size,
+                    "MaxCount": request_count,
                     "BeginDate": start_date.strftime("%Y%m%d"),
                     "EndDate": end_date.strftime("%Y%m%d"),
                 },
             )
             data = [row for row in page if not is_header_or_empty(row)]
             rows.extend(data)
+            set_log_context(
+                progress=f"{len(rows)}/{max_records}",
+                target=f"action={action}",
+            )
             LOGGER.info(
-                "券商历史数据分页进度：action=%d；页=%d；本页=%d；累计=%d；上限=%d",
-                action,
+                "历史数据分页完成：页=%d；本页=%d；累计=%d；上限=%d",
                 page_number,
                 len(data),
                 len(rows),
                 max_records,
             )
-            if not data or len(data) < page_size:
+            if not data or len(data) < request_count:
                 break
             start_position += len(data)
+            if len(rows) >= max_records:
+                probe = self._query_rows(
+                    action,
+                    {
+                        "ReqlinkType": 1,
+                        "StartPos": start_position,
+                        "MaxCount": 1,
+                        "BeginDate": start_date.strftime("%Y%m%d"),
+                        "EndDate": end_date.strftime("%Y%m%d"),
+                    },
+                )
+                if any(not is_header_or_empty(row) for row in probe):
+                    raise BrokerProtocolError(
+                        f"券商历史数据超过配置上限 {max_records} 条，拒绝写入不完整窗口"
+                    )
+                break
             time.sleep(self._config.broker_history_request_interval_seconds)
-        return rows[:max_records]
+        return rows
 
     def _require_token(self) -> str:
         self._require_enabled()
@@ -545,4 +517,4 @@ def _required_price(response: dict[str, Any], primary: str, alternate: str) -> D
     if value is None or value <= 0:
         raise BrokerProtocolError("券商未返回完整五档行情")
     return value
-# AI_GENERATE_END --------------------
+# AI_GENERATE_END ----------------------

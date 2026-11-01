@@ -1,11 +1,13 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START -------
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, ROUND_FLOOR
 
 from stock_trading.broker.models import FiveLevelQuote
 from stock_trading.config import FIXED_TIME_URGENCY_STRATEGY
+
+LOT_SIZE = 100
 
 
 @dataclass(frozen=True)
@@ -48,4 +50,26 @@ def select_execution_price(
         price_level=level,
         price=price,
     )
-# AI_GENERATE_END ------
+
+
+def affordable_quantity(
+    cash: Decimal,
+    price: Decimal,
+    min_commission: Decimal,
+    commission_rate: Decimal,
+    transfer_fee_rate: Decimal,
+) -> int:
+    """按实时资金、价格、费用和 100 股整手计算最大可买数量。"""
+    if cash <= 0 or price <= 0:
+        return 0
+    lots = (cash / (price * LOT_SIZE)).to_integral_value(rounding=ROUND_FLOOR)
+    quantity = int(lots) * LOT_SIZE
+    while quantity > 0:
+        notional = price * quantity
+        commission = max(min_commission, notional * commission_rate)
+        transfer_fee = notional * transfer_fee_rate
+        if notional + commission + transfer_fee <= cash:
+            return quantity
+        quantity -= LOT_SIZE
+    return 0
+# AI_GENERATE_END -------

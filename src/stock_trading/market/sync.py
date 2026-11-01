@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------
+# AI_GENERATE_START ----------------------------------
 from __future__ import annotations
 
 import logging
@@ -9,8 +9,8 @@ from datetime import date, timedelta
 import pandas as pd
 
 from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
-from stock_trading.market.progress import CollectionProgress
 from stock_trading.market.storage import ParquetMarketStore
+from stock_trading.logging_utils import log_context, set_log_context
 
 LOGGER = logging.getLogger(__name__)
 
@@ -96,53 +96,35 @@ def sync_collection_data(
     skipped = 0
     downloaded = 0
     failed: dict[str, dict[str, str]] = {}
-    progress_total = len(codes) * 2 if skip_existing else len(codes)
-    with CollectionProgress(
-        total_count=progress_total,
-    ) as progress:
-        for checked, code in enumerate(codes, start=1):
-            needs_daily = not skip_existing or not store.has_daily_history(code)
-            needs_adjustment = not skip_existing or not store.has_adjustment_factors(code)
-            needs_minute5 = not skip_existing or not store.has_minute5_data(code)
-            if not any((needs_daily, needs_adjustment, needs_minute5)):
-                skipped += 1
-            else:
-                pending.append((code, needs_daily, needs_adjustment, needs_minute5))
-            if skip_existing:
-                progress.update_check(checked + skipped)
-                LOGGER.info(
-                    "股票数据检查完成：股票=%s；进度=%d/%d；待采集=%d；已完整=%d",
-                    code,
-                    checked,
-                    len(codes),
-                    len(pending),
-                    skipped,
-                )
+    for code in codes:
+        needs_daily = not skip_existing or not store.has_daily_history(code)
+        needs_adjustment = not skip_existing or not store.has_adjustment_factors(code)
+        needs_minute5 = not skip_existing or not store.has_minute5_data(code)
+        if not any((needs_daily, needs_adjustment, needs_minute5)):
+            skipped += 1
+        else:
+            pending.append((code, needs_daily, needs_adjustment, needs_minute5))
 
-        collection_base = len(codes) + skipped if skip_existing else 0
-        progress.begin_estimate(collection_base)
-        LOGGER.info(
-            "股票数据采集计划：目标=%d；待采集=%d；跳过=%d；连接=1",
-            len(codes),
-            len(pending),
-            skipped,
-        )
-        if not pending:
-            LOGGER.info(
-                "股票数据采集完成：新增=0；跳过=%d；失败=0",
-                skipped,
-            )
-            return {
-                "completed": len(codes),
-                "skipped": skipped,
-                "failed": failed,
-            }
+    set_log_context(progress=f"0/{len(pending)}", target="股票数据")
+    LOGGER.info(
+        "采集计划：目标=%d；待采集=%d；跳过=%d；连接=1",
+        len(codes),
+        len(pending),
+        skipped,
+    )
+    if not pending:
+        LOGGER.info("股票数据采集完成：新增=0；跳过=%d；失败=0", skipped)
+        return {
+            "completed": len(codes),
+            "skipped": skipped,
+            "failed": failed,
+        }
 
-        completed = 0
-        client = BaoStockClient(proxy_url)
-        client.__enter__()
-        try:
-            for plan in pending:
+    client = BaoStockClient(proxy_url)
+    client.__enter__()
+    try:
+        for index, plan in enumerate(pending, start=1):
+            with log_context(progress=f"{index}/{len(pending)}", target=plan[0]):
                 result, client = _sync_collection_code(
                     store,
                     client,
@@ -154,44 +136,35 @@ def sync_collection_data(
                     plan[2],
                     plan[3],
                 )
-                downloaded, completed = _record_collection_result(
-                    result,
-                    downloaded,
-                    completed,
-                    failed,
-                    progress,
-                    collection_base,
-                )
-        finally:
-            client.__exit__(None, None, None)
-        LOGGER.info(
-            "股票数据采集完成：新增=%d；跳过=%d；失败=%d",
-            downloaded,
-            skipped,
-            len(failed),
+                downloaded = _record_collection_result(result, downloaded, failed)
+    finally:
+        client.__exit__(None, None, None)
+    set_log_context(progress=f"{len(pending)}/{len(pending)}", target="股票数据")
+    LOGGER.info(
+        "采集完成：新增=%d；跳过=%d；失败=%d",
+        downloaded,
+        skipped,
+        len(failed),
+    )
+    result = {
+        "completed": downloaded + skipped,
+        "skipped": skipped,
+        "failed": failed,
+    }
+    if failed:
+        details = "；".join(
+            f"{code}({','.join(sorted(errors))})"
+            for code, errors in sorted(failed.items())
         )
-        result = {
-            "completed": downloaded + skipped,
-            "skipped": skipped,
-            "failed": failed,
-        }
-        if failed:
-            details = "；".join(
-                f"{code}({','.join(sorted(errors))})"
-                for code, errors in sorted(failed.items())
-            )
-            raise ValueError(f"股票数据采集失败：{details}")
-        return result
+        raise ValueError(f"股票数据采集失败：{details}")
+    return result
 
 
 def _record_collection_result(
     result: dict[str, object],
     downloaded: int,
-    completed: int,
     failed: dict[str, dict[str, str]],
-    progress: CollectionProgress,
-    collection_base: int,
-) -> tuple[int, int]:
+) -> int:
     code = str(result["code"])
     errors = {
         str(dataset): str(error)
@@ -206,9 +179,7 @@ def _record_collection_result(
         )
     else:
         downloaded += 1
-    completed += 1
-    progress.update(collection_base + completed)
-    return downloaded, completed
+    return downloaded
 
 
 def _sync_collection_code(
@@ -304,4 +275,4 @@ def _collect_component(
         except Exception as error:
             return str(error), client
     return "未知采集失败", client
-# AI_GENERATE_END -----------------------------
+# AI_GENERATE_END ----------------------------------

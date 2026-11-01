@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START--------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_START---------------------------------------------------------------------------------------- -->
 # stock-trading
 
 面向 A 股的纯 Python T+1 自动交易验证系统。项目只保留 BaoStock、Qlib、LightGBM、Parquet、SQLite 和经过真实响应确认的 ZX 券商 HTTP 契约。
@@ -169,34 +169,6 @@ stock-trading collect --codes sh.600000,sz.000001 --date 2023-01-01:2026-10-29
 
 采集在主线程按股票顺序执行，登录一次 BaoStock 后复用同一连接，依次采集每只股票的日线、复权因子和5分钟线。单类数据失败不会阻止同一股票其他类别写入，但最终命令会汇总失败并返回非零结果。复权因子查询结果为空时首次写入固定列结构的空 Parquet，使用该编号文件本身表示已处理；后续采集为空时保留已有记录。5分钟原始数据按股票压缩为单个 Parquet，只保留最近90个自然日；上午卖出窗口、下午买入窗口 VWAP/高低价聚合至少保留5年。
 
-### 本地与服务器数据同步
-
-`sync` 通过系统 OpenSSH 在 Windows 本地 `var/` 与 Linux 服务器 `/data/stock-trading/` 之间同步 `market` 和 `qlib`。命令使用 SSH 密钥或本机 SSH 配置，不接收和保存服务器密码。同步会覆盖同名文件，但不会删除目标端额外文件。
-
-在本地 `.env` 中配置连接信息：
-
-```text
-STOCK_TRADING_SYNC_HOST=server.example.com
-STOCK_TRADING_SYNC_USER=deploy
-STOCK_TRADING_SYNC_PORT=22
-STOCK_TRADING_SYNC_IDENTITY_FILE=C:\Users\name\.ssh\id_ed25519
-```
-
-`STOCK_TRADING_SYNC_USER` 和 `STOCK_TRADING_SYNC_IDENTITY_FILE` 可以省略，此时使用 SSH 配置确定用户和密钥。同步命令必须且只能选择一个方向；`--data` 支持单项或逗号分隔的多项：
-
-```bash
-# 本地推送到服务器
-stock-trading sync --push --data market
-
-# 从服务器拉取到本地
-stock-trading sync --pull --data qlib
-
-# 同时同步多类数据
-stock-trading sync --push --data market,qlib
-```
-
-同步前应停止源端和目标端正在写入对应目录的 `collect`、`prepare`、`train` 或 `predict` 命令，避免传输到一半状态的数据。`qib` 不是有效类型，正确名称为 `qlib`。
-
 ### 数据清理
 
 `clean` 直接检查并整理实际文件，不使用额外清理缓存。默认保留规则：
@@ -337,4 +309,4 @@ Rank IC Mean:   -0.0178742
 真实券商验证已确认登录、30 分钟 Token 缓存、账户/持仓/委托/成交读取以及 Action 110 的股东账号和市场参数。真实探测已到达券商交易时间校验，但尚未取得成功委托号，也未验证真实撤单、部分成交和完整绩效闭环。
 
 当前仓库变更只完成源码和文件层面检查。除非另有明确记录，不能把 `SOURCE_IMPLEMENTED` 描述为测试通过、运行通过或生产验证通过。
-<!-- AI_GENERATE_END---------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_END----------------------------------------------------------------------------------------- -->

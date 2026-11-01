@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----
+# AI_GENERATE_START -------
 from __future__ import annotations
 
 import json
@@ -11,7 +11,10 @@ from uuid import uuid4
 
 import pandas as pd
 
-from stock_trading.research.model import ModelSegments, train_alpha158_lightgbm
+from stock_trading.research.model import (
+    ModelSegments,
+    train_alpha158_lightgbm_adaptive,
+)
 
 MODEL_DIRECTORY = "alpha158-lightgbm"
 _REQUIRED_FILES = (
@@ -40,27 +43,26 @@ def resolve_current_model_dir(root: Path) -> Path:
     raise FileNotFoundError(f"没有可用模型，请先执行 train: {root}")
 
 
-def prediction_artifact_path(
-    model_dir: Path, prediction_date: date, top_k: int = 5
-) -> Path:
+def prediction_artifact_path(model_dir: Path, prediction_date: date) -> Path:
     """返回指定模型和交易日的预测制品路径。"""
-    return model_dir / "predictions" / f"top{top_k}-{prediction_date.isoformat()}.parquet"
+    return model_dir / "predictions" / f"ranking-{prediction_date.isoformat()}.parquet"
 
 
-def prediction_artifact_valid(
-    model_dir: Path, prediction_date: date, top_k: int = 5
-) -> bool:
-    """检查单日预测的文件、字段、日期和候选数量。"""
+def prediction_artifact_valid(model_dir: Path, prediction_date: date) -> bool:
+    """检查单日完整横截面预测的文件、字段和日期。"""
     try:
-        frame = pd.read_parquet(prediction_artifact_path(model_dir, prediction_date, top_k))
+        frame = pd.read_parquet(prediction_artifact_path(model_dir, prediction_date))
         dates = pd.to_datetime(frame["datetime"]).dt.date.unique()
     except (OSError, ValueError, KeyError, AttributeError):
         return False
     return (
-        len(frame) == top_k
-        and {"datetime", "instrument", "score", "label"}.issubset(frame.columns)
+        not frame.empty
+        and {"datetime", "instrument", "rank", "score", "label"}.issubset(frame.columns)
         and len(dates) == 1
         and dates[0] == prediction_date
+        and frame["instrument"].is_unique
+        and frame["score"].notna().all()
+        and frame["rank"].tolist() == list(range(1, len(frame) + 1))
     )
 
 
@@ -81,7 +83,7 @@ def train_model_candidate(
     published = versions / version
     shutil.rmtree(staging, ignore_errors=True)
     try:
-        result = train_alpha158_lightgbm(qlib_dir, staging, segments)
+        result = train_alpha158_lightgbm_adaptive(qlib_dir, staging, segments)
         validate_model_artifacts(staging)
         staging.replace(published)
     finally:
@@ -173,4 +175,4 @@ def _write_current_pointer(root: Path, version: str) -> None:
         temporary.replace(pointer)
     finally:
         temporary.unlink(missing_ok=True)
-# AI_GENERATE_END ----
+# AI_GENERATE_END -------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----
+# AI_GENERATE_START ------
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -44,29 +44,9 @@ class BrokerOrder:
 
 
 @dataclass(frozen=True)
-class BrokerFill:
-    order_id: str | None
-    stock_code: str | None
-    stock_name: str | None
-    direction: str
-    fill_price: Decimal
-    fill_quantity: int
-    fill_amount: Decimal
-    fill_time: datetime | None
-
-
-@dataclass(frozen=True)
 class FiveLevelQuote:
     stock_code: str
     price: Decimal | None
     bids: tuple[Decimal, Decimal, Decimal, Decimal, Decimal]
     asks: tuple[Decimal, Decimal, Decimal, Decimal, Decimal]
-
-
-@dataclass(frozen=True)
-class BrokerSyncSnapshot:
-    account: BrokerAccount
-    positions: tuple[BrokerPosition, ...]
-    orders: tuple[BrokerOrder, ...]
-    fills: tuple[BrokerFill, ...]
-# AI_GENERATE_END -----
+# AI_GENERATE_END ------
