@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START---------------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_START----------------------------------------------------------------------------------------------- -->
 # stock-trading
 
 面向 A 股的纯 Python T+1 自动交易验证系统。项目只保留 BaoStock、Qlib、LightGBM、Parquet、SQLite 和经过真实响应确认的 ZX 券商 HTTP 契约。
@@ -104,6 +104,7 @@ uv pip install --python .venv\Scripts\python.exe -e .
 Windows 本地通过 `.venv` 中的入口直接执行，不依赖 PATH：
 
 ```cmd
+.venv\Scripts\stock-help.exe
 .venv\Scripts\stock-init.exe
 .venv\Scripts\stock-train.exe
 .venv\Scripts\stock-collect.exe
@@ -116,9 +117,10 @@ Windows 本地通过 `.venv` 中的入口直接执行，不依赖 PATH：
 .venv\Scripts\stock-clean.exe
 ```
 
-每个命令都独立提供 `-h` 和 `--help`，帮助页只显示当前命令的功能、参数和示例：
+使用 `stock-help` 查看全部命令和用途；每个业务命令都独立提供 `-h` 和 `--help`，帮助页只显示当前命令的参数和示例：
 
 ```cmd
+.venv\Scripts\stock-help.exe
 .venv\Scripts\stock-broker.exe -h
 .venv\Scripts\stock-collect.exe --help
 ```
@@ -320,4 +322,4 @@ Rank IC Mean:   -0.0178742
 真实券商验证已确认登录、30 分钟 Token 缓存、账户/持仓/委托/成交读取以及 Action 110 的股东账号和市场参数。真实探测已到达券商交易时间校验，但尚未取得成功委托号，也未验证真实撤单、部分成交和完整绩效闭环。
 
 当前仓库变更只完成源码和文件层面检查。除非另有明确记录，不能把 `SOURCE_IMPLEMENTED` 描述为测试通过、运行通过或生产验证通过。
-<!-- AI_GENERATE_END----------------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_END------------------------------------------------------------------------------------------------ -->

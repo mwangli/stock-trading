@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ----
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -19,6 +19,19 @@ from stock_trading.cli import (
 
 
 HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
+COMMAND_SUMMARIES = (
+    ("stock-help", "列出全部命令及其用途。"),
+    ("stock-init", "初始化行情、Qlib、模型、回测和最新排名。"),
+    ("stock-train", "训练、评估并回测模型。"),
+    ("stock-collect", "采集行情并刷新 Qlib。"),
+    ("stock-rank", "生成完整横截面排名。"),
+    ("stock-sell", "执行上午实时卖出。"),
+    ("stock-buy", "执行下午实时买入。"),
+    ("stock-broker", "同步券商事实并结算交易闭环。"),
+    ("stock-perform", "生成已实现绩效。"),
+    ("stock-evaluate", "评估模型并生成重训请求。"),
+    ("stock-clean", "清理过期数据和业务状态。"),
+)
 
 
 def _run(
@@ -38,6 +51,23 @@ def _run(
         context_settings=HELP_CONTEXT,
     )(command)
     command_app(prog_name=program)
+
+
+def _show_commands() -> None:
+    typer.echo("可用命令：")
+    width = max(len(command) for command, _ in COMMAND_SUMMARIES)
+    for command, summary in COMMAND_SUMMARIES:
+        typer.echo(f"  {command.ljust(width)}  {summary}")
+    typer.echo("\n查看具体用法：stock-broker -h")
+
+
+def show_help() -> None:
+    _run(
+        "stock-help",
+        _show_commands,
+        "列出项目提供的全部独立命令及其用途。",
+        ("stock-help", "stock-broker -h"),
+    )
 
 
 def init() -> None:
@@ -143,4 +173,4 @@ def clean() -> None:
         "清理过期分钟数据、任务记录和业务状态。",
         ("stock-clean", "stock-clean --date 2026-11-02"),
     )
-# AI_GENERATE_END ---
+# AI_GENERATE_END ----

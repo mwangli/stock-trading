@@ -19,6 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
+stock-help = "stock_trading.shortcuts:show_help"
 stock-init = "stock_trading.shortcuts:init"
 stock-train = "stock_trading.shortcuts:train"
 stock-collect = "stock_trading.shortcuts:collect"
