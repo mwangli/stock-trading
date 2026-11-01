@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------------------------------------------------------------
+# AI_GENERATE_START ----------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -513,8 +513,8 @@ def _pre_train(
     config: AppConfig, codes: list[str], start_date: date, end_date: date
 ) -> None:
     store = ParquetMarketStore(config.data_dir)
-    daily_codes = store.valid_daily_codes(codes, start_date, end_date)
-    minute5_codes = store.valid_minute5_codes(codes, start_date, end_date)
+    daily_codes = store.valid_daily_codes(codes)
+    minute5_codes = store.valid_minute5_codes(codes)
     missing_daily = [code for code in codes if code not in daily_codes]
     missing_minute5 = [code for code in codes if code not in minute5_codes]
     errors: list[str] = []
@@ -853,4 +853,4 @@ def _safe_error_text(value: object) -> str:
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END ---------------------------------------------------------------------------------
+# AI_GENERATE_END ----------------------------------------------------------------------------------

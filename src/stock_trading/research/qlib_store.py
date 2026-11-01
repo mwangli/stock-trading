@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 import logging
@@ -146,7 +146,12 @@ class QlibBinaryStore:
             & (daily["volume"].astype(float) > 0)
         ]
         factors = self._market_store.read_adjustment_factors(code).set_index("operate_date")
-        factor = factors["forward_factor"].reindex(daily.index, method="ffill").fillna(1.0)
+        if factors.empty:
+            factor = pd.Series(1.0, index=daily.index, dtype=float)
+        else:
+            factor = factors["forward_factor"].reindex(
+                daily.index, method="ffill"
+            ).fillna(1.0)
         adjusted = pd.DataFrame(index=daily.index)
         for field in ("open", "high", "low", "close"):
             adjusted[field] = daily[field].astype(float) * factor
@@ -185,4 +190,4 @@ class QlibBinaryStore:
 def to_qlib_code(code: str) -> str:
     exchange, symbol = code.split(".", maxsplit=1)
     return f"{exchange.upper()}{symbol}"
-# AI_GENERATE_END -------
+# AI_GENERATE_END --------

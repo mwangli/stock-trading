@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------
+# AI_GENERATE_START -------------------------
 from __future__ import annotations
 
 import logging
@@ -100,18 +100,17 @@ class InitializationService:
         self._step(
             2,
             "日线、复权因子和5分钟线",
-            lambda: self._collection_complete(selected_codes, start_date, end_date),
+            lambda: self._collection_complete(selected_codes),
             lambda: sync_collection_data(
                 self._market,
                 self._config.baostock_proxy,
                 selected_codes,
                 start_date,
                 end_date,
+                skip_existing=True,
             ),
         )
-        valid_codes = self._market.valid_research_codes(
-            selected_codes, start_date, end_date
-        )
+        valid_codes = self._market.valid_research_codes(selected_codes)
         model_codes = self._market.model_research_codes(valid_codes, start_date, end_date)
         current_codes = self._market.tradable_codes_on(live_metadata_codes, end_date)
         LOGGER.info(
@@ -220,10 +219,8 @@ class InitializationService:
         LOGGER.info("初始化阶段完成：%s", title)
         return result
 
-    def _collection_complete(
-        self, codes: list[str], start_date: date, end_date: date
-    ) -> bool:
-        return len(self._market.valid_research_codes(codes, start_date, end_date)) == len(codes)
+    def _collection_complete(self, codes: list[str]) -> bool:
+        return len(self._market.valid_research_codes(codes)) == len(codes)
 
     def _backtest_dir(self, cash: int) -> Path:
         return self._config.artifact_dir / "backtests" / f"cash-{cash}"
@@ -338,4 +335,4 @@ def _model_valid(model_root_dir: Path) -> bool:
         return model_artifacts_valid(resolve_current_model_dir(model_root_dir))
     except (OSError, ValueError):
         return False
-# AI_GENERATE_END -----------------------
+# AI_GENERATE_END -------------------------

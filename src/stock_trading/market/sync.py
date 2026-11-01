@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------
+# AI_GENERATE_START ------------------------
 from __future__ import annotations
 
 import logging
@@ -89,16 +89,15 @@ def sync_collection_data(
     codes: list[str],
     start_date: date,
     end_date: date,
+    skip_existing: bool = False,
 ) -> dict[str, object]:
     """使用单个长期 BaoStock 连接顺序采集股票数据。"""
     pending: list[tuple[str, bool, bool, bool]] = []
     skipped = 0
     for code in codes:
-        needs_daily = not store.daily_history_covers(code, start_date, end_date)
-        needs_adjustment = not store.adjustment_factor_covers(
-            code, start_date, end_date
-        )
-        needs_minute5 = not store.minute5_data_covers(code, start_date, end_date)
+        needs_daily = not skip_existing or not store.has_daily_history(code)
+        needs_adjustment = not skip_existing or not store.has_adjustment_factors(code)
+        needs_minute5 = not skip_existing or not store.has_minute5_data(code)
         if not any((needs_daily, needs_adjustment, needs_minute5)):
             skipped += 1
         else:
@@ -216,7 +215,7 @@ def _sync_collection_code(
             daily = active_client.fetch_daily_history(code, start_date, end_date)
             if not daily:
                 raise ValueError("日线为空")
-            store.write_daily_history(code, daily, start_date, end_date)
+            store.write_daily_history(code, daily)
 
         error, client = _collect_component(
             client, proxy_url, code, "日线", collect_daily
@@ -229,9 +228,7 @@ def _sync_collection_code(
             factors = active_client.fetch_adjustment_factors(
                 code, date(1990, 1, 1), end_date
             )
-            if not factors:
-                raise ValueError("复权因子为空")
-            store.write_adjustment_factors(code, factors, start_date, end_date)
+            store.write_adjustment_factors(code, factors)
 
         error, client = _collect_component(
             client, proxy_url, code, "复权因子", collect_adjustment
@@ -244,9 +241,7 @@ def _sync_collection_code(
             minutes = active_client.fetch_minutes(code, start_date, end_date)
             if not minutes:
                 raise ValueError("5分钟线为空")
-            store.write_minute_history(
-                code, minutes, start_date, end_date, end_date
-            )
+            store.write_minute_history(code, minutes, end_date)
 
         error, client = _collect_component(
             client, proxy_url, code, "5分钟线", collect_minute5
@@ -295,4 +290,4 @@ def _collect_component(
         except Exception as error:
             return str(error), client
     return "未知采集失败", client
-# AI_GENERATE_END -----------------------
+# AI_GENERATE_END ------------------------
