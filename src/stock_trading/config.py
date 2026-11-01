@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------------
+# AI_GENERATE_START ----------------------------------
 from __future__ import annotations
 
 import os
@@ -74,11 +74,14 @@ class AppConfig:
 
     @classmethod
     def from_env(cls) -> "AppConfig":
-        project_dir = Path(__file__).resolve().parents[2]
-        _load_env_file(project_dir / ".env")
-        runtime_dir = (
-            project_dir / "var" if os.name == "nt" else Path("/data/stock-trading")
+        source_project_dir = Path(__file__).resolve().parents[2]
+        project_dir = (
+            source_project_dir
+            if os.name == "nt"
+            else Path.home() / "stock-trading"
         )
+        _load_env_file(project_dir / ".env")
+        runtime_dir = project_dir / "data"
         data_dir = runtime_dir / "market"
         qlib_dir = runtime_dir / "qlib"
         artifact_dir = runtime_dir / "artifacts"
@@ -186,4 +189,4 @@ def _load_env_file(path: Path) -> None:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         os.environ.setdefault(key, value)
-# AI_GENERATE_END ---------------------------------
+# AI_GENERATE_END ----------------------------------

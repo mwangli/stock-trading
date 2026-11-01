@@ -1,5 +1,4 @@
 # Local secrets
-stock-trading.env
 .env
 *.env.local
 
@@ -15,7 +14,7 @@ stock-trading.env
 
 # Runtime data and artifacts
 .tmp/
-/var/
+/data/
 *.db
 *.db-shm
 *.db-wal
