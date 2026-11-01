@@ -293,6 +293,168 @@ def _build_feature_shards(
     return feature_names, shards
 
 
+def _checkpoint_manifest(
+    qlib_dir: Path,
+    segments: ModelSegments,
+    feature_batch_days: int,
+    total_batches: int,
+    feature_names: list[str],
+) -> dict[str, object]:
+    calendar_path = qlib_dir / "calendars" / "day.txt"
+    instruments_path = qlib_dir / "instruments" / "all.txt"
+    feature_names_payload = json.dumps(feature_names, ensure_ascii=True).encode("ascii")
+    return {
+        "schemaVersion": CHECKPOINT_SCHEMA_VERSION,
+        "featureConfigVersion": FEATURE_CONFIG_VERSION,
+        "featureNamesSha256": hashlib.sha256(feature_names_payload).hexdigest(),
+        "featureBatchDays": feature_batch_days,
+        "totalBatches": total_batches,
+        "segments": {
+            "trainStart": segments.train_start.isoformat(),
+            "trainEnd": segments.train_end.isoformat(),
+            "validStart": segments.valid_start.isoformat(),
+            "validEnd": segments.valid_end.isoformat(),
+            "testStart": segments.test_start.isoformat(),
+            "testEnd": segments.test_end.isoformat(),
+        },
+        "qlib": {
+            "path": str(qlib_dir.resolve()),
+            "directoryMtimeNs": qlib_dir.stat().st_mtime_ns,
+            "calendarSha256": _file_sha256(calendar_path),
+            "instrumentsSha256": _file_sha256(instruments_path),
+        },
+    }
+
+
+def _prepare_checkpoint(work_dir: Path, manifest: dict[str, object]) -> None:
+    manifest_path = work_dir / "manifest.json"
+    existing = None
+    try:
+        existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    if existing != manifest:
+        if work_dir.exists():
+            LOGGER.info("特征断点与当前训练输入不一致，清理旧断点后重新开始")
+        shutil.rmtree(work_dir, ignore_errors=True)
+        work_dir.mkdir(parents=True, exist_ok=True)
+        _write_json(manifest_path, manifest)
+    else:
+        work_dir.mkdir(parents=True, exist_ok=True)
+    (work_dir / "completed").mkdir(parents=True, exist_ok=True)
+
+
+def _load_completed_batch(
+    work_dir: Path,
+    batch_index: int,
+    batch: list[date],
+    segments: ModelSegments,
+    feature_count: int,
+) -> dict[str, FeatureShard] | None:
+    marker_path = _batch_marker_path(work_dir, batch_index)
+    try:
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+        if (
+            marker["batchIndex"] != batch_index
+            or marker["startDate"] != batch[0].isoformat()
+            or marker["endDate"] != batch[-1].isoformat()
+        ):
+            return None
+        recovered: dict[str, FeatureShard] = {}
+        segment_rows = marker["segmentRows"]
+        expected_segments = {
+            segment_name
+            for segment_name, start_date, end_date in _segment_ranges(segments)
+            if batch[0] <= end_date and batch[-1] >= start_date
+        }
+        if not segment_rows or set(segment_rows) != expected_segments:
+            return None
+        for segment_name, rows in segment_rows.items():
+            shard = _existing_shard(
+                work_dir / segment_name,
+                batch_index,
+                int(rows),
+                feature_count,
+            )
+            if shard is None:
+                return None
+            recovered[segment_name] = shard
+        return recovered
+    except Exception:
+        return None
+
+
+def _existing_shard(
+    directory: Path,
+    batch_index: int,
+    expected_rows: int,
+    feature_count: int,
+) -> FeatureShard | None:
+    from pyarrow.parquet import ParquetFile
+
+    feature_path, label_path, index_path = _shard_paths(directory, batch_index)
+    if expected_rows < 0 or not all(
+        path.is_file() and path.stat().st_size > 0
+        for path in (feature_path, label_path, index_path)
+    ):
+        return None
+    features = np.load(feature_path, mmap_mode="r")
+    labels = np.load(label_path, mmap_mode="r")
+    index_rows = ParquetFile(index_path).metadata.num_rows
+    if (
+        features.shape != (expected_rows, feature_count)
+        or labels.shape != (expected_rows,)
+        or index_rows != expected_rows
+    ):
+        return None
+    return FeatureShard(feature_path, label_path, index_path, expected_rows)
+
+
+def _write_batch_marker(
+    work_dir: Path,
+    batch_index: int,
+    batch: list[date],
+    shards: dict[str, FeatureShard],
+) -> None:
+    _write_json(
+        _batch_marker_path(work_dir, batch_index),
+        {
+            "batchIndex": batch_index,
+            "startDate": batch[0].isoformat(),
+            "endDate": batch[-1].isoformat(),
+            "segmentRows": {
+                segment_name: shard.rows
+                for segment_name, shard in shards.items()
+            },
+        },
+    )
+
+
+def _batch_marker_path(work_dir: Path, batch_index: int) -> Path:
+    return work_dir / "completed" / f"batch-{batch_index:03d}.json"
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _write_json(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _alpha158_feature_config() -> tuple[list[str], list[str]]:
     from qlib.contrib.data.loader import Alpha158DL
 
@@ -343,14 +505,20 @@ def _write_shard(
         label = label.loc[eligible]
         grouped = label.groupby(level="datetime")
         label = (label - grouped.transform("mean")) / grouped.transform("std")
-    base = directory / f"part-{shard_index:04d}"
-    feature_path = base.with_suffix(".features.npy")
-    label_path = base.with_suffix(".labels.npy")
-    index_path = base.with_suffix(".index.parquet")
+    feature_path, label_path, index_path = _shard_paths(directory, shard_index)
     _write_npy(feature_path, frame.loc[:, feature_names].to_numpy(copy=False))
     _write_npy(label_path, label.to_numpy(copy=False))
     _write_parquet(index_path, frame.index.to_frame(index=False))
     return FeatureShard(feature_path, label_path, index_path, len(frame))
+
+
+def _shard_paths(directory: Path, shard_index: int) -> tuple[Path, Path, Path]:
+    base = directory / f"batch-{shard_index:03d}"
+    return (
+        base.with_suffix(".features.npy"),
+        base.with_suffix(".labels.npy"),
+        base.with_suffix(".index.parquet"),
+    )
 
 
 def _write_npy(path: Path, values: np.ndarray) -> None:
@@ -404,4 +572,4 @@ class _NpyFeatureSequence(lgb.Sequence):
     def __getitem__(self, index):
         return np.asarray(self._values[index])
 
-# AI_GENERATE_END ----
+# AI_GENERATE_END -----

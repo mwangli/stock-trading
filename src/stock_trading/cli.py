@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START ----------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -56,7 +56,6 @@ from stock_trading.trading.performance import (
 
 LOGGER = logging.getLogger(__name__)
 BARK_PUSH_URL = "https://api.day.app/push"
-PUBLIC_LOG_URL = "http://117.72.216.67/logs/run.log"
 DEPENDENCY_WAIT_SECONDS = 30 * 60
 DEPENDENCY_POLL_SECONDS = 10
 
@@ -671,7 +670,7 @@ def _push_execution_result(
             f"原因：{_safe_error_text(last.get('errorMessage'))}",
         )
     )
-    _push_bark(config, f"[交易] {action}执行未完成", body, "交易异常", PUBLIC_LOG_URL)
+    _push_bark(config, f"[交易] {action}执行未完成", body, "交易异常")
 
 def _push_system_failure(
     config: AppConfig | None, command: str, error: Exception
@@ -684,7 +683,7 @@ def _push_system_failure(
             f"原因：{_safe_error_text(error)}",
         )
     )
-    _push_bark(config, "[系统] ⚠️ 任务执行异常", body, "系统异常", PUBLIC_LOG_URL)
+    _push_bark(config, "[系统] ⚠️ 任务执行异常", body, "系统异常")
 
 
 def _push_bark(
@@ -692,7 +691,6 @@ def _push_bark(
     title: str,
     body: str,
     group: str,
-    target_url: str | None = None,
 ) -> None:
     """用途：尽力发送 Bark 消息且不影响业务；输入：消息字段；输出：无。"""
     device_key = config.bark_device_key if config is not None else os.getenv("DEVICE_KEY", "").strip()
@@ -704,10 +702,7 @@ def _push_bark(
         "title": title,
         "group": group,
     }
-    if target_url:
-        payload["markdown"] = f"{body}\n\n[点击查看]({target_url})"
-    else:
-        payload["body"] = body
+    payload["body"] = body
     request = urllib.request.Request(
         BARK_PUSH_URL,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -791,4 +786,4 @@ def _format_amount(value: object) -> str:
 
 def _format_rate(value: object) -> str:
     return "-" if value is None else f"{float(value):.2%}"
-# AI_GENERATE_END ---------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END ----------------------------------------------------------------------------------------------------------------

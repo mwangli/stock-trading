@@ -103,7 +103,6 @@ jobs:
             systemd_source="$release_dir/systemd"
             systemd_target=/etc/systemd/system
             timers="stock-sell.timer stock-buy.timer stock-collect.timer stock-rank.timer stock-broker.timer stock-perform.timer stock-evaluate.timer stock-clean.timer"
-            commands="stock-trading stock-sell stock-buy stock-collect stock-rank stock-broker stock-perform stock-evaluate stock-clean"
 
             if [ ! -s /etc/stock-trading/env ] || [ ! -r /etc/stock-trading/env ]; then
               echo "Missing or unreadable environment file: /etc/stock-trading/env" >&2
@@ -125,18 +124,6 @@ jobs:
             uv python install 3.12
             uv venv --allow-existing --managed-python --python 3.12 "$venv_dir"
             uv pip install --python "$venv_dir/bin/python" --upgrade "$wheel"
-
-            path_line="export PATH=\"$venv_dir/bin:\$PATH\""
-            touch "$HOME/.bash_profile"
-            grep -Fqx "$path_line" "$HOME/.bash_profile" \
-              || printf '%s\n' "$path_line" >> "$HOME/.bash_profile"
-            export PATH="$venv_dir/bin:$PATH"
-            for command_name in $commands; do
-              if [ "$(command -v "$command_name")" != "$venv_dir/bin/$command_name" ]; then
-                echo "Command is not available from PATH: $command_name" >&2
-                exit 1
-              fi
-            done
 
             mkdir -p \
               /data/stock-trading/market \
