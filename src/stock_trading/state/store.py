@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------------------------------------
+# AI_GENERATE_START --------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS model_version (
     artifact_hash TEXT NOT NULL UNIQUE, -- 模型文件 SHA-256，用于识别同一制品。
     model_name TEXT NOT NULL, -- 模型算法或训练方案名称。
     feature_set TEXT NOT NULL, -- 模型使用的特征集名称。
-    status TEXT NOT NULL, -- 模型状态，例如 CANDIDATE、ACTIVE、REJECTED、DEGRADED。
+    status TEXT NOT NULL, -- 模型状态，例如 CANDIDATE、ACTIVE、RETIRED、REJECTED、DEGRADED。
     artifact_path TEXT NOT NULL, -- 模型制品在本机的绝对或项目内路径。
     metrics_json TEXT NOT NULL, -- 训练和评估指标的完整 JSON 快照。
     created_at TEXT NOT NULL -- 模型首次登记时间，UTC ISO-8601 字符串。
@@ -411,6 +411,7 @@ class StateStore:
         model_dir: Path,
         backtest_dir: Path,
         scenario: str,
+        model_status: str | None = None,
     ) -> dict[str, Any]:
         """用途：事务导入模型、预测、回测交易和绩效；输入：制品目录与场景；输出：导入摘要。"""
         self.initialize()
@@ -428,7 +429,9 @@ class StateStore:
         try:
             with self._connect() as connection:
                 LOGGER.info("研究制品导入阶段 2/5：写入模型和预测")
-                model_id = self._upsert_model(connection, model_dir, metrics)
+                model_id = self._upsert_model(
+                    connection, model_dir, metrics, model_status
+                )
                 prediction_rows = self._upsert_predictions(connection, model_id, topk)
                 LOGGER.info("研究制品导入阶段 3/5：写入回测订单和执行")
                 order_rows, execution_rows = self._upsert_shadow_trades(
@@ -461,6 +464,45 @@ class StateStore:
             "positions": position_rows,
             "performanceSnapshots": performance_rows,
         } | self.summary()
+
+    def register_model_version(
+        self, model_dir: Path, status: str
+    ) -> dict[str, Any]:
+        """登记候选模型及其生命周期状态，不导入预测或回测。"""
+        self.initialize()
+        metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
+        with self._connect() as connection:
+            model_id = self._upsert_model(connection, model_dir, metrics, status)
+            row = connection.execute(
+                "SELECT * FROM model_version WHERE id = ?", (model_id,)
+            ).fetchone()
+        return dict(row)
+
+    def activate_model_version(self, model_dir: Path) -> dict[str, Any]:
+        """原子停用旧活动模型并激活指定模型制品。"""
+        self.initialize()
+        artifact_hash = hashlib.sha256((model_dir / "model.pkl").read_bytes()).hexdigest()
+        with self._connect() as connection:
+            model = connection.execute(
+                "SELECT id FROM model_version WHERE artifact_hash = ?",
+                (artifact_hash,),
+            ).fetchone()
+            if model is None:
+                raise ValueError(f"模型尚未登记，无法激活: {model_dir}")
+            model_id = int(model["id"])
+            retired = connection.execute(
+                "UPDATE model_version SET status = 'RETIRED' "
+                "WHERE status = 'ACTIVE' AND id <> ?",
+                (model_id,),
+            ).rowcount
+            connection.execute(
+                "UPDATE model_version SET status = 'ACTIVE' WHERE id = ?",
+                (model_id,),
+            )
+            active = connection.execute(
+                "SELECT * FROM model_version WHERE id = ?", (model_id,)
+            ).fetchone()
+        return {"activeModel": dict(active), "retiredModels": retired}
 
     def sync_broker_snapshot(
         self, snapshot: BrokerSyncSnapshot, business_date: str
@@ -1549,22 +1591,49 @@ class StateStore:
 
     @staticmethod
     def _upsert_model(
-        connection: sqlite3.Connection, model_dir: Path, metrics: dict[str, Any]
+        connection: sqlite3.Connection,
+        model_dir: Path,
+        metrics: dict[str, Any],
+        status: str | None = None,
     ) -> int:
         """用途：按制品哈希登记或更新模型；输入：连接、模型目录和指标；输出：模型主键。"""
         model_path = model_dir / "model.pkl"
         artifact_hash = hashlib.sha256(model_path.read_bytes()).hexdigest()
-        model_status = "REJECTED" if metrics["metrics"]["rankIcMean"] <= 0 else "CANDIDATE"
+        default_status = (
+            "REJECTED" if metrics["metrics"]["rankIcMean"] <= 0 else "CANDIDATE"
+        )
+        existing = connection.execute(
+            "SELECT id, status FROM model_version WHERE artifact_hash = ?",
+            (artifact_hash,),
+        ).fetchone()
+        if existing is not None:
+            existing_status = str(existing["status"])
+            next_status = status or (
+                existing_status
+                if existing_status in {"ACTIVE", "RETIRED", "DEGRADED"}
+                else default_status
+            )
+            connection.execute(
+                """
+                UPDATE model_version
+                SET status = ?, artifact_path = ?, metrics_json = ?
+                WHERE id = ?
+                """,
+                (
+                    next_status,
+                    str(model_path),
+                    json.dumps(metrics, ensure_ascii=False),
+                    existing["id"],
+                ),
+            )
+            return int(existing["id"])
+        model_status = status or default_status
         connection.execute(
             """
             INSERT INTO model_version(
                 artifact_hash, model_name, feature_set, status,
                 artifact_path, metrics_json, created_at
             ) VALUES(?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(artifact_hash) DO UPDATE SET
-                status = excluded.status,
-                artifact_path = excluded.artifact_path,
-                metrics_json = excluded.metrics_json
             """,
             (
                 artifact_hash,
@@ -1780,4 +1849,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END -------------------------------------------------------
+# AI_GENERATE_END --------------------------------------------------------

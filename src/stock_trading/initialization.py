@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------
+# AI_GENERATE_START ----------------------------
 from __future__ import annotations
 
 import logging
@@ -18,30 +18,28 @@ from stock_trading.market.sync import (
     sync_collection_data,
     sync_stock_basics,
 )
-from stock_trading.research.backtest import (
-    backtest_artifact_valid,
-    read_backtest_summary,
-    run_portfolio_backtest,
-)
 from stock_trading.research.artifacts import (
     model_artifacts_valid,
     model_root,
     prediction_artifact_path,
     prediction_artifact_valid,
     resolve_current_model_dir,
-    train_model_atomically,
 )
 from stock_trading.research.model import (
-    automatic_model_segments,
     predict_alpha158_lightgbm,
 )
 from stock_trading.research.qlib_store import QlibBinaryStore, to_qlib_code
+from stock_trading.research.training import (
+    backtest_directories,
+    read_backtest_summaries,
+    train_prepared_model,
+    training_artifacts_valid,
+)
 from stock_trading.state.store import StateStore
 from stock_trading.trading.permissions import refresh_permissions
 
 LOGGER = logging.getLogger(__name__)
 MINIMUM_RESEARCH_CODES = 100
-CAPITAL_SCENARIOS = (2_000, 3_000, 5_000, 10_000)
 T = TypeVar("T")
 
 
@@ -71,7 +69,7 @@ class InitializationService:
             "初始化计划确定：研究日期=%s 至 %s；资金档位=%s",
             start_date,
             end_date,
-            ",".join(str(value) for value in CAPITAL_SCENARIOS),
+            ",".join(str(value) for value in self._config.backtest_capital_scenarios),
         )
 
         self._step(
@@ -129,43 +127,19 @@ class InitializationService:
             lambda: qlib.is_valid(model_codes, start_date, end_date),
             lambda: qlib.rebuild(model_codes, start_date, end_date),
         )
-        segments = automatic_model_segments(
-            self._config.qlib_dir / "calendars" / "day.txt"
-        )
         model_root_dir = model_root(self._config.artifact_dir)
-        model_result = self._step(
+        self._step(
             4,
-            "基础模型训练",
-            lambda: qlib_result is None and _model_valid(model_root_dir),
-            lambda: train_model_atomically(
-                self._config.qlib_dir, model_root_dir, segments
-            ),
+            "模型训练和能力评估",
+            lambda: qlib_result is None and self._training_valid(model_root_dir),
+            lambda: train_prepared_model(self._config, None),
+            lambda: self._training_valid(model_root_dir),
         )
         model_dir = resolve_current_model_dir(model_root_dir)
-
-        backtest_result = self._step(
-            5,
-            "多资金档位回测",
-            lambda: model_result is None and self._backtests_valid(),
-            lambda: self._run_backtests(model_dir),
-        )
-        backtests = (
-            backtest_result
-            if backtest_result is not None
-            else self._read_backtest_summaries()
-        )
-
-        baseline_dir = self._backtest_dir(3_000)
-        self._step(
-            6,
-            "模型和回测状态导入",
-            lambda: backtest_result is None
-            and self._state_import_valid(model_dir),
-            lambda: self._import_research_state(model_dir, baseline_dir, end_date),
-        )
+        backtests = read_backtest_summaries(self._config, model_dir)
 
         prediction_result = self._step(
-            7,
+            5,
             "最新交易日预测",
             lambda: self._prediction_valid(model_dir, end_date),
             lambda: self._predict_latest(model_dir, end_date, current_codes),
@@ -195,7 +169,7 @@ class InitializationService:
             "researchCodes": len(model_codes),
             "collectedCodes": len(valid_codes),
             "liveCodes": len(current_codes),
-            "capitalScenarios": list(CAPITAL_SCENARIOS),
+            "capitalScenarios": list(self._config.backtest_capital_scenarios),
             "backtests": backtests,
             "prediction": prediction_result,
             "permissions": permissions,
@@ -209,7 +183,7 @@ class InitializationService:
         action: Callable[[], T],
         post_validator: Callable[[], bool] | None = None,
     ) -> T | None:
-        LOGGER.info("初始化阶段 %d/8：%s", index, title)
+        LOGGER.info("初始化阶段 %d/6：%s", index, title)
         if validator():
             LOGGER.info("初始化阶段跳过：%s；实际数据检查通过", title)
             return None
@@ -222,54 +196,20 @@ class InitializationService:
     def _collection_complete(self, codes: list[str]) -> bool:
         return len(self._market.valid_research_codes(codes)) == len(codes)
 
-    def _backtest_dir(self, cash: int) -> Path:
-        return self._config.artifact_dir / "backtests" / f"cash-{cash}"
-
-    def _backtests_valid(self) -> bool:
-        return all(
-            backtest_artifact_valid(self._backtest_dir(cash))
-            for cash in CAPITAL_SCENARIOS
-        )
-
-    def _run_backtests(self, model_dir: Path) -> dict[str, object]:
-        results: dict[str, object] = {}
-        for index, cash in enumerate(CAPITAL_SCENARIOS, start=1):
-            LOGGER.info("资金档位回测：进度=%d/%d；初始资金=%d", index, len(CAPITAL_SCENARIOS), cash)
-            target = self._backtest_dir(cash)
-            shutil.rmtree(target, ignore_errors=True)
-            results[str(cash)] = run_portfolio_backtest(
-                self._config, model_dir, target, cash
-            )
-        return results
-
-    def _read_backtest_summaries(self) -> dict[str, object]:
-        return {
-            str(cash): read_backtest_summary(self._backtest_dir(cash))
-            for cash in CAPITAL_SCENARIOS
+    def _training_valid(self, model_root_dir: Path) -> bool:
+        try:
+            model_dir = resolve_current_model_dir(model_root_dir)
+        except (OSError, ValueError):
+            return False
+        directories = {
+            f"capital-{cash}": path
+            for cash, path in backtest_directories(
+                self._config, model_dir
+            ).items()
         }
-
-    def _state_import_valid(self, model_dir: Path) -> bool:
-        return self._state.research_artifacts_registered(
-            model_dir,
-            {
-                f"capital-{cash}": self._backtest_dir(cash)
-                for cash in CAPITAL_SCENARIOS
-            },
-        )
-
-    def _import_research_state(
-        self, model_dir: Path, baseline_dir: Path, business_date: date
-    ) -> dict[str, object]:
-        result = self._state.import_research_artifacts(
-            model_dir, baseline_dir, "capital-3000"
-        )
-        for cash in CAPITAL_SCENARIOS:
-            if cash == 3_000:
-                continue
-            self._state.import_backtest_performance(
-                self._backtest_dir(cash), f"capital-{cash}", business_date.isoformat()
-            )
-        return result
+        return training_artifacts_valid(
+            self._config, model_dir
+        ) and self._state.research_artifacts_registered(model_dir, directories)
 
     def _prediction_valid(self, model_dir: Path, prediction_date: date) -> bool:
         return (
@@ -302,7 +242,7 @@ class InitializationService:
     def _sync_broker_history(
         self, start_date: date, end_date: date
     ) -> dict[str, object] | None:
-        LOGGER.info("初始化阶段 8/8：券商历史事实和账户快照")
+        LOGGER.info("初始化阶段 6/6：券商历史事实和账户快照")
         try:
             broker = self._broker_factory()
             snapshot = broker.read_history_snapshot(start_date, end_date)
@@ -335,4 +275,4 @@ def _model_valid(model_root_dir: Path) -> bool:
         return model_artifacts_valid(resolve_current_model_dir(model_root_dir))
     except (OSError, ValueError):
         return False
-# AI_GENERATE_END ---------------------------
+# AI_GENERATE_END ----------------------------

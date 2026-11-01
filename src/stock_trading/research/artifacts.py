@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ----
 from __future__ import annotations
 
 import json
@@ -29,15 +29,8 @@ def model_root(artifact_dir: Path) -> Path:
 
 def resolve_current_model_dir(root: Path) -> Path:
     """解析当前模型版本；兼容尚未生成指针的旧固定目录。"""
-    pointer = root / "current.json"
-    if pointer.is_file():
-        try:
-            payload = json.loads(pointer.read_text(encoding="utf-8"))
-            version = str(payload["version"])
-        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
-            raise ValueError(f"当前模型指针损坏: {pointer}") from error
-        if not re.fullmatch(r"[A-Za-z0-9._-]+", version):
-            raise ValueError(f"当前模型版本标识非法: {version}")
+    version = current_model_version(root)
+    if version is not None:
         candidate = root / "versions" / version
         if not model_artifacts_valid(candidate):
             raise ValueError(f"当前模型版本不完整: {candidate}")
@@ -71,12 +64,12 @@ def prediction_artifact_valid(
     )
 
 
-def train_model_atomically(
+def train_model_candidate(
     qlib_dir: Path,
     root: Path,
     segments: ModelSegments,
 ) -> dict[str, object]:
-    """在不可变版本目录训练，校验后原子切换当前版本指针。"""
+    """在独立版本目录训练候选模型，不切换当前模型指针。"""
     versions = root / "versions"
     versions.mkdir(parents=True, exist_ok=True)
     version = (
@@ -91,7 +84,6 @@ def train_model_atomically(
         result = train_alpha158_lightgbm(qlib_dir, staging, segments)
         validate_model_artifacts(staging)
         staging.replace(published)
-        _switch_current_pointer(root, version)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     return result | {
@@ -135,7 +127,37 @@ def validate_model_artifacts(directory: Path) -> None:
         raise ValueError(f"训练模型无法反序列化: {directory / 'model.pkl'}") from error
 
 
-def _switch_current_pointer(root: Path, version: str) -> None:
+def current_model_version(root: Path) -> str | None:
+    """读取当前模型版本；没有版本指针时返回空值。"""
+    pointer = root / "current.json"
+    if not pointer.is_file():
+        return None
+    try:
+        payload = json.loads(pointer.read_text(encoding="utf-8"))
+        version = str(payload["version"])
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
+        raise ValueError(f"当前模型指针损坏: {pointer}") from error
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", version):
+        raise ValueError(f"当前模型版本标识非法: {version}")
+    return version
+
+
+def activate_model_artifact(root: Path, version: str) -> None:
+    """校验候选模型后原子切换当前模型指针。"""
+    candidate = root / "versions" / version
+    validate_model_artifacts(candidate)
+    _write_current_pointer(root, version)
+
+
+def restore_model_artifact(root: Path, version: str | None) -> None:
+    """在状态激活失败时恢复原模型指针。"""
+    if version is None:
+        (root / "current.json").unlink(missing_ok=True)
+        return
+    _write_current_pointer(root, version)
+
+
+def _write_current_pointer(root: Path, version: str) -> None:
     root.mkdir(parents=True, exist_ok=True)
     pointer = root / "current.json"
     temporary = root / f".current.{uuid4().hex}.tmp"
@@ -151,4 +173,4 @@ def _switch_current_pointer(root: Path, version: str) -> None:
         temporary.replace(pointer)
     finally:
         temporary.unlink(missing_ok=True)
-# AI_GENERATE_END ---
+# AI_GENERATE_END ----

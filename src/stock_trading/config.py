@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------
+# AI_GENERATE_START -----------------------------
 from __future__ import annotations
 
 import os
@@ -17,6 +17,10 @@ CANCEL_CONFIRM_SECONDS = 30
 MAX_ATTEMPTS = 12
 PASSIVE_FRACTION = 0.50
 NORMAL_FRACTION = 0.85
+BACKTEST_CAPITAL_SCENARIOS = (1_000, 2_000, 3_000, 5_000, 10_000)
+MODEL_MIN_RANK_IC = 0.0
+MODEL_MIN_AVERAGE_BACKTEST_RETURN = 0.0
+MODEL_MAX_BACKTEST_DRAWDOWN = 0.15
 
 
 @dataclass(frozen=True)
@@ -71,6 +75,10 @@ class AppConfig:
     trading_max_attempts: int
     trading_passive_fraction: float
     trading_normal_fraction: float
+    backtest_capital_scenarios: tuple[int, ...]
+    model_min_rank_ic: float
+    model_min_average_backtest_return: float
+    model_max_backtest_drawdown: float
     model_evaluation_window_days: int
     model_max_drawdown: float
     model_min_total_gross_return: float
@@ -181,6 +189,10 @@ class AppConfig:
             trading_max_attempts=MAX_ATTEMPTS,
             trading_passive_fraction=PASSIVE_FRACTION,
             trading_normal_fraction=NORMAL_FRACTION,
+            backtest_capital_scenarios=BACKTEST_CAPITAL_SCENARIOS,
+            model_min_rank_ic=MODEL_MIN_RANK_IC,
+            model_min_average_backtest_return=MODEL_MIN_AVERAGE_BACKTEST_RETURN,
+            model_max_backtest_drawdown=MODEL_MAX_BACKTEST_DRAWDOWN,
             model_evaluation_window_days=max(
                 2, int(os.getenv("MODEL_EVALUATION_WINDOW_DAYS", "20"))
             ),
@@ -210,4 +222,4 @@ def _load_env_file(path: Path) -> None:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         os.environ.setdefault(key, value)
-# AI_GENERATE_END ----------------------------
+# AI_GENERATE_END -----------------------------

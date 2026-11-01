@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------------------------------------------------------
+# AI_GENERATE_START -----------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -35,14 +35,16 @@ from stock_trading.logging_utils import (
 from stock_trading.research.artifacts import (
     model_root,
     resolve_current_model_dir,
-    train_model_atomically,
 )
 from stock_trading.research.model import (
-    automatic_model_segments,
     predict_alpha158_lightgbm,
 )
-from stock_trading.research.backtest import run_portfolio_backtest
-from stock_trading.research.qlib_store import QlibBinaryStore, to_qlib_code
+from stock_trading.research.qlib_store import to_qlib_code
+from stock_trading.research.training import (
+    prepare_training_data,
+    run_current_model_backtests,
+    run_training_pipeline,
+)
 from stock_trading.state.store import StateStore
 from stock_trading.trading.execution import OrderExecutionOrchestrator
 from stock_trading.trading.orchestrator import LiveTradingOrchestrator
@@ -246,20 +248,23 @@ def prepare_command(
         typer.Option("--date"),
     ] = None,
 ) -> None:
-    def run(config: AppConfig) -> None:
+    def run(config: AppConfig) -> dict[str, object]:
         today = date.today()
         start, end = _parse_date_expression(
             date_value,
             today - timedelta(days=config.market_history_days),
             today,
         )
-        _pre_train(config, _parse_stock_codes(codes), start, end)
+        return prepare_training_data(
+            config, _parse_stock_codes(codes), start, end
+        )
 
-    _execute(
+    result = _execute(
         "prepare",
         {"codes": codes, "date": date_value},
         run,
     )
+    _print_json(result)
 
 
 @app.command(
@@ -273,31 +278,28 @@ def train_command(
         typer.Option(),
     ] = None,
 ) -> None:
-    _execute(
+    result = _execute(
         "train",
         {"split": split},
-        lambda config: _train(config, _parse_model_split(split) if split else None),
+        lambda config: run_training_pipeline(
+            config, _parse_model_split(split) if split else None
+        ),
     )
+    _print_json(result)
 
 
 @app.command(
     "backtest",
-    short_help="[cyan]--cash[/cyan] AMOUNT 执行单持仓 T+1 回测。",
+    short_help="使用固定五档资金执行单持仓 T+1 回测。",
     context_settings=COMMAND_CONTEXT,
 )
-def backtest_command(
-    initial_cash: Annotated[
-        str,
-        typer.Option("--cash"),
-    ] = "10000",
-) -> None:
-    _execute(
+def backtest_command() -> None:
+    result = _execute(
         "backtest",
-        {"initialCash": initial_cash},
-        lambda config: _backtest(
-            config, _parse_decimal(initial_cash, "初始资金", positive=True)
-        ),
+        {},
+        run_current_model_backtests,
     )
+    _print_json(result)
 
 
 def _run_date_command(
@@ -546,122 +548,6 @@ def _default_research_codes(
     return codes
 
 
-def _pre_train(
-    config: AppConfig, codes: list[str], start_date: date, end_date: date
-) -> None:
-    store = ParquetMarketStore(config.data_dir)
-    daily_codes = store.valid_daily_codes(codes)
-    minute5_codes = store.valid_minute5_codes(codes)
-    missing_daily = [code for code in codes if code not in daily_codes]
-    missing_minute5 = [code for code in codes if code not in minute5_codes]
-    errors: list[str] = []
-    if missing_daily:
-        errors.append(
-            "日线或复权因子缺失："
-            f"{','.join(missing_daily)}"
-        )
-    if missing_minute5:
-        errors.append(
-            "5分钟线或分钟聚合缺失："
-            f"{','.join(missing_minute5)}"
-        )
-    if errors:
-        missing_codes = list(dict.fromkeys(missing_daily + missing_minute5))
-        date_argument = _format_date_expression(start_date, end_date)
-        command = (
-            f"stock-trading collect --codes {','.join(missing_codes)} "
-            f"--date {date_argument}"
-        )
-        raise ValueError(f"{'；'.join(errors)}；请执行：{command}")
-    valid_codes = list(codes)
-    model_codes = store.model_research_codes(valid_codes, start_date, end_date)
-    LOGGER.info(
-        "开始重建 Qlib：采集有效=%d；模型有效=%d；日期=%s 至 %s",
-        len(valid_codes),
-        len(model_codes),
-        start_date,
-        end_date,
-    )
-    qlib_result = QlibBinaryStore(store, config.qlib_dir).rebuild(model_codes, start_date, end_date)
-    LOGGER.info(
-        "训练准备完成：股票数=%d；交易日=%s；标签=%s",
-        qlib_result["codes"],
-        qlib_result["calendarDays"],
-        qlib_result["labels"],
-    )
-    _print_json(
-        {
-            "startDate": start_date.isoformat(),
-            "endDate": end_date.isoformat(),
-            "codes": model_codes,
-            "qlib": qlib_result,
-        }
-    )
-
-
-def _train(
-    config: AppConfig,
-    split: tuple[Decimal, Decimal, Decimal] | None,
-) -> None:
-    calendar_path = config.qlib_dir / "calendars" / "day.txt"
-    if not calendar_path.is_file():
-        raise ValueError("Qlib 数据不存在，请先执行 prepare")
-    segments = automatic_model_segments(calendar_path, split)
-    LOGGER.info(
-        "开始训练模型：特征=Alpha158；模型=LightGBM Regression；训练=%s 至 %s；验证=%s 至 %s；测试=%s 至 %s",
-        segments.train_start,
-        segments.train_end,
-        segments.valid_start,
-        segments.valid_end,
-        segments.test_start,
-        segments.test_end,
-    )
-    training_result = train_model_atomically(
-        config.qlib_dir,
-        model_root(config.artifact_dir),
-        segments,
-    )
-    LOGGER.info(
-        "模型训练完成：样本数=%s；预测交易日=%s",
-        training_result["rows"],
-        training_result["predictionDays"],
-    )
-    _print_json({"training": training_result})
-
-
-def _backtest(config: AppConfig, initial_cash: Decimal) -> None:
-    backtest_name = "portfolio-backtest"
-    LOGGER.info(
-        "开始组合回测：初始资金=%.2f；价格范围=%.2f-%.2f；输出=%s",
-        initial_cash,
-        config.trading_min_price,
-        config.trading_max_price,
-        backtest_name,
-    )
-    current_model_dir = resolve_current_model_dir(model_root(config.artifact_dir))
-    backtest_result = run_portfolio_backtest(
-        config,
-        current_model_dir,
-        config.artifact_dir / backtest_name,
-        initial_cash,
-    )
-    LOGGER.info(
-        "组合回测完成：净收益=%s；净收益率=%s；成交数=%s；最大回撤=%s",
-        backtest_result["netProfit"],
-        backtest_result["netReturn"],
-        backtest_result["closedTrades"],
-        backtest_result["maxDrawdown"],
-    )
-    LOGGER.info("开始自动导入回测制品到 SQLite：数据库=%s", config.state_db_path)
-    state_result = StateStore(config.state_db_path).import_research_artifacts(
-        current_model_dir,
-        config.artifact_dir / backtest_name,
-        backtest_name,
-    )
-    LOGGER.info("回测制品导入 SQLite 完成")
-    _print_json({"backtest": backtest_result, "state": state_result})
-
-
 def _cleanup(config: AppConfig, reference_date: date) -> None:
     LOGGER.info("开始清理持久化数据：基准日期=%s", reference_date)
     market = ParquetMarketStore(config.data_dir).cleanup_minutes(reference_date)
@@ -887,4 +773,4 @@ def _safe_error_text(value: object) -> str:
 
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
-# AI_GENERATE_END ----------------------------------------------------------------------------------------
+# AI_GENERATE_END -----------------------------------------------------------------------------------------
