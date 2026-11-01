@@ -318,6 +318,7 @@
       "price": "价格",
       "change": "涨跌幅",
       "volume": "成交量",
+      "amount": "成交额",
       "marketCap": "总市值",
       "action": "操作"
     },

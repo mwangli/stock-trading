@@ -305,7 +305,7 @@
       "volume": "24h Volume",
       "topGainer": "Top Gainer",
       "upDown": "Up / Down",
-      "totalVolume": "Total Volume",
+      "totalVolume": "Total Turnover",
       "open": "OPEN"
     },
     "watchlist": {
@@ -318,6 +318,7 @@
       "price": "Price",
       "change": "Change",
       "volume": "Volume",
+      "amount": "Turnover",
       "marketCap": "Market Cap",
       "action": "Action"
     },

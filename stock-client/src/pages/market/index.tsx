@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------------------
+// AI_GENERATE_START--------------------------------------
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Descriptions, Drawer, Empty, Input, Pagination, Select, Skeleton, Table, Tooltip } from 'antd';
@@ -24,6 +24,7 @@ interface StockInfo {
   changeAmount?: number;
   changePercent?: number;
   volume?: number;
+  amount?: number;
   totalMarketValue?: number;
   turnoverRate?: number;
   volumeRatio?: number;
@@ -66,12 +67,12 @@ interface WatchlistItem {
   name: string;
   price: number;
   change: number;
-  marketCap: string;
+  amount: number;
   starred: boolean;
   stockInfo: StockInfo;
 }
 
-type MarketSortField = 'updateTime' | 'price' | 'change' | 'marketCap';
+type MarketSortField = 'updateTime' | 'price' | 'change' | 'amount';
 type MarketSortOrder = 'asc' | 'desc';
 
 const DEFAULT_SORT_FIELD: MarketSortField = 'updateTime';
@@ -333,14 +334,6 @@ const Market: React.FC = () => {
   const [sortField, setSortField] = useState<MarketSortField>(DEFAULT_SORT_FIELD);
   const [sortOrder, setSortOrder] = useState<MarketSortOrder>(DEFAULT_SORT_ORDER);
 
-  const formatMarketCap = (val?: number) => {
-    if (val == null || val <= 0) return '--';
-    if (val >= 1e9) return (val / 1e9).toFixed(1) + 'B';
-    if (val >= 1e6) return (val / 1e6).toFixed(1) + 'M';
-    if (val >= 1e3) return (val / 1e3).toFixed(1) + 'K';
-    return val.toString();
-  };
-
   const fetchStocks = async (
     page: number = 1,
     size: number = 9,
@@ -364,6 +357,7 @@ const Market: React.FC = () => {
             changeAmount: row.change_amount == null ? undefined : Number(row.change_amount),
             changePercent: row.change_percent == null ? undefined : Number(row.change_percent),
             volume: row.volume == null ? undefined : Number(row.volume),
+            amount: row.amount == null ? undefined : Number(row.amount),
             listedDate: row.as_of_date == null ? undefined : String(row.as_of_date),
             updateTime: row.update_time == null ? undefined : String(row.update_time),
           };
@@ -373,7 +367,7 @@ const Market: React.FC = () => {
           name: item.name,
           price: item.price ?? 0,
           change: item.changePercent ?? 0,
-          marketCap: formatMarketCap(item.totalMarketValue),
+          amount: item.amount ?? 0,
           starred: false,
           stockInfo: item,
           };
@@ -382,7 +376,7 @@ const Market: React.FC = () => {
         mappedData.sort((left, right) => {
           if (requestedSortField === 'price') return (left.price - right.price) * direction;
           if (requestedSortField === 'change') return (left.change - right.change) * direction;
-          if (requestedSortField === 'marketCap') return left.marketCap.localeCompare(right.marketCap) * direction;
+          if (requestedSortField === 'amount') return (left.amount - right.amount) * direction;
           return left.symbol.localeCompare(right.symbol) * direction;
         });
         const offset = (page - 1) * size;
@@ -588,15 +582,15 @@ const Market: React.FC = () => {
       )
     },
     {
-      title: t('market.columns.marketCap'),
-      dataIndex: 'marketCap',
-      key: 'marketCap',
+      title: t('market.columns.amount'),
+      dataIndex: 'amount',
+      key: 'amount',
       width: 88,
       align: 'right',
       sorter: true,
-      sortOrder: sortField === 'marketCap' ? (sortOrder === 'asc' ? 'ascend' : 'descend') : undefined,
+      sortOrder: sortField === 'amount' ? (sortOrder === 'asc' ? 'ascend' : 'descend') : undefined,
       className: 'text-gray-400 font-mono text-xs',
-      render: (val: string) => <span className="text-gray-400">{val}</span>
+      render: (val: number) => <span className="text-gray-400">{formatCompactAmount(val)}</span>
     },
 
   ];
@@ -830,7 +824,7 @@ const Market: React.FC = () => {
                     return;
                   }
                   const nextOrder: MarketSortOrder = activeSorter.order === 'ascend' ? 'asc' : 'desc';
-                  if (!nextField || !['price', 'change', 'marketCap'].includes(nextField)) {
+                  if (!nextField || !['price', 'change', 'amount'].includes(nextField)) {
                     return;
                   }
                   setSortField(nextField);
@@ -1015,4 +1009,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END-------------------------------------
+// AI_GENERATE_END--------------------------------------

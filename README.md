@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START-------------- -->
+<!-- AI_GENERATE_START--------------- -->
 # stock-console
 
 `stock-web` 分支是纯 Python T+1 交易系统的只读 Web 外壳，与核心交易代码共用同一个代码库。核心行情采集、模型训练、预测、交易执行、状态恢复和绩效计算位于 `stock-trading` 分支；两个分支共享同一套 `var/market` Parquet 和 `var/state/trading.db` 数据结构。
@@ -70,12 +70,12 @@ Host Cron -> Python CLI -> Parquet + trading.db + logs
 
 ```text
 CONSOLE_PASSWORD_HASH=<BCrypt hash>
-STOCK_TRADING_VAR_DIR=/srv/stock-trading/var
+STOCK_TRADING_VAR_DIR=/data/stock-trading
 STOCK_TRADING_LOG_DIR=/var/log/stock-trading
 STOCK_TRADING_DOCUMENTS_DIR=/srv/stock-trading
 ```
 
-Docker Compose 固定启用 `prod` profile，不使用本地默认密码。Agent 可选配置：`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL`、`AGENT_TIMEOUT_SECONDS`、`AGENT_MAX_TOKENS`。生产账号默认为 `admin`，可通过 `CONSOLE_USERNAME` 修改。
+Docker Compose 固定将服务器 `/data/stock-trading` 只读挂载到容器同名目录，并启用 `prod` profile，不使用本地默认密码。Agent 可选配置：`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL`、`AGENT_TIMEOUT_SECONDS`、`AGENT_MAX_TOKENS`。生产账号默认为 `admin`，可通过 `CONSOLE_USERNAME` 修改。
 
 Agent 对话最多保留 20 个会话，每个会话最多保留 50 条消息；对话只存在于单个登录 Session 内，不需要独立数据目录。
 
@@ -95,4 +95,4 @@ Agent 对话最多保留 20 个会话，每个会话最多保留 50 条消息；
 ## 验证边界
 
 默认只执行源码、引用、依赖、编码和差异检查。未获得当次明确授权时，不执行 Maven/npm 编译、测试、启动、Docker 构建或浏览器验证；源码检查结果不得描述为编译或运行通过。
-<!-- AI_GENERATE_END-------------- -->
+<!-- AI_GENERATE_END--------------- -->
