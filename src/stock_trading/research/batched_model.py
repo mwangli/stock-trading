@@ -1,7 +1,9 @@
-# AI_GENERATE_START ----
+# AI_GENERATE_START -----
 from __future__ import annotations
 
 import gc
+import hashlib
+import json
 import logging
 import os
 import shutil
@@ -22,6 +24,8 @@ if TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 GIB = 1024**3
 MEMORY_THRESHOLD_BYTES = 16 * GIB
+CHECKPOINT_SCHEMA_VERSION = 1
+FEATURE_CONFIG_VERSION = "alpha158-kbar-price-rolling-v1"
 
 
 @dataclass(frozen=True)
@@ -204,9 +208,40 @@ def _build_feature_shards(
     ]
     if not batches:
         raise ValueError("no Qlib calendar dates for batched Alpha158 training")
-    shutil.rmtree(work_dir, ignore_errors=True)
-    work_dir.mkdir(parents=True, exist_ok=True)
+    manifest = _checkpoint_manifest(
+        qlib_dir,
+        segments,
+        feature_batch_days,
+        len(batches),
+        feature_names,
+    )
+    _prepare_checkpoint(work_dir, manifest)
     shards: dict[str, list[FeatureShard]] = {"train": [], "valid": [], "test": []}
+    completed = {
+        batch_index: recovered
+        for batch_index, batch in enumerate(batches, start=1)
+        if (
+            recovered := _load_completed_batch(
+                work_dir,
+                batch_index,
+                batch,
+                segments,
+                len(feature_names),
+            )
+        )
+        is not None
+    }
+    if completed:
+        next_batch = next(
+            (index for index in range(1, len(batches) + 1) if index not in completed),
+            None,
+        )
+        LOGGER.info(
+            "恢复 Alpha158 特征断点：已完成=%d/%d；下一批=%s",
+            len(completed),
+            len(batches),
+            "全部完成" if next_batch is None else next_batch,
+        )
     universe = D.instruments("all")
     set_log_context(progress="2/5", target="Alpha158 特征")
     LOGGER.info(
@@ -215,6 +250,11 @@ def _build_feature_shards(
         feature_batch_days,
     )
     for batch_index, batch in enumerate(batches, start=1):
+        if batch_index in completed:
+            for segment_name, shard in completed[batch_index].items():
+                shards[segment_name].append(shard)
+            continue
+        _batch_marker_path(work_dir, batch_index).unlink(missing_ok=True)
         frame = D.features(
             universe,
             [*expressions, "$label"],
@@ -225,19 +265,21 @@ def _build_feature_shards(
         )
         frame.columns = [*feature_names, "LABEL0"]
         frame = _normalize_index(frame)
+        batch_shards: dict[str, FeatureShard] = {}
         for segment_name, start_date, end_date in _segment_ranges(segments):
             part = _slice_dates(frame, start_date, end_date)
             if part.empty:
                 continue
-            shards[segment_name].append(
-                _write_shard(
-                    work_dir / segment_name,
-                    len(shards[segment_name]),
-                    part,
-                    feature_names,
-                    normalize_label=segment_name != "test",
-                )
+            shard = _write_shard(
+                work_dir / segment_name,
+                batch_index,
+                part,
+                feature_names,
+                normalize_label=segment_name != "test",
             )
+            shards[segment_name].append(shard)
+            batch_shards[segment_name] = shard
+        _write_batch_marker(work_dir, batch_index, batch, batch_shards)
         set_log_context(
             progress=f"{batch_index}/{len(batches)}",
             target=f"{batch[0]}~{batch[-1]}",

@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------
+# AI_GENERATE_START ---------------------
 from __future__ import annotations
 
 import json
@@ -41,6 +41,7 @@ def train_alpha158_lightgbm_adaptive(
     segments: ModelSegments,
     top_k: int = 5,
     feature_batch_days: int = 30,
+    checkpoint_dir: Path | None = None,
 ) -> dict[str, object]:
     """Select the existing single-pass path or the low-memory batched path."""
     from stock_trading.research.batched_model import (
@@ -63,29 +64,29 @@ def train_alpha158_lightgbm_adaptive(
     if not batched:
         return train_alpha158_lightgbm(qlib_dir, artifact_dir, segments, top_k)
 
-    work_dir = artifact_dir / ".feature-batches"
-    try:
-        result = train_alpha158_lightgbm_batched(
-            qlib_dir,
-            work_dir,
-            segments,
-            _lightgbm_progress_callback(),
-            feature_batch_days,
-        )
-        return _persist_training_artifacts(
-            result.model,
-            result.scored,
-            artifact_dir,
-            segments,
-            top_k,
-            training_mode="batched",
-            train_rows=result.train_rows,
-            valid_rows=result.valid_rows,
-            feature_count=result.feature_count,
-            feature_batch_days=result.feature_batch_days,
-        )
-    finally:
+    work_dir = checkpoint_dir or artifact_dir / ".feature-batches"
+    result = train_alpha158_lightgbm_batched(
+        qlib_dir,
+        work_dir,
+        segments,
+        _lightgbm_progress_callback(),
+        feature_batch_days,
+    )
+    payload = _persist_training_artifacts(
+        result.model,
+        result.scored,
+        artifact_dir,
+        segments,
+        top_k,
+        training_mode="batched",
+        train_rows=result.train_rows,
+        valid_rows=result.valid_rows,
+        feature_count=result.feature_count,
+        feature_batch_days=result.feature_batch_days,
+    )
+    if checkpoint_dir is None:
         shutil.rmtree(work_dir, ignore_errors=True)
+    return payload
 
 
 def train_alpha158_lightgbm(
@@ -510,4 +511,4 @@ def automatic_model_segments(
         test_end=calendar[-1],
     )
 
-# AI_GENERATE_END --------------------
+# AI_GENERATE_END ---------------------
