@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START ----------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -61,7 +61,7 @@ app = typer.Typer(
     rich_markup_mode="rich",
     add_completion=False,
     options_metavar="",
-    add_help_option=False,
+    add_help_option=True,
     pretty_exceptions_enable=False,
 )
 T = TypeVar("T")
@@ -704,4 +704,4 @@ def _format_amount(value: object) -> str:
 
 def _format_rate(value: object) -> str:
     return "-" if value is None else f"{float(value):.2%}"
-# AI_GENERATE_END ---------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END ----------------------------------------------------------------------------------------------------------
