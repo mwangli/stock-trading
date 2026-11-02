@@ -91,7 +91,7 @@ class InitializationService:
         self._step(
             2,
             "日线、复权因子和5分钟线",
-            lambda: self._collection_complete(selected_codes),
+            lambda: self._collection_complete(selected_codes, start_date, end_date),
             lambda: sync_collection_data(
                 self._market,
                 self._config.baostock_proxy,
@@ -101,7 +101,9 @@ class InitializationService:
                 skip_existing=True,
             ),
         )
-        valid_codes = self._market.valid_research_codes(selected_codes)
+        valid_codes = self._market.valid_research_codes(
+            selected_codes, start_date, end_date
+        )
         model_codes = self._market.model_research_codes(valid_codes, start_date, end_date)
         current_codes = self._market.tradable_codes_on(live_metadata_codes, end_date)
         LOGGER.info(
@@ -183,8 +185,13 @@ class InitializationService:
         LOGGER.info("初始化步骤完成")
         return result
 
-    def _collection_complete(self, codes: list[str]) -> bool:
-        return len(self._market.valid_research_codes(codes)) == len(codes)
+    def _collection_complete(
+        self, codes: list[str], start_date: date, end_date: date
+    ) -> bool:
+        """确认全部研究股票的数据可读且覆盖初始化窗口。"""
+        return len(
+            self._market.valid_research_codes(codes, start_date, end_date)
+        ) == len(codes)
 
     def _training_valid(self, model_root_dir: Path) -> bool:
         try:

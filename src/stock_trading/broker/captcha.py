@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START --
 from __future__ import annotations
 
 import base64
@@ -28,8 +28,6 @@ class BaiduCaptchaSolver:
         self._last_request_at = 0.0
 
     def solve(self, image_bytes: bytes) -> int:
-        if not self._config.broker_captcha_auto_submit_enabled:
-            raise RuntimeError("验证码 OCR 自动提交未启用")
         if not image_bytes:
             raise RuntimeError("验证码图片为空")
         enlarged = self._enlarge_png(image_bytes)
@@ -149,4 +147,4 @@ class BaiduCaptchaSolver:
         if right == 0 or left % right != 0:
             raise RuntimeError("OCR 返回了非法除法表达式")
         return left // right
-# AI_GENERATE_END -
+# AI_GENERATE_END --

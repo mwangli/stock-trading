@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------
+# AI_GENERATE_START ------------------------
 from __future__ import annotations
 
 import json
@@ -15,6 +15,26 @@ import pandas as pd
 from stock_trading.logging_utils import set_log_context
 
 LOGGER = logging.getLogger(__name__)
+LIGHTGBM_NUM_BOOST_ROUND = 300
+LIGHTGBM_EARLY_STOPPING_ROUNDS = 30
+
+
+def lightgbm_parameters() -> dict[str, object]:
+    """返回单次和分批训练共享的 LightGBM 业务参数。"""
+    return {
+        "objective": "regression",
+        "metric": "l2",
+        "learning_rate": 0.05,
+        "num_leaves": 31,
+        "max_depth": 6,
+        "sample_fraction": 0.8,
+        "feature_fraction": 0.8,
+        "lambda_l1": 1.0,
+        "lambda_l2": 1.0,
+        "threads": 2,
+        "seed": 20261030,
+        "verbosity": -1,
+    }
 
 
 @dataclass(frozen=True)
@@ -71,6 +91,7 @@ def train_alpha158_lightgbm_adaptive(
         segments,
         _lightgbm_progress_callback(),
         feature_batch_days,
+        lightgbm_parameters(),
     )
     payload = _persist_training_artifacts(
         result.model,
@@ -142,22 +163,29 @@ def train_alpha158_lightgbm(
         len(test_features),
         train["feature"].shape[1],
     )
+    parameters = lightgbm_parameters()
     model = lgb.LGBMRegressor(
-        objective="regression",
-        n_estimators=300,
-        learning_rate=0.05,
-        num_leaves=31,
-        max_depth=6,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        lambda_l1=1.0,
-        lambda_l2=1.0,
-        n_jobs=2,
-        random_state=20261030,
-        verbosity=-1,
+        objective=parameters["objective"],
+        n_estimators=LIGHTGBM_NUM_BOOST_ROUND,
+        learning_rate=parameters["learning_rate"],
+        num_leaves=parameters["num_leaves"],
+        max_depth=parameters["max_depth"],
+        subsample=parameters["sample_fraction"],
+        colsample_bytree=parameters["feature_fraction"],
+        lambda_l1=parameters["lambda_l1"],
+        lambda_l2=parameters["lambda_l2"],
+        n_jobs=parameters["threads"],
+        random_state=parameters["seed"],
+        verbosity=parameters["verbosity"],
     )
-    set_log_context(step="4/6", progress="0/300", target="LightGBM")
-    LOGGER.info("开始模型迭代：最大迭代=300；早停轮数=30")
+    set_log_context(
+        step="4/6", progress=f"0/{LIGHTGBM_NUM_BOOST_ROUND}", target="LightGBM"
+    )
+    LOGGER.info(
+        "开始模型迭代：最大迭代=%d；早停轮数=%d",
+        LIGHTGBM_NUM_BOOST_ROUND,
+        LIGHTGBM_EARLY_STOPPING_ROUNDS,
+    )
     model.fit(
         train["feature"],
         train["label"].iloc[:, 0],
@@ -165,7 +193,7 @@ def train_alpha158_lightgbm(
         eval_names=["valid"],
         eval_metric="l2",
         callbacks=[
-            lgb.early_stopping(30, verbose=False),
+            lgb.early_stopping(LIGHTGBM_EARLY_STOPPING_ROUNDS, verbose=False),
             _lightgbm_progress_callback(),
         ],
     )
@@ -180,46 +208,19 @@ def train_alpha158_lightgbm(
     ).iloc[:, 0].rename("label")
     scored = pd.concat([predictions, labels], axis=1)
     scored.index.names = ["datetime", "instrument"]
-    evaluation = scored.dropna(subset=["score", "label"])
-    metrics = _cross_sectional_metrics(evaluation)
-    top = (
-        scored.dropna(subset=["score"])
-        .reset_index()
-        .sort_values(
-            ["datetime", "score", "instrument"], ascending=[True, False, True]
-        )
-        .groupby("datetime", sort=True)
-        .head(top_k)
-    )
-
-    LOGGER.info(
-        "测试集评估完成：有效样本=%d；IC均值=%s；Rank IC均值=%s",
-        len(evaluation),
-        metrics["icMean"],
-        metrics["rankIcMean"],
-    )
     set_log_context(step="6/6", progress="-/-", target=str(artifact_dir))
-    LOGGER.info("写入模型、预测和指标制品")
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    scored.reset_index().to_parquet(artifact_dir / "test_predictions.parquet", index=False)
-    top.to_parquet(artifact_dir / "top5.parquet", index=False)
-    with (artifact_dir / "model.pkl").open("wb") as stream:
-        pickle.dump(model, stream)
-    payload = {
-        "featureSet": "Alpha158",
-        "model": "LightGBM Regression",
-        "label": "next-morning sell VWAP / next-afternoon buy VWAP - 1",
-        "segments": _segments_record(segments),
-        "metrics": metrics,
-        "topK": top_k,
-        "rows": len(scored),
-        "labeledRows": len(evaluation),
-        "predictionDays": int(top["datetime"].nunique()),
-    }
-    (artifact_dir / "metrics.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    return _persist_training_artifacts(
+        model,
+        scored,
+        artifact_dir,
+        segments,
+        top_k,
+        training_mode="single-pass",
+        train_rows=len(train),
+        valid_rows=len(valid),
+        feature_count=train["feature"].shape[1],
+        feature_batch_days=None,
     )
-    return payload
 
 
 def _persist_training_artifacts(
@@ -232,7 +233,7 @@ def _persist_training_artifacts(
     train_rows: int,
     valid_rows: int,
     feature_count: int,
-    feature_batch_days: int,
+    feature_batch_days: int | None,
 ) -> dict[str, object]:
     evaluation = scored.dropna(subset=["score", "label"])
     metrics = _cross_sectional_metrics(evaluation)
@@ -511,4 +512,4 @@ def automatic_model_segments(
         test_end=calendar[-1],
     )
 
-# AI_GENERATE_END -----------------------
+# AI_GENERATE_END ------------------------

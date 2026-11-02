@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------
+# AI_GENERATE_START ----------
 from __future__ import annotations
 
 import json
@@ -6,7 +6,7 @@ import logging
 import pickle
 import re
 import shutil
-from datetime import UTC, date, datetime
+from datetime import date
 from pathlib import Path
 from uuid import uuid4
 
@@ -16,6 +16,7 @@ from stock_trading.research.model import (
     ModelSegments,
     train_alpha158_lightgbm_adaptive,
 )
+from stock_trading.time_utils import utc_now
 
 LOGGER = logging.getLogger(__name__)
 MODEL_DIRECTORY = "alpha158-lightgbm"
@@ -78,7 +79,7 @@ def train_model_candidate(
     versions = root / "versions"
     versions.mkdir(parents=True, exist_ok=True)
     version = (
-        datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        utc_now().strftime("%Y%m%dT%H%M%S%fZ")
         + "-"
         + uuid4().hex[:8]
     )
@@ -178,7 +179,7 @@ def _write_current_pointer(root: Path, version: str) -> None:
     temporary = root / f".current.{uuid4().hex}.tmp"
     payload = {
         "version": version,
-        "activatedAt": datetime.now(UTC).isoformat(),
+        "activatedAt": utc_now().isoformat(),
     }
     try:
         temporary.write_text(
@@ -188,4 +189,4 @@ def _write_current_pointer(root: Path, version: str) -> None:
         temporary.replace(pointer)
     finally:
         temporary.unlink(missing_ok=True)
-# AI_GENERATE_END ---------
+# AI_GENERATE_END ----------

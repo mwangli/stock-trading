@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------
+# AI_GENERATE_START -----------------------------------------
 from __future__ import annotations
 
 import os
@@ -26,7 +26,6 @@ BACKTEST_CAPITAL_SCENARIOS = (1_000, 2_000, 3_000, 5_000, 10_000)
 class AppConfig:
     """Runtime paths and optional network settings."""
 
-    project_dir: Path
     data_dir: Path
     qlib_dir: Path
     artifact_dir: Path
@@ -34,7 +33,6 @@ class AppConfig:
     baostock_proxy: str | None
     market_history_days: int
     bark_device_key: str
-    broker_enabled: bool
     broker_base_url: str
     broker_mobile_code: str
     broker_account: str
@@ -44,7 +42,6 @@ class AppConfig:
     broker_token: str | None
     broker_timeout_seconds: float
     broker_token_expire_minutes: int
-    broker_captcha_auto_submit_enabled: bool
     broker_ocr_timeout_seconds: float
     broker_ocr_request_interval_seconds: float
     broker_baidu_ocr_api_key: str
@@ -91,7 +88,6 @@ class AppConfig:
         proxy = os.getenv("BAOSTOCK_PROXY")
         broker_token = os.getenv("ZXBROKER_TOKEN")
         return cls(
-            project_dir=project_dir,
             data_dir=data_dir,
             qlib_dir=qlib_dir,
             artifact_dir=artifact_dir,
@@ -102,7 +98,6 @@ class AppConfig:
                 max(365, int(os.getenv("STOCK_TRADING_HISTORY_DAYS", str(365 * 3)))),
             ),
             bark_device_key=os.getenv("DEVICE_KEY", "").strip(),
-            broker_enabled=True,
             broker_base_url=(
                 os.getenv("ZXBROKER_BASE_URL", DEFAULT_BROKER_BASE_URL).strip()
                 or DEFAULT_BROKER_BASE_URL
@@ -118,7 +113,6 @@ class AppConfig:
             broker_token=broker_token or None,
             broker_timeout_seconds=max(1.0, float(os.getenv("ZXBROKER_TIMEOUT_SECONDS", "20"))),
             broker_token_expire_minutes=30,
-            broker_captcha_auto_submit_enabled=True,
             broker_ocr_timeout_seconds=max(
                 1.0, float(os.getenv("ZXBROKER_OCR_TIMEOUT_SECONDS", "20"))
             ),
@@ -195,4 +189,4 @@ def _load_env_file(path: Path) -> None:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         os.environ.setdefault(key, value)
-# AI_GENERATE_END ----------------------------------------
+# AI_GENERATE_END -----------------------------------------

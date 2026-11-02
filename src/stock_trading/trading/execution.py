@@ -1,7 +1,8 @@
-# AI_GENERATE_START -------------------------
+# AI_GENERATE_START --------------------------
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from time import monotonic, sleep
@@ -18,8 +19,18 @@ from stock_trading.config import AppConfig
 from stock_trading.state.store import ORDER_ACTIVE_STATUSES, StateStore
 from stock_trading.trading.permissions import permission_scope
 from stock_trading.trading.strategy import affordable_quantity, select_execution_price
+from stock_trading.time_utils import shanghai_now, utc_now
 
 LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class AttemptOutcome:
+    """封装单次委托尝试及其是否形成整个目标的终态。"""
+
+    attempt: dict[str, object]
+    terminal_status: str | None = None
+    stop_reason: str | None = None
 
 
 class BrokerExecutionClient(Protocol):
@@ -95,13 +106,14 @@ class OrderExecutionOrchestrator:
                     "交易恢复活动委托：clientOrderId=%s；brokerOrderId=%s；状态=%s",
                     active_client_id, active.get("broker_order_id"), active["status"],
                 )
-                settled = self._wait_then_cancel(active_client_id, deadline)
-                attempts.append(self._attempt_result(None, settled))
-                if settled["status"] == "FILLED":
-                    return self._execution_result(target, "FILLED", "BROKER_FILLED", attempts)
-                if settled["status"] != "CANCELLED":
+                outcome = self._resume_active_order(active_client_id, deadline)
+                attempts.append(outcome.attempt)
+                if outcome.terminal_status is not None:
                     return self._execution_result(
-                        target, str(settled["status"]), "ACTIVE_ORDER_NOT_SETTLED", attempts
+                        target,
+                        outcome.terminal_status,
+                        str(outcome.stop_reason),
+                        attempts,
                     )
                 active_client_id = None
 
@@ -118,80 +130,20 @@ class OrderExecutionOrchestrator:
                 client_order_id = f"{prefix}:A{attempt_number}"
                 active_client_id = client_order_id
                 live_order["client_order_id"] = client_order_id
-                LOGGER.info(
-                    "交易动作开始：动作=PREPARE_ORDER；业务日期=%s；尝试=%d/%d；clientOrderId=%s；股票=%s；方向=%s；价格=%s；数量=%s",
-                    business_date, attempt_number, self._config.trading_max_attempts,
-                    client_order_id, instrument, side, live_order["price"], live_order["quantity"],
-                )
-                self._state_store.prepare_real_order(
-                    client_order_id=client_order_id,
-                    business_date=business_date,
-                    instrument=instrument,
-                    side=side,
-                    quantity=int(live_order["quantity"]),
-                    price=Decimal(str(live_order["price"])),
-                    model_version_id=(
-                        int(target["modelVersionId"])
-                        if target.get("modelVersionId") is not None
-                        else None
-                    ),
-                    prediction_date=(
-                        str(target["predictionDate"])
-                        if target.get("predictionDate") is not None
-                        else None
-                    ),
-                )
-                self._state_store.start_order_submission(client_order_id)
-                LOGGER.info(
-                    "交易动作完成：动作=PREPARE_ORDER；clientOrderId=%s；本地状态=SUBMITTING",
-                    client_order_id,
-                )
-                submitted = self._submit(live_order)
-                if submitted["status"] == "UNKNOWN":
-                    submitted = self._wait_for_broker_state(
-                        client_order_id,
-                        self._config.trading_order_wait_seconds,
-                        deadline,
-                    )
-                if submitted["status"] == "FILLED":
-                    attempts.append(self._attempt_result(live_order, submitted))
-                    return self._execution_result(target, "FILLED", "BROKER_FILLED", attempts)
-                if submitted["status"] == "REJECTED":
-                    attempts.append(self._attempt_result(live_order, submitted))
-                    return self._execution_result(target, "REJECTED", "BROKER_REJECTED", attempts)
-                if submitted["status"] not in {"SUBMITTED", "PARTIAL"}:
-                    attempts.append(self._attempt_result(live_order, submitted))
-                    return self._execution_result(
-                        target,
-                        str(submitted["status"]),
-                        "SUBMISSION_NOT_CONFIRMED",
-                        attempts,
-                    )
-
-                observed = self._wait_for_broker_state(
-                    client_order_id,
-                    self._config.trading_order_wait_seconds,
+                outcome = self._execute_attempt(
+                    business_date,
+                    target,
+                    live_order,
+                    attempt_number,
                     deadline,
                 )
-                if observed["status"] == "FILLED":
-                    attempts.append(self._attempt_result(live_order, observed))
-                    return self._execution_result(target, "FILLED", "BROKER_FILLED", attempts)
-                if observed["status"] == "REJECTED":
-                    attempts.append(self._attempt_result(live_order, observed))
-                    return self._execution_result(target, "REJECTED", "BROKER_REJECTED", attempts)
-                if observed["status"] not in {"SUBMITTED", "PARTIAL"}:
-                    attempts.append(self._attempt_result(live_order, observed))
+                attempts.append(outcome.attempt)
+                if outcome.terminal_status is not None:
                     return self._execution_result(
-                        target, str(observed["status"]), "ORDER_STATE_UNCERTAIN", attempts
-                    )
-
-                settled = self._cancel_and_confirm(client_order_id)
-                attempts.append(self._attempt_result(live_order, settled))
-                if settled["status"] == "FILLED":
-                    return self._execution_result(target, "FILLED", "FILLED_DURING_CANCEL", attempts)
-                if settled["status"] != "CANCELLED":
-                    return self._execution_result(
-                        target, str(settled["status"]), "CANCEL_NOT_CONFIRMED", attempts
+                        target,
+                        outcome.terminal_status,
+                        str(outcome.stop_reason),
+                        attempts,
                     )
                 active_client_id = None
                 attempt_number += 1
@@ -212,6 +164,116 @@ class OrderExecutionOrchestrator:
                     except Exception as error:
                         LOGGER.error("Ctrl+C 后撤单处理失败，保留恢复状态：%s", error)
             raise
+
+    def _resume_active_order(
+        self, client_order_id: str, deadline: float
+    ) -> AttemptOutcome:
+        """恢复一个活动委托，取得终态或确认撤单后允许外层继续重试。"""
+        settled = self._wait_then_cancel(client_order_id, deadline)
+        attempt = self._attempt_result(None, settled)
+        if settled["status"] == "FILLED":
+            return AttemptOutcome(attempt, "FILLED", "BROKER_FILLED")
+        if settled["status"] != "CANCELLED":
+            return AttemptOutcome(
+                attempt, str(settled["status"]), "ACTIVE_ORDER_NOT_SETTLED"
+            )
+        return AttemptOutcome(attempt)
+
+    def _execute_attempt(
+        self,
+        business_date: date,
+        target: dict[str, object],
+        live_order: dict[str, object],
+        attempt_number: int,
+        deadline: float,
+    ) -> AttemptOutcome:
+        """准备、提交、观察并在需要时撤销一次独立券商委托尝试。"""
+        client_order_id = str(live_order["client_order_id"])
+        LOGGER.info(
+            "交易动作开始：动作=PREPARE_ORDER；业务日期=%s；尝试=%d/%d；clientOrderId=%s；股票=%s；方向=%s；价格=%s；数量=%s",
+            business_date,
+            attempt_number,
+            self._config.trading_max_attempts,
+            client_order_id,
+            target["instrument"],
+            target["side"],
+            live_order["price"],
+            live_order["quantity"],
+        )
+        self._state_store.prepare_real_order(
+            client_order_id=client_order_id,
+            business_date=business_date,
+            instrument=str(target["instrument"]),
+            side=str(target["side"]),
+            quantity=int(live_order["quantity"]),
+            price=Decimal(str(live_order["price"])),
+            model_version_id=(
+                int(target["modelVersionId"])
+                if target.get("modelVersionId") is not None
+                else None
+            ),
+            prediction_date=(
+                str(target["predictionDate"])
+                if target.get("predictionDate") is not None
+                else None
+            ),
+        )
+        self._state_store.start_order_submission(client_order_id)
+        LOGGER.info(
+            "交易动作完成：动作=PREPARE_ORDER；clientOrderId=%s；本地状态=SUBMITTING",
+            client_order_id,
+        )
+
+        submitted = self._submit(live_order)
+        if submitted["status"] == "UNKNOWN":
+            submitted = self._wait_for_broker_state(
+                client_order_id,
+                self._config.trading_order_wait_seconds,
+                deadline,
+            )
+        terminal = self._terminal_outcome(
+            live_order, submitted, "SUBMISSION_NOT_CONFIRMED"
+        )
+        if terminal is not None:
+            return terminal
+
+        observed = self._wait_for_broker_state(
+            client_order_id,
+            self._config.trading_order_wait_seconds,
+            deadline,
+        )
+        terminal = self._terminal_outcome(
+            live_order, observed, "ORDER_STATE_UNCERTAIN"
+        )
+        if terminal is not None:
+            return terminal
+
+        settled = self._cancel_and_confirm(client_order_id)
+        attempt = self._attempt_result(live_order, settled)
+        if settled["status"] == "FILLED":
+            return AttemptOutcome(attempt, "FILLED", "FILLED_DURING_CANCEL")
+        if settled["status"] != "CANCELLED":
+            return AttemptOutcome(
+                attempt, str(settled["status"]), "CANCEL_NOT_CONFIRMED"
+            )
+        return AttemptOutcome(attempt)
+
+    def _terminal_outcome(
+        self,
+        live_order: dict[str, object],
+        intent: dict[str, object],
+        uncertain_reason: str,
+    ) -> AttemptOutcome | None:
+        """把券商委托状态转换为单次尝试的终止结论。"""
+        status = str(intent["status"])
+        attempt = self._attempt_result(live_order, intent)
+        if status == "FILLED":
+            return AttemptOutcome(attempt, "FILLED", "BROKER_FILLED")
+        if status == "REJECTED":
+            return AttemptOutcome(attempt, "REJECTED", "BROKER_REJECTED")
+        if status not in {"SUBMITTED", "PARTIAL"}:
+            return AttemptOutcome(attempt, status, uncertain_reason)
+        return None
 
     def _build_live_order(
         self, target: dict[str, object], elapsed_seconds: float
@@ -353,7 +415,7 @@ class OrderExecutionOrchestrator:
                 LOGGER.warning("委托状态观察超时：clientOrderId=%s；brokerOrderId=%s；查询次数=%d；当前状态=%s", client_order_id, intent.get("broker_order_id"), poll_number, intent["status"])
                 return intent
             sleep_seconds = min(self._config.trading_order_poll_seconds, remaining)
-            LOGGER.info("委托状态观察等待：clientOrderId=%s；当前状态=%s；下次查询等待=%.1f秒", client_order_id, intent["status"], sleep_seconds)
+            LOGGER.debug("委托状态观察等待：clientOrderId=%s；当前状态=%s；下次查询等待=%.1f秒", client_order_id, intent["status"], sleep_seconds)
             sleep(sleep_seconds)
 
     def _cancel_and_confirm(self, client_order_id: str) -> dict[str, object]:
@@ -448,7 +510,7 @@ class OrderExecutionOrchestrator:
         created_at = datetime.fromisoformat(str(intents[0]["created_at"]))
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=UTC)
-        return max(0.0, (datetime.now(UTC) - created_at.astimezone(UTC)).total_seconds())
+        return max(0.0, (utc_now() - created_at.astimezone(UTC)).total_seconds())
 
     def _save_permission(
         self, scope: str, status: str, evidence_type: str, evidence_detail: str
@@ -460,7 +522,7 @@ class OrderExecutionOrchestrator:
                     "status": status,
                     "evidenceType": evidence_type,
                     "evidenceDetail": evidence_detail[:300],
-                    "observedAt": datetime.now().astimezone().isoformat(),
+                    "observedAt": shanghai_now().isoformat(),
                 }
             ]
         )
@@ -523,4 +585,4 @@ def _is_permission_denial(message: str) -> bool:
         keyword in normalized
         for keyword in ("无权限", "没有权限", "未开通", "禁止交易", "不允许交易")
     )
-# AI_GENERATE_END -------------------------
+# AI_GENERATE_END --------------------------

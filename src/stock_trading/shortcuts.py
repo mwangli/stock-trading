@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------
+# AI_GENERATE_START ----------
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -158,7 +158,7 @@ def rank() -> None:
         rank_command,
         "生成指定交易日的完整横截面排名。",
         (
-            "等待同一业务日的 stock-collect 成功后执行。",
+            "校验同一业务日的 stock-collect 已成功后执行。",
             "完整排名供交易阶段结合资金、权限和实时价格继续筛选。",
         ),
         ("stock-rank", "stock-rank --date 2026-11-02"),
@@ -200,7 +200,7 @@ def buy() -> None:
         _buy_command,
         "在下午窗口按当日排名、实时资金和五档行情执行买入。",
         (
-            "从 Top 5 依次检查允许前缀、已确认权限和实时价格范围。",
+            "从完整排名依次检查允许前缀、已确认权限和实时价格范围。",
             "固定首个通过候选，并按实时可用资金计算整手数量。",
         ),
         ("stock-buy",),
@@ -281,4 +281,4 @@ def clean() -> None:
             "建议由每周维护任务调用，而不是每次初始化执行。",
         ),
     )
-# AI_GENERATE_END ---------
+# AI_GENERATE_END ----------

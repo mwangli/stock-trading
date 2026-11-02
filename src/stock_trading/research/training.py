@@ -1,10 +1,10 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START -------
 from __future__ import annotations
 
 import json
 import logging
 import shutil
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -15,7 +15,6 @@ from stock_trading.research.artifacts import (
     activate_model_artifact,
     current_model_version,
     model_root,
-    resolve_current_model_dir,
     restore_model_artifact,
     train_model_candidate,
 )
@@ -28,6 +27,7 @@ from stock_trading.research.model import automatic_model_segments
 from stock_trading.research.qlib_store import QlibBinaryStore
 from stock_trading.state.store import StateStore
 from stock_trading.logging_utils import set_log_context
+from stock_trading.time_utils import shanghai_today, utc_now
 
 LOGGER = logging.getLogger(__name__)
 EVALUATION_FILE = "evaluation.json"
@@ -35,7 +35,7 @@ EVALUATION_FILE = "evaluation.json"
 
 def default_training_range(config: AppConfig) -> tuple[date, date]:
     """返回只依赖本地配置的默认研究日期范围。"""
-    end_date = date.today()
+    end_date = shanghai_today()
     return end_date - timedelta(days=config.market_history_days), end_date
 
 
@@ -62,8 +62,8 @@ def refresh_qlib_from_parquet(
 ) -> dict[str, object]:
     """校验本地行情并从 Parquet 重建 Qlib。"""
     store = ParquetMarketStore(config.data_dir)
-    daily_codes = store.valid_daily_codes(codes)
-    minute5_codes = store.valid_minute5_codes(codes)
+    daily_codes = store.valid_daily_codes(codes, start_date, end_date)
+    minute5_codes = store.valid_minute5_codes(codes, start_date, end_date)
     missing_daily = [code for code in codes if code not in daily_codes]
     missing_minute5 = [code for code in codes if code not in minute5_codes]
     errors: list[str] = []
@@ -191,6 +191,9 @@ def train_prepared_model(
     except BaseException:
         restore_model_artifact(root, previous_version)
         raise
+    completed_requests = store.complete_training_requests(
+        int(activation["activeModel"]["id"])
+    )
     LOGGER.info(
         "候选模型发布完成：版本=%s；五档平均净收益率=%s",
         training["modelVersion"],
@@ -201,24 +204,7 @@ def train_prepared_model(
         "evaluation": evaluation,
         "state": state,
         "activation": activation,
-    }
-
-
-def run_current_model_backtests(config: AppConfig) -> dict[str, object]:
-    model_dir = resolve_current_model_dir(model_root(config.artifact_dir))
-    backtest_run = run_backtest_scenarios(config, model_dir)
-    if backtest_run["errors"]:
-        reasons = "；".join(
-            f"{cash}元={message}"
-            for cash, message in backtest_run["errors"].items()
-        )
-        raise ValueError(f"多资金档位回测未完成：{reasons}")
-    state = import_training_state(StateStore(config.state_db_path), model_dir)
-    return {
-        "modelVersion": model_dir.name,
-        "capitalScenarios": list(config.backtest_capital_scenarios),
-        "backtests": backtest_run["results"],
-        "state": state,
+        "completedTrainingRequests": completed_requests,
     }
 
 
@@ -294,7 +280,7 @@ def evaluate_candidate(
         reason = None
 
     return {
-        "createdAt": datetime.now(UTC).isoformat(),
+        "createdAt": utc_now().isoformat(),
         "modelVersion": model_dir.name,
         "accepted": accepted,
         "decision": "ACCEPTED" if accepted else "REJECTED",
@@ -364,4 +350,4 @@ def _format_date_expression(start_date: date, end_date: date) -> str:
         return start_date.isoformat()
     return f"{start_date.isoformat()}:{end_date.isoformat()}"
 
-# AI_GENERATE_END ------
+# AI_GENERATE_END -------

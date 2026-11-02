@@ -1,20 +1,21 @@
-# AI_GENERATE_START ---------------------------------------------------------------
+# AI_GENERATE_START ----------------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
 import json
 import logging
 import sqlite3
-from contextlib import contextmanager
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterable
 
 import pandas as pd
 
 from stock_trading.broker.models import BrokerOrder
 from stock_trading.logging_utils import set_log_context
+from stock_trading.state.database import SQLiteStateDatabase
+from stock_trading.time_utils import utc_now
 
 LOGGER = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ ORDER_TRANSITIONS = {
     "REJECTED": set(),
 }
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 -- 任务运行记录：保存可恢复、可幂等任务的执行状态。
@@ -123,6 +124,20 @@ CREATE TABLE IF NOT EXISTS model_evaluation (
     FOREIGN KEY(model_version_id) REFERENCES model_version(id)
 );
 
+-- 重训请求：由 RETRAIN 评估产生，成功激活新模型后完成。
+CREATE TABLE IF NOT EXISTS training_request (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    evaluation_key TEXT NOT NULL UNIQUE,
+    requested_model_version_id INTEGER,
+    status TEXT NOT NULL CHECK(status IN ('PENDING','COMPLETED','CANCELLED')),
+    requested_at TEXT NOT NULL,
+    completed_model_version_id INTEGER,
+    completed_at TEXT,
+    FOREIGN KEY(evaluation_key) REFERENCES model_evaluation(business_key),
+    FOREIGN KEY(requested_model_version_id) REFERENCES model_version(id),
+    FOREIGN KEY(completed_model_version_id) REFERENCES model_version(id)
+);
+
 -- 券商成交事实：只保存券商已成交订单及其模型归因。
 CREATE TABLE IF NOT EXISTS broker_order (
     trade_date TEXT NOT NULL,
@@ -150,6 +165,23 @@ CREATE INDEX IF NOT EXISTS idx_broker_order_fifo
 ON broker_order(instrument, direction, order_time);
 CREATE INDEX IF NOT EXISTS idx_broker_order_trade_date
 ON broker_order(trade_date);
+
+-- 券商费用事实：当前无真实字段时保存固定 5 元和零额外费用。
+CREATE TABLE IF NOT EXISTS broker_order_fee (
+    trade_date TEXT NOT NULL,
+    broker_order_id TEXT NOT NULL,
+    base_fee REAL NOT NULL,
+    commission REAL NOT NULL,
+    stamp_tax REAL NOT NULL,
+    other_broker_fee REAL NOT NULL,
+    aggregate_total REAL,
+    total_fee REAL NOT NULL,
+    fee_source TEXT NOT NULL CHECK(fee_source IN ('BUSINESS_ZERO','BROKER_ACTUAL')),
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(trade_date, broker_order_id),
+    FOREIGN KEY(trade_date, broker_order_id)
+        REFERENCES broker_order(trade_date, broker_order_id)
+);
 
 -- 已实现交易：一行对应一个买单与一个卖单形成的 FIFO 闭环。
 CREATE TABLE IF NOT EXISTS realized_trade (
@@ -220,47 +252,12 @@ CREATE TABLE IF NOT EXISTS broker_permission (
 """
 
 
-class StateStore:
+class StateStore(SQLiteStateDatabase):
     """Transactional SQLite store for model, broker, and realized-trade state."""
 
-    def __init__(self, path: Path) -> None:
-        """用途：绑定 SQLite 文件路径；输入：数据库路径；输出：无。"""
-        self._path = path
-
     def initialize(self) -> None:
-        """创建当前状态库；版本落后时全量重建且不读取旧结构。"""
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self._path, timeout=30, isolation_level=None)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = OFF")
-        connection.execute("PRAGMA busy_timeout = 30000")
-        try:
-            version = int(connection.execute("PRAGMA user_version").fetchone()[0])
-            if version > SCHEMA_VERSION:
-                raise ValueError(
-                    f"SQLite schema version is newer than supported: {version}"
-                )
-            if version < SCHEMA_VERSION:
-                drop_sql = "\n".join(
-                    f'DROP TABLE "{str(row[0]).replace(chr(34), chr(34) * 2)}";'
-                    for row in connection.execute(
-                        "SELECT name FROM sqlite_master "
-                        "WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
-                    ).fetchall()
-                )
-                connection.executescript(
-                    f"BEGIN IMMEDIATE;\n{drop_sql}\n{SCHEMA}\n"
-                    "DELETE FROM sqlite_sequence;\n"
-                    f"PRAGMA user_version = {SCHEMA_VERSION};\nCOMMIT;"
-                )
-            else:
-                connection.executescript(SCHEMA)
-        except BaseException:
-            if connection.in_transaction:
-                connection.execute("ROLLBACK")
-            raise
-        finally:
-            connection.close()
+        """创建或校验当前状态库结构。"""
+        self.initialize_schema(SCHEMA, SCHEMA_VERSION)
 
     def cleanup(self, reference_date: date) -> dict[str, object]:
         """按数据价值分级清理 SQLite，并保留活动委托和长期基础事实。"""
@@ -318,7 +315,7 @@ class StateStore:
     ) -> dict[str, Any]:
         """事务登记模型及其历史预测，回测明细继续由制品文件负责。"""
         self.initialize()
-        set_log_context(progress="1/3", target="模型制品")
+        set_log_context(step="1/3", progress="-/-", target="模型制品")
         LOGGER.info("读取模型指标和完整测试集排名")
         metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
         rankings = pd.read_parquet(model_dir / "test_predictions.parquet").dropna(
@@ -333,13 +330,13 @@ class StateStore:
         self._start_run(business_key, "IMPORT_MODEL", business_date)
         try:
             with self._connect() as connection:
-                set_log_context(progress="2/3", target="模型和预测")
+                set_log_context(step="2/3", progress="-/-", target="模型和预测")
                 LOGGER.info("写入模型和预测")
                 model_id = self._upsert_model(
                     connection, model_dir, metrics, model_status
                 )
                 prediction_rows = self._upsert_predictions(connection, model_id, rankings)
-            set_log_context(progress="3/3", target="模型制品")
+            set_log_context(step="3/3", progress="-/-", target="模型制品")
             LOGGER.info("提交事务并记录成功状态")
             self._finish_run(business_key, "SUCCESS", None)
         except BaseException as error:
@@ -454,6 +451,40 @@ class StateStore:
                     for order in orders
                 ],
             )
+            fee_orders = [order for order in orders if order.fee is not None]
+            connection.executemany(
+                """
+                INSERT INTO broker_order_fee(
+                    trade_date, broker_order_id, base_fee, commission,
+                    stamp_tax, other_broker_fee, aggregate_total, total_fee,
+                    fee_source, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(trade_date, broker_order_id) DO UPDATE SET
+                    base_fee = excluded.base_fee,
+                    commission = excluded.commission,
+                    stamp_tax = excluded.stamp_tax,
+                    other_broker_fee = excluded.other_broker_fee,
+                    aggregate_total = excluded.aggregate_total,
+                    total_fee = excluded.total_fee,
+                    fee_source = excluded.fee_source,
+                    updated_at = excluded.updated_at
+                """,
+                [
+                    (
+                        order.order_time.date().isoformat(), str(order.order_id),
+                        float(order.fee.base_fee), float(order.fee.commission),
+                        float(order.fee.stamp_tax),
+                        float(order.fee.other_broker_fee),
+                        (
+                            float(order.fee.aggregate_total)
+                            if order.fee.aggregate_total is not None
+                            else None
+                        ),
+                        float(order.fee.total_fee), order.fee.source, now,
+                    )
+                    for order in fee_orders
+                ],
+            )
         return {
             "validOrders": len(order_keys),
             "insertedOrders": len(order_keys - existing_keys),
@@ -489,8 +520,16 @@ class StateStore:
                     GROUP BY trade_date, broker_order_id
                 )
                 SELECT broker_order.*,
+                       broker_order_fee.base_fee,
+                       broker_order_fee.commission,
+                       broker_order_fee.stamp_tax,
+                       broker_order_fee.other_broker_fee,
+                       broker_order_fee.aggregate_total,
+                       broker_order_fee.total_fee,
+                       broker_order_fee.fee_source,
                        COALESCE(matched_total.quantity, 0) AS matched_quantity
                 FROM broker_order
+                LEFT JOIN broker_order_fee USING(trade_date, broker_order_id)
                 LEFT JOIN matched_total USING(trade_date, broker_order_id)
                 WHERE COALESCE(matched_total.quantity, 0) < filled_quantity
                 ORDER BY order_time, broker_order_id
@@ -663,7 +702,7 @@ class StateStore:
     ) -> dict[str, Any]:
         """用途：导入单日预测制品并绑定模型；输入：模型目录与预测文件；输出：导入摘要。"""
         self.initialize()
-        set_log_context(progress="1/3", target=str(prediction_path))
+        set_log_context(step="1/3", progress="-/-", target=str(prediction_path))
         LOGGER.info("读取预测制品")
         predictions = pd.read_parquet(prediction_path)
         required = {"datetime", "instrument", "score", "label"}
@@ -680,10 +719,10 @@ class StateStore:
         self._start_run(business_key, "PREDICT", business_date)
         try:
             with self._connect() as connection:
-                set_log_context(progress="2/3", target="模型版本")
+                set_log_context(step="2/3", progress="-/-", target="模型版本")
                 LOGGER.info("绑定模型版本")
                 model_id = self._upsert_model(connection, model_dir, metrics)
-                set_log_context(progress="3/3", target="横截面排名")
+                set_log_context(step="3/3", progress="-/-", target="横截面排名")
                 LOGGER.info("写入横截面排名：候选数=%d", len(predictions))
                 prediction_rows = self._upsert_predictions(
                     connection, model_id, predictions
@@ -1088,6 +1127,37 @@ class StateStore:
                 "SELECT * FROM model_evaluation WHERE business_key = ?",
                 (business_key,),
             ).fetchone()
+            if decision == "RETRAIN":
+                connection.execute(
+                    """
+                    INSERT INTO training_request(
+                        evaluation_key, requested_model_version_id, status,
+                        requested_at, completed_model_version_id, completed_at
+                    ) VALUES(?, ?, 'PENDING', ?, NULL, NULL)
+                    ON CONFLICT(evaluation_key) DO UPDATE SET
+                        requested_model_version_id = excluded.requested_model_version_id,
+                        status = CASE
+                            WHEN training_request.status = 'COMPLETED'
+                            THEN training_request.status
+                            ELSE 'PENDING'
+                        END,
+                        requested_at = CASE
+                            WHEN training_request.status = 'COMPLETED'
+                            THEN training_request.requested_at
+                            ELSE excluded.requested_at
+                        END
+                    """,
+                    (business_key, model_id, _now()),
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE training_request
+                    SET status = 'CANCELLED', completed_at = ?
+                    WHERE evaluation_key = ? AND status = 'PENDING'
+                    """,
+                    (_now(), business_key),
+                )
         LOGGER.info(
             "模型评估保存完成：日期=%s；模型版本=%s；样本=%d/%d；决策=%s",
             business_date,
@@ -1098,6 +1168,34 @@ class StateStore:
         )
         return dict(evaluation)
 
+    def pending_training_requests(self) -> list[dict[str, Any]]:
+        """返回尚未由新模型激活完成的重训请求。"""
+        self.initialize()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM training_request
+                WHERE status = 'PENDING'
+                ORDER BY requested_at, id
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def complete_training_requests(self, model_version_id: int) -> int:
+        """在新模型成功激活后完成此前所有待处理重训请求。"""
+        self.initialize()
+        with self._connect() as connection:
+            completed = connection.execute(
+                """
+                UPDATE training_request
+                SET status = 'COMPLETED', completed_model_version_id = ?,
+                    completed_at = ?
+                WHERE status = 'PENDING'
+                """,
+                (model_version_id, _now()),
+            ).rowcount
+        return completed
+
     def summary(self) -> dict[str, Any]:
         """用途：汇总各表记录数和最新任务、模型；输入：无；输出：状态库摘要。"""
         self.initialize()
@@ -1107,6 +1205,7 @@ class StateStore:
                 "model_version": "model_version",
                 "prediction": "prediction",
                 "model_evaluation": "model_evaluation",
+                "trainingRequests": "training_request",
                 "brokerOrders": "broker_order",
                 "realizedTrades": "realized_trade",
                 "orderAttempts": "order_attempt",
@@ -1258,33 +1357,6 @@ class StateStore:
             ),
         )
 
-    @contextmanager
-    def _connect(self) -> Iterator[sqlite3.Connection]:
-        """用途：提供自动提交或回滚的 SQLite 连接；输入：无；输出：事务连接迭代器。"""
-        connection = sqlite3.connect(self._path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = DELETE")
-        connection.execute("PRAGMA synchronous = FULL")
-        connection.execute("PRAGMA busy_timeout = 30000")
-        try:
-            yield connection
-            connection.commit()
-        except BaseException:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
-
-    def _successful_run_exists(self, business_key: str) -> bool:
-        """用途：判断幂等任务是否已成功；输入：业务键；输出：是否存在成功记录。"""
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT 1 FROM task_run WHERE business_key = ? AND status = 'SUCCESS'",
-                (business_key,),
-            ).fetchone()
-            return row is not None
-
     def _start_run(self, business_key: str, task_type: str, business_date: str) -> None:
         """用途：新增或重置任务为运行中；输入：业务键、任务类型和日期；输出：无。"""
         with self._connect() as connection:
@@ -1411,7 +1483,7 @@ class StateStore:
 
 def _now() -> str:
     """用途：生成统一 UTC 时间；输入：无；输出：ISO-8601 时间字符串。"""
-    return datetime.now(UTC).isoformat()
+    return utc_now().isoformat()
 
 
 def _artifact_fingerprint(*paths: Path) -> str:
@@ -1434,4 +1506,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END ---------------------------------------------------------------
+# AI_GENERATE_END ----------------------------------------------------------------

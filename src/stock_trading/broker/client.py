@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------
+# AI_GENERATE_START ----------------------------
 from __future__ import annotations
 
 import base64
@@ -26,6 +26,7 @@ from stock_trading.broker.parser import (
 )
 from stock_trading.config import AppConfig
 from stock_trading.logging_utils import set_log_context
+from stock_trading.time_utils import shanghai_today
 
 ACTION_GET_PRICE = 33
 ACTION_LOGIN = 100
@@ -98,7 +99,6 @@ class ZXBrokerClient:
         return params
 
     def login(self) -> str:
-        self._require_enabled()
         self._load_cached_token()
         if self._valid_token():
             LOGGER.info("券商登录跳过：正在复用有效 Token")
@@ -153,7 +153,7 @@ class ZXBrokerClient:
             )
 
     def _login_once(self) -> str:
-        set_log_context(progress="1/3", target="券商验证码")
+        set_log_context(step="1/3", progress="-/-", target="券商验证码")
         LOGGER.info("获取验证码")
         captcha = self._request(self.build_params({"action": ACTION_CAPTCHA}))
         data_uri = captcha.get("MESSAGE")
@@ -164,10 +164,10 @@ class ZXBrokerClient:
             image = base64.b64decode(str(data_uri).split(",", 1)[-1], validate=True)
         except (ValueError, binascii.Error) as error:
             raise BrokerProtocolError("验证码图片无法解码") from error
-        set_log_context(progress="2/3", target="券商验证码")
+        set_log_context(step="2/3", progress="-/-", target="券商验证码")
         LOGGER.info("识别验证码：图片字节数=%d", len(image))
         check_code = self._captcha_solver(image)
-        set_log_context(progress="3/3", target="券商登录")
+        set_log_context(step="3/3", progress="-/-", target="券商登录")
         LOGGER.info("提交登录请求")
         response = self._request(
             self.build_params(
@@ -230,23 +230,6 @@ class ZXBrokerClient:
         orders = parse_order_rows(self._query_history_rows(ACTION_QUERY_HISTORY_ORDERS, start_date, end_date))
         LOGGER.info("券商历史委托读取完成：数量=%d", len(orders))
         return orders
-
-    def get_realtime_price(self, stock_code: str) -> Decimal:
-        response = self._request(
-            self.build_params(
-                {
-                    "stockcode": stock_code,
-                    "action": ACTION_GET_PRICE,
-                    "ReqlinkType": 1,
-                    "Level": 1,
-                    "UseBPrice": 1,
-                }
-            )
-        )
-        price = parse_decimal(response.get("PRICE"))
-        if price is None or price <= 0:
-            raise BrokerProtocolError(f"未获得有效实时价格: {stock_code}")
-        return price
 
     def get_five_level_quote(self, stock_code: str) -> FiveLevelQuote:
         LOGGER.info("正在读取五档行情：股票=%s", stock_code)
@@ -363,7 +346,7 @@ class ZXBrokerClient:
         accounts = dict(self._shareholder_accounts or {})
         if required_market in accounts:
             return accounts
-        window_end = date.today()
+        window_end = shanghai_today()
         earliest = date(2000, 1, 1)
         while window_end >= earliest and required_market not in accounts:
             window_start = max(earliest, window_end - timedelta(days=729))
@@ -444,7 +427,7 @@ class ZXBrokerClient:
                 progress=f"{len(rows)}/{max_records}",
                 target=f"action={action}",
             )
-            LOGGER.info(
+            LOGGER.debug(
                 "历史数据分页完成：页=%d；本页=%d；累计=%d；上限=%d",
                 page_number,
                 len(data),
@@ -474,18 +457,13 @@ class ZXBrokerClient:
         return rows
 
     def _require_token(self) -> str:
-        self._require_enabled()
         self._load_cached_token()
         return self._token if self._valid_token() else self.login()
-
-    def _require_enabled(self) -> None:
-        if not self._config.broker_enabled:
-            raise BrokerSafetyError("ZX证券接入未启用")
 
     def _request(self, params: dict[str, object]) -> dict[str, Any]:
         action = params.get("action")
         started_at = time.monotonic()
-        LOGGER.info("正在调用券商接口：action=%s", action)
+        LOGGER.debug("正在调用券商接口：action=%s", action)
         response = self._transport(
             self._config.broker_base_url,
             params,
@@ -498,7 +476,7 @@ class ZXBrokerClient:
             self._cache_token(refreshed_token)
             if token_changed:
                 LOGGER.info("券商响应 Token 已同步：action=%s", action)
-        LOGGER.info(
+        LOGGER.debug(
             "券商接口调用完成：action=%s；错误码=%s；耗时=%.2f秒",
             action,
             response.get("ERRORNO"),
@@ -603,4 +581,4 @@ def _required_price(response: dict[str, Any], primary: str, alternate: str) -> D
     if value is None or value <= 0:
         raise BrokerProtocolError("券商未返回完整五档行情")
     return value
-# AI_GENERATE_END ---------------------------
+# AI_GENERATE_END ----------------------------

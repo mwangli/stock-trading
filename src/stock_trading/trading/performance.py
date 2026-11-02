@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------
+# AI_GENERATE_START -----------
 from __future__ import annotations
 
 import logging
@@ -18,7 +18,7 @@ class RealizedPerformanceService:
         self._state_store = state_store
 
     def update(self, business_date: date) -> dict[str, object]:
-        set_log_context(progress="1/1", target=str(business_date))
+        set_log_context(step="1/1", progress="-/-", target=str(business_date))
         performance = self._state_store.realized_performance(business_date)
         LOGGER.info(
             "已实现绩效计算完成：闭环=%d；数量=%d；成本=%s；卖出额=%s；净收益=%s",
@@ -112,4 +112,4 @@ def _max_drawdown(returns: list[float]) -> float:
         peak = max(peak, equity)
         drawdown = max(drawdown, 1.0 - equity / peak)
     return drawdown
-# AI_GENERATE_END ----------
+# AI_GENERATE_END -----------

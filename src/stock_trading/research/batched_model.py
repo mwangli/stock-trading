@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 import gc
@@ -71,6 +71,7 @@ def train_alpha158_lightgbm_batched(
     segments: ModelSegments,
     progress_callback,
     feature_batch_days: int,
+    model_parameters: dict[str, object],
 ) -> BatchedTrainingResult:
     """Generate Alpha158 by date batches and train from memory-mapped shards."""
     import qlib
@@ -127,19 +128,19 @@ def train_alpha158_lightgbm_batched(
         free_raw_data=True,
     )
     params = {
-        "objective": "regression",
-        "metric": "l2",
-        "learning_rate": 0.05,
-        "num_leaves": 31,
-        "max_depth": 6,
-        "bagging_fraction": 0.8,
+        "objective": model_parameters["objective"],
+        "metric": model_parameters["metric"],
+        "learning_rate": model_parameters["learning_rate"],
+        "num_leaves": model_parameters["num_leaves"],
+        "max_depth": model_parameters["max_depth"],
+        "bagging_fraction": model_parameters["sample_fraction"],
         "bagging_freq": 0,
-        "feature_fraction": 0.8,
-        "lambda_l1": 1.0,
-        "lambda_l2": 1.0,
-        "num_threads": 2,
-        "seed": 20261030,
-        "verbosity": -1,
+        "feature_fraction": model_parameters["feature_fraction"],
+        "lambda_l1": model_parameters["lambda_l1"],
+        "lambda_l2": model_parameters["lambda_l2"],
+        "num_threads": model_parameters["threads"],
+        "seed": model_parameters["seed"],
+        "verbosity": model_parameters["verbosity"],
         **dataset_params,
     }
     set_log_context(step="4/5", progress="0/300", target="LightGBM")
@@ -580,4 +581,4 @@ class _NpyFeatureSequence(lgb.Sequence):
     def __getitem__(self, index):
         return np.asarray(self._values[index], dtype=np.float64)
 
-# AI_GENERATE_END -------
+# AI_GENERATE_END --------

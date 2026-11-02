@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------
+# AI_GENERATE_START ----------------
 from __future__ import annotations
 
 import json
@@ -77,7 +77,7 @@ class PortfolioBacktester:
 
     def run(self, artifact_dir: Path) -> dict[str, object]:
         codes = sorted(self._topk["instrument"].map(to_baostock_code).unique())
-        set_log_context(progress="1/4", target="回测行情")
+        set_log_context(step="1/4", progress="0/-", target="回测行情")
         LOGGER.info("加载回测行情：股票数=%d", len(codes))
         self._load_market(codes)
         ranked = {
@@ -95,12 +95,10 @@ class PortfolioBacktester:
         trades: list[dict[str, object]] = []
         rejects: list[dict[str, object]] = []
         equity_rows: list[dict[str, object]] = []
-        total_fees = 0.0
-        total_buy_notional = 0.0
-        total_sell_notional = 0.0
+        realized_net_profit = 0.0
 
         total_dates = len(simulation_dates)
-        set_log_context(progress="2/4", target="逐日模拟")
+        set_log_context(step="2/4", progress="0/-", target="逐日模拟")
         LOGGER.info("开始逐日模拟：交易日数=%d", total_dates)
         for index, timestamp in enumerate(simulation_dates, start=1):
             trade_date = timestamp.date()
@@ -116,9 +114,9 @@ class PortfolioBacktester:
                     )
                 else:
                     cash += sale["netProceeds"]
-                    total_fees += sale["sellFees"]
-                    total_sell_notional += sale["sellNotional"]
-                    trades.append(_trade_record(position, sale))
+                    trade = _trade_record(position, sale)
+                    trades.append(trade)
+                    realized_net_profit += float(trade["netPnl"])
                     position = None
 
             prediction_timestamp = self._previous_calendar_day(timestamp)
@@ -136,8 +134,6 @@ class PortfolioBacktester:
                     if purchase is not None:
                         position, cost = purchase
                         cash -= cost
-                        total_fees += position.buy_fees
-                        total_buy_notional += position.buy_notional
 
             equity_rows.append(
                 {
@@ -145,6 +141,7 @@ class PortfolioBacktester:
                     "cash": cash,
                     "marketValue": self._market_value(position, trade_date),
                     "equity": cash + self._market_value(position, trade_date),
+                    "realizedEquity": self._config.initial_cash + realized_net_profit,
                     "instrument": position.instrument if position else None,
                     "quantity": position.quantity if position else 0,
                 }
@@ -160,20 +157,17 @@ class PortfolioBacktester:
                     len(rejects),
                 )
 
-        set_log_context(progress="3/4", target="收益汇总")
+        set_log_context(step="3/4", progress="-/-", target="收益汇总")
         LOGGER.info("开始汇总收益、费用和回撤")
-        final_equity = equity_rows[-1]["equity"] if equity_rows else cash
+        mark_to_market_equity = equity_rows[-1]["equity"] if equity_rows else cash
         summary = self._summary(
             trades,
             rejects,
             equity_rows,
-            final_equity,
-            total_fees,
-            total_buy_notional,
-            total_sell_notional,
+            mark_to_market_equity,
             position,
         )
-        set_log_context(progress="4/4", target=str(artifact_dir))
+        set_log_context(step="4/4", progress="-/-", target=str(artifact_dir))
         LOGGER.info("开始写入回测制品")
         artifact_dir.mkdir(parents=True, exist_ok=True)
         pd.DataFrame.from_records(trades).to_parquet(artifact_dir / "trades.parquet", index=False)
@@ -343,27 +337,34 @@ class PortfolioBacktester:
         trades: list[dict[str, object]],
         rejects: list[dict[str, object]],
         equity_rows: list[dict[str, object]],
-        final_equity: float,
-        total_fees: float,
-        total_buy_notional: float,
-        total_sell_notional: float,
+        mark_to_market_equity: float,
         open_position: Position | None,
     ) -> dict[str, object]:
+        total_fees = sum(
+            float(trade["buyFees"]) + float(trade["sellFees"])
+            for trade in trades
+        )
+        total_buy_notional = sum(float(trade["buyNotional"]) for trade in trades)
+        total_sell_notional = sum(float(trade["sellNotional"]) for trade in trades)
+        net_profit = sum(float(trade["netPnl"]) for trade in trades)
+        gross_profit = sum(float(trade["grossPnl"]) for trade in trades)
+        final_equity = self._config.initial_cash + net_profit
         equity = pd.Series(
-            [self._config.initial_cash] + [row["equity"] for row in equity_rows],
+            [self._config.initial_cash]
+            + [row["realizedEquity"] for row in equity_rows],
             dtype="float64",
         )
         drawdown = equity / equity.cummax() - 1.0 if not equity.empty else pd.Series(dtype=float)
         daily_returns = equity.pct_change().dropna()
         wins = sum(1 for trade in trades if float(trade["netPnl"]) > 0)
         reject_counts = pd.Series([row["reason"] for row in rejects]).value_counts().to_dict()
-        gross_profit = final_equity - self._config.initial_cash + total_fees
         return {
             "config": asdict(self._config),
             "initialCash": self._config.initial_cash,
             "finalEquity": _money(final_equity),
-            "netProfit": _money(final_equity - self._config.initial_cash),
-            "netReturn": final_equity / self._config.initial_cash - 1.0,
+            "markToMarketEquity": _money(mark_to_market_equity),
+            "netProfit": _money(net_profit),
+            "netReturn": net_profit / self._config.initial_cash,
             "grossProfitBeforeFees": _money(gross_profit),
             "grossReturnBeforeFees": gross_profit / self._config.initial_cash,
             "feeDrag": total_fees / self._config.initial_cash,
@@ -497,4 +498,4 @@ def read_backtest_summary(directory: Path) -> dict[str, object]:
     """读取一个资金场景的回测摘要。"""
     return json.loads((directory / "summary.json").read_text(encoding="utf-8"))
 
-# AI_GENERATE_END ---------------
+# AI_GENERATE_END ----------------

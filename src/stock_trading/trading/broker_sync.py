@@ -1,13 +1,14 @@
-# AI_GENERATE_START -----
+# AI_GENERATE_START ------
 from __future__ import annotations
 
 import logging
 from collections import deque
+from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from stock_trading.broker.client import ZXBrokerClient
-from stock_trading.broker.models import BrokerOrder
+from stock_trading.broker.models import BrokerFeeBreakdown, BrokerOrder
 from stock_trading.config import AppConfig
 from stock_trading.state.store import StateStore
 from stock_trading.logging_utils import set_log_context
@@ -42,7 +43,18 @@ class BrokerOrderSyncService:
             )
             LOGGER.info("历史订单同步窗口开始")
             received = self._broker.get_history_orders(window_start, window_end)
-            valid_orders = _valid_orders(received, window_start, window_end)
+            orders_with_fees = tuple(
+                replace(
+                    order,
+                    fee=order.fee or BrokerFeeBreakdown.business_zero(
+                        Decimal(str(self._config.trading_order_fee))
+                    ),
+                )
+                for order in received
+            )
+            valid_orders = _valid_orders(
+                orders_with_fees, window_start, window_end
+            )
             self._state_store.reconcile_order_intents(valid_orders)
             summary = self._state_store.upsert_broker_orders(valid_orders)
             summary["receivedOrders"] = len(received)
@@ -210,14 +222,17 @@ class IncrementalSettlementService:
         quantity: int,
     ) -> Decimal:
         filled_quantity = int(order["filled_quantity"])
-        total_fee = self._order_fee()
+        total_fee = self._order_fee(order)
         before = _money(total_fee * Decimal(settled_before) / filled_quantity)
         after = _money(
             total_fee * Decimal(settled_before + quantity) / filled_quantity
         )
         return after - before
 
-    def _order_fee(self) -> Decimal:
+    def _order_fee(self, order: dict[str, object]) -> Decimal:
+        value = order.get("total_fee")
+        if value is not None:
+            return _money(Decimal(str(value)))
         return _money(Decimal(str(self._config.trading_order_fee)))
 
 
@@ -275,4 +290,4 @@ def _rate(numerator: Decimal, denominator: Decimal) -> Decimal:
     return (numerator / denominator).quantize(RATE_QUANT, rounding=ROUND_HALF_UP)
 
 
-# AI_GENERATE_END -----
+# AI_GENERATE_END ------

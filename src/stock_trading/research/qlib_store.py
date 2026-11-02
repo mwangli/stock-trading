@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------
+# AI_GENERATE_START --------------
 from __future__ import annotations
 
 import logging
@@ -29,7 +29,7 @@ class QlibBinaryStore:
     ) -> dict[str, object]:
         frames: dict[str, pd.DataFrame] = {}
         total_codes = len(codes)
-        set_log_context(progress="1/3", target="Qlib 日线")
+        set_log_context(step="1/3", progress="0/-", target="Qlib 日线")
         LOGGER.info("开始读取并复权日线：股票数=%d", total_codes)
         for index, code in enumerate(codes, start=1):
             frames[code] = self._adjusted_daily(code, start_date, end_date)
@@ -51,7 +51,7 @@ class QlibBinaryStore:
 
         instruments: list[tuple[str, str, str]] = []
         label_count = 0
-        set_log_context(progress="2/3", target="Qlib 特征")
+        set_log_context(step="2/3", progress="0/-", target="Qlib 特征")
         LOGGER.info("开始生成标签和特征：交易日数=%d", len(calendar))
         for index, (code, frame) in enumerate(frames.items(), start=1):
             aligned = frame.reindex(calendar)
@@ -79,7 +79,7 @@ class QlibBinaryStore:
         )
         shutil.rmtree(self._target, ignore_errors=True)
         temporary.replace(self._target)
-        set_log_context(progress="3/3", target=str(self._target))
+        set_log_context(step="3/3", progress="-/-", target=str(self._target))
         LOGGER.info("Qlib 制品切换完成")
         return {
             "codes": len(codes),
@@ -208,4 +208,4 @@ class QlibBinaryStore:
         ):
             values = frame[field].to_numpy(dtype="float32")
             np.hstack(([0.0], values)).astype("<f4").tofile(directory / f"{field}.day.bin")
-# AI_GENERATE_END -------------
+# AI_GENERATE_END --------------

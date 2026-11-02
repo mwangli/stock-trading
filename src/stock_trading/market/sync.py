@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------
+# AI_GENERATE_START -----------------------------------
 from __future__ import annotations
 
 import logging
@@ -11,6 +11,7 @@ import pandas as pd
 from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.logging_utils import log_context, set_log_context
+from stock_trading.time_utils import shanghai_today
 
 LOGGER = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ def latest_trade_date(proxy_url: str | None) -> date:
     """查询最近一个存在全市场日线的交易日。"""
     with BaoStockClient(proxy_url) as client:
         for offset in range(15):
-            candidate = date.today() - timedelta(days=offset)
+            candidate = shanghai_today() - timedelta(days=offset)
             bars = client.fetch_daily_market(candidate)
             if bars:
                 LOGGER.info("最近交易日确认：%s；股票数=%d", candidate, len(bars))
@@ -97,9 +98,15 @@ def sync_collection_data(
     downloaded = 0
     failed: dict[str, dict[str, str]] = {}
     for code in codes:
-        needs_daily = not skip_existing or not store.has_daily_history(code)
-        needs_adjustment = not skip_existing or not store.has_adjustment_factors(code)
-        needs_minute5 = not skip_existing or not store.has_minute5_data(code)
+        needs_daily = not skip_existing or not store.daily_history_valid(
+            code, start_date, end_date
+        )
+        needs_adjustment = not skip_existing or not store.adjustment_factors_valid(
+            code, end_date
+        )
+        needs_minute5 = not skip_existing or not store.minute_summaries_valid(
+            code, start_date, end_date
+        )
         if not any((needs_daily, needs_adjustment, needs_minute5)):
             skipped += 1
         else:
@@ -201,6 +208,9 @@ def _sync_collection_code(
             if not daily:
                 raise ValueError("日线为空")
             store.write_daily_history(code, daily)
+            store.record_collection_coverage(
+                code, "daily", start_date, end_date
+            )
 
         error, client = _collect_component(
             client, proxy_url, code, "日线", collect_daily
@@ -214,6 +224,9 @@ def _sync_collection_code(
                 code, date(1990, 1, 1), end_date
             )
             store.write_adjustment_factors(code, factors)
+            store.record_collection_coverage(
+                code, "adjustment", date(1990, 1, 1), end_date
+            )
 
         error, client = _collect_component(
             client, proxy_url, code, "复权因子", collect_adjustment
@@ -227,6 +240,9 @@ def _sync_collection_code(
             if not minutes:
                 raise ValueError("5分钟线为空")
             store.write_minute_history(code, minutes, end_date)
+            store.record_collection_coverage(
+                code, "minute5", start_date, end_date
+            )
 
         error, client = _collect_component(
             client, proxy_url, code, "5分钟线", collect_minute5
@@ -275,4 +291,4 @@ def _collect_component(
         except Exception as error:
             return str(error), client
     return "未知采集失败", client
-# AI_GENERATE_END ----------------------------------
+# AI_GENERATE_END -----------------------------------

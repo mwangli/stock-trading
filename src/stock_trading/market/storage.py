@@ -1,6 +1,7 @@
-# AI_GENERATE_START ---------------------------------
+# AI_GENERATE_START ----------------------------------
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 from datetime import date, timedelta
@@ -152,41 +153,168 @@ class ParquetMarketStore:
         frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="raise")
         return frame.sort_values("trade_date").reset_index(drop=True)
 
-    def has_daily_history(self, code: str) -> bool:
-        """检查指定股票编号是否已有日线文件。"""
+    def daily_history_valid(self, code: str, start_date: date, end_date: date) -> bool:
+        """检查日线文件可读、字段完整且覆盖研究窗口。"""
+        try:
+            frame = self.read_daily_history(code)
+            pd.to_datetime(frame["trade_date"], errors="raise")
+        except (OSError, ValueError, KeyError, AttributeError):
+            return False
+        required = {
+            "code", "trade_date", "open", "high", "low", "close", "volume",
+            "tradestatus", "is_st",
+        }
         return (
-            self._root / "daily_history" / f"code={code}" / "bars.parquet"
-        ).is_file()
+            required.issubset(frame.columns)
+            and not frame.empty
+            and self.collection_coverage_valid(
+                code, "daily", start_date, end_date
+            )
+        )
 
-    def has_adjustment_factors(self, code: str) -> bool:
-        """检查指定股票编号是否已有复权因子文件。"""
-        return (
-            self._root / "adjustment_factor" / f"code={code}" / "factors.parquet"
-        ).is_file()
+    def adjustment_factors_valid(self, code: str, end_date: date) -> bool:
+        """检查复权因子文件可读、字段完整且日期不超过目标日。"""
+        try:
+            frame = self.read_adjustment_factors(code)
+        except (OSError, ValueError, KeyError, AttributeError):
+            return False
+        required = {"code", "operate_date", "forward_factor"}
+        if not required.issubset(frame.columns):
+            return False
+        if not frame.empty:
+            dates = pd.to_datetime(frame["operate_date"], errors="coerce").dt.date
+            if not dates.notna().all() or dates.max() > end_date:
+                return False
+        return self.collection_coverage_valid(
+            code, "adjustment", date(1990, 1, 1), end_date
+        )
 
-    def has_minute5_data(self, code: str) -> bool:
-        """检查指定股票编号是否已有分钟聚合文件。"""
-        return self._minute_summary_path(code).is_file()
+    def minute_summaries_valid(
+        self, code: str, start_date: date, end_date: date
+    ) -> bool:
+        """检查分钟聚合可读、字段完整且覆盖窗口内全部可交易日。"""
+        try:
+            daily = self._eligible_daily_rows(self.read_daily_history(code))
+            daily_dates = pd.to_datetime(daily["trade_date"], errors="raise").dt.date
+            daily_window = daily[daily_dates.between(start_date, end_date)]
+            summaries = self.read_minute_summaries(code)
+        except (OSError, ValueError, KeyError, AttributeError):
+            return False
+        coverage_valid = self.collection_coverage_valid(
+            code, "minute5", start_date, end_date
+        )
+        if daily_window.empty:
+            return coverage_valid
+        required = {"trade_date", "buy_complete", "sell_complete"}
+        if not required.issubset(summaries.columns):
+            return False
+        expected = set(pd.to_datetime(daily_window["trade_date"]).dt.date)
+        complete = summaries[
+            summaries["buy_complete"].astype(bool)
+            & summaries["sell_complete"].astype(bool)
+        ]
+        actual = set(pd.to_datetime(complete["trade_date"]).dt.date)
+        return expected.issubset(actual) and coverage_valid
 
-    def has_daily_data(self, code: str) -> bool:
-        """检查指定股票编号的日线和复权文件是否都存在。"""
-        return self.has_daily_history(code) and self.has_adjustment_factors(code)
+    def record_collection_coverage(
+        self,
+        code: str,
+        dataset: str,
+        start_date: date,
+        end_date: date,
+    ) -> None:
+        """记录某类行情已经成功请求并持久化的日期范围。"""
+        path = self._coverage_path(code)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            payload = {}
+        current = dict(payload.get(dataset) or {})
+        existing_start = current.get("startDate")
+        existing_end = current.get("endDate")
+        try:
+            previous_start = (
+                date.fromisoformat(str(existing_start))
+                if existing_start
+                else start_date
+            )
+            previous_end = (
+                date.fromisoformat(str(existing_end))
+                if existing_end
+                else end_date
+            )
+        except (TypeError, ValueError):
+            previous_start = start_date
+            previous_end = end_date
+        effective_start = min(
+            start_date,
+            previous_start,
+        )
+        effective_end = max(
+            end_date,
+            previous_end,
+        )
+        payload[dataset] = {
+            "startDate": effective_start.isoformat(),
+            "endDate": effective_end.isoformat(),
+        }
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+        try:
+            temporary.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
-    def has_research_data(self, code: str) -> bool:
-        """检查指定股票编号的研究数据文件是否都存在。"""
-        return self.has_daily_data(code) and self.has_minute5_data(code)
+    def collection_coverage_valid(
+        self,
+        code: str,
+        dataset: str,
+        start_date: date,
+        end_date: date,
+    ) -> bool:
+        """检查成功采集清单是否覆盖目标日期范围。"""
+        try:
+            payload = json.loads(
+                self._coverage_path(code).read_text(encoding="utf-8")
+            )
+            coverage = payload[dataset]
+            covered_start = date.fromisoformat(str(coverage["startDate"]))
+            covered_end = date.fromisoformat(str(coverage["endDate"]))
+        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+            return False
+        return covered_start <= start_date and covered_end >= end_date
 
-    def valid_daily_codes(self, codes: list[str]) -> list[str]:
-        """返回已有日线和复权文件的股票编号。"""
-        return [code for code in codes if self.has_daily_data(code)]
+    def valid_daily_codes(
+        self, codes: list[str], start_date: date, end_date: date
+    ) -> list[str]:
+        """返回日线和复权数据均通过窗口校验的股票编号。"""
+        return [
+            code for code in codes
+            if self.daily_history_valid(code, start_date, end_date)
+            and self.adjustment_factors_valid(code, end_date)
+        ]
 
-    def valid_minute5_codes(self, codes: list[str]) -> list[str]:
-        """返回已有分钟聚合文件的股票编号。"""
-        return [code for code in codes if self.has_minute5_data(code)]
+    def valid_minute5_codes(
+        self, codes: list[str], start_date: date, end_date: date
+    ) -> list[str]:
+        """返回分钟聚合覆盖研究窗口内可交易日的股票编号。"""
+        return [
+            code for code in codes
+            if self.minute_summaries_valid(code, start_date, end_date)
+        ]
 
-    def valid_research_codes(self, codes: list[str]) -> list[str]:
-        """返回三类研究数据文件均存在的股票编号。"""
-        return [code for code in codes if self.has_research_data(code)]
+    def valid_research_codes(
+        self, codes: list[str], start_date: date, end_date: date
+    ) -> list[str]:
+        """返回日线、复权和分钟聚合均覆盖研究窗口的股票编号。"""
+        daily = set(self.valid_daily_codes(codes, start_date, end_date))
+        return [
+            code for code in codes
+            if code in daily and self.minute_summaries_valid(code, start_date, end_date)
+        ]
 
     def model_research_codes(
         self, codes: list[str], start_date: date, end_date: date
@@ -215,72 +343,6 @@ class ParquetMarketStore:
             except (OSError, ValueError, KeyError):
                 continue
         return result
-
-    def audit_market_date(
-        self, codes: list[str], trade_date: date
-    ) -> dict[str, object]:
-        """校验目标日行情覆盖和可交易股票分钟窗口完整性。"""
-        missing_daily: list[str] = []
-        incomplete_minutes: list[str] = []
-        tradable: list[str] = []
-        for code in codes:
-            try:
-                daily = self.read_daily_history(code)
-                rows = daily[pd.to_datetime(daily["trade_date"]).dt.date.eq(trade_date)]
-            except (OSError, ValueError, KeyError):
-                rows = pd.DataFrame()
-            if rows.empty:
-                missing_daily.append(code)
-                continue
-            eligible = self._eligible_daily_rows(rows)
-            if eligible.empty:
-                continue
-            tradable.append(code)
-            try:
-                summaries = self.read_minute_summaries(code)
-                window = summaries[
-                    pd.to_datetime(summaries["trade_date"]).dt.date.eq(trade_date)
-                ]
-                complete = (
-                    not window.empty
-                    and bool(window.iloc[-1]["buy_complete"])
-                    and bool(window.iloc[-1]["sell_complete"])
-                )
-            except (OSError, ValueError, KeyError):
-                complete = False
-            if not complete:
-                incomplete_minutes.append(code)
-        return {
-            "date": trade_date.isoformat(),
-            "expectedCodes": len(codes),
-            "dailyCodes": len(codes) - len(missing_daily),
-            "tradableCodes": len(tradable),
-            "completeMinuteCodes": len(tradable) - len(incomplete_minutes),
-            "missingDaily": missing_daily,
-            "incompleteMinutes": incomplete_minutes,
-            "tradable": tradable,
-        }
-
-    def latest_research_mtime(self, codes: list[str]) -> int | None:
-        """返回指定股票全部研究源文件的最新修改时间；文件缺失时返回空。"""
-        paths = [
-            path
-            for code in codes
-            for path in (
-                self._root / "daily_history" / f"code={code}" / "bars.parquet",
-                self._root
-                / "adjustment_factor"
-                / f"code={code}"
-                / "factors.parquet",
-                self._minute_summary_path(code),
-            )
-        ]
-        try:
-            if not paths or any(not path.is_file() for path in paths):
-                return None
-            return max(path.stat().st_mtime_ns for path in paths)
-        except OSError:
-            return None
 
     @staticmethod
     def _eligible_daily_rows(frame: pd.DataFrame) -> pd.DataFrame:
@@ -393,6 +455,9 @@ class ParquetMarketStore:
     def _minute_summary_path(self, code: str) -> Path:
         return self._root / "minute_summary" / f"code={code}" / "windows.parquet"
 
+    def _coverage_path(self, code: str) -> Path:
+        return self._root / "coverage" / f"code={code}.json"
+
     def _merge_history(
         self,
         target: Path,
@@ -454,4 +519,4 @@ def _without(record: dict[str, object], *fields: str) -> dict[str, object]:
 def _read_parquet_file(path: Path) -> pd.DataFrame:
     """读取单个文件，避免 key=value 父目录触发 Hive 分区字段合并。"""
     return pq.ParquetFile(path).read().to_pandas()
-# AI_GENERATE_END ---------------------------------
+# AI_GENERATE_END ----------------------------------

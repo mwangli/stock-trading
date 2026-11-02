@@ -1,9 +1,33 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START -------
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
+
+
+@dataclass(frozen=True)
+class BrokerFeeBreakdown:
+    """表示一笔券商成交委托的可审计费用事实。"""
+
+    base_fee: Decimal
+    commission: Decimal = Decimal("0")
+    stamp_tax: Decimal = Decimal("0")
+    other_broker_fee: Decimal = Decimal("0")
+    aggregate_total: Decimal | None = None
+    source: str = "BUSINESS_ZERO"
+
+    @property
+    def total_fee(self) -> Decimal:
+        """聚合费用存在时以聚合值为准，否则汇总固定费用和独立明细。"""
+        if self.aggregate_total is not None:
+            return self.aggregate_total
+        return self.base_fee + self.commission + self.stamp_tax + self.other_broker_fee
+
+    @classmethod
+    def business_zero(cls, base_fee: Decimal) -> "BrokerFeeBreakdown":
+        """在券商未提供费用事实时使用固定费用和零额外费用。"""
+        return cls(base_fee=base_fee, source="BUSINESS_ZERO")
 
 
 @dataclass(frozen=True)
@@ -41,6 +65,7 @@ class BrokerOrder:
     shareholder_account: str | None = field(repr=False)
     market: str | None
     order_time: datetime | None
+    fee: BrokerFeeBreakdown | None = None
 
 
 @dataclass(frozen=True)
@@ -49,4 +74,4 @@ class FiveLevelQuote:
     price: Decimal | None
     bids: tuple[Decimal, Decimal, Decimal, Decimal, Decimal]
     asks: tuple[Decimal, Decimal, Decimal, Decimal, Decimal]
-# AI_GENERATE_END ------
+# AI_GENERATE_END -------
