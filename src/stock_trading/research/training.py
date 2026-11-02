@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------
+# AI_GENERATE_START --------------
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 from stock_trading.config import AppConfig
 from stock_trading.market.storage import ParquetMarketStore, ResearchDataAudit
 from stock_trading.market.sync import research_codes
-from stock_trading.market.trade_calendar import latest_trade_date
+from stock_trading.market.trade_calendar import latest_completed_trade_date
 from stock_trading.research.artifacts import (
     model_artifacts_valid,
     model_root,
@@ -27,7 +27,7 @@ from stock_trading.research.model import automatic_model_segments
 from stock_trading.research.qlib_store import QlibBinaryStore
 from stock_trading.state.store import StateStore
 from stock_trading.logging_utils import set_log_context
-from stock_trading.time_utils import shanghai_today, utc_now
+from stock_trading.time_utils import shanghai_now, utc_now
 
 LOGGER = logging.getLogger(__name__)
 EVALUATION_FILE = "evaluation.json"
@@ -35,7 +35,7 @@ EVALUATION_FILE = "evaluation.json"
 
 def default_training_range(config: AppConfig) -> tuple[date, date]:
     """返回只依赖本地配置的默认研究日期范围。"""
-    end_date = latest_trade_date(shanghai_today())
+    end_date = latest_completed_trade_date(shanghai_now())
     return end_date - timedelta(days=config.market_history_days), end_date
 
 
@@ -364,4 +364,4 @@ def _format_date_expression(start_date: date, end_date: date) -> str:
         return start_date.isoformat()
     return f"{start_date.isoformat()}:{end_date.isoformat()}"
 
-# AI_GENERATE_END -------------
+# AI_GENERATE_END --------------

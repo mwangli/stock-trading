@@ -1,7 +1,7 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ----
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 from importlib.resources import files
 
@@ -19,7 +19,7 @@ def trade_dates(year: int) -> tuple[date, ...]:
             if line.strip()
         )
     except FileNotFoundError:
-        raise ValueError(f"缺少 {year} 年交易日文件，无法执行初始化") from None
+        raise ValueError(f"缺少 {year} 年交易日文件，无法确定交易日") from None
     except ValueError as error:
         raise ValueError(f"{year} 年交易日文件格式错误: {error}") from error
     if not values or any(value.year != year for value in values):
@@ -38,4 +38,15 @@ def latest_trade_date(today: date) -> date:
     if previous_dates:
         return previous_dates[-1]
     raise ValueError(f"{today} 之前没有可用交易日")
-# AI_GENERATE_END ---
+
+
+def latest_completed_trade_date(
+    now: datetime,
+    completion_time: time = time(16, 0),
+) -> date:
+    """返回当前时刻之前已经收盘的最近交易日。"""
+    cutoff = now.date()
+    if now.time().replace(tzinfo=None) < completion_time:
+        cutoff -= timedelta(days=1)
+    return latest_trade_date(cutoff)
+# AI_GENERATE_END ----

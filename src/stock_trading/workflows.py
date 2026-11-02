@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START -------
 from __future__ import annotations
 
 import logging
@@ -77,15 +77,13 @@ def collect_workflow(
             codes, start_date, end_date, coverage_ranges=coverage_ranges
         )
         _log_collection_audit("原始数据缺失清单生成完成", audit)
+        downloaded_codes: set[str] = set()
         if audit.complete:
-            collection = {
-                "completed": len(codes),
-                "skipped": len(codes),
-                "failed": {},
-            }
             LOGGER.info("原始研究数据完整，跳过下载：股票数=%d", len(codes))
-        else:
-            collection = sync_collection_data(
+        while not audit.complete:
+            previous_pending = audit.pending
+            downloaded_codes.update(plan.code for plan in previous_pending)
+            sync_collection_data(
                 store,
                 config.baostock_proxy,
                 codes,
@@ -98,8 +96,14 @@ def collect_workflow(
                 codes, start_date, end_date, coverage_ranges=coverage_ranges
             )
             _log_collection_audit("下载后缺失清单复查完成", audit)
-            if not audit.complete:
-                raise ValueError("原始研究数据下载后仍存在缺失项")
+            if audit.pending == previous_pending:
+                raise ValueError("原始研究数据下载后缺失清单未发生变化")
+
+        collection = {
+            "completed": len(codes),
+            "skipped": len(codes) - len(downloaded_codes),
+            "failed": {},
+        }
 
         qlib_refresh = _refresh_collection_qlib(
             config,
@@ -396,4 +400,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END ------
+# AI_GENERATE_END -------

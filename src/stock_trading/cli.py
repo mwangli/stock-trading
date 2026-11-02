@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START --------------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -21,8 +21,8 @@ from stock_trading.notifications import push_system_failure
 from stock_trading.research.training import (
     run_training_pipeline,
 )
-from stock_trading.time_utils import shanghai_today
-from stock_trading.market.trade_calendar import latest_trade_date
+from stock_trading.time_utils import shanghai_now, shanghai_today
+from stock_trading.market.trade_calendar import latest_completed_trade_date
 from stock_trading.workflows import (
     cleanup_workflow,
     collect_workflow,
@@ -106,8 +106,7 @@ def collect_command(
     ] = None,
 ) -> None:
     def run(config: AppConfig) -> dict[str, object]:
-        today = shanghai_today()
-        latest = latest_trade_date(today)
+        latest = latest_completed_trade_date(shanghai_now())
         start, end = _parse_date_expression(date_value, latest, latest)
         return collect_workflow(
             config,
@@ -364,4 +363,4 @@ def _format_amount(value: object) -> str:
 
 def _format_rate(value: object) -> str:
     return "-" if value is None else f"{float(value):.2%}"
-# AI_GENERATE_END -------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END --------------------------------------------------------------------------------------------------------------------------
