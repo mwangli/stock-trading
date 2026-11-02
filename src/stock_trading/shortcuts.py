@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------
+# AI_GENERATE_START ---------
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -16,7 +16,7 @@ from stock_trading.cli import (
     trading_command,
     train_command,
 )
-from stock_trading.help_renderer import build_epilog, show_command_groups
+from stock_trading.help_renderer import build_help_command, show_command_groups
 
 
 HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
@@ -76,7 +76,7 @@ def _run(
     )
     command_app.command(
         help=description,
-        epilog=build_epilog(business, examples, boundaries),
+        cls=build_help_command(business, examples, boundaries),
         context_settings=HELP_CONTEXT,
     )(command)
     command_app(prog_name=program)
@@ -281,4 +281,4 @@ def clean() -> None:
             "建议由每周维护任务调用，而不是每次初始化执行。",
         ),
     )
-# AI_GENERATE_END --------
+# AI_GENERATE_END ---------
