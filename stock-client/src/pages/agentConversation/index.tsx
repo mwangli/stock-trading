@@ -1,10 +1,13 @@
-// AI_GENERATE_START------------------
+// AI_GENERATE_START---------------------
 import './styles.css';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Button, Drawer, Input, Spin, Tag, Tooltip, message, type InputRef } from 'antd';
+import { Button, Drawer, Input, Segmented, Spin, Tag, Tooltip, message, type InputRef } from 'antd';
 import {
+  CheckCircleOutlined,
   ClockCircleOutlined,
+  CodeOutlined,
   HistoryOutlined,
+  LinkOutlined,
   MessageOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -81,6 +84,24 @@ interface AgentChatResponse {
   createdAt: string;
 }
 
+type AgentMode = 'chat' | 'development';
+
+interface DevelopmentTask {
+  taskId: string;
+  sessionId?: string;
+  requirement: string;
+  status: string;
+  buildAttempt: number;
+  changedFiles: string[];
+  commitSha?: string;
+  workflowRunId?: number;
+  workflowUrl?: string;
+  progress: string;
+  failureMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 const DESKTOP_PROMPT_EXAMPLES = [
   '今天上涨的股票有哪些？',
   '当前持仓风险和剩余资金如何？',
@@ -128,10 +149,28 @@ const formatDateTime = (value?: string) => value
   : '未记录';
 
 const statusColor = (status?: string) => {
-  if (status === 'COMPLETED') return 'success';
+  if (status === 'COMPLETED' || status === 'SUCCEEDED') return 'success';
   if (status === 'FAILED') return 'error';
   if (status === 'DEGRADED' || status === 'NEEDS_REVIEW') return 'warning';
   return 'processing';
+};
+
+const DEVELOPMENT_TERMINAL_STATUSES = new Set(['SUCCEEDED', 'FAILED']);
+
+const DEVELOPMENT_STEPS = [
+  ['ANALYZING', '理解需求'],
+  ['READING_CODE', '读取代码'],
+  ['GENERATING', '生成修改'],
+  ['COMMITTING', '提交代码'],
+  ['BUILDING', '构建验证'],
+  ['DEPLOYING', '自动发布'],
+] as const;
+
+const developmentStepIndex = (status?: string) => {
+  if (status === 'FIXING') return 2;
+  if (status === 'SUCCEEDED') return DEVELOPMENT_STEPS.length;
+  if (status === 'FAILED') return -1;
+  return DEVELOPMENT_STEPS.findIndex(([value]) => value === status);
 };
 
 const summarizeConversationTitle = (content: string): string => {
@@ -161,6 +200,9 @@ const AgentConversation: React.FC = () => {
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
+  const [mode, setMode] = useState<AgentMode>('chat');
+  const [developmentTask, setDevelopmentTask] = useState<DevelopmentTask | null>(null);
+  const [developmentSubmitting, setDevelopmentSubmitting] = useState(false);
 
   const sessionId = useAgentConversationStore((state) => state.sessionId);
   const question = useAgentConversationStore((state) => state.question);
@@ -240,6 +282,30 @@ const AgentConversation: React.FC = () => {
     void loadSessions();
   }, [loadSessions]);
 
+  const developmentStorageKey = `stock-agent-development-task:${ownerId}`;
+
+  const loadDevelopmentTask = useCallback(async (taskId: string, silent = false) => {
+    try {
+      const response = await request.get(`/agent/development/tasks/${taskId}`) as ApiResponse<DevelopmentTask>;
+      const task = readApiData(response, '读取自动开发任务失败');
+      setDevelopmentTask(task);
+      localStorage.setItem(developmentStorageKey, task.taskId);
+    } catch (cause) {
+      if (!silent) message.error(getApiErrorMessage(cause, '读取自动开发任务失败'));
+    }
+  }, [developmentStorageKey]);
+
+  useEffect(() => {
+    const taskId = localStorage.getItem(developmentStorageKey);
+    if (taskId) void loadDevelopmentTask(taskId);
+  }, [developmentStorageKey, loadDevelopmentTask]);
+
+  useEffect(() => {
+    if (!developmentTask || DEVELOPMENT_TERMINAL_STATUSES.has(developmentTask.status)) return undefined;
+    const timer = window.setInterval(() => void loadDevelopmentTask(developmentTask.taskId, true), 5000);
+    return () => window.clearInterval(timer);
+  }, [developmentTask, loadDevelopmentTask]);
+
   const activeSession = sessions.find((item) => item.sessionId === sessionId);
 
   const createSession = async (initialQuestion: string): Promise<string | null> => {
@@ -294,6 +360,31 @@ const AgentConversation: React.FC = () => {
       setLoading(ownerId, false);
     }
   };
+
+  const startDevelopment = async () => {
+    const requirement = question.trim();
+    if (!requirement || developmentSubmitting) return;
+    const activeSessionId = sessionId || await createSession(requirement);
+    if (!activeSessionId) return;
+    setDevelopmentSubmitting(true);
+    try {
+      const response = await request.post('/agent/development/tasks', {
+        sessionId: activeSessionId,
+        requirement,
+      }) as ApiResponse<DevelopmentTask>;
+      const task = readApiData(response, '创建自动开发任务失败');
+      setDevelopmentTask(task);
+      localStorage.setItem(developmentStorageKey, task.taskId);
+      setQuestion(ownerId, '');
+      message.success('自动开发任务已启动');
+    } catch (cause) {
+      message.error(getApiErrorMessage(cause, '创建自动开发任务失败'));
+    } finally {
+      setDevelopmentSubmitting(false);
+    }
+  };
+
+  const submit = () => mode === 'development' ? startDevelopment() : askAgent();
 
 
   return (
@@ -355,13 +446,79 @@ const AgentConversation: React.FC = () => {
                 <h2 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">{activeSession?.title || '新对话'}</h2>
               </div>
             </div>
-            <Tooltip title="刷新会话">
-              <Button icon={<ReloadOutlined />} aria-label="刷新会话" onClick={() => void loadSessions()} />
-            </Tooltip>
+            <div className="flex items-center gap-2">
+              <Segmented<AgentMode>
+                value={mode}
+                options={[
+                  { label: '业务问答', value: 'chat', icon: <MessageOutlined /> },
+                  { label: '自动开发', value: 'development', icon: <CodeOutlined /> },
+                ]}
+                onChange={setMode}
+              />
+              <Tooltip title={mode === 'development' ? '刷新开发任务' : '刷新会话'}>
+                <Button
+                  icon={<ReloadOutlined />}
+                  aria-label="刷新"
+                  onClick={() => developmentTask && mode === 'development'
+                    ? void loadDevelopmentTask(developmentTask.taskId)
+                    : void loadSessions()}
+                />
+              </Tooltip>
+            </div>
           </header>
 
           <div className="agent-message-scroll min-h-[360px] flex-1 overflow-y-auto px-5 py-5">
-            {historyLoading ? (
+            {mode === 'development' ? (
+              developmentTask ? (
+                <div className="development-task-view">
+                  <div className="development-task-heading">
+                    <div>
+                      <div className="text-base font-semibold text-slate-900">自动开发任务</div>
+                      <div className="mt-1 text-sm text-slate-500">{developmentTask.requirement}</div>
+                    </div>
+                    <Tag color={statusColor(developmentTask.status)}>{developmentTask.status}</Tag>
+                  </div>
+                  <div className="development-step-list" aria-label="自动开发进度">
+                    {DEVELOPMENT_STEPS.map(([status, label], index) => {
+                      const current = developmentStepIndex(developmentTask.status);
+                      const completed = developmentTask.status === 'SUCCEEDED' || current > index;
+                      const active = current === index;
+                      return (
+                        <div key={status} className={`development-step ${completed ? 'is-complete' : ''} ${active ? 'is-active' : ''}`}>
+                          <span>{completed ? <CheckCircleOutlined /> : index + 1}</span>
+                          <strong>{label}</strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="development-task-summary">
+                    <div><span>当前进度</span><strong>{developmentTask.progress}</strong></div>
+                    <div><span>构建次数</span><strong>{developmentTask.buildAttempt || 0}</strong></div>
+                    <div><span>任务编号</span><strong>{developmentTask.taskId}</strong></div>
+                    {developmentTask.commitSha && <div><span>提交</span><strong>{developmentTask.commitSha.slice(0, 12)}</strong></div>}
+                  </div>
+                  {(developmentTask.changedFiles?.length ?? 0) > 0 && (
+                    <div className="development-file-list">
+                      <div className="text-sm font-semibold">修改文件</div>
+                      {developmentTask.changedFiles.map((path) => <code key={path}>{path}</code>)}
+                    </div>
+                  )}
+                  {developmentTask.workflowUrl && (
+                    <a className="development-workflow-link" href={developmentTask.workflowUrl} target="_blank" rel="noreferrer">
+                      <LinkOutlined /> 查看 GitHub Actions
+                    </a>
+                  )}
+                  {developmentTask.failureMessage && (
+                    <div className="development-failure">{developmentTask.failureMessage}</div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex h-full min-h-[320px] flex-col items-center justify-center text-center">
+                  <CodeOutlined className="text-3xl text-[var(--text-muted)]" />
+                  <div className="mt-3 text-sm text-slate-500">描述业务目标，Agent 将修改代码并自动构建发布</div>
+                </div>
+              )
+            ) : historyLoading ? (
               <div className="flex h-full items-center justify-center"><Spin /></div>
             ) : messages.length === 0 ? (
               <div className="flex h-full min-h-[320px] flex-col items-center justify-center text-center">
@@ -419,17 +576,25 @@ const AgentConversation: React.FC = () => {
                 ref={inputRef}
                 value={question}
                 onChange={(event) => setQuestion(ownerId, event.target.value)}
-                placeholder="询问行情、收益、交易记录、模型预测或运行异常"
                 autoSize={{ minRows: 2, maxRows: 5 }}
                 onPressEnter={(event) => {
                   if (!event.shiftKey) {
                     event.preventDefault();
-                    void askAgent();
+                    void submit();
                   }
                 }}
+                placeholder={mode === 'development'
+                  ? '描述要实现或修复的业务目标、期望行为和验收结果'
+                  : '询问行情、收益、交易记录、模型预测或运行异常'}
               />
-              <Button type="primary" icon={<SendOutlined />} loading={loading} disabled={!question.trim()} onClick={() => void askAgent()}>
-                发送
+              <Button
+                type="primary"
+                icon={mode === 'development' ? <CodeOutlined /> : <SendOutlined />}
+                loading={mode === 'development' ? developmentSubmitting : loading}
+                disabled={!question.trim() || (mode === 'development' && Boolean(developmentTask && !DEVELOPMENT_TERMINAL_STATUSES.has(developmentTask.status)))}
+                onClick={() => void submit()}
+              >
+                {mode === 'development' ? '执行' : '发送'}
               </Button>
             </div>
           </footer>
@@ -513,4 +678,4 @@ const AgentConversation: React.FC = () => {
 };
 
 export default AgentConversation;
-// AI_GENERATE_END------------------
+// AI_GENERATE_END---------------------

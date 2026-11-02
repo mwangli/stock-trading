@@ -1,6 +1,7 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.console.web;
 
+import com.stock.console.agent.DevelopmentTaskConflictException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -8,6 +9,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    @ExceptionHandler(DevelopmentTaskConflictException.class)
+    public ResponseEntity<ApiResponse<Void>> conflict(DevelopmentTaskConflictException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(exception.getMessage()));
+    }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<Void>> badRequest(IllegalArgumentException exception) {
@@ -20,4 +26,4 @@ public class ApiExceptionHandler {
                 .body(ApiResponse.error(exception.getMessage()));
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

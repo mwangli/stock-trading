@@ -26,3 +26,13 @@ console:
     model: ${DEEPSEEK_MODEL:deepseek-chat}
     timeout-seconds: ${AGENT_TIMEOUT_SECONDS:90}
     max-tokens: ${AGENT_MAX_TOKENS:1800}
+  github-agent:
+    enabled: ${GITHUB_AGENT_ENABLED:false}
+    token: ${GITHUB_TOKEN:}
+    owner: ${GITHUB_OWNER:mwangli}
+    repository: ${GITHUB_REPOSITORY:stock-trading}
+    branch: ${GITHUB_BRANCH:stock-web}
+    workflow: ${GITHUB_WORKFLOW:ci-cd.yml}
+    max-repair-rounds: ${GITHUB_MAX_REPAIR_ROUNDS:2}
+    poll-interval-seconds: ${GITHUB_POLL_INTERVAL_SECONDS:10}
+    workflow-timeout-minutes: ${GITHUB_WORKFLOW_TIMEOUT_MINUTES:45}

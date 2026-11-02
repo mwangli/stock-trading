@@ -13,7 +13,8 @@ public record ConsoleProperties(
         Path taskLog,
         String documentRoots,
         Auth auth,
-        Agent agent) {
+        Agent agent,
+        GithubAgent githubAgent) {
 
     public Path tradingDb() {
         return dataDir.resolve("state/trading.db");
@@ -41,6 +42,18 @@ public record ConsoleProperties(
             String model,
             long timeoutSeconds,
             int maxTokens) {
+    }
+
+    public record GithubAgent(
+            boolean enabled,
+            String token,
+            String owner,
+            String repository,
+            String branch,
+            String workflow,
+            int maxRepairRounds,
+            long pollIntervalSeconds,
+            long workflowTimeoutMinutes) {
     }
 }
 // AI_GENERATE_END ----

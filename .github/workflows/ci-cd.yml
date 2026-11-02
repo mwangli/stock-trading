@@ -2,7 +2,18 @@ name: CI/CD
 
 on:
   workflow_dispatch:
+    inputs:
+      task_id:
+        description: Development Agent task ID
+        required: false
+        type: string
+      commit_sha:
+        description: Expected commit SHA
+        required: false
+        type: string
   push:
+    branches:
+      - stock-web
     tags:
       - 'v*.*.*'
 
@@ -20,16 +31,70 @@ env:
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - uses: actions/checkout@v7
-
       - name: Validate release tag
-        if: github.event_name == 'push'
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
           [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+      - name: Validate Agent commit
+        if: github.event_name == 'workflow_dispatch' && inputs.commit_sha != ''
+        shell: bash
+        env:
+          EXPECTED_COMMIT: ${{ inputs.commit_sha }}
+        run: test "$GITHUB_SHA" = "$EXPECTED_COMMIT"
 
+  backend-image:
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+      - name: Build and push backend image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: stock-server/Dockerfile
+          provenance: false
+          push: true
+          tags: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME, github.sha) }}
+
+  frontend-image:
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: stock-client/Dockerfile
+          provenance: false
+          push: true
+          tags: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.FRONTEND_IMAGE_NAME, github.sha) }}
+
+  deploy:
+    needs:
+      - backend-image
+      - frontend-image
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
       - name: Upload deployment configuration
         uses: appleboy/scp-action@v1.0.0
         with:
@@ -41,35 +106,11 @@ jobs:
           source: docker-compose.yml
           target: ~/stock-trading/web
           overwrite: true
-
-  backend:
-    needs: prepare
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: docker/setup-buildx-action@v4
-
-      - uses: docker/login-action@v4
-        with:
-          registry: ${{ env.ACR_REGISTRY }}
-          username: ${{ env.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
-
-      - name: Build and push backend image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: stock-server/Dockerfile
-          provenance: false
-          push: true
-          tags: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME, github.sha) }}
-
-      - name: Deploy backend
+      - name: Deploy and verify services
         uses: appleboy/ssh-action@v1.2.5
         env:
-          IMAGE: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME, github.sha) }}
+          BACKEND_IMAGE: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME, github.sha) }}
+          FRONTEND_IMAGE: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.FRONTEND_IMAGE_NAME, github.sha) }}
           ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
           ACR_USERNAME: ${{ vars.ACR_USERNAME }}
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
@@ -80,64 +121,51 @@ jobs:
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
           command_timeout: 30m
-          envs: IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
+          envs: BACKEND_IMAGE,FRONTEND_IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
           script: |
-            set -e
+            set -eu
             DEPLOY_DIR="$HOME/stock-trading/web"
             cd "$DEPLOY_DIR"
-            old_image="$(docker inspect --format '{{.Config.Image}}' stock-backend 2>/dev/null || true)"
+
+            old_backend="$(docker inspect --format '{{.Config.Image}}' stock-backend 2>/dev/null || true)"
+            old_frontend="$(docker inspect --format '{{.Config.Image}}' stock-frontend 2>/dev/null || true)"
+
+            rollback() {
+              echo "Deployment health check failed, restoring previous images" >&2
+              if [ -n "$old_backend" ] && [ -n "$old_frontend" ]; then
+                export STOCK_BACKEND_IMAGE="$old_backend"
+                export STOCK_FRONTEND_IMAGE="$old_frontend"
+                docker compose --env-file .env up -d --no-deps --no-build stock-backend stock-frontend || true
+              fi
+            }
+
+            wait_healthy() {
+              container="$1"
+              attempts=0
+              while [ "$attempts" -lt 30 ]; do
+                status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || true)"
+                [ "$status" = "healthy" ] && return 0
+                [ "$status" = "unhealthy" ] && return 1
+                attempts=$((attempts + 1))
+                sleep 5
+              done
+              return 1
+            }
+
             printf '%s' "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" --username "$ACR_USERNAME" --password-stdin
-            export STOCK_BACKEND_IMAGE="$IMAGE"
-            docker compose --env-file .env pull stock-backend
+            export STOCK_BACKEND_IMAGE="$BACKEND_IMAGE"
+            export STOCK_FRONTEND_IMAGE="$FRONTEND_IMAGE"
+            docker compose --env-file .env pull stock-backend stock-frontend
             docker compose --env-file .env up -d --no-deps --no-build stock-backend
-            [ -z "$old_image" ] || [ "$old_image" = "$IMAGE" ] || docker image rm "$old_image" || true
-
-  frontend:
-    needs: prepare
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: docker/setup-buildx-action@v4
-
-      - uses: docker/login-action@v4
-        with:
-          registry: ${{ env.ACR_REGISTRY }}
-          username: ${{ env.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
-
-      - name: Build and push frontend image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: stock-client/Dockerfile
-          provenance: false
-          push: true
-          tags: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.FRONTEND_IMAGE_NAME, github.sha) }}
-
-      - name: Deploy frontend
-        uses: appleboy/ssh-action@v1.2.5
-        env:
-          IMAGE: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.FRONTEND_IMAGE_NAME, github.sha) }}
-          ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
-          ACR_USERNAME: ${{ vars.ACR_USERNAME }}
-          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
-        with:
-          host: ${{ vars.SERVER_HOST }}
-          username: ${{ vars.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: ${{ vars.SERVER_PORT }}
-          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
-          command_timeout: 30m
-          envs: IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
-          script: |
-            set -e
-            DEPLOY_DIR="$HOME/stock-trading/web"
-            cd "$DEPLOY_DIR"
-            old_image="$(docker inspect --format '{{.Config.Image}}' stock-frontend 2>/dev/null || true)"
-            printf '%s' "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" --username "$ACR_USERNAME" --password-stdin
-            export STOCK_FRONTEND_IMAGE="$IMAGE"
-            docker compose --env-file .env pull stock-frontend
+            if ! wait_healthy stock-backend; then
+              rollback
+              exit 1
+            fi
             docker compose --env-file .env up -d --no-deps --no-build stock-frontend
-            [ -z "$old_image" ] || [ "$old_image" = "$IMAGE" ] || docker image rm "$old_image" || true
+            if ! wait_healthy stock-frontend; then
+              rollback
+              exit 1
+            fi
+
+            [ -z "$old_backend" ] || [ "$old_backend" = "$BACKEND_IMAGE" ] || docker image rm "$old_backend" || true
+            [ -z "$old_frontend" ] || [ "$old_frontend" = "$FRONTEND_IMAGE" ] || docker image rm "$old_frontend" || true
