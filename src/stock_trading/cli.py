@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START ----------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -74,7 +74,12 @@ def _execute(
     configure_logging()
     started_at = perf_counter()
     config: AppConfig | None = None
-    with log_context(task=command, progress="0/1", target=command):
+    with log_context(
+        task=command,
+        step="0/1",
+        progress="-/-",
+        target=command,
+    ):
         try:
             config = AppConfig.from_env()
             with replace_running_command(command, config.state_db_path):
@@ -100,7 +105,7 @@ def _execute(
                 perf_counter() - started_at,
             )
             raise SystemExit(130) from None
-        set_log_context(progress="1/1", target=command)
+        set_log_context(step="1/1", progress="-/-", target=command)
         if result_logger is not None:
             result_logger(result)
         LOGGER.info("业务命令完成：总耗时=%.2f 秒", perf_counter() - started_at)
@@ -729,4 +734,4 @@ def _format_amount(value: object) -> str:
 
 def _format_rate(value: object) -> str:
     return "-" if value is None else f"{float(value):.2%}"
-# AI_GENERATE_END ---------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END ----------------------------------------------------------------------------------------------------------------------

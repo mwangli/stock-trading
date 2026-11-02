@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------
+# AI_GENERATE_START -----------------------
 from __future__ import annotations
 
 import json
@@ -103,10 +103,10 @@ def train_alpha158_lightgbm(
     from qlib.data.dataset import DatasetH
     from qlib.data.dataset.handler import DataHandlerLP
 
-    set_log_context(progress="1/6", target="Qlib")
+    set_log_context(step="1/6", progress="-/-", target="Qlib")
     LOGGER.info("初始化 Qlib：目录=%s", qlib_dir)
     qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=2)
-    set_log_context(progress="2/6", target="Alpha158")
+    set_log_context(step="2/6", progress="-/-", target="Alpha158")
     LOGGER.info("构建特征处理器")
     handler = Alpha158(
         instruments="all",
@@ -124,7 +124,7 @@ def train_alpha158_lightgbm(
             "test": (segments.test_start, segments.test_end),
         },
     )
-    set_log_context(progress="3/6", target="训练数据")
+    set_log_context(step="3/6", progress="-/-", target="训练数据")
     LOGGER.info("准备训练、验证和测试数据")
     train = dataset.prepare(
         "train", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
@@ -156,7 +156,7 @@ def train_alpha158_lightgbm(
         random_state=20261030,
         verbosity=-1,
     )
-    set_log_context(progress="4/6", target="LightGBM")
+    set_log_context(step="4/6", progress="0/300", target="LightGBM")
     LOGGER.info("开始模型迭代：最大迭代=300；早停轮数=30")
     model.fit(
         train["feature"],
@@ -170,7 +170,7 @@ def train_alpha158_lightgbm(
         ],
     )
     LOGGER.info("LightGBM 训练完成：最佳迭代=%s", getattr(model, "best_iteration_", None))
-    set_log_context(progress="5/6", target="测试集评分")
+    set_log_context(step="5/6", progress="-/-", target="测试集评分")
     LOGGER.info("生成测试集评分和 Top %d", top_k)
     predictions = pd.Series(
         model.predict(test_features), index=test_features.index, name="score"
@@ -198,7 +198,7 @@ def train_alpha158_lightgbm(
         metrics["icMean"],
         metrics["rankIcMean"],
     )
-    set_log_context(progress="6/6", target=str(artifact_dir))
+    set_log_context(step="6/6", progress="-/-", target=str(artifact_dir))
     LOGGER.info("写入模型、预测和指标制品")
     artifact_dir.mkdir(parents=True, exist_ok=True)
     scored.reset_index().to_parquet(artifact_dir / "test_predictions.parquet", index=False)
@@ -296,7 +296,7 @@ def predict_alpha158_lightgbm(
     from qlib.data.dataset import DatasetH
     from qlib.data.dataset.handler import DataHandlerLP
 
-    set_log_context(progress="1/4", target="模型配置")
+    set_log_context(step="1/4", progress="-/-", target="模型配置")
     LOGGER.info("读取模型配置和交易日历")
     metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
     segments = metrics["segments"]
@@ -307,7 +307,7 @@ def predict_alpha158_lightgbm(
     if target not in calendar:
         raise ValueError(f"prediction date is absent from Qlib calendar: {prediction_date}")
 
-    set_log_context(progress="2/4", target="Alpha158")
+    set_log_context(step="2/4", progress="-/-", target="Alpha158")
     LOGGER.info("初始化 Qlib 并生成特征")
     from stock_trading.research.batched_model import (
         load_alpha158_features_for_date,
@@ -342,7 +342,7 @@ def predict_alpha158_lightgbm(
         len(features),
         features.shape[1],
     )
-    set_log_context(progress="3/4", target="横截面评分")
+    set_log_context(step="3/4", progress="-/-", target="横截面评分")
     LOGGER.info("加载模型并计算评分")
     with (model_dir / "model.pkl").open("rb") as stream:
         model = pickle.load(stream)
@@ -371,7 +371,7 @@ def predict_alpha158_lightgbm(
     )
     ranking["rank"] = range(1, len(ranking) + 1)
     ranking["label"] = float("nan")
-    set_log_context(progress="4/4", target=str(prediction_date))
+    set_log_context(step="4/4", progress="-/-", target=str(prediction_date))
     LOGGER.info("生成完整横截面排名并写入制品：股票数=%d", len(ranking))
     output_dir = model_dir / "predictions"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -511,4 +511,4 @@ def automatic_model_segments(
         test_end=calendar[-1],
     )
 
-# AI_GENERATE_END ----------------------
+# AI_GENERATE_END -----------------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START -------
 from __future__ import annotations
 
 import gc
@@ -76,7 +76,7 @@ def train_alpha158_lightgbm_batched(
     import qlib
     from qlib.constant import REG_CN
 
-    set_log_context(progress="1/5", target="Qlib")
+    set_log_context(step="1/5", progress="-/-", target="Qlib")
     LOGGER.info("初始化 Qlib：目录=%s", qlib_dir)
     qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=1)
     feature_names, shards = _build_feature_shards(
@@ -91,7 +91,11 @@ def train_alpha158_lightgbm_batched(
     if not train_shards or not valid_shards or not test_shards:
         raise ValueError("batched Alpha158 data is incomplete")
 
-    set_log_context(progress="3/5", target="LightGBM \u6570\u636e\u96c6")
+    set_log_context(
+        step="3/5",
+        progress="-/-",
+        target="LightGBM \u6570\u636e\u96c6",
+    )
     LOGGER.info(
         "构建 LightGBM 数据集：训练=%d；验证=%d；特征=%d",
         sum(value.rows for value in train_shards),
@@ -138,7 +142,7 @@ def train_alpha158_lightgbm_batched(
         "verbosity": -1,
         **dataset_params,
     }
-    set_log_context(progress="4/5", target="LightGBM")
+    set_log_context(step="4/5", progress="0/300", target="LightGBM")
     LOGGER.info("开始模型迭代：最大迭代=300；早停轮数=30")
     model = lgb.train(
         params,
@@ -152,7 +156,7 @@ def train_alpha158_lightgbm_batched(
         ],
     )
     LOGGER.info("LightGBM 训练完成：最佳迭代=%s", model.best_iteration)
-    set_log_context(progress="5/5", target="测试集评分")
+    set_log_context(step="5/5", progress="-/-", target="测试集评分")
     LOGGER.info("分批生成测试集评分")
     scored = _predict_test_shards(model, test_shards)
     return BatchedTrainingResult(
@@ -243,7 +247,11 @@ def _build_feature_shards(
             "全部完成" if next_batch is None else next_batch,
         )
     universe = D.instruments("all")
-    set_log_context(progress="2/5", target="Alpha158 特征")
+    set_log_context(
+        step="2/5",
+        progress=f"{len(completed)}/{len(batches)}",
+        target="Alpha158 特征",
+    )
     LOGGER.info(
         "生成 Alpha158 特征：批次=%d；每批交易日=%d",
         len(batches),
@@ -572,4 +580,4 @@ class _NpyFeatureSequence(lgb.Sequence):
     def __getitem__(self, index):
         return np.asarray(self._values[index], dtype=np.float64)
 
-# AI_GENERATE_END ------
+# AI_GENERATE_END -------

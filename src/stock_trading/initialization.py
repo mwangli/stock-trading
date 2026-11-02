@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------
+# AI_GENERATE_START -----------------------------------------
 from __future__ import annotations
 
 import logging
@@ -51,7 +51,7 @@ class InitializationService:
 
     def run(self) -> dict[str, object]:
         """执行可恢复初始化。"""
-        set_log_context(progress="0/5", target="状态库")
+        set_log_context(step="0/5", progress="-/-", target="状态库")
         self._state.initialize()
         LOGGER.info("状态库就绪，将按实际数据检查各初始化步骤")
 
@@ -145,7 +145,7 @@ class InitializationService:
             "modelReady": _model_valid(model_root_dir),
             "predictionReady": self._prediction_valid(model_dir, end_date),
         }
-        set_log_context(progress="5/5", target="初始化")
+        set_log_context(step="5/5", progress="-/-", target="初始化")
         LOGGER.info(
             "初始化完成：模型=%s；预测=%s",
             readiness["modelReady"],
@@ -170,7 +170,7 @@ class InitializationService:
         action: Callable[[], T],
         post_validator: Callable[[], bool] | None = None,
     ) -> T | None:
-        set_log_context(progress=f"{index}/5", target=title)
+        set_log_context(step=f"{index}/5", progress="-/-", target=title)
         LOGGER.info("初始化步骤开始")
         if validator():
             LOGGER.info("实际数据检查通过，初始化步骤跳过")
@@ -178,7 +178,7 @@ class InitializationService:
         result = action()
         if not (post_validator or validator)():
             raise ValueError(f"初始化阶段完成后检查失败: {title}")
-        set_log_context(progress=f"{index}/5", target=title)
+        set_log_context(step=f"{index}/5", progress="-/-", target=title)
         LOGGER.info("初始化步骤完成")
         return result
 
@@ -227,4 +227,4 @@ def _model_valid(model_root_dir: Path) -> bool:
         return model_artifacts_valid(resolve_current_model_dir(model_root_dir))
     except (OSError, ValueError):
         return False
-# AI_GENERATE_END ----------------------------------------
+# AI_GENERATE_END -----------------------------------------

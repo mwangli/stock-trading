@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------
+# AI_GENERATE_START -----------------------------
 from __future__ import annotations
 
 import logging
@@ -9,6 +9,7 @@ from contextvars import ContextVar
 from typing import Iterator
 
 _TASK = ContextVar("log_task", default="-")
+_STEP = ContextVar("log_step", default="-/-")
 _PROGRESS = ContextVar("log_progress", default="-/-")
 _TARGET = ContextVar("log_target", default="-")
 _LEVEL_COLORS = {
@@ -31,6 +32,7 @@ _ANSI_RESET = "\033[0m"
 class _ContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.task = _TASK.get()
+        record.step = _STEP.get()
         record.progress = _PROGRESS.get()
         target = _TARGET.get()
         record.target = (
@@ -46,7 +48,8 @@ class _ColorFormatter(logging.Formatter):
         super().__init__(
             fmt=(
                 "%(asctime)s | %(level_label)s | task=%(task)s | "
-                "progress=%(progress)s | target=%(target)s | %(message)s"
+                "step=%(step)s | progress=%(progress)s | "
+                "target=%(target)s | %(message)s"
             ),
             datefmt="%Y-%m-%d %H:%M:%S",
         )
@@ -68,12 +71,15 @@ class _ColorFormatter(logging.Formatter):
 def log_context(
     *,
     task: str | None = None,
+    step: str | None = None,
     progress: str | None = None,
     target: str | None = None,
 ) -> Iterator[None]:
     tokens = []
     if task is not None:
         tokens.append((_TASK, _TASK.set(task)))
+    if step is not None:
+        tokens.append((_STEP, _STEP.set(step)))
     if progress is not None:
         tokens.append((_PROGRESS, _PROGRESS.set(progress)))
     if target is not None:
@@ -86,8 +92,13 @@ def log_context(
 
 
 def set_log_context(
-    *, progress: str | None = None, target: str | None = None
+    *,
+    step: str | None = None,
+    progress: str | None = None,
+    target: str | None = None,
 ) -> None:
+    if step is not None:
+        _STEP.set(step)
     if progress is not None:
         _PROGRESS.set(progress)
     if target is not None:
@@ -117,4 +128,4 @@ def configure_logging() -> None:
     logger.addHandler(handler)
     logger.setLevel(level)
     logger.propagate = False
-# AI_GENERATE_END ----------------------------
+# AI_GENERATE_END -----------------------------
