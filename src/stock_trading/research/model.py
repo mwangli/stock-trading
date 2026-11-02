@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------
+# AI_GENERATE_START ----------------------
 from __future__ import annotations
 
 import json
@@ -40,7 +40,7 @@ def train_alpha158_lightgbm_adaptive(
     artifact_dir: Path,
     segments: ModelSegments,
     top_k: int = 5,
-    feature_batch_days: int = 30,
+    feature_batch_days: int = 60,
     checkpoint_dir: Path | None = None,
 ) -> dict[str, object]:
     """Select the existing single-pass path or the low-memory batched path."""
@@ -511,4 +511,4 @@ def automatic_model_segments(
         test_end=calendar[-1],
     )
 
-# AI_GENERATE_END ---------------------
+# AI_GENERATE_END ----------------------

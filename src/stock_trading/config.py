@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------------
+# AI_GENERATE_START ------------------------------------
 from __future__ import annotations
 
 import os
@@ -69,7 +69,7 @@ class AppConfig:
     model_evaluation_observations: int
     model_max_drawdown: float
     model_min_total_gross_return: float
-    model_feature_batch_days: int = 30
+    model_feature_batch_days: int = 60
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -100,7 +100,7 @@ class AppConfig:
             bark_device_key=os.getenv("DEVICE_KEY", "").strip(),
             broker_enabled=True,
             model_feature_batch_days=max(
-                1, int(os.getenv("MODEL_FEATURE_BATCH_DAYS", "30"))
+                1, int(os.getenv("MODEL_FEATURE_BATCH_DAYS", "60"))
             ),
             broker_mobile_code=os.getenv("ZXBROKER_MOBILE_CODE", ""),
             broker_account=os.getenv("ZXBROKER_ACCOUNT", ""),
@@ -168,4 +168,4 @@ class AppConfig:
                 os.getenv("MODEL_MIN_TOTAL_GROSS_RETURN", "0")
             ),
         )
-# AI_GENERATE_END -----------------------------------
+# AI_GENERATE_END ------------------------------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----
+# AI_GENERATE_START ------
 from __future__ import annotations
 
 import gc
@@ -570,6 +570,6 @@ class _NpyFeatureSequence(lgb.Sequence):
         return len(self._values)
 
     def __getitem__(self, index):
-        return np.asarray(self._values[index])
+        return np.asarray(self._values[index], dtype=np.float64)
 
-# AI_GENERATE_END -----
+# AI_GENERATE_END ------
