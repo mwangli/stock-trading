@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------
+# AI_GENERATE_START -----------------------
 from __future__ import annotations
 
 import base64
@@ -24,8 +24,6 @@ from stock_trading.broker.parser import (
 )
 from stock_trading.config import AppConfig
 from stock_trading.logging_utils import set_log_context
-
-REQUEST_URL = "https://weixin.citicsinfo.com/reqxml"
 
 ACTION_GET_PRICE = 33
 ACTION_LOGIN = 100
@@ -477,7 +475,11 @@ class ZXBrokerClient:
         action = params.get("action")
         started_at = time.monotonic()
         LOGGER.info("正在调用券商接口：action=%s", action)
-        response = self._transport(REQUEST_URL, params, self._config.broker_timeout_seconds)
+        response = self._transport(
+            self._config.broker_base_url,
+            params,
+            self._config.broker_timeout_seconds,
+        )
         token = response.get("TOKEN")
         if token:
             self._token = str(token)
@@ -517,4 +519,4 @@ def _required_price(response: dict[str, Any], primary: str, alternate: str) -> D
     if value is None or value <= 0:
         raise BrokerProtocolError("券商未返回完整五档行情")
     return value
-# AI_GENERATE_END ----------------------
+# AI_GENERATE_END -----------------------

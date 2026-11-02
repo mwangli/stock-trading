@@ -108,6 +108,7 @@ jobs:
             command -v crontab >/dev/null
             command -v flock >/dev/null
             command -v logrotate >/dev/null
+            command -v setsid >/dev/null
             uv python install 3.12
             uv venv --clear --managed-python --python 3.12 "$venv_dir"
             uv pip install --python "$venv_dir/bin/python" --upgrade "$wheel"
@@ -147,3 +148,21 @@ jobs:
               $0 == "# STOCK_TRADING_CRON_END" { exit }
             ' > "$installed_cron"
             cmp "$cron_file" "$installed_cron"
+
+            log_file="$logs_dir/stock-trading.log"
+            runtime_path="$venv_dir/bin:$PATH"
+            printf '[%s] release stock-init triggered\n' \
+              "$(date '+%Y-%m-%d %H:%M:%S%z')" >> "$log_file"
+            nohup setsid env -i \
+              HOME="$HOME" \
+              PATH="$runtime_path" \
+              LANG="${LANG:-C.UTF-8}" \
+              TZ="Asia/Shanghai" \
+              flock "$data_dir/state/scheduler.lock" \
+              bash -c 'set -e; cd "$1"; exec "$2"' \
+              _ "$project_dir" "$venv_dir/bin/stock-init" \
+              >> "$log_file" 2>&1 < /dev/null &
+            init_pid=$!
+            kill -0 "$init_pid"
+            printf '[%s] release stock-init launched pid=%s\n' \
+              "$(date '+%Y-%m-%d %H:%M:%S%z')" "$init_pid" >> "$log_file"

@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------------
+# AI_GENERATE_START ---------------------------------------
 from __future__ import annotations
 
 import os
@@ -34,6 +34,7 @@ class AppConfig:
     market_history_days: int
     bark_device_key: str
     broker_enabled: bool
+    broker_base_url: str
     broker_mobile_code: str
     broker_account: str
     broker_encoded_password: str
@@ -101,6 +102,7 @@ class AppConfig:
             ),
             bark_device_key=os.getenv("DEVICE_KEY", "").strip(),
             broker_enabled=True,
+            broker_base_url=_require_env("ZXBROKER_BASE_URL"),
             model_feature_batch_days=max(
                 1, int(os.getenv("MODEL_FEATURE_BATCH_DAYS", "60"))
             ),
@@ -189,4 +191,11 @@ def _load_env_file(path: Path) -> None:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         os.environ.setdefault(key, value)
-# AI_GENERATE_END --------------------------------------
+
+
+def _require_env(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise ValueError(f"缺少必填配置 {name}，请在项目 .env 中配置")
+    return value
+# AI_GENERATE_END ---------------------------------------
