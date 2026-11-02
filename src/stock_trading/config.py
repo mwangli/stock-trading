@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------------------
+# AI_GENERATE_START ----------------------------------------
 from __future__ import annotations
 
 import os
@@ -18,6 +18,7 @@ CANCEL_CONFIRM_SECONDS = 30
 MAX_ATTEMPTS = 12
 PASSIVE_FRACTION = 0.50
 NORMAL_FRACTION = 0.85
+DEFAULT_BROKER_BASE_URL = "https://weixin.citicsinfo.com/reqxml"
 BACKTEST_CAPITAL_SCENARIOS = (1_000, 2_000, 3_000, 5_000, 10_000)
 
 
@@ -102,7 +103,10 @@ class AppConfig:
             ),
             bark_device_key=os.getenv("DEVICE_KEY", "").strip(),
             broker_enabled=True,
-            broker_base_url=_require_env("ZXBROKER_BASE_URL"),
+            broker_base_url=(
+                os.getenv("ZXBROKER_BASE_URL", DEFAULT_BROKER_BASE_URL).strip()
+                or DEFAULT_BROKER_BASE_URL
+            ),
             model_feature_batch_days=max(
                 1, int(os.getenv("MODEL_FEATURE_BATCH_DAYS", "60"))
             ),
@@ -191,11 +195,4 @@ def _load_env_file(path: Path) -> None:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         os.environ.setdefault(key, value)
-
-
-def _require_env(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        raise ValueError(f"缺少必填配置 {name}，请在项目 .env 中配置")
-    return value
-# AI_GENERATE_END ---------------------------------------
+# AI_GENERATE_END ----------------------------------------
