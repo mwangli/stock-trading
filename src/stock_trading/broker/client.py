@@ -1,10 +1,12 @@
-# AI_GENERATE_START -----------------------
+# AI_GENERATE_START ---------------------------
 from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import logging
+import os
 import threading
 import time
 from collections.abc import Callable
@@ -70,6 +72,13 @@ class ZXBrokerClient:
             if config.broker_token
             else 0.0
         )
+        self._token_updated_at = time.time() if config.broker_token else 0.0
+        self._token_cache_path = config.state_db_path.parent / "broker-token.json"
+        self._token_cache_scope = hashlib.sha256(
+            f"{config.broker_base_url}\0{config.broker_account}".encode("utf-8")
+        ).hexdigest()
+        if not self._token:
+            self._load_cached_token()
         self._login_lock = threading.Lock()
         self._login_blocked_until = 0.0
         self._shareholder_accounts: dict[str, str] | None = None
@@ -90,6 +99,7 @@ class ZXBrokerClient:
 
     def login(self) -> str:
         self._require_enabled()
+        self._load_cached_token()
         if self._valid_token():
             LOGGER.info("券商登录跳过：正在复用有效 Token")
             return self._token
@@ -465,6 +475,7 @@ class ZXBrokerClient:
 
     def _require_token(self) -> str:
         self._require_enabled()
+        self._load_cached_token()
         return self._token if self._valid_token() else self.login()
 
     def _require_enabled(self) -> None:
@@ -482,10 +493,11 @@ class ZXBrokerClient:
         )
         token = response.get("TOKEN")
         if token:
-            self._token = str(token)
-            self._token_expire_at = (
-                time.monotonic() + self._config.broker_token_expire_minutes * 60
-            )
+            refreshed_token = str(token)
+            token_changed = refreshed_token != self._token
+            self._cache_token(refreshed_token)
+            if token_changed:
+                LOGGER.info("券商响应 Token 已同步：action=%s", action)
         LOGGER.info(
             "券商接口调用完成：action=%s；错误码=%s；耗时=%.2f秒",
             action,
@@ -500,6 +512,78 @@ class ZXBrokerClient:
         self._token = None
         self._token_expire_at = 0.0
         return False
+
+    def _load_cached_token(self) -> None:
+        if not self._token_cache_path.exists():
+            return
+        try:
+            cached = json.loads(self._token_cache_path.read_text(encoding="utf-8"))
+            token = cached["token"]
+            expires_at = float(cached["expiresAt"])
+            scope = str(cached["scope"])
+            updated_at = float(
+                cached.get(
+                    "updatedAt",
+                    expires_at - self._config.broker_token_expire_minutes * 60,
+                )
+            )
+        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+            LOGGER.warning("券商 Token 本地缓存无效，已清理")
+            self._remove_cached_token()
+            return
+        remaining = expires_at - time.time()
+        if scope != self._token_cache_scope:
+            return
+        if not isinstance(token, str) or not token or remaining <= 0:
+            LOGGER.info("券商 Token 本地缓存已过期，已清理")
+            self._remove_cached_token()
+            return
+        if self._token and updated_at <= self._token_updated_at:
+            return
+        token_changed = token != self._token
+        self._token = token
+        self._token_expire_at = time.monotonic() + remaining
+        self._token_updated_at = updated_at
+        if token_changed:
+            LOGGER.info(
+                "券商 Token 本地缓存已同步：剩余有效期约%d分钟",
+                max(1, int(remaining / 60)),
+            )
+
+    def _cache_token(self, token: str) -> None:
+        updated_at = time.time()
+        expires_at = updated_at + self._config.broker_token_expire_minutes * 60
+        self._token = token
+        self._token_expire_at = (
+            time.monotonic() + self._config.broker_token_expire_minutes * 60
+        )
+        self._token_updated_at = updated_at
+        self._token_cache_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = self._token_cache_path.with_name(
+            f".{self._token_cache_path.name}.{os.getpid()}.tmp"
+        )
+        temporary_path.write_text(
+            json.dumps(
+                {
+                    "scope": self._token_cache_scope,
+                    "token": token,
+                    "expiresAt": expires_at,
+                    "updatedAt": updated_at,
+                },
+                ensure_ascii=True,
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
+        )
+        if os.name != "nt":
+            temporary_path.chmod(0o600)
+        temporary_path.replace(self._token_cache_path)
+
+    def _remove_cached_token(self) -> None:
+        try:
+            self._token_cache_path.unlink(missing_ok=True)
+        except OSError as error:
+            LOGGER.warning("券商 Token 本地缓存清理失败：%s", error)
 
 
 def _post_form(url: str, params: dict[str, object], timeout: float) -> dict[str, Any]:
@@ -519,4 +603,4 @@ def _required_price(response: dict[str, Any], primary: str, alternate: str) -> D
     if value is None or value <= 0:
         raise BrokerProtocolError("券商未返回完整五档行情")
     return value
-# AI_GENERATE_END -----------------------
+# AI_GENERATE_END ---------------------------
