@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------------------------
+# AI_GENERATE_START ---------------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -270,7 +270,7 @@ class InitializationService:
         except (OSError, ValueError):
             return False
         return training_artifacts_valid(
-            self._config, model_dir
+            model_dir
         ) and self._state.model_artifacts_registered(model_dir)
 
     def _prediction_valid(self, model_dir: Path, prediction_date: date) -> bool:
@@ -306,4 +306,4 @@ def _model_valid(model_root_dir: Path) -> bool:
         return model_artifacts_valid(resolve_current_model_dir(model_root_dir))
     except (OSError, ValueError):
         return False
-# AI_GENERATE_END --------------------------------------------------
+# AI_GENERATE_END ---------------------------------------------------

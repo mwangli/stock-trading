@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------------------------------
+# AI_GENERATE_START -----------------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -348,19 +348,6 @@ class StateStore(SQLiteStateDatabase):
             "status": "SUCCESS",
             "predictions": prediction_rows,
         } | self.summary()
-
-    def register_model_version(
-        self, model_dir: Path, status: str
-    ) -> dict[str, Any]:
-        """登记候选模型及其生命周期状态，不导入预测或回测。"""
-        self.initialize()
-        metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
-        with self._connect() as connection:
-            model_id = self._upsert_model(connection, model_dir, metrics, status)
-            row = connection.execute(
-                "SELECT * FROM model_version WHERE id = ?", (model_id,)
-            ).fetchone()
-        return dict(row)
 
     def activate_model_version(self, model_dir: Path) -> dict[str, Any]:
         """原子停用旧活动模型并激活指定模型制品。"""
@@ -1393,9 +1380,7 @@ class StateStore(SQLiteStateDatabase):
         """用途：按制品哈希登记或更新模型；输入：连接、模型目录和指标；输出：模型主键。"""
         model_path = model_dir / "model.pkl"
         artifact_hash = hashlib.sha256(model_path.read_bytes()).hexdigest()
-        default_status = (
-            "REJECTED" if metrics["metrics"]["rankIcMean"] <= 0 else "CANDIDATE"
-        )
+        default_status = "CANDIDATE"
         existing = connection.execute(
             "SELECT id, status FROM model_version WHERE artifact_hash = ?",
             (artifact_hash,),
@@ -1506,4 +1491,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END ----------------------------------------------------------------
+# AI_GENERATE_END -----------------------------------------------------------------

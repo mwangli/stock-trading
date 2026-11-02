@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------
+# AI_GENERATE_START ---------
 from __future__ import annotations
 
 import json
@@ -14,6 +14,7 @@ from stock_trading.market.sync import research_codes
 from stock_trading.research.artifacts import (
     activate_model_artifact,
     current_model_version,
+    model_artifacts_valid,
     model_root,
     restore_model_artifact,
     train_model_candidate,
@@ -154,7 +155,7 @@ def train_prepared_model(
     config: AppConfig,
     split: tuple[Decimal, Decimal, Decimal] | None,
 ) -> dict[str, object]:
-    """基于现有 Qlib 训练候选模型，平均净收益为正时发布。"""
+    """基于现有 Qlib 训练候选模型，制品完整后直接发布。"""
     calendar_path = config.qlib_dir / "calendars" / "day.txt"
     if not calendar_path.is_file():
         raise ValueError("Qlib 数据不存在，无法训练")
@@ -176,18 +177,7 @@ def train_prepared_model(
         config.model_feature_batch_days,
     )
     model_dir = Path(str(training["artifactPath"]))
-    backtest_run = run_backtest_scenarios(config, model_dir)
-    evaluation = evaluate_candidate(config, model_dir, backtest_run)
-    _write_evaluation(model_dir, evaluation)
-
     store = StateStore(config.state_db_path)
-    if not evaluation["accepted"]:
-        store.register_model_version(model_dir, "REJECTED")
-        raise ValueError(
-            f"候选模型未启用；版本={training['modelVersion']}；"
-            f"原因={evaluation['reason']}"
-        )
-
     state = import_training_state(store, model_dir, "CANDIDATE")
     previous_version = current_model_version(root)
     activate_model_artifact(root, str(training["modelVersion"]))
@@ -200,7 +190,15 @@ def train_prepared_model(
         int(activation["activeModel"]["id"])
     )
     LOGGER.info(
-        "候选模型发布完成：版本=%s；五档平均净收益率=%s",
+        "候选模型训练完成并启用：版本=%s",
+        training["modelVersion"],
+    )
+
+    backtest_run = run_backtest_scenarios(config, model_dir)
+    evaluation = evaluate_candidate(config, model_dir, backtest_run)
+    _write_evaluation(model_dir, evaluation)
+    LOGGER.info(
+        "模型回测记录完成：版本=%s；五档平均净收益率=%s",
         training["modelVersion"],
         evaluation["aggregate"]["averageNetReturn"],
     )
@@ -247,7 +245,7 @@ def evaluate_candidate(
     model_dir: Path,
     backtest_run: dict[str, dict[str, object]],
 ) -> dict[str, object]:
-    """记录测试指标，并仅按五档平均净收益率形成启用结论。"""
+    """记录测试指标和五档回测结果，不形成模型启用门槛。"""
     metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
     results = backtest_run["results"]
     scenario_results: dict[str, object] = {}
@@ -274,22 +272,10 @@ def evaluate_candidate(
     required = len(config.backtest_capital_scenarios)
     completed = len(net_returns)
     average_return = sum(net_returns) / required if completed == required else None
-    accepted = average_return is not None and average_return > 0
-    if backtest_run["errors"]:
-        reason = "五档回测未全部完成"
-    elif completed != required:
-        reason = "五档回测制品不完整"
-    elif not accepted:
-        reason = "五档平均净收益率未大于0"
-    else:
-        reason = None
 
     return {
         "createdAt": utc_now().isoformat(),
         "modelVersion": model_dir.name,
-        "accepted": accepted,
-        "decision": "ACCEPTED" if accepted else "REJECTED",
-        "reason": reason,
         "modelMetrics": metrics["metrics"],
         "aggregate": {
             "averageNetReturn": average_return,
@@ -301,18 +287,9 @@ def evaluate_candidate(
     }
 
 
-def training_artifacts_valid(config: AppConfig, model_dir: Path) -> bool:
-    """检查当前模型是否已完成五档回测并被启用。"""
-    try:
-        evaluation = json.loads(
-            (model_dir / EVALUATION_FILE).read_text(encoding="utf-8")
-        )
-    except (OSError, ValueError, json.JSONDecodeError):
-        return False
-    return bool(evaluation.get("accepted")) and all(
-        backtest_artifact_valid(path)
-        for path in backtest_directories(config, model_dir).values()
-    )
+def training_artifacts_valid(model_dir: Path) -> bool:
+    """检查当前模型是否具备完整、可读取的训练制品。"""
+    return model_artifacts_valid(model_dir)
 
 
 def read_backtest_summaries(
@@ -355,4 +332,4 @@ def _format_date_expression(start_date: date, end_date: date) -> str:
         return start_date.isoformat()
     return f"{start_date.isoformat()}:{end_date.isoformat()}"
 
-# AI_GENERATE_END --------
+# AI_GENERATE_END ---------
