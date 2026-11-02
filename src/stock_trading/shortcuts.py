@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -16,21 +16,48 @@ from stock_trading.cli import (
     trading_command,
     train_command,
 )
+from stock_trading.help_renderer import build_epilog, show_command_groups
 
 
 HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
-COMMAND_SUMMARIES = (
-    ("stock-help", "列出全部命令及其用途。"),
-    ("stock-init", "初始化行情、Qlib、模型、回测和最新排名。"),
-    ("stock-train", "训练、评估并回测模型。"),
-    ("stock-collect", "采集行情并刷新 Qlib。"),
-    ("stock-rank", "生成完整横截面排名。"),
-    ("stock-sell", "执行上午实时卖出。"),
-    ("stock-buy", "执行下午实时买入。"),
-    ("stock-broker", "同步券商事实并结算交易闭环。"),
-    ("stock-perform", "生成已实现绩效。"),
-    ("stock-evaluate", "评估模型并生成重训请求。"),
-    ("stock-clean", "清理过期数据和业务状态。"),
+COMMAND_GROUPS = (
+    (
+        "数据准备",
+        (
+            ("stock-init", "初始化行情、Qlib、模型、回测和最新排名。"),
+            ("stock-collect", "采集日线、复权因子和 5 分钟行情，并刷新 Qlib。"),
+        ),
+    ),
+    (
+        "模型研究",
+        (
+            ("stock-train", "使用现有 Qlib 数据训练、评估并回测模型。"),
+            ("stock-rank", "生成指定交易日的完整横截面排名。"),
+        ),
+    ),
+    (
+        "交易执行",
+        (
+            ("stock-sell", "上午按实时可卖持仓和五档行情执行卖出。"),
+            ("stock-buy", "下午按当日排名、实时资金和五档行情执行买入。"),
+        ),
+    ),
+    (
+        "结算与评估",
+        (
+            ("stock-broker", "同步券商事实并增量结算交易闭环。"),
+            ("stock-perform", "根据完整买卖闭环生成已实现绩效。"),
+            ("stock-evaluate", "根据已实现绩效评估模型并生成重训请求。"),
+        ),
+    ),
+    (
+        "维护",
+        (("stock-clean", "清理过期数据、历史事实和业务状态。"),),
+    ),
+    (
+        "帮助",
+        (("stock-help", "列出全部公开命令及其用途。"),),
+    ),
 )
 
 
@@ -38,7 +65,9 @@ def _run(
     program: str,
     command: Callable[..., None],
     description: str,
+    business: tuple[str, ...],
     examples: tuple[str, ...],
+    boundaries: tuple[str, ...],
 ) -> None:
     command_app = typer.Typer(
         add_completion=False,
@@ -47,18 +76,14 @@ def _run(
     )
     command_app.command(
         help=description,
-        epilog="[bold]示例[/bold]\n" + "\n".join(examples),
+        epilog=build_epilog(business, examples, boundaries),
         context_settings=HELP_CONTEXT,
     )(command)
     command_app(prog_name=program)
 
 
 def _show_commands() -> None:
-    typer.echo("可用命令：")
-    width = max(len(command) for command, _ in COMMAND_SUMMARIES)
-    for command, summary in COMMAND_SUMMARIES:
-        typer.echo(f"  {command.ljust(width)}  {summary}")
-    typer.echo("\n查看具体用法：stock-broker -h")
+    show_command_groups(COMMAND_GROUPS)
 
 
 def show_help() -> None:
@@ -66,7 +91,9 @@ def show_help() -> None:
         "stock-help",
         _show_commands,
         "列出项目提供的全部独立命令及其用途。",
+        ("按数据准备、模型研究、交易执行、结算评估和维护阶段分组。",),
         ("stock-help", "stock-broker -h"),
+        ("只输出帮助信息，不执行任何业务操作。",),
     )
 
 
@@ -75,7 +102,15 @@ def init() -> None:
         "stock-init",
         init_command,
         "初始化行情、Qlib、模型、回测和最新排名。",
+        (
+            "依次处理股票基础信息、行情数据、Qlib、模型训练与回测、最近交易日预测。",
+            "已存在的行情阶段按实际文件完整性判断是否跳过。",
+        ),
         ("stock-init",),
+        (
+            "不自动同步券商历史；需要时执行 stock-broker。",
+            "不执行周期性清理；清理由 stock-clean 负责。",
+        ),
     )
 
 
@@ -84,7 +119,15 @@ def train() -> None:
         "stock-train",
         train_command,
         "使用现有 Qlib 数据训练、评估并回测模型。",
+        (
+            "训练、验证和测试数据按交易日顺序确定性切分。",
+            "模型、指标和预测制品全部完成后才替换当前模型指针。",
+        ),
         ("stock-train", "stock-train --split 6:3:1"),
+        (
+            "默认训练、验证和测试比例为 70:15:15。",
+            "训练失败或中断不会覆盖当前可用模型。",
+        ),
     )
 
 
@@ -94,8 +137,17 @@ def collect() -> None:
         collect_command,
         "采集日线、复权因子和 5 分钟行情，并刷新 Qlib。",
         (
+            "省略股票代码时使用已有基础信息确定默认研究股票池。",
+            "指定日期的数据会重新采集并合并到对应股票的 Parquet 文件。",
+        ),
+        (
             "stock-collect",
             "stock-collect --codes sh.600000,sz.000001 --date 2026-11-02",
+            "stock-collect --codes sh.600000 --date 2026-10-01:2026-11-02",
+        ),
+        (
+            "基础信息不存在时直接报错，不会自动执行 stock-init。",
+            "单类数据失败不阻止同一股票的其他类别继续处理。",
         ),
     )
 
@@ -104,8 +156,16 @@ def rank() -> None:
     _run(
         "stock-rank",
         rank_command,
-        "等待行情采集完成后生成完整横截面排名。",
+        "生成指定交易日的完整横截面排名。",
+        (
+            "等待同一业务日的 stock-collect 成功后执行。",
+            "完整排名供交易阶段结合资金、权限和实时价格继续筛选。",
+        ),
         ("stock-rank", "stock-rank --date 2026-11-02"),
+        (
+            "只生成排名，不提交交易委托。",
+            "需要已有可用模型和对应日期的 Qlib 数据。",
+        ),
     )
 
 
@@ -117,8 +177,16 @@ def sell() -> None:
     _run(
         "stock-sell",
         _sell_command,
-        "在上海交易日上午窗口，按实时可卖持仓和五档行情执行卖出。",
+        "在上午窗口按实时可卖持仓和五档行情执行卖出。",
+        (
+            "每次尝试前重新读取券商实时持仓和报价。",
+            "部分成交时先确认撤单终态，再按最新事实处理剩余数量。",
+        ),
         ("stock-sell",),
+        (
+            "不接受日期参数，只处理上海时区当天交易。",
+            "委托是否合法以及最终状态以券商事实为准。",
+        ),
     )
 
 
@@ -130,8 +198,16 @@ def buy() -> None:
     _run(
         "stock-buy",
         _buy_command,
-        "在上海交易日下午窗口，按当日排名、实时资金和五档行情执行买入。",
+        "在下午窗口按当日排名、实时资金和五档行情执行买入。",
+        (
+            "从 Top 5 依次检查允许前缀、已确认权限和实时价格范围。",
+            "固定首个通过候选，并按实时可用资金计算整手数量。",
+        ),
         ("stock-buy",),
+        (
+            "不接受日期参数，只处理上海时区当天交易。",
+            "不读取其他持仓作为过滤条件；最终合法性由券商判断。",
+        ),
     )
 
 
@@ -139,11 +215,19 @@ def broker() -> None:
     _run(
         "stock-broker",
         broker_command,
-        "同步券商委托和成交事实，并增量结算交易闭环。",
+        "同步券商事实，并增量结算完整买卖交易闭环。",
+        (
+            "同步委托、成交、持仓等事实，可处理当天、单日或日期范围。",
+            "根据成交数量、成本和费用匹配已经完成的买卖闭环。",
+        ),
         (
             "stock-broker",
             "stock-broker --date 2026-11-02",
             "stock-broker --date 2026-10-01:2026-11-02",
+        ),
+        (
+            "只同步和结算事实，不主动提交新的买卖委托。",
+            "未卖出的买入继续保留为待闭环交易。",
         ),
     )
 
@@ -152,8 +236,16 @@ def perform() -> None:
     _run(
         "stock-perform",
         performance_command,
-        "根据券商成交事实生成指定交易日的已实现绩效。",
+        "根据完整买卖闭环生成指定交易日的已实现绩效。",
+        (
+            "只计算已匹配数量对应的买入成本、卖出收入和费用税费。",
+            "账户权益、浮动盈亏及入金出金不属于策略收益。",
+        ),
         ("stock-perform", "stock-perform --date 2026-11-02"),
+        (
+            "应在同一业务日 stock-broker 成功后执行。",
+            "部分卖出只确认已经闭环数量的收益。",
+        ),
     )
 
 
@@ -161,8 +253,16 @@ def evaluate() -> None:
     _run(
         "stock-evaluate",
         evaluate_command,
-        "根据已实现绩效评估当前模型并生成重训请求。",
+        "根据已实现绩效评估模型并生成重训请求。",
+        (
+            "读取指定业务日已经生成的真实已实现绩效。",
+            "评估结果和重训请求写入 SQLite，不在本命令内直接训练。",
+        ),
         ("stock-evaluate", "stock-evaluate --date 2026-11-02"),
+        (
+            "应在同一业务日 stock-perform 成功后执行。",
+            "未闭环交易和浮动盈亏不参与评估。",
+        ),
     )
 
 
@@ -170,7 +270,15 @@ def clean() -> None:
     _run(
         "stock-clean",
         clean_command,
-        "清理过期分钟数据、任务记录和业务状态。",
+        "清理超过保留期的数据和已终结业务状态。",
+        (
+            "清理分钟数据、历史任务、快照、预测、绩效和已终结委托等。",
+            "完成后执行 SQLite WAL 截断、VACUUM 和优化。",
+        ),
         ("stock-clean", "stock-clean --date 2026-11-02"),
+        (
+            "活动委托、当前持仓和模型版本等关键状态不会按普通历史记录清理。",
+            "建议由每周维护任务调用，而不是每次初始化执行。",
+        ),
     )
-# AI_GENERATE_END ----
+# AI_GENERATE_END --------
