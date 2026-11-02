@@ -39,7 +39,7 @@ jobs:
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
           source: docker-compose.yml
-          target: ${{ vars.SERVER_DEPLOY_DIR }}
+          target: ~/stock-trading/web
           overwrite: true
 
   backend:
@@ -69,7 +69,6 @@ jobs:
       - name: Deploy backend
         uses: appleboy/ssh-action@v1.2.5
         env:
-          DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
           IMAGE: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME, github.sha) }}
           ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
           ACR_USERNAME: ${{ vars.ACR_USERNAME }}
@@ -81,9 +80,10 @@ jobs:
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
           command_timeout: 30m
-          envs: DEPLOY_DIR,IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
+          envs: IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
           script: |
             set -e
+            DEPLOY_DIR="$HOME/stock-trading/web"
             cd "$DEPLOY_DIR"
             old_image="$(docker inspect --format '{{.Config.Image}}' stock-backend 2>/dev/null || true)"
             printf '%s' "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" --username "$ACR_USERNAME" --password-stdin
@@ -119,7 +119,6 @@ jobs:
       - name: Deploy frontend
         uses: appleboy/ssh-action@v1.2.5
         env:
-          DEPLOY_DIR: ${{ vars.SERVER_DEPLOY_DIR }}
           IMAGE: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.FRONTEND_IMAGE_NAME, github.sha) }}
           ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
           ACR_USERNAME: ${{ vars.ACR_USERNAME }}
@@ -131,9 +130,10 @@ jobs:
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
           command_timeout: 30m
-          envs: DEPLOY_DIR,IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
+          envs: IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
           script: |
             set -e
+            DEPLOY_DIR="$HOME/stock-trading/web"
             cd "$DEPLOY_DIR"
             old_image="$(docker inspect --format '{{.Config.Image}}' stock-frontend 2>/dev/null || true)"
             printf '%s' "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" --username "$ACR_USERNAME" --password-stdin
