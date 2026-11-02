@@ -145,10 +145,16 @@ jobs:
               while [ "$attempts" -lt 30 ]; do
                 status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || true)"
                 [ "$status" = "healthy" ] && return 0
-                [ "$status" = "unhealthy" ] && return 1
+                if [ "$status" = "unhealthy" ]; then
+                  docker inspect --format 'status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' "$container" >&2 || true
+                  docker logs --tail 200 "$container" >&2 || true
+                  return 1
+                fi
                 attempts=$((attempts + 1))
                 sleep 5
               done
+              docker inspect --format 'status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' "$container" >&2 || true
+              docker logs --tail 200 "$container" >&2 || true
               return 1
             }
 
