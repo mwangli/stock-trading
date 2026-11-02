@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------------
+# AI_GENERATE_START ----------------------------------------
 from __future__ import annotations
 
 import logging
@@ -64,8 +64,11 @@ def sync_stock_basics(
     store: ParquetMarketStore, proxy_url: str | None, snapshot_date: date
 ) -> dict[str, object]:
     """下载并保存股票基础信息。"""
-    with BaoStockClient(proxy_url) as client:
+    client = _open_client(proxy_url)
+    try:
         stocks = client.fetch_stock_basics(snapshot_date)
+    finally:
+        client.__exit__(None, None, None)
     path = store.write_stock_basics(stocks)
     LOGGER.info("股票基础信息写入完成：数量=%d；文件=%s", len(stocks), path)
     return {"rows": len(stocks), "path": str(path)}
@@ -123,8 +126,7 @@ def sync_collection_data(
             "failed": failed,
         }
 
-    client = BaoStockClient(proxy_url)
-    client.__enter__()
+    client = _open_client(proxy_url)
     try:
         for index, plan in enumerate(pending, start=1):
             with log_context(progress=f"{index}/{len(pending)}", target=plan.code):
@@ -183,6 +185,25 @@ def _record_collection_result(
     else:
         downloaded += 1
     return downloaded
+
+
+def _open_client(proxy_url: str | None) -> BaoStockClient:
+    for attempt in range(1, 4):
+        client = BaoStockClient(proxy_url)
+        try:
+            return client.__enter__()
+        except (BaoStockError, OSError, TimeoutError) as error:
+            if "10001011" in str(error):
+                raise BaoStockError(f"BaoStock IP 已进入黑名单：{error}") from error
+            if attempt == 3:
+                raise
+            LOGGER.warning(
+                "BaoStock 连接失败，稍后重试：尝试=%d/3；原因=%s",
+                attempt,
+                error,
+            )
+            time.sleep(attempt * 3)
+    raise RuntimeError("BaoStock 连接重试意外结束")
 
 
 def _sync_collection_code(
@@ -262,8 +283,7 @@ def _collect_component(
                 raise BaoStockError(f"BaoStock IP 已进入黑名单：{error}") from error
             client.__exit__(None, None, None)
             if attempt == 3:
-                client = BaoStockClient(proxy_url)
-                client.__enter__()
+                client = _open_client(proxy_url)
                 return str(error), client
             LOGGER.warning(
                 "%s采集失败，重建会话后重试：股票=%s；尝试=%d/3；原因=%s",
@@ -273,9 +293,8 @@ def _collect_component(
                 error,
             )
             time.sleep(attempt * 3)
-            client = BaoStockClient(proxy_url)
-            client.__enter__()
+            client = _open_client(proxy_url)
         except Exception as error:
             return str(error), client
     return "未知采集失败", client
-# AI_GENERATE_END --------------------------------------
+# AI_GENERATE_END ----------------------------------------
