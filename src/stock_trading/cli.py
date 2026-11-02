@@ -1,10 +1,11 @@
-# AI_GENERATE_START -------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START --------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
 import logging
 import os
 import re
+import socket
 import urllib.request
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -635,7 +636,7 @@ def _push_bark(
         "title": title,
         "group": group,
     }
-    payload["body"] = body
+    payload["body"] = f"主机：{socket.gethostname()}\n{body}"
     request = urllib.request.Request(
         BARK_PUSH_URL,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -722,4 +723,4 @@ def _format_amount(value: object) -> str:
 
 def _format_rate(value: object) -> str:
     return "-" if value is None else f"{float(value):.2%}"
-# AI_GENERATE_END -------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END --------------------------------------------------------------------------------------------------------------------
