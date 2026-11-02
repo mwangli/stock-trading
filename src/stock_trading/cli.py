@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START -----------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 import typer
 
 from stock_trading.config import AppConfig
+from stock_trading.instruments import normalize_instrument
 from stock_trading.initialization import InitializationService
 from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.broker.captcha import BaiduCaptchaSolver
@@ -39,7 +40,7 @@ from stock_trading.research.artifacts import (
 from stock_trading.research.model import (
     predict_alpha158_lightgbm,
 )
-from stock_trading.research.qlib_store import QlibBinaryStore, to_qlib_code
+from stock_trading.research.qlib_store import QlibBinaryStore
 from stock_trading.research.training import (
     default_training_codes,
     refresh_qlib_from_parquet,
@@ -457,7 +458,7 @@ def _rank(config: AppConfig, prediction_date: date) -> None:
         config.qlib_dir,
         model_dir,
         prediction_date,
-        eligible_instruments={to_qlib_code(code) for code in current_codes},
+        eligible_instruments={normalize_instrument(code) for code in current_codes},
     )
     state = state_store.import_prediction_artifact(
         model_dir, Path(prediction["path"])
@@ -734,4 +735,4 @@ def _format_amount(value: object) -> str:
 
 def _format_rate(value: object) -> str:
     return "-" if value is None else f"{float(value):.2%}"
-# AI_GENERATE_END ----------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END -----------------------------------------------------------------------------------------------------------------------

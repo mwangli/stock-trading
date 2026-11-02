@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------
+# AI_GENERATE_START -------------
 from __future__ import annotations
 
 import logging
@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from stock_trading.instruments import normalize_instrument
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.logging_utils import set_log_context, should_log_progress
 from stock_trading.research.labels import build_t1_labels
@@ -56,7 +57,7 @@ class QlibBinaryStore:
             aligned = frame.reindex(calendar)
             labels = build_t1_labels(self._market_store.read_minute_summaries(code), calendar)
             aligned["label"] = labels.reindex(calendar)
-            qlib_code = to_qlib_code(code)
+            qlib_code = normalize_instrument(code)
             self._write_features(temporary, qlib_code, aligned)
             valid = frame.dropna(subset=["close"])
             instruments.append(
@@ -108,7 +109,7 @@ class QlibBinaryStore:
             }
         except (OSError, ValueError):
             return False
-        expected = {to_qlib_code(code) for code in codes}
+        expected = {normalize_instrument(code) for code in codes}
         return (
             len(calendar) >= 120
             and start_date <= calendar[0] <= start_date + timedelta(days=15)
@@ -207,9 +208,4 @@ class QlibBinaryStore:
         ):
             values = frame[field].to_numpy(dtype="float32")
             np.hstack(([0.0], values)).astype("<f4").tofile(directory / f"{field}.day.bin")
-
-
-def to_qlib_code(code: str) -> str:
-    exchange, symbol = code.split(".", maxsplit=1)
-    return f"{exchange.upper()}{symbol}"
-# AI_GENERATE_END ------------
+# AI_GENERATE_END -------------

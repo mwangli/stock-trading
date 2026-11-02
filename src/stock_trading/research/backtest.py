@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------
+# AI_GENERATE_START ---------------
 from __future__ import annotations
 
 import json
@@ -12,6 +12,7 @@ from pathlib import Path
 import pandas as pd
 
 from stock_trading.config import AppConfig
+from stock_trading.instruments import normalize_instrument, to_baostock_code
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.logging_utils import set_log_context, should_log_progress
 
@@ -75,7 +76,7 @@ class PortfolioBacktester:
         self._sell_windows: dict[str, pd.DataFrame] = {}
 
     def run(self, artifact_dir: Path) -> dict[str, object]:
-        codes = sorted(self._topk["instrument"].map(_to_baostock_code).unique())
+        codes = sorted(self._topk["instrument"].map(to_baostock_code).unique())
         set_log_context(progress="1/4", target="回测行情")
         LOGGER.info("加载回测行情：股票数=%d", len(codes))
         self._load_market(codes)
@@ -216,20 +217,25 @@ class PortfolioBacktester:
     ) -> tuple[tuple[Position, float] | None, list[dict[str, object]]]:
         rejects: list[dict[str, object]] = []
         for rank, row in enumerate(candidates.itertuples(index=False), start=1):
-            code = _to_baostock_code(row.instrument)
-            reason = self._buy_reject_reason(code, prediction_date, buy_date)
+            instrument = normalize_instrument(row.instrument)
+            code = to_baostock_code(instrument)
+            reason = self._buy_reject_reason(
+                instrument, code, prediction_date, buy_date
+            )
             if reason is not None:
-                rejects.append(_reject_record(buy_date, row.instrument, reason, rank))
+                rejects.append(_reject_record(buy_date, instrument, reason, rank))
                 continue
             window = self._buy_windows[code].loc[pd.Timestamp(buy_date)]
             buy_price = float(window["vwap"]) * (1.0 + self._config.slippage_bps / 10_000.0)
             quantity, fees = self._affordable_quantity(cash, buy_price)
             if quantity <= 0:
-                rejects.append(_reject_record(buy_date, row.instrument, "INSUFFICIENT_CASH", rank))
+                rejects.append(
+                    _reject_record(buy_date, instrument, "INSUFFICIENT_CASH", rank)
+                )
                 continue
             notional = buy_price * quantity
             position = Position(
-                instrument=row.instrument,
+                instrument=instrument,
                 quantity=quantity,
                 buy_date=buy_date,
                 buy_price=buy_price,
@@ -241,10 +247,14 @@ class PortfolioBacktester:
         return None, rejects
 
     def _buy_reject_reason(
-        self, code: str, prediction_date: date, buy_date: date
+        self,
+        instrument: str,
+        code: str,
+        prediction_date: date,
+        buy_date: date,
     ) -> str | None:
         if self._config.allowed_prefixes and not any(
-            code.startswith(prefix) for prefix in self._config.allowed_prefixes
+            instrument.startswith(prefix) for prefix in self._config.allowed_prefixes
         ):
             return "NO_TRADING_PERMISSION"
         prediction = self._daily_row(code, prediction_date)
@@ -267,7 +277,7 @@ class PortfolioBacktester:
     def _try_sell(
         self, position: Position, sell_date: date
     ) -> tuple[dict[str, float] | None, str | None]:
-        code = _to_baostock_code(position.instrument)
+        code = to_baostock_code(position.instrument)
         daily = self._daily_row(code, sell_date)
         window = self._window_row(self._sell_windows[code], sell_date)
         if daily is None or str(daily["tradestatus"]) != "1":
@@ -310,7 +320,7 @@ class PortfolioBacktester:
     def _market_value(self, position: Position | None, trade_date: date) -> float:
         if position is None:
             return 0.0
-        daily = self._daily_row(_to_baostock_code(position.instrument), trade_date)
+        daily = self._daily_row(to_baostock_code(position.instrument), trade_date)
         return float(daily["close"]) * position.quantity if daily is not None else position.buy_notional
 
     def _daily_row(self, code: str, trade_date: date) -> pd.Series | None:
@@ -461,12 +471,6 @@ def _position_record(position: Position | None) -> dict[str, object] | None:
         "buyFees": position.buy_fees,
         "candidateRank": position.candidate_rank,
     }
-
-
-def _to_baostock_code(instrument: str) -> str:
-    return f"{instrument[:2].lower()}.{instrument[2:]}"
-
-
 def _money(value: float) -> float:
     return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
@@ -493,4 +497,4 @@ def read_backtest_summary(directory: Path) -> dict[str, object]:
     """读取一个资金场景的回测摘要。"""
     return json.loads((directory / "summary.json").read_text(encoding="utf-8"))
 
-# AI_GENERATE_END --------------
+# AI_GENERATE_END ---------------

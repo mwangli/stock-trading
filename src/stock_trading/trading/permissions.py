@@ -1,9 +1,10 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ----
 from __future__ import annotations
 
 import logging
 from datetime import date
 
+from stock_trading.instruments import normalize_instrument
 from stock_trading.state.store import StateStore
 
 LOGGER = logging.getLogger(__name__)
@@ -11,10 +12,13 @@ LOGGER = logging.getLogger(__name__)
 
 def permission_scope(instrument: str | None) -> str | None:
     """把券商、BaoStock 或 Qlib 股票代码统一映射为交易权限范围。"""
-    normalized = str(instrument or "").upper().replace(".", "")
-    if normalized.startswith(("SH60", "60")):
+    try:
+        normalized = normalize_instrument(instrument)
+    except ValueError:
+        return None
+    if normalized.startswith("SH60"):
         return "SH_MAIN"
-    if normalized.startswith(("SZ00", "00")):
+    if normalized.startswith("SZ00"):
         return "SZ_MAIN"
     return None
 
@@ -71,4 +75,4 @@ def _unknown_permission(scope: str, observed_date: date) -> dict[str, str]:
         "evidenceDetail": "没有找到可确认权限的历史成功委托",
         "observedAt": observed_date.isoformat(),
     }
-# AI_GENERATE_END ---
+# AI_GENERATE_END ----

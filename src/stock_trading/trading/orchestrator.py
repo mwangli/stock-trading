@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------
+# AI_GENERATE_START ------------------
 from __future__ import annotations
 
 import logging
@@ -8,6 +8,7 @@ from typing import Protocol
 
 from stock_trading.broker.models import BrokerAccount, BrokerPosition, FiveLevelQuote
 from stock_trading.config import AppConfig
+from stock_trading.instruments import normalize_instrument, to_broker_code
 from stock_trading.state.store import StateStore
 from stock_trading.trading.permissions import permission_scope
 from stock_trading.trading.strategy import affordable_quantity
@@ -57,7 +58,7 @@ class LiveTradingOrchestrator:
         ignored: list[dict[str, object]] = []
         positions = self._broker.get_positions()
         for position in positions:
-            instrument = _to_qlib_instrument(position.stock_code, position.market)
+            instrument = normalize_instrument(position.stock_code, position.market)
             if position.available_quantity <= 0:
                 ignored.append(
                     {"instrument": instrument, "reason": "NO_AVAILABLE_QUANTITY"}
@@ -107,7 +108,7 @@ class LiveTradingOrchestrator:
                 (
                     item
                     for item in candidates
-                    if str(item["instrument"]).upper() == existing_target
+                    if normalize_instrument(item["instrument"]) == existing_target
                 ),
                 None,
             )
@@ -126,7 +127,7 @@ class LiveTradingOrchestrator:
         account = self._broker.get_account()
         rejected: list[dict[str, object]] = []
         for candidate in candidates:
-            instrument = str(candidate["instrument"]).upper()
+            instrument = normalize_instrument(candidate["instrument"])
             rank = int(candidate["rank"])
             score = float(candidate["score"])
             if self._config.trading_allowed_prefixes and not instrument.startswith(
@@ -152,7 +153,7 @@ class LiveTradingOrchestrator:
                     }
                 )
                 continue
-            quote = self._broker.get_five_level_quote(_to_broker_code(instrument))
+            quote = self._broker.get_five_level_quote(to_broker_code(instrument))
             reference_price = quote.price or quote.asks[0]
             if not Decimal(str(self._config.trading_min_price)) <= reference_price <= Decimal(
                 str(self._config.trading_max_price)
@@ -203,7 +204,7 @@ class LiveTradingOrchestrator:
         ]
         if not matching or matching[-1]["status"] == "REJECTED":
             return None
-        return str(matching[-1]["instrument"])
+        return normalize_instrument(matching[-1]["instrument"])
 
     @staticmethod
     def _target(
@@ -234,24 +235,4 @@ class LiveTradingOrchestrator:
             "targets": [target] if target else [],
             "rejected": rejected,
         }
-
-
-def _to_broker_code(instrument: str) -> str:
-    if len(instrument) != 8 or instrument[:2] not in {"SH", "SZ"}:
-        raise ValueError(f"不支持的 Qlib 股票代码: {instrument}")
-    return instrument[2:]
-
-
-def _to_qlib_instrument(stock_code: str, market: str | None) -> str:
-    code = stock_code.strip()
-    if len(code) != 6 or not code.isdigit():
-        raise ValueError(f"不支持的券商股票代码: {stock_code}")
-    normalized_market = (market or "").upper()
-    if normalized_market.startswith("SH"):
-        exchange = "SH"
-    elif normalized_market.startswith("SZ"):
-        exchange = "SZ"
-    else:
-        exchange = "SH" if code.startswith(("6", "68")) else "SZ"
-    return f"{exchange}{code}"
-# AI_GENERATE_END -----------------
+# AI_GENERATE_END ------------------

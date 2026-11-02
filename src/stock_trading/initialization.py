@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------------------
+# AI_GENERATE_START ------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from stock_trading.config import AppConfig
+from stock_trading.instruments import normalize_instrument
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.logging_utils import set_log_context
 from stock_trading.market.sync import (
@@ -27,7 +28,7 @@ from stock_trading.research.artifacts import (
 from stock_trading.research.model import (
     predict_alpha158_lightgbm,
 )
-from stock_trading.research.qlib_store import QlibBinaryStore, to_qlib_code
+from stock_trading.research.qlib_store import QlibBinaryStore
 from stock_trading.research.training import (
     read_backtest_summaries,
     refresh_qlib_from_parquet,
@@ -209,7 +210,7 @@ class InitializationService:
             self._config.qlib_dir,
             model_dir,
             prediction_date,
-            eligible_instruments={to_qlib_code(code) for code in current_codes},
+            eligible_instruments={normalize_instrument(code) for code in current_codes},
         )
         self._state.import_prediction_artifact(model_dir, Path(str(result["path"])))
         return result
@@ -227,4 +228,4 @@ def _model_valid(model_root_dir: Path) -> bool:
         return model_artifacts_valid(resolve_current_model_dir(model_root_dir))
     except (OSError, ValueError):
         return False
-# AI_GENERATE_END -----------------------------------------
+# AI_GENERATE_END ------------------------------------------
