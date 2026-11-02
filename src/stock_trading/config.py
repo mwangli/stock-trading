@@ -1,7 +1,8 @@
-# AI_GENERATE_START ------------------------------------
+# AI_GENERATE_START --------------------------------------
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -77,8 +78,9 @@ class AppConfig:
         project_dir = (
             source_project_dir
             if os.name == "nt"
-            else Path("/home/root/stock-trading")
+            else Path.home() / "stock-trading"
         )
+        _load_env_file(project_dir / ".env")
         runtime_dir = project_dir / "data"
         data_dir = runtime_dir / "market"
         qlib_dir = runtime_dir / "qlib"
@@ -168,4 +170,23 @@ class AppConfig:
                 os.getenv("MODEL_MIN_TOTAL_GROSS_RETURN", "0")
             ),
         )
-# AI_GENERATE_END ------------------------------------
+
+
+def _load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        key, separator, value = line.partition("=")
+        key = key.strip()
+        if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+# AI_GENERATE_END --------------------------------------

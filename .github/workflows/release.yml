@@ -43,7 +43,7 @@ jobs:
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
           source: "dist/*.whl,.github/stock-trading.cron,.github/stock-trading.logrotate"
-          target: ${{ format('/home/root/stock-trading/releases/{0}', github.ref_name) }}
+          target: ${{ format('~/stock-trading/releases/{0}', github.ref_name) }}
           strip_components: 1
           overwrite: true
 
@@ -61,9 +61,12 @@ jobs:
           command_timeout: 60m
           script: |
             set -eu
-            project_dir=/home/root/stock-trading
+            project_dir="$HOME/stock-trading"
             release_dir="$project_dir/releases/$RELEASE_TAG"
             venv_dir="$project_dir/venv"
+            python_dir="$project_dir/python"
+            uv_cache_dir="$project_dir/.uv-cache"
+            env_file="$project_dir/.env"
             data_dir="$project_dir/data"
             logs_dir="$project_dir/logs"
             cron_template="$release_dir/stock-trading.cron"
@@ -71,26 +74,65 @@ jobs:
             cron_dir="$project_dir/cron"
             cron_file="$cron_dir/stock-trading.cron"
             logrotate_file="$cron_dir/stock-trading.logrotate"
+            commands="stock-help stock-init stock-train stock-collect stock-rank stock-sell stock-buy stock-broker stock-perform stock-evaluate stock-clean"
+
+            if [ ! -s "$env_file" ] || [ ! -r "$env_file" ]; then
+              echo "Missing or unreadable project environment file: $env_file" >&2
+              exit 1
+            fi
+
+            set -- "$release_dir"/*.whl
+            if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+              echo "Expected exactly one wheel in $release_dir" >&2
+              exit 1
+            fi
+            wheel="$1"
+
+            mkdir -p \
+              "$python_dir" \
+              "$uv_cache_dir" \
+              "$data_dir/market" \
+              "$data_dir/qlib" \
+              "$data_dir/artifacts" \
+              "$data_dir/state" \
+              "$cron_dir" \
+              "$logs_dir"
 
             export UV_DEFAULT_INDEX="https://mirrors.aliyun.com/pypi/simple/"
             export UV_HTTP_TIMEOUT=300
             export UV_HTTP_RETRIES=5
+            export UV_PYTHON_INSTALL_DIR="$python_dir"
+            export UV_CACHE_DIR="$uv_cache_dir"
             export PATH="$HOME/.local/bin:$PATH"
-            uv venv --allow-existing --managed-python --python 3.12 "$venv_dir"
-            uv pip install --python "$venv_dir/bin/python" --upgrade "$release_dir"/*.whl
+            command -v uv >/dev/null
+            command -v crontab >/dev/null
+            command -v flock >/dev/null
+            command -v logrotate >/dev/null
+            uv python install 3.12
+            uv venv --clear --managed-python --python 3.12 "$venv_dir"
+            uv pip install --python "$venv_dir/bin/python" --upgrade "$wheel"
 
-            mkdir -p \
-              "$data_dir/state" \
-              "$cron_dir" \
-              "$logs_dir"
+            installed_version="$("$venv_dir/bin/python" -c 'import importlib.metadata; print(importlib.metadata.version("stock-trading"))')"
+            test "$RELEASE_TAG" = "v$installed_version"
+            configured_project_dir="$("$venv_dir/bin/python" -c 'from stock_trading.config import AppConfig; print(AppConfig.from_env().project_dir)')"
+            test "$configured_project_dir" = "$project_dir"
+            for command_name in $commands; do
+              test -x "$venv_dir/bin/$command_name"
+            done
+
             touch "$logs_dir/stock-trading.log" "$data_dir/state/scheduler.lock"
 
-            sed "s|__PROJECT_DIR__|$project_dir|g" "$cron_template" > "$cron_file"
+            sed \
+              -e "s|__PROJECT_DIR__|$project_dir|g" \
+              -e "s|__SYSTEM_PATH__|$PATH|g" \
+              "$cron_template" \
+              > "$cron_file"
             sed "s|__PROJECT_DIR__|$project_dir|g" "$logrotate_template" > "$logrotate_file"
 
-            current_cron="$(mktemp)"
-            next_cron="$(mktemp)"
-            trap 'rm -f "$current_cron" "$next_cron"' EXIT
+            current_cron="$cron_dir/.current.cron.tmp"
+            next_cron="$cron_dir/.next.cron.tmp"
+            installed_cron="$cron_dir/.installed.cron.tmp"
+            trap 'rm -f "$current_cron" "$next_cron" "$installed_cron"' EXIT
             crontab -l > "$current_cron" 2>/dev/null || true
             awk '
               $0 == "# STOCK_TRADING_CRON_BEGIN" { managed = 1; next }
@@ -99,3 +141,9 @@ jobs:
             ' "$current_cron" > "$next_cron"
             cat "$cron_file" >> "$next_cron"
             crontab "$next_cron"
+            crontab -l | awk '
+              $0 == "# STOCK_TRADING_CRON_BEGIN" { managed = 1 }
+              managed { print }
+              $0 == "# STOCK_TRADING_CRON_END" { exit }
+            ' > "$installed_cron"
+            cmp "$cron_file" "$installed_cron"

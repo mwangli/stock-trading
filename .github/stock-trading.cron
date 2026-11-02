@@ -1,32 +1,30 @@
 # STOCK_TRADING_CRON_BEGIN
-SHELL=/bin/bash
-PATH=__PROJECT_DIR__/venv/bin:/usr/local/bin:/usr/bin:/bin
+PATH=__PROJECT_DIR__/venv/bin:__SYSTEM_PATH__
 CRON_TZ=Asia/Shanghai
 MAILTO=""
 
 PROJECT_DIR=__PROJECT_DIR__
-PROFILE=/home/root/.bash_profile
 LOG=__PROJECT_DIR__/logs/stock-trading.log
 LOCK=__PROJECT_DIR__/data/state/scheduler.lock
 LOGROTATE=__PROJECT_DIR__/cron/stock-trading.logrotate
 LOGROTATE_STATE=__PROJECT_DIR__/logs/logrotate.status
 
 # Morning sell
-35 9 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -c 'set -e; source "$PROFILE"; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-sell"' >> "$LOG" 2>&1
+35 9 * * 1-5 flock -n "$LOCK" bash -c 'set -e; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-sell"' >> "$LOG" 2>&1
 
 # Afternoon buy
-5 13 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -c 'set -e; source "$PROFILE"; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-buy"' >> "$LOG" 2>&1
+5 13 * * 1-5 flock -n "$LOCK" bash -c 'set -e; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-buy"' >> "$LOG" 2>&1
 
 # Market data and ranking
-30 16 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -c 'set -e; source "$PROFILE"; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-collect"' >> "$LOG" 2>&1
-0 17 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -c 'set -e; source "$PROFILE"; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-rank"' >> "$LOG" 2>&1
+30 16 * * 1-5 flock -n "$LOCK" bash -c 'set -e; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-collect"' >> "$LOG" 2>&1
+0 17 * * 1-5 flock -n "$LOCK" bash -c 'set -e; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-rank"' >> "$LOG" 2>&1
 
 # Broker facts, performance and evaluation
-20 20 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -c 'set -e; source "$PROFILE"; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-broker"' >> "$LOG" 2>&1
-30 20 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -c 'set -e; source "$PROFILE"; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-perform"' >> "$LOG" 2>&1
-35 20 * * 1-5 /usr/bin/flock -n "$LOCK" /bin/bash -c 'set -e; source "$PROFILE"; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-evaluate"' >> "$LOG" 2>&1
+20 20 * * 1-5 flock -n "$LOCK" bash -c 'set -e; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-broker"' >> "$LOG" 2>&1
+30 20 * * 1-5 flock -n "$LOCK" bash -c 'set -e; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-perform"' >> "$LOG" 2>&1
+35 20 * * 1-5 flock -n "$LOCK" bash -c 'set -e; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-evaluate"' >> "$LOG" 2>&1
 
 # Weekly cleanup and daily log rotation
-0 3 * * 0 /usr/bin/flock -n "$LOCK" /bin/bash -c 'set -e; source "$PROFILE"; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-clean"' >> "$LOG" 2>&1
-30 3 * * * /usr/sbin/logrotate -s "$LOGROTATE_STATE" "$LOGROTATE"
+0 3 * * 0 flock -n "$LOCK" bash -c 'set -e; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-clean"' >> "$LOG" 2>&1
+30 3 * * * logrotate -s "$LOGROTATE_STATE" "$LOGROTATE"
 # STOCK_TRADING_CRON_END
