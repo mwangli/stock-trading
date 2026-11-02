@@ -1,9 +1,10 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.console.agent;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stock.console.config.ConsoleProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
@@ -42,6 +43,7 @@ public class GitHubDevelopmentClient {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
+    @Autowired
     public GitHubDevelopmentClient(ConsoleProperties properties, ObjectMapper objectMapper) {
         this(properties, objectMapper, HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(20))
@@ -453,4 +455,4 @@ public class GitHubDevelopmentClient {
     public record ChangeSet(String summary, String acceptanceSummary, List<FileChange> changes) {
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------
