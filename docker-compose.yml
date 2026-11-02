@@ -50,7 +50,7 @@ services:
       JAVA_TOOL_OPTIONS: -Xms128m -Xmx512m -Duser.timezone=Asia/Shanghai
     volumes:
       - type: bind
-        source: /data/stock-trading
+        source: ${STOCK_TRADING_VAR_DIR:?STOCK_TRADING_VAR_DIR is required}
         target: /data/stock-trading
         read_only: true
       - type: bind
