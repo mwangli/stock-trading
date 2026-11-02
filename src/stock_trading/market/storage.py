@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------
+# AI_GENERATE_START -----------------------------------------
 from __future__ import annotations
 
 import json
@@ -356,6 +356,7 @@ class ParquetMarketStore:
         adjustment_required = {"code", "operate_date", "forward_factor"}
         minute_required = {"trade_date", "buy_complete", "sell_complete"}
         total = len(codes)
+        migrated_coverage = 0
 
         for index, code in enumerate(codes, start=1):
             try:
@@ -366,12 +367,9 @@ class ParquetMarketStore:
             except (OSError, ValueError, KeyError, AttributeError):
                 daily = pd.DataFrame()
                 daily_dates = pd.Series(dtype="object")
-            daily_valid = (
+            daily_data_valid = (
                 daily_required.issubset(daily.columns)
                 and not daily.empty
-                and self.collection_coverage_valid(
-                    code, "daily", start_date, end_date
-                )
             )
 
             try:
@@ -379,18 +377,15 @@ class ParquetMarketStore:
                 factor_dates = pd.to_datetime(
                     factors["operate_date"], errors="coerce"
                 ).dt.date
-                adjustment_valid = (
+                adjustment_data_valid = (
                     adjustment_required.issubset(factors.columns)
                     and (
                         factors.empty
                         or (factor_dates.notna().all() and factor_dates.max() <= end_date)
                     )
-                    and self.collection_coverage_valid(
-                        code, "adjustment", date(1990, 1, 1), end_date
-                    )
                 )
             except (OSError, ValueError, KeyError, AttributeError):
-                adjustment_valid = False
+                adjustment_data_valid = False
 
             eligible = pd.DataFrame()
             if daily_required.issubset(daily.columns):
@@ -405,19 +400,16 @@ class ParquetMarketStore:
                 if not eligible.empty
                 else eligible
             )
-            minute_coverage_valid = self.collection_coverage_valid(
-                code, "minute5", start_date, end_date
-            )
             try:
                 summaries = self.read_minute_summaries(code)
             except (OSError, ValueError, KeyError, AttributeError):
                 summaries = pd.DataFrame()
             if not daily_required.issubset(daily.columns) or daily.empty:
-                minute_valid = False
+                minute_data_valid = False
             elif daily_window.empty:
-                minute_valid = minute_coverage_valid
+                minute_data_valid = True
             elif not minute_required.issubset(summaries.columns):
-                minute_valid = False
+                minute_data_valid = False
             else:
                 expected = set(pd.to_datetime(daily_window["trade_date"]).dt.date)
                 complete = summaries[
@@ -425,7 +417,30 @@ class ParquetMarketStore:
                     & summaries["sell_complete"].astype(bool)
                 ]
                 actual = set(pd.to_datetime(complete["trade_date"]).dt.date)
-                minute_valid = expected.issubset(actual) and minute_coverage_valid
+                minute_data_valid = expected.issubset(actual)
+
+            if self._backfill_legacy_collection_coverage(
+                code,
+                start_date,
+                end_date,
+                daily_data_valid,
+                adjustment_data_valid,
+                minute_data_valid,
+            ):
+                migrated_coverage += 1
+
+            daily_valid = daily_data_valid and self.collection_coverage_valid(
+                code, "daily", start_date, end_date
+            )
+            adjustment_valid = (
+                adjustment_data_valid
+                and self.collection_coverage_valid(
+                    code, "adjustment", date(1990, 1, 1), end_date
+                )
+            )
+            minute_valid = minute_data_valid and self.collection_coverage_valid(
+                code, "minute5", start_date, end_date
+            )
 
             if daily_valid and adjustment_valid and minute_valid:
                 valid_codes.append(code)
@@ -446,12 +461,37 @@ class ParquetMarketStore:
                 set_log_context(progress=f"{index}/{total}", target=code)
                 LOGGER.info("本地研究数据检查完成")
 
+        if migrated_coverage:
+            set_log_context(progress=f"{total}/{total}", target="行情覆盖清单")
+            LOGGER.info("历史行情覆盖清单补建完成：股票=%d", migrated_coverage)
+
         return ResearchDataAudit(
             pending=tuple(pending),
             valid_codes=tuple(valid_codes),
             model_codes=tuple(model_codes),
             tradable_codes=tuple(tradable_codes),
         )
+
+    def _backfill_legacy_collection_coverage(
+        self,
+        code: str,
+        start_date: date,
+        end_date: date,
+        daily_valid: bool,
+        adjustment_valid: bool,
+        minute_valid: bool,
+    ) -> bool:
+        """为升级前已通过完整性检查的行情文件补建覆盖清单。"""
+        if self._coverage_path(code).exists() or not all(
+            (daily_valid, adjustment_valid, minute_valid)
+        ):
+            return False
+        self.record_collection_coverage(code, "daily", start_date, end_date)
+        self.record_collection_coverage(
+            code, "adjustment", date(1990, 1, 1), end_date
+        )
+        self.record_collection_coverage(code, "minute5", start_date, end_date)
+        return True
 
     def model_research_codes(
         self, codes: list[str], start_date: date, end_date: date
@@ -656,4 +696,4 @@ def _without(record: dict[str, object], *fields: str) -> dict[str, object]:
 def _read_parquet_file(path: Path) -> pd.DataFrame:
     """读取单个文件，避免 key=value 父目录触发 Hive 分区字段合并。"""
     return pq.ParquetFile(path).read().to_pandas()
-# AI_GENERATE_END ----------------------------------------
+# AI_GENERATE_END -----------------------------------------
