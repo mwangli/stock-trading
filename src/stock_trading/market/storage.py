@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------------------------
+# AI_GENERATE_START ---------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -208,7 +208,7 @@ class ParquetMarketStore:
     def minute_summaries_valid(
         self, code: str, start_date: date, end_date: date
     ) -> bool:
-        """检查分钟聚合可读、字段完整且覆盖窗口内全部可交易日。"""
+        """检查分钟聚合可读、字段完整且覆盖研究窗口首尾。"""
         try:
             daily = self._eligible_daily_rows(self.read_daily_history(code))
             daily_dates = pd.to_datetime(daily["trade_date"], errors="raise").dt.date
@@ -218,16 +218,38 @@ class ParquetMarketStore:
             return False
         if daily_window.empty:
             return True
-        required = {"trade_date", "buy_complete", "sell_complete"}
-        if not required.issubset(summaries.columns):
+        return self._minute_summaries_usable(summaries, daily_window)
+
+    @staticmethod
+    def _minute_summaries_usable(
+        summaries: pd.DataFrame,
+        daily_window: pd.DataFrame,
+    ) -> bool:
+        required = {
+            "trade_date", "buy_vwap", "buy_low", "buy_high", "buy_bars",
+            "buy_complete", "sell_vwap", "sell_low", "sell_high", "sell_bars",
+            "sell_complete",
+        }
+        if not required.issubset(summaries.columns) or summaries.empty:
             return False
-        expected = set(pd.to_datetime(daily_window["trade_date"]).dt.date)
-        complete = summaries[
-            summaries["buy_complete"].astype(bool)
-            & summaries["sell_complete"].astype(bool)
-        ]
-        actual = set(pd.to_datetime(complete["trade_date"]).dt.date)
-        return expected.issubset(actual)
+        expected_dates = pd.to_datetime(
+            daily_window["trade_date"], errors="raise"
+        ).dt.date
+        summary_dates = pd.to_datetime(
+            summaries["trade_date"], errors="raise"
+        ).dt.date
+        actual_dates = set(summary_dates)
+        if (
+            expected_dates.min() not in actual_dates
+            or expected_dates.max() not in actual_dates
+        ):
+            return False
+        return bool(
+            (
+                summaries["buy_complete"].astype(bool)
+                & summaries["sell_complete"].astype(bool)
+            ).any()
+        )
 
     def valid_daily_codes(
         self, codes: list[str], start_date: date, end_date: date
@@ -271,7 +293,6 @@ class ParquetMarketStore:
             "tradestatus", "is_st",
         }
         adjustment_required = {"code", "operate_date", "forward_factor"}
-        minute_required = {"trade_date", "buy_complete", "sell_complete"}
         total = len(codes)
         for index, code in enumerate(codes, start=1):
             try:
@@ -323,16 +344,10 @@ class ParquetMarketStore:
                 minute_valid = False
             elif daily_window.empty:
                 minute_valid = True
-            elif not minute_required.issubset(summaries.columns):
-                minute_valid = False
             else:
-                expected = set(pd.to_datetime(daily_window["trade_date"]).dt.date)
-                complete = summaries[
-                    summaries["buy_complete"].astype(bool)
-                    & summaries["sell_complete"].astype(bool)
-                ]
-                actual = set(pd.to_datetime(complete["trade_date"]).dt.date)
-                minute_valid = expected.issubset(actual)
+                minute_valid = self._minute_summaries_usable(
+                    summaries, daily_window
+                )
 
             if daily_valid and adjustment_valid and minute_valid:
                 valid_codes.append(code)
@@ -554,4 +569,4 @@ def _without(record: dict[str, object], *fields: str) -> dict[str, object]:
 def _read_parquet_file(path: Path) -> pd.DataFrame:
     """读取单个文件，避免 key=value 父目录触发 Hive 分区字段合并。"""
     return pq.ParquetFile(path).read().to_pandas()
-# AI_GENERATE_END -------------------------------------------
+# AI_GENERATE_END ---------------------------------------------
