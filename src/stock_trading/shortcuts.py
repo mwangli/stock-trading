@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------
+# AI_GENERATE_START ------------
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -10,7 +10,6 @@ from stock_trading.cli import (
     clean_command,
     collect_command,
     evaluate_command,
-    init_command,
     performance_command,
     rank_command,
     trading_command,
@@ -24,7 +23,6 @@ COMMAND_GROUPS = (
     (
         "数据准备",
         (
-            ("stock-init", "初始化行情、Qlib、模型、回测和最新排名。"),
             ("stock-collect", "采集日线、复权因子和 5 分钟行情，并刷新 Qlib。"),
         ),
     ),
@@ -97,33 +95,17 @@ def show_help() -> None:
     )
 
 
-def init() -> None:
-    _run(
-        "stock-init",
-        init_command,
-        "初始化行情、Qlib、模型、回测和最新排名。",
-        (
-            "依次处理股票基础信息、行情数据、Qlib、模型训练与回测、最近交易日预测。",
-            "已存在的行情阶段按实际文件完整性判断是否跳过。",
-        ),
-        ("stock-init",),
-        (
-            "不自动同步券商历史；需要时执行 stock-broker。",
-            "不执行周期性清理；清理由 stock-clean 负责。",
-        ),
-    )
-
-
 def train() -> None:
     _run(
         "stock-train",
         train_command,
         "使用现有 Qlib 数据训练、评估并回测模型。",
         (
+            "已有完整模型制品时直接启用并跳过训练。",
             "训练、验证和测试数据按交易日顺序确定性切分。",
-            "模型、指标和预测制品全部完成后才替换当前模型指针。",
+            "只有显式指定 --force 时才重新训练。",
         ),
-        ("stock-train", "stock-train --split 6:3:1"),
+        ("stock-train", "stock-train --force --split 6:3:1"),
         (
             "默认训练、验证和测试比例为 70:15:15。",
             "训练失败或中断不会覆盖当前可用模型。",
@@ -137,16 +119,16 @@ def collect() -> None:
         collect_command,
         "采集日线、复权因子和 5 分钟行情，并刷新 Qlib。",
         (
-            "省略股票代码时使用已有基础信息确定默认研究股票池。",
-            "指定日期的数据会重新采集并合并到对应股票的 Parquet 文件。",
+            "先检查最近交易日的股票基础信息快照，不存在时自动下载。",
+            "无参数时只扫描最近交易日；指定 --date 时只扫描该历史范围。",
+            "原始数据完整后检查 Qlib，有效则跳过，无效才重建。",
         ),
         (
             "stock-collect",
-            "stock-collect --codes sh.600000,sz.000001 --date 2026-11-02",
-            "stock-collect --codes sh.600000 --date 2026-10-01:2026-11-02",
+            "stock-collect --date 2023-11-02:2026-11-02",
         ),
         (
-            "基础信息不存在时直接报错，不会自动执行 stock-init。",
+            "命令不执行模型训练或排名。",
             "单类数据失败不阻止同一股票的其他类别继续处理。",
         ),
     )
@@ -281,4 +263,4 @@ def clean() -> None:
             "建议由每周维护任务调用，而不是每次初始化执行。",
         ),
     )
-# AI_GENERATE_END ----------
+# AI_GENERATE_END ------------

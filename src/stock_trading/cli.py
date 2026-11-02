@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START -------------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -12,7 +12,6 @@ from typing import Annotated, Callable, TypeVar
 import typer
 
 from stock_trading.config import AppConfig
-from stock_trading.initialization import InitializationService
 from stock_trading.logging_utils import (
     configure_logging,
     log_context,
@@ -23,10 +22,10 @@ from stock_trading.research.training import (
     run_training_pipeline,
 )
 from stock_trading.time_utils import shanghai_today
+from stock_trading.market.trade_calendar import latest_trade_date
 from stock_trading.workflows import (
     cleanup_workflow,
     collect_workflow,
-    default_research_codes,
     evaluate_workflow,
     performance_workflow,
     rank_workflow,
@@ -84,14 +83,6 @@ def _execute(
         return result
 
 
-def init_command() -> None:
-    def run(config: AppConfig) -> dict[str, object]:
-        return InitializationService(config).run()
-
-    result = _execute("init", {}, run)
-    _print_json(result)
-
-
 def broker_command(
     date_value: Annotated[
         str | None,
@@ -109,31 +100,25 @@ def broker_command(
 
 
 def collect_command(
-    codes: Annotated[
-        str | None,
-        typer.Option(help="股票代码，多个代码使用逗号分隔；默认研究股票池。"),
-    ] = None,
     date_value: Annotated[
         str | None,
-        typer.Option("--date", help="业务日期或日期范围，默认当天。"),
+        typer.Option("--date", help="采集日期或日期范围，默认最近交易日。"),
     ] = None,
 ) -> None:
     def run(config: AppConfig) -> dict[str, object]:
         today = shanghai_today()
-        start, end = _parse_date_expression(date_value, today, today)
-        parsed_codes = (
-            _parse_stock_codes(codes)
-            if codes
-            else default_research_codes(config, start, end)
+        latest = latest_trade_date(today)
+        start, end = _parse_date_expression(date_value, latest, latest)
+        return collect_workflow(
+            config,
+            start,
+            end,
+            latest,
         )
-        return collect_workflow(config, parsed_codes, start, end)
 
     result = _execute(
         "collect",
-        {
-            "codes": codes,
-            "date": date_value,
-        },
+        {"date": date_value},
         run,
     )
     _print_json(result)
@@ -144,6 +129,10 @@ def train_command(
         str | None,
         typer.Option(help="训练、验证、测试比例，例如 6:3:1；默认 70:15:15。"),
     ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="忽略已有可用模型并重新训练。"),
+    ] = False,
 ) -> None:
     configure_logging()
     logger = logging.getLogger("stock_trading")
@@ -152,9 +141,11 @@ def train_command(
     try:
         _execute(
             "train",
-            {"split": split},
+            {"split": split, "force": force},
             lambda config: run_training_pipeline(
-                config, _parse_model_split(split) if split else None
+                config,
+                _parse_model_split(split) if split else None,
+                force=force,
             ),
         )
     finally:
@@ -373,4 +364,4 @@ def _format_amount(value: object) -> str:
 
 def _format_rate(value: object) -> str:
     return "-" if value is None else f"{float(value):.2%}"
-# AI_GENERATE_END -----------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END -------------------------------------------------------------------------------------------------------------------------

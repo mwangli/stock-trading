@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------
+# AI_GENERATE_START -----------------
 from __future__ import annotations
 
 import logging
@@ -113,7 +113,7 @@ class QlibBinaryStore:
         return (
             len(calendar) >= 120
             and start_date <= calendar[0] <= start_date + timedelta(days=15)
-            and end_date - timedelta(days=15) <= calendar[-1] <= end_date
+            and calendar[-1] == end_date
             and instruments == expected
             and all(self._feature_files_valid(instrument) for instrument in expected)
         )
@@ -140,6 +140,34 @@ class QlibBinaryStore:
             and len(instruments) >= 100
             and all(self._feature_files_valid(instrument) for instrument in instruments)
         )
+
+    def date_range(self) -> tuple[date, date] | None:
+        """返回现有 Qlib 日历范围；文件不存在或无效时返回空。"""
+        calendar_path = self._target / "calendars" / "day.txt"
+        try:
+            calendar = [
+                date.fromisoformat(value)
+                for value in calendar_path.read_text(encoding="utf-8").splitlines()
+                if value.strip()
+            ]
+        except (OSError, ValueError):
+            return None
+        if not calendar or calendar != sorted(set(calendar)):
+            return None
+        return calendar[0], calendar[-1]
+
+    def instruments(self) -> set[str] | None:
+        """返回现有 Qlib 股票集合；文件不存在或格式无效时返回空。"""
+        instruments_path = self._target / "instruments" / "all.txt"
+        try:
+            instruments = {
+                value.split("\t", maxsplit=1)[0]
+                for value in instruments_path.read_text(encoding="utf-8").splitlines()
+                if value.strip()
+            }
+            return {normalize_instrument(value) for value in instruments}
+        except (OSError, ValueError):
+            return None
 
     def _feature_files_valid(self, instrument: str) -> bool:
         directory = self._target / "features" / instrument.lower()
@@ -208,4 +236,4 @@ class QlibBinaryStore:
         ):
             values = frame[field].to_numpy(dtype="float32")
             np.hstack(([0.0], values)).astype("<f4").tofile(directory / f"{field}.day.bin")
-# AI_GENERATE_END --------------
+# AI_GENERATE_END -----------------

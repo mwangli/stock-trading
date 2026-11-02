@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------
+# AI_GENERATE_START -------------
 from __future__ import annotations
 
 import json
@@ -11,9 +11,11 @@ from pathlib import Path
 from stock_trading.config import AppConfig
 from stock_trading.market.storage import ParquetMarketStore, ResearchDataAudit
 from stock_trading.market.sync import research_codes
+from stock_trading.market.trade_calendar import latest_trade_date
 from stock_trading.research.artifacts import (
     model_artifacts_valid,
     model_root,
+    resolve_current_model_dir,
     train_model_candidate,
 )
 from stock_trading.research.backtest import (
@@ -33,7 +35,7 @@ EVALUATION_FILE = "evaluation.json"
 
 def default_training_range(config: AppConfig) -> tuple[date, date]:
     """返回只依赖本地配置的默认研究日期范围。"""
-    end_date = shanghai_today()
+    end_date = latest_trade_date(shanghai_today())
     return end_date - timedelta(days=config.market_history_days), end_date
 
 
@@ -45,7 +47,7 @@ def default_training_codes(
     try:
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
-        raise ValueError("未找到股票基础信息；请先执行 init") from error
+        raise ValueError("未找到股票基础信息；请先执行 stock-collect") from error
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
         raise ValueError("股票基础信息中没有满足当前日期范围的研究股票")
@@ -72,12 +74,8 @@ def refresh_qlib_from_parquet(
         if missing_minute5:
             errors.append(f"5分钟线或分钟聚合缺失：{','.join(missing_minute5)}")
         if errors:
-            missing_codes = list(dict.fromkeys(missing_daily + missing_minute5))
             date_argument = _format_date_expression(start_date, end_date)
-            command = (
-                f"stock-collect --codes {','.join(missing_codes)} "
-                f"--date {date_argument}"
-            )
+            command = f"stock-collect --date {date_argument}"
             raise ValueError(f"{'；'.join(errors)}；请执行：{command}")
         model_codes = store.model_research_codes(codes, start_date, end_date)
     else:
@@ -111,8 +109,25 @@ def refresh_qlib_from_parquet(
 def run_training_pipeline(
     config: AppConfig,
     split: tuple[Decimal, Decimal, Decimal] | None,
+    force: bool = False,
 ) -> dict[str, object]:
     """校验现有 Qlib 后执行训练、评估、回测和发布。"""
+    root = model_root(config.artifact_dir)
+    if not force:
+        try:
+            model_dir = resolve_current_model_dir(root)
+        except (OSError, ValueError):
+            pass
+        else:
+            activation = activate_trained_model(config, model_dir)
+            return {
+                "training": {
+                    "skipped": True,
+                    "modelVersion": model_dir.name,
+                    "artifactPath": str(model_dir),
+                },
+                **activation,
+            }
     start_date, end_date = default_training_range(config)
     codes = default_training_codes(config, start_date, end_date)
     preparation = assert_training_data_ready(config, codes, start_date, end_date)
@@ -134,7 +149,7 @@ def assert_training_data_ready(
     start_date: date,
     end_date: date,
 ) -> dict[str, object]:
-    """确认 collect 或 init 已生成当前训练范围的 Qlib。"""
+    """确认 collect 已生成当前训练范围的 Qlib。"""
     store = ParquetMarketStore(config.data_dir)
     model_codes = store.model_research_codes(codes, start_date, end_date)
     if not QlibBinaryStore(store, config.qlib_dir).is_valid(
@@ -349,4 +364,4 @@ def _format_date_expression(start_date: date, end_date: date) -> str:
         return start_date.isoformat()
     return f"{start_date.isoformat()}:{end_date.isoformat()}"
 
-# AI_GENERATE_END -----------
+# AI_GENERATE_END -------------

@@ -1,11 +1,12 @@
-# AI_GENERATE_START ---------------------------------------------
+# AI_GENERATE_START -----------------------------------------------
 from __future__ import annotations
 
-import logging
-import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
+import logging
 from pathlib import Path
+import shutil
 from uuid import uuid4
 
 import pandas as pd
@@ -244,12 +245,13 @@ class ParquetMarketStore:
             or expected_dates.max() not in actual_dates
         ):
             return False
-        return bool(
-            (
-                summaries["buy_complete"].astype(bool)
-                & summaries["sell_complete"].astype(bool)
-            ).any()
-        )
+        expected = set(expected_dates)
+        covered = summaries[summary_dates.isin(expected)]
+        if not covered["buy_complete"].astype(bool).all():
+            return False
+        if len(expected) == 1:
+            return True
+        return bool(covered["sell_complete"].astype(bool).any())
 
     def valid_daily_codes(
         self, codes: list[str], start_date: date, end_date: date
@@ -281,7 +283,11 @@ class ParquetMarketStore:
         ]
 
     def audit_research_data(
-        self, codes: list[str], start_date: date, end_date: date
+        self,
+        codes: list[str],
+        start_date: date,
+        end_date: date,
+        coverage_ranges: Mapping[str, tuple[date, date, bool]] | None = None,
     ) -> ResearchDataAudit:
         """单次读取研究文件，生成采集计划和后续初始化股票池。"""
         pending: list[CollectionPlan] = []
@@ -295,6 +301,11 @@ class ParquetMarketStore:
         adjustment_required = {"code", "operate_date", "forward_factor"}
         total = len(codes)
         for index, code in enumerate(codes, start=1):
+            code_start, code_end, exact_end = (
+                coverage_ranges.get(code, (start_date, end_date, True))
+                if coverage_ranges is not None
+                else (start_date, end_date, True)
+            )
             try:
                 daily = self.read_daily_history(code)
                 daily_dates = pd.to_datetime(
@@ -303,9 +314,17 @@ class ParquetMarketStore:
             except (OSError, ValueError, KeyError, AttributeError):
                 daily = pd.DataFrame()
                 daily_dates = pd.Series(dtype="object")
-            daily_valid = (
-                daily_required.issubset(daily.columns)
-                and not daily.empty
+            raw_window_dates = daily_dates[
+                daily_dates.between(code_start, code_end)
+            ]
+            daily_valid = daily_required.issubset(daily.columns) and (
+                not raw_window_dates.empty
+                and raw_window_dates.min() <= code_start + timedelta(days=15)
+                and (
+                    raw_window_dates.max() == code_end
+                    if exact_end
+                    else raw_window_dates.max() >= code_end - timedelta(days=15)
+                )
             )
 
             try:
@@ -332,7 +351,7 @@ class ParquetMarketStore:
                 else pd.Series(dtype="object")
             )
             daily_window = (
-                eligible[eligible_dates.between(start_date, end_date)]
+                eligible[eligible_dates.between(code_start, code_end)]
                 if not eligible.empty
                 else eligible
             )
@@ -569,4 +588,4 @@ def _without(record: dict[str, object], *fields: str) -> dict[str, object]:
 def _read_parquet_file(path: Path) -> pd.DataFrame:
     """读取单个文件，避免 key=value 父目录触发 Hive 分区字段合并。"""
     return pq.ParquetFile(path).read().to_pandas()
-# AI_GENERATE_END ---------------------------------------------
+# AI_GENERATE_END -----------------------------------------------

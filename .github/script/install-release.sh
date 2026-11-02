@@ -22,7 +22,7 @@ logrotate_file="$cron_dir/stock-trading.logrotate"
 cron_template="$release_dir/config/stock-trading.cron"
 logrotate_template="$release_dir/config/stock-trading.logrotate"
 bootstrap_script="$release_dir/script/bootstrap-server.sh"
-commands="stock-help stock-init stock-train stock-collect stock-rank stock-sell stock-buy stock-broker stock-perform stock-evaluate stock-clean"
+commands="stock-help stock-train stock-collect stock-rank stock-sell stock-buy stock-broker stock-perform stock-evaluate stock-clean"
 system_path="$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 for required_file in "$bootstrap_script" "$cron_template" "$logrotate_template"; do
@@ -153,24 +153,6 @@ if ! cmp -s "$desired_logrotate" "$logrotate_file"; then
   install -m 0644 "$desired_logrotate" "$logrotate_file"
 fi
 
-log_file="$logs_dir/stock-trading.log"
-runtime_path="$venv_dir/bin:$system_path"
-printf '[%s] release stock-init triggered\n' \
-  "$(date '+%Y-%m-%d %H:%M:%S%z')" >> "$log_file"
-nohup setsid env -i \
-  HOME="$HOME" \
-  PATH="$runtime_path" \
-  LANG="${LANG:-C.UTF-8}" \
-  TZ="Asia/Shanghai" \
-  flock "$data_dir/state/scheduler.lock" \
-  bash -c 'set -e; cd "$1"; exec "$2"' \
-  _ "$project_dir" "$venv_dir/bin/stock-init" \
-  >> "$log_file" 2>&1 < /dev/null &
-init_pid=$!
-kill -0 "$init_pid"
-printf '[%s] release stock-init launched pid=%s\n' \
-  "$(date '+%Y-%m-%d %H:%M:%S%z')" "$init_pid" >> "$log_file"
-
 find "$releases_dir" \
   -mindepth 1 \
   -maxdepth 1 \
@@ -189,4 +171,4 @@ find "$releases_dir" \
       fi
     done
 
-printf 'Release %s installed; stock-init launched with pid %s.\n' "$release_tag" "$init_pid"
+printf 'Release %s installed.\n' "$release_tag"
