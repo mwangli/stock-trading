@@ -36,36 +36,33 @@ jobs:
           project_version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
           test "$GITHUB_REF_NAME" = "v$project_version"
 
-          systemd_dir=.github/systemd
           tasks="sell buy collect rank broker perform evaluate clean"
-          test "$(find "$systemd_dir" -maxdepth 1 -name 'stock-*.service' -type f | wc -l)" -eq 8
-          test "$(find "$systemd_dir" -maxdepth 1 -name 'stock-*.timer' -type f | wc -l)" -eq 8
-          test ! -e "$systemd_dir/stock@.service"
-          ! grep -ERq 'flock|Restart=|sleep 300' "$systemd_dir"
+          cron_file=.github/stock-trading.cron
+          logrotate_file=.github/stock-trading.logrotate
+          test ! -e .github/systemd
+          test "$(grep -c '^# STOCK_TRADING_CRON_BEGIN$' "$cron_file")" -eq 1
+          test "$(grep -c '^# STOCK_TRADING_CRON_END$' "$cron_file")" -eq 1
+          grep -Fq 'CRON_TZ=Asia/Shanghai' "$cron_file"
+          grep -Fq 'LOG=__PROJECT_DIR__/data/stock-trading.log' "$cron_file"
+          grep -Fq 'LOCK=__PROJECT_DIR__/data/state/scheduler.lock' "$cron_file"
           for task in $tasks; do
-            service="$systemd_dir/stock-$task.service"
-            timer="$systemd_dir/stock-$task.timer"
-            test -f "$service"
-            test -f "$timer"
-            grep -Fq 'EnvironmentFile=__PROJECT_DIR__/.env' "$service"
-            grep -Fq "ExecStart=__PROJECT_DIR__/venv/bin/stock-$task" "$service"
-            grep -Fq 'StandardOutput=journal' "$service"
-            grep -Fq 'StandardError=journal' "$service"
-            grep -Fq "Unit=stock-$task.service" "$timer"
+            test "$(grep -c "exec stock-$task'" "$cron_file")" -eq 1
             grep -Fq "stock-$task =" pyproject.toml
           done
           grep -Fq 'stock-init = "stock_trading.shortcuts:init"' pyproject.toml
           grep -Fq 'stock-train = "stock_trading.shortcuts:train"' pyproject.toml
           grep -Fq 'stock-help = "stock_trading.shortcuts:show_help"' pyproject.toml
           ! grep -Fq 'stock-trading =' pyproject.toml
-          grep -Fq 'OnCalendar=Mon..Fri *-*-* 09:35:00 Asia/Shanghai' "$systemd_dir/stock-sell.timer"
-          grep -Fq 'OnCalendar=Mon..Fri *-*-* 13:05:00 Asia/Shanghai' "$systemd_dir/stock-buy.timer"
-          grep -Fq 'OnCalendar=Mon..Fri *-*-* 16:30:00 Asia/Shanghai' "$systemd_dir/stock-collect.timer"
-          grep -Fq 'OnCalendar=Mon..Fri *-*-* 17:00:00 Asia/Shanghai' "$systemd_dir/stock-rank.timer"
-          grep -Fq 'OnCalendar=Mon..Fri *-*-* 20:20:00 Asia/Shanghai' "$systemd_dir/stock-broker.timer"
-          grep -Fq 'OnCalendar=Mon..Fri *-*-* 20:30:00 Asia/Shanghai' "$systemd_dir/stock-perform.timer"
-          grep -Fq 'OnCalendar=Mon..Fri *-*-* 20:35:00 Asia/Shanghai' "$systemd_dir/stock-evaluate.timer"
-          grep -Fq 'OnCalendar=Sun *-*-* 03:00:00 Asia/Shanghai' "$systemd_dir/stock-clean.timer"
+          grep -Fq '35 9 * * 1-5' "$cron_file"
+          grep -Fq '5 13 * * 1-5' "$cron_file"
+          grep -Fq '30 16 * * 1-5' "$cron_file"
+          grep -Fq '0 17 * * 1-5' "$cron_file"
+          grep -Fq '20 20 * * 1-5' "$cron_file"
+          grep -Fq '30 20 * * 1-5' "$cron_file"
+          grep -Fq '35 20 * * 1-5' "$cron_file"
+          grep -Fq '0 3 * * 0' "$cron_file"
+          grep -Fq '/usr/sbin/logrotate' "$cron_file"
+          grep -Fq '__PROJECT_DIR__/data/stock-trading.log {' "$logrotate_file"
           grep -Fq '"stock-init",' src/stock_trading/shortcuts.py
           grep -Fq '"stock-train",' src/stock_trading/shortcuts.py
           grep -Fq '"stock-help",' src/stock_trading/shortcuts.py
@@ -87,12 +84,12 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
-          source: "dist/*.whl,.github/systemd/*"
+          source: "dist/*.whl,.github/stock-trading.cron,.github/stock-trading.logrotate"
           target: ${{ format('~/stock-trading/releases/{0}', github.ref_name) }}
           strip_components: 1
           overwrite: true
 
-      - name: Install release and timers
+      - name: Install release and cron
         uses: appleboy/ssh-action@v1.2.5
         env:
           RELEASE_TAG: ${{ github.ref_name }}
@@ -111,10 +108,12 @@ jobs:
             venv_dir="$project_dir/venv"
             env_file="$project_dir/.env"
             data_dir="$project_dir/data"
-            systemd_source="$release_dir/systemd"
-            systemd_target=/etc/systemd/system
-            services="stock-sell.service stock-buy.service stock-collect.service stock-rank.service stock-broker.service stock-perform.service stock-evaluate.service stock-clean.service"
-            timers="stock-sell.timer stock-buy.timer stock-collect.timer stock-rank.timer stock-broker.timer stock-perform.timer stock-evaluate.timer stock-clean.timer"
+            cron_template="$release_dir/stock-trading.cron"
+            logrotate_template="$release_dir/stock-trading.logrotate"
+            cron_dir="$project_dir/cron"
+            cron_file="$cron_dir/stock-trading.cron"
+            logrotate_file="$cron_dir/stock-trading.logrotate"
+            tasks="sell buy collect rank broker perform evaluate clean"
             commands="stock-help stock-init stock-train stock-sell stock-buy stock-collect stock-rank stock-broker stock-perform stock-evaluate stock-clean"
 
             if [ ! -e "$env_file" ] && [ -s /etc/stock-trading/env ] && [ -r /etc/stock-trading/env ]; then
@@ -124,7 +123,9 @@ jobs:
               echo "Missing or unreadable environment file: $env_file" >&2
               exit 1
             fi
-            command -v systemctl >/dev/null
+            command -v crontab >/dev/null
+            command -v flock >/dev/null
+            command -v logrotate >/dev/null
 
             set -- "$release_dir"/*.whl
             if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
@@ -152,23 +153,38 @@ jobs:
               "$data_dir/market" \
               "$data_dir/qlib" \
               "$data_dir/artifacts" \
-              "$data_dir/state"
+              "$data_dir/state" \
+              "$cron_dir"
+            touch "$data_dir/stock-trading.log" "$data_dir/state/scheduler.lock"
 
-            for service in $services; do
-              sed "s|__PROJECT_DIR__|$project_dir|g" \
-                "$systemd_source/$service" \
-                > "$systemd_target/$service"
-              chmod 0644 "$systemd_target/$service"
-            done
-            for timer in $timers; do
-              install -m 0644 "$systemd_source/$timer" "$systemd_target/$timer"
-            done
-            rm -f "$systemd_target/stock@.service"
-            systemctl daemon-reload
-            systemctl enable --now $timers
+            sed "s|__PROJECT_DIR__|$project_dir|g" "$cron_template" > "$cron_file"
+            sed "s|__PROJECT_DIR__|$project_dir|g" "$logrotate_template" > "$logrotate_file"
 
-            for timer in $timers; do
-              systemctl is-enabled --quiet "$timer"
-              systemctl is-active --quiet "$timer"
-            done
-            systemctl list-timers --all $timers --no-pager
+            current_cron="$(mktemp)"
+            next_cron="$(mktemp)"
+            installed_cron="$(mktemp)"
+            trap 'rm -f "$current_cron" "$next_cron" "$installed_cron"' EXIT
+            crontab -l > "$current_cron" 2>/dev/null || true
+            awk '
+              $0 == "# STOCK_TRADING_CRON_BEGIN" { managed = 1; next }
+              $0 == "# STOCK_TRADING_CRON_END" { managed = 0; next }
+              !managed { print }
+            ' "$current_cron" > "$next_cron"
+            cat "$cron_file" >> "$next_cron"
+            crontab "$next_cron"
+            crontab -l | awk '
+              $0 == "# STOCK_TRADING_CRON_BEGIN" { managed = 1 }
+              managed { print }
+              $0 == "# STOCK_TRADING_CRON_END" { exit }
+            ' > "$installed_cron"
+            cmp "$cron_file" "$installed_cron"
+
+            if command -v systemctl >/dev/null 2>&1; then
+              for task in $tasks; do
+                systemctl disable --now "stock-$task.timer" 2>/dev/null || true
+                rm -f "/etc/systemd/system/stock-$task.timer"
+                rm -f "/etc/systemd/system/stock-$task.service"
+              done
+              rm -f /etc/systemd/system/stock@.service
+              systemctl daemon-reload
+            fi
