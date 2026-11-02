@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ from datetime import date
 from decimal import Decimal
 
 from stock_trading.config import AppConfig
-from stock_trading.time_utils import shanghai_now
+from stock_trading.utils.time_utils import shanghai_now
 
 LOGGER = logging.getLogger(__name__)
 BARK_PUSH_URL = "https://api.day.app/push"
@@ -115,4 +115,4 @@ def _push_bark(
         LOGGER.debug("Bark 推送请求完成：分组=%s；标题=%s", group, title)
     except Exception as error:
         LOGGER.warning("Bark 推送失败，不影响业务：分组=%s；原因=%s", group, error)
-# AI_GENERATE_END -
+# AI_GENERATE_END ---

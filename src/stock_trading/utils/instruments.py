@@ -1,4 +1,4 @@
-# AI_GENERATE_START --
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 
@@ -35,4 +35,4 @@ def to_baostock_code(instrument: object) -> str:
 def to_broker_code(instrument: object) -> str:
     """将内部标准证券代码转换为券商六位证券代码。"""
     return normalize_instrument(instrument)[2:]
-# AI_GENERATE_END --
+# AI_GENERATE_END ---

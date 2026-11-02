@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------
+# AI_GENERATE_START -------------------
 from __future__ import annotations
 
 import logging
@@ -9,9 +9,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from stock_trading.instruments import normalize_instrument
+from stock_trading.utils.instruments import normalize_instrument
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.logging_utils import set_log_context, should_log_progress
+from stock_trading.utils.logging_utils import set_log_context, should_log_progress
 from stock_trading.research.labels import build_t1_labels
 
 LOGGER = logging.getLogger(__name__)
@@ -510,4 +510,4 @@ class QlibBinaryStore:
             raise
         shutil.rmtree(backup, ignore_errors=True)
 
-# AI_GENERATE_END ------------------
+# AI_GENERATE_END -------------------

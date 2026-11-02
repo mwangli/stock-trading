@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------
+# AI_GENERATE_START -------------------------
 from __future__ import annotations
 
 import json
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from stock_trading.logging_utils import set_log_context
+from stock_trading.utils.logging_utils import set_log_context
 
 LOGGER = logging.getLogger(__name__)
 LIGHTGBM_NUM_BOOST_ROUND = 300
@@ -512,4 +512,4 @@ def automatic_model_segments(
         test_end=calendar[-1],
     )
 
-# AI_GENERATE_END ------------------------
+# AI_GENERATE_END -------------------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------
+# AI_GENERATE_START ---------
 from __future__ import annotations
 
 import gc
@@ -16,7 +16,7 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-from stock_trading.logging_utils import set_log_context
+from stock_trading.utils.logging_utils import set_log_context
 
 if TYPE_CHECKING:
     from stock_trading.research.model import ModelSegments
@@ -581,4 +581,4 @@ class _NpyFeatureSequence(lgb.Sequence):
     def __getitem__(self, index):
         return np.asarray(self._values[index], dtype=np.float64)
 
-# AI_GENERATE_END --------
+# AI_GENERATE_END ---------

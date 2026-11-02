@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START --
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -20,4 +20,4 @@ def shanghai_today() -> date:
 def utc_now() -> datetime:
     """返回带 UTC 时区的当前时间，供持久化时间戳使用。"""
     return datetime.now(UTC)
-# AI_GENERATE_END -
+# AI_GENERATE_END --

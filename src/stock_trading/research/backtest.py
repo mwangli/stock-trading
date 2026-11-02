@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------
+# AI_GENERATE_START --------------------
 from __future__ import annotations
 
 import json
@@ -12,9 +12,9 @@ from pathlib import Path
 import pandas as pd
 
 from stock_trading.config import AppConfig
-from stock_trading.instruments import normalize_instrument, to_baostock_code
+from stock_trading.utils.instruments import normalize_instrument, to_baostock_code
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.logging_utils import set_log_context, should_log_progress
+from stock_trading.utils.logging_utils import set_log_context, should_log_progress
 
 
 LOGGER = logging.getLogger(__name__)
@@ -592,4 +592,4 @@ def read_backtest_summary(directory: Path) -> dict[str, object]:
     """读取一个资金场景的回测摘要。"""
     return json.loads((directory / "summary.json").read_text(encoding="utf-8"))
 
-# AI_GENERATE_END -------------------
+# AI_GENERATE_END --------------------

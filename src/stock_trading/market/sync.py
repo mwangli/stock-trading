@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------
+# AI_GENERATE_START -----------------------------------------
 from __future__ import annotations
 
 import logging
@@ -10,7 +10,7 @@ import pandas as pd
 
 from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
 from stock_trading.market.storage import CollectionPlan, ParquetMarketStore
-from stock_trading.logging_utils import log_context, set_log_context
+from stock_trading.utils.logging_utils import log_context, set_log_context
 
 LOGGER = logging.getLogger(__name__)
 
@@ -297,4 +297,4 @@ def _collect_component(
         except Exception as error:
             return str(error), client
     return "未知采集失败", client
-# AI_GENERATE_END ----------------------------------------
+# AI_GENERATE_END -----------------------------------------

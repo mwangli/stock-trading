@@ -1,10 +1,10 @@
-# AI_GENERATE_START ----
+# AI_GENERATE_START -----
 from __future__ import annotations
 
 import logging
 from datetime import date
 
-from stock_trading.instruments import normalize_instrument
+from stock_trading.utils.instruments import normalize_instrument
 from stock_trading.state.store import StateStore
 
 LOGGER = logging.getLogger(__name__)
@@ -75,4 +75,4 @@ def _unknown_permission(scope: str, observed_date: date) -> dict[str, str]:
         "evidenceDetail": "没有找到可确认权限的历史成功委托",
         "observedAt": observed_date.isoformat(),
     }
-# AI_GENERATE_END ----
+# AI_GENERATE_END -----

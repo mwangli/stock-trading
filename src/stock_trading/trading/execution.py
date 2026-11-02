@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------
+# AI_GENERATE_START ---------------------------
 from __future__ import annotations
 
 import logging
@@ -19,7 +19,7 @@ from stock_trading.config import AppConfig
 from stock_trading.state.store import ORDER_ACTIVE_STATUSES, StateStore
 from stock_trading.trading.permissions import permission_scope
 from stock_trading.trading.strategy import affordable_quantity, select_execution_price
-from stock_trading.time_utils import shanghai_now, utc_now
+from stock_trading.utils.time_utils import shanghai_now, utc_now
 
 LOGGER = logging.getLogger(__name__)
 
@@ -585,4 +585,4 @@ def _is_permission_denial(message: str) -> bool:
         keyword in normalized
         for keyword in ("无权限", "没有权限", "未开通", "禁止交易", "不允许交易")
     )
-# AI_GENERATE_END --------------------------
+# AI_GENERATE_END ---------------------------

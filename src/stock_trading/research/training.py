@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------
+# AI_GENERATE_START ------------------
 from __future__ import annotations
 
 import json
@@ -26,8 +26,8 @@ from stock_trading.research.backtest import (
 from stock_trading.research.model import automatic_model_segments
 from stock_trading.research.qlib_store import QlibBinaryStore
 from stock_trading.state.store import StateStore
-from stock_trading.logging_utils import set_log_context
-from stock_trading.time_utils import shanghai_now, utc_now
+from stock_trading.utils.logging_utils import set_log_context
+from stock_trading.utils.time_utils import shanghai_now, utc_now
 
 LOGGER = logging.getLogger(__name__)
 EVALUATION_FILE = "evaluation.json"
@@ -330,4 +330,4 @@ def _write_evaluation(model_dir: Path, evaluation: dict[str, object]) -> None:
     )
 
 
-# AI_GENERATE_END -----------------
+# AI_GENERATE_END ------------------

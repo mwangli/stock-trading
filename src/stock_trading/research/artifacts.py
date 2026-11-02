@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------
+# AI_GENERATE_START --------------
 from __future__ import annotations
 
 import json
@@ -14,7 +14,7 @@ from stock_trading.research.model import (
     ModelSegments,
     train_alpha158_lightgbm_adaptive,
 )
-from stock_trading.time_utils import utc_now
+from stock_trading.utils.time_utils import utc_now
 
 MODEL_DIRECTORY = "alpha158-lightgbm"
 _REQUIRED_FILES = (
@@ -145,4 +145,4 @@ def validate_model_artifacts(directory: Path) -> None:
         raise ValueError(f"训练模型无法反序列化: {directory / 'model.pkl'}") from error
 
 
-# AI_GENERATE_END -------------
+# AI_GENERATE_END --------------

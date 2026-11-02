@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------------
+# AI_GENERATE_START --------------------------------
 from __future__ import annotations
 
 import logging
@@ -141,4 +141,4 @@ def configure_logging() -> None:
     logger.addHandler(handler)
     logger.setLevel(level)
     logger.propagate = False
-# AI_GENERATE_END -------------------------------
+# AI_GENERATE_END --------------------------------

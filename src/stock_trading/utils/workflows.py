@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------
+# AI_GENERATE_START ------------
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ import pandas as pd
 from stock_trading.broker.captcha import BaiduCaptchaSolver
 from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.config import AppConfig
-from stock_trading.instruments import normalize_instrument
+from stock_trading.utils.instruments import normalize_instrument
 from stock_trading.market.storage import ParquetMarketStore, ResearchDataAudit
 from stock_trading.market.sync import (
     live_codes,
@@ -19,7 +19,7 @@ from stock_trading.market.sync import (
     sync_collection_data,
     sync_stock_basics,
 )
-from stock_trading.notifications import push_execution_result
+from stock_trading.utils.notifications import push_execution_result
 from stock_trading.research.artifacts import (
     model_root,
     prediction_artifact_path,
@@ -448,4 +448,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END -----------
+# AI_GENERATE_END ------------

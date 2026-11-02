@@ -8,7 +8,7 @@ from typing import Protocol
 
 from stock_trading.broker.models import BrokerAccount, BrokerPosition, FiveLevelQuote
 from stock_trading.config import AppConfig
-from stock_trading.instruments import normalize_instrument, to_broker_code
+from stock_trading.utils.instruments import normalize_instrument, to_broker_code
 from stock_trading.state.store import StateStore
 from stock_trading.trading.permissions import permission_scope
 from stock_trading.trading.strategy import affordable_quantity

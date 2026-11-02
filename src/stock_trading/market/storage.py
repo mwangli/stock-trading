@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------------------------
+# AI_GENERATE_START ------------------------------------------------
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -14,7 +14,7 @@ import pyarrow.parquet as pq
 
 from stock_trading.market.minute_summary import summarize_t1_windows
 from stock_trading.market.models import AdjustmentFactor, DailyBar, MinuteBar, StockBasic
-from stock_trading.logging_utils import set_log_context, should_log_progress
+from stock_trading.utils.logging_utils import set_log_context, should_log_progress
 
 LOGGER = logging.getLogger(__name__)
 RAW_MINUTE_RETENTION_DAYS = 90
@@ -588,4 +588,4 @@ def _without(record: dict[str, object], *fields: str) -> dict[str, object]:
 def _read_parquet_file(path: Path) -> pd.DataFrame:
     """读取单个文件，避免 key=value 父目录触发 Hive 分区字段合并。"""
     return pq.ParquetFile(path).read().to_pandas()
-# AI_GENERATE_END -----------------------------------------------
+# AI_GENERATE_END ------------------------------------------------

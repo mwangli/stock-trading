@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -97,4 +97,4 @@ def show_command_groups(groups: CommandGroups) -> None:
             title_align="left",
         )
     )
-# AI_GENERATE_END -------
+# AI_GENERATE_END --------

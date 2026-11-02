@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------------------------------------------
+# AI_GENERATE_START ---------------------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -13,9 +13,9 @@ from typing import Any, Iterable
 import pandas as pd
 
 from stock_trading.broker.models import BrokerOrder
-from stock_trading.logging_utils import set_log_context
+from stock_trading.utils.logging_utils import set_log_context
 from stock_trading.state.database import SQLiteStateDatabase
-from stock_trading.time_utils import utc_now
+from stock_trading.utils.time_utils import utc_now
 
 LOGGER = logging.getLogger(__name__)
 
@@ -1521,4 +1521,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END --------------------------------------------------------------------
+# AI_GENERATE_END ---------------------------------------------------------------------

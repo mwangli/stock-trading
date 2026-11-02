@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------
+# AI_GENERATE_START -----------------
 from __future__ import annotations
 
 import logging
@@ -16,7 +16,7 @@ import baostock.common.context as bs_context
 import baostock.common.contants as bs_constants
 import baostock.util.socketutil as bs_socket
 
-from stock_trading.logging_utils import set_log_context
+from stock_trading.utils.logging_utils import set_log_context
 from stock_trading.market.models import AdjustmentFactor, DailyBar, MinuteBar, StockBasic
 
 DAILY_FIELDS = (
@@ -275,4 +275,4 @@ class BaoStockClient:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END ----------------
+# AI_GENERATE_END -----------------

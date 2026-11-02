@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 import logging
@@ -11,7 +11,7 @@ from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.broker.models import BrokerFeeBreakdown, BrokerOrder
 from stock_trading.config import AppConfig
 from stock_trading.state.store import StateStore
-from stock_trading.logging_utils import set_log_context
+from stock_trading.utils.logging_utils import set_log_context
 
 LOGGER = logging.getLogger(__name__)
 MONEY_QUANT = Decimal("0.0001")
@@ -290,4 +290,4 @@ def _rate(numerator: Decimal, denominator: Decimal) -> Decimal:
     return (numerator / denominator).quantize(RATE_QUANT, rounding=ROUND_HALF_UP)
 
 
-# AI_GENERATE_END ------
+# AI_GENERATE_END --------

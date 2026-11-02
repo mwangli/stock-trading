@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------
+# AI_GENERATE_START -----------------------------
 from __future__ import annotations
 
 import base64
@@ -25,8 +25,8 @@ from stock_trading.broker.parser import (
     parse_position_rows,
 )
 from stock_trading.config import AppConfig
-from stock_trading.logging_utils import set_log_context
-from stock_trading.time_utils import shanghai_today
+from stock_trading.utils.logging_utils import set_log_context
+from stock_trading.utils.time_utils import shanghai_today
 
 ACTION_GET_PRICE = 33
 ACTION_LOGIN = 100
@@ -581,4 +581,4 @@ def _required_price(response: dict[str, Any], primary: str, alternate: str) -> D
     if value is None or value <= 0:
         raise BrokerProtocolError("券商未返回完整五档行情")
     return value
-# AI_GENERATE_END ----------------------------
+# AI_GENERATE_END -----------------------------

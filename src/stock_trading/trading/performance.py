@@ -1,11 +1,11 @@
-# AI_GENERATE_START -------------
+# AI_GENERATE_START --------------
 from __future__ import annotations
 
 import logging
 from datetime import date
 
 from stock_trading.config import AppConfig
-from stock_trading.logging_utils import set_log_context
+from stock_trading.utils.logging_utils import set_log_context
 from stock_trading.state.store import StateStore
 
 LOGGER = logging.getLogger(__name__)
@@ -119,4 +119,4 @@ def _max_drawdown(returns: list[float]) -> float:
         peak = max(peak, equity)
         drawdown = max(drawdown, 1.0 - equity / peak)
     return drawdown
-# AI_GENERATE_END -------------
+# AI_GENERATE_END --------------
