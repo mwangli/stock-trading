@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------
+# AI_GENERATE_START -------------------------------
 from __future__ import annotations
 
 import logging
@@ -12,6 +12,7 @@ _TASK = ContextVar("log_task", default="-")
 _STEP = ContextVar("log_step", default="-/-")
 _PROGRESS = ContextVar("log_progress", default="-/-")
 _TARGET = ContextVar("log_target", default="-")
+_STEP_LOCKED = ContextVar("log_step_locked", default=False)
 _LEVEL_COLORS = {
     logging.DEBUG: "\033[90m",
     logging.INFO: "\033[32m",
@@ -78,7 +79,7 @@ def log_context(
     tokens = []
     if task is not None:
         tokens.append((_TASK, _TASK.set(task)))
-    if step is not None:
+    if step is not None and not _STEP_LOCKED.get():
         tokens.append((_STEP, _STEP.set(step)))
     if progress is not None:
         tokens.append((_PROGRESS, _PROGRESS.set(progress)))
@@ -91,13 +92,25 @@ def log_context(
             variable.reset(token)
 
 
+@contextmanager
+def fixed_log_step(step: str) -> Iterator[None]:
+    """固定顶层业务阶段，避免内部流程覆盖阶段编号。"""
+    step_token = _STEP.set(step)
+    lock_token = _STEP_LOCKED.set(True)
+    try:
+        yield
+    finally:
+        _STEP_LOCKED.reset(lock_token)
+        _STEP.reset(step_token)
+
+
 def set_log_context(
     *,
     step: str | None = None,
     progress: str | None = None,
     target: str | None = None,
 ) -> None:
-    if step is not None:
+    if step is not None and not _STEP_LOCKED.get():
         _STEP.set(step)
     if progress is not None:
         _PROGRESS.set(progress)
@@ -128,4 +141,4 @@ def configure_logging() -> None:
     logger.addHandler(handler)
     logger.setLevel(level)
     logger.propagate = False
-# AI_GENERATE_END -----------------------------
+# AI_GENERATE_END -------------------------------

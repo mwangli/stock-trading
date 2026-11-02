@@ -1,31 +1,18 @@
-# AI_GENERATE_START -----------------------------------
+# AI_GENERATE_START -------------------------------------
 from __future__ import annotations
 
 import logging
 import time
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import date
 
 import pandas as pd
 
 from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
-from stock_trading.market.storage import ParquetMarketStore
+from stock_trading.market.storage import CollectionPlan, ParquetMarketStore
 from stock_trading.logging_utils import log_context, set_log_context
-from stock_trading.time_utils import shanghai_today
 
 LOGGER = logging.getLogger(__name__)
-
-
-def latest_trade_date(proxy_url: str | None) -> date:
-    """查询最近一个存在全市场日线的交易日。"""
-    with BaoStockClient(proxy_url) as client:
-        for offset in range(15):
-            candidate = shanghai_today() - timedelta(days=offset)
-            bars = client.fetch_daily_market(candidate)
-            if bars:
-                LOGGER.info("最近交易日确认：%s；股票数=%d", candidate, len(bars))
-                return candidate
-    raise ValueError("最近 15 个自然日内没有找到可用交易日")
 
 
 def research_codes(
@@ -91,26 +78,35 @@ def sync_collection_data(
     start_date: date,
     end_date: date,
     skip_existing: bool = False,
+    plans: tuple[CollectionPlan, ...] | None = None,
 ) -> dict[str, object]:
     """在主线程使用单个长期 BaoStock 连接顺序采集股票数据。"""
-    pending: list[tuple[str, bool, bool, bool]] = []
-    skipped = 0
+    pending: list[CollectionPlan] = []
     downloaded = 0
     failed: dict[str, dict[str, str]] = {}
-    for code in codes:
-        needs_daily = not skip_existing or not store.daily_history_valid(
-            code, start_date, end_date
-        )
-        needs_adjustment = not skip_existing or not store.adjustment_factors_valid(
-            code, end_date
-        )
-        needs_minute5 = not skip_existing or not store.minute_summaries_valid(
-            code, start_date, end_date
-        )
-        if not any((needs_daily, needs_adjustment, needs_minute5)):
-            skipped += 1
-        else:
-            pending.append((code, needs_daily, needs_adjustment, needs_minute5))
+    if plans is not None:
+        pending.extend(plans)
+    else:
+        for code in codes:
+            needs_daily = not skip_existing or not store.daily_history_valid(
+                code, start_date, end_date
+            )
+            needs_adjustment = not skip_existing or not store.adjustment_factors_valid(
+                code, end_date
+            )
+            needs_minute5 = not skip_existing or not store.minute_summaries_valid(
+                code, start_date, end_date
+            )
+            if any((needs_daily, needs_adjustment, needs_minute5)):
+                pending.append(
+                    CollectionPlan(
+                        code=code,
+                        needs_daily=needs_daily,
+                        needs_adjustment=needs_adjustment,
+                        needs_minute5=needs_minute5,
+                    )
+                )
+    skipped = len(codes) - len(pending)
 
     set_log_context(progress=f"0/{len(pending)}", target="股票数据")
     LOGGER.info(
@@ -131,17 +127,17 @@ def sync_collection_data(
     client.__enter__()
     try:
         for index, plan in enumerate(pending, start=1):
-            with log_context(progress=f"{index}/{len(pending)}", target=plan[0]):
+            with log_context(progress=f"{index}/{len(pending)}", target=plan.code):
                 result, client = _sync_collection_code(
                     store,
                     client,
                     proxy_url,
-                    plan[0],
+                    plan.code,
                     start_date,
                     end_date,
-                    plan[1],
-                    plan[2],
-                    plan[3],
+                    plan.needs_daily,
+                    plan.needs_adjustment,
+                    plan.needs_minute5,
                 )
                 downloaded = _record_collection_result(result, downloaded, failed)
     finally:
@@ -291,4 +287,4 @@ def _collect_component(
         except Exception as error:
             return str(error), client
     return "未知采集失败", client
-# AI_GENERATE_END -----------------------------------
+# AI_GENERATE_END -------------------------------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 import json
@@ -9,7 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from stock_trading.config import AppConfig
-from stock_trading.market.storage import ParquetMarketStore
+from stock_trading.market.storage import ParquetMarketStore, ResearchDataAudit
 from stock_trading.market.sync import research_codes
 from stock_trading.research.artifacts import (
     activate_model_artifact,
@@ -59,28 +59,33 @@ def refresh_qlib_from_parquet(
     codes: list[str],
     start_date: date,
     end_date: date,
+    audit: ResearchDataAudit | None = None,
 ) -> dict[str, object]:
     """校验本地行情并从 Parquet 重建 Qlib。"""
     store = ParquetMarketStore(config.data_dir)
-    daily_codes = store.valid_daily_codes(codes, start_date, end_date)
-    minute5_codes = store.valid_minute5_codes(codes, start_date, end_date)
-    missing_daily = [code for code in codes if code not in daily_codes]
-    missing_minute5 = [code for code in codes if code not in minute5_codes]
-    errors: list[str] = []
-    if missing_daily:
-        errors.append(f"日线或复权因子缺失：{','.join(missing_daily)}")
-    if missing_minute5:
-        errors.append(f"5分钟线或分钟聚合缺失：{','.join(missing_minute5)}")
-    if errors:
-        missing_codes = list(dict.fromkeys(missing_daily + missing_minute5))
-        date_argument = _format_date_expression(start_date, end_date)
-        command = (
-            f"stock-collect --codes {','.join(missing_codes)} "
-            f"--date {date_argument}"
-        )
-        raise ValueError(f"{'；'.join(errors)}；请执行：{command}")
-
-    model_codes = store.model_research_codes(codes, start_date, end_date)
+    if audit is None:
+        daily_codes = store.valid_daily_codes(codes, start_date, end_date)
+        minute5_codes = store.valid_minute5_codes(codes, start_date, end_date)
+        missing_daily = [code for code in codes if code not in daily_codes]
+        missing_minute5 = [code for code in codes if code not in minute5_codes]
+        errors: list[str] = []
+        if missing_daily:
+            errors.append(f"日线或复权因子缺失：{','.join(missing_daily)}")
+        if missing_minute5:
+            errors.append(f"5分钟线或分钟聚合缺失：{','.join(missing_minute5)}")
+        if errors:
+            missing_codes = list(dict.fromkeys(missing_daily + missing_minute5))
+            date_argument = _format_date_expression(start_date, end_date)
+            command = (
+                f"stock-collect --codes {','.join(missing_codes)} "
+                f"--date {date_argument}"
+            )
+            raise ValueError(f"{'；'.join(errors)}；请执行：{command}")
+        model_codes = store.model_research_codes(codes, start_date, end_date)
+    else:
+        if not audit.complete:
+            raise ValueError("研究数据检查未通过，无法重建 Qlib")
+        model_codes = list(audit.model_codes)
     LOGGER.info(
         "开始重建 Qlib：采集有效=%d；模型有效=%d；日期=%s 至 %s",
         len(codes),
@@ -350,4 +355,4 @@ def _format_date_expression(start_date: date, end_date: date) -> str:
         return start_date.isoformat()
     return f"{start_date.isoformat()}:{end_date.isoformat()}"
 
-# AI_GENERATE_END -------
+# AI_GENERATE_END --------

@@ -1,9 +1,10 @@
-# AI_GENERATE_START ----------------------------------
+# AI_GENERATE_START ----------------------------------------
 from __future__ import annotations
 
 import json
 import logging
 import shutil
+from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -18,6 +19,26 @@ from stock_trading.logging_utils import set_log_context, should_log_progress
 LOGGER = logging.getLogger(__name__)
 RAW_MINUTE_RETENTION_DAYS = 90
 MINUTE_SUMMARY_RETENTION_DAYS = 366 * 5
+
+
+@dataclass(frozen=True)
+class CollectionPlan:
+    code: str
+    needs_daily: bool
+    needs_adjustment: bool
+    needs_minute5: bool
+
+
+@dataclass(frozen=True)
+class ResearchDataAudit:
+    pending: tuple[CollectionPlan, ...]
+    valid_codes: tuple[str, ...]
+    model_codes: tuple[str, ...]
+    tradable_codes: tuple[str, ...]
+
+    @property
+    def complete(self) -> bool:
+        return not self.pending
 
 
 class ParquetMarketStore:
@@ -53,10 +74,14 @@ class ParquetMarketStore:
             "code", "code_name", "ipo_date", "out_date", "security_type",
             "status", "trade_status", "snapshot_date",
         }
+        if (
+            not required.issubset(frame.columns)
+            or len(frame) < 100
+            or not frame["code"].astype(str).str.match(r"^(sh|sz)\.\d{6}$").all()
+        ):
+            return False
         return (
-            required.issubset(frame.columns)
-            and len(frame) >= 100
-            and frame["code"].astype(str).str.match(r"^(sh|sz)\.\d{6}$").all()
+            frame["snapshot_date"].notna().all()
             and frame["snapshot_date"].dt.date.eq(snapshot_date).all()
         )
 
@@ -316,6 +341,118 @@ class ParquetMarketStore:
             if code in daily and self.minute_summaries_valid(code, start_date, end_date)
         ]
 
+    def audit_research_data(
+        self, codes: list[str], start_date: date, end_date: date
+    ) -> ResearchDataAudit:
+        """单次读取研究文件，生成采集计划和后续初始化股票池。"""
+        pending: list[CollectionPlan] = []
+        valid_codes: list[str] = []
+        model_codes: list[str] = []
+        tradable_codes: list[str] = []
+        daily_required = {
+            "code", "trade_date", "open", "high", "low", "close", "volume",
+            "tradestatus", "is_st",
+        }
+        adjustment_required = {"code", "operate_date", "forward_factor"}
+        minute_required = {"trade_date", "buy_complete", "sell_complete"}
+        total = len(codes)
+
+        for index, code in enumerate(codes, start=1):
+            try:
+                daily = self.read_daily_history(code)
+                daily_dates = pd.to_datetime(
+                    daily["trade_date"], errors="raise"
+                ).dt.date
+            except (OSError, ValueError, KeyError, AttributeError):
+                daily = pd.DataFrame()
+                daily_dates = pd.Series(dtype="object")
+            daily_valid = (
+                daily_required.issubset(daily.columns)
+                and not daily.empty
+                and self.collection_coverage_valid(
+                    code, "daily", start_date, end_date
+                )
+            )
+
+            try:
+                factors = self.read_adjustment_factors(code)
+                factor_dates = pd.to_datetime(
+                    factors["operate_date"], errors="coerce"
+                ).dt.date
+                adjustment_valid = (
+                    adjustment_required.issubset(factors.columns)
+                    and (
+                        factors.empty
+                        or (factor_dates.notna().all() and factor_dates.max() <= end_date)
+                    )
+                    and self.collection_coverage_valid(
+                        code, "adjustment", date(1990, 1, 1), end_date
+                    )
+                )
+            except (OSError, ValueError, KeyError, AttributeError):
+                adjustment_valid = False
+
+            eligible = pd.DataFrame()
+            if daily_required.issubset(daily.columns):
+                eligible = self._eligible_daily_rows(daily)
+            eligible_dates = (
+                daily_dates.loc[eligible.index]
+                if not eligible.empty
+                else pd.Series(dtype="object")
+            )
+            daily_window = (
+                eligible[eligible_dates.between(start_date, end_date)]
+                if not eligible.empty
+                else eligible
+            )
+            minute_coverage_valid = self.collection_coverage_valid(
+                code, "minute5", start_date, end_date
+            )
+            try:
+                summaries = self.read_minute_summaries(code)
+            except (OSError, ValueError, KeyError, AttributeError):
+                summaries = pd.DataFrame()
+            if not daily_required.issubset(daily.columns) or daily.empty:
+                minute_valid = False
+            elif daily_window.empty:
+                minute_valid = minute_coverage_valid
+            elif not minute_required.issubset(summaries.columns):
+                minute_valid = False
+            else:
+                expected = set(pd.to_datetime(daily_window["trade_date"]).dt.date)
+                complete = summaries[
+                    summaries["buy_complete"].astype(bool)
+                    & summaries["sell_complete"].astype(bool)
+                ]
+                actual = set(pd.to_datetime(complete["trade_date"]).dt.date)
+                minute_valid = expected.issubset(actual) and minute_coverage_valid
+
+            if daily_valid and adjustment_valid and minute_valid:
+                valid_codes.append(code)
+                if not daily_window.empty:
+                    model_codes.append(code)
+            if not eligible.empty and eligible_dates.eq(end_date).any():
+                tradable_codes.append(code)
+            if not all((daily_valid, adjustment_valid, minute_valid)):
+                pending.append(
+                    CollectionPlan(
+                        code=code,
+                        needs_daily=not daily_valid,
+                        needs_adjustment=not adjustment_valid,
+                        needs_minute5=not minute_valid,
+                    )
+                )
+            if should_log_progress(index, total):
+                set_log_context(progress=f"{index}/{total}", target=code)
+                LOGGER.info("本地研究数据检查完成")
+
+        return ResearchDataAudit(
+            pending=tuple(pending),
+            valid_codes=tuple(valid_codes),
+            model_codes=tuple(model_codes),
+            tradable_codes=tuple(tradable_codes),
+        )
+
     def model_research_codes(
         self, codes: list[str], start_date: date, end_date: date
     ) -> list[str]:
@@ -519,4 +656,4 @@ def _without(record: dict[str, object], *fields: str) -> dict[str, object]:
 def _read_parquet_file(path: Path) -> pd.DataFrame:
     """读取单个文件，避免 key=value 父目录触发 Hive 分区字段合并。"""
     return pq.ParquetFile(path).read().to_pandas()
-# AI_GENERATE_END ----------------------------------
+# AI_GENERATE_END ----------------------------------------

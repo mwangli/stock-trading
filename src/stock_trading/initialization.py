@@ -1,18 +1,19 @@
-# AI_GENERATE_START ------------------------------------------
+# AI_GENERATE_START --------------------------------------------------
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import TypeVar
+from time import perf_counter
+from typing import Generic, TypeVar
 
 from stock_trading.config import AppConfig
 from stock_trading.instruments import normalize_instrument
-from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.logging_utils import set_log_context
+from stock_trading.market.storage import ParquetMarketStore, ResearchDataAudit
+from stock_trading.logging_utils import fixed_log_step, set_log_context
 from stock_trading.market.sync import (
-    latest_trade_date,
     live_codes,
     research_codes,
     sync_collection_data,
@@ -36,10 +37,18 @@ from stock_trading.research.training import (
     training_artifacts_valid,
 )
 from stock_trading.state.store import StateStore
+from stock_trading.time_utils import shanghai_today
+from stock_trading.market.trade_calendar import latest_trade_date
 
 LOGGER = logging.getLogger(__name__)
 MINIMUM_RESEARCH_CODES = 100
 T = TypeVar("T")
+
+
+@dataclass(frozen=True)
+class StepResult(Generic[T]):
+    executed: bool
+    value: T | None = None
 
 
 class InitializationService:
@@ -56,10 +65,11 @@ class InitializationService:
         self._state.initialize()
         LOGGER.info("状态库就绪，将按实际数据检查各初始化步骤")
 
-        end_date = latest_trade_date(self._config.baostock_proxy)
+        end_date = latest_trade_date(shanghai_today())
         start_date = end_date - timedelta(days=self._config.market_history_days)
         LOGGER.info(
-            "初始化计划确定：研究日期=%s 至 %s；资金档位=%s",
+            "初始化计划确定：最近交易日=%s；研究日期=%s 至 %s；资金档位=%s",
+            end_date,
             start_date,
             end_date,
             ",".join(str(value) for value in self._config.backtest_capital_scenarios),
@@ -88,24 +98,16 @@ class InitializationService:
             end_date,
         )
 
-        self._step(
-            2,
-            "日线、复权因子和5分钟线",
-            lambda: self._collection_complete(selected_codes, start_date, end_date),
-            lambda: sync_collection_data(
-                self._market,
-                self._config.baostock_proxy,
-                selected_codes,
-                start_date,
-                end_date,
-                skip_existing=True,
-            ),
-        )
-        valid_codes = self._market.valid_research_codes(
+        market_step = self._market_data_step(
             selected_codes, start_date, end_date
         )
-        model_codes = self._market.model_research_codes(valid_codes, start_date, end_date)
-        current_codes = self._market.tradable_codes_on(live_metadata_codes, end_date)
+        audit = market_step.value
+        if audit is None:
+            raise ValueError("行情初始化未返回检查结果")
+        valid_codes = list(audit.valid_codes)
+        model_codes = list(audit.model_codes)
+        tradable = set(audit.tradable_codes)
+        current_codes = [code for code in live_metadata_codes if code in tradable]
         LOGGER.info(
             "研究数据检查完成：采集有效=%d；模型有效=%d；实时可交易=%d；目标=%d；完整率=%.2f%%",
             len(valid_codes),
@@ -116,33 +118,41 @@ class InitializationService:
         )
 
         qlib = QlibBinaryStore(self._market, self._config.qlib_dir)
-        qlib_result = self._step(
+        qlib_step = self._step(
             3,
             "Qlib 数据构建",
-            lambda: qlib.is_valid(model_codes, start_date, end_date),
+            lambda: not market_step.executed
+            and qlib.is_valid(model_codes, start_date, end_date),
             lambda: refresh_qlib_from_parquet(
-                self._config, model_codes, start_date, end_date
+                self._config,
+                model_codes,
+                start_date,
+                end_date,
+                audit=audit,
             ),
         )
         model_root_dir = model_root(self._config.artifact_dir)
         self._step(
             4,
             "模型训练和回测评估",
-            lambda: qlib_result is None and self._training_valid(model_root_dir),
+            lambda: not qlib_step.executed and self._training_valid(model_root_dir),
             lambda: train_prepared_model(self._config, None),
-            lambda: self._training_valid(model_root_dir),
+            lambda _result: self._training_valid(model_root_dir),
         )
         model_dir = resolve_current_model_dir(model_root_dir)
         backtests = read_backtest_summaries(self._config, model_dir)
 
-        prediction_result = self._step(
+        prediction_step = self._step(
             5,
-            "最新交易日预测",
+            "最新交易日完整排名",
             lambda: self._prediction_valid(model_dir, end_date),
             lambda: self._predict_latest(model_dir, end_date, current_codes),
         )
-        if prediction_result is None:
-            prediction_result = self._prediction_summary(model_dir, end_date)
+        prediction_result = (
+            prediction_step.value
+            if prediction_step.executed
+            else self._prediction_summary(model_dir, end_date)
+        )
 
         readiness = {
             "modelReady": _model_valid(model_root_dir),
@@ -150,7 +160,7 @@ class InitializationService:
         }
         set_log_context(step="5/5", progress="-/-", target="初始化")
         LOGGER.info(
-            "初始化完成：模型=%s；预测=%s",
+            "初始化完成：模型=%s；排名=%s",
             readiness["modelReady"],
             readiness["predictionReady"],
         )
@@ -171,27 +181,88 @@ class InitializationService:
         title: str,
         validator: Callable[[], bool],
         action: Callable[[], T],
-        post_validator: Callable[[], bool] | None = None,
-    ) -> T | None:
-        set_log_context(step=f"{index}/5", progress="-/-", target=title)
-        LOGGER.info("初始化步骤开始")
-        if validator():
-            LOGGER.info("实际数据检查通过，初始化步骤跳过")
-            return None
-        result = action()
-        if not (post_validator or validator)():
-            raise ValueError(f"初始化阶段完成后检查失败: {title}")
-        set_log_context(step=f"{index}/5", progress="-/-", target=title)
-        LOGGER.info("初始化步骤完成")
-        return result
+        post_validator: Callable[[T], bool] | None = None,
+    ) -> StepResult[T]:
+        step = f"{index}/5"
+        set_log_context(step=step, progress="-/-", target=title)
+        with fixed_log_step(step):
+            started_at = perf_counter()
+            LOGGER.info("开始检查初始化步骤")
+            if validator():
+                LOGGER.info(
+                    "本地数据检查通过，初始化步骤跳过：耗时=%.2f 秒",
+                    perf_counter() - started_at,
+                )
+                return StepResult(executed=False)
+            LOGGER.info("本地数据检查未通过，开始执行初始化步骤")
+            result = action()
+            valid = post_validator(result) if post_validator else validator()
+            if not valid:
+                raise ValueError(f"初始化阶段完成后检查失败: {title}")
+            set_log_context(progress="-/-", target=title)
+            LOGGER.info(
+                "初始化步骤完成：耗时=%.2f 秒",
+                perf_counter() - started_at,
+            )
+            return StepResult(executed=True, value=result)
 
-    def _collection_complete(
-        self, codes: list[str], start_date: date, end_date: date
-    ) -> bool:
-        """确认全部研究股票的数据可读且覆盖初始化窗口。"""
-        return len(
-            self._market.valid_research_codes(codes, start_date, end_date)
-        ) == len(codes)
+    def _sync_collection_data(
+        self,
+        audit: ResearchDataAudit,
+        codes: list[str],
+        start_date: date,
+        end_date: date,
+    ) -> ResearchDataAudit:
+        sync_collection_data(
+            self._market,
+            self._config.baostock_proxy,
+            codes,
+            start_date,
+            end_date,
+            skip_existing=True,
+            plans=audit.pending,
+        )
+        return self._market.audit_research_data(codes, start_date, end_date)
+
+    def _market_data_step(
+        self,
+        codes: list[str],
+        start_date: date,
+        end_date: date,
+    ) -> StepResult[ResearchDataAudit]:
+        step = "2/5"
+        title = "日线、复权因子和5分钟线"
+        set_log_context(step=step, progress="0/-", target=title)
+        with fixed_log_step(step):
+            started_at = perf_counter()
+            LOGGER.info("开始检查初始化步骤：股票数=%d", len(codes))
+            audit = self._market.audit_research_data(codes, start_date, end_date)
+            if audit.complete:
+                set_log_context(progress="-/-", target=title)
+                LOGGER.info(
+                    "本地数据检查通过，初始化步骤跳过：耗时=%.2f 秒",
+                    perf_counter() - started_at,
+                )
+                return StepResult(executed=False, value=audit)
+            set_log_context(
+                progress=f"0/{len(audit.pending)}",
+                target="股票数据",
+            )
+            LOGGER.info(
+                "本地数据检查未通过，开始执行初始化步骤：待采集=%d",
+                len(audit.pending),
+            )
+            refreshed = self._sync_collection_data(
+                audit, codes, start_date, end_date
+            )
+            if not refreshed.complete:
+                raise ValueError(f"初始化阶段完成后检查失败: {title}")
+            set_log_context(progress="-/-", target=title)
+            LOGGER.info(
+                "初始化步骤完成：耗时=%.2f 秒",
+                perf_counter() - started_at,
+            )
+            return StepResult(executed=True, value=refreshed)
 
     def _training_valid(self, model_root_dir: Path) -> bool:
         try:
@@ -235,4 +306,4 @@ def _model_valid(model_root_dir: Path) -> bool:
         return model_artifacts_valid(resolve_current_model_dir(model_root_dir))
     except (OSError, ValueError):
         return False
-# AI_GENERATE_END ------------------------------------------
+# AI_GENERATE_END --------------------------------------------------

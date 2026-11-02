@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------
+# AI_GENERATE_START ----------------
 from __future__ import annotations
 
 import logging
@@ -25,7 +25,7 @@ DAILY_FIELDS = (
 )
 MINUTE_FIELDS = "date,time,code,open,high,low,close,volume,amount,adjustflag"
 LOGGER = logging.getLogger(__name__)
-ROW_PROGRESS_STEPS = 100
+ROW_PROGRESS_STEPS = 20
 T = TypeVar("T")
 
 
@@ -72,17 +72,6 @@ class BaoStockClient:
             self._logged_in = False
             self._close_connection()
             self._restore_connector()
-
-    def fetch_daily_market(self, trade_date: date) -> list[DailyBar]:
-        LOGGER.info("正在请求全市场日线：交易日=%s", trade_date)
-        result = self._request(
-            f"全市场日线 {trade_date}",
-            lambda: bs.query_daily_history_k_AStock(date=trade_date.isoformat()),
-        )
-        return [
-            DailyBar.from_baostock(row)
-            for row in self._rows(result, f"全市场日线 {trade_date}")
-        ]
 
     def fetch_stock_basics(self, snapshot_date: date) -> list[StockBasic]:
         """读取全部 A 股基础资料，并合并指定日期的交易状态。"""
@@ -286,4 +275,4 @@ class BaoStockClient:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END ---------------
+# AI_GENERATE_END ----------------
