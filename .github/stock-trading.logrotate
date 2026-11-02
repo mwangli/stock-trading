@@ -1,4 +1,4 @@
-__PROJECT_DIR__/data/stock-trading.log {
+__PROJECT_DIR__/logs/stock-trading.log {
     daily
     size 20M
     rotate 14
