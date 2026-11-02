@@ -1,6 +1,7 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date
 from pathlib import Path
@@ -19,10 +20,18 @@ from stock_trading.market.sync import (
     sync_stock_basics,
 )
 from stock_trading.notifications import push_execution_result
-from stock_trading.research.artifacts import model_root, resolve_current_model_dir
+from stock_trading.research.artifacts import (
+    model_root,
+    prediction_artifact_path,
+    prediction_artifact_valid,
+    resolve_current_model_dir,
+)
 from stock_trading.research.model import predict_alpha158_lightgbm
 from stock_trading.research.qlib_store import QlibBinaryStore
-from stock_trading.research.training import refresh_qlib_from_parquet
+from stock_trading.research.training import (
+    activate_trained_model,
+    refresh_qlib_from_parquet,
+)
 from stock_trading.state.store import StateStore
 from stock_trading.trading.broker_sync import BrokerOrderSyncService
 from stock_trading.trading.execution import OrderExecutionOrchestrator
@@ -288,25 +297,90 @@ def rank_workflow(config: AppConfig, prediction_date: date) -> dict[str, object]
             f"collect 已成功但 Qlib 未覆盖目标日期：{prediction_date.isoformat()}"
         )
     model_dir = resolve_current_model_dir(model_root(config.artifact_dir))
+    activation = activate_trained_model(config, model_dir)
     stocks = store.read_stock_basics()
     metadata_codes = live_codes(stocks, prediction_date)
     current_codes = store.tradable_codes_on(metadata_codes, prediction_date)
-    prediction = predict_alpha158_lightgbm(
-        config.qlib_dir,
+    expected_instruments = {
+        normalize_instrument(code) for code in current_codes
+    }
+    prediction_path = prediction_artifact_path(model_dir, prediction_date)
+    existing = _existing_prediction_summary(
         model_dir,
+        prediction_path,
         prediction_date,
-        eligible_instruments={normalize_instrument(code) for code in current_codes},
+        expected_instruments,
     )
-    state = state_store.import_prediction_artifact(
-        model_dir, Path(str(prediction["path"]))
-    )
+    if existing is None:
+        prediction = predict_alpha158_lightgbm(
+            config.qlib_dir,
+            model_dir,
+            prediction_date,
+            eligible_instruments=expected_instruments,
+        )
+        state = state_store.import_prediction_artifact(
+            model_dir, Path(str(prediction["path"]))
+        )
+    else:
+        prediction = existing
+        if state_store.prediction_registered(
+            model_dir / "model.pkl", prediction_date.isoformat()
+        ):
+            state = {
+                "status": "SUCCESS",
+                "predictionDate": prediction_date.isoformat(),
+                "predictions": prediction["rankingRows"],
+                "reused": True,
+            } | state_store.summary()
+        else:
+            state = state_store.import_prediction_artifact(
+                model_dir, prediction_path
+            )
+        LOGGER.info(
+            "现有横截面排名检查通过，跳过重复计算：日期=%s；股票数=%d",
+            prediction_date,
+            prediction["rankingRows"],
+        )
     LOGGER.info(
         "横截面预测完成：全市场评分数=%s；排名数=%s；文件=%s",
         prediction["universeRows"],
         prediction["rankingRows"],
         prediction["path"],
     )
-    return {"prediction": prediction, "state": state}
+    return {"prediction": prediction, "activation": activation, "state": state}
+
+
+def _existing_prediction_summary(
+    model_dir: Path,
+    path: Path,
+    prediction_date: date,
+    expected_instruments: set[str],
+) -> dict[str, object] | None:
+    if not prediction_artifact_valid(model_dir, prediction_date):
+        return None
+    frame = pd.read_parquet(path)
+    actual_instruments = {
+        normalize_instrument(value) for value in frame["instrument"]
+    }
+    if actual_instruments != expected_instruments:
+        return None
+    metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
+    return {
+        "model": metrics["model"],
+        "featureSet": metrics["featureSet"],
+        "predictionDate": prediction_date.isoformat(),
+        "universeRows": len(frame),
+        "rankingRows": len(frame),
+        "path": str(path),
+        "topCandidates": [
+            {
+                "instrument": str(row.instrument),
+                "rank": int(row.rank),
+                "score": float(row.score),
+            }
+            for row in frame.head(5).itertuples(index=False)
+        ],
+    }
 
 
 def trading_workflow(
@@ -400,4 +474,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END -------
+# AI_GENERATE_END --------
