@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------
+# AI_GENERATE_START -----------
 from __future__ import annotations
 
 import json
@@ -12,11 +12,8 @@ from stock_trading.config import AppConfig
 from stock_trading.market.storage import ParquetMarketStore, ResearchDataAudit
 from stock_trading.market.sync import research_codes
 from stock_trading.research.artifacts import (
-    activate_model_artifact,
-    current_model_version,
     model_artifacts_valid,
     model_root,
-    restore_model_artifact,
     train_model_candidate,
 )
 from stock_trading.research.backtest import (
@@ -179,13 +176,7 @@ def train_prepared_model(
     model_dir = Path(str(training["artifactPath"]))
     store = StateStore(config.state_db_path)
     state = import_training_state(store, model_dir, "CANDIDATE")
-    previous_version = current_model_version(root)
-    activate_model_artifact(root, str(training["modelVersion"]))
-    try:
-        activation = store.activate_model_version(model_dir)
-    except BaseException:
-        restore_model_artifact(root, previous_version)
-        raise
+    activation = store.activate_model_version(model_dir)
     completed_requests = store.complete_training_requests(
         int(activation["activeModel"]["id"])
     )
@@ -205,6 +196,28 @@ def train_prepared_model(
     return {
         "training": training,
         "evaluation": evaluation,
+        "state": state,
+        "activation": activation,
+        "completedTrainingRequests": completed_requests,
+    }
+
+
+def activate_trained_model(
+    config: AppConfig, model_dir: Path
+) -> dict[str, object]:
+    """直接激活已有完整模型，必要时先补录 SQLite 状态。"""
+    store = StateStore(config.state_db_path)
+    state = None
+    try:
+        activation = store.activate_model_version(model_dir)
+    except ValueError:
+        state = import_training_state(store, model_dir, "CANDIDATE")
+        activation = store.activate_model_version(model_dir)
+    completed_requests = store.complete_training_requests(
+        int(activation["activeModel"]["id"])
+    )
+    LOGGER.info("已有完整模型制品已启用：版本=%s", model_dir.name)
+    return {
         "state": state,
         "activation": activation,
         "completedTrainingRequests": completed_requests,
@@ -295,9 +308,13 @@ def training_artifacts_valid(model_dir: Path) -> bool:
 def read_backtest_summaries(
     config: AppConfig, model_dir: Path
 ) -> dict[str, object]:
-    """读取指定模型的五档回测摘要。"""
+    """读取已完成的回测摘要，缺失回测不阻断模型使用。"""
     return {
-        key: read_backtest_summary(path)
+        key: (
+            read_backtest_summary(path)
+            if backtest_artifact_valid(path)
+            else {"artifactValid": False}
+        )
         for key, path in backtest_directories(config, model_dir).items()
     }
 
@@ -332,4 +349,4 @@ def _format_date_expression(start_date: date, end_date: date) -> str:
         return start_date.isoformat()
     return f"{start_date.isoformat()}:{end_date.isoformat()}"
 
-# AI_GENERATE_END ---------
+# AI_GENERATE_END -----------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------------------
+# AI_GENERATE_START ------------------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -31,6 +31,7 @@ from stock_trading.research.model import (
 )
 from stock_trading.research.qlib_store import QlibBinaryStore
 from stock_trading.research.training import (
+    activate_trained_model,
     read_backtest_summaries,
     refresh_qlib_from_parquet,
     train_prepared_model,
@@ -132,7 +133,7 @@ class InitializationService:
             ),
         )
         model_root_dir = model_root(self._config.artifact_dir)
-        self._step(
+        training_step = self._step(
             4,
             "模型训练和回测评估",
             lambda: not qlib_step.executed and self._training_valid(model_root_dir),
@@ -140,6 +141,8 @@ class InitializationService:
             lambda _result: self._training_valid(model_root_dir),
         )
         model_dir = resolve_current_model_dir(model_root_dir)
+        if not training_step.executed:
+            activate_trained_model(self._config, model_dir)
         backtests = read_backtest_summaries(self._config, model_dir)
 
         prediction_step = self._step(
@@ -287,9 +290,7 @@ class InitializationService:
             model_dir = resolve_current_model_dir(model_root_dir)
         except (OSError, ValueError):
             return False
-        return training_artifacts_valid(
-            model_dir
-        ) and self._state.model_artifacts_registered(model_dir)
+        return training_artifacts_valid(model_dir)
 
     def _prediction_valid(self, model_dir: Path, prediction_date: date) -> bool:
         return (
@@ -324,4 +325,4 @@ def _model_valid(model_root_dir: Path) -> bool:
         return model_artifacts_valid(resolve_current_model_dir(model_root_dir))
     except (OSError, ValueError):
         return False
-# AI_GENERATE_END ----------------------------------------------------
+# AI_GENERATE_END ------------------------------------------------------
