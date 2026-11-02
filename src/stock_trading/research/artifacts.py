@@ -1,8 +1,7 @@
-# AI_GENERATE_START ----------
+# AI_GENERATE_START ------------
 from __future__ import annotations
 
 import json
-import logging
 import pickle
 import re
 import shutil
@@ -18,7 +17,6 @@ from stock_trading.research.model import (
 )
 from stock_trading.time_utils import utc_now
 
-LOGGER = logging.getLogger(__name__)
 MODEL_DIRECTORY = "alpha158-lightgbm"
 _REQUIRED_FILES = (
     "model.pkl",
@@ -97,9 +95,6 @@ def train_model_candidate(
         )
         validate_model_artifacts(staging)
         staging.replace(published)
-        shutil.rmtree(checkpoint_dir, ignore_errors=True)
-        if checkpoint_dir.exists():
-            LOGGER.warning("特征断点目录清理失败：%s", checkpoint_dir)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     return result | {
@@ -189,4 +184,4 @@ def _write_current_pointer(root: Path, version: str) -> None:
         temporary.replace(pointer)
     finally:
         temporary.unlink(missing_ok=True)
-# AI_GENERATE_END ----------
+# AI_GENERATE_END ------------
