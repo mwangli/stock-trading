@@ -101,7 +101,7 @@ configured_project_dir="$(env -i \
   PATH="$venv_dir/bin:$system_path" \
   LANG="${LANG:-C.UTF-8}" \
   TZ="Asia/Shanghai" \
-  "$venv_dir/bin/python" -c 'from stock_trading.config import AppConfig; print(AppConfig.from_env().project_dir)')"
+  "$venv_dir/bin/python" -c 'from stock_trading.config import AppConfig; print(AppConfig.from_env().data_dir.parent.parent)')"
 test "$configured_project_dir" = "$project_dir"
 for command_name in $commands; do
   test -x "$venv_dir/bin/$command_name"
