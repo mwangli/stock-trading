@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------------------------------
+# AI_GENERATE_START ----------------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -222,7 +222,9 @@ class InitializationService:
             skip_existing=True,
             plans=audit.pending,
         )
-        return self._market.audit_research_data(codes, start_date, end_date)
+        refreshed = self._market.audit_research_data(codes, start_date, end_date)
+        self._log_missing_collection_plan("下载后缺失清单复查完成", refreshed)
+        return refreshed
 
     def _market_data_step(
         self,
@@ -237,6 +239,7 @@ class InitializationService:
             started_at = perf_counter()
             LOGGER.info("开始检查初始化步骤：股票数=%d", len(codes))
             audit = self._market.audit_research_data(codes, start_date, end_date)
+            self._log_missing_collection_plan("原始数据缺失清单生成完成", audit)
             if audit.complete:
                 set_log_context(progress="-/-", target=title)
                 LOGGER.info(
@@ -263,6 +266,21 @@ class InitializationService:
                 perf_counter() - started_at,
             )
             return StepResult(executed=True, value=refreshed)
+
+    @staticmethod
+    def _log_missing_collection_plan(
+        message: str,
+        audit: ResearchDataAudit,
+    ) -> None:
+        set_log_context(progress="-/-", target="缺失清单")
+        LOGGER.info(
+            "%s：缺失股票=%d；日线=%d；复权因子=%d；5分钟线=%d",
+            message,
+            len(audit.pending),
+            sum(plan.needs_daily for plan in audit.pending),
+            sum(plan.needs_adjustment for plan in audit.pending),
+            sum(plan.needs_minute5 for plan in audit.pending),
+        )
 
     def _training_valid(self, model_root_dir: Path) -> bool:
         try:
@@ -306,4 +324,4 @@ def _model_valid(model_root_dir: Path) -> bool:
         return model_artifacts_valid(resolve_current_model_dir(model_root_dir))
     except (OSError, ValueError):
         return False
-# AI_GENERATE_END ---------------------------------------------------
+# AI_GENERATE_END ----------------------------------------------------

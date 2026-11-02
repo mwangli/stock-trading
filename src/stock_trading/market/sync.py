@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------------------
+# AI_GENERATE_START --------------------------------------
 from __future__ import annotations
 
 import logging
@@ -204,9 +204,6 @@ def _sync_collection_code(
             if not daily:
                 raise ValueError("日线为空")
             store.write_daily_history(code, daily)
-            store.record_collection_coverage(
-                code, "daily", start_date, end_date
-            )
 
         error, client = _collect_component(
             client, proxy_url, code, "日线", collect_daily
@@ -220,9 +217,6 @@ def _sync_collection_code(
                 code, date(1990, 1, 1), end_date
             )
             store.write_adjustment_factors(code, factors)
-            store.record_collection_coverage(
-                code, "adjustment", date(1990, 1, 1), end_date
-            )
 
         error, client = _collect_component(
             client, proxy_url, code, "复权因子", collect_adjustment
@@ -236,9 +230,6 @@ def _sync_collection_code(
             if not minutes:
                 raise ValueError("5分钟线为空")
             store.write_minute_history(code, minutes, end_date)
-            store.record_collection_coverage(
-                code, "minute5", start_date, end_date
-            )
 
         error, client = _collect_component(
             client, proxy_url, code, "5分钟线", collect_minute5
@@ -287,4 +278,4 @@ def _collect_component(
         except Exception as error:
             return str(error), client
     return "未知采集失败", client
-# AI_GENERATE_END -------------------------------------
+# AI_GENERATE_END --------------------------------------
