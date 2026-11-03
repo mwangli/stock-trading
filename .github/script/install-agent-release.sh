@@ -22,6 +22,13 @@ data_dir="$project_dir/data"
 env_file="$project_dir/.env"
 system_path="$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
+export UV_DEFAULT_INDEX="https://mirrors.aliyun.com/pypi/simple/"
+export UV_HTTP_TIMEOUT=300
+export UV_HTTP_RETRIES=5
+export UV_PYTHON_INSTALL_DIR="$python_dir"
+export UV_CACHE_DIR="$uv_cache_dir"
+export PATH="$system_path"
+
 set -- "$release_dir"/*.whl
 if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
   echo "Expected exactly one Agent wheel in $release_dir" >&2
@@ -39,12 +46,6 @@ if [ ! -d "$trading_dir/data" ]; then
 fi
 
 mkdir -p "$python_dir" "$uv_cache_dir" "$data_dir"
-export UV_DEFAULT_INDEX="https://mirrors.aliyun.com/pypi/simple/"
-export UV_HTTP_TIMEOUT=300
-export UV_HTTP_RETRIES=5
-export UV_PYTHON_INSTALL_DIR="$python_dir"
-export UV_CACHE_DIR="$uv_cache_dir"
-export PATH="$system_path"
 
 uv python install 3.12
 python_version=""
