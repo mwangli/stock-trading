@@ -1,4 +1,4 @@
-/* AI_GENERATE_START -- */
+/* AI_GENERATE_START --- */
 @import "tailwindcss";
 
 :root,
@@ -174,6 +174,15 @@ button,
   justify-content: center;
 }
 
+.app-header-brand {
+  width: var(--app-sidebar-width, clamp(160px, 15vw, 220px));
+  min-width: var(--app-sidebar-width, clamp(160px, 15vw, 220px));
+  flex: 0 0 var(--app-sidebar-width, clamp(160px, 15vw, 220px));
+  align-self: stretch;
+  margin: 0;
+  padding: 0 12px;
+}
+
 
 .app-sidebar-resize-handle {
   position: absolute;
@@ -340,6 +349,10 @@ button,
   backdrop-filter: blur(12px);
 }
 
+.app-header-documentation-page {
+  padding-left: 0;
+}
+
 
 .app-header-identity {
   display: flex;
@@ -377,6 +390,19 @@ button,
 
 .app-documentation-button:hover,
 .app-documentation-button.is-active {
+  background: var(--brand-soft) !important;
+  color: var(--brand) !important;
+}
+
+.app-header-documentation {
+  height: 34px;
+  padding-inline: 12px !important;
+  border: 0 !important;
+  color: var(--text-secondary) !important;
+  font-size: 12px !important;
+}
+
+.app-header-documentation:hover {
   background: var(--brand-soft) !important;
   color: var(--brand) !important;
 }
@@ -1540,6 +1566,16 @@ button,
     padding: env(safe-area-inset-top) 12px 0;
   }
 
+  .app-header-documentation-page {
+    padding-left: 0;
+  }
+
+  .app-header-documentation-page .app-header-brand {
+    width: auto;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
 
   .app-header-identity { min-width: 0; flex-basis: auto; gap: 8px; }
 
@@ -1553,6 +1589,13 @@ button,
   .app-header-notification { display: none !important; }
 
   .app-header-tools { gap: 2px; }
+
+  .app-header-documentation {
+    width: 40px;
+    padding-inline: 0 !important;
+  }
+
+  .app-header-documentation-label { display: none; }
 
   .app-content {
     padding: 16px 12px calc(34px + env(safe-area-inset-bottom));
@@ -1600,4 +1643,4 @@ button,
     border-bottom: 0;
   }
 }
-/* AI_GENERATE_END -- */
+/* AI_GENERATE_END --- */

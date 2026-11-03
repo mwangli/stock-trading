@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 import React, {
   useEffect,
   useMemo,
@@ -15,6 +15,7 @@ import { Reorder, useDragControls } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { BookOpenText } from 'lucide-react';
 import {
+  ArrowLeftOutlined,
   BellOutlined,
   CheckOutlined,
   DesktopOutlined,
@@ -52,6 +53,7 @@ const DEFAULT_MENU_ORDER = [
 const MENU_ORDER_CACHE_PREFIX = 'stockTrading.desktop.menuOrder';
 const SIDEBAR_WIDTH_CACHE_PREFIX = 'stockTrading.desktop.sidebarWidth';
 const SIDEBAR_WIDTH_LIMITS = { min: 160, max: 360 } as const;
+const RETURN_TO_SYSTEM_LABEL = '\u8fd4\u56de\u7cfb\u7edf';
 
 interface SidebarMenuItem {
   key: string;
@@ -300,7 +302,7 @@ const DesktopLayout: React.FC = () => {
   return (
     <PageHeaderContext.Provider value={setPageHeader}>
       <Layout className="app-shell" style={{ '--app-sidebar-width': `${sidebarWidth}px` } as CSSProperties}>
-        <Sider trigger={null} collapsible collapsed={sidebarCollapsed} collapsedWidth={76} width={sidebarWidth} className="app-sidebar">
+        {!documentationActive && <Sider trigger={null} collapsible collapsed={sidebarCollapsed} collapsedWidth={76} width={sidebarWidth} className="app-sidebar">
           <SystemBrand collapsed={sidebarCollapsed} status={backendStatus} statusLabel={backendStatusLabel} title={t('login.algoTrading')} />
           <Reorder.Group as="ul" axis="y" values={orderedMenuItems.map((item) => item.key)} onReorder={reorderMenu} className={`app-menu-list${sidebarCollapsed ? ' app-menu-list-collapsed' : ''}`}>
             {orderedMenuItems.map((item) => (
@@ -325,29 +327,49 @@ const DesktopLayout: React.FC = () => {
               }}
             />
           )}
-        </Sider>
+        </Sider>}
         <Layout className="app-main-layout">
-          <Header className="app-header">
-            <div className="app-header-identity">
+          <Header className={`app-header${documentationActive ? ' app-header-documentation-page' : ''}`}>
+            {documentationActive ? (
+              <SystemBrand
+                className="app-header-brand"
+                status={backendStatus}
+                statusLabel={backendStatusLabel}
+                title={t('login.algoTrading')}
+              />
+            ) : (
+              <div className="app-header-identity">
               <Tooltip title={sidebarCollapsed ? t('layout.expandMenu') : t('layout.collapseMenu')}>
                 <Button type="text" icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setSidebarCollapsed((value) => !value)} />
               </Tooltip>
               <div className="min-w-0 flex-1">
-                <div className="app-page-title truncate">{documentationActive ? '系统文档' : pageTitles[location.pathname] ?? t('layout.title')}</div>
+                <div className="app-page-title truncate">{pageTitles[location.pathname] ?? t('layout.title')}</div>
                 <div className="truncate text-xs text-[var(--text-muted)]">{pageHeader?.subtitle ?? 'Stock Operations Console'}</div>
               </div>
-            </div>
+              </div>
+            )}
             <div className="app-header-tools">
-              <Tooltip title="系统文档">
+              {documentationActive ? (
                 <Button
                   type="text"
-                  className={`app-documentation-button${documentationActive ? ' is-active' : ''}`}
-                  icon={<BookOpenText size={18} />}
-                  aria-label="打开系统文档"
-                  aria-current={documentationActive ? 'page' : undefined}
-                  onClick={() => navigate('/docs')}
-                />
-              </Tooltip>
+                  className="app-header-documentation"
+                  icon={<ArrowLeftOutlined />}
+                  aria-label={RETURN_TO_SYSTEM_LABEL}
+                  onClick={() => navigate('/dashboard')}
+                >
+                  <span className="app-header-documentation-label">{RETURN_TO_SYSTEM_LABEL}</span>
+                </Button>
+              ) : (
+                <Tooltip title="系统文档">
+                  <Button
+                    type="text"
+                    className="app-documentation-button"
+                    icon={<BookOpenText size={18} />}
+                    aria-label="打开系统文档"
+                    onClick={() => navigate('/docs')}
+                  />
+                </Tooltip>
+              )}
               <Button type="text" className="app-header-language !h-8 !px-2 text-xs" onClick={() => void i18n.changeLanguage(i18n.language.startsWith('en') ? 'zh' : 'en')}>
                 {i18n.language.startsWith('en') ? 'EN' : '中文'}
               </Button>
@@ -370,4 +392,4 @@ const DesktopLayout: React.FC = () => {
 };
 
 export default DesktopLayout;
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----
