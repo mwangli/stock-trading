@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stock-trading-agent"
+version = "0.1.0"
+description = "Personal command-line agent for the stock-trading project"
+requires-python = ">=3.11,<=3.12"
+dependencies = [
+    "duckdb>=1.1,<2",
+    "openai>=1.60,<3",
+    "rich>=13.9,<15",
+    "typer==0.27.3",
+]
+
+[project.scripts]
+stock-agent = "stock_agent.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

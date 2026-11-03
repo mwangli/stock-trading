@@ -34,3 +34,8 @@ Thumbs.db
 /.worktrees/
 /backups/
 /.understand-anything/
+/agent/.venv/
+/agent/build/
+/agent/dist/
+/agent/data/
+/agent/src/*.egg-info/

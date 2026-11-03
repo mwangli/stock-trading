@@ -1,0 +1,70 @@
+name: Release Stock Agent
+
+on:
+  push:
+    tags:
+      - 'agent-v*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-agent-production
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Build Agent wheel
+        run: |
+          git fetch origin stock-agent --depth=1
+          test "$(git rev-parse HEAD)" = "$(git rev-parse FETCH_HEAD)"
+          version="$(python -c 'import tomllib; print(tomllib.load(open("agent/pyproject.toml", "rb"))["project"]["version"])')"
+          test "$GITHUB_REF_NAME" = "agent-v$version"
+          python -m pip install build
+          python -m build --wheel --outdir dist agent
+
+      - name: Upload Agent release files
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          source: "dist/*.whl,.github/script/install-agent-release.sh"
+          target: ${{ format('~/stock-agent/releases/{0}', github.ref_name) }}
+          strip_components: 1
+          overwrite: true
+
+      - name: Install and verify Agent
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: deepseek-flash
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ vars.SERVER_PORT }}
+          fingerprint: ${{ vars.SERVER_FINGERPRINT }}
+          envs: RELEASE_TAG,DEEPSEEK_API_KEY,DEEPSEEK_MODEL
+          command_timeout: 30m
+          script: |
+            set -eu
+            release_dir="$HOME/stock-agent/releases/$RELEASE_TAG"
+            bash "$release_dir/script/install-agent-release.sh" "$RELEASE_TAG"
+            "$HOME/stock-agent/venv/bin/stock-agent" status
+            "$HOME/stock-agent/venv/bin/stock-agent" ask "请只回答：远程会话验证成功。不要调用任何工具。"
+            "$HOME/stock-agent/venv/bin/stock-agent" history
