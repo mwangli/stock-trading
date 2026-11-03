@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------
+# AI_GENERATE_START -------------------
 from __future__ import annotations
 
 import json
@@ -9,6 +9,10 @@ from decimal import Decimal
 from pathlib import Path
 
 from stock_trading.config import AppConfig
+from stock_trading.market.quality import (
+    audit_research_quality,
+    require_data_quality,
+)
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.sync import research_codes
 from stock_trading.market.trade_calendar import latest_completed_trade_date
@@ -26,6 +30,7 @@ from stock_trading.research.backtest import (
 from stock_trading.research.model import automatic_model_segments
 from stock_trading.research.qlib_store import QlibBinaryStore
 from stock_trading.state.store import StateStore
+from stock_trading.utils.instruments import normalize_instrument
 from stock_trading.utils.logging_utils import set_log_context
 from stock_trading.utils.time_utils import shanghai_now, utc_now
 
@@ -60,6 +65,16 @@ def run_training_pipeline(
     force: bool = False,
 ) -> dict[str, object]:
     """校验现有 Qlib 后执行训练、评估、回测和发布。"""
+    start_date, end_date = default_training_range(config)
+    codes = default_training_codes(config, start_date, end_date)
+    preparation = assert_training_data_ready(config, codes, start_date, end_date)
+    preparation_summary = {
+        "startDate": preparation["startDate"],
+        "endDate": preparation["endDate"],
+        "researchCodes": len(preparation["codes"]),
+        "qlibReady": True,
+        "dataQuality": preparation["dataQuality"],
+    }
     root = model_root(config.artifact_dir)
     if not force:
         try:
@@ -69,6 +84,7 @@ def run_training_pipeline(
         else:
             activation = activate_trained_model(config, model_dir)
             return {
+                "preparation": preparation_summary,
                 "training": {
                     "skipped": True,
                     "modelVersion": model_dir.name,
@@ -76,17 +92,9 @@ def run_training_pipeline(
                 },
                 **activation,
             }
-    start_date, end_date = default_training_range(config)
-    codes = default_training_codes(config, start_date, end_date)
-    preparation = assert_training_data_ready(config, codes, start_date, end_date)
     lifecycle = train_prepared_model(config, split)
     return {
-        "preparation": {
-            "startDate": preparation["startDate"],
-            "endDate": preparation["endDate"],
-            "researchCodes": len(preparation["codes"]),
-            "qlibReady": True,
-        },
+        "preparation": preparation_summary,
         **lifecycle,
     }
 
@@ -97,17 +105,45 @@ def assert_training_data_ready(
     start_date: date,
     end_date: date,
 ) -> dict[str, object]:
-    """确认 collect 已生成当前训练范围的 Qlib。"""
+    """按统一覆盖率确认当前训练范围的原始数据和 Qlib。"""
     store = ParquetMarketStore(config.data_dir)
-    model_codes = store.model_research_codes(codes, start_date, end_date)
-    if not QlibBinaryStore(store, config.qlib_dir).is_valid(
-        model_codes, start_date, end_date
+    stocks = store.read_stock_basics()
+    audit = audit_research_quality(
+        store, stocks, codes, start_date, end_date
+    )
+    raw_quality = require_data_quality(
+        "train-raw",
+        len(codes),
+        len(audit.model_codes),
+        config.data_quality_min_ratio,
+        audit,
+    )
+    qlib = QlibBinaryStore(store, config.qlib_dir)
+    qlib_range = qlib.date_range()
+    available = qlib.available_instruments(end_date)
+    if (
+        qlib_range is None
+        or qlib_range[0] > start_date + timedelta(days=15)
+        or qlib_range[1] < end_date
+        or available is None
     ):
         raise ValueError("Qlib 数据未覆盖当前训练范围；请先执行 stock-prepare")
+    expected = {normalize_instrument(code) for code in audit.model_codes}
+    ready = expected & available
+    qlib_quality = require_data_quality(
+        "train-qlib",
+        len(expected),
+        len(ready),
+        config.data_quality_min_ratio,
+    )
     return {
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
-        "codes": model_codes,
+        "codes": sorted(ready),
+        "dataQuality": {
+            "raw": raw_quality,
+            "qlib": qlib_quality,
+        },
     }
 
 
@@ -330,4 +366,4 @@ def _write_evaluation(model_dir: Path, evaluation: dict[str, object]) -> None:
     )
 
 
-# AI_GENERATE_END ------------------
+# AI_GENERATE_END -------------------

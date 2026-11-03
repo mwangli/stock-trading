@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------
+# AI_GENERATE_START --------------------
 from __future__ import annotations
 
 import logging
@@ -192,6 +192,11 @@ class QlibBinaryStore:
 
     def is_date_ready(self, target_date: date) -> bool:
         """检查目标交易日及现有股票特征是否可直接用于预测。"""
+        instruments = self.available_instruments(target_date)
+        return instruments is not None and len(instruments) >= 100
+
+    def available_instruments(self, target_date: date) -> set[str] | None:
+        """返回目标日期可读取完整特征的股票集合。"""
         calendar_path = self._target / "calendars" / "day.txt"
         instruments_path = self._target / "instruments" / "all.txt"
         try:
@@ -207,16 +212,17 @@ class QlibBinaryStore:
                 if value.strip()
             }
         except (OSError, ValueError):
-            return False
-        return (
-            target_date in calendar
-            and len(instruments) >= 100
-            and self._contract_version() == QLIB_CONTRACT_VERSION
-            and all(
-                self._feature_files_valid(instrument, len(calendar_values))
-                for instrument in instruments
-            )
-        )
+            return None
+        if (
+            target_date not in calendar
+            or self._contract_version() != QLIB_CONTRACT_VERSION
+        ):
+            return None
+        return {
+            instrument
+            for instrument in instruments
+            if self._feature_files_valid(instrument, len(calendar_values))
+        }
 
     def date_range(self) -> tuple[date, date] | None:
         """返回现有 Qlib 日历范围；文件不存在或无效时返回空。"""
@@ -510,4 +516,4 @@ class QlibBinaryStore:
             raise
         shutil.rmtree(backup, ignore_errors=True)
 
-# AI_GENERATE_END -------------------
+# AI_GENERATE_END --------------------

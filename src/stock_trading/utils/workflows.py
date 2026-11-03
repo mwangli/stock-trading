@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------
+# AI_GENERATE_START -------------
 from __future__ import annotations
 
 import json
@@ -13,6 +13,10 @@ from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.config import AppConfig
 from stock_trading.utils.instruments import normalize_instrument
 from stock_trading.market.storage import ParquetMarketStore, ResearchDataAudit
+from stock_trading.market.quality import (
+    audit_research_quality,
+    require_data_quality,
+)
 from stock_trading.market.sync import (
     live_codes,
     research_codes,
@@ -69,9 +73,6 @@ def collect_workflow(
         )
         if not codes:
             raise ValueError("股票基础信息中没有满足当前研究窗口的股票")
-        coverage_ranges = _stock_coverage_ranges(
-            stocks, codes, start_date, end_date
-        )
         LOGGER.info(
             "开始检查原始数据：股票数=%d；日期=%s 至 %s；模式=%s",
             len(codes),
@@ -79,8 +80,8 @@ def collect_workflow(
             end_date,
             "当日" if daily_mode else "历史范围",
         )
-        audit = store.audit_research_data(
-            codes, start_date, end_date, coverage_ranges=coverage_ranges
+        audit = audit_research_quality(
+            store, stocks, codes, start_date, end_date
         )
         _log_collection_audit("原始数据缺失清单生成完成", audit)
         downloaded_codes: set[str] = set()
@@ -98,17 +99,33 @@ def collect_workflow(
                 skip_existing=True,
                 plans=audit.pending,
             )
-            audit = store.audit_research_data(
-                codes, start_date, end_date, coverage_ranges=coverage_ranges
+            audit = audit_research_quality(
+                store, stocks, codes, start_date, end_date
             )
             _log_collection_audit("下载后缺失清单复查完成", audit)
             if audit.pending == previous_pending:
-                raise ValueError("原始研究数据下载后缺失清单未发生变化")
+                LOGGER.warning("原始研究数据下载后缺失清单未发生变化，按覆盖率继续")
+                break
+
+        quality = require_data_quality(
+            "collect",
+            len(codes),
+            len(audit.model_codes),
+            config.data_quality_min_ratio,
+            audit,
+        )
 
         collection = {
-            "completed": len(codes),
+            "completed": len(audit.model_codes),
             "skipped": len(codes) - len(downloaded_codes),
-            "failed": {},
+            "failed": {
+                plan.code: {
+                    "daily": plan.needs_daily,
+                    "adjustment": plan.needs_adjustment,
+                    "minute5": plan.needs_minute5,
+                }
+                for plan in audit.pending
+            },
         }
 
     except BaseException as error:
@@ -128,6 +145,7 @@ def collect_workflow(
         "endDate": end_date.isoformat(),
         "researchCodes": len(codes),
         "collection": collection,
+        "dataQuality": quality,
     }
 
 
@@ -146,27 +164,23 @@ def prepare_workflow(
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
         raise ValueError("股票基础信息中没有满足当前日期范围的研究股票")
-    coverage_ranges = _stock_coverage_ranges(
-        stocks, codes, start_date, end_date
-    )
     LOGGER.info(
         "开始检查 Qlib 原始数据：股票数=%d；日期=%s 至 %s",
         len(codes),
         start_date,
         end_date,
     )
-    audit = store.audit_research_data(
-        codes, start_date, end_date, coverage_ranges=coverage_ranges
+    audit = audit_research_quality(
+        store, stocks, codes, start_date, end_date
     )
     _log_collection_audit("Qlib 原始数据检查完成", audit)
-    if not audit.complete:
-        missing = ",".join(plan.code for plan in audit.pending[:10])
-        suffix = "..." if len(audit.pending) > 10 else ""
-        raise ValueError(
-            f"原始研究数据不完整：缺失股票={len(audit.pending)}；"
-            f"示例={missing}{suffix}；请执行 stock-collect --date "
-            f"{start_date.isoformat()}:{end_date.isoformat()}"
-        )
+    quality = require_data_quality(
+        "prepare",
+        len(codes),
+        len(audit.model_codes),
+        config.data_quality_min_ratio,
+        audit,
+    )
     prepared = QlibBinaryStore(store, config.qlib_dir).prepare(
         list(audit.model_codes), start_date, end_date, force=force
     )
@@ -181,27 +195,9 @@ def prepare_workflow(
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
         "researchCodes": len(audit.model_codes),
+        "dataQuality": quality,
         "qlib": prepared,
     }
-
-
-def _stock_coverage_ranges(
-    stocks: pd.DataFrame,
-    codes: list[str],
-    start_date: date,
-    end_date: date,
-) -> dict[str, tuple[date, date, bool]]:
-    """按上市和退市日期确定每只股票需要覆盖的实际范围。"""
-    frame = stocks.set_index("code", drop=False)
-    ranges: dict[str, tuple[date, date, bool]] = {}
-    for code in codes:
-        row = frame.loc[code]
-        ipo_date = row["ipo_date"].date() if pd.notna(row["ipo_date"]) else start_date
-        out_date = row["out_date"].date() if pd.notna(row["out_date"]) else None
-        code_start = max(start_date, ipo_date)
-        code_end = min(end_date, out_date) if out_date else end_date
-        ranges[code] = (code_start, code_end, out_date is None or out_date >= end_date)
-    return ranges
 
 
 def _log_collection_audit(message: str, audit: ResearchDataAudit) -> None:
@@ -265,32 +261,40 @@ def rank_workflow(config: AppConfig, prediction_date: date) -> dict[str, object]
     _assert_task_success(state_store, "COLLECT", prediction_date)
     store = ParquetMarketStore(config.data_dir)
     qlib = QlibBinaryStore(store, config.qlib_dir)
-    if not qlib.is_date_ready(prediction_date):
-        raise ValueError(
-            f"Qlib 未覆盖目标日期：{prediction_date.isoformat()}；"
-            "请先执行 stock-prepare"
-        )
-    model_dir = resolve_current_model_dir(model_root(config.artifact_dir))
-    activation = activate_trained_model(config, model_dir)
     stocks = store.read_stock_basics()
     metadata_codes = live_codes(stocks, prediction_date)
     current_codes = store.tradable_codes_on(metadata_codes, prediction_date)
     expected_instruments = {
         normalize_instrument(code) for code in current_codes
     }
+    available_instruments = qlib.available_instruments(prediction_date)
+    if available_instruments is None:
+        raise ValueError(
+            f"Qlib 未覆盖目标日期：{prediction_date.isoformat()}；"
+            "请先执行 stock-prepare"
+        )
+    ready_instruments = expected_instruments & available_instruments
+    quality = require_data_quality(
+        "rank",
+        len(expected_instruments),
+        len(ready_instruments),
+        config.data_quality_min_ratio,
+    )
+    model_dir = resolve_current_model_dir(model_root(config.artifact_dir))
+    activation = activate_trained_model(config, model_dir)
     prediction_path = prediction_artifact_path(model_dir, prediction_date)
     existing = _existing_prediction_summary(
         model_dir,
         prediction_path,
         prediction_date,
-        expected_instruments,
+        ready_instruments,
     )
     if existing is None:
         prediction = predict_alpha158_lightgbm(
             config.qlib_dir,
             model_dir,
             prediction_date,
-            eligible_instruments=expected_instruments,
+            eligible_instruments=ready_instruments,
         )
         state = state_store.import_prediction_artifact(
             model_dir, Path(str(prediction["path"]))
@@ -321,7 +325,12 @@ def rank_workflow(config: AppConfig, prediction_date: date) -> dict[str, object]
         prediction["rankingRows"],
         prediction["path"],
     )
-    return {"prediction": prediction, "activation": activation, "state": state}
+    return {
+        "prediction": prediction,
+        "activation": activation,
+        "state": state,
+        "dataQuality": quality,
+    }
 
 
 def _existing_prediction_summary(
@@ -448,4 +457,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END ------------
+# AI_GENERATE_END -------------

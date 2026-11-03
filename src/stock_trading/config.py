@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------------------
+# AI_GENERATE_START ---------------------------------------------
 from __future__ import annotations
 
 import os
@@ -75,6 +75,7 @@ class AppConfig:
     model_max_drawdown: float
     model_min_total_gross_return: float
     model_min_positive_month_ratio: float
+    data_quality_min_ratio: float
     model_feature_batch_days: int = 60
 
     @classmethod
@@ -178,6 +179,18 @@ class AppConfig:
                 os.getenv("MODEL_MIN_TOTAL_GROSS_RETURN", "0")
             ),
             model_min_positive_month_ratio=MODEL_MIN_POSITIVE_MONTH_RATIO,
+            data_quality_min_ratio=min(
+                1.0,
+                max(
+                    0.0,
+                    float(
+                        os.getenv(
+                            "STOCK_TRADING_DATA_QUALITY_MIN_RATIO",
+                            "0.8",
+                        )
+                    ),
+                ),
+            ),
         )
 
 
@@ -198,4 +211,4 @@ def _load_env_file(path: Path) -> None:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         os.environ.setdefault(key, value)
-# AI_GENERATE_END --------------------------------------------
+# AI_GENERATE_END ---------------------------------------------
