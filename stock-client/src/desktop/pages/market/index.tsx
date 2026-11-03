@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 import './styles.css';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
@@ -822,7 +822,7 @@ const Market: React.FC = () => {
                   current: pagination.current,
                   pageSize: marketPageSize,
                   total: pagination.total,
-                  placement: 'bottomCenter',
+                  placement: ['bottomCenter'],
                   className: 'glass-pagination',
                   showSizeChanger: false,
                   showQuickJumper: false,
@@ -1035,4 +1035,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END --
+// AI_GENERATE_END ---
