@@ -1,8 +1,8 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 import './styles.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Space, Switch, Tag } from 'antd';
-import { DeleteOutlined } from '@ant-design/icons';
+import { Button, Tag } from 'antd';
+import { ArrowDownOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
 import request from '@shared/utils/request';
@@ -23,7 +23,6 @@ let globalLogPath = '';
 let globalLogError = '';
 
 const MAX_LOG_LINES = 1000;
-const MOBILE_BREAKPOINT_QUERY = '(max-width: 767px)';
 const BOTTOM_FOLLOW_THRESHOLD = 24;
 
 const Logs: React.FC = () => {
@@ -32,27 +31,9 @@ const Logs: React.FC = () => {
   const [logState, setLogState] = useState<LogState>(globalLogState);
   const [logPath, setLogPath] = useState(globalLogPath);
   const [logError, setLogError] = useState(globalLogError);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
-  const isMobileRef = useRef(window.matchMedia(MOBILE_BREAKPOINT_QUERY).matches);
   const mobileFollowRef = useRef(true);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia(MOBILE_BREAKPOINT_QUERY);
-    const handleViewportChange = (event: MediaQueryListEvent) => {
-      isMobileRef.current = event.matches;
-      if (!event.matches) return;
-
-      mobileFollowRef.current = true;
-      window.requestAnimationFrame(() => {
-        const container = logsContainerRef.current;
-        if (container) container.scrollTop = container.scrollHeight;
-      });
-    };
-
-    mediaQuery.addEventListener('change', handleViewportChange);
-    return () => mediaQuery.removeEventListener('change', handleViewportChange);
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -104,21 +85,29 @@ const Logs: React.FC = () => {
 
   useEffect(() => {
     const container = logsContainerRef.current;
-    const shouldFollow = isMobileRef.current ? mobileFollowRef.current : autoScroll;
-    if (container && shouldFollow) container.scrollTop = container.scrollHeight;
-  }, [logs, autoScroll]);
+    if (container && mobileFollowRef.current) {
+      container.scrollTop = container.scrollHeight;
+      setShowScrollToBottom(false);
+    }
+  }, [logs]);
 
   const handleLogsScroll = useCallback(() => {
     const container = logsContainerRef.current;
-    if (!container || !isMobileRef.current) return;
+    if (!container) return;
 
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    mobileFollowRef.current = distanceFromBottom <= BOTTOM_FOLLOW_THRESHOLD;
+    const isAtBottom = distanceFromBottom <= BOTTOM_FOLLOW_THRESHOLD;
+    mobileFollowRef.current = isAtBottom;
+    setShowScrollToBottom(!isAtBottom);
   }, []);
 
-  const clearLogs = useCallback(() => {
-    globalLogsBuffer = [];
-    setLogs([]);
+  const scrollToBottom = useCallback(() => {
+    const container = logsContainerRef.current;
+    if (!container) return;
+
+    mobileFollowRef.current = true;
+    container.scrollTop = container.scrollHeight;
+    setShowScrollToBottom(false);
   }, []);
 
   const status = {
@@ -142,15 +131,6 @@ const Logs: React.FC = () => {
     <div className="app-page logs-page h-full min-h-[520px]">
       <div className="logs-toolbar flex flex-wrap items-center justify-end gap-3">
         <Tag color={status.color}>{status.label}</Tag>
-        <div className="logs-desktop-actions">
-          <Space className="rounded border border-[var(--border-color)] px-3 py-1.5">
-            <span className="text-sm text-[var(--text-secondary)]">{t('logs.autoScroll')}</span>
-            <Switch size="small" checked={autoScroll} onChange={setAutoScroll} />
-          </Space>
-          <Button icon={<DeleteOutlined />} onClick={clearLogs}>
-            {t('logs.clearView')}
-          </Button>
-        </div>
       </div>
       <div className="logs-console relative flex min-h-0 flex-1 flex-col overflow-hidden font-mono text-sm">
         <div
@@ -170,10 +150,21 @@ const Logs: React.FC = () => {
             </div>
           ))}
         </div>
+        {showScrollToBottom && (
+          <Button
+            className="logs-scroll-bottom-button"
+            type="primary"
+            shape="circle"
+            icon={<ArrowDownOutlined />}
+            aria-label="回到底部"
+            title="回到底部"
+            onClick={scrollToBottom}
+          />
+        )}
       </div>
     </div>
   );
 };
 
 export default Logs;
-// AI_GENERATE_END --
+// AI_GENERATE_END ---
