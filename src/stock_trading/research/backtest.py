@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------
+# AI_GENERATE_START -------------------
 from __future__ import annotations
 
 import json
@@ -31,12 +31,16 @@ class BacktestConfig:
     buy_slices: int = 1
     sell_slices: int = 1
     allowed_prefixes: tuple[str, ...] = ()
+    entry_rank: int = 5
+    exit_rank: int = 15
 
     def __post_init__(self) -> None:
         if self.initial_cash <= 0 or self.min_price <= 0 or self.max_price < self.min_price:
             raise ValueError("cash and price limits must be positive and ordered")
         if self.lot_size <= 0 or self.buy_slices <= 0 or self.sell_slices <= 0:
             raise ValueError("lot size and order slices must be positive")
+        if self.entry_rank <= 0 or self.exit_rank < self.entry_rank:
+            raise ValueError("entry and exit ranks must be positive and ordered")
 
 
 @dataclass
@@ -51,7 +55,7 @@ class Position:
 
 
 class PortfolioBacktester:
-    """Single-position T+1 backtest using actual afternoon and next-morning windows."""
+    """按日排名保留强势持仓，只对跌出退出排名的单仓执行轮换。"""
 
     def __init__(
         self,
@@ -95,45 +99,61 @@ class PortfolioBacktester:
         trades: list[dict[str, object]] = []
         rejects: list[dict[str, object]] = []
         equity_rows: list[dict[str, object]] = []
+        realized_gross_profit = 0.0
         realized_net_profit = 0.0
+        retained_days = 0
 
         total_dates = len(simulation_dates)
         set_log_context(step="2/4", progress="0/-", target="逐日模拟")
         LOGGER.info("开始逐日模拟：交易日数=%d", total_dates)
         for index, timestamp in enumerate(simulation_dates, start=1):
             trade_date = timestamp.date()
-            if position is not None and trade_date > position.buy_date:
-                sale, sell_reject_reason = self._try_sell(position, trade_date)
-                if sale is None:
-                    rejects.append(
-                        _reject_record(
-                            trade_date,
-                            position.instrument,
-                            sell_reject_reason or "SELL_UNAVAILABLE",
-                        )
-                    )
-                else:
-                    cash += sale["netProceeds"]
-                    trade = _trade_record(position, sale)
-                    trades.append(trade)
-                    realized_net_profit += float(trade["netPnl"])
-                    position = None
-
             prediction_timestamp = self._previous_calendar_day(timestamp)
+            candidates = (
+                ranked.get(prediction_timestamp)
+                if prediction_timestamp is not None
+                else None
+            )
+            if (
+                position is not None
+                and trade_date > position.buy_date
+                and candidates is not None
+            ):
+                current_rank = self._candidate_rank(candidates, position.instrument)
+                if current_rank is not None and current_rank <= self._config.exit_rank:
+                    retained_days += 1
+                else:
+                    sale, sell_reject_reason = self._try_sell(position, trade_date)
+                    if sale is None:
+                        rejects.append(
+                            _reject_record(
+                                trade_date,
+                                position.instrument,
+                                sell_reject_reason or "SELL_UNAVAILABLE",
+                                current_rank,
+                            )
+                        )
+                    else:
+                        cash += sale["sellNotional"]
+                        trade = _trade_record(position, sale, current_rank)
+                        trades.append(trade)
+                        realized_gross_profit += float(trade["grossPnl"])
+                        realized_net_profit += float(trade["netPnl"])
+                        position = None
+
             if (
                 position is None
                 and prediction_timestamp is not None
                 and prediction_timestamp <= last_mature_prediction
+                and candidates is not None
             ):
-                candidates = ranked.get(prediction_timestamp)
-                if candidates is not None:
-                    purchase, candidate_rejects = self._try_buy(
-                        candidates, prediction_timestamp.date(), trade_date, cash
-                    )
-                    rejects.extend(candidate_rejects)
-                    if purchase is not None:
-                        position, cost = purchase
-                        cash -= cost
+                purchase, candidate_rejects = self._try_buy(
+                    candidates, prediction_timestamp.date(), trade_date, cash
+                )
+                rejects.extend(candidate_rejects)
+                if purchase is not None:
+                    position, notional = purchase
+                    cash -= notional
 
             equity_rows.append(
                 {
@@ -141,7 +161,11 @@ class PortfolioBacktester:
                     "cash": cash,
                     "marketValue": self._market_value(position, trade_date),
                     "equity": cash + self._market_value(position, trade_date),
-                    "realizedEquity": self._config.initial_cash + realized_net_profit,
+                    "realizedEquity": self._config.initial_cash + realized_gross_profit,
+                    "realizedGrossEquity": self._config.initial_cash
+                    + realized_gross_profit,
+                    "realizedNetEquity": self._config.initial_cash
+                    + realized_net_profit,
                     "instrument": position.instrument if position else None,
                     "quantity": position.quantity if position else 0,
                 }
@@ -166,6 +190,7 @@ class PortfolioBacktester:
             equity_rows,
             mark_to_market_equity,
             position,
+            retained_days,
         )
         set_log_context(step="4/4", progress="-/-", target=str(artifact_dir))
         LOGGER.info("开始写入回测制品")
@@ -211,6 +236,8 @@ class PortfolioBacktester:
     ) -> tuple[tuple[Position, float] | None, list[dict[str, object]]]:
         rejects: list[dict[str, object]] = []
         for rank, row in enumerate(candidates.itertuples(index=False), start=1):
+            if rank > self._config.entry_rank:
+                break
             instrument = normalize_instrument(row.instrument)
             code = to_baostock_code(instrument)
             reason = self._buy_reject_reason(
@@ -237,8 +264,18 @@ class PortfolioBacktester:
                 buy_fees=fees,
                 candidate_rank=rank,
             )
-            return (position, notional + fees), rejects
+            return (position, notional), rejects
         return None, rejects
+
+    @staticmethod
+    def _candidate_rank(
+        candidates: pd.DataFrame, instrument: str
+    ) -> int | None:
+        normalized = normalize_instrument(instrument)
+        for rank, row in enumerate(candidates.itertuples(index=False), start=1):
+            if normalize_instrument(row.instrument) == normalized:
+                return rank
+        return None
 
     def _buy_reject_reason(
         self,
@@ -296,12 +333,8 @@ class PortfolioBacktester:
 
     def _affordable_quantity(self, cash: float, price: float) -> tuple[int, float]:
         quantity = math.floor(cash / (price * self._config.lot_size)) * self._config.lot_size
-        while quantity > 0:
-            fees = self._buy_fees(price * quantity, quantity)
-            if price * quantity + fees <= cash:
-                return quantity, fees
-            quantity -= self._config.lot_size
-        return 0, 0.0
+        fees = self._buy_fees(price * quantity, quantity) if quantity > 0 else 0.0
+        return quantity, fees
 
     def _buy_fees(self, notional: float, quantity: int) -> float:
         slices = min(self._config.buy_slices, quantity // self._config.lot_size)
@@ -339,6 +372,7 @@ class PortfolioBacktester:
         equity_rows: list[dict[str, object]],
         mark_to_market_equity: float,
         open_position: Position | None,
+        retained_days: int,
     ) -> dict[str, object]:
         total_fees = sum(
             float(trade["buyFees"]) + float(trade["sellFees"])
@@ -348,20 +382,35 @@ class PortfolioBacktester:
         total_sell_notional = sum(float(trade["sellNotional"]) for trade in trades)
         net_profit = sum(float(trade["netPnl"]) for trade in trades)
         gross_profit = sum(float(trade["grossPnl"]) for trade in trades)
-        final_equity = self._config.initial_cash + net_profit
-        equity = pd.Series(
+        gross_equity = pd.Series(
             [self._config.initial_cash]
-            + [row["realizedEquity"] for row in equity_rows],
+            + [row["realizedGrossEquity"] for row in equity_rows],
             dtype="float64",
         )
-        drawdown = equity / equity.cummax() - 1.0 if not equity.empty else pd.Series(dtype=float)
-        daily_returns = equity.pct_change().dropna()
-        wins = sum(1 for trade in trades if float(trade["netPnl"]) > 0)
+        net_equity = pd.Series(
+            [self._config.initial_cash]
+            + [row["realizedNetEquity"] for row in equity_rows],
+            dtype="float64",
+        )
+        gross_drawdown = (
+            gross_equity / gross_equity.cummax() - 1.0
+            if not gross_equity.empty
+            else pd.Series(dtype=float)
+        )
+        net_drawdown = (
+            net_equity / net_equity.cummax() - 1.0
+            if not net_equity.empty
+            else pd.Series(dtype=float)
+        )
+        daily_returns = gross_equity.pct_change().dropna()
+        wins = sum(1 for trade in trades if float(trade["grossPnl"]) > 0)
         reject_counts = pd.Series([row["reason"] for row in rejects]).value_counts().to_dict()
         return {
             "config": asdict(self._config),
             "initialCash": self._config.initial_cash,
-            "finalEquity": _money(final_equity),
+            "finalEquity": _money(self._config.initial_cash + gross_profit),
+            "realizedGrossEquity": _money(self._config.initial_cash + gross_profit),
+            "realizedNetEquity": _money(self._config.initial_cash + net_profit),
             "markToMarketEquity": _money(mark_to_market_equity),
             "netProfit": _money(net_profit),
             "netReturn": net_profit / self._config.initial_cash,
@@ -369,9 +418,16 @@ class PortfolioBacktester:
             "grossReturnBeforeFees": gross_profit / self._config.initial_cash,
             "feeDrag": total_fees / self._config.initial_cash,
             "closedTrades": len(trades),
+            "retainedDays": retained_days,
+            "averageHoldingDays": (
+                sum(int(trade["holdingDays"]) for trade in trades) / len(trades)
+                if trades
+                else 0.0
+            ),
             "winRate": wins / len(trades) if trades else 0.0,
             "positiveDailyRate": float((daily_returns > 0).mean()) if not daily_returns.empty else 0.0,
-            "maxDrawdown": float(drawdown.min()) if not drawdown.empty else 0.0,
+            "maxDrawdown": float(gross_drawdown.min()) if not gross_drawdown.empty else 0.0,
+            "netMaxDrawdown": float(net_drawdown.min()) if not net_drawdown.empty else 0.0,
             "totalFees": _money(total_fees),
             "totalBuyNotional": _money(total_buy_notional),
             "totalSellNotional": _money(total_sell_notional),
@@ -394,6 +450,8 @@ def run_portfolio_backtest(
         max_price=config.trading_max_price,
         order_fee=config.trading_order_fee,
         allowed_prefixes=config.trading_allowed_prefixes,
+        entry_rank=config.trading_entry_rank,
+        exit_rank=config.trading_exit_rank,
     )
     return PortfolioBacktester(
         ParquetMarketStore(config.data_dir),
@@ -426,12 +484,17 @@ def _limit_price(preclose: float, rate: float, direction: int) -> float:
     return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
-def _trade_record(position: Position, sale: dict[str, float]) -> dict[str, object]:
+def _trade_record(
+    position: Position,
+    sale: dict[str, float],
+    exit_rank: int | None,
+) -> dict[str, object]:
     gross_pnl = sale["sellNotional"] - position.buy_notional
     net_pnl = sale["netProceeds"] - position.buy_notional - position.buy_fees
     return {
         "instrument": position.instrument,
         "candidateRank": position.candidate_rank,
+        "exitRank": exit_rank,
         "buyDate": position.buy_date.isoformat(),
         "sellDate": sale["sellDate"].isoformat(),
         "quantity": position.quantity,
@@ -476,7 +539,13 @@ def _money(value: float) -> float:
     return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
-def backtest_artifact_valid(directory: Path) -> bool:
+def backtest_artifact_valid(
+    directory: Path,
+    *,
+    initial_cash: float | None = None,
+    entry_rank: int | None = None,
+    exit_rank: int | None = None,
+) -> bool:
     """检查回测摘要、交易、拒绝和权益制品是否完整。"""
     required = (
         directory / "summary.json",
@@ -491,11 +560,36 @@ def backtest_artifact_valid(directory: Path) -> bool:
         equity = pd.read_parquet(directory / "daily_equity.parquet")
     except (OSError, ValueError, json.JSONDecodeError):
         return False
-    return "netReturn" in summary and not equity.empty
+    required_summary = {
+        "grossReturnBeforeFees",
+        "realizedGrossEquity",
+        "realizedNetEquity",
+        "retainedDays",
+        "averageHoldingDays",
+        "netMaxDrawdown",
+    }
+    required_equity = {"realizedGrossEquity", "realizedNetEquity"}
+    config = summary.get("config")
+    if (
+        not required_summary.issubset(summary)
+        or not required_equity.issubset(equity.columns)
+        or not isinstance(config, dict)
+        or equity.empty
+    ):
+        return False
+    if initial_cash is not None and float(summary.get("initialCash", 0)) != float(
+        initial_cash
+    ):
+        return False
+    if entry_rank is not None and int(config.get("entry_rank", 0)) != entry_rank:
+        return False
+    if exit_rank is not None and int(config.get("exit_rank", 0)) != exit_rank:
+        return False
+    return True
 
 
 def read_backtest_summary(directory: Path) -> dict[str, object]:
     """读取一个资金场景的回测摘要。"""
     return json.loads((directory / "summary.json").read_text(encoding="utf-8"))
 
-# AI_GENERATE_END ----------------
+# AI_GENERATE_END -------------------

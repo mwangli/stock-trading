@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------
+# AI_GENERATE_START -----------------
 from __future__ import annotations
 
 import json
@@ -9,7 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from stock_trading.config import AppConfig
-from stock_trading.market.storage import ParquetMarketStore, ResearchDataAudit
+from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.sync import research_codes
 from stock_trading.market.trade_calendar import latest_completed_trade_date
 from stock_trading.research.artifacts import (
@@ -52,58 +52,6 @@ def default_training_codes(
     if not codes:
         raise ValueError("股票基础信息中没有满足当前日期范围的研究股票")
     return codes
-
-
-def refresh_qlib_from_parquet(
-    config: AppConfig,
-    codes: list[str],
-    start_date: date,
-    end_date: date,
-    audit: ResearchDataAudit | None = None,
-) -> dict[str, object]:
-    """校验本地行情并从 Parquet 重建 Qlib。"""
-    store = ParquetMarketStore(config.data_dir)
-    if audit is None:
-        daily_codes = store.valid_daily_codes(codes, start_date, end_date)
-        minute5_codes = store.valid_minute5_codes(codes, start_date, end_date)
-        missing_daily = [code for code in codes if code not in daily_codes]
-        missing_minute5 = [code for code in codes if code not in minute5_codes]
-        errors: list[str] = []
-        if missing_daily:
-            errors.append(f"日线或复权因子缺失：{','.join(missing_daily)}")
-        if missing_minute5:
-            errors.append(f"5分钟线或分钟聚合缺失：{','.join(missing_minute5)}")
-        if errors:
-            date_argument = _format_date_expression(start_date, end_date)
-            command = f"stock-collect --date {date_argument}"
-            raise ValueError(f"{'；'.join(errors)}；请执行：{command}")
-        model_codes = store.model_research_codes(codes, start_date, end_date)
-    else:
-        if not audit.complete:
-            raise ValueError("研究数据检查未通过，无法重建 Qlib")
-        model_codes = list(audit.model_codes)
-    LOGGER.info(
-        "开始重建 Qlib：采集有效=%d；模型有效=%d；日期=%s 至 %s",
-        len(codes),
-        len(model_codes),
-        start_date,
-        end_date,
-    )
-    qlib_result = QlibBinaryStore(store, config.qlib_dir).rebuild(
-        model_codes, start_date, end_date
-    )
-    LOGGER.info(
-        "Qlib 刷新完成：股票数=%d；交易日=%s；标签=%s",
-        qlib_result["codes"],
-        qlib_result["calendarDays"],
-        qlib_result["labels"],
-    )
-    return {
-        "startDate": start_date.isoformat(),
-        "endDate": end_date.isoformat(),
-        "codes": model_codes,
-        "qlib": qlib_result,
-    }
 
 
 def run_training_pipeline(
@@ -155,7 +103,7 @@ def assert_training_data_ready(
     if not QlibBinaryStore(store, config.qlib_dir).is_valid(
         model_codes, start_date, end_date
     ):
-        raise ValueError("Qlib 数据未覆盖当前训练范围；请先执行 stock-collect")
+        raise ValueError("Qlib 数据未覆盖当前训练范围；请先执行 stock-prepare")
     return {
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
@@ -204,9 +152,9 @@ def train_prepared_model(
     evaluation = evaluate_candidate(config, model_dir, backtest_run)
     _write_evaluation(model_dir, evaluation)
     LOGGER.info(
-        "模型回测记录完成：版本=%s；五档平均净收益率=%s",
+        "模型回测记录完成：版本=%s；五档平均毛收益率=%s",
         training["modelVersion"],
-        evaluation["aggregate"]["averageNetReturn"],
+        evaluation["aggregate"]["averageGrossReturn"],
     )
     return {
         "training": training,
@@ -251,8 +199,17 @@ def run_backtest_scenarios(
             progress=f"{index}/{len(config.backtest_capital_scenarios)}",
             target=f"资金={cash}",
         )
-        LOGGER.info("开始资金档位回测")
         target = directories[str(cash)]
+        if backtest_artifact_valid(
+            target,
+            initial_cash=float(cash),
+            entry_rank=config.trading_entry_rank,
+            exit_rank=config.trading_exit_rank,
+        ):
+            LOGGER.info("资金档位回测已完成，复用现有制品")
+            results[str(cash)] = read_backtest_summary(target)
+            continue
+        LOGGER.info("开始资金档位回测")
         shutil.rmtree(target, ignore_errors=True)
         try:
             results[str(cash)] = run_portfolio_backtest(
@@ -277,6 +234,7 @@ def evaluate_candidate(
     metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
     results = backtest_run["results"]
     scenario_results: dict[str, object] = {}
+    gross_returns: list[float] = []
     net_returns: list[float] = []
     directories = backtest_directories(config, model_dir)
 
@@ -288,25 +246,38 @@ def evaluate_candidate(
             scenario_results[key] = {"artifactValid": False}
             continue
         net_return = float(summary["netReturn"])
+        gross_return = float(summary["grossReturnBeforeFees"])
+        gross_returns.append(gross_return)
         net_returns.append(net_return)
         scenario_results[key] = {
             "artifactValid": True,
+            "grossProfit": summary["grossProfitBeforeFees"],
+            "grossReturn": gross_return,
             "netProfit": summary["netProfit"],
             "netReturn": net_return,
             "maxDrawdown": abs(float(summary["maxDrawdown"])),
+            "netMaxDrawdown": abs(float(summary["netMaxDrawdown"])),
             "closedTrades": summary["closedTrades"],
+            "averageHoldingDays": summary["averageHoldingDays"],
+            "retainedDays": summary["retainedDays"],
         }
 
     required = len(config.backtest_capital_scenarios)
-    completed = len(net_returns)
-    average_return = sum(net_returns) / required if completed == required else None
+    completed = len(gross_returns)
+    average_gross_return = (
+        sum(gross_returns) / required if completed == required else None
+    )
+    average_net_return = (
+        sum(net_returns) / required if completed == required else None
+    )
 
     return {
         "createdAt": utc_now().isoformat(),
         "modelVersion": model_dir.name,
         "modelMetrics": metrics["metrics"],
         "aggregate": {
-            "averageNetReturn": average_return,
+            "averageGrossReturn": average_gross_return,
+            "averageNetReturn": average_net_return,
             "completedScenarios": completed,
             "requiredScenarios": required,
         },
@@ -359,9 +330,4 @@ def _write_evaluation(model_dir: Path, evaluation: dict[str, object]) -> None:
     )
 
 
-def _format_date_expression(start_date: date, end_date: date) -> str:
-    if start_date == end_date:
-        return start_date.isoformat()
-    return f"{start_date.isoformat()}:{end_date.isoformat()}"
-
-# AI_GENERATE_END --------------
+# AI_GENERATE_END -----------------

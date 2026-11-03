@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------
+# AI_GENERATE_START -------------------
 from __future__ import annotations
 
 import logging
@@ -53,7 +53,12 @@ class LiveTradingOrchestrator:
         raise ValueError("交易方向必须是 BUY 或 SELL")
 
     def _select_morning_sell_targets(self, business_date: date) -> dict[str, object]:
-        """按券商当前可卖持仓选择卖出目标，实际数量和价格由每次委托前重算。"""
+        """只卖出跌出保留排名的可卖持仓，实际数量和价格在委托前重算。"""
+        candidates = self._prediction_candidates(business_date)
+        candidate_by_instrument = {
+            normalize_instrument(candidate["instrument"]): candidate
+            for candidate in candidates
+        }
         targets: list[dict[str, object]] = []
         ignored: list[dict[str, object]] = []
         positions = self._broker.get_positions()
@@ -64,13 +69,28 @@ class LiveTradingOrchestrator:
                     {"instrument": instrument, "reason": "NO_AVAILABLE_QUANTITY"}
                 )
                 continue
+            candidate = candidate_by_instrument.get(instrument)
+            rank = int(candidate["rank"]) if candidate is not None else None
+            if rank is not None and rank <= self._config.trading_exit_rank:
+                ignored.append(
+                    {
+                        "instrument": instrument,
+                        "rank": rank,
+                        "reason": "RANK_RETAINED",
+                    }
+                )
+                continue
             targets.append(
                 {
                     "instrument": instrument,
                     "side": "SELL",
-                    "candidateRank": None,
-                    "modelVersionId": None,
-                    "predictionDate": None,
+                    "candidateRank": rank,
+                    "modelVersionId": (
+                        int(candidate["model_version_id"])
+                        if candidate is not None
+                        else None
+                    ),
+                    "predictionDate": candidates[0]["prediction_date"],
                 }
             )
         LOGGER.info(
@@ -80,6 +100,7 @@ class LiveTradingOrchestrator:
         )
         return {
             "businessDate": business_date.isoformat(),
+            "predictionDate": candidates[0]["prediction_date"],
             "mode": "MORNING_SELL",
             "targets": targets,
             "ignored": ignored,
@@ -87,20 +108,7 @@ class LiveTradingOrchestrator:
 
     def _select_afternoon_buy_target(self, business_date: date) -> dict[str, object]:
         """从完整横截面排名选择最高分可买目标，不保存五档价格和委托数量。"""
-        candidates = self._state_store.latest_prediction_candidates(
-            business_date.isoformat()
-        )
-        if not candidates:
-            raise ValueError("目标交易日前没有可用横截面预测")
-        if len(candidates) <= 5:
-            raise ValueError("最近预测仍是旧 Top 5 产物，请先重新执行 rank 生成完整横截面排名")
-        prediction_date = date.fromisoformat(str(candidates[0]["prediction_date"]))
-        prediction_age = (business_date - prediction_date).days
-        if not 1 <= prediction_age <= self._config.trading_max_prediction_age_days:
-            raise ValueError(
-                f"预测日期不满足新鲜度要求: predictionDate={prediction_date}, "
-                f"businessDate={business_date}"
-            )
+        candidates = self._prediction_candidates(business_date)
 
         existing_target = self._existing_buy_target(business_date)
         if existing_target is not None:
@@ -120,6 +128,27 @@ class LiveTradingOrchestrator:
                 [],
             )
 
+        positions = tuple(
+            position
+            for position in self._broker.get_positions()
+            if position.quantity > 0
+        )
+        if positions:
+            retained = [
+                {
+                    "instrument": normalize_instrument(
+                        position.stock_code, position.market
+                    ),
+                    "quantity": position.quantity,
+                    "reason": "POSITION_RETAINED",
+                }
+                for position in positions
+            ]
+            LOGGER.info("下午买入跳过：仍有持仓=%d", len(retained))
+            return self._buy_result(
+                business_date, candidates, None, retained
+            )
+
         permission_status = {
             str(item["scope"]): str(item["status"])
             for item in self._state_store.broker_permissions()
@@ -130,6 +159,8 @@ class LiveTradingOrchestrator:
             instrument = normalize_instrument(candidate["instrument"])
             rank = int(candidate["rank"])
             score = float(candidate["score"])
+            if rank > self._config.trading_entry_rank:
+                break
             if self._config.trading_allowed_prefixes and not instrument.startswith(
                 self._config.trading_allowed_prefixes
             ):
@@ -195,6 +226,25 @@ class LiveTradingOrchestrator:
         LOGGER.info("下午买入目标选择完成：没有可交易候选")
         return self._buy_result(business_date, candidates, None, rejected)
 
+    def _prediction_candidates(
+        self, business_date: date
+    ) -> list[dict[str, object]]:
+        candidates = self._state_store.latest_prediction_candidates(
+            business_date.isoformat()
+        )
+        if not candidates:
+            raise ValueError("目标交易日前没有可用横截面预测")
+        if len(candidates) <= self._config.trading_entry_rank:
+            raise ValueError("最近预测不是完整横截面排名，请先重新执行 stock-rank")
+        prediction_date = date.fromisoformat(str(candidates[0]["prediction_date"]))
+        prediction_age = (business_date - prediction_date).days
+        if not 1 <= prediction_age <= self._config.trading_max_prediction_age_days:
+            raise ValueError(
+                f"预测日期不满足新鲜度要求: predictionDate={prediction_date}, "
+                f"businessDate={business_date}"
+            )
+        return candidates
+
     def _existing_buy_target(self, business_date: date) -> str | None:
         prefix = f"LIVE:AFTERNOON_BUY:{business_date.isoformat()}:"
         matching = [
@@ -235,4 +285,4 @@ class LiveTradingOrchestrator:
             "targets": [target] if target else [],
             "rejected": rejected,
         }
-# AI_GENERATE_END ------------------
+# AI_GENERATE_END -------------------

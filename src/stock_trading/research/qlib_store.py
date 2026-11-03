@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------
+# AI_GENERATE_START ------------------
 from __future__ import annotations
 
 import logging
@@ -15,14 +15,78 @@ from stock_trading.logging_utils import set_log_context, should_log_progress
 from stock_trading.research.labels import build_t1_labels
 
 LOGGER = logging.getLogger(__name__)
+QLIB_CONTRACT_VERSION = "1"
+QLIB_FIELDS = (
+    "open", "high", "low", "close", "volume",
+    "amount", "vwap", "factor", "label",
+)
 
 
 class QlibBinaryStore:
-    """Deterministically rebuild a minimal Qlib file provider from raw Parquet data."""
+    """从权威 Parquet 确定性准备最小 Qlib 文件数据源。"""
 
     def __init__(self, market_store: ParquetMarketStore, target: Path) -> None:
         self._market_store = market_store
         self._target = target
+
+    def prepare(
+        self,
+        codes: list[str],
+        start_date: date,
+        end_date: date,
+        force: bool = False,
+    ) -> dict[str, object]:
+        """有效时跳过，只增加新日期或新股票，必要时全量重建。"""
+        existing_range = self.date_range()
+        existing_instruments = self.instruments()
+        expected = {normalize_instrument(code) for code in codes}
+        try:
+            existing_days = len(self._read_calendar(self._target))
+        except (OSError, ValueError):
+            existing_days = 0
+        structure_valid = (
+            existing_instruments is not None
+            and existing_days > 0
+            and all(
+                self._feature_files_valid(instrument, existing_days)
+                for instrument in existing_instruments
+            )
+        )
+        if (
+            force
+            or existing_range is None
+            or existing_instruments is None
+            or not structure_valid
+            or self._contract_version() != QLIB_CONTRACT_VERSION
+            or existing_range[0] > start_date
+            or not existing_instruments.issubset(expected)
+        ):
+            result = self.rebuild(codes, start_date, end_date)
+            return {"mode": "rebuilt", "skipped": False} | result
+
+        effective_start = existing_range[0]
+        effective_end = max(existing_range[1], end_date)
+        if (
+            existing_range[1] >= end_date
+            and existing_instruments == expected
+            and self.is_valid(codes, effective_start, existing_range[1])
+        ):
+            return {
+                "mode": "skipped",
+                "skipped": True,
+                "codes": len(codes),
+                "startDate": effective_start.isoformat(),
+                "endDate": existing_range[1].isoformat(),
+                "path": str(self._target),
+            }
+        result = self._increment(
+            codes,
+            effective_start,
+            effective_end,
+            existing_range,
+            existing_instruments,
+        )
+        return {"mode": "incremental", "skipped": False} | result
 
     def rebuild(
         self, codes: list[str], start_date: date, end_date: date
@@ -55,11 +119,15 @@ class QlibBinaryStore:
         LOGGER.info("开始生成标签和特征：交易日数=%d", len(calendar))
         for index, (code, frame) in enumerate(frames.items(), start=1):
             aligned = frame.reindex(calendar)
-            labels = build_t1_labels(self._market_store.read_minute_summaries(code), calendar)
+            labels = build_t1_labels(
+                self._market_store.read_minute_summaries(code), calendar
+            )
             aligned["label"] = labels.reindex(calendar)
             qlib_code = normalize_instrument(code)
             self._write_features(temporary, qlib_code, aligned)
             valid = frame.dropna(subset=["close"])
+            if valid.empty:
+                raise ValueError(f"股票没有可用 Qlib 日线：{code}")
             instruments.append(
                 (
                     qlib_code,
@@ -77,8 +145,8 @@ class QlibBinaryStore:
             "".join(f"{code}\t{start}\t{end}\n" for code, start, end in instruments),
             encoding="utf-8",
         )
-        shutil.rmtree(self._target, ignore_errors=True)
-        temporary.replace(self._target)
+        self._write_contract(temporary)
+        self._replace_target(temporary)
         set_log_context(step="3/3", progress="-/-", target=str(self._target))
         LOGGER.info("Qlib 制品切换完成")
         return {
@@ -115,7 +183,11 @@ class QlibBinaryStore:
             and start_date <= calendar[0] <= start_date + timedelta(days=15)
             and calendar[-1] == end_date
             and instruments == expected
-            and all(self._feature_files_valid(instrument) for instrument in expected)
+            and self._contract_version() == QLIB_CONTRACT_VERSION
+            and all(
+                self._feature_files_valid(instrument, len(calendar))
+                for instrument in expected
+            )
         )
 
     def is_date_ready(self, target_date: date) -> bool:
@@ -123,11 +195,12 @@ class QlibBinaryStore:
         calendar_path = self._target / "calendars" / "day.txt"
         instruments_path = self._target / "instruments" / "all.txt"
         try:
-            calendar = {
+            calendar_values = [
                 date.fromisoformat(value)
                 for value in calendar_path.read_text(encoding="utf-8").splitlines()
                 if value.strip()
-            }
+            ]
+            calendar = set(calendar_values)
             instruments = {
                 value.split("\t", maxsplit=1)[0]
                 for value in instruments_path.read_text(encoding="utf-8").splitlines()
@@ -138,7 +211,11 @@ class QlibBinaryStore:
         return (
             target_date in calendar
             and len(instruments) >= 100
-            and all(self._feature_files_valid(instrument) for instrument in instruments)
+            and self._contract_version() == QLIB_CONTRACT_VERSION
+            and all(
+                self._feature_files_valid(instrument, len(calendar_values))
+                for instrument in instruments
+            )
         )
 
     def date_range(self) -> tuple[date, date] | None:
@@ -169,20 +246,24 @@ class QlibBinaryStore:
         except (OSError, ValueError):
             return None
 
-    def _feature_files_valid(self, instrument: str) -> bool:
+    def _feature_files_valid(
+        self, instrument: str, calendar_days: int | None = None
+    ) -> bool:
         directory = self._target / "features" / instrument.lower()
-        fields = (
-            "open", "high", "low", "close", "volume",
-            "amount", "vwap", "factor", "label",
-        )
         try:
             return all(
                 (directory / f"{field}.day.bin").is_file()
                 and (directory / f"{field}.day.bin").stat().st_size > 4
-                for field in fields
+                and (
+                    calendar_days is None
+                    or (directory / f"{field}.day.bin").stat().st_size
+                    == (calendar_days + 1) * 4
+                )
+                for field in QLIB_FIELDS
             )
         except OSError:
             return False
+
     def _adjusted_daily(
         self, code: str, start_date: date, end_date: date
     ) -> pd.DataFrame:
@@ -196,7 +277,9 @@ class QlibBinaryStore:
             & (daily["close"].astype(float) > 0)
             & (daily["volume"].astype(float) > 0)
         ]
-        factors = self._market_store.read_adjustment_factors(code).set_index("operate_date")
+        factors = self._market_store.read_adjustment_factors(code).set_index(
+            "operate_date"
+        )
         if factors.empty:
             factor = pd.Series(1.0, index=daily.index, dtype=float)
         else:
@@ -219,21 +302,212 @@ class QlibBinaryStore:
             encoding="utf-8",
         )
 
+    def _increment(
+        self,
+        codes: list[str],
+        start_date: date,
+        end_date: date,
+        existing_range: tuple[date, date],
+        existing_instruments: set[str],
+    ) -> dict[str, object]:
+        existing_calendar = self._read_calendar(self._target)
+        new_start = existing_range[1] + timedelta(days=1)
+        new_frames = {
+            code: self._adjusted_daily(code, new_start, end_date)
+            for code in codes
+        }
+        new_calendar = pd.DatetimeIndex(
+            sorted(
+                {
+                    value
+                    for frame in new_frames.values()
+                    for value in frame.index
+                    if value.date() > existing_range[1]
+                }
+            )
+        )
+        new_instruments = {
+            normalize_instrument(code) for code in codes
+        } - existing_instruments
+        if new_calendar.empty and not new_instruments:
+            return {
+                "codes": len(codes),
+                "calendarDays": len(existing_calendar),
+                "appendedDays": 0,
+                "newInstruments": 0,
+                "startDate": existing_range[0].isoformat(),
+                "endDate": existing_range[1].isoformat(),
+                "path": str(self._target),
+            }
+
+        calendar = existing_calendar.append(new_calendar)
+        temporary = self._target.with_name(f".{self._target.name}.building")
+        shutil.rmtree(temporary, ignore_errors=True)
+        shutil.copytree(self._target, temporary)
+        intervals = self._read_instrument_intervals(self._target)
+        label_count = 0
+        total_codes = len(codes)
+        set_log_context(step="1/2", progress="0/-", target="Qlib 增量")
+        LOGGER.info(
+            "开始增量准备 Qlib：新增交易日=%d；新增股票=%d",
+            len(new_calendar),
+            len(new_instruments),
+        )
+        try:
+            for index, code in enumerate(codes, start=1):
+                instrument = normalize_instrument(code)
+                if instrument in existing_instruments:
+                    aligned = new_frames[code].reindex(new_calendar)
+                    for field in QLIB_FIELDS[:-1]:
+                        self._append_field(
+                            temporary, instrument, field, aligned[field]
+                        )
+                    valid = new_frames[code].dropna(subset=["close"])
+                    old_start, old_end = intervals[instrument]
+                    intervals[instrument] = (
+                        old_start,
+                        max(old_end, valid.index.max().date())
+                        if not valid.empty
+                        else old_end,
+                    )
+                else:
+                    full = self._adjusted_daily(code, start_date, end_date)
+                    aligned = full.reindex(calendar)
+                    labels = build_t1_labels(
+                        self._market_store.read_minute_summaries(code), calendar
+                    )
+                    aligned["label"] = labels.reindex(calendar)
+                    self._write_features(temporary, instrument, aligned)
+                    valid = full.dropna(subset=["close"])
+                    if valid.empty:
+                        raise ValueError(f"新增股票没有可用 Qlib 日线：{code}")
+                    intervals[instrument] = (
+                        valid.index.min().date(),
+                        valid.index.max().date(),
+                    )
+
+                labels = build_t1_labels(
+                    self._market_store.read_minute_summaries(code), calendar
+                ).reindex(calendar)
+                self._write_field(temporary, instrument, "label", labels)
+                label_count += int(labels.notna().sum())
+                if should_log_progress(index, total_codes):
+                    set_log_context(progress=f"{index}/{total_codes}", target=code)
+                    LOGGER.info("Qlib 增量股票处理完成")
+
+            self._write_calendar(temporary, calendar)
+            self._write_instrument_intervals(temporary, intervals)
+            self._write_contract(temporary)
+            prepared = QlibBinaryStore(self._market_store, temporary)
+            if not prepared.is_valid(codes, start_date, end_date):
+                raise ValueError("Qlib 增量制品检查失败")
+            self._replace_target(temporary)
+        finally:
+            shutil.rmtree(temporary, ignore_errors=True)
+        set_log_context(step="2/2", progress="-/-", target=str(self._target))
+        return {
+            "codes": len(codes),
+            "calendarDays": len(calendar),
+            "appendedDays": len(new_calendar),
+            "newInstruments": len(new_instruments),
+            "labels": label_count,
+            "startDate": calendar.min().strftime("%Y-%m-%d"),
+            "endDate": calendar.max().strftime("%Y-%m-%d"),
+            "path": str(self._target),
+        }
+
     @staticmethod
     def _write_features(target: Path, code: str, frame: pd.DataFrame) -> None:
+        for field in QLIB_FIELDS:
+            QlibBinaryStore._write_field(target, code, field, frame[field])
+
+    @staticmethod
+    def _write_field(
+        target: Path, code: str, field: str, values: pd.Series
+    ) -> None:
         directory = target / "features" / code.lower()
-        directory.mkdir(parents=True)
-        for field in (
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume",
-            "amount",
-            "vwap",
-            "factor",
-            "label",
-        ):
-            values = frame[field].to_numpy(dtype="float32")
-            np.hstack(([0.0], values)).astype("<f4").tofile(directory / f"{field}.day.bin")
-# AI_GENERATE_END -----------------
+        directory.mkdir(parents=True, exist_ok=True)
+        payload = values.to_numpy(dtype="float32")
+        np.hstack(([0.0], payload)).astype("<f4").tofile(
+            directory / f"{field}.day.bin"
+        )
+
+    @staticmethod
+    def _append_field(
+        target: Path, code: str, field: str, values: pd.Series
+    ) -> None:
+        path = target / "features" / code.lower() / f"{field}.day.bin"
+        with path.open("ab") as stream:
+            stream.write(values.to_numpy(dtype="<f4").tobytes())
+
+    @staticmethod
+    def _read_calendar(target: Path) -> pd.DatetimeIndex:
+        return pd.DatetimeIndex(
+            pd.to_datetime(
+                [
+                    value
+                    for value in (target / "calendars" / "day.txt")
+                    .read_text(encoding="utf-8")
+                    .splitlines()
+                    if value.strip()
+                ]
+            )
+        )
+
+    @staticmethod
+    def _read_instrument_intervals(
+        target: Path,
+    ) -> dict[str, tuple[date, date]]:
+        result: dict[str, tuple[date, date]] = {}
+        for line in (target / "instruments" / "all.txt").read_text(
+            encoding="utf-8"
+        ).splitlines():
+            if not line.strip():
+                continue
+            instrument, start, end = line.split("\t")
+            result[normalize_instrument(instrument)] = (
+                date.fromisoformat(start),
+                date.fromisoformat(end),
+            )
+        return result
+
+    @staticmethod
+    def _write_instrument_intervals(
+        target: Path, intervals: dict[str, tuple[date, date]]
+    ) -> None:
+        (target / "instruments" / "all.txt").write_text(
+            "".join(
+                f"{instrument}\t{start.isoformat()}\t{end.isoformat()}\n"
+                for instrument, (start, end) in sorted(intervals.items())
+            ),
+            encoding="utf-8",
+        )
+
+    def _contract_version(self) -> str | None:
+        try:
+            return (self._target / ".contract-version").read_text(
+                encoding="ascii"
+            ).strip()
+        except OSError:
+            return None
+
+    @staticmethod
+    def _write_contract(target: Path) -> None:
+        (target / ".contract-version").write_text(
+            QLIB_CONTRACT_VERSION, encoding="ascii"
+        )
+
+    def _replace_target(self, temporary: Path) -> None:
+        backup = self._target.with_name(f".{self._target.name}.previous")
+        shutil.rmtree(backup, ignore_errors=True)
+        if self._target.exists():
+            self._target.replace(backup)
+        try:
+            temporary.replace(self._target)
+        except BaseException:
+            if backup.exists() and not self._target.exists():
+                backup.replace(self._target)
+            raise
+        shutil.rmtree(backup, ignore_errors=True)
+
+# AI_GENERATE_END ------------------

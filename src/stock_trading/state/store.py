@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------------------------------------------
+# AI_GENERATE_START --------------------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -1054,6 +1054,36 @@ class StateStore(SQLiteStateDatabase):
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def recent_monthly_realized_performance(
+        self, model_version_id: int | None, business_date: date, limit: int
+    ) -> list[dict[str, Any]]:
+        """按卖出月份汇总最近的已实现闭环，费用字段保留但不影响毛收益。"""
+        self.initialize()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                WITH monthly AS (
+                    SELECT
+                        substr(sell_date, 1, 7) AS business_month,
+                        COUNT(*) AS trade_count,
+                        SUM(gross_profit) AS gross_profit,
+                        SUM(net_profit) AS net_profit,
+                        SUM(buy_fee) + SUM(sell_fee) AS total_fees,
+                        SUM(gross_profit) / NULLIF(SUM(cost_basis), 0) AS gross_return,
+                        SUM(net_profit) / NULLIF(SUM(cost_basis) + SUM(buy_fee), 0)
+                            AS net_return
+                    FROM realized_trade
+                    WHERE model_version_id IS ?
+                      AND substr(sell_date, 1, 7) < substr(?, 1, 7)
+                    GROUP BY substr(sell_date, 1, 7)
+                    ORDER BY business_month DESC LIMIT ?
+                )
+                SELECT * FROM monthly ORDER BY business_month
+                """,
+                (model_version_id, business_date.isoformat(), max(1, limit)),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def save_model_evaluation(
         self,
         model_version_id: int | None,
@@ -1491,4 +1521,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END -----------------------------------------------------------------
+# AI_GENERATE_END --------------------------------------------------------------------

@@ -1,10 +1,10 @@
-# AI_GENERATE_START --------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START ----------------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
 import logging
 import re
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from time import perf_counter
 from typing import Annotated, Callable, TypeVar
@@ -17,17 +17,20 @@ from stock_trading.logging_utils import (
     log_context,
     set_log_context,
 )
+from stock_trading.market.storage import ParquetMarketStore
+from stock_trading.market.trade_calendar import latest_completed_trade_date
 from stock_trading.notifications import push_system_failure
+from stock_trading.research.qlib_store import QlibBinaryStore
 from stock_trading.research.training import (
     run_training_pipeline,
 )
 from stock_trading.time_utils import shanghai_now, shanghai_today
-from stock_trading.market.trade_calendar import latest_completed_trade_date
 from stock_trading.workflows import (
     cleanup_workflow,
     collect_workflow,
     evaluate_workflow,
     performance_workflow,
+    prepare_workflow,
     rank_workflow,
     sync_broker_workflow,
     trading_workflow,
@@ -118,6 +121,44 @@ def collect_command(
     result = _execute(
         "collect",
         {"date": date_value},
+        run,
+    )
+    _print_json(result)
+
+
+def prepare_command(
+    date_value: Annotated[
+        str | None,
+        typer.Option("--date", help="Qlib 日期或日期范围，默认延续现有范围至最近交易日。"),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="忽略现有 Qlib 并从原始 Parquet 全量重建。"),
+    ] = False,
+) -> None:
+    def run(config: AppConfig) -> dict[str, object]:
+        latest = latest_completed_trade_date(shanghai_now())
+        qlib = QlibBinaryStore(
+            ParquetMarketStore(config.data_dir), config.qlib_dir
+        )
+        existing = qlib.date_range()
+        if date_value is None:
+            start = (
+                existing[0]
+                if existing is not None
+                else latest - timedelta(days=config.market_history_days)
+            )
+            end = max(latest, existing[1]) if existing is not None else latest
+        else:
+            start, end = _parse_date_expression(date_value, latest, latest)
+            if existing is not None and not force:
+                start = min(start, existing[0])
+                end = max(end, existing[1])
+        return prepare_workflow(config, start, end, force=force)
+
+    result = _execute(
+        "prepare",
+        {"date": date_value, "force": force},
         run,
     )
     _print_json(result)
@@ -325,9 +366,16 @@ def _log_broker_summary(result: dict[str, object]) -> None:
 def _log_performance_summary(result: dict[str, object]) -> None:
     performance = dict(result["performance"])
     LOGGER.info(
-        "已实现绩效完成：日期=%s；闭环交易=%s；净损益=%s；净收益率=%s",
+        "已实现绩效完成：日期=%s；闭环交易=%s；毛损益=%s；毛收益率=%s；"
+        "费用=%s；净损益=%s；净收益率=%s",
         result["businessDate"],
         performance.get("trade_count", 0),
+        _format_amount(performance.get("gross_pnl")),
+        _format_rate(performance.get("gross_return")),
+        _format_amount(
+            float(performance.get("buy_fees") or 0)
+            + float(performance.get("sell_fees") or 0)
+        ),
         _format_amount(performance.get("net_pnl")),
         _format_rate(performance.get("net_return")),
     )
@@ -363,4 +411,4 @@ def _format_amount(value: object) -> str:
 
 def _format_rate(value: object) -> str:
     return "-" if value is None else f"{float(value):.2%}"
-# AI_GENERATE_END --------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END ----------------------------------------------------------------------------------------------------------------------------

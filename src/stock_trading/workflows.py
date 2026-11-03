@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------
+# AI_GENERATE_START -----------
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ import pandas as pd
 from stock_trading.broker.captcha import BaiduCaptchaSolver
 from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.config import AppConfig
-from stock_trading.instruments import normalize_instrument, to_baostock_code
+from stock_trading.instruments import normalize_instrument
 from stock_trading.market.storage import ParquetMarketStore, ResearchDataAudit
 from stock_trading.market.sync import (
     live_codes,
@@ -28,10 +28,7 @@ from stock_trading.research.artifacts import (
 )
 from stock_trading.research.model import predict_alpha158_lightgbm
 from stock_trading.research.qlib_store import QlibBinaryStore
-from stock_trading.research.training import (
-    activate_trained_model,
-    refresh_qlib_from_parquet,
-)
+from stock_trading.research.training import activate_trained_model
 from stock_trading.state.store import StateStore
 from stock_trading.trading.broker_sync import BrokerOrderSyncService
 from stock_trading.trading.execution import OrderExecutionOrchestrator
@@ -51,7 +48,7 @@ def collect_workflow(
     end_date: date,
     snapshot_date: date,
 ) -> dict[str, object]:
-    """检查股票快照和指定日期范围，只补缺失项并确保 Qlib 有效。"""
+    """检查股票快照和指定日期范围，只补齐缺失的原始数据。"""
     state = StateStore(config.state_db_path)
     business_key = state.start_task("COLLECT", end_date)
     store = ParquetMarketStore(config.data_dir)
@@ -114,14 +111,6 @@ def collect_workflow(
             "failed": {},
         }
 
-        qlib_refresh = _refresh_collection_qlib(
-            config,
-            store,
-            audit,
-            start_date,
-            end_date,
-            daily_mode,
-        )
     except BaseException as error:
         state.finish_task(business_key, False, error)
         raise
@@ -139,7 +128,60 @@ def collect_workflow(
         "endDate": end_date.isoformat(),
         "researchCodes": len(codes),
         "collection": collection,
-        "qlibRefresh": qlib_refresh,
+    }
+
+
+def prepare_workflow(
+    config: AppConfig,
+    start_date: date,
+    end_date: date,
+    force: bool = False,
+) -> dict[str, object]:
+    """只读取原始 Parquet，幂等准备指定范围的 Qlib。"""
+    store = ParquetMarketStore(config.data_dir)
+    try:
+        stocks = store.read_stock_basics()
+    except (OSError, ValueError, KeyError) as error:
+        raise ValueError("未找到股票基础信息；请先执行 stock-collect") from error
+    codes = research_codes(stocks, start_date, end_date)
+    if not codes:
+        raise ValueError("股票基础信息中没有满足当前日期范围的研究股票")
+    coverage_ranges = _stock_coverage_ranges(
+        stocks, codes, start_date, end_date
+    )
+    LOGGER.info(
+        "开始检查 Qlib 原始数据：股票数=%d；日期=%s 至 %s",
+        len(codes),
+        start_date,
+        end_date,
+    )
+    audit = store.audit_research_data(
+        codes, start_date, end_date, coverage_ranges=coverage_ranges
+    )
+    _log_collection_audit("Qlib 原始数据检查完成", audit)
+    if not audit.complete:
+        missing = ",".join(plan.code for plan in audit.pending[:10])
+        suffix = "..." if len(audit.pending) > 10 else ""
+        raise ValueError(
+            f"原始研究数据不完整：缺失股票={len(audit.pending)}；"
+            f"示例={missing}{suffix}；请执行 stock-collect --date "
+            f"{start_date.isoformat()}:{end_date.isoformat()}"
+        )
+    prepared = QlibBinaryStore(store, config.qlib_dir).prepare(
+        list(audit.model_codes), start_date, end_date, force=force
+    )
+    LOGGER.info(
+        "Qlib 准备完成：模式=%s；股票数=%d；日期=%s 至 %s",
+        prepared["mode"],
+        prepared["codes"],
+        prepared["startDate"],
+        prepared["endDate"],
+    )
+    return {
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "researchCodes": len(audit.model_codes),
+        "qlib": prepared,
     }
 
 
@@ -160,75 +202,6 @@ def _stock_coverage_ranges(
         code_end = min(end_date, out_date) if out_date else end_date
         ranges[code] = (code_start, code_end, out_date is None or out_date >= end_date)
     return ranges
-
-
-def _refresh_collection_qlib(
-    config: AppConfig,
-    store: ParquetMarketStore,
-    audit: ResearchDataAudit,
-    start_date: date,
-    end_date: date,
-    daily_mode: bool,
-) -> dict[str, object]:
-    qlib = QlibBinaryStore(store, config.qlib_dir)
-    qlib_start = start_date
-    qlib_end = end_date
-    qlib_audit: ResearchDataAudit | None = audit
-    if daily_mode:
-        existing_range = qlib.date_range()
-        existing_instruments = qlib.instruments()
-        if existing_range is None or existing_instruments is None:
-            raise ValueError(
-                "Qlib 尚未初始化；请先使用 stock-collect --date 开始日期:结束日期 "
-                "准备历史数据"
-            )
-        daily_instruments = {
-            normalize_instrument(code) for code in audit.model_codes
-        }
-        if (
-            daily_instruments.issubset(existing_instruments)
-            and qlib.is_date_ready(end_date)
-        ):
-            LOGGER.info("Qlib 已包含目标交易日，跳过重建：日期=%s", end_date)
-            return {"skipped": True, "path": str(config.qlib_dir)}
-        qlib_start, existing_end = existing_range
-        qlib_end = max(existing_end, end_date)
-        qlib_audit = None
-        qlib_codes = sorted(
-            to_baostock_code(code)
-            for code in existing_instruments | daily_instruments
-        )
-    else:
-        qlib_codes = list(qlib_audit.model_codes)
-    if qlib.is_valid(qlib_codes, qlib_start, qlib_end):
-        LOGGER.info("Qlib 数据检查通过，跳过重建")
-        return {"skipped": True, "path": str(config.qlib_dir)}
-
-    LOGGER.info(
-        "Qlib 缺少目标交易日，开始刷新：日期=%s 至 %s；股票数=%d",
-        qlib_start,
-        qlib_end,
-        len(qlib_codes),
-    )
-    if daily_mode:
-        qlib_result = qlib.rebuild(qlib_codes, qlib_start, qlib_end)
-        result: dict[str, object] = {
-            "startDate": qlib_start.isoformat(),
-            "endDate": qlib_end.isoformat(),
-            "codes": qlib_codes,
-            "qlib": qlib_result,
-        }
-    else:
-        result = refresh_qlib_from_parquet(
-            config,
-            qlib_codes,
-            qlib_start,
-            qlib_end,
-            audit=qlib_audit,
-        )
-    if not qlib.is_valid(qlib_codes, qlib_start, qlib_end):
-        raise ValueError("Qlib 刷新后检查失败")
-    return result
 
 
 def _log_collection_audit(message: str, audit: ResearchDataAudit) -> None:
@@ -294,7 +267,8 @@ def rank_workflow(config: AppConfig, prediction_date: date) -> dict[str, object]
     qlib = QlibBinaryStore(store, config.qlib_dir)
     if not qlib.is_date_ready(prediction_date):
         raise ValueError(
-            f"collect 已成功但 Qlib 未覆盖目标日期：{prediction_date.isoformat()}"
+            f"Qlib 未覆盖目标日期：{prediction_date.isoformat()}；"
+            "请先执行 stock-prepare"
         )
     model_dir = resolve_current_model_dir(model_root(config.artifact_dir))
     activation = activate_trained_model(config, model_dir)
@@ -474,4 +448,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END --------
+# AI_GENERATE_END -----------

@@ -22,7 +22,7 @@ logrotate_file="$cron_dir/stock-trading.logrotate"
 cron_template="$release_dir/config/stock-trading.cron"
 logrotate_template="$release_dir/config/stock-trading.logrotate"
 bootstrap_script="$release_dir/script/bootstrap-server.sh"
-commands="stock-help stock-train stock-collect stock-rank stock-sell stock-buy stock-broker stock-perform stock-evaluate stock-clean"
+commands="stock-help stock-train stock-collect stock-prepare stock-rank stock-sell stock-buy stock-broker stock-perform stock-evaluate stock-clean"
 system_path="$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 for required_file in "$bootstrap_script" "$cron_template" "$logrotate_template"; do

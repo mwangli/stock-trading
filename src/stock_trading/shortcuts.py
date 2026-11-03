@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------
+# AI_GENERATE_START ----------------
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -11,6 +11,7 @@ from stock_trading.cli import (
     collect_command,
     evaluate_command,
     performance_command,
+    prepare_command,
     rank_command,
     trading_command,
     train_command,
@@ -23,7 +24,8 @@ COMMAND_GROUPS = (
     (
         "数据准备",
         (
-            ("stock-collect", "采集日线、复权因子和 5 分钟行情，并刷新 Qlib。"),
+            ("stock-collect", "采集股票基础信息、日线、复权因子和 5 分钟行情。"),
+            ("stock-prepare", "从现有原始数据增量、幂等准备 Qlib。"),
         ),
     ),
     (
@@ -36,8 +38,8 @@ COMMAND_GROUPS = (
     (
         "交易执行",
         (
-            ("stock-sell", "上午按实时可卖持仓和五档行情执行卖出。"),
-            ("stock-buy", "下午按当日排名、实时资金和五档行情执行买入。"),
+            ("stock-sell", "上午卖出跌出保留排名的可卖持仓。"),
+            ("stock-buy", "下午无持仓时从Top5筛选买入。"),
         ),
     ),
     (
@@ -117,19 +119,41 @@ def collect() -> None:
     _run(
         "stock-collect",
         collect_command,
-        "采集日线、复权因子和 5 分钟行情，并刷新 Qlib。",
+        "采集股票基础信息、日线、复权因子和 5 分钟行情。",
         (
             "先检查最近交易日的股票基础信息快照，不存在时自动下载。",
             "无参数时只扫描最近交易日；指定 --date 时只扫描该历史范围。",
-            "原始数据完整后检查 Qlib，有效则跳过，无效才重建。",
+            "根据缺失清单只下载缺少的原始数据，下载后重新检查。",
         ),
         (
             "stock-collect",
             "stock-collect --date 2023-11-02:2026-11-02",
         ),
         (
-            "命令不执行模型训练或排名。",
+            "命令不准备 Qlib、不执行模型训练或排名。",
             "单类数据失败不阻止同一股票的其他类别继续处理。",
+        ),
+    )
+
+
+def prepare() -> None:
+    _run(
+        "stock-prepare",
+        prepare_command,
+        "从现有原始数据增量、幂等准备 Qlib。",
+        (
+            "只读取本地 Parquet，不连接 BaoStock 或下载数据。",
+            "Qlib 已覆盖目标范围时跳过，只缺少新交易日时增量追加。",
+            "使用 --force 时才忽略现有 Qlib 并全量重建。",
+        ),
+        (
+            "stock-prepare",
+            "stock-prepare --date 2023-11-02:2026-11-02",
+            "stock-prepare --force",
+        ),
+        (
+            "原始数据不完整时终止并提示对应 stock-collect 命令。",
+            "命令不下载数据、不训练模型、不生成排名。",
         ),
     )
 
@@ -140,7 +164,7 @@ def rank() -> None:
         rank_command,
         "生成指定交易日的完整横截面排名。",
         (
-            "校验同一业务日的 stock-collect 已成功后执行。",
+            "校验同一业务日的 stock-collect 已成功且 Qlib 已由 stock-prepare 覆盖。",
             "完整排名供交易阶段结合资金、权限和实时价格继续筛选。",
         ),
         ("stock-rank", "stock-rank --date 2026-11-02"),
@@ -159,8 +183,9 @@ def sell() -> None:
     _run(
         "stock-sell",
         _sell_command,
-        "在上午窗口按实时可卖持仓和五档行情执行卖出。",
+        "在上午窗口卖出跌出保留排名的可卖持仓。",
         (
+            "读取最近完整横截面排名，Rank15以内的持仓继续保留。",
             "每次尝试前重新读取券商实时持仓和报价。",
             "部分成交时先确认撤单终态，再按最新事实处理剩余数量。",
         ),
@@ -180,15 +205,16 @@ def buy() -> None:
     _run(
         "stock-buy",
         _buy_command,
-        "在下午窗口按当日排名、实时资金和五档行情执行买入。",
+        "在下午窗口无持仓时从Top5依次筛选买入。",
         (
-            "从完整排名依次检查允许前缀、已确认权限和实时价格范围。",
+            "已有持仓时跳过买入，避免重复交易同一股票。",
+            "从Top5依次检查允许前缀、已确认权限和实时价格范围。",
             "固定首个通过候选，并按实时可用资金计算整手数量。",
         ),
         ("stock-buy",),
         (
             "不接受日期参数，只处理上海时区当天交易。",
-            "不读取其他持仓作为过滤条件；最终合法性由券商判断。",
+            "最终合法性以及成交状态由券商判断。",
         ),
     )
 
@@ -237,7 +263,8 @@ def evaluate() -> None:
         evaluate_command,
         "根据已实现绩效评估模型并生成重训请求。",
         (
-            "读取指定业务日已经生成的真实已实现绩效。",
+            "按卖出月份汇总已经完成的真实交易闭环。",
+            "固定买卖费用只展示，不参与模型能力评价。",
             "评估结果和重训请求写入 SQLite，不在本命令内直接训练。",
         ),
         ("stock-evaluate", "stock-evaluate --date 2026-11-02"),
@@ -263,4 +290,4 @@ def clean() -> None:
             "建议由每周维护任务调用，而不是每次初始化执行。",
         ),
     )
-# AI_GENERATE_END ------------
+# AI_GENERATE_END ----------------

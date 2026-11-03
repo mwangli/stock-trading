@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------
+# AI_GENERATE_START -------------
 from __future__ import annotations
 
 import logging
@@ -35,7 +35,7 @@ class RealizedPerformanceService:
 
 
 class ModelEvaluationService:
-    """根据已实现绩效序列形成模型保留或重训决策。"""
+    """根据已实现月度毛收益形成模型保留或重训决策。"""
 
     def __init__(self, config: AppConfig, state_store: StateStore) -> None:
         self._config = config
@@ -46,7 +46,7 @@ class ModelEvaluationService:
             business_date.isoformat()
         )
         window_observations = self._config.model_evaluation_observations
-        rows = self._state_store.recent_realized_performance(
+        rows = self._state_store.recent_monthly_realized_performance(
             model_version_id, business_date, window_observations
         )
         observations = len(rows)
@@ -55,26 +55,29 @@ class ModelEvaluationService:
         total_net_return: float | None = None
         max_drawdown: float | None = None
         decision = "WARMUP"
-        reason = f"有效已实现收益样本 {observations}/{window_observations}"
+        reason = f"有效已实现收益月份 {observations}/{window_observations}"
         if rows:
             gross_returns = [float(row["gross_return"]) for row in rows]
             net_returns = [float(row["net_return"]) for row in rows]
             positive_period_ratio = sum(value > 0 for value in gross_returns) / observations
             total_gross_return = _compound_return(gross_returns)
             total_net_return = _compound_return(net_returns)
-            max_drawdown = _max_drawdown(net_returns)
+            max_drawdown = _max_drawdown(gross_returns)
         if observations >= window_observations:
             if (
                 total_gross_return is not None
                 and total_gross_return > self._config.model_min_total_gross_return
+                and positive_period_ratio is not None
+                and positive_period_ratio
+                >= self._config.model_min_positive_month_ratio
                 and max_drawdown is not None
                 and max_drawdown <= self._config.model_max_drawdown
             ):
                 decision = "KEEP"
-                reason = "滚动已实现毛收益达标且回撤未越界"
+                reason = "月度已实现毛收益、盈利月份比例和毛回撤达标"
             else:
                 decision = "RETRAIN"
-                reason = "滚动已实现收益不达标或回撤越界"
+                reason = "月度毛收益、盈利月份比例或毛回撤未达标"
         evaluation = self._state_store.save_model_evaluation(
             model_version_id=model_version_id,
             business_date=business_date.isoformat(),
@@ -88,12 +91,16 @@ class ModelEvaluationService:
             reason=reason,
         )
         LOGGER.info(
-            "模型评估完成：有效已实现样本=%d/%d；决策=%s",
+            "模型评估完成：有效已实现月份=%d/%d；决策=%s",
             observations,
             window_observations,
             evaluation["decision"],
         )
-        return {"businessDate": business_date.isoformat(), "evaluation": evaluation}
+        return {
+            "businessDate": business_date.isoformat(),
+            "monthlyPerformance": rows,
+            "evaluation": evaluation,
+        }
 
 
 def _compound_return(returns: list[float]) -> float:
@@ -112,4 +119,4 @@ def _max_drawdown(returns: list[float]) -> float:
         peak = max(peak, equity)
         drawdown = max(drawdown, 1.0 - equity / peak)
     return drawdown
-# AI_GENERATE_END -----------
+# AI_GENERATE_END -------------

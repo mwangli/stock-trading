@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------------------
+# AI_GENERATE_START --------------------------------------------
 from __future__ import annotations
 
 import os
@@ -11,6 +11,8 @@ FIXED_TIME_URGENCY_STRATEGY = "FIXED_TIME_URGENCY"
 TRADING_MIN_PRICE = 0.01
 TRADING_MAX_PRICE = 1_000_000.0
 TRADING_ORDER_FEE = 5.0
+TRADING_ENTRY_RANK = 5
+TRADING_EXIT_RANK = 15
 EXECUTION_WINDOW_SECONDS = 15 * 60
 ORDER_WAIT_SECONDS = 60
 ORDER_POLL_SECONDS = 5
@@ -20,6 +22,7 @@ PASSIVE_FRACTION = 0.50
 NORMAL_FRACTION = 0.85
 DEFAULT_BROKER_BASE_URL = "https://weixin.citicsinfo.com/reqxml"
 BACKTEST_CAPITAL_SCENARIOS = (1_000, 2_000, 3_000, 5_000, 10_000)
+MODEL_MIN_POSITIVE_MONTH_RATIO = 0.60
 
 
 @dataclass(frozen=True)
@@ -55,6 +58,8 @@ class AppConfig:
     trading_min_price: float
     trading_max_price: float
     trading_order_fee: float
+    trading_entry_rank: int
+    trading_exit_rank: int
     trading_allowed_prefixes: tuple[str, ...]
     trading_max_prediction_age_days: int
     trading_execution_strategy: str
@@ -69,6 +74,7 @@ class AppConfig:
     model_evaluation_observations: int
     model_max_drawdown: float
     model_min_total_gross_return: float
+    model_min_positive_month_ratio: float
     model_feature_batch_days: int = 60
 
     @classmethod
@@ -140,6 +146,8 @@ class AppConfig:
             trading_min_price=TRADING_MIN_PRICE,
             trading_max_price=TRADING_MAX_PRICE,
             trading_order_fee=TRADING_ORDER_FEE,
+            trading_entry_rank=TRADING_ENTRY_RANK,
+            trading_exit_rank=TRADING_EXIT_RANK,
             trading_allowed_prefixes=tuple(
                 value.strip().upper()
                 for value in os.getenv(
@@ -160,8 +168,8 @@ class AppConfig:
             trading_normal_fraction=NORMAL_FRACTION,
             backtest_capital_scenarios=BACKTEST_CAPITAL_SCENARIOS,
             model_evaluation_observations=max(
-                2,
-                int(os.getenv("MODEL_EVALUATION_OBSERVATIONS", "20")),
+                3,
+                int(os.getenv("MODEL_EVALUATION_OBSERVATIONS", "6")),
             ),
             model_max_drawdown=min(
                 1.0, max(0.0, float(os.getenv("MODEL_MAX_DRAWDOWN", "0.10")))
@@ -169,6 +177,7 @@ class AppConfig:
             model_min_total_gross_return=float(
                 os.getenv("MODEL_MIN_TOTAL_GROSS_RETURN", "0")
             ),
+            model_min_positive_month_ratio=MODEL_MIN_POSITIVE_MONTH_RATIO,
         )
 
 
@@ -189,4 +198,4 @@ def _load_env_file(path: Path) -> None:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         os.environ.setdefault(key, value)
-# AI_GENERATE_END -----------------------------------------
+# AI_GENERATE_END --------------------------------------------
