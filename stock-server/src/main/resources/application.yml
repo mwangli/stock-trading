@@ -14,7 +14,7 @@ server:
         same-site: lax
 console:
   data-dir: ${STOCK_TRADING_VAR_DIR:D:/stock-trading4/var}
-  task-log: ${STOCK_TASK_LOG:/var/log/stock-trading/tasks.log}
+  task-log: ${STOCK_TASK_LOG:/var/log/stock-trading/run.log}
   document-roots: ${STOCK_DOCUMENT_ROOTS:documents,../documents}
   auth:
     username: ${CONSOLE_USERNAME:admin}

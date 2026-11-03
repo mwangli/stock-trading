@@ -39,7 +39,7 @@ services:
       CONSOLE_PASSWORD_HASH: ${CONSOLE_PASSWORD_HASH:?CONSOLE_PASSWORD_HASH is required}
       CONSOLE_AUTH_PASSWORD_HASH: ${CONSOLE_PASSWORD_HASH:?CONSOLE_PASSWORD_HASH is required}
       STOCK_TRADING_VAR_DIR: /data/stock-trading
-      STOCK_TASK_LOG: /var/log/stock-trading/stock-trading.log
+      STOCK_TASK_LOG: /var/log/stock-trading/run.log
       STOCK_DOCUMENT_ROOTS: /app/documents,/data/stock-trading-documents
       AGENT_ENABLED: ${AGENT_ENABLED:-true}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}

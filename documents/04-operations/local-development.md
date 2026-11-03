@@ -18,7 +18,7 @@ source_paths:
 
 ## 默认路径
 
-本地 Backend 默认读取 `D:/stock-trading4/data`，其中 `state/trading.db` 是交易事实库，`market/` 是 Parquet 根目录。日志默认位于数据目录下 `logs/run.log`。文档根默认依次尝试 `documents` 和 `../documents`。
+本地 Backend 默认读取 `D:/stock-trading4/var`，其中 `state/trading.db` 是交易事实库，`market/` 是 Parquet 根目录。活动日志统一通过 `STOCK_TASK_LOG` 指定，默认路径为 `/var/log/stock-trading/run.log`；Windows 本地开发可将该变量指向实际的 `run.log`。文档根默认依次尝试 `documents` 和 `../documents`。
 
 ## Frontend 开发代理
 

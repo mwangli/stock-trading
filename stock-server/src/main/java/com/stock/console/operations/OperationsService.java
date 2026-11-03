@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 package com.stock.console.operations;
 
 import com.stock.console.config.ConsoleProperties;
@@ -7,9 +7,16 @@ import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -17,8 +24,14 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static java.nio.file.StandardOpenOption.READ;
+
 @Service
 public class OperationsService {
+
+    private static final int MAX_LOG_LINES = 2000;
+    private static final int TAIL_BLOCK_BYTES = 8192;
+    private static final int MAX_TAIL_BYTES = 8 * 1024 * 1024;
 
     private final ConsoleProperties properties;
     private final TradingFacts facts;
@@ -42,12 +55,10 @@ public class OperationsService {
             return new LogSnapshot(false, properties.taskLog().toString(), List.of(), null);
         }
         try {
-            List<String> values = Files.readAllLines(properties.taskLog(), StandardCharsets.UTF_8);
-            int start = Math.max(0, values.size() - Math.max(1, Math.min(lines, 2000)));
             return new LogSnapshot(
                     true,
                     properties.taskLog().toString(),
-                    List.copyOf(values.subList(start, values.size())),
+                    readTail(properties.taskLog(), lines),
                     null);
         } catch (IOException exception) {
             return new LogSnapshot(
@@ -56,6 +67,69 @@ public class OperationsService {
                     List.of(),
                     exception.getMessage());
         }
+    }
+
+    static List<String> readTail(Path path, int requestedLines) throws IOException {
+        int limit = Math.max(1, Math.min(requestedLines, MAX_LOG_LINES));
+        try (SeekableByteChannel channel = Files.newByteChannel(path, READ)) {
+            long position = channel.size();
+            if (position == 0) {
+                return List.of();
+            }
+
+            Deque<byte[]> chunks = new ArrayDeque<>();
+            int newlineCount = 0;
+            int totalBytes = 0;
+            while (position > 0 && newlineCount <= limit && totalBytes < MAX_TAIL_BYTES) {
+                int blockSize = (int) Math.min(
+                        Math.min(TAIL_BLOCK_BYTES, position),
+                        MAX_TAIL_BYTES - totalBytes);
+                position -= blockSize;
+                ByteBuffer buffer = ByteBuffer.allocate(blockSize);
+                channel.position(position);
+                while (buffer.hasRemaining()) {
+                    int read = channel.read(buffer);
+                    if (read < 0) {
+                        break;
+                    }
+                }
+                int bytesRead = buffer.position();
+                if (bytesRead == 0) {
+                    break;
+                }
+
+                byte[] chunk = new byte[bytesRead];
+                buffer.flip();
+                buffer.get(chunk);
+                chunks.addFirst(chunk);
+                totalBytes += bytesRead;
+                for (byte value : chunk) {
+                    if (value == '\n') {
+                        newlineCount++;
+                    }
+                }
+            }
+
+            ByteArrayOutputStream output = new ByteArrayOutputStream(totalBytes);
+            for (byte[] chunk : chunks) {
+                output.write(chunk);
+            }
+            byte[] content = output.toByteArray();
+            int offset = position > 0 ? firstCompleteLineOffset(content) : 0;
+            String text = new String(content, offset, content.length - offset, StandardCharsets.UTF_8);
+            List<String> values = new ArrayList<>(text.lines().toList());
+            int start = Math.max(0, values.size() - limit);
+            return List.copyOf(values.subList(start, values.size()));
+        }
+    }
+
+    private static int firstCompleteLineOffset(byte[] content) {
+        for (int index = 0; index < content.length; index++) {
+            if (content[index] == '\n') {
+                return index + 1;
+            }
+        }
+        return 0;
     }
 
     public SseEmitter stream() {
@@ -101,4 +175,4 @@ public class OperationsService {
             String error) {
     }
 }
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

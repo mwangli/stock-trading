@@ -1,35 +1,22 @@
-/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START --- */
-.logs-page { height: calc(100dvh - 112px); min-height: 0 !important; gap: 12px; overflow: hidden; }
-.logs-toolbar { min-height: 48px; justify-content: space-between !important; border-block: 1px solid var(--border-color); padding: 8px 12px; background: var(--panel-bg); }
+/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START ---- */
+.logs-page { width: calc(100% + 48px); height: calc(100dvh - 64px); min-height: 0 !important; gap: 0; margin: -24px; overflow: hidden; }
+.logs-toolbar { min-height: 56px; justify-content: space-between !important; border-bottom: 1px solid var(--border-color); padding: 8px 16px; background: var(--panel-bg); }
 .logs-toolbar::before { color: var(--text-secondary); font-size: 12px; content: '运行状态'; }
 .logs-desktop-actions { display: flex; align-items: center; gap: 8px; }
 .logs-desktop-actions .ant-space,
 .logs-desktop-actions .ant-btn { min-height: 34px; border-radius: 3px; background: var(--panel-bg); }
-.logs-console { min-height: 500px; border: 1px solid var(--border-color); border-radius: 0; padding: 0; background: var(--panel-bg); color: var(--text-primary); box-shadow: none; }
-.logs-console > div { padding: 8px 0; scrollbar-color: var(--border-color) transparent; scrollbar-width: thin; }
-.logs-line { min-height: 36px; border-bottom: 1px solid var(--border-soft); padding: 8px 64px 8px 16px; transition: background-color 140ms ease; }
+.logs-desktop-actions .logs-toolbar-bottom-button.ant-btn { width: 36px; min-width: 36px; height: 36px; color: var(--brand); }
+.logs-console { min-height: 0; border: 0; border-radius: 0; padding: 0; background: var(--panel-bg); color: var(--text-primary); box-shadow: none; }
+.logs-scroll-viewport { overflow: auto; padding: 8px 0 52px; scrollbar-color: var(--border-color) transparent; scrollbar-width: thin; }
+.logs-line { width: max-content; min-width: 100%; min-height: 36px; border-bottom: 1px solid var(--border-soft); padding: 8px 16px; transition: background-color 140ms ease; }
 .logs-line:last-child { border-bottom: 0; }
 .logs-line:hover { background: var(--brand-soft); }
-.logs-line-content { min-width: 0; color: var(--text-secondary); font-size: 12px; font-weight: 400; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
-.logs-scroll-bottom-button.ant-btn { position: absolute; right: 20px; bottom: 20px; z-index: 2; width: 36px; min-width: 36px; height: 36px; border-color: var(--brand); background: var(--panel-bg) !important; color: var(--brand) !important; box-shadow: 0 4px 12px rgb(15 23 42 / 18%) !important; }
-.logs-scroll-bottom-button.ant-btn:hover { border-color: var(--brand); background: var(--brand-soft) !important; }
+.logs-line-content { color: var(--text-secondary); font-size: 12px; font-weight: 400; line-height: 1.6; white-space: pre; }
 .logs-page button:focus-visible,
 .logs-page .ant-switch:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .logs-page button:active { background-color: var(--brand-soft); }
 
-@media (max-width: 767px) {
-  .logs-page { gap: 0; min-height: calc(100dvh - 124px) !important; padding-bottom: 28px; }
-  .logs-toolbar { display: flex; min-height: 64px; align-items: center; justify-content: flex-start !important; border-top: 0; padding: 12px 16px; }
-  .logs-toolbar::before { content: '日志流'; font-size: 13px; font-weight: 650; }
-  .logs-toolbar .ant-tag { margin-left: auto; margin-inline-end: 0; }
-  .logs-desktop-actions { display: none; }
-  .logs-console { min-height: calc(100dvh - 188px); border-inline: 0; }
-  .logs-console > div { padding: 0; }
-  .logs-line { min-height: 56px; padding: 12px 72px 12px 16px; }
-  .logs-line-content { font-size: 11px; line-height: 1.65; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .logs-page * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
-/* AI_GENERATE_END --- */
+/* AI_GENERATE_END ---- */

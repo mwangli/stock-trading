@@ -1,8 +1,8 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 import './styles.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Space, Switch, Tag } from 'antd';
-import { ArrowDownOutlined, DeleteOutlined } from '@ant-design/icons';
+import { ArrowDownOutlined, PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
 import request from '@shared/utils/request';
@@ -32,10 +32,13 @@ const Logs: React.FC = () => {
   const [logPath, setLogPath] = useState(globalLogPath);
   const [logError, setLogError] = useState(globalLogError);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [paused, setPaused] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (paused) return undefined;
+
     let active = true;
     const loadLogs = async () => {
       try {
@@ -81,7 +84,7 @@ const Logs: React.FC = () => {
       active = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [paused]);
 
   useEffect(() => {
     const container = logsContainerRef.current;
@@ -107,11 +110,6 @@ const Logs: React.FC = () => {
 
     container.scrollTop = container.scrollHeight;
     setShowScrollToBottom(false);
-  }, []);
-
-  const clearLogs = useCallback(() => {
-    globalLogsBuffer = [];
-    setLogs([]);
   }, []);
 
   const status = {
@@ -140,15 +138,30 @@ const Logs: React.FC = () => {
             <span className="text-sm text-[var(--text-secondary)]">{t('logs.autoScroll')}</span>
             <Switch size="small" checked={autoScroll} onChange={setAutoScroll} />
           </Space>
-          <Button icon={<DeleteOutlined />} onClick={clearLogs}>
-            {t('logs.clearView')}
+          <Button
+            icon={paused ? <PlayCircleOutlined /> : <PauseCircleOutlined />}
+            aria-pressed={paused}
+            onClick={() => setPaused((value) => !value)}
+          >
+            {t(paused ? 'logs.resume' : 'logs.pause')}
           </Button>
+          {showScrollToBottom && (
+            <Button
+              className="logs-toolbar-bottom-button"
+              type="text"
+              shape="circle"
+              icon={<ArrowDownOutlined />}
+              aria-label="回到底部"
+              title="回到底部"
+              onClick={scrollToBottom}
+            />
+          )}
         </div>
       </div>
       <div className="logs-console relative flex min-h-0 flex-1 flex-col overflow-hidden font-mono text-sm">
         <div
           ref={logsContainerRef}
-          className="custom-scrollbar flex-1 overflow-y-auto pr-2"
+          className="logs-scroll-viewport custom-scrollbar flex-1"
           onScroll={handleLogsScroll}
         >
           {logs.length === 0 && (
@@ -163,21 +176,10 @@ const Logs: React.FC = () => {
             </div>
           ))}
         </div>
-        {showScrollToBottom && (
-          <Button
-            className="logs-scroll-bottom-button"
-            type="primary"
-            shape="circle"
-            icon={<ArrowDownOutlined />}
-            aria-label="回到底部"
-            title="回到底部"
-            onClick={scrollToBottom}
-          />
-        )}
       </div>
     </div>
   );
 };
 
 export default Logs;
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

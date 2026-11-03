@@ -1,8 +1,8 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 import './styles.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Tag } from 'antd';
-import { ArrowDownOutlined } from '@ant-design/icons';
+import { ArrowDownOutlined, CaretRightOutlined, PauseOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
 import request from '@shared/utils/request';
@@ -31,11 +31,14 @@ const Logs: React.FC = () => {
   const [logState, setLogState] = useState<LogState>(globalLogState);
   const [logPath, setLogPath] = useState(globalLogPath);
   const [logError, setLogError] = useState(globalLogError);
+  const [paused, setPaused] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
   const mobileFollowRef = useRef(true);
 
   useEffect(() => {
+    if (paused) return undefined;
+
     let active = true;
     const loadLogs = async () => {
       try {
@@ -81,7 +84,7 @@ const Logs: React.FC = () => {
       active = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [paused]);
 
   useEffect(() => {
     const container = logsContainerRef.current;
@@ -130,12 +133,35 @@ const Logs: React.FC = () => {
   return (
     <div className="app-page logs-page h-full min-h-[520px]">
       <div className="logs-toolbar flex flex-wrap items-center justify-end gap-3">
-        <Tag color={status.color}>{status.label}</Tag>
+        <div className="logs-mobile-actions">
+          <Tag color={status.color}>{status.label}</Tag>
+          <Button
+            className="logs-pause-button"
+            type="text"
+            shape="circle"
+            icon={paused ? <CaretRightOutlined /> : <PauseOutlined />}
+            aria-label={t(paused ? 'logs.resume' : 'logs.pause')}
+            aria-pressed={paused}
+            title={t(paused ? 'logs.resume' : 'logs.pause')}
+            onClick={() => setPaused((value) => !value)}
+          />
+          {showScrollToBottom && (
+            <Button
+              className="logs-toolbar-bottom-button"
+              type="text"
+              shape="circle"
+              icon={<ArrowDownOutlined />}
+              aria-label="回到底部"
+              title="回到底部"
+              onClick={scrollToBottom}
+            />
+          )}
+        </div>
       </div>
       <div className="logs-console relative flex min-h-0 flex-1 flex-col overflow-hidden font-mono text-sm">
         <div
           ref={logsContainerRef}
-          className="custom-scrollbar flex-1 overflow-y-auto pr-2"
+          className="logs-scroll-viewport custom-scrollbar flex-1"
           onScroll={handleLogsScroll}
         >
           {logs.length === 0 && (
@@ -150,21 +176,10 @@ const Logs: React.FC = () => {
             </div>
           ))}
         </div>
-        {showScrollToBottom && (
-          <Button
-            className="logs-scroll-bottom-button"
-            type="primary"
-            shape="circle"
-            icon={<ArrowDownOutlined />}
-            aria-label="回到底部"
-            title="回到底部"
-            onClick={scrollToBottom}
-          />
-        )}
       </div>
     </div>
   );
 };
 
 export default Logs;
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----
