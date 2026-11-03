@@ -107,7 +107,7 @@ for command_name in $commands; do
   test -x "$venv_dir/bin/$command_name"
 done
 
-touch "$logs_dir/stock-trading.log" "$data_dir/state/scheduler.lock"
+touch "$logs_dir/run.log" "$data_dir/state/scheduler.lock"
 
 desired_cron="$cron_dir/.desired.cron.$$"
 current_cron="$cron_dir/.current.cron.$$"

@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------
+# AI_GENERATE_START ------------------------------------
 from __future__ import annotations
 
 import logging
@@ -6,6 +6,8 @@ import os
 import sys
 from contextlib import contextmanager
 from contextvars import ContextVar
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import Iterator
 
 _TASK = ContextVar("log_task", default="-")
@@ -28,6 +30,12 @@ _LEVEL_LABELS = {
     logging.CRITICAL: "CRIT",
 }
 _ANSI_RESET = "\033[0m"
+
+
+def _default_log_path() -> Path:
+    source_project_dir = Path(__file__).resolve().parents[3]
+    project_dir = source_project_dir if os.name == "nt" else Path.home() / "stock-trading"
+    return project_dir / "logs" / "run.log"
 
 
 class _ContextFilter(logging.Filter):
@@ -127,7 +135,7 @@ def should_log_progress(current: int, total: int, steps: int = 20) -> bool:
 
 
 def configure_logging() -> None:
-    """配置统一结构化控制台日志。"""
+    """配置统一结构化控制台日志和 UTF-8 轮转文件日志。"""
     logger = logging.getLogger("stock_trading")
     if logger.handlers:
         return
@@ -139,6 +147,20 @@ def configure_logging() -> None:
     handler.addFilter(_ContextFilter())
     handler.setFormatter(_ColorFormatter(use_color=use_color))
     logger.addHandler(handler)
+
+    if os.getenv("STOCK_TRADING_FILE_LOG", "1") != "0":
+        configured_path = os.getenv("STOCK_TASK_LOG")
+        log_path = Path(configured_path) if configured_path else _default_log_path()
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            log_path,
+            maxBytes=10 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+        )
+        file_handler.addFilter(_ContextFilter())
+        file_handler.setFormatter(_ColorFormatter(use_color=False))
+        logger.addHandler(file_handler)
     logger.setLevel(level)
     logger.propagate = False
-# AI_GENERATE_END --------------------------------
+# AI_GENERATE_END ------------------------------------

@@ -4,7 +4,8 @@ CRON_TZ=Asia/Shanghai
 MAILTO=""
 
 PROJECT_DIR=__PROJECT_DIR__
-LOG=__PROJECT_DIR__/logs/stock-trading.log
+LOG=__PROJECT_DIR__/logs/run.log
+STOCK_TRADING_FILE_LOG=0
 LOCK=__PROJECT_DIR__/data/state/scheduler.lock
 LOGROTATE=__PROJECT_DIR__/cron/stock-trading.logrotate
 LOGROTATE_STATE=__PROJECT_DIR__/logs/logrotate.status
