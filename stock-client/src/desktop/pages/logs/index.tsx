@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 import './styles.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Space, Switch, Tag } from 'antd';
@@ -166,7 +166,6 @@ const Logs: React.FC = () => {
               key={`${index}-${log.slice(0, 16)}`}
               className="logs-line"
             >
-              <span className="logs-line-number">#{String(index + 1).padStart(4, '0')}</span>
               <span className="logs-line-content">{log}</span>
             </div>
           ))}
@@ -177,4 +176,4 @@ const Logs: React.FC = () => {
 };
 
 export default Logs;
-// AI_GENERATE_END -
+// AI_GENERATE_END --
