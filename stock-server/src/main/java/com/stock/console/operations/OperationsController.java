@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.console.operations;
 
 import com.stock.console.web.ApiResponse;
@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -28,8 +27,9 @@ public class OperationsController {
     }
 
     @GetMapping("/logs")
-    public ApiResponse<List<String>> logs(@RequestParam(defaultValue = "500") int lines) {
-        return ApiResponse.ok(operations.tail(lines));
+    public ApiResponse<OperationsService.LogSnapshot> logs(
+            @RequestParam(defaultValue = "500") int lines) {
+        return ApiResponse.ok(operations.logs(lines));
     }
 
     @GetMapping(value = "/logs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -37,4 +37,4 @@ public class OperationsController {
         return operations.stream();
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

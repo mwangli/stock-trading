@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START -----
 package com.stock.console.operations;
 
 import com.stock.console.config.ConsoleProperties;
@@ -37,16 +37,24 @@ public class OperationsService {
                 "runs", facts.taskRuns(100));
     }
 
-    public List<String> tail(int lines) {
+    public LogSnapshot logs(int lines) {
         if (!Files.isRegularFile(properties.taskLog())) {
-            return List.of();
+            return new LogSnapshot(false, properties.taskLog().toString(), List.of(), null);
         }
         try {
             List<String> values = Files.readAllLines(properties.taskLog(), StandardCharsets.UTF_8);
             int start = Math.max(0, values.size() - Math.max(1, Math.min(lines, 2000)));
-            return values.subList(start, values.size());
+            return new LogSnapshot(
+                    true,
+                    properties.taskLog().toString(),
+                    List.copyOf(values.subList(start, values.size())),
+                    null);
         } catch (IOException exception) {
-            return List.of("日志读取失败: " + exception.getMessage());
+            return new LogSnapshot(
+                    true,
+                    properties.taskLog().toString(),
+                    List.of(),
+                    exception.getMessage());
         }
     }
 
@@ -55,7 +63,7 @@ public class OperationsService {
         AtomicReference<List<String>> previous = new AtomicReference<>(List.of());
         var future = logExecutor.scheduleAtFixedRate(() -> {
             try {
-                List<String> values = tail(500);
+                List<String> values = logs(500).lines();
                 int start = overlap(previous.get(), values);
                 for (String value : values.subList(start, values.size())) {
                     emitter.send(SseEmitter.event().name("log").data(value));
@@ -85,5 +93,12 @@ public class OperationsService {
     void shutdown() {
         logExecutor.shutdownNow();
     }
+
+    public record LogSnapshot(
+            boolean available,
+            String path,
+            List<String> lines,
+            String error) {
+    }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END -----

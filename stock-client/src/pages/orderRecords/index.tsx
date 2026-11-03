@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START ------
 import './styles.css';
 import React, { useRef, useState } from 'react';
 import { Tabs } from 'antd';
@@ -75,4 +75,4 @@ const OrderRecords: React.FC = () => {
 };
 
 export default OrderRecords;
-// AI_GENERATE_END ----
+// AI_GENERATE_END ------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------------
+// AI_GENERATE_START----------------------------------------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
@@ -19,6 +19,7 @@ interface BrokerAccount {
 }
 
 interface PerformanceRankingItem {
+  tradeKey: string;
   stockCode: string;
   stockName?: string;
   transactionAmount: number;
@@ -77,19 +78,11 @@ interface PerformanceOverview {
   monthlyReturns: PerformancePeriodItem[];
 }
 
-interface DailyMarketRankingItem {
-  period: string;
-  stockCode: string;
-  stockName?: string;
-  close: number;
-  preclose: number;
-  returnRate: number;
-}
-
 interface DashboardOverview {
   account: Record<string, unknown>;
   positions: Array<Record<string, unknown>>;
   performance: Array<Record<string, unknown>>;
+  ranking: Array<Record<string, unknown>>;
 }
 
 type ApiResult<T> = ApiResponse<T> | T;
@@ -107,6 +100,11 @@ const percent = (value?: number) => value == null ? '-' : `${(Number(value) * 10
 const profitColor = (value?: number): 'success' | 'danger' => value != null && value >= 0 ? 'danger' : 'success';
 const numeric = (value: unknown) => value == null || value === '' ? 0 : Number(value);
 const text = (value: unknown) => value == null ? '' : String(value);
+const dailyReturnRate = (returnRate: number, holdingDays?: number) => (
+  holdingDays != null && holdingDays > 1 && returnRate > -1
+    ? Math.pow(1 + returnRate, 1 / holdingDays) - 1
+    : returnRate
+);
 
 const adaptDashboardOverview = (overview: DashboardOverview): PerformanceOverview => {
   const performanceRows = overview.performance ?? [];
@@ -142,24 +140,27 @@ const adaptDashboardOverview = (overview: DashboardOverview): PerformanceOvervie
     return { ...item, cumulativeProfit };
   });
 
-  const ranking = (overview.positions ?? []).map((item): PerformanceRankingItem => {
-    const quantity = numeric(item.quantity);
-    const averageCost = numeric(item.average_cost);
-    const currentPrice = numeric(item.current_price);
-    const buyAmount = averageCost * quantity;
-    const sellAmount = currentPrice * quantity;
-    const returnRate = averageCost ? (currentPrice - averageCost) / averageCost : 0;
+  const ranking = (overview.ranking ?? []).map((item): PerformanceRankingItem => {
+    const returnRate = numeric(item.return_rate);
+    const buyTime = text(item.buy_time);
+    const sellTime = text(item.sell_time);
+    const holdingDays = item.holding_days == null
+      ? undefined
+      : Math.max(0, Math.trunc(numeric(item.holding_days)));
     return {
+      tradeKey: text(item.trade_key),
       stockCode: text(item.instrument),
       stockName: text(item.stock_name),
-      transactionAmount: sellAmount,
-      buyAmount,
-      sellAmount,
-      tradeQuantity: quantity,
-      netProfit: sellAmount - buyAmount,
+      transactionAmount: numeric(item.transaction_amount),
+      buyAmount: numeric(item.buy_amount),
+      sellAmount: numeric(item.sell_amount),
+      tradeQuantity: numeric(item.trade_quantity),
+      netProfit: numeric(item.net_profit),
       returnRate,
-      dailyReturnRate: returnRate,
-      buyTime: text(item.captured_at),
+      dailyReturnRate: dailyReturnRate(returnRate, holdingDays),
+      buyTime,
+      holdingDays,
+      sellTime,
     };
   });
 
@@ -201,9 +202,7 @@ const Dashboard: React.FC = () => {
   const { t } = useTranslation();
   const [account, setAccount] = useState<BrokerAccount | null>(null);
   const [performance, setPerformance] = useState<PerformanceOverview | null>(null);
-  const [dailyRanking, setDailyRanking] = useState<DailyMarketRankingItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [dailyRankingLoading, setDailyRankingLoading] = useState(false);
 
   const loadBrokerData = useCallback(async () => {
     setLoading(true);
@@ -229,22 +228,9 @@ const Dashboard: React.FC = () => {
     }
   }, []);
 
-  const loadDailyRanking = useCallback(async () => {
-    setDailyRankingLoading(true);
-    try {
-      const result = await request.get('/market/daily-ranking?limit=30') as ApiResult<DailyMarketRankingItem[]>;
-      setDailyRanking(readApiData(result) ?? []);
-    } catch {
-      setDailyRanking([]);
-    } finally {
-      setDailyRankingLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     void loadBrokerData();
-    void loadDailyRanking();
-  }, [loadBrokerData, loadDailyRanking]);
+  }, [loadBrokerData]);
 
   const rankingColumns = [
     { title: t('dashboard.columns.stockCode'), dataIndex: 'stockCode', key: 'stockCode', width: 110 },
@@ -257,7 +243,7 @@ const Dashboard: React.FC = () => {
     { title: t('dashboard.columns.dailyReturnRate'), dataIndex: 'dailyReturnRate', key: 'dailyReturnRate', width: 110, render: (value: number) => <Text type={profitColor(value)}>{percent(value)}</Text> },
     { title: t('dashboard.columns.buyTime'), dataIndex: 'buyTime', key: 'buyTime', width: 170, render: formatDateTime },
     { title: t('dashboard.columns.sellTime'), dataIndex: 'sellTime', key: 'sellTime', width: 170, render: formatDateTime },
-    { title: t('dashboard.columns.holdingDays'), dataIndex: 'holdingDays', key: 'holdingDays', width: 110, render: (value?: number) => value == null ? '-' : `${Number(value).toFixed(2)} ${t('dashboard.units.days')}` },
+    { title: t('dashboard.columns.holdingDays'), dataIndex: 'holdingDays', key: 'holdingDays', width: 110, render: (value?: number) => value == null ? '-' : `${Math.trunc(value)} ${t('dashboard.units.days')}` },
   ];
 
   const periodColumns = [
@@ -283,6 +269,17 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="app-page returns-overview-page">
+      <section className="returns-overview-mobile-lead" aria-label={t('dashboard.title')}>
+        <span>{t('dashboard.cards.positionValue')}</span>
+        <strong>{money(account?.totalPosition)}</strong>
+        <div>
+          <span>{t('dashboard.cards.availableCash')} <b>{money(account?.availableCash)}</b></span>
+          <Text type={profitColor(performance?.cumulativeProfit)}>
+            {t('dashboard.sections.returnStats')} <b>{percent(performance?.cumulativeReturnRate)}</b>
+          </Text>
+        </div>
+      </section>
+
       <Row className="returns-overview-metric-grid" gutter={[12, 12]}>
         <Col xs={12} md={6}>
           <Card className="surface-card compact-card returns-overview-metric-card" loading={loading}>
@@ -332,42 +329,6 @@ const Dashboard: React.FC = () => {
         </Row>
       </Card>
 
-      <Card
-        className="surface-card returns-overview-mobile-ranking"
-        title={t('dashboard.sections.latestDailyRanking')}
-        extra={dailyRanking[0]?.period ? <Text className="returns-overview-mobile-ranking-period">{dailyRanking[0].period}</Text> : null}
-        loading={dailyRankingLoading}
-      >
-        {dailyRanking.length > 0 ? (
-          <div
-            className="returns-overview-mobile-ranking-list"
-            role="list"
-            aria-label={t('dashboard.sections.latestDailyRanking')}
-            tabIndex={0}
-          >
-            {dailyRanking.map((item, index) => (
-              <div
-                className="returns-overview-mobile-ranking-row"
-                key={`${item.period}-${item.stockCode}-${index}`}
-                role="listitem"
-              >
-                <span className={`returns-overview-mobile-ranking-index is-rank-${index + 1}`}>{index + 1}</span>
-                <div className="returns-overview-mobile-ranking-stock">
-                  <strong>{item.stockName || item.stockCode}</strong>
-                  <span>{item.stockCode}</span>
-                </div>
-                <div className="returns-overview-mobile-ranking-value">
-                  <Text strong type={profitColor(item.returnRate)}>{percent(item.returnRate)}</Text>
-                  <span>{money(item.close)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('dashboard.empty.daily')} />
-        )}
-      </Card>
-
       <Row className="dashboard-table-row" gutter={[12, 12]}>
         <Col className="dashboard-table-col" xs={24} xl={12}>
           <Card className="surface-card dashboard-table-card" title={t('dashboard.sections.daily')}>
@@ -382,7 +343,7 @@ const Dashboard: React.FC = () => {
       </Row>
 
       <Card className="surface-card dashboard-table-card dashboard-ranking-card" title={t('dashboard.sections.ranking')}>
-        <Table rowKey={(item) => `${item.stockCode}-${item.sellTime ?? item.buyTime}`} columns={rankingColumns} dataSource={performance?.ranking ?? []} loading={loading} scroll={{ x: 1450 }} pagination={{ pageSize: 10 }} locale={{ emptyText: <Empty description={t('dashboard.empty.ranking')} /> }} />
+        <Table rowKey={(item) => item.tradeKey || `${item.stockCode}-${item.sellTime ?? item.buyTime}`} columns={rankingColumns} dataSource={performance?.ranking ?? []} loading={loading} scroll={{ x: 1450 }} pagination={{ pageSize: 10 }} locale={{ emptyText: <Empty description={t('dashboard.empty.ranking')} /> }} />
       </Card>
 
     </div>
@@ -390,4 +351,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-// AI_GENERATE_END-------------------------------
+// AI_GENERATE_END----------------------------------------

@@ -1,4 +1,5 @@
-// AI_GENERATE_START---------------------------------------
+// AI_GENERATE_START-------------------------------------------
+import './styles.css';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Descriptions, Drawer, Empty, Input, Pagination, Select, Skeleton, Table, Tooltip } from 'antd';
@@ -80,6 +81,22 @@ const DEFAULT_SORT_ORDER: MarketSortOrder = 'desc';
 const DEFAULT_DETAIL_DRAWER_WIDTH = 480;
 const MIN_DETAIL_DRAWER_WIDTH = 360;
 const DETAIL_DRAWER_VIEWPORT_GAP = 24;
+const MOBILE_MARKET_PAGE_SIZE = 9;
+const MIN_DESKTOP_MARKET_PAGE_SIZE = 9;
+const MAX_DESKTOP_MARKET_PAGE_SIZE = 20;
+const MARKET_TABLE_ROW_HEIGHT = 46;
+const MARKET_TABLE_VIEWPORT_OFFSET = 358;
+
+const getMarketPageSize = () => {
+  if (typeof window === 'undefined' || window.innerWidth < 1024) {
+    return MOBILE_MARKET_PAGE_SIZE;
+  }
+  const availableHeight = Math.max(240, window.innerHeight - MARKET_TABLE_VIEWPORT_OFFSET);
+  return Math.max(
+    MIN_DESKTOP_MARKET_PAGE_SIZE,
+    Math.min(MAX_DESKTOP_MARKET_PAGE_SIZE, Math.floor(availableHeight / MARKET_TABLE_ROW_HEIGHT)),
+  );
+};
 
 const getDetailDrawerMaxWidth = () => typeof window === 'undefined'
   ? DEFAULT_DETAIL_DRAWER_WIDTH
@@ -199,6 +216,7 @@ const Market: React.FC = () => {
   const [latestNewsLoadFailed, setLatestNewsLoadFailed] = useState(false);
   const [detailDrawerMaxWidth, setDetailDrawerMaxWidth] = useState(getDetailDrawerMaxWidth);
   const [isCompactViewport, setIsCompactViewport] = useState(() => window.innerWidth <= 767);
+  const [marketPageSize, setMarketPageSize] = useState(getMarketPageSize);
   const [mobileWorkspaceView, setMobileWorkspaceView] = useState<'list' | 'chart'>('list');
   const [detailDrawerWidth, setDetailDrawerWidth] = useState(() => clampDetailDrawerWidth(
     DEFAULT_DETAIL_DRAWER_WIDTH,
@@ -210,15 +228,21 @@ const Market: React.FC = () => {
   const searchInputRef = useRef<InputRef>(null);
 
   useEffect(() => {
+    let pageSizeTimer: number | undefined;
     const syncDetailDrawerWidth = () => {
       const nextMaxWidth = getDetailDrawerMaxWidth();
       setDetailDrawerMaxWidth(nextMaxWidth);
       setIsCompactViewport(window.innerWidth <= 767);
       setDetailDrawerWidth((currentWidth) => clampDetailDrawerWidth(currentWidth, nextMaxWidth));
+      window.clearTimeout(pageSizeTimer);
+      pageSizeTimer = window.setTimeout(() => setMarketPageSize(getMarketPageSize()), 120);
     };
 
     window.addEventListener('resize', syncDetailDrawerWidth);
-    return () => window.removeEventListener('resize', syncDetailDrawerWidth);
+    return () => {
+      window.removeEventListener('resize', syncDetailDrawerWidth);
+      window.clearTimeout(pageSizeTimer);
+    };
   }, []);
 
   useEffect(() => {
@@ -328,7 +352,7 @@ const Market: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({
     current: 1,
-    pageSize: 9,
+    pageSize: marketPageSize,
     total: 0,
   });
   const [sortField, setSortField] = useState<MarketSortField>(DEFAULT_SORT_FIELD);
@@ -336,7 +360,7 @@ const Market: React.FC = () => {
 
   const fetchStocks = async (
     page: number = 1,
-    size: number = 9,
+    size: number = marketPageSize,
     keyword: string = '',
     requestedSortField: MarketSortField = sortField,
     requestedSortOrder: MarketSortOrder = sortOrder,
@@ -445,7 +469,6 @@ const Market: React.FC = () => {
       console.error('获取K线数据失败:', error);
       setSelectedStock({ code, name });
       setKlineData({ dates: [], kline: [], volumes: [] });
-    } finally {
     }
   };
 
@@ -463,7 +486,10 @@ const Market: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchStocks(1, 9, searchKeyword);
+    fetchStocks(1, marketPageSize, searchKeyword);
+  }, [marketPageSize]);
+
+  useEffect(() => {
     fetchMarketStats();
     fetchTopGainers();
   }, []);
@@ -661,7 +687,7 @@ const Market: React.FC = () => {
   };
 
   return (
-    <div className="app-page">
+    <div className="app-page market-page">
       {/* Top Bar Stats */}
       <div className="metric-strip">
         {getStatsData().map((stat, idx) => (
@@ -702,20 +728,20 @@ const Market: React.FC = () => {
                 onChange={(e) => setSearchKeyword(e.target.value)}
                 onPressEnter={() => {
                   const keyword = searchInputRef.current?.input?.value || '';
-                  fetchStocks(1, 9, keyword);
+                  fetchStocks(1, marketPageSize, keyword);
                   setSearchKeyword(keyword);
                 }}
                 allowClear
                 onClear={() => {
                   setSearchKeyword('');
-                  fetchStocks(1, 9, '');
+                  fetchStocks(1, marketPageSize, '');
                 }}
                 suffix={
                   <SearchOutlined
                     className="text-gray-400 cursor-pointer hover:text-white"
                     onClick={() => {
                       const keyword = searchInputRef.current?.input?.value || '';
-                      fetchStocks(1, 9, keyword);
+                      fetchStocks(1, marketPageSize, keyword);
                       setSearchKeyword(keyword);
                     }}
                   />
@@ -774,12 +800,12 @@ const Market: React.FC = () => {
                   <Pagination
                     className="market-mobile-pagination"
                     current={pagination.current}
-                    pageSize={9}
+                    pageSize={marketPageSize}
                     total={pagination.total}
                     showSizeChanger={false}
                     showQuickJumper={false}
                     showLessItems
-                    onChange={(page) => fetchStocks(page, 9, searchKeyword)}
+                    onChange={(page) => fetchStocks(page, marketPageSize, searchKeyword)}
                   />
                 )}
               </div>
@@ -790,20 +816,17 @@ const Market: React.FC = () => {
                 loading={loading}
                 dataSource={watchlist}
                 columns={columns}
-                scroll={{
-                  x: 498,
-                  y: 'clamp(240px, calc(100dvh - 470px), 432px)',
-                }}
+                scroll={{ x: 498 }}
                 showSorterTooltip={{ title: localizedText('点击切换排序', 'Click to change sort') }}
                 pagination={{
                   current: pagination.current,
-                  pageSize: 9,
+                  pageSize: marketPageSize,
                   total: pagination.total,
                   position: ['bottomCenter'],
                   className: 'glass-pagination',
                   showSizeChanger: false,
                   showQuickJumper: false,
-                  showTotal: (total) => total > 0 ? localizedText(`共 ${Math.ceil(total / 9)} 页`, `${Math.ceil(total / 9)} pages`) : localizedText('无数据', 'No data'),
+                  showTotal: (total) => total > 0 ? localizedText(`共 ${Math.ceil(total / marketPageSize)} 页`, `${Math.ceil(total / marketPageSize)} pages`) : localizedText('无数据', 'No data'),
                 }}
                 onChange={(
                   tablePagination: TablePaginationConfig,
@@ -812,7 +835,7 @@ const Market: React.FC = () => {
                   extra,
                 ) => {
                   if (extra.action === 'paginate') {
-                    fetchStocks(tablePagination.current ?? 1, 9, searchKeyword);
+                    fetchStocks(tablePagination.current ?? 1, marketPageSize, searchKeyword);
                     return;
                   }
                   if (extra.action !== 'sort') {
@@ -823,7 +846,7 @@ const Market: React.FC = () => {
                   if (!activeSorter?.order) {
                     setSortField(DEFAULT_SORT_FIELD);
                     setSortOrder(DEFAULT_SORT_ORDER);
-                    fetchStocks(1, 9, searchKeyword, DEFAULT_SORT_FIELD, DEFAULT_SORT_ORDER);
+                    fetchStocks(1, marketPageSize, searchKeyword, DEFAULT_SORT_FIELD, DEFAULT_SORT_ORDER);
                     return;
                   }
                   const nextOrder: MarketSortOrder = activeSorter.order === 'ascend' ? 'asc' : 'desc';
@@ -832,7 +855,7 @@ const Market: React.FC = () => {
                   }
                   setSortField(nextField);
                   setSortOrder(nextOrder);
-                  fetchStocks(1, 9, searchKeyword, nextField, nextOrder);
+                  fetchStocks(1, marketPageSize, searchKeyword, nextField, nextOrder);
                 }}
                 rowClassName={(record) => `hover:bg-white/5 cursor-pointer transition-colors ${selectedStock?.code === record.symbol ? 'market-table-row-selected' : ''}`}
                 onRow={(record) => ({
@@ -1012,4 +1035,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END---------------------------------------
+// AI_GENERATE_END-------------------------------------------

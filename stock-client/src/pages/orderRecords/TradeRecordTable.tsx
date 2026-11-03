@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------------
+// AI_GENERATE_START-----------------------------------
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dayjs from 'dayjs';
 import { Button, DatePicker, Empty, Input, Pagination, Space, Spin, Table, Typography } from 'antd';
@@ -14,6 +14,7 @@ import StockDetailDrawer, { type StockDetailSelection } from '../../components/S
 const { Text } = Typography;
 
 interface TradeRecord {
+  tradeKey: string;
   stockCode: string;
   stockName: string;
   buyTime: string;
@@ -75,7 +76,11 @@ const timestamp = (value?: string) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 const percent = (value?: number) => value == null ? '-' : `${(Number(value) * 100).toFixed(2)}%`;
-const days = (value?: number) => value == null ? '-' : `${Number(value).toFixed(2)} 天`;
+const days = (value?: number) => value == null ? '-' : `${Math.trunc(Number(value))} 天`;
+const dailyReturn = (returnRate: number, holdingDays?: number) => {
+  if (!holdingDays || holdingDays <= 0 || returnRate <= -1) return returnRate;
+  return Math.pow(1 + returnRate, 1 / holdingDays) - 1;
+};
 
 const TradeRecordTable: React.FC = () => {
   const { t } = useTranslation();
@@ -103,7 +108,7 @@ const TradeRecordTable: React.FC = () => {
     }
     setError(null);
     try {
-      const response = await request.get('/trading/fills', {
+      const response = await request.get('/trading/trades', {
         params: { limit: 500 },
       }) as ApiResponse<Array<Record<string, unknown>>>;
       if (!response.success) {
@@ -111,32 +116,36 @@ const TradeRecordTable: React.FC = () => {
       }
       const keyword = filters.keyword.toLowerCase();
       const mappedRecords: TradeRecord[] = (response.data ?? []).map((item) => {
-        const side = String(item.side ?? '').toUpperCase();
         const quantity = Number(item.quantity ?? 0);
-        const price = Number(item.price ?? 0);
-        const amount = Number(item.amount ?? price * quantity);
-        const fillTime = String(item.fill_time ?? item.created_at ?? '');
-        const isSell = side === 'SELL';
+        const buyTime = String(item.buy_time ?? item.buy_date ?? '');
+        const sellTime = String(item.sell_time ?? item.sell_date ?? '');
+        const netReturn = Number(item.net_return ?? 0);
+        const grossReturn = Number(item.gross_return ?? 0);
+        const holdingDays = item.holding_days == null
+          ? undefined
+          : Math.max(0, Math.trunc(Number(item.holding_days)));
         return {
+          tradeKey: String(item.trade_key ?? `${item.buy_order_id ?? ''}:${item.sell_order_id ?? ''}`),
           stockCode: String(item.instrument ?? ''),
           stockName: String(item.stock_name ?? ''),
-          buyTime: fillTime,
-          firstSellTime: isSell ? fillTime : undefined,
-          lastSellTime: isSell ? fillTime : undefined,
-          buyQuantity: isSell ? 0 : quantity,
-          soldQuantity: isSell ? quantity : 0,
-          remainingQuantity: isSell ? 0 : quantity,
-          buyPrice: isSell ? 0 : price,
-          averageSellPrice: isSell ? price : undefined,
-          buyAmount: isSell ? 0 : amount,
-          sellAmount: isSell ? amount : 0,
-          totalFee: 0,
-          grossProfit: 0,
-          netProfit: 0,
-          grossReturnRate: 0,
-          returnRate: 0,
-          dailyReturnRate: 0,
-          grossDailyReturnRate: 0,
+          buyTime,
+          firstSellTime: sellTime,
+          lastSellTime: sellTime,
+          buyQuantity: quantity,
+          soldQuantity: quantity,
+          remainingQuantity: 0,
+          buyPrice: Number(item.buy_price ?? 0),
+          averageSellPrice: Number(item.sell_price ?? 0),
+          buyAmount: Number(item.cost_basis ?? 0),
+          sellAmount: Number(item.sell_amount ?? 0),
+          totalFee: Number(item.buy_fee ?? 0) + Number(item.sell_fee ?? 0),
+          grossProfit: Number(item.gross_profit ?? 0),
+          netProfit: Number(item.net_profit ?? 0),
+          grossReturnRate: grossReturn,
+          returnRate: netReturn,
+          holdingDays,
+          dailyReturnRate: dailyReturn(netReturn, holdingDays),
+          grossDailyReturnRate: dailyReturn(grossReturn, holdingDays),
         };
       });
       const filteredRecords = mappedRecords.filter((item) => {
@@ -240,28 +249,34 @@ const TradeRecordTable: React.FC = () => {
     ? '-'
     : <Text type={value >= 0 ? 'danger' : 'success'}>{percent(value)}</Text>;
 
-  const detailValue = (label: string, value: React.ReactNode, className = '') => (
-    <div className={`trade-record-detail-item ${className}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-
-  const expandedRowRender = (item: TradeRecord) => (
-    <div className="trade-record-expanded">
-      <div className="trade-record-detail-grid">
-        {detailValue('买入数量', item.buyQuantity, 'trade-record-number')}
-        {detailValue('卖出数量', item.soldQuantity || '-', 'trade-record-number')}
-        {detailValue('买入金额', money(item.buyAmount), 'trade-record-number')}
-        {detailValue('卖出金额', money(item.sellAmount), 'trade-record-number')}
-        {detailValue('手续费', money(item.totalFee), 'trade-record-number')}
-        {detailValue('毛收益', item.soldQuantity > 0 ? profit(item.grossProfit) : '-', 'trade-record-number')}
-        {detailValue('净收益', item.soldQuantity > 0 ? profit(item.netProfit) : '-', 'trade-record-number')}
-        {detailValue('毛收益率', item.soldQuantity > 0 ? rate(item.grossReturnRate) : '-', 'trade-record-number')}
-        {detailValue('日收益率', item.soldQuantity > 0 ? rate(item.dailyReturnRate) : '-', 'trade-record-number')}
-      </div>
-    </div>
-  );
+  const openTradeDetail = (item: TradeRecord) => {
+    const hasSell = item.soldQuantity > 0;
+    setDetailStock({
+      code: item.stockCode,
+      name: item.stockName,
+      businessTitle: localizedText('交易详情', 'Trade details'),
+      businessItems: [
+        { key: 'tradeKey', label: localizedText('交易编号', 'Trade ID'), value: item.tradeKey || '-' },
+        { key: 'buyTime', label: localizedText('买入时间', 'Buy time'), value: formatDateTime(item.buyTime) },
+        { key: 'sellTime', label: localizedText('卖出时间', 'Sell time'), value: item.lastSellTime ? formatDateTime(item.lastSellTime) : localizedText('尚未卖出', 'Not sold') },
+        { key: 'buyQuantity', label: localizedText('买入数量', 'Buy quantity'), value: item.buyQuantity },
+        { key: 'soldQuantity', label: localizedText('卖出数量', 'Sold quantity'), value: item.soldQuantity || '-' },
+        { key: 'remainingQuantity', label: localizedText('剩余数量', 'Remaining quantity'), value: item.remainingQuantity },
+        { key: 'buyPrice', label: localizedText('买入价格', 'Buy price'), value: money(item.buyPrice) },
+        { key: 'sellPrice', label: localizedText('卖出价格', 'Sell price'), value: money(item.averageSellPrice) },
+        { key: 'buyAmount', label: localizedText('买入金额', 'Buy amount'), value: money(item.buyAmount) },
+        { key: 'sellAmount', label: localizedText('卖出金额', 'Sell amount'), value: money(item.sellAmount) },
+        { key: 'totalFee', label: localizedText('手续费', 'Fees'), value: money(item.totalFee) },
+        { key: 'grossProfit', label: localizedText('毛收益', 'Gross profit'), value: hasSell ? profit(item.grossProfit) : '-' },
+        { key: 'netProfit', label: localizedText('净收益', 'Net profit'), value: hasSell ? profit(item.netProfit) : '-' },
+        { key: 'grossReturnRate', label: localizedText('毛收益率', 'Gross return'), value: hasSell ? rate(item.grossReturnRate) : '-' },
+        { key: 'returnRate', label: localizedText('净收益率', 'Net return'), value: hasSell ? rate(item.returnRate) : '-' },
+        { key: 'holdingDays', label: localizedText('持仓时间', 'Holding period'), value: days(item.holdingDays) },
+        { key: 'grossDailyReturnRate', label: localizedText('毛日收益率', 'Gross daily return'), value: hasSell ? rate(item.grossDailyReturnRate) : '-' },
+        { key: 'dailyReturnRate', label: localizedText('净日收益率', 'Net daily return'), value: hasSell ? rate(item.dailyReturnRate) : '-' },
+      ],
+    });
+  };
 
   const columns: ColumnsType<TradeRecord> = [
     {
@@ -277,7 +292,7 @@ const TradeRecordTable: React.FC = () => {
           aria-label={localizedText(`查看 ${item.stockName || code}（${code}）详情`, `View details for ${item.stockName || code} (${code})`)}
           onClick={(event) => {
             event.stopPropagation();
-            setDetailStock({ code, name: item.stockName });
+            openTradeDetail(item);
           }}
         >
           {code}
@@ -298,7 +313,6 @@ const TradeRecordTable: React.FC = () => {
     { title: '卖出价格', dataIndex: 'averageSellPrice', key: 'averageSellPrice', width: 120, className: 'trade-record-number', render: money },
     { title: '净收益', dataIndex: 'netProfit', key: 'netProfit', width: 125, className: 'trade-record-number', render: (value: number, item) => item.soldQuantity > 0 ? <strong className="trade-record-result">{profit(value)}</strong> : '-' },
     { title: '收益率', dataIndex: 'returnRate', key: 'returnRate', width: 120, className: 'trade-record-number', render: (value: number, item) => item.soldQuantity > 0 ? <strong className="trade-record-result">{rate(value)}</strong> : '-' },
-    { title: '持仓时间', dataIndex: 'holdingDays', key: 'holdingDays', width: 110, className: 'trade-record-number', render: days },
   ];
 
   return (
@@ -337,7 +351,7 @@ const TradeRecordTable: React.FC = () => {
         </Space>
         <div className="order-records-desktop-table">
           <Table
-            rowKey={(item, index) => `${item.stockCode}-${item.buyTime}-${index ?? 0}`}
+            rowKey="tradeKey"
             columns={columns}
             dataSource={records}
             loading={loading}
@@ -345,7 +359,6 @@ const TradeRecordTable: React.FC = () => {
             className="trade-records-table"
             tableLayout="fixed"
             scroll={{ x: 'max-content' }}
-            expandable={{ expandedRowRender, columnWidth: 44 }}
             pagination={false}
           />
         </div>
@@ -355,14 +368,14 @@ const TradeRecordTable: React.FC = () => {
           ) : records.length > 0 ? (
             <>
               {records.map((item, index) => (
-                <article className="order-records-mobile-card" key={`${item.stockCode}-${item.buyTime}-${index}`}>
+                <article className="order-records-mobile-card" key={`${item.tradeKey}-${index}`}>
               <header className="order-records-mobile-card-header">
                 <div className="order-records-mobile-security">
                   <button
                     type="button"
                     className="order-records-stock-code"
                     aria-label={localizedText(`查看 ${item.stockName || item.stockCode}（${item.stockCode}）详情`, `View details for ${item.stockName || item.stockCode} (${item.stockCode})`)}
-                    onClick={() => setDetailStock({ code: item.stockCode, name: item.stockName })}
+                    onClick={() => openTradeDetail(item)}
                   >
                     {item.stockCode}
                   </button>
@@ -423,4 +436,4 @@ const TradeRecordTable: React.FC = () => {
 };
 
 export default TradeRecordTable;
-// AI_GENERATE_END-------------------------------
+// AI_GENERATE_END-----------------------------------

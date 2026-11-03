@@ -1,4 +1,4 @@
-/* AI_GENERATE_START---------------------------------------------------- */
+/* AI_GENERATE_START-------------------------------------------------------- */
 @import "tailwindcss";
 
 :root,
@@ -15,6 +15,7 @@
   --text-muted: #8793a5;
   --brand: #2563eb;
   --brand-soft: #e8f1ff;
+  --font-mono: "Cascadia Code", Consolas, "Courier New", monospace;
   color-scheme: light;
 }
 
@@ -44,8 +45,11 @@ body,
   margin: 0;
 }
 
+html,
+body { overflow-x: clip; }
+
 body {
-  overflow: hidden;
+  overflow-y: hidden;
   background: var(--app-bg);
   color: var(--text-primary);
   font-family: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
@@ -80,6 +84,7 @@ button,
   flex: 0 0 var(--app-sidebar-width, clamp(160px, 15vw, 220px)) !important;
   border-right: 1px solid var(--border-color);
   background: var(--sidebar-bg) !important;
+  transition: none !important;
 }
 
 .app-sidebar .ant-layout-sider-children {
@@ -307,7 +312,7 @@ button,
 }
 
 .app-sidebar-backdrop,
-.app-mobile-tabbar { display: none; }
+.app-mobile-page-indicator { display: none; }
 
 .app-main-layout {
   min-width: 0;
@@ -395,6 +400,11 @@ button,
 .app-content::-webkit-scrollbar-thumb {
   border-radius: 4px;
   background: var(--border-color);
+}
+
+.app-route-page {
+  min-width: 0;
+  min-height: 100%;
 }
 
 .app-page {
@@ -1451,57 +1461,53 @@ button,
   .app-sidebar,
   .app-sidebar-backdrop { display: none !important; }
 
-  .app-mobile-tabbar {
+  .app-mobile-page-indicator {
     position: fixed;
-    inset: auto 0 0;
+    bottom: env(safe-area-inset-bottom);
+    left: 50%;
     z-index: 35;
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 2px;
-    padding: 4px max(6px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
-    border-top: 1px solid var(--border-color);
-    background: var(--header-bg);
-    box-shadow: 0 -8px 24px rgb(2 8 23 / 14%);
-    backdrop-filter: blur(14px);
-  }
-
-  .app-mobile-tab-item {
-    display: grid;
-    min-width: 0;
-    height: 56px;
-    place-items: center;
-    align-content: center;
-    gap: 3px;
-    padding: 4px 2px;
-    border: 0;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--text-muted);
-    line-height: 1;
-  }
-
-  .app-mobile-tab-item-active {
-    background: var(--brand-soft);
-    color: var(--brand);
-    box-shadow: inset 0 2px 0 var(--brand);
-  }
-
-  .app-mobile-tab-icon {
-    display: inline-flex;
-    align-items: center;
+    display: flex;
+    width: max-content;
+    height: 44px;
+    align-items: flex-end;
     justify-content: center;
-    font-size: 19px;
+    transform: translateX(-50%);
+    pointer-events: none;
   }
 
-  .app-mobile-tab-label {
-    width: 100%;
-    overflow: hidden;
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 1.2;
-    text-align: center;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .app-mobile-page-dot {
+    position: relative;
+    width: 32px;
+    height: 44px;
+    flex: 0 0 32px;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  .app-mobile-page-dot::before {
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    content: '';
+    transform: translateX(-50%);
+    transition: background-color 160ms ease, transform 160ms ease;
+  }
+
+  .app-mobile-page-dot-active::before {
+    background: var(--brand);
+    transform: translateX(-50%) scale(2);
+  }
+
+  .app-mobile-page-dot:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: -8px;
   }
 
   .app-header {
@@ -1525,7 +1531,20 @@ button,
 
   .app-header-tools { gap: 2px; }
 
-  .app-content { padding: 16px 12px calc(76px + env(safe-area-inset-bottom)); }
+  .app-content {
+    padding: 16px 12px calc(34px + env(safe-area-inset-bottom));
+    outline: none;
+    overflow-x: clip;
+    touch-action: pan-y;
+  }
+
+  .app-content:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--brand);
+  }
+
+  .app-route-page {
+    will-change: transform, opacity;
+  }
   .model-score-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .model-score-item:nth-child(2) { border-right: 0; }
   .model-score-item:nth-child(-n + 2) { border-bottom: 1px solid var(--border-color); }
@@ -1558,4 +1577,4 @@ button,
     border-bottom: 0;
   }
 }
-/* AI_GENERATE_END---------------------------------------------------- */
+/* AI_GENERATE_END-------------------------------------------------------- */

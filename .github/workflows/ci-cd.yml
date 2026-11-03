@@ -103,7 +103,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
-          source: docker-compose.yml
+          source: docker-compose.yml,documents
           target: ~/stock-trading/web
           overwrite: true
       - name: Deploy and verify services

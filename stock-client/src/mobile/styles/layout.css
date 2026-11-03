@@ -1,0 +1,50 @@
+/* AI_GENERATE_START - */
+.app-mobile-navigation-drawer .ant-drawer-content,
+.app-mobile-user-drawer .ant-drawer-content {
+  background: var(--panel-bg);
+}
+
+.app-mobile-user-drawer .ant-drawer-content {
+  max-height: min(70dvh, 420px);
+  border-radius: 8px 8px 0 0;
+}
+
+.app-mobile-navigation-drawer .ant-drawer-header,
+.app-mobile-user-drawer .ant-drawer-header {
+  min-height: 56px;
+  border-color: var(--border-color);
+  padding: 12px 16px;
+}
+
+.app-mobile-navigation-drawer .ant-drawer-title,
+.app-mobile-navigation-drawer .ant-drawer-close,
+.app-mobile-user-drawer .ant-drawer-title,
+.app-mobile-user-drawer .ant-drawer-close {
+  color: var(--text-primary);
+}
+
+.app-mobile-navigation-drawer .ant-drawer-body,
+.app-mobile-user-drawer .ant-drawer-body {
+  padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+}
+
+.app-mobile-navigation-menu.ant-menu,
+.app-mobile-user-menu.ant-menu {
+  border-inline-end: 0;
+  background: transparent;
+}
+
+.app-mobile-navigation-menu .ant-menu-item,
+.app-mobile-user-menu .ant-menu-item {
+  width: 100%;
+  min-height: 48px;
+  margin: 4px 0;
+  border-color: var(--border-color);
+}
+
+.app-mobile-navigation-menu .ant-menu-item-selected {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+/* AI_GENERATE_END - */

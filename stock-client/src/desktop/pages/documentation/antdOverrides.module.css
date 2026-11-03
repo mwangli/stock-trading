@@ -1,0 +1,26 @@
+/* AI_GENERATE_START */
+:global(.documentation-navigation) :global(.ant-input-affix-wrapper) {
+  border-color: var(--border-color);
+  background: var(--panel-bg);
+}
+
+:global(.documentation-navigation) :global(.ant-tree) {
+  padding-bottom: 28px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+:global(.documentation-navigation) :global(.ant-tree-node-content-wrapper) {
+  overflow: hidden;
+  border-radius: 3px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global(.documentation-navigation) :global(.ant-tree-node-selected) {
+  background: var(--brand-soft) !important;
+  color: var(--brand) !important;
+  font-weight: 650;
+}
+/* AI_GENERATE_END */

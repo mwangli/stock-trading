@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START -----------
 package com.stock.console.market;
 
 import com.stock.console.config.ConsoleProperties;
@@ -10,6 +10,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,6 +22,7 @@ import java.util.regex.Pattern;
 public class MarketRepository {
 
     private static final Pattern CODE = Pattern.compile("(?i)(sh|sz)[.]\\d{6}");
+    private static final String TRADING_CALENDAR_PATTERN = "daily_history/code=sh.60000*/bars.parquet";
     private final ConsoleProperties properties;
 
     public MarketRepository(ConsoleProperties properties) {
@@ -86,6 +88,8 @@ public class MarketRepository {
                 FROM read_parquet(?) AS instruments
                 INNER JOIN read_parquet(?) AS bars ON bars.code = instruments.code
                 WHERE instruments.security_type = '1'
+                  AND coalesce(instruments.status, '') IN ('', '1')
+                  AND instruments.trade_status = '1'
                   AND (? = '' OR instruments.code ILIKE ? OR instruments.code_name ILIKE ?)
                 ORDER BY instruments.code
                 LIMIT ?
@@ -104,6 +108,67 @@ public class MarketRepository {
         }
     }
 
+    public Map<String, Object> activeInstruments(String keyword, int page, int pageSize) {
+        String instruments = marketSource("instruments/stocks.parquet");
+        Optional<String> latest = latestDailyDate();
+        if (!marketAvailable("instruments/stocks.parquet") || latest.isEmpty()) {
+            return emptyInstrumentPage(page, pageSize, null);
+        }
+        String dailyRelative = "daily/trade_date=" + latest.get() + "/bars.parquet";
+        if (!marketAvailable(dailyRelative)) {
+            return emptyInstrumentPage(page, pageSize, latest.get());
+        }
+
+        int normalizedPage = Math.max(1, page);
+        int normalizedPageSize = Math.max(1, Math.min(pageSize, 100));
+        int offset = (normalizedPage - 1) * normalizedPageSize;
+        String value = keyword == null ? "" : keyword.trim();
+        String daily = marketSource(dailyRelative);
+        String filter = """
+                FROM read_parquet(?) AS instruments
+                INNER JOIN read_parquet(?) AS bars ON bars.code = instruments.code
+                WHERE instruments.security_type = '1'
+                  AND coalesce(instruments.status, '') IN ('', '1')
+                  AND instruments.trade_status = '1'
+                  AND (? = '' OR instruments.code ILIKE ? OR instruments.code_name ILIKE ?)
+                """;
+        String countSql = "SELECT count(*) AS total " + filter;
+        String dataSql = """
+                SELECT instruments.snapshot_date AS as_of_date,
+                       instruments.code,
+                       instruments.code_name AS name,
+                       CASE WHEN lower(instruments.code) LIKE 'sh.%' THEN 'SH' ELSE 'SZ' END AS market,
+                       bars.trade_date AS update_time, bars.close AS price,
+                       bars.close - bars.preclose AS change_amount,
+                       CASE WHEN bars.preclose IS NULL OR bars.preclose = 0 THEN NULL
+                            ELSE (bars.close - bars.preclose) / bars.preclose * 100 END AS change_percent,
+                       bars.volume, bars.amount
+                """ + filter + " ORDER BY instruments.code LIMIT ? OFFSET ?";
+
+        try (Connection connection = open();
+             PreparedStatement countStatement = connection.prepareStatement(countSql);
+             PreparedStatement dataStatement = connection.prepareStatement(dataSql)) {
+            bindInstrumentFilter(countStatement, instruments, daily, value);
+            List<Map<String, Object>> countRows = rows(countStatement);
+            long total = countRows.isEmpty()
+                    ? 0
+                    : ((Number) countRows.get(0).getOrDefault("total", 0)).longValue();
+
+            bindInstrumentFilter(dataStatement, instruments, daily, value);
+            dataStatement.setInt(6, normalizedPageSize);
+            dataStatement.setInt(7, offset);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("items", rows(dataStatement));
+            result.put("total", total);
+            result.put("page", normalizedPage);
+            result.put("pageSize", normalizedPageSize);
+            result.put("asOfDate", latest.get());
+            return result;
+        } catch (Exception exception) {
+            return emptyInstrumentPage(normalizedPage, normalizedPageSize, latest.get());
+        }
+    }
+
     public List<Map<String, Object>> dailyBars(String code, int limit) {
         String normalizedCode = requireCode(code);
         String relative = "daily_history/code=" + normalizedCode + "/bars.parquet";
@@ -114,6 +179,33 @@ public class MarketRepository {
         String normalizedCode = requireCode(code);
         String relative = "minute_5m/code=" + normalizedCode + "/bars.parquet";
         return readBars(relative, "bar_end", limit, 2000);
+    }
+
+    public List<LocalDate> tradingDates(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null || endDate.isBefore(startDate)
+                || !Files.isDirectory(properties.marketDir().resolve("daily_history"))) {
+            return List.of();
+        }
+        String sql = """
+                SELECT DISTINCT CAST(trade_date AS DATE) AS trade_date
+                FROM read_parquet(?)
+                WHERE CAST(trade_date AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+                ORDER BY trade_date
+                """;
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, marketSource(TRADING_CALENDAR_PATTERN));
+            statement.setString(2, startDate.toString());
+            statement.setString(3, endDate.toString());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<LocalDate> dates = new ArrayList<>();
+                while (resultSet.next()) {
+                    dates.add(LocalDate.parse(resultSet.getString("trade_date")));
+                }
+                return dates;
+            }
+        } catch (Exception exception) {
+            return List.of();
+        }
     }
 
     public Map<String, Object> statistics() {
@@ -272,9 +364,28 @@ public class MarketRepository {
         }
     }
 
+    private void bindInstrumentFilter(
+            PreparedStatement statement, String instruments, String daily, String keyword) throws Exception {
+        statement.setString(1, instruments);
+        statement.setString(2, daily);
+        statement.setString(3, keyword);
+        statement.setString(4, "%" + keyword + "%");
+        statement.setString(5, "%" + keyword + "%");
+    }
+
+    private Map<String, Object> emptyInstrumentPage(int page, int pageSize, String asOfDate) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("items", List.of());
+        result.put("total", 0);
+        result.put("page", Math.max(1, page));
+        result.put("pageSize", Math.max(1, Math.min(pageSize, 100)));
+        result.put("asOfDate", asOfDate);
+        return result;
+    }
+
     private String safeMessage(Exception exception) {
         String message = exception.getMessage();
         return message == null || message.isBlank() ? "行情数据源无法读取" : message;
     }
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END -----------

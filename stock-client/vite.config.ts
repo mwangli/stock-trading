@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------
+// AI_GENERATE_START----------
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -8,6 +8,13 @@ const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@shared': fileURLToPath(new URL('./src', import.meta.url)),
+      '@desktop': fileURLToPath(new URL('./src/desktop', import.meta.url)),
+      '@mobile': fileURLToPath(new URL('./src/mobile', import.meta.url)),
+    },
+  },
   build: {
     rollupOptions: {
       output: {
@@ -48,4 +55,4 @@ export default defineConfig({
     }
   }
 })
-// AI_GENERATE_END---------
+// AI_GENERATE_END----------

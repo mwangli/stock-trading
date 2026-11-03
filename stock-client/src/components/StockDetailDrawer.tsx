@@ -1,5 +1,5 @@
-// AI_GENERATE_START ---
-import React, { useEffect, useState } from 'react';
+// AI_GENERATE_START -------
+import React, { type ReactNode, useEffect, useState } from 'react';
 import { Alert, Descriptions, Drawer } from 'antd';
 import { useTranslation } from 'react-i18next';
 import request from '../utils/request';
@@ -28,6 +28,14 @@ export interface StockDetailSelection {
   code: string;
   name?: string;
   details?: StockDetail;
+  businessTitle?: string;
+  businessItems?: StockDetailField[];
+}
+
+export interface StockDetailField {
+  key: string;
+  label: string;
+  value: ReactNode;
 }
 
 interface StockDetailDrawerProps {
@@ -54,6 +62,7 @@ const compactAmountFormatters = {
 };
 
 const stockDetailCache = new Map<string, StockDetail>();
+const MARKET_CODE_PATTERN = /^(?:sh|sz|bj)\.\d{6}$/i;
 
 const formatNumber = (value?: number, digits = 2) => value == null ? '-' : Number(value).toFixed(digits);
 const formatPercent = (value?: number) => value == null ? '-' : `${Number(value).toFixed(2)}%`;
@@ -81,11 +90,22 @@ const formatFullAmount = (value?: number) => value == null
   ? '-'
   : `¥${Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
 
+const matchesStockCode = (candidate: unknown, selectedCode: string) => {
+  const normalizedCandidate = String(candidate ?? '').trim().toLowerCase();
+  const normalizedSelected = selectedCode.trim().toLowerCase();
+  return normalizedCandidate === normalizedSelected
+    || normalizedCandidate.endsWith(`.${normalizedSelected}`);
+};
+
 const StockDetailDrawer: React.FC<StockDetailDrawerProps> = ({ stock, onClose }) => {
   const { t } = useTranslation();
   const stockCode = stock?.code;
   const fallbackName = stock?.name;
   const providedDetails = stock?.details;
+  const businessTitle = stock?.businessTitle;
+  const businessItems = stock?.businessItems;
+  const hasBusinessDetails = Boolean(businessItems?.length);
+  const businessColumnCount = (businessItems?.length ?? 0) > 10 ? 2 : 1;
   const [detail, setDetail] = useState<StockDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +114,15 @@ const StockDetailDrawer: React.FC<StockDetailDrawerProps> = ({ stock, onClose })
     let active = true;
     if (!stockCode) {
       setDetail(null);
+      setError(null);
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    if (hasBusinessDetails) {
+      setDetail({ code: stockCode, name: fallbackName || stockCode });
       setError(null);
       setLoading(false);
       return () => {
@@ -126,14 +155,19 @@ const StockDetailDrawer: React.FC<StockDetailDrawerProps> = ({ stock, onClose })
     setLoading(true);
     void (async () => {
       try {
-        const [instrumentResponse, barsResponse] = await Promise.all([
-          request.get('/market/instruments', { params: { keyword: stockCode, limit: 20 } }) as Promise<ApiResponse<Array<Record<string, unknown>>>>,
-          request.get('/market/bars', { params: { code: stockCode, interval: 'day', limit: 2 } }) as Promise<ApiResponse<Array<Record<string, unknown>>>>,
-        ]);
+        const instrumentResponse = await request.get('/market/instruments', {
+          params: { keyword: stockCode, limit: 20 },
+        }) as ApiResponse<Array<Record<string, unknown>>>;
         const instrument = instrumentResponse.success
-          ? instrumentResponse.data.find((item) => String(item.code) === stockCode)
+          ? instrumentResponse.data.find((item) => matchesStockCode(item.code, stockCode))
           : undefined;
-        const bars = barsResponse.success ? barsResponse.data : [];
+        const marketCode = String(instrument?.code ?? stockCode).trim().toLowerCase();
+        const barsResponse = MARKET_CODE_PATTERN.test(marketCode)
+          ? await request.get('/market/bars', {
+            params: { code: marketCode, interval: 'day', limit: 2 },
+          }) as ApiResponse<Array<Record<string, unknown>>>
+          : null;
+        const bars = barsResponse?.success ? barsResponse.data : [];
         const latest = bars[0];
         const previous = bars[1];
         const close = latest?.close == null ? undefined : Number(latest.close);
@@ -151,9 +185,6 @@ const StockDetailDrawer: React.FC<StockDetailDrawerProps> = ({ stock, onClose })
           listedDate: instrument?.as_of_date == null ? undefined : String(instrument.as_of_date),
           updateTime: latest?.trade_date == null ? undefined : String(latest.trade_date),
         };
-        if (!instrument && !latest) {
-          throw new Error(localizedText('股票详情读取失败', 'Failed to load stock details'));
-        }
         if (active) {
           stockDetailCache.set(stockCode, resolvedDetail);
           setDetail(resolvedDetail);
@@ -172,7 +203,7 @@ const StockDetailDrawer: React.FC<StockDetailDrawerProps> = ({ stock, onClose })
     return () => {
       active = false;
     };
-  }, [fallbackName, providedDetails, stockCode]);
+  }, [fallbackName, hasBusinessDetails, providedDetails, stockCode]);
 
   const displayName = detail?.name || fallbackName || t('marketPage.details.title');
   const displayCode = detail?.code || stockCode;
@@ -181,7 +212,9 @@ const StockDetailDrawer: React.FC<StockDetailDrawerProps> = ({ stock, onClose })
     <Drawer
       open={Boolean(stock)}
       placement="right"
-      width="min(480px, 100vw)"
+      size={hasBusinessDetails && businessColumnCount === 2
+        ? 'min(640px, 100vw)'
+        : 'min(480px, 100vw)'}
       rootClassName="stock-detail-drawer"
       loading={loading}
       title={displayCode ? (
@@ -195,33 +228,54 @@ const StockDetailDrawer: React.FC<StockDetailDrawerProps> = ({ stock, onClose })
       {error && <Alert className="mb-4" type="error" showIcon message={error} />}
       {detail && (
         <div className="flex flex-col gap-5">
-          <div className="border-b border-[var(--border-color)] pb-5">
-            <div className="text-xs text-[var(--text-secondary)]">{t('marketPage.details.price')}</div>
-            <div className="mt-2 flex items-end gap-3">
-              <span className="font-mono text-3xl font-semibold text-[var(--text-primary)]">
-                {detail.price == null ? '-' : `¥${formatNumber(detail.price, 3)}`}
-              </span>
-              <span className={`pb-1 font-mono text-sm font-semibold ${(detail.changePercent ?? 0) >= 0 ? 'text-[#ef4444]' : 'text-[#22c55e]'}`}>
-                {detail.changePercent != null && detail.changePercent > 0 ? '+' : ''}{formatPercent(detail.changePercent)}
-              </span>
-            </div>
-          </div>
-          <Descriptions
-            bordered
-            size="small"
-            column={1}
-            labelStyle={{ width: 112 }}
-            items={[
-              { key: 'market', label: t('marketPage.details.market'), children: formatMarket(detail.market) },
-              { key: 'category', label: t('marketPage.details.category'), children: formatSecurityCategory(detail.industryCode) },
-              { key: 'changeAmount', label: t('marketPage.details.changeAmount'), children: formatNumber(detail.changeAmount, 3) },
-              { key: 'marketCap', label: t('marketPage.details.marketCap'), children: <span title={formatFullAmount(detail.totalMarketValue)}>{formatCompactAmount(detail.totalMarketValue)}</span> },
-              { key: 'turnover', label: t('marketPage.details.turnover'), children: formatPercent(detail.turnoverRate) },
-              { key: 'volumeRatio', label: t('marketPage.details.volumeRatio'), children: formatNumber(detail.volumeRatio) },
-              { key: 'listedDate', label: t('marketPage.details.listedDate'), children: detail.listedDate?.slice(0, 10) || '-' },
-              { key: 'updatedAt', label: t('marketPage.details.updatedAt'), children: formatDateTime(detail.updateTime) },
-            ]}
-          />
+          {hasBusinessDetails ? (
+            <Descriptions
+              bordered
+              size="small"
+              column={businessColumnCount}
+              title={businessTitle}
+              labelStyle={{ width: businessColumnCount === 1 ? 112 : 96 }}
+              items={businessItems?.map((item) => ({
+                key: item.key,
+                label: item.label,
+                children: (
+                  <span className="block min-w-0 whitespace-normal" style={{ overflowWrap: 'anywhere' }}>
+                    {item.value}
+                  </span>
+                ),
+              })) ?? []}
+            />
+          ) : (
+            <>
+              <div className="border-b border-[var(--border-color)] pb-5">
+                <div className="text-xs text-[var(--text-secondary)]">{t('marketPage.details.price')}</div>
+                <div className="mt-2 flex items-end gap-3">
+                  <span className="font-mono text-3xl font-semibold text-[var(--text-primary)]">
+                    {detail.price == null ? '-' : `¥${formatNumber(detail.price, 3)}`}
+                  </span>
+                  <span className={`pb-1 font-mono text-sm font-semibold ${(detail.changePercent ?? 0) >= 0 ? 'text-[#ef4444]' : 'text-[#22c55e]'}`}>
+                    {detail.changePercent != null && detail.changePercent > 0 ? '+' : ''}{formatPercent(detail.changePercent)}
+                  </span>
+                </div>
+              </div>
+              <Descriptions
+                bordered
+                size="small"
+                column={1}
+                labelStyle={{ width: 112 }}
+                items={[
+                  { key: 'market', label: t('marketPage.details.market'), children: formatMarket(detail.market) },
+                  { key: 'category', label: t('marketPage.details.category'), children: formatSecurityCategory(detail.industryCode) },
+                  { key: 'changeAmount', label: t('marketPage.details.changeAmount'), children: formatNumber(detail.changeAmount, 3) },
+                  { key: 'marketCap', label: t('marketPage.details.marketCap'), children: <span title={formatFullAmount(detail.totalMarketValue)}>{formatCompactAmount(detail.totalMarketValue)}</span> },
+                  { key: 'turnover', label: t('marketPage.details.turnover'), children: formatPercent(detail.turnoverRate) },
+                  { key: 'volumeRatio', label: t('marketPage.details.volumeRatio'), children: formatNumber(detail.volumeRatio) },
+                  { key: 'listedDate', label: t('marketPage.details.listedDate'), children: detail.listedDate?.slice(0, 10) || '-' },
+                  { key: 'updatedAt', label: t('marketPage.details.updatedAt'), children: formatDateTime(detail.updateTime) },
+                ]}
+              />
+            </>
+          )}
         </div>
       )}
     </Drawer>
@@ -229,4 +283,4 @@ const StockDetailDrawer: React.FC<StockDetailDrawerProps> = ({ stock, onClose })
 };
 
 export default StockDetailDrawer;
-// AI_GENERATE_END ---
+// AI_GENERATE_END -------

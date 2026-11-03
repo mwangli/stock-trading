@@ -1,4 +1,4 @@
-# AI_GENERATE_START------------------
+# AI_GENERATE_START-------------------
 FROM maven:3.9.9-eclipse-temurin-17 AS backend-build
 
 WORKDIR /workspace
@@ -11,6 +11,7 @@ FROM eclipse-temurin:17-jre-jammy
 
 WORKDIR /app
 COPY --from=backend-build /workspace/stock-server/target/app.jar /app/app.jar
+COPY documents/ /app/documents/
 
 EXPOSE 8080
 
@@ -18,4 +19,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
     CMD bash -c 'echo > /dev/tcp/127.0.0.1/8080'
 
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
-# AI_GENERATE_END------------------
+# AI_GENERATE_END-------------------

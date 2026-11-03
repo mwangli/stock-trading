@@ -22,6 +22,7 @@
   "layout": {
     "dashboard": "Returns Overview",
     "market": "Market Information",
+    "stockInformation": "Stock Information",
     "models": "Quant Models",
     "analysis": "Intelligent Decision",
     "jobs": "Job Scheduling",
@@ -38,13 +39,20 @@
     },
     "title": "AI TRADER",
     "orderRecords": "Order Records",
+    "historyOrders": "Order History",
+    "tradeRecords": "Trade Records",
+    "modelInfo": "Model Information",
     "modelOperations": "Price Prediction",
     "agent": "Intelligent Decision",
     "agentConversation": "Agent Conversation",
     "pageTitles": {
       "dashboard": "Returns Overview",
       "market": "Market Information",
+      "stockInformation": "Stock Information",
       "orderRecords": "Order Records",
+      "historyOrders": "Order History",
+      "tradeRecords": "Trade Records",
+      "modelInfo": "Model Information",
       "logs": "Run Logs",
       "modelOperations": "Price Prediction",
       "agent": "Intelligent Decision",
@@ -130,6 +138,25 @@
       "dailyReturn": "Daily Return"
     }
   },
+  "stockInformation": {
+    "subtitle": "Review currently tradable stocks and their latest daily quotes",
+    "tableTitle": "Active Stocks",
+    "searchPlaceholder": "Search by stock code or name",
+    "snapshot": "As of {{date}}",
+    "total": "{{total}} items",
+    "empty": "No active stock information",
+    "loadError": "Failed to load stock information",
+    "columns": {
+      "code": "Stock Code",
+      "name": "Stock Name",
+      "market": "Market",
+      "price": "Last Price",
+      "changePercent": "Change",
+      "volume": "Volume",
+      "amount": "Turnover",
+      "updateTime": "Updated At"
+    }
+  },
   "marketPage": {
     "subtitle": "Explore market breadth, stock details and candlestick trends",
     "searchPlaceholder": "Search stock name or code",
@@ -209,7 +236,6 @@
       "averageReturn": "Average Return",
       "profitLoss": "Profit / Loss",
       "ranking": "Return Ranking",
-      "latestDailyRanking": "Latest Daily Return Ranking",
       "daily": "Daily Return",
       "monthly": "Monthly Return",
       "positions": "Current Positions",
@@ -509,12 +535,18 @@
     "title": "Smart System Terminal LOG",
     "live": "LIVE",
     "offline": "OFFLINE",
+    "missing": "LOG FILE MISSING",
+    "empty": "LOG FILE EMPTY",
+    "error": "READ ERROR",
     "autoScroll": "Auto-scroll",
-    "clear": "Clear",
-    "waiting": "Waiting for system logs...",
+    "clearView": "Clear current view",
+    "waiting": "Log file connected. Waiting for new entries...",
+    "offlineHint": "Backend service is unavailable",
+    "missingHint": "Log file does not exist: {{path}}",
+    "errorHint": "Failed to read log file: {{error}}",
     "connected": ">>> Connected to log stream <<<",
     "reconnecting": ">>> Connection closed. Reconnecting in 3s... <<<",
-    "subtitle": "Backend real-time events and connection status"
+    "subtitle": "Python task logs and connection status"
   },
   "notifications": {
     "title": "Notifications",

@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------------------------------------------------------------------
+// AI_GENERATE_START--------------------------------------------------------------------------
 import './DashboardLayout.css';
 import React, {
   useEffect,
@@ -13,7 +13,7 @@ import React, {
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, Badge, Button, Drawer, Dropdown, Layout, Menu, Tooltip, type MenuProps } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { Reorder, useDragControls } from 'framer-motion';
+import { AnimatePresence, motion, Reorder, useDragControls, useReducedMotion } from 'framer-motion';
 import {
   BellOutlined,
   DesktopOutlined,
@@ -28,6 +28,9 @@ import {
   UserOutlined,
   HolderOutlined,
   MessageOutlined,
+  LineChartOutlined,
+  FundProjectionScreenOutlined,
+  UnorderedListOutlined,
 } from '@ant-design/icons';
 import { useAppTheme } from '../theme/AppThemeProvider';
 import { PageHeaderContext, type PageHeaderState } from './PageHeaderContext';
@@ -40,10 +43,36 @@ const { Header, Content, Sider } = Layout;
 const DEFAULT_MENU_ORDER = [
   '/dashboard',
   '/market',
-  '/orderRecords',
+  '/stockInformation',
+  '/historyOrders',
+  '/tradeRecords',
+  '/modelInfo',
   '/agentConversation',
   '/logs',
 ];
+const MOBILE_SWIPE_ROUTES = [
+  '/dashboard',
+  '/tradeRecords',
+  '/agentConversation',
+  '/logs',
+] as const;
+const PAGE_SWIPE_EXCLUSION_SELECTOR = [
+  'a',
+  'button',
+  'input',
+  'textarea',
+  'select',
+  '[contenteditable="true"]',
+  '[role="button"]',
+  '[role="slider"]',
+  '[role="tab"]',
+  '[data-no-page-swipe]',
+  '.ant-drawer',
+  '.ant-modal',
+  '.ant-table',
+  '.order-records-swipe-area',
+  'canvas',
+].join(',');
 const MENU_ORDER_CACHE_PREFIX = 'stockTrading.menuOrder';
 const SIDEBAR_WIDTH_CACHE_PREFIX = 'stockTrading.sidebarWidth';
 const SIDEBAR_WIDTH_LIMITS = { min: 160, max: 360 } as const;
@@ -55,6 +84,13 @@ interface SidebarResizeState {
   currentWidth: number;
   previousCursor: string;
   previousUserSelect: string;
+}
+
+interface PageSwipeState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startedAt: number;
 }
 
 interface SidebarMenuItem {
@@ -76,11 +112,11 @@ const normalizeMenuOrder = (menuOrder: unknown) => {
   }
 
   const migratedOrder = menuOrder.flatMap((key) => {
-    if (key === '/historyOrders' || key === '/tradeRecords' || key === '/transactions') {
-      return ['/orderRecords'];
+    if (key === '/orderRecords' || key === '/transactions') {
+      return ['/historyOrders', '/tradeRecords'];
     }
-    if (key === '/stockInformation') {
-      return ['/market'];
+    if (key === '/modelOperations') {
+      return ['/modelInfo'];
     }
     return [key];
   });
@@ -88,7 +124,14 @@ const normalizeMenuOrder = (menuOrder: unknown) => {
     (key): key is string => typeof key === 'string' && DEFAULT_MENU_ORDER.includes(key),
   );
   const uniqueKeys = [...new Set(validKeys)];
-  return [...uniqueKeys, ...DEFAULT_MENU_ORDER.filter((key) => !uniqueKeys.includes(key))];
+  const completedOrder = [...uniqueKeys, ...DEFAULT_MENU_ORDER.filter((key) => !uniqueKeys.includes(key))];
+  if (!uniqueKeys.includes('/stockInformation')) {
+    const stockInformationIndex = completedOrder.indexOf('/stockInformation');
+    completedOrder.splice(stockInformationIndex, 1);
+    const marketIndex = completedOrder.indexOf('/market');
+    completedOrder.splice(marketIndex + 1, 0, '/stockInformation');
+  }
+  return completedOrder;
 };
 
 const getMenuOrderCacheKey = (userId: number) => MENU_ORDER_CACHE_PREFIX + '.' + userId;
@@ -187,13 +230,17 @@ const DraggableSidebarItem: React.FC<DraggableSidebarItemProps> = ({
 const DashboardLayout: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [mobileUserMenuOpen, setMobileUserMenuOpen] = useState(false);
+  const [swipeDirection, setSwipeDirection] = useState(1);
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
   const { mode, autoThemeEnabled, setAutoThemeEnabled, toggleMode } = useAppTheme();
   const { user, logout } = useAuth();
   const sidebarResizeStateRef = useRef<SidebarResizeState | null>(null);
+  const pageSwipeStateRef = useRef<PageSwipeState | null>(null);
+  const reduceMotion = useReducedMotion();
   const [pageHeader, setPageHeader] = useState<PageHeaderState | null>(null);
   const [menuOrder, setMenuOrder] = useState<string[]>(() => readCachedMenuOrder(user?.id) ?? DEFAULT_MENU_ORDER);
   const [sidebarWidth, setSidebarWidth] = useState(() => readCachedSidebarWidth(user?.id));
@@ -241,7 +288,10 @@ const DashboardLayout: React.FC = () => {
   const menuItems = useMemo<SidebarMenuItem[]>(() => [
     { key: '/dashboard', icon: <DesktopOutlined />, label: t('layout.dashboard') },
     { key: '/market', icon: <StockOutlined />, label: t('layout.market') },
-    { key: '/orderRecords', icon: <HistoryOutlined />, label: t('layout.orderRecords') },
+    { key: '/stockInformation', icon: <UnorderedListOutlined />, label: t('layout.stockInformation') },
+    { key: '/historyOrders', icon: <HistoryOutlined />, label: t('layout.historyOrders') },
+    { key: '/tradeRecords', icon: <LineChartOutlined />, label: t('layout.tradeRecords') },
+    { key: '/modelInfo', icon: <FundProjectionScreenOutlined />, label: t('layout.modelInfo') },
     { key: '/logs', icon: <FileTextOutlined />, label: t('layout.logs') },
     { key: '/agentConversation', icon: <MessageOutlined />, label: t('layout.agentConversation') },
   ], [t]);
@@ -254,6 +304,15 @@ const DashboardLayout: React.FC = () => {
     ];
   }, [menuItems, menuOrder]);
 
+  const mobileMenuItems = useMemo(() => {
+    const itemMap = new Map(menuItems.map((item) => [item.key, item]));
+    return MOBILE_SWIPE_ROUTES
+      .map((key) => itemMap.get(key))
+      .filter((item): item is SidebarMenuItem => Boolean(item));
+  }, [menuItems]);
+
+  const mobilePageIndex = MOBILE_SWIPE_ROUTES.findIndex((route) => route === location.pathname);
+
   const reorderMenu = (nextOrder: string[]) => {
     const normalizedOrder = normalizeMenuOrder(nextOrder);
     setMenuOrder(normalizedOrder);
@@ -261,10 +320,80 @@ const DashboardLayout: React.FC = () => {
   };
 
   const selectMenuItem = (key: string) => {
+    const nextMobileIndex = MOBILE_SWIPE_ROUTES.findIndex((route) => route === key);
+    if (isMobile && mobilePageIndex >= 0 && nextMobileIndex >= 0 && nextMobileIndex !== mobilePageIndex) {
+      setSwipeDirection(nextMobileIndex > mobilePageIndex ? 1 : -1);
+    }
     navigate(key);
     if (isMobile) {
       setSidebarCollapsed(true);
+      setMobileNavigationOpen(false);
     }
+  };
+
+  const navigateToMobilePage = (nextIndex: number) => {
+    if (nextIndex < 0 || nextIndex >= MOBILE_SWIPE_ROUTES.length || nextIndex === mobilePageIndex) {
+      return;
+    }
+    setSwipeDirection(nextIndex > mobilePageIndex ? 1 : -1);
+    navigate(MOBILE_SWIPE_ROUTES[nextIndex]);
+    setMobileNavigationOpen(false);
+  };
+
+  const beginPageSwipe = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!isMobile || mobilePageIndex < 0 || (event.pointerType === 'mouse' && event.button !== 0)) {
+      return;
+    }
+    if ((event.target as HTMLElement).closest(PAGE_SWIPE_EXCLUSION_SELECTOR)) {
+      pageSwipeStateRef.current = null;
+      return;
+    }
+    pageSwipeStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startedAt: performance.now(),
+    };
+  };
+
+  const continuePageSwipe = (event: ReactPointerEvent<HTMLElement>) => {
+    const state = pageSwipeStateRef.current;
+    if (!state || state.pointerId !== event.pointerId) {
+      return;
+    }
+    const distanceX = event.clientX - state.startX;
+    const distanceY = event.clientY - state.startY;
+    if (Math.abs(distanceY) > 12 && Math.abs(distanceY) > Math.abs(distanceX) * 1.1) {
+      pageSwipeStateRef.current = null;
+    }
+  };
+
+  const finishPageSwipe = (event: ReactPointerEvent<HTMLElement>) => {
+    const state = pageSwipeStateRef.current;
+    pageSwipeStateRef.current = null;
+    if (!state || state.pointerId !== event.pointerId) {
+      return;
+    }
+    const distanceX = event.clientX - state.startX;
+    const distanceY = event.clientY - state.startY;
+    const duration = Math.max(1, performance.now() - state.startedAt);
+    const velocityX = Math.abs(distanceX) / duration * 1000;
+    const horizontalGesture = Math.abs(distanceX) > Math.abs(distanceY) * 1.25;
+    if (!horizontalGesture || (Math.abs(distanceX) < 56 && velocityX < 450)) {
+      return;
+    }
+    navigateToMobilePage(distanceX < 0 ? mobilePageIndex + 1 : mobilePageIndex - 1);
+  };
+
+  const handleMobilePageKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (!isMobile || mobilePageIndex < 0 || (event.target as HTMLElement).closest(PAGE_SWIPE_EXCLUSION_SELECTOR)) {
+      return;
+    }
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+      return;
+    }
+    event.preventDefault();
+    navigateToMobilePage(mobilePageIndex + (event.key === 'ArrowRight' ? 1 : -1));
   };
 
   const resolveSidebarWidth = (width: number) => Math.min(
@@ -374,7 +503,10 @@ const DashboardLayout: React.FC = () => {
   const pageTitles: Record<string, string> = {
     '/dashboard': t('layout.pageTitles.dashboard'),
     '/market': t('layout.pageTitles.market'),
-    '/orderRecords': t('layout.pageTitles.orderRecords'),
+    '/stockInformation': t('layout.pageTitles.stockInformation'),
+    '/historyOrders': t('layout.pageTitles.historyOrders'),
+    '/tradeRecords': t('layout.pageTitles.tradeRecords'),
+    '/modelInfo': t('layout.pageTitles.modelInfo'),
     '/logs': t('layout.pageTitles.logs'),
     '/agentConversation': t('layout.pageTitles.agentConversation'),
   };
@@ -394,6 +526,7 @@ const DashboardLayout: React.FC = () => {
           breakpoint="lg"
           onBreakpoint={(broken) => {
             setIsMobile(broken);
+            setMobileNavigationOpen(false);
             setMobileUserMenuOpen(false);
             if (broken) {
               setSidebarCollapsed(true);
@@ -448,7 +581,17 @@ const DashboardLayout: React.FC = () => {
       <Layout className="app-main-layout">
         <Header className="app-header">
             <div className="app-header-identity">
-              {!isMobile && (
+              {isMobile ? (
+                <Tooltip title="打开页面菜单">
+                  <Button
+                    type="text"
+                    icon={<MenuUnfoldOutlined />}
+                    aria-label="打开页面菜单"
+                    aria-expanded={mobileNavigationOpen}
+                    onClick={() => setMobileNavigationOpen(true)}
+                  />
+                </Tooltip>
+              ) : (
                 <Tooltip title={sidebarCollapsed ? t('layout.expandMenu') : t('layout.collapseMenu')}>
                   <Button
                     type="text"
@@ -509,35 +652,81 @@ const DashboardLayout: React.FC = () => {
           </div>
         </Header>
 
-        <Content className="app-content">
-          <Outlet />
+        <Content
+          className="app-content"
+          tabIndex={isMobile && mobilePageIndex >= 0 ? 0 : undefined}
+          aria-label={isMobile && mobilePageIndex >= 0 ? '移动页面，可使用左右方向键切换' : undefined}
+          onPointerDown={beginPageSwipe}
+          onPointerMove={continuePageSwipe}
+          onPointerUp={finishPageSwipe}
+          onPointerCancel={() => { pageSwipeStateRef.current = null; }}
+          onKeyDown={handleMobilePageKeyDown}
+        >
+          <AnimatePresence initial={false} custom={swipeDirection} mode="popLayout">
+            <motion.div
+              className="app-route-page"
+              key={location.pathname}
+              custom={swipeDirection}
+              variants={{
+                enter: (direction: number) => ({
+                  x: reduceMotion || !isMobile ? 0 : direction > 0 ? '14%' : '-14%',
+                  opacity: reduceMotion || !isMobile ? 1 : 0.7,
+                }),
+                center: { x: 0, opacity: 1 },
+                exit: (direction: number) => ({
+                  x: reduceMotion || !isMobile ? 0 : direction > 0 ? '-10%' : '10%',
+                  opacity: reduceMotion || !isMobile ? 1 : 0.55,
+                }),
+              }}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: reduceMotion || !isMobile ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <Outlet />
+            </motion.div>
+          </AnimatePresence>
         </Content>
       </Layout>
+      {isMobile && mobilePageIndex >= 0 && (
+        <nav className="app-mobile-page-indicator" aria-label="移动页面导航">
+          {mobileMenuItems.map((item, index) => {
+            const selected = index === mobilePageIndex;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                className={selected ? 'app-mobile-page-dot app-mobile-page-dot-active' : 'app-mobile-page-dot'}
+                aria-label={`切换到${item.label}`}
+                aria-current={selected ? 'page' : undefined}
+                onClick={() => navigateToMobilePage(index)}
+              />
+            );
+          })}
+        </nav>
+      )}
       {isMobile && (
         <>
-          <nav className="app-mobile-tabbar" aria-label="主导航">
-            {orderedMenuItems.map((item) => {
-              const selected = location.pathname === item.key;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={`app-mobile-tab-item${selected ? ' app-mobile-tab-item-active' : ''}`}
-                  aria-current={selected ? 'page' : undefined}
-                  aria-label={item.label}
-                  onClick={() => selectMenuItem(item.key)}
-                >
-                  <span className="app-mobile-tab-icon" aria-hidden="true">{item.icon}</span>
-                  <span className="app-mobile-tab-label">{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
+          <Drawer
+            rootClassName="app-mobile-navigation-drawer"
+            title={t('layout.title')}
+            placement="left"
+            size="min(84vw, 320px)"
+            open={mobileNavigationOpen}
+            onClose={() => setMobileNavigationOpen(false)}
+          >
+            <Menu
+              className="app-mobile-navigation-menu"
+              selectedKeys={[location.pathname]}
+              items={orderedMenuItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label }))}
+              onClick={({ key }) => selectMenuItem(key)}
+            />
+          </Drawer>
           <Drawer
             rootClassName="app-mobile-user-drawer"
             title={t('layout.userMenu')}
             placement="bottom"
-            height="auto"
+            size="auto"
             open={mobileUserMenuOpen}
             onClose={() => setMobileUserMenuOpen(false)}
           >
@@ -556,4 +745,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END---------------------------------------------------------------------
+// AI_GENERATE_END--------------------------------------------------------------------------

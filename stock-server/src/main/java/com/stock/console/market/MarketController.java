@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 package com.stock.console.market;
 
 import com.stock.console.web.ApiResponse;
@@ -32,6 +32,14 @@ public class MarketController {
         return ApiResponse.ok(market.instruments(keyword, limit));
     }
 
+    @GetMapping("/active-instruments")
+    public ApiResponse<Map<String, Object>> activeInstruments(
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int pageSize) {
+        return ApiResponse.ok(market.activeInstruments(keyword, page, pageSize));
+    }
+
     @GetMapping("/bars")
     public ApiResponse<List<Map<String, Object>>> bars(
             @RequestParam String code,
@@ -57,4 +65,4 @@ public class MarketController {
         return ApiResponse.ok(market.latestDailyRanking(limit));
     }
 }
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

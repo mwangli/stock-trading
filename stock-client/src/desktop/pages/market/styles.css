@@ -1,0 +1,58 @@
+/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START - */
+.market-page { gap: 12px; }
+.market-page .metric-strip { border-radius: 0; }
+.market-page .metric-strip-item { min-height: 92px; padding: 16px; }
+.market-page .metric-strip-item > div:last-child { display: none; }
+.market-page .metric-label { font-size: 11px; }
+.market-page .metric-value { margin-top: 8px; font-size: 18px; font-variant-numeric: tabular-nums; }
+.market-page .market-workspace-track { gap: 12px; }
+.market-page .market-list-pane { width: 38%; flex-basis: 38%; }
+.market-page .market-workspace-pane { border-radius: 0 !important; }
+.market-page .market-list-pane > div:first-child { padding: 12px 16px; background: var(--panel-muted); }
+.market-page .market-list-pane .ant-input-affix-wrapper { min-height: 38px; border-radius: 4px; background: var(--panel-bg); }
+.market-page .market-desktop-table .ant-table-thead > tr > th { background: var(--panel-muted) !important; }
+.market-page .market-desktop-table .ant-table-tbody > tr > td { height: 46px; padding-block: 8px; }
+.market-page .market-desktop-table .ant-table-tbody > tr:hover > td { background: var(--brand-soft) !important; }
+.market-page .market-chart-pane { min-height: 520px; padding: 20px !important; }
+.market-page .market-chart-header { margin-bottom: 8px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color); }
+.market-page .market-chart-heading h2 { margin: 0; font-size: 18px; text-wrap: balance; }
+.market-page .market-chart-price { margin-top: 8px; font-size: 28px; font-variant-numeric: tabular-nums; }
+.market-page .market-chart-controls > span { border-radius: 3px; background: var(--brand); }
+.market-page button:focus-visible,
+.market-page [role='button']:focus-visible,
+.market-page .ant-input-affix-wrapper:focus-within,
+.market-page .ant-select-focused .ant-select-selector { outline: 2px solid var(--brand); outline-offset: 2px; }
+.market-page button:active { background-color: var(--brand-soft); }
+
+@media (min-width: 1024px) {
+  .market-page { min-height: calc(100dvh - 112px); }
+  .market-page .market-workspace { min-height: 520px; flex: 1 1 0; }
+  .market-page .market-workspace-track,
+  .market-page .market-workspace-pane { height: 100%; min-height: 0; }
+  .market-page .market-chart-pane { min-height: 0; }
+
+}
+
+@media (max-width: 767px) {
+  .market-page { gap: 0; }
+  .market-page .metric-strip { display: none; }
+  .market-page .market-workspace { height: max(520px, calc(100dvh - 124px)); }
+  .market-page .market-workspace-track { gap: 0; }
+  .market-page .market-list-pane,
+  .market-page .market-chart-pane { border: 0 !important; }
+  .market-page .market-list-pane > div:first-child { padding: 12px 16px; border-bottom: 1px solid var(--border-color); background: var(--panel-bg); }
+  .market-page .market-mobile-stock { min-height: 68px; grid-template-columns: minmax(0, 1fr) 60px; }
+  .market-page .market-mobile-stock-main { padding-inline: 16px 12px; }
+  .market-page .market-mobile-stock-detail { min-width: 44px; min-height: 44px; }
+  .market-page .market-mobile-pagination { padding: 8px 12px 28px; border-top: 1px solid var(--border-color); }
+  .market-page .market-chart-pane { padding: 16px !important; }
+  .market-page .market-chart-header { align-items: flex-start; flex-wrap: wrap; }
+  .market-page .market-chart-back { min-height: 44px; }
+  .market-page .market-chart-heading { order: 2; width: 100%; }
+  .market-page .market-chart-controls { order: 3; width: 100%; justify-content: flex-end; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .market-page * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+}
+/* AI_GENERATE_END - */

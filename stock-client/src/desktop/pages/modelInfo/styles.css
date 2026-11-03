@@ -1,0 +1,14 @@
+/* AI_GENERATE_START - */
+.model-info-page { display: grid; gap: 16px; }
+.model-info-summary .ant-card { height: 100%; border-radius: 4px; }
+.model-info-section { min-width: 0; border: 1px solid var(--border-color); background: var(--panel-bg); }
+.model-info-section > h2 { min-height: 48px; margin: 0; padding: 13px 16px; border-bottom: 1px solid var(--border-color); color: var(--text-primary); font-size: 15px; font-weight: 650; }
+.model-info-section .ant-table-wrapper { min-width: 0; }
+.model-info-section .ant-table-thead > tr > th { background: var(--panel-muted) !important; }
+
+@media (max-width: 991px) {
+  .model-info-page { gap: 12px; }
+  .model-info-summary .ant-card-body { padding: 12px; }
+  .model-info-section > h2 { padding-inline: 12px; }
+}
+/* AI_GENERATE_END - */

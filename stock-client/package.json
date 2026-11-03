@@ -7,6 +7,7 @@
     "node": "22.22.3"
   },
   "scripts": {
+    "check:platform-boundaries": "node scripts/check-platform-boundaries.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",

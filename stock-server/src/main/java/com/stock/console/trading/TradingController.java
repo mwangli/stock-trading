@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ---
 package com.stock.console.trading;
 
 import com.stock.console.facts.TradingFacts;
@@ -21,6 +21,11 @@ public class TradingController {
         this.facts = facts;
     }
 
+    @GetMapping("/status")
+    public ApiResponse<Map<String, Object>> status() {
+        return ApiResponse.ok(facts.tradingStatus());
+    }
+
     @GetMapping("/orders")
     public ApiResponse<List<Map<String, Object>>> orders(@RequestParam(defaultValue = "100") int limit) {
         return ApiResponse.ok(facts.orders(limit));
@@ -31,9 +36,14 @@ public class TradingController {
         return ApiResponse.ok(facts.fills(limit));
     }
 
+    @GetMapping("/trades")
+    public ApiResponse<List<Map<String, Object>>> trades(@RequestParam(defaultValue = "100") int limit) {
+        return ApiResponse.ok(facts.trades(limit));
+    }
+
     @GetMapping("/positions")
     public ApiResponse<List<Map<String, Object>>> positions(@RequestParam(defaultValue = "100") int limit) {
         return ApiResponse.ok(facts.positions(limit));
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END ---

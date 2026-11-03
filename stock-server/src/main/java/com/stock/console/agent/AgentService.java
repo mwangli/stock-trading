@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -------
 package com.stock.console.agent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -10,6 +10,8 @@ import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.service.Result;
 import jakarta.servlet.http.HttpSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -22,6 +24,7 @@ import java.util.Map;
 public class AgentService {
 
     static final int MAX_QUESTION_LENGTH = 4_000;
+    private static final Logger LOGGER = LoggerFactory.getLogger(AgentService.class);
 
     private static final String SYSTEM_PROMPT = """
             你是纯 Python T+1 交易系统的只读运营助手。
@@ -84,7 +87,7 @@ public class AgentService {
         ConsoleProperties.Agent config = properties.agent();
         return Map.of(
                 "enabled", config.enabled(),
-                "configured", config.apiKey() != null && !config.apiKey().isBlank(),
+                "configured", providerConfigured(),
                 "model", config.model());
     }
 
@@ -95,12 +98,17 @@ public class AgentService {
         evidence.add("duckdb:sqlite+parquet:read-only");
         hits.forEach(hit -> evidence.add("document:" + hit.path()));
         String answer;
-        if (!properties.agent().enabled() || properties.agent().apiKey() == null
-                || properties.agent().apiKey().isBlank()) {
-            answer = "Agent Provider 未配置。当前已读取交易事实和文档索引，但不能生成模型回答。";
+        if (!properties.agent().enabled() || !providerConfigured()) {
+            answer = localFallbackAnswer("模型服务未配置", question);
         } else {
-            Result<String> result = assistant().chat(prompt(httpSession, sessionId, question, hits), SYSTEM_PROMPT);
-            answer = result.content();
+            try {
+                Result<String> result = assistant().chat(prompt(httpSession, sessionId, question, hits), SYSTEM_PROMPT);
+                answer = result.content();
+            } catch (RuntimeException exception) {
+                LOGGER.warn("Agent Provider 调用失败，已切换本地只读回答: {}",
+                        exception.getClass().getSimpleName());
+                answer = localFallbackAnswer("模型服务暂时不可用", question);
+            }
         }
         String refs = json(evidence);
         store.appendMessage(httpSession, sessionId, "assistant", answer, refs);
@@ -146,6 +154,27 @@ public class AgentService {
         }
     }
 
+    private boolean providerConfigured() {
+        ConsoleProperties.Agent config = properties.agent();
+        String baseUrl = config.baseUrl();
+        String apiKey = config.apiKey();
+        return baseUrl != null
+                && (baseUrl.startsWith("https://") || baseUrl.startsWith("http://"))
+                && apiKey != null
+                && !apiKey.isBlank()
+                && !"DEEPSEEK_API_KEY".equals(apiKey);
+    }
+
+    private String localFallbackAnswer(String reason, String question) {
+        Map<String, Object> status = facts.tradingStatus();
+        return reason + "，已切换到本地只读摘要。\n"
+                + "当前问题：" + question + "\n"
+                + "历史订单：" + status.getOrDefault("order_count", 0)
+                + "，已实现交易：" + status.getOrDefault("realized_trade_count", 0) + "。\n"
+
+                + "当前回答仅依据本地 SQLite 事实，不包含远程模型推断。";
+    }
+
     private String json(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -154,4 +183,4 @@ public class AgentService {
         }
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -------

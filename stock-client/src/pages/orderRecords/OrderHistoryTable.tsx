@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------
+// AI_GENERATE_START----------------------------
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dayjs from 'dayjs';
 import { Button, DatePicker, Empty, Input, Pagination, Select, Space, Spin, Table, Tag } from 'antd';
@@ -115,7 +115,7 @@ const OrderHistoryTable: React.FC = () => {
           filledQuantity,
           averageFillPrice,
           transactionAmount: (averageFillPrice ?? price) * (filledQuantity || quantity),
-          commission: 0,
+          commission: Number(item.total_fee ?? 0),
           status: String(item.status ?? item.raw_status ?? ''),
           orderTime: String(item.order_time ?? item.updated_at ?? ''),
         };
@@ -218,6 +218,26 @@ const OrderHistoryTable: React.FC = () => {
     return <Tag color={color}>{label}</Tag>;
   };
 
+  const openOrderDetail = (item: BrokerOrder) => {
+    setDetailStock({
+      code: item.stockCode,
+      name: item.stockName,
+      businessTitle: localizedText('订单详情', 'Order details'),
+      businessItems: [
+        { key: 'orderId', label: localizedText('订单编号', 'Order ID'), value: item.orderId || '-' },
+        { key: 'direction', label: localizedText('方向', 'Direction'), value: directionTag(item.direction) },
+        { key: 'status', label: localizedText('订单状态', 'Order status'), value: item.status || '-' },
+        { key: 'orderPrice', label: localizedText('委托价格', 'Order price'), value: money(item.orderPrice) },
+        { key: 'orderQuantity', label: localizedText('委托数量', 'Order quantity'), value: item.orderQuantity },
+        { key: 'filledQuantity', label: localizedText('成交数量', 'Filled quantity'), value: item.filledQuantity },
+        { key: 'averageFillPrice', label: localizedText('成交均价', 'Average fill price'), value: money(item.averageFillPrice) },
+        { key: 'transactionAmount', label: localizedText('成交金额', 'Transaction amount'), value: money(item.transactionAmount) },
+        { key: 'commission', label: localizedText('手续费', 'Commission'), value: money(item.commission) },
+        { key: 'orderTime', label: localizedText('委托时间', 'Order time'), value: formatDateTime(item.orderTime) },
+      ],
+    });
+  };
+
   const columns: ColumnsType<BrokerOrder> = [
     {
       title: t('historyOrders.columns.stockCode'),
@@ -231,7 +251,7 @@ const OrderHistoryTable: React.FC = () => {
           aria-label={localizedText(`查看 ${item.stockName || code}（${code}）详情`, `View details for ${item.stockName || code} (${code})`)}
           onClick={(event) => {
             event.stopPropagation();
-            setDetailStock({ code, name: item.stockName });
+            openOrderDetail(item);
           }}
         >
           {code}
@@ -249,10 +269,8 @@ const OrderHistoryTable: React.FC = () => {
     { title: t('historyOrders.columns.direction'), dataIndex: 'direction', key: 'direction', render: directionTag },
     { title: t('historyOrders.columns.orderPrice'), dataIndex: 'orderPrice', key: 'orderPrice', render: money },
     { title: t('historyOrders.columns.orderQuantity'), dataIndex: 'orderQuantity', key: 'orderQuantity' },
-    { title: t('historyOrders.columns.filledQuantity'), dataIndex: 'filledQuantity', key: 'filledQuantity' },
     { title: t('historyOrders.columns.averageFillPrice'), dataIndex: 'averageFillPrice', key: 'averageFillPrice', render: money },
     { title: t('historyOrders.columns.transactionAmount'), dataIndex: 'transactionAmount', key: 'transactionAmount', render: money },
-    { title: t('historyOrders.columns.commission'), dataIndex: 'commission', key: 'commission', render: money },
     { title: t('historyOrders.columns.time'), dataIndex: 'orderTime', key: 'orderTime', render: formatDateTime },
   ];
 
@@ -323,7 +341,7 @@ const OrderHistoryTable: React.FC = () => {
                     type="button"
                     className="order-records-stock-code"
                     aria-label={localizedText(`查看 ${item.stockName || item.stockCode}（${item.stockCode}）详情`, `View details for ${item.stockName || item.stockCode} (${item.stockCode})`)}
-                    onClick={() => setDetailStock({ code: item.stockCode, name: item.stockName })}
+                    onClick={() => openOrderDetail(item)}
                   >
                     {item.stockCode}
                   </button>
@@ -380,4 +398,4 @@ const OrderHistoryTable: React.FC = () => {
 };
 
 export default OrderHistoryTable;
-// AI_GENERATE_END-------------------------
+// AI_GENERATE_END----------------------------
