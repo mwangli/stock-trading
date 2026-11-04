@@ -1,8 +1,7 @@
-# AI_GENERATE_START ---------------------------------------------
+# AI_GENERATE_START ----------------------------------------------
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -86,14 +85,13 @@ class AppConfig:
             if os.name == "nt"
             else Path.home() / "stock-trading"
         )
-        _load_env_file(project_dir / ".env")
         runtime_dir = project_dir / "data"
         data_dir = runtime_dir / "market"
         qlib_dir = runtime_dir / "qlib"
         artifact_dir = runtime_dir / "artifacts"
         state_db_path = runtime_dir / "state" / "trading.db"
-        proxy = os.getenv("BAOSTOCK_PROXY")
-        broker_token = os.getenv("ZXBROKER_TOKEN")
+        proxy = _optional_env("BAOSTOCK_PROXY")
+        broker_token = _optional_env("ZXBROKER_TOKEN")
         return cls(
             data_dir=data_dir,
             qlib_dir=qlib_dir,
@@ -102,7 +100,7 @@ class AppConfig:
             baostock_proxy=proxy or None,
             market_history_days=min(
                 365 * 5,
-                max(365, int(os.getenv("STOCK_TRADING_HISTORY_DAYS", str(365 * 3)))),
+                max(365, _env_int("STOCK_TRADING_HISTORY_DAYS", 365 * 3)),
             ),
             bark_device_key=os.getenv("DEVICE_KEY", "").strip(),
             broker_base_url=(
@@ -110,7 +108,7 @@ class AppConfig:
                 or DEFAULT_BROKER_BASE_URL
             ),
             model_feature_batch_days=max(
-                1, int(os.getenv("MODEL_FEATURE_BATCH_DAYS", "60"))
+                1, _env_int("MODEL_FEATURE_BATCH_DAYS", 60)
             ),
             broker_mobile_code=os.getenv("ZXBROKER_MOBILE_CODE", ""),
             broker_account=os.getenv("ZXBROKER_ACCOUNT", ""),
@@ -118,31 +116,38 @@ class AppConfig:
             broker_sign_key=os.getenv("ZXBROKER_SIGN_KEY", ""),
             broker_intact_to_server=os.getenv("ZXBROKER_INTACT_TO_SERVER", ""),
             broker_token=broker_token or None,
-            broker_timeout_seconds=max(1.0, float(os.getenv("ZXBROKER_TIMEOUT_SECONDS", "20"))),
+            broker_timeout_seconds=max(
+                1.0, _env_float("ZXBROKER_TIMEOUT_SECONDS", 20)
+            ),
             broker_token_expire_minutes=30,
             broker_ocr_timeout_seconds=max(
-                1.0, float(os.getenv("ZXBROKER_OCR_TIMEOUT_SECONDS", "20"))
+                1.0, _env_float("ZXBROKER_OCR_TIMEOUT_SECONDS", 20)
             ),
             broker_ocr_request_interval_seconds=max(
                 0.0,
-                float(os.getenv("ZXBROKER_OCR_REQUEST_INTERVAL_SECONDS", "1.05")),
+                _env_float("ZXBROKER_OCR_REQUEST_INTERVAL_SECONDS", 1.05),
             ),
             broker_baidu_ocr_api_key=os.getenv("BAIDU_OCR_API_KEY", ""),
             broker_baidu_ocr_secret_key=os.getenv("BAIDU_OCR_SECRET_KEY", ""),
             broker_captcha_max_retries=min(
-                3, max(1, int(os.getenv("ZXBROKER_CAPTCHA_MAX_RETRIES", "3")))
+                3, max(1, _env_int("ZXBROKER_CAPTCHA_MAX_RETRIES", 3))
             ),
             broker_login_failure_cooldown_seconds=max(
                 1,
-                int(os.getenv("ZXBROKER_LOGIN_FAILURE_COOLDOWN_SECONDS", "30")),
+                _env_int("ZXBROKER_LOGIN_FAILURE_COOLDOWN_SECONDS", 30),
             ),
-            broker_max_order_count=max(1, int(os.getenv("ZXBROKER_MAX_ORDER_COUNT", "100"))),
-            broker_history_page_size=max(1, int(os.getenv("ZXBROKER_HISTORY_PAGE_SIZE", "500"))),
+            broker_max_order_count=max(
+                1, _env_int("ZXBROKER_MAX_ORDER_COUNT", 100)
+            ),
+            broker_history_page_size=max(
+                1, _env_int("ZXBROKER_HISTORY_PAGE_SIZE", 500)
+            ),
             broker_history_max_records=max(
-                1, int(os.getenv("ZXBROKER_HISTORY_MAX_RECORDS", "5000"))
+                1, _env_int("ZXBROKER_HISTORY_MAX_RECORDS", 5000)
             ),
             broker_history_request_interval_seconds=max(
-                0.0, float(os.getenv("ZXBROKER_HISTORY_REQUEST_INTERVAL_SECONDS", "0.2"))
+                0.0,
+                _env_float("ZXBROKER_HISTORY_REQUEST_INTERVAL_SECONDS", 0.2),
             ),
             trading_min_price=TRADING_MIN_PRICE,
             trading_max_price=TRADING_MAX_PRICE,
@@ -157,7 +162,7 @@ class AppConfig:
                 if value.strip()
             ),
             trading_max_prediction_age_days=max(
-                1, int(os.getenv("STOCK_TRADING_MAX_PREDICTION_AGE_DAYS", "7"))
+                1, _env_int("STOCK_TRADING_MAX_PREDICTION_AGE_DAYS", 7)
             ),
             trading_execution_strategy=FIXED_TIME_URGENCY_STRATEGY,
             trading_execution_window_seconds=EXECUTION_WINDOW_SECONDS,
@@ -170,45 +175,46 @@ class AppConfig:
             backtest_capital_scenarios=BACKTEST_CAPITAL_SCENARIOS,
             model_evaluation_observations=max(
                 3,
-                int(os.getenv("MODEL_EVALUATION_OBSERVATIONS", "6")),
+                _env_int("MODEL_EVALUATION_OBSERVATIONS", 6),
             ),
             model_max_drawdown=min(
-                1.0, max(0.0, float(os.getenv("MODEL_MAX_DRAWDOWN", "0.10")))
+                1.0, max(0.0, _env_float("MODEL_MAX_DRAWDOWN", 0.10))
             ),
-            model_min_total_gross_return=float(
-                os.getenv("MODEL_MIN_TOTAL_GROSS_RETURN", "0")
+            model_min_total_gross_return=_env_float(
+                "MODEL_MIN_TOTAL_GROSS_RETURN", 0
             ),
             model_min_positive_month_ratio=MODEL_MIN_POSITIVE_MONTH_RATIO,
             data_quality_min_ratio=min(
                 1.0,
                 max(
                     0.0,
-                    float(
-                        os.getenv(
-                            "STOCK_TRADING_DATA_QUALITY_MIN_RATIO",
-                            "0.8",
-                        )
-                    ),
+                    _env_float("STOCK_TRADING_DATA_QUALITY_MIN_RATIO", 0.8),
                 ),
             ),
         )
 
 
-def _load_env_file(path: Path) -> None:
-    if not path.exists():
-        return
-    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line[7:].strip()
-        key, separator, value = line.partition("=")
-        key = key.strip()
-        if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
-            continue
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-            value = value[1:-1]
-        os.environ.setdefault(key, value)
-# AI_GENERATE_END ---------------------------------------------
+def _optional_env(name: str) -> str | None:
+    value = os.getenv(name)
+    return value if value else None
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        raise ValueError(f"环境变量 {name} 必须是整数") from None
+
+
+def _env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        raise ValueError(f"环境变量 {name} 必须是数字") from None
+# AI_GENERATE_END ----------------------------------------------

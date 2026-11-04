@@ -13,7 +13,7 @@ release_dir="$releases_dir/$release_tag"
 venv_dir="$project_dir/venv"
 python_dir="$project_dir/python"
 uv_cache_dir="$project_dir/.uv-cache"
-env_file="$project_dir/.env"
+profile_file="$HOME/.bash_profile"
 data_dir="$project_dir/data"
 logs_dir="$project_dir/logs"
 cron_dir="$project_dir/cron"
@@ -38,23 +38,10 @@ if ! STOCK_TRADING_PROJECT_DIR="$project_dir" bash "$bootstrap_script" --check; 
   exit 1
 fi
 
-if [ ! -s "$env_file" ] || [ ! -r "$env_file" ]; then
-  echo "Missing or unreadable project environment file: $env_file" >&2
+if [ ! -s "$profile_file" ] || [ ! -r "$profile_file" ]; then
+  echo "Missing or unreadable login profile: $profile_file" >&2
   exit 1
 fi
-env_owner="$(stat -c '%U' "$env_file")"
-env_mode="$(stat -c '%a' "$env_file")"
-if [ "$env_owner" != "$(id -un)" ]; then
-  echo "Environment file must be owned by $(id -un): $env_file" >&2
-  exit 1
-fi
-case "$env_mode" in
-  400|600) ;;
-  *)
-    echo "Environment file permissions must be 400 or 600: $env_file" >&2
-    exit 1
-    ;;
-esac
 
 set -- "$release_dir"/*.whl
 if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
@@ -96,12 +83,7 @@ uv pip install --python "$venv_dir/bin/python" "$wheel"
 
 installed_version="$("$venv_dir/bin/python" -c 'import importlib.metadata; print(importlib.metadata.version("stock-trading"))')"
 test "$release_tag" = "v$installed_version"
-configured_project_dir="$(env -i \
-  HOME="$HOME" \
-  PATH="$venv_dir/bin:$system_path" \
-  LANG="${LANG:-C.UTF-8}" \
-  TZ="Asia/Shanghai" \
-  "$venv_dir/bin/python" -c 'from stock_trading.config import AppConfig; print(AppConfig.from_env().data_dir.parent.parent)')"
+configured_project_dir="$("$venv_dir/bin/python" -c 'from stock_trading.config import AppConfig; print(AppConfig.from_env().data_dir.parent.parent)')"
 test "$configured_project_dir" = "$project_dir"
 for command_name in $commands; do
   test -x "$venv_dir/bin/$command_name"

@@ -60,6 +60,8 @@ jobs:
           envs: RELEASE_TAG
           command_timeout: 60m
           script: |
-            set -eu
-            release_dir="$HOME/stock-trading/releases/$RELEASE_TAG"
-            bash "$release_dir/script/install-release.sh" "$RELEASE_TAG"
+            exec /bin/bash -lc '
+              set -eu
+              release_dir="$HOME/stock-trading/releases/$RELEASE_TAG"
+              bash "$release_dir/script/install-release.sh" "$RELEASE_TAG"
+            '
