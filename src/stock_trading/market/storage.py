@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------------------------------
+# AI_GENERATE_START -------------------------------------------------
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -78,6 +78,7 @@ class ParquetMarketStore:
             not required.issubset(frame.columns)
             or len(frame) < 100
             or not frame["code"].astype(str).str.match(r"^(sh|sz)\.\d{6}$").all()
+            or frame["trade_status"].fillna("").astype(str).eq("1").sum() < 100
         ):
             return False
         return (
@@ -588,4 +589,4 @@ def _without(record: dict[str, object], *fields: str) -> dict[str, object]:
 def _read_parquet_file(path: Path) -> pd.DataFrame:
     """读取单个文件，避免 key=value 父目录触发 Hive 分区字段合并。"""
     return pq.ParquetFile(path).read().to_pandas()
-# AI_GENERATE_END ------------------------------------------------
+# AI_GENERATE_END -------------------------------------------------

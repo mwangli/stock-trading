@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------
+# AI_GENERATE_START ------------------
 from __future__ import annotations
 
 import logging
@@ -83,20 +83,29 @@ class BaoStockClient:
             ),
             f"证券列表 {snapshot_date}",
         )
-        basic_rows = self._rows(
-            self._request("股票基础资料", bs.query_stock_basic),
-            "股票基础资料",
-        )
         market_by_code = {
             str(row.get("code") or "").lower(): row
             for row in market_rows
             if str(row.get("code") or "").lower().startswith(("sh.", "sz."))
         }
+        if len(market_by_code) < 100:
+            raise BaoStockError(
+                f"BaoStock 证券列表数量异常: 日期={snapshot_date}; "
+                f"有效证券={len(market_by_code)}"
+            )
+        basic_rows = self._rows(
+            self._request("股票基础资料", bs.query_stock_basic),
+            "股票基础资料",
+        )
         basic_by_code = {
             str(row.get("code") or "").lower(): row
             for row in basic_rows
             if str(row.get("code") or "").lower().startswith(("sh.", "sz."))
         }
+        if len(basic_by_code) < 100:
+            raise BaoStockError(
+                f"BaoStock 股票基础资料数量异常: 有效证券={len(basic_by_code)}"
+            )
         codes = sorted(set(market_by_code) | set(basic_by_code))
         result = [
             StockBasic.from_baostock(
@@ -275,4 +284,4 @@ class BaoStockClient:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END -----------------
+# AI_GENERATE_END ------------------
