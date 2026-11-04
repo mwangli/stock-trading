@@ -34,3 +34,4 @@ Thumbs.db
 /.worktrees/
 /backups/
 /.understand-anything/
+/dist/
