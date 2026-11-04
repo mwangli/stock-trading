@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START --
 from __future__ import annotations
 
 import sqlite3
@@ -35,7 +35,7 @@ class SQLiteStateDatabase:
                     f"BEGIN IMMEDIATE;\n{schema}\n"
                     f"PRAGMA user_version = {schema_version};\nCOMMIT;"
                 )
-            elif version == 1 and schema_version == 2:
+            elif (version, schema_version) in {(1, 2), (1, 3), (2, 3)}:
                 connection.executescript(
                     f"BEGIN IMMEDIATE;\n{schema}\n"
                     f"PRAGMA user_version = {schema_version};\nCOMMIT;"
@@ -72,4 +72,4 @@ class SQLiteStateDatabase:
             raise
         finally:
             connection.close()
-# AI_GENERATE_END -
+# AI_GENERATE_END --

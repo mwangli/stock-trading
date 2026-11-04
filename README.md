@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START--------------------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_START------------------------------------------------------------------------------------------------------- -->
 # stock-trading
 
 面向 A 股的纯 Python T+1 模型研究与自动交易验证项目。当前主链路由 BaoStock、Parquet、Qlib、Alpha158、LightGBM、SQLite 和 ZX 券商 HTTP 协议组成，不包含 Java、Web 页面、Quartz、Agent、MySQL、MongoDB、消息队列或独立模型服务。
@@ -151,37 +151,39 @@ bash ~/stock-trading/releases/<tag>/script/bootstrap-server.sh --check
 bash ~/stock-trading/releases/<tag>/script/bootstrap-server.sh --apply
 ```
 
-生产环境变量由运维统一维护在 `$HOME/.bash_profile`。应用不读取项目目录中的 `.env`，发布脚本和 Cron 也不提供旧文件回退。
+Windows 本地开发将环境文件放在源码根目录，Linux 生产将环境文件放在 `$HOME/stock-trading/`。
 
 ## 环境变量
 
-变量必须使用 `export`，以便登录 shell 启动的 Python 进程继承。账号、密码、Token、签名、验证码和 API 密钥不得写入版本库或日志：
+应用按文件名顺序读取项目根目录的 `*.env`，后读取文件中的同名变量覆盖先读取文件和进程环境。没有 `.env` 文件、文件不可读、配置行无效或关键券商变量缺失时只输出 `WARN`，不阻断发布和非券商命令；实际使用券商功能时仍会按业务要求校验。账号、密码、Token、签名、验证码和 API 密钥不得写入版本库或日志。
 
-```bash
-export STOCK_TRADING_HISTORY_DAYS=1095
-export STOCK_TRADING_DATA_QUALITY_MIN_RATIO=0.8
-export STOCK_TRADING_ALLOWED_PREFIXES=SH60,SZ00
-export STOCK_TRADING_MAX_PREDICTION_AGE_DAYS=7
-export MODEL_FEATURE_BATCH_DAYS=60
-export MODEL_EVALUATION_OBSERVATIONS=6
-export MODEL_MAX_DRAWDOWN=0.10
-export MODEL_MIN_TOTAL_GROSS_RETURN=0
-export STOCK_TRADING_LOG_LEVEL=INFO
+例如可拆分为项目根目录下的 `base.env` 和 `broker.env`，格式为：
 
-export BAOSTOCK_PROXY=
-export DEVICE_KEY=
-export ZXBROKER_BASE_URL=https://weixin.citicsinfo.com/reqxml
-export ZXBROKER_MOBILE_CODE=
-export ZXBROKER_ACCOUNT=
-export ZXBROKER_ENCODED_PASSWORD=
-export ZXBROKER_SIGN_KEY=
-export ZXBROKER_INTACT_TO_SERVER=
-export ZXBROKER_TOKEN=
-export BAIDU_OCR_API_KEY=
-export BAIDU_OCR_SECRET_KEY=
+```dotenv
+STOCK_TRADING_HISTORY_DAYS=1095
+STOCK_TRADING_DATA_QUALITY_MIN_RATIO=0.8
+STOCK_TRADING_ALLOWED_PREFIXES=SH60,SZ00
+STOCK_TRADING_MAX_PREDICTION_AGE_DAYS=7
+MODEL_FEATURE_BATCH_DAYS=60
+MODEL_EVALUATION_OBSERVATIONS=6
+MODEL_MAX_DRAWDOWN=0.10
+MODEL_MIN_TOTAL_GROSS_RETURN=0
+STOCK_TRADING_LOG_LEVEL=INFO
+
+BAOSTOCK_PROXY=
+DEVICE_KEY=
+ZXBROKER_BASE_URL=https://weixin.citicsinfo.com/reqxml
+ZXBROKER_MOBILE_CODE=
+ZXBROKER_ACCOUNT=
+ZXBROKER_ENCODED_PASSWORD=
+ZXBROKER_SIGN_KEY=
+ZXBROKER_INTACT_TO_SERVER=
+ZXBROKER_TOKEN=
+BAIDU_OCR_API_KEY=
+BAIDU_OCR_SECRET_KEY=
 ```
 
-修改后重新进入登录 shell，或执行 `exec /bin/bash -l`。人工命令、发布安装和 Cron 均从该登录环境继承变量；Python 只读取进程环境，不解析任何 shell 配置文件。
+SQLite 数据库固定为项目 `data/state/trading.db` 本地文件，不提供网络服务，不配置数据库账号、密码或加密密钥；服务器文件权限和主机访问控制是其安全边界。
 
 ## 命令行
 
@@ -272,7 +274,7 @@ stock-clean --date 2026-11-02
 
 ## 生产调度
 
-应用不内置调度框架。当前 `.github/config/stock-trading.cron` 使用北京时间、登录 shell 和一个非阻塞 `flock` 串行执行：
+应用不内置调度框架。当前 `.github/config/stock-trading.cron` 使用北京时间、项目根目录 `*.env` 和一个非阻塞 `flock` 串行执行：
 
 | 时间 | 命令链 | 职责 |
 | --- | --- | --- |
@@ -310,4 +312,4 @@ README 只描述当前源码和仓库内发布配置能够证明的行为。验�
 - **生产验证**：需要核对发布流水线、服务器安装结果、Cron、进程、日志和业务制品。
 
 截至 2026-11-03，`v0.1.47` 曾完成一次生产链路验证：数据质量阈值为 `0.8`，排名制品与 SQLite 均生成 3017 条唯一连续排名；买入流程到达实时行情边界但未提交订单；模型评估为 `WARMUP`，有效已实现月份为 `0/6`。这些是该次运行证据，不代表后续代码、行情、模型或真实交易结果自动持续有效。
-<!-- AI_GENERATE_END---------------------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_END-------------------------------------------------------------------------------------------------------- -->

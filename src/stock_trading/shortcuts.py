@@ -1,18 +1,18 @@
-# AI_GENERATE_START -----------------
+# AI_GENERATE_START ----------------------
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Annotated
 
 import typer
 
 from stock_trading.cli import (
-    broker_command,
     clean_command,
     collect_command,
-    evaluate_command,
-    performance_command,
+    order_command,
     prepare_command,
     rank_command,
+    review_command,
     trading_command,
     train_command,
 )
@@ -22,41 +22,33 @@ from stock_trading.utils.help_renderer import build_help_command, show_command_g
 HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
 COMMAND_GROUPS = (
     (
-        "数据准备",
+        "数据与模型",
         (
             ("stock-collect", "采集股票基础信息、日线、复权因子和 5 分钟行情。"),
             ("stock-prepare", "从现有原始数据增量、幂等准备 Qlib。"),
-        ),
-    ),
-    (
-        "模型研究",
-        (
             ("stock-train", "使用现有 Qlib 数据训练、评估并回测模型。"),
+        ),
+    ),
+    (
+        "排名与交易",
+        (
             ("stock-rank", "生成指定交易日的完整横截面排名。"),
+            ("stock-trading", "卖出后立即尝试买入，也可单独执行买入或卖出。"),
         ),
     ),
     (
-        "交易执行",
+        "订单与复盘",
         (
-            ("stock-sell", "上午卖出跌出保留排名的可卖持仓。"),
-            ("stock-buy", "下午无持仓时从Top5筛选买入。"),
+            ("stock-order", "同步券商历史订单并增量结算交易闭环。"),
+            ("stock-review", "汇总已实现收益并判断模型是否需要重训。"),
         ),
     ),
     (
-        "结算与评估",
+        "维护与帮助",
         (
-            ("stock-broker", "同步券商事实并增量结算交易闭环。"),
-            ("stock-perform", "根据完整买卖闭环生成已实现绩效。"),
-            ("stock-evaluate", "根据已实现绩效评估模型并生成重训请求。"),
+            ("stock-clean", "清理过期数据、历史事实和业务状态。"),
+            ("stock-help", "列出全部公开命令及其用途。"),
         ),
-    ),
-    (
-        "维护",
-        (("stock-clean", "清理过期数据、历史事实和业务状态。"),),
-    ),
-    (
-        "帮助",
-        (("stock-help", "列出全部公开命令及其用途。"),),
     ),
 )
 
@@ -91,8 +83,8 @@ def show_help() -> None:
         "stock-help",
         _show_commands,
         "列出项目提供的全部独立命令及其用途。",
-        ("按数据准备、模型研究、交易执行、结算评估和维护阶段分组。",),
-        ("stock-help", "stock-broker -h"),
+        ("按数据与模型、排名与交易、订单复盘和维护帮助阶段分组。",),
+        ("stock-help", "stock-order -h"),
         ("只输出帮助信息，不执行任何业务操作。",),
     )
 
@@ -175,101 +167,84 @@ def rank() -> None:
     )
 
 
-def _sell_command() -> None:
-    trading_command("S")
+def _trading_command(
+    buy: Annotated[
+        bool,
+        typer.Option("--buy", help="只执行买入。"),
+    ] = False,
+    sell: Annotated[
+        bool,
+        typer.Option("--sell", help="只执行卖出。"),
+    ] = False,
+) -> None:
+    if not buy and not sell:
+        sell = True
+        buy = True
+    if sell:
+        trading_command("S")
+    if buy:
+        trading_command("B")
 
 
-def sell() -> None:
+def trading() -> None:
     _run(
-        "stock-sell",
-        _sell_command,
-        "在上午窗口卖出跌出保留排名的可卖持仓。",
+        "stock-trading",
+        _trading_command,
+        "卖出后立即尝试买入，也可通过参数单独执行买入或卖出。",
         (
             "读取最近完整横截面排名，Rank15以内的持仓继续保留。",
-            "每次尝试前重新读取券商实时持仓和报价。",
-            "部分成交时先确认撤单终态，再按最新事实处理剩余数量。",
-        ),
-        ("stock-sell",),
-        (
-            "不接受日期参数，只处理上海时区当天交易。",
-            "委托是否合法以及最终状态以券商事实为准。",
-        ),
-    )
-
-
-def _buy_command() -> None:
-    trading_command("B")
-
-
-def buy() -> None:
-    _run(
-        "stock-buy",
-        _buy_command,
-        "在下午窗口无持仓时从Top5依次筛选买入。",
-        (
-            "已有持仓时跳过买入，避免重复交易同一股票。",
+            "卖出阶段完成后立即重新读取持仓；没有持仓时进入买入流程。",
             "从Top5依次检查允许前缀、已确认权限和实时价格范围。",
-            "固定首个通过候选，并按实时可用资金计算整手数量。",
         ),
-        ("stock-buy",),
         (
-            "不接受日期参数，只处理上海时区当天交易。",
+            "stock-trading",
+            "stock-trading --sell",
+            "stock-trading --buy",
+            "stock-trading --sell --buy",
+        ),
+        (
+            "无参数或同时指定 --sell 和 --buy 时，固定先卖后买。",
+            "每个交易阶段开始前都会重新同步最新账户快照。",
             "最终合法性以及成交状态由券商判断。",
         ),
     )
 
 
-def broker() -> None:
+def order() -> None:
     _run(
-        "stock-broker",
-        broker_command,
-        "同步券商事实，并增量结算完整买卖交易闭环。",
+        "stock-order",
+        order_command,
+        "同步券商历史订单，并增量结算完整买卖交易闭环。",
         (
-            "同步委托、成交、持仓等事实，可处理当天、单日或日期范围。",
+            "按月同步指定日期范围内的历史成交订单。",
             "根据成交数量、成本和费用匹配已经完成的买卖闭环。",
         ),
         (
-            "stock-broker",
-            "stock-broker --date 2026-11-02",
-            "stock-broker --date 2026-10-01:2026-11-02",
+            "stock-order",
+            "stock-order --date 2026-11-02",
+            "stock-order --date 2026-10-01:2026-11-02",
         ),
         (
-            "只同步和结算事实，不主动提交新的买卖委托。",
+            "只同步历史订单和结算事实，不主动提交新的买卖委托。",
             "未卖出的买入继续保留为待闭环交易。",
         ),
     )
 
 
-def perform() -> None:
+def review() -> None:
     _run(
-        "stock-perform",
-        performance_command,
-        "根据完整买卖闭环生成指定交易日的已实现绩效。",
+        "stock-review",
+        review_command,
+        "汇总指定交易日的已实现收益，并判断模型是否需要重训。",
         (
             "只计算已匹配数量对应的买入成本、卖出收入和费用税费。",
-            "账户权益、浮动盈亏及入金出金不属于策略收益。",
-        ),
-        ("stock-perform", "stock-perform --date 2026-11-02"),
-        (
-            "应在同一业务日 stock-broker 成功后执行。",
-            "部分卖出只确认已经闭环数量的收益。",
-        ),
-    )
-
-
-def evaluate() -> None:
-    _run(
-        "stock-evaluate",
-        evaluate_command,
-        "根据已实现绩效评估模型并生成重训请求。",
-        (
             "按卖出月份汇总已经完成的真实交易闭环。",
-            "固定买卖费用只展示，不参与模型能力评价。",
-            "评估结果和重训请求写入 SQLite，不在本命令内直接训练。",
+            "根据月度毛收益、盈利月份比例和毛回撤形成模型判断。",
         ),
-        ("stock-evaluate", "stock-evaluate --date 2026-11-02"),
+        ("stock-review", "stock-review --date 2026-11-02"),
         (
-            "应在同一业务日 stock-perform 成功后执行。",
+            "应在同一业务日 stock-order 成功后执行。",
+            "账户权益、浮动盈亏及入金出金不属于策略收益。",
             "未闭环交易和浮动盈亏不参与评估。",
         ),
     )
@@ -290,4 +265,4 @@ def clean() -> None:
             "建议由每周维护任务调用，而不是每次初始化执行。",
         ),
     )
-# AI_GENERATE_END -----------------
+# AI_GENERATE_END ----------------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------
+# AI_GENERATE_START ---------------
 from __future__ import annotations
 
 import json
@@ -37,9 +37,9 @@ from stock_trading.state.store import StateStore
 from stock_trading.trading.broker_sync import BrokerOrderSyncService
 from stock_trading.trading.execution import OrderExecutionOrchestrator
 from stock_trading.trading.orchestrator import LiveTradingOrchestrator
-from stock_trading.trading.performance import (
-    ModelEvaluationService,
-    RealizedPerformanceService,
+from stock_trading.trading.review import (
+    ModelReviewService,
+    RealizedProfitService,
 )
 from stock_trading.trading.permissions import refresh_permissions
 
@@ -223,7 +223,7 @@ def cleanup_workflow(config: AppConfig, reference_date: date) -> dict[str, objec
     }
 
 
-def sync_broker_workflow(
+def sync_order_workflow(
     config: AppConfig,
     start_date: date,
     end_date: date,
@@ -232,7 +232,7 @@ def sync_broker_workflow(
     """同步券商已成交事实、费用和权限，并完成可闭环的 FIFO 收益。"""
     LOGGER.info("开始同步券商历史订单：日期=%s 至 %s", start_date, end_date)
     store = StateStore(config.state_db_path)
-    business_key = store.start_task("BROKER", end_date)
+    business_key = store.start_task("ORDER", end_date)
     try:
         result = BrokerOrderSyncService(
             config, store, broker or _build_broker(config)
@@ -383,6 +383,15 @@ def trading_workflow(
     )
     store = StateStore(config.state_db_path)
     broker = _build_broker(config)
+    account_snapshot = store.save_account_snapshot(broker.get_account())
+    LOGGER.info(
+        "交易前账户快照已更新：采集时间=%s；可用资金=%s；总资产=%s；持仓市值=%s；冻结金额=%s",
+        account_snapshot["captured_at"],
+        account_snapshot["available_cash"],
+        account_snapshot["total_assets"],
+        account_snapshot["total_position"],
+        account_snapshot["frozen_amount"],
+    )
     execution = OrderExecutionOrchestrator(config, store, broker)
     selection = LiveTradingOrchestrator(config, store, broker).select_targets(
         business_date, side
@@ -401,41 +410,32 @@ def trading_workflow(
         "businessDate": business_date.isoformat(),
         "mode": mode,
         "strategy": config.trading_execution_strategy,
+        "accountSnapshot": account_snapshot,
         "selection": selection,
         "executed": executed,
     }
 
 
-def performance_workflow(
+def review_workflow(
     config: AppConfig, business_date: date
 ) -> dict[str, object]:
-    """在券商同步成功后汇总当日已实现收益。"""
+    """汇总已实现收益并判断模型是否需要重训。"""
     store = StateStore(config.state_db_path)
-    _assert_task_success(store, "BROKER", business_date)
-    business_key = store.start_task("PERFORMANCE", business_date)
+    _assert_task_success(store, "ORDER", business_date)
+    business_key = store.start_task("REVIEW", business_date)
     try:
-        result = RealizedPerformanceService(store).update(business_date)
+        profit = RealizedProfitService(store).summarize(business_date)
+        review = ModelReviewService(config, store).review(business_date)
     except BaseException as error:
         store.finish_task(business_key, False, error)
         raise
     store.finish_task(business_key, True)
-    return result
-
-
-def evaluate_workflow(
-    config: AppConfig, business_date: date
-) -> dict[str, object]:
-    """在绩效汇总成功后评估模型，并按结论维护重训请求。"""
-    store = StateStore(config.state_db_path)
-    _assert_task_success(store, "PERFORMANCE", business_date)
-    business_key = store.start_task("EVALUATE", business_date)
-    try:
-        result = ModelEvaluationService(config, store).evaluate(business_date)
-    except BaseException as error:
-        store.finish_task(business_key, False, error)
-        raise
-    store.finish_task(business_key, True)
-    return result
+    return {
+        "businessDate": business_date.isoformat(),
+        "profit": profit,
+        "monthlyProfit": review["monthlyProfit"],
+        "decision": review["decision"],
+    }
 
 
 def _assert_task_success(
@@ -457,4 +457,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END -------------
+# AI_GENERATE_END ---------------

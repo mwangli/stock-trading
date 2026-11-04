@@ -1,17 +1,17 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START --------
 """Broker-fact-driven real-trading orchestration."""
 
 from stock_trading.trading.execution import OrderExecutionOrchestrator
 from stock_trading.trading.orchestrator import LiveTradingOrchestrator
-from stock_trading.trading.performance import (
-    ModelEvaluationService,
-    RealizedPerformanceService,
+from stock_trading.trading.review import (
+    ModelReviewService,
+    RealizedProfitService,
 )
 
 __all__ = [
     "OrderExecutionOrchestrator",
     "LiveTradingOrchestrator",
-    "ModelEvaluationService",
-    "RealizedPerformanceService",
+    "ModelReviewService",
+    "RealizedProfitService",
 ]
-# AI_GENERATE_END -------
+# AI_GENERATE_END --------

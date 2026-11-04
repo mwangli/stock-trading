@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START -------------------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ from typing import Annotated, Callable, TypeVar
 
 import typer
 
-from stock_trading.config import AppConfig
+from stock_trading.config import AppConfig, load_project_environment
 from stock_trading.utils.logging_utils import (
     configure_logging,
     log_context,
@@ -28,11 +28,10 @@ from stock_trading.utils.time_utils import shanghai_now, shanghai_today
 from stock_trading.utils.workflows import (
     cleanup_workflow,
     collect_workflow,
-    evaluate_workflow,
-    performance_workflow,
     prepare_workflow,
     rank_workflow,
-    sync_broker_workflow,
+    review_workflow,
+    sync_order_workflow,
     trading_workflow,
 )
 
@@ -46,6 +45,7 @@ def _execute(
     operation: Callable[[AppConfig], T],
     result_logger: Callable[[T], None] | None = None,
 ) -> T:
+    load_project_environment()
     configure_logging()
     started_at = perf_counter()
     config: AppConfig | None = None
@@ -86,7 +86,7 @@ def _execute(
         return result
 
 
-def broker_command(
+def order_command(
     date_value: Annotated[
         str | None,
         typer.Option("--date", help="业务日期或日期范围，默认当天。"),
@@ -95,10 +95,10 @@ def broker_command(
     today = shanghai_today()
     start_date, end_date = _parse_date_expression(date_value, today, today)
     _execute(
-        "broker",
+        "order",
         {"date": date_value},
-        lambda config: sync_broker_workflow(config, start_date, end_date),
-        result_logger=_log_broker_summary,
+        lambda config: sync_order_workflow(config, start_date, end_date),
+        result_logger=_log_order_summary,
     )
 
 
@@ -174,6 +174,7 @@ def train_command(
         typer.Option("--force", help="忽略已有可用模型并重新训练。"),
     ] = False,
 ) -> None:
+    load_project_environment()
     configure_logging()
     logger = logging.getLogger("stock_trading")
     previous_level = logger.level
@@ -225,33 +226,18 @@ def trading_command(
     _print_json(result)
 
 
-def performance_command(
+def review_command(
     business_date: Annotated[
         str | None,
-        typer.Option("--date", help="绩效业务日期，默认当天。"),
+        typer.Option("--date", help="复盘业务日期，默认当天。"),
     ] = None,
 ) -> None:
     target_date = _business_date(business_date)
     _execute(
-        "performance",
+        "review",
         {"date": business_date},
-        lambda config: performance_workflow(config, target_date),
-        result_logger=_log_performance_summary,
-    )
-
-
-def evaluate_command(
-    business_date: Annotated[
-        str | None,
-        typer.Option("--date", help="模型评估业务日期，默认当天。"),
-    ] = None,
-) -> None:
-    target_date = _business_date(business_date)
-    _execute(
-        "evaluate",
-        {"date": business_date},
-        lambda config: evaluate_workflow(config, target_date),
-        result_logger=_log_evaluation_summary,
+        lambda config: review_workflow(config, target_date),
+        result_logger=_log_review_summary,
     )
 
 
@@ -348,7 +334,7 @@ def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
 
 
-def _log_broker_summary(result: dict[str, object]) -> None:
+def _log_order_summary(result: dict[str, object]) -> None:
     settlement = dict(result["settlement"])
     LOGGER.info(
         "券商同步完成：日期=%s:%s；有效订单=%s；新增=%s；更新=%s；"
@@ -363,31 +349,22 @@ def _log_broker_summary(result: dict[str, object]) -> None:
     )
 
 
-def _log_performance_summary(result: dict[str, object]) -> None:
-    performance = dict(result["performance"])
+def _log_review_summary(result: dict[str, object]) -> None:
+    profit = dict(result["profit"])
+    decision = dict(result["decision"])
     LOGGER.info(
-        "已实现绩效完成：日期=%s；闭环交易=%s；毛损益=%s；毛收益率=%s；"
-        "费用=%s；净损益=%s；净收益率=%s",
+        "交易复盘完成：日期=%s；闭环交易=%s；毛损益=%s；费用=%s；"
+        "净损益=%s；模型判断=%s；原因=%s",
         result["businessDate"],
-        performance.get("trade_count", 0),
-        _format_amount(performance.get("gross_pnl")),
-        _format_rate(performance.get("gross_return")),
+        profit.get("trade_count", 0),
+        _format_amount(profit.get("gross_pnl")),
         _format_amount(
-            float(performance.get("buy_fees") or 0)
-            + float(performance.get("sell_fees") or 0)
+            float(profit.get("buy_fees") or 0)
+            + float(profit.get("sell_fees") or 0)
         ),
-        _format_amount(performance.get("net_pnl")),
-        _format_rate(performance.get("net_return")),
-    )
-
-
-def _log_evaluation_summary(result: dict[str, object]) -> None:
-    evaluation = dict(result["evaluation"])
-    LOGGER.info(
-        "模型评估完成：日期=%s；模型决策=%s；原因=%s",
-        result["businessDate"],
-        evaluation.get("decision", "-"),
-        evaluation.get("reason", "-"),
+        _format_amount(profit.get("net_pnl")),
+        decision.get("decision", "-"),
+        decision.get("reason", "-"),
     )
 
 
@@ -409,6 +386,4 @@ def _format_amount(value: object) -> str:
     return "-" if value is None else f"{float(value):,.2f}"
 
 
-def _format_rate(value: object) -> str:
-    return "-" if value is None else f"{float(value):.2%}"
-# AI_GENERATE_END -----------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END -------------------------------------------------------------------------------------------------------------------------------

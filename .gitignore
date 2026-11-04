@@ -1,5 +1,5 @@
 # Local secrets
-.env
+/*.env
 *.env.local
 
 # Python
@@ -15,7 +15,7 @@
 # Runtime data and artifacts
 .tmp/
 /data/
-/var/
+/logs/
 *.db
 *.db-shm
 *.db-wal

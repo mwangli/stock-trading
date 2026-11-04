@@ -13,19 +13,19 @@ release_dir="$releases_dir/$release_tag"
 venv_dir="$project_dir/venv"
 python_dir="$project_dir/python"
 uv_cache_dir="$project_dir/.uv-cache"
-profile_file="$HOME/.bash_profile"
 data_dir="$project_dir/data"
 logs_dir="$project_dir/logs"
 cron_dir="$project_dir/cron"
-cron_file="$cron_dir/stock-trading.cron"
-logrotate_file="$cron_dir/stock-trading.logrotate"
-cron_template="$release_dir/config/stock-trading.cron"
-logrotate_template="$release_dir/config/stock-trading.logrotate"
 bootstrap_script="$release_dir/script/bootstrap-server.sh"
-commands="stock-help stock-train stock-collect stock-prepare stock-rank stock-sell stock-buy stock-broker stock-perform stock-evaluate stock-clean"
+scheduler_script="$release_dir/script/scheduler.sh"
+commands="stock-help stock-train stock-collect stock-prepare stock-rank stock-trading stock-order stock-review stock-clean"
 system_path="$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-for required_file in "$bootstrap_script" "$cron_template" "$logrotate_template"; do
+for required_file in \
+  "$bootstrap_script" \
+  "$scheduler_script" \
+  "$release_dir/config/stock-trading.cron" \
+  "$release_dir/config/stock-trading.logrotate"; do
   if [ ! -f "$required_file" ]; then
     echo "Missing release file: $required_file" >&2
     exit 1
@@ -38,11 +38,6 @@ if ! STOCK_TRADING_PROJECT_DIR="$project_dir" bash "$bootstrap_script" --check; 
   exit 1
 fi
 
-if [ ! -s "$profile_file" ] || [ ! -r "$profile_file" ]; then
-  echo "Missing or unreadable login profile: $profile_file" >&2
-  exit 1
-fi
-
 set -- "$release_dir"/*.whl
 if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
   echo "Expected exactly one wheel in $release_dir" >&2
@@ -50,15 +45,18 @@ if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
 fi
 wheel="$1"
 
-mkdir -p \
-  "$python_dir" \
-  "$uv_cache_dir" \
-  "$data_dir/market" \
-  "$data_dir/qlib" \
-  "$data_dir/artifacts" \
-  "$data_dir/state" \
-  "$cron_dir" \
-  "$logs_dir"
+mkdir -p "$python_dir" "$uv_cache_dir" "$data_dir"/{market,qlib,artifacts,state} "$cron_dir" "$logs_dir"
+
+shopt -s nullglob
+env_files=("$project_dir"/*.env)
+if [ "${#env_files[@]}" -eq 0 ]; then
+  echo "WARN: No environment files found in $project_dir/*.env" >&2
+fi
+for env_file in "${env_files[@]}"; do
+  if [ ! -r "$env_file" ]; then
+    echo "WARN: Environment file is unreadable: $env_file" >&2
+  fi
+done
 
 export UV_DEFAULT_INDEX="https://mirrors.aliyun.com/pypi/simple/"
 export UV_HTTP_TIMEOUT=300
@@ -90,50 +88,7 @@ for command_name in $commands; do
 done
 
 touch "$logs_dir/run.log" "$data_dir/state/scheduler.lock"
-
-desired_cron="$cron_dir/.desired.cron.$$"
-current_cron="$cron_dir/.current.cron.$$"
-next_cron="$cron_dir/.next.cron.$$"
-installed_cron="$cron_dir/.installed.cron.$$"
-desired_logrotate="$cron_dir/.desired.logrotate.$$"
-trap 'rm -f "$desired_cron" "$current_cron" "$next_cron" "$installed_cron" "$desired_logrotate"' EXIT
-
-sed \
-  -e "s|__PROJECT_DIR__|$project_dir|g" \
-  -e "s|__SYSTEM_PATH__|$system_path|g" \
-  "$cron_template" \
-  > "$desired_cron"
-sed "s|__PROJECT_DIR__|$project_dir|g" "$logrotate_template" > "$desired_logrotate"
-
-crontab -l > "$current_cron" 2>/dev/null || true
-awk '
-  $0 == "# STOCK_TRADING_CRON_BEGIN" { managed = 1 }
-  managed { print }
-  $0 == "# STOCK_TRADING_CRON_END" { exit }
-' "$current_cron" > "$installed_cron"
-
-if ! cmp -s "$desired_cron" "$installed_cron"; then
-  awk '
-    $0 == "# STOCK_TRADING_CRON_BEGIN" { managed = 1; next }
-    $0 == "# STOCK_TRADING_CRON_END" { managed = 0; next }
-    !managed { print }
-  ' "$current_cron" > "$next_cron"
-  cat "$desired_cron" >> "$next_cron"
-  crontab "$next_cron"
-  crontab -l | awk '
-    $0 == "# STOCK_TRADING_CRON_BEGIN" { managed = 1 }
-    managed { print }
-    $0 == "# STOCK_TRADING_CRON_END" { exit }
-  ' > "$installed_cron"
-  cmp "$desired_cron" "$installed_cron"
-fi
-
-if ! cmp -s "$desired_cron" "$cron_file"; then
-  install -m 0644 "$desired_cron" "$cron_file"
-fi
-if ! cmp -s "$desired_logrotate" "$logrotate_file"; then
-  install -m 0644 "$desired_logrotate" "$logrotate_file"
-fi
+bash "$scheduler_script" install "$project_dir" "$release_dir" "$system_path"
 
 find "$releases_dir" \
   -mindepth 1 \
@@ -143,13 +98,11 @@ find "$releases_dir" \
   -printf '%f\n' \
   | awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/' \
   | sort -Vr \
-  | awk 'NR > 3' \
+  | tail -n +4 \
   | while IFS= read -r old_tag; do
-      if [[ "$old_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        old_release="$releases_dir/$old_tag"
-        if [ "$old_release" != "$release_dir" ]; then
-          rm -rf -- "$old_release"
-        fi
+      old_release="$releases_dir/$old_tag"
+      if [ "$old_release" != "$release_dir" ]; then
+        rm -rf -- "$old_release"
       fi
     done
 

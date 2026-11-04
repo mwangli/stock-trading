@@ -8,22 +8,23 @@ LOG=__PROJECT_DIR__/logs/run.log
 STOCK_TRADING_FILE_LOG=1
 STOCK_TRADING_CONSOLE_LOG=0
 LOCK=__PROJECT_DIR__/data/state/scheduler.lock
+SCHEDULER=__PROJECT_DIR__/cron/scheduler.sh
 LOGROTATE=__PROJECT_DIR__/cron/stock-trading.logrotate
 LOGROTATE_STATE=__PROJECT_DIR__/data/state/logrotate.status
 
-# Morning sell
-35 9 * * 1-5 flock -n "$LOCK" /bin/bash -lc 'set -e; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-sell"' > /dev/null 2>> "$LOG"
+# Sell first, then buy immediately
+35 9 * * 1-5 "$SCHEDULER" run "stock-trading"
 
-# Afternoon buy
-5 13 * * 1-5 flock -n "$LOCK" /bin/bash -lc 'set -e; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-buy"' > /dev/null 2>> "$LOG"
+# Afternoon buy retry
+5 13 * * 1-5 "$SCHEDULER" run "stock-trading --buy"
 
 # Market data, Qlib and ranking
-30 16 * * 1-5 flock -n "$LOCK" /bin/bash -lc 'set -e; cd "$PROJECT_DIR"; "$PROJECT_DIR/venv/bin/stock-collect"; "$PROJECT_DIR/venv/bin/stock-prepare"; exec "$PROJECT_DIR/venv/bin/stock-rank"' > /dev/null 2>> "$LOG"
+30 16 * * 1-5 "$SCHEDULER" run stock-collect stock-prepare stock-rank
 
-# Broker facts, performance and evaluation
-20 20 * * 1-5 flock -n "$LOCK" /bin/bash -lc 'set -e; cd "$PROJECT_DIR"; "$PROJECT_DIR/venv/bin/stock-broker"; "$PROJECT_DIR/venv/bin/stock-perform"; exec "$PROJECT_DIR/venv/bin/stock-evaluate"' > /dev/null 2>> "$LOG"
+# Historical orders and model review
+20 20 * * 1-5 "$SCHEDULER" run stock-order stock-review
 
 # Weekly cleanup and daily log rotation
-0 3 * * 0 flock -n "$LOCK" /bin/bash -lc 'set -e; cd "$PROJECT_DIR"; exec "$PROJECT_DIR/venv/bin/stock-clean"' > /dev/null 2>> "$LOG"
+0 3 * * 0 "$SCHEDULER" run stock-clean
 30 3 * * * logrotate -s "$LOGROTATE_STATE" "$LOGROTATE"
 # STOCK_TRADING_CRON_END

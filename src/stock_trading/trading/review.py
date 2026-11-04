@@ -1,47 +1,45 @@
-# AI_GENERATE_START --------------
+# AI_GENERATE_START -
 from __future__ import annotations
 
 import logging
 from datetime import date
 
 from stock_trading.config import AppConfig
-from stock_trading.utils.logging_utils import set_log_context
 from stock_trading.state.store import StateStore
+from stock_trading.utils.logging_utils import set_log_context
 
 LOGGER = logging.getLogger(__name__)
 
 
-class RealizedPerformanceService:
-    """直接汇总当日已实现交易，不保存重复绩效快照。"""
+class RealizedProfitService:
+    """汇总指定卖出日已经闭环的真实收益。"""
 
     def __init__(self, state_store: StateStore) -> None:
         self._state_store = state_store
 
-    def update(self, business_date: date) -> dict[str, object]:
-        set_log_context(step="1/1", progress="-/-", target=str(business_date))
-        performance = self._state_store.realized_performance(business_date)
+    def summarize(self, business_date: date) -> dict[str, object]:
+        set_log_context(step="1/2", progress="-/-", target=str(business_date))
+        profit = self._state_store.realized_performance(business_date)
         LOGGER.info(
-            "已实现绩效计算完成：闭环=%d；数量=%d；成本=%s；卖出额=%s；净收益=%s",
-            performance["trade_count"],
-            performance["quantity"],
-            performance["cost_basis"],
-            performance["sell_amount"],
-            performance["net_pnl"],
+            "已实现收益汇总完成：闭环=%d；数量=%d；成本=%s；卖出额=%s；净收益=%s",
+            profit["trade_count"],
+            profit["quantity"],
+            profit["cost_basis"],
+            profit["sell_amount"],
+            profit["net_pnl"],
         )
-        return {
-            "businessDate": business_date.isoformat(),
-            "performance": performance,
-        }
+        return profit
 
 
-class ModelEvaluationService:
-    """根据已实现月度毛收益形成模型保留或重训决策。"""
+class ModelReviewService:
+    """根据已实现月度毛收益判断模型是否继续使用或重新训练。"""
 
     def __init__(self, config: AppConfig, state_store: StateStore) -> None:
         self._config = config
         self._state_store = state_store
 
-    def evaluate(self, business_date: date) -> dict[str, object]:
+    def review(self, business_date: date) -> dict[str, object]:
+        set_log_context(step="2/2", progress="-/-", target=str(business_date))
         model_version_id = self._state_store.performance_model_id(
             business_date.isoformat()
         )
@@ -78,7 +76,7 @@ class ModelEvaluationService:
             else:
                 decision = "RETRAIN"
                 reason = "月度毛收益、盈利月份比例或毛回撤未达标"
-        evaluation = self._state_store.save_model_evaluation(
+        saved = self._state_store.save_model_evaluation(
             model_version_id=model_version_id,
             business_date=business_date.isoformat(),
             window_observations=window_observations,
@@ -91,16 +89,12 @@ class ModelEvaluationService:
             reason=reason,
         )
         LOGGER.info(
-            "模型评估完成：有效已实现月份=%d/%d；决策=%s",
+            "模型复盘完成：有效已实现月份=%d/%d；判断=%s",
             observations,
             window_observations,
-            evaluation["decision"],
+            saved["decision"],
         )
-        return {
-            "businessDate": business_date.isoformat(),
-            "monthlyPerformance": rows,
-            "evaluation": evaluation,
-        }
+        return {"monthlyProfit": rows, "decision": saved}
 
 
 def _compound_return(returns: list[float]) -> float:
@@ -119,4 +113,4 @@ def _max_drawdown(returns: list[float]) -> float:
         peak = max(peak, equity)
         drawdown = max(drawdown, 1.0 - equity / peak)
     return drawdown
-# AI_GENERATE_END --------------
+# AI_GENERATE_END -

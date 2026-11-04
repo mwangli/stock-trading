@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------------------------------------------------
+# AI_GENERATE_START ----------------------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -12,7 +12,7 @@ from typing import Any, Iterable
 
 import pandas as pd
 
-from stock_trading.broker.models import BrokerOrder
+from stock_trading.broker.models import BrokerAccount, BrokerOrder
 from stock_trading.utils.logging_utils import set_log_context
 from stock_trading.state.database import SQLiteStateDatabase
 from stock_trading.utils.time_utils import utc_now
@@ -63,7 +63,7 @@ ORDER_TRANSITIONS = {
     "REJECTED": set(),
 }
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 -- 任务运行记录：保存可恢复、可幂等任务的执行状态。
@@ -248,6 +248,16 @@ CREATE TABLE IF NOT EXISTS broker_permission (
     evidence_detail TEXT, -- 不含凭据的证据摘要。
     observed_at TEXT NOT NULL, -- 证据发生或采集时间。
     updated_at TEXT NOT NULL -- 本地最后更新时间。
+);
+
+-- 账户快照：固定主键保证全库只保留最近一次交易前同步的账户资金事实。
+CREATE TABLE IF NOT EXISTS account_snapshot (
+    id INTEGER PRIMARY KEY CHECK(id = 1),
+    available_cash REAL NOT NULL,
+    total_assets REAL NOT NULL,
+    total_position REAL NOT NULL,
+    frozen_amount REAL NOT NULL,
+    captured_at TEXT NOT NULL
 );
 """
 
@@ -628,6 +638,37 @@ class StateStore(SQLiteStateDatabase):
                 "SELECT * FROM broker_permission ORDER BY scope"
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def save_account_snapshot(self, account: BrokerAccount) -> dict[str, Any]:
+        """覆盖保存交易前读取的最新账户资金事实。"""
+        self.initialize()
+        captured_at = _now()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO account_snapshot(
+                    id, available_cash, total_assets, total_position,
+                    frozen_amount, captured_at
+                ) VALUES(1, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    available_cash = excluded.available_cash,
+                    total_assets = excluded.total_assets,
+                    total_position = excluded.total_position,
+                    frozen_amount = excluded.frozen_amount,
+                    captured_at = excluded.captured_at
+                """,
+                (
+                    float(account.available_cash),
+                    float(account.total_assets),
+                    float(account.total_position),
+                    float(account.frozen_amount),
+                    captured_at,
+                ),
+            )
+            snapshot = connection.execute(
+                "SELECT * FROM account_snapshot WHERE id = 1"
+            ).fetchone()
+        return dict(snapshot)
 
     def model_artifacts_registered(self, model_dir: Path) -> bool:
         """检查模型和完整历史预测是否已经登记到 SQLite。"""
@@ -1227,6 +1268,7 @@ class StateStore(SQLiteStateDatabase):
                 "realizedTrades": "realized_trade",
                 "orderAttempts": "order_attempt",
                 "broker_permission": "broker_permission",
+                "accountSnapshot": "account_snapshot",
             }
             counts = {
                 name: connection.execute(
@@ -1521,4 +1563,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END ---------------------------------------------------------------------
+# AI_GENERATE_END ----------------------------------------------------------------------

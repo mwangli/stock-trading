@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stock-trading"
-version = "0.1.49"
+version = "0.1.50"
 description = "Minimal A-share T+1 model research and trading application"
 requires-python = ">=3.11,<=3.12"
 dependencies = [
@@ -24,11 +24,9 @@ stock-train = "stock_trading.shortcuts:train"
 stock-collect = "stock_trading.shortcuts:collect"
 stock-prepare = "stock_trading.shortcuts:prepare"
 stock-rank = "stock_trading.shortcuts:rank"
-stock-sell = "stock_trading.shortcuts:sell"
-stock-buy = "stock_trading.shortcuts:buy"
-stock-broker = "stock_trading.shortcuts:broker"
-stock-perform = "stock_trading.shortcuts:perform"
-stock-evaluate = "stock_trading.shortcuts:evaluate"
+stock-trading = "stock_trading.shortcuts:trading"
+stock-order = "stock_trading.shortcuts:order"
+stock-review = "stock_trading.shortcuts:review"
 stock-clean = "stock_trading.shortcuts:clean"
 
 [tool.setuptools]
