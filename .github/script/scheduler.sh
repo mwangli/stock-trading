@@ -9,7 +9,6 @@ install_scheduler() {
   local cron_file="$config_dir/stock-trading.cron"
   local scheduler="$config_dir/scheduler.sh"
   local logrotate_file="$config_dir/stock-trading.logrotate"
-  local legacy_cron_dir="$project_dir/cron"
   local cron_template="$release_dir/config/stock-trading.cron"
   local scheduler_source="$release_dir/script/scheduler.sh"
   local logrotate_template="$release_dir/config/stock-trading.logrotate"
@@ -50,12 +49,6 @@ install_scheduler() {
 
   cmp -s "$desired_cron" "$cron_file" || install -m 0644 "$desired_cron" "$cron_file"
   cmp -s "$desired_logrotate" "$logrotate_file" || install -m 0644 "$desired_logrotate" "$logrotate_file"
-  rm -f \
-    "$legacy_cron_dir/scheduler.sh" \
-    "$legacy_cron_dir/stock-trading.cron" \
-    "$legacy_cron_dir/stock-trading.logrotate" \
-    "$legacy_cron_dir/run-cron.sh"
-  rmdir "$legacy_cron_dir" 2>/dev/null || true
 }
 
 extract_managed_cron() {
