@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ----
 from __future__ import annotations
 
 import re
@@ -115,6 +115,8 @@ class StateTools:
                 SELECT id, model_name, feature_set, status, artifact_path, created_at
                 FROM model_version ORDER BY id DESC LIMIT 1
             """) if "model_version" in existing else None
+        if latest_run and latest_run.get("error_message"):
+            latest_run["error_message"] = _redact_sensitive(latest_run["error_message"])
         return self._result({"counts": counts, "latestRun": latest_run, "latestModel": latest_model})
 
     def state_schema_catalog(self, _: dict[str, Any]) -> dict[str, Any]:
@@ -137,8 +139,7 @@ class StateTools:
         return self._result({"tables": tables})
 
     def performance_summary(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        start_date = _date_or_default(arguments.get("start_date"), "0001-01-01")
-        end_date = _date_or_default(arguments.get("end_date"), "9999-12-31")
+        start_date, end_date = _date_range(arguments)
         group_by = str(arguments.get("group_by", "total"))
         expressions = {
             "total": "'TOTAL'", "day": "sell_date",
@@ -188,10 +189,8 @@ class StateTools:
 
     def realized_trade_detail(self, arguments: dict[str, Any]) -> dict[str, Any]:
         clauses = ["sell_date BETWEEN ? AND ?"]
-        parameters: list[Any] = [
-            _date_or_default(arguments.get("start_date"), "0001-01-01"),
-            _date_or_default(arguments.get("end_date"), "9999-12-31"),
-        ]
+        start_date, end_date = _date_range(arguments)
+        parameters: list[Any] = [start_date, end_date]
         instrument = str(arguments.get("instrument", "")).strip().upper()
         if instrument:
             clauses.append("instrument = ?")
@@ -261,7 +260,12 @@ class StateTools:
                        started_at, finished_at, error_message
                 FROM task_run WHERE status = 'FAILED' ORDER BY id DESC LIMIT ?
             """, (limit,)).fetchall()
-        return self._result({"rows": [dict(row) for row in rows]})
+        visible = []
+        for row in rows:
+            item = dict(row)
+            item["error_message"] = _redact_sensitive(item.get("error_message"))
+            visible.append(item)
+        return self._result({"rows": visible})
 
     def query_state_sql(self, arguments: dict[str, Any]) -> dict[str, Any]:
         sql = str(arguments.get("sql", "")).strip()
@@ -306,6 +310,28 @@ class StateTools:
 
     def _result(self, data: dict[str, Any]) -> dict[str, Any]:
         return {"status": "ok", "source": str(self._config.state_db_path), "data": data}
+
+
+def _date_range(arguments: dict[str, Any]) -> tuple[str, str]:
+    start_date = _date_or_default(arguments.get("start_date"), "0001-01-01")
+    end_date = _date_or_default(arguments.get("end_date"), "9999-12-31")
+    if start_date > end_date:
+        raise ValueError("开始日期不能晚于结束日期")
+    return start_date, end_date
+
+
+def _redact_sensitive(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    text = re.sub(
+        r"(?i)(api[_-]?key|token|password|secret)\s*[:=]\s*[^\s,;]+",
+        r"\1=***",
+        text,
+    )
+    text = re.sub(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b", "***", text)
+    text = re.sub(r"\bsk[-_][A-Za-z0-9_-]{16,}\b", "***", text)
+    return text
 
 
 def _one(connection: sqlite3.Connection, sql: str) -> dict[str, Any] | None:
@@ -370,4 +396,4 @@ def _max_drawdown(returns: list[float]) -> float | None:
         peak = max(peak, equity)
         drawdown = max(drawdown, 1.0 - equity / peak)
     return drawdown
-# AI_GENERATE_END ---
+# AI_GENERATE_END ----

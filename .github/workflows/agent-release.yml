@@ -53,13 +53,14 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_MODEL: deepseek-flash
+          STOCK_AGENT_GITHUB_TOKEN: ${{ secrets.STOCK_AGENT_GITHUB_TOKEN }}
         with:
           host: ${{ vars.SERVER_HOST }}
           username: ${{ vars.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
-          envs: RELEASE_TAG,DEEPSEEK_API_KEY,DEEPSEEK_MODEL
+          envs: RELEASE_TAG,DEEPSEEK_API_KEY,DEEPSEEK_MODEL,STOCK_AGENT_GITHUB_TOKEN
           command_timeout: 30m
           script: |
             set -eu
@@ -68,3 +69,4 @@ jobs:
             "$HOME/stock-agent/venv/bin/stock-agent" status
             "$HOME/stock-agent/venv/bin/stock-agent" ask "请只回答：远程会话验证成功。不要调用任何工具。"
             "$HOME/stock-agent/venv/bin/stock-agent" history
+            "$HOME/stock-agent/venv/bin/stock-agent" repairs --limit 1

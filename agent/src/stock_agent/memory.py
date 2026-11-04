@@ -1,6 +1,7 @@
-# AI_GENERATE_START --
+# AI_GENERATE_START ---
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import uuid
@@ -45,6 +46,39 @@ CREATE TABLE IF NOT EXISTS agent_tool_audit (
     result_status TEXT NOT NULL,
     result_summary TEXT NOT NULL,
     created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS agent_repair_task (
+    task_id TEXT PRIMARY KEY,
+    run_id INTEGER NOT NULL,
+    repository TEXT NOT NULL,
+    target_branch TEXT NOT NULL,
+    work_branch TEXT,
+    status TEXT NOT NULL,
+    summary TEXT,
+    current_sha TEXT,
+    final_run_id INTEGER,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_repair_single_running
+ON agent_repair_task(status) WHERE status = 'RUNNING';
+
+CREATE TABLE IF NOT EXISTS agent_repair_attempt (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    attempt_no INTEGER NOT NULL,
+    base_sha TEXT NOT NULL,
+    commit_sha TEXT,
+    run_id INTEGER,
+    conclusion TEXT,
+    summary TEXT NOT NULL,
+    changed_paths TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(task_id) REFERENCES agent_repair_task(task_id),
+    UNIQUE(task_id, attempt_no)
 );
 """
 
@@ -249,6 +283,137 @@ class MemoryStore:
                 ),
             )
 
+    def interrupt_running_repair_tasks(self) -> int:
+        now = _now()
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE agent_repair_task
+                SET status = 'INTERRUPTED',
+                    error_message = 'Agent 进程在任务完成前退出',
+                    updated_at = ?
+                WHERE status = 'RUNNING'
+                """,
+                (now,),
+            )
+        return int(cursor.rowcount)
+
+    def create_repair_task(
+        self,
+        run_id: int,
+        repository: str,
+        target_branch: str,
+        work_branch: str | None,
+    ) -> str:
+        task_id = uuid.uuid4().hex[:16]
+        now = _now()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO agent_repair_task(
+                    task_id, run_id, repository, target_branch, work_branch,
+                    status, created_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, 'RUNNING', ?, ?)
+                """,
+                (task_id, run_id, repository, target_branch, work_branch, now, now),
+            )
+        return task_id
+
+    def update_repair_task(self, task_id: str, **values: Any) -> None:
+        allowed = {
+            "work_branch", "status", "summary", "current_sha",
+            "final_run_id", "error_message",
+        }
+        updates = {key: value for key, value in values.items() if key in allowed}
+        if not updates:
+            return
+        updates["updated_at"] = _now()
+        assignments = ", ".join(f"{key} = ?" for key in updates)
+        with self._connect() as connection:
+            connection.execute(
+                f"UPDATE agent_repair_task SET {assignments} WHERE task_id = ?",
+                (*updates.values(), task_id),
+            )
+
+    def add_repair_attempt(
+        self,
+        task_id: str,
+        attempt_no: int,
+        base_sha: str,
+        summary: str,
+        changed_paths: list[str],
+        *,
+        commit_sha: str | None = None,
+        run_id: int | None = None,
+        conclusion: str | None = None,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO agent_repair_attempt(
+                    task_id, attempt_no, base_sha, commit_sha, run_id,
+                    conclusion, summary, changed_paths, created_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    task_id, attempt_no, base_sha, commit_sha, run_id,
+                    conclusion, summary[:1000],
+                    json.dumps(changed_paths, ensure_ascii=False), _now(),
+                ),
+            )
+
+    def update_repair_attempt(
+        self,
+        task_id: str,
+        attempt_no: int,
+        *,
+        commit_sha: str | None,
+        run_id: int | None,
+        conclusion: str,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE agent_repair_attempt
+                SET commit_sha = ?, run_id = ?, conclusion = ?
+                WHERE task_id = ? AND attempt_no = ?
+                """,
+                (commit_sha, run_id, conclusion, task_id, attempt_no),
+            )
+
+    def get_repair_task(self, task_id: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            task = connection.execute(
+                "SELECT * FROM agent_repair_task WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            if task is None:
+                return None
+            attempts = connection.execute(
+                """
+                SELECT attempt_no, base_sha, commit_sha, run_id, conclusion,
+                       summary, changed_paths, created_at
+                FROM agent_repair_attempt
+                WHERE task_id = ? ORDER BY attempt_no
+                """,
+                (task_id,),
+            ).fetchall()
+        result = dict(task)
+        result["attempts"] = [dict(row) for row in attempts]
+        return result
+
+    def list_repair_tasks(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT task_id, run_id, repository, target_branch, work_branch,
+                       status, summary, current_sha, final_run_id,
+                       error_message, created_at, updated_at
+                FROM agent_repair_task ORDER BY updated_at DESC LIMIT ?
+                """,
+                (max(1, min(limit, 100)),),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._path)
         connection.row_factory = sqlite3.Row
@@ -259,4 +424,4 @@ class MemoryStore:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-# AI_GENERATE_END --
+# AI_GENERATE_END ---

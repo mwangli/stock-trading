@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START --
 from __future__ import annotations
 
 from typing import Annotated
@@ -11,6 +11,7 @@ from rich.table import Table
 
 from stock_agent.config import AgentConfig
 from stock_agent.memory import MemoryStore
+from stock_agent.repair import RepairRuntime
 from stock_agent.runtime import StockAgentRuntime
 
 
@@ -51,6 +52,35 @@ def ask(
     console.print(Markdown(answer))
 
 
+@app.command("repair")
+def repair_command(
+    run_id: Annotated[int, typer.Argument(help="失败的 GitHub Actions Run ID。")],
+    branch: Annotated[
+        str | None, typer.Option("--branch", help="目标分支；默认使用运行的 head_branch。")
+    ] = None,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="只分析并生成修改方案，不提交 GitHub。")
+    ] = False,
+) -> None:
+    config, memory = _bootstrap(require_github=True)
+    _execute_repair(config, memory, run_id, branch=branch, dry_run=dry_run)
+
+
+@app.command("repairs")
+def repairs_command(
+    limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 20,
+) -> None:
+    _, memory = _bootstrap(require_model=False)
+    table = Table("任务 ID", "Run ID", "分支", "状态", "最后更新")
+    for row in memory.list_repair_tasks(limit):
+        table.add_row(
+            str(row["task_id"]), str(row["run_id"]),
+            str(row["target_branch"]), str(row["status"]),
+            str(row["updated_at"]),
+        )
+    console.print(table)
+
+
 @app.command("history")
 def history() -> None:
     _, memory = _bootstrap(require_model=False)
@@ -81,10 +111,13 @@ def status() -> None:
     table = Table("项目", "状态")
     table.add_row("模型", config.deepseek_model)
     table.add_row("DeepSeek API Key", "已配置" if config.deepseek_api_key else "未配置")
+    table.add_row("GitHub", config.github_repository)
+    table.add_row("GitHub Token", "已配置" if config.github_token else "未配置")
+    table.add_row("修复目标分支", config.github_target_branch)
     table.add_row("交易数据", str(config.trading_data_dir))
     table.add_row("交易 SQLite", "存在" if config.state_db_path.exists() else "不存在")
     table.add_row("Agent 记忆", str(config.memory_db_path))
-    table.add_row("能力", "只读报表、SQLite 查询、Parquet 探索、长期记忆")
+    table.add_row("能力", "只读业务问答、GitHub 日志诊断、两轮代码修复")
     console.print(table)
 
 
@@ -100,7 +133,7 @@ def _interactive(new_session: bool, session_id: str | None) -> None:
     console.print(f"模型: {config.deepseek_model}")
     console.print(f"数据: {config.trading_data_dir}")
     console.print(f"会话: {active_session}")
-    console.print("输入 /new、/history、/memory [关键词] 或 /exit。")
+    console.print("输入 /new、/history、/memory [关键词]、/repair <run-id> 或 /exit。")
     while True:
         try:
             text = Prompt.ask("\n[bold cyan]你[/bold cyan]").strip()
@@ -118,10 +151,24 @@ def _interactive(new_session: bool, session_id: str | None) -> None:
         if text == "/history":
             _print_sessions(memory)
             continue
+        if text == "/repairs":
+            for row in memory.list_repair_tasks():
+                console.print_json(data=row)
+            continue
         if text.startswith("/memory"):
             query = text[len("/memory"):].strip()
             rows = memory.search(query) if query else memory.list_memories()
             console.print_json(data=rows)
+            continue
+        if text.startswith("/repair"):
+            value = text[len("/repair"):].strip()
+            if not value.isdigit():
+                console.print("[red]用法：/repair <GitHub Actions Run ID>[/red]")
+                continue
+            if not config.github_token:
+                console.print("[red]未配置 STOCK_AGENT_GITHUB_TOKEN。[/red]")
+                continue
+            _execute_repair(config, memory, int(value), branch=None, dry_run=False)
             continue
         try:
             answer = runtime.respond(active_session, text)
@@ -132,6 +179,25 @@ def _interactive(new_session: bool, session_id: str | None) -> None:
         console.print(Markdown(answer))
 
 
+def _execute_repair(
+    config: AgentConfig,
+    memory: MemoryStore,
+    run_id: int,
+    *,
+    branch: str | None,
+    dry_run: bool,
+) -> None:
+    runtime = RepairRuntime(config, memory)
+    try:
+        result = runtime.repair(run_id, branch=branch, dry_run=dry_run)
+    except Exception as error:
+        console.print(f"[red]修复失败：{error}[/red]")
+        raise typer.Exit(1) from error
+    finally:
+        runtime.close()
+    console.print_json(data=result)
+
+
 def _print_sessions(memory: MemoryStore) -> None:
     table = Table("会话 ID", "标题", "最后更新")
     for row in memory.list_sessions():
@@ -139,16 +205,21 @@ def _print_sessions(memory: MemoryStore) -> None:
     console.print(table)
 
 
-def _bootstrap(require_model: bool = True) -> tuple[AgentConfig, MemoryStore]:
+def _bootstrap(
+    require_model: bool = True,
+    require_github: bool = False,
+) -> tuple[AgentConfig, MemoryStore]:
     config = AgentConfig.from_env()
     config.ensure_runtime_dirs()
     if require_model and not config.deepseek_api_key:
         raise typer.BadParameter(
             "未配置 DEEPSEEK_API_KEY；请写入 ~/stock-agent/.env 或系统环境变量。"
         )
+    if require_github and not config.github_token:
+        raise typer.BadParameter("未配置 STOCK_AGENT_GITHUB_TOKEN。")
     return config, MemoryStore(config.memory_db_path)
 
 
 def main() -> None:
     app()
-# AI_GENERATE_END -
+# AI_GENERATE_END --

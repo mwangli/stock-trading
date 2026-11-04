@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START --
 from __future__ import annotations
 
 import os
@@ -22,6 +22,16 @@ class AgentConfig:
     request_timeout_seconds: float
     max_tool_rounds: int
     max_query_rows: int
+    github_token: str
+    github_repository: str
+    github_target_branch: str
+    github_api_url: str
+    github_workflow: str
+    max_repair_rounds: int
+    repair_poll_seconds: float
+    repair_timeout_seconds: float
+    max_repair_files: int
+    max_repair_file_bytes: int
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -71,6 +81,38 @@ class AgentConfig:
             max_query_rows=min(
                 1000, max(10, int(os.getenv("STOCK_AGENT_MAX_QUERY_ROWS", "200")))
             ),
+            github_token=(
+                os.getenv("STOCK_AGENT_GITHUB_TOKEN")
+                or os.getenv("GITHUB_TOKEN", "")
+            ).strip(),
+            github_repository=os.getenv(
+                "STOCK_AGENT_GITHUB_REPOSITORY", "mwangli/stock-trading"
+            ).strip(),
+            github_target_branch=os.getenv(
+                "STOCK_AGENT_GITHUB_TARGET_BRANCH", "stock-agent"
+            ).strip(),
+            github_api_url=os.getenv(
+                "STOCK_AGENT_GITHUB_API_URL", "https://api.github.com"
+            ).rstrip("/"),
+            github_workflow=os.getenv(
+                "STOCK_AGENT_GITHUB_WORKFLOW", "agent-ci.yml"
+            ).strip(),
+            max_repair_rounds=min(
+                2, max(1, int(os.getenv("STOCK_AGENT_MAX_REPAIR_ROUNDS", "2")))
+            ),
+            repair_poll_seconds=max(
+                2.0, float(os.getenv("STOCK_AGENT_REPAIR_POLL_SECONDS", "10"))
+            ),
+            repair_timeout_seconds=max(
+                60.0, float(os.getenv("STOCK_AGENT_REPAIR_TIMEOUT_SECONDS", "1800"))
+            ),
+            max_repair_files=min(
+                20, max(1, int(os.getenv("STOCK_AGENT_MAX_REPAIR_FILES", "20")))
+            ),
+            max_repair_file_bytes=min(
+                500_000,
+                max(1024, int(os.getenv("STOCK_AGENT_MAX_REPAIR_FILE_BYTES", "163840"))),
+            ),
         )
 
     def ensure_runtime_dirs(self) -> None:
@@ -96,4 +138,4 @@ def _load_env_file(path: Path) -> None:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         os.environ.setdefault(key, value)
-# AI_GENERATE_END -
+# AI_GENERATE_END --

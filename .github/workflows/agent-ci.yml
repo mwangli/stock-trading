@@ -1,0 +1,46 @@
+name: Agent CI
+
+on:
+  push:
+    branches:
+      - stock-agent
+      - 'agent-fix/**'
+      - 'agent-test/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Static source checks
+        run: |
+          python -m compileall -q agent/src src
+          bash -n .github/script/install-agent-release.sh
+          python - <<'PY'
+          import pathlib
+          import tomllib
+
+          for path in (pathlib.Path('pyproject.toml'), pathlib.Path('agent/pyproject.toml')):
+              with path.open('rb') as handle:
+                  tomllib.load(handle)
+          PY
+
+      - name: Build wheels
+        run: |
+          python -m pip install build
+          python -m build --wheel --outdir dist/trading .
+          python -m build --wheel --outdir dist/agent agent

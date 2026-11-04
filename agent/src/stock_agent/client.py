@@ -1,9 +1,16 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 from typing import Any
 
-from openai import OpenAI
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AuthenticationError,
+    OpenAI,
+    RateLimitError,
+)
 
 from stock_agent.config import AgentConfig
 
@@ -28,13 +35,27 @@ class DeepSeekClient:
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
+        *,
+        max_tokens: int = 4096,
+        temperature: float = 0.1,
     ) -> Any:
-        return self._client.chat.completions.create(
-            model=self._model,
-            messages=messages,
-            tools=tools,
-            tool_choice="auto",
-            temperature=0.1,
-            max_tokens=4096,
-        )
-# AI_GENERATE_END -
+        try:
+            return self._client.chat.completions.create(
+                model=self._model,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        except AuthenticationError as error:
+            raise RuntimeError("DeepSeek 认证失败，请检查 API Key") from error
+        except RateLimitError as error:
+            raise RuntimeError("DeepSeek 请求达到限流，请稍后重试") from error
+        except APITimeoutError as error:
+            raise RuntimeError("DeepSeek 请求超时") from error
+        except APIConnectionError as error:
+            raise RuntimeError("DeepSeek 网络连接失败") from error
+        except APIStatusError as error:
+            raise RuntimeError(f"DeepSeek API 请求失败: HTTP {error.status_code}") from error
+# AI_GENERATE_END ---

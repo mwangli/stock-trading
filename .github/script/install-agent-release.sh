@@ -10,6 +10,10 @@ if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
   echo "DEEPSEEK_API_KEY is not configured." >&2
   exit 1
 fi
+if [ -z "${STOCK_AGENT_GITHUB_TOKEN:-}" ]; then
+  echo "STOCK_AGENT_GITHUB_TOKEN is not configured." >&2
+  exit 1
+fi
 
 project_dir="$HOME/stock-agent"
 trading_dir="$HOME/stock-trading"
@@ -72,17 +76,27 @@ trap 'rm -f "$temporary_env"' EXIT
   printf 'DEEPSEEK_API_KEY=%s\n' "$DEEPSEEK_API_KEY"
   printf 'DEEPSEEK_BASE_URL=https://api.deepseek.com\n'
   printf 'DEEPSEEK_MODEL=%s\n' "${DEEPSEEK_MODEL:-deepseek-flash}"
+  printf 'STOCK_AGENT_GITHUB_TOKEN=%s\n' "$STOCK_AGENT_GITHUB_TOKEN"
+  printf 'STOCK_AGENT_GITHUB_REPOSITORY=mwangli/stock-trading\n'
+  printf 'STOCK_AGENT_GITHUB_TARGET_BRANCH=stock-agent\n'
+  printf 'STOCK_AGENT_GITHUB_WORKFLOW=agent-ci.yml\n'
   printf 'STOCK_AGENT_HOME=%s\n' "$project_dir"
   printf 'STOCK_TRADING_HOME=%s\n' "$trading_dir"
   printf 'STOCK_TRADING_DATA_DIR=%s\n' "$trading_dir/data"
   printf 'STOCK_AGENT_MAX_TOOL_ROUNDS=6\n'
   printf 'STOCK_AGENT_MAX_QUERY_ROWS=200\n'
   printf 'STOCK_AGENT_TIMEOUT_SECONDS=120\n'
+  printf 'STOCK_AGENT_MAX_REPAIR_ROUNDS=2\n'
+  printf 'STOCK_AGENT_REPAIR_POLL_SECONDS=10\n'
+  printf 'STOCK_AGENT_REPAIR_TIMEOUT_SECONDS=1800\n'
+  printf 'STOCK_AGENT_MAX_REPAIR_FILES=20\n'
+  printf 'STOCK_AGENT_MAX_REPAIR_FILE_BYTES=163840\n'
 } > "$temporary_env"
 install -m 0600 "$temporary_env" "$env_file"
 rm -f "$temporary_env"
 trap - EXIT
 unset DEEPSEEK_API_KEY
+unset STOCK_AGENT_GITHUB_TOKEN
 
 find "$releases_dir" \
   -mindepth 1 \

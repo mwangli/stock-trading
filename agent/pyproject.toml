@@ -4,11 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stock-trading-agent"
-version = "0.1.1"
+version = "0.2.0"
 description = "Personal command-line agent for the stock-trading project"
-requires-python = ">=3.11,<=3.12"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "duckdb>=1.1,<2",
+    "httpx>=0.27,<1",
     "openai>=1.60,<3",
     "rich>=13.9,<15",
     "typer==0.27.3",
