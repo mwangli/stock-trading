@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------------------------------------
+// AI_GENERATE_START-------------------------------------------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
@@ -11,9 +11,9 @@ import { useTranslation } from 'react-i18next';
 const { Text } = Typography;
 
 interface BrokerAccount {
-  totalAssets: number;
-  availableCash: number;
-  frozenAmount: number;
+  totalAssets?: number;
+  availableCash?: number;
+  frozenAmount?: number;
   totalPosition: number;
   capturedAt: string;
 }
@@ -71,10 +71,10 @@ interface PerformanceDailyReturnItem {
 
 interface PerformanceOverview {
   capturedAt?: string;
-  totalAssets: number;
-  availableCash: number;
+  totalAssets?: number;
+  availableCash?: number;
   marketValue: number;
-  frozenCash: number;
+  frozenCash?: number;
   cumulativeProfit: number;
   cumulativeReturnRate: number;
   dailyProfit: number;
@@ -114,9 +114,11 @@ const readApiData = <T,>(result: ApiResult<T>): T | null => {
 };
 
 const money = (value?: number) => value == null ? '-' : `¥${Number(value).toFixed(2)}`;
+const cashMoney = (value?: number) => value == null ? '-' : `¥${Number(value).toFixed(3)}`;
 const percent = (value?: number) => value == null ? '-' : `${(Number(value) * 100).toFixed(2)}%`;
 const profitColor = (value?: number): 'success' | 'danger' => value != null && value >= 0 ? 'danger' : 'success';
 const numeric = (value: unknown) => value == null || value === '' ? 0 : Number(value);
+const optionalNumeric = (value: unknown) => value == null || value === '' ? undefined : Number(value);
 const text = (value: unknown) => value == null ? '' : String(value);
 const dailyReturnRate = (returnRate: number, holdingDays?: number) => (
   holdingDays != null && holdingDays > 1 && returnRate > -1
@@ -205,10 +207,10 @@ const adaptDashboardOverview = (overview: DashboardOverview): PerformanceOvervie
 
   return {
     capturedAt: text(account.captured_at),
-    totalAssets: numeric(account.total_assets),
-    availableCash: numeric(account.available_cash),
+    totalAssets: optionalNumeric(account.total_assets),
+    availableCash: optionalNumeric(account.available_cash),
     marketValue: numeric(account.total_position),
-    frozenCash: numeric(account.frozen_amount),
+    frozenCash: optionalNumeric(account.frozen_amount),
     cumulativeProfit: summary.net_profit == null ? netProfits.reduce((sum, value) => sum + value, 0) : numeric(summary.net_profit),
     cumulativeReturnRate: summary.net_return == null ? aggregateReturnRate(performanceRows) : numeric(summary.net_return),
     dailyProfit: summary.daily_net_profit == null ? latestRows.reduce((sum, item) => sum + numeric(item.net_pnl), 0) : numeric(summary.daily_net_profit),
@@ -316,7 +318,7 @@ const Dashboard: React.FC = () => {
         <span>{t('dashboard.cards.positionValue')}</span>
         <strong>{money(account?.totalPosition)}</strong>
         <div>
-          <span>{t('dashboard.cards.availableCash')} <b>{money(account?.availableCash)}</b></span>
+          <span>{t('dashboard.cards.availableCash')} <b>{cashMoney(account?.availableCash)}</b></span>
           <Text type={profitColor(performance?.cumulativeProfit)}>
             {t('dashboard.cards.realizedRate')} <b>{percent(performance?.cumulativeReturnRate)}</b>
           </Text>
@@ -332,7 +334,7 @@ const Dashboard: React.FC = () => {
         </Col>
         <Col xs={12} md={6}>
           <Card className="surface-card compact-card returns-overview-metric-card" loading={loading}>
-            <Statistic title={t('dashboard.cards.availableCash')} value={account?.availableCash} precision={2} prefix="¥" />
+            <Statistic title={t('dashboard.cards.availableCash')} value={account?.availableCash} precision={3} prefix="¥" />
             <span className="returns-overview-rate returns-overview-rate-placeholder" aria-hidden="true">-</span>
           </Card>
         </Col>
@@ -394,4 +396,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-// AI_GENERATE_END-----------------------------------------
+// AI_GENERATE_END-------------------------------------------

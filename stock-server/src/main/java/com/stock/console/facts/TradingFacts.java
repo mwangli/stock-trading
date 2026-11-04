@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------------
+// AI_GENERATE_START ------------------
 package com.stock.console.facts;
 
 import com.stock.console.config.ConsoleProperties;
@@ -63,36 +63,41 @@ public class TradingFacts {
             ORDER BY sell_time DESC
             """;
     private static final String PERFORMANCE_SUMMARY_SQL = """
-            WITH latest_period AS (
-                SELECT max(CAST(sell_date AS DATE)) AS latest_day,
-                       max(strftime(CAST(sell_date AS DATE), '%Y-%m')) AS latest_month
-                FROM trading.realized_trade
+            WITH current_period AS (
+                SELECT CAST(? AS DATE) AS current_day,
+                       strftime(CAST(? AS DATE), '%Y-%m') AS current_month
             )
-            SELECT count(*) AS total_trade_count,
-                   sum(CASE WHEN net_profit > 0 THEN 1 ELSE 0 END) AS winning_trade_count,
-                   sum(CASE WHEN net_profit < 0 THEN 1 ELSE 0 END) AS losing_trade_count,
-                   coalesce(sum(net_profit), 0) AS net_profit,
-                   coalesce(sum(net_profit) / nullif(sum(cost_basis) + sum(buy_fee), 0), 0) AS net_return,
-                   coalesce(avg(net_return), 0) AS average_net_return,
-                   coalesce(max(net_return), 0) AS best_net_return,
-                   coalesce(min(net_return), 0) AS worst_net_return,
-                   latest_period.latest_day AS daily_period,
-                   coalesce(sum(CASE WHEN CAST(sell_date AS DATE) = latest_period.latest_day THEN net_profit ELSE 0 END), 0) AS daily_net_profit,
+            SELECT count(trade.trade_key) AS total_trade_count,
+                   sum(CASE WHEN trade.net_profit > 0 THEN 1 ELSE 0 END) AS winning_trade_count,
+                   sum(CASE WHEN trade.net_profit < 0 THEN 1 ELSE 0 END) AS losing_trade_count,
+                   coalesce(sum(trade.net_profit), 0) AS net_profit,
+                   coalesce(sum(trade.net_profit) / nullif(sum(trade.cost_basis) + sum(trade.buy_fee), 0), 0) AS net_return,
+                   coalesce(avg(trade.net_return), 0) AS average_net_return,
+                   coalesce(max(trade.net_return), 0) AS best_net_return,
+                   coalesce(min(trade.net_return), 0) AS worst_net_return,
+                   current_period.current_day AS daily_period,
+                   coalesce(sum(CASE WHEN CAST(trade.sell_date AS DATE) = current_period.current_day THEN trade.net_profit ELSE 0 END), 0) AS daily_net_profit,
                    coalesce(
-                       sum(CASE WHEN CAST(sell_date AS DATE) = latest_period.latest_day THEN net_profit ELSE 0 END)
-                       / nullif(sum(CASE WHEN CAST(sell_date AS DATE) = latest_period.latest_day THEN cost_basis + buy_fee ELSE 0 END), 0),
+                       sum(CASE WHEN CAST(trade.sell_date AS DATE) = current_period.current_day THEN trade.net_profit ELSE 0 END)
+                       / nullif(sum(CASE WHEN CAST(trade.sell_date AS DATE) = current_period.current_day THEN trade.cost_basis + trade.buy_fee ELSE 0 END), 0),
                        0
                    ) AS daily_net_return,
-                   latest_period.latest_month AS monthly_period,
-                   coalesce(sum(CASE WHEN strftime(CAST(sell_date AS DATE), '%Y-%m') = latest_period.latest_month THEN net_profit ELSE 0 END), 0) AS monthly_net_profit,
+                   current_period.current_month AS monthly_period,
+                   coalesce(sum(CASE WHEN strftime(CAST(trade.sell_date AS DATE), '%Y-%m') = current_period.current_month THEN trade.net_profit ELSE 0 END), 0) AS monthly_net_profit,
                    coalesce(
-                       sum(CASE WHEN strftime(CAST(sell_date AS DATE), '%Y-%m') = latest_period.latest_month THEN net_profit ELSE 0 END)
-                       / nullif(sum(CASE WHEN strftime(CAST(sell_date AS DATE), '%Y-%m') = latest_period.latest_month THEN cost_basis + buy_fee ELSE 0 END), 0),
+                       sum(CASE WHEN strftime(CAST(trade.sell_date AS DATE), '%Y-%m') = current_period.current_month THEN trade.net_profit ELSE 0 END)
+                       / nullif(sum(CASE WHEN strftime(CAST(trade.sell_date AS DATE), '%Y-%m') = current_period.current_month THEN trade.cost_basis + trade.buy_fee ELSE 0 END), 0),
                        0
                    ) AS monthly_net_return
-            FROM trading.realized_trade
-            CROSS JOIN latest_period
-            GROUP BY latest_period.latest_day, latest_period.latest_month
+            FROM current_period
+            LEFT JOIN trading.realized_trade trade ON true
+            GROUP BY current_period.current_day, current_period.current_month
+            """;
+    private static final String ACCOUNT_SNAPSHOT_SQL = """
+            SELECT total_assets, available_cash, total_position, frozen_amount,
+                   captured_at, 'ACCOUNT_SNAPSHOT' AS source
+            FROM trading.account_snapshot
+            ORDER BY captured_at DESC
             """;
     private static final String PERFORMANCE_MONTHLY_SQL = """
             SELECT strftime(CAST(sell_date AS DATE), '%Y-%m') AS period,
@@ -208,8 +213,16 @@ public class TradingFacts {
     }
 
     public List<Map<String, Object>> account() {
-        List<Map<String, Object>> positions = positions(500);
-        return List.of(summarizeAccount(positions));
+        if (!databaseAvailable()) {
+            return List.of(summarizeAccount(List.of()));
+        }
+        try (Connection connection = openReadOnly()) {
+            List<Map<String, Object>> positions = query(connection, POSITIONS_SQL, 500);
+            return List.of(summarizeAccount(connection, positions));
+        } catch (SQLException exception) {
+            LOGGER.warn("账户信息查询失败: {}", safeMessage(exception));
+            return List.of(summarizeAccount(List.of()));
+        }
     }
 
     public List<Map<String, Object>> positions(int limit) {
@@ -392,10 +405,15 @@ public class TradingFacts {
             List<Map<String, Object>> positions = query(connection, POSITIONS_SQL, 50);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("tradingSource", availableStatus());
-            result.put("account", summarizeAccount(positions));
+            result.put("account", summarizeAccount(connection, positions));
             result.put("positions", positions);
             result.put("performance", query(connection, PERFORMANCE_SQL, 90));
-            List<Map<String, Object>> performanceSummary = query(connection, PERFORMANCE_SUMMARY_SQL, 1);
+            LocalDate currentDate = LocalDate.now();
+            List<Map<String, Object>> performanceSummary = query(
+                    connection,
+                    PERFORMANCE_SUMMARY_SQL,
+                    1,
+                    List.of(currentDate, currentDate));
             result.put("performanceSummary", performanceSummary.isEmpty() ? Map.of() : performanceSummary.get(0));
             result.put("monthlyPerformance", query(connection, PERFORMANCE_MONTHLY_SQL, 500));
             result.put("ranking", withHoldingDays(query(connection, PERFORMANCE_RANKING_SQL, 500)));
@@ -507,8 +525,20 @@ public class TradingFacts {
         if (!databaseAvailable()) {
             return List.of();
         }
-        try (Connection connection = openReadOnly();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (Connection connection = openReadOnly()) {
+            return query(connection, sql, limit, parameters);
+        } catch (SQLException exception) {
+            LOGGER.warn("只读交易数据参数查询失败: {}", safeMessage(exception));
+            return List.of();
+        }
+    }
+
+    private List<Map<String, Object>> query(
+            Connection connection,
+            String sql,
+            int limit,
+            List<Object> parameters) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setMaxRows(Math.max(1, Math.min(limit, 500)));
             for (int index = 0; index < parameters.size(); index++) {
                 Object value = parameters.get(index);
@@ -521,9 +551,6 @@ public class TradingFacts {
             try (ResultSet resultSet = statement.executeQuery()) {
                 return rows(resultSet);
             }
-        } catch (SQLException exception) {
-            LOGGER.warn("只读交易数据参数查询失败: {}", safeMessage(exception));
-            return List.of();
         }
     }
 
@@ -549,6 +576,18 @@ public class TradingFacts {
         return rows;
     }
 
+    private Map<String, Object> summarizeAccount(
+            Connection connection,
+            List<Map<String, Object>> positions) throws SQLException {
+        if (tableExists(connection, "account_snapshot")) {
+            List<Map<String, Object>> snapshots = query(connection, ACCOUNT_SNAPSHOT_SQL, 1);
+            if (!snapshots.isEmpty()) {
+                return snapshots.get(0);
+            }
+        }
+        return summarizeAccount(positions);
+    }
+
     private Map<String, Object> summarizeAccount(List<Map<String, Object>> positions) {
         double totalPosition = positions.stream()
                 .map(row -> row.get("market_value"))
@@ -563,13 +602,26 @@ public class TradingFacts {
                 .max(String::compareTo)
                 .orElse("");
         Map<String, Object> account = new LinkedHashMap<>();
-        account.put("total_assets", totalPosition);
-        account.put("available_cash", 0);
+        account.put("total_assets", null);
+        account.put("available_cash", null);
         account.put("total_position", totalPosition);
-        account.put("frozen_amount", 0);
+        account.put("frozen_amount", null);
         account.put("captured_at", capturedAt);
-        account.put("source", "OPEN_FILLED_BUY_COST");
+        account.put("source", "OPEN_FILLED_BUY_COST_NO_ACCOUNT_SNAPSHOT");
         return account;
+    }
+
+    private boolean tableExists(Connection connection, String tableName) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT count(*)
+                FROM information_schema.tables
+                WHERE table_catalog = 'trading' AND table_name = ?
+                """)) {
+            statement.setString(1, tableName);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() && resultSet.getInt(1) > 0;
+            }
+        }
     }
 
     private List<Map<String, Object>> withHoldingDays(List<Map<String, Object>> rows) {
@@ -659,4 +711,4 @@ public class TradingFacts {
         return message == null || message.isBlank() ? "SQLite 数据源无法读取" : message;
     }
 }
-// AI_GENERATE_END -----------------
+// AI_GENERATE_END ------------------
