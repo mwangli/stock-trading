@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------
+# AI_GENERATE_START ---------------------------
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -275,13 +275,14 @@ def sync() -> None:
         sync_command,
         "使用 SSH/SCP 在本地和服务器之间同步运行数据。",
         (
-            "market 和 model 支持拉取或推送。",
-            "state 只允许从服务器拉取，并通过 SQLite 一致性快照替换本地状态库。",
+            "market、qlib 和 model 支持拉取或推送。",
+            "market 对应 stock-collect 数据，qlib 对应 stock-prepare 数据。",
+            "state 只允许从服务器拉取，并直接以服务器 SQLite 覆盖本地状态库。",
             "服务器数据目录固定为 $HOME/stock-trading/data，本地为项目根目录 data。",
         ),
         (
             "stock-sync --pull all",
-            "stock-sync --push market,model",
+            "stock-sync --push market,qlib,model",
             "stock-sync --pull state",
         ),
         (
@@ -290,4 +291,4 @@ def sync() -> None:
             "服务器连接只读取 SERVER_IP、SERVER_USER 和 SERVER_PASS。",
         ),
     )
-# AI_GENERATE_END -------------------------
+# AI_GENERATE_END ---------------------------

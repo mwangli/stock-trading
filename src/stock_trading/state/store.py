@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------------------------------------
+# AI_GENERATE_START -----------------------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -63,7 +63,11 @@ ORDER_TRANSITIONS = {
     "REJECTED": set(),
 }
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
+SCHEMA_MIGRATIONS = {
+    version: "ALTER TABLE prediction RENAME TO prediction_rank;"
+    for version in (1, 2, 3)
+}
 
 SCHEMA = """
 -- 任务运行记录：保存可恢复、可幂等任务的执行状态。
@@ -91,7 +95,7 @@ CREATE TABLE IF NOT EXISTS model_version (
 );
 
 -- 预测结果：保存模型在交易日维度产生的候选排名和后验标签。
-CREATE TABLE IF NOT EXISTS prediction (
+CREATE TABLE IF NOT EXISTS prediction_rank (
     id INTEGER PRIMARY KEY AUTOINCREMENT, -- 预测记录本地主键。
     model_version_id INTEGER NOT NULL, -- 产生该预测的模型版本主键。
     prediction_date TEXT NOT NULL, -- 预测对应的数据日期，格式 YYYY-MM-DD。
@@ -105,7 +109,7 @@ CREATE TABLE IF NOT EXISTS prediction (
 );
 
 CREATE INDEX IF NOT EXISTS idx_prediction_latest
-ON prediction(prediction_date, model_version_id, rank);
+ON prediction_rank(prediction_date, model_version_id, rank);
 
 -- 模型滚动评估：保存固定已实现收益观测窗口内的指标和决策。
 CREATE TABLE IF NOT EXISTS model_evaluation (
@@ -267,7 +271,7 @@ class StateStore(SQLiteStateDatabase):
 
     def initialize(self) -> None:
         """创建或校验当前状态库结构。"""
-        self.initialize_schema(SCHEMA, SCHEMA_VERSION)
+        self.initialize_schema(SCHEMA, SCHEMA_VERSION, SCHEMA_MIGRATIONS)
 
     def cleanup(self, reference_date: date) -> dict[str, object]:
         """按数据价值分级清理 SQLite，并保留活动委托和长期基础事实。"""
@@ -282,7 +286,7 @@ class StateStore(SQLiteStateDatabase):
                     "business_date < ? AND status NOT IN ('QUEUED','RUNNING')",
                     task_cutoff,
                 ),
-                ("prediction", "prediction_date < ?", history_cutoff),
+                ("prediction_rank", "prediction_date < ?", history_cutoff),
                 ("model_evaluation", "business_date < ?", history_cutoff),
                 (
                     "order_attempt",
@@ -696,7 +700,7 @@ class StateStore(SQLiteStateDatabase):
                 return False
             prediction_count = int(connection.execute(
                 """
-                SELECT COUNT(*) FROM prediction
+                SELECT COUNT(*) FROM prediction_rank
                 WHERE model_version_id = ? AND prediction_date BETWEEN ? AND ?
                 """,
                 (model["id"], first_prediction_date, prediction_date),
@@ -716,7 +720,7 @@ class StateStore(SQLiteStateDatabase):
             row = connection.execute(
                 """
                 SELECT 1
-                FROM prediction p
+                FROM prediction_rank p
                 JOIN model_version mv ON mv.id = p.model_version_id
                 WHERE mv.artifact_hash = ? AND p.prediction_date = ?
                 LIMIT 1
@@ -778,13 +782,13 @@ class StateStore(SQLiteStateDatabase):
         with self._connect() as connection:
             if model_version_id is None:
                 prediction_date = connection.execute(
-                    "SELECT MAX(prediction_date) FROM prediction WHERE prediction_date < ?",
+                    "SELECT MAX(prediction_date) FROM prediction_rank WHERE prediction_date < ?",
                     (before_business_date,),
                 ).fetchone()[0]
             else:
                 prediction_date = connection.execute(
                     """
-                    SELECT MAX(prediction_date) FROM prediction
+                    SELECT MAX(prediction_date) FROM prediction_rank
                     WHERE prediction_date < ? AND model_version_id = ?
                     """,
                     (before_business_date, model_version_id),
@@ -796,7 +800,7 @@ class StateStore(SQLiteStateDatabase):
                 model_id = connection.execute(
                     """
                     SELECT model_version_id
-                    FROM prediction
+                    FROM prediction_rank
                     WHERE prediction_date = ?
                     GROUP BY model_version_id
                     ORDER BY MAX(created_at) DESC, model_version_id DESC
@@ -807,7 +811,7 @@ class StateStore(SQLiteStateDatabase):
             query = """
                 SELECT p.model_version_id, p.prediction_date, p.instrument, p.rank, p.score,
                        mv.status AS model_status
-                FROM prediction p
+                FROM prediction_rank p
                 JOIN model_version mv ON mv.id = p.model_version_id
                 WHERE p.prediction_date = ? AND p.model_version_id = ?
                 ORDER BY p.rank ASC, p.instrument ASC
@@ -1261,7 +1265,7 @@ class StateStore(SQLiteStateDatabase):
             tables = {
                 "task_run": "task_run",
                 "model_version": "model_version",
-                "prediction": "prediction",
+                "prediction": "prediction_rank",
                 "model_evaluation": "model_evaluation",
                 "trainingRequests": "training_request",
                 "brokerOrders": "broker_order",
@@ -1525,7 +1529,7 @@ class StateStore(SQLiteStateDatabase):
                 )
         connection.executemany(
             """
-            INSERT INTO prediction(
+            INSERT INTO prediction_rank(
                 model_version_id, prediction_date, instrument, rank, score, label, created_at
             ) VALUES(?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(model_version_id, prediction_date, instrument) DO UPDATE SET
@@ -1563,4 +1567,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END ----------------------------------------------------------------------
+# AI_GENERATE_END -----------------------------------------------------------------------

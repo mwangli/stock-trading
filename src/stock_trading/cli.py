@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START -----------------------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -12,7 +12,7 @@ from typing import Annotated, Callable, TypeVar
 import typer
 
 from stock_trading.config import AppConfig, load_project_environment
-from stock_trading.data_sync import SYNC_SCOPES, create_state_snapshot, sync_data
+from stock_trading.data_sync import SYNC_SCOPES, sync_data
 from stock_trading.utils.logging_utils import (
     configure_logging,
     log_context,
@@ -260,29 +260,19 @@ def clean_command(
 def sync_command(
     pull: Annotated[
         str | None,
-        typer.Option("--pull", help="从服务器拉取 market、model、state 或 all。"),
+        typer.Option(
+            "--pull", help="从服务器拉取 market、qlib、model、state 或 all。"
+        ),
     ] = None,
     push: Annotated[
         str | None,
-        typer.Option("--push", help="向服务器推送 market、model 或 all。"),
+        typer.Option("--push", help="向服务器推送 market、qlib、model 或 all。"),
     ] = None,
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run", help="只显示同步计划，不执行 SSH 或 SCP。"),
     ] = False,
-    snapshot_state: Annotated[
-        str | None,
-        typer.Option("--snapshot-state", hidden=True),
-    ] = None,
 ) -> None:
-    if snapshot_state is not None:
-        result = _execute(
-            "sync",
-            {"snapshotState": True},
-            lambda config: create_state_snapshot(config, snapshot_state),
-        )
-        _print_json(result)
-        return
     pull_scopes = _parse_sync_scopes(pull, "pull")
     push_scopes = _parse_sync_scopes(push, "push")
     if not pull_scopes and not push_scopes:
@@ -397,8 +387,9 @@ def _parse_sync_scopes(value: str | None, direction: str) -> tuple[str, ...]:
     if "all" in scopes:
         if len(scopes) != 1:
             raise typer.BadParameter(f"--{direction} all 不能与其他类型同时使用")
-        return ("market", "model", "state") if direction == "pull" else (
+        return ("market", "qlib", "model", "state") if direction == "pull" else (
             "market",
+            "qlib",
             "model",
         )
     if direction == "push" and "state" in scopes:
@@ -462,4 +453,4 @@ def _format_amount(value: object) -> str:
     return "-" if value is None else f"{float(value):,.2f}"
 
 
-# AI_GENERATE_END ---------------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END -----------------------------------------------------------------------------------------------------------------------------------

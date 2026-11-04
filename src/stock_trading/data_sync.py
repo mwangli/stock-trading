@@ -1,30 +1,27 @@
-# AI_GENERATE_START ----
+# AI_GENERATE_START ------
 from __future__ import annotations
 
 import logging
 import os
 import re
-import sqlite3
 import subprocess
 import sys
 import tempfile
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
-from uuid import uuid4
 
 from stock_trading.config import AppConfig
 
 LOGGER = logging.getLogger(__name__)
 REMOTE_DATA_ROOT = "stock-trading/data"
 SERVER_ENV_NAMES = ("SERVER_IP", "SERVER_USER", "SERVER_PASS")
-SYNC_SCOPES = {"market", "model", "state"}
+SYNC_SCOPES = {"market", "qlib", "model", "state"}
 DIRECTORY_SCOPES = {
-    "market": ("market", "qlib"),
+    "market": ("market",),
+    "qlib": ("qlib",),
     "model": ("artifacts",),
 }
-SNAPSHOT_TOKEN_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 
 
 def sync_data(
@@ -83,81 +80,24 @@ def sync_data(
     return {"status": "SUCCESS", "operations": completed}
 
 
-def create_state_snapshot(config: AppConfig, token: str) -> dict[str, str]:
-    """在服务器状态目录生成可供 SCP 下载的一致性 SQLite 快照。"""
-    if not SNAPSHOT_TOKEN_PATTERN.fullmatch(token):
-        raise ValueError("状态快照标识无效")
-    source = config.state_db_path
-    if not source.is_file():
-        raise ValueError(f"SQLite 状态库不存在：{source}")
-    target = source.parent / f".stock-sync-{token}.db"
-    temporary = target.with_suffix(".tmp")
-    temporary.unlink(missing_ok=True)
-    target.unlink(missing_ok=True)
-    _backup_database(source, temporary)
-    _validate_database(temporary)
-    os.replace(temporary, target)
-    return {"status": "SUCCESS", "snapshot": str(target)}
-
-
 def _pull_state(config: AppConfig, server: str, password: str) -> dict[str, str]:
-    token = uuid4().hex
-    remote_snapshot = f"{REMOTE_DATA_ROOT}/state/.stock-sync-{token}.db"
-    project_root = config.data_dir.parent.parent
-    temporary_dir = project_root / ".tmp" / "stock-sync"
-    temporary_dir.mkdir(parents=True, exist_ok=True)
-    downloaded = temporary_dir / f"trading-{token}.db"
-    try:
-        LOGGER.info("开始生成服务器 SQLite 一致性快照")
-        _run_command(
-            "ssh",
-            *_ssh_options(),
-            server,
-            f"stock-trading/venv/bin/stock-sync --snapshot-state {token}",
-            password=password,
-        )
-        _run_command(
-            "scp",
-            *_ssh_options(),
-            f"{server}:{remote_snapshot}",
-            str(downloaded),
-            password=password,
-        )
-        _validate_database(downloaded)
-
-        target = config.state_db_path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        backup = ""
-        if target.is_file():
-            backup_dir = target.parent / "backups"
-            backup_dir.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            backup_path = backup_dir / (
-                f"trading-before-sync-{timestamp}-{uuid4().hex[:8]}.db"
-            )
-            _backup_database(target, backup_path)
-            backup = str(backup_path)
-        os.replace(downloaded, target)
-        LOGGER.info("SQLite 状态拉取完成：数据库=%s", target)
-        return {
-            "direction": "pull",
-            "scope": "state",
-            "database": str(target),
-            "backup": backup,
-        }
-    finally:
-        downloaded.unlink(missing_ok=True)
-        try:
-            _run_command(
-                "ssh",
-                *_ssh_options(),
-                server,
-                f"rm -f {remote_snapshot}",
-                check=False,
-                password=password,
-            )
-        except (ValueError, OSError):
-            LOGGER.warning("服务器临时 SQLite 快照清理失败")
+    target = config.state_db_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    LOGGER.info("开始拉取服务器 SQLite 状态库")
+    _run_command(
+        "scp",
+        *_ssh_options(),
+        "-r",
+        f"{server}:{REMOTE_DATA_ROOT}/state/trading.db",
+        str(target),
+        password=password,
+    )
+    LOGGER.info("SQLite 状态拉取完成：数据库=%s", target)
+    return {
+        "direction": "pull",
+        "scope": "state",
+        "database": str(target),
+    }
 
 
 def _build_plan(
@@ -186,23 +126,6 @@ def _build_plan(
                     }
                 )
     return operations
-
-
-def _backup_database(source: Path, target: Path) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(source) as source_connection:
-        with sqlite3.connect(target) as target_connection:
-            source_connection.backup(target_connection)
-
-
-def _validate_database(path: Path) -> None:
-    with sqlite3.connect(path) as connection:
-        quick_check = str(connection.execute("PRAGMA quick_check").fetchone()[0])
-        if quick_check != "ok":
-            raise ValueError(f"SQLite quick_check 失败：{quick_check}")
-        foreign_keys = connection.execute("PRAGMA foreign_key_check").fetchone()
-        if foreign_keys is not None:
-            raise ValueError("SQLite foreign_key_check 失败")
 
 
 def _server_credentials() -> tuple[str, str]:
@@ -284,4 +207,4 @@ def _run_command(
         raise RuntimeError(detail) from error
 
 
-# AI_GENERATE_END ----
+# AI_GENERATE_END ------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START --
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 import sqlite3
@@ -13,7 +13,12 @@ class SQLiteStateDatabase:
     def __init__(self, path: Path) -> None:
         self._path = path
 
-    def initialize_schema(self, schema: str, schema_version: int) -> None:
+    def initialize_schema(
+        self,
+        schema: str,
+        schema_version: int,
+        migrations: dict[int, str] | None = None,
+    ) -> None:
         """创建空状态库；已有版本不匹配时拒绝自动破坏性升级。"""
         self._path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self._path, timeout=30, isolation_level=None)
@@ -33,6 +38,11 @@ class SQLiteStateDatabase:
             if version == 0 and not tables:
                 connection.executescript(
                     f"BEGIN IMMEDIATE;\n{schema}\n"
+                    f"PRAGMA user_version = {schema_version};\nCOMMIT;"
+                )
+            elif migrations and version in migrations:
+                connection.executescript(
+                    f"BEGIN IMMEDIATE;\n{migrations[version]}\n{schema}\n"
                     f"PRAGMA user_version = {schema_version};\nCOMMIT;"
                 )
             elif (version, schema_version) in {(1, 2), (1, 3), (2, 3)}:
@@ -72,4 +82,4 @@ class SQLiteStateDatabase:
             raise
         finally:
             connection.close()
-# AI_GENERATE_END --
+# AI_GENERATE_END ---
