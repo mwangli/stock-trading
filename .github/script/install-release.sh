@@ -15,7 +15,7 @@ python_dir="$project_dir/python"
 uv_cache_dir="$project_dir/.uv-cache"
 data_dir="$project_dir/data"
 logs_dir="$project_dir/logs"
-cron_dir="$project_dir/cron"
+config_dir="$project_dir/config"
 bootstrap_script="$release_dir/script/bootstrap-server.sh"
 scheduler_script="$release_dir/script/scheduler.sh"
 commands="stock-help stock-train stock-collect stock-prepare stock-rank stock-trading stock-order stock-review stock-clean"
@@ -45,7 +45,7 @@ if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
 fi
 wheel="$1"
 
-mkdir -p "$python_dir" "$uv_cache_dir" "$data_dir"/{market,qlib,artifacts,state} "$cron_dir" "$logs_dir"
+mkdir -p "$python_dir" "$uv_cache_dir" "$data_dir"/{market,qlib,artifacts,state} "$config_dir" "$logs_dir"
 
 shopt -s nullglob
 env_files=("$project_dir"/*.env)

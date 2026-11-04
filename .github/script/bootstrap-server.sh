@@ -85,7 +85,7 @@ apply_environment() {
     "$project_dir/data/qlib" \
     "$project_dir/data/artifacts" \
     "$project_dir/data/state" \
-    "$project_dir/cron" \
+    "$project_dir/config" \
     "$project_dir/logs"
   check_environment
 }
