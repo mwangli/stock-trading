@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------------------
+# AI_GENERATE_START --------------------------------------
 from __future__ import annotations
 
 import logging
@@ -6,7 +6,7 @@ import os
 import sys
 from contextlib import contextmanager
 from contextvars import ContextVar
-from logging.handlers import RotatingFileHandler
+from logging.handlers import RotatingFileHandler, WatchedFileHandler
 from pathlib import Path
 from typing import Iterator
 
@@ -135,7 +135,7 @@ def should_log_progress(current: int, total: int, steps: int = 20) -> bool:
 
 
 def configure_logging() -> None:
-    """配置统一结构化控制台日志和 UTF-8 轮转文件日志。"""
+    """配置统一结构化控制台日志和 UTF-8 文件日志。"""
     logger = logging.getLogger("stock_trading")
     if logger.handlers:
         return
@@ -143,24 +143,27 @@ def configure_logging() -> None:
     level = getattr(logging, level_name, logging.INFO)
     interactive = bool(getattr(sys.stderr, "isatty", lambda: False)())
     use_color = interactive and "NO_COLOR" not in os.environ
-    handler = logging.StreamHandler(sys.stderr)
-    handler.addFilter(_ContextFilter())
-    handler.setFormatter(_ColorFormatter(use_color=use_color))
-    logger.addHandler(handler)
+    if os.getenv("STOCK_TRADING_CONSOLE_LOG", "1") != "0":
+        handler = logging.StreamHandler(sys.stderr)
+        handler.addFilter(_ContextFilter())
+        handler.setFormatter(_ColorFormatter(use_color=use_color))
+        logger.addHandler(handler)
 
     if os.getenv("STOCK_TRADING_FILE_LOG", "1") != "0":
-        configured_path = os.getenv("STOCK_TASK_LOG")
-        log_path = Path(configured_path) if configured_path else _default_log_path()
+        log_path = _default_log_path()
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = RotatingFileHandler(
-            log_path,
-            maxBytes=10 * 1024 * 1024,
-            backupCount=5,
-            encoding="utf-8",
-        )
+        if os.name == "nt":
+            file_handler = RotatingFileHandler(
+                log_path,
+                maxBytes=20 * 1024 * 1024,
+                backupCount=14,
+                encoding="utf-8",
+            )
+        else:
+            file_handler = WatchedFileHandler(log_path, encoding="utf-8")
         file_handler.addFilter(_ContextFilter())
         file_handler.setFormatter(_ColorFormatter(use_color=False))
         logger.addHandler(file_handler)
     logger.setLevel(level)
     logger.propagate = False
-# AI_GENERATE_END ------------------------------------
+# AI_GENERATE_END --------------------------------------

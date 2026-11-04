@@ -1,7 +1,9 @@
 __PROJECT_DIR__/logs/run.log {
     daily
-    size 20M
+    maxsize 20M
     rotate 14
+    dateext
+    dateformat -%Y%m%d
     compress
     delaycompress
     missingok
