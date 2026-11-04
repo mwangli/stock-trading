@@ -150,6 +150,7 @@ jobs:
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
           STOCK_CONSOLE_PORT: ${{ vars.STOCK_CONSOLE_PORT }}
           STOCK_BACKEND_PORT: ${{ vars.STOCK_BACKEND_PORT }}
+          STOCK_DATA_HTPASSWD: ${{ secrets.STOCK_DATA_HTPASSWD }}
           CONSOLE_USERNAME: ${{ vars.CONSOLE_USERNAME }}
           CONSOLE_PASSWORD_HASH: ${{ secrets.CONSOLE_PASSWORD_HASH }}
           AGENT_ENABLED: ${{ vars.AGENT_ENABLED }}
@@ -174,12 +175,18 @@ jobs:
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
           command_timeout: 30m
-          envs: BACKEND_IMAGE,FRONTEND_IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD,STOCK_CONSOLE_PORT,STOCK_BACKEND_PORT,CONSOLE_USERNAME,CONSOLE_PASSWORD_HASH,AGENT_ENABLED,DEEPSEEK_BASE_URL,DEEPSEEK_API_KEY,DEEPSEEK_MODEL,AGENT_TIMEOUT_SECONDS,AGENT_MAX_TOKENS,GITHUB_AGENT_ENABLED,GITHUB_TOKEN,GITHUB_OWNER,GITHUB_REPOSITORY,GITHUB_BRANCH,GITHUB_WORKFLOW,GITHUB_MAX_REPAIR_ROUNDS,GITHUB_POLL_INTERVAL_SECONDS,GITHUB_WORKFLOW_TIMEOUT_MINUTES
+          envs: BACKEND_IMAGE,FRONTEND_IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD,STOCK_CONSOLE_PORT,STOCK_BACKEND_PORT,STOCK_DATA_HTPASSWD,CONSOLE_USERNAME,CONSOLE_PASSWORD_HASH,AGENT_ENABLED,DEEPSEEK_BASE_URL,DEEPSEEK_API_KEY,DEEPSEEK_MODEL,AGENT_TIMEOUT_SECONDS,AGENT_MAX_TOKENS,GITHUB_AGENT_ENABLED,GITHUB_TOKEN,GITHUB_OWNER,GITHUB_REPOSITORY,GITHUB_BRANCH,GITHUB_WORKFLOW,GITHUB_MAX_REPAIR_ROUNDS,GITHUB_POLL_INTERVAL_SECONDS,GITHUB_WORKFLOW_TIMEOUT_MINUTES
           script: |
             set -eu
             DEPLOY_DIR="/tmp/stock-web-deploy"
             trap 'rm -rf "$DEPLOY_DIR"' EXIT
             cd "$DEPLOY_DIR"
+
+            [ -n "$STOCK_DATA_HTPASSWD" ] || { echo "STOCK_DATA_HTPASSWD is required" >&2; exit 1; }
+            mkdir -p /root/stock-trading/config
+            umask 077
+            printf '%s\n' "$STOCK_DATA_HTPASSWD" > /root/stock-trading/config/stock-data.htpasswd
+            chmod 600 /root/stock-trading/config/stock-data.htpasswd
 
             old_backend="$(docker inspect --format '{{.Config.Image}}' stock-backend 2>/dev/null || true)"
             old_frontend="$(docker inspect --format '{{.Config.Image}}' stock-frontend 2>/dev/null || true)"

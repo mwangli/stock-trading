@@ -21,6 +21,15 @@ services:
         condition: service_healthy
     ports:
       - "${STOCK_CONSOLE_PORT:-80}:80"
+    volumes:
+      - type: bind
+        source: /root/stock-trading/data
+        target: /srv/stock-data
+        read_only: true
+      - type: bind
+        source: /root/stock-trading/config/stock-data.htpasswd
+        target: /etc/nginx/auth/stock-data.htpasswd
+        read_only: true
     mem_limit: 128m
     cpus: 0.25
     security_opt:
