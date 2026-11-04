@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ---------
 package com.stock.console.agent;
 
 import com.stock.console.agent.DevelopmentModelService.BusinessSpec;
@@ -124,6 +124,9 @@ public class DevelopmentTaskService {
                 .toList();
         if (!current.isEmpty()) {
             return current;
+        }
+        if (!github.configured()) {
+            return List.of();
         }
         return github.recentTaskCommits(20).stream().map(this::recover).toList();
     }
@@ -586,4 +589,4 @@ public class DevelopmentTaskService {
     private static final class TaskCancelledException extends RuntimeException {
     }
 }
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------
