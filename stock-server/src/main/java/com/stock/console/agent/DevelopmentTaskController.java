@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.console.agent;
 
 import com.stock.console.web.ApiResponse;
@@ -40,6 +40,11 @@ public class DevelopmentTaskController {
         return ApiResponse.ok(tasks.task(taskId));
     }
 
+    @PostMapping("/tasks/{taskId}/cancel")
+    public ApiResponse<DevelopmentTaskView> cancel(@PathVariable String taskId) {
+        return ApiResponse.ok(tasks.cancel(taskId));
+    }
+
     @GetMapping("/tasks/recent")
     public ApiResponse<List<DevelopmentTaskView>> recent() {
         return ApiResponse.ok(tasks.recent());
@@ -50,4 +55,4 @@ public class DevelopmentTaskController {
             @NotBlank @Size(max = DevelopmentTaskService.MAX_REQUIREMENT_LENGTH) String requirement) {
     }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.console.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -37,11 +37,22 @@ public record ConsoleProperties(
 
     public record Agent(
             boolean enabled,
+            Path stateDir,
             String baseUrl,
             String apiKey,
             String model,
             long timeoutSeconds,
             int maxTokens) {
+
+        public Agent(
+                boolean enabled,
+                String baseUrl,
+                String apiKey,
+                String model,
+                long timeoutSeconds,
+                int maxTokens) {
+            this(enabled, Path.of("var/agent"), baseUrl, apiKey, model, timeoutSeconds, maxTokens);
+        }
     }
 
     public record GithubAgent(
@@ -56,4 +67,4 @@ public record ConsoleProperties(
             long workflowTimeoutMinutes) {
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

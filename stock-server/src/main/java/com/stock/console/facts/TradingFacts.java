@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------
+// AI_GENERATE_START ----------------
 package com.stock.console.facts;
 
 import com.stock.console.config.ConsoleProperties;
@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import java.nio.file.Files;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -232,6 +233,111 @@ public class TradingFacts {
         return query(PERFORMANCE_SQL, limit);
     }
 
+    public Map<String, Object> agentPerformanceSummary(
+            LocalDate startDate,
+            LocalDate endDate,
+            String groupBy) {
+        String grouping = switch (groupBy) {
+            case "day" -> "CAST(sell_date AS VARCHAR)";
+            case "month" -> "strftime(CAST(sell_date AS DATE), '%Y-%m')";
+            case "instrument" -> "instrument";
+            case "model" -> "CAST(model_version_id AS VARCHAR)";
+            case "total" -> "'total'";
+            default -> throw new IllegalArgumentException("不支持的收益分组: " + groupBy);
+        };
+        String sql = """
+                SELECT %s AS period,
+                       count(*) AS trade_count,
+                       sum(CASE WHEN net_profit > 0 THEN 1 ELSE 0 END) AS winning_trades,
+                       sum(cost_basis) AS cost_basis,
+                       sum(buy_fee + sell_fee) AS total_fees,
+                       sum(gross_profit) AS gross_profit,
+                       sum(net_profit) AS net_profit,
+                       sum(gross_profit) / nullif(sum(cost_basis), 0) AS gross_return,
+                       sum(net_profit) / nullif(sum(cost_basis) + sum(buy_fee), 0) AS net_return
+                FROM trading.realized_trade
+                WHERE CAST(sell_date AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+                GROUP BY %s
+                ORDER BY period
+                """.formatted(grouping, grouping);
+        List<Map<String, Object>> rows = query(sql, 500, List.of(startDate, endDate));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("startDate", startDate.toString());
+        result.put("endDate", endDate.toString());
+        result.put("groupBy", groupBy);
+        result.put("rows", rows);
+        result.put("returnBasis", "仅统计 realized_trade 已完成买卖闭环；gross 未扣费用，net 扣已记录费用。");
+        return result;
+    }
+
+    public List<Map<String, Object>> agentRealizedTrades(
+            LocalDate startDate,
+            LocalDate endDate,
+            String instrument,
+            int limit) {
+        String normalizedInstrument = instrument == null ? "" : instrument.trim().toLowerCase();
+        return query("""
+                SELECT trade_key, model_version_id, instrument, buy_order_id, sell_order_id,
+                       buy_date, sell_date, quantity, buy_price, sell_price,
+                       buy_fee, sell_fee, cost_basis, sell_amount,
+                       gross_profit, net_profit, gross_return, net_return,
+                       buy_time, sell_time
+                FROM trading.realized_trade
+                WHERE CAST(sell_date AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+                  AND (? = '' OR lower(instrument) = ?)
+                ORDER BY sell_time DESC
+                """, limit, List.of(startDate, endDate, normalizedInstrument, normalizedInstrument));
+    }
+
+    public List<Map<String, Object>> agentPredictionRanking(LocalDate predictionDate, int limit) {
+        String sql = predictionDate == null ? """
+                SELECT prediction_date, instrument, rank, score, label, model_version_id, created_at
+                FROM trading.prediction
+                WHERE prediction_date = (SELECT max(prediction_date) FROM trading.prediction)
+                ORDER BY rank, instrument
+                """ : """
+                SELECT prediction_date, instrument, rank, score, label, model_version_id, created_at
+                FROM trading.prediction
+                WHERE CAST(prediction_date AS DATE) = CAST(? AS DATE)
+                ORDER BY rank, instrument
+                """;
+        return predictionDate == null
+                ? query(sql, limit)
+                : query(sql, limit, List.of(predictionDate));
+    }
+
+    public List<Map<String, Object>> agentTaskFailures(int limit) {
+        return query("""
+                SELECT business_key, task_type, business_date, status,
+                       started_at, finished_at, error_message
+                FROM trading.task_run
+                WHERE upper(status) IN ('FAILED', 'ERROR')
+                ORDER BY id DESC
+                """, limit);
+    }
+
+    public List<Map<String, Object>> agentTaskStatus(LocalDate businessDate, String taskType, int limit) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT business_key, task_type, business_date, status,
+                       started_at, finished_at, error_message
+                FROM trading.task_run
+                WHERE 1 = 1
+                """);
+        List<Object> parameters = new ArrayList<>();
+        if (businessDate != null) {
+            sql.append(" AND CAST(business_date AS DATE) = CAST(? AS DATE)");
+            parameters.add(businessDate);
+        }
+        if (taskType != null && !taskType.isBlank()) {
+            sql.append(" AND lower(task_type) LIKE ?");
+            parameters.add("%" + taskType.trim().toLowerCase() + "%");
+        }
+        sql.append(" ORDER BY id DESC");
+        return parameters.isEmpty()
+                ? query(sql.toString(), limit)
+                : query(sql.toString(), limit, parameters);
+    }
+
     public List<Map<String, Object>> models(int limit) {
         return query(MODELS_SQL, limit);
     }
@@ -352,22 +458,50 @@ public class TradingFacts {
         }
     }
 
+    private List<Map<String, Object>> query(String sql, int limit, List<Object> parameters) {
+        if (!databaseAvailable()) {
+            return List.of();
+        }
+        try (Connection connection = openReadOnly();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setMaxRows(Math.max(1, Math.min(limit, 500)));
+            for (int index = 0; index < parameters.size(); index++) {
+                Object value = parameters.get(index);
+                if (value instanceof LocalDate date) {
+                    statement.setString(index + 1, date.toString());
+                } else {
+                    statement.setObject(index + 1, value);
+                }
+            }
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return rows(resultSet);
+            }
+        } catch (SQLException exception) {
+            LOGGER.warn("只读交易数据参数查询失败: {}", safeMessage(exception));
+            return List.of();
+        }
+    }
+
     private List<Map<String, Object>> query(Connection connection, String sql, int limit) throws SQLException {
         try (Statement statement = connection.createStatement()) {
             statement.setMaxRows(Math.max(1, Math.min(limit, 500)));
             try (ResultSet resultSet = statement.executeQuery(sql)) {
-                ResultSetMetaData metadata = resultSet.getMetaData();
-                List<Map<String, Object>> rows = new ArrayList<>();
-                while (resultSet.next()) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    for (int index = 1; index <= metadata.getColumnCount(); index++) {
-                        row.put(metadata.getColumnLabel(index), resultSet.getObject(index));
-                    }
-                    rows.add(row);
-                }
-                return rows;
+                return rows(resultSet);
             }
         }
+    }
+
+    private List<Map<String, Object>> rows(ResultSet resultSet) throws SQLException {
+        ResultSetMetaData metadata = resultSet.getMetaData();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        while (resultSet.next()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            for (int index = 1; index <= metadata.getColumnCount(); index++) {
+                row.put(metadata.getColumnLabel(index), resultSet.getObject(index));
+            }
+            rows.add(row);
+        }
+        return rows;
     }
 
     private Map<String, Object> summarizeAccount(List<Map<String, Object>> positions) {
@@ -478,4 +612,4 @@ public class TradingFacts {
         return message == null || message.isBlank() ? "SQLite 数据源无法读取" : message;
     }
 }
-// AI_GENERATE_END -------------
+// AI_GENERATE_END ----------------

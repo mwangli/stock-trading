@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START ---------
 package com.stock.console.agent;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -42,19 +42,32 @@ public class GitHubDevelopmentClient {
     private final ConsoleProperties properties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
+    private final SensitiveDataMasker masker;
 
     @Autowired
-    public GitHubDevelopmentClient(ConsoleProperties properties, ObjectMapper objectMapper) {
+    public GitHubDevelopmentClient(
+            ConsoleProperties properties,
+            ObjectMapper objectMapper,
+            SensitiveDataMasker masker) {
         this(properties, objectMapper, HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(20))
                 .followRedirects(HttpClient.Redirect.NORMAL)
-                .build());
+                .build(), masker);
     }
 
-    GitHubDevelopmentClient(ConsoleProperties properties, ObjectMapper objectMapper, HttpClient httpClient) {
+    GitHubDevelopmentClient(ConsoleProperties properties, ObjectMapper objectMapper) {
+        this(properties, objectMapper, HttpClient.newHttpClient(), new SensitiveDataMasker());
+    }
+
+    GitHubDevelopmentClient(
+            ConsoleProperties properties,
+            ObjectMapper objectMapper,
+            HttpClient httpClient,
+            SensitiveDataMasker masker) {
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.httpClient = httpClient;
+        this.masker = masker;
     }
 
     public boolean configured() {
@@ -68,7 +81,11 @@ public class GitHubDevelopmentClient {
     }
 
     public BranchSnapshot branchSnapshot() {
-        JsonNode reference = json("GET", repositoryPath("/git/ref/heads/" + encode(properties.githubAgent().branch())), null);
+        return branchSnapshot(properties.githubAgent().branch());
+    }
+
+    public BranchSnapshot branchSnapshot(String branch) {
+        JsonNode reference = json("GET", repositoryPath("/git/ref/heads/" + encode(branch)), null);
         String headSha = requiredText(reference.path("object"), "sha");
         JsonNode commit = json("GET", repositoryPath("/git/commits/" + headSha), null);
         return new BranchSnapshot(headSha, requiredText(commit.path("tree"), "sha"));
@@ -89,9 +106,13 @@ public class GitHubDevelopmentClient {
     }
 
     public RepositoryFile readFile(String path) {
+        return readFile(path, properties.githubAgent().branch());
+    }
+
+    public RepositoryFile readFile(String path, String ref) {
         validateReadablePath(path);
         String endpoint = repositoryPath("/contents/" + encodePath(path)
-                + "?ref=" + encode(properties.githubAgent().branch()));
+                + "?ref=" + encode(ref));
         JsonNode response = json("GET", endpoint, null);
         long size = response.path("size").asLong();
         if (size > MAX_FILE_BYTES) {
@@ -123,10 +144,14 @@ public class GitHubDevelopmentClient {
     }
 
     public CommitResult commit(String taskId, String expectedHead, ChangeSet changeSet) {
+        return commit(taskId, properties.githubAgent().branch(), expectedHead, changeSet);
+    }
+
+    public CommitResult commit(String taskId, String branch, String expectedHead, ChangeSet changeSet) {
         validateChangeSet(changeSet);
-        BranchSnapshot latest = branchSnapshot();
+        BranchSnapshot latest = branchSnapshot(branch);
         if (!latest.headSha().equals(expectedHead)) {
-            throw new IllegalStateException("stock-web 分支已被其他提交更新，本次任务已停止");
+            throw new IllegalStateException(branch + " 分支已被其他提交更新，本次任务已停止");
         }
         List<Map<String, Object>> treeEntries = new ArrayList<>();
         for (FileChange change : changeSet.changes()) {
@@ -154,24 +179,71 @@ public class GitHubDevelopmentClient {
                 "tree", requiredText(tree, "sha"),
                 "parents", List.of(expectedHead)));
         String commitSha = requiredText(commit, "sha");
-        json("PATCH", repositoryPath("/git/refs/heads/" + encode(properties.githubAgent().branch())), Map.of(
+        json("PATCH", repositoryPath("/git/refs/heads/" + encode(branch)), Map.of(
                 "sha", commitSha,
                 "force", false));
         return new CommitResult(commitSha, changeSet.changes().stream().map(FileChange::path).toList());
     }
 
-    public void dispatchWorkflow(String taskId, String commitSha) {
+    public void createBranch(String branch, String expectedHead) {
+        BranchSnapshot base = branchSnapshot();
+        if (!base.headSha().equals(expectedHead)) {
+            throw new IllegalStateException("目标分支 HEAD 已变化，拒绝创建临时分支");
+        }
+        json("POST", repositoryPath("/git/refs"), Map.of(
+                "ref", "refs/heads/" + branch,
+                "sha", expectedHead));
+    }
+
+    public boolean branchExists(String branch) {
+        HttpResponse<String> response = response(
+                "GET", repositoryPath("/git/ref/heads/" + encode(branch)), null);
+        if (response.statusCode() == 404) {
+            return false;
+        }
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw apiFailure("GET", repositoryPath("/git/ref/heads/" + encode(branch)),
+                    response.statusCode(), response.body());
+        }
+        return true;
+    }
+
+    public void promoteBranch(String branch, String expectedTargetHead, String commitSha) {
+        BranchSnapshot target = branchSnapshot();
+        BranchSnapshot candidate = branchSnapshot(branch);
+        if (!target.headSha().equals(expectedTargetHead)) {
+            throw new IllegalStateException("目标分支 HEAD 已变化，拒绝覆盖并发提交");
+        }
+        if (!candidate.headSha().equals(commitSha)) {
+            throw new IllegalStateException("临时分支 HEAD 与待发布提交不一致");
+        }
+        json("PATCH", repositoryPath("/git/refs/heads/" + encode(properties.githubAgent().branch())), Map.of(
+                "sha", commitSha,
+                "force", false));
+    }
+
+    public void deleteBranch(String branch) {
+        json("DELETE", repositoryPath("/git/refs/heads/" + encode(branch)), null);
+    }
+
+    public void dispatchWorkflow(String taskId, String commitSha, String ref, boolean deploy) {
         json("POST", repositoryPath("/actions/workflows/" + encode(properties.githubAgent().workflow()) + "/dispatches"), Map.of(
-                "ref", properties.githubAgent().branch(),
-                "inputs", Map.of("task_id", taskId, "commit_sha", commitSha)));
+                "ref", ref,
+                "inputs", Map.of("task_id", taskId, "commit_sha", commitSha,
+                        "deploy", Boolean.toString(deploy))));
     }
 
     public WorkflowRun findWorkflowRun(String commitSha) {
-        String endpoint = repositoryPath("/actions/runs?branch="
-                + encode(properties.githubAgent().branch()) + "&per_page=30");
+        return findWorkflowRun(commitSha, properties.githubAgent().branch());
+    }
+
+    public WorkflowRun findWorkflowRun(String commitSha, String branch) {
+        String endpoint = repositoryPath("/actions/runs?branch=" + encode(branch) + "&per_page=30");
         JsonNode response = json("GET", endpoint, null);
         for (JsonNode run : response.path("workflow_runs")) {
-            if (commitSha.equals(run.path("head_sha").asText()) && workflowPath().equals(run.path("path").asText())) {
+            if (commitSha.equals(run.path("head_sha").asText())
+                    && branch.equals(run.path("head_branch").asText())
+                    && workflowPath().equals(run.path("path").asText())) {
                 return workflowRun(run);
             }
         }
@@ -214,7 +286,7 @@ public class GitHubDevelopmentClient {
         } catch (IOException exception) {
             throw new IllegalStateException("无法解析 GitHub Actions 日志", exception);
         }
-        String value = logs.toString();
+        String value = masker.mask(logs.toString());
         return value.length() <= MAX_LOG_CHARS ? value : value.substring(value.length() - MAX_LOG_CHARS);
     }
 
@@ -286,7 +358,8 @@ public class GitHubDevelopmentClient {
                 run.path("status").asText(),
                 run.path("conclusion").isNull() ? null : run.path("conclusion").asText(null),
                 run.path("html_url").asText(),
-                run.path("head_sha").asText());
+                run.path("head_sha").asText(),
+                run.path("head_branch").asText());
     }
 
     void validateChangeSet(ChangeSet changeSet) {
@@ -336,6 +409,18 @@ public class GitHubDevelopmentClient {
     }
 
     private JsonNode json(String method, String path, Object body) {
+        HttpResponse<String> response = response(method, path, body);
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw apiFailure(method, path, response.statusCode(), response.body());
+        }
+        try {
+            return response.body().isBlank() ? objectMapper.createObjectNode() : objectMapper.readTree(response.body());
+        } catch (IOException exception) {
+            throw new IllegalStateException("GitHub API 响应解析失败", exception);
+        }
+    }
+
+    private HttpResponse<String> response(String method, String path, Object body) {
         try {
             HttpRequest.Builder request = request(path);
             if (body == null) {
@@ -343,13 +428,9 @@ public class GitHubDevelopmentClient {
             } else {
                 request.method(method, HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)));
             }
-            HttpResponse<String> response = httpClient.send(request.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw apiFailure(method, path, response.statusCode(), response.body());
-            }
-            return response.body().isBlank() ? objectMapper.createObjectNode() : objectMapper.readTree(response.body());
+            return httpClient.send(request.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (IOException exception) {
-            throw new IllegalStateException("GitHub API 响应解析失败", exception);
+            throw new IllegalStateException("GitHub API 响应读取失败", exception);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("GitHub API 调用被中断", exception);
@@ -386,11 +467,17 @@ public class GitHubDevelopmentClient {
     }
 
     private IllegalStateException apiFailure(String method, String path, int status, String body) {
-        String message = body == null ? "" : body.replaceAll("[\\r\\n]+", " ");
+        String message = body == null ? "" : masker.mask(body).replaceAll("[\\r\\n]+", " ");
         if (message.length() > 300) {
             message = message.substring(0, 300);
         }
-        return new IllegalStateException("GitHub API 调用失败: " + method + " " + path
+        String category = switch (status) {
+            case 401 -> "GitHub Token 未认证";
+            case 403 -> "GitHub Token 权限不足或访问受限";
+            case 429 -> "GitHub API 请求频率受限";
+            default -> "GitHub API 调用失败";
+        };
+        return new IllegalStateException(category + ": " + method + " " + path
                 + " status=" + status + " " + message);
     }
 
@@ -432,7 +519,13 @@ public class GitHubDevelopmentClient {
     public record CommitResult(String commitSha, List<String> changedFiles) {
     }
 
-    public record WorkflowRun(long id, String status, String conclusion, String htmlUrl, String headSha) {
+    public record WorkflowRun(
+            long id,
+            String status,
+            String conclusion,
+            String htmlUrl,
+            String headSha,
+            String headBranch) {
     }
 
     public record TaskCommit(
@@ -455,4 +548,4 @@ public class GitHubDevelopmentClient {
     public record ChangeSet(String summary, String acceptanceSummary, List<FileChange> changes) {
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END ---------

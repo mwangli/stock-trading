@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START ------
 package com.stock.console.agent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -44,9 +44,12 @@ public class DevelopmentModelService {
                   "goal": "一句话目标",
                   "nonGoals": ["明确不做的事项"],
                   "acceptanceCriteria": ["可由源码或构建判断的验收条件"],
-                  "searchTerms": ["用于在代码仓库搜索的精确英文标识符或路径词"]
+                  "searchTerms": ["用于在代码仓库搜索的精确英文标识符或路径词"],
+                  "writeAllowed": true
                 }
                 searchTerms 最多 6 个，不要包含宽泛词语。
+                只有用户明确要求执行修复、实现或提交时 writeAllowed=true；
+                用户要求先分析、只看方案、不要提交、dry-run 时必须为 false。
 
                 原始需求：
                 """ + requirement;
@@ -207,21 +210,33 @@ public class DevelopmentModelService {
         if (generatedCount > originalCount) {
             return generated;
         }
-        int position = generated.indexOf(marker) + marker.length();
+        int position = markerValueStart(generated, marker);
         return generated.substring(0, position) + "-".repeat(originalCount + 1)
                 + generated.substring(position + generatedCount);
     }
 
     private int dashCount(String line, String marker) {
-        int position = line.indexOf(marker);
+        int position = markerValueStart(line, marker);
         if (position < 0) {
             return 0;
         }
         int count = 0;
-        for (int index = position + marker.length(); index < line.length() && line.charAt(index) == '-'; index++) {
+        for (int index = position; index < line.length() && line.charAt(index) == '-'; index++) {
             count++;
         }
         return count;
+    }
+
+    private int markerValueStart(String line, String marker) {
+        int position = line.indexOf(marker);
+        if (position < 0) {
+            return -1;
+        }
+        position += marker.length();
+        while (position < line.length() && Character.isWhitespace(line.charAt(position))) {
+            position++;
+        }
+        return position;
     }
 
     private boolean markerEligible(String path) {
@@ -331,7 +346,8 @@ public class DevelopmentModelService {
             String goal,
             List<String> nonGoals,
             List<String> acceptanceCriteria,
-            List<String> searchTerms) {
+            List<String> searchTerms,
+            boolean writeAllowed) {
     }
 
     private record PathSelection(List<String> paths, String reason) {
@@ -350,4 +366,4 @@ public class DevelopmentModelService {
     private record RawReplacement(String oldText, String newText) {
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END ------

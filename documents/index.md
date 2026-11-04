@@ -5,7 +5,7 @@ sidebar_position: 1
 owner: system
 type: overview
 status: SOURCE_VERIFIED
-last_verified: 2026-11-03
+last_verified: 2026-11-04
 slug: /
 source_paths:
   - stock-client/src/desktop/pages/documentation/index.tsx
@@ -18,7 +18,7 @@ source_paths:
 
 ## 当前系统定位
 
-当前仓库是一个 **Java + React 的只读运营控制台**。它不执行训练、交易、调度或数据修复，而是读取外部 Python T+1 系统产生的 SQLite、Parquet 和日志文件，向 PC 与移动端提供不同的信息视图，并让 Agent 基于这些只读事实和本文档回答问题。
+当前仓库是一个 **Java + React 的运营控制台与高级 Agent**。Java 不执行核心交易、训练或交易状态修复，而是读取 Python 核心产生的 SQLite、Parquet 和日志文件，提供确定性统计、模型与任务分析、文档增强问答和受限 GitHub 自动修复；最终风险校验和券商执行仍由 Python 负责。
 
 ```mermaid
 flowchart LR
@@ -27,7 +27,7 @@ flowchart LR
   B --> API[只读 REST API]
   API --> PC[PC 完整工作台]
   API --> M[移动端 4 个高频页面]
-  B --> A[只读 Agent]
+  B --> A[Java 高级 Agent]
   D --> W[PC 文档工作台]
 ```
 

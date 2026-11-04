@@ -42,6 +42,7 @@ services:
       STOCK_TASK_LOG: /var/log/stock-trading/run.log
       STOCK_DOCUMENT_ROOTS: /app/documents,/data/stock-trading-documents
       AGENT_ENABLED: ${AGENT_ENABLED:-true}
+      AGENT_STATE_DIR: /var/lib/stock-console
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
@@ -74,6 +75,9 @@ services:
         source: ./documents
         target: /app/documents
         read_only: true
+      - type: bind
+        source: ${STOCK_AGENT_STATE_DIR:-./agent-state}
+        target: /var/lib/stock-console
     ports:
       - "127.0.0.1:${STOCK_BACKEND_PORT:-8080}:8080"
     mem_limit: 640m

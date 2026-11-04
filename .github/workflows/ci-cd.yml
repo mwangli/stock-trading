@@ -11,6 +11,11 @@ on:
         description: Expected commit SHA
         required: false
         type: string
+      deploy:
+        description: Build images and deploy after verification
+        required: false
+        default: false
+        type: boolean
   push:
     branches:
       - stock-web
@@ -45,8 +50,34 @@ jobs:
           EXPECTED_COMMIT: ${{ inputs.commit_sha }}
         run: test "$GITHUB_SHA" = "$EXPECTED_COMMIT"
 
-  backend-image:
+  verify:
     needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Run backend tests
+        run: mvn -B -f stock-server/pom.xml test
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: stock-client/package-lock.json
+      - name: Build frontend
+        working-directory: stock-client
+        run: |
+          npm ci
+          npm run build
+
+  backend-image:
+    needs:
+      - prepare
+      - verify
+    if: github.event_name == 'push' || inputs.deploy == true
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -67,7 +98,10 @@ jobs:
           tags: ${{ format('{0}/{1}/{2}:{3}', vars.ACR_REGISTRY, vars.ACR_NAMESPACE, vars.BACKEND_IMAGE_NAME, github.sha) }}
 
   frontend-image:
-    needs: prepare
+    needs:
+      - prepare
+      - verify
+    if: github.event_name == 'push' || inputs.deploy == true
     runs-on: ubuntu-latest
     environment: production
     steps:

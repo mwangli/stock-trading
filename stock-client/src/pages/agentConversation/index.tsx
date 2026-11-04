@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------------------
+// AI_GENERATE_START----------------------
 import './styles.css';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button, Drawer, Input, Segmented, Spin, Tag, Tooltip, message, type InputRef } from 'antd';
@@ -13,6 +13,7 @@ import {
   ReloadOutlined,
   RobotOutlined,
   SendOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../../auth/AuthContext';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
@@ -155,21 +156,23 @@ const statusColor = (status?: string) => {
   return 'processing';
 };
 
-const DEVELOPMENT_TERMINAL_STATUSES = new Set(['SUCCEEDED', 'FAILED']);
+const DEVELOPMENT_TERMINAL_STATUSES = new Set(['SUCCEEDED', 'PLANNED', 'CANCELLED', 'FAILED']);
 
 const DEVELOPMENT_STEPS = [
   ['ANALYZING', '理解需求'],
   ['READING_CODE', '读取代码'],
   ['GENERATING', '生成修改'],
-  ['COMMITTING', '提交代码'],
-  ['BUILDING', '构建验证'],
+  ['COMMITTING', '提交临时分支'],
+  ['VERIFYING', '完整验证'],
+  ['RELEASING', '统一发布'],
   ['DEPLOYING', '自动发布'],
 ] as const;
 
 const developmentStepIndex = (status?: string) => {
   if (status === 'FIXING') return 2;
-  if (status === 'SUCCEEDED') return DEVELOPMENT_STEPS.length;
-  if (status === 'FAILED') return -1;
+  if (status === 'BUILDING') return 4;
+  if (status === 'PLANNED' || status === 'SUCCEEDED') return DEVELOPMENT_STEPS.length;
+  if (status === 'CANCELLED' || status === 'FAILED') return -1;
   return DEVELOPMENT_STEPS.findIndex(([value]) => value === status);
 };
 
@@ -203,6 +206,7 @@ const AgentConversation: React.FC = () => {
   const [mode, setMode] = useState<AgentMode>('chat');
   const [developmentTask, setDevelopmentTask] = useState<DevelopmentTask | null>(null);
   const [developmentSubmitting, setDevelopmentSubmitting] = useState(false);
+  const [developmentCancelling, setDevelopmentCancelling] = useState(false);
 
   const sessionId = useAgentConversationStore((state) => state.sessionId);
   const question = useAgentConversationStore((state) => state.question);
@@ -384,6 +388,20 @@ const AgentConversation: React.FC = () => {
     }
   };
 
+  const cancelDevelopment = async () => {
+    if (!developmentTask || DEVELOPMENT_TERMINAL_STATUSES.has(developmentTask.status)) return;
+    setDevelopmentCancelling(true);
+    try {
+      const response = await request.post(`/agent/development/tasks/${developmentTask.taskId}/cancel`) as ApiResponse<DevelopmentTask>;
+      setDevelopmentTask(readApiData(response, '停止自动开发任务失败'));
+      message.success('自动开发任务已停止');
+    } catch (cause) {
+      message.error(getApiErrorMessage(cause, '停止自动开发任务失败'));
+    } finally {
+      setDevelopmentCancelling(false);
+    }
+  };
+
   const submit = () => mode === 'development' ? startDevelopment() : askAgent();
 
 
@@ -476,7 +494,20 @@ const AgentConversation: React.FC = () => {
                       <div className="text-base font-semibold text-slate-900">自动开发任务</div>
                       <div className="mt-1 text-sm text-slate-500">{developmentTask.requirement}</div>
                     </div>
-                    <Tag color={statusColor(developmentTask.status)}>{developmentTask.status}</Tag>
+                    <div className="flex items-center gap-2">
+                      {!DEVELOPMENT_TERMINAL_STATUSES.has(developmentTask.status) && (
+                        <Tooltip title="停止自动开发">
+                          <Button
+                            danger
+                            icon={<StopOutlined />}
+                            loading={developmentCancelling}
+                            aria-label="停止自动开发"
+                            onClick={() => void cancelDevelopment()}
+                          />
+                        </Tooltip>
+                      )}
+                      <Tag color={statusColor(developmentTask.status)}>{developmentTask.status}</Tag>
+                    </div>
                   </div>
                   <div className="development-step-list" aria-label="自动开发进度">
                     {DEVELOPMENT_STEPS.map(([status, label], index) => {
@@ -678,4 +709,4 @@ const AgentConversation: React.FC = () => {
 };
 
 export default AgentConversation;
-// AI_GENERATE_END---------------------
+// AI_GENERATE_END----------------------
