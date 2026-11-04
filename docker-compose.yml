@@ -38,7 +38,7 @@ services:
       CONSOLE_USERNAME: ${CONSOLE_USERNAME:-admin}
       CONSOLE_PASSWORD_HASH: ${CONSOLE_PASSWORD_HASH:?CONSOLE_PASSWORD_HASH is required}
       STOCK_TRADING_VAR_DIR: /data/stock-trading
-      STOCK_TASK_LOG: /var/log/stock-trading/run.log
+      STOCK_TASK_LOG: /root/stock-trading/logs/run.log
       STOCK_DOCUMENT_ROOTS: /app/documents
       AGENT_ENABLED: ${AGENT_ENABLED:-true}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
@@ -63,7 +63,7 @@ services:
         read_only: true
       - type: bind
         source: /root/stock-trading/logs
-        target: /var/log/stock-trading
+        target: /root/stock-trading/logs
         read_only: true
     ports:
       - "127.0.0.1:${STOCK_BACKEND_PORT:-8080}:8080"
