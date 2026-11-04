@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_START-------------------------------------------------------------------------------- -->
 # AGENTS.md - 只读股票交易控制台
 
 ##
@@ -27,7 +27,7 @@
 - `master` 只保留 `stock-server` 单体后端和 `stock-web` 单体前端。
 - Python `stock-trading` 分支是行情、模型、交易、绩效和任务状态的唯一权威实现。
 - Java 只能只读访问 `trading.db`、Parquet、日志和 Markdown 文档，不得调用 Python CLI、券商或训练流程。
-- Java 不得写入、迁移或修复 `trading.db`；只允许在独立 `agent.db` 中保存 Agent 会话、长期记忆、工具审计和开发任务状态，不得把 Agent 状态混入交易数据库。
+- Java 不得写入、迁移或修复 `trading.db`；Agent 会话和开发任务只保存在 JVM 进程内存，工具审计写入容器日志，不建立 Agent 状态数据库或长期记忆。
 - 不重新引入 MySQL、MongoDB、Flyway、JPA、Quartz、DJL、PyTorch、TA4J、Tushare、券商 SDK、向量库、本地 Embedding 或多 Provider Agent。
 
 ## 后端规范
@@ -53,4 +53,4 @@
 - 修改文本文件优先使用 `apply_patch`；Windows UTF-8 多行补丁失败时立即切换 Git Bash heredoc 或可靠的无 BOM UTF-8 写入。
 - Java、TypeScript、CSS、Markdown 等 AI 修改文件维护首尾 `AI_GENERATE_START/END` 并递增计数；JSON、YAML、XML、TOML、锁文件等格式敏感文件不加标记。
 - 汇报必须区分源码检查、编译、测试、运行和生产验证。
-<!-- AI_GENERATE_END------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_END-------------------------------------------------------------------------------- -->

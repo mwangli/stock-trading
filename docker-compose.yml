@@ -37,12 +37,9 @@ services:
       SPRING_PROFILES_ACTIVE: prod
       CONSOLE_USERNAME: ${CONSOLE_USERNAME:-admin}
       CONSOLE_PASSWORD_HASH: ${CONSOLE_PASSWORD_HASH:?CONSOLE_PASSWORD_HASH is required}
-      CONSOLE_AUTH_PASSWORD_HASH: ${CONSOLE_PASSWORD_HASH:?CONSOLE_PASSWORD_HASH is required}
       STOCK_TRADING_VAR_DIR: /data/stock-trading
-      STOCK_TASK_LOG: /var/log/stock-trading/run.log
-      STOCK_DOCUMENT_ROOTS: /app/documents,/data/stock-trading-documents
+      STOCK_DOCUMENT_ROOTS: /app/documents
       AGENT_ENABLED: ${AGENT_ENABLED:-true}
-      AGENT_STATE_DIR: /var/lib/stock-console
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
@@ -60,24 +57,9 @@ services:
       JAVA_TOOL_OPTIONS: -Xms128m -Xmx512m -Duser.timezone=Asia/Shanghai
     volumes:
       - type: bind
-        source: ${STOCK_TRADING_VAR_DIR:?STOCK_TRADING_VAR_DIR is required}
+        source: /root/stock-trading/data
         target: /data/stock-trading
         read_only: true
-      - type: bind
-        source: ${STOCK_TRADING_LOG_DIR:?STOCK_TRADING_LOG_DIR is required}
-        target: /var/log/stock-trading
-        read_only: true
-      - type: bind
-        source: ${STOCK_TRADING_DOCUMENTS_DIR:?STOCK_TRADING_DOCUMENTS_DIR is required}
-        target: /data/stock-trading-documents
-        read_only: true
-      - type: bind
-        source: ./documents
-        target: /app/documents
-        read_only: true
-      - type: bind
-        source: ${STOCK_AGENT_STATE_DIR:-./agent-state}
-        target: /var/lib/stock-console
     ports:
       - "127.0.0.1:${STOCK_BACKEND_PORT:-8080}:8080"
     mem_limit: 640m

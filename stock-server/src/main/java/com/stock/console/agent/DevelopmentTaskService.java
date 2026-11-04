@@ -1,15 +1,13 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START -----------
 package com.stock.console.agent;
 
 import com.stock.console.agent.DevelopmentModelService.BusinessSpec;
-import com.stock.console.agent.DevelopmentTaskStore.StoredDevelopmentTask;
 import com.stock.console.agent.GitHubDevelopmentClient.BranchSnapshot;
 import com.stock.console.agent.GitHubDevelopmentClient.ChangeSet;
 import com.stock.console.agent.GitHubDevelopmentClient.CommitResult;
 import com.stock.console.agent.GitHubDevelopmentClient.RepositoryFile;
 import com.stock.console.agent.GitHubDevelopmentClient.WorkflowRun;
 import com.stock.console.config.ConsoleProperties;
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Service;
 
@@ -36,7 +34,6 @@ public class DevelopmentTaskService {
     private final ConsoleProperties properties;
     private final GitHubDevelopmentClient github;
     private final DevelopmentModelService model;
-    private final DevelopmentTaskStore store;
     private final Map<String, TaskState> tasks = new ConcurrentHashMap<>();
     private final AtomicReference<String> activeTaskId = new AtomicReference<>();
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
@@ -48,26 +45,10 @@ public class DevelopmentTaskService {
     public DevelopmentTaskService(
             ConsoleProperties properties,
             GitHubDevelopmentClient github,
-            DevelopmentModelService model,
-            DevelopmentTaskStore store) {
+            DevelopmentModelService model) {
         this.properties = properties;
         this.github = github;
         this.model = model;
-        this.store = store;
-    }
-
-    @PostConstruct
-    void restoreTasks() {
-        store.recent(20).forEach(saved -> tasks.put(saved.taskId(), new TaskState(saved)));
-        tasks.values().stream()
-                .filter(task -> !terminal(task.status))
-                .sorted(Comparator.comparing(task -> task.updatedAt))
-                .findFirst()
-                .ifPresent(task -> {
-                    if (activeTaskId.compareAndSet(null, task.taskId())) {
-                        executor.submit(() -> execute(task));
-                    }
-                });
     }
 
     public DevelopmentTaskView start(String sessionId, String requirement) {
@@ -89,12 +70,6 @@ public class DevelopmentTaskService {
     public DevelopmentTaskView task(String taskId) {
         TaskState task = tasks.get(taskId);
         if (task == null) {
-            StoredDevelopmentTask saved = store.find(taskId);
-            if (saved != null) {
-                task = new TaskState(saved);
-                tasks.put(taskId, task);
-                return task.view();
-            }
             DevelopmentTaskView recovered = recover(taskId);
             if (recovered != null) {
                 return recovered;
@@ -107,20 +82,17 @@ public class DevelopmentTaskService {
     public DevelopmentTaskView cancel(String taskId) {
         TaskState task = tasks.get(taskId);
         if (task == null) {
-            StoredDevelopmentTask saved = store.find(taskId);
-            if (saved == null) {
-                throw new IllegalArgumentException("开发任务不存在: " + taskId);
-            }
-            task = new TaskState(saved);
-            tasks.put(taskId, task);
+            throw new IllegalArgumentException("开发任务不存在或服务已重启: " + taskId);
         }
         task.cancel();
         return task.view();
     }
 
     public List<DevelopmentTaskView> recent() {
-        List<DevelopmentTaskView> current = store.recent(20).stream()
-                .map(saved -> tasks.computeIfAbsent(saved.taskId(), id -> new TaskState(saved)).view())
+        List<DevelopmentTaskView> current = tasks.values().stream()
+                .sorted(Comparator.comparing((TaskState task) -> task.updatedAt).reversed())
+                .limit(20)
+                .map(TaskState::view)
                 .toList();
         if (!current.isEmpty()) {
             return current;
@@ -405,13 +377,6 @@ public class DevelopmentTaskService {
         return normalized;
     }
 
-    private boolean terminal(DevelopmentTaskStatus status) {
-        return status == DevelopmentTaskStatus.SUCCEEDED
-                || status == DevelopmentTaskStatus.FAILED
-                || status == DevelopmentTaskStatus.CANCELLED
-                || status == DevelopmentTaskStatus.PLANNED;
-    }
-
     private String compactTaskId() {
         return UUID.randomUUID().toString().replace("-", "").substring(0, 12);
     }
@@ -459,26 +424,6 @@ public class DevelopmentTaskService {
             this.requirement = requirement;
             this.createdAt = Instant.now().toString();
             this.updatedAt = createdAt;
-            persist();
-        }
-
-        private TaskState(StoredDevelopmentTask saved) {
-            this.taskId = saved.taskId();
-            this.sessionId = saved.sessionId();
-            this.requirement = saved.requirement();
-            this.status = saved.status();
-            this.buildAttempt = saved.buildAttempt();
-            this.changedFiles = saved.changedFiles() == null ? List.of() : List.copyOf(saved.changedFiles());
-            this.commitSha = saved.commitSha();
-            this.workflowRunId = saved.workflowRunId();
-            this.workflowUrl = saved.workflowUrl();
-            this.progress = saved.progress();
-            this.failureMessage = saved.failureMessage();
-            this.temporaryBranch = saved.temporaryBranch();
-            this.targetHead = saved.targetHead();
-            this.cancelled = saved.cancelled();
-            this.createdAt = saved.createdAt();
-            this.updatedAt = saved.updatedAt();
         }
 
         private synchronized void update(DevelopmentTaskStatus status, String progress) {
@@ -486,7 +431,6 @@ public class DevelopmentTaskService {
             this.status = status;
             this.progress = progress;
             this.updatedAt = Instant.now().toString();
-            persist();
         }
 
         private synchronized void fail(String failureMessage) {
@@ -497,7 +441,6 @@ public class DevelopmentTaskService {
             this.progress = "自动开发任务失败";
             this.failureMessage = failureMessage;
             this.updatedAt = Instant.now().toString();
-            persist();
         }
 
         private synchronized void cancel() {
@@ -509,14 +452,12 @@ public class DevelopmentTaskService {
             status = DevelopmentTaskStatus.CANCELLED;
             progress = "任务已停止，后续模型和 GitHub 写操作不会继续";
             updatedAt = Instant.now().toString();
-            persist();
         }
 
         private synchronized void setBranch(String temporaryBranch, String targetHead) {
             this.temporaryBranch = temporaryBranch;
             this.targetHead = targetHead;
             this.updatedAt = Instant.now().toString();
-            persist();
         }
 
         private synchronized void setCommit(String commitSha, List<String> changedFiles) {
@@ -525,46 +466,34 @@ public class DevelopmentTaskService {
             this.workflowRunId = null;
             this.workflowUrl = null;
             this.updatedAt = Instant.now().toString();
-            persist();
         }
 
         private synchronized void setPlan(List<String> changedFiles) {
             this.changedFiles = List.copyOf(changedFiles);
             this.updatedAt = Instant.now().toString();
-            persist();
         }
 
         private synchronized void setWorkflow(long workflowRunId, String workflowUrl) {
             this.workflowRunId = workflowRunId;
             this.workflowUrl = workflowUrl;
             this.updatedAt = Instant.now().toString();
-            persist();
         }
 
         private synchronized void clearWorkflow() {
             this.workflowRunId = null;
             this.workflowUrl = null;
             this.updatedAt = Instant.now().toString();
-            persist();
         }
 
         private void setBuildAttempt(int buildAttempt) {
             this.buildAttempt = buildAttempt;
             this.updatedAt = Instant.now().toString();
-            persist();
         }
 
         private void checkCancelled() {
             if (cancelled) {
                 throw new TaskCancelledException();
             }
-        }
-
-        private void persist() {
-            store.save(new StoredDevelopmentTask(
-                    taskId, sessionId, requirement, status, buildAttempt, changedFiles, commitSha,
-                    workflowRunId, workflowUrl, progress, failureMessage, temporaryBranch, targetHead,
-                    cancelled, createdAt, updatedAt));
         }
 
         private String taskId() {
@@ -589,4 +518,4 @@ public class DevelopmentTaskService {
     private static final class TaskCancelledException extends RuntimeException {
     }
 }
-// AI_GENERATE_END ---------
+// AI_GENERATE_END -----------

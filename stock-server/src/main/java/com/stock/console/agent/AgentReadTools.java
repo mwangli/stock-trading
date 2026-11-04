@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.console.agent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -25,7 +25,6 @@ public class AgentReadTools {
     private final MarketRepository market;
     private final ObjectMapper objectMapper;
     private final AgentToolAudit audit;
-    private final AgentMemoryStore memory;
     private final SensitiveDataMasker masker;
 
     public AgentReadTools(
@@ -33,13 +32,11 @@ public class AgentReadTools {
             MarketRepository market,
             ObjectMapper objectMapper,
             AgentToolAudit audit,
-            AgentMemoryStore memory,
             SensitiveDataMasker masker) {
         this.facts = facts;
         this.market = market;
         this.objectMapper = objectMapper;
         this.audit = audit;
-        this.memory = memory;
         this.masker = masker;
     }
 
@@ -156,25 +153,6 @@ public class AgentReadTools {
         return json(evidence);
     }
 
-    @Tool("仅当用户明确说‘记住’时，保存长期偏好或业务口径。普通表达不得调用。")
-    public String rememberUserFact(
-            @P("记忆分类，例如 preference 或 return-basis") String category,
-            @P("需要长期保存的简洁事实") String content) {
-        Map<String, Object> saved = memory.remember(category, masker.mask(content));
-        audit.record("rememberUserFact", arguments("category", category), "agent-state:memory:write");
-        return json(saved);
-    }
-
-    @Tool("搜索用户明确保存的长期偏好和历史口径。仅在问题涉及‘以前说过’或长期偏好时调用。")
-    public String searchAgentMemory(
-            @P("搜索词") String query,
-            @P(value = "返回条数，1 到 20", required = false) Integer limit) {
-        int resolvedLimit = limit(limit, 10, 20);
-        audit.record("searchAgentMemory", arguments("query", query, "limit", resolvedLimit),
-                "agent-state:memory:read");
-        return json(memory.search(query, resolvedLimit));
-    }
-
     private LocalDate dateOrDefault(String value, LocalDate defaultValue) {
         LocalDate parsed = optionalDate(value);
         return parsed == null ? defaultValue : parsed;
@@ -217,4 +195,4 @@ public class AgentReadTools {
         return result;
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

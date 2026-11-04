@@ -1,15 +1,11 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 package com.stock.console.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.stock.console.config.ConsoleProperties;
 import com.stock.console.facts.TradingFacts;
 import com.stock.console.market.MarketRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -23,9 +19,6 @@ import static org.mockito.Mockito.when;
 
 class AgentReadToolsTest {
 
-    @TempDir
-    Path tempDir;
-
     private TradingFacts facts;
     private MarketRepository market;
     private AgentToolAudit audit;
@@ -36,14 +29,9 @@ class AgentReadToolsTest {
         facts = mock(TradingFacts.class);
         market = mock(MarketRepository.class);
         ObjectMapper objectMapper = new ObjectMapper();
-        ConsoleProperties properties = properties();
-        AgentDatabase database = new AgentDatabase(properties);
-        database.initialize();
         SensitiveDataMasker masker = new SensitiveDataMasker();
-        audit = new AgentToolAudit(database, objectMapper, masker);
-        tools = new AgentReadTools(
-                facts, market, objectMapper, audit,
-                new AgentMemoryStore(database, properties), masker);
+        audit = new AgentToolAudit(objectMapper, masker);
+        tools = new AgentReadTools(facts, market, objectMapper, audit, masker);
         audit.begin("test-session");
     }
 
@@ -97,16 +85,5 @@ class AgentReadToolsTest {
         assertThrows(IllegalArgumentException.class, () -> tools.realizedTradeDetail(null, null, null, 201));
     }
 
-    private ConsoleProperties properties() {
-        return new ConsoleProperties(
-                Path.of("data"),
-                Path.of("logs/tasks.log"),
-                "documents",
-                new ConsoleProperties.Auth("admin", "hash"),
-                new ConsoleProperties.Agent(
-                        true, tempDir, "https://api.example.com", "key", "model", 90, 1800),
-                new ConsoleProperties.GithubAgent(
-                        false, "", "", "", "stock-web", "ci-cd.yml", 2, 2, 5));
-    }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

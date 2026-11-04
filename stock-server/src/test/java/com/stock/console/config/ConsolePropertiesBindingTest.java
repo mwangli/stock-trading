@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ----
 package com.stock.console.config;
 
 import org.junit.jupiter.api.Test;
@@ -6,7 +6,6 @@ import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 
-import java.nio.file.Path;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class ConsolePropertiesBindingTest {
 
     @Test
-    void bindsAgentConfigurationWithStateDirectory() {
+    void bindsStatelessAgentConfiguration() {
         MapConfigurationPropertySource source = new MapConfigurationPropertySource(Map.ofEntries(
                 Map.entry("console.data-dir", "data"),
                 Map.entry("console.task-log", "logs/tasks.log"),
@@ -23,7 +22,6 @@ class ConsolePropertiesBindingTest {
                 Map.entry("console.auth.username", "admin"),
                 Map.entry("console.auth.password-hash", "hash"),
                 Map.entry("console.agent.enabled", "true"),
-                Map.entry("console.agent.state-dir", "/var/lib/stock-console"),
                 Map.entry("console.agent.base-url", "https://api.example.com"),
                 Map.entry("console.agent.api-key", "key"),
                 Map.entry("console.agent.model", "model"),
@@ -43,7 +41,7 @@ class ConsolePropertiesBindingTest {
                 .orElseThrow(() -> new IllegalStateException("console properties did not bind"));
 
         assertNotNull(properties.agent());
-        assertEquals(Path.of("/var/lib/stock-console"), properties.agent().stateDir());
+        assertEquals("https://api.example.com", properties.agent().baseUrl());
     }
 }
-// AI_GENERATE_END --
+// AI_GENERATE_END ----

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 package com.stock.console.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -62,9 +62,9 @@ class GitHubDevelopmentClientValidationTest {
                 "documents",
                 new ConsoleProperties.Auth("admin", "hash"),
                 new ConsoleProperties.Agent(
-                        true, Path.of("var/agent"), "https://api.example.com", "key", "model", 90, 1800),
+                        true, "https://api.example.com", "key", "model", 90, 1800),
                 new ConsoleProperties.GithubAgent(
                         true, "token", "owner", "repository", "stock-web", "ci-cd.yml", 2, 10, 45));
     }
 }
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

@@ -137,8 +137,8 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
-          source: docker-compose.yml,documents
-          target: ~/stock-trading/web
+          source: docker-compose.yml
+          target: /tmp/stock-web-deploy
           overwrite: true
       - name: Deploy and verify services
         uses: appleboy/ssh-action@v1.2.5
@@ -148,6 +148,25 @@ jobs:
           ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
           ACR_USERNAME: ${{ vars.ACR_USERNAME }}
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          STOCK_CONSOLE_PORT: ${{ vars.STOCK_CONSOLE_PORT }}
+          STOCK_BACKEND_PORT: ${{ vars.STOCK_BACKEND_PORT }}
+          CONSOLE_USERNAME: ${{ vars.CONSOLE_USERNAME }}
+          CONSOLE_PASSWORD_HASH: ${{ secrets.CONSOLE_PASSWORD_HASH }}
+          AGENT_ENABLED: ${{ vars.AGENT_ENABLED }}
+          DEEPSEEK_BASE_URL: ${{ vars.DEEPSEEK_BASE_URL }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+          AGENT_TIMEOUT_SECONDS: ${{ vars.AGENT_TIMEOUT_SECONDS }}
+          AGENT_MAX_TOKENS: ${{ vars.AGENT_MAX_TOKENS }}
+          GITHUB_AGENT_ENABLED: ${{ vars.GITHUB_AGENT_ENABLED }}
+          GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN }}
+          GITHUB_OWNER: ${{ vars.GITHUB_OWNER }}
+          GITHUB_REPOSITORY: ${{ vars.GITHUB_REPOSITORY }}
+          GITHUB_BRANCH: ${{ vars.GITHUB_BRANCH }}
+          GITHUB_WORKFLOW: ${{ vars.GITHUB_WORKFLOW }}
+          GITHUB_MAX_REPAIR_ROUNDS: ${{ vars.GITHUB_MAX_REPAIR_ROUNDS }}
+          GITHUB_POLL_INTERVAL_SECONDS: ${{ vars.GITHUB_POLL_INTERVAL_SECONDS }}
+          GITHUB_WORKFLOW_TIMEOUT_MINUTES: ${{ vars.GITHUB_WORKFLOW_TIMEOUT_MINUTES }}
         with:
           host: ${{ vars.SERVER_HOST }}
           username: ${{ vars.SERVER_USER }}
@@ -155,10 +174,11 @@ jobs:
           port: ${{ vars.SERVER_PORT }}
           fingerprint: ${{ vars.SERVER_FINGERPRINT }}
           command_timeout: 30m
-          envs: BACKEND_IMAGE,FRONTEND_IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD
+          envs: BACKEND_IMAGE,FRONTEND_IMAGE,ACR_REGISTRY,ACR_USERNAME,ACR_PASSWORD,STOCK_CONSOLE_PORT,STOCK_BACKEND_PORT,CONSOLE_USERNAME,CONSOLE_PASSWORD_HASH,AGENT_ENABLED,DEEPSEEK_BASE_URL,DEEPSEEK_API_KEY,DEEPSEEK_MODEL,AGENT_TIMEOUT_SECONDS,AGENT_MAX_TOKENS,GITHUB_AGENT_ENABLED,GITHUB_TOKEN,GITHUB_OWNER,GITHUB_REPOSITORY,GITHUB_BRANCH,GITHUB_WORKFLOW,GITHUB_MAX_REPAIR_ROUNDS,GITHUB_POLL_INTERVAL_SECONDS,GITHUB_WORKFLOW_TIMEOUT_MINUTES
           script: |
             set -eu
-            DEPLOY_DIR="$HOME/stock-trading/web"
+            DEPLOY_DIR="/tmp/stock-web-deploy"
+            trap 'rm -rf "$DEPLOY_DIR"' EXIT
             cd "$DEPLOY_DIR"
 
             old_backend="$(docker inspect --format '{{.Config.Image}}' stock-backend 2>/dev/null || true)"
@@ -169,7 +189,7 @@ jobs:
               if [ -n "$old_backend" ] && [ -n "$old_frontend" ]; then
                 export STOCK_BACKEND_IMAGE="$old_backend"
                 export STOCK_FRONTEND_IMAGE="$old_frontend"
-                docker compose --env-file .env up -d --no-deps --no-build stock-backend stock-frontend || true
+                docker compose up -d --no-deps --no-build stock-backend stock-frontend || true
               fi
             }
 
@@ -195,13 +215,13 @@ jobs:
             printf '%s' "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" --username "$ACR_USERNAME" --password-stdin
             export STOCK_BACKEND_IMAGE="$BACKEND_IMAGE"
             export STOCK_FRONTEND_IMAGE="$FRONTEND_IMAGE"
-            docker compose --env-file .env pull stock-backend stock-frontend
-            docker compose --env-file .env up -d --no-deps --no-build stock-backend
+            docker compose pull stock-backend stock-frontend
+            docker compose up -d --no-deps --no-build stock-backend
             if ! wait_healthy stock-backend; then
               rollback
               exit 1
             fi
-            docker compose --env-file .env up -d --no-deps --no-build stock-frontend
+            docker compose up -d --no-deps --no-build stock-frontend
             if ! wait_healthy stock-frontend; then
               rollback
               exit 1

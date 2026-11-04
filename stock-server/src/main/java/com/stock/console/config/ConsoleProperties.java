@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START -------
 package com.stock.console.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -37,7 +37,6 @@ public record ConsoleProperties(
 
     public record Agent(
             boolean enabled,
-            Path stateDir,
             String baseUrl,
             String apiKey,
             String model,
@@ -57,4 +56,4 @@ public record ConsoleProperties(
             long workflowTimeoutMinutes) {
     }
 }
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------
