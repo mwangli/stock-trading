@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------
+# AI_GENERATE_START ----------------
 from __future__ import annotations
 
 import json
@@ -72,7 +72,26 @@ def collect_workflow(
             else research_codes(stocks, start_date, end_date)
         )
         if not codes:
-            raise ValueError("股票基础信息中没有满足当前研究窗口的股票")
+            LOGGER.warning(
+                "股票基础信息中没有满足当前研究窗口的股票，跳过采集：日期=%s 至 %s",
+                start_date,
+                end_date,
+            )
+            state.finish_task(business_key, True)
+            return {
+                "snapshot": basics,
+                "startDate": start_date.isoformat(),
+                "endDate": end_date.isoformat(),
+                "researchCodes": 0,
+                "skipped": True,
+                "skipReason": "NO_RESEARCH_CODES",
+                "collection": {
+                    "completed": 0,
+                    "skipped": 0,
+                    "failed": {},
+                },
+                "dataQuality": None,
+            }
         LOGGER.info(
             "开始检查原始数据：股票数=%d；日期=%s 至 %s；模式=%s",
             len(codes),
@@ -457,4 +476,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END ---------------
+# AI_GENERATE_END ----------------
