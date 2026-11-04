@@ -186,7 +186,7 @@ jobs:
             mkdir -p /root/stock-trading/config
             umask 077
             printf '%s\n' "$STOCK_DATA_HTPASSWD" > /root/stock-trading/config/stock-data.htpasswd
-            chmod 600 /root/stock-trading/config/stock-data.htpasswd
+            chmod 644 /root/stock-trading/config/stock-data.htpasswd
 
             old_backend="$(docker inspect --format '{{.Config.Image}}' stock-backend 2>/dev/null || true)"
             old_frontend="$(docker inspect --format '{{.Config.Image}}' stock-frontend 2>/dev/null || true)"
