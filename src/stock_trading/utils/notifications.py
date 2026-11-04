@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ------
 from __future__ import annotations
 
 import json
@@ -15,6 +15,7 @@ from stock_trading.utils.time_utils import shanghai_now
 
 LOGGER = logging.getLogger(__name__)
 BARK_PUSH_URL = "https://api.day.app/push"
+SYSTEM_FAILURE_TTL_SECONDS = 30 * 24 * 60 * 60
 
 
 def push_execution_result(
@@ -41,7 +42,13 @@ def push_execution_result(
                 f"尝试次数：{len(attempts)}",
             )
         )
-        _push_bark(config, f"[交易] {action}成交完成", body, "交易")
+        _push_bark(
+            config,
+            f"[交易] {action}成交完成",
+            body,
+            "交易",
+            ttl_seconds=None,
+        )
         return
     if status not in {"REJECTED", "UNKNOWN", "STOPPED"}:
         return
@@ -54,7 +61,13 @@ def push_execution_result(
             f"原因：{safe_error_text(last.get('errorMessage'))}",
         )
     )
-    _push_bark(config, f"[交易] {action}执行未完成", body, "交易异常")
+    _push_bark(
+        config,
+        f"[交易] {action}执行未完成",
+        body,
+        "交易异常",
+        ttl_seconds=None,
+    )
 
 
 def push_system_failure(
@@ -68,7 +81,13 @@ def push_system_failure(
             f"原因：{safe_error_text(error)}",
         )
     )
-    _push_bark(config, "[系统] 任务执行异常", body, "系统异常")
+    _push_bark(
+        config,
+        "[系统] 任务执行异常",
+        body,
+        "系统异常",
+        ttl_seconds=SYSTEM_FAILURE_TTL_SECONDS,
+    )
 
 
 def safe_error_text(value: object) -> str:
@@ -87,6 +106,7 @@ def _push_bark(
     title: str,
     body: str,
     group: str,
+    ttl_seconds: int | None,
 ) -> None:
     device_key = (
         config.bark_device_key
@@ -96,12 +116,15 @@ def _push_bark(
     if not device_key:
         LOGGER.debug("Bark 推送已跳过：未配置 DEVICE_KEY")
         return
-    payload = {
+    payload: dict[str, object] = {
         "device_key": device_key,
         "title": title,
         "group": group,
         "body": f"主机：{socket.gethostname()}\n{body}",
+        "isArchive": "1",
     }
+    if ttl_seconds is not None:
+        payload["ttl"] = ttl_seconds
     request = urllib.request.Request(
         BARK_PUSH_URL,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -115,4 +138,4 @@ def _push_bark(
         LOGGER.debug("Bark 推送请求完成：分组=%s；标题=%s", group, title)
     except Exception as error:
         LOGGER.warning("Bark 推送失败，不影响业务：分组=%s；原因=%s", group, error)
-# AI_GENERATE_END ---
+# AI_GENERATE_END ------

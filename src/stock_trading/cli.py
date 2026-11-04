@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START ---------------------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -12,6 +12,7 @@ from typing import Annotated, Callable, TypeVar
 import typer
 
 from stock_trading.config import AppConfig, load_project_environment
+from stock_trading.data_sync import SYNC_SCOPES, create_state_snapshot, sync_data
 from stock_trading.utils.logging_utils import (
     configure_logging,
     log_context,
@@ -256,6 +257,58 @@ def clean_command(
     )
 
 
+def sync_command(
+    pull: Annotated[
+        str | None,
+        typer.Option("--pull", help="从服务器拉取 market、model、state 或 all。"),
+    ] = None,
+    push: Annotated[
+        str | None,
+        typer.Option("--push", help="向服务器推送 market、model 或 all。"),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="只显示同步计划，不执行 SSH 或 SCP。"),
+    ] = False,
+    snapshot_state: Annotated[
+        str | None,
+        typer.Option("--snapshot-state", hidden=True),
+    ] = None,
+) -> None:
+    if snapshot_state is not None:
+        result = _execute(
+            "sync",
+            {"snapshotState": True},
+            lambda config: create_state_snapshot(config, snapshot_state),
+        )
+        _print_json(result)
+        return
+    pull_scopes = _parse_sync_scopes(pull, "pull")
+    push_scopes = _parse_sync_scopes(push, "push")
+    if not pull_scopes and not push_scopes:
+        raise typer.BadParameter("必须指定 --pull 或 --push")
+    overlap = set(pull_scopes) & set(push_scopes)
+    if overlap:
+        raise typer.BadParameter(
+            f"同一数据类型不能同时拉取和推送：{','.join(sorted(overlap))}"
+        )
+    result = _execute(
+        "sync",
+        {
+            "pull": pull,
+            "push": push,
+            "dryRun": dry_run,
+        },
+        lambda config: sync_data(
+            config,
+            pull_scopes,
+            push_scopes,
+            dry_run=dry_run,
+        ),
+    )
+    _print_json(result)
+
+
 def _business_date(value: str | None) -> date:
     return (
         _parse_date(value)
@@ -330,6 +383,29 @@ def _parse_model_split(value: str) -> tuple[Decimal, Decimal, Decimal]:
     return ratios[0], ratios[1], ratios[2]
 
 
+def _parse_sync_scopes(value: str | None, direction: str) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    scopes = tuple(dict.fromkeys(item.strip().lower() for item in value.split(",")))
+    if not scopes or any(not scope for scope in scopes):
+        raise typer.BadParameter(f"--{direction} 数据类型不能为空")
+    unknown = sorted(set(scopes) - SYNC_SCOPES - {"all"})
+    if unknown:
+        raise typer.BadParameter(
+            f"--{direction} 包含未知数据类型：{','.join(unknown)}"
+        )
+    if "all" in scopes:
+        if len(scopes) != 1:
+            raise typer.BadParameter(f"--{direction} all 不能与其他类型同时使用")
+        return ("market", "model", "state") if direction == "pull" else (
+            "market",
+            "model",
+        )
+    if direction == "push" and "state" in scopes:
+        raise typer.BadParameter("state 只允许从服务器拉取，不允许推送")
+    return scopes
+
+
 def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
 
@@ -386,4 +462,4 @@ def _format_amount(value: object) -> str:
     return "-" if value is None else f"{float(value):,.2f}"
 
 
-# AI_GENERATE_END -------------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END ---------------------------------------------------------------------------------------------------------------------------------

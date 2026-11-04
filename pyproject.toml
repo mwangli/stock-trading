@@ -28,6 +28,7 @@ stock-trading = "stock_trading.shortcuts:trading"
 stock-order = "stock_trading.shortcuts:order"
 stock-review = "stock_trading.shortcuts:review"
 stock-clean = "stock_trading.shortcuts:clean"
+stock-sync = "stock_trading.shortcuts:sync"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

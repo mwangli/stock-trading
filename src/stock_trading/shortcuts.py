@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------
+# AI_GENERATE_START -------------------------
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -13,6 +13,7 @@ from stock_trading.cli import (
     prepare_command,
     rank_command,
     review_command,
+    sync_command,
     trading_command,
     train_command,
 )
@@ -47,6 +48,7 @@ COMMAND_GROUPS = (
         "维护与帮助",
         (
             ("stock-clean", "清理过期数据、历史事实和业务状态。"),
+            ("stock-sync", "在本地和服务器之间同步行情、模型和状态。"),
             ("stock-help", "列出全部公开命令及其用途。"),
         ),
     ),
@@ -265,4 +267,27 @@ def clean() -> None:
             "建议由每周维护任务调用，而不是每次初始化执行。",
         ),
     )
-# AI_GENERATE_END ----------------------
+
+
+def sync() -> None:
+    _run(
+        "stock-sync",
+        sync_command,
+        "使用 SSH/SCP 在本地和服务器之间同步运行数据。",
+        (
+            "market 和 model 支持拉取或推送。",
+            "state 只允许从服务器拉取，并通过 SQLite 一致性快照替换本地状态库。",
+            "服务器数据目录固定为 $HOME/stock-trading/data，本地为项目根目录 data。",
+        ),
+        (
+            "stock-sync --pull all",
+            "stock-sync --push market,model",
+            "stock-sync --pull state",
+        ),
+        (
+            "同一数据类型不能在一次命令中同时拉取和推送。",
+            "环境文件、券商 Token 和调度锁不会同步。",
+            "服务器连接只读取 SERVER_IP、SERVER_USER 和 SERVER_PASS。",
+        ),
+    )
+# AI_GENERATE_END -------------------------
