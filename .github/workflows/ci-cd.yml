@@ -64,7 +64,7 @@ jobs:
         run: mvn -B -f stock-server/pom.xml test
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version-file: stock-client/.nvmrc
           cache: npm
           cache-dependency-path: stock-client/package-lock.json
       - name: Build frontend
